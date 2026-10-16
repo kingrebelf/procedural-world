@@ -81,7 +81,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
 	"workbench": 15.0, "forge": 20.0, "anvil": 25.0}
-const KIND_WEIGHT := {"resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0,
+const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0,
 	"placeable": 4.0, "station": 12.0}
 
 static var _piece_defs := {}
@@ -107,7 +107,7 @@ static func def(type: String) -> Dictionary:
 				"stone": c = Color(0.55, 0.55, 0.55)
 				"metal": c = Color(0.7, 0.72, 0.76)
 			_piece_defs[type] = {"name": b["name"], "era": int(b.get("era", ANY)), "value": PIECE_VALUE.get(type, 10), "stack": true,
-				"kind": "station" if b.has("station") or b.has("storage") or b.has("teleporter") else "placeable", "color": c, "place": true}
+				"kind": "station" if b.has("station") or b.has("storage") or b.has("teleporter") else ("decor" if b.has("decor") else "placeable"), "color": c, "place": true}
 		return _piece_defs[type]
 	return {}
 

@@ -290,7 +290,7 @@ func _inventory_panel() -> Control:
 # --- Crafting ------------------------------------------------------------------------
 
 const CRAFT_AMOUNTS := [1, 5, 10, 100]
-const CRAFT_TABS := ["All", "Materials", "Tools", "Stations", "Building"]
+const CRAFT_TABS := ["All", "Materials", "Tools", "Stations", "Building", "Furniture"]
 var _craft_scroll := 0
 var _craft_tab := "All"
 
@@ -299,6 +299,7 @@ static func _recipe_tab(r: Dictionary) -> String:
 		"tool", "weapon", "light": return "Tools"
 		"station": return "Stations"
 		"placeable": return "Building"
+		"decor": return "Furniture"
 	return "Materials"
 
 static func _icon_rect(type: String, px: int) -> TextureRect:
