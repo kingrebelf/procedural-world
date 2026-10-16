@@ -170,6 +170,7 @@ func _scifi(x: float, z: float) -> float:
 
 const RIVER_W := 0.02 ## half-width, in noise units (about 10-16 m on the ground)
 const RIVER_CELL := 8.0 ## the smoothed water level is sampled on this global grid
+const RIVER_REACH := 6.0 ## channel half-widths over which the valley sides fade out
 const RIVER_DEPTH := 2.4
 
 ## Distance from the river's centre in half-widths (0 = centre, 1 = the water's edge).
@@ -211,7 +212,7 @@ static func river_strength(land: float, level: float) -> float:
 
 ## Carves the river channel and banks into a terrain height.
 static func carve_river(h: float, t: float, level: float, m: float) -> float:
-	if m <= 0.0 or t >= 3.0:
+	if m <= 0.0 or t >= RIVER_REACH:
 		return h
 	# Fully cut wherever the water shows (strength 0.3 and up), fading below that.
 	m = smoothstep(0.05, 0.3, m)
@@ -219,8 +220,10 @@ static func carve_river(h: float, t: float, level: float, m: float) -> float:
 	if t < 1.0:
 		target = level - RIVER_DEPTH * (1.0 - t * t)
 		return lerpf(h, minf(h, target), m)
-	# Banks: the valley sides slope down to just above the water.
-	var bank := level + 0.3 + (t - 1.0) * (t - 1.0) * 1.4
+	# Banks: a broad valley whose sides rise gently from just above the water, so the
+	# river sits in a vale instead of a cut with cliff walls.
+	var u := t - 1.0
+	var bank := level + 0.3 + u * 0.8 + u * u * 0.3
 	if h > bank:
-		return lerpf(h, bank, m * (1.0 - smoothstep(1.0, 3.0, t)))
+		return lerpf(h, bank, m * (1.0 - smoothstep(1.5, RIVER_REACH, t)))
 	return h

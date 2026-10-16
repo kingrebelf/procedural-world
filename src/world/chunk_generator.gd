@@ -90,7 +90,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 	if rivers:
 		for j in range(0, CN):
 			for i in range(0, CN):
-				if field.river_t(x0 + i * STEP, z0 + j * STEP) < 4.0:
+				if field.river_t(x0 + i * STEP, z0 + j * STEP) < WorldField.RIVER_REACH + 1.5:
 					has_river = true
 	var level_cache := {}
 	var river := PackedFloat32Array()
