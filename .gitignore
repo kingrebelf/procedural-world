@@ -1,0 +1,7 @@
+.godot/
+*.tmp
+/build/
+/export/
+*.import
+!icon.png.import
+tools/_*.gd
