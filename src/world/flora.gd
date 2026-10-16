@@ -121,11 +121,34 @@ static func build(k: MeshKit, t: String, sp: int, v: int) -> bool:
 		_: return false
 	return true
 
+const UNDER_FORMS := [["fern", "bush", "flowers", "reeds"], ["fern", "bush", "glowbulbs", "fronds"], ["tendrils", "bush", "glowbulbs", "reeds"]]
+
+## Which undergrowth form species `sp` takes in `era` (the same pick build_under makes).
+static func under_form(sp: int, era: int) -> String:
+	var forms: Array = UNDER_FORMS[era]
+	return forms[_rng(sp, 5).randi() % forms.size()]
+
+## True when the player harvested the undergrowth near (lx, lz) in this chunk.
+static func was_cleared(chunk: Dictionary, lx: float, lz: float) -> bool:
+	var cl: PackedFloat32Array = chunk.get("cleared", PackedFloat32Array())
+	for i in range(0, cl.size(), 2):
+		if absf(cl[i] - lx) < 0.05 and absf(cl[i + 1] - lz) < 0.05:
+			return true
+	return false
+
+## What harvesting one undergrowth plant gives: [[item, qty], ...].
+static func under_yield(sp: int, era: int, roll: float) -> Array:
+	var form := under_form(sp, era)
+	var out: Array = [["fiber", 2 if form == "bush" or form == "reeds" or form == "tendrils" else 1]]
+	if (form == "bush" and roll < 0.35) or form == "glowbulbs" and roll < 0.5:
+		out.append(["glowberry" if era != Eras.MEDIEVAL else "wild_berries", 1 + int(roll * 6.0) % 2])
+	return out
+
 ## Undergrowth (ferns, bushes, flowers, reeds, glow-bulbs, xeno tendrils). No collision,
 ## no gameplay state: drawn near the player only. The era is passed as the variant.
 static func build_under(k: MeshKit, sp: int, era: int) -> void:
 	var r := _rng(sp, 5)
-	var forms: Array = [["fern", "bush", "flowers", "reeds"], ["fern", "bush", "glowbulbs", "fronds"], ["tendrils", "bush", "glowbulbs", "reeds"]][era]
+	var forms: Array = UNDER_FORMS[era]
 	var form: String = forms[r.randi() % forms.size()]
 	var hue := r.randf()
 	var leaf := Color.from_hsv(r.randf_range(0.17, 0.33), r.randf_range(0.4, 0.75), r.randf_range(0.3, 0.55))

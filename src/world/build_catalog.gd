@@ -128,9 +128,22 @@ static func _xf(entry: Array) -> Transform3D:
 ## Merges the kit model(s) into one mesh with a surface per material, plus procedural parts.
 static func _build(id: String) -> ArrayMesh:
 	var d := def(id)
+	var out := merge_models(d.get("models", []))
+	if d.has("proc"):
+		var k := MeshKit.new(WHash.str_hash(id) & 0xFFFF)
+		_proc(k, String(d["proc"]))
+		var pm := k.commit(Materials.get_mat)
+		for s in pm.get_surface_count():
+			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pm.surface_get_arrays(s))
+			out.surface_set_material(out.get_surface_count() - 1, pm.surface_get_material(s))
+	return out
+
+## Merges kit models ([path under assets/models, yaw degrees, offset, scale] each) into
+## one mesh with a surface per material.
+static func merge_models(models: Array) -> ArrayMesh:
 	var tools := {}
 	var order: Array = []
-	for e in d.get("models", []):
+	for e in models:
 		var ps: PackedScene = load(DIR + String(e[0]) + ".gltf")
 		if ps == null:
 			push_warning("missing kit model " + String(e[0]))
@@ -154,13 +167,6 @@ static func _build(id: String) -> ArrayMesh:
 		var st: SurfaceTool = tools[mat]
 		st.commit(out)
 		out.surface_set_material(out.get_surface_count() - 1, mat)
-	if d.has("proc"):
-		var k := MeshKit.new(WHash.str_hash(id) & 0xFFFF)
-		_proc(k, String(d["proc"]))
-		var pm := k.commit(Materials.get_mat)
-		for s in pm.get_surface_count():
-			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pm.surface_get_arrays(s))
-			out.surface_set_material(out.get_surface_count() - 1, pm.surface_get_material(s))
 	return out
 
 static var _tamed_mats := {}

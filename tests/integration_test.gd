@@ -62,6 +62,30 @@ func _run() -> void:
 	var after := ChunkGenerator.height_at(here.data, lx, lz)
 	check(after < before - 0.5, "dig lowered terrain (%.2f -> %.2f)" % [before, after])
 
+	# Pull up a plant of undergrowth: it vanishes and is remembered by its chunk.
+	var plant := Vector3.INF
+	for k in streamer.chunks:
+		for mmi in streamer.chunks[k]._clutter:
+			if String(mmi.get_meta("key", "")).begins_with("under") and mmi.multimesh.instance_count > 0:
+				plant = streamer.chunks[k].position + mmi.multimesh.get_instance_transform(0).origin
+				break
+		if plant != Vector3.INF:
+			break
+	check(plant != Vector3.INF, "undergrowth grows near the player")
+	if plant != Vector3.INF:
+		var got := streamer.harvest_under(plant + Vector3(0, 2.5, 1.5), plant + Vector3(0, 0.3, 0), 0.6)
+		var pc0: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(plant))
+		check(not got.is_empty() and pc0.data.get("cleared", PackedFloat32Array()).size() >= 2, "harvesting undergrowth removes and remembers it")
+		var rebuilt := ChunkNode.build_clutter_buffers(pc0.data, 1.0)
+		var still := false
+		for key in rebuilt:
+			if String(key).begins_with("under"):
+				var b: PackedFloat32Array = rebuilt[key]
+				for i in range(0, b.size(), 12):
+					if Vector2(b[i + 3], b[i + 11]).distance_to(Vector2(got["pos"].x - pc0.position.x, got["pos"].z - pc0.position.z)) < 0.01:
+						still = true
+		check(not still, "a harvested plant does not grow back when the chunk is rebuilt")
+
 	# Loot the nearest cache by walking up to it, as a player would: the floating prompt
 	# should pick it and Interact should open it.
 	var looted := {}

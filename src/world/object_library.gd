@@ -107,16 +107,13 @@ static func _build_mesh(key: String) -> ArrayMesh:
 				var b := Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), 0.15 + (n % 3) * 0.2)
 				k.crystal("crystal", Transform3D(b, Vector3(cos(a) * 0.3, 0.2, sin(a) * 0.3)), 0.16 + (n % 2) * 0.08, 0.9 + (n % 4) * 0.45)
 		"alloy_scrap": _alloy_scrap(k)
-		"chest": _chest(k)
+		"chest": return BuildCatalog.merge_models([["props/Chest_Wood", 0, Vector3.ZERO, 1.0]])
 		"rune_coffer":
 			k.box("rune_stone", I.translated(Vector3(0, 0.4, 0)), Vector3(1.3, 0.8, 0.8))
 			k.box("rune_stone", I.translated(Vector3(0, 0.88, 0)), Vector3(1.4, 0.16, 0.9))
 			for n in 3:
 				k.box("glow_teal", I.translated(Vector3(-0.4 + n * 0.4, 0.45, 0.41)), Vector3(0.18, 0.3, 0.02))
-		"supply_pod":
-			k.cylinder("panel", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.9, 0.55, 0)), 0.55, 0.55, 1.8, 16)
-			k.box("glow_cyan", I.translated(Vector3(0, 1.1, 0)), Vector3(1.4, 0.05, 0.12))
-			k.box("metal_dark", I.translated(Vector3(0, 0.08, 0)), Vector3(1.9, 0.16, 0.9))
+		"supply_pod": return BuildCatalog.merge_models([["scifi/Prop_Chest", 0, Vector3.ZERO, 1.0]])
 		"standing_stone":
 			k.box("stone", Transform3D(Basis(Vector3(0, 0, 1), 0.06), Vector3(0, 1.5, 0)), Vector3(0.9, 3.2, 0.5))
 			k.sphere("moss", I.translated(Vector3(0, 0.1, 0)), 0.7, 5, 8, 0.4, 0.3)
@@ -322,14 +319,6 @@ static func _alloy_scrap(k: MeshKit) -> void:
 		var sz := Vector3(r.randf_range(0.3, 1.2), r.randf_range(0.05, 0.3), r.randf_range(0.3, 1.0))
 		k.box("metal" if n % 3 else "painted", Transform3D(b, p), sz, Color(0.8, 0.5, 0.2) if n % 3 == 0 else Color.WHITE)
 	k.box("glow_cyan", Transform3D(Basis(Vector3.UP, 0.4), Vector3(0.2, 0.75, 0.1)), Vector3(0.4, 0.05, 0.05))
-
-static func _chest(k: MeshKit) -> void:
-	var I := Transform3D.IDENTITY
-	k.box("planks", I.translated(Vector3(0, 0.35, 0)), Vector3(1.2, 0.7, 0.75))
-	k.cylinder("planks", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.6, 0.7, 0)), 0.375, 0.375, 1.2, 10, true)
-	for x in [-0.45, 0.45]:
-		k.box("iron", I.translated(Vector3(x, 0.55, 0)), Vector3(0.08, 1.0, 0.8))
-	k.box("gold", I.translated(Vector3(0, 0.62, 0.39)), Vector3(0.16, 0.2, 0.04))
 
 static func _cottage(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY

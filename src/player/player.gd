@@ -751,6 +751,8 @@ func use_held() -> void:
 	if body:
 		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
 	var h := _hit_object()
+	if (h.is_empty() or (h.has("chunk") and not h.has("obj"))) and _harvest_under(h, q):
+		return
 	if h.is_empty():
 		used_tool.emit("miss")
 		return
@@ -780,6 +782,24 @@ func use_held() -> void:
 		if randf() < 0.5:
 			var ck := ChunkStreamer.chunk_of(p)
 			Game.give(ItemDB.make("stone", 1, 1.0, Game.origin_here("dug", -1, ck)))
+
+## Undergrowth has no collision, so a swing that reaches the ground (or nothing) first
+## looks for a bush, fern or flower along the swing and pulls it up.
+func _harvest_under(h: Dictionary, q: float) -> bool:
+	if streamer == null:
+		return false
+	var from := camera.global_position
+	var to: Vector3 = h["point"] if h.has("point") else from - camera.global_transform.basis.z * REACH
+	var got := streamer.harvest_under(from, to, 0.6)
+	if got.is_empty():
+		return false
+	used_tool.emit("chop")
+	var parts := String(got["key"]).split("#")
+	var era := int(parts[2])
+	var ck := ChunkStreamer.chunk_of(got["pos"])
+	for y in Flora.under_yield(int(parts[1]), era, randf()):
+		Game.give(ItemDB.make(y[0], y[1], q, Game.origin_here("gathered", era, ck)))
+	return true
 
 func _fire(it: Dictionary, d: Dictionary) -> void:
 	_cooldown = 0.22

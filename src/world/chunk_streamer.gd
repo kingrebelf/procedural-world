@@ -207,6 +207,21 @@ func dig(world_pos: Vector3, radius: float, depth: float) -> void:
 		if node.has_grass() and not _jobs.has(k):
 			_submit(k, "grass")
 
+## Harvests the undergrowth plant nearest the segment from..to, in whichever loaded
+## chunk it grows. Returns {"key", "pos"} or {}.
+func harvest_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
+	var c0 := chunk_of(to - Vector3(reach + 1, 0, reach + 1))
+	var c1 := chunk_of(to + Vector3(reach + 1, 0, reach + 1))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var node: ChunkNode = chunks.get(Vector2i(cx, cz))
+			if node == null:
+				continue
+			var got := node.harvest_under(from, to, reach)
+			if not got.is_empty():
+				return got
+	return {}
+
 ## Regrows a chunk's grass in the background, e.g. after something was built on it.
 func refresh_grass(k: Vector2i) -> void:
 	var node: ChunkNode = chunks.get(k)

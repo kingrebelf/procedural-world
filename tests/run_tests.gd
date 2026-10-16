@@ -613,3 +613,15 @@ func test_vehicles() -> void:
 		m.free()
 	for st in ["vehicle_bay", "stable"]:
 		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)
+
+func test_undergrowth_harvest() -> void:
+	for era in Eras.COUNT:
+		for sp in 40:
+			var y := Flora.under_yield(sp, era, 0.1)
+			check(y.size() >= 1 and y[0][0] == "fiber" and ItemDB.ITEMS.has(y[0][0]), "undergrowth always gives fiber")
+			for e in y:
+				check(ItemDB.ITEMS.has(e[0]) and int(e[1]) >= 1, "undergrowth yields real items")
+			check(Flora.UNDER_FORMS[era].has(Flora.under_form(sp, era)), "undergrowth form is one of its era's")
+	var ch := {"cleared": PackedFloat32Array([3.5, 7.25])}
+	check(Flora.was_cleared(ch, 3.5, 7.25) and not Flora.was_cleared(ch, 3.5, 8.0), "harvested spots are remembered")
+	check(not Flora.was_cleared({}, 1.0, 1.0), "untouched chunk has nothing cleared")

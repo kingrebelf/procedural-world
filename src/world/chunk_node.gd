@@ -281,7 +281,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
-			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz):
+			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz):
 				continue
 			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
 			if not out.has(key):
@@ -291,6 +291,39 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 			out[key] = buf
 	return out
+
+## Harvests the undergrowth plant nearest the segment from..to (world space) within
+## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
+## returns {"key": mesh key, "pos": world position}, or {} when nothing is there.
+func harvest_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
+	var best := {}
+	var best_d := reach
+	for mmi in _clutter:
+		var k: String = mmi.get_meta("key", "")
+		if not k.begins_with("under"):
+			continue
+		var mm: MultiMesh = mmi.multimesh
+		for i in mm.instance_count:
+			var t := mm.get_instance_transform(i)
+			var sc := t.basis.get_scale().y
+			if sc < 0.01:
+				continue
+			var at := position + t.origin
+			var c := at + Vector3(0, 0.45 * sc, 0)
+			var d := Geometry3D.get_closest_point_to_segment(c, from, to).distance_to(c) - 0.3 * sc
+			if d < best_d:
+				best_d = d
+				best = {"key": k, "pos": at, "mm": mm, "i": i, "local": t.origin}
+	if best.is_empty():
+		return {}
+	var mm: MultiMesh = best["mm"]
+	var o: Vector3 = best["local"]
+	mm.set_instance_transform(best["i"], Transform3D(Basis.from_scale(Vector3.ZERO), o))
+	var cl: PackedFloat32Array = data.get("cleared", PackedFloat32Array())
+	cl.append_array([o.x, o.z])
+	data["cleared"] = cl
+	Game.mark_chunk_dirty(data)
+	return {"key": best["key"], "pos": best["pos"]}
 
 var _river: MeshInstance3D
 
@@ -390,6 +423,7 @@ func set_clutter(buffers: Dictionary) -> void:
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
+		mmi.set_meta("key", t)
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mmi.visibility_range_end = 110.0 if t.begins_with("under") else 70.0
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
