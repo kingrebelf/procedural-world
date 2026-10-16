@@ -37,6 +37,10 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - **Build your own places.** Foundations, floors, timber, stone and alloy walls, doorways,
   windows, stairs and tiled roofs snap to a grid and to the storeys you've already built.
   Everything you build is saved with the world; take a piece down to get it back.
+- **Vehicles.** Build a vehicle bay to put together a hover speeder (skims over land and
+  water) or a survey rover, or a stable to saddle a riding horse. Set one down from your
+  pack, ride it, and pack it up again; vehicles stay where you leave them.
+- Rivers wind through the lowlands of new worlds, in valleys of their own. Swim in them.
 - Health, stamina and experience. Sprinting, jumping and swinging tire you; gathering,
   crafting, building, hunting and discovering new regions earn XP. Each level gives three
   points for Strength, Endurance, Agility and Intellect.
@@ -92,6 +96,10 @@ Controllers use ARK: Survival Ascended's layout.
 | Raise / lower a building piece | X / Z | D-pad up / D-pad down (while holding a piece) |
 | Grid snap on / off (free placement) | G | X (while holding a piece) |
 | Take down a piece you built (returns it) | Hold E | Hold Y |
+| Set down a vehicle from the hotbar | Left mouse | RT |
+| Ride a vehicle / get off | E | Y |
+| Pack a vehicle up (returns it) | Hold E | Hold Y |
+| Drive / steer / boost (while riding) | W S / A D / Shift | Left stick / L3 |
 | First / third person | V | |
 | Pause and settings | Esc | Menu |
 | Cheat console (fly, noclip, god, speed, give, tp, xp, level; type help) | ` | |
@@ -121,6 +129,7 @@ src/persistence/ on-disk world store
 src/items/     item definitions, inventory, recipes
 src/economy/   trader pricing and stock
 src/player/    first-person controller and held items
+src/vehicles/  vehicles you ride, and the manager that keeps them in the world
 src/env/       sky, sun, fog
 src/ui/        HUD, menus, settings
 tests/         headless test suite
@@ -130,5 +139,5 @@ tools/         build script, screenshot tour
 
 ## License
 
-MIT. See [LICENSE](LICENSE). Models in `assets/models` are by Quaternius, released under
-CC0 (see [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)).
+MIT. See [LICENSE](LICENSE). Models in `assets/models` are by Quaternius and Kenney, released
+under CC0 (see [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)).

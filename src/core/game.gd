@@ -31,6 +31,8 @@ var day := 0.3
 var discovery: Dictionary = {"visited": {}, "regions": {}}
 var player: Node3D ## Set by the player when it spawns.
 var pending_player_state = null
+## Your vehicles out in the world (VehicleManager); saved with the player.
+var vehicles: Array = []
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
 var _dirty_timer := 0.0
@@ -77,6 +79,7 @@ func _begin(fresh: bool) -> void:
 	_dirty_chunks.clear()
 	_current_region = ""
 	pending_player_state = null
+	vehicles = []
 	var p = store.load_player()
 	if p is Dictionary:
 		inventory.from_data(p.get("inventory", {}))
@@ -88,6 +91,7 @@ func _begin(fresh: bool) -> void:
 			health = stats.max_health()
 		dead = false
 		stamina = stats.max_stamina()
+		vehicles = p.get("vehicles", []).duplicate(true)
 		pending_player_state = p
 	else:
 		money = 50
@@ -125,11 +129,11 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data()}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
-		for k in ["pos", "yaw", "pitch", "slot"]:
+		for k in ["pos", "yaw", "pitch", "slot", "riding"]:
 			if pending_player_state.has(k):
 				d[k] = pending_player_state[k]
 	store.save_player(d)
@@ -191,6 +195,9 @@ func add_money(n: int) -> void:
 	money += n
 	_player_dirty = true
 	money_changed.emit(money)
+
+func mark_player_dirty() -> void:
+	_player_dirty = true
 
 func give(item: Dictionary) -> bool:
 	if item["type"] == "_marks":

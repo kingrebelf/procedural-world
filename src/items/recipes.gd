@@ -11,6 +11,8 @@ const LIST := [
 	{"out": "anvil", "qty": 1, "in": {"iron_ingot": 5, "wood": 2}, "at": "workbench"},
 	{"out": "cauldron", "qty": 1, "in": {"iron_ingot": 3, "aether_crystal": 2}, "at": "workbench"},
 	{"out": "fabricator", "qty": 1, "in": {"alloy_scrap": 6, "circuitry": 4, "iron_ingot": 2}, "at": "workbench"},
+	{"out": "vehicle_bay", "qty": 1, "in": {"alloy_plate": 8, "circuitry": 6, "power_cell": 2}, "at": "fabricator"},
+	{"out": "stable", "qty": 1, "in": {"planks": 16, "wood": 6, "iron_ingot": 2}, "at": "workbench"},
 	{"out": "hammer", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
 	# Materials.
 	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}, "at": "campfire"},
@@ -27,6 +29,10 @@ const LIST := [
 	{"out": "sword_runic", "qty": 1, "in": {"mythril_ingot": 3, "aether_crystal": 2}, "at": "anvil"},
 	{"out": "pickaxe_plasma", "qty": 1, "in": {"alloy_plate": 2, "power_cell": 1, "mythril_ingot": 1}, "at": "fabricator"},
 	{"out": "pulse_pistol", "qty": 1, "in": {"alloy_plate": 2, "circuitry": 2, "power_cell": 1}, "at": "fabricator"},
+	# Vehicles.
+	{"out": "speeder", "qty": 1, "in": {"alloy_plate": 6, "power_cell": 2, "circuitry": 4}, "at": "vehicle_bay"},
+	{"out": "rover", "qty": 1, "in": {"alloy_plate": 8, "power_cell": 2, "iron_ingot": 4, "circuitry": 2}, "at": "vehicle_bay"},
+	{"out": "horse", "qty": 1, "in": {"hide": 6, "planks": 4, "iron_ingot": 1, "bread": 4}, "at": "stable"},
 	# Building pieces.
 	{"out": "foundation", "qty": 1, "in": {"stone": 6}, "at": "workbench"},
 	{"out": "floor_wood", "qty": 1, "in": {"planks": 3}, "at": "workbench"},
@@ -46,7 +52,7 @@ const LIST := [
 ]
 
 const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
-	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator"}
+	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable"}
 
 ## True when the recipe needs no station or one is in `stations` (BuildCatalog.stations_near).
 static func station_ok(recipe: Dictionary, stations: Dictionary) -> bool:

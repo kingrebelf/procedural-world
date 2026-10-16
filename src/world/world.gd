@@ -9,6 +9,7 @@ var console: DevConsole
 var menus: GameMenus
 var npcs: NPCManager
 var fauna: FaunaManager
+var vehicles: VehicleManager
 var dialogue: DialogueUI
 
 func _ready() -> void:
@@ -55,6 +56,12 @@ func _ready() -> void:
 	fauna.npcs = npcs
 	add_child(fauna)
 	player.fauna = fauna
+	vehicles = VehicleManager.new()
+	vehicles.name = "Vehicles"
+	vehicles.streamer = streamer
+	vehicles.player = player
+	add_child(vehicles)
+	player.vehicles = vehicles
 	Game.died.connect(_on_died)
 
 	var ui := CanvasLayer.new()
@@ -89,6 +96,7 @@ func _apply_settings() -> void:
 ## Death: a few seconds of "You died", then you wake at the world's spawn point with your
 ## pack intact, minus some of the progress toward your next level.
 func _on_died(cause: String) -> void:
+	player.dismount()
 	player.ui_open = true
 	player.velocity = Vector3.ZERO
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -112,6 +120,7 @@ func _on_died(cause: String) -> void:
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:
 	var g := ChunkGenerator.new(Game.seed)
+	var rivers := Game.store != null and Game.store.has_rivers()
 	var best := Vector3(32, 0, 32)
 	var best_slope := INF
 	for n in 24:
@@ -120,7 +129,7 @@ func find_spawn() -> Vector3:
 		var w := g.field.era_weights(x, z)
 		var h0 := g.field.height(x, z, w)
 		var s := absf(g.field.height(x + 2, z) - h0) + absf(g.field.height(x, z + 2) - h0)
-		if h0 < Water.LEVEL + 1.0:
+		if h0 < Water.LEVEL + 1.0 or (rivers and g.field.river_t(x, z) < 3.0):
 			s += 100.0
 		if s < best_slope:
 			best_slope = s

@@ -23,6 +23,10 @@ const BREATH := 30.0
 var streamer: ChunkStreamer
 var npcs: NPCManager
 var fauna: FaunaManager
+var vehicles: VehicleManager
+## The vehicle you are riding, or null.
+var vehicle: Vehicle = null
+var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
@@ -118,7 +122,8 @@ func get_state() -> Dictionary:
 	# tree; the player is a direct child of the (untransformed) world, so position is
 	# the world position.
 	var pos := global_position if is_inside_tree() else position
-	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected, "view": 3 if third_person else 1}
+	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected, "view": 3 if third_person else 1,
+		"riding": int(vehicle.rec["id"]) if vehicle != null and is_instance_valid(vehicle) else -1}
 
 func set_state(d: Dictionary) -> void:
 	global_position = d.get("pos", global_position)
@@ -127,6 +132,7 @@ func set_state(d: Dictionary) -> void:
 	select(d.get("slot", 0))
 	if int(d.get("view", 1)) == 3 and not third_person:
 		toggle_view()
+	pending_ride = int(d.get("riding", -1))
 	_apply_look()
 
 func yaw() -> float:
@@ -153,10 +159,16 @@ func toggle_view() -> void:
 	_apply_view()
 
 func _apply_view() -> void:
-	_arm.spring_length = BOOM if third_person else 0.0
-	_arm.position = Vector3(0.55, 0.2, 0.0) if third_person else Vector3.ZERO
-	ray.target_position = Vector3(0, 0, -(REACH + (BOOM if third_person else 0.0)))
-	viewmodel.visible = not third_person
+	# Riding pulls the third-person camera back and up to see the whole vehicle.
+	var boom := BOOM
+	var arm_at := Vector3(0.55, 0.2, 0.0)
+	if vehicle != null and is_instance_valid(vehicle):
+		boom = BOOM + float(vehicle.p["length"]) * 1.1
+		arm_at = Vector3(0.0, 0.7, 0.0)
+	_arm.spring_length = boom if third_person else 0.0
+	_arm.position = arm_at if third_person else Vector3.ZERO
+	ray.target_position = Vector3(0, 0, -(REACH + (boom if third_person else 0.0)))
+	viewmodel.visible = not third_person and vehicle == null
 	if body:
 		body.set_shadow_only(not third_person)
 
@@ -248,9 +260,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("slot_%d" % (i + 1)):
 			select(i)
 	if event.is_action_pressed("interact"):
-		if focus.get("kind", "") in ["built", "station"]:
-			# Your own pieces: tap to use a station, hold to take the piece down.
-			_decon_on = {"chunk": focus["chunk"], "i": focus["i"], "kind": focus["kind"]}
+		if vehicle != null:
+			dismount()
+		elif focus.get("kind", "") in ["built", "station", "vehicle"]:
+			# Your own pieces and vehicles: tap to use (a station) or ride (a vehicle),
+			# hold to take the piece down or pack the vehicle up.
+			_decon_on = {"key": _focus_key(focus), "kind": focus["kind"]}
 			decon = 0.0
 		else:
 			interact()
@@ -280,6 +295,14 @@ func _physics_process(delta: float) -> void:
 			_yaw -= lv.x * k
 			_pitch = clampf(_pitch - lv.y * k * (-1.0 if Settings.get_value("invert_y") else 1.0), -1.5, 1.5)
 			_apply_look()
+	if pending_ride >= 0 and vehicles:
+		var v := vehicles.by_id(pending_ride)
+		pending_ride = -1
+		if v:
+			mount(v)
+	if vehicle != null:
+		_ride(delta)
+		return
 	var input := Vector2.ZERO
 	if not ui_open:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -410,6 +433,8 @@ func _hit_object() -> Dictionary:
 	var out := {"point": ray.get_collision_point(), "normal": ray.get_collision_normal(), "collider": col}
 	if col and col.has_meta("npc"):
 		out["npc"] = col.get_meta("npc")
+	if col and col.has_meta("vehicle"):
+		out["vehicle"] = col.get_meta("vehicle")
 	if col and col.has_meta("creature"):
 		out["creature"] = col.get_meta("creature")
 	if col and col.has_meta("chunk"):
@@ -460,6 +485,13 @@ func _find_focus() -> Dictionary:
 			if sc < best_s:
 				best_s = sc
 				best = {"kind": "npc", "npc": n, "pos": n.global_position + Vector3(0, 2.1, 0), "verb": "Talk to %s" % n.rec["name"].split(" ")[0]}
+	if vehicles:
+		for v in vehicles.all_nodes():
+			var sc := _focus_score(eye, fwd, v.global_position + Vector3(0, v.height * 0.5, 0))
+			if sc < best_s:
+				best_s = sc
+				best = {"kind": "vehicle", "vehicle": v, "pos": v.global_position + Vector3(0, v.height + 0.35, 0),
+					"verb": "Ride the %s   (hold: pack up)" % Vehicle.label(v.kind).to_lower()}
 	if streamer:
 		var ck := ChunkStreamer.chunk_of(global_position)
 		for dz in range(-1, 2):
@@ -481,7 +513,7 @@ func _find_focus() -> Dictionary:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": use["verb"]}
 	# A piece you built, right under the crosshair, can be taken down (or used, if a station).
-	if best.get("kind", "") != "npc":
+	if not best.get("kind", "") in ["npc", "vehicle"]:
 		var h := _hit_object()
 		if h.has("obj") and h["point"].distance_to(eye) <= USE_RANGE + 1.0:
 			var c: ChunkNode = h["chunk"]
@@ -506,7 +538,7 @@ func _update_decon(delta: float) -> void:
 	if _decon_on.is_empty():
 		decon = 0.0
 		return
-	var same: bool = focus.get("chunk") == _decon_on["chunk"] and focus.get("i", -1) == _decon_on["i"]
+	var same: bool = _focus_key(focus) == _decon_on["key"]
 	if ui_open or not same:
 		_decon_on = {}
 		decon = 0.0
@@ -514,15 +546,26 @@ func _update_decon(delta: float) -> void:
 	if Input.is_action_pressed("interact"):
 		decon += delta / DECON_TIME
 		if decon >= 1.0:
-			var c: ChunkNode = _decon_on["chunk"]
 			_decon_on = {}
 			decon = 0.0
+			if focus["kind"] == "vehicle":
+				var v: Vehicle = focus["vehicle"]
+				if is_instance_valid(v):
+					if vehicles.pack_up(v):
+						Game.toast.emit("Packed up the %s" % Vehicle.label(v.kind).to_lower())
+					else:
+						Game.toast.emit("No room in your pack")
+				_focus_t = 0.0
+				return
+			var c: ChunkNode = focus["chunk"]
 			if is_instance_valid(c):
 				deconstruct(c, c.get_object(focus["i"]))
 		return
-	# Released early: a tap, so use the station as usual.
+	# Released early: a tap, so use the station or ride the vehicle.
 	if _decon_on["kind"] == "station" and decon < 0.5:
 		get_tree().call_group("trade_ui", "open", "craft")
+	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
+		mount(focus["vehicle"])
 	_decon_on = {}
 	decon = 0.0
 
@@ -684,6 +727,10 @@ func _tire(n: float) -> bool:
 
 func use_held() -> void:
 	var it = held_item()
+	if it != null and Vehicle.is_vehicle_item(it["type"]):
+		_cooldown = 0.5
+		deploy_vehicle()
+		return
 	if it != null and BuildCatalog.is_piece_item(it["type"]):
 		_cooldown = 0.25
 		if builder.place():
@@ -796,3 +843,119 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		Game.mark_chunk_dirty(chunk.data)
 		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and randf() < 0.15:
 			npcs.player_vandalised(chunk.position + o["p"], "")
+
+# --- Vehicles ------------------------------------------------------------------------
+
+## A stable name for what the player is focused on, to tell when the focus changes.
+static func _focus_key(f: Dictionary) -> String:
+	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
+		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
+	if f.has("chunk") and is_instance_valid(f["chunk"]):
+		return "%s:%d" % [(f["chunk"] as ChunkNode).key, int(f["i"])]
+	return ""
+
+## Sets the held vehicle down a few steps ahead.
+func deploy_vehicle() -> bool:
+	var it = held_item()
+	if it == null or vehicles == null:
+		return false
+	var fwd := -global_transform.basis.z
+	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 3.5
+	var v := vehicles.deploy(it, at, _yaw)
+	if v == null:
+		Game.toast.emit("There's no room for it here")
+		return false
+	Game.inventory.remove_at(selected, 1)
+	Game.toast.emit("%s ready: [%s] to ride, hold to pack it up" % [Vehicle.label(v.kind), _key("interact")])
+	return true
+
+func mount(v: Vehicle) -> void:
+	if v == null or v.rider != null:
+		return
+	vehicle = v
+	v.rider = self
+	_ride_yaw = v.rotation.y
+	ray.add_exception(v)
+	_shape.disabled = true
+	velocity = Vector3.ZERO
+	focus = {}
+	_decon_on = {}
+	swimming = false
+	viewmodel.visible = false
+	if body:
+		body.hold(null)
+	look_target_changed.emit("")
+	_last_info = ""
+	look_info_changed.emit({})
+	_apply_view()
+	Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
+		_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
+		"gallop" if v.kind == "horse" else "boost", _key("interact")])
+
+func dismount() -> void:
+	var v := vehicle
+	if v == null:
+		return
+	vehicle = null
+	if is_instance_valid(v):
+		v.rider = null
+		v.drive = Vector2.ZERO
+		v.boosting = false
+		ray.remove_exception(v)
+		global_position = v.exit_point()
+	_shape.disabled = noclip and fly
+	velocity = Vector3.ZERO
+	head.position = Vector3(0, STAND_H - 0.12, 0)
+	if body:
+		body.position = Vector3.ZERO
+		body.rotation = Vector3(0, PI, 0)
+	_apply_view()
+	_refresh_held()
+	_focus_t = 0.0
+
+## Riding: the vehicle takes the move keys; you sit on it and look around freely.
+func _ride(delta: float) -> void:
+	var v := vehicle
+	if not is_instance_valid(v):
+		vehicle = null
+		_shape.disabled = false
+		return
+	var input := Vector2.ZERO
+	if not ui_open:
+		input = Input.get_vector("move_left", "move_right", "move_back", "move_forward")
+	v.drive = input
+	v.boosting = not ui_open and Input.is_action_pressed("sprint") and input.y > 0.1
+	# The view turns with the vehicle, so steering doesn't leave you looking sideways.
+	var turned := wrapf(v.rotation.y - _ride_yaw, -PI, PI)
+	_ride_yaw = v.rotation.y
+	if absf(turned) < 1.0:
+		_yaw += turned
+		_apply_look()
+	var seat := v.seat_transform()
+	# Sitting: hips on the seat. The body faces the vehicle's way, whatever you look at.
+	global_position = seat.origin - Vector3(0, SIT_HIPS, 0)
+	if body:
+		body.rotation = Vector3(0, PI + wrapf(v.rotation.y - _yaw, -PI, PI), 0)
+		body.play("sit")
+	head.position = head.position.lerp(Vector3(0, SIT_HIPS + 0.62, 0), clampf(delta * 10.0, 0.0, 1.0))
+	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
+	if underwater:
+		breath = maxf(0.0, breath - delta)
+		if breath <= 0.0:
+			_drown_t -= delta
+			if _drown_t <= 0.0:
+				_drown_t = 1.0
+				Game.set_health(Game.health - 8.0, "You drowned")
+	else:
+		breath = minf(BREATH, breath + delta * 6.0)
+	_rest += delta
+	if _rest > 0.8:
+		Game.set_stamina(Game.stamina + 22.0 * delta)
+	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
+	if text != _last_look:
+		_last_look = text
+		look_target_changed.emit(text)
+
+var _ride_yaw := 0.0
+const SIT_HIPS := 0.5 ## hip height above the feet in the sitting pose

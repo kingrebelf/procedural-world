@@ -64,6 +64,15 @@ const PIECES := {
 		"snap": "free", "mat": "metal", "hp": 16.0, "era": 1, "station": "cauldron", "light": Color(0.35, 1.0, 0.8)},
 	"fabricator": {"name": "Fabricator", "models": [["scifi/Prop_Computer", 0, Vector3.ZERO, 1.0], ["scifi/Prop_Crate3", 0, Vector3(0.95, 0.5, 0.0), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "station": "fabricator"},
+	# Vehicle stations: where vehicles are put together (see Vehicle).
+	"vehicle_bay": {"name": "Vehicle Bay", "models": [["scifi/Platform_DarkPlates", 0, Vector3.ZERO, 1.0],
+		["scifi/Prop_Computer", 90, Vector3(-1.5, 0.05, 0.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, 1.6), 1.0],
+		["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, -1.6), 1.0], ["scifi/Prop_Crate3", 0, Vector3(-1.4, 0.05, -1.3), 1.0]],
+		"snap": "free", "mat": "metal", "hp": 40.0, "era": 2, "station": "vehicle_bay", "light": Color(0.4, 0.85, 1.0)},
+	"stable": {"name": "Stable", "models": [["village/Prop_Wagon", 0, Vector3(0, 0, 0.4), 1.0],
+		["village/Prop_WoodenFence_Single", 0, Vector3(-1.0, 0, -1.6), 0.97], ["village/Prop_WoodenFence_Single", 0, Vector3(1.0, 0, -1.6), 0.97],
+		["props/Barrel", 0, Vector3(2.2, 0, -1.0), 1.0]],
+		"snap": "free", "mat": "wood", "hp": 18.0, "era": 0, "station": "stable"},
 }
 
 const STATION_RANGE := 6.0

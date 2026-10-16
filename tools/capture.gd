@@ -155,5 +155,80 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
+	if only.is_empty() or only.has("09") or only.has("10"):
+		await _vehicles()
 	Game.close_world()
 	get_tree().quit()
+
+## The flattest dry 24 m square near `from` (for setting things out to photograph).
+func _flat_spot(vm: VehicleManager, from: Vector3) -> Vector3:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var best := from
+	var best_s := INF
+	for i in 400:
+		var a := i * 0.61
+		var q := Vector2(from.x, from.z) + Vector2(cos(a), sin(a)) * (i * 0.8)
+		var lo := INF
+		var hi := -INF
+		var wet := false
+		for dz in [-12.0, 0.0, 12.0]:
+			for dx in [-12.0, 0.0, 12.0]:
+				var h := g.field.height(q.x + dx, q.y + dz)
+				lo = minf(lo, h)
+				hi = maxf(hi, h)
+				if h < Water.LEVEL + 1.0 or g.field.river_t(q.x + dx, q.y + dz) < 3.0:
+					wet = true
+		if not wet and hi - lo < best_s:
+			best_s = hi - lo
+			best = Vector3(q.x, g.field.height(q.x, q.y) + 1.0, q.y)
+	return best
+
+## The vehicle bay and stable with a speeder, a rover and a horse in front, then riding.
+func _vehicles() -> void:
+	var p: Player = world.player
+	var streamer: ChunkStreamer = world.streamer
+	var g0 := ChunkGenerator.new(Game.seed)
+	var m2 := _find_era(g0, Eras.MEDIEVAL, 0.95)
+	var at := Vector3(m2.x, 0, m2.y)
+	p.set_physics_process(false)
+	p.global_position = at
+	await _wait_loaded(p, streamer)
+	var vm: VehicleManager = world.vehicles
+	at = _flat_spot(vm, at)
+	print("vehicles: showcase at ", at)
+	p.global_position = at
+	await _wait_loaded(p, streamer)
+	print("vehicles: ground loaded")
+	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(at))
+	var g := func(x: float, z: float) -> Vector3:
+		return Vector3(x, vm.ground(x, z), z)
+	var bay: Vector3 = g.call(at.x - 6, at.z - 10)
+	c.add_built("vehicle_bay", bay - c.position, 0.0, {"by": "you", "day": 0.0})
+	var st: Vector3 = g.call(at.x + 6, at.z - 10)
+	c.add_built("stable", st - c.position, 0.0, {"by": "you", "day": 0.0})
+	vm.deploy(ItemDB.make("speeder", 1, 1.0, {}), at + Vector3(-7.5, 0, -5), 0.5)
+	vm.deploy(ItemDB.make("rover", 1, 1.0, {}), at + Vector3(-2, 0, -5), 0.2)
+	vm.deploy(ItemDB.make("horse", 1, 1.0, {}), at + Vector3(5, 0, -5), -0.4)
+	Game.day = 0.4
+	p.set_physics_process(true)
+	p.set_state({"pos": at + Vector3(0, 0.2, 7), "yaw": 0.0, "pitch": -0.22, "slot": 0})
+	p.fly = true # hold the camera a little above the ground
+	p.global_position.y += 2.5
+	await _wait(settle_frames)
+	if only.is_empty() or only.has("09"):
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("09_vehicles.png"))
+		print("captured 09_vehicles")
+	var sp: Vehicle = vm.all_nodes()[0]
+	for v in vm.all_nodes():
+		if v.kind == "speeder":
+			sp = v
+	p.fly = false
+	p.mount(sp)
+	if not p.third_person:
+		p.toggle_view()
+	Input.action_press("move_forward")
+	await _wait(150)
+	if only.is_empty() or only.has("10"):
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("10_riding.png"))
+		print("captured 10_riding")
+	Input.action_release("move_forward")

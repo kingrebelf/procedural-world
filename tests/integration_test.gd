@@ -146,6 +146,42 @@ func _run() -> void:
 	await _frames(2)
 	check(kc._kit._current == "Death" and kc._body == null, "kit animal plays its death and stops being hittable")
 
+	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
+	game.inventory.add(ItemDB.make("speeder", 1, 1.0, {}))
+	var vslot := -1
+	for i in game.inventory.slots.size():
+		var it = game.inventory.get_slot(i)
+		if it != null and it["type"] == "speeder":
+			vslot = i
+	if vslot >= Inventory.HOTBAR:
+		game.inventory.swap(vslot, Inventory.HOTBAR - 1)
+		vslot = Inventory.HOTBAR - 1
+	player.select(vslot)
+	check(player.deploy_vehicle() and game.vehicles.size() == 1 and game.inventory.count("speeder") == 0, "a speeder sets down from the pack")
+	await _frames(5)
+	var sp: Vehicle = world.vehicles.nodes.get(int(game.vehicles[0]["id"]))
+	check(sp != null, "the speeder is in the world")
+	player.mount(sp)
+	var v0: Vector3 = sp.global_position
+	Input.action_press("move_forward")
+	for i in 120:
+		await physics_frame
+	Input.action_release("move_forward")
+	var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
+	check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
+	check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
+	check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
+	check(player.get_state()["riding"] == int(sp.rec["id"]), "riding is saved")
+	player.dismount()
+	check(player.vehicle == null and sp.rider == null, "getting off")
+	check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
+	game.inventory.add(ItemDB.make("horse", 1, 1.0, {}))
+	var hr: Vehicle = world.vehicles.deploy(ItemDB.make("horse", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
+	await _frames(3)
+	check(hr != null and hr._animal != null, "a riding horse stands ready")
+	if hr:
+		world.vehicles.pack_up(hr)
+
 	# Console cheats.
 	var con: DevConsole = world.console
 	con.run("god")

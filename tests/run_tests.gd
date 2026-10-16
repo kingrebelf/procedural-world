@@ -598,3 +598,18 @@ func test_levelling_and_attributes() -> void:
 	for i in 400:
 		s.add_xp(1000000)
 	check(s.level == Stats.MAX_LEVEL and s.xp == 0, "level cap holds")
+
+func test_vehicles() -> void:
+	for k in Vehicle.KINDS:
+		check(ItemDB.def(k).get("kind", "") == "vehicle" and not ItemDB.is_stackable(k), "%s is a vehicle item" % k)
+		var made := false
+		for r in Recipes.LIST:
+			if r["out"] == k:
+				made = Recipes.STATION_NAMES.has(r.get("at", ""))
+		check(made, "%s is made at a station" % k)
+		var m := Vehicle.make_model(k)
+		var box := Vehicle._bounds(m)
+		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > -0.2, "%s model is a sensible size (%s)" % [k, box])
+		m.free()
+	for st in ["vehicle_bay", "stable"]:
+		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)

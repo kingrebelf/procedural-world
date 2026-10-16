@@ -56,4 +56,25 @@ func _run() -> void:
 		img.resize(OUT, OUT, Image.INTERPOLATE_LANCZOS)
 		img.save_png("res://assets/icons/build/%s.png" % id)
 		print("icon ", id)
+	# Vehicles are nodes (the horse is rigged), not merged meshes.
+	mi.mesh = null
+	for k in Vehicle.KINDS:
+		var m := Vehicle.make_model(k)
+		vp.add_child(m)
+		var aabb := Vehicle._bounds(m)
+		if k == "rover":
+			aabb.size.y *= 0.6 # leave the mast out of the framing
+		var c := aabb.get_center()
+		var r := aabb.size.length() * 0.5
+		var dir := Vector3(-1.0, 0.6, -0.9).normalized()
+		cam.position = c + dir * (r / tan(deg_to_rad(cam.fov * 0.5)) * 1.02)
+		cam.look_at(c, Vector3.UP)
+		for i in 8:
+			await process_frame
+		var img := vp.get_texture().get_image()
+		img.resize(OUT, OUT, Image.INTERPOLATE_LANCZOS)
+		img.save_png("res://assets/icons/build/%s.png" % k)
+		print("icon ", k)
+		m.queue_free()
+		await process_frame
 	quit()

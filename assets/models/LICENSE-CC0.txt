@@ -5,3 +5,6 @@ credited here with thanks.
 scifi/Pistol_1 and Pistol_2 come from Quaternius' Sci-Fi Modular Gun Pack (CC0).
 
 animals/ comes from Quaternius' Ultimate Animated Animal Pack (CC0).
+
+vehicles/Speeder.glb and Rover.glb are craft_speederA and rover from Kenney's Space Kit 2.0
+(kenney.nl), also CC0; its license file sits beside them.
