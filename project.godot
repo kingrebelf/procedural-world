@@ -50,6 +50,18 @@ wind_strength={
 "type": "float",
 "value": 0.35
 }
+cloud_drift={
+"type": "vec2",
+"value": Vector2(0, 0)
+}
+cloud_cover_g={
+"type": "float",
+"value": 0.5
+}
+sun_dir_g={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
 wind_time={
 "type": "float",
 "value": 0.0

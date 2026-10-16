@@ -2,6 +2,7 @@ shader_type spatial;
 // Instanced grass blades with wind. INSTANCE_CUSTOM.rgb is the era-blended tint,
 // INSTANCE_CUSTOM.a the fantasy glow amount.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
+#include "res://src/env/clouds.gdshaderinc"
 
 global uniform float wind_strength;
 global uniform vec2 wind_dir;
@@ -24,7 +25,7 @@ void vertex() {
 	VERTEX.y -= abs(bend) * 0.3;
 	glow = INSTANCE_CUSTOM.a;
 	// Tints are authored as sRGB colours; shading happens in linear space.
-	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2));
+	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
 }
 
 void fragment() {

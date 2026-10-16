@@ -1,5 +1,6 @@
 shader_type sky;
 render_mode use_half_res_pass;
+#include "res://src/env/clouds.gdshaderinc"
 // Era-aware sky: physically inspired gradient, sun and moon discs, stars, a fantasy
 // aurora and a sci-fi planetary ring, all weighted by the era weights at the player.
 
@@ -65,8 +66,7 @@ float cloud_density(vec3 p, vec2 drift, bool cheap) {
 	if (h < 0.0 || h > 1.0) return 0.0;
 	vec2 q = p.xz + drift;
 	// Weather: which parts of the sky have clouds at all.
-	float cov = fbm_n(vec3(q * 0.00018, 0.5), 3);
-	cov = smoothstep(0.62 - cloud_cover * 0.42, 0.95 - cloud_cover * 0.3, cov);
+	float cov = cloud_coverage(q, cloud_cover);
 	// Rounded bottoms, cauliflower tops.
 	float profile = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.45 - cov * 0.3, h);
 	// Billows: big rounded lumps plus smaller ones, so tops pile up like cumulus.
@@ -92,7 +92,7 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 	const int STEPS = 28;
 	float dt = (t1 - t0) / float(STEPS);
 	float t = t0 + dt * hash(vec3(jitter_px, time_s));
-	vec2 drift = wind_dir * time_s * (6.0 + wind_strength * 22.0);
+	vec2 drift = cloud_drift;
 	float cos_s = dot(d, sun);
 	float phase = mix(hg(cos_s, 0.6), hg(cos_s, -0.25), 0.3) * 6.0 + 0.4;
 	vec3 col = vec3(0.0);
@@ -110,7 +110,7 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 			float beer = exp(-od * sigma * 0.55);
 			float powder = 1.0 - exp(-den * 2.5);
 			float hfrac = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
-			vec3 lum = sun_col * beer * powder * phase * 1.8 + amb * (0.35 + 0.65 * hfrac);
+			vec3 lum = sun_col * beer * powder * phase * 2.6 + amb * (0.55 + 0.8 * hfrac);
 			float a = 1.0 - exp(-den * sigma * dt);
 			col += trans * a * lum;
 			trans *= 1.0 - a;

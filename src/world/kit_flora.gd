@@ -98,7 +98,7 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 	var leaf: Color = p.get("leaf", Color(0.3, 0.5, 0.2))
 	# Brighten: the mask is white, so the tint is the final colour (the procedural trees
 	# darkened their leaves for shading that the kit's vertex colours now provide).
-	leaf = Color.from_hsv(leaf.h, clampf(leaf.s * 0.9, 0.0, 1.0), clampf(leaf.v * 1.35 + 0.08, 0.0, 0.95))
+	leaf = Color.from_hsv(leaf.h, clampf(leaf.s * 0.78, 0.0, 1.0), clampf(leaf.v * 1.22 + 0.05, 0.0, 0.9))
 	var bark: Color = p.get("bark", Color(0.4, 0.3, 0.2))
 	var bark_tint := Color.WHITE.lerp(bark * 2.2, 0.35)
 	if p.get("form", "") == "column":

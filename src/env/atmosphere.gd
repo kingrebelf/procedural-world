@@ -21,6 +21,7 @@ var _wind_noise := FastNoiseLite.new()
 var _gust_noise := FastNoiseLite.new() ## one smooth octave: gusts build and fade over seconds
 var _wind_time := 0.0 ## wind phase; speeds up with the wind but never jumps
 var _gust := 0.0
+var _cloud_drift := Vector2.ZERO
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -147,12 +148,16 @@ func _update_wind(delta: float) -> void:
 	wind_strength = clampf(base + _gust, 0.03, 1.0)
 	_wind_time += delta * (1.0 + wind_strength * 1.3)
 	RenderingServer.global_shader_parameter_set("wind_time", _wind_time)
+	# The cloud field drifts with the wind (accumulated, so a change in wind never jumps it).
+	_cloud_drift += wind_dir * delta * (6.0 + wind_strength * 22.0)
+	RenderingServer.global_shader_parameter_set("cloud_drift", _cloud_drift)
 	var ang := _wind_noise.get_noise_1d(gt * 0.0002 + 900.0) * TAU * 1.5
 	wind_dir = Vector2(cos(ang), sin(ang))
 	RenderingServer.global_shader_parameter_set("wind_strength", wind_strength)
 	# Cloud cover follows the weather: windy spells are cloudier.
 	var cover := clampf(0.35 + _wind_noise.get_noise_1d(gt * 0.0004 + 300.0) * 0.6 + wind_strength * 0.25, 0.05, 0.95)
 	sky_mat.set_shader_parameter("cloud_cover", cover)
+	RenderingServer.global_shader_parameter_set("cloud_cover_g", cover)
 	sun.shadow_opacity = lerpf(1.0, 0.75, cover)
 	RenderingServer.global_shader_parameter_set("wind_dir", wind_dir)
 
@@ -170,6 +175,7 @@ func _update_time_of_day() -> void:
 	sun.look_at_from_position(Vector3.ZERO, -dir, Vector3(0, 0, 1) if absf(dir.y) > 0.99 else Vector3.UP)
 	moon.look_at_from_position(Vector3.ZERO, dir, Vector3.UP)
 	var elev := dir.y
+	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
 	var daylight := smoothstep(-0.12, 0.25, elev)
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)

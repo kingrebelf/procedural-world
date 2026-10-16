@@ -6,6 +6,7 @@ shader_type spatial;
 // Tiling is broken up by blending two rotated scales under a noise mask.
 
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+#include "res://src/env/clouds.gdshaderinc"
 
 uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
 uniform vec3 soil_m : source_color = vec3(0.44, 0.36, 0.28);
@@ -264,7 +265,8 @@ void fragment() {
 		col = mix(col, col * vec3(0.9, 1.0, 1.15), w.g * 0.3);
 	}
 
-	ALBEDO = col * (0.92 + 0.16 * micro);
+	// Cloud shadows drifting over the land.
+	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
 	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.75, snow);
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
