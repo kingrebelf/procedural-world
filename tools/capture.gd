@@ -259,7 +259,10 @@ func _space() -> void:
 	# Slow time so the streaks are mid-flight when the (slow) software renderer shoots.
 	Engine.time_scale = 0.05
 	orbit._warp(fey)
-	await _wait(20)
+	for i in 400:
+		await tree.process_frame
+		if float(orbit._warp_mat.get_shader_parameter("amount")) > 0.75:
+			break
 	await _snap("14_warp")
 	Engine.time_scale = 1.0
 	while orbit._busy:
@@ -282,7 +285,8 @@ func _space() -> void:
 	await _wait(150)
 	Input.action_release("crouch")
 	p.dismount(true)
-	p.set_state({"pos": p.global_position, "yaw": p.yaw(), "pitch": -0.3, "slot": 0, "view": 3, "riding": -1})
+	# Look away from the parked ship, over the alien landscape.
+	p.set_state({"pos": p.global_position + Vector3(0, 0, 6), "yaw": p.yaw() + 2.4, "pitch": -0.15, "slot": 0, "view": 3, "riding": -1})
 	await _wait_loaded(p, world.streamer)
 	Game.day = 0.42
 	await _wait(settle_frames)
