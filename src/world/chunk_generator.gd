@@ -439,6 +439,28 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var f := Biome.pick_flora(bp, pick)
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
+	# v4: old-growth forests in the densest regions, close enough to darken the floor.
+	if towns:
+		r = WHash.rng(seed, cx, cz, 306)
+		for n in 96:
+			var lx := r.randf() * SIZE
+			var lz := r.randf() * SIZE
+			var w := weights_at(chunk, lx, lz)
+			var era := _pick_era(w, r.randf())
+			var roll := r.randf()
+			var yaw := r.randf() * TAU
+			var sc := r.randf_range(0.8, 1.5)
+			var hp := r.randi_range(4, 6)
+			var yield_ := r.randi_range(4, 7)
+			var variant := r.randi() % Flora.VARIANTS
+			var pick := r.randf()
+			var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
+			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or _crowds_tree(chunk, lx, lz, 2.2):
+				continue
+			var f := Biome.pick_flora(bp, pick)
+			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
+
 	# Rocks and ore, shaped by the region's geology.
 	r = WHash.rng(seed, cx, cz, 302)
 	for n in 16:
@@ -515,6 +537,11 @@ func settlement_layout(s: Dictionary) -> Array:
 		_town_rings(s, r, kit, items)
 		if era == Eras.MEDIEVAL:
 			_market(s, items)
+		# A signpost where each road leaves the village.
+		for w in road_angles(s):
+			var at: Vector2 = c + Vector2.from_angle(w) * (float(s["inner"]) - 4.0) + Vector2.from_angle(w + PI / 2) * (ROAD_HALF + 1.4)
+			var dir := Vector2.from_angle(w)
+			items.append({"t": "signpost", "p": at, "yaw": atan2(-dir.x, -dir.y), "st": {}})
 	else:
 		var count := r.randi_range(3, 7)
 		var a0 := r.randf() * TAU

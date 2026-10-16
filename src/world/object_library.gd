@@ -16,6 +16,7 @@ const KIND := {
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
 	"trader": "trader", "alien_ruin": "structure",
+	"signpost": "marker",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -40,7 +41,7 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
-	"townhouse": "Town House", "longhouse": "Longhouse",
+	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
@@ -151,6 +152,12 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			k.cylinder("metal_dark", I, 0.35, 0.18, 4.0, 8)
 			k.box("glow_cyan", I.translated(Vector3(0, 2.0, 0)), Vector3(0.42, 0.06, 0.42))
 			k.sphere("glow_red", I.translated(Vector3(0, 4.15, 0)), 0.18, 5, 8)
+		"signpost":
+			# A weathered post with an arrow pointing down the road (local -z) and one back.
+			k.cylinder("timber", I, 0.09, 0.08, 2.6, 6)
+			k.box("timber", Transform3D(Basis(Vector3.UP, PI / 2), Vector3(0, 2.2, -0.45)), Vector3(1.1, 0.24, 0.05))
+			k.box("timber", Transform3D(Basis(Vector3.UP, PI / 2).rotated(Vector3.UP, 0.25), Vector3(0, 1.85, 0.4)), Vector3(0.9, 0.22, 0.05))
+			k.box("stone", I.translated(Vector3(0, 0.12, 0)), Vector3(0.5, 0.25, 0.5))
 		"cottage": _cottage(k)
 		"watchtower": _watchtower(k)
 		"well": _well(k)
