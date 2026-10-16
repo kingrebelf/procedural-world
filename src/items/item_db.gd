@@ -59,7 +59,7 @@ const NAME_PARTS := ["Varn", "Esk", "Thal", "Orrin", "Myr", "Kael", "Sorr", "Ils
 ## Value of each building piece and station as an item, in Marks.
 const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall_stone": 10, "wall_window": 9, "wall_door": 9,
 	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
-	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
+	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
 	"vehicle_bay": 260, "stable": 90, "launch_pad": 420}
 
 ## Weight of one item in kg, where it differs from the default for its kind.
@@ -95,7 +95,7 @@ static func def(type: String) -> Dictionary:
 				"stone": c = Color(0.55, 0.55, 0.55)
 				"metal": c = Color(0.7, 0.72, 0.76)
 			_piece_defs[type] = {"name": b["name"], "era": int(b.get("era", ANY)), "value": PIECE_VALUE.get(type, 10), "stack": true,
-				"kind": "station" if b.has("station") or b.has("storage") else "placeable", "color": c, "place": true}
+				"kind": "station" if b.has("station") or b.has("storage") or b.has("teleporter") else "placeable", "color": c, "place": true}
 		return _piece_defs[type]
 	return {}
 

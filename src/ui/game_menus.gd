@@ -90,6 +90,11 @@ func open_storage(o: Dictionary, chunk: ChunkNode) -> void:
 	open("storage")
 
 ## Writes the open chest back into its chunk, to be saved.
+func open_travel(o: Dictionary, chunk: ChunkNode) -> void:
+	_store_obj = o
+	_store_chunk = chunk
+	open("travel")
+
 func _store_changed() -> void:
 	Storage.save(_store_obj, _store)
 	if _store_chunk and is_instance_valid(_store_chunk):
@@ -108,6 +113,7 @@ func _refresh() -> void:
 		"craft": _panel = _craft_panel()
 		"trade": _panel = _trade_panel()
 		"storage": _panel = _storage_panel()
+		"travel": _panel = _travel_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
 	add_child(_panel)
@@ -458,6 +464,39 @@ func _move_button(from: Inventory, i: int, to: Inventory) -> Button:
 		b.disabled = true
 	return b
 
+# --- Teleporters ----------------------------------------------------------------------
+
+func _travel_panel() -> Control:
+	var here := String(_store_obj.get("st", {}).get("name", "This teleporter"))
+	var s := _shell(here, "Every teleporter and waystone you build on this world links to the others.")
+	var v: VBoxContainer = s[1]
+	var me := Vector2(player.global_position.x, player.global_position.z) if player else Vector2.ZERO
+	var any := false
+	for m in Game.markers.on_planet(Game.planet, "teleporter"):
+		var d := Vector2(m["x"], m["z"]).distance_to(me)
+		if d < 6.0:
+			continue
+		any = true
+		var row := HBoxContainer.new()
+		var l := UITheme.label("%s   ·   %s away" % [m["name"], _dist(d)], 17)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.custom_minimum_size = Vector2(420, 0)
+		row.add_child(l)
+		var mx: float = m["x"]
+		var mz: float = m["z"]
+		row.add_child(UITheme.button("Travel", func():
+			close()
+			if player:
+				player.teleport_to(mx + 2.5, mz + 2.5)
+			Game.toast.emit("Travelling to %s" % m["name"])))
+		v.add_child(row)
+	if not any:
+		v.add_child(UITheme.label("No other teleporters yet. Build another one somewhere else to link them.", 16, UITheme.DIM))
+	return s[0]
+
+static func _dist(d: float) -> String:
+	return "%.1f km" % (d / 1000.0) if d >= 1000.0 else "%d m" % int(d)
+
 # --- Trading -------------------------------------------------------------------------
 
 func _trade_panel() -> Control:
@@ -548,26 +587,76 @@ func _map_panel() -> Control:
 	var m := MapView.new()
 	m.player = player
 	m.custom_minimum_size = Vector2(620, 560)
+	m.changed.connect(_refresh)
 	h.add_child(m)
 	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(260, 0)
+	side.custom_minimum_size = Vector2(300, 0)
+	side.add_child(UITheme.label("Markers", 18, UITheme.ACCENT))
+	side.add_child(UITheme.button("Mark where I stand", func():
+		if player:
+			var n := Game.markers.count_kind("pin") + 1
+			Game.markers.add("Marker %d" % n, player.global_position.x, player.global_position.z, Game.planet)
+			Game.touch_player()
+			_refresh()))
+	var me := Vector2(player.global_position.x, player.global_position.z) if player else Vector2.ZERO
+	for mk in Game.markers.on_planet(Game.planet):
+		var row := HBoxContainer.new()
+		var l := UITheme.label("%s  ·  %s" % [mk["name"], _dist(Vector2(mk["x"], mk["z"]).distance_to(me))], 14, Markers.color_of(mk))
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		if mk["kind"] == "pin":
+			var id: int = mk["id"]
+			row.add_child(UITheme.button("Remove", func():
+				Game.markers.remove(id)
+				Game.touch_player()
+				_refresh()))
+		side.add_child(row)
+	side.add_child(HSeparator.new())
 	side.add_child(UITheme.label("Regions discovered", 18, UITheme.ACCENT))
 	var regions: Dictionary = Game.discovery["regions"]
 	var names := regions.keys()
 	names.sort_custom(func(a, b): return regions[a]["day"] < regions[b]["day"])
-	for n in names.slice(maxi(0, names.size() - 16)):
+	for n in names.slice(maxi(0, names.size() - 10)):
 		side.add_child(UITheme.label("%s  ·  day %d" % [n, int(regions[n]["day"]) + 1], 14, UITheme.ERA_COLORS[regions[n]["era"]]))
 	h.add_child(side)
 	return s[0]
 
 
 class MapView extends Control:
+	signal changed
 	var player: Node3D
 	var zoom := 6.0
 
+	## Map pixel -> world x, z.
+	func _world(p: Vector2) -> Vector2:
+		var pc := Vector2.ZERO
+		if player:
+			pc = Vector2(player.global_position.x, player.global_position.z) / ChunkGenerator.SIZE
+		return (pc + (p - size * 0.5) / zoom) * ChunkGenerator.SIZE
+
+	func _screen(x: float, z: float) -> Vector2:
+		var pc := Vector2.ZERO
+		if player:
+			pc = Vector2(player.global_position.x, player.global_position.z) / ChunkGenerator.SIZE
+		return size * 0.5 + (Vector2(x, z) / ChunkGenerator.SIZE - pc) * zoom
+
 	func _gui_input(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed:
-			if e.button_index == MOUSE_BUTTON_WHEEL_UP:
+			if e.button_index == MOUSE_BUTTON_LEFT:
+				# Click to drop a marker there.
+				var w := _world(e.position)
+				Game.markers.add("Marker %d" % (Game.markers.count_kind("pin") + 1), w.x, w.y, Game.planet)
+				Game.touch_player()
+				changed.emit()
+			elif e.button_index == MOUSE_BUTTON_RIGHT:
+				# Right-click a marker to remove it.
+				for mk in Game.markers.on_planet(Game.planet, "pin"):
+					if _screen(mk["x"], mk["z"]).distance_to(e.position) < 10.0:
+						Game.markers.remove(mk["id"])
+						Game.touch_player()
+						changed.emit()
+						break
+			elif e.button_index == MOUSE_BUTTON_WHEEL_UP:
 				zoom = minf(zoom * 1.2, 30.0)
 				queue_redraw()
 			elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -593,4 +682,16 @@ class MapView extends Control:
 			var d := Vector2(fwd.x, fwd.z).normalized()
 			var tip := center + d * 12
 			draw_colored_polygon(PackedVector2Array([tip, center + d.rotated(2.5) * 7, center + d.rotated(-2.5) * 7]), Color.WHITE)
-		draw_string(get_theme_default_font(), Vector2(10, size.y - 10), "Scroll to zoom   ·   1 square = 64 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.5))
+		var font := get_theme_default_font()
+		for mk in Game.markers.on_planet(Game.planet):
+			var p := _screen(mk["x"], mk["z"])
+			if p.x < 0 or p.y < 0 or p.x > size.x or p.y > size.y:
+				continue
+			var c := Markers.color_of(mk)
+			if mk["kind"] == "teleporter":
+				draw_circle(p, 7.0, Color(0, 0, 0, 0.6))
+				draw_arc(p, 6.0, 0.0, TAU, 16, Color(0.45, 0.9, 1.0), 2.0)
+			else:
+				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -8), p + Vector2(6, 0), p + Vector2(0, 8), p + Vector2(-6, 0)]), c)
+			draw_string(font, p + Vector2(9, 5), mk["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.85))
+		draw_string(get_theme_default_font(), Vector2(10, size.y - 10), "Scroll to zoom   ·   click to mark   ·   right-click a marker to remove   ·   1 square = 64 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.5))

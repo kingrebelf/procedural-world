@@ -146,7 +146,14 @@ func place() -> bool:
 	if it == null or it["type"] != _id:
 		return false
 	Game.inventory.remove_at(player.selected, 1)
-	chunk.add_built(_id, pos - chunk.position, _target["yaw"], {"by": "you", "day": snappedf(Game.day, 0.01)})
+	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], {"by": "you", "day": snappedf(Game.day, 0.01)})
+	if BuildCatalog.def(_id).get("teleporter", false):
+		var n := Game.markers.count_kind("teleporter") + 1
+		var nm := "%s %d" % [String(BuildCatalog.def(_id)["name"]), n]
+		o["st"]["name"] = nm
+		Game.markers.add(nm, pos.x, pos.z, Game.planet, "teleporter", {"key": str(chunk.key), "i": o["i"]})
+		Game.touch_player()
+		Game.toast.emit("%s linked. Mark it on the Atlas, travel from any other one." % nm)
 	# Clear grass and flowers growing through the new piece.
 	player.streamer.refresh_grass(chunk.key)
 	return true

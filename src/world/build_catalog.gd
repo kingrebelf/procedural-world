@@ -69,6 +69,11 @@ const PIECES := {
 		"snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "storage": 30},
 	"storage_crate": {"name": "Cargo Locker", "models": [["scifi/Prop_Chest", 0, Vector3.ZERO, 1.0]],
 		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "storage": 50},
+	# Teleporters: step on one to travel to any other you have built on this world.
+	"waystone": {"name": "Waystone", "models": [], "proc": "waystone",
+		"snap": "free", "mat": "stone", "hp": 40.0, "era": 1, "teleporter": true, "light": Color(0.5, 0.75, 1.0)},
+	"teleporter": {"name": "Teleporter Pad", "models": [["scifi/Platform_DarkPlates", 0, Vector3.ZERO, 0.75]], "proc": "portal",
+		"snap": "free", "mat": "metal", "hp": 50.0, "era": 2, "teleporter": true, "light": Color(0.4, 0.9, 1.0)},
 	# Vehicle stations: where vehicles are put together (see Vehicle).
 	"vehicle_bay": {"name": "Vehicle Bay", "models": [["scifi/Platform_DarkPlates", 0, Vector3.ZERO, 1.0],
 		["scifi/Prop_Computer", 90, Vector3(-1.5, 0.05, 0.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, 1.6), 1.0],
@@ -217,6 +222,21 @@ static func _proc(k: MeshKit, what: String) -> void:
 			k.cylinder("cobble", I.translated(Vector3(0, 1.4, -0.35)), 0.38, 0.28, 1.9, 8)
 		"brew":
 			k.cylinder("glow_teal", I.translated(Vector3(0, 0.66, 0)), 0.4, 0.4, 0.04, 14)
+		"waystone":
+			# A standing stone on a round step, a glowing rune band and a crystal cap.
+			k.cylinder("cobble", I, 1.1, 1.2, 0.25, 12)
+			k.cylinder("rune_stone", I.translated(Vector3(0, 0.25, 0)), 0.38, 0.28, 2.3, 6, true, 0.04, 3)
+			for n in 3:
+				k.cylinder("glow_cyan", I.translated(Vector3(0, 0.8 + n * 0.45, 0)), 0.36 - n * 0.025, 0.35 - n * 0.025, 0.06, 6)
+			k.crystal("glow_cyan", I.translated(Vector3(0, 2.5, 0)), 0.18, 0.6)
+		"portal":
+			# A ring of light over the pad, held up by two posts.
+			for n in 24:
+				var a := TAU * n / 24.0
+				k.box("glow_cyan", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * 1.1, 1.5 + sin(a) * 1.1, 0)), Vector3(0.08, 0.3, 0.08))
+			for sx in [-1.25, 1.25]:
+				k.box("metal_dark", I.translated(Vector3(sx, 1.1, 0)), Vector3(0.18, 2.2, 0.3))
+			k.cylinder("glow_cyan", I.translated(Vector3(0, 0.12, 0)), 1.2, 1.2, 0.03, 20)
 
 ## Collision for a built piece: the merged mesh as a concave shape (doorways and window
 ## holes stay open), or a ramp for stairs so the player walks up instead of into steps.

@@ -579,6 +579,22 @@ func test_photo_textures_load() -> void:
 	check(Materials.photo("leaves", "card") != null, "leaf card")
 	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")
 
+func test_markers() -> void:
+	var mk := Markers.new()
+	var a := mk.add("Camp", 10.0, 20.0, 0)
+	mk.add("Teleporter Pad 1", 100.0, 0.0, 0, "teleporter", {"key": str(Vector2i(1, 0)), "i": 7})
+	mk.add("Moon pin", 5.0, 5.0, 2)
+	check(mk.on_planet(0).size() == 2 and mk.on_planet(0, "teleporter").size() == 1, "markers are kept per world")
+	var back := Markers.from_data(JSON.parse_string(JSON.stringify(mk.to_data())))
+	check(back.list.size() == 3 and back.next_id == mk.next_id, "markers survive a save")
+	back.remove_object(Vector2i(1, 0), 7)
+	check(back.on_planet(0, "teleporter").is_empty(), "a teleporter taken down is forgotten")
+	back.remove(int(a["id"]))
+	check(back.on_planet(0).is_empty(), "a pin can be removed")
+	for id in ["waystone", "teleporter"]:
+		check(BuildCatalog.def(id).get("teleporter", false) and Recipes.LIST.any(func(r): return r["out"] == id), "%s can be built" % id)
+		check(BuildCatalog.mesh(id) != null and BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a model" % id)
+
 func test_storage() -> void:
 	var o := {"t": "b:storage_chest", "i": 1, "st": {}}
 	check(Storage.capacity(o) == 30 and Storage.is_empty(o), "a new storage chest is empty, with 30 slots (%d)" % Storage.capacity(o))

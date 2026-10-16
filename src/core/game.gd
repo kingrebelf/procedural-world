@@ -37,6 +37,7 @@ var pending_player_state = null
 var vehicles: Array = []
 ## Where you last left each planet for orbit (planet -> Vector2), to land there again.
 var landings: Dictionary = {}
+var markers := Markers.new() ## map pins and teleporters
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
 var _dirty_timer := 0.0
@@ -85,6 +86,7 @@ func _begin(fresh: bool) -> void:
 	pending_player_state = null
 	vehicles = []
 	landings = {}
+	markers = Markers.new()
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -99,6 +101,7 @@ func _begin(fresh: bool) -> void:
 		stamina = stats.max_stamina()
 		vehicles = p.get("vehicles", []).duplicate(true)
 		landings = p.get("landings", {}).duplicate()
+		markers = Markers.from_data(p.get("markers"))
 		pending_player_state = p
 	else:
 		money = 50
@@ -133,6 +136,10 @@ func set_planet(n: int) -> void:
 	_enter_planet(n)
 	_player_dirty = true
 
+## Something saved with the player changed (markers, for one).
+func touch_player() -> void:
+	_player_dirty = true
+
 func _enter_planet(n: int) -> void:
 	planet = clampi(n, 0, Planets.COUNT - 1)
 	store.set_planet(planet)
@@ -158,7 +165,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "planet": planet, "landings": landings}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "planet": planet, "landings": landings, "markers": markers.to_data()}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:

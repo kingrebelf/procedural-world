@@ -32,6 +32,7 @@ var _weight: Label
 var _xp_flash: Label ## "+N XP" that pops up under the crosshair
 var _flash_tw: Tween
 var _pulse := 0.0
+var _marks: MarkerLayer
 var _banner: Label
 var _banner_sub: Label
 var _banner_box: VBoxContainer
@@ -148,6 +149,11 @@ func _ready() -> void:
 	_xp_flash.modulate.a = 0.0
 	_xp_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_xp_flash)
+	_marks = MarkerLayer.new()
+	_marks.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_marks)
+	move_child(_marks, 0)
 
 	_banner_box = VBoxContainer.new()
 	_pin(_banner_box, Control.PRESET_CENTER_TOP, Rect2(-600, 70, 1200, 100))
@@ -511,6 +517,8 @@ func _process(_d: float) -> void:
 	_info.text = "Day %d  %02d:%02d\n%s  %d°\n%d, %d" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), dirs[int(round(heading / 45.0)) % 8], heading, int(p.x), int(p.z)]
 	_under.visible = player.underwater
 	_breath.max_value = Game.stats.max_breath()
+	_marks.player = player
+	_marks.queue_redraw()
 	# Unspent attribute points glow slowly until spent.
 	_pulse += _d
 	_points.modulate.a = 0.45 + 0.55 * (0.5 + 0.5 * sin(_pulse * 2.6)) if Game.stats.points > 0 else 1.0
@@ -531,3 +539,32 @@ func _process(_d: float) -> void:
 	_fps.visible = Settings.get_value("show_fps")
 	if _fps.visible:
 		_fps.text = "%d FPS  %.1f ms" % [Engine.get_frames_per_second(), 1000.0 / maxf(1.0, Engine.get_frames_per_second())]
+
+
+## Your map markers and teleporters drawn where they are in the world, with distance.
+class MarkerLayer extends Control:
+	const RANGE := 3000.0
+	var player: Player
+
+	func _draw() -> void:
+		if player == null or player.camera == null or not is_instance_valid(player.camera):
+			return
+		var cam := player.camera
+		var font := get_theme_default_font()
+		var me := player.global_position
+		for mk in Game.markers.on_planet(Game.planet):
+			var wp := Vector3(mk["x"], me.y + 2.0, mk["z"])
+			var d := Vector2(wp.x - me.x, wp.z - me.z).length()
+			if d > RANGE or d < 4.0 or cam.is_position_behind(wp):
+				continue
+			var p := cam.unproject_position(wp)
+			p.y = clampf(p.y, 40.0, size.y * 0.55)
+			if p.x < 0.0 or p.x > size.x:
+				continue
+			var c := Color(0.45, 0.9, 1.0) if mk["kind"] == "teleporter" else Markers.color_of(mk)
+			var a := clampf(1.2 - d / RANGE, 0.45, 1.0)
+			draw_colored_polygon(PackedVector2Array([p + Vector2(0, -7), p + Vector2(5, 0), p + Vector2(0, 7), p + Vector2(-5, 0)]), c * Color(1, 1, 1, a))
+			var txt := "%s  %s" % [mk["name"], ("%.1f km" % (d / 1000.0)) if d >= 1000.0 else "%d m" % int(d)]
+			var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+			draw_string_outline(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.7 * a))
+			draw_string(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, a))

@@ -141,6 +141,16 @@ func set_state(d: Dictionary) -> void:
 		hand_light.from_data(d.get("light", {}))
 	_apply_look()
 
+## Sends you to a spot on this world: you drop in from above once the ground there has
+## streamed in (the same path the console's tp uses).
+func teleport_to(x: float, z: float) -> void:
+	if vehicle != null:
+		dismount()
+	global_position = Vector3(x, 200.0, z)
+	velocity = Vector3.ZERO
+	frozen = true
+	snap_down = not fly
+
 func yaw() -> float:
 	return _yaw
 
@@ -537,7 +547,7 @@ func _find_focus() -> Dictionary:
 			var o: Dictionary = c.get_object(h["obj"])
 			if is_own_piece(o):
 				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
-				var station := d.has("station") or d.has("storage")
+				var station := d.has("station") or d.has("storage") or d.has("teleporter")
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
 					"verb": ("%s   (hold: take down)" % _station_verb(d)) if station else "Hold to take down %s" % d["name"]}
 	return best
@@ -613,13 +623,15 @@ static func _use_of(o: Dictionary) -> Dictionary:
 			return {"kind": "trader", "verb": "Trade with %s" % String(o["st"].get("name", "the trader")).split(" ")[0], "h": 2.6}
 		"built":
 			var d := BuildCatalog.def(BuildCatalog.id_of(t))
-			if d.has("station") or d.has("storage"):
+			if d.has("station") or d.has("storage") or d.has("teleporter"):
 				return {"kind": "station", "verb": _station_verb(d), "h": 1.2}
 	return {}
 
 static func _station_verb(d: Dictionary) -> String:
 	if d.has("storage"):
 		return "Open the %s" % String(d["name"]).to_lower()
+	if d.has("teleporter"):
+		return "Travel from the %s" % String(d["name"]).to_lower()
 	return "Craft at the %s" % String(d["name"]).to_lower()
 
 ## Tap on a station: craft there, or open a storage chest.
@@ -627,8 +639,12 @@ func _use_station() -> void:
 	var c = focus.get("chunk")
 	if c is ChunkNode and is_instance_valid(c):
 		var o: Dictionary = c.get_object(focus["i"])
-		if BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("storage"):
+		var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
+		if d.has("storage"):
 			get_tree().call_group("trade_ui", "open_storage", o, c)
+			return
+		if d.has("teleporter"):
+			get_tree().call_group("trade_ui", "open_travel", o, c)
 			return
 	get_tree().call_group("trade_ui", "open", "craft")
 
@@ -929,6 +945,9 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 		xp += 2.0 * y[1]
 	if r["destroyed"]:
+		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):
+			Game.markers.remove_object(chunk.key, o["i"])
+			Game.touch_player()
 		for it in Storage.spill(o):
 			if not Game.give(it):
 				Game.toast.emit("No room for the %s from the chest" % ItemDB.display_name(it).to_lower())
