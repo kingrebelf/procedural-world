@@ -13,7 +13,7 @@ const KIND := {
 	"cottage": "structure", "watchtower": "structure", "well": "structure",
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
-	"trader": "trader",
+	"trader": "trader", "alien_ruin": "structure",
 }
 
 ## What a gatherable object yields.
@@ -25,7 +25,7 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
-	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader",
+	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
 
 static func kind(t: String) -> String:
@@ -73,6 +73,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 	if key.contains("#"):
 		var parts := key.split("#")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
+		if parts[0] == "under":
+			Flora.build_under(kit, int(parts[1]), int(parts[2]))
+			return kit.commit(Materials.get_mat)
 		if Flora.build(kit, parts[0], int(parts[1]), int(parts[2])):
 			return kit.commit(Materials.get_mat)
 		key = parts[0]
@@ -173,6 +176,7 @@ static func get_shape(t: String) -> Array:
 				"mushroom_house": sz = Vector3(5, 6, 5)
 				"shrine": sz = Vector3(5, 5, 5)
 				"cargo_stack": sz = Vector3(6.2, 5.2, 2.6)
+				"alien_ruin": sz = Vector3(6, 7, 6)
 			b.size = sz
 			s = b
 			off = Vector3(0, sz.y * 0.5, 0)

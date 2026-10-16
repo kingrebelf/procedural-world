@@ -130,6 +130,8 @@ func _run_job(job: Dictionary) -> void:
 	if job["grass"] and job["mode"] != "lod":
 		res["grass"] = ChunkNode.build_grass_buffer(chunk, job["density"])
 		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0))
+		for mk in res["clutter"]:
+			ObjectLibrary.get_mesh(mk)
 	_mutex.lock()
 	_results.append(res)
 	_mutex.unlock()

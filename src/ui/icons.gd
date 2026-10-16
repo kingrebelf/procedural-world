@@ -5,9 +5,44 @@ class_name Icons
 const S := 64
 static var _cache: Dictionary = {}
 
+## Cell order of the painted icon sheet (6 columns x 5 rows) at SHEET_PATH. When the
+## sheet exists its icons replace the procedural ones below.
+const SHEET_PATH := "res://assets/icons/items.png"
+const SHEET_COLS := 6
+const SHEET_ORDER := [
+	"wood", "glowroot", "circuitry", "stone", "iron_ore", "aether_crystal",
+	"alloy_scrap", "planks", "iron_ingot", "mythril_ingot", "alloy_plate", "power_cell",
+	"silver_chalice", "moonpearl", "data_core", "bread", "glowberry", "ration_pack",
+	"pickaxe_iron", "pickaxe_mythril", "pickaxe_plasma", "axe_iron", "axe_mythril", "sword_iron",
+	"sword_runic", "pulse_pistol", "gold_coin", "raw_meat", "hide", "cooked_meat",
+]
+static var _sheet: Image
+static var _sheet_checked := false
+
+static func _from_sheet(type: String) -> Texture2D:
+	if not _sheet_checked:
+		_sheet_checked = true
+		if ResourceLoader.exists(SHEET_PATH):
+			var tex := load(SHEET_PATH) as Texture2D
+			if tex:
+				_sheet = tex.get_image()
+	var idx := SHEET_ORDER.find(type)
+	if _sheet == null or idx < 0:
+		return null
+	var rows := ceili(SHEET_ORDER.size() / float(SHEET_COLS))
+	var cw := _sheet.get_width() / SHEET_COLS
+	var ch := _sheet.get_height() / rows
+	var cell := _sheet.get_region(Rect2i((idx % SHEET_COLS) * cw, (idx / SHEET_COLS) * ch, cw, ch))
+	cell.resize(96, 96, Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(cell)
+
 static func get_icon(type: String) -> Texture2D:
 	if _cache.has(type):
 		return _cache[type]
+	var painted := _from_sheet(type)
+	if painted:
+		_cache[type] = painted
+		return painted
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
 	var d := ItemDB.def(type)
@@ -68,6 +103,13 @@ static func get_icon(type: String) -> Texture2D:
 		"gold_coin":
 			_circle(img, Vector2(32, 32), 18.0, Color(0.95, 0.75, 0.3))
 			_circle(img, Vector2(32, 32), 12.0, Color(1.0, 0.85, 0.45))
+		"raw_meat", "cooked_meat":
+			_ellipse(img, Vector2(30, 34), Vector2(20, 14), c)
+			_ellipse(img, Vector2(26, 31), Vector2(9, 6), c.lightened(0.25))
+			_line(img, Vector2(46, 40), Vector2(56, 50), 5, Color(0.92, 0.9, 0.84))
+		"hide":
+			_poly(img, [Vector2(12, 16), Vector2(52, 14), Vector2(56, 34), Vector2(48, 52), Vector2(16, 50), Vector2(8, 32)], c)
+			_poly(img, [Vector2(18, 22), Vector2(46, 20), Vector2(48, 30), Vector2(20, 32)], c.lightened(0.15))
 		"moonpearl", "data_core":
 			_circle(img, Vector2(32, 32), 18.0, c)
 			_circle(img, Vector2(26, 26), 6.0, c.lightened(0.6))

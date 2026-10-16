@@ -247,6 +247,34 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		var buf: PackedFloat32Array = out[key]
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 		out[key] = buf
+	# Undergrowth: the region's own ferns, bushes, flowers and stranger things.
+	if chunk.has("biome"):
+		var era: int = chunk.get("era", 0)
+		var bp := Biome.params(chunk["biome"], era)
+		var unders: Array = bp["under"]
+		for n in int(420 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
+			var lx := r.randf() * SIZE
+			var lz := r.randf() * SIZE
+			var pick := r.randi()
+			var yaw := r.randf() * TAU
+			var sc := r.randf_range(0.6, 1.5)
+			# Clumps: undergrowth gathers where a low-frequency mask is high.
+			var mask := sin(lx * 0.11 + float(chunk["cx"]) * 7.0) * cos(lz * 0.09 + float(chunk["cz"]) * 5.0)
+			if mask < -0.2 + r.randf() * 0.4:
+				continue
+			var w := ChunkGenerator.weights_at(chunk, lx, lz)
+			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
+				continue
+			var y := ChunkGenerator.height_at(chunk, lx, lz)
+			if y < 0.3:
+				continue
+			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
+			if not out.has(key):
+				out[key] = PackedFloat32Array()
+			var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
+			var buf: PackedFloat32Array = out[key]
+			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
+			out[key] = buf
 	return out
 
 # --- Main-thread upload ---------------------------------------------------------
@@ -334,7 +362,7 @@ func set_clutter(buffers: Dictionary) -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.visibility_range_end = 70.0
+		mmi.visibility_range_end = 110.0 if t.begins_with("under") else 70.0
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		mmi.visibility_range_end_margin = 10.0
 		add_child(mmi)

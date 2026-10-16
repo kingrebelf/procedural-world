@@ -12,6 +12,9 @@ uniform float daylight = 1.0;
 uniform float era_fantasy = 0.0;
 uniform float era_scifi = 0.0;
 uniform float time_s = 0.0;
+uniform float cloud_cover = 0.5;
+global uniform vec2 wind_dir;
+global uniform float wind_strength;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -25,6 +28,17 @@ float noise3(vec3 x) {
 	f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x), mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
 		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x), mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+float fbm3(vec3 p) {
+	float s = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < 5; i++) {
+		s += a * noise3(p);
+		p = p * 2.02 + vec3(1.7, 9.2, 3.1);
+		a *= 0.5;
+	}
+	return s;
 }
 
 void sky() {
@@ -87,6 +101,26 @@ void sky() {
 		float pl = smoothstep(0.9965, 0.9970, dot(d, pd));
 		float lit = clamp(dot(normalize(d - pd * 0.98), sun) * 0.5 + 0.5, 0.05, 1.0);
 		col = mix(col, vec3(0.75, 0.55, 0.45) * lit, pl * era_scifi);
+	}
+
+	// Clouds: a lit cloud deck drifting with the wind. Density from fbm, cover from the
+	// weather; the sun side gets silver lining, the far side is shaded.
+	if (d.y > 0.0) {
+		vec2 uv = d.xz / (d.y + 0.12) * 1.6;
+		vec2 drift = wind_dir * time_s * (0.004 + wind_strength * 0.02);
+		float base = fbm3(vec3(uv * 0.55 + drift, time_s * 0.004));
+		float detail = fbm3(vec3(uv * 2.3 + drift * 1.7, time_s * 0.01));
+		float dens = smoothstep(1.0 - cloud_cover * 0.75 - 0.18, 1.05 - cloud_cover * 0.45, base * 0.78 + detail * 0.32);
+		dens *= smoothstep(0.0, 0.12, d.y);
+		// Self shadowing: sample toward the sun.
+		vec2 toward = normalize(sun.xz + vec2(0.0001)) * 0.12;
+		float shade = fbm3(vec3((uv + toward) * 0.55 + drift, time_s * 0.004));
+		float lit = clamp(1.0 - (shade - base) * 3.0, 0.35, 1.25);
+		vec3 sun_col = mix(vec3(1.0, 0.62, 0.38), vec3(1.0, 0.98, 0.95), smoothstep(0.0, 0.4, sun_h));
+		vec3 cloud = mix(hor * 0.9, sun_col * (0.7 + 0.5 * daylight), daylight) * lit;
+		cloud += sun_col * pow(sd, 12.0) * 0.6 * daylight * (1.0 - dens);
+		cloud = mix(cloud, vec3(0.05, 0.06, 0.09) + hor * 0.3, 1.0 - daylight);
+		col = mix(col, cloud, dens * 0.92);
 	}
 
 	// Below horizon.

@@ -425,4 +425,4 @@ func test_everything_is_destructible() -> void:
 func test_icons_exist_for_every_item() -> void:
 	for t in ItemDB.ITEMS:
 		var ic := Icons.get_icon(t)
-		check(ic != null and ic.get_width() == 64, "icon for %s" % t)
+		check(ic != null and ic.get_width() >= 64, "icon for %s" % t)

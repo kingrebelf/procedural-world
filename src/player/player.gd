@@ -22,6 +22,7 @@ const BREATH := 30.0
 
 var streamer: ChunkStreamer
 var npcs: NPCManager
+var fauna: FaunaManager
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
@@ -242,6 +243,8 @@ func _hit_object() -> Dictionary:
 	var out := {"point": ray.get_collision_point(), "normal": ray.get_collision_normal(), "collider": col}
 	if col and col.has_meta("npc"):
 		out["npc"] = col.get_meta("npc")
+	if col and col.has_meta("creature"):
+		out["creature"] = col.get_meta("creature")
 	if col and col.has_meta("chunk"):
 		out["chunk"] = col.get_meta("chunk")
 		if col.has_meta("obj"):
@@ -252,7 +255,14 @@ func _update_look_target() -> void:
 	var h := _hit_object()
 	var text := ""
 	var info := {}
-	if h.has("npc") and is_instance_valid(h["npc"]):
+	if h.has("creature") and is_instance_valid(h["creature"]):
+		var cr: Creature = h["creature"]
+		var drops: Array = []
+		for d in cr.p["drops"]:
+			drops.append("%s x%d" % [ItemDB.def(d[0])["name"], d[1]])
+		info = {"title": cr.label(), "sub": "Wild animal  ·  %s" % String(cr.p["temper"]).capitalize(),
+			"lines": ["Drops: " + ", ".join(drops), "Hunt with a sword, axe or pistol"], "hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
+	elif h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
 		text = "[E] Talk to %s" % n.rec["name"].split(" ")[0]
 		var r := int(n.rec.get("rel", 0))
@@ -354,6 +364,10 @@ func use_held() -> void:
 	if h.is_empty():
 		used_tool.emit("miss")
 		return
+	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
+		used_tool.emit("hit")
+		fauna.player_hit(h["creature"], float(d.get("damage", 2)) * q)
+		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
 		npcs.player_hit(h["npc"], float(d.get("damage", 2)) * q)
@@ -393,6 +407,9 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	var hit := space.intersect_ray(q)
 	var end: Vector3 = hit.get("position", to)
 	viewmodel.tracer(end)
+	if hit.has("collider") and hit["collider"].has_meta("creature") and fauna:
+		fauna.player_hit(hit["collider"].get_meta("creature"), float(d.get("damage", 10)))
+		return
 	if hit.has("collider") and hit["collider"].has_meta("npc") and npcs:
 		npcs.player_hit(hit["collider"].get_meta("npc"), float(d.get("damage", 10)))
 		return

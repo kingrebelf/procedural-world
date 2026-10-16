@@ -76,7 +76,13 @@ func _ready() -> void:
 	sun.directional_shadow_blend_splits = true
 	sun.shadow_bias = 0.03
 	sun.shadow_normal_bias = 1.2
-	sun.light_angular_distance = 0.6
+	sun.light_angular_distance = 0.5
+	sun.directional_shadow_split_1 = 0.06
+	sun.directional_shadow_split_2 = 0.18
+	sun.directional_shadow_split_3 = 0.45
+	sun.directional_shadow_fade_start = 0.85
+	sun.directional_shadow_pancake_size = 30.0
+	sun.shadow_blur = 1.2
 	add_child(sun)
 
 	moon = DirectionalLight3D.new()
@@ -134,6 +140,10 @@ func _update_wind() -> void:
 	var ang := _wind_noise.get_noise_1d(gt * 0.0002 + 900.0) * TAU * 1.5
 	wind_dir = Vector2(cos(ang), sin(ang))
 	RenderingServer.global_shader_parameter_set("wind_strength", wind_strength)
+	# Cloud cover follows the weather: windy spells are cloudier.
+	var cover := clampf(0.35 + _wind_noise.get_noise_1d(gt * 0.0004 + 300.0) * 0.6 + wind_strength * 0.25, 0.05, 0.95)
+	sky_mat.set_shader_parameter("cloud_cover", cover)
+	sun.shadow_opacity = lerpf(1.0, 0.75, cover)
 	RenderingServer.global_shader_parameter_set("wind_dir", wind_dir)
 
 func _blend(arr: Array) -> Variant:

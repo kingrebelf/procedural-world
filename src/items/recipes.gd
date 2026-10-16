@@ -3,6 +3,7 @@ class_name Recipes
 const LIST := [
 	{"out": "planks", "qty": 2, "in": {"wood": 1}},
 	{"out": "planks", "qty": 3, "in": {"glowroot": 1}},
+	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}},
 	{"out": "iron_ingot", "qty": 1, "in": {"iron_ore": 2}},
 	{"out": "mythril_ingot", "qty": 1, "in": {"iron_ingot": 1, "aether_crystal": 2}},
 	{"out": "alloy_plate", "qty": 1, "in": {"alloy_scrap": 3}},

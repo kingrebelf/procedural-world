@@ -7,6 +7,7 @@ var player: Player
 var hud: HUD
 var menus: GameMenus
 var npcs: NPCManager
+var fauna: FaunaManager
 var dialogue: DialogueUI
 
 func _ready() -> void:
@@ -46,6 +47,13 @@ func _ready() -> void:
 	npcs.player = player
 	add_child(npcs)
 	player.npcs = npcs
+	fauna = FaunaManager.new()
+	fauna.name = "Wildlife"
+	fauna.streamer = streamer
+	fauna.player = player
+	fauna.npcs = npcs
+	add_child(fauna)
+	player.fauna = fauna
 
 	var ui := CanvasLayer.new()
 	add_child(ui)

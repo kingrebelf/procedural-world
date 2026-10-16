@@ -225,6 +225,17 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
+	# Alien ruins: rare, strange, very tough. Anywhere outside settlements.
+	r = WHash.rng(seed, cx, cz, 305)
+	if r.randf() < 0.035:
+		var lx := r.randf_range(10, SIZE - 10)
+		var lz := r.randf_range(10, SIZE - 10)
+		var sp := r.randi() & 0x7FFFFFFF
+		var yaw := r.randf() * TAU
+		if not _near_settlement(x0 + lx, z0 + lz, sites, FLAT_OUTER + 10.0) and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and slope_at(chunk, lx, lz) < 0.4:
+			var era := WorldField.dominant(weights_at(chunk, lx, lz))
+			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
+
 	# Caches: rare, contents rolled now and frozen forever.
 	r = WHash.rng(seed, cx, cz, 303)
 	if r.randf() < 0.22:

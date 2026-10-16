@@ -85,6 +85,14 @@ static func species(t: String, sp: int) -> Dictionary:
 				"paint": Color.from_hsv(r.randf(), r.randf_range(0.0, 0.5), r.randf_range(0.35, 0.85)),
 				"blades": r.randi_range(2, 5), "tilt": r.randf_range(-0.7, -0.2),
 			}
+		"alien_ruin":
+			var forms := ["monoliths", "hull", "obelisk", "arch", "pods"]
+			var form: String = forms[r.randi() % forms.size()]
+			return {
+				"form": form, "noun": {"monoliths": "Xenolith Circle", "hull": "Derelict Hull", "obelisk": "Singing Obelisk", "arch": "Glyph Arch", "pods": "Seed Pods"}[form],
+				"stone": Color.from_hsv(r.randf_range(0.55, 0.85), r.randf_range(0.05, 0.3), r.randf_range(0.12, 0.3)),
+				"glow": r.randi() % 12, "size": r.randf_range(0.8, 1.6), "count": r.randi_range(4, 9),
+			}
 		"rock", "iron_vein", "aether_crystal", "alloy_scrap":
 			var shapes := ["boulder", "slab", "spire", "cluster", "flat"]
 			var stone_hue: float = [0.08, 0.05, 0.6, 0.12, 0.0, 0.3][r.randi() % 6]
@@ -108,9 +116,63 @@ static func build(k: MeshKit, t: String, sp: int, v: int) -> bool:
 		"glowcap": _mushroom(k, p, r)
 		"crystal_tree": _crystal_tree(k, p, r)
 		"solar_mast": _mast(k, p, r)
+		"alien_ruin": _alien(k, p, r)
 		"rock", "iron_vein", "aether_crystal", "alloy_scrap": _rock(k, t, p, r)
 		_: return false
 	return true
+
+## Undergrowth (ferns, bushes, flowers, reeds, glow-bulbs, xeno tendrils). No collision,
+## no gameplay state: drawn near the player only. The era is passed as the variant.
+static func build_under(k: MeshKit, sp: int, era: int) -> void:
+	var r := _rng(sp, 5)
+	var forms: Array = [["fern", "bush", "flowers", "reeds"], ["fern", "bush", "glowbulbs", "fronds"], ["tendrils", "bush", "glowbulbs", "reeds"]][era]
+	var form: String = forms[r.randi() % forms.size()]
+	var hue := r.randf()
+	var leaf := Color.from_hsv(r.randf_range(0.17, 0.33), r.randf_range(0.4, 0.75), r.randf_range(0.3, 0.55))
+	if era == Eras.FANTASY:
+		leaf = Color.from_hsv(fposmod(0.45 + r.randf_range(-0.15, 0.4), 1.0), r.randf_range(0.4, 0.7), r.randf_range(0.35, 0.6))
+	elif era == Eras.SCIFI:
+		leaf = Color.from_hsv(r.randf_range(0.0, 0.12), r.randf_range(0.2, 0.6), r.randf_range(0.25, 0.45))
+	var I := Transform3D.IDENTITY
+	match form:
+		"fern", "fronds":
+			var n := r.randi_range(6, 11)
+			var len := r.randf_range(0.5, 1.1)
+			for i in n:
+				var a := TAU * i / n + r.randf() * 0.3
+				var out := Vector3(cos(a), 0, sin(a))
+				var b := Basis.looking_at(out, Vector3.UP).rotated(out.cross(Vector3.UP).normalized(), r.randf_range(0.5, 1.0))
+				k.card("leaf_card_w", I, out * len * 0.45 + Vector3(0, len * 0.35, 0), b, len * 0.45, len, Vector3.UP * 0.6, _jit(leaf, r, 0.12))
+		"bush":
+			var rad := r.randf_range(0.4, 0.9)
+			for i in r.randi_range(1, 3):
+				var c := Vector3(r.randf_range(-0.4, 0.4), rad * 0.7, r.randf_range(-0.4, 0.4))
+				k.sphere("leaf_core_w", I.translated(c), rad * 0.7, 5, 8, 0.4, 0.8, leaf * 0.7)
+				_cards(k, "leaf_card_w", c, rad, int(14 * rad + 6), r, 0.55, leaf)
+			if r.randf() < 0.4:
+				var berry := "glow@%d" % (r.randi() % 12) if era == Eras.FANTASY else "painted"
+				for i in 8:
+					var d := Vector3(r.randf_range(-1, 1), r.randf_range(0.2, 1), r.randf_range(-1, 1)).normalized()
+					k.sphere(berry, I.translated(Vector3(0, rad * 0.7, 0) + d * rad * 0.9), 0.04, 3, 5, 0.0, 1.0, Color.from_hsv(hue, 0.8, 0.8))
+		"flowers":
+			for i in r.randi_range(5, 12):
+				var pos := Vector3(r.randf_range(-0.6, 0.6), 0, r.randf_range(-0.6, 0.6))
+				var h := r.randf_range(0.2, 0.55)
+				k.cylinder("leaf_core_w", I.translated(pos), 0.01, 0.008, h, 4, false, 0.0, 1, leaf)
+				k.sphere("painted", I.translated(pos + Vector3(0, h, 0)), r.randf_range(0.03, 0.06), 3, 6, 0.0, 0.45, Color.from_hsv(fposmod(hue + r.randf_range(-0.05, 0.05), 1.0), r.randf_range(0.5, 0.9), 0.95))
+		"reeds", "tendrils":
+			for i in r.randi_range(6, 14):
+				var pos := Vector3(r.randf_range(-0.4, 0.4), 0, r.randf_range(-0.4, 0.4))
+				var h := r.randf_range(0.6, 1.6)
+				_limb(k, "leaf_core_w", pos, Vector3(r.randf_range(-0.2, 0.2), 1, r.randf_range(-0.2, 0.2)), h, 0.025, 0.006, _jit(leaf, r, 0.15), 4)
+				if form == "tendrils" and r.randf() < 0.4:
+					k.sphere("glow@%d" % (r.randi() % 12), I.translated(pos + Vector3(0, h, 0)), 0.04, 3, 5)
+		"glowbulbs":
+			for i in r.randi_range(3, 7):
+				var pos := Vector3(r.randf_range(-0.5, 0.5), 0, r.randf_range(-0.5, 0.5))
+				var h := r.randf_range(0.15, 0.6)
+				_limb(k, "leaf_core_w", pos, Vector3(0, 1, 0), h, 0.03, 0.02, leaf, 5)
+				k.sphere("glow@%d" % (r.randi() % 12), I.translated(pos + Vector3(0, h + 0.05, 0)), r.randf_range(0.05, 0.12), 4, 7, 0.1, 1.2)
 
 static func _limb(k: MeshKit, mat: String, from: Vector3, dir: Vector3, length: float, r0: float, r1: float, col: Color, segs := 7) -> Vector3:
 	dir = dir.normalized()
@@ -338,3 +400,55 @@ static func _rock(k: MeshKit, t: String, p: Dictionary, r: RandomNumberGenerator
 				var pos := Vector3(r.randf_range(-0.9, 0.9), r.randf_range(0.3, 0.9), r.randf_range(-0.9, 0.9))
 				k.box("metal_w", Transform3D(b, pos), Vector3(r.randf_range(0.3, 1.2), r.randf_range(0.05, 0.3), r.randf_range(0.3, 1.0)), Color.from_hsv(r.randf(), r.randf_range(0, 0.5), r.randf_range(0.4, 0.8)))
 			k.box("glow@%d" % int(p["glow"]), Transform3D(Basis(Vector3.UP, r.randf()), Vector3(0.2, 0.95, 0.1)), Vector3(0.4, 0.05, 0.05))
+
+static func _alien(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:
+	var I := Transform3D.IDENTITY
+	var col: Color = p["stone"]
+	var glow := "glow@%d" % int(p["glow"])
+	var sz: float = p["size"]
+	match String(p["form"]):
+		"monoliths":
+			var n: int = p["count"]
+			for i in n:
+				var a := TAU * i / n
+				var pos := Vector3(cos(a), 0, sin(a)) * 5.0 * sz
+				var h := r.randf_range(3.0, 6.5) * sz
+				var b := Basis(Vector3.UP, -a).rotated(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), r.randf_range(-0.12, 0.12))
+				k.box("metal_w", Transform3D(b, pos + Vector3(0, h * 0.45, 0)), Vector3(0.9, h, 0.5) * Vector3(sz, 1, sz), col)
+				k.box(glow, Transform3D(b, pos + Vector3(0, h * 0.6, 0)), Vector3(0.12, h * 0.5, 0.52) * Vector3(sz, 1, sz))
+			k.cylinder("metal_w", I, 1.6 * sz, 1.4 * sz, 0.3, 24, true, 0.0, 1, col.lightened(0.1))
+			k.sphere(glow, I.translated(Vector3(0, 1.4 * sz, 0)), 0.35 * sz, 6, 10)
+		"hull":
+			var b := Basis.from_euler(Vector3(r.randf_range(-0.35, -0.15), r.randf() * TAU, r.randf_range(-0.3, 0.3)))
+			k.sphere("metal_w", Transform3D(b, Vector3(0, 0.8, 0)), 3.0 * sz, 8, 16, 0.08, 0.45, col)
+			k.cylinder("metal_w", Transform3D(b * Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.6, -2.5 * sz)), 1.2 * sz, 0.5 * sz, 3.5 * sz, 12, true, 0.0, 1, col.darkened(0.2))
+			for i in 5:
+				k.box(glow, Transform3D(b, Vector3(r.randf_range(-2, 2), 1.4 + r.randf() * 0.6, r.randf_range(-2, 2)) * sz), Vector3(0.6, 0.06, 0.06))
+			for i in 4:
+				var a := r.randf() * TAU
+				k.box("metal_w", Transform3D(Basis.from_euler(Vector3(r.randf(), a, r.randf())), Vector3(cos(a), 0.2, sin(a)) * 4.5 * sz), Vector3(1.4, 0.1, 0.8) * sz, col)
+		"obelisk":
+			var h := 9.0 * sz
+			k.cylinder("metal_w", I, 1.1 * sz, 0.3 * sz, h, 4, true, 0.0, 1, col)
+			for i in 6:
+				k.box(glow, I.translated(Vector3(0, 1.2 + i * h / 7.5, 0)), Vector3(1.7 - i * 0.2, 0.1, 1.7 - i * 0.2) * sz)
+			k.crystal("crystal@%d" % int(p["glow"]), I.translated(Vector3(0, h, 0)), 0.3 * sz, 1.4 * sz)
+			for i in 3:
+				var a := TAU * i / 3.0
+				k.box("metal_w", Transform3D(Basis(Vector3.UP, a), Vector3(cos(a), 0.4, sin(a)) * 2.2 * sz), Vector3(1.2, 0.8, 0.6) * sz, col.darkened(0.2))
+		"arch":
+			var w := 4.0 * sz
+			var h := 6.0 * sz
+			for side in [-1.0, 1.0]:
+				_limb(k, "metal_w", Vector3(side * w, 0, 0), Vector3(-side * 0.25, 1, 0), h, 0.7 * sz, 0.5 * sz, col, 6)
+			_limb(k, "metal_w", Vector3(-w - 0.5, h * 0.95, 0), Vector3(1, 0.05, 0), w * 2.0 + 1.0, 0.55 * sz, 0.55 * sz, col, 6)
+			for i in 9:
+				k.box(glow, I.translated(Vector3(-w + i * w / 4.0, h * 0.95, 0.56 * sz)), Vector3(0.25, 0.25, 0.02) * sz)
+		"pods":
+			var n: int = p["count"]
+			for i in n:
+				var a := r.randf() * TAU
+				var pos := Vector3(cos(a), 0, sin(a)) * r.randf_range(0.0, 4.0) * sz
+				var ps := r.randf_range(0.6, 1.5) * sz
+				k.sphere("cap_w", I.translated(pos + Vector3(0, ps * 0.8, 0)), ps, 8, 12, 0.15, 1.3, col.lightened(0.3))
+				k.sphere(glow, I.translated(pos + Vector3(0, ps * 1.6, 0)), ps * 0.18, 4, 7)

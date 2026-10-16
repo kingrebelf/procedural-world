@@ -46,12 +46,21 @@ static func _roll(h: int, era: int) -> Dictionary:
 	var rocks: Array = []
 	for i in r.randi_range(1, 3):
 		rocks.append(r.randi() & 0x7FFFFFFF)
+	var under: Array = []
+	for i in r.randi_range(2, 4):
+		under.append(r.randi() & 0x7FFFFFFF)
+	var fauna: Array = []
+	for i in r.randi_range(1, 3):
+		fauna.append(r.randi() & 0x7FFFFFFF)
 	var lush := r.randf_range(-1.0, 1.0)
 	var grass := _grass_tint(era, r, lush)
 	return {
 		"tree_density": dens, "flora": flora, "rocks": rocks,
 		"rock_density": r.randf_range(0.4, 2.2),
 		"ore_species": r.randi() & 0x7FFFFFFF,
+		"under": under, ## undergrowth species
+		"fauna": fauna, ## animal species
+		"under_density": r.randf_range(0.3, 1.6),
 		"lush": lush, ## -1 dry and golden ... +1 lush and deep green
 		"grass_tint": grass,
 		"grass_density": clampf(r.randf_range(0.5, 1.4) + lush * 0.3, 0.2, 1.6),

@@ -31,6 +31,7 @@ const TABLE := {
 	"hab_dome": ["metal", 420.0, [["alloy_plate", 10], ["circuitry", 8], ["power_cell", 2]]],
 	"comms_spire": ["metal", 380.0, [["alloy_plate", 6], ["circuitry", 12], ["data_core", 1]]],
 	"cargo_stack": ["metal", 300.0, [["alloy_plate", 8], ["alloy_scrap", 10], ["ration_pack", 4]]],
+	"alien_ruin": ["metal", 600.0, [["alloy_plate", 8], ["data_core", 2], ["power_cell", 3], ["aether_crystal", 6]]],
 	"trader": ["wood", 50.0, [["planks", 8], ["wood", 4]]],
 }
 
