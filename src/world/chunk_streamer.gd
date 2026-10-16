@@ -25,6 +25,7 @@ var preview := false
 
 func _ready() -> void:
 	ChunkNode.ensure_shared()
+	KitFlora.preload_all()
 
 func set_target(t: Node3D) -> void:
 	_target = t

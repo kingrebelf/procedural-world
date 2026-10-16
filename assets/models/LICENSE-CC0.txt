@@ -11,3 +11,8 @@ vehicles/Speeder.glb and Rover.glb are craft_speederA and rover from Kenney's Sp
 
 ships/Striker.gltf is from Quaternius' Ultimate Spaceships Pack (CC0); its license file
 sits beside it.
+
+nature/ is from Quaternius' Stylized Nature MegaKit (standard, free edition; CC0). Its
+license file sits beside the models. Leaf textures are its white masks, tinted in game.
+props/Chest_Wood is from Quaternius' Fantasy Props MegaKit and scifi/Prop_Chest from his
+Modular SciFi MegaKit, both CC0.

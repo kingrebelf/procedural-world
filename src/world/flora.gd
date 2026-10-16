@@ -41,7 +41,7 @@ static func species(t: String, sp: int) -> Dictionary:
 			var nouns := {"round": "Oak", "oval": "Elm", "spreading": "Chestnut", "weeping": "Willow", "column": "Birch", "shrub": "Thornbush", "dead": "Deadwood"}
 			return {
 				"form": form, "noun": nouns[form],
-				"height": r.randf_range(2.6, 6.5) * (0.45 if form == "shrub" else 1.0),
+				"height": r.randf_range(5.0, 12.0) * (0.25 if form == "shrub" else 1.0),
 				"girth": r.randf_range(0.22, 0.5) * (0.6 if form == "column" else 1.0),
 				"crown": r.randf_range(1.3, 2.6) * (0.6 if form == "column" else 1.0) * (0.7 if form == "shrub" else 1.0),
 				"blobs": r.randi_range(3, 8), "branches": r.randi_range(2, 6),

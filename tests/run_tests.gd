@@ -653,3 +653,12 @@ func test_planets() -> void:
 	check(ok, "a fey moon is all fantasy")
 	Planets.apply({"kind": "home", "seed": 1})
 	check(WorldField.allowed_eras.is_empty(), "home allows every era")
+
+func test_kit_flora() -> void:
+	for t in ["oak", "pine"]:
+		for sp in range(1, 40):
+			var p := Flora.species(t, sp)
+			var n := KitFlora.model_name(t, p, sp, 0)
+			check(n != "" and ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "%s species %d has a kit model (%s)" % [t, sp, n])
+	for n in KitFlora.ALL:
+		check(ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "kit model %s is in the repo" % n)

@@ -82,6 +82,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		if parts[0] == "under":
 			Flora.build_under(kit, int(parts[1]), int(parts[2]))
 			return kit.commit(Materials.get_mat)
+		var km := KitFlora.build(parts[0], int(parts[1]), int(parts[2]))
+		if km != null:
+			return km
 		if Flora.build(kit, parts[0], int(parts[1]), int(parts[2])):
 			return kit.commit(Materials.get_mat)
 		key = parts[0]
