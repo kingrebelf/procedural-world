@@ -145,11 +145,11 @@ never reused.
 
 | Data | Where | When written |
 |---|---|---|
-| World meta: seed, name, generator version, created, play time, game clock | `world.json` | on create, every autosave |
-| Player: position, look, health, money, selected slot | `player.json` | every autosave (10 s), on quit, on pause |
-| Inventory and equipment, every item with provenance | `player.json` | within 1 s of any change |
+| World meta: seed, name, generator version, created, play time, game clock | `world.dat` (Godot text variant, human-readable) | on create, every autosave |
+| Player: position, look, health, money, selected slot | `player.dat` | every autosave (10 s), on quit, on pause |
+| Inventory and equipment, every item with provenance | `player.dat` | within 1 s of any change |
 | Chunk snapshot: heights, objects, object state | `chunks/<cx>_<cz>.chunk` | on first generation, within 1 s of any change |
-| Discovery log: visited chunks with first-visit time, named places | `discovery.json` | on each new chunk visited |
+| Discovery log: visited chunks with first-visit time, named places | `discovery.dat` | on each new chunk visited |
 | Settings (graphics, audio, controls) | `user://settings.cfg` (not per world) | on change |
 
 Save root: `%APPDATA%\ProceduralWorld\worlds\<world-id>\` on Windows (Godot custom user

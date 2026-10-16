@@ -1,7 +1,6 @@
-.godot/
+
 *.tmp
+.godot/
 /build/
 /export/
-*.import
-!icon.png.import
 tools/_*.gd

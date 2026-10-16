@@ -1,0 +1,54 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+env:
+  GODOT_VERSION: 4.5.1
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and NSIS
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq nsis zip
+          curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          unzip -q godot.zip && sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          curl -sSL -o tpl.tpz https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q tpl.tpz -d tpl && mv tpl/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable/
+          rm -rf tpl tpl.tpz godot.zip
+
+      - name: Import project
+        run: godot --headless --path . --import || true
+
+      - name: Run unit tests
+        run: godot --headless --path . --script res://tests/run_tests.gd
+
+      - name: Run end-to-end persistence test
+        run: godot --headless --path . --script res://tests/integration_test.gd
+
+      - name: Build games and installer
+        run: ./tools/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: procedural-world-builds
+          path: |
+            build/*.exe
+            build/*.zip
+            build/*.tar.gz
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" build/*.exe build/*.zip build/*.tar.gz --title "${GITHUB_REF_NAME}" --generate-notes

@@ -26,7 +26,7 @@ const GROUND := [
 
 ## Atmosphere per era.
 const FOG_COLOR := [Color(0.72, 0.78, 0.86), Color(0.45, 0.62, 0.72), Color(0.55, 0.62, 0.70)]
-const FOG_DENSITY := [0.004, 0.012, 0.006]
+const FOG_DENSITY := [0.004, 0.0075, 0.005]
 const SKY_TINT := [Color(0.38, 0.56, 0.86), Color(0.30, 0.52, 0.70), Color(0.42, 0.50, 0.66)]
 const SUN_TINT := [Color(1.0, 0.96, 0.88), Color(0.95, 0.92, 1.0), Color(0.92, 0.97, 1.0)]
 

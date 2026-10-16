@@ -101,17 +101,19 @@ static func read_var(path: String, compressed: bool = false):
 func save_meta() -> void:
 	write_var(root.path_join("world.dat"), meta)
 
+## Player and discovery data are binary: text serialisation rounds floats, and an item's
+## quality must come back bit-for-bit identical.
 func save_player(data: Dictionary) -> void:
-	write_var(root.path_join("player.dat"), data)
+	write_var(root.path_join("player.dat"), data, true)
 
 func load_player():
-	return read_var(root.path_join("player.dat"))
+	return read_var(root.path_join("player.dat"), true)
 
 func save_discovery(data: Dictionary) -> void:
-	write_var(root.path_join("discovery.dat"), data)
+	write_var(root.path_join("discovery.dat"), data, true)
 
 func load_discovery() -> Dictionary:
-	var d = read_var(root.path_join("discovery.dat"))
+	var d = read_var(root.path_join("discovery.dat"), true)
 	return d if d is Dictionary else {"visited": {}, "regions": {}}
 
 func chunk_path(cx: int, cz: int) -> String:
