@@ -93,6 +93,15 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:
 				_rect(img, Rect2(x, 28, 3, 8), c.darkened(0.3))
+		"torch":
+			_poly(img, [Vector2(29, 58), Vector2(35, 58), Vector2(37, 26), Vector2(27, 26)], Color(0.5, 0.33, 0.18))
+			_rect(img, Rect2(25, 22, 14, 8), Color(0.35, 0.28, 0.2))
+			_circle(img, Vector2(32, 15), 9.0, Color(1.0, 0.55, 0.15))
+			_circle(img, Vector2(32, 17), 5.0, Color(1.0, 0.88, 0.45))
+		"flashlight", "flashlight_dead":
+			_poly(img, [Vector2(10, 40), Vector2(40, 30), Vector2(43, 38), Vector2(13, 48)], c)
+			_poly(img, [Vector2(40, 26), Vector2(52, 22), Vector2(56, 38), Vector2(44, 42)], c.lightened(0.25))
+			_circle(img, Vector2(54, 30), 5.0, Color(1.0, 0.95, 0.7) if type == "flashlight" else Color(0.3, 0.3, 0.32))
 		"binoculars":
 			for x in [20.0, 44.0]:
 				_circle(img, Vector2(x, 38), 11.0, c)

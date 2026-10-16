@@ -29,6 +29,7 @@ const ACTIONS := {
 	"use": ["Use tool / weapon", "mouse:1", "axis:5:1"],
 	"interact": ["Interact / talk / trade", KEY_E, "btn:3"],
 	"eat": ["Eat", KEY_F, "btn:2"],
+	"light": ["Torch / flashlight on or off", KEY_T, "btn:15"],
 	"inventory": ["Inventory", KEY_TAB, "btn:1"],
 	"craft": ["Crafting", KEY_R, "btn:11"],
 	"map": ["Atlas", KEY_M, "btn:4"],

@@ -579,6 +579,33 @@ func test_photo_textures_load() -> void:
 	check(Materials.photo("leaves", "card") != null, "leaf card")
 	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")
 
+func test_hand_light() -> void:
+	var inv := Inventory.new()
+	var hl := HandLight.new()
+	check(hl.toggle(inv).begins_with("No light") and not hl.is_on(), "no torch, no light")
+	inv.add(ItemDB.make("torch", 2, 1.0, {}))
+	hl.toggle(inv)
+	check(hl.kind == "torch", "a torch lights")
+	hl.tick(HandLight.TORCH_BURN + 1.0, inv)
+	check(inv.count("torch") == 1 and hl.kind == "torch", "a burnt-out torch is used up and the next one lit")
+	hl.tick(HandLight.TORCH_BURN + 1.0, inv)
+	check(inv.count("torch") == 0 and not hl.is_on(), "the last torch burns out")
+	inv.add(ItemDB.make("flashlight", 1, 1.0, {}))
+	hl.toggle(inv)
+	check(hl.kind == "flashlight", "a flashlight turns on")
+	hl.tick(HandLight.FLASH_CHARGE * 0.5, inv)
+	check(inv.count("flashlight") == 1, "the battery lasts hours")
+	hl.tick(HandLight.FLASH_CHARGE, inv)
+	check(inv.count("flashlight_dead") == 1 and inv.count("flashlight") == 0 and not hl.is_on(), "then the battery fails")
+	var fix := false
+	for r in Recipes.LIST:
+		if r["out"] == "flashlight" and r["in"].has("flashlight_dead"):
+			fix = true
+	check(fix, "a dead flashlight can be repaired")
+	hl.toggle(inv)
+	check(not hl.is_on(), "a dead flashlight gives no light")
+	hl.free()
+
 func test_levelling_and_attributes() -> void:
 	var s := Stats.new()
 	check(s.level == 1 and s.points == 0 and s.max_health() == 100.0, "fresh character")

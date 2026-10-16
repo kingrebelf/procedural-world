@@ -30,6 +30,7 @@ var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
+var hand_light: HandLight ## torch or flashlight in the off hand
 var ray: RayCast3D
 var builder: Builder
 ## Console cheats: fly (with optional noclip) and a movement speed multiplier.
@@ -100,6 +101,8 @@ func _ready() -> void:
 	viewmodel = Viewmodel.new()
 	viewmodel.look = LOOK
 	camera.add_child(viewmodel)
+	hand_light = HandLight.new()
+	camera.add_child(hand_light)
 	if HumanModel.available():
 		body = HumanModel.new()
 		body.build(LOOK, Eras.MEDIEVAL, "")
@@ -123,7 +126,8 @@ func get_state() -> Dictionary:
 	# the world position.
 	var pos := global_position if is_inside_tree() else position
 	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected, "view": 3 if third_person else 1,
-		"riding": int(vehicle.rec["id"]) if vehicle != null and is_instance_valid(vehicle) else -1}
+		"riding": int(vehicle.rec["id"]) if vehicle != null and is_instance_valid(vehicle) else -1,
+		"light": hand_light.to_data() if hand_light else {}}
 
 func set_state(d: Dictionary) -> void:
 	global_position = d.get("pos", global_position)
@@ -133,6 +137,8 @@ func set_state(d: Dictionary) -> void:
 	if int(d.get("view", 1)) == 3 and not third_person:
 		toggle_view()
 	pending_ride = int(d.get("riding", -1))
+	if hand_light:
+		hand_light.from_data(d.get("light", {}))
 	_apply_look()
 
 func yaw() -> float:
@@ -169,6 +175,9 @@ func _apply_view() -> void:
 	_arm.position = arm_at if third_person else Vector3.ZERO
 	ray.target_position = Vector3(0, 0, -(REACH + (boom if third_person else 0.0)))
 	viewmodel.visible = not third_person and vehicle == null
+	if hand_light:
+		hand_light.show_model = not third_person and vehicle == null
+		hand_light._apply()
 	if body:
 		body.set_shadow_only(not third_person)
 
@@ -273,6 +282,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_view()
 	if event.is_action_pressed("eat"):
 		eat()
+	if event.is_action_pressed("light"):
+		Game.toast.emit(hand_light.toggle(Game.inventory))
 
 func _apply_look() -> void:
 	rotation = Vector3(0, _yaw, 0)
@@ -287,6 +298,9 @@ func _physics_process(delta: float) -> void:
 		else:
 			return
 	_cooldown = maxf(0.0, _cooldown - delta)
+	var lmsg := hand_light.tick(delta, Game.inventory)
+	if lmsg != "":
+		Game.toast.emit(lmsg)
 	if not ui_open:
 		# Controller look: right stick, with a response curve for fine aim near centre.
 		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")

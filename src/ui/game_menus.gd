@@ -273,7 +273,7 @@ var _craft_tab := "All"
 
 static func _recipe_tab(r: Dictionary) -> String:
 	match String(ItemDB.def(r["out"]).get("kind", "")):
-		"tool", "weapon": return "Tools"
+		"tool", "weapon", "light": return "Tools"
 		"station": return "Stations"
 		"placeable": return "Building"
 	return "Materials"
