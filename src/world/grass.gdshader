@@ -29,5 +29,5 @@ void fragment() {
 	SPECULAR = 0.3;
 	BACKLIGHT = base * 0.45;
 	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, 0.65));
-	EMISSION = base * glow * smoothstep(0.7, 1.0, UV.y) * 2.5 * night_glow;
+	EMISSION = base * glow * smoothstep(0.75, 1.0, UV.y) * 1.2 * night_glow;
 }

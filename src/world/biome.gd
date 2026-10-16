@@ -64,7 +64,18 @@ static func _roll(h: int, era: int) -> Dictionary:
 		"lush": lush, ## -1 dry and golden ... +1 lush and deep green
 		"grass_tint": grass,
 		"grass_density": clampf(r.randf_range(0.5, 1.4) + lush * 0.3, 0.2, 1.6),
+		"lumen": _lumen(h, era), ## how much its grass glows at night (0 in most places)
 	}
+
+## Bioluminescence is a feature of a few regions, not of a whole era: about a third of
+## fantasy regions glow, a few sci-fi ones, no medieval ones. (Its own hash, so the rest
+## of a region's roll is unchanged.)
+static func _lumen(h: int, era: int) -> float:
+	var u := WHash.unit2(h & 0xFFFFFFF, era, 0, 77)
+	var chance: float = [0.0, 0.33, 0.1][era]
+	if u >= chance:
+		return 0.0
+	return 0.25 + 0.5 * u / chance
 
 static func _grass_tint(era: int, r: RandomNumberGenerator, lush: float) -> Color:
 	match era:

@@ -187,8 +187,10 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 901)
 	var biome_tint := Color(0, 0, 0, 0)
 	var biome_era: int = chunk.get("era", 0)
+	var lumen := 0.0
 	if chunk.has("biome"):
 		var bp := Biome.params(chunk["biome"], biome_era)
+		lumen = bp["lumen"]
 		biome_tint = bp["grass_tint"]
 		biome_tint.a = 1.0
 		density *= float(bp["grass_density"])
@@ -226,7 +228,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		if biome_tint.a > 0.0:
 			tint = tint.lerp(biome_tint, w[biome_era] * 0.7)
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
-			tint.r, tint.g, tint.b, w[1] * 0.8])
+			tint.r, tint.g, tint.b, w[biome_era] * lumen])
 	return buf
 
 ## Ground clutter (stones and flowers, tiny glowing mushrooms, alloy debris), keyed by

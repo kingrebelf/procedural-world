@@ -227,7 +227,7 @@ static func _get_mat(name: String) -> Material:
 			m.rim_enabled = true
 			m.rim = 0.6
 		else:
-			m = _glow(Color.from_hsv(hue, 0.7, 1.0), 3.0)
+			m = _glow(Color.from_hsv(hue, 0.7, 1.0), 1.6)
 		_cache[name] = m
 		return m
 	match name:
