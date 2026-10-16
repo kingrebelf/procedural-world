@@ -186,7 +186,7 @@ func _update_time_of_day() -> void:
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
 	env.ambient_light_energy = lerpf(0.2, 0.6, daylight)
-	var night_glow := 0.6 + 0.8 * (1.0 - daylight)
+	var night_glow := 0.15 + 1.25 * (1.0 - daylight)
 	ChunkNode.ensure_shared()
 	ChunkNode.terrain_material.set_shader_parameter("night_glow", night_glow)
 	ChunkNode.grass_material.set_shader_parameter("night_glow", night_glow)

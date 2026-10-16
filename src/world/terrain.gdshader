@@ -121,6 +121,18 @@ vec4 untiled(sampler2D t, vec2 p, float tile, float mask, float far) {
 	return mix(a, b, clamp(mask * 0.6 + far, 0.0, 1.0));
 }
 
+// Ground sampling that switches from top-down to a side projection on slopes, so
+// textures don't smear down hillsides.
+vec4 ground(sampler2D t, vec3 wp, vec3 n, vec2 off, float tile, float mask, float far) {
+	vec4 top = untiled(t, wp.xz + off, tile, mask, far);
+	float ws = smoothstep(0.22, 0.55, 1.0 - n.y);
+	if (ws < 0.01) {
+		return top;
+	}
+	vec2 side_uv = abs(n.x) > abs(n.z) ? wp.zy : wp.xy;
+	return mix(top, untiled(t, side_uv + off, tile, mask, far), ws);
+}
+
 // Planar normal sample turned into a world-space tilt (x, z) for ground facing up.
 vec2 untiled_n(sampler2D t, vec2 p, float tile, float mask, float far) {
 	vec3 n = untiled(t, p, tile, mask, far).xyz * 2.0 - 1.0;
@@ -129,10 +141,13 @@ vec2 untiled_n(sampler2D t, vec2 p, float tile, float mask, float far) {
 
 // Texture detail (brightness relative to its mean) on the era palette colour, plus a share
 // (k) of the photo's own colour scaled to the palette's brightness.
+// The brightness ratio is softened and clamped so sparkly textures (glow moss) don't
+// blow out into specks many times brighter than the palette.
 vec3 recolor(vec3 t, vec3 mean, vec3 pal, float k) {
 	float lm = max(dot(mean, LUM), 0.001);
-	float lt = dot(t, LUM);
-	return mix(pal * (lt / lm), t * (dot(pal, LUM) / lm), k);
+	float ratio = clamp(mix(1.0, dot(t, LUM) / lm, 0.7), 0.25, 1.8);
+	vec3 own = t / max(dot(t, LUM), 0.001) * dot(pal, LUM) * ratio;
+	return mix(pal * ratio, own, k);
 }
 
 void vertex() {
@@ -166,21 +181,21 @@ void fragment() {
 		// Ground: planar world mapping, one texture pair per era, skipped where absent.
 		vec3 gm = vec3(0.0), gs = vec3(0.0);
 		if (w.r > 0.01) {
-			gm += w.r * recolor(untiled(grass_tex, p, GRASS_TILE, meso, far).rgb, GRASS_MEAN, grass_m, 0.6);
-			gs += w.r * recolor(untiled(dirt_tex, p + 11.0, DIRT_TILE, meso, far).rgb, DIRT_MEAN, soil_m, 0.6);
+			gm += w.r * recolor(ground(grass_tex, wpos, wnorm, vec2(0.0), GRASS_TILE, meso, far).rgb, GRASS_MEAN, grass_m, 0.6);
+			gs += w.r * recolor(ground(dirt_tex, wpos, wnorm, vec2(11.0), DIRT_TILE, meso, far).rgb, DIRT_MEAN, soil_m, 0.6);
 			tilt_g += w.r * untiled_n(grass_nrm, p, GRASS_TILE, meso, far);
 			tilt_s += w.r * untiled_n(dirt_nrm, p + 11.0, DIRT_TILE, meso, far);
 		}
 		if (w.g > 0.01) {
-			vec3 mt = untiled(glowmoss_tex, p + 5.0, MOSS_TILE, meso, far).rgb;
-			moss_glow = w.g * smoothstep(0.12, 0.45, dot(mt, LUM));
-			gm += w.g * recolor(mt, GLOWMOSS_MEAN, grass_f, 0.35);
-			gs += w.g * recolor(untiled(darksoil_tex, p + 17.0, DIRT_TILE, meso, far).rgb, DARKSOIL_MEAN, soil_f, 0.4);
+			vec3 mt = ground(glowmoss_tex, wpos, wnorm, vec2(5.0), MOSS_TILE, meso, far).rgb;
+			moss_glow = w.g * smoothstep(0.2, 0.5, dot(mt, LUM));
+			gm += w.g * recolor(mt, GLOWMOSS_MEAN, grass_f, 0.2);
+			gs += w.g * recolor(ground(darksoil_tex, wpos, wnorm, vec2(17.0), DIRT_TILE, meso, far).rgb, DARKSOIL_MEAN, soil_f, 0.4);
 			tilt_g += w.g * untiled_n(glowmoss_nrm, p + 5.0, MOSS_TILE, meso, far);
 			tilt_s += w.g * untiled_n(darksoil_nrm, p + 17.0, DIRT_TILE, meso, far);
 		}
 		if (w.b > 0.01) {
-			vec3 dt = untiled(reddust_tex, p + 29.0, DUST_TILE, meso, far).rgb;
+			vec3 dt = ground(reddust_tex, wpos, wnorm, vec2(29.0), DUST_TILE, meso, far).rgb;
 			gm += w.b * recolor(dt, REDDUST_MEAN, grass_s, 0.45);
 			gs += w.b * recolor(dt, REDDUST_MEAN, soil_s, 0.45);
 			vec2 dn2 = untiled_n(reddust_nrm, p + 29.0, DUST_TILE, meso, far);
