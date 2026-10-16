@@ -7,7 +7,9 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic;
+uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+// Repeats of the leaf texture across a card: >1 makes individual leaves smaller.
+uniform float uv_scale = 1.0;
 uniform vec3 albedo : source_color = vec3(1.0);
 uniform vec3 back : source_color = vec3(0.3, 0.35, 0.12);
 uniform bool is_core = false;
@@ -35,7 +37,7 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, UV);
+	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, UV * uv_scale);
 	if (!is_core && tex.a < 0.45) {
 		discard;
 	}

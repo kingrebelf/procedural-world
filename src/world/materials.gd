@@ -82,7 +82,12 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 			m.albedo_texture = photo(ph, "detail")
 		m.normal_enabled = true
 		m.normal_texture = photo(ph, "normal")
-		m.normal_scale = 1.0
+		m.normal_scale = 0.45 if ph == "panels" else 1.0
+		if ph == "panels":
+			# Without nearby reflections, highly metallic dark plates read as pure black and
+			# look like crumpled foil; keep them part-metal and a little rough.
+			m.metallic = minf(metal, 0.55)
+			m.roughness = maxf(rough, 0.45)
 		m.uv1_triplanar = true
 		m.uv1_scale = Vector3.ONE * PHOTO_SCALE.get(ph, 0.5)
 		m.uv1_triplanar_sharpness = 4.0
@@ -190,6 +195,8 @@ static func _wind_foliage(kind: String, core: bool, back: Color, sway: float) ->
 	m.set_shader_parameter("is_core", core)
 	m.set_shader_parameter("back", back)
 	m.set_shader_parameter("sway", sway)
+	# The photo leaf cluster fills a card; repeating it keeps single leaves life-sized.
+	m.set_shader_parameter("uv_scale", 2.0 if kind == "leaf" and photo("leaves", "card") != null else 1.0)
 	return m
 
 static func get_mat(name: String) -> Material:
@@ -261,7 +268,7 @@ static func _get_mat(name: String) -> Material:
 		"rust": m = _pbr(Color(0.55, 0.30, 0.18), 0.8, 0.4, "rust", 0.06, 1.2, 1.0)
 		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
 		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)
-		"metal_dark": m = _pbr(Color(0.18, 0.19, 0.21), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
+		"metal_dark": m = _pbr(Color(0.26, 0.27, 0.3), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
 		"petal_w": m = _pbr(Color(1, 1, 1), 0.7, 0.0, "", 0, 1)
 		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
