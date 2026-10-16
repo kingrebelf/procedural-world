@@ -87,20 +87,27 @@ static func describe_item(it: Dictionary) -> String:
 	var era: int = d.get("era", -1)
 	lines.append("%s %s" % [Eras.NAMES[era] if era >= 0 else "Common", d.get("kind", "item")])
 	lines.append("Quality %d%%   Value %d" % [int(it.get("quality", 1.0) * 100), d.get("value", 0)])
-	var o: Dictionary = it.get("origin", {})
-	if not o.is_empty():
-		var how: String = o.get("how", "found")
-		var where := ""
-		if o.has("chunk") and Game.discovery.has("visited"):
-			var c: Vector2i = o["chunk"]
-			var v = Game.discovery["visited"].get("%d,%d" % [c.x, c.y])
-			if v is Dictionary:
-				where = " in %s" % v["region"]
-		var when := " on day %d" % (int(o["day"]) + 1) if o.has("day") else ""
-		lines.append("%s%s%s" % [how.capitalize(), where, when])
+	var srcs: Array = Inventory.sources_of(it) if Inventory.stacks(it) else [[it.get("origin", {}), it.get("qty", 1)]]
+	for pair in srcs:
+		var line := _origin_line(pair[0])
+		if line != "":
+			lines.append(line + (("  x%d" % pair[1]) if srcs.size() > 1 else ""))
 	if it.has("uid") and not ItemDB.is_stackable(it["type"]):
 		lines.append("#%d" % it["uid"])
 	return "\n".join(lines)
+
+static func _origin_line(o: Dictionary) -> String:
+	if o.is_empty():
+		return ""
+	var how: String = o.get("how", "found")
+	var where := ""
+	if o.has("chunk") and Game.discovery.has("visited"):
+		var c: Vector2i = o["chunk"]
+		var v = Game.discovery["visited"].get("%d,%d" % [c.x, c.y])
+		if v is Dictionary:
+			where = " in %s" % v["region"]
+	var when := " on day %d" % (int(o["day"]) + 1) if o.has("day") else ""
+	return "%s%s%s" % [how.capitalize(), where, when]
 
 ## Gives keyboard/controller focus to the first enabled button inside a panel.
 static func focus_first(root: Node) -> void:

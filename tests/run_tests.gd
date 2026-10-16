@@ -240,6 +240,44 @@ func test_crafting() -> void:
 	check(not Recipes.craft(inv, ingot, o), "out of ore")
 	check(inv.count("iron_ingot") == 2 and inv.count("iron_ore") == 0, "inputs consumed")
 
+func test_stacks_merge_across_quality_and_keep_sources() -> void:
+	var inv := Inventory.new()
+	var a := {"how": "chopped", "era": 0, "chunk": Vector2i(1, 1)}
+	var b := {"how": "bought", "era": 1, "chunk": Vector2i(7, -2)}
+	inv.add(ItemDB.make("wood", 4, 0.8, a))
+	inv.add(ItemDB.make("wood", 6, 1.3, b))
+	check(inv.slots_of("wood") == 1 and inv.count("wood") == 10, "different qualities share one stack")
+	var st: Dictionary = inv.slots[0]
+	check(absf(st["quality"] - 1.1) < 0.02, "stack quality is weighted (%.2f)" % st["quality"])
+	check(Inventory.sources_of(st).size() == 2, "stack remembers both sources")
+	var part := inv.remove_at(0, 5)
+	check(part["qty"] == 5 and part["sources"][0][0]["how"] == "bought", "split takes newest source")
+	check(Inventory.sources_of(inv.slots[0]).size() == 2 and inv.count("wood") == 5, "rest keeps older sources")
+	# Old saves with one stack per quality merge on load.
+	var old := {"slots": [ItemDB.make("wood", 2, 0.9, a), ItemDB.make("wood", 3, 1.2, b)], "next_uid": 3}
+	var r := Inventory.new()
+	r.from_data(old)
+	check(r.slots_of("wood") == 1 and r.count("wood") == 5, "old split stacks merge on load")
+	# Swapping onto a same-type stack merges.
+	var m := Inventory.new()
+	m.slots[0] = ItemDB.make("stone", 2, 1.0, a)
+	m.slots[3] = ItemDB.make("stone", 4, 1.0, b)
+	m.swap(0, 3)
+	check(m.slots[0] == null and m.slots[3]["qty"] == 6, "dropping a stack on its twin merges")
+
+func test_batch_crafting() -> void:
+	var inv := Inventory.new()
+	var o := {"how": "chopped", "era": 0}
+	inv.add(ItemDB.make("wood", 37, 1.0, o))
+	var planks: Dictionary = Recipes.LIST.filter(func(r): return r["out"] == "planks" and r["in"].has("wood"))[0]
+	check(Recipes.max_crafts(inv, planks) == 37, "max crafts")
+	check(Recipes.craft_many(inv, planks, o, 10) == 10 and inv.count("planks") == 20, "craft x10")
+	check(Recipes.craft_many(inv, planks, o, 100) == 27 and inv.count("wood") == 0, "x100 clamps to what you have")
+	check(inv.count("planks") == 74 and inv.slots_of("planks") == 1, "batch output is one stack")
+	inv.add(ItemDB.make("iron_ingot", 20, 1.0, o))
+	var pick: Dictionary = Recipes.LIST.filter(func(r): return r["out"] == "pickaxe_iron")[0]
+	check(Recipes.craft_many(inv, pick, o, -1) == 10 and inv.count("pickaxe_iron") == 10, "craft all tools, one slot each")
+
 func test_economy_arbitrage_and_demand() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = 3

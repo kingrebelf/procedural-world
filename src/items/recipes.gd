@@ -19,23 +19,52 @@ const LIST := [
 ]
 
 static func can_craft(inv: Inventory, recipe: Dictionary) -> bool:
+	return max_crafts(inv, recipe) > 0
+
+## How many times the recipe can be made from what is in the pack (and still fit).
+static func max_crafts(inv: Inventory, recipe: Dictionary) -> int:
+	var n := 1 << 30
 	for t in recipe["in"]:
-		if inv.count(t) < recipe["in"][t]:
-			return false
-	return true
+		n = mini(n, inv.count(t) / int(recipe["in"][t]))
+	if n <= 0:
+		return 0
+	if not ItemDB.is_stackable(recipe["out"]):
+		# Each tool needs its own slot; consuming inputs may free some.
+		n = mini(n, inv.free_slots() + _slots_freed(inv, recipe, n))
+	elif inv.count(recipe["out"]) == 0 and inv.free_slots() + _slots_freed(inv, recipe, n) <= 0:
+		return 0
+	return maxi(n, 0)
+
+static func _slots_freed(inv: Inventory, recipe: Dictionary, times: int) -> int:
+	var freed := 0
+	for t in recipe["in"]:
+		if inv.count(t) == recipe["in"][t] * times:
+			freed += inv.slots_of(t)
+	return freed
 
 ## Consumes inputs and adds the output. Output quality is the average input quality.
 static func craft(inv: Inventory, recipe: Dictionary, origin: Dictionary) -> bool:
-	if not can_craft(inv, recipe):
-		return false
+	return craft_many(inv, recipe, origin, 1) == 1
+
+## Crafts up to `times` in one go (-1 = as many as possible); returns how many were made.
+static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, times: int) -> int:
+	var most := max_crafts(inv, recipe)
+	var n := most if times < 0 else mini(times, most)
+	if n <= 0:
+		return 0
 	var q_sum := 0.0
 	var q_n := 0
 	for t in recipe["in"]:
 		q_sum += inv.average_quality(t) * recipe["in"][t]
 		q_n += recipe["in"][t]
 	for t in recipe["in"]:
-		inv.remove_type(t, recipe["in"][t])
+		inv.remove_type(t, recipe["in"][t] * n)
 	var o := origin.duplicate()
 	o["how"] = "crafted"
-	inv.add(ItemDB.make(recipe["out"], recipe["qty"], q_sum / maxf(1, q_n), o))
-	return true
+	var q := q_sum / maxf(1, q_n)
+	if ItemDB.is_stackable(recipe["out"]):
+		inv.add(ItemDB.make(recipe["out"], recipe["qty"] * n, q, o))
+	else:
+		for k in n * int(recipe["qty"]):
+			inv.add(ItemDB.make(recipe["out"], 1, q, o))
+	return n

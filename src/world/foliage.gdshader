@@ -37,7 +37,13 @@ void vertex() {
 }
 
 void fragment() {
-	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, UV * uv_scale);
+	vec2 uv = UV * uv_scale;
+	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, uv);
+	// Thin needles and leaf tips average away in distant mip levels; raising alpha with the
+	// mip level keeps far cards as full as near ones instead of breaking into speckles.
+	vec2 px = uv * vec2(textureSize(albedo_tex, 0));
+	float lod = max(0.5 * log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px)))), 0.0);
+	tex.a *= 1.0 + lod * 0.28;
 	if (!is_core && tex.a < 0.45) {
 		discard;
 	}

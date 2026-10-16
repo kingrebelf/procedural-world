@@ -190,33 +190,78 @@ func _inventory_panel() -> Control:
 
 # --- Crafting ------------------------------------------------------------------------
 
+const CRAFT_AMOUNTS := [1, 5, 10, 100]
+var _craft_scroll := 0
+
+static func _icon_rect(type: String, px: int) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = Icons.get_icon(type)
+	r.custom_minimum_size = Vector2(px, px)
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.tooltip_text = ItemDB.def(type).get("name", type)
+	r.mouse_filter = Control.MOUSE_FILTER_PASS
+	return r
+
+func _do_craft(r: Dictionary, times: int) -> void:
+	var pos := player.global_position if player else Vector3.ZERO
+	var ck := ChunkStreamer.chunk_of(pos)
+	var made := Recipes.craft_many(Game.inventory, r, Game.origin_here("crafted", -1, ck), times)
+	if made > 0:
+		Game.item_gained.emit(r["out"], made * int(r["qty"]))
+
 func _craft_panel() -> Control:
-	var s := _shell("Crafting", "Crafted items remember who made them, where and when.")
+	var s := _shell("Crafting", "Pick an amount, or Craft all. Crafted items remember who made them, where and when.")
 	var v: VBoxContainer = s[1]
 	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(760, 520)
+	sc.custom_minimum_size = Vector2(980, 560)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 6)
 	sc.add_child(list)
-	for r in Recipes.LIST:
+	# Recipes you can make first, then the rest in their usual order.
+	var order: Array = Recipes.LIST.duplicate()
+	order.sort_custom(func(x, y): return (Recipes.max_crafts(Game.inventory, x) > 0) and not (Recipes.max_crafts(Game.inventory, y) > 0))
+	for r in order:
+		var most := Recipes.max_crafts(Game.inventory, r)
+		var card := PanelContainer.new()
+		card.add_theme_stylebox_override("panel", UITheme.sb(Color(0.1, 0.11, 0.12, 0.85 if most > 0 else 0.5), Color(1, 1, 1, 0.08), 6, 1, 8))
 		var row := HBoxContainer.new()
-		var out := UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17)
-		out.custom_minimum_size = Vector2(240, 0)
-		row.add_child(out)
-		var parts: Array = []
-		for t in r["in"]:
-			parts.append("%s %d/%d" % [ItemDB.def(t)["name"], Game.inventory.count(t), r["in"][t]])
-		var ins := UITheme.label(", ".join(parts), 15, UITheme.TEXT if Recipes.can_craft(Game.inventory, r) else UITheme.DIM)
+		row.add_theme_constant_override("separation", 10)
+		card.add_child(row)
+		row.add_child(_icon_rect(r["out"], 52))
+		var name_box := VBoxContainer.new()
+		name_box.custom_minimum_size = Vector2(210, 0)
+		name_box.add_child(UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17, UITheme.TEXT if most > 0 else UITheme.DIM))
+		name_box.add_child(UITheme.label(("Can make %d" % most) if most > 0 else "Missing materials", 13, UITheme.ACCENT if most > 0 else UITheme.DIM))
+		row.add_child(name_box)
+		var ins := HBoxContainer.new()
 		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ins.add_theme_constant_override("separation", 12)
+		for t in r["in"]:
+			var have: int = Game.inventory.count(t)
+			var need: int = r["in"][t]
+			var chip := HBoxContainer.new()
+			chip.add_theme_constant_override("separation", 4)
+			chip.add_child(_icon_rect(t, 30))
+			chip.add_child(UITheme.label("%d/%d" % [have, need], 15, UITheme.TEXT if have >= need else Color(0.9, 0.45, 0.4)))
+			chip.tooltip_text = ItemDB.def(t)["name"]
+			ins.add_child(chip)
 		row.add_child(ins)
-		var b := UITheme.button("Craft", func():
-			var pos := player.global_position if player else Vector3.ZERO
-			var ck := ChunkStreamer.chunk_of(pos)
-			if Recipes.craft(Game.inventory, r, Game.origin_here("crafted", -1, ck)):
-				Game.toast.emit("Crafted %s" % ItemDB.def(r["out"])["name"]))
-		b.disabled = not Recipes.can_craft(Game.inventory, r)
-		row.add_child(b)
-		list.add_child(row)
+		for n in CRAFT_AMOUNTS:
+			var amount: int = n
+			var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount))
+			b.custom_minimum_size = Vector2(54, 0)
+			b.disabled = most < amount
+			row.add_child(b)
+		var all := UITheme.button("All", func(): _do_craft(r, -1))
+		all.custom_minimum_size = Vector2(60, 0)
+		all.disabled = most <= 0
+		row.add_child(all)
+		list.add_child(card)
+	sc.get_v_scroll_bar().value_changed.connect(func(val): _craft_scroll = int(val))
+	(func(): sc.scroll_vertical = _craft_scroll).call_deferred()
 	v.add_child(sc)
 	return s[0]
 

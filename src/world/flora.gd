@@ -252,7 +252,7 @@ static func _conifer(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> voi
 		var y := h * (0.18 + t * 0.75)
 		var rad := w * (1.0 - t * 0.85) * r.randf_range(0.85, 1.1)
 		var lc := _jit(leaf, r, 0.1)
-		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.55, 0.05, h / tiers * 1.6, 10, true, 0.25, 2, lc * 0.55)
+		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.42, 0.05, h / tiers * 1.5, 10, true, 0.25, 2, lc * 0.78)
 		var cards := int(10 + rad * 5)
 		for c in cards:
 			var a := TAU * c / cards + r.randf() * 0.3

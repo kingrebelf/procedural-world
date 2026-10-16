@@ -120,6 +120,9 @@ static func _foliage_tex(kind: String) -> Texture2D:
 	if kind == "leaf" and photo("leaves", "card") != null:
 		_tex[k] = photo("leaves", "card")
 		return _tex[k]
+	if kind == "needle" and photo("needles", "card") != null:
+		_tex[k] = photo("needles", "card")
+		return _tex[k]
 	var S := 256
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
