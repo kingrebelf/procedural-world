@@ -156,6 +156,16 @@ func _run() -> void:
 	var stamina0: float = game.stamina
 	check(game.use_stamina(10.0) and game.stamina < stamina0, "actions spend stamina")
 
+	# Dying: health hits zero, a pause, then you wake at the spawn with your pack.
+	var count_before: int = game.inventory.count("planks")
+	game.set_health(-5.0, "test")
+	check(game.dead and player.ui_open, "zero health kills you")
+	await create_timer(4.6).timeout
+	await _frames(30)
+	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
+	check(game.inventory.count("planks") == count_before, "dying keeps your pack")
+	await _frames(60)
+
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
 	player.global_position += Vector3(3, 0, 2)

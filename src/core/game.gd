@@ -7,6 +7,8 @@ signal world_loaded
 signal money_changed(money: int)
 signal health_changed(health: float)
 signal stats_changed
+signal died(cause: String)
+signal revived
 signal leveled_up(level: int)
 signal xp_gained(amount: int, why: String)
 signal toast(text: String)
@@ -81,6 +83,10 @@ func _begin(fresh: bool) -> void:
 		money = p.get("money", 0)
 		stats = Stats.from_data(p.get("stats"))
 		health = clampf(p.get("health", 100.0), 0.0, stats.max_health())
+		if health <= 0.0:
+			# Saved while dead (before death existed, or mid-respawn): wake up healed.
+			health = stats.max_health()
+		dead = false
 		stamina = stats.max_stamina()
 		pending_player_state = p
 	else:
@@ -201,12 +207,26 @@ func give(item: Dictionary) -> bool:
 ## Console cheats for this session (not saved): god = no damage.
 var cheats := {"god": false}
 
-func set_health(h: float) -> void:
-	if cheats["god"] and h < health:
+var dead := false
+
+func set_health(h: float, cause: String = "") -> void:
+	if (cheats["god"] or dead) and h < health:
 		return
 	health = clampf(h, 0.0, stats.max_health())
 	_player_dirty = true
 	health_changed.emit(health)
+	if health <= 0.0 and not dead:
+		dead = true
+		died.emit(cause if cause != "" else "You died")
+
+## Back on your feet after dying: full health and stamina. You keep your pack.
+func revive() -> void:
+	dead = false
+	health = stats.max_health()
+	stamina = stats.max_stamina()
+	_player_dirty = true
+	health_changed.emit(health)
+	revived.emit()
 
 func max_health() -> float:
 	return stats.max_health()

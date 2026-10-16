@@ -250,7 +250,7 @@ func _physics_process(delta: float) -> void:
 		var vy := velocity.y
 		move_and_slide()
 		if was_air and is_on_floor() and vy < -11.0:
-			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0)
+			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0, "You fell to your death")
 	# Stamina: sprinting drains it; it refills after a moment's rest.
 	if sprinting and hv.length() > 1.0 and not swimming:
 		_tire(13.0 * delta)
@@ -266,7 +266,7 @@ func _physics_process(delta: float) -> void:
 			_drown_t -= delta
 			if _drown_t <= 0.0:
 				_drown_t = 1.0
-				Game.set_health(Game.health - 8.0)
+				Game.set_health(Game.health - 8.0, "You drowned")
 				Game.toast.emit("Drowning!")
 	else:
 		breath = minf(BREATH, breath + delta * 6.0)

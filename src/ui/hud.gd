@@ -368,6 +368,44 @@ func _update_use_prompt(delta: float) -> void:
 	var at := cam.unproject_position(f["pos"])
 	_use_box.position = (at - Vector2(_use_box.size.x * 0.5, _use_box.size.y)).round()
 
+var _death: Control
+
+func show_death(cause: String) -> void:
+	if _death:
+		_death.queue_free()
+	_death = ColorRect.new()
+	(_death as ColorRect).color = Color(0.12, 0.0, 0.0, 0.0)
+	_death.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_death.mouse_filter = Control.MOUSE_FILTER_STOP
+	var v := VBoxContainer.new()
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var t := UITheme.label("YOU DIED", 64, Color(0.9, 0.25, 0.2))
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_constant_override("outline_size", 8)
+	t.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	v.add_child(t)
+	var c := UITheme.label(cause, 22)
+	c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(c)
+	var w := UITheme.label("You keep everything you carry, but lose a quarter of your progress to the next level.", 16, UITheme.DIM)
+	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(w)
+	_death.add_child(v)
+	add_child(_death)
+	_death.modulate.a = 0.0
+	var tw := _death.create_tween()
+	tw.tween_property(_death, "modulate:a", 1.0, 0.8)
+	tw.parallel().tween_property(_death, "color:a", 0.75, 1.5)
+
+func hide_death() -> void:
+	if _death:
+		var d := _death
+		_death = null
+		var tw := d.create_tween()
+		tw.tween_property(d, "modulate:a", 0.0, 0.8)
+		tw.tween_callback(d.queue_free)
+
 ## A captioned bar: a small label and value above a coloured ProgressBar.
 static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
 	var row := HBoxContainer.new()

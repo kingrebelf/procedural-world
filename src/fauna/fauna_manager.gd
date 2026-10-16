@@ -92,7 +92,7 @@ func _spawn(cn: ChunkNode) -> Array:
 
 func creature_bites(c: Creature) -> void:
 	var dmg := 4.0 + float(c.p["size"]) * 6.0
-	Game.set_health(Game.health - dmg)
+	Game.set_health(Game.health - dmg, "Killed by a %s" % c.label())
 	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(dmg)])
 
 ## The player hit an animal. Kills are permanent and pay out the species' drops.

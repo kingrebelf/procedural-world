@@ -55,6 +55,7 @@ func _ready() -> void:
 	fauna.npcs = npcs
 	add_child(fauna)
 	player.fauna = fauna
+	Game.died.connect(_on_died)
 
 	var ui := CanvasLayer.new()
 	add_child(ui)
@@ -84,6 +85,29 @@ func _ready() -> void:
 
 func _apply_settings() -> void:
 	streamer.apply_settings(int(Settings.get_value("view_distance")), float(Settings.get_value("grass_density")))
+
+## Death: a few seconds of "You died", then you wake at the world's spawn point with your
+## pack intact, minus some of the progress toward your next level.
+func _on_died(cause: String) -> void:
+	player.ui_open = true
+	player.velocity = Vector3.ZERO
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	hud.show_death(cause)
+	await get_tree().create_timer(4.0).timeout
+	if not is_inside_tree():
+		return
+	Game.stats.xp = int(Game.stats.xp * 0.75)
+	player.global_position = find_spawn() + Vector3(0, 2, 0)
+	player.velocity = Vector3.ZERO
+	player.frozen = true
+	player.snap_down = true
+	player.breath = Player.BREATH
+	Game.revive()
+	Game.stats_changed.emit()
+	hud.hide_death()
+	player.ui_open = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Game.toast.emit("You wake where you first arrived. Your pack is safe.")
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:

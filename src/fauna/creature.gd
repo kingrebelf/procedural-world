@@ -89,11 +89,14 @@ func _ready() -> void:
 	_body.collision_layer = 2
 	_body.collision_mask = 0
 	_body.set_meta("creature", self)
+	# Hit box fitted to the whole model (head, body and legs), so a big animal can be hit
+	# wherever you swing at it, not only in a small ball at its middle.
+	var box := _model_bounds()
 	var cs := CollisionShape3D.new()
-	var sh := SphereShape3D.new()
-	sh.radius = 0.45 * float(p["size"])
+	var sh := BoxShape3D.new()
+	sh.size = box.size.max(Vector3(0.3, 0.3, 0.3))
 	cs.shape = sh
-	cs.position.y = 0.7 * float(p["size"]) * float(p["leg"]) if p["plan"] != "bird" else 0.0
+	cs.position = box.get_center()
 	_body.add_child(cs)
 	add_child(_body)
 	global_position = home
@@ -191,6 +194,21 @@ func hurt(dmg: float) -> bool:
 	return hp <= 0.0
 
 # --- Model ----------------------------------------------------------------------------
+
+## Bounds of every mesh in the model, in this node's space.
+func _model_bounds() -> AABB:
+	var out := AABB()
+	var first := true
+	var stack: Array = [_model]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is MeshInstance3D and n.mesh:
+			var xf: Transform3D = global_transform.affine_inverse() * (n as MeshInstance3D).global_transform
+			var b: AABB = xf * n.mesh.get_aabb()
+			out = b if first else out.merge(b)
+			first = false
+	return out
 
 func _mesh(parent: Node3D, m: Mesh, c: Color, pos: Vector3, rot := Vector3.ZERO, scl := Vector3.ONE, emit := false) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
