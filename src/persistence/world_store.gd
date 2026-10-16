@@ -12,6 +12,7 @@ var meta: Dictionary = {}
 func _init(world_dir: String) -> void:
 	root = world_dir
 	DirAccess.make_dir_recursive_absolute(root.path_join("chunks"))
+	DirAccess.make_dir_recursive_absolute(root.path_join("people"))
 
 static func worlds_dir() -> String:
 	return "user://worlds"
@@ -140,6 +141,31 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 	stitch_edges(c)
 	save_chunk(c)
 	return c
+
+# --- Settlements and their people ---------------------------------------------------
+
+func settlement_path(sx: int, sz: int) -> String:
+	return root.path_join("people").path_join("%d_%d.dat" % [sx, sz])
+
+func has_settlement(sx: int, sz: int) -> bool:
+	return FileAccess.file_exists(settlement_path(sx, sz))
+
+func load_settlement(sx: int, sz: int):
+	return read_var(settlement_path(sx, sz), true)
+
+func save_settlement(s: Dictionary) -> bool:
+	return write_var(settlement_path(s["sx"], s["sz"]), s, true)
+
+## Same rule as chunks: people are created the first time their settlement is seen,
+## saved at once, and from then on only ever loaded.
+func get_or_create_settlement(gen: ChunkGenerator, site: Dictionary) -> Dictionary:
+	var s = load_settlement(site["sx"], site["sz"])
+	if s is Dictionary:
+		return s
+	s = NPCGen.generate(gen.seed, gen, site, gen.settlement_layout(site))
+	s["created"] = Time.get_unix_time_from_system()
+	save_settlement(s)
+	return s
 
 ## Already-existing neighbours are authoritative for shared edge vertices, so terrain
 ## stays seamless even across chunks made by different generator versions or edited

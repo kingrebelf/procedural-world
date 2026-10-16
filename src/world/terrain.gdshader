@@ -109,18 +109,13 @@ void fragment() {
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18);
 	vec3 col = mix(ground, rock, rock_mask);
 
-	// Sci-fi: alloy plating with panel seams on flat ground.
+	// Sci-fi: weathered dust and ash with faint mineral sparkle; no panel grid.
 	float plates = 0.0;
 	if (w.b > 0.01) {
-		vec2 g = fract(p / 4.0);
-		vec2 id = floor(p / 4.0);
-		float seam = 1.0 - smoothstep(0.0, 0.025, min(min(g.x, 1.0 - g.x), min(g.y, 1.0 - g.y)));
-		float flat_ = 1.0 - rock_mask;
-		plates = w.b * flat_ * step(0.4, fbm(id * 0.13));
-		col = mix(col, vec3(0.30, 0.31, 0.33) * (0.8 + 0.4 * hash12(id)), plates * 0.85);
-		col *= 1.0 - seam * plates * 0.6;
-		float lines = seam * plates * step(0.82, hash12(id + 3.0));
-		EMISSION += glow_s * lines * 2.2 * night_glow;
+		float ash = fbm(p * 0.05 + 31.0);
+		col = mix(col, col * vec3(1.08, 0.95, 0.88) * (0.85 + 0.3 * ash), w.b * 0.5);
+		float glint = smoothstep(0.93, 0.99, vnoise(p * 6.0)) * (1.0 - rock_mask);
+		EMISSION += glow_s * glint * w.b * 0.12 * night_glow;
 	}
 
 	// Fantasy: bioluminescent spores in the moss.

@@ -40,8 +40,9 @@ void sky() {
 	// Sunset glow near the sun when it is low.
 	float sd = max(dot(d, sun), 0.0);
 	float low = 1.0 - smoothstep(0.0, 0.35, abs(sun_h));
-	col += sunset * pow(sd, 6.0) * low * 0.9 * (1.0 - up * 0.6);
-	col += sunset * low * 0.25 * (1.0 - up) * smoothstep(-0.2, 0.3, dot(normalize(d.xz + vec2(0.0001)), normalize(sun.xz + vec2(0.0001))));
+	col += sunset * pow(sd, 8.0) * low * 0.8 * (1.0 - up * 0.6) * smoothstep(-0.25, 0.05, sun_h);
+	float az = dot(normalize(d.xz + vec2(0.0001)), normalize(sun.xz + vec2(0.0001))) * 0.5 + 0.5;
+	col += sunset * low * 0.22 * pow(1.0 - up, 3.0) * az * az * daylight;
 
 	// Sun disc and halo.
 	if (LIGHT0_ENABLED) {

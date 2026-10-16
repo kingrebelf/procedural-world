@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 1
+const GEN_VERSION := 2 ## 2: per-region biomes and parametric species.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -105,6 +105,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 		"era": WorldField.dominant(center_w),
 		"region": field.region_name_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 		"objects": [],
+		"biome": field.region_hash_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 	}
 	_place_objects(chunk, sites)
 	return chunk
@@ -147,13 +148,17 @@ func _pick_era(w: PackedFloat32Array, r: float) -> int:
 			return e
 	return Eras.COUNT - 1
 
-func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: float, scale: float, st: Dictionary = {}) -> void:
+func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: float, scale: float, st: Dictionary = {}, sp: int = 0, v: int = 0) -> void:
 	var objs: Array = chunk["objects"]
-	objs.append({
+	var o := {
 		"i": objs.size(), "t": type, "e": era,
 		"p": Vector3(lx, height_at(chunk, lx, lz), lz),
 		"r": yaw, "s": scale, "st": st,
-	})
+	}
+	if sp != 0:
+		o["sp"] = sp
+		o["v"] = v
+	objs.append(o)
 
 func _near_settlement(x: float, z: float, sites: Array, radius: float) -> bool:
 	for s in sites:
@@ -173,27 +178,31 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		_place_settlement(chunk, s, x0, z0)
 
 	# Vegetation: jittered candidates, era picked by sampling local weights so
-	# transition bands get a natural, dithered mix of both sides.
+	# transition bands get a natural, dithered mix of both sides. Each region's biome
+	# decides which species grow and how densely.
 	var r := WHash.rng(seed, cx, cz, 301)
-	var candidates := 48
+	var candidates := 64
 	for n in candidates:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var w := weights_at(chunk, lx, lz)
 		var era := _pick_era(w, r.randf())
 		var forest := clampf((field._moss.get_noise_2d((x0 + lx) * 0.15, (z0 + lz) * 0.15) + 0.35) * 1.5, 0.0, 1.0)
-		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6)
 		var roll := r.randf()
 		var yaw := r.randf() * TAU
-		var sc := r.randf_range(0.75, 1.35)
+		var sc := r.randf_range(0.7, 1.4)
 		var hp := r.randi_range(3, 5)
 		var yield_ := r.randi_range(3, 6)
+		var variant := r.randi() % Flora.VARIANTS
+		var pick := r.randf()
+		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER + 6.0):
 			continue
-		var types: Array = Eras.TREE_TYPES[era]
-		_add(chunk, types[int(roll / p * types.size()) % types.size()], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_})
+		var f := Biome.pick_flora(bp, pick)
+		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
-	# Rocks and ore.
+	# Rocks and ore, shaped by the region's geology.
 	r = WHash.rng(seed, cx, cz, 302)
 	for n in 16:
 		var lx := r.randf() * SIZE
@@ -204,12 +213,17 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.6, 1.8)
 		var left := r.randi_range(3, 7)
+		var variant := r.randi() % Flora.VARIANTS
+		var pick := r.randi()
 		if _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5:
 			continue
-		if roll < Eras.ROCK_DENSITY[era] / 16.0:
-			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0})
-		elif roll < (Eras.ROCK_DENSITY[era] + Eras.ORE_DENSITY[era]) / 16.0:
-			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0})
+		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
+		var rocks: Array = bp["rocks"]
+		if roll < rd / 16.0:
+			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0}, rocks[pick % rocks.size()], variant)
+		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
+			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
 	# Caches: rare, contents rolled now and frozen forever.
 	r = WHash.rng(seed, cx, cz, 303)
@@ -236,7 +250,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5:
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
 
-func _place_settlement(chunk: Dictionary, s: Dictionary, x0: float, z0: float) -> void:
+## Everything a settlement contains, in world coordinates. Deterministic per site, so
+## the NPC system can find homes and the stall without loading every chunk.
+func settlement_layout(s: Dictionary) -> Array:
 	var c: Vector2 = s["center"]
 	var era: int = s["era"]
 	var r := WHash.rng(seed, s["sx"], s["sz"], 401)
@@ -254,10 +270,20 @@ func _place_settlement(chunk: Dictionary, s: Dictionary, x0: float, z0: float) -
 		# Face the square.
 		items.append({"t": t, "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
 	if r.randf() < 0.6:
-		var o := {"chunk": Vector2i(int(chunk["cx"]), int(chunk["cz"])), "era": era, "how": "found"}
+		var cx := int(floor(c.x / SIZE))
+		var cz := int(floor(c.y / SIZE))
+		var o := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
 		items.append({"t": Eras.CACHE_TYPES[era], "p": c + Vector2(r.randf_range(-9, 9), r.randf_range(-9, 9)),
 			"yaw": r.randf() * TAU, "st": {"loot": ItemDB.roll_loot(era, r, o), "opened": false}})
-	for it in items:
+	return items
+
+func _place_settlement(chunk: Dictionary, s: Dictionary, x0: float, z0: float) -> void:
+	var era: int = s["era"]
+	for it in settlement_layout(s):
 		var p: Vector2 = it["p"]
 		if p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE:
+			if it["t"] == Eras.CACHE_TYPES[era]:
+				for l in it["st"]["loot"]:
+					if l.get("origin") is Dictionary:
+						l["origin"]["chunk"] = Vector2i(int(chunk["cx"]), int(chunk["cz"]))
 			_add(chunk, it["t"], era, p.x - x0, p.y - z0, it["yaw"], 1.0, it["st"])

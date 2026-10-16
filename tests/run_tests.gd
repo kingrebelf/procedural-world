@@ -261,3 +261,136 @@ func test_economy_arbitrage_and_demand() -> void:
 	Economy.tick(t2, 3.5)
 	Economy.tick(t2, 7.0)
 	check(t1["stock"] == t2["stock"], "restock is deterministic regardless of visit pattern")
+
+# --- AI and NPCs -----------------------------------------------------------------
+
+func test_ai_request_formats() -> void:
+	var c := {"format": "openai", "base_url": "http://127.0.0.1:8080/v1/", "api_key": "k", "model": "m",
+		"max_tokens": 100, "temperature": 0.5, "json_mode": true}
+	var r := AIServiceShim.build(c)
+	check(r["url"] == "http://127.0.0.1:8080/v1/chat/completions", "openai url")
+	check(Array(r["headers"]).has("Authorization: Bearer k"), "openai auth header")
+	var b = JSON.parse_string(r["body"])
+	check(b["messages"][0]["role"] == "system" and b["model"] == "m", "openai body has system + model")
+	check(b["response_format"]["type"] == "json_object", "json mode requested")
+	c["format"] = "anthropic"
+	c["model"] = "claude-haiku-5-5"
+	r = AIServiceShim.build(c)
+	check(r["url"] == "http://127.0.0.1:8080/v1/messages", "anthropic url")
+	check(Array(r["headers"]).has("x-api-key: k") and Array(r["headers"]).has("anthropic-version: 2023-06-01"), "anthropic headers")
+	b = JSON.parse_string(r["body"])
+	check(b["system"] == "sys" and b["messages"][0]["role"] == "user", "anthropic body shape")
+	check(not b.has("temperature") and not b.has("budget_tokens"), "no unsupported sampling params")
+	c["api_key"] = ""
+	r = AIServiceShim.build(c)
+	check(not str(r["headers"]).contains("x-api-key"), "no key header without key")
+
+func test_ai_response_parsing() -> void:
+	var S = load("res://src/ai/ai_service.gd")
+	var ok: Dictionary = S.parse_response("openai", 200, '{"choices":[{"message":{"content":"hi"}}]}')
+	check(ok["ok"] and ok["text"] == "hi", "openai reply")
+	ok = S.parse_response("anthropic", 200, '{"stop_reason":"end_turn","content":[{"type":"thinking","thinking":"x"},{"type":"text","text":"yo"}]}')
+	check(ok["ok"] and ok["text"] == "yo", "anthropic reply skips thinking blocks")
+	var ref: Dictionary = S.parse_response("anthropic", 200, '{"stop_reason":"refusal","content":[]}')
+	check(not ref["ok"], "refusal reported as failure")
+	var bad: Dictionary = S.parse_response("openai", 401, '{"error":{"message":"bad key"}}')
+	check(not bad["ok"] and bad["error"].contains("bad key"), "http error message surfaced")
+	var j = S.extract_json('Sure! ```json\n{"say": "a } b", "n": {"x": 1}}\n``` done')
+	check(j is Dictionary and j["say"] == "a } b" and j["n"]["x"] == 1, "lenient json extraction")
+	check(S.extract_json("no json here") == null, "no json -> null")
+	var d: Dictionary = S.parse_decisions('{"decisions":[{"id":"a","action":"wander"},{"id":"b","action":"explode"}]}')
+	check(d.has("a") and not d.has("b"), "external decisions validated against action list")
+
+func _npc_fixture() -> Array:
+	var gen := ChunkGenerator.new(777)
+	var site := {}
+	for ring in 12:
+		var f := gen.settlements_near(-ring * 256.0, -ring * 256.0, ring * 256.0, ring * 256.0)
+		if not f.is_empty():
+			site = f[0]
+			break
+	return [gen, site]
+
+func test_npc_generation_deterministic() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var site: Dictionary = fx[1]
+	check(not site.is_empty(), "settlement found")
+	var a := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	var b := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	check(var_to_bytes(a) == var_to_bytes(b), "same seed, same people")
+	check(a["npcs"][0]["job"] == "trader", "first person keeps the stall")
+	check(a["npcs"].size() >= 4, "settlement has residents")
+	var ids := {}
+	for p in a["npcs"]:
+		ids[p["id"]] = true
+		for k in ["friendly", "brave", "curious", "diligent", "greedy"]:
+			check(p["traits"][k] >= 0.0 and p["traits"][k] <= 1.0, "trait range")
+	check(ids.size() == a["npcs"].size(), "unique ids")
+
+func test_decision_engine() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var s := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var p: Dictionary = s["npcs"][2].duplicate(true)
+	p["job"] = "farmer"
+	var per := {"hour": 2.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0}
+	check(DecisionEngine.decide(p, per)["action"] == "sleep", "sleeps at night")
+	per["hour"] = 11.0
+	var day_a: String = DecisionEngine.decide(p, per)["action"]
+	check(day_a in ["work", "wander", "socialize"], "daytime activity (%s)" % day_a)
+	p["rel"] = -90
+	p["traits"]["brave"] = 0.05
+	per["player_dist"] = 5.0
+	check(DecisionEngine.decide(p, per)["action"] == "flee", "timid npc flees a hated player")
+	var g: Dictionary = s["npcs"][1].duplicate(true)
+	g["job"] = NPCGen.GUARD_JOBS[g["era"]]
+	g["rel"] = -90
+	check(DecisionEngine.decide(g, per)["action"] == "attack", "guard attacks a hated player")
+	var f: Dictionary = s["npcs"][2].duplicate(true)
+	f["job"] = "farmer"
+	per["override"] = {"action": "follow", "until": 10.0}
+	var r := DecisionEngine.decide(f, per)
+	check(r["action"] == "follow" and r.get("target_player", false), "instructions override the schedule")
+	for a in DecisionEngine.ACTIONS:
+		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront"] , "action known: " + a)
+
+func test_npc_memory_and_replies() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var s := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var p: Dictionary = s["npcs"][1]
+	for i in 30:
+		NPCMind.remember(p, "event %d" % i)
+	check(p["mem"].size() == NPCMind.MAX_MEMORIES, "memory is bounded")
+	check(String(p["mem"][-1]).ends_with("event 29"), "newest memory kept")
+	var a := NPCMind.apply_reply(p, s, {"say": "hi", "mood": "happy", "rel_change": 50, "action": "trade", "remember": "x"})
+	check(a == "none", "non-traders cannot open trade")
+	check(int(p["rel"]) == 10, "relationship change clamped per exchange")
+	check(p["mood"] == "happy", "mood applied")
+	var t: Dictionary = s["npcs"][0]
+	check(NPCMind.builtin_reply(t, s, "Can we trade?")["action"] == "trade", "built-in trader trades")
+	var sys := NPCMind.system_prompt(p, s, {"held": "Iron Sword"})
+	check(sys.contains(p["name"]) and sys.contains("Iron Sword") and sys.contains("JSON"), "prompt carries persona, context and format")
+
+func test_species_variety() -> void:
+	var gen := ChunkGenerator.new(4242)
+	var species := {}
+	var keys := {}
+	for cz in range(-3, 3):
+		for cx in range(-3, 3):
+			var c := gen.generate(cx * 9, cz * 9)
+			for o in c["objects"]:
+				if ObjectLibrary.kind(o["t"]) == "tree":
+					check(o.has("sp") and o["v"] >= 0 and o["v"] < Flora.VARIANTS, "tree has species and variant")
+					species[o["sp"]] = true
+					keys[ObjectLibrary.mesh_key(o)] = true
+	check(species.size() >= 10, "many species across regions (%d)" % species.size())
+	var m := ObjectLibrary.get_mesh(keys.keys()[0])
+	check(m != null and m.get_surface_count() > 0, "species mesh builds")
+	check(Flora.species_name("oak", 12345) == Flora.species_name("oak", 12345), "species names stable")
+	check(var_to_bytes(Flora.species("glowcap", 99)) == var_to_bytes(Flora.species("glowcap", 99)), "species params deterministic")
+
+class AIServiceShim:
+	static func build(c: Dictionary) -> Dictionary:
+		return load("res://src/ai/ai_service.gd").build_request(c, "sys", [{"role": "user", "content": "hello"}])

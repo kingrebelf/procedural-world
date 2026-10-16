@@ -8,6 +8,7 @@ signal money_changed(money: int)
 signal health_changed(health: float)
 signal toast(text: String)
 signal region_entered(name: String, era: int)
+signal saving ## Emitted before everything is written, so other systems can save too.
 
 const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
 const AUTOSAVE_INTERVAL := 10.0
@@ -97,6 +98,7 @@ func close_world() -> void:
 func save_all() -> void:
 	if store == null:
 		return
+	saving.emit()
 	flush_chunks()
 	save_player()
 	store.meta["day"] = day

@@ -6,6 +6,8 @@ var atmosphere: Atmosphere
 var player: Player
 var hud: HUD
 var menus: GameMenus
+var npcs: NPCManager
+var dialogue: DialogueUI
 
 func _ready() -> void:
 	if not Game.is_playing():
@@ -37,6 +39,13 @@ func _ready() -> void:
 	water.atmosphere = atmosphere
 	add_child(water)
 
+	npcs = NPCManager.new()
+	npcs.name = "People"
+	npcs.streamer = streamer
+	npcs.player = player
+	add_child(npcs)
+	player.npcs = npcs
+
 	var ui := CanvasLayer.new()
 	add_child(ui)
 	hud = HUD.new()
@@ -46,6 +55,11 @@ func _ready() -> void:
 	menus.player = player
 	menus.streamer = streamer
 	ui.add_child(menus)
+	dialogue = DialogueUI.new()
+	dialogue.player = player
+	dialogue.menus = menus
+	dialogue.manager = npcs
+	ui.add_child(dialogue)
 
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()

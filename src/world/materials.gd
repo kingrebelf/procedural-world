@@ -132,11 +132,48 @@ static func _foliage(kind: String, albedo: Color, back: Color) -> StandardMateri
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+static var _lock := Mutex.new()
+
+## Thread-safe: object meshes are built on worker threads.
 static func get_mat(name: String) -> Material:
+	_lock.lock()
+	var out := _get_mat(name)
+	_lock.unlock()
+	return out
+
+## Neutral ("_w") materials take their colour entirely from vertex colours, so every
+## species can have its own palette while sharing one material and one draw state.
+## "crystal@N" and "glow@N" are hue buckets (N of 12) for emissive parts.
+static func _get_mat(name: String) -> Material:
 	if _cache.has(name):
 		return _cache[name]
 	var m: BaseMaterial3D
+	if name.contains("@"):
+		var parts := name.split("@")
+		var hue := float(parts[1].to_int() % 12) / 12.0
+		var c := Color.from_hsv(hue, 0.55, 1.0)
+		if parts[0] == "crystal":
+			m = _pbr(c.lerp(Color.WHITE, 0.25), 0.08, 0.2, "", 0, 1)
+			m.emission_enabled = true
+			m.emission = c
+			m.emission_energy_multiplier = 1.3
+			m.rim_enabled = true
+			m.rim = 0.6
+		else:
+			m = _glow(Color.from_hsv(hue, 0.7, 1.0), 3.0)
+		_cache[name] = m
+		return m
 	match name:
+		"leaf_w":
+			m = _pbr(Color(1, 1, 1), 0.85, 0.0, "leaf", 0.08, 0.6, 1.0)
+			m.backlight_enabled = true
+			m.backlight = Color(0.25, 0.3, 0.1)
+		"leaf_card_w": m = _foliage("leaf", Color(1, 1, 1), Color(0.3, 0.35, 0.12))
+		"needle_card_w": m = _foliage("needle", Color(1, 1, 1), Color(0.15, 0.22, 0.06))
+		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
+		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
+		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
+		"metal_w": m = _pbr(Color(1, 1, 1), 0.35, 0.9, "metal", 0.03, 0.8, 0.3)
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"bark_pine": m = _pbr(Color(0.34, 0.24, 0.18), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"leaf":

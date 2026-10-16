@@ -133,30 +133,50 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 			# Double-sided so orientation does not matter.
 			idx.append_array([a, b, d, a, d, c, a, d, b, a, c, d])
 
-## Per-type MultiMesh buffers for all objects still present.
+## Per-mesh MultiMesh buffers (transform + tint) for all objects still present. Each
+## instance gets its own slight tint and proportions, so even two of the same variant
+## never look identical.
 static func build_object_buffers(chunk: Dictionary) -> Dictionary:
-	var by_type := {}
+	var by_key := {}
+	var seed: int = int(chunk.get("seed", 0)) ^ (int(chunk["cx"]) * 73856093) ^ (int(chunk["cz"]) * 19349663)
 	for o in chunk["objects"]:
 		if o["st"].get("gone", false):
 			continue
-		var t: String = o["t"]
-		if not by_type.has(t):
-			by_type[t] = PackedFloat32Array()
+		var key := ObjectLibrary.mesh_key(o)
+		if not by_key.has(key):
+			by_key[key] = PackedFloat32Array()
+		var h := WHash.combine(seed, int(o["i"]))
+		var u1 := WHash.to_unit(h)
+		var u2 := WHash.to_unit(WHash.h32(h))
 		var s: float = o["s"]
-		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, s, s))
+		var k := ObjectLibrary.kind(o["t"])
+		var organic := k == "tree" or k == "rock" or k == "ore"
+		var sy := s * (lerpf(0.88, 1.15, u1) if organic else 1.0)
+		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, sy, s))
 		var p: Vector3 = o["p"]
 		# Sink slightly so bases never float on slopes.
 		p.y -= 0.15 * s
-		var buf: PackedFloat32Array = by_type[t]
-		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
-		by_type[t] = buf
-	return by_type
+		var tint := Color(1, 1, 1)
+		if organic:
+			var v := lerpf(0.86, 1.1, u2)
+			tint = Color(v * lerpf(0.96, 1.04, u1), v, v * lerpf(0.96, 1.04, 1.0 - u1))
+		var buf: PackedFloat32Array = by_key[key]
+		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0])
+		by_key[key] = buf
+	return by_key
 
 static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat32Array:
 	var buf := PackedFloat32Array()
 	if density <= 0.0:
 		return buf
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 901)
+	var biome_tint := Color(0, 0, 0, 0)
+	var biome_era: int = chunk.get("era", 0)
+	if chunk.has("biome"):
+		var bp := Biome.params(chunk["biome"], biome_era)
+		biome_tint = bp["grass_tint"]
+		biome_tint.a = 1.0
+		density *= float(bp["grass_density"])
 	var count := int(9000 * density)
 	var blocked: Array = []
 	for o in chunk["objects"]:
@@ -188,6 +208,8 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.33, 0.50, 0.16) * w[0] + Color(0.12, 0.55, 0.5) * w[1] + Color(0.35, 0.38, 0.3) * w[2]
 		tint = tint.lerp(Color(0.55, 0.52, 0.25), r.randf() * 0.25 * w[0])
+		if biome_tint.a > 0.0:
+			tint = tint.lerp(biome_tint, w[biome_era] * 0.7)
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[1] * 0.8])
 	return buf
@@ -258,13 +280,14 @@ func set_objects(buffers: Dictionary) -> void:
 		var buf: PackedFloat32Array = buffers[t]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
 		mm.mesh = ObjectLibrary.get_mesh(t)
-		mm.instance_count = buf.size() / 12
+		mm.instance_count = buf.size() / 16
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.name = "MM_" + t
-		var k := ObjectLibrary.kind(t)
+		mmi.name = "MM_" + t.replace("#", "_")
+		var k := ObjectLibrary.kind(t.get_slice("#", 0))
 		if k == "structure" or k == "tree":
 			mmi.visibility_range_end = 900.0
 		else:

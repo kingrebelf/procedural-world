@@ -34,9 +34,49 @@ static func kind(t: String) -> String:
 static func label(t: String) -> String:
 	return LABEL.get(t, t.capitalize())
 
-static func get_mesh(t: String) -> ArrayMesh:
-	if _meshes.has(t):
-		return _meshes[t]
+static var _lock := Mutex.new()
+const MAX_MESHES := 400
+
+## The mesh key of a placed object: its type, species and variant. Objects from older
+## snapshots have no species and use the classic mesh for their type.
+static func mesh_key(o: Dictionary) -> String:
+	var sp: int = o.get("sp", 0)
+	if sp == 0:
+		return o["t"]
+	return "%s#%d#%d" % [o["t"], sp, int(o.get("v", 0))]
+
+static func label_of(o: Dictionary) -> String:
+	return Flora.species_name(o["t"], int(o.get("sp", 0)))
+
+## Thread-safe; meshes are built on chunk worker threads. Unused species meshes are
+## evicted when the cache grows, so endless exploration does not grow memory forever.
+static func get_mesh(key: String) -> ArrayMesh:
+	_lock.lock()
+	var m = _meshes.get(key)
+	_lock.unlock()
+	if m != null:
+		return m
+	var mesh := _build_mesh(key)
+	_lock.lock()
+	if _meshes.size() > MAX_MESHES:
+		for k2 in _meshes.keys():
+			if k2.contains("#") and (_meshes[k2] as ArrayMesh).get_reference_count() <= 1:
+				_meshes.erase(k2)
+	if _meshes.has(key):
+		mesh = _meshes[key]
+	else:
+		_meshes[key] = mesh
+	_lock.unlock()
+	return mesh
+
+static func _build_mesh(key: String) -> ArrayMesh:
+	if key.contains("#"):
+		var parts := key.split("#")
+		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
+		if Flora.build(kit, parts[0], int(parts[1]), int(parts[2])):
+			return kit.commit(Materials.get_mat)
+		key = parts[0]
+	var t := key
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
 	var I := Transform3D.IDENTITY
 	match t:
@@ -93,9 +133,7 @@ static func get_mesh(t: String) -> ArrayMesh:
 		"clutter_2": _clutter_scifi(k)
 		_:
 			k.box("stone", I.translated(Vector3(0, 0.5, 0)), Vector3.ONE)
-	var mesh := k.commit(Materials.get_mat)
-	_meshes[t] = mesh
-	return mesh
+	return k.commit(Materials.get_mat)
 
 ## Collision: [shape, local offset].
 static func get_shape(t: String) -> Array:
@@ -372,10 +410,7 @@ static func _trader(k: MeshKit) -> void:
 	for c in [Vector3(-1.3, 0, -0.9), Vector3(1.3, 0, -0.9), Vector3(-1.3, 0, 0.95), Vector3(1.3, 0, 0.95)]:
 		k.box("timber", I.translated(c + Vector3(0, 1.25, 0)), Vector3(0.12, 2.5, 0.12))
 	k.box("cloth", Transform3D(Basis(Vector3(1, 0, 0), 0.25), Vector3(0, 2.6, 0.05)), Vector3(3.0, 0.05, 2.4))
-	# The trader.
-	k.cylinder("cloth_blue", I.translated(Vector3(0, 0, -0.35)), 0.38, 0.26, 1.35, 10)
-	k.sphere("skin", I.translated(Vector3(0, 1.58, -0.35)), 0.2, 6, 10)
-	k.sphere("cloth_blue", I.translated(Vector3(0, 1.66, -0.37)), 0.22, 6, 10, 0.0, 1.0, Color.WHITE, true)
+	# The trader is a living NPC standing behind the counter (see NPCGen).
 	# Wares on the counter.
 	for n in 5:
 		k.box("gold" if n % 2 else "glow_warm", I.translated(Vector3(-1.0 + n * 0.5, 1.18, 0.6)), Vector3(0.2, 0.16, 0.2))

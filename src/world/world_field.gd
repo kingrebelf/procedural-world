@@ -95,8 +95,8 @@ static func dominant(w: PackedFloat32Array) -> int:
 			best = e
 	return best
 
-## Name of the region containing (x, z): stable per Voronoi site.
-func region_name_at(x: float, z: float) -> String:
+## Voronoi site of the region containing (x, z).
+func region_site_at(x: float, z: float) -> Vector2i:
 	var px := x + _warp.get_noise_2d(x, z) * WARP_AMP
 	var pz := z + _warp.get_noise_2d(z + 913.0, x - 377.0) * WARP_AMP
 	var cx := int(floor(px / ERA_CELL))
@@ -109,6 +109,16 @@ func region_name_at(x: float, z: float) -> String:
 			if d < dmin:
 				dmin = d
 				best = Vector2i(cx + ox, cz + oz)
+	return best
+
+## Stable hash of the region containing (x, z); seeds its biome (see Biome).
+func region_hash_at(x: float, z: float) -> int:
+	var s := region_site_at(x, z)
+	return WHash.hash2(seed, s.x, s.y, 104)
+
+## Name of the region containing (x, z): stable per Voronoi site.
+func region_name_at(x: float, z: float) -> String:
+	var best := region_site_at(x, z)
 	return Eras.region_name(site_era(best.x, best.y), WHash.hash2(seed, best.x, best.y, 104))
 
 # --- Terrain ----------------------------------------------------------------

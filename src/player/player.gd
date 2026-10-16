@@ -18,6 +18,7 @@ const STAND_H := 1.75
 const CROUCH_H := 1.15
 
 var streamer: ChunkStreamer
+var npcs: NPCManager
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
@@ -191,6 +192,8 @@ func _hit_object() -> Dictionary:
 		return {}
 	var col := ray.get_collider()
 	var out := {"point": ray.get_collision_point(), "normal": ray.get_collision_normal(), "collider": col}
+	if col and col.has_meta("npc"):
+		out["npc"] = col.get_meta("npc")
 	if col and col.has_meta("chunk"):
 		out["chunk"] = col.get_meta("chunk")
 		if col.has_meta("obj"):
@@ -200,7 +203,10 @@ func _hit_object() -> Dictionary:
 func _update_look_target() -> void:
 	var h := _hit_object()
 	var text := ""
-	if h.has("obj"):
+	if h.has("npc") and is_instance_valid(h["npc"]):
+		var n: NPC = h["npc"]
+		text = "[E] Talk to %s (%s)" % [n.rec["name"], n.rec["job"]]
+	elif h.has("obj"):
 		var o: Dictionary = (h["chunk"] as ChunkNode).get_object(h["obj"])
 		var t: String = o["t"]
 		match ObjectLibrary.kind(t):
@@ -218,6 +224,9 @@ func _update_look_target() -> void:
 
 func interact() -> void:
 	var h := _hit_object()
+	if h.has("npc") and is_instance_valid(h["npc"]):
+		get_tree().call_group("dialogue_ui", "open_with", h["npc"])
+		return
 	if not h.has("obj"):
 		return
 	var chunk: ChunkNode = h["chunk"]
@@ -273,6 +282,10 @@ func use_held() -> void:
 	if h.is_empty():
 		used_tool.emit("miss")
 		return
+	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
+		used_tool.emit("hit")
+		npcs.player_hit(h["npc"], float(d.get("damage", 2)) * q)
+		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
 		var o: Dictionary = chunk.get_object(h["obj"])
@@ -327,6 +340,9 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	var hit := space.intersect_ray(q)
 	var end: Vector3 = hit.get("position", to)
 	viewmodel.tracer(end)
+	if hit.has("collider") and hit["collider"].has_meta("npc") and npcs:
+		npcs.player_hit(hit["collider"].get_meta("npc"), float(d.get("damage", 10)))
+		return
 	if hit.has("collider") and hit["collider"].has_meta("obj"):
 		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
 		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))

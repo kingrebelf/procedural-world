@@ -120,6 +120,9 @@ func _run_job(job: Dictionary) -> void:
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
 		res["data"] = chunk
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
+		# Build any new species meshes here, off the main thread.
+		for mk in res["objects"]:
+			ObjectLibrary.get_mesh(mk)
 	else:
 		chunk = job["data"]
 	if job["mode"] != "grass":

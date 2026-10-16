@@ -1,0 +1,373 @@
+class_name NPC
+extends Node3D
+## One living person: a procedurally built, animated humanoid that walks to the targets
+## its mind picks. All state that matters lives in `rec`, the persisted record.
+
+const WALK := 1.35
+const RUN := 3.6
+const ARRIVE := 0.7
+
+var rec: Dictionary
+var settlement: Dictionary
+var manager: Node
+
+var action := "idle"
+var target := Vector2.INF
+var target_player := false
+var talking := false ## True while the player is in a conversation with this NPC.
+var decide_in := 0.0
+var think_at := 0.0
+var attack_cd := 0.0
+
+var _body: AnimatableBody3D
+var _model: Node3D
+var _hips: Node3D
+var _torso: Node3D
+var _head: Node3D
+var _legs: Array = [] ## [hip pivot, knee pivot]
+var _arms: Array = [] ## [shoulder pivot, elbow pivot]
+var _label: Label3D
+var _speech_t := 0.0
+var _phase := 0.0
+var _speed := 0.0
+var _scale := 1.0
+var _hit_flash := 0.0
+var _speaking := false
+
+static var _mats: Dictionary = {}
+static var _meshes: Dictionary = {}
+
+func setup(r: Dictionary, s: Dictionary, m: Node) -> void:
+	rec = r
+	settlement = s
+	manager = m
+	name = "NPC_" + String(r["id"])
+
+func _ready() -> void:
+	var b: Dictionary = rec["body"]
+	_scale = float(b["height"])
+	_build_model(b)
+	_body = AnimatableBody3D.new()
+	_body.collision_layer = 2
+	_body.collision_mask = 0
+	_body.set_meta("npc", self)
+	var cs := CollisionShape3D.new()
+	var cap := CapsuleShape3D.new()
+	cap.radius = 0.32
+	cap.height = 1.8 * _scale
+	cs.shape = cap
+	cs.position.y = 0.9 * _scale
+	_body.add_child(cs)
+	add_child(_body)
+	_label = Label3D.new()
+	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_label.fixed_size = true
+	_label.pixel_size = 0.0011
+	_label.font_size = 26
+	_label.outline_size = 8
+	_label.outline_modulate = Color(0, 0, 0, 0.8)
+	_label.no_depth_test = false
+	_label.width = 420
+	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_label.position.y = 2.05 * _scale
+	_label.visible = false
+	add_child(_label)
+	global_position = rec["pos"]
+	rotation.y = float(rec.get("yaw", 0.0))
+	decide_in = randf() * 1.5
+
+func say(text: String, seconds: float = 5.0) -> void:
+	if text.strip_edges() == "":
+		return
+	_label.text = "%s\n%s" % [rec["name"].split(" ")[0], text]
+	_label.modulate = Color(1, 1, 1)
+	_label.visible = true
+	_speech_t = seconds
+	_speaking = true
+
+func show_name(on: bool) -> void:
+	if _speaking:
+		return
+	_label.visible = on
+	if on:
+		_label.text = "%s\n%s" % [rec["name"], rec["job"].capitalize()]
+		_label.modulate = Color(1, 1, 1, 0.85)
+
+func is_hidden() -> bool:
+	return not _model.visible
+
+func flash_hit() -> void:
+	_hit_flash = 0.25
+
+# --- Movement and animation ---------------------------------------------------------------
+
+## Called every frame by the manager. ground: Callable(x, z) -> float (NAN if unloaded).
+func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) -> void:
+	_speech_t -= delta
+	if _speaking and _speech_t <= 0.0:
+		_speaking = false
+		_label.visible = false
+	attack_cd = maxf(0.0, attack_cd - delta)
+	var pos := global_position
+	var p2 := Vector2(pos.x, pos.z)
+	var goal := target
+	var stop_at := ARRIVE
+	if target_player:
+		goal = Vector2(player_pos.x, player_pos.z)
+		stop_at = {"greet": 2.2, "follow": 3.0, "confront": 2.8, "attack": 1.3, "trade": 2.0}.get(action, 2.0)
+	var moving := false
+	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
+	if not talking and goal != Vector2.INF and p2.distance_to(goal) > stop_at:
+		var dir := (goal - p2).normalized()
+		# Keep a little personal space.
+		for o in others:
+			if o == self:
+				continue
+			var op := Vector2(o.global_position.x, o.global_position.z)
+			var dd := p2.distance_to(op)
+			if dd < 1.1 and dd > 0.001:
+				dir += (p2 - op).normalized() * (1.1 - dd) * 1.5
+		dir = dir.normalized()
+		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2)
+		_speed = move_toward(_speed, want, delta * 4.0)
+		p2 += dir * _speed * delta
+		var yaw := atan2(dir.x, dir.y)
+		rotation.y = lerp_angle(rotation.y, yaw, clampf(delta * 6.0, 0.0, 1.0))
+		moving = true
+	else:
+		_speed = move_toward(_speed, 0.0, delta * 6.0)
+		var face := INF
+		if talking or (target_player and action != "flee"):
+			face = atan2(player_pos.x - pos.x, player_pos.z - pos.z)
+		elif action == "work" and p2.distance_to(rec["work"]) < 1.5:
+			face = float(rec.get("work_yaw", rotation.y))
+		if face != INF:
+			rotation.y = lerp_angle(rotation.y, face, clampf(delta * 4.0, 0.0, 1.0))
+	var h: float = ground.call(p2.x, p2.y)
+	if is_nan(h):
+		return
+	global_position = Vector3(p2.x, h, p2.y)
+	rec["pos"] = global_position
+	rec["yaw"] = rotation.y
+	# Asleep indoors: invisible and intangible until morning.
+	var home: Vector2 = rec["home"]
+	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
+	_model.visible = not indoors
+	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
+	_animate(delta, moving, run, player_pos)
+
+func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> void:
+	var amt := clampf(_speed / WALK, 0.0, 1.6)
+	_phase += delta * (_speed * 2.9 / _scale + 0.0)
+	var sw := sin(_phase)
+	for i in 2:
+		var s := sw if i == 0 else -sw
+		var leg: Array = _legs[i]
+		(leg[0] as Node3D).rotation.x = s * 0.5 * amt
+		(leg[1] as Node3D).rotation.x = maxf(0.0, -cos(_phase + (0.0 if i == 0 else PI))) * 0.9 * amt
+		var arm: Array = _arms[i]
+		(arm[0] as Node3D).rotation.x = -s * 0.42 * amt
+		(arm[0] as Node3D).rotation.z = (0.08 if i == 0 else -0.08)
+		(arm[1] as Node3D).rotation.x = -0.25 - (0.5 if run else 0.0) * amt
+	# Idle breathing, talk gestures and the walk bob.
+	var t := Time.get_ticks_msec() / 1000.0 + float(rec["traits"]["curious"]) * 10.0
+	_torso.scale = Vector3(1.0, 1.0 + sin(t * 1.6) * 0.012, 1.0)
+	_hips.position.y = 0.95 + absf(cos(_phase)) * 0.035 * amt
+	if (_speech_t > 0.0 or talking) and not moving:
+		(_arms[0][0] as Node3D).rotation.x = -0.35 + sin(t * 3.0) * 0.18
+		(_arms[0][1] as Node3D).rotation.x = -1.0 + sin(t * 4.2) * 0.25
+	if action == "attack" and attack_cd > 0.8:
+		(_arms[0][0] as Node3D).rotation.x = -2.2
+	# Look at the player when close.
+	var to_p := player_pos - global_position
+	var look := 0.0
+	if to_p.length() < 9.0 and action != "flee":
+		look = clampf(wrapf(atan2(to_p.x, to_p.z) - rotation.y, -PI, PI), -1.1, 1.1)
+	_head.rotation.y = lerpf(_head.rotation.y, look, clampf(delta * 5.0, 0.0, 1.0))
+	if _hit_flash > 0.0:
+		_hit_flash -= delta
+		_model.position.x = sin(_hit_flash * 80.0) * 0.04
+	else:
+		_model.position.x = 0.0
+
+# --- Procedural model -------------------------------------------------------------------------
+
+static func _mat(c: Color, rough: float = 0.85, skin: bool = false, emit: float = 0.0) -> StandardMaterial3D:
+	var key := "%s_%.2f_%s_%.1f" % [c.to_html(), rough, skin, emit]
+	if _mats.has(key):
+		return _mats[key]
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	if skin:
+		m.subsurf_scatter_enabled = true
+		m.subsurf_scatter_strength = 0.35
+		m.rim_enabled = true
+		m.rim = 0.15
+	if emit > 0.0:
+		m.emission_enabled = true
+		m.emission = c
+		m.emission_energy_multiplier = emit
+	_mats[key] = m
+	return m
+
+static func _capsule(r: float, h: float) -> Mesh:
+	var key := "cap%.3f_%.3f" % [r, h]
+	if not _meshes.has(key):
+		var m := CapsuleMesh.new()
+		m.radius = r
+		m.height = maxf(h, r * 2.0)
+		m.radial_segments = 12
+		m.rings = 4
+		_meshes[key] = m
+	return _meshes[key]
+
+static func _sphere(r: float, hemi: bool = false) -> Mesh:
+	var key := "sph%.3f_%s" % [r, hemi]
+	if not _meshes.has(key):
+		var m := SphereMesh.new()
+		m.radius = r
+		m.height = r * (1.0 if hemi else 2.0)
+		m.is_hemisphere = hemi
+		m.radial_segments = 16
+		m.rings = 8
+		_meshes[key] = m
+	return _meshes[key]
+
+static func _box(s: Vector3) -> Mesh:
+	var key := "box%s" % s
+	if not _meshes.has(key):
+		var m := BoxMesh.new()
+		m.size = s
+		_meshes[key] = m
+	return _meshes[key]
+
+static func _cyl(top: float, bottom: float, h: float) -> Mesh:
+	var key := "cyl%.3f_%.3f_%.3f" % [top, bottom, h]
+	if not _meshes.has(key):
+		var m := CylinderMesh.new()
+		m.top_radius = top
+		m.bottom_radius = bottom
+		m.height = h
+		m.radial_segments = 14
+		m.rings = 1
+		_meshes[key] = m
+	return _meshes[key]
+
+func _part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO, scl := Vector3.ONE) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	mi.rotation = rot
+	mi.scale = scl
+	parent.add_child(mi)
+	return mi
+
+func _build_model(b: Dictionary) -> void:
+	var era: int = rec["era"]
+	var job: String = rec["job"]
+	var w: float = b["build"]
+	var fem: bool = b["female"]
+	var skin := _mat(b["skin"], 0.55, true)
+	var cloth := _mat(b["cloth"], 0.92)
+	var cloth2 := _mat(b["cloth2"], 0.9)
+	var hair := _mat(b["hair"], 0.7)
+	var dark := _mat(Color(0.12, 0.1, 0.09), 0.8)
+	var boots := _mat(Color(0.22, 0.15, 0.1) if era != Eras.SCIFI else Color(0.15, 0.16, 0.18), 0.6)
+	var accent := _mat(Color(0.3, 0.9, 1.0) if era == Eras.SCIFI else Color(0.4, 1.0, 0.7), 0.4, false, 2.5)
+	_model = Node3D.new()
+	_model.scale = Vector3(_scale, _scale, _scale)
+	add_child(_model)
+	_hips = Node3D.new()
+	_hips.position.y = 0.95
+	_model.add_child(_hips)
+	var sw := 0.105 * w
+	# Legs: hip pivot -> thigh, knee pivot -> shin and boot.
+	for i in 2:
+		var side := -1.0 if i == 0 else 1.0
+		var hip := Node3D.new()
+		hip.position = Vector3(side * sw * 0.9, -0.02, 0)
+		_hips.add_child(hip)
+		_part(hip, _capsule(0.075 * w, 0.48), cloth2, Vector3(0, -0.22, 0))
+		var knee := Node3D.new()
+		knee.position = Vector3(0, -0.45, 0)
+		hip.add_child(knee)
+		_part(knee, _capsule(0.06 * w, 0.46), cloth2 if era != Eras.MEDIEVAL else boots, Vector3(0, -0.22, 0))
+		_part(knee, _box(Vector3(0.1, 0.07, 0.24)), boots, Vector3(0, -0.46, 0.05))
+		_legs.append([hip, knee])
+	# Torso.
+	_torso = Node3D.new()
+	_hips.add_child(_torso)
+	var chest_w := (0.17 if fem else 0.19) * w
+	_part(_torso, _capsule(chest_w, 0.62), cloth, Vector3(0, 0.27, 0), Vector3.ZERO, Vector3(1.0, 1.0, 0.68))
+	_part(_torso, _cyl(0.15 * w, 0.16 * w, 0.08), dark, Vector3(0, 0.02, 0), Vector3.ZERO, Vector3(1, 1, 0.75))
+	# Skirt, robe or long coat depending on era and job.
+	if era == Eras.FANTASY or (fem and era == Eras.MEDIEVAL) or job in ["priest", "mystic", "scribe"]:
+		_part(_torso, _cyl(0.17 * w, 0.27 * w, 0.62), cloth, Vector3(0, -0.3, 0), Vector3.ZERO, Vector3(1, 1, 0.85))
+	if era == Eras.SCIFI:
+		_part(_torso, _box(Vector3(0.04, 0.3, 0.01)), accent, Vector3(chest_w * 0.5, 0.32, chest_w * 0.68))
+		_part(_torso, _box(Vector3(0.18 * w, 0.06, 0.16)), _mat(Color(0.35, 0.37, 0.4), 0.4), Vector3(-0.19 * w, 0.55, 0))
+		_part(_torso, _box(Vector3(0.18 * w, 0.06, 0.16)), _mat(Color(0.35, 0.37, 0.4), 0.4), Vector3(0.19 * w, 0.55, 0))
+	elif era == Eras.FANTASY:
+		_part(_torso, _sphere(0.025), accent, Vector3(0, 0.42, chest_w * 0.66))
+	if job == "smith" or job == "trader":
+		_part(_torso, _box(Vector3(0.3 * w, 0.5, 0.02)), _mat(Color(0.35, 0.25, 0.16), 0.7), Vector3(0, 0.12, chest_w * 0.7))
+	# Arms.
+	for i in 2:
+		var side := -1.0 if i == 0 else 1.0
+		var sh := Node3D.new()
+		sh.position = Vector3(side * (chest_w + 0.04), 0.52, 0)
+		_torso.add_child(sh)
+		_part(sh, _capsule(0.055 * w, 0.32), cloth, Vector3(0, -0.15, 0))
+		var el := Node3D.new()
+		el.position = Vector3(0, -0.3, 0)
+		sh.add_child(el)
+		_part(el, _capsule(0.045 * w, 0.29), cloth if era == Eras.SCIFI else skin, Vector3(0, -0.13, 0))
+		_part(el, _sphere(0.05), skin, Vector3(0, -0.3, 0.01), Vector3.ZERO, Vector3(0.8, 1.1, 0.6))
+		_arms.append([sh, el])
+	# Neck and head.
+	_part(_torso, _cyl(0.045, 0.055, 0.12), skin, Vector3(0, 0.66, 0))
+	_head = Node3D.new()
+	_head.position = Vector3(0, 0.72, 0)
+	_torso.add_child(_head)
+	var hr := 0.105 if fem else 0.112
+	_part(_head, _sphere(hr), skin, Vector3(0, 0.1, 0), Vector3.ZERO, Vector3(0.88, 1.08, 0.98))
+	# Face: brow, eyes, nose, mouth.
+	var eye := _mat(Color(0.95, 0.95, 0.93), 0.3)
+	var iris := _mat(Color(0.12, 0.09, 0.07), 0.2)
+	for sx in [-0.035, 0.035]:
+		_part(_head, _sphere(0.016), eye, Vector3(sx, 0.125, hr * 0.86))
+		_part(_head, _sphere(0.008), iris, Vector3(sx, 0.125, hr * 0.86 + 0.012))
+		_part(_head, _box(Vector3(0.035, 0.008, 0.012)), hair, Vector3(sx, 0.155, hr * 0.88))
+	_part(_head, _box(Vector3(0.022, 0.045, 0.03)), skin, Vector3(0, 0.095, hr * 0.92))
+	_part(_head, _box(Vector3(0.04, 0.006, 0.01)), _mat(Color(0.45, 0.22, 0.2), 0.6), Vector3(0, 0.055, hr * 0.86))
+	for sx in [-1.0, 1.0]:
+		_part(_head, _sphere(0.022), skin, Vector3(sx * hr * 0.86, 0.11, 0), Vector3.ZERO, Vector3(0.5, 1, 0.8))
+	# Hair or headgear.
+	var guard: bool = NPCGen.GUARD_JOBS.has(job)
+	if guard:
+		var metal := _mat(Color(0.55, 0.56, 0.58) if era != Eras.FANTASY else Color(0.35, 0.5, 0.45), 0.35)
+		_part(_head, _sphere(hr * 1.12, true), metal, Vector3(0, 0.13, -0.005))
+		metal.metallic = 0.8
+	else:
+		match int(b["hair_style"]):
+			0:
+				_part(_head, _sphere(hr * 1.05, true), hair, Vector3(0, 0.12, -0.01), Vector3(-0.15, 0, 0))
+			1:
+				_part(_head, _sphere(hr * 1.06, true), hair, Vector3(0, 0.12, -0.01), Vector3(-0.15, 0, 0))
+				_part(_head, _box(Vector3(hr * 1.8, 0.24, 0.06)), hair, Vector3(0, 0.02, -hr * 0.8))
+			2:
+				_part(_head, _sphere(hr * 1.05, true), hair, Vector3(0, 0.12, -0.01), Vector3(-0.15, 0, 0))
+				_part(_head, _capsule(0.035, 0.2), hair, Vector3(0, 0.02, -hr * 1.05), Vector3(0.3, 0, 0))
+			3:
+				pass # Bald.
+		if era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
+			_part(_head, _cyl(0.07, 0.1, 0.08), _mat(Color(0.65, 0.55, 0.3), 0.9), Vector3(0, 0.23, 0))
+			_part(_head, _cyl(0.2, 0.2, 0.01), _mat(Color(0.65, 0.55, 0.3), 0.9), Vector3(0, 0.19, 0))
+		elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
+			_part(_head, _cyl(0.0, 0.13, 0.26), cloth2, Vector3(0, 0.3, -0.02), Vector3(-0.2, 0, 0))
+		if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
+			_part(_head, _sphere(0.07), hair, Vector3(0, 0.03, hr * 0.62), Vector3.ZERO, Vector3(1.1, 0.9, 0.6))
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
