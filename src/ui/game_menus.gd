@@ -159,7 +159,8 @@ func _character_panel() -> Control:
 	d.add_theme_constant_override("h_separation", 24)
 	for row in [["Health", "%d" % int(st.max_health())], ["Stamina", "%d" % int(st.max_stamina())],
 			["Damage and harvesting", "x%.2f" % st.damage_mult()], ["Move speed", "x%.2f" % st.speed_mult()],
-			["Stamina use", "x%.2f" % st.stamina_cost_mult()], ["Experience gain", "x%.2f" % st.xp_mult()],
+			["Swing speed", "x%.2f" % st.swing_mult()], ["Carry weight", "%.1f / %d kg" % [Game.inventory.weight(), int(st.carry_capacity())]],
+			["Breath", "%d s" % int(st.max_breath())], ["Experience gain", "x%.2f" % st.xp_mult()],
 			["Crafted quality", "x%.2f" % st.craft_quality_mult()]]:
 		d.add_child(UITheme.label(row[0], 16, UITheme.DIM))
 		d.add_child(UITheme.label(row[1], 16))

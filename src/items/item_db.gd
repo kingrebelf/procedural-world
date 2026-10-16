@@ -59,7 +59,23 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
 	"vehicle_bay": 260, "stable": 90, "launch_pad": 420}
 
+## Weight of one item in kg, where it differs from the default for its kind.
+const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,
+	"planks": 1.0, "iron_ingot": 2.0, "mythril_ingot": 1.2, "alloy_plate": 1.5, "power_cell": 0.4, "fiber": 0.1,
+	"hide": 1.0, "silver_chalice": 0.6, "moonpearl": 0.1, "data_core": 0.3, "binoculars": 0.8, "hammer": 1.5,
+	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
+	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
+	"workbench": 15.0, "forge": 20.0, "anvil": 25.0}
+const KIND_WEIGHT := {"resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0,
+	"placeable": 4.0, "station": 12.0}
+
 static var _piece_defs := {}
+
+## Weight of one item of this type, in kg. Vehicles are carried as their keys.
+static func weight(type: String) -> float:
+	if WEIGHT.has(type):
+		return WEIGHT[type]
+	return KIND_WEIGHT.get(String(def(type).get("kind", "")), 1.0)
 
 static func has(type: String) -> bool:
 	return ITEMS.has(type) or BuildCatalog.is_piece_item(type)

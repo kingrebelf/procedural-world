@@ -112,6 +112,14 @@ func count(type: String) -> int:
 			n += s["qty"]
 	return n
 
+## Everything carried, in kg.
+func weight() -> float:
+	var w := 0.0
+	for s in slots:
+		if s != null:
+			w += ItemDB.weight(s["type"]) * s["qty"]
+	return w
+
 func free_slots() -> int:
 	var n := 0
 	for s in slots:

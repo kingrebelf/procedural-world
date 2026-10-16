@@ -87,6 +87,9 @@ static func model(t: String) -> ArrayMesh:
 		if pointed(t):
 			# The kit's guns point along +X with the grip at the origin.
 			xf = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO) * xf
+		elif t.begins_with("axe_"):
+			# The kit axe's edge faces -X; turn it to face -Z, the way it swings.
+			xf = Transform3D(Basis(Vector3.UP, -PI * 0.5), Vector3.ZERO) * xf
 		out = kit_mesh(e[0], xf, e[2])
 		if t == "pickaxe_plasma":
 			# A glowing drill bit where the muzzle was.
@@ -231,6 +234,15 @@ func _aim() -> void:
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
 		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
+		# An axe's edge (its -Z) must face where you swing: the grip only fixes the
+		# handle, so turn the head about the handle until the edge leads.
+		if _type.begins_with("axe_") and arms._held != null and arms._held.get_child_count() > 0:
+			var prop := arms._held.get_child(0) as Node3D
+			var want := prop.global_basis.inverse() * (b * Vector3.FORWARD)
+			want.y = 0.0
+			if want.length() > 0.01:
+				var turn := Vector2(-want.z, -want.x).angle() # from local -Z towards `want`, about +Y
+				prop.basis = prop.basis * Basis(Vector3.UP, turn)
 
 func swing() -> void:
 	_swing_t = 0.0

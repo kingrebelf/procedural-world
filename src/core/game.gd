@@ -275,7 +275,6 @@ func max_stamina() -> float:
 func use_stamina(n: float) -> bool:
 	if cheats["god"]:
 		return true
-	n *= stats.stamina_cost_mult()
 	if stamina < n:
 		return false
 	stamina -= n

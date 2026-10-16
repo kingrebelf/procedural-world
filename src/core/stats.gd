@@ -1,26 +1,29 @@
 class_name Stats
 extends RefCounted
 ## The player's level, experience and attributes. Every level grants points to spend on
-## four attributes, and the attributes shape the body: health, stamina, strength of
-## blows, speed and how fast you learn. Pure data so it can be saved and tested.
+## five attributes, and the attributes shape the body: health, stamina, strength of
+## blows and how much you can carry, speed, breath and how fast you learn. Pure data so it can be saved and tested.
 
 const MAX_LEVEL := 100
 const POINTS_PER_LEVEL := 3
-const ATTRS := ["str", "end", "agi", "int"]
-const NAMES := {"str": "Strength", "end": "Endurance", "agi": "Agility", "int": "Intellect"}
+const ATTRS := ["str", "end", "agi", "oxy", "int"]
+const NAMES := {"str": "Strength", "end": "Endurance", "agi": "Agility", "oxy": "Oxygen", "int": "Intellect"}
 const BLURBS := {
-	"str": "+6% damage and harvesting speed per point",
+	"str": "+6% damage and harvesting, +5 kg carry weight per point",
 	"end": "+10 health and +8 stamina per point",
-	"agi": "+2% move speed and -3% stamina use per point",
+	"agi": "+3% move speed and +3% swing speed per point",
+	"oxy": "+5 seconds of breath underwater per point",
 	"int": "+5% experience and +1% crafted quality per point",
 }
 const BASE_HEALTH := 100.0
 const BASE_STAMINA := 100.0
+const BASE_CARRY := 60.0 ## kg you can carry before you slow down
+const BASE_BREATH := 30.0 ## seconds underwater
 
 var level := 1
 var xp := 0 ## progress inside the current level
 var points := 0
-var attrs := {"str": 0, "end": 0, "agi": 0, "int": 0}
+var attrs := {"str": 0, "end": 0, "agi": 0, "oxy": 0, "int": 0}
 
 ## Experience needed to go from level n to n + 1.
 static func xp_to_next(n: int) -> int:
@@ -58,10 +61,17 @@ func damage_mult() -> float:
 	return 1.0 + 0.06 * attrs["str"]
 
 func speed_mult() -> float:
-	return 1.0 + 0.02 * attrs["agi"]
+	return 1.0 + 0.03 * attrs["agi"]
 
-func stamina_cost_mult() -> float:
-	return maxf(0.35, 1.0 - 0.03 * attrs["agi"])
+## Swings come round faster: the cooldown between them is divided by this.
+func swing_mult() -> float:
+	return 1.0 + 0.03 * attrs["agi"]
+
+func carry_capacity() -> float:
+	return BASE_CARRY + 5.0 * attrs["str"]
+
+func max_breath() -> float:
+	return BASE_BREATH + 5.0 * attrs["oxy"]
 
 func xp_mult() -> float:
 	return 1.0 + 0.05 * attrs["int"]

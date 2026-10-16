@@ -110,7 +110,7 @@ func _on_died(cause: String) -> void:
 	player.velocity = Vector3.ZERO
 	player.frozen = true
 	player.snap_down = true
-	player.breath = Player.BREATH
+	player.breath = Game.stats.max_breath()
 	Game.revive()
 	Game.stats_changed.emit()
 	hud.hide_death()

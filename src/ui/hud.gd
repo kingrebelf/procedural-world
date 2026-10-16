@@ -28,6 +28,10 @@ var _xp_pop: Label
 var _xp_pop_n := 0.0
 var _xp_tw: Tween
 var _money: Label
+var _weight: Label
+var _xp_flash: Label ## "+N XP" that pops up under the crosshair
+var _flash_tw: Tween
+var _pulse := 0.0
 var _banner: Label
 var _banner_sub: Label
 var _banner_box: VBoxContainer
@@ -133,6 +137,17 @@ func _ready() -> void:
 	_xp_val = xb[1]
 	_money = UITheme.label("", 22, UITheme.ACCENT)
 	vit.add_child(_money)
+	_weight = UITheme.label("", 13, UITheme.DIM)
+	vit.add_child(_weight)
+	_xp_flash = UITheme.label("", 26, Color(1.0, 0.86, 0.35))
+	_xp_flash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_xp_flash.add_theme_constant_override("outline_size", 6)
+	_xp_flash.add_theme_color_override("font_outline_color", Color(0.25, 0.12, 0.0, 0.9))
+	_pin(_xp_flash, Control.PRESET_CENTER, Rect2(-200, 34, 400, 40))
+	_xp_flash.pivot_offset = Vector2(200, 20)
+	_xp_flash.modulate.a = 0.0
+	_xp_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_xp_flash)
 
 	_banner_box = VBoxContainer.new()
 	_pin(_banner_box, Control.PRESET_CENTER_TOP, Rect2(-600, 70, 1200, 100))
@@ -177,7 +192,7 @@ func _ready() -> void:
 	_breath = ProgressBar.new()
 	_breath.custom_minimum_size = Vector2(260, 10)
 	_breath.show_percentage = false
-	_breath.max_value = Player.BREATH
+	_breath.max_value = Stats.BASE_BREATH
 	_breath.visible = false
 	vit.add_child(_breath)
 	_build_look_panel()
@@ -221,7 +236,7 @@ func _refresh() -> void:
 	_health_val.text = "%d / %d" % [ceili(Game.health), int(Game.max_health())]
 	var st := Game.stats
 	_level.text = "Level %d" % st.level
-	_points.text = ("   +%d point%s  [%s]" % [st.points, "" if st.points == 1 else "s", Bindings.key_name("character", Game.using_pad)]) if st.points > 0 else ""
+	_points.text = ("   %d point%s to spend  [%s]" % [st.points, "" if st.points == 1 else "s", Bindings.key_name("character", Game.using_pad)]) if st.points > 0 else ""
 	_xp.max_value = Stats.xp_to_next(st.level)
 	_xp.value = st.xp
 	_xp_val.text = "%d / %d" % [st.xp, Stats.xp_to_next(st.level)] if st.level < Stats.MAX_LEVEL else "MAX"
@@ -460,6 +475,21 @@ func _on_xp(amount: int, why: String) -> void:
 	_xp_tw = _xp_pop.create_tween()
 	_xp_tw.tween_interval(2.0)
 	_xp_tw.tween_property(_xp_pop, "modulate:a", 0.0, 0.8)
+	# A bright pop under the crosshair, and the experience bar flares.
+	if _flash_tw and _flash_tw.is_valid():
+		_flash_tw.kill()
+	_xp_flash.text = "+%d XP" % int(_xp_pop_n)
+	_xp_flash.modulate = Color(1.6, 1.6, 1.6, 1.0)
+	_xp_flash.scale = Vector2(1.5, 1.5)
+	_xp_flash.position.y = get_viewport_rect().size.y * 0.5 + 34.0
+	_flash_tw = _xp_flash.create_tween()
+	_flash_tw.set_parallel(true)
+	_flash_tw.tween_property(_xp_flash, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_flash_tw.tween_property(_xp_flash, "modulate", Color(1, 1, 1, 1), 0.3)
+	_flash_tw.tween_property(_xp_flash, "position:y", _xp_flash.position.y - 26.0, 1.4).set_ease(Tween.EASE_OUT)
+	_flash_tw.chain().tween_property(_xp_flash, "modulate:a", 0.0, 0.6)
+	_xp.modulate = Color(2.2, 2.0, 1.4)
+	_xp.create_tween().tween_property(_xp, "modulate", Color.WHITE, 0.6)
 
 func _on_region(region: String, era: int) -> void:
 	_banner.text = region
@@ -480,7 +510,15 @@ func _process(_d: float) -> void:
 	var dirs := ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
 	_info.text = "Day %d  %02d:%02d\n%s  %d°\n%d, %d" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), dirs[int(round(heading / 45.0)) % 8], heading, int(p.x), int(p.z)]
 	_under.visible = player.underwater
-	_breath.visible = player.breath < Player.BREATH - 0.01
+	_breath.max_value = Game.stats.max_breath()
+	# Unspent attribute points glow slowly until spent.
+	_pulse += _d
+	_points.modulate.a = 0.45 + 0.55 * (0.5 + 0.5 * sin(_pulse * 2.6)) if Game.stats.points > 0 else 1.0
+	var kg := Game.inventory.weight()
+	var cap := Game.stats.carry_capacity()
+	_weight.text = "Pack %.0f / %d kg%s" % [kg, int(cap), "  OVERLOADED" if kg > cap else ""]
+	_weight.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if kg > cap else UITheme.DIM)
+	_breath.visible = player.breath < Game.stats.max_breath() - 0.01
 	_breath.value = player.breath
 	# On a controller, holding the pick button shows which face button picks each slot.
 	var pick := Game.using_pad and Input.is_action_pressed("hotbar_pick")

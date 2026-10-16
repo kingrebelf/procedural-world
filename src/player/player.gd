@@ -311,8 +311,9 @@ func _physics_process(delta: float) -> void:
 	var target_h := CROUCH_H if _crouched else STAND_H
 	cap.height = move_toward(cap.height, target_h, delta * 4.0)
 	_shape.position.y = cap.height * 0.5
-	var sprinting := not _crouched and not winded and Input.is_action_pressed("sprint") and input.y < 0 and not fly
-	var speed := (CROUCH if _crouched else (SPRINT if sprinting else WALK)) * speed_mult * Game.stats.speed_mult()
+	var pack := load_mult()
+	var sprinting := not _crouched and not winded and pack >= 1.0 and Input.is_action_pressed("sprint") and input.y < 0 and not fly
+	var speed := (CROUCH if _crouched else (SPRINT if sprinting else WALK)) * speed_mult * Game.stats.speed_mult() * pack
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var hv := Vector3(velocity.x, 0, velocity.z)
 
@@ -341,7 +342,7 @@ func _physics_process(delta: float) -> void:
 		var look3 := camera.global_transform.basis * Vector3(input.x, 0, input.y)
 		if look3.length() > 1.0:
 			look3 = look3.normalized()
-		var want := look3 * SWIM * (1.5 if fast else 1.0) * Game.stats.speed_mult()
+		var want := look3 * SWIM * (1.5 if fast else 1.0) * Game.stats.speed_mult() * pack
 		var float_y := surface - 1.35
 		var up := 0.0
 		if not ui_open:
@@ -389,7 +390,7 @@ func _physics_process(delta: float) -> void:
 				Game.set_health(Game.health - 8.0, "You drowned")
 				Game.toast.emit("Drowning!")
 	else:
-		breath = minf(BREATH, breath + delta * 6.0)
+		breath = minf(Game.stats.max_breath(), breath + delta * 6.0)
 	# Safety net: never fall through the world.
 	if global_position.y < -200.0:
 		_snap_to_ground()
@@ -754,6 +755,14 @@ func eat() -> void:
 	Game.toast.emit("Ate %s" % ItemDB.display_name(it))
 
 ## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
+## How a heavy pack slows you: 1 up to your carry capacity, then down to a crawl. Over
+## capacity you cannot sprint.
+func load_mult() -> float:
+	var r := Game.inventory.weight() / Game.stats.carry_capacity()
+	if r <= 1.0:
+		return 1.0
+	return maxf(0.3, 1.0 - (r - 1.0) * 1.4)
+
 func _tire(n: float) -> bool:
 	_rest = 0.0
 	if Game.use_stamina(n):
@@ -783,7 +792,7 @@ func use_held() -> void:
 	var fresh := _tire(5.0)
 	var force: float = Game.stats.damage_mult() * (1.0 if fresh else 0.5)
 	var hq: float = q * force
-	_cooldown = 0.55 if fresh else 0.9
+	_cooldown = (0.55 if fresh else 0.9) / Game.stats.swing_mult()
 	viewmodel.swing()
 	if body:
 		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
@@ -1023,7 +1032,7 @@ func _ride(delta: float) -> void:
 				_drown_t = 1.0
 				Game.set_health(Game.health - 8.0, "You drowned")
 	else:
-		breath = minf(BREATH, breath + delta * 6.0)
+		breath = minf(Game.stats.max_breath(), breath + delta * 6.0)
 	_rest += delta
 	if _rest > 0.8:
 		Game.set_stamina(Game.stamina + 22.0 * delta)
