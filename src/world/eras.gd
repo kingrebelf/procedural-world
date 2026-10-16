@@ -45,6 +45,12 @@ const STRUCTURE_TYPES := [
 	["shrine", "mushroom_house", "spire"],
 	["hab_dome", "comms_spire", "cargo_stack"],
 ]
+## Villages and towns (v4 worlds) have more kinds of house.
+const TOWN_TYPES := [
+	["cottage", "cottage", "townhouse", "townhouse", "longhouse", "watchtower", "well"],
+	["shrine", "mushroom_house", "mushroom_house", "spire"],
+	["hab_dome", "hab_dome", "comms_spire", "cargo_stack"],
+]
 
 static func region_name(era: int, h: int) -> String:
 	var p: Array = REGION_PREFIX[era]

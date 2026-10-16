@@ -92,7 +92,12 @@ def kit_models(names, gltf_dirs, tex_dirs, out: Path, size: int = 1024) -> None:
 
 VILLAGE = ["Floor_WoodDark", "Floor_UnevenBrick", "Floor_Brick", "Wall_Plaster_Straight", "Wall_UnevenBrick_Straight",
     "Wall_Plaster_Window_Wide_Round", "Wall_Plaster_Door_Round", "Wall_UnevenBrick_Door_Round", "Stair_Interior_Solid",
-    "Roof_RoundTiles_4x4", "Roof_RoundTiles_6x6", "Roof_Front_Brick4", "Roof_Front_Brick6", "Prop_WoodenFence_Single", "Corner_Exterior_Wood", "Prop_Chimney"]
+    "Roof_RoundTiles_4x4", "Roof_RoundTiles_6x6", "Roof_Front_Brick4", "Roof_Front_Brick6", "Prop_WoodenFence_Single", "Corner_Exterior_Wood", "Prop_Chimney",
+    # Village houses.
+    "Wall_UnevenBrick_Window_Wide_Round", "Wall_Plaster_WoodGrid", "Window_Wide_Round1", "WindowShutters_Wide_Round_Open",
+    "WindowShutters_Wide_Round_Closed", "Door_1_Round", "Roof_RoundTiles_6x8", "Roof_RoundTiles_4x6", "Prop_Chimney2",
+    "Wall_Plaster_Window_Thin_Round", "Window_Thin_Round1", "Wall_UnevenBrick_Window_Thin_Round", "Corner_Exterior_Brick",
+    "Prop_Vine2", "Prop_Vine5", "Balcony_Simple_Straight", "Overhang_Plaster_Long"]
 SCIFI = ["Platform_Metal", "Platform_DarkPlates", "WallAstra_Straight", "WallAstra_Straight_Window", "TopSimple_Straight",
     "Door_Frame_Square", "Platform_Stairs_4WideTall", "Column_Simple", "Prop_Computer", "Prop_Crate3", "Prop_Light_Floor"]
 PROPS = ["Workbench", "Workbench_Drawers", "Anvil_Log", "Cauldron", "Whetstone", "Barrel", "Crate_Wooden", "Bucket_Metal",

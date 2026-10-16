@@ -169,10 +169,12 @@ void sky() {
 	if (era_fantasy > 0.01 && d.y > 0.02) {
 		vec2 uv = d.xz / (d.y + 0.15);
 		float band = noise3(vec3(uv * 0.6, time_s * 0.03));
-		float curtain = smoothstep(0.45, 0.75, noise3(vec3(uv.x * 2.5 + band * 3.0, uv.y * 0.4, time_s * 0.05)));
-		float fade = smoothstep(0.02, 0.25, d.y) * (1.0 - smoothstep(0.6, 0.95, d.y));
-		vec3 ac = mix(vec3(0.1, 1.0, 0.6), vec3(0.6, 0.3, 1.0), band);
-		col += ac * curtain * fade * era_fantasy * (0.35 + 1.4 * night);
+		// Thin rippling curtains with fine vertical rays, faint by day.
+		float curtain = smoothstep(0.55, 0.8, noise3(vec3(uv.x * 2.5 + band * 3.0, uv.y * 0.4, time_s * 0.05)));
+		float rays = 0.55 + 0.45 * noise3(vec3(uv.x * 18.0 + band * 6.0, 0.0, time_s * 0.2));
+		float fade = smoothstep(0.05, 0.3, d.y) * (1.0 - smoothstep(0.55, 0.9, d.y));
+		vec3 ac = mix(vec3(0.1, 0.9, 0.5), vec3(0.55, 0.25, 0.95), band);
+		col += ac * curtain * rays * fade * era_fantasy * (0.02 + 0.45 * night * night);
 	}
 
 	// Sci-fi: a vast planetary ring arcing across the sky.

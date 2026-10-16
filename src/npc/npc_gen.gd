@@ -78,7 +78,7 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 	keeper["home"] = homes[0]["p"]
 	keeper["stall"] = stall.get("p", c)
 	npcs.append(keeper)
-	var count := clampi(homes.size() + r.randi_range(0, 2), 3, 8)
+	var count := clampi(homes.size() + r.randi_range(0, 2), 3, 8 + 6 * int(site.get("size", 0)))
 	var jobs: Array = JOBS[era].duplicate()
 	for n in count:
 		var p := _person(r, era, npcs.size(), sx, sz)

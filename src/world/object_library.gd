@@ -11,6 +11,7 @@ const KIND := {
 	"chest": "cache", "rune_coffer": "cache", "supply_pod": "cache",
 	"standing_stone": "marker", "crystal_shard": "marker", "beacon": "marker",
 	"cottage": "structure", "watchtower": "structure", "well": "structure",
+	"townhouse": "structure", "longhouse": "structure",
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
 	"trader": "trader", "alien_ruin": "structure",
@@ -25,6 +26,7 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
+	"townhouse": "Town House", "longhouse": "Longhouse",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
 
@@ -76,6 +78,8 @@ static func get_mesh(key: String) -> ArrayMesh:
 static func _build_mesh(key: String) -> ArrayMesh:
 	if BuildCatalog.is_built(key):
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
+	if KitHouse.has(key):
+		return KitHouse.build(key)
 	if key.contains("#"):
 		var parts := key.split("#")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
@@ -216,7 +220,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz := Vector3(7, 6, 6)
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else Vector3(7, 6, 6)
 			match t:
 				"watchtower", "spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)

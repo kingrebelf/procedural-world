@@ -36,14 +36,14 @@ func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 		if ok:
 			return
 
-func _find_settlement(g: ChunkGenerator, era: int) -> Dictionary:
+func _find_settlement(g: ChunkGenerator, era: int, min_size := 0) -> Dictionary:
 	for r in 40:
 		for sz in range(-r, r + 1):
 			for sx in range(-r, r + 1):
 				if maxi(absi(sx), absi(sz)) != r:
 					continue
 				var s := g.settlement_at(sx, sz)
-				if not s.is_empty() and s["era"] == era:
+				if not s.is_empty() and s["era"] == era and int(s["size"]) >= min_size:
 					return s
 	return {}
 
@@ -135,7 +135,14 @@ func _run() -> void:
 	var sci := _find_settlement(g, Eras.SCIFI)
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
-		await _shot("01_medieval_town", c + Vector2(44, 30), c, 0.40)
+		# The biggest town nearby, seen from the road into it.
+		var town := _find_settlement(g, Eras.MEDIEVAL, 2) if g.towns else {}
+		var ways: Array = g.road_angles(town) if not town.is_empty() else []
+		if not ways.is_empty():
+			var tc: Vector2 = town["center"]
+			await _shot("01_medieval_town", tc + Vector2.from_angle(ways[0]) * 78.0, tc, 0.40, 5.0)
+		else:
+			await _shot("01_medieval_town", c + Vector2(44, 30), c, 0.40)
 	var f := _find_era(g, Eras.FANTASY, 0.995)
 	await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
 	if not sci.is_empty():

@@ -140,6 +140,27 @@ func test_era_weights_continuous_and_normalised() -> void:
 		check(absf(sum - 1.0) < 0.0001, "weights sum to 1")
 	check(worst < 0.08, "era weights change smoothly (worst step over 0.5 m: %f)" % worst)
 
+func test_terrain_versions() -> void:
+	# Older worlds keep their terrain; new ones get highlands and mesas.
+	var f := WorldField.new(2024)
+	var old_h := PackedFloat32Array()
+	var new_h := PackedFloat32Array()
+	var tallest := -INF
+	WorldField.terrain_v = 3
+	for i in 400:
+		old_h.append(f.height(i * 53.0 - 9000.0, i * 31.0 - 4000.0))
+	WorldField.terrain_v = 4
+	for i in 400:
+		new_h.append(f.height(i * 53.0 - 9000.0, i * 31.0 - 4000.0))
+	for i in 4000:
+		tallest = maxf(tallest, f.height(i * 17.0 - 30000.0, sin(i * 0.003) * 6000.0))
+	check(old_h != new_h, "v4 terrain differs from v3")
+	check(tallest > 55.0, "v4 has highlands above the snow line (tallest %f)" % tallest)
+	var st := WorldStore.memory()
+	st.meta = {}
+	check(st.terrain_version() == 1, "worlds saved before versions use the oldest terrain")
+	check(WorldStore.memory().terrain_version() == ChunkGenerator.GEN_VERSION, "new worlds use the newest terrain")
+
 func test_terrain_has_no_cliffs_from_blending() -> void:
 	var f := WorldField.new(2024)
 	var worst := 0.0

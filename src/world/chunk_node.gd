@@ -79,6 +79,7 @@ static func _make_blade() -> ArrayMesh:
 static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 	var hs: PackedFloat32Array = chunk["heights"]
 	var wb: PackedByteArray = chunk["weights"]
+	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
 	var n := SIZE / step + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -102,7 +103,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 			var dz := float(mini(gj + 1, RES - 1) - maxi(gj - 1, 0))
 			norms[v] = Vector3(-(hr - hl) / dx, 1.0, -(hu - hd) / dz).normalized()
 			var wk := k * Eras.COUNT
-			cols[v] = Color(wb[wk] / 255.0, wb[wk + 1] / 255.0, wb[wk + 2] / 255.0)
+			# Alpha: 1 minus how much road surface shows (roads and village squares).
+			cols[v] = Color(wb[wk] / 255.0, wb[wk + 1] / 255.0, wb[wk + 2] / 255.0, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
 	for j in n - 1:
 		for i in n - 1:
 			var a := j * n + i
@@ -223,6 +225,9 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
+		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
+		if on_road > 0.5 or (on_road > 0.0 and r.randf() < on_road * 1.6):
+			continue
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.33, 0.50, 0.16) * w[0] + Color(0.12, 0.55, 0.5) * w[1] + Color(0.35, 0.38, 0.3) * w[2]
 		tint = tint.lerp(Color(0.55, 0.52, 0.25), r.randf() * 0.25 * w[0])
@@ -256,7 +261,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
-		if y < 0.2 or ChunkGenerator.under_river(chunk, lx, lz):
+		if y < 0.2 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.3:
 			continue
 		var key := "clutter_%d" % era
 		if not out.has(key):
@@ -284,7 +289,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
-			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz):
+			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05:
 				continue
 			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
 			if not out.has(key):

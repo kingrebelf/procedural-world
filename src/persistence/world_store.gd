@@ -35,6 +35,10 @@ static func memory() -> WorldStore:
 func has_rivers() -> bool:
 	return planet != 0 or int(meta.get("gen_version", 1)) >= 3
 
+## Terrain shapes this world was created with (WorldField.terrain_v).
+func terrain_version() -> int:
+	return int(meta.get("gen_version", 1))
+
 func set_planet(n: int) -> void:
 	planet = n
 	if _mem == null:

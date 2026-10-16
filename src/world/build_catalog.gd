@@ -191,7 +191,10 @@ static func merge_models(models: Array) -> ArrayMesh:
 			var mi := c as MeshInstance3D
 			var xf := base * _node_xf(mi, root)
 			for s in mi.mesh.get_surface_count():
-				var mat: Material = _tamed(mi.get_active_material(s))
+				var om: Material = mi.material_override
+				if om == null and s < mi.get_surface_override_material_count():
+					om = mi.get_surface_override_material(s)
+				var mat: Material = _tamed(om if om != null else mi.mesh.surface_get_material(s))
 				if not tools.has(mat):
 					var st := SurfaceTool.new()
 					st.begin(Mesh.PRIMITIVE_TRIANGLES)

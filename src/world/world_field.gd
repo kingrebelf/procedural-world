@@ -18,6 +18,13 @@ var _plate: FastNoiseLite
 var _detail: FastNoiseLite
 var _rivers: FastNoiseLite
 var _rwarp: FastNoiseLite
+var _mtn_mask: FastNoiseLite
+var _ridge: FastNoiseLite
+var _mesa: FastNoiseLite
+
+## Terrain generation in force. Worlds created before v4 keep the older shapes, so chunks
+## generated later still meet the ones already saved. Set when a world opens (Game).
+static var terrain_v := 4
 
 func _init(world_seed: int) -> void:
 	seed = world_seed & WHash.MASK
@@ -31,6 +38,10 @@ func _init(world_seed: int) -> void:
 	_detail = _noise(8, 0.08, 2, FastNoiseLite.FRACTAL_FBM)
 	_rivers = _noise(9, 0.0011, 3, FastNoiseLite.FRACTAL_FBM)
 	_rwarp = _noise(10, 0.004, 2, FastNoiseLite.FRACTAL_FBM)
+	_mtn_mask = _noise(11, 0.0007, 2, FastNoiseLite.FRACTAL_FBM)
+	_ridge = _noise(12, 0.0032, 5, FastNoiseLite.FRACTAL_RIDGED)
+	_ridge.fractal_gain = 0.45
+	_mesa = _noise(13, 0.0055, 3, FastNoiseLite.FRACTAL_FBM)
 
 func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
@@ -138,10 +149,11 @@ func height(x: float, z: float, w: PackedFloat32Array = PackedFloat32Array()) ->
 	if w.is_empty():
 		w = era_weights(x, z)
 	var h := _cont.get_noise_2d(x, z) * 38.0 + 12.0
+	var v4 := terrain_v >= 4
 	if w[Eras.MEDIEVAL] > 0.001:
-		h += w[Eras.MEDIEVAL] * _medieval(x, z)
+		h += w[Eras.MEDIEVAL] * (_medieval4(x, z, w[Eras.MEDIEVAL]) if v4 else _medieval(x, z))
 	if w[Eras.FANTASY] > 0.001:
-		h += w[Eras.FANTASY] * _fantasy(x, z, w[Eras.FANTASY])
+		h += w[Eras.FANTASY] * (_fantasy4(x, z, w[Eras.FANTASY]) if v4 else _fantasy(x, z, w[Eras.FANTASY]))
 	if w[Eras.SCIFI] > 0.001:
 		h += w[Eras.SCIFI] * _scifi(x, z)
 	return h
@@ -158,6 +170,26 @@ func _fantasy(x: float, z: float, wf: float = 1.0) -> float:
 	var s := (_spires.get_noise_2d(x, z) + 1.0) * 0.5
 	var spires := pow(s, 2.4) * 44.0 * smoothstep(0.65, 0.98, wf)
 	return spires + _moss.get_noise_2d(x, z) * 3.5 - 6.0
+
+## v4: the same farmland hills, but some regions rise into rocky highlands: ridged,
+## weathered mountains whose crests are rounded by the gain falloff, not knife edges.
+func _medieval4(x: float, z: float, wm: float) -> float:
+	var h := _medieval(x, z)
+	var m := smoothstep(0.05, 0.45, _mtn_mask.get_noise_2d(x, z)) * smoothstep(0.6, 0.95, wm)
+	if m <= 0.0:
+		return h
+	var r := (_ridge.get_noise_2d(x, z) + 1.0) * 0.5
+	# Soften the very crest so peaks are worn rather than spiked.
+	r = r - 0.35 * smoothstep(0.82, 1.0, r) * (r - 0.82)
+	return h + pow(r, 1.7) * 62.0 * m
+
+## v4: instead of needle spires, the fey lands lift into flat-topped mesas and stepped
+## tablelands with steep rock faces, rising in two tiers deep inside fantasy regions.
+func _fantasy4(x: float, z: float, wf: float) -> float:
+	var s := (_mesa.get_noise_2d(x, z) + 1.0) * 0.5
+	var deep := smoothstep(0.6, 0.95, wf)
+	var mesa := smoothstep(0.54, 0.66, s) * 16.0 + smoothstep(0.68, 0.77, s) * 12.0
+	return mesa * deep + _moss.get_noise_2d(x, z) * 3.5 + _detail.get_noise_2d(x, z) * 0.3 - 6.0
 
 func _scifi(x: float, z: float) -> float:
 	var base := _plate.get_noise_2d(x, z) * 34.0

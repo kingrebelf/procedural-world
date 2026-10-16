@@ -129,6 +129,7 @@ func close_world() -> void:
 	store = null
 	player = null
 	Planets.apply(Planets.get_planet(0, 0)) # back to an ordinary world for the title screen
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
 ## Travel: saves this planet's land and map, then makes `n` the planet that streams in.
 func set_planet(n: int) -> void:
@@ -147,6 +148,7 @@ func _enter_planet(n: int) -> void:
 	planet = clampi(n, 0, Planets.COUNT - 1)
 	store.set_planet(planet)
 	seed = Planets.seed_of(home_seed, planet)
+	WorldField.terrain_v = store.terrain_version()
 	Planets.apply(Planets.get_planet(home_seed, planet))
 	discovery = store.load_discovery()
 	_current_region = ""

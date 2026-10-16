@@ -4,6 +4,7 @@ shader_type spatial;
 // wind is strong and foam where waves meet the shore.
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
+#include "res://src/env/clouds.gdshaderinc"
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
 uniform vec3 shallow : source_color = vec3(0.16, 0.36, 0.38);
@@ -84,6 +85,13 @@ void fragment() {
 	vec2 refr_uv = SCREEN_UV + nw.xz * 0.02 * k;
 	vec3 under = textureLod(screen_tex, refr_uv, 1.0).rgb;
 	vec3 col = mix(under * shallow * 2.2, deep, k);
+	// Light passing through the thin tops of waves turns them a brighter green-blue,
+	// most when you look toward a low sun.
+	vec3 vdir = normalize((inverse(VIEW_MATRIX) * vec4(VIEW, 0.0)).xyz);
+	float back = pow(clamp(dot(-vdir, normalize(sun_dir_g)), 0.0, 1.0), 3.0);
+	float tip = smoothstep(0.15, 0.9, crest) * clamp(amp * 3.0, 0.0, 1.0);
+	col += vec3(0.04, 0.16, 0.13) * tip * (0.35 + 1.2 * back) * smoothstep(-0.05, 0.2, sun_dir_g.y);
+	col *= 1.0 - 0.3 * cloud_shadow(wpos);
 	// Shore foam and wind whitecaps on wave crests.
 	float shore = 1.0 - smoothstep(0.0, 0.6 + amp, water_depth);
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
