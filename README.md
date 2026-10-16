@@ -40,6 +40,8 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - **Vehicles.** Build a vehicle bay to put together a hover speeder (skims over land and
   water) or a survey rover, or a stable to saddle a riding horse. Set one down from your
   pack, ride it, and pack it up again; vehicles stay where you leave them.
+- **Starships.** Build a launch pad at the vehicle bay, then a starship on the pad. It flies
+  where you look: climb, dive, boost low over the land, and set down anywhere flat.
 - Rivers wind through the lowlands of new worlds, in valleys of their own. Swim in them.
 - Health, stamina and experience. Sprinting, jumping and swinging tire you; gathering,
   crafting, building, hunting and discovering new regions earn XP. Each level gives three
@@ -100,6 +102,7 @@ Controllers use ARK: Survival Ascended's layout.
 | Ride a vehicle / get off | E | Y |
 | Pack a vehicle up (returns it) | Hold E | Hold Y |
 | Drive / steer / boost (while riding) | W S / A D / Shift | Left stick / L3 |
+| Fly a starship: thrust / climb / descend | W / Space / Ctrl, steer by looking | Left stick up / A / right stick click |
 | First / third person | V | |
 | Pause and settings | Esc | Menu |
 | Cheat console (fly, noclip, god, speed, give, tp, xp, level; type help) | ` | |
@@ -140,4 +143,4 @@ tools/         build script, screenshot tour
 ## License
 
 MIT. See [LICENSE](LICENSE). Models in `assets/models` are by Quaternius and Kenney, released
-under CC0 (see [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)).
+under CC0 (the starship is from Quaternius' Ultimate Spaceships Pack) (see [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)).

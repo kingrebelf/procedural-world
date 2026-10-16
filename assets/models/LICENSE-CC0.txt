@@ -8,3 +8,6 @@ animals/ comes from Quaternius' Ultimate Animated Animal Pack (CC0).
 
 vehicles/Speeder.glb and Rover.glb are craft_speederA and rover from Kenney's Space Kit 2.0
 (kenney.nl), also CC0; its license file sits beside them.
+
+ships/Striker.gltf is from Quaternius' Ultimate Spaceships Pack (CC0); its license file
+sits beside it.

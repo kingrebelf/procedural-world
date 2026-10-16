@@ -181,7 +181,10 @@ func _update_time_of_day() -> void:
 	var night_fog := Color(0.03, 0.04, 0.07)
 	env.fog_light_color = fog_c.lerp(night_fog, 1.0 - daylight).lerp(Color(0.9, 0.55, 0.35), golden * 0.3 * daylight)
 	var dens: float = _blend(Eras.FOG_DENSITY)
-	env.fog_density = dens * 0.22
+	# High up (flying), thicker distance fog hides the edge of the streamed world.
+	var alt := clampf((target.global_position.y - 40.0) / 160.0, 0.0, 1.0) if target else 0.0
+	env.fog_density = dens * 0.22 + alt * 0.0025
+	env.fog_sky_affect = 0.2 + alt * 0.8
 	env.volumetric_fog_density = dens * 1.4
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05

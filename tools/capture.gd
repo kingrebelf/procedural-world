@@ -157,8 +157,68 @@ func _run() -> void:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
+	if only.is_empty() or only.has("11") or only.has("12"):
+		await _starship()
 	Game.close_world()
 	get_tree().quit()
+
+## A starship on its launch pad, then in flight over the land.
+func _starship() -> void:
+	var p: Player = world.player
+	var streamer: ChunkStreamer = world.streamer
+	var vm: VehicleManager = world.vehicles
+	if p.vehicle:
+		p.dismount(true)
+	var g0 := ChunkGenerator.new(Game.seed)
+	var s2 := _find_era(g0, Eras.SCIFI, 0.9)
+	var at := _flat_spot(vm, Vector3(s2.x, 0, s2.y))
+	print("starship: pad at ", at)
+	p.fly = true
+	p.global_position = at + Vector3(0, 3, 0)
+	await _wait_loaded(p, streamer)
+	var pad := Vector3(at.x, vm.ground(at.x, at.z), at.z)
+	_clear_around(streamer, pad, 26.0)
+	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(at))
+	c.add_built("launch_pad", pad - c.position, 0.0, {"by": "you", "day": 0.0})
+	var ship := vm.deploy(ItemDB.make("ship", 1, 1.0, {}), pad, 0.6)
+	ship.global_position.y = pad.y + 0.6
+	Game.day = 0.62
+	var eye := pad + Vector3(12, 8, 14)
+	var d := pad + Vector3(0, 1.5, 0) - eye
+	p.set_state({"pos": eye, "yaw": atan2(-d.x, -d.z), "pitch": atan2(d.y, Vector2(d.x, d.z).length()), "slot": 0})
+	await _wait(settle_frames)
+	if only.is_empty() or only.has("11"):
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("11_starship.png"))
+		print("captured 11_starship")
+	p.fly = false
+	p.mount(ship)
+	if not p.third_person:
+		p.toggle_view()
+	p.set_state({"pos": p.global_position, "yaw": ship.rotation.y, "pitch": 0.25, "slot": 0, "view": 3})
+	Input.action_press("jump")
+	await _wait(60)
+	Input.action_press("move_forward")
+	await _wait(60)
+	Input.action_release("jump")
+	await _wait(40)
+	Input.action_release("move_forward")
+	# Hover while the land below streams in, then look down over the nose.
+	await _wait_loaded(p, streamer)
+	p.set_state({"pos": p.global_position, "yaw": ship.rotation.y, "pitch": -0.35, "slot": 0, "view": 3})
+	Input.action_press("move_forward")
+	await _wait(30)
+	if only.is_empty() or only.has("12"):
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("12_flight.png"))
+		print("captured 12_flight")
+	Input.action_release("move_forward")
+
+## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
+func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for o in c.data["objects"]:
+			if not o["st"].get("gone", false) and (c.position + o["p"]).distance_to(at) < r:
+				c.remove_object(o["i"])
 
 ## The flattest dry 24 m square near `from` (for setting things out to photograph).
 func _flat_spot(vm: VehicleManager, from: Vector3) -> Vector3:

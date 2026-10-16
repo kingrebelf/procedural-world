@@ -12,7 +12,11 @@ const KINDS := {
 		"speed": 15.0, "boost": 1.35, "accel": 6.0, "turn": 1.6, "reverse": 5.0, "seat": 0.47},
 	"horse": {"name": "Riding Horse", "animal": "Horse", "length": 2.2,
 		"speed": 7.5, "boost": 2.0, "accel": 5.0, "turn": 2.4, "reverse": 1.6, "swims": true},
+	# Flies where the rider looks: thrust, climb and descend, land anywhere flat enough.
+	"ship": {"name": "Starship", "model": "res://assets/models/ships/Striker.gltf", "length": 9.0, "yaw": PI,
+		"speed": 40.0, "boost": 2.5, "accel": 16.0, "turn": 1.4, "reverse": 12.0, "fly": true, "seat": 0.62, "seat_z": -0.6},
 }
+const CEILING := 180.0 ## metres above the ground a ship can climb to (orbit comes later)
 const ANIMAL_YAW := PI ## the animal kit faces +z; vehicles drive toward -z (the Kenney craft already do)
 
 var rec: Dictionary
@@ -22,10 +26,13 @@ var rider: Node3D = null
 ## Rider input: x = steer (right positive), y = throttle (forward positive).
 var drive := Vector2.ZERO
 var boosting := false
+var aim := Vector3.FORWARD ## flying: the direction the rider looks
+var lift := 0.0 ## flying: climb (+1) or descend (-1)
 var spd := 0.0 ## forward speed along the heading, m/s
 var seat := Vector3.ZERO ## where the rider's hips go, in local space
 var ground: Callable ## (x, z) -> terrain height or NAN while the chunk is not loaded
 var height := 1.0
+var half_width := 1.0
 
 var _model: Node3D
 var _animal: AnimalModel
@@ -53,8 +60,10 @@ static func make_model(k: String) -> Node3D:
 	var box := _bounds(scene)
 	var s: float = d["length"] / maxf(maxf(box.size.x, box.size.z), 0.01)
 	scene.scale = Vector3.ONE * s
+	var yaw: float = d.get("yaw", 0.0)
+	scene.rotation.y = yaw
 	# Sit the model on the origin, centred.
-	var c := box.get_center() * s
+	var c := Basis(Vector3.UP, yaw) * (box.get_center() * s)
 	scene.position = Vector3(-c.x, -box.position.y * s, -c.z)
 	return holder
 
@@ -88,6 +97,7 @@ func setup(r: Dictionary) -> Vehicle:
 		_animal = _model.get_child(0)
 	var box := _bounds(_model)
 	height = box.size.y
+	half_width = box.size.x * 0.5
 	var shape := CollisionShape3D.new()
 	var bs := BoxShape3D.new()
 	bs.size = Vector3(box.size.x * 0.8, box.size.y * 0.9, box.size.z * 0.85)
@@ -97,7 +107,7 @@ func setup(r: Dictionary) -> Vehicle:
 	if _animal:
 		seat = Vector3(0, box.size.y * 0.66, 0.15)
 	else:
-		seat = Vector3(0, box.size.y * float(p.get("seat", 0.55)), 0.25)
+		seat = Vector3(0, box.size.y * float(p.get("seat", 0.55)), float(p.get("seat_z", 0.25)))
 	position = r["pos"]
 	rotation.y = r["yaw"]
 	return self
@@ -105,10 +115,19 @@ func setup(r: Dictionary) -> Vehicle:
 func hover() -> bool:
 	return p.has("hover")
 
+func flies() -> bool:
+	return p.has("fly")
+
+func airborne() -> bool:
+	return flies() and not is_on_floor()
+
 func _physics_process(delta: float) -> void:
 	var g := NAN
 	if ground.is_valid():
 		g = ground.call(global_position.x, global_position.z)
+	if flies():
+		_fly(delta, g)
+		return
 	if is_nan(g):
 		# The ground here isn't loaded (yet): hold still rather than fall through the world.
 		velocity = Vector3.ZERO
@@ -151,8 +170,52 @@ func _physics_process(delta: float) -> void:
 	rec["pos"] = global_position
 	rec["yaw"] = rotation.y
 
+## Flight: turn toward where the rider looks, thrust along the nose, climb and descend.
+## Without a rider the ship settles to the ground and stays put.
+func _fly(delta: float, g: float) -> void:
+	var top: float = p["speed"] * (p["boost"] if boosting else 1.0)
+	var want: float = drive.y * (top if drive.y >= 0.0 else float(p["reverse"]))
+	spd = move_toward(spd, want, float(p["accel"]) * (1.0 if absf(want) > absf(spd) else 1.5) * delta)
+	var fwd := -global_transform.basis.z
+	if rider != null and (is_on_floor() == false or drive.y > 0.1 or lift > 0.1):
+		# Nose follows the view; pitch is limited so the ship never flips over.
+		var a := aim.normalized()
+		var pitch := clampf(asin(clampf(a.y, -1.0, 1.0)), -1.2, 1.2)
+		var yaw := atan2(-a.x, -a.z)
+		var k := clampf(float(p["turn"]) * delta, 0.0, 1.0)
+		var dyaw := wrapf(yaw - rotation.y, -PI, PI)
+		rotation.y += dyaw * k * 2.0
+		rotation.x = lerp_angle(rotation.x, pitch if absf(spd) > 2.0 else 0.0, k * 2.0)
+		rotation.z = lerp_angle(rotation.z, clampf(dyaw * 1.2, -0.7, 0.7), k * 2.0)
+		fwd = -global_transform.basis.z
+	else:
+		rotation.x = lerp_angle(rotation.x, 0.0, clampf(delta * 2.0, 0.0, 1.0))
+		rotation.z = lerp_angle(rotation.z, 0.0, clampf(delta * 2.0, 0.0, 1.0))
+	if rider != null:
+		velocity = fwd * spd + Vector3.UP * lift * 12.0
+		if absf(spd) < 0.5 and absf(lift) < 0.1 and not is_on_floor():
+			velocity = velocity.lerp(Vector3.ZERO, clampf(delta * 3.0, 0.0, 1.0)) # hold a hover
+	else:
+		spd = move_toward(spd, 0.0, 20.0 * delta)
+		velocity.x = fwd.x * spd
+		velocity.z = fwd.z * spd
+		velocity.y = maxf(velocity.y - _gravity * delta, -20.0)
+	if is_nan(g):
+		velocity.y = maxf(velocity.y, 0.0) # the ground below isn't loaded: don't sink into it
+	elif global_position.y < g - 3.0:
+		global_position.y = g + 0.5
+	if not is_nan(g) and global_position.y - g > CEILING and velocity.y > 0.0:
+		velocity.y = 0.0
+	move_and_slide()
+	if is_on_floor() and rider == null:
+		spd = 0.0
+	rec["pos"] = global_position
+	rec["yaw"] = rotation.y
+
 ## Lean with the ground, bank into turns, and animate the horse.
 func _pose(delta: float, g: float) -> void:
+	if flies():
+		return
 	var up := Vector3.UP
 	if not hover() and is_on_floor():
 		up = get_floor_normal()
@@ -183,7 +246,7 @@ func seat_transform() -> Transform3D:
 func exit_point() -> Vector3:
 	var side := global_transform.basis.x
 	for s in [1.0, -1.0]:
-		var q: Vector3 = global_position + side * s * 1.9
+		var q: Vector3 = global_position + side * s * (half_width + 0.9)
 		var h: float = ground.call(q.x, q.z) if ground.is_valid() else NAN
 		if not is_nan(h) and absf(h - global_position.y) < 2.5:
 			return Vector3(q.x, h + 0.2, q.z)

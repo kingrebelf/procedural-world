@@ -860,7 +860,7 @@ func deploy_vehicle() -> bool:
 	if it == null or vehicles == null:
 		return false
 	var fwd := -global_transform.basis.z
-	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * 3.5
+	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * (2.0 + float(Vehicle.KINDS[it["type"]]["length"]) * 0.6)
 	var v := vehicles.deploy(it, at, _yaw)
 	if v == null:
 		Game.toast.emit("There's no room for it here")
@@ -891,11 +891,18 @@ func mount(v: Vehicle) -> void:
 	Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
 		_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
 		"gallop" if v.kind == "horse" else "boost", _key("interact")])
+	if v.flies():
+		Game.toast.emit("Look where you want to fly. [%s/%s] climb and descend." % [_key("jump"), _key("crouch")])
 
-func dismount() -> void:
+func dismount(force := false) -> void:
 	var v := vehicle
 	if v == null:
 		return
+	if not force and is_instance_valid(v) and v.flies() and not v.is_on_floor():
+		var g := vehicles.ground(v.global_position.x, v.global_position.z) if vehicles else NAN
+		if is_nan(g) or v.global_position.y - g > 3.0:
+			Game.toast.emit("Land first: hold %s to descend" % _key("crouch"))
+			return
 	vehicle = null
 	if is_instance_valid(v):
 		v.rider = null
@@ -925,12 +932,17 @@ func _ride(delta: float) -> void:
 		input = Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	v.drive = input
 	v.boosting = not ui_open and Input.is_action_pressed("sprint") and input.y > 0.1
-	# The view turns with the vehicle, so steering doesn't leave you looking sideways.
-	var turned := wrapf(v.rotation.y - _ride_yaw, -PI, PI)
-	_ride_yaw = v.rotation.y
-	if absf(turned) < 1.0:
-		_yaw += turned
-		_apply_look()
+	if v.flies():
+		# A ship flies where you look; Jump climbs and Crouch descends.
+		v.aim = -camera.global_transform.basis.z
+		v.lift = 0.0 if ui_open else (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
+	else:
+		# The view turns with the vehicle, so steering doesn't leave you looking sideways.
+		var turned := wrapf(v.rotation.y - _ride_yaw, -PI, PI)
+		_ride_yaw = v.rotation.y
+		if absf(turned) < 1.0:
+			_yaw += turned
+			_apply_look()
 	var seat := v.seat_transform()
 	# Sitting: hips on the seat. The body faces the vehicle's way, whatever you look at.
 	global_position = seat.origin - Vector3(0, SIT_HIPS, 0)
@@ -953,6 +965,10 @@ func _ride(delta: float) -> void:
 	if _rest > 0.8:
 		Game.set_stamina(Game.stamina + 22.0 * delta)
 	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
+	if v.flies():
+		var g := vehicles.ground(v.global_position.x, v.global_position.z) if vehicles else NAN
+		text = "%d km/h   %s   [%s/%s] climb/descend   [%s] get off" % [roundi(v.velocity.length() * 3.6),
+			"altitude %d m" % roundi(v.global_position.y - g) if not is_nan(g) else "", _key("jump"), _key("crouch"), _key("interact")]
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)

@@ -126,6 +126,9 @@ void sky() {
 	}
 
 	// Below horizon.
-	col = mix(col, ground_col * (0.2 + 0.8 * daylight), smoothstep(0.0, -0.08, d.y));
+	// Below horizon: hazy toward the horizon colour, so the far edge of the land (seen from
+	// the air) melts into haze instead of a dark band.
+	vec3 below = mix(hor, ground_col * (0.2 + 0.8 * daylight), 0.4);
+	col = mix(col, below, smoothstep(0.0, -0.08, d.y));
 	COLOR = col;
 }

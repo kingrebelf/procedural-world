@@ -175,7 +175,30 @@ func _run() -> void:
 	player.dismount()
 	check(player.vehicle == null and sp.rider == null, "getting off")
 	check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
-	game.inventory.add(ItemDB.make("horse", 1, 1.0, {}))
+	# A starship climbs where you look, won't let you step out in mid-air, and lands.
+	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
+	for i in 30:
+		await physics_frame
+	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
+	player.mount(ship)
+	var y0s: float = ship.global_position.y
+	Input.action_press("jump")
+	for i in 120:
+		await physics_frame
+	Input.action_release("jump")
+	check(ship.global_position.y > y0s + 10.0, "the starship climbs (%.1f m)" % (ship.global_position.y - y0s))
+	player.dismount()
+	check(player.vehicle == ship, "can't step out in mid-air")
+	Input.action_press("crouch")
+	for i in 400:
+		await physics_frame
+		if ship.is_on_floor():
+			break
+	Input.action_release("crouch")
+	check(ship.is_on_floor(), "the starship lands")
+	player.dismount()
+	check(player.vehicle == null, "stepping out after landing")
+	world.vehicles.pack_up(ship)
 	var hr: Vehicle = world.vehicles.deploy(ItemDB.make("horse", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
 	await _frames(3)
 	check(hr != null and hr._animal != null, "a riding horse stands ready")

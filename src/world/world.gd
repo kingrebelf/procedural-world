@@ -96,7 +96,7 @@ func _apply_settings() -> void:
 ## Death: a few seconds of "You died", then you wake at the world's spawn point with your
 ## pack intact, minus some of the progress toward your next level.
 func _on_died(cause: String) -> void:
-	player.dismount()
+	player.dismount(true)
 	player.ui_open = true
 	player.velocity = Vector3.ZERO
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
