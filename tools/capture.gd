@@ -256,9 +256,12 @@ func _space() -> void:
 	for pl in Planets.system(Game.home_seed):
 		if pl["kind"] == "fey":
 			fey = pl["n"]
+	# Slow time so the streaks are mid-flight when the (slow) software renderer shoots.
+	Engine.time_scale = 0.05
 	orbit._warp(fey)
-	await _wait(int(settle_frames * 0.6))
+	await _wait(20)
 	await _snap("14_warp")
+	Engine.time_scale = 1.0
 	while orbit._busy:
 		await tree.process_frame
 	await _wait(30)
@@ -278,6 +281,7 @@ func _space() -> void:
 	Input.action_press("crouch")
 	await _wait(150)
 	Input.action_release("crouch")
+	p.dismount(true)
 	p.set_state({"pos": p.global_position, "yaw": p.yaw(), "pitch": -0.3, "slot": 0, "view": 3, "riding": -1})
 	await _wait_loaded(p, world.streamer)
 	Game.day = 0.42
