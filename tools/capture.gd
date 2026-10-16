@@ -7,6 +7,7 @@ extends Node
 var world: Node3D
 var out_dir := "user://captures"
 var settle_frames := 150
+var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -14,6 +15,8 @@ func _ready() -> void:
 			out_dir = a.substr(6)
 		if a.begins_with("--frames="):
 			settle_frames = a.substr(9).to_int()
+		if a.begins_with("--shots="):
+			only = a.substr(8).split(",")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
@@ -77,6 +80,8 @@ func _find_shore(g: ChunkGenerator) -> Vector2:
 	return Vector2.ZERO
 
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7) -> void:
+	if not only.is_empty() and not only.has(name.substr(0, 2)):
+		return
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
 	Game.day = day

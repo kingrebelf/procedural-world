@@ -432,7 +432,7 @@ static func _clutter_medieval(k: MeshKit) -> void:
 		var p := Vector3(r.randf_range(-0.5, 0.5), 0, r.randf_range(-0.5, 0.5))
 		var h := r.randf_range(0.18, 0.35)
 		k.cylinder("leaf", I.translated(p), 0.008, 0.006, h, 4, false)
-		k.sphere("painted", I.translated(p + Vector3(0, h, 0)), 0.035, 3, 5, 0.0, 0.5, petals[n % petals.size()])
+		k.sphere("petal_w", I.translated(p + Vector3(0, h, 0)), 0.035, 3, 5, 0.0, 0.5, petals[n % petals.size()])
 
 static func _clutter_fantasy(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY

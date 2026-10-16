@@ -150,7 +150,7 @@ static func build_under(k: MeshKit, sp: int, era: int) -> void:
 				k.sphere("leaf_core_w", I.translated(c), rad * 0.7, 5, 8, 0.4, 0.8, leaf * 0.7)
 				_cards(k, "leaf_card_w", c, rad, int(14 * rad + 6), r, 0.55, leaf)
 			if r.randf() < 0.4:
-				var berry := "glow@%d" % (r.randi() % 12) if era == Eras.FANTASY else "painted"
+				var berry := "glow@%d" % (r.randi() % 12) if era == Eras.FANTASY else "petal_w"
 				for i in 8:
 					var d := Vector3(r.randf_range(-1, 1), r.randf_range(0.2, 1), r.randf_range(-1, 1)).normalized()
 					k.sphere(berry, I.translated(Vector3(0, rad * 0.7, 0) + d * rad * 0.9), 0.04, 3, 5, 0.0, 1.0, Color.from_hsv(hue, 0.8, 0.8))
@@ -159,7 +159,7 @@ static func build_under(k: MeshKit, sp: int, era: int) -> void:
 				var pos := Vector3(r.randf_range(-0.6, 0.6), 0, r.randf_range(-0.6, 0.6))
 				var h := r.randf_range(0.2, 0.55)
 				k.cylinder("leaf_core_w", I.translated(pos), 0.01, 0.008, h, 4, false, 0.0, 1, leaf)
-				k.sphere("painted", I.translated(pos + Vector3(0, h, 0)), r.randf_range(0.03, 0.06), 3, 6, 0.0, 0.45, Color.from_hsv(fposmod(hue + r.randf_range(-0.05, 0.05), 1.0), r.randf_range(0.5, 0.9), 0.95))
+				k.sphere("petal_w", I.translated(pos + Vector3(0, h, 0)), r.randf_range(0.03, 0.06), 3, 6, 0.0, 0.45, Color.from_hsv(fposmod(hue + r.randf_range(-0.05, 0.05), 1.0), r.randf_range(0.5, 0.9), 0.95))
 		"reeds", "tendrils":
 			for i in r.randi_range(6, 14):
 				var pos := Vector3(r.randf_range(-0.4, 0.4), 0, r.randf_range(-0.4, 0.4))

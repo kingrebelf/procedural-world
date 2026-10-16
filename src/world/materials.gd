@@ -260,6 +260,7 @@ static func _get_mat(name: String) -> Material:
 		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
 		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)
 		"metal_dark": m = _pbr(Color(0.18, 0.19, 0.21), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
+		"petal_w": m = _pbr(Color(1, 1, 1), 0.7, 0.0, "", 0, 1)
 		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		"glass":

@@ -93,6 +93,15 @@ def main(src_dir):
 
 
 
+def box_blur(a, r):
+    """Separable box blur with wrap-around, on float arrays."""
+    for axis in (0, 1):
+        c = np.cumsum(np.concatenate([a.take(range(-r - 1, 0), axis), a, a.take(range(0, r), axis)], axis), axis)
+        n = a.shape[axis]
+        a = (c.take(range(2 * r + 1, 2 * r + 1 + n), axis) - c.take(range(0, n), axis)) / (2 * r + 1)
+    return a
+
+
 def make_leaf_card(src, out_name="leaves_card.png", size=512):
     """Keys a leaf cluster shot on black into an RGBA foliage card. Colour is mostly
     greyscale (each species tints it) with a little of the photo's own green kept."""
@@ -104,12 +113,24 @@ def make_leaf_card(src, out_name="leaves_card.png", size=512):
     grey = np.repeat((lum / mean * 0.8)[..., None], 3, -1)
     chroma = a / max(mean, 1e-3) * 0.8 * np.array([1.0, 0.85, 1.1])
     rgb = (grey * 0.75 + chroma * 0.25).clip(0, 1)
-    # Bleed leaf colour into the transparent area so mipmaps don't fringe dark.
-    img = Image.fromarray((rgb * 255).astype(np.uint8))
-    filled = img.filter(ImageFilter.GaussianBlur(6))
-    rgb8 = np.where(alpha[..., None] > 0.5, np.asarray(img), np.asarray(filled))
-    out = np.dstack([rgb8, (alpha * 255).astype(np.uint8)])
-    Image.fromarray(out, "RGBA").resize((size, size), Image.LANCZOS).save(OUT / out_name, optimize=True)
+    # Bleed leaf colour into the transparent area (coverage-weighted blur, widening until
+    # every pixel is filled) so filtering and mipmaps never pull in the black background.
+    known = alpha > 0.5
+    fill = np.where(known[..., None], rgb, 0.0)
+    done = known.copy()
+    for radius in (4, 12, 32, 96, 256):
+        num = np.dstack([box_blur(rgb[..., c] * known, radius) for c in range(3)])
+        den = box_blur(known.astype(float), radius)
+        new = (~done) & (den > 1e-4)
+        fill[new] = num[new] / den[new][:, None]
+        done |= new
+    rgb8 = (fill.clip(0, 1) * 255).astype(np.uint8)
+    # Resize colour and alpha separately: Pillow premultiplies RGBA when resizing, which
+    # would turn the bled colour back to black.
+    rgb_s = Image.fromarray(rgb8).resize((size, size), Image.LANCZOS)
+    a_s = Image.fromarray((alpha * 255).astype(np.uint8)).resize((size, size), Image.LANCZOS)
+    rgb_s.putalpha(a_s)
+    rgb_s.save(OUT / out_name, optimize=True)
     print("leaf card", out_name)
 
 

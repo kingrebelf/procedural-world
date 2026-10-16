@@ -38,6 +38,9 @@ void fragment() {
 		discard;
 	}
 	ALBEDO = tex.rgb * albedo * inst_col;
+	// Bend normals toward the sky: cards facing the ground otherwise render near black.
+	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	NORMAL = normalize(mix(NORMAL, up_v, 0.55));
 	ROUGHNESS = 0.8;
 	SPECULAR = 0.35;
 	BACKLIGHT = back * inst_col * 1.4;
