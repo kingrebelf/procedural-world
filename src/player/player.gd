@@ -751,6 +751,12 @@ func use_held() -> void:
 	if body:
 		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
 	var h := _hit_object()
+	if fauna and not h.has("creature") and not h.has("npc"):
+		# From your own head, not the camera, so it works the same in third person.
+		var head := global_position + Vector3(0, 1.6, 0)
+		var c := fauna.melee_target(head, -camera.global_transform.basis.z, float(d.get("range", REACH)))
+		if c != null and (not h.has("point") or head.distance_to(h["point"]) > head.distance_to(c.global_position) - 0.5):
+			h = {"creature": c, "point": c.global_position}
 	if (h.is_empty() or (h.has("chunk") and not h.has("obj"))) and _harvest_under(h, q):
 		return
 	if h.is_empty():

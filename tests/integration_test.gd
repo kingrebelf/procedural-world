@@ -165,6 +165,36 @@ func _run() -> void:
 	world.fauna.add_child(kc)
 	await _frames(3)
 	check(kc._kit != null and kc._kit.anim.is_playing(), "kit animal is animated (%s)" % kc.label())
+	# Hunting: an animal in front of you takes damage from a swing, wherever it faces.
+	for face in [0.0, PI * 0.5, PI]:
+		var eye: Vector3 = player.camera.global_position
+		var fwd: Vector3 = -player.camera.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		kc.global_position = Vector3(eye.x, 0, eye.z) + fwd * 2.2
+		kc.global_position.y = world.vehicles.ground(kc.global_position.x, kc.global_position.z)
+		kc.rotation.y = face
+		kc.set_process(false)
+		kc.set_physics_process(false)
+		player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": -0.35, "slot": player.slot, "view": 1})
+		await _frames(3)
+		var hp0 := kc.hp
+		player._cooldown = 0.0
+		player.use_held()
+		check(kc.hp < hp0, "a swing hits an animal facing %d deg (%.0f -> %.0f hp, aim hits %s)" % [rad_to_deg(face), hp0, kc.hp, str(player._hit_object().keys())])
+		kc.hp = hp0
+	# A wolf at your feet, with you looking straight ahead: the swing still lands.
+	world.fauna._herds[Vector2i(99999, 99999)] = [kc]
+	var feet_fwd: Vector3 = -player.camera.global_transform.basis.z
+	feet_fwd.y = 0.0
+	kc.global_position = player.global_position + feet_fwd.normalized() * 1.5
+	player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": 0.0, "slot": player.slot, "view": 1})
+	await _frames(3)
+	var hp1 := kc.hp
+	player._cooldown = 0.0
+	player.use_held()
+	check(kc.hp < hp1, "a level swing hits an animal at your feet (%.0f -> %.0f hp)" % [hp1, kc.hp])
+	world.fauna._herds.erase(Vector2i(99999, 99999))
 	kc.hurt(1.0)
 	kc.die()
 	await _frames(2)
