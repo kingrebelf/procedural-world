@@ -625,3 +625,8 @@ func test_undergrowth_harvest() -> void:
 	var ch := {"cleared": PackedFloat32Array([3.5, 7.25])}
 	check(Flora.was_cleared(ch, 3.5, 7.25) and not Flora.was_cleared(ch, 3.5, 8.0), "harvested spots are remembered")
 	check(not Flora.was_cleared({}, 1.0, 1.0), "untouched chunk has nothing cleared")
+
+func test_ore_names() -> void:
+	for sp in [1, 77, 4242, 99991]:
+		check(Flora.species_name("iron_vein", sp) == ObjectLibrary.label("iron_vein"), "an iron vein is named as iron, not a random colour")
+		check(Flora.species_name("rock", sp) == ObjectLibrary.label("rock"), "rocks keep their plain name")

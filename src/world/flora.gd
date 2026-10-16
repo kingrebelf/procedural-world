@@ -20,7 +20,11 @@ static func species_name(t: String, sp: int) -> String:
 		return base
 	var r := _rng(sp, 77)
 	var p := species(t, sp)
-	var noun := String(p.get("noun", base))
+	var noun := String(p.get("noun", ""))
+	if noun == "":
+		# Rocks and ore veins keep their plain name: a colour adjective on "Iron Vein"
+		# reads as a different metal ("Silver").
+		return base
 	return "%s %s" % [ADJ[r.randi() % ADJ.size()], noun]
 
 ## Species parameters. Pure function of (t, sp).
