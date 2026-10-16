@@ -158,7 +158,7 @@ static func _broadleaf(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> v
 			"spreading": squash = 0.6
 			"weeping": c.y -= crown * 0.4
 		var lc := _jit(leaf, r, 0.12)
-		k.sphere("leaf_w", Transform3D.IDENTITY.translated(c), rad * 0.7, 6, 9, 0.4, squash * 0.85, lc * 0.75)
+		k.sphere("leaf_core_w", Transform3D.IDENTITY.translated(c), rad * 0.7, 6, 9, 0.4, squash * 0.85, lc * 0.75)
 		_cards(k, "leaf_card_w", c, rad, int(26 * rad), r, float(p["card"]), lc, squash, form == "weeping")
 
 static func _cards(k: MeshKit, mat: String, center: Vector3, radius: float, count: int, r: RandomNumberGenerator, size: float, col: Color, squash := 1.0, droop := false) -> void:
@@ -189,7 +189,7 @@ static func _conifer(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> voi
 		var y := h * (0.18 + t * 0.75)
 		var rad := w * (1.0 - t * 0.85) * r.randf_range(0.85, 1.1)
 		var lc := _jit(leaf, r, 0.1)
-		k.cylinder("leaf_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.75, 0.05, h / tiers * 1.7, 10, true, 0.25, 2, lc * 0.7)
+		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.75, 0.05, h / tiers * 1.7, 10, true, 0.25, 2, lc * 0.7)
 		var cards := int(10 + rad * 5)
 		for c in cards:
 			var a := TAU * c / cards + r.randf() * 0.3

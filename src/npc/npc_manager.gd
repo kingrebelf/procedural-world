@@ -339,6 +339,25 @@ func player_hit(n: NPC, damage: float) -> void:
 	mark_dirty(s)
 	Game.save_all()
 
+## The player damaged or destroyed something that belongs to a settlement.
+func player_vandalised(pos: Vector3, what: String) -> void:
+	for e in settlements.values():
+		var s: Dictionary = e["data"]
+		if (s["center"] as Vector2).distance_to(Vector2(pos.x, pos.z)) > 60.0:
+			continue
+		for n in e["nodes"]:
+			if n.global_position.distance_to(pos) < 45.0:
+				NPCMind.change_rel(n.rec, -25 if what != "" else -4)
+				n.decide_in = 0.0
+				if what == "" and randf() < 0.3:
+					n.say(["Hey! Stop that!", "Leave that alone!", "What do you think you're doing?"][randi() % 3], 3.0)
+		if what != "":
+			NPCMind.add_rumor(s, "The traveller destroyed the %s." % what.to_lower())
+			for p in s["npcs"]:
+				if not p.get("dead", false):
+					NPCMind.remember(p, "The traveller destroyed the %s." % what.to_lower())
+		e["dirty"] = true
+
 ## The trader stall object this NPC keeps, as [state dict, ChunkNode], or [].
 func trader_stall(n: NPC) -> Array:
 	if not n.rec.has("stall"):
@@ -349,7 +368,7 @@ func trader_stall(n: NPC) -> Array:
 	if c == null:
 		return []
 	for o in c.data["objects"]:
-		if o["t"] == "trader":
+		if o["t"] == "trader" and not o["st"].get("gone", false):
 			var wp := Vector2(o["p"].x + k.x * ChunkGenerator.SIZE, o["p"].z + k.y * ChunkGenerator.SIZE)
 			if wp.distance_to(sp) < 0.5:
 				return [o["st"], c]

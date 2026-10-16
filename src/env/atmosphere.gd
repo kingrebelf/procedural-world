@@ -14,6 +14,11 @@ var _w := PackedFloat32Array([1, 0, 0])
 var _sample_timer := 0.0
 var _target_w := PackedFloat32Array([1, 0, 0])
 
+## World wind, shared by grass, leaves, water and clouds through global shader uniforms.
+var wind_strength := 0.3 ## 0 calm .. 1 gale
+var wind_dir := Vector2(0.8, 0.6)
+var _wind_noise := FastNoiseLite.new()
+
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = load("res://src/env/sky.gdshader")
@@ -83,6 +88,9 @@ func _ready() -> void:
 	add_child(moon)
 
 	field = WorldField.new(Game.seed)
+	_wind_noise.seed = Game.seed & 0x7FFFFFFF
+	_wind_noise.frequency = 1.0
+	_wind_noise.fractal_octaves = 3
 	Settings.changed.connect(apply_settings)
 	apply_settings()
 
@@ -115,6 +123,18 @@ func _process(delta: float) -> void:
 		for e in Eras.COUNT:
 			_w[e] = lerpf(_w[e], _target_w[e], clampf(delta * 0.8, 0.0, 1.0))
 	_update_time_of_day()
+	_update_wind()
+
+func _update_wind() -> void:
+	# Weather drifts over in-game hours; gusts come and go over seconds.
+	var gt := Game.day * Game.DAY_SECONDS
+	var base := 0.32 + _wind_noise.get_noise_1d(gt * 0.0006) * 0.75
+	var gust := maxf(0.0, _wind_noise.get_noise_1d(gt * 0.08 + 500.0)) * 0.45 * (0.4 + base)
+	wind_strength = clampf(base + gust, 0.03, 1.0)
+	var ang := _wind_noise.get_noise_1d(gt * 0.0002 + 900.0) * TAU * 1.5
+	wind_dir = Vector2(cos(ang), sin(ang))
+	RenderingServer.global_shader_parameter_set("wind_strength", wind_strength)
+	RenderingServer.global_shader_parameter_set("wind_dir", wind_dir)
 
 func _blend(arr: Array) -> Variant:
 	var c = arr[0] * _w[0]

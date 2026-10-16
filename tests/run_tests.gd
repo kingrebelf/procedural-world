@@ -394,3 +394,35 @@ func test_species_variety() -> void:
 class AIServiceShim:
 	static func build(c: Dictionary) -> Dictionary:
 		return load("res://src/ai/ai_service.gd").build_request(c, "sys", [{"role": "user", "content": "hello"}])
+
+func test_everything_is_destructible() -> void:
+	for t in ObjectLibrary.KIND:
+		var o := {"t": t, "s": 1.0, "e": 0, "st": {"yield": 4, "left": 5}}
+		var hp := Durability.max_hp(o)
+		check(hp > 0.0, "%s has health" % t)
+		var total := Durability.total_items(o)
+		check(total > 0, "%s yields something" % t)
+		var got := 0
+		var hits := 0
+		var destroyed := false
+		while not destroyed and hits < 100000:
+			var r := Durability.hit(o, Durability.power(ItemDB.def("pickaxe_iron"), Durability.material(t)))
+			for y in r["items"]:
+				check(ItemDB.has(y[0]), "%s yields a real item (%s)" % [t, y[0]])
+				got += y[1]
+			destroyed = r["destroyed"]
+			hits += 1
+		check(destroyed, "%s can be destroyed" % t)
+		check(got == total, "%s pays out exactly its yield (%d/%d)" % [t, got, total])
+		check(hits >= 3, "%s is not instantly destroyed (%d hits)" % [t, hits])
+	var dome := {"t": "hab_dome", "s": 1.0, "e": 2, "st": {}}
+	var tree := {"t": "oak", "s": 1.0, "e": 0, "st": {"yield": 4}}
+	var axe := ItemDB.def("axe_iron")
+	check(Durability.max_hp(dome) / Durability.power(axe, "metal") > 20.0 * Durability.max_hp(tree) / Durability.power(axe, "wood"), "metal buildings take far longer than trees")
+	check(Durability.power(Durability.FIST, "stone") > 0.0, "bare hands do something")
+	check(Durability.power(ItemDB.def("pickaxe_plasma"), "metal") > Durability.power(ItemDB.def("pickaxe_iron"), "metal"), "better tools are faster")
+
+func test_icons_exist_for_every_item() -> void:
+	for t in ItemDB.ITEMS:
+		var ic := Icons.get_icon(t)
+		check(ic != null and ic.get_width() == 64, "icon for %s" % t)

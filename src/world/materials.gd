@@ -135,6 +135,15 @@ static func _foliage(kind: String, albedo: Color, back: Color) -> StandardMateri
 static var _lock := Mutex.new()
 
 ## Thread-safe: object meshes are built on worker threads.
+static func _wind_foliage(kind: String, core: bool, back: Color, sway: float) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://src/world/foliage.gdshader")
+	m.set_shader_parameter("albedo_tex", _foliage_tex(kind))
+	m.set_shader_parameter("is_core", core)
+	m.set_shader_parameter("back", back)
+	m.set_shader_parameter("sway", sway)
+	return m
+
 static func get_mat(name: String) -> Material:
 	_lock.lock()
 	var out := _get_mat(name)
@@ -168,8 +177,15 @@ static func _get_mat(name: String) -> Material:
 			m = _pbr(Color(1, 1, 1), 0.85, 0.0, "leaf", 0.08, 0.6, 1.0)
 			m.backlight_enabled = true
 			m.backlight = Color(0.25, 0.3, 0.1)
-		"leaf_card_w": m = _foliage("leaf", Color(1, 1, 1), Color(0.3, 0.35, 0.12))
-		"needle_card_w": m = _foliage("needle", Color(1, 1, 1), Color(0.15, 0.22, 0.06))
+		"leaf_card_w":
+			_cache[name] = _wind_foliage("leaf", false, Color(0.3, 0.35, 0.12), 1.0)
+			return _cache[name]
+		"needle_card_w":
+			_cache[name] = _wind_foliage("needle", false, Color(0.15, 0.22, 0.06), 0.5)
+			return _cache[name]
+		"leaf_core_w":
+			_cache[name] = _wind_foliage("leaf", true, Color(0.25, 0.3, 0.1), 1.0)
+			return _cache[name]
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)

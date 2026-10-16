@@ -37,6 +37,7 @@ func _ready() -> void:
 	water.name = "Water"
 	water.target = player
 	water.atmosphere = atmosphere
+	water.streamer = streamer
 	add_child(water)
 
 	npcs = NPCManager.new()

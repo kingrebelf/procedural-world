@@ -34,6 +34,7 @@ func _swap(c: Control) -> void:
 	_content = c
 	add_child(c)
 	c.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	UITheme.focus_first.call_deferred(c)
 
 func _home() -> void:
 	var v := VBoxContainer.new()

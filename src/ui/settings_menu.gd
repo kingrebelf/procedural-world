@@ -28,6 +28,7 @@ func _ready() -> void:
 	tabs.add_child(_display_tab())
 	tabs.add_child(_controls_tab())
 	tabs.add_child(_audio_tab())
+	tabs.add_child(_ai_tab())
 	Settings.changed.connect(_sync)
 	_sync()
 
@@ -141,14 +142,58 @@ func _controls_tab() -> Control:
 	var p := _page("Controls")
 	var g := _grid(p)
 	_slider(g, "mouse_sensitivity", "Mouse sensitivity", 0.02, 0.5, 0.01, "%.2f")
+	_slider(g, "stick_sensitivity", "Controller look speed", 0.5, 8.0, 0.1, "%.1f")
 	_check(g, "invert_y", "Invert vertical look")
 	_check(g, "head_bob", "Head bob")
-	var keys := [["Move", "W A S D"], ["Sprint / Crouch", "Shift / Ctrl"], ["Jump", "Space"], ["Use tool / weapon", "Left mouse"],
-		["Interact / Trade", "E"], ["Eat", "F"], ["Inventory", "Tab"], ["Crafting", "R"], ["Map", "M"], ["Hotbar", "1 to 6, mouse wheel"], ["Pause", "Esc"]]
-	for k in keys:
-		_label(g, k[0])
-		g.add_child(UITheme.label(k[1], 17, UITheme.DIM))
+	var pads := Input.get_connected_joypads()
+	_label(g, "Controller")
+	g.add_child(UITheme.label(Input.get_joy_name(pads[0]) if not pads.is_empty() else "None connected (Xbox, PlayStation and generic pads are supported)", 15, UITheme.DIM))
+	_label(g, "Click a binding, then press the new key or button.", "")
+	g.add_child(UITheme.button("Reset all to defaults", func():
+		Bindings.reset()
+		_refresh_binds()))
+	for a in Bindings.ACTIONS:
+		_label(g, Bindings.ACTIONS[a][0])
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 6)
+		for slot in ["kb", "pad"]:
+			var b := Button.new()
+			b.custom_minimum_size = Vector2(170, 0)
+			b.clip_text = true
+			b.pressed.connect(func(): _begin_capture(a, slot, b))
+			h.add_child(b)
+			_bind_buttons.append({"action": a, "slot": slot, "btn": b})
+		g.add_child(h)
+	_refresh_binds()
 	return p
+
+var _bind_buttons: Array = []
+var _capture: Dictionary = {}
+
+func _refresh_binds() -> void:
+	for e in _bind_buttons:
+		var s = Bindings.spec(e["action"], e["slot"])
+		e["btn"].text = ("Keyboard: " if e["slot"] == "kb" else "Pad: ") + Bindings.describe(s)
+
+func _begin_capture(action: String, slot: String, b: Button) -> void:
+	_capture = {"action": action, "slot": slot}
+	b.text = "Press a %s..." % ("key" if slot == "kb" else "button")
+
+func _input(event: InputEvent) -> void:
+	if _capture.is_empty():
+		return
+	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+		_capture = {}
+		_refresh_binds()
+		get_viewport().set_input_as_handled()
+		return
+	var s = Bindings.spec_from_event(event, _capture["slot"])
+	if s == null:
+		return
+	Bindings.rebind(_capture["action"], _capture["slot"], s)
+	_capture = {}
+	_refresh_binds()
+	get_viewport().set_input_as_handled()
 
 func _audio_tab() -> Control:
 	var p := _page("Audio")
@@ -157,6 +202,125 @@ func _audio_tab() -> Control:
 	_slider(g, "music_volume", "Music volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(g, "sfx_volume", "Effects volume", 0.0, 1.0, 0.05, "%.2f")
 	return p
+
+# --- AI ----------------------------------------------------------------------------------
+
+var _ai_fields: Dictionary = {}
+var _ai_status: Label
+
+func _ai_tab() -> Control:
+	var p := _page("AI")
+	var g := _grid(p)
+	_label(g, "AI provider", "Who voices and directs the NPCs. Off uses the built-in dialogue and decisions, which need no network.")
+	var prov := OptionButton.new()
+	prov.custom_minimum_size = Vector2(320, 0)
+	for id in AI.PROVIDER_ORDER:
+		prov.add_item(AI.PRESETS[id]["label"])
+	prov.select(maxi(AI.PROVIDER_ORDER.find(AI.get_value("provider")), 0))
+	prov.item_selected.connect(func(i):
+		AI.use_provider(AI.PROVIDER_ORDER[i])
+		_ai_refresh())
+	g.add_child(prov)
+	_ai_fields["provider"] = prov
+	_ai_line(g, "base_url", "Server address", "OpenAI-compatible servers end in /v1. Strata: http://127.0.0.1:8080/v1")
+	_ai_line(g, "model", "Model", "Model name as the server knows it, e.g. claude-haiku-5-5, gpt-5-mini, llama3.1:8b.")
+	_ai_line(g, "api_key", "API key", "Stored encrypted on this PC. Only sent to the server above.", true)
+	_label(g, "Wire format", "Anthropic Messages or OpenAI chat-completions. Set automatically by the provider.")
+	var fmt := OptionButton.new()
+	fmt.add_item("OpenAI-compatible")
+	fmt.add_item("Anthropic Messages")
+	fmt.item_selected.connect(func(i): AI.set_value("format", ["openai", "anthropic"][i]))
+	g.add_child(fmt)
+	_ai_fields["format"] = fmt
+	_ai_slider(g, "temperature", "Creativity (temperature)", 0.0, 1.5, 0.05, "%.2f")
+	_ai_slider(g, "max_tokens", "Max reply length (tokens)", 100, 1500, 50, "%d")
+	_ai_slider(g, "timeout", "Request timeout", 5, 120, 5, "%d s")
+	_ai_check(g, "json_mode", "Ask for JSON replies", "Turn off for servers that reject response_format.")
+	_ai_check(g, "dialogue", "AI conversations", "NPCs answer free-typed speech with the model.")
+	_ai_check(g, "background_thinking", "AI background goals", "Nearby NPCs occasionally ask the model what to do next. Uses more requests.")
+	_ai_slider(g, "think_interval", "Seconds between an NPC's thoughts", 30, 600, 10, "%d s")
+	_ai_slider(g, "max_rpm", "Max model requests per minute", 2, 120, 1, "%d")
+	_ai_line(g, "decide_url", "Fast decision service URL", "Optional. An HTTP endpoint that picks NPC actions every 2 s (see docs/AI.md). Leave empty to use the built-in engine.")
+	_ai_line(g, "decide_key", "Decision service key", "Optional bearer token for the decision service.", true)
+	var test := UITheme.button("Test connection", _ai_test)
+	g.add_child(test)
+	_ai_status = UITheme.label(AI.last_status, 14, UITheme.DIM)
+	_ai_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_ai_status.custom_minimum_size = Vector2(320, 0)
+	g.add_child(_ai_status)
+	var note := UITheme.label("A ChatGPT or Claude chat subscription cannot be used here: those apps do not offer an API for games. Use an API key from platform.openai.com or console.anthropic.com, or run a free local model with Strata, Ollama or LM Studio.", 13, UITheme.DIM)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(300, 0)
+	g.add_child(note)
+	_ai_refresh()
+	return p
+
+func _ai_line(g: GridContainer, key: String, text: String, hint: String, secret: bool = false) -> void:
+	_label(g, text, hint)
+	var e := LineEdit.new()
+	e.custom_minimum_size = Vector2(320, 0)
+	e.secret = secret
+	e.tooltip_text = hint
+	e.text_changed.connect(func(t): AI.set_value(key, t.strip_edges()))
+	g.add_child(e)
+	_ai_fields[key] = e
+
+func _ai_slider(g: GridContainer, key: String, text: String, lo: float, hi: float, step: float, fmt: String) -> void:
+	_label(g, text)
+	var h := HBoxContainer.new()
+	var s := HSlider.new()
+	s.min_value = lo
+	s.max_value = hi
+	s.step = step
+	s.custom_minimum_size = Vector2(240, 24)
+	var l := UITheme.label("", 16, UITheme.DIM)
+	l.custom_minimum_size = Vector2(70, 0)
+	s.value_changed.connect(func(v):
+		l.text = fmt % v
+		AI.set_value(key, int(v) if step >= 1.0 else v))
+	h.add_child(s)
+	h.add_child(l)
+	g.add_child(h)
+	_ai_fields[key] = s
+
+func _ai_check(g: GridContainer, key: String, text: String, hint: String) -> void:
+	_label(g, text, hint)
+	var c := CheckBox.new()
+	c.toggled.connect(func(on): AI.set_value(key, on))
+	g.add_child(c)
+	_ai_fields[key] = c
+
+func _ai_refresh() -> void:
+	for k in _ai_fields:
+		var c = _ai_fields[k]
+		var v = AI.get_value(k)
+		if c is LineEdit:
+			if c.text != str(v):
+				c.text = str(v)
+		elif c is HSlider:
+			c.set_value_no_signal(float(v))
+			(c.get_parent().get_child(1) as Label).text = str(v)
+		elif c is CheckBox:
+			c.set_pressed_no_signal(bool(v))
+		elif k == "format":
+			c.select(1 if v == "anthropic" else 0)
+	var off: bool = AI.get_value("provider") == "off"
+	for k in _ai_fields:
+		if k != "provider" and k != "decide_url" and k != "decide_key":
+			var c = _ai_fields[k]
+			if c is BaseButton:
+				c.disabled = off
+			elif c is LineEdit:
+				c.editable = not off
+			elif c is Range:
+				c.editable = not off
+
+func _ai_test() -> void:
+	_ai_status.text = "Testing..."
+	var r: Dictionary = await AI.test_connection()
+	if is_instance_valid(_ai_status):
+		_ai_status.text = r["message"]
+		_ai_status.add_theme_color_override("font_color", Color(0.5, 0.9, 0.5) if r["ok"] else Color(1, 0.5, 0.4))
 
 func _sync() -> void:
 	_building = true

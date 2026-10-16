@@ -101,3 +101,13 @@ static func describe_item(it: Dictionary) -> String:
 	if it.has("uid") and not ItemDB.is_stackable(it["type"]):
 		lines.append("#%d" % it["uid"])
 	return "\n".join(lines)
+
+## Gives keyboard/controller focus to the first enabled button inside a panel.
+static func focus_first(root: Node) -> void:
+	if not is_instance_valid(root):
+		return
+	for c in root.find_children("*", "BaseButton", true, false):
+		var b := c as BaseButton
+		if b.is_visible_in_tree() and not b.disabled and b.focus_mode != Control.FOCUS_NONE:
+			b.grab_focus()
+			return

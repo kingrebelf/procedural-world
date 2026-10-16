@@ -29,6 +29,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			close()
 		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_cancel") and _mode != "" and event is InputEventJoypadButton:
+		if _mode == "settings":
+			open("pause")
+		else:
+			close()
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("inventory"):
 		_toggle("inventory")
 	elif event.is_action_pressed("craft"):
@@ -87,6 +93,8 @@ func _refresh() -> void:
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 	_panel.reset_size()
 	_panel.position = (get_viewport_rect().size - _panel.get_combined_minimum_size()) * 0.5
+	if Game.using_pad:
+		UITheme.focus_first.call_deferred(_panel)
 
 func _shell(title: String, subtitle: String = "") -> Array:
 	var p := PanelContainer.new()
@@ -145,6 +153,9 @@ func _slot_button(i: int) -> Button:
 	b.add_theme_font_size_override("font_size", 13)
 	if it != null:
 		b.text = ItemDB.display_name(it) + (("\nx%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else "")
+		b.icon = Icons.get_icon(it["type"])
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.tooltip_text = UITheme.describe_item(it)
 		var era: int = ItemDB.era_of(it["type"])
 		var c: Color = UITheme.ERA_COLORS[era] if era >= 0 else Color(0.7, 0.7, 0.7)

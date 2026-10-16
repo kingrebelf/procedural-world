@@ -8,6 +8,7 @@ signal money_changed(money: int)
 signal health_changed(health: float)
 signal toast(text: String)
 signal region_entered(name: String, era: int)
+signal item_gained(type: String, qty: int)
 signal saving ## Emitted before everything is written, so other systems can save too.
 
 const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
@@ -177,13 +178,13 @@ func add_money(n: int) -> void:
 func give(item: Dictionary) -> bool:
 	if item["type"] == "_marks":
 		add_money(item["qty"])
-		toast.emit("+%d Marks" % item["qty"])
+		item_gained.emit("_marks", item["qty"])
 		return true
 	var left := inventory.add(item)
 	if left > 0:
 		toast.emit("Inventory full")
 		return false
-	toast.emit("+%d %s" % [item["qty"], ItemDB.display_name(item)])
+	item_gained.emit(item["type"], item["qty"])
 	return true
 
 func set_health(h: float) -> void:
@@ -197,26 +198,13 @@ func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 # --- Input -------------------------------------------------------------------
 
 func _setup_input() -> void:
-	var keys := {
-		"move_forward": [KEY_W, KEY_UP], "move_back": [KEY_S, KEY_DOWN],
-		"move_left": [KEY_A, KEY_LEFT], "move_right": [KEY_D, KEY_RIGHT],
-		"jump": [KEY_SPACE], "sprint": [KEY_SHIFT], "crouch": [KEY_CTRL, KEY_C],
-		"interact": [KEY_E], "inventory": [KEY_TAB, KEY_I], "craft": [KEY_R],
-		"pause": [KEY_ESCAPE], "eat": [KEY_F], "map": [KEY_M],
-		"slot_1": [KEY_1], "slot_2": [KEY_2], "slot_3": [KEY_3],
-		"slot_4": [KEY_4], "slot_5": [KEY_5], "slot_6": [KEY_6],
-		"debug_overlay": [KEY_F3], "screenshot": [KEY_F12],
-	}
-	for action in keys:
-		if InputMap.has_action(action):
-			continue
-		InputMap.add_action(action)
-		for k in keys[action]:
-			var e := InputEventKey.new()
-			e.physical_keycode = k
-			InputMap.action_add_event(action, e)
-	if not InputMap.has_action("use"):
-		InputMap.add_action("use")
-		var m := InputEventMouseButton.new()
-		m.button_index = MOUSE_BUTTON_LEFT
-		InputMap.action_add_event("use", m)
+	Bindings.load_and_apply()
+
+## True after the last input came from a controller (menus then show focus highlights).
+var using_pad := false
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
+		using_pad = true
+	elif event is InputEventKey or event is InputEventMouseButton:
+		using_pad = false

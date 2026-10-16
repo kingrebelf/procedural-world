@@ -30,7 +30,7 @@ const DEFAULTS := {
 	"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "sharpness": 0.2,
 	"aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0, "gi": GI.SDFGI, "ssao": true, "ssr": true,
 	"volumetric_fog": 1, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
-	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true,
+	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "stick_sensitivity": 3.0,
 	"master_volume": 0.8, "music_volume": 0.6, "sfx_volume": 0.8,
 	"show_fps": false,
 }

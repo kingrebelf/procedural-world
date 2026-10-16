@@ -6,6 +6,7 @@ extends CharacterBody3D
 signal look_target_changed(text: String)
 signal selected_changed(slot: int)
 signal used_tool(kind: String)
+signal look_info_changed(info: Dictionary)
 
 const WALK := 4.5
 const SPRINT := 8.0
@@ -16,6 +17,8 @@ const AIR_ACCEL := 2.5
 const REACH := 3.2
 const STAND_H := 1.75
 const CROUCH_H := 1.15
+const SWIM := 3.0
+const BREATH := 30.0
 
 var streamer: ChunkStreamer
 var npcs: NPCManager
@@ -35,7 +38,12 @@ var _crouched := false
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _shape: CollisionShape3D
 var _last_look := ""
+var _last_info := ""
 var _fall_from := 0.0
+var swimming := false
+var underwater := false
+var breath := BREATH
+var _drown_t := 0.0
 
 func _ready() -> void:
 	collision_layer = 4
@@ -108,6 +116,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			select((selected + Inventory.HOTBAR - 1) % Inventory.HOTBAR)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			select((selected + 1) % Inventory.HOTBAR)
+	if event.is_action_pressed("hotbar_prev"):
+		select((selected + Inventory.HOTBAR - 1) % Inventory.HOTBAR)
+	elif event.is_action_pressed("hotbar_next"):
+		select((selected + 1) % Inventory.HOTBAR)
 	for i in Inventory.HOTBAR:
 		if event.is_action_pressed("slot_%d" % (i + 1)):
 			select(i)
@@ -129,6 +141,14 @@ func _physics_process(delta: float) -> void:
 		else:
 			return
 	_cooldown = maxf(0.0, _cooldown - delta)
+	if not ui_open:
+		# Controller look: right stick, with a response curve for fine aim near centre.
+		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if lv.length() > 0.0:
+			var k := float(Settings.get_value("stick_sensitivity")) * delta * lv.length()
+			_yaw -= lv.x * k
+			_pitch = clampf(_pitch - lv.y * k * (-1.0 if Settings.get_value("invert_y") else 1.0), -1.5, 1.5)
+			_apply_look()
 	var input := Vector2.ZERO
 	if not ui_open:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -140,22 +160,50 @@ func _physics_process(delta: float) -> void:
 	var speed := CROUCH if _crouched else (SPRINT if Input.is_action_pressed("sprint") and input.y < 0 else WALK)
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var hv := Vector3(velocity.x, 0, velocity.z)
-	var a := ACCEL if is_on_floor() else AIR_ACCEL
-	hv = hv.lerp(dir * speed, clampf(a * delta, 0.0, 1.0))
-	velocity.x = hv.x
-	velocity.z = hv.z
-	if is_on_floor():
-		if velocity.y < -12.0:
-			pass
-		if not ui_open and Input.is_action_just_pressed("jump"):
-			velocity.y = JUMP
+
+	# Water: float with the chest at the surface; dive with crouch, rise with jump.
+	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
+	swimming = surface - global_position.y > 1.15
+	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
+	if swimming:
+		hv = hv.lerp(dir * SWIM * (1.4 if Input.is_action_pressed("sprint") else 1.0), clampf(3.0 * delta, 0.0, 1.0))
+		var target_y := surface - 1.35
+		var vy_want := (target_y - global_position.y) * 2.2
+		if not ui_open and Input.is_action_pressed("crouch"):
+			vy_want = -2.2
+		elif not ui_open and Input.is_action_pressed("jump"):
+			vy_want = 2.5
+		velocity.y = lerpf(velocity.y, vy_want, clampf(4.0 * delta, 0.0, 1.0))
+		velocity.x = hv.x
+		velocity.z = hv.z
+		move_and_slide()
 	else:
-		velocity.y -= _gravity * delta
-	var was_air := not is_on_floor()
-	var vy := velocity.y
-	move_and_slide()
-	if was_air and is_on_floor() and vy < -11.0:
-		Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0)
+		var a := ACCEL if is_on_floor() else AIR_ACCEL
+		hv = hv.lerp(dir * speed, clampf(a * delta, 0.0, 1.0))
+		velocity.x = hv.x
+		velocity.z = hv.z
+		if is_on_floor():
+			if not ui_open and Input.is_action_just_pressed("jump"):
+				velocity.y = JUMP
+		else:
+			velocity.y -= _gravity * delta
+		var was_air := not is_on_floor()
+		var vy := velocity.y
+		move_and_slide()
+		if was_air and is_on_floor() and vy < -11.0:
+			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0)
+	# Breath.
+	if underwater:
+		breath = maxf(0.0, breath - delta)
+		if breath <= 0.0:
+			_drown_t -= delta
+			if _drown_t <= 0.0:
+				_drown_t = 1.0
+				Game.set_health(Game.health - 8.0)
+				Game.toast.emit("Drowning!")
+	else:
+		breath = minf(BREATH, breath + delta * 6.0)
 	# Safety net: never fall through the world.
 	if global_position.y < -200.0:
 		_snap_to_ground()
@@ -163,13 +211,13 @@ func _physics_process(delta: float) -> void:
 	# Head bob and camera height.
 	var eye := cap.height - 0.12
 	var bob := Vector3.ZERO
-	if is_on_floor() and hv.length() > 0.5 and Settings.get_value("head_bob"):
+	if is_on_floor() and not swimming and hv.length() > 0.5 and Settings.get_value("head_bob"):
 		_bob_t += delta * hv.length() * 1.6
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.sway(delta, hv.length() / SPRINT)
 
-	if not ui_open and Input.is_action_pressed("use") and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _cooldown <= 0.0:
+	if not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad) and _cooldown <= 0.0:
 		use_held()
 	_update_look_target()
 
@@ -203,24 +251,48 @@ func _hit_object() -> Dictionary:
 func _update_look_target() -> void:
 	var h := _hit_object()
 	var text := ""
+	var info := {}
 	if h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
-		text = "[E] Talk to %s (%s)" % [n.rec["name"], n.rec["job"]]
+		text = "[E] Talk to %s" % n.rec["name"].split(" ")[0]
+		var r := int(n.rec.get("rel", 0))
+		info = {"title": n.rec["name"], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
+			"lines": ["Feels %s toward you (%d)" % ["hostile" if r <= -40 else ("wary" if r < -5 else ("neutral" if r < 15 else "friendly")), r],
+				"Mood: %s" % n.rec.get("mood", "calm"), "Doing: %s" % n.action.replace("_", " ")],
+			"hp": float(n.rec.get("hp", 100.0)) / 100.0}
 	elif h.has("obj"):
 		var o: Dictionary = (h["chunk"] as ChunkNode).get_object(h["obj"])
 		var t: String = o["t"]
-		match ObjectLibrary.kind(t):
+		var k := ObjectLibrary.kind(t)
+		var mat := Durability.material(t)
+		match k:
 			"cache":
 				text = "[E] Open %s" % ObjectLibrary.label(t) if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
 			"trader":
-				text = "[E] Trade with %s" % o["st"]["name"]
-			"tree":
-				text = "%s  [LMB] chop" % ObjectLibrary.label(t)
-			"rock", "ore":
-				text = "%s  [LMB] mine (%d left)" % [ObjectLibrary.label(t), o["st"].get("left", 0)]
+				text = "%s's stall" % o["st"]["name"]
+			_:
+				text = "[LMB] %s" % ("chop" if mat == "wood" or mat == "fungus" else "break")
+		var lines: Array = ["Yields: " + Durability.describe_yields(o)]
+		if k == "cache" and not o["st"].get("opened", false):
+			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
+		lines.append("Best tool: %s" % Durability.BEST_TOOL[mat])
+		var held = held_item()
+		var d: Dictionary = ItemDB.def(held["type"]) if held != null else Durability.FIST
+		var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
+		lines.append("About %d hits with %s" % [hits, ItemDB.display_name(held) if held != null else "bare hands"])
+		info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ""],
+			"lines": lines, "hp": Durability.health_left(o) / Durability.max_hp(o), "icon": Durability.yields(o)[0][0]}
+	elif h.has("chunk"):
+		var held = held_item()
+		var can_dig: bool = held != null and ItemDB.def(held["type"]).has("dig")
+		info = {"title": "Ground", "sub": "Terrain", "lines": ["Dig with a pickaxe or drill for Stone" if not can_dig else "[LMB] dig: leaves a permanent crater"], "icon": "stone"}
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
+	var key := str(info)
+	if key != _last_info:
+		_last_info = key
+		look_info_changed.emit(info)
 
 func interact() -> void:
 	var h := _hit_object()
@@ -271,7 +343,7 @@ func eat() -> void:
 
 func use_held() -> void:
 	var it = held_item()
-	var d: Dictionary = ItemDB.def(it["type"]) if it != null else {"mine": 0.15, "chop": 0.15, "damage": 2, "range": 2.0}
+	var d: Dictionary = ItemDB.def(it["type"]) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
 	if d.get("ranged", false):
 		_fire(it, d)
@@ -289,28 +361,9 @@ func use_held() -> void:
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
 		var o: Dictionary = chunk.get_object(h["obj"])
-		var t: String = o["t"]
-		match ObjectLibrary.kind(t):
-			"tree":
-				o["st"]["hp"] = float(o["st"].get("hp", 3)) - float(d.get("chop", 0.2)) * q
-				used_tool.emit("chop")
-				if o["st"]["hp"] <= 0.0:
-					var y: int = o["st"].get("yield", 3)
-					Game.give(ItemDB.make(ObjectLibrary.YIELD[t], y, q, Game.origin_here("gathered", o["e"], chunk.key)))
-					chunk.remove_object(o["i"])
-				else:
-					Game.mark_chunk_dirty(chunk.data)
-			"rock", "ore":
-				used_tool.emit("mine")
-				o["st"]["progress"] = float(o["st"].get("progress", 0.0)) + float(d.get("mine", 0.2)) * q
-				while o["st"]["progress"] >= 1.0 and o["st"]["left"] > 0:
-					o["st"]["progress"] -= 1.0
-					o["st"]["left"] -= 1
-					Game.give(ItemDB.make(ObjectLibrary.YIELD[t], 1, q * randf_range(0.9, 1.1), Game.origin_here("mined", o["e"], chunk.key)))
-				if o["st"]["left"] <= 0:
-					chunk.remove_object(o["i"])
-				else:
-					Game.mark_chunk_dirty(chunk.data)
+		var mat := Durability.material(o["t"])
+		used_tool.emit("chop" if mat == "wood" or mat == "fungus" else "mine")
+		damage_object(chunk, o, Durability.power(d, mat) * q, q)
 	elif h.has("chunk") and d.has("dig"):
 		# Digging the ground itself: a persistent crater, and some stone.
 		used_tool.emit("dig")
@@ -346,10 +399,26 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	if hit.has("collider") and hit["collider"].has_meta("obj"):
 		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
 		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))
-		if ObjectLibrary.kind(o["t"]) == "tree":
-			o["st"]["hp"] = float(o["st"].get("hp", 3)) - 1.5
-			if o["st"]["hp"] <= 0.0:
-				Game.give(ItemDB.make(ObjectLibrary.YIELD[o["t"]], o["st"].get("yield", 3), 0.8, Game.origin_here("gathered", o["e"], chunk.key)))
-				chunk.remove_object(o["i"])
-			else:
-				Game.mark_chunk_dirty(chunk.data)
+		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, Durability.material(o["t"])), 0.8)
+
+## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
+func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: float) -> void:
+	var r := Durability.hit(o, amount)
+	var how := "gathered" if ObjectLibrary.kind(o["t"]) == "tree" else ("salvaged" if ObjectLibrary.kind(o["t"]) in ["structure", "cache", "trader", "marker"] else "mined")
+	for y in r["items"]:
+		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
+	if r["destroyed"]:
+		# A destroyed cache spills whatever was still inside.
+		for it in o["st"].get("loot", []):
+			Game.give(it)
+		o["st"]["loot"] = []
+		var k := ObjectLibrary.kind(o["t"])
+		if k == "structure" or k == "trader":
+			Game.toast.emit("Destroyed %s" % ObjectLibrary.label_of(o))
+			if npcs:
+				npcs.player_vandalised(chunk.position + o["p"], ObjectLibrary.label_of(o))
+		chunk.remove_object(o["i"])
+	else:
+		Game.mark_chunk_dirty(chunk.data)
+		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and randf() < 0.15:
+			npcs.player_vandalised(chunk.position + o["p"], "")
