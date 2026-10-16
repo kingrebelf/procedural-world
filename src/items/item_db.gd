@@ -35,6 +35,7 @@ const ITEMS := {
 	"pickaxe_mythril": {"name": "Mythril Pickaxe", "era": Eras.FANTASY, "value": 140, "stack": false, "kind": "tool", "mine": 2.0, "chop": 0.4, "damage": 12, "range": 3.0, "dig": 1.0},
 	"pickaxe_plasma": {"name": "Plasma Drill", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "tool", "mine": 3.5, "chop": 0.6, "damage": 10, "range": 3.5, "dig": 1.6},
 	"axe_iron": {"name": "Iron Axe", "era": Eras.MEDIEVAL, "value": 40, "stack": false, "kind": "tool", "mine": 0.3, "chop": 1.0, "damage": 12, "range": 3.0},
+	"hammer": {"name": "Builder's Hammer", "era": ANY, "value": 30, "stack": false, "kind": "tool", "mine": 0.2, "chop": 0.25, "damage": 6, "range": 3.0, "build": true},
 	"axe_mythril": {"name": "Mythril Axe", "era": Eras.FANTASY, "value": 130, "stack": false, "kind": "tool", "mine": 0.4, "chop": 2.0, "damage": 16, "range": 3.0},
 	# Weapons
 	"sword_iron": {"name": "Iron Sword", "era": Eras.MEDIEVAL, "value": 70, "stack": false, "kind": "weapon", "damage": 25, "range": 3.0},
@@ -44,11 +45,31 @@ const ITEMS := {
 
 const NAME_PARTS := ["Varn", "Esk", "Thal", "Orrin", "Myr", "Kael", "Sorr", "Ilsa", "Brand", "Quill", "Hale", "Nyx"]
 
-static func has(type: String) -> bool:
-	return ITEMS.has(type)
+## Value of each building piece and station as an item, in Marks.
+const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall_stone": 10, "wall_window": 9, "wall_door": 9,
+	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
+	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160}
 
+static var _piece_defs := {}
+
+static func has(type: String) -> bool:
+	return ITEMS.has(type) or BuildCatalog.is_piece_item(type)
+
+## Item definition. Building pieces are items too ("placeable"), described by BuildCatalog.
 static func def(type: String) -> Dictionary:
-	return ITEMS.get(type, {})
+	if ITEMS.has(type):
+		return ITEMS[type]
+	if BuildCatalog.is_piece_item(type):
+		if not _piece_defs.has(type):
+			var b := BuildCatalog.def(type)
+			var c := Color(0.62, 0.5, 0.36)
+			match String(b.get("mat", "wood")):
+				"stone": c = Color(0.55, 0.55, 0.55)
+				"metal": c = Color(0.7, 0.72, 0.76)
+			_piece_defs[type] = {"name": b["name"], "era": int(b.get("era", ANY)), "value": PIECE_VALUE.get(type, 10), "stack": true,
+				"kind": "station" if b.has("station") else "placeable", "color": c, "place": true}
+		return _piece_defs[type]
+	return {}
 
 static func display_name(item: Dictionary) -> String:
 	if item.get("name", "") != "":

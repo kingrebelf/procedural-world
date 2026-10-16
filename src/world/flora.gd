@@ -15,7 +15,7 @@ static func _rng(sp: int, salt: int) -> RandomNumberGenerator:
 	return r
 
 static func species_name(t: String, sp: int) -> String:
-	var base := ObjectLibrary.LABEL.get(t, t.capitalize()) as String
+	var base := ObjectLibrary.label(t)
 	if sp == 0:
 		return base
 	var r := _rng(sp, 77)

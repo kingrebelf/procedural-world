@@ -1,22 +1,57 @@
 class_name Recipes
 
+## "at" names the crafting station that must be within reach (BuildCatalog.STATION_RANGE).
 const LIST := [
 	{"out": "planks", "qty": 2, "in": {"wood": 1}},
 	{"out": "planks", "qty": 3, "in": {"glowroot": 1}},
-	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}},
-	{"out": "iron_ingot", "qty": 1, "in": {"iron_ore": 2}},
-	{"out": "mythril_ingot", "qty": 1, "in": {"iron_ingot": 1, "aether_crystal": 2}},
-	{"out": "alloy_plate", "qty": 1, "in": {"alloy_scrap": 3}},
-	{"out": "power_cell", "qty": 1, "in": {"aether_crystal": 1, "circuitry": 2}},
-	{"out": "pickaxe_iron", "qty": 1, "in": {"iron_ingot": 2, "planks": 2}},
-	{"out": "axe_iron", "qty": 1, "in": {"iron_ingot": 2, "planks": 2}},
-	{"out": "sword_iron", "qty": 1, "in": {"iron_ingot": 3, "planks": 1}},
-	{"out": "pickaxe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}},
-	{"out": "axe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}},
-	{"out": "sword_runic", "qty": 1, "in": {"mythril_ingot": 3, "aether_crystal": 2}},
-	{"out": "pickaxe_plasma", "qty": 1, "in": {"alloy_plate": 2, "power_cell": 1, "mythril_ingot": 1}},
-	{"out": "pulse_pistol", "qty": 1, "in": {"alloy_plate": 2, "circuitry": 2, "power_cell": 1}},
+	# Stations. A workbench and a campfire can be made anywhere; the rest need a workbench.
+	{"out": "workbench", "qty": 1, "in": {"planks": 6, "wood": 2}},
+	{"out": "campfire", "qty": 1, "in": {"wood": 3, "stone": 4}},
+	{"out": "forge", "qty": 1, "in": {"stone": 14, "iron_ore": 2, "wood": 2}, "at": "workbench"},
+	{"out": "anvil", "qty": 1, "in": {"iron_ingot": 5, "wood": 2}, "at": "workbench"},
+	{"out": "cauldron", "qty": 1, "in": {"iron_ingot": 3, "aether_crystal": 2}, "at": "workbench"},
+	{"out": "fabricator", "qty": 1, "in": {"alloy_scrap": 6, "circuitry": 4, "iron_ingot": 2}, "at": "workbench"},
+	{"out": "hammer", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
+	# Materials.
+	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}, "at": "campfire"},
+	{"out": "iron_ingot", "qty": 1, "in": {"iron_ore": 2}, "at": "forge"},
+	{"out": "alloy_plate", "qty": 1, "in": {"alloy_scrap": 3}, "at": "forge"},
+	{"out": "mythril_ingot", "qty": 1, "in": {"iron_ingot": 1, "aether_crystal": 2}, "at": "cauldron"},
+	{"out": "power_cell", "qty": 1, "in": {"aether_crystal": 1, "circuitry": 2}, "at": "fabricator"},
+	# Tools and weapons.
+	{"out": "pickaxe_iron", "qty": 1, "in": {"iron_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "axe_iron", "qty": 1, "in": {"iron_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "sword_iron", "qty": 1, "in": {"iron_ingot": 3, "planks": 1}, "at": "anvil"},
+	{"out": "pickaxe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "axe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "sword_runic", "qty": 1, "in": {"mythril_ingot": 3, "aether_crystal": 2}, "at": "anvil"},
+	{"out": "pickaxe_plasma", "qty": 1, "in": {"alloy_plate": 2, "power_cell": 1, "mythril_ingot": 1}, "at": "fabricator"},
+	{"out": "pulse_pistol", "qty": 1, "in": {"alloy_plate": 2, "circuitry": 2, "power_cell": 1}, "at": "fabricator"},
+	# Building pieces.
+	{"out": "foundation", "qty": 1, "in": {"stone": 6}, "at": "workbench"},
+	{"out": "floor_wood", "qty": 1, "in": {"planks": 3}, "at": "workbench"},
+	{"out": "wall_plaster", "qty": 1, "in": {"planks": 3, "stone": 2}, "at": "workbench"},
+	{"out": "wall_stone", "qty": 1, "in": {"stone": 6, "planks": 1}, "at": "workbench"},
+	{"out": "wall_window", "qty": 1, "in": {"planks": 3, "stone": 2}, "at": "workbench"},
+	{"out": "wall_door", "qty": 1, "in": {"planks": 4, "stone": 1}, "at": "workbench"},
+	{"out": "stairs_wood", "qty": 1, "in": {"planks": 8}, "at": "workbench"},
+	{"out": "roof_small", "qty": 1, "in": {"planks": 6, "stone": 4}, "at": "workbench"},
+	{"out": "roof_large", "qty": 1, "in": {"planks": 12, "stone": 8}, "at": "workbench"},
+	{"out": "fence", "qty": 2, "in": {"planks": 2}, "at": "workbench"},
+	{"out": "platform", "qty": 1, "in": {"alloy_plate": 2}, "at": "fabricator"},
+	{"out": "wall_scifi", "qty": 1, "in": {"alloy_plate": 3, "circuitry": 1}, "at": "fabricator"},
+	{"out": "wall_scifi_window", "qty": 1, "in": {"alloy_plate": 3, "aether_crystal": 1}, "at": "fabricator"},
+	{"out": "door_scifi", "qty": 1, "in": {"alloy_plate": 4, "circuitry": 2}, "at": "fabricator"},
+	{"out": "stairs_scifi", "qty": 1, "in": {"alloy_plate": 6}, "at": "fabricator"},
 ]
+
+const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
+	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator"}
+
+## True when the recipe needs no station or one is in `stations` (BuildCatalog.stations_near).
+static func station_ok(recipe: Dictionary, stations: Dictionary) -> bool:
+	return not recipe.has("at") or stations.has(recipe["at"])
+
 
 static func can_craft(inv: Inventory, recipe: Dictionary) -> bool:
 	return max_crafts(inv, recipe) > 0

@@ -278,6 +278,33 @@ func test_batch_crafting() -> void:
 	var pick: Dictionary = Recipes.LIST.filter(func(r): return r["out"] == "pickaxe_iron")[0]
 	check(Recipes.craft_many(inv, pick, o, -1) == 10 and inv.count("pickaxe_iron") == 10, "craft all tools, one slot each")
 
+func test_build_pieces() -> void:
+	for id in BuildCatalog.PIECES:
+		var m := BuildCatalog.mesh(id)
+		check(m != null and m.get_surface_count() > 0 and m.get_aabb().size.length() > 0.3, "piece mesh %s (%s)" % [id, m.get_aabb().size if m else "null"])
+		check(BuildCatalog.shape(BuildCatalog.PREFIX + id)[0] is Shape3D, "piece collision %s" % id)
+		check(ItemDB.has(id) and ItemDB.def(id)["stack"], "piece %s is a stackable item" % id)
+		check(Recipes.LIST.any(func(r): return r["out"] == id), "piece %s has a recipe" % id)
+	for r in Recipes.LIST:
+		check(ItemDB.has(r["out"]), "recipe output %s exists" % r["out"])
+		if r.has("at"):
+			check(BuildCatalog.PIECES.values().any(func(d): return d.get("station") == r["at"]), "station %s is buildable" % r["at"])
+	# Village walls sit on cell edges, along x, at the storey of the piece they join.
+	var w := BuildCatalog.snap("wall_plaster", Vector3(4.3, 0.2, 7.1), 0.0, 0, Vector3(5, 0, 7), false)
+	check(w["pos"].is_equal_approx(Vector3(4, 0, 7)) and is_equal_approx(w["yaw"], PI * 0.5), "wall snaps to the x edge (%s)" % w["pos"])
+	var w2 := BuildCatalog.snap("wall_plaster", Vector3(5.1, 3.3, 7.9), 0.0, 0, Vector3(5, 0, 7), false)
+	check(w2["pos"].is_equal_approx(Vector3(5, 3, 8)) and is_equal_approx(w2["yaw"], 0.0), "aiming at a wall top builds the next storey (%s)" % w2["pos"])
+	var f := BuildCatalog.snap("platform", Vector3(-1.0, 2.0, 9.5), 0.0, 0)
+	check(f["pos"].is_equal_approx(Vector3(-2, 2, 10)), "sci-fi platforms use 4 m cells (%s)" % f["pos"])
+	var rv := BuildCatalog.snap("roof_small", Vector3(3.2, 3.0, 4.9), 0.0, 0, Vector3(3, 0, 5), false)
+	check(rv["pos"].is_equal_approx(Vector3(4, 3, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
+	var g := BuildCatalog.snap("floor_wood", Vector3(1.0, -0.8, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
+	check(is_equal_approx(g["pos"].y, 0.0), "ground below a house keeps the floor level")
+	# Taking a piece down refunds it.
+	var o := {"t": "b:wall_stone", "s": 1.0, "st": {}}
+	var res := Durability.hit(o, 1000.0)
+	check(res["destroyed"] and res["items"] == [["wall_stone", 1]], "destroyed piece yields itself")
+
 func test_economy_arbitrage_and_demand() -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = 3

@@ -16,6 +16,7 @@ const SHEET_ORDER := [
 	"pickaxe_iron", "pickaxe_mythril", "pickaxe_plasma", "axe_iron", "axe_mythril", "sword_iron",
 	"sword_runic", "pulse_pistol", "gold_coin", "raw_meat", "hide", "cooked_meat",
 ]
+const BUILD_DIR := "res://assets/icons/build/"
 static var _sheet: Image
 static var _sheet_checked := false
 
@@ -40,6 +41,9 @@ static func get_icon(type: String) -> Texture2D:
 	if _cache.has(type):
 		return _cache[type]
 	var painted := _from_sheet(type)
+	if painted == null and ResourceLoader.exists(BUILD_DIR + type + ".png"):
+		# Building pieces and stations: rendered from their models by tools/render_build_icons.gd.
+		painted = load(BUILD_DIR + type + ".png")
 	if painted:
 		_cache[type] = painted
 		return painted

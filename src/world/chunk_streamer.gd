@@ -201,6 +201,12 @@ func dig(world_pos: Vector3, radius: float, depth: float) -> void:
 		if node.has_grass() and not _jobs.has(k):
 			_submit(k, "grass")
 
+## Regrows a chunk's grass in the background, e.g. after something was built on it.
+func refresh_grass(k: Vector2i) -> void:
+	var node: ChunkNode = chunks.get(k)
+	if node != null and node.has_grass() and not _jobs.has(k):
+		_submit(k, "grass")
+
 func apply_settings(radius: int, grass: float) -> void:
 	view_radius = radius
 	grass_density = grass

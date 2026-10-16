@@ -67,10 +67,14 @@ machine has to be measured by a human with the game running.
 - Per-region species of trees, mushrooms, rocks and undergrowth; wildlife; alien ruins.
 - Global wind (grass, foliage, clouds, waves); depth- and wind-driven water; swimming.
 - Cloud layer, sky and shadow tuning; removed the sci-fi ground grid.
+- Stacking with per-source provenance; batch crafting (x1/x5/x10/x100/all) with icons.
+- Building: grid-snapped houses from the CC0 Medieval Village and Modular Sci-Fi kits,
+  crafting stations (workbench, campfire, forge, anvil, arcane cauldron, fabricator) that
+  recipes require, a builder's hammer, all persisted in chunk snapshots.
 
 ## v0.3: Beyond the planet (planned)
 
-- Build a spaceship from parts; fly it.
+- Build a spaceship from parts; fly it. Ground vehicles, built at a vehicle bay.
 - Other planets and solar systems, each a persistent world of its own; warp drives.
 - Rivers from melting snowcaps flowing downhill to lakes and the sea.
 - Texture sets for terrain and materials; more icons.

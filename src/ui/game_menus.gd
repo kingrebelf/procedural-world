@@ -191,7 +191,16 @@ func _inventory_panel() -> Control:
 # --- Crafting ------------------------------------------------------------------------
 
 const CRAFT_AMOUNTS := [1, 5, 10, 100]
+const CRAFT_TABS := ["All", "Materials", "Tools", "Stations", "Building"]
 var _craft_scroll := 0
+var _craft_tab := "All"
+
+static func _recipe_tab(r: Dictionary) -> String:
+	match String(ItemDB.def(r["out"]).get("kind", "")):
+		"tool", "weapon": return "Tools"
+		"station": return "Stations"
+		"placeable": return "Building"
+	return "Materials"
 
 static func _icon_rect(type: String, px: int) -> TextureRect:
 	var r := TextureRect.new()
@@ -203,7 +212,9 @@ static func _icon_rect(type: String, px: int) -> TextureRect:
 	r.mouse_filter = Control.MOUSE_FILTER_PASS
 	return r
 
-func _do_craft(r: Dictionary, times: int) -> void:
+func _do_craft(r: Dictionary, times: int, stations: Dictionary) -> void:
+	if not Recipes.station_ok(r, stations):
+		return
 	var pos := player.global_position if player else Vector3.ZERO
 	var ck := ChunkStreamer.chunk_of(pos)
 	var made := Recipes.craft_many(Game.inventory, r, Game.origin_here("crafted", -1, ck), times)
@@ -211,8 +222,29 @@ func _do_craft(r: Dictionary, times: int) -> void:
 		Game.item_gained.emit(r["out"], made * int(r["qty"]))
 
 func _craft_panel() -> Control:
-	var s := _shell("Crafting", "Pick an amount, or Craft all. Crafted items remember who made them, where and when.")
+	var s := _shell("Crafting", "Pick an amount, or Craft all. Some recipes need a station nearby; build them from the Stations tab.")
 	var v: VBoxContainer = s[1]
+	var here := player.global_position if player else Vector3.ZERO
+	var stations := BuildCatalog.stations_near(streamer, here)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	for t in CRAFT_TABS:
+		var tab: String = t
+		var tb := UITheme.button(tab, func():
+			_craft_tab = tab
+			_craft_scroll = 0
+			_refresh())
+		tb.toggle_mode = true
+		tb.button_pressed = tab == _craft_tab
+		tabs.add_child(tb)
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.add_child(sp)
+	var names: Array = []
+	for st in stations:
+		names.append(Recipes.STATION_NAMES.get(st, st))
+	tabs.add_child(UITheme.label("Nearby: " + (", ".join(names) if not names.is_empty() else "no stations"), 15, UITheme.ACCENT if not names.is_empty() else UITheme.DIM))
+	v.add_child(tabs)
 	var sc := ScrollContainer.new()
 	sc.custom_minimum_size = Vector2(980, 560)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -221,10 +253,12 @@ func _craft_panel() -> Control:
 	list.add_theme_constant_override("separation", 6)
 	sc.add_child(list)
 	# Recipes you can make first, then the rest in their usual order.
-	var order: Array = Recipes.LIST.duplicate()
-	order.sort_custom(func(x, y): return (Recipes.max_crafts(Game.inventory, x) > 0) and not (Recipes.max_crafts(Game.inventory, y) > 0))
+	var order: Array = Recipes.LIST.filter(func(r): return _craft_tab == "All" or _recipe_tab(r) == _craft_tab)
+	var ready := func(r): return Recipes.station_ok(r, stations) and Recipes.max_crafts(Game.inventory, r) > 0
+	order.sort_custom(func(x, y): return ready.call(x) and not ready.call(y))
 	for r in order:
-		var most := Recipes.max_crafts(Game.inventory, r)
+		var at_ok := Recipes.station_ok(r, stations)
+		var most := Recipes.max_crafts(Game.inventory, r) if at_ok else 0
 		var card := PanelContainer.new()
 		card.add_theme_stylebox_override("panel", UITheme.sb(Color(0.1, 0.11, 0.12, 0.85 if most > 0 else 0.5), Color(1, 1, 1, 0.08), 6, 1, 8))
 		var row := HBoxContainer.new()
@@ -234,7 +268,10 @@ func _craft_panel() -> Control:
 		var name_box := VBoxContainer.new()
 		name_box.custom_minimum_size = Vector2(210, 0)
 		name_box.add_child(UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17, UITheme.TEXT if most > 0 else UITheme.DIM))
-		name_box.add_child(UITheme.label(("Can make %d" % most) if most > 0 else "Missing materials", 13, UITheme.ACCENT if most > 0 else UITheme.DIM))
+		var status := ("Can make %d" % most) if most > 0 else "Missing materials"
+		if not at_ok:
+			status = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
+		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok else UITheme.DIM)))
 		row.add_child(name_box)
 		var ins := HBoxContainer.new()
 		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -251,11 +288,11 @@ func _craft_panel() -> Control:
 		row.add_child(ins)
 		for n in CRAFT_AMOUNTS:
 			var amount: int = n
-			var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount))
+			var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount, stations))
 			b.custom_minimum_size = Vector2(54, 0)
 			b.disabled = most < amount
 			row.add_child(b)
-		var all := UITheme.button("All", func(): _do_craft(r, -1))
+		var all := UITheme.button("All", func(): _do_craft(r, -1, stations))
 		all.custom_minimum_size = Vector2(60, 0)
 		all.disabled = most <= 0
 		row.add_child(all)

@@ -1,0 +1,3 @@
+Models and animations in this folder are by Quaternius (quaternius.com),
+released under CC0 1.0 Universal (public domain). No attribution required;
+credited here with thanks.

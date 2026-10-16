@@ -30,7 +30,12 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - Settlements with traders whose prices depend on where goods come from and how much you
   have already sold them.
 - Pickaxes, axes, swords and a pulse pistol; mining, chopping and persistent digging.
-- 14 crafting recipes; items carry provenance ("Mined in Ashford Vale on day 3").
+- Crafting in batches (x1, x5, x10, x100 or all) at stations you build: workbench, campfire,
+  forge, anvil, arcane cauldron and fabricator. Items stack and keep their provenance
+  ("Mined in Ashford Vale on day 3"), even inside a stack.
+- **Build your own places.** Foundations, floors, timber, stone and alloy walls, doorways,
+  windows, stairs and tiled roofs snap to a grid and to the storeys you've already built.
+  Everything you build is saved with the world; take a piece down to get it back.
 - An Atlas of every place you have ever seen.
 - **People driven by AI.** Everyone in a settlement has a name, job, personality, routine and
   a persistent memory of you. Talk to them in your own words using a local model (Strata,
@@ -67,6 +72,7 @@ All bindings can be changed in Settings > Controls, for keyboard and controller.
 | Interact, open, trade | E |
 | Eat | F |
 | Inventory / Crafting / Atlas | Tab / R / M |
+| Place a building piece / turn it | Left mouse / Q |
 | Hotbar | 1 to 6, mouse wheel |
 | Previous / next hotbar (controller) | LB / RB |
 | Pause and settings | Esc |
@@ -104,4 +110,5 @@ tools/         build script, screenshot tour
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Models in `assets/models` are by Quaternius, released under
+CC0 (see [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)).

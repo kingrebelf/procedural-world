@@ -161,11 +161,13 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 		var s: float = o["s"]
 		var k := ObjectLibrary.kind(o["t"])
 		var organic := k == "tree" or k == "rock" or k == "ore"
+		var built := k == "built"
 		var sy := s * (lerpf(0.88, 1.15, u1) if organic else 1.0)
 		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, sy, s))
 		var p: Vector3 = o["p"]
 		# Sink slightly so bases never float on slopes.
-		p.y -= 0.15 * s
+		if not built:
+			p.y -= 0.15 * s
 		var tint := Color(1, 1, 1)
 		if organic:
 			var v := lerpf(0.86, 1.1, u2)
@@ -191,7 +193,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 	var blocked: Array = []
 	for o in chunk["objects"]:
 		var k: String = ObjectLibrary.kind(o["t"])
-		if k == "structure" or k == "trader":
+		if (k == "structure" or k == "trader" or k == "built") and not o["st"].get("gone", false):
 			blocked.append(Vector2(o["p"].x, o["p"].z))
 	for n in count:
 		var lx := r.randf() * SIZE
@@ -326,7 +328,7 @@ func set_objects(buffers: Dictionary) -> void:
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
 		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if k == "structure" or k == "tree":
+		if k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
 		else:
 			mmi.visibility_range_end = 260.0
@@ -416,7 +418,8 @@ func _update_height_shape() -> void:
 	_height_shape.position = Vector3(SIZE * 0.5, 0, SIZE * 0.5)
 
 func _add_obj_body(o: Dictionary) -> void:
-	var sh: Array = ObjectLibrary.get_shape(o["t"])
+	var built := BuildCatalog.is_built(o["t"])
+	var sh: Array = BuildCatalog.shape(o["t"]) if built else ObjectLibrary.get_shape(o["t"])
 	var b := StaticBody3D.new()
 	b.collision_layer = 2
 	b.set_meta("chunk", self)
@@ -424,13 +427,37 @@ func _add_obj_body(o: Dictionary) -> void:
 	var cs := CollisionShape3D.new()
 	cs.shape = sh[0]
 	cs.position = sh[1]
+	if sh.size() > 2:
+		cs.basis = sh[2]
 	b.add_child(cs)
+	if built:
+		var lc = BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("light")
+		if lc != null:
+			var l := OmniLight3D.new()
+			l.light_color = lc
+			l.light_energy = 1.6
+			l.omni_range = 7.0
+			l.position = Vector3(0, 1.0, 0)
+			l.shadow_enabled = false
+			b.add_child(l)
 	b.position = o["p"]
 	b.rotation.y = o["r"]
 	var s: float = o["s"]
 	b.scale = Vector3(s, s, s)
 	add_child(b)
 	_obj_bodies[o["i"]] = b
+
+## Adds something the player built. It becomes an ordinary object of this chunk, saved
+## in its snapshot. `lp` is the chunk-local position.
+func add_built(id: String, lp: Vector3, yaw: float, st: Dictionary) -> Dictionary:
+	var o := {"i": data["objects"].size(), "t": BuildCatalog.PREFIX + id, "p": lp, "r": yaw, "s": 1.0,
+		"e": int(BuildCatalog.def(id).get("era", -1)), "st": st}
+	data["objects"].append(o)
+	set_objects(build_object_buffers(data))
+	if near:
+		_add_obj_body(o)
+	Game.mark_chunk_dirty(data)
+	return o
 
 func get_object(i: int) -> Dictionary:
 	return data["objects"][i]

@@ -27,6 +27,7 @@ const ACTIONS := {
 	"inventory": ["Inventory", KEY_TAB, "btn:3"],
 	"craft": ["Crafting", KEY_R, "btn:11"],
 	"map": ["Atlas", KEY_M, "btn:12"],
+	"rotate_build": ["Rotate building piece", KEY_Q, "btn:14"],
 	"hotbar_prev": ["Previous hotbar slot", -1, "btn:9"],
 	"hotbar_next": ["Next hotbar slot", -1, "btn:10"],
 	"pause": ["Pause", KEY_ESCAPE, "btn:6"],

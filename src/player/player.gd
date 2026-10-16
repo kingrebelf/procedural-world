@@ -27,6 +27,7 @@ var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
 var ray: RayCast3D
+var builder: Builder
 var selected := 0
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
@@ -73,6 +74,9 @@ func _ready() -> void:
 	camera.add_child(ray)
 	viewmodel = Viewmodel.new()
 	camera.add_child(viewmodel)
+	builder = Builder.new()
+	builder.player = self
+	add_child(builder)
 	Settings.changed.connect(_apply_settings)
 	Game.inventory.changed.connect(_refresh_held)
 	_apply_settings()
@@ -94,6 +98,9 @@ func set_state(d: Dictionary) -> void:
 	_pitch = d.get("pitch", 0.0)
 	select(d.get("slot", 0))
 	_apply_look()
+
+func yaw() -> float:
+	return _yaw
 
 func select(i: int) -> void:
 	selected = clampi(i, 0, Inventory.HOTBAR - 1)
@@ -224,6 +231,7 @@ func _physics_process(delta: float) -> void:
 
 	if not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad) and _cooldown <= 0.0:
 		use_held()
+	builder.update()
 	_update_look_target()
 
 func _snap_to_ground() -> void:
@@ -259,7 +267,10 @@ func _update_look_target() -> void:
 	var h := _hit_object()
 	var text := ""
 	var info := {}
-	if h.has("creature") and is_instance_valid(h["creature"]):
+	if builder.active():
+		text = "[LMB] Place %s   [Q] Rotate" % BuildCatalog.def(builder.piece_id())["name"]
+		info = builder.info()
+	elif h.has("creature") and is_instance_valid(h["creature"]):
 		var cr: Creature = h["creature"]
 		var drops: Array = []
 		for d in cr.p["drops"]:
@@ -284,17 +295,19 @@ func _update_look_target() -> void:
 				text = "[E] Open %s" % ObjectLibrary.label(t) if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
 			"trader":
 				text = "%s's stall" % o["st"]["name"]
+			"built":
+				text = "[LMB] take down (returns the piece)"
 			_:
 				text = "[LMB] %s" % ("chop" if mat == "wood" or mat == "fungus" else "break")
-		var lines: Array = ["Yields: " + Durability.describe_yields(o)]
+		var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
 		if k == "cache" and not o["st"].get("opened", false):
 			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
-		lines.append("Best tool: %s" % Durability.BEST_TOOL[mat])
+		lines.append("Best tool: %s" % (Durability.BEST_TOOL[mat] if k != "built" else "Builder's Hammer (one hit)"))
 		var held = held_item()
 		var d: Dictionary = ItemDB.def(held["type"]) if held != null else Durability.FIST
 		var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
 		lines.append("About %d hits with %s" % [hits, ItemDB.display_name(held) if held != null else "bare hands"])
-		info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ""],
+		info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ("Yours" if k == "built" else "")],
 			"lines": lines, "hp": Durability.health_left(o) / Durability.max_hp(o), "icon": Durability.yields(o)[0][0]}
 	elif h.has("chunk"):
 		var held = held_item()
@@ -357,6 +370,11 @@ func eat() -> void:
 
 func use_held() -> void:
 	var it = held_item()
+	if it != null and BuildCatalog.is_piece_item(it["type"]):
+		_cooldown = 0.25
+		if builder.place():
+			used_tool.emit("build")
+		return
 	var d: Dictionary = ItemDB.def(it["type"]) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
 	if d.get("ranged", false):
@@ -381,6 +399,10 @@ func use_held() -> void:
 		var o: Dictionary = chunk.get_object(h["obj"])
 		var mat := Durability.material(o["t"])
 		used_tool.emit("chop" if mat == "wood" or mat == "fungus" else "mine")
+		if d.get("build", false) and ObjectLibrary.kind(o["t"]) == "built":
+			# The builder's hammer takes your own pieces down in one blow.
+			damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
+			return
 		damage_object(chunk, o, Durability.power(d, mat) * q, q)
 	elif h.has("chunk") and d.has("dig"):
 		# Digging the ground itself: a persistent crater, and some stone.
@@ -425,7 +447,7 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
 func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: float) -> void:
 	var r := Durability.hit(o, amount)
-	var how := "gathered" if ObjectLibrary.kind(o["t"]) == "tree" else ("salvaged" if ObjectLibrary.kind(o["t"]) in ["structure", "cache", "trader", "marker"] else "mined")
+	var how := "reclaimed" if ObjectLibrary.kind(o["t"]) == "built" else "gathered" if ObjectLibrary.kind(o["t"]) == "tree" else ("salvaged" if ObjectLibrary.kind(o["t"]) in ["structure", "cache", "trader", "marker"] else "mined")
 	for y in r["items"]:
 		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 	if r["destroyed"]:

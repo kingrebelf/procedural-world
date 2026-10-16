@@ -41,6 +41,10 @@ const BEST_TOOL := {"wood": "Axe", "fungus": "Axe", "crystal": "Pickaxe", "metal
 const FIST := {"mine": 0.15, "chop": 0.2, "damage": 2}
 
 static func entry(t: String) -> Array:
+	if BuildCatalog.is_built(t):
+		# Taking down something you built hands the piece back.
+		var d := BuildCatalog.def(BuildCatalog.id_of(t))
+		return [d.get("mat", "wood"), float(d.get("hp", 10.0)), [[BuildCatalog.id_of(t), 1]]]
 	return TABLE.get(t, ["stone", 20.0, [["stone", 3]]])
 
 static func material(t: String) -> String:

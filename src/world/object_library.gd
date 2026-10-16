@@ -29,9 +29,13 @@ const LABEL := {
 }
 
 static func kind(t: String) -> String:
+	if BuildCatalog.is_built(t):
+		return "built"
 	return KIND.get(t, "marker")
 
 static func label(t: String) -> String:
+	if BuildCatalog.is_built(t):
+		return BuildCatalog.label(t)
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -70,6 +74,8 @@ static func get_mesh(key: String) -> ArrayMesh:
 	return mesh
 
 static func _build_mesh(key: String) -> ArrayMesh:
+	if BuildCatalog.is_built(key):
+		return BuildCatalog.mesh(BuildCatalog.id_of(key))
 	if key.contains("#"):
 		var parts := key.split("#")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
