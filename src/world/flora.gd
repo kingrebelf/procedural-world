@@ -252,16 +252,21 @@ static func _conifer(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> voi
 		var y := h * (0.18 + t * 0.75)
 		var rad := w * (1.0 - t * 0.85) * r.randf_range(0.85, 1.1)
 		var lc := _jit(leaf, r, 0.1)
-		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.42, 0.05, h / tiers * 1.5, 10, true, 0.25, 2, lc * 0.78)
+		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.42, 0.05, minf(h / tiers * 1.5, rad * 2.2 + 0.4), 10, true, 0.25, 2, lc * 0.78)
 		var cards := int(10 + rad * 5)
 		for c in cards:
 			var a := TAU * c / cards + r.randf() * 0.3
 			var out := Vector3(cos(a), 0, sin(a))
 			var pos := Vector3(0, y + r.randf_range(0.0, 0.6), 0) + out * rad * r.randf_range(0.35, 0.8)
 			var b := Basis.looking_at(out, Vector3.UP).rotated(out.cross(Vector3.UP).normalized(), float(p["droop"]) + r.randf() * 0.4)
-			k.card("needle_card_w", Transform3D.IDENTITY, pos, b, rad * 0.9, 1.4, Vector3.UP * 0.5, _jit(lc, r, 0.12))
-	k.card("needle_card_w", Transform3D.IDENTITY, Vector3(0, h + 0.6, 0), Basis(), 0.8, 1.6, Vector3.ZERO, leaf)
-	k.card("needle_card_w", Transform3D.IDENTITY, Vector3(0, h + 0.6, 0), Basis(Vector3.UP, PI * 0.5), 0.8, 1.6, Vector3.ZERO, leaf)
+			# Boughs shrink towards the top, so the crown tapers instead of ending in strips.
+			k.card("needle_card_w", Transform3D.IDENTITY, pos, b, rad * 0.9, clampf(rad * 0.9, 0.55, 1.4), Vector3.UP * 0.5, _jit(lc, r, 0.12))
+	# Leader: a slim needle tip from the top tier to the crown, hiding the trunk's end.
+	var ty := h * (0.18 + 0.75 * float(tiers - 1) / tiers)
+	var tip := h - ty + 0.6
+	k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, ty, 0)), 0.22, 0.02, tip, 8, true, 0.2, 2, leaf * 0.78)
+	for n in 3:
+		k.card("needle_card_w", Transform3D.IDENTITY, Vector3(0, ty + tip * 0.5, 0), Basis(Vector3.UP, n * PI / 3.0), 0.8, tip, Vector3.ZERO, leaf)
 
 static func _mushroom(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:
 	var heads: int = p["heads"]
