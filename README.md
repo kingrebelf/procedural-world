@@ -13,6 +13,16 @@ got it) stay exactly as you left them, forever.
 > settings and Windows installer work. Visuals are a first pass built entirely from
 > procedural geometry; the fidelity roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+## Screenshots
+
+First-pass visuals from the automated screenshot tour (software-rendered in CI, no GPU):
+
+| | |
+|---|---|
+| ![Medieval town](docs/screenshots/01_medieval_town.jpg) | ![Fantasy wildwood](docs/screenshots/02_fantasy_wildwood.jpg) |
+| ![Sci-fi outpost](docs/screenshots/03_scifi_outpost.jpg) | ![Era border](docs/screenshots/04_era_border.jpg) |
+| ![Fantasy village at night](docs/screenshots/05_fantasy_village_night.jpg) | ![Medieval sunset](docs/screenshots/06_medieval_sunset.jpg) |
+
 ## Features
 
 - Infinite streamed terrain in 64 m chunks, generated on worker threads.
