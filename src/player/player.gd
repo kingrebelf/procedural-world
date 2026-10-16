@@ -28,6 +28,11 @@ var camera: Camera3D
 var viewmodel: Viewmodel
 var ray: RayCast3D
 var builder: Builder
+## Console cheats: fly (with optional noclip) and a movement speed multiplier.
+var fly := false
+var noclip := false
+var speed_mult := 1.0
+var snap_down := false ## Put the player on the ground once it loads (after a teleport).
 var selected := 0
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
@@ -36,6 +41,8 @@ var _yaw := 0.0
 var _pitch := 0.0
 var _bob_t := 0.0
 var _cooldown := 0.0
+var _rest := 0.0 ## seconds since stamina was last used; it refills after a short pause
+var winded := false ## ran dry: no sprinting until stamina is back to a third
 var _crouched := false
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _shape: CollisionShape3D
@@ -169,7 +176,8 @@ func _physics_process(delta: float) -> void:
 	var target_h := CROUCH_H if _crouched else STAND_H
 	cap.height = move_toward(cap.height, target_h, delta * 4.0)
 	_shape.position.y = cap.height * 0.5
-	var speed := CROUCH if _crouched else (SPRINT if Input.is_action_pressed("sprint") and input.y < 0 else WALK)
+	var sprinting := not _crouched and not winded and Input.is_action_pressed("sprint") and input.y < 0 and not fly
+	var speed := (CROUCH if _crouched else (SPRINT if sprinting else WALK)) * speed_mult * Game.stats.speed_mult()
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var hv := Vector3(velocity.x, 0, velocity.z)
 
@@ -178,8 +186,21 @@ func _physics_process(delta: float) -> void:
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	swimming = surface - global_position.y > 1.15
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
-	if swimming:
-		hv = hv.lerp(dir * SWIM * (1.4 if Input.is_action_pressed("sprint") else 1.0), clampf(3.0 * delta, 0.0, 1.0))
+	if fly:
+		# Free flight where you look; jump rises, crouch sinks, sprint is four times faster.
+		var up := 0.0
+		if not ui_open:
+			up = (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
+		var look := camera.global_transform.basis * Vector3(input.x, 0, input.y)
+		var fs := 12.0 * speed_mult * (4.0 if Input.is_action_pressed("sprint") else 1.0)
+		velocity = velocity.lerp((look + Vector3.UP * up).limit_length(1.0) * fs, clampf(8.0 * delta, 0.0, 1.0))
+		_shape.disabled = noclip
+		move_and_slide()
+	elif swimming:
+		var fast := not winded and Input.is_action_pressed("sprint") and input.length() > 0.1
+		if fast:
+			_tire(10.0 * delta)
+		hv = hv.lerp(dir * SWIM * (1.4 if fast else 1.0) * Game.stats.speed_mult(), clampf(3.0 * delta, 0.0, 1.0))
 		var target_y := surface - 1.35
 		var vy_want := (target_y - global_position.y) * 2.2
 		if not ui_open and Input.is_action_pressed("crouch"):
@@ -196,7 +217,7 @@ func _physics_process(delta: float) -> void:
 		velocity.x = hv.x
 		velocity.z = hv.z
 		if is_on_floor():
-			if not ui_open and Input.is_action_just_pressed("jump"):
+			if not ui_open and Input.is_action_just_pressed("jump") and _tire(8.0):
 				velocity.y = JUMP
 		else:
 			velocity.y -= _gravity * delta
@@ -205,6 +226,14 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		if was_air and is_on_floor() and vy < -11.0:
 			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0)
+	# Stamina: sprinting drains it; it refills after a moment's rest.
+	if sprinting and hv.length() > 1.0 and not swimming:
+		_tire(13.0 * delta)
+	_rest += delta
+	if _rest > 0.8:
+		Game.set_stamina(Game.stamina + 22.0 * delta)
+	if winded and Game.stamina >= Game.max_stamina() * 0.33:
+		winded = false
 	# Breath.
 	if underwater:
 		breath = maxf(0.0, breath - delta)
@@ -241,7 +270,8 @@ func _snap_to_ground() -> void:
 	var lx := global_position.x - c.key.x * ChunkGenerator.SIZE
 	var lz := global_position.z - c.key.y * ChunkGenerator.SIZE
 	var h := ChunkGenerator.height_at(c.data, lx, lz)
-	if global_position.y < h + 0.1:
+	if global_position.y < h + 0.1 or snap_down:
+		snap_down = false
 		global_position.y = h + 0.5
 		velocity = Vector3.ZERO
 
@@ -361,12 +391,21 @@ func eat() -> void:
 	if idx < 0:
 		Game.toast.emit("No food.")
 		return
-	if Game.health >= 100.0:
+	if Game.health >= Game.max_health():
 		Game.toast.emit("You're not hungry.")
 		return
 	Game.inventory.remove_at(idx, 1)
 	Game.set_health(Game.health + ItemDB.def(it["type"]).get("heal", 10))
 	Game.toast.emit("Ate %s" % ItemDB.display_name(it))
+
+## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
+func _tire(n: float) -> bool:
+	_rest = 0.0
+	if Game.use_stamina(n):
+		return true
+	Game.set_stamina(0.0)
+	winded = true
+	return false
 
 func use_held() -> void:
 	var it = held_item()
@@ -374,13 +413,18 @@ func use_held() -> void:
 		_cooldown = 0.25
 		if builder.place():
 			used_tool.emit("build")
+			Game.add_xp(4.0, "Building")
 		return
 	var d: Dictionary = ItemDB.def(it["type"]) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
 	if d.get("ranged", false):
 		_fire(it, d)
 		return
-	_cooldown = 0.55
+	# A tired swing is slow and weak.
+	var fresh := _tire(5.0)
+	var force: float = Game.stats.damage_mult() * (1.0 if fresh else 0.5)
+	var hq: float = q * force
+	_cooldown = 0.55 if fresh else 0.9
 	viewmodel.swing()
 	var h := _hit_object()
 	if h.is_empty():
@@ -388,11 +432,11 @@ func use_held() -> void:
 		return
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
-		fauna.player_hit(h["creature"], float(d.get("damage", 2)) * q)
+		fauna.player_hit(h["creature"], float(d.get("damage", 2)) * hq)
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
-		npcs.player_hit(h["npc"], float(d.get("damage", 2)) * q)
+		npcs.player_hit(h["npc"], float(d.get("damage", 2)) * hq)
 		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
@@ -403,12 +447,12 @@ func use_held() -> void:
 			# The builder's hammer takes your own pieces down in one blow.
 			damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
 			return
-		damage_object(chunk, o, Durability.power(d, mat) * q, q)
+		damage_object(chunk, o, Durability.power(d, mat) * hq, q)
 	elif h.has("chunk") and d.has("dig"):
 		# Digging the ground itself: a persistent crater, and some stone.
 		used_tool.emit("dig")
 		var p: Vector3 = h["point"]
-		streamer.dig(p, 1.6 + d["dig"] * 0.6, 0.35 * d["dig"] * q)
+		streamer.dig(p, 1.6 + d["dig"] * 0.6, 0.35 * d["dig"] * hq)
 		if randf() < 0.5:
 			var ck := ChunkStreamer.chunk_of(p)
 			Game.give(ItemDB.make("stone", 1, 1.0, Game.origin_here("dug", -1, ck)))
@@ -447,9 +491,17 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
 func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: float) -> void:
 	var r := Durability.hit(o, amount)
-	var how := "reclaimed" if ObjectLibrary.kind(o["t"]) == "built" else "gathered" if ObjectLibrary.kind(o["t"]) == "tree" else ("salvaged" if ObjectLibrary.kind(o["t"]) in ["structure", "cache", "trader", "marker"] else "mined")
+	var k0 := ObjectLibrary.kind(o["t"])
+	var mat0 := Durability.material(o["t"])
+	var how := "reclaimed" if k0 == "built" else ("salvaged" if k0 in ["structure", "cache", "trader", "marker"] or mat0 == "metal" else ("gathered" if k0 == "tree" else "mined"))
+	var xp := 0.0
 	for y in r["items"]:
 		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
+		xp += 2.0 * y[1]
+	if r["destroyed"]:
+		xp += clampf(Durability.max_hp(o) * 0.5, 3.0, 60.0)
+	if k0 != "built" and xp > 0.0:
+		Game.add_xp(xp, "Gathering" if how == "gathered" else ("Mining" if how == "mined" else "Salvaging"))
 	if r["destroyed"]:
 		# A destroyed cache spills whatever was still inside.
 		for it in o["st"].get("loot", []):

@@ -9,6 +9,16 @@ var _prompt: Label
 var _hotbar: HBoxContainer
 var _slots: Array = []
 var _health: ProgressBar
+var _health_val: Label
+var _stamina: ProgressBar
+var _stamina_val: Label
+var _xp: ProgressBar
+var _xp_val: Label
+var _level: Label
+var _points: Label
+var _xp_pop: Label
+var _xp_pop_n := 0.0
+var _xp_tw: Tween
 var _money: Label
 var _banner: Label
 var _banner_sub: Label
@@ -75,14 +85,32 @@ func _ready() -> void:
 		_slots.append({"panel": p, "name": n, "qty": q, "icon": ic})
 
 	var vit := VBoxContainer.new()
-	_pin(vit, Control.PRESET_BOTTOM_LEFT, Rect2(28, -96, 260, 80))
+	_pin(vit, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 300, 160))
+	vit.alignment = BoxContainer.ALIGNMENT_END
+	vit.add_theme_constant_override("separation", 3)
+	vit.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(vit)
-	_health = ProgressBar.new()
-	_health.custom_minimum_size = Vector2(260, 14)
-	_health.show_percentage = false
-	_health.max_value = 100
-	vit.add_child(UITheme.label("HEALTH", 12, UITheme.DIM))
-	vit.add_child(_health)
+	var lv_row := HBoxContainer.new()
+	_level = UITheme.label("", 18, UITheme.ACCENT)
+	_points = UITheme.label("", 13, UITheme.ACCENT_2)
+	_xp_pop = UITheme.label("", 13, UITheme.DIM)
+	_xp_pop.modulate.a = 0.0
+	lv_row.add_child(_level)
+	lv_row.add_child(_points)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lv_row.add_child(gap)
+	lv_row.add_child(_xp_pop)
+	vit.add_child(lv_row)
+	var hb := _bar(vit, "HEALTH", Color(0.78, 0.2, 0.18), 14)
+	_health = hb[0]
+	_health_val = hb[1]
+	var sb := _bar(vit, "STAMINA", Color(0.36, 0.72, 0.3), 10)
+	_stamina = sb[0]
+	_stamina_val = sb[1]
+	var xb := _bar(vit, "EXPERIENCE", Color(0.92, 0.72, 0.28), 6)
+	_xp = xb[0]
+	_xp_val = xb[1]
 	_money = UITheme.label("", 22, UITheme.ACCENT)
 	vit.add_child(_money)
 
@@ -142,6 +170,9 @@ func _ready() -> void:
 	Game.toast.connect(_on_toast)
 	Game.money_changed.connect(func(_m): _refresh())
 	Game.health_changed.connect(func(_h): _refresh())
+	Game.stats_changed.connect(_refresh)
+	Game.leveled_up.connect(_on_level)
+	Game.xp_gained.connect(_on_xp)
 	Game.region_entered.connect(_on_region)
 	Game.inventory.changed.connect(_refresh)
 	_refresh()
@@ -163,7 +194,15 @@ func _refresh() -> void:
 		var sel := player != null and player.selected == i
 		s["panel"].add_theme_stylebox_override("panel", UITheme.sb(Color(0.08, 0.08, 0.09, 0.8 if sel else 0.55),
 			UITheme.ACCENT if sel else Color(1, 1, 1, 0.1), 6, 2 if sel else 1, 8))
+	_health.max_value = Game.max_health()
 	_health.value = Game.health
+	_health_val.text = "%d / %d" % [ceili(Game.health), int(Game.max_health())]
+	var st := Game.stats
+	_level.text = "Level %d" % st.level
+	_points.text = ("   +%d point%s  [%s]" % [st.points, "" if st.points == 1 else "s", Bindings.key_name("character", Game.using_pad)]) if st.points > 0 else ""
+	_xp.max_value = Stats.xp_to_next(st.level)
+	_xp.value = st.xp
+	_xp_val.text = "%d / %d" % [st.xp, Stats.xp_to_next(st.level)] if st.level < Stats.MAX_LEVEL else "MAX"
 	_money.text = "%d Marks" % Game.money
 
 func _on_toast(text: String) -> void:
@@ -268,6 +307,46 @@ static func _pin(c: Control, preset: int, r: Rect2) -> void:
 	c.offset_right = r.position.x + r.size.x
 	c.offset_bottom = r.position.y + r.size.y
 
+## A captioned bar: a small label and value above a coloured ProgressBar.
+static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
+	var row := HBoxContainer.new()
+	row.add_child(UITheme.label(caption, 11, UITheme.DIM))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gap)
+	var val := UITheme.label("", 11, UITheme.DIM)
+	row.add_child(val)
+	parent.add_child(row)
+	var b := ProgressBar.new()
+	b.custom_minimum_size = Vector2(300, h)
+	b.show_percentage = false
+	b.add_theme_stylebox_override("fill", UITheme.sb(col, Color(0, 0, 0, 0), 4, 0, 0))
+	parent.add_child(b)
+	return [b, val]
+
+func _on_level(level: int) -> void:
+	_banner.text = "Level %d" % level
+	_banner_sub.text = "%d attribute points to spend  [%s]" % [Game.stats.points, Bindings.key_name("character", Game.using_pad)]
+	_banner_sub.add_theme_color_override("font_color", UITheme.ACCENT)
+	var tw := _banner_box.create_tween()
+	tw.tween_property(_banner_box, "modulate:a", 1.0, 0.5)
+	tw.tween_interval(3.0)
+	tw.tween_property(_banner_box, "modulate:a", 0.0, 1.5)
+
+func _on_xp(amount: int, why: String) -> void:
+	if amount <= 0:
+		return
+	if _xp_tw and _xp_tw.is_valid():
+		_xp_tw.kill()
+	else:
+		_xp_pop_n = 0.0
+	_xp_pop_n += amount
+	_xp_pop.text = "+%d XP  %s" % [int(_xp_pop_n), why]
+	_xp_pop.modulate.a = 1.0
+	_xp_tw = _xp_pop.create_tween()
+	_xp_tw.tween_interval(2.0)
+	_xp_tw.tween_property(_xp_pop, "modulate:a", 0.0, 0.8)
+
 func _on_region(region: String, era: int) -> void:
 	_banner.text = region
 	_banner_sub.text = "%s lands" % Eras.NAMES[era]
@@ -288,6 +367,9 @@ func _process(_d: float) -> void:
 	_under.visible = player.underwater
 	_breath.visible = player.breath < Player.BREATH - 0.01
 	_breath.value = player.breath
+	_stamina.max_value = Game.max_stamina()
+	_stamina.value = Game.stamina
+	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]
 	_fps.visible = Settings.get_value("show_fps")
 	if _fps.visible:
 		_fps.text = "%d FPS  %.1f ms" % [Engine.get_frames_per_second(), 1000.0 / maxf(1.0, Engine.get_frames_per_second())]

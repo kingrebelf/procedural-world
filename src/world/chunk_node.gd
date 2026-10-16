@@ -419,7 +419,7 @@ func _update_height_shape() -> void:
 
 func _add_obj_body(o: Dictionary) -> void:
 	var built := BuildCatalog.is_built(o["t"])
-	var sh: Array = BuildCatalog.shape(o["t"]) if built else ObjectLibrary.get_shape(o["t"])
+	var sh: Array = BuildCatalog.shape(o["t"]) if built else ObjectLibrary.shape_of(o)
 	var b := StaticBody3D.new()
 	b.collision_layer = 2
 	b.set_meta("chunk", self)

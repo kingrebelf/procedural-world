@@ -144,6 +144,45 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			k.box("stone", I.translated(Vector3(0, 0.5, 0)), Vector3.ONE)
 	return k.commit(Materials.get_mat)
 
+## Collision for one placed object, fitted to its own species: a trunk-sized cylinder for
+## trees and a hull of the actual mesh for rocks and ore. A loose generic shape let a
+## boulder's collider swallow the trunk of a tree beside it, so swinging at the tree
+## mined the rock instead.
+static func shape_of(o: Dictionary) -> Array:
+	var t: String = o["t"]
+	var sp: int = o.get("sp", 0)
+	var k := kind(t)
+	if sp == 0 or not (k == "tree" or k == "rock" or k == "ore"):
+		return get_shape(t)
+	var key := mesh_key(o)
+	_lock.lock()
+	var cached = _shapes.get(key)
+	_lock.unlock()
+	if cached != null:
+		return cached
+	var out: Array
+	if k == "tree":
+		var p := Flora.species(t, sp)
+		var r := 0.45
+		var h := 6.0
+		match t:
+			"oak": r = float(p["girth"]) * 1.1; h = float(p["height"]) * 0.8
+			"pine": r = float(p["width"]) * 0.12 + 0.14; h = float(p["height"]) * 0.7
+			"glowcap": r = float(p["stem_r"]) * 1.1; h = float(p["height"]) * 0.8
+			"crystal_tree": r = float(p["girth"]) * 1.2; h = float(p["height"]) * 0.8
+		var c := CylinderShape3D.new()
+		c.radius = clampf(r, 0.22, 0.9)
+		c.height = clampf(h, 1.2, 9.0)
+		out = [c, Vector3(0, c.height * 0.5, 0)]
+	else:
+		var m := get_mesh(key)
+		var hull: Shape3D = m.create_convex_shape(true, true) if m else null
+		out = [hull, Vector3.ZERO] if hull else get_shape(t)
+	_lock.lock()
+	_shapes[key] = out
+	_lock.unlock()
+	return out
+
 ## Collision: [shape, local offset].
 static func get_shape(t: String) -> Array:
 	if _shapes.has(t):

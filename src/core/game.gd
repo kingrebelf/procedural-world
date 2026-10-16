@@ -6,6 +6,9 @@ extends Node
 signal world_loaded
 signal money_changed(money: int)
 signal health_changed(health: float)
+signal stats_changed
+signal leveled_up(level: int)
+signal xp_gained(amount: int, why: String)
 signal toast(text: String)
 signal region_entered(name: String, era: int)
 signal item_gained(type: String, qty: int)
@@ -20,6 +23,8 @@ var seed: int = 0
 var inventory := Inventory.new()
 var money := 0
 var health := 100.0
+var stamina := 100.0
+var stats := Stats.new()
 var day := 0.3
 var discovery: Dictionary = {"visited": {}, "regions": {}}
 var player: Node3D ## Set by the player when it spawns.
@@ -74,11 +79,15 @@ func _begin(fresh: bool) -> void:
 	if p is Dictionary:
 		inventory.from_data(p.get("inventory", {}))
 		money = p.get("money", 0)
-		health = p.get("health", 100.0)
+		stats = Stats.from_data(p.get("stats"))
+		health = clampf(p.get("health", 100.0), 0.0, stats.max_health())
+		stamina = stats.max_stamina()
 		pending_player_state = p
 	else:
 		money = 50
-		health = 100.0
+		stats = Stats.new()
+		health = stats.max_health()
+		stamina = stats.max_stamina()
 		var o := {"how": "starter", "era": -1, "chunk": Vector2i.ZERO}
 		inventory.add(ItemDB.make("pickaxe_iron", 1, 1.0, o))
 		inventory.add(ItemDB.make("axe_iron", 1, 1.0, o))
@@ -110,7 +119,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data()}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -166,6 +175,8 @@ func visit_chunk(chunk: Dictionary) -> void:
 		if first:
 			discovery["regions"][region] = {"day": day, "era": chunk["era"], "at": key}
 			store.save_discovery(discovery)
+			if discovery["regions"].size() > 1:
+				add_xp(40.0, "Discovered " + region)
 		region_entered.emit(region, chunk["era"])
 
 # --- Player economy -------------------------------------------------------------
@@ -187,10 +198,61 @@ func give(item: Dictionary) -> bool:
 	item_gained.emit(item["type"], item["qty"])
 	return true
 
+## Console cheats for this session (not saved): god = no damage.
+var cheats := {"god": false}
+
 func set_health(h: float) -> void:
-	health = clampf(h, 0.0, 100.0)
+	if cheats["god"] and h < health:
+		return
+	health = clampf(h, 0.0, stats.max_health())
 	_player_dirty = true
 	health_changed.emit(health)
+
+func max_health() -> float:
+	return stats.max_health()
+
+func max_stamina() -> float:
+	return stats.max_stamina()
+
+## Spends stamina for an action. Returns false (and spends nothing) if there is not
+## enough; god mode never tires.
+func use_stamina(n: float) -> bool:
+	if cheats["god"]:
+		return true
+	n *= stats.stamina_cost_mult()
+	if stamina < n:
+		return false
+	stamina -= n
+	return true
+
+func set_stamina(v: float) -> void:
+	stamina = clampf(v, 0.0, stats.max_stamina())
+
+## Experience for doing things in the world: gathering, crafting, building, hunting and
+## discovering. Levels grant attribute points (spent on the Character screen).
+func add_xp(amount: float, why: String = "") -> void:
+	var before := stats.xp
+	var lv := stats.level
+	var gained := stats.add_xp(amount)
+	_player_dirty = true
+	xp_gained.emit(stats.xp - before if gained == 0 else int(amount * stats.xp_mult()), why)
+	if gained > 0:
+		# Levelling up restores you, and new Endurance may have raised the caps.
+		set_health(stats.max_health())
+		stamina = stats.max_stamina()
+		for i in gained:
+			leveled_up.emit(lv + i + 1)
+	stats_changed.emit()
+
+func spend_point(attr: String) -> bool:
+	if not stats.spend(attr):
+		return false
+	if attr == "end":
+		set_health(health + 10.0)
+		stamina = minf(stamina + 8.0, stats.max_stamina())
+	_player_dirty = true
+	stats_changed.emit()
+	return true
 
 func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 	return {"how": how, "era": era, "chunk": chunk, "day": snappedf(day, 0.01)}

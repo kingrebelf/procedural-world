@@ -27,6 +27,7 @@ const ACTIONS := {
 	"inventory": ["Inventory", KEY_TAB, "btn:3"],
 	"craft": ["Crafting", KEY_R, "btn:11"],
 	"map": ["Atlas", KEY_M, "btn:12"],
+	"character": ["Character and attributes", KEY_K, "btn:4"],
 	"rotate_build": ["Rotate building piece", KEY_Q, "btn:14"],
 	"hotbar_prev": ["Previous hotbar slot", -1, "btn:9"],
 	"hotbar_next": ["Next hotbar slot", -1, "btn:10"],
@@ -38,6 +39,7 @@ const ACTIONS := {
 	"slot_5": ["Hotbar 5", KEY_5, ""],
 	"slot_6": ["Hotbar 6", KEY_6, ""],
 	"debug_overlay": ["FPS counter", KEY_F3, ""],
+	"console": ["Console (cheats)", KEY_QUOTELEFT, ""],
 	"screenshot": ["Screenshot", KEY_F12, ""],
 }
 
@@ -140,6 +142,10 @@ static func reset() -> void:
 const PAD_NAMES := {0: "A / Cross", 1: "B / Circle", 2: "X / Square", 3: "Y / Triangle", 4: "View / Share", 6: "Menu / Options",
 	7: "Left stick click", 8: "Right stick click", 9: "LB / L1", 10: "RB / R1", 11: "D-pad up", 12: "D-pad down", 13: "D-pad left", 14: "D-pad right"}
 const AXIS_NAMES := {0: "Left stick X", 1: "Left stick Y", 2: "Right stick X", 3: "Right stick Y", 4: "LT / L2", 5: "RT / R2"}
+
+## The key (or button, when playing on a controller) for an action, for on-screen hints.
+static func key_name(action: String, pad := false) -> String:
+	return describe(spec(action, "pad" if pad else "kb"))
 
 static func describe(s) -> String:
 	if s is int:

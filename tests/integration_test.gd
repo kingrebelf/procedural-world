@@ -115,6 +115,32 @@ func _run() -> void:
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
+	# Console cheats.
+	var con: DevConsole = world.console
+	con.run("god")
+	game.set_health(10.0)
+	check(game.health == 100.0, "god mode blocks damage")
+	con.run("god")
+	check(con.run("speed 3") == "Speed x3.0" and player.speed_mult == 3.0, "speed multiplier")
+	con.run("speed 1")
+	con.run("fly")
+	var y0: float = player.global_position.y
+	Input.action_press("jump")
+	await _frames(30)
+	Input.action_release("jump")
+	check(player.global_position.y > y0 + 1.0, "fly mode rises (%.1f -> %.1f)" % [y0, player.global_position.y])
+	con.run("fly")
+	check(not player.fly and not player._shape.disabled, "fly off restores collision")
+	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
+	await _frames(60)
+
+	# Levelling: experience from the console, a point spent, all saved below.
+	con.run("level 3")
+	check(game.stats.level == 3 and game.stats.points == 6, "levelled to 3 with points (%d, %d)" % [game.stats.level, game.stats.points])
+	check(game.spend_point("end") and game.max_health() == 110.0, "endurance point raises max health")
+	var stamina0: float = game.stamina
+	check(game.use_stamina(10.0) and game.stamina < stamina0, "actions spend stamina")
+
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
 	player.global_position += Vector3(3, 0, 2)
@@ -140,6 +166,7 @@ func _run() -> void:
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")
+	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
 	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")

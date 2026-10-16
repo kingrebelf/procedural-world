@@ -110,6 +110,7 @@ func player_hit(c: Creature, dmg: float) -> void:
 	for d in c.p["drops"]:
 		Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
 	Game.toast.emit("Killed %s" % c.label())
+	Game.add_xp(clampf(float(c.p["hp"]) / 3.0, 5.0, 80.0), "Hunting")
 	if _herds.has(k):
 		_herds[k].erase(c)
 	c.queue_free()

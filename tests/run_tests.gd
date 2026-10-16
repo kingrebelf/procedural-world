@@ -480,6 +480,19 @@ func test_everything_is_destructible() -> void:
 		check(destroyed, "%s can be destroyed" % t)
 		check(got == total, "%s pays out exactly its yield (%d/%d)" % [t, got, total])
 		check(hits >= 3, "%s is not instantly destroyed (%d hits)" % [t, hits])
+	# Chopping a tree pays its main yield as you go; extras only when it falls.
+	var ct := {"t": "crystal_tree", "s": 1.0, "e": 1, "st": {"yield": 4}}
+	var axe0 := ItemDB.def("axe_iron")
+	var mid: Array = []
+	var fell: Array = []
+	while true:
+		var r := Durability.hit(ct, Durability.power(axe0, Durability.material("crystal_tree")))
+		if r["destroyed"]:
+			fell = r["items"]
+			break
+		mid += r["items"]
+	check(mid.all(func(y): return y[0] == "glowroot"), "a crystal tree gives only its wood while chopping (%s)" % [mid])
+	check(fell.any(func(y): return y[0] == "aether_crystal"), "its crystal comes when it falls (%s)" % [fell])
 	var dome := {"t": "hab_dome", "s": 1.0, "e": 2, "st": {}}
 	var tree := {"t": "oak", "s": 1.0, "e": 0, "st": {"yield": 4}}
 	var axe := ItemDB.def("axe_iron")
@@ -501,3 +514,23 @@ func test_photo_textures_load() -> void:
 			check(Materials.photo(t, "detail") != null, "detail texture for %s" % t)
 	check(Materials.photo("leaves", "card") != null, "leaf card")
 	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")
+
+func test_levelling_and_attributes() -> void:
+	var s := Stats.new()
+	check(s.level == 1 and s.points == 0 and s.max_health() == 100.0, "fresh character")
+	check(Stats.xp_to_next(1) < Stats.xp_to_next(10), "levels get harder")
+	var gained := s.add_xp(Stats.xp_to_next(1) + Stats.xp_to_next(2) + 5)
+	check(gained == 2 and s.level == 3 and s.points == 2 * Stats.POINTS_PER_LEVEL and s.xp == 5, "xp carries over levels (%d, %d)" % [s.level, s.xp])
+	check(s.spend("end") and s.max_health() == 110.0 and s.max_stamina() == 108.0, "endurance raises health and stamina")
+	check(s.spend("str") and s.damage_mult() > 1.0, "strength hits harder")
+	check(s.spend("agi") and s.speed_mult() > 1.0 and s.stamina_cost_mult() < 1.0, "agility is faster and tires less")
+	check(s.spend("int") and s.xp_mult() > 1.0, "intellect learns faster")
+	check(not s.spend("luck"), "unknown attribute rejected")
+	while s.points > 0:
+		s.spend("end")
+	check(not s.spend("end"), "no points, no spending")
+	var back := Stats.from_data(JSON.parse_string(JSON.stringify(s.to_data())))
+	check(back.level == s.level and back.xp == s.xp and back.attrs == s.attrs, "stats survive a save through JSON")
+	for i in 400:
+		s.add_xp(1000000)
+	check(s.level == Stats.MAX_LEVEL and s.xp == 0, "level cap holds")

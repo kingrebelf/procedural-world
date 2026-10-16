@@ -82,7 +82,8 @@ static func craft(inv: Inventory, recipe: Dictionary, origin: Dictionary) -> boo
 	return craft_many(inv, recipe, origin, 1) == 1
 
 ## Crafts up to `times` in one go (-1 = as many as possible); returns how many were made.
-static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, times: int) -> int:
+## `skill` scales output quality (the crafter's Intellect).
+static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, times: int, skill := 1.0) -> int:
 	var most := max_crafts(inv, recipe)
 	var n := most if times < 0 else mini(times, most)
 	if n <= 0:
@@ -96,7 +97,7 @@ static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, t
 		inv.remove_type(t, recipe["in"][t] * n)
 	var o := origin.duplicate()
 	o["how"] = "crafted"
-	var q := q_sum / maxf(1, q_n)
+	var q := q_sum / maxf(1, q_n) * skill
 	if ItemDB.is_stackable(recipe["out"]):
 		inv.add(ItemDB.make(recipe["out"], recipe["qty"] * n, q, o))
 	else:

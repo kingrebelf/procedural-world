@@ -5,6 +5,7 @@ var streamer: ChunkStreamer
 var atmosphere: Atmosphere
 var player: Player
 var hud: HUD
+var console: DevConsole
 var menus: GameMenus
 var npcs: NPCManager
 var fauna: FaunaManager
@@ -69,6 +70,9 @@ func _ready() -> void:
 	dialogue.menus = menus
 	dialogue.manager = npcs
 	ui.add_child(dialogue)
+	console = DevConsole.new()
+	console.player = player
+	ui.add_child(console)
 
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()

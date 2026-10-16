@@ -97,30 +97,41 @@ static func health_left(o: Dictionary) -> float:
 
 ## Applies one hit. Returns {items: [[type, qty]], destroyed: bool}. The caller gives the
 ## items (with provenance) and removes the object if destroyed.
+## The main yield (the one rolled per object) is paid out as you work. Fixed extras, like
+## the crystal at the heart of a crystal tree or the loose stone round an iron vein, come
+## only when the thing finally breaks, so a tree never hands you a rock halfway through.
+## Objects with no main yield (caches, buildings) pay everything out along the way.
 static func hit(o: Dictionary, amount: float) -> Dictionary:
 	var st: Dictionary = o["st"]
 	var hp := max_hp(o)
 	var dmg: float = minf(hp, float(st.get("dmg", 0.0)) + amount)
 	st["dmg"] = dmg
-	var total := total_items(o)
-	var due := int(floor(dmg / hp * total + 0.0001))
+	var destroyed := dmg >= hp - 0.0001
+	var main: Array = []
+	var extra: Array = []
+	var ys := yields(o)
+	var tab: Array = entry(o["t"])[2]
+	for i in ys.size():
+		for n in ys[i][1]:
+			(main if tab[i][1] < 0 else extra).append(ys[i][0])
+	var order: Array = main + extra if not main.is_empty() else extra
+	var paced: int = main.size() if not main.is_empty() else extra.size()
+	var due := order.size() if destroyed else mini(paced, int(floor(dmg / hp * paced + 0.0001)))
 	var taken: int = st.get("taken", 0)
 	var items: Array = []
 	if due > taken:
-		# Hand out yields in table order, one share per crossing.
-		var order: Array = []
-		for y in yields(o):
-			for i in y[1]:
-				order.append(y[0])
-		# _spread interleaves so rarer extras arrive along the way, not all at the end.
 		var counts := {}
+		var keys: Array = []
 		for i in range(taken, mini(due, order.size())):
-			var t: String = order[_spread(i, order.size())]
+			# Without a main yield, _spread interleaves mixed loot so it alternates.
+			var t: String = order[i] if not main.is_empty() else order[_spread(i, order.size())]
+			if not counts.has(t):
+				keys.append(t)
 			counts[t] = counts.get(t, 0) + 1
-		for t in counts:
+		for t in keys:
 			items.append([t, counts[t]])
 		st["taken"] = due
-	return {"items": items, "destroyed": dmg >= hp - 0.0001}
+	return {"items": items, "destroyed": destroyed}
 
 ## Deterministic spread of index i over n so mixed yields alternate.
 static func _spread(i: int, n: int) -> int:

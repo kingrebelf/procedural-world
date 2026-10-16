@@ -110,6 +110,12 @@ func generate(cx: int, cz: int) -> Dictionary:
 	_place_objects(chunk, sites)
 	return chunk
 
+static func _crowds_tree(chunk: Dictionary, lx: float, lz: float, gap: float) -> bool:
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree" and Vector2(o["p"].x - lx, o["p"].z - lz).length() < gap:
+			return true
+	return false
+
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
 	lx = clampf(lx, 0.0, SIZE - 0.001)
@@ -220,6 +226,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		var rocks: Array = bp["rocks"]
+		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8):
+			# A boulder grown into a trunk makes chopping and mining ambiguous.
+			continue
 		if roll < rd / 16.0:
 			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0}, rocks[pick % rocks.size()], variant)
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:

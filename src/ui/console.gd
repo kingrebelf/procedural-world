@@ -1,0 +1,175 @@
+class_name DevConsole
+extends Control
+## Cheat console, opened with ` (rebindable). Cheats last for this session only.
+
+const HELP := """Commands:
+  fly            toggle flying (Space up, Ctrl down, Shift fast)
+  noclip         toggle flying through everything
+  god            toggle no damage
+  speed <x>      movement speed multiplier (1 = normal)
+  heal           full health and stamina
+  xp <n>         gain experience
+  level <n>      jump to a level (points included)
+  give <item> [n]  e.g. give iron_ingot 20, give workbench
+  money <n>      add Marks
+  time <hour>    set the time of day (0-24)
+  tp <x> <z>     teleport
+  items          list item ids
+  clear          clear this log"""
+
+var player: Player
+var _log: RichTextLabel
+var _input: LineEdit
+var _history: Array = []
+var _hist_i := 0
+
+func _ready() -> void:
+	theme = UITheme.get_theme()
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UITheme.sb(Color(0.03, 0.035, 0.04, 0.88), Color(1, 1, 1, 0.08), 0, 1, 10))
+	p.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	p.offset_bottom = 340
+	add_child(p)
+	var v := VBoxContainer.new()
+	p.add_child(v)
+	_log = RichTextLabel.new()
+	_log.scroll_following = true
+	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_log.add_theme_font_size_override("normal_font_size", 15)
+	v.add_child(_log)
+	_input = LineEdit.new()
+	_input.placeholder_text = "Type a command (help)"
+	_input.text_submitted.connect(_submit)
+	_input.gui_input.connect(_on_key)
+	v.add_child(_input)
+	visible = false
+	_print("[color=#9ab]Console ready. Type help.[/color]")
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("console"):
+		toggle()
+		get_viewport().set_input_as_handled()
+
+func _on_key(e: InputEvent) -> void:
+	if not (e is InputEventKey and e.pressed):
+		return
+	if e.is_action("console"):
+		toggle()
+		get_viewport().set_input_as_handled()
+	elif e.keycode == KEY_UP and not _history.is_empty():
+		_hist_i = maxi(0, _hist_i - 1)
+		_input.text = _history[_hist_i]
+		_input.caret_column = _input.text.length()
+	elif e.keycode == KEY_DOWN and not _history.is_empty():
+		_hist_i = mini(_history.size(), _hist_i + 1)
+		_input.text = _history[_hist_i] if _hist_i < _history.size() else ""
+	elif e.keycode == KEY_ESCAPE:
+		toggle()
+		get_viewport().set_input_as_handled()
+
+func toggle() -> void:
+	visible = not visible
+	if player:
+		player.ui_open = visible
+	if visible:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_input.clear()
+		_input.grab_focus.call_deferred()
+	else:
+		_input.release_focus()
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _print(t: String) -> void:
+	_log.append_text(t + "\n")
+
+func _submit(text: String) -> void:
+	text = text.strip_edges().replace("`", "")
+	_input.clear()
+	if text == "":
+		return
+	_history.append(text)
+	_hist_i = _history.size()
+	_print("[color=#e8c26a]> %s[/color]" % text)
+	_print(run(text))
+
+## Runs one command and returns what to print. Public so tests can drive it.
+func run(text: String) -> String:
+	var a := text.split(" ", false)
+	var cmd := a[0].to_lower()
+	match cmd:
+		"help", "?":
+			return HELP
+		"clear":
+			_log.clear()
+			return ""
+		"fly":
+			player.fly = not player.fly
+			if not player.fly:
+				player.noclip = false
+				player._shape.disabled = false
+			return "Fly %s" % _on(player.fly)
+		"noclip":
+			player.noclip = not player.noclip
+			player.fly = player.fly or player.noclip
+			player._shape.disabled = player.noclip
+			return "Noclip %s" % _on(player.noclip)
+		"god":
+			Game.cheats["god"] = not Game.cheats["god"]
+			if Game.cheats["god"]:
+				Game.set_health(Game.max_health())
+			return "God mode %s" % _on(Game.cheats["god"])
+		"speed":
+			if a.size() < 2 or not a[1].is_valid_float():
+				return "Usage: speed <multiplier>   (now %.1f)" % player.speed_mult
+			player.speed_mult = clampf(a[1].to_float(), 0.1, 20.0)
+			return "Speed x%.1f" % player.speed_mult
+		"heal":
+			Game.set_health(Game.max_health())
+			Game.set_stamina(Game.max_stamina())
+			return "Healed"
+		"give":
+			if a.size() < 2 or not ItemDB.has(a[1]):
+				return "Unknown item. Type items for the list."
+			var n := a[2].to_int() if a.size() > 2 else 1
+			var ck := ChunkStreamer.chunk_of(player.global_position)
+			var made := 0
+			for i in (1 if ItemDB.is_stackable(a[1]) else clampi(n, 1, 40)):
+				if Game.give(ItemDB.make(a[1], n if ItemDB.is_stackable(a[1]) else 1, 1.0, Game.origin_here("conjured", -1, ck))):
+					made += n if ItemDB.is_stackable(a[1]) else 1
+			return "Gave %d %s" % [made, ItemDB.def(a[1])["name"]]
+		"xp":
+			Game.add_xp(a[1].to_float() if a.size() > 1 else 100.0, "Console")
+			return "Level %d, %d/%d XP" % [Game.stats.level, Game.stats.xp, Stats.xp_to_next(Game.stats.level)]
+		"level":
+			var target := clampi(a[1].to_int() if a.size() > 1 else Game.stats.level + 1, 1, Stats.MAX_LEVEL)
+			while Game.stats.level < target:
+				Game.add_xp(ceilf((Stats.xp_to_next(Game.stats.level) - Game.stats.xp) / Game.stats.xp_mult()) + 1.0, "Console")
+			return "Level %d, %d points to spend (K)" % [Game.stats.level, Game.stats.points]
+		"money":
+			Game.add_money(a[1].to_int() if a.size() > 1 else 1000)
+			return "%d Marks" % Game.money
+		"time":
+			if a.size() < 2 or not a[1].is_valid_float():
+				return "Usage: time <hour 0-24>"
+			Game.day = floorf(Game.day) + clampf(a[1].to_float(), 0.0, 23.99) / 24.0
+			return "Time set"
+		"tp":
+			if a.size() < 3:
+				return "Usage: tp <x> <z>"
+			var x := a[1].to_float()
+			var z := a[2].to_float()
+			player.global_position = Vector3(x, 200.0, z)
+			player.velocity = Vector3.ZERO
+			player.frozen = true
+			player.snap_down = not player.fly
+			return "Teleported to %d, %d" % [x, z]
+		"items":
+			var ids: Array = ItemDB.ITEMS.keys() + BuildCatalog.PIECES.keys()
+			return ", ".join(ids)
+	return "Unknown command. Type help."
+
+static func _on(b: bool) -> String:
+	return "on" if b else "off"

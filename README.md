@@ -36,6 +36,9 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - **Build your own places.** Foundations, floors, timber, stone and alloy walls, doorways,
   windows, stairs and tiled roofs snap to a grid and to the storeys you've already built.
   Everything you build is saved with the world; take a piece down to get it back.
+- Health, stamina and experience. Sprinting, jumping and swinging tire you; gathering,
+  crafting, building, hunting and discovering new regions earn XP. Each level gives three
+  points for Strength, Endurance, Agility and Intellect.
 - An Atlas of every place you have ever seen.
 - **People driven by AI.** Everyone in a settlement has a name, job, personality, routine and
   a persistent memory of you. Talk to them in your own words using a local model (Strata,
@@ -72,11 +75,13 @@ All bindings can be changed in Settings > Controls, for keyboard and controller.
 | Interact, open, trade | E |
 | Eat | F |
 | Inventory / Crafting / Atlas | Tab / R / M |
+| Character (spend attribute points) | K |
 | Place a building piece / turn it | Left mouse / Q |
 | Hotbar | 1 to 6, mouse wheel |
 | Previous / next hotbar (controller) | LB / RB |
 | Pause and settings | Esc |
 | Screenshot / FPS counter | F12 / F3 |
+| Cheat console (fly, noclip, god, speed, give, tp; type help) | ` |
 
 ## Install
 

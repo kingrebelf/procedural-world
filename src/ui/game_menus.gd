@@ -18,6 +18,7 @@ func _ready() -> void:
 	add_to_group("trade_ui")
 	Game.inventory.changed.connect(_refresh)
 	Game.money_changed.connect(func(_m): _refresh())
+	Game.stats_changed.connect(func(): if _mode == "character": _refresh())
 
 func is_open() -> bool:
 	return _mode != ""
@@ -41,6 +42,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle("craft")
 	elif event.is_action_pressed("map"):
 		_toggle("map")
+	elif event.is_action_pressed("character"):
+		_toggle("character")
 	elif event is InputEventMouseButton and event.pressed and _mode == "" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -89,6 +92,7 @@ func _refresh() -> void:
 		"craft": _panel = _craft_panel()
 		"trade": _panel = _trade_panel()
 		"map": _panel = _map_panel()
+		"character": _panel = _character_panel()
 	add_child(_panel)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 	_panel.reset_size()
@@ -115,6 +119,53 @@ func _shell(title: String, subtitle: String = "") -> Array:
 	v.add_child(h)
 	return [p, v]
 
+# --- Character -------------------------------------------------------------------
+
+func _character_panel() -> Control:
+	var st := Game.stats
+	var nxt := Stats.xp_to_next(st.level)
+	var s := _shell("Character", "Level %d  ·  %d / %d XP to the next level" % [st.level, st.xp, nxt] if st.level < Stats.MAX_LEVEL else "Level %d (max)" % st.level)
+	var v: VBoxContainer = s[1]
+	s[0].custom_minimum_size = Vector2(720, 0)
+	var xp := ProgressBar.new()
+	xp.custom_minimum_size = Vector2(0, 10)
+	xp.show_percentage = false
+	xp.max_value = nxt
+	xp.value = st.xp
+	xp.add_theme_stylebox_override("fill", UITheme.sb(Color(0.92, 0.72, 0.28), Color(0, 0, 0, 0), 4, 0, 0))
+	v.add_child(xp)
+	v.add_child(UITheme.label("Points to spend: %d" % st.points if st.points > 0 else "No points to spend. Gather, craft, build, hunt and explore to level up.",
+		18, UITheme.ACCENT if st.points > 0 else UITheme.DIM))
+	var g := GridContainer.new()
+	g.columns = 4
+	g.add_theme_constant_override("h_separation", 18)
+	g.add_theme_constant_override("v_separation", 10)
+	for a in Stats.ATTRS:
+		var attr: String = a
+		g.add_child(UITheme.label(Stats.NAMES[attr], 20))
+		var val := UITheme.label(str(st.attrs[attr]), 22, UITheme.ACCENT)
+		val.custom_minimum_size = Vector2(40, 0)
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		g.add_child(val)
+		var b := UITheme.button("+", func(): Game.spend_point(attr))
+		b.disabled = st.points <= 0
+		b.custom_minimum_size = Vector2(44, 0)
+		g.add_child(b)
+		g.add_child(UITheme.label(Stats.BLURBS[attr], 15, UITheme.DIM))
+	v.add_child(g)
+	v.add_child(HSeparator.new())
+	var d := GridContainer.new()
+	d.columns = 2
+	d.add_theme_constant_override("h_separation", 24)
+	for row in [["Health", "%d" % int(st.max_health())], ["Stamina", "%d" % int(st.max_stamina())],
+			["Damage and harvesting", "x%.2f" % st.damage_mult()], ["Move speed", "x%.2f" % st.speed_mult()],
+			["Stamina use", "x%.2f" % st.stamina_cost_mult()], ["Experience gain", "x%.2f" % st.xp_mult()],
+			["Crafted quality", "x%.2f" % st.craft_quality_mult()]]:
+		d.add_child(UITheme.label(row[0], 16, UITheme.DIM))
+		d.add_child(UITheme.label(row[1], 16))
+	v.add_child(d)
+	return s[0]
+
 # --- Pause -----------------------------------------------------------------------
 
 func _pause_panel() -> Control:
@@ -122,6 +173,7 @@ func _pause_panel() -> Control:
 	var v: VBoxContainer = s[1]
 	s[0].custom_minimum_size = Vector2(460, 0)
 	v.add_child(UITheme.button("Resume", close))
+	v.add_child(UITheme.button("Character", func(): open("character")))
 	v.add_child(UITheme.button("Map", func(): open("map")))
 	v.add_child(UITheme.button("Settings", func(): open("settings")))
 	v.add_child(UITheme.button("Save and quit to menu", func():
@@ -217,9 +269,12 @@ func _do_craft(r: Dictionary, times: int, stations: Dictionary) -> void:
 		return
 	var pos := player.global_position if player else Vector3.ZERO
 	var ck := ChunkStreamer.chunk_of(pos)
-	var made := Recipes.craft_many(Game.inventory, r, Game.origin_here("crafted", -1, ck), times)
+	var made := Recipes.craft_many(Game.inventory, r, Game.origin_here("crafted", -1, ck), times, Game.stats.craft_quality_mult())
 	if made > 0:
 		Game.item_gained.emit(r["out"], made * int(r["qty"]))
+		# Experience grows with what the thing is worth, a little less for each in a batch.
+		var each := 2.0 + sqrt(float(ItemDB.def(r["out"]).get("value", 1)) * int(r["qty"]))
+		Game.add_xp(each * pow(made, 0.8), "Crafting")
 
 func _craft_panel() -> Control:
 	var s := _shell("Crafting", "Pick an amount, or Craft all. Some recipes need a station nearby; build them from the Stations tab.")
