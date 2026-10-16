@@ -16,6 +16,8 @@ var _spires: FastNoiseLite
 var _moss: FastNoiseLite
 var _plate: FastNoiseLite
 var _detail: FastNoiseLite
+var _rivers: FastNoiseLite
+var _rwarp: FastNoiseLite
 
 func _init(world_seed: int) -> void:
 	seed = world_seed & WHash.MASK
@@ -27,6 +29,8 @@ func _init(world_seed: int) -> void:
 	_moss = _noise(6, 0.02, 3, FastNoiseLite.FRACTAL_FBM)
 	_plate = _noise(7, 0.0045, 3, FastNoiseLite.FRACTAL_FBM)
 	_detail = _noise(8, 0.08, 2, FastNoiseLite.FRACTAL_FBM)
+	_rivers = _noise(9, 0.0011, 3, FastNoiseLite.FRACTAL_FBM)
+	_rwarp = _noise(10, 0.004, 2, FastNoiseLite.FRACTAL_FBM)
 
 func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
@@ -156,3 +160,67 @@ func _scifi(x: float, z: float) -> float:
 	var f := t - fl
 	f = smoothstep(0.7, 1.0, f)
 	return (fl + f) * step + _detail.get_noise_2d(x, z) * 0.08
+
+# --- Rivers -----------------------------------------------------------------
+## Rivers follow the zero line of a low-frequency noise, so they wind for kilometres and
+## never end abruptly. Their water sits at a smoothed copy of the land (the valley level
+## they would have cut over time), so a river runs between banks instead of hanging on
+## a hillside, and it fades out where the land rises far above it (high peaks) or sinks
+## below the sea (where it becomes an estuary).
+
+const RIVER_W := 0.02 ## half-width, in noise units (about 10-16 m on the ground)
+const RIVER_CELL := 8.0 ## the smoothed water level is sampled on this global grid
+const RIVER_DEPTH := 2.4
+
+## Distance from the river's centre in half-widths (0 = centre, 1 = the water's edge).
+func river_t(x: float, z: float) -> float:
+	var wx := x + _rwarp.get_noise_2d(x, z) * 60.0
+	var wz := z + _rwarp.get_noise_2d(x + 917.0, z - 433.0) * 60.0
+	return absf(_rivers.get_noise_2d(wx, wz)) / RIVER_W
+
+## Smoothed land level at a river grid node: the average over a 96 m cross.
+func _river_node(ix: int, iz: int) -> float:
+	var x := ix * RIVER_CELL
+	var z := iz * RIVER_CELL
+	var sum := 0.0
+	for o in [Vector2(0, 0), Vector2(48, 0), Vector2(-48, 0), Vector2(0, 48), Vector2(0, -48),
+			Vector2(34, 34), Vector2(-34, 34), Vector2(34, -34), Vector2(-34, -34)]:
+		sum += height(x + o.x, z + o.y)
+	return sum / 9.0
+
+## The river's water level at (x, z); `cache` (Vector2i -> float) avoids recomputing nodes.
+func river_level(x: float, z: float, cache: Dictionary) -> float:
+	var gx := floorf(x / RIVER_CELL)
+	var gz := floorf(z / RIVER_CELL)
+	var fx := x / RIVER_CELL - gx
+	var fz := z / RIVER_CELL - gz
+	var v := [0.0, 0.0, 0.0, 0.0]
+	for n in 4:
+		var k := Vector2i(int(gx) + n % 2, int(gz) + n / 2)
+		if not cache.has(k):
+			cache[k] = _river_node(k.x, k.y)
+		v[n] = cache[k]
+	return lerpf(lerpf(v[0], v[1], fx), lerpf(v[2], v[3], fx), fz)
+
+## How strongly a river is present (0..1) given the land's height and the water level:
+## none where the land towers over it, none below the sea.
+static func river_strength(land: float, level: float) -> float:
+	return (1.0 - smoothstep(10.0, 18.0, land - level)) * smoothstep(0.2, 1.2, level)
+
+## Carves the river channel and banks into a terrain height.
+static func carve_river(h: float, t: float, level: float, m: float) -> float:
+	if m <= 0.0 or t >= 3.0:
+		return h
+	var target: float
+	if t < 1.0:
+		target = level - RIVER_DEPTH * (1.0 - t * t)
+		return lerpf(h, minf(h, target), m)
+	# Banks: cut down to just above the water, and fill low spots into a levee so the
+	# water never spills.
+	var bank := level + 0.35 + (t - 1.0) * (t - 1.0) * 1.6
+	var k := m * (1.0 - smoothstep(1.0, 3.0, t))
+	if h > bank:
+		return lerpf(h, bank, k)
+	if t < 1.6:
+		return lerpf(h, level + 0.3, m * (1.0 - smoothstep(1.2, 1.6, t)))
+	return h

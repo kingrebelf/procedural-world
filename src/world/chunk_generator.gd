@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 2 ## 2: per-region biomes and parametric species.
+const GEN_VERSION := 3 ## 2: per-region biomes and parametric species. 3: rivers (new worlds).
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -16,10 +16,14 @@ const WATER_LEVEL := 0.0 ## Must match Water.LEVEL.
 
 var field: WorldField
 var seed: int
+## Rivers are carved only in worlds created with them, so chunks generated later in an
+## older world still meet the ones already saved.
+var rivers := false
 
-func _init(world_seed: int) -> void:
+func _init(world_seed: int, with_rivers := false) -> void:
 	seed = world_seed & WHash.MASK
 	field = WorldField.new(seed)
+	rivers = with_rivers
 
 # --- Settlements -------------------------------------------------------------
 
@@ -53,7 +57,9 @@ func settlements_near(x0: float, z0: float, x1: float, z1: float) -> Array:
 
 ## Final terrain height including settlement flattening.
 func sample_height(x: float, z: float, w: PackedFloat32Array, sites: Array) -> float:
-	var h := field.height(x, z, w)
+	return _flatten(x, z, field.height(x, z, w), sites)
+
+func _flatten(x: float, z: float, h: float, sites: Array) -> float:
 	for s in sites:
 		var d := Vector2(x, z).distance_to(s["center"])
 		if d < FLAT_OUTER:
@@ -79,6 +85,17 @@ func generate(cx: int, cz: int) -> Dictionary:
 			coarse.append(field.era_weights(x0 + i * STEP, z0 + j * STEP))
 	var w := PackedFloat32Array()
 	w.resize(Eras.COUNT)
+	# Rivers: only chunks a river comes near pay for them.
+	var has_river := false
+	if rivers:
+		for j in range(0, CN):
+			for i in range(0, CN):
+				if field.river_t(x0 + i * STEP, z0 + j * STEP) < 4.0:
+					has_river = true
+	var level_cache := {}
+	var river := PackedFloat32Array()
+	if has_river:
+		river.resize(RIVER_N * RIVER_N * 3)
 	for j in RES:
 		for i in RES:
 			var x := x0 + i
@@ -94,7 +111,20 @@ func generate(cx: int, cz: int) -> Dictionary:
 			for e in Eras.COUNT:
 				w[e] = lerpf(lerpf(w00[e], w10[e], fx), lerpf(w01[e], w11[e], fx), fz)
 			var k := j * RES + i
-			heights[k] = sample_height(x, z, w, sites)
+			var h := field.height(x, z, w)
+			if has_river:
+				var t := field.river_t(x, z)
+				var lv := field.river_level(x, z, level_cache)
+				var m := WorldField.river_strength(h, lv)
+				for st in sites:
+					m *= smoothstep(FLAT_OUTER, FLAT_OUTER + 30.0, Vector2(x, z).distance_to(st["center"]))
+				h = WorldField.carve_river(h, t, lv, m)
+				if i % 2 == 0 and j % 2 == 0:
+					var rk := ((j / 2) * RIVER_N + i / 2) * 3
+					river[rk] = lv
+					river[rk + 1] = t
+					river[rk + 2] = m
+			heights[k] = _flatten(x, z, h, sites)
 			for e in Eras.COUNT:
 				weights[k * Eras.COUNT + e] = int(round(w[e] * 255.0))
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
@@ -107,6 +137,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		"objects": [],
 		"biome": field.region_hash_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 	}
+	if has_river:
+		chunk["river"] = river
 	_place_objects(chunk, sites)
 	return chunk
 
@@ -129,6 +161,32 @@ static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var h01 := hs[(j + 1) * RES + i]
 	var h11 := hs[(j + 1) * RES + i + 1]
 	return lerpf(lerpf(h00, h10, fx), lerpf(h01, h11, fx), fz)
+
+## River samples every 2 m: [water level, distance from centre in half-widths, strength].
+const RIVER_N := SIZE / 2 + 1
+
+## The river's water surface at a point in this chunk, or NAN where there is no river water.
+static func river_surface(chunk: Dictionary, lx: float, lz: float) -> float:
+	if not chunk.has("river"):
+		return NAN
+	var rv: PackedFloat32Array = chunk["river"]
+	var i := clampi(int(round(lx * 0.5)), 0, RIVER_N - 1)
+	var j := clampi(int(round(lz * 0.5)), 0, RIVER_N - 1)
+	var k := (j * RIVER_N + i) * 3
+	if rv[k + 1] > 1.05 or rv[k + 2] < 0.3 or rv[k] <= WATER_LEVEL + 0.2:
+		return NAN
+	return rv[k]
+
+static func under_river(chunk: Dictionary, lx: float, lz: float) -> bool:
+	return not is_nan(river_surface(chunk, lx, lz))
+
+## In the river or on its immediate banks (nothing is placed there).
+static func by_river(chunk: Dictionary, lx: float, lz: float) -> bool:
+	if not chunk.has("river"):
+		return false
+	var rv: PackedFloat32Array = chunk["river"]
+	var k := (clampi(int(round(lz * 0.5)), 0, RIVER_N - 1) * RIVER_N + clampi(int(round(lx * 0.5)), 0, RIVER_N - 1)) * 3
+	return rv[k + 1] < 1.5 and rv[k + 2] > 0.2
 
 static func slope_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var dx := height_at(chunk, lx + 1.0, lz) - height_at(chunk, lx - 1.0, lz)
@@ -203,7 +261,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var pick := r.randf()
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
-		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER + 6.0):
+		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER + 6.0):
 			continue
 		var f := Biome.pick_flora(bp, pick)
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
@@ -221,7 +279,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var left := r.randi_range(3, 7)
 		var variant := r.randi() % Flora.VARIANTS
 		var pick := r.randi()
-		if _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5:
+		if _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5 or by_river(chunk, lx, lz):
 			continue
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
@@ -241,7 +299,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var lz := r.randf_range(10, SIZE - 10)
 		var sp := r.randi() & 0x7FFFFFFF
 		var yaw := r.randf() * TAU
-		if not _near_settlement(x0 + lx, z0 + lz, sites, FLAT_OUTER + 10.0) and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and slope_at(chunk, lx, lz) < 0.4:
+		if not _near_settlement(x0 + lx, z0 + lz, sites, FLAT_OUTER + 10.0) and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4:
 			var era := WorldField.dominant(weights_at(chunk, lx, lz))
 			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
 

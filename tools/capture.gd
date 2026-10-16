@@ -79,6 +79,25 @@ func _find_shore(g: ChunkGenerator) -> Vector2:
 					return q
 	return Vector2.ZERO
 
+## A spot on a river bank, with a point mid-river to look at (Vector4: at.xy, look.zw).
+func _find_river(g: ChunkGenerator) -> Vector4:
+	var cache := {}
+	for i in 6000:
+		var a := i * 0.37
+		var p := Vector2(cos(a), sin(a)) * (60.0 + i * 4.0)
+		if g.field.river_t(p.x, p.y) > 0.15:
+			continue
+		var lv := g.field.river_level(p.x, p.y, cache)
+		if WorldField.river_strength(g.field.height(p.x, p.y), lv) < 0.8:
+			continue
+		for k in 16:
+			var d := Vector2.from_angle(k * TAU / 16.0)
+			var q := p + d * 26.0
+			var t := g.field.river_t(q.x, q.y)
+			if t > 1.8 and t < 3.5:
+				return Vector4(q.x, q.y, p.x - d.y * 40.0, p.y + d.x * 40.0)
+	return Vector4.ZERO
+
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7) -> void:
 	if not only.is_empty() and not only.has(name.substr(0, 2)):
 		return
@@ -133,5 +152,8 @@ func _run() -> void:
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)
+	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
+	if rv != Vector4.ZERO:
+		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 2.5)
 	Game.close_world()
 	get_tree().quit()

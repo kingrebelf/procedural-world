@@ -9,6 +9,7 @@ const RES := ChunkGenerator.RES
 static var terrain_material: ShaderMaterial
 static var grass_material: ShaderMaterial
 static var grass_mesh: ArrayMesh
+static var river_material: ShaderMaterial
 
 var data: Dictionary
 var key: Vector2i
@@ -40,6 +41,8 @@ static func ensure_shared() -> void:
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_mesh = _make_blade()
+		river_material = ShaderMaterial.new()
+		river_material.shader = load("res://src/env/river.gdshader")
 
 static func _make_blade() -> ArrayMesh:
 	# A clump of 9 tapered, curved blades: far more blades per instance for the cost.
@@ -215,7 +218,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		if skip:
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
-		if y < 0.15:
+		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.33, 0.50, 0.16) * w[0] + Color(0.12, 0.55, 0.5) * w[1] + Color(0.35, 0.38, 0.3) * w[2]
@@ -250,7 +253,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
-		if y < 0.2:
+		if y < 0.2 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
 		var key := "clutter_%d" % era
 		if not out.has(key):
@@ -278,7 +281,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
-			if y < 0.3:
+			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz):
 				continue
 			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
 			if not out.has(key):
@@ -288,6 +291,20 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 			out[key] = buf
 	return out
+
+var _river: MeshInstance3D
+
+func set_river(arrays: Array) -> void:
+	if arrays.is_empty():
+		return
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	m.surface_set_material(0, river_material)
+	_river = MeshInstance3D.new()
+	_river.name = "River"
+	_river.mesh = m
+	_river.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_river)
 
 # --- Main-thread upload ---------------------------------------------------------
 

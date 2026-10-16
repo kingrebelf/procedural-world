@@ -120,10 +120,11 @@ func _run_job(job: Dictionary) -> void:
 	var res := {"key": k, "mode": job["mode"], "lod": job["lod"]}
 	var chunk: Dictionary
 	if job["mode"] == "load":
-		var gen := ChunkGenerator.new(job["seed"])
+		var gen := ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers())
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
 		res["data"] = chunk
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
+		res["river"] = RiverMesh.build_river_arrays(chunk)
 		# Build any new species meshes here, off the main thread.
 		for mk in res["objects"]:
 			ObjectLibrary.get_mesh(mk)
@@ -156,6 +157,7 @@ func _collect() -> void:
 				continue
 			var node := ChunkNode.new()
 			node.setup(res["data"], res["terrain"], res["lod"], res["objects"])
+			node.set_river(res["river"])
 			add_child(node)
 			chunks[k] = node
 			node.set_near(d <= near_radius)

@@ -20,6 +20,7 @@ var _depth_timer := 0.0
 static var _wind := 0.3
 static var _dir := Vector2(0.8, 0.6)
 static var _depth_lookup: Callable
+static var _river_lookup: Callable
 
 func _ready() -> void:
 	var pm := PlaneMesh.new()
@@ -37,6 +38,7 @@ func _ready() -> void:
 	_depth_tex = ImageTexture.create_from_image(_depth_img)
 	_mat.set_shader_parameter("depth_map", _depth_tex)
 	_depth_lookup = depth_at
+	_river_lookup = river_at
 
 func _process(delta: float) -> void:
 	if target:
@@ -46,6 +48,9 @@ func _process(delta: float) -> void:
 		var w := atmosphere.current_weights()
 		_mat.set_shader_parameter("shallow", Color(0.16, 0.36, 0.38) * w[0] + Color(0.1, 0.45, 0.5) * w[1] + Color(0.12, 0.28, 0.36) * w[2])
 		_mat.set_shader_parameter("glow_amount", w[1] * 0.8)
+		if ChunkNode.river_material:
+			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.2, 0.42, 0.4) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.16, 0.32, 0.38) * w[2])
+			ChunkNode.river_material.set_shader_parameter("glow_amount", w[1] * 0.8)
 		_wind = atmosphere.wind_strength
 		_dir = atmosphere.wind_dir
 	_depth_timer -= delta
@@ -84,8 +89,23 @@ static func amplitude(depth: float) -> float:
 	var open := smoothstep(0.5, 14.0, depth)
 	return (0.04 + _wind * _wind * 1.1) * (0.15 + 0.85 * open)
 
-## Height of the surface at (x, z) and time t. Must match water.gdshader.
+## A river's water level at (x, z), or NAN where there is no river.
+func river_at(x: float, z: float) -> float:
+	if streamer == null:
+		return NAN
+	var k := ChunkStreamer.chunk_of(Vector3(x, 0, z))
+	var c := streamer.get_chunk(k)
+	if c == null:
+		return NAN
+	return ChunkGenerator.river_surface(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE)
+
+## Height of the water surface at (x, z) and time t: a river where there is one, else the
+## sea (whose waves must match water.gdshader).
 static func surface_height(x: float, z: float, t: float) -> float:
+	if _river_lookup.is_valid():
+		var r: float = _river_lookup.call(x, z)
+		if not is_nan(r) and r > LEVEL:
+			return r
 	var depth: float = _depth_lookup.call(x, z) if _depth_lookup.is_valid() else 12.0
 	var a := amplitude(depth)
 	var d := _dir.normalized()

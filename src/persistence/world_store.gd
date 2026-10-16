@@ -24,7 +24,13 @@ func _init(world_dir: String) -> void:
 	DirAccess.make_dir_recursive_absolute(root.path_join("people"))
 
 static func memory() -> WorldStore:
-	return WorldStore.new("")
+	var s := WorldStore.new("")
+	s.meta = {"gen_version": ChunkGenerator.GEN_VERSION}
+	return s
+
+## Worlds created since rivers existed have them; older worlds keep their old terrain.
+func has_rivers() -> bool:
+	return int(meta.get("gen_version", 1)) >= 3
 
 static func worlds_dir() -> String:
 	return "user://worlds"

@@ -226,7 +226,7 @@ func _run() -> void:
 
 	# Regenerating the same chunk with today's generator would NOT reproduce the edits,
 	# which proves the game reads the snapshot rather than regenerating.
-	var fresh := ChunkGenerator.new(game.seed).generate(here_key.x, here_key.y)
+	var fresh := ChunkGenerator.new(game.seed, store.has_rivers()).generate(here_key.x, here_key.y)
 	check(absf(ChunkGenerator.height_at(fresh, lx, lz) - after) > 0.5, "snapshot, not regeneration, is the source of truth")
 
 	game.close_world()

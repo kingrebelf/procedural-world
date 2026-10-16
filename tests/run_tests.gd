@@ -57,6 +57,48 @@ func test_memory_store_never_touches_disk() -> void:
 		s.save_chunk({"cx": 1000 + i, "cz": 0})
 	check(not s.has_chunk(4, -2) and s.has_chunk(1000 + WorldStore.MEM_LIMIT + 4, 0), "memory store drops the oldest chunks")
 
+func test_rivers() -> void:
+	var g := ChunkGenerator.new(4242, true)
+	# Find a chunk a river runs through, with its water above the sea.
+	var found := {}
+	for r in 40:
+		for cz in range(-r, r + 1):
+			for cx in [-r, r]:
+				if found.is_empty() and g.field.river_t(cx * 64.0 + 32.0, cz * 64.0 + 32.0) < 0.6:
+					var t0 := Time.get_ticks_msec()
+					var c := g.generate(cx, cz)
+					var ms := Time.get_ticks_msec() - t0
+					if c.has("river") and RiverMesh.build_river_arrays(c).size() > 0:
+						found = c
+						found["ms"] = ms
+		if not found.is_empty():
+			break
+	check(not found.is_empty(), "a river runs somewhere near spawn")
+	if found.is_empty():
+		return
+	print("    river chunk %d,%d generated in %d ms" % [found["cx"], found["cz"], found["ms"]])
+	var wet := 0
+	var dry_bed := 0
+	var trees := 0
+	for lz in range(0, 64, 2):
+		for lx in range(0, 64, 2):
+			var s := ChunkGenerator.river_surface(found, lx, lz)
+			if is_nan(s):
+				continue
+			wet += 1
+			if ChunkGenerator.height_at(found, lx, lz) > s - 0.2:
+				dry_bed += 1
+	for o in found["objects"]:
+		if ObjectLibrary.kind(o["t"]) in ["tree", "rock"] and ChunkGenerator.under_river(found, o["p"].x, o["p"].z):
+			trees += 1
+	check(wet > 10, "river chunk has water (%d cells)" % wet)
+	check(dry_bed <= wet / 10, "river bed lies under the water (%d of %d cells shallow)" % [dry_bed, wet])
+	check(trees == 0, "no trees or rocks stand in the river")
+	var again := ChunkGenerator.new(4242, true).generate(found["cx"], found["cz"])
+	check(again["river"] == found["river"] and again["heights"] == found["heights"], "rivers are deterministic")
+	var old := ChunkGenerator.new(4242).generate(found["cx"], found["cz"])
+	check(not old.has("river"), "worlds made before rivers get none")
+
 func test_same_seed_same_chunk() -> void:
 	var g1 := ChunkGenerator.new(777)
 	var g2 := ChunkGenerator.new(777)
