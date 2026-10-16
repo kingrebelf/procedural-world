@@ -21,6 +21,14 @@ var attack_cd := 0.0
 
 var _body: AnimatableBody3D
 var _model: Node3D
+var _human: HumanModel ## the kit character, when its assets are present
+## What each job looks like while working at its spot.
+const WORK_ANIM := {"farmer": "harvest", "smith": "fix", "guard": "sword_idle", "innkeeper": "interact",
+	"hunter": "chop", "priest": "fold_arms", "weaver": "interact", "miller": "carry", "herbalist": "harvest",
+	"warden": "sword_idle", "runecarver": "fix", "bard": "dance", "mystic": "spell", "beekeeper": "plant",
+	"lamplighter": "torch", "scribe": "interact", "engineer": "fix", "medic": "interact", "scavenger": "pickup",
+	"pilot": "interact", "security officer": "fold_arms", "data broker": "fold_arms", "hydroponics tech": "water",
+	"courier": "carry"}
 var _hips: Node3D
 var _torso: Node3D
 var _head: Node3D
@@ -46,7 +54,14 @@ func setup(r: Dictionary, s: Dictionary, m: Node) -> void:
 func _ready() -> void:
 	var b: Dictionary = rec["body"]
 	_scale = float(b["height"])
-	_build_model(b)
+	if HumanModel.available():
+		_human = HumanModel.new()
+		_human.build(b, int(rec["era"]), String(rec["job"]))
+		_human.scale = Vector3(_scale, _scale, _scale)
+		add_child(_human)
+		_model = _human
+	else:
+		_build_model(b)
 	_body = AnimatableBody3D.new()
 	_body.collision_layer = 2
 	_body.collision_mask = 0
@@ -98,6 +113,8 @@ func is_hidden() -> bool:
 
 func flash_hit() -> void:
 	_hit_flash = 0.25
+	if _human:
+		_human.play_once("hit")
 
 # --- Movement and animation ---------------------------------------------------------------
 
@@ -157,6 +174,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_animate(delta, moving, run, player_pos)
 
 func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> void:
+	if _human:
+		_animate_human(delta, moving, run)
+		return
 	var amt := clampf(_speed / WALK, 0.0, 1.6)
 	_phase += delta * (_speed * 2.9 / _scale + 0.0)
 	var sw := sin(_phase)
@@ -189,6 +209,26 @@ func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> voi
 		_model.position.x = sin(_hit_flash * 80.0) * 0.04
 	else:
 		_model.position.x = 0.0
+
+func _animate_human(delta: float, moving: bool, run: bool) -> void:
+	if action == "attack" and attack_cd > 1.3:
+		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
+	if moving:
+		if run:
+			_human.play("sprint" if action == "flee" else "jog", clampf(_speed / RUN, 0.5, 1.4))
+		else:
+			_human.play("walk", clampf(_speed / WALK, 0.5, 1.5))
+	elif talking or _speech_t > 0.0:
+		_human.play("talk")
+	elif action == "work" and Vector2(global_position.x, global_position.z).distance_to(rec["work"]) < 1.5:
+		_human.play(WORK_ANIM.get(rec["job"], "interact"))
+	elif action in ["confront", "attack"]:
+		_human.play("sword_idle" if NPCGen.GUARD_JOBS.has(rec["job"]) else "fold_arms")
+	else:
+		_human.play("idle")
+	if _hit_flash > 0.0:
+		_hit_flash -= delta
+	_human.set_flash(clampf(_hit_flash * 4.0, 0.0, 1.0))
 
 # --- Procedural model -------------------------------------------------------------------------
 

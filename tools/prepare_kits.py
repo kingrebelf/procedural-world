@@ -95,7 +95,8 @@ VILLAGE = ["Floor_WoodDark", "Floor_UnevenBrick", "Floor_Brick", "Wall_Plaster_S
     "Roof_RoundTiles_4x4", "Roof_RoundTiles_6x6", "Roof_Front_Brick4", "Roof_Front_Brick6", "Prop_WoodenFence_Single", "Corner_Exterior_Wood", "Prop_Chimney"]
 SCIFI = ["Platform_Metal", "Platform_DarkPlates", "WallAstra_Straight", "WallAstra_Straight_Window", "TopSimple_Straight",
     "Door_Frame_Square", "Platform_Stairs_4WideTall", "Column_Simple", "Prop_Computer", "Prop_Crate3", "Prop_Light_Floor"]
-PROPS = ["Workbench", "Workbench_Drawers", "Anvil_Log", "Cauldron", "Whetstone", "Barrel", "Crate_Wooden", "Bucket_Metal"]
+PROPS = ["Workbench", "Workbench_Drawers", "Anvil_Log", "Cauldron", "Whetstone", "Barrel", "Crate_Wooden", "Bucket_Metal",
+    "Axe_Bronze", "Pickaxe_Bronze", "Sword_Bronze", "Shield_Wooden", "Torch_Metal"]
 
 
 def build_kits(kits: Path) -> None:
