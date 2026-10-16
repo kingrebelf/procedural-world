@@ -82,6 +82,10 @@ Controllers use ARK: Survival Ascended's layout.
 | Crafting / Character / Atlas | R / K / M | D-pad up / D-pad down / View |
 | Hotbar | 1 to 0, mouse wheel | D-pad left/right; hold LB + Y, B, X, A, D-pad for slots 1 to 8 |
 | Turn a building piece | Q | RB |
+| Raise / lower a building piece | X / Z | D-pad up / D-pad down (while holding a piece) |
+| Grid snap on / off (free placement) | G | X (while holding a piece) |
+| Take down a piece you built (returns it) | Hold E | Hold Y |
+| First / third person | V | |
 | Pause and settings | Esc | Menu |
 | Cheat console (fly, noclip, god, speed, give, tp, xp, level; type help) | ` | |
 | Screenshot / FPS counter | F12 / F3 | |

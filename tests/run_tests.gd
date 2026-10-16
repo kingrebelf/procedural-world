@@ -300,6 +300,18 @@ func test_build_pieces() -> void:
 	check(rv["pos"].is_equal_approx(Vector3(4, 3, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
 	var g := BuildCatalog.snap("floor_wood", Vector3(1.0, -0.8, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
 	check(is_equal_approx(g["pos"].y, 0.0), "ground below a house keeps the floor level")
+	# A floor aimed at the side of a wall goes on top of it, in the cell on your side.
+	var fw := BuildCatalog.snap("floor_wood", Vector3(4.05, 1.5, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
+	check(fw["pos"].is_equal_approx(Vector3(5, 3, 7)), "floor aimed at a wall sits on its top (%s)" % fw["pos"])
+	var rw := BuildCatalog.snap("roof_small", Vector3(4.05, 2.9, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
+	check(is_equal_approx(rw["pos"].y, 3.0), "roof aimed at a wall sits on its top (%s)" % rw["pos"])
+	# Raise / lower by storeys, and free placement off the grid.
+	var up := BuildCatalog.snap("floor_wood", Vector3(1.0, 0.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": 2})
+	check(is_equal_approx(up["pos"].y, 6.0), "raise lifts a piece two storeys (%s)" % up["pos"])
+	var dn := BuildCatalog.snap("floor_wood", Vector3(1.0, 3.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": -1})
+	check(is_equal_approx(dn["pos"].y, 0.0), "lower drops a piece a storey (%s)" % dn["pos"])
+	var fr := BuildCatalog.snap("wall_plaster", Vector3(1.37, 0.6, 2.11), 0.0, 1, null, true, {"free": true, "lift": 1})
+	check(fr["pos"].is_equal_approx(Vector3(1.25, 0.75, 2.0)) and is_equal_approx(fr["yaw"], PI + PI / 12.0), "grid off places freely (%s, %.2f)" % [fr["pos"], fr["yaw"]])
 	# Taking a piece down refunds it.
 	var o := {"t": "b:wall_stone", "s": 1.0, "st": {}}
 	var res := Durability.hit(o, 1000.0)

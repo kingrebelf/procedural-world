@@ -17,6 +17,8 @@ instance uniform vec4 accent_col : source_color = vec4(0.0);
 // x: sleeves (0 none, 1 short, 2 long), y: boot top height, z: robe hem height (0 = none),
 // w: hit flash.
 instance uniform vec4 cut = vec4(2.0, 0.35, 0.0, 0.0);
+// First-person arms: everything but the arms and hands is cut away.
+instance uniform float arms_only = 0.0;
 
 varying vec3 rest;
 
@@ -33,6 +35,9 @@ void fragment() {
 	float lum = dot(tex, vec3(0.299, 0.587, 0.114)) / skin_mean;
 	int region = int(rest.x + 0.5);
 	float h = rest.y;
+	if (arms_only > 0.5 && (region < 2 || region > 4)) {
+		discard;
+	}
 	// 0 skin, 1 shirt, 2 trousers, 3 boots
 	int part = 0;
 	if (region == 1) part = 1;

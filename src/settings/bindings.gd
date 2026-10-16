@@ -9,7 +9,9 @@ const DEADZONE := 0.2
 ## action -> [label, keyboard/mouse default, controller default]
 ## The controller layout follows ARK: A jump, B inventory, Y use, left/right stick clicks
 ## sprint and crouch, RT use the held item, D-pad left/right cycle the hotbar, and holding
-## LB turns A/B/X/Y and the D-pad into direct hotbar picks.
+## LB turns A/B/X/Y and the D-pad into direct hotbar picks. While a building piece is
+## held, D-pad up/down raise and lower it and X toggles the grid (instead of crafting,
+## character and eating).
 ## Keyboard default: KEY_* int, or "mouse:<button>". Controller default: "btn:<JoyButton>"
 ## or "axis:<JoyAxis>:<+1|-1>".
 const ACTIONS := {
@@ -32,6 +34,9 @@ const ACTIONS := {
 	"map": ["Atlas", KEY_M, "btn:4"],
 	"character": ["Character and attributes", KEY_K, "btn:12"],
 	"rotate_build": ["Rotate building piece", KEY_Q, "btn:10"],
+	"build_raise": ["Raise building piece (while placing)", KEY_X, "btn:11"],
+	"build_lower": ["Lower building piece (while placing)", KEY_Z, "btn:12"],
+	"build_snap": ["Grid snap on / off (while placing)", KEY_G, "btn:2"],
 	"hotbar_prev": ["Previous hotbar slot", -1, "btn:13"],
 	"hotbar_next": ["Next hotbar slot", -1, "btn:14"],
 	"hotbar_pick": ["Hold to pick a hotbar slot with A/B/X/Y and the D-pad", -1, "btn:9"],
@@ -47,6 +52,7 @@ const ACTIONS := {
 	"slot_9": ["Hotbar 9", KEY_9, ""],
 	"slot_10": ["Hotbar 10", KEY_0, ""],
 	"debug_overlay": ["FPS counter", KEY_F3, ""],
+	"toggle_view": ["First / third person", KEY_V, ""],
 	"console": ["Console (cheats)", KEY_QUOTELEFT, ""],
 	"screenshot": ["Screenshot", KEY_F12, ""],
 }

@@ -127,6 +127,8 @@ func _run() -> void:
 	var wall := pc.add_built("wall_stone", placed["p"] + Vector3(0, 0, 1), 0.0, {"by": "you", "day": 0.0})
 	player.damage_object(pc, wall, 1000.0, 1.0)
 	check(wall["st"].get("gone", false) and game.inventory.count("wall_stone") == 1, "taking a wall down returns it")
+	var fence := pc.add_built("fence", placed["p"] + Vector3(-3, 0, 0), 0.0, {"by": "you", "day": 0.0})
+	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
@@ -155,6 +157,14 @@ func _run() -> void:
 	check(game.spend_point("end") and game.max_health() == 110.0, "endurance point raises max health")
 	var stamina0: float = game.stamina
 	check(game.use_stamina(10.0) and game.stamina < stamina0, "actions spend stamina")
+
+	# Third person: the camera swings out behind the shoulder, the body shows.
+	player.toggle_view()
+	await _frames(10)
+	check(player.third_person and player.camera.global_position.distance_to(player.head.global_position) > 0.5 and not player.viewmodel.visible, "third person camera sits behind you")
+	player.toggle_view()
+	await _frames(5)
+	check(not player.third_person and player.camera.global_position.distance_to(player.head.global_position) < 0.05, "back to first person")
 
 	# Dying: health hits zero, a pause, then you wake at the spawn with your pack.
 	var count_before: int = game.inventory.count("planks")

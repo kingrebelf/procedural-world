@@ -3,7 +3,9 @@ extends Node
 ## Placing building pieces and crafting stations. While a piece is in the selected hotbar
 ## slot, a see-through ghost shows where it will go: green when it fits, red when not.
 ## Pieces snap to a grid, and to the storeys of whatever you have already built nearby.
-## Use places it; the rotate key turns it (or flips a wall).
+## Use places it; the rotate key turns it (or flips a wall). Raise and lower move it a
+## storey at a time (a quarter metre with the grid off), and the grid can be switched off
+## for free placement. Floors and roofs aimed at a wall sit on top of it.
 
 const REACH := 9.0
 const ANCHOR_RADIUS := 10.0
@@ -12,6 +14,8 @@ var player: Player
 var _ghost: MeshInstance3D
 var _id := ""
 var _turn := 0
+var _lift := 0
+var _free := false
 var _target := {}
 var _mat_ok: StandardMaterial3D
 var _mat_bad: StandardMaterial3D
@@ -40,9 +44,31 @@ func active() -> bool:
 func piece_id() -> String:
 	return _id
 
-func _unhandled_input(event: InputEvent) -> void:
-	if active() and not player.ui_open and event.is_action_pressed("rotate_build"):
-		_turn = (_turn + 1) % 4
+## Runs before the menus see the event, so the controller buttons shared with crafting,
+## the character panel and eating act on the piece while one is held.
+func _input(event: InputEvent) -> void:
+	if not active() or player.ui_open or Input.is_action_pressed("hotbar_pick"):
+		return
+	var took := true
+	if event.is_action_pressed("rotate_build"):
+		_turn = (_turn + 1) % (24 if _free else 4)
+	elif event.is_action_pressed("build_raise"):
+		_lift += 1
+	elif event.is_action_pressed("build_lower"):
+		_lift -= 1
+	elif event.is_action_pressed("build_snap"):
+		if BuildCatalog.def(_id).get("snap") == "free":
+			Game.toast.emit("This piece already places freely")
+		else:
+			_free = not _free
+			_lift = 0
+			_turn = 0
+			Game.toast.emit("Grid snap off: free placement" if _free else "Grid snap on")
+	elif event is InputEventJoypadButton and (event.is_action("build_raise") or event.is_action("build_lower") or event.is_action("build_snap")):
+		pass # swallow the release too
+	else:
+		took = false
+	if took:
 		get_viewport().set_input_as_handled()
 
 ## Called every physics frame by the player.
@@ -52,6 +78,8 @@ func update() -> void:
 	if id != _id:
 		_id = id
 		_turn = 0
+		_lift = 0
+		_free = false
 		_ghost.mesh = BuildCatalog.mesh(id) if id != "" else null
 	if _id == "" or player.ui_open:
 		_ghost.visible = false
@@ -77,20 +105,23 @@ func _find_target() -> Dictionary:
 	var n: Vector3 = hit["normal"]
 	var col: Object = hit.get("collider")
 	var anchor = null
+	var hit_mode := ""
 	var on_ground := not (col != null and col.has_meta("obj"))
 	if col != null and col.has_meta("obj"):
 		var c: ChunkNode = col.get_meta("chunk")
 		var o: Dictionary = c.get_object(col.get_meta("obj"))
-		if BuildCatalog.is_built(o["t"]) and BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("snap") != "free":
-			anchor = c.position + o["p"]
+		if BuildCatalog.is_built(o["t"]):
+			hit_mode = String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("snap", "free"))
+			if hit_mode != "free":
+				anchor = c.position + o["p"]
 	if anchor == null:
 		anchor = BuildCatalog.nearest_piece(player.streamer, p, ANCHOR_RADIUS)
 	# Nudge off the surface we hit, so the cell is the one we are looking from.
 	var probe := p + n * 0.05
-	var s := BuildCatalog.snap(_id, probe, player.yaw(), _turn, anchor, on_ground)
+	var s := BuildCatalog.snap(_id, probe, player.yaw(), _turn, anchor, on_ground, {"hit_mode": hit_mode, "lift": _lift, "free": _free})
 	var pos: Vector3 = s["pos"]
-	if anchor == null and _id == "foundation":
-		pos.y = p.y + 0.12
+	if anchor == null and _id == "foundation" and not _free:
+		pos.y = p.y + 0.12 + _lift * float(BuildCatalog.def(_id)["storey"])
 	var ok := pos.distance_to(from) <= REACH + 2.0
 	if ok and BuildCatalog.occupied(player.streamer, _id, pos, s["yaw"]):
 		ok = false
@@ -124,12 +155,20 @@ func place() -> bool:
 func info() -> Dictionary:
 	var d := BuildCatalog.def(_id)
 	var lines: Array = []
-	match String(d.get("snap", "free")):
-		"free": lines.append("Place anywhere. [Q] turns it.")
-		"wall": lines.append("Snaps to cell edges (%d m grid). [Q] flips it." % int(d["grid"]))
-		_: lines.append("Snaps to a %d m grid and to storeys you've built. [Q] turns it." % int(d["grid"]))
+	var k := func(a: String) -> String: return "[%s]" % Player._key(a)
+	var mode := String(d.get("snap", "free"))
+	if _free:
+		lines.append("Grid off: places exactly where you aim. %s turns it 15 degrees." % k.call("rotate_build"))
+	else:
+		match mode:
+			"free": lines.append("Place anywhere. %s turns it." % k.call("rotate_build"))
+			"wall": lines.append("Snaps to cell edges (%d m grid). %s flips it." % [int(d["grid"]), k.call("rotate_build")])
+			_: lines.append("Snaps to a %d m grid and to storeys you've built; aim at a wall to sit on top of it. %s turns it." % [int(d["grid"]), k.call("rotate_build")])
+	if mode != "free":
+		var by := ("%+.2f m" % (_lift * 0.25)) if _free else ("%+d storey" % _lift)
+		lines.append("%s raise  %s lower (%s)   %s grid %s" % [k.call("build_raise"), k.call("build_lower"), by, k.call("build_snap"), "on" if _free else "off"])
 	if d.has("station"):
 		lines.append("Crafting station: recipes that need a %s work within %d m." % [d["name"], int(BuildCatalog.STATION_RANGE)])
 	if not _target.is_empty() and not _target["ok"]:
 		lines.append("Something is already there, or it's out of reach.")
-	return {"title": d.get("name", _id), "sub": "Building  ·  [LMB] place", "lines": lines, "icon": _id}
+	return {"title": d.get("name", _id), "sub": "Building  ·  [%s] place" % Player._key("use"), "lines": lines, "icon": _id}

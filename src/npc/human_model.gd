@@ -238,7 +238,11 @@ func _tool(era: int, job: String) -> void:
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
 ## pose: the shaft runs across the knuckles (index to pinky, as a fist holds a blade up), the fist closes around it
 ## just past the knuckles, and the prop is held near the low end of its handle.
-static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8) -> Transform3D:
+## `aim` (hand space, optional) points the prop that way instead, tilted `tilt` of the way
+## from the knuckle line, for a first-person hold that reads well on screen.
+## `point` (hand space, optional) instead aims the prop's -Z that way, keeping +Y toward
+## `aim`: a pistol's barrel follows the view.
+static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO) -> Transform3D:
 	var hb := sk.find_bone("hand_r")
 	var bi := sk.find_bone("index_01_r")
 	var bp := sk.find_bone("pinky_01_r")
@@ -250,6 +254,10 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8) -> Transf
 	var p := inv * sk.get_bone_global_rest(bp).origin
 	var m := inv * sk.get_bone_global_rest(bm).origin
 	var up := (p - i).normalized()
+	if aim != Vector3.ZERO:
+		if up.dot(aim) < 0.0:
+			up = -up
+		up = up.slerp(aim.normalized(), tilt).normalized()
 	var fwd := (m - up * m.dot(up)).normalized()
 	var side := fwd.cross(up).normalized()
 	var center := (i + p) * 0.5 + fwd * 0.035 + side * 0.02
@@ -263,6 +271,10 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8) -> Transf
 		first = false
 	var grip_y := box.position.y + minf(0.12, box.size.y * 0.25)
 	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
+	if point != Vector3.ZERO:
+		var z := -point.normalized()
+		var y := (aim - z * aim.dot(z)).normalized()
+		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
 	return Transform3D(basis, center - basis * Vector3(0, grip_y, 0))
 
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
@@ -272,6 +284,60 @@ static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 		xf = (c as Node3D).transform * xf
 		c = c.get_parent()
 	return xf
+
+var _held: Node3D
+var _arms := false
+var _shadow_only := false
+
+## Puts a prop (any Node3D with meshes, handle along +Y) in the right hand, or empties it.
+func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO) -> void:
+	if _held:
+		_held.queue_free()
+		_held = null
+	if prop == null or skeleton == null:
+		return
+	var ba := _bone_attach("hand_r")
+	ba.add_child(prop)
+	prop.transform = grip_transform(skeleton, prop, 1.0, aim, tilt, point)
+	_held = ba
+	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+
+## Re-aims what the hand holds (first person: called every frame so the item keeps
+## facing the view whatever the arms' animation does).
+func reaim(aim: Vector3, tilt := 0.0, point := Vector3.ZERO) -> void:
+	if _held == null or _held.get_child_count() == 0:
+		return
+	var prop := _held.get_child(0) as Node3D
+	prop.transform = grip_transform(skeleton, prop, 1.0, aim, tilt, point)
+
+## A world direction expressed in the right hand's current (animated) space.
+func hand_space(dir: Vector3) -> Vector3:
+	var hb := skeleton.find_bone("hand_r")
+	if hb < 0:
+		return dir
+	var pose := skeleton.global_transform * skeleton.get_bone_global_pose(hb)
+	return (pose.basis.inverse() * dir).normalized()
+
+## First-person arms: only the arms and hands are drawn, nothing casts shadows.
+func set_arms_only() -> void:
+	_arms = true
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if m == _body:
+			m.set_instance_shader_parameter("arms_only", 1.0)
+		elif not _is_held(m):
+			m.visible = false
+
+func _is_held(n: Node) -> bool:
+	return _held != null and _held.is_ancestor_of(n)
+
+## Shadow-only body (first person): you see your shadow, not the inside of your head.
+func set_shadow_only(on: bool) -> void:
+	_shadow_only = on
+	for mi in find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 ## Plays a looping state, cross-fading. Ignored while a one-shot (hit, attack) runs.
 func play(state: String, speed := 1.0) -> void:

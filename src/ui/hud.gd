@@ -13,6 +13,7 @@ var _held_name: Label
 var _use_box: PanelContainer
 var _use_key: Label
 var _use_keycap: PanelContainer
+var _use_hold: ProgressBar
 var _use_verb: Label
 const PAD_FACE := {0: ["A", Color(0.38, 0.75, 0.3)], 1: ["B", Color(0.85, 0.3, 0.27)], 2: ["X", Color(0.3, 0.55, 0.9)], 3: ["Y", Color(0.92, 0.75, 0.25)]}
 const PICK_GLYPHS := ["Y", "B", "X", "A", "←", "→", "↑", "↓"]
@@ -345,7 +346,19 @@ func _build_use_prompt() -> void:
 	h.add_child(_use_keycap)
 	_use_verb = UITheme.label("", 16)
 	h.add_child(_use_verb)
-	_use_box.add_child(h)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 5)
+	v.add_child(h)
+	# Fills while Interact is held on one of your pieces, to take it down.
+	_use_hold = ProgressBar.new()
+	_use_hold.show_percentage = false
+	_use_hold.custom_minimum_size = Vector2(0, 5)
+	_use_hold.max_value = 1.0
+	_use_hold.add_theme_stylebox_override("background", UITheme.sb(Color(1, 1, 1, 0.12), Color(0, 0, 0, 0), 2, 0, 0))
+	_use_hold.add_theme_stylebox_override("fill", UITheme.sb(Color(0.95, 0.62, 0.25), Color(0, 0, 0, 0), 2, 0, 0))
+	_use_hold.visible = false
+	v.add_child(_use_hold)
+	_use_box.add_child(v)
 	add_child(_use_box)
 
 func _update_use_prompt(delta: float) -> void:
@@ -356,6 +369,8 @@ func _update_use_prompt(delta: float) -> void:
 	if not show:
 		return
 	_use_verb.text = f["verb"]
+	_use_hold.visible = player.decon > 0.0
+	_use_hold.value = player.decon
 	var spec = Bindings.spec("interact", "pad" if Game.using_pad else "kb")
 	var pad_btn := String(spec).trim_prefix("btn:").to_int() if Game.using_pad and String(spec).begins_with("btn:") else -1
 	if PAD_FACE.has(pad_btn):

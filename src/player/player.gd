@@ -1,6 +1,6 @@
 class_name Player
 extends CharacterBody3D
-## First-person controller with tool use. Everything the player changes goes through
+## First- or third-person controller with tool use. Everything the player changes goes through
 ## ChunkNode/ChunkStreamer/Game so it is persisted.
 
 signal look_target_changed(text: String)
@@ -53,6 +53,14 @@ var swimming := false
 var underwater := false
 var breath := BREATH
 var _drown_t := 0.0
+## Your character: one body for third person (and your shadow in first person), and the
+## arms in the viewmodel for first person. V toggles the camera.
+const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
+	"cloth": Color(0.36, 0.42, 0.3), "cloth2": Color(0.28, 0.23, 0.18), "height": 1.0, "build": 0.5}
+const BOOM := 3.2
+var third_person := false
+var body: HumanModel
+var _arm: SpringArm3D
 
 func _ready() -> void:
 	collision_layer = 4
@@ -69,18 +77,31 @@ func _ready() -> void:
 	head = Node3D.new()
 	head.position.y = STAND_H - 0.12
 	add_child(head)
+	_arm = SpringArm3D.new()
+	_arm.collision_mask = 1
+	_arm.margin = 0.2
+	_arm.spring_length = 0.0
+	_arm.add_excluded_object(get_rid())
+	head.add_child(_arm)
 	camera = Camera3D.new()
 	camera.near = 0.05
 	camera.far = 2400.0
 	camera.current = true
-	head.add_child(camera)
+	_arm.add_child(camera)
 	ray = RayCast3D.new()
 	ray.target_position = Vector3(0, 0, -REACH)
 	ray.collision_mask = 1 | 2
 	ray.add_exception(self)
 	camera.add_child(ray)
 	viewmodel = Viewmodel.new()
+	viewmodel.look = LOOK
 	camera.add_child(viewmodel)
+	if HumanModel.available():
+		body = HumanModel.new()
+		body.build(LOOK, Eras.MEDIEVAL, "")
+		body.rotation.y = PI
+		add_child(body)
+	_apply_view()
 	builder = Builder.new()
 	builder.player = self
 	add_child(builder)
@@ -97,13 +118,15 @@ func get_state() -> Dictionary:
 	# tree; the player is a direct child of the (untransformed) world, so position is
 	# the world position.
 	var pos := global_position if is_inside_tree() else position
-	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected}
+	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected, "view": 3 if third_person else 1}
 
 func set_state(d: Dictionary) -> void:
 	global_position = d.get("pos", global_position)
 	_yaw = d.get("yaw", 0.0)
 	_pitch = d.get("pitch", 0.0)
 	select(d.get("slot", 0))
+	if int(d.get("view", 1)) == 3 and not third_person:
+		toggle_view()
 	_apply_look()
 
 func yaw() -> float:
@@ -119,7 +142,51 @@ func held_item():
 
 func _refresh_held() -> void:
 	var it = held_item()
-	viewmodel.show_item(it["type"] if it != null else "")
+	var t: String = it["type"] if it != null else ""
+	viewmodel.show_item(t)
+	if body:
+		body.hold(Viewmodel.prop_for(t) if t != "" else null)
+		body.set_shadow_only(not third_person)
+
+func toggle_view() -> void:
+	third_person = not third_person
+	_apply_view()
+
+func _apply_view() -> void:
+	_arm.spring_length = BOOM if third_person else 0.0
+	_arm.position = Vector3(0.55, 0.2, 0.0) if third_person else Vector3.ZERO
+	ray.target_position = Vector3(0, 0, -(REACH + (BOOM if third_person else 0.0)))
+	viewmodel.visible = not third_person
+	if body:
+		body.set_shadow_only(not third_person)
+
+## Body animation from what the controller is doing; swings come from use_held.
+func _animate_body(hspeed: float) -> void:
+	if body == null:
+		return
+	if swimming:
+		body.play("swim", clampf(hspeed / SWIM, 0.5, 1.5))
+	elif hspeed > 0.4:
+		if hspeed > WALK + 1.0:
+			body.play("sprint", clampf(hspeed / SPRINT, 0.6, 1.5))
+		elif hspeed > CROUCH + 0.6:
+			body.play("jog", clampf(hspeed / WALK, 0.6, 1.5))
+		else:
+			body.play("walk", clampf(hspeed / CROUCH, 0.6, 1.5))
+	else:
+		body.play("idle")
+
+static func swing_anim(t: String) -> String:
+	if t == "":
+		return "punch"
+	var d := ItemDB.def(t)
+	if d.get("ranged", false):
+		return "pistol"
+	if t.begins_with("sword"):
+		return "sword"
+	if d.get("kind", "") == "tool":
+		return "chop"
+	return "interact"
 
 ## Holding the pick button (LB) turns these into direct hotbar picks, in ARK's order:
 ## Y, B, X, A, D-pad left, right, up, down for slots 1 to 8.
@@ -158,7 +225,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.is_action_pressed("slot_%d" % (i + 1)):
 			select(i)
 	if event.is_action_pressed("interact"):
-		interact()
+		if focus.get("kind", "") in ["built", "station"]:
+			# Your own pieces: tap to use a station, hold to take the piece down.
+			_decon_on = {"chunk": focus["chunk"], "i": focus["i"], "kind": focus["kind"]}
+			decon = 0.0
+		else:
+			interact()
+	if event.is_action_pressed("toggle_view"):
+		toggle_view()
 	if event.is_action_pressed("eat"):
 		eat()
 
@@ -282,12 +356,14 @@ func _physics_process(delta: float) -> void:
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.sway(delta, hv.length() / SPRINT)
+	_animate_body(Vector2(velocity.x, velocity.z).length())
 
 	if not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad) and _cooldown <= 0.0:
 		use_held()
 	builder.update()
 	_update_look_target()
 	_update_focus(delta)
+	_update_decon(delta)
 
 func _snap_to_ground() -> void:
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(global_position)) if streamer else null
@@ -349,7 +425,7 @@ func _focus_score(eye: Vector3, fwd: Vector3, at: Vector3) -> float:
 	return d + a * 4.0
 
 func _find_focus() -> Dictionary:
-	var eye := camera.global_position
+	var eye := head.global_position
 	var fwd := -camera.global_transform.basis.z
 	var best := {}
 	var best_s := INF
@@ -381,7 +457,63 @@ func _find_focus() -> Dictionary:
 					if sc < best_s:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": use["verb"]}
+	# A piece you built, right under the crosshair, can be taken down (or used, if a station).
+	if best.get("kind", "") != "npc":
+		var h := _hit_object()
+		if h.has("obj") and h["point"].distance_to(eye) <= USE_RANGE + 1.0:
+			var c: ChunkNode = h["chunk"]
+			var o: Dictionary = c.get_object(h["obj"])
+			if is_own_piece(o):
+				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
+				var station := d.has("station")
+				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
+					"verb": ("Craft at the %s   (hold: take down)" % String(d["name"]).to_lower()) if station else "Hold to take down %s" % d["name"]}
 	return best
+
+static func is_own_piece(o: Dictionary) -> bool:
+	return ObjectLibrary.kind(o["t"]) == "built" and not o["st"].get("gone", false) and String(o["st"].get("by", "you")) == "you"
+
+# --- Deconstructing your own pieces -------------------------------------------------
+const DECON_TIME := 0.8
+## 0..1 while Interact is held on one of your pieces; the HUD draws it under the prompt.
+var decon := 0.0
+var _decon_on := {}
+
+func _update_decon(delta: float) -> void:
+	if _decon_on.is_empty():
+		decon = 0.0
+		return
+	var same: bool = focus.get("chunk") == _decon_on["chunk"] and focus.get("i", -1) == _decon_on["i"]
+	if ui_open or not same:
+		_decon_on = {}
+		decon = 0.0
+		return
+	if Input.is_action_pressed("interact"):
+		decon += delta / DECON_TIME
+		if decon >= 1.0:
+			var c: ChunkNode = _decon_on["chunk"]
+			_decon_on = {}
+			decon = 0.0
+			if is_instance_valid(c):
+				deconstruct(c, c.get_object(focus["i"]))
+		return
+	# Released early: a tap, so use the station as usual.
+	if _decon_on["kind"] == "station" and decon < 0.5:
+		get_tree().call_group("trade_ui", "open", "craft")
+	_decon_on = {}
+	decon = 0.0
+
+## Takes one of your own pieces down whole and puts it back in your pack.
+func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
+	if not is_own_piece(o):
+		return false
+	used_tool.emit("hit")
+	if body:
+		body.play_once("interact")
+	damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
+	Game.toast.emit("Took down the %s" % String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("name", "piece")).to_lower())
+	_focus_t = 0.0
+	return true
 
 ## How an object can be used with Interact, or {} if it can't.
 static func _use_of(o: Dictionary) -> Dictionary:
@@ -431,13 +563,13 @@ func _update_look_target() -> void:
 			"trader":
 				text = ""
 			"built":
-				text = "[%s] take down (returns the piece)" % _key("use")
+				text = "Hold [%s] to take down (returns the piece)" % _key("interact")
 			_:
 				text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
 		var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
 		if k == "cache" and not o["st"].get("opened", false):
 			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
-		lines.append("Best tool: %s" % (Durability.BEST_TOOL[mat] if k != "built" else "Builder's Hammer (one hit)"))
+		lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
 		var held = held_item()
 		var d: Dictionary = ItemDB.def(held["type"]) if held != null else Durability.FIST
 		var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
@@ -546,6 +678,8 @@ func use_held() -> void:
 	var hq: float = q * force
 	_cooldown = 0.55 if fresh else 0.9
 	viewmodel.swing()
+	if body:
+		body.play_once(swing_anim(it["type"] if it != null else ""))
 	var h := _hit_object()
 	if h.is_empty():
 		used_tool.emit("miss")
@@ -589,6 +723,8 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 		shots = d.get("shots_per_ammo", 10)
 	it["charge"] = shots - 1
 	viewmodel.recoil()
+	if body:
+		body.play_once("pistol")
 	used_tool.emit("fire")
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position

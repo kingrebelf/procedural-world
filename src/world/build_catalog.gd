@@ -245,9 +245,16 @@ static func _ramp(m: ArrayMesh) -> Array:
 ## Snaps a desired world position to the piece's grid. `anchor` is a nearby built
 ## piece's world origin (or null); storeys are counted from it. `turn` is a quarter-turn
 ## count for free pieces and flips walls. Returns {pos, yaw}.
-static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = null, on_ground := true) -> Dictionary:
+## ctx (all optional): hit_mode = snap mode of the built piece under the crosshair,
+## lift = storeys to raise (+) or lower (-) from where the aim puts it, free = true to
+## ignore the grid (0.25 m steps, 15 degree turns).
+static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = null, on_ground := true, ctx := {}) -> Dictionary:
 	var d := def(id)
 	var mode: String = d.get("snap", "free")
+	var lift := int(ctx.get("lift", 0))
+	if mode != "free" and ctx.get("free", false):
+		var fy := snappedf(look_yaw + PI, PI / 12.0) + turn * PI / 12.0
+		return {"pos": Vector3(snappedf(hit.x, 0.25), snappedf(hit.y, 0.25) + lift * 0.25, snappedf(hit.z, 0.25)), "yaw": fy}
 	if mode == "free":
 		var yaw := snappedf(look_yaw + PI, PI / 12.0) + turn * PI * 0.5
 		return {"pos": Vector3(snappedf(hit.x, 0.1), hit.y, snappedf(hit.z, 0.1)), "yaw": yaw}
@@ -258,9 +265,16 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 		var a: Vector3 = anchor
 		# Aiming at a wall's top (or anything above it) means the next storey up.
 		var level := floorf((hit.y - a.y + 0.3) / storey)
+		# A floor or roof aimed at a wall goes on top of it: the ceiling of that storey,
+		# in the cell on your side of the wall.
+		if ctx.get("hit_mode", "") == "wall" and mode in ["floor", "roof_c", "roof_v"]:
+			level = floorf((hit.y - a.y) / storey) + 1.0
+		level += lift
 		if on_ground and level < 0.0:
 			level = 0.0
 		y = a.y + level * storey
+	else:
+		y += lift * storey
 	var cell := Vector3(floorf(hit.x / g) * g + g * 0.5, y, floorf(hit.z / g) * g + g * 0.5)
 	match mode:
 		"floor":
