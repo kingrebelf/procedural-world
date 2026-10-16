@@ -23,10 +23,20 @@ var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _grass: MultiMeshInstance3D
 var _clutter: Array = []
 
+const TERRAIN_TEXTURES := ["grass", "dirt", "glowmoss", "darksoil", "reddust", "rock", "mud", "snow"]
+
 static func ensure_shared() -> void:
 	if terrain_material == null:
 		terrain_material = ShaderMaterial.new()
 		terrain_material.shader = load("res://src/world/terrain.gdshader")
+		var all := true
+		for t in TERRAIN_TEXTURES:
+			var a := Materials.photo(t, "albedo")
+			var n := Materials.photo(t, "normal")
+			all = all and a != null and n != null
+			terrain_material.set_shader_parameter(t + "_tex", a)
+			terrain_material.set_shader_parameter(t + "_nrm", n)
+		terrain_material.set_shader_parameter("use_textures", all)
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_mesh = _make_blade()

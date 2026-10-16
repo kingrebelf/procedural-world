@@ -9,9 +9,9 @@ generates is saved the first time it appears and is never regenerated. The tree 
 the crater you dug, the chest you emptied and every item in your pack (with where and when you
 got it) stay exactly as you left them, forever.
 
-> Status: early vertical slice (v0.1). The world, persistence, tools, crafting, trading,
-> settings and Windows installer work. Visuals are a first pass built entirely from
-> procedural geometry; the fidelity roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
+> Status: v0.2. Adds AI-driven people you can talk to, wildlife, alien ruins, per-region
+> species, a fully destructible world, controller support, wind, waves and swimming. Visuals
+> are still built from procedural geometry; the roadmap is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Screenshots
 
@@ -32,6 +32,20 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - Pickaxes, axes, swords and a pulse pistol; mining, chopping and persistent digging.
 - 14 crafting recipes; items carry provenance ("Mined in Ashford Vale on day 3").
 - An Atlas of every place you have ever seen.
+- **People driven by AI.** Everyone in a settlement has a name, job, personality, routine and
+  a persistent memory of you. Talk to them in your own words using a local model (Strata,
+  Ollama, LM Studio) or an API (Anthropic, OpenAI, OpenRouter), or with built-in dialogue
+  offline. Plug in your own fast decision service. See [docs/AI.md](docs/AI.md).
+- **Everything is destructible** and pays out as you hit it: trees, rocks, crystals, walls,
+  domes, ruins. Metal structures take a long time. A look-at panel shows what something is,
+  what it yields and the best tool.
+- Photo-textured terrain, bark, stone, timber, thatch, plaster and sci-fi panels, with snow on
+  high peaks and glowing moss in fantasy lands.
+- Wildlife per region (grazers, predators, flyers) and alien ruins in the wilds.
+- No two regions alike: each region rolls its own tree, mushroom, rock and undergrowth species.
+- Wind that bends grass and trees, drives clouds and whips up waves on big water. Swim, dive
+  and run out of breath.
+- Xbox, PlayStation and generic controllers, with every action rebindable.
 - Forward+ rendering: SDFGI global illumination, volumetric fog, SSAO, SSR, TAA/FSR 2.2,
   ACES tonemapping, auto-exposure, day/night cycle.
 - Full graphics settings with Low/Medium/High/Ultra presets.
@@ -44,6 +58,8 @@ NVIDIA RTX 3070 or better, an 8-core desktop CPU, 32 GB RAM, Windows 10/11 64-bi
 
 ## Controls
 
+All bindings can be changed in Settings > Controls, for keyboard and controller.
+
 | Action | Key |
 |---|---|
 | Move / sprint / crouch / jump | WASD / Shift / Ctrl / Space |
@@ -52,6 +68,7 @@ NVIDIA RTX 3070 or better, an 8-core desktop CPU, 32 GB RAM, Windows 10/11 64-bi
 | Eat | F |
 | Inventory / Crafting / Atlas | Tab / R / M |
 | Hotbar | 1 to 6, mouse wheel |
+| Previous / next hotbar (controller) | LB / RB |
 | Pause and settings | Esc |
 | Screenshot / FPS counter | F12 / F3 |
 

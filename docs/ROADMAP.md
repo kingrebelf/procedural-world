@@ -55,6 +55,26 @@ machine has to be measured by a human with the game running.
   uninstaller that asks before deleting saves). Portable zip and Linux tarball.
 - GitHub Actions: tests on every push, builds and installer as artifacts, releases on tags.
 
+## v0.2: Living world (done)
+
+- AI-driven people: generated identities, routines, persistent memories, relationships,
+  rumours and deaths. Dialogue through any OpenAI-compatible or Anthropic endpoint, or
+  built-in offline dialogue. Built-in utility decision engine, replaceable by an external
+  fast decision service (`docs/AI.md`).
+- Destructible everything with incremental harvesting and material health pools.
+- Look-at info panel, pickup feed, painted item icons.
+- Controller support with full rebinding.
+- Per-region species of trees, mushrooms, rocks and undergrowth; wildlife; alien ruins.
+- Global wind (grass, foliage, clouds, waves); depth- and wind-driven water; swimming.
+- Cloud layer, sky and shadow tuning; removed the sci-fi ground grid.
+
+## v0.3: Beyond the planet (planned)
+
+- Build a spaceship from parts; fly it.
+- Other planets and solar systems, each a persistent world of its own; warp drives.
+- Rivers from melting snowcaps flowing downhill to lakes and the sea.
+- Texture sets for terrain and materials; more icons.
+
 ## Phase 5: Fidelity pass (next)
 
 The vertical slice uses procedural code-built meshes. It is coherent and lit with modern

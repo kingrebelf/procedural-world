@@ -63,6 +63,19 @@ func _find_border(g: ChunkGenerator) -> Vector2:
 			return p
 	return Vector2.ZERO
 
+func _find_shore(g: ChunkGenerator) -> Vector2:
+	for i in 6000:
+		var a := i * 0.37
+		var p := Vector2(cos(a), sin(a)) * (60.0 + i * 5.0)
+		if g.field.height(p.x, p.y) < Water.LEVEL - 4.0:
+			# Walk back toward the origin until we reach dry land a little above the water.
+			var dir := -p.normalized()
+			for k in 80:
+				var q := p + dir * (k * 3.0)
+				if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
+					return q
+	return Vector2.ZERO
+
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7) -> void:
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
@@ -112,5 +125,8 @@ func _run() -> void:
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
 		await _shot("06_medieval_sunset", c + Vector2(-50, 14), c, 0.735)
+	var shore := _find_shore(g)
+	if shore != Vector2.ZERO:
+		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)
 	Game.close_world()
 	get_tree().quit()

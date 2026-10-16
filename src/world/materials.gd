@@ -36,13 +36,56 @@ static func _noise_tex(key: String, freq: float, normal: bool, octaves: int = 5,
 	_tex[k] = t
 	return t
 
+const PHOTO_DIR := "res://assets/textures/"
+
+## A photo texture from assets/textures ("<name>_<kind>.jpg|png", kind albedo, detail or
+## normal), or null when it is not there. Made by tools/make_textures.py.
+static func photo(name: String, kind: String) -> Texture2D:
+	var k := "photo_%s_%s" % [name, kind]
+	if _tex.has(k):
+		return _tex[k]
+	var t: Texture2D = null
+	for ext in [".jpg", ".png"]:
+		var path: String = PHOTO_DIR + name + "_" + kind + ext
+		if ResourceLoader.exists(path):
+			t = load(path) as Texture2D
+			break
+	_tex[k] = t
+	return t
+
+## Procedural noise texture names that have a photo replacement: noise key -> photo name.
+## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
+## Triplanar repeats per metre for each photo texture (object space).
+const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33}
+const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
+	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels"}
+## Photos used in their own colours rather than as greyscale detail under the material colour.
+const PHOTO_COLOUR := ["cobble", "thatch", "rust"]
+
 static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: float, tri_scale: float, normal_scale: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = albedo
 	m.roughness = rough
 	m.metallic = metal
 	m.vertex_color_use_as_albedo = true
-	if tex != "":
+	var ph: String = PHOTO_FOR.get(tex, "")
+	var own: bool = PHOTO_COLOUR.has(ph)
+	if ph != "" and photo(ph, "albedo" if own else "detail") != null and photo(ph, "normal") != null:
+		# Detail textures average 0.72, so lift the colour to keep the old brightness.
+		if own:
+			m.albedo_color = Color(0.95, 0.95, 0.95)
+			m.albedo_texture = photo(ph, "albedo")
+		else:
+			m.albedo_color = Color(albedo.r / 0.72, albedo.g / 0.72, albedo.b / 0.72, albedo.a)
+			m.albedo_texture = photo(ph, "detail")
+		m.normal_enabled = true
+		m.normal_texture = photo(ph, "normal")
+		m.normal_scale = 1.0
+		m.uv1_triplanar = true
+		m.uv1_scale = Vector3.ONE * PHOTO_SCALE.get(ph, 0.5)
+		m.uv1_triplanar_sharpness = 4.0
+	elif tex != "":
 		m.albedo_texture = _noise_tex(tex, freq, false)
 		m.normal_enabled = true
 		m.normal_texture = _noise_tex(tex, freq, true)
@@ -64,9 +107,12 @@ static func _glow(c: Color, energy: float) -> StandardMaterial3D:
 	return m
 
 ## Procedurally painted foliage atlas: clusters of leaves (or needles) with alpha.
-static func _foliage_tex(kind: String) -> ImageTexture:
+static func _foliage_tex(kind: String) -> Texture2D:
 	var k := "foliage_" + kind
 	if _tex.has(k):
+		return _tex[k]
+	if kind == "leaf" and photo("leaves", "card") != null:
+		_tex[k] = photo("leaves", "card")
 		return _tex[k]
 	var S := 256
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
@@ -187,6 +233,7 @@ static func _get_mat(name: String) -> Material:
 			_cache[name] = _wind_foliage("leaf", true, Color(0.25, 0.3, 0.1), 1.0)
 			return _cache[name]
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
+		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
 		"metal_w": m = _pbr(Color(1, 1, 1), 0.35, 0.9, "metal", 0.03, 0.8, 0.3)
@@ -208,20 +255,20 @@ static func _get_mat(name: String) -> Material:
 		"planks": m = _pbr(Color(0.55, 0.40, 0.26), 0.8, 0.0, "planks", 0.03, 0.5, 0.8)
 		"thatch": m = _pbr(Color(0.62, 0.52, 0.30), 0.95, 0.0, "thatch", 0.09, 0.8, 1.8)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)
-		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "metal", 0.04, 1.0, 0.4)
+		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "forged", 0.04, 1.0, 0.4)
 		"rust": m = _pbr(Color(0.55, 0.30, 0.18), 0.8, 0.4, "rust", 0.06, 1.2, 1.0)
-		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "metal", 0.04, 1.0, 0.3)
+		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
 		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)
 		"metal_dark": m = _pbr(Color(0.18, 0.19, 0.21), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
 		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
-		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "plaster", 0.02, 0.4, 0.2)
+		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)
 		"cloth": m = _pbr(Color(0.62, 0.20, 0.16), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"cloth_blue": m = _pbr(Color(0.2, 0.3, 0.6), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)
 		"moss": m = _pbr(Color(0.16, 0.42, 0.38), 0.95, 0.0, "leaf", 0.1, 0.6, 1.2)
-		"stem": m = _pbr(Color(0.86, 0.84, 0.76), 0.8, 0.0, "plaster", 0.06, 0.6, 1.0)
+		"stem": m = _pbr(Color(0.86, 0.84, 0.76), 0.8, 0.0, "cap", 0.06, 0.6, 1.0)
 		"cap_violet":
 			m = _pbr(Color(0.42, 0.18, 0.62), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
 			m.emission_enabled = true

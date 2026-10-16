@@ -195,14 +195,15 @@ static func _broadleaf(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> v
 	var bark: Color = p["bark"]
 	var lean := Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized() * float(p["lean"])
 	var form: String = p["form"]
-	var top := _limb(k, "bark_w", Vector3.ZERO, Vector3.UP + lean, h, g, g * 0.55, bark, 10)
+	var bm := "birch_w" if form == "column" else "bark_w"
+	var top := _limb(k, bm, Vector3.ZERO, Vector3.UP + lean, h, g, g * 0.55, bark, 10)
 	var tips: Array = [top]
 	for b in int(p["branches"]):
 		var a := r.randf() * TAU
 		var up := r.randf_range(0.5, 1.4) if form != "spreading" else r.randf_range(0.2, 0.6)
 		var from := Vector3.UP * h * r.randf_range(0.55, 0.95) + lean * h * 0.7
 		var len := float(p["crown"]) * r.randf_range(0.6, 1.2)
-		tips.append(_limb(k, "bark_w", from, Vector3(cos(a), up, sin(a)), len, g * 0.4, g * 0.12, bark, 6))
+		tips.append(_limb(k, bm, from, Vector3(cos(a), up, sin(a)), len, g * 0.4, g * 0.12, bark, 6))
 	if form == "dead":
 		for b in 4:
 			var a := r.randf() * TAU
@@ -270,7 +271,7 @@ static func _mushroom(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> vo
 		var h: float = p["height"] * scale * r.randf_range(0.85, 1.15)
 		var sr: float = p["stem_r"] * scale
 		var bend := Vector3(float(p["bend"]) * r.randf_range(0.6, 1.4), 1, float(p["bend"]) * r.randf_range(-0.5, 0.5))
-		var top := _limb(k, "bark_w", off, bend, h, sr * 1.25, sr * 0.8, p["stem_col"], 12)
+		var top := _limb(k, "cap_w", off, bend, h, sr * 1.25, sr * 0.8, p["stem_col"], 12)
 		var cr: float = p["cap_r"] * scale * r.randf_range(0.85, 1.15)
 		var cc := _jit(p["cap_col"], r, 0.1)
 		var xf := Transform3D.IDENTITY.translated(top - Vector3(0, cr * 0.12, 0))
@@ -294,7 +295,7 @@ static func _mushroom(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> vo
 	for n in r.randi_range(0, 4):
 		var a := r.randf() * TAU
 		var pos := Vector3(cos(a), 0, sin(a)) * r.randf_range(0.8, 2.0)
-		k.cylinder("bark_w", Transform3D.IDENTITY.translated(pos), 0.08, 0.06, 0.35, 6, false, 0.0, 1, p["stem_col"])
+		k.cylinder("cap_w", Transform3D.IDENTITY.translated(pos), 0.08, 0.06, 0.35, 6, false, 0.0, 1, p["stem_col"])
 		k.sphere("cap_w", Transform3D.IDENTITY.translated(pos + Vector3(0, 0.33, 0)), 0.22, 5, 8, 0.1, 0.6, p["cap_col"], true)
 
 static func _crystal_tree(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:

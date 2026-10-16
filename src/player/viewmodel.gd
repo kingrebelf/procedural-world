@@ -36,12 +36,12 @@ static func model(t: String) -> ArrayMesh:
 			k.box(head, I.translated(Vector3(0.07, 0.3, 0)), Vector3(0.14, 0.16, 0.02))
 		"pickaxe_plasma":
 			k.box("metal_dark", I, Vector3(0.08, 0.32, 0.1))
-			k.cylinder("metal", I.translated(Vector3(0, 0.16, 0)), 0.03, 0.01, 0.28, 8)
+			k.cylinder("iron", I.translated(Vector3(0, 0.16, 0)), 0.03, 0.01, 0.28, 8)
 			k.box("glow_cyan", I.translated(Vector3(0, 0.0, 0.051)), Vector3(0.03, 0.2, 0.01))
 		"sword_iron", "sword_runic":
 			k.box(handle, I.translated(Vector3(0, -0.12, 0)), Vector3(0.035, 0.18, 0.035))
 			k.box("gold" if t == "sword_runic" else "iron", I.translated(Vector3(0, -0.02, 0)), Vector3(0.18, 0.025, 0.04))
-			k.box("crystal" if t == "sword_runic" else "metal", I.translated(Vector3(0, 0.33, 0)), Vector3(0.05, 0.68, 0.012))
+			k.box("crystal" if t == "sword_runic" else "iron", I.translated(Vector3(0, 0.33, 0)), Vector3(0.05, 0.68, 0.012))
 		"pulse_pistol":
 			k.box("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -0.25), Vector3(0, -0.08, 0.04)), Vector3(0.05, 0.14, 0.06))
 			k.box("metal", I.translated(Vector3(0, 0.0, -0.06)), Vector3(0.06, 0.07, 0.26))

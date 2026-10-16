@@ -426,3 +426,13 @@ func test_icons_exist_for_every_item() -> void:
 	for t in ItemDB.ITEMS:
 		var ic := Icons.get_icon(t)
 		check(ic != null and ic.get_width() >= 64, "icon for %s" % t)
+
+func test_photo_textures_load() -> void:
+	for t in ChunkNode.TERRAIN_TEXTURES + Materials.PHOTO_FOR.values():
+		check(Materials.photo(t, "albedo") != null, "albedo texture for %s" % t)
+		check(Materials.photo(t, "normal") != null, "normal map for %s" % t)
+	for t in Materials.PHOTO_FOR.values():
+		if not Materials.PHOTO_COLOUR.has(t):
+			check(Materials.photo(t, "detail") != null, "detail texture for %s" % t)
+	check(Materials.photo("leaves", "card") != null, "leaf card")
+	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")

@@ -1,22 +1,56 @@
 shader_type spatial;
 // Era-blended terrain. Vertex COLOR.rgb carries the era weights (medieval, fantasy,
-// sci-fi) baked into the chunk snapshot. Detail is procedural and in world space, so
-// there are no texture seams between chunks.
+// sci-fi) baked into the chunk snapshot. Photo textures (grass, dirt, rock, mud) give the
+// surface detail; they are mapped in world space, so there are no seams between chunks,
+// and recoloured to each era's palette so fantasy moss and sci-fi dust keep their look.
+// Tiling is broken up by blending two rotated scales under a noise mask.
 
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
-uniform vec3 grass_m : source_color = vec3(0.20, 0.29, 0.10);
-uniform vec3 soil_m : source_color = vec3(0.36, 0.28, 0.18);
+uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
+uniform vec3 soil_m : source_color = vec3(0.44, 0.36, 0.28);
 uniform vec3 rock_m : source_color = vec3(0.55, 0.53, 0.49);
 uniform vec3 grass_f : source_color = vec3(0.10, 0.34, 0.33);
 uniform vec3 soil_f : source_color = vec3(0.22, 0.14, 0.28);
 uniform vec3 rock_f : source_color = vec3(0.36, 0.33, 0.45);
-uniform vec3 grass_s : source_color = vec3(0.30, 0.24, 0.19);
-uniform vec3 soil_s : source_color = vec3(0.20, 0.15, 0.12);
+uniform vec3 grass_s : source_color = vec3(0.42, 0.28, 0.20);
+uniform vec3 soil_s : source_color = vec3(0.33, 0.21, 0.15);
 uniform vec3 rock_s : source_color = vec3(0.36, 0.32, 0.30);
 uniform vec3 glow_f : source_color = vec3(0.35, 0.9, 0.8);
 uniform vec3 glow_s : source_color = vec3(0.2, 0.8, 1.0);
 uniform float detail_strength = 0.6;
+
+#define TEX(n) uniform sampler2D n : source_color, filter_linear_mipmap_anisotropic, repeat_enable
+#define NRM(n) uniform sampler2D n : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable
+// Ground layers per era: medieval grass/dirt, fantasy glow moss/dark soil, sci-fi red dust.
+TEX(grass_tex); NRM(grass_nrm);
+TEX(dirt_tex); NRM(dirt_nrm);
+TEX(glowmoss_tex); NRM(glowmoss_nrm);
+TEX(darksoil_tex); NRM(darksoil_nrm);
+TEX(reddust_tex); NRM(reddust_nrm);
+TEX(rock_tex); NRM(rock_nrm);
+TEX(mud_tex); NRM(mud_nrm);
+TEX(snow_tex); NRM(snow_nrm);
+uniform bool use_textures = false;
+uniform float snow_line = 40.0;
+// Linear-space mean colour of each texture (printed by tools/make_textures.py). Detail is
+// the texture's brightness relative to its mean, recoloured by the era palette and mixed
+// with some of the photo's own colour.
+const vec3 GRASS_MEAN = vec3(0.1191, 0.1707, 0.0626);
+const vec3 DIRT_MEAN = vec3(0.1918, 0.1228, 0.0773);
+const vec3 GLOWMOSS_MEAN = vec3(0.0054, 0.0724, 0.0557);
+const vec3 DARKSOIL_MEAN = vec3(0.0399, 0.0322, 0.0412);
+const vec3 REDDUST_MEAN = vec3(0.4765, 0.121, 0.0456);
+const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
+const vec3 MUD_MEAN = vec3(0.1112, 0.094, 0.0732);
+const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
+const float GRASS_TILE = 2.6; // metres per repeat
+const float DIRT_TILE = 3.2;
+const float ROCK_TILE = 6.0;
+const float MUD_TILE = 3.5;
+const float MOSS_TILE = 3.0;
+const float DUST_TILE = 5.0;
+const float SNOW_TILE = 7.0;
 uniform float night_glow = 1.0;
 
 varying vec3 wpos;
@@ -73,6 +107,34 @@ float fbm(vec2 p) {
 	return s;
 }
 
+vec2 rot2(vec2 p, float a) {
+	float c = cos(a);
+	float s = sin(a);
+	return vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+// Two scales of the same texture, rotated against each other and blended by a noise mask
+// with distance, so the repeat never lines up into a visible grid.
+vec4 untiled(sampler2D t, vec2 p, float tile, float mask, float far) {
+	vec4 a = texture(t, p / tile);
+	vec4 b = texture(t, rot2(p, 1.13) / (tile * 3.7) + 0.37);
+	return mix(a, b, clamp(mask * 0.6 + far, 0.0, 1.0));
+}
+
+// Planar normal sample turned into a world-space tilt (x, z) for ground facing up.
+vec2 untiled_n(sampler2D t, vec2 p, float tile, float mask, float far) {
+	vec3 n = untiled(t, p, tile, mask, far).xyz * 2.0 - 1.0;
+	return vec2(n.x, -n.y);
+}
+
+// Texture detail (brightness relative to its mean) on the era palette colour, plus a share
+// (k) of the photo's own colour scaled to the palette's brightness.
+vec3 recolor(vec3 t, vec3 mean, vec3 pal, float k) {
+	float lm = max(dot(mean, LUM), 0.001);
+	float lt = dot(t, LUM);
+	return mix(pal * (lt / lm), t * (dot(pal, LUM) / lm), k);
+}
+
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
@@ -93,10 +155,57 @@ void fragment() {
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
 	vec3 rock = rock_m * w.r + rock_f * w.g + rock_s * w.b;
 
-	// Rock: stratified bands plus 3D crevices so cliffs read as stone from every angle.
-	float strata = fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05));
-	float crev = rock3(wpos * 0.45);
-	rock *= (0.6 + 0.45 * strata) * (0.55 + 0.6 * crev);
+	float dist = length(wpos - CAMERA_POSITION_WORLD);
+	float far = smoothstep(25.0, 140.0, dist);
+	vec2 tilt_g = vec2(0.0); // texture normal detail (world x/z) for grass, soil, rock
+	vec2 tilt_s = vec2(0.0);
+	vec2 tilt_r = vec2(0.0);
+	vec3 mud_d = vec3(1.0);
+	float moss_glow = 0.0;
+	if (use_textures) {
+		// Ground: planar world mapping, one texture pair per era, skipped where absent.
+		vec3 gm = vec3(0.0), gs = vec3(0.0);
+		if (w.r > 0.01) {
+			gm += w.r * recolor(untiled(grass_tex, p, GRASS_TILE, meso, far).rgb, GRASS_MEAN, grass_m, 0.6);
+			gs += w.r * recolor(untiled(dirt_tex, p + 11.0, DIRT_TILE, meso, far).rgb, DIRT_MEAN, soil_m, 0.6);
+			tilt_g += w.r * untiled_n(grass_nrm, p, GRASS_TILE, meso, far);
+			tilt_s += w.r * untiled_n(dirt_nrm, p + 11.0, DIRT_TILE, meso, far);
+		}
+		if (w.g > 0.01) {
+			vec3 mt = untiled(glowmoss_tex, p + 5.0, MOSS_TILE, meso, far).rgb;
+			moss_glow = w.g * smoothstep(0.12, 0.45, dot(mt, LUM));
+			gm += w.g * recolor(mt, GLOWMOSS_MEAN, grass_f, 0.35);
+			gs += w.g * recolor(untiled(darksoil_tex, p + 17.0, DIRT_TILE, meso, far).rgb, DARKSOIL_MEAN, soil_f, 0.4);
+			tilt_g += w.g * untiled_n(glowmoss_nrm, p + 5.0, MOSS_TILE, meso, far);
+			tilt_s += w.g * untiled_n(darksoil_nrm, p + 17.0, DIRT_TILE, meso, far);
+		}
+		if (w.b > 0.01) {
+			vec3 dt = untiled(reddust_tex, p + 29.0, DUST_TILE, meso, far).rgb;
+			gm += w.b * recolor(dt, REDDUST_MEAN, grass_s, 0.45);
+			gs += w.b * recolor(dt, REDDUST_MEAN, soil_s, 0.45);
+			vec2 dn2 = untiled_n(reddust_nrm, p + 29.0, DUST_TILE, meso, far);
+			tilt_g += w.b * dn2;
+			tilt_s += w.b * dn2;
+		}
+		grass = gm;
+		soil = gs;
+		mud_d = untiled(mud_tex, p + 23.0, MUD_TILE, meso, far).rgb / MUD_MEAN;
+		// Rock: triplanar so cliffs are textured from every side.
+		vec3 bw = pow(abs(wnorm), vec3(4.0));
+		bw /= bw.x + bw.y + bw.z;
+		vec3 rp = wpos / ROCK_TILE;
+		vec3 rt = texture(rock_tex, rp.zy).rgb * bw.x + texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y + texture(rock_tex, rp.xy).rgb * bw.z;
+		rock = recolor(rt, ROCK_MEAN, rock, 0.5) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
+		vec3 nx = texture(rock_nrm, rp.zy).xyz * 2.0 - 1.0;
+		vec3 nz = texture(rock_nrm, rp.xy).xyz * 2.0 - 1.0;
+		vec3 ny = texture(rock_nrm, rp.xz * 0.8 + 0.5).xyz * 2.0 - 1.0;
+		tilt_r = vec2(nz.x * bw.z + ny.x * bw.y, nx.x * bw.x - ny.y * bw.y);
+	} else {
+		// Rock: stratified bands plus 3D crevices so cliffs read as stone from every angle.
+		float strata = fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05));
+		float crev = rock3(wpos * 0.45);
+		rock *= (0.6 + 0.45 * strata) * (0.55 + 0.6 * crev);
+	}
 
 	// Grass: lush and dry patches, darker in hollows.
 	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
@@ -105,9 +214,24 @@ void fragment() {
 	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
-	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)), shore);
+	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18);
+	vec2 tilt = vec2(0.0);
+	if (use_textures) {
+		vec2 tm = untiled_n(mud_nrm, p + 23.0, MUD_TILE, meso, far);
+		tilt = mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
+	}
 	vec3 col = mix(ground, rock, rock_mask);
+
+	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
+	float snow = 0.0;
+	if (use_textures && wpos.y > snow_line - 12.0) {
+		snow = smoothstep(snow_line - 6.0, snow_line + 8.0, wpos.y + (macro - 0.5) * 14.0 + (meso - 0.5) * 4.0);
+		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.45, 0.75, slope));
+		vec3 st = untiled(snow_tex, p + 41.0, SNOW_TILE, meso, far).rgb;
+		col = mix(col, st * 0.92, snow);
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, SNOW_TILE, meso, far), snow);
+	}
 
 	// Sci-fi: weathered dust and ash with faint mineral sparkle; no panel grid.
 	float plates = 0.0;
@@ -118,15 +242,15 @@ void fragment() {
 		EMISSION += glow_s * glint * w.b * 0.12 * night_glow;
 	}
 
-	// Fantasy: bioluminescent spores in the moss.
+	// Fantasy: bioluminescent spores in the moss (from the moss texture when present).
 	if (w.g > 0.01) {
-		float spores = smoothstep(0.86, 0.97, vnoise(p * 1.7)) * (1.0 - rock_mask);
-		EMISSION += glow_f * spores * w.g * 1.6 * night_glow;
+		float spores = use_textures ? moss_glow * (1.0 - soil_mask * 0.7) * 0.6 : smoothstep(0.86, 0.97, vnoise(p * 1.7)) * w.g;
+		EMISSION += glow_f * spores * (1.0 - rock_mask) * 1.6 * night_glow;
 		col = mix(col, col * vec3(0.9, 1.0, 1.15), w.g * 0.3);
 	}
 
 	ALBEDO = col * (0.92 + 0.16 * micro);
-	ROUGHNESS = mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b;
+	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.75, snow);
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
 
@@ -137,6 +261,7 @@ void fragment() {
 	float hz = fbm((p + vec2(0.0, e)) * 0.9);
 	float rs = 1.0 + rock_mask * 1.5;
 	vec3 dn = normalize(vec3(-(hx - h0) / e * detail_strength * rs, 1.0, -(hz - h0) / e * detail_strength * rs));
-	vec3 n = normalize(wnorm + vec3(dn.x, 0.0, dn.z) * (1.0 - plates * 0.8));
+	float proc = use_textures ? 0.35 : 1.0;
+	vec3 n = normalize(wnorm + vec3(dn.x, 0.0, dn.z) * proc * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9);
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }
