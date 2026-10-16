@@ -29,7 +29,8 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - Three eras with continuous blending of terrain, materials, vegetation, fog and sky.
 - Settlements with traders whose prices depend on where goods come from and how much you
   have already sold them.
-- Pickaxes, axes, swords and a pulse pistol; mining, chopping and persistent digging.
+- Pickaxes, axes, swords, a builder's hammer, a plasma drill and a pulse pistol; mining,
+  chopping and persistent digging.
 - Crafting in batches (x1, x5, x10, x100 or all) at stations you build: workbench, campfire,
   forge, anvil, arcane cauldron and fabricator. Items stack and keep their provenance
   ("Mined in Ashford Vale on day 3"), even inside a stack.
@@ -57,6 +58,10 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - Forward+ rendering: SDFGI global illumination, volumetric fog, SSAO, SSR, TAA/FSR 2.2,
   ACES tonemapping, auto-exposure, day/night cycle.
 - Full graphics settings with Low/Medium/High/Ultra presets.
+- A live title screen: the menu floats over a slow flight across a generated world (kept
+  in memory only; switch it off in Settings > Graphics).
+- Your own body: first-person hands holding the tool or weapon, and a third-person view
+  (V) with full animation.
 - Windows installer with Start Menu and desktop shortcuts and a clean uninstaller.
 
 ## Recommended hardware
@@ -102,6 +107,7 @@ portable zip. Saved worlds live in `%APPDATA%\ProceduralWorld`.
 3. Tests: `godot --headless --path . --script res://tests/run_tests.gd`
 4. Windows/Linux builds and the installer (needs NSIS): `./tools/build.sh`
 5. Screenshot tour: `godot --path . res://src/world/world.tscn -- --capture --seed=1`
+6. Title-screen shots: `godot --path . -- --capture-menu`
 
 ## Layout
 

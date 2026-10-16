@@ -47,6 +47,16 @@ func test_hash_is_stable() -> void:
 	for b in buckets:
 		check(b > 850 and b < 1150, "hash distribution bucket %d" % b)
 
+func test_memory_store_never_touches_disk() -> void:
+	var s := WorldStore.memory()
+	var g := ChunkGenerator.new(77)
+	var c := s.get_or_create_chunk(g, 4, -2)
+	check(s.has_chunk(4, -2) and s.load_chunk(4, -2) == c, "memory store keeps chunks")
+	check(not DirAccess.dir_exists_absolute("chunks") and not FileAccess.file_exists(s.chunk_path(4, -2)), "memory store writes nothing")
+	for i in WorldStore.MEM_LIMIT + 5:
+		s.save_chunk({"cx": 1000 + i, "cz": 0})
+	check(not s.has_chunk(4, -2) and s.has_chunk(1000 + WorldStore.MEM_LIMIT + 4, 0), "memory store drops the oldest chunks")
+
 func test_same_seed_same_chunk() -> void:
 	var g1 := ChunkGenerator.new(777)
 	var g2 := ChunkGenerator.new(777)

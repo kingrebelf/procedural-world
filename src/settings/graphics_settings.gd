@@ -32,7 +32,7 @@ const DEFAULTS := {
 	"volumetric_fog": 1, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "stick_sensitivity": 3.0,
 	"master_volume": 0.8, "music_volume": 0.6, "sfx_volume": 0.8,
-	"show_fps": false,
+	"show_fps": false, "menu_flyover": true,
 }
 
 const SHADOW_SIZES := [1024, 2048, 4096, 8192]

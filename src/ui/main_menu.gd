@@ -3,17 +3,38 @@ extends Control
 
 var _content: Control
 var _bg_t := 0.0
+var _backdrop: MenuBackdrop
+## 1 = the painted gradient covers everything; fades to 0 once the live world is ready.
+var _cover := 1.0
+var _reveal := false
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
+	if bool(Settings.get_value("menu_flyover")) and not Game.is_playing():
+		_backdrop = MenuBackdrop.new()
+		_backdrop.ready_to_show.connect(func(): _reveal = true)
+		add_child(_backdrop)
 	_home()
+	if OS.get_cmdline_user_args().has("--capture-menu") and ResourceLoader.exists("res://tools/capture_menu.gd"):
+		add_child(load("res://tools/capture_menu.gd").new())
 
 func _draw() -> void:
-	# Animated three-era gradient backdrop.
 	var s := size
+	if _cover < 1.0:
+		# The live world shows through; darken the middle so the menu stays readable.
+		var live := 1.0 - _cover
+		draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, 0.15 * live))
+		var n := 32
+		for i in n:
+			var t := float(i) / n
+			var a := 0.4 * (1.0 - absf(t - 0.5) * 2.0)
+			draw_rect(Rect2(s.x * t, 0, s.x / n + 1, s.y), Color(0, 0, 0, a * live))
+	if _cover <= 0.0:
+		return
+	# Animated three-era gradient backdrop (also covers the live world while it loads).
 	var cols := [Color(0.14, 0.2, 0.09), Color(0.05, 0.17, 0.2), Color(0.06, 0.08, 0.15)]
 	var n := 48
 	for i in n:
@@ -21,11 +42,15 @@ func _draw() -> void:
 		var k := fposmod(t + _bg_t * 0.02, 1.0) * 3.0
 		var a: Color = cols[int(k) % 3]
 		var b: Color = cols[(int(k) + 1) % 3]
-		draw_rect(Rect2(s.x * t, 0, s.x / n + 1, s.y), a.lerp(b, k - floor(k)))
-	draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, 0.35))
+		var c := a.lerp(b, k - floor(k))
+		c.a = _cover
+		draw_rect(Rect2(s.x * t, 0, s.x / n + 1, s.y), c)
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, 0.35 * _cover))
 
 func _process(d: float) -> void:
 	_bg_t += d
+	if _reveal:
+		_cover = maxf(0.0, _cover - d * 0.6)
 	queue_redraw()
 
 func _swap(c: Control) -> void:

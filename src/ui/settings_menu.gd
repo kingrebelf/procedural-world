@@ -120,6 +120,7 @@ func _graphics_tab() -> Control:
 	_check(g, "auto_exposure", "Auto exposure")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")
+	_check(g, "menu_flyover", "Live title-screen world", "A flight over a generated world behind the main menu.")
 	var note := UITheme.label("Hardware ray tracing is not available in Godot 4.5; SDFGI and SSR provide dynamic bounced light and reflections instead.", 13, UITheme.DIM)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(300, 0)

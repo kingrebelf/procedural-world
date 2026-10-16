@@ -8,11 +8,23 @@ const STORE_FORMAT := 1
 
 var root: String
 var meta: Dictionary = {}
+## In-memory store (the title screen's fly-over): chunks live only in RAM, nothing
+## touches disk, and the oldest are dropped past MEM_LIMIT.
+var _mem = null
+var _mem_order: Array = []
+var _mem_lock := Mutex.new()
+const MEM_LIMIT := 400
 
 func _init(world_dir: String) -> void:
 	root = world_dir
+	if world_dir == "":
+		_mem = {}
+		return
 	DirAccess.make_dir_recursive_absolute(root.path_join("chunks"))
 	DirAccess.make_dir_recursive_absolute(root.path_join("people"))
+
+static func memory() -> WorldStore:
+	return WorldStore.new("")
 
 static func worlds_dir() -> String:
 	return "user://worlds"
@@ -121,12 +133,32 @@ func chunk_path(cx: int, cz: int) -> String:
 	return root.path_join("chunks").path_join("%d_%d.chunk" % [cx, cz])
 
 func has_chunk(cx: int, cz: int) -> bool:
+	if _mem != null:
+		_mem_lock.lock()
+		var h: bool = _mem.has(Vector2i(cx, cz))
+		_mem_lock.unlock()
+		return h
 	return FileAccess.file_exists(chunk_path(cx, cz))
 
 func load_chunk(cx: int, cz: int):
+	if _mem != null:
+		_mem_lock.lock()
+		var c = _mem.get(Vector2i(cx, cz))
+		_mem_lock.unlock()
+		return c
 	return read_var(chunk_path(cx, cz), true)
 
 func save_chunk(chunk: Dictionary) -> bool:
+	if _mem != null:
+		var k := Vector2i(chunk["cx"], chunk["cz"])
+		_mem_lock.lock()
+		if not _mem.has(k):
+			_mem_order.append(k)
+		_mem[k] = chunk
+		while _mem_order.size() > MEM_LIMIT:
+			_mem.erase(_mem_order.pop_front())
+		_mem_lock.unlock()
+		return true
 	return write_var(chunk_path(chunk["cx"], chunk["cz"]), chunk, true)
 
 ## The one way to obtain a chunk: from disk if it ever existed, otherwise generated

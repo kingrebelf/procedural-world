@@ -18,6 +18,10 @@ var _results: Array = []
 var _mutex := Mutex.new()
 var _center := Vector2i(999999, 999999)
 var _target: Node3D
+## Optional own world (the title screen's fly-over); by default the open game's.
+var store: WorldStore
+var seed := 0
+var preview := false
 
 func _ready() -> void:
 	ChunkNode.ensure_shared()
@@ -41,7 +45,7 @@ func _exit_tree() -> void:
 	_jobs.clear()
 
 func _process(_delta: float) -> void:
-	if _target == null or Game.store == null:
+	if _target == null or (store if store else Game.store) == null:
 		return
 	var c := chunk_of(_target.global_position)
 	if c != _center:
@@ -78,7 +82,7 @@ func _retarget() -> void:
 		elif not want_grass and node.has_grass():
 			node.set_grass(PackedFloat32Array())
 	var cur := chunks.get(_center) as ChunkNode
-	if cur != null:
+	if cur != null and not preview:
 		Game.visit_chunk(cur.data)
 
 func _wanted() -> Array:
@@ -105,7 +109,7 @@ func _submit(k: Vector2i, mode: String) -> void:
 	var d := _dist(k)
 	# Capture the store and seed now: the world may be closed while the job runs.
 	var job := {"key": k, "mode": mode, "lod": lod_for(d), "grass": d <= grass_radius, "density": grass_density,
-		"store": Game.store, "seed": Game.seed}
+		"store": store if store else Game.store, "seed": seed if store else Game.seed}
 	if mode != "load":
 		job["data"] = chunks[k].data
 	_jobs[k] = WorkerThreadPool.add_task(_run_job.bind(job), false, "chunk %s" % k)
@@ -158,7 +162,7 @@ func _collect() -> void:
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
-			if k == _center:
+			if k == _center and not preview:
 				Game.visit_chunk(node.data)
 			chunk_ready.emit(node)
 		elif chunks.has(k):
