@@ -27,11 +27,7 @@ func _draw() -> void:
 		# The live world shows through; darken the middle so the menu stays readable.
 		var live := 1.0 - _cover
 		draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, 0.15 * live))
-		var n := 32
-		for i in n:
-			var t := float(i) / n
-			var a := 0.4 * (1.0 - absf(t - 0.5) * 2.0)
-			draw_rect(Rect2(s.x * t, 0, s.x / n + 1, s.y), Color(0, 0, 0, a * live))
+		draw_texture_rect(_shade(), Rect2(Vector2.ZERO, s), false, Color(1, 1, 1, live))
 	if _cover <= 0.0:
 		return
 	# Animated three-era gradient backdrop (also covers the live world while it loads).
@@ -46,6 +42,20 @@ func _draw() -> void:
 		c.a = _cover
 		draw_rect(Rect2(s.x * t, 0, s.x / n + 1, s.y), c)
 	draw_rect(Rect2(Vector2.ZERO, s), Color(0, 0, 0, 0.35 * _cover))
+
+var _shade_tex: GradientTexture2D
+
+## Smooth dark band behind the menu column, clear at the screen edges.
+func _shade() -> GradientTexture2D:
+	if _shade_tex == null:
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+		g.colors = PackedColorArray([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.42), Color(0, 0, 0, 0.0)])
+		_shade_tex = GradientTexture2D.new()
+		_shade_tex.gradient = g
+		_shade_tex.width = 256
+		_shade_tex.height = 4
+	return _shade_tex
 
 func _process(d: float) -> void:
 	_bg_t += d
