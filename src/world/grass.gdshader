@@ -18,7 +18,8 @@ void vertex() {
 	VERTEX.xz += normalize(local_wind.xz + vec2(0.0001)) * bend;
 	VERTEX.y -= abs(bend) * 0.3;
 	glow = INSTANCE_CUSTOM.a;
-	tint = INSTANCE_CUSTOM.rgb;
+	// Tints are authored as sRGB colours; shading happens in linear space.
+	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2));
 }
 
 void fragment() {

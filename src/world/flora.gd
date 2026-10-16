@@ -313,7 +313,7 @@ static func _crystal_tree(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -
 		var b := Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), -r.randf_range(0.3, 1.1))
 		k.crystal(mat, Transform3D(b, pos + Vector3(cos(a), 0, sin(a)) * r.randf_range(0.2, 0.9) - Vector3(0, r.randf() * 0.8, 0)), r.randf_range(0.08, 0.2), float(p["spike_len"]) * r.randf_range(0.6, 1.3))
 	if p["moss"]:
-		k.sphere("leaf_w", Transform3D.IDENTITY.translated(pos), 1.2, 7, 10, 0.5, 0.6, p["moss_col"])
+		k.sphere("leaf_core_w", Transform3D.IDENTITY.translated(pos), 1.2, 7, 10, 0.5, 0.6, p["moss_col"])
 		_cards(k, "leaf_card_w", pos, 1.6, 34, r, 1.0, p["moss_col"])
 
 static func _mast(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:

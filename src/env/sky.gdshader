@@ -106,12 +106,14 @@ void sky() {
 	// Clouds: a lit cloud deck drifting with the wind. Density from fbm, cover from the
 	// weather; the sun side gets silver lining, the far side is shaded.
 	if (d.y > 0.0) {
-		vec2 uv = d.xz / (d.y + 0.12) * 1.6;
+		// A curved deck (larger offset) keeps the projection from stretching into
+		// radial streaks toward the horizon.
+		vec2 uv = d.xz / (d.y + 0.32) * 1.5;
 		vec2 drift = wind_dir * time_s * (0.004 + wind_strength * 0.02);
 		float base = fbm3(vec3(uv * 0.55 + drift, time_s * 0.004));
 		float detail = fbm3(vec3(uv * 2.3 + drift * 1.7, time_s * 0.01));
 		float dens = smoothstep(1.0 - cloud_cover * 0.75 - 0.18, 1.05 - cloud_cover * 0.45, base * 0.78 + detail * 0.32);
-		dens *= smoothstep(0.0, 0.12, d.y);
+		dens *= smoothstep(0.02, 0.26, d.y);
 		// Self shadowing: sample toward the sun.
 		vec2 toward = normalize(sun.xz + vec2(0.0001)) * 0.12;
 		float shade = fbm3(vec3((uv + toward) * 0.55 + drift, time_s * 0.004));

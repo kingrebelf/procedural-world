@@ -69,6 +69,7 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 	m.roughness = rough
 	m.metallic = metal
 	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
 	var ph: String = PHOTO_FOR.get(tex, "")
 	var own: bool = PHOTO_COLOUR.has(ph)
 	if ph != "" and photo(ph, "albedo" if own else "detail") != null and photo(ph, "normal") != null:
@@ -168,6 +169,7 @@ static func _foliage(kind: String, albedo: Color, back: Color) -> StandardMateri
 	m.albedo_texture = _foliage_tex(kind)
 	m.albedo_color = albedo
 	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	m.alpha_scissor_threshold = 0.45
 	m.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE

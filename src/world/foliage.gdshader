@@ -30,7 +30,8 @@ void vertex() {
 	vec2 wd = normalize(wl.xz + vec2(0.0001));
 	VERTEX.xz += wd * k * lean * 1.2;
 	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * sway;
-	inst_col = COLOR.rgb;
+	// Vertex and instance colours are authored as sRGB; shading happens in linear space.
+	inst_col = pow(COLOR.rgb, vec3(2.2));
 }
 
 void fragment() {
@@ -41,9 +42,8 @@ void fragment() {
 	ALBEDO = tex.rgb * albedo * inst_col;
 	// Bend normals toward the sky: cards facing the ground otherwise render near black.
 	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-	if (!is_core) {
-		NORMAL = normalize(mix(NORMAL, up_v, 0.55));
-	}
+	// The core's underside would otherwise go black in its own shadow.
+	NORMAL = normalize(mix(NORMAL, up_v, is_core ? 0.8 : 0.55));
 	ROUGHNESS = 0.8;
 	SPECULAR = 0.35;
 	BACKLIGHT = back * inst_col * 1.4;
