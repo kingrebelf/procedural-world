@@ -12,10 +12,24 @@ const KIND := {
 	"standing_stone": "marker", "crystal_shard": "marker", "beacon": "marker",
 	"cottage": "structure", "watchtower": "structure", "well": "structure",
 	"townhouse": "structure", "longhouse": "structure",
+	"market_stall": "structure", "fruit_cart": "structure", "wagon": "structure", "barrels": "structure",
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
 	"trader": "trader", "alien_ruin": "structure",
 }
+
+## Market and street props in villages and towns, from the kits.
+const TOWN_PROPS := {
+	"market_stall": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/FarmCrate_Apple", 0, Vector3(-0.5, 0.95, 0.1), 1.2],
+		["props/FarmCrate_Apple", 10, Vector3(0.45, 0.95, 0.05), 1.2], ["props/Barrel_Apples", 0, Vector3(1.6, 0, 0.3), 1.0]],
+	"fruit_cart": [["props/Stall_Cart_Empty", 0, Vector3(0.6, 0, 0), 1.0], ["props/FarmCrate_Apple", 0, Vector3(-0.2, 0.8, 0), 1.0],
+		["props/FarmCrate_Apple", -8, Vector3(0.65, 0.8, 0.05), 1.0]],
+	"wagon": [["village/Prop_Wagon", 0, Vector3(0, 0, 1.15), 1.0]],
+	"barrels": [["props/Barrel", 0, Vector3(-0.4, 0, 0), 1.0], ["props/Barrel", 30, Vector3(0.35, 0, -0.2), 1.0],
+		["props/Barrel_Apples", 0, Vector3(0.1, 0, 0.55), 1.0], ["props/Crate_Wooden", 15, Vector3(1.3, 0, 0.1), 1.0]],
+}
+const TOWN_PROP_SIZE := {"market_stall": Vector3(2.6, 2.7, 1.2), "fruit_cart": Vector3(3.1, 2.7, 1.2),
+	"wagon": Vector3(2.0, 1.6, 4.1), "barrels": Vector3(2.6, 1.0, 1.6)}
 
 ## What a gatherable object yields.
 const YIELD := {
@@ -27,6 +41,7 @@ const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
 	"townhouse": "Town House", "longhouse": "Longhouse",
+	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
 
@@ -80,6 +95,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
 	if KitHouse.has(key):
 		return KitHouse.build(key)
+	if TOWN_PROPS.has(key):
+		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
 		var parts := key.split("#")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
@@ -220,7 +237,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else Vector3(7, 6, 6)
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
 				"watchtower", "spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)

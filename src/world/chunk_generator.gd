@@ -513,6 +513,8 @@ func settlement_layout(s: Dictionary) -> Array:
 	var kit: Array = Eras.TOWN_TYPES[era] if towns else Eras.STRUCTURE_TYPES[era]
 	if towns:
 		_town_rings(s, r, kit, items)
+		if era == Eras.MEDIEVAL:
+			_market(s, items)
 	else:
 		var count := r.randi_range(3, 7)
 		var a0 := r.randf() * TAU
@@ -558,6 +560,26 @@ func _town_rings(s: Dictionary, r: RandomNumberGenerator, kit: Array, items: Arr
 				continue
 			var p := c + Vector2(cos(ang), sin(ang)) * rad
 			items.append({"t": t, "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
+
+## Stalls, carts and barrels around a medieval square, clear of the roads.
+func _market(s: Dictionary, items: Array) -> void:
+	var r := WHash.rng(seed, s["sx"], s["sz"], 402)
+	var c: Vector2 = s["center"]
+	var ways := road_angles(s)
+	var props := ["market_stall", "market_stall", "fruit_cart", "barrels", "wagon"]
+	var count := 1 + int(s["size"]) * 2 + r.randi_range(0, 2)
+	var a0 := r.randf() * TAU
+	for k in count:
+		var ang := a0 + TAU * k / count + r.randf_range(-0.2, 0.2)
+		var rad := r.randf_range(8.5, 11.0) + float(s["size"]) * 2.0
+		var blocked := false
+		for w in ways:
+			if absf(angle_difference(ang, w)) < 4.5 / rad:
+				blocked = true
+		if blocked:
+			continue
+		var p := c + Vector2(cos(ang), sin(ang)) * rad
+		items.append({"t": props[r.randi() % props.size()], "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
 
 ## Directions (radians, as Vector2.angle) in which roads leave a settlement's square.
 func road_angles(s: Dictionary) -> Array:

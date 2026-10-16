@@ -246,7 +246,7 @@ void fragment() {
 		float edge = smoothstep(0.2, 0.65, road + (micro - 0.5) * 0.3 + (meso - 0.5) * 0.25);
 		float stones = smoothstep(0.6, 0.85, vnoise(p * 2.3));
 		vec3 rm = soil * vec3(0.86, 0.8, 0.7) * (0.82 + 0.3 * micro);
-		rm = mix(rm, vec3(0.46, 0.44, 0.4), stones * 0.4);
+		rm = mix(rm, vec3(0.36, 0.34, 0.31), stones * 0.25);
 		float flags = smoothstep(0.08, 0.16, abs(fract(p.x * 0.6 + vnoise(p * 0.7) * 0.6) - 0.5)) * smoothstep(0.08, 0.16, abs(fract(p.y * 0.6) - 0.5));
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
