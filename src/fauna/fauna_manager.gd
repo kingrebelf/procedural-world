@@ -20,6 +20,8 @@ func _ready() -> void:
 func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
 
+const TAG_RANGE := 28.0
+
 func _process(delta: float) -> void:
 	if player == null or streamer == null or Game.store == null:
 		return
@@ -29,10 +31,16 @@ func _process(delta: float) -> void:
 		_refresh()
 	var pp := player.global_position
 	var g := Callable(self, "_ground")
+	var lv: int = Game.stats.level if Game.stats else 1
+	# Tags show within TAG_RANGE, or far out for the one you are looking at through
+	# binoculars.
+	var spotted: Creature = player.spotted if player.get("spotted") != null else null
 	for k in _herds:
 		for c in _herds[k]:
 			if is_instance_valid(c):
 				c.step(delta, g, pp)
+				var near: bool = c._body != null and (c.global_position.distance_to(pp) < TAG_RANGE or c == spotted)
+				c.update_tag(near, lv)
 
 func _refresh() -> void:
 	var pc := ChunkStreamer.chunk_of(player.global_position)

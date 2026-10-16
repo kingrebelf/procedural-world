@@ -116,6 +116,84 @@ func _ready() -> void:
 func label() -> String:
 	return p["name"]
 
+## Danger rating shown over the animal: grows with its health and bite.
+func level() -> int:
+	return Creature.level_of(p)
+
+static func level_of(sp_p: Dictionary) -> int:
+	var lv := 1.0 + (float(sp_p["hp"]) - 18.0) / 8.0
+	if sp_p["temper"] == "aggressive":
+		lv += 2.0
+	return clampi(int(round(lv)), 1, 60)
+
+func bite_damage() -> float:
+	return 4.0 + float(p["size"]) * 6.0
+
+# --- Floating tag: level, name and health -----------------------------------------
+var _tag: Node3D
+var _tag_label: Label3D
+var _tag_bar: MeshInstance3D
+
+## Shows the tag (within `range` metres of the viewer), coloured by danger relative to
+## the player's level, with a health bar.
+func update_tag(show: bool, player_level: int) -> void:
+	if not show:
+		if _tag:
+			_tag.visible = false
+		return
+	if _tag == null:
+		_build_tag()
+	_tag.visible = true
+	var lv := level()
+	var c := Color(0.75, 1.0, 0.7)
+	if p["temper"] == "aggressive":
+		c = Color(1.0, 0.45, 0.35) if lv > player_level + 2 else Color(1.0, 0.8, 0.4)
+	_tag_label.modulate = c
+	_tag_label.text = "Lv %d  %s" % [lv, label()]
+	var f := clampf(hp / float(p["hp"]), 0.0, 1.0)
+	_tag_bar.scale = Vector3(maxf(f, 0.001), 1, 1)
+	_tag_bar.position.x = -(1.0 - f) * 0.45
+
+func _build_tag() -> void:
+	_tag = Node3D.new()
+	var top := _model_bounds().end.y
+	_tag.position = Vector3(0, top + 0.45, 0)
+	add_child(_tag)
+	# The tag ignores the animal's turning: it is a billboard child.
+	_tag_label = Label3D.new()
+	_tag_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_tag_label.fixed_size = true
+	_tag_label.pixel_size = 0.0011
+	_tag_label.font_size = 26
+	_tag_label.outline_size = 8
+	_tag_label.no_depth_test = true
+	_tag_label.position = Vector3(0, 0.12, 0)
+	_tag.add_child(_tag_label)
+	var holder := Node3D.new()
+	_tag.add_child(holder)
+	var back := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.9, 0.07)
+	back.mesh = q
+	back.material_override = _bar_mat(Color(0, 0, 0, 0.6))
+	holder.add_child(back)
+	_tag_bar = MeshInstance3D.new()
+	_tag_bar.mesh = q
+	_tag_bar.material_override = _bar_mat(Color(0.9, 0.2, 0.15))
+	_tag_bar.position.z = 0.001
+	back.add_child(_tag_bar)
+
+static func _bar_mat(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = c
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if c.a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.billboard_keep_scale = true
+	m.no_depth_test = true
+	m.render_priority = 1 if c.a >= 1.0 else 0
+	return m
+
 func _pick_wander() -> void:
 	var a := randf() * TAU
 	_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(3.0, 22.0)

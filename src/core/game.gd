@@ -109,6 +109,7 @@ func _begin(fresh: bool) -> void:
 		inventory.add(ItemDB.make("pickaxe_iron", 1, 1.0, o))
 		inventory.add(ItemDB.make("axe_iron", 1, 1.0, o))
 		inventory.add(ItemDB.make("sword_iron", 1, 1.0, o))
+		inventory.add(ItemDB.make("binoculars", 1, 1.0, o))
 		inventory.add(ItemDB.make("bread", 4, 1.0, o))
 	store.meta["last_played"] = Time.get_unix_time_from_system()
 	store.save_meta()

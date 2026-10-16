@@ -662,3 +662,20 @@ func test_kit_flora() -> void:
 			check(n != "" and ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "%s species %d has a kit model (%s)" % [t, sp, n])
 	for n in KitFlora.ALL:
 		check(ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "kit model %s is in the repo" % n)
+
+func test_creature_levels() -> void:
+	var seen := {}
+	for sp in 60:
+		for era in Eras.COUNT:
+			var p := Creature.species(sp, era)
+			var lv := Creature.level_of(p)
+			check(lv >= 1 and lv <= 60, "animal level in range")
+			seen[lv] = true
+			if p["temper"] == "aggressive":
+				check(lv >= 3, "predators are at least level 3")
+	check(seen.size() >= 4, "animals span several levels (%d)" % seen.size())
+	check(ItemDB.def("binoculars").get("zoom", false), "binoculars zoom")
+	var made := false
+	for r in Recipes.LIST:
+		made = made or r["out"] == "binoculars"
+	check(made, "binoculars can be crafted")

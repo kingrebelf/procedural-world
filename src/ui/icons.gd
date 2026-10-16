@@ -93,6 +93,12 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:
 				_rect(img, Rect2(x, 28, 3, 8), c.darkened(0.3))
+		"binoculars":
+			for x in [20.0, 44.0]:
+				_circle(img, Vector2(x, 38), 11.0, c)
+				_circle(img, Vector2(x, 38), 6.0, Color(0.35, 0.55, 0.75))
+				_circle(img, Vector2(x - 2, 36), 2.0, Color(0.85, 0.92, 1.0))
+			_rect(img, Rect2(27, 22, 10, 14), c.lightened(0.15))
 		"fiber":
 			for i in 5:
 				var x := 18.0 + i * 7.0

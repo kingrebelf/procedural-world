@@ -404,7 +404,9 @@ func _physics_process(delta: float) -> void:
 	viewmodel.sway(delta, hv.length() / SPRINT)
 	_animate_body(Vector2(velocity.x, velocity.z).length())
 
-	if not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad) and _cooldown <= 0.0:
+	var looking := not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad)
+	_binoculars(delta, looking and _holding_binoculars())
+	if looking and _cooldown <= 0.0 and not _holding_binoculars():
 		use_held()
 	builder.update()
 	_update_look_target()
@@ -597,20 +599,55 @@ static func _use_of(o: Dictionary) -> Dictionary:
 				return {"kind": "station", "verb": "Craft at the %s" % String(d["name"]).to_lower(), "h": 1.2}
 	return {}
 
+# --- Binoculars ----------------------------------------------------------------------
+## Hold Use with binoculars: the view zooms in, and an animal under the crosshair (out to
+## SPOT_RANGE) shows its tag and full stats.
+
+const SPOT_RANGE := 260.0
+const ZOOM_FOV := 12.0
+var spotted: Creature = null
+var _zoom := 0.0
+
+func _holding_binoculars() -> bool:
+	var it = held_item()
+	return it != null and ItemDB.def(it["type"]).get("zoom", false)
+
+func _binoculars(delta: float, on: bool) -> void:
+	_zoom = move_toward(_zoom, 1.0 if on else 0.0, delta * 4.0)
+	var base := float(Settings.get_value("fov"))
+	camera.fov = lerpf(base, ZOOM_FOV, smoothstep(0.0, 1.0, _zoom))
+	spotted = null
+	if _zoom < 0.5:
+		return
+	var space := get_world_3d().direct_space_state
+	var from := camera.global_position
+	var q := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * SPOT_RANGE, 1 | 2, [get_rid()])
+	var hit := space.intersect_ray(q)
+	if hit and hit["collider"] and (hit["collider"] as Object).has_meta("creature"):
+		spotted = hit["collider"].get_meta("creature")
+
+func _creature_info(cr: Creature) -> Dictionary:
+	var drops: Array = []
+	for d in cr.p["drops"]:
+		drops.append("%s x%d" % [ItemDB.def(d[0])["name"], d[1]])
+	return {"title": "Lv %d  %s" % [cr.level(), cr.label()], "sub": "Wild animal  ·  %s" % String(cr.p["temper"]).capitalize(),
+		"lines": ["Health %d / %d" % [int(maxf(cr.hp, 0.0)), int(cr.p["hp"])],
+			"Bite %d  ·  Speed %.1f m/s" % [int(cr.bite_damage()), float(cr.p["speed"]) * 1.6] if cr.p["temper"] == "aggressive" else "Harmless  ·  Speed %.1f m/s" % (float(cr.p["speed"]) * (3.2 if cr.p["temper"] == "skittish" else 1.0)),
+			"Drops: " + ", ".join(drops),
+			"Distance %d m" % int(cr.global_position.distance_to(global_position))],
+		"hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
+
 func _update_look_target() -> void:
 	var h := _hit_object()
+	if spotted != null and is_instance_valid(spotted):
+		h = {"creature": spotted}
 	var text := ""
 	var info := {}
 	if builder.active():
 		text = "[%s] Place %s   [%s] Rotate" % [_key("use"), BuildCatalog.def(builder.piece_id())["name"], _key("rotate_build")]
 		info = builder.info()
 	elif h.has("creature") and is_instance_valid(h["creature"]):
-		var cr: Creature = h["creature"]
-		var drops: Array = []
-		for d in cr.p["drops"]:
-			drops.append("%s x%d" % [ItemDB.def(d[0])["name"], d[1]])
-		info = {"title": cr.label(), "sub": "Wild animal  ·  %s" % String(cr.p["temper"]).capitalize(),
-			"lines": ["Drops: " + ", ".join(drops), "Hunt with a sword, axe or pistol"], "hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
+		info = _creature_info(h["creature"])
 	elif h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
 		var r := int(n.rec.get("rel", 0))

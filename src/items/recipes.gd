@@ -15,6 +15,7 @@ const LIST := [
 	{"out": "launch_pad", "qty": 1, "in": {"alloy_plate": 14, "circuitry": 8, "power_cell": 3}, "at": "vehicle_bay"},
 	{"out": "stable", "qty": 1, "in": {"planks": 16, "wood": 6, "iron_ingot": 2}, "at": "workbench"},
 	{"out": "hammer", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "binoculars", "qty": 1, "in": {"iron_ingot": 2, "stone": 2, "hide": 1}, "at": "workbench"},
 	# Materials.
 	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}, "at": "campfire"},
 	{"out": "iron_ingot", "qty": 1, "in": {"iron_ore": 2}, "at": "forge"},
