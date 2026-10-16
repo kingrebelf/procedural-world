@@ -52,8 +52,8 @@ func _ready() -> void:
 	env.volumetric_fog_detail_spread = 2.0
 	env.volumetric_fog_anisotropy = 0.6
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
-	env.adjustment_contrast = 1.1
+	env.adjustment_saturation = 0.98
+	env.adjustment_contrast = 1.06
 	env.ssao_radius = 1.4
 	env.ssao_intensity = 1.6
 	env.ssil_radius = 6.0

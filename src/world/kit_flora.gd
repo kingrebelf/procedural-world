@@ -15,7 +15,18 @@ static var _lock := Mutex.new()
 const ALL := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5",
 	"Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5", "DeadTree_1", "DeadTree_2", "DeadTree_3",
 	"DeadTree_4", "DeadTree_5", "TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_4",
-	"TwistedTree_5", "Bush_Common", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"]
+	"TwistedTree_5", "Bush_Common", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
+	"Bush_Common_Flowers", "Fern_1", "Flower_3_Group", "Flower_4_Group", "Grass_Wispy_Tall", "Grass_Common_Tall",
+	"Plant_1_Big", "Plant_7_Big", "Mushroom_Common", "Mushroom_Laetiporus"]
+
+## Undergrowth forms drawn from kit models: [model names, height range in metres].
+const UNDER := {
+	"fern": [["Fern_1"], 0.6, 1.1],
+	"bush": [["Bush_Common", "Bush_Common_Flowers"], 0.7, 1.4],
+	"flowers": [["Flower_3_Group", "Flower_4_Group"], 0.35, 0.6],
+	"reeds": [["Grass_Wispy_Tall", "Grass_Common_Tall"], 0.7, 1.3],
+	"fronds": [["Plant_1_Big", "Plant_7_Big"], 0.8, 1.5],
+}
 
 ## Loads every kit model and material on the main thread, before chunk workers need them:
 ## loading the same scene from several worker threads at once can stall the loader.
@@ -42,6 +53,28 @@ static func model_name(t: String, p: Dictionary, sp: int, v: int) -> String:
 				return "DeadTree_%d" % i
 			return "Pine_%d" % i
 	return ""
+
+## An undergrowth plant from the kit (the same form Flora.under_form picks), or null for
+## forms that stay procedural (glow bulbs, xeno tendrils).
+static func build_under(sp: int, era: int) -> ArrayMesh:
+	var form := Flora.under_form(sp, era)
+	if not UNDER.has(form):
+		return null
+	var e: Array = UNDER[form]
+	var r := Flora._rng(sp, 6)
+	var names: Array = e[0]
+	var src := _model(names[r.randi() % names.size()])
+	if src.is_empty():
+		return null
+	var s := r.randf_range(e[1], e[2]) / maxf(float(src["height"]), 0.05)
+	var xf := Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(s, s, s)), Vector3.ZERO)
+	# Mostly the kit's own colours, nudged toward the era's: greener fields, teal and violet
+	# fantasy growth, rust-red sci-fi scrub.
+	var hue: float = [r.randf_range(0.18, 0.32), fposmod(0.45 + r.randf_range(-0.12, 0.35), 1.0), r.randf_range(0.0, 0.1)][clampi(era, 0, 2)]
+	var shift: float = [0.15, 0.55, 0.5][clampi(era, 0, 2)]
+	var coloured := Color.WHITE.lerp(Color.from_hsv(hue, 0.55, 0.95), shift)
+	var leaf := Color.from_hsv(hue, 0.5 + shift * 0.2, 0.62)
+	return _assemble(src, xf, leaf, Color.WHITE, coloured)
 
 ## The species' mesh from its kit model, or null when it has none.
 static func build(t: String, sp: int, v: int) -> ArrayMesh:
@@ -70,6 +103,14 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 	var bark_tint := Color.WHITE.lerp(bark * 2.2, 0.35)
 	if p.get("form", "") == "column":
 		bark_tint = Color(1.5, 1.5, 1.45) # birch: pale bark
+	return _assemble(src, xf, leaf, bark_tint)
+
+## A kit model moved by `xf`, its leaves tinted `leaf` (as brightness times hue) and its
+## bark `bark_tint`. Parts whose texture is already coloured (flowers) keep their colours.
+## Kit textures that are already coloured (not white masks): tinted only lightly.
+const COLOURED := ["Leaves", "Grass", "Flowers"]
+
+static func _assemble(src: Dictionary, xf: Transform3D, leaf: Color, bark_tint: Color, coloured := Color.WHITE) -> ArrayMesh:
 	var out := ArrayMesh.new()
 	var nb := xf.basis.inverse().transposed()
 	for part in src["parts"]:
@@ -82,6 +123,8 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 			col.resize(pos.size())
 			col.fill(Color.WHITE)
 		var tint: Color = leaf if part[1] == "leaf" else bark_tint
+		if part[2] in COLOURED:
+			tint = Color.WHITE if part[2] == "Flowers" else coloured
 		for j in pos.size():
 			pos[j] = xf * pos[j]
 			nrm[j] = (nb * nrm[j]).normalized()
@@ -131,7 +174,7 @@ static func _model(mname: String) -> Dictionary:
 			if mat is BaseMaterial3D and (mat as BaseMaterial3D).albedo_texture != null:
 				tex_name = (mat as BaseMaterial3D).albedo_texture.resource_path.get_file().get_basename()
 			var mat_name: String = mat.resource_name if mat != null else ""
-			var kind := "leaf" if mat_name.begins_with("Lea") else "bark"
+			var kind := "leaf" if mat_name.begins_with("Lea") or mat_name in ["Flowers", "Grass"] else "bark"
 			var a := mi.mesh.surface_get_arrays(s)
 			var pos: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
 			var nrm: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
@@ -196,7 +239,7 @@ static func _material(kind: String, base: String) -> Material:
 			sm.shader = load("res://src/world/foliage.gdshader")
 			sm.set_shader_parameter("albedo_tex", load(DIR + base + ".png"))
 			sm.set_shader_parameter("back", Color(0.3, 0.35, 0.12))
-			sm.set_shader_parameter("sway", 0.6 if base == "Leaf_Pine" else 1.0)
+			sm.set_shader_parameter("sway", 0.6 if base == "Leaf_Pine" else (30.0 if base in ["Leaves", "Grass", "Flowers"] else 1.0))
 			m = sm
 		else:
 			var bm := StandardMaterial3D.new()

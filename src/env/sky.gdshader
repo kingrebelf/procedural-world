@@ -1,4 +1,5 @@
 shader_type sky;
+render_mode use_half_res_pass;
 // Era-aware sky: physically inspired gradient, sun and moon discs, stars, a fantasy
 // aurora and a sci-fi planetary ring, all weighted by the era weights at the player.
 
@@ -41,8 +42,97 @@ float fbm3(vec3 p) {
 	return s;
 }
 
+// --- Volumetric clouds -----------------------------------------------------------------
+// A slab of cloud between CLOUD_LO and CLOUD_HI metres, ray-marched at half resolution:
+// weather-scale coverage, billowing 3D shape eroded at the edges, light marched toward the
+// sun (Beer's law with a powder term) and a forward-scattering phase for silver linings.
+const float CLOUD_LO = 1400.0;
+const float CLOUD_HI = 3600.0;
+
+float fbm_n(vec3 p, int oct) {
+	float s = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < oct; i++) {
+		s += a * noise3(p);
+		p = p * 2.03 + vec3(1.7, 9.2, 3.1);
+		a *= 0.5;
+	}
+	return s;
+}
+
+float cloud_density(vec3 p, vec2 drift, bool cheap) {
+	float h = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
+	if (h < 0.0 || h > 1.0) return 0.0;
+	vec2 q = p.xz + drift;
+	// Weather: which parts of the sky have clouds at all.
+	float cov = fbm_n(vec3(q * 0.00018, 0.5), 3);
+	cov = smoothstep(0.62 - cloud_cover * 0.42, 0.95 - cloud_cover * 0.3, cov);
+	// Rounded bottoms, cauliflower tops.
+	float profile = smoothstep(0.0, 0.12, h) * smoothstep(1.0, 0.45 - cov * 0.3, h);
+	// Billows: big rounded lumps plus smaller ones, so tops pile up like cumulus.
+	float shape = fbm_n(vec3(q.x, p.y * 1.2, q.y) * 0.0014 + vec3(0.0, time_s * 0.002, 0.0), cheap ? 2 : 4);
+	float lumps = noise3(vec3(q.x, p.y * 0.8, q.y) * 0.00045);
+	float d = cov * profile * (0.55 + lumps * 0.7) - (1.0 - shape) * 0.55;
+	if (!cheap && d > 0.0) {
+		// Erode the edges with finer detail.
+		d -= (1.0 - fbm_n(vec3(q.x, p.y, q.y) * 0.004, 2)) * 0.12 * (1.0 - d);
+	}
+	return clamp(d * 2.2, 0.0, 1.0);
+}
+
+float hg(float c, float g) {
+	return (1.0 - g * g) / (12.566 * pow(1.0 + g * g - 2.0 * g * c, 1.5));
+}
+
+vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
+	if (d.y < 0.015) return vec4(0.0);
+	float t0 = CLOUD_LO / d.y;
+	float t1 = min(CLOUD_HI / d.y, 60000.0);
+	if (t0 > 60000.0) return vec4(0.0);
+	const int STEPS = 28;
+	float dt = (t1 - t0) / float(STEPS);
+	float t = t0 + dt * hash(vec3(jitter_px, time_s));
+	vec2 drift = wind_dir * time_s * (6.0 + wind_strength * 22.0);
+	float cos_s = dot(d, sun);
+	float phase = mix(hg(cos_s, 0.6), hg(cos_s, -0.25), 0.3) * 6.0 + 0.4;
+	vec3 col = vec3(0.0);
+	float trans = 1.0;
+	for (int i = 0; i < STEPS; i++) {
+		vec3 p = d * t;
+		float den = cloud_density(p, drift, false);
+		if (den > 0.002) {
+			// Light: a few steps toward the sun.
+			float od = 0.0;
+			for (int j = 1; j <= 4; j++) {
+				od += cloud_density(p + sun * (110.0 * float(j * j)), drift, true) * 110.0 * float(2 * j - 1);
+			}
+			float sigma = 0.012;
+			float beer = exp(-od * sigma * 0.55);
+			float powder = 1.0 - exp(-den * 2.5);
+			float hfrac = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
+			vec3 lum = sun_col * beer * powder * phase * 1.8 + amb * (0.35 + 0.65 * hfrac);
+			float a = 1.0 - exp(-den * sigma * dt);
+			col += trans * a * lum;
+			trans *= 1.0 - a;
+			if (trans < 0.02) break;
+		}
+		t += dt;
+	}
+	// Fade into the haze toward the horizon.
+	float fade = smoothstep(0.015, 0.12, d.y);
+	return vec4(col, (1.0 - trans) * fade);
+}
+
 void sky() {
 	vec3 d = EYEDIR;
+	if (AT_HALF_RES_PASS) {
+		vec3 sunh = LIGHT0_DIRECTION;
+		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sunh.y)) * daylight;
+		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035);
+		vec4 c = march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy);
+		COLOR = c.rgb;
+		ALPHA = c.a;
+	} else {
 	float up = clamp(d.y, 0.0, 1.0);
 	vec3 sun = LIGHT0_DIRECTION;
 	float sun_h = sun.y;
@@ -105,7 +195,11 @@ void sky() {
 
 	// Clouds: a lit cloud deck drifting with the wind. Density from fbm, cover from the
 	// weather; the sun side gets silver lining, the far side is shaded.
-	if (d.y > 0.0) {
+	if (!AT_CUBEMAP_PASS) {
+		// Volumetric clouds from the half-resolution pass.
+		col = col * (1.0 - HALF_RES_COLOR.a) + HALF_RES_COLOR.rgb;
+	} else if (d.y > 0.0) {
+		// Reflections and ambient light: a cheaper flat cloud deck.
 		// A curved deck (larger offset) keeps the projection from stretching into
 		// radial streaks toward the horizon.
 		vec2 uv = d.xz / (d.y + 0.32) * 1.5;
@@ -131,4 +225,5 @@ void sky() {
 	vec3 below = mix(hor, ground_col * (0.2 + 0.8 * daylight), 0.4);
 	col = mix(col, below, smoothstep(0.0, -0.08, d.y));
 	COLOR = col;
+	}
 }

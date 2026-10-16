@@ -80,6 +80,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		var parts := key.split("#")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
+			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
+			if ku != null:
+				return ku
 			Flora.build_under(kit, int(parts[1]), int(parts[2]))
 			return kit.commit(Materials.get_mat)
 		var km := KitFlora.build(parts[0], int(parts[1]), int(parts[2]))
