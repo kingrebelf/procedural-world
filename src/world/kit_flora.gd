@@ -71,16 +71,17 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 	if p.get("form", "") == "column":
 		bark_tint = Color(1.5, 1.5, 1.45) # birch: pale bark
 	var out := ArrayMesh.new()
+	var nb := xf.basis.inverse().transposed()
 	for part in src["parts"]:
 		var a: Array = (part[0] as Array).duplicate(true)
 		var pos: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
 		var nrm: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+		var tan = a[Mesh.ARRAY_TANGENT]
 		var col: PackedColorArray = a[Mesh.ARRAY_COLOR] if a[Mesh.ARRAY_COLOR] != null else PackedColorArray()
 		if col.size() != pos.size():
 			col.resize(pos.size())
 			col.fill(Color.WHITE)
 		var tint: Color = leaf if part[1] == "leaf" else bark_tint
-		var nb := xf.basis.inverse().transposed()
 		for j in pos.size():
 			pos[j] = xf * pos[j]
 			nrm[j] = (nb * nrm[j]).normalized()
@@ -89,25 +90,22 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 			# brightness only, so the species colour decides the hue.
 			var lum := clampf(c.get_luminance() * 1.15 + 0.15, 0.35, 1.0) if part[1] == "leaf" else 1.0
 			col[j] = Color(tint.r * lum, tint.g * lum, tint.b * lum, 1.0)
+		if tan is PackedFloat32Array:
+			var tg: PackedFloat32Array = tan
+			for j in pos.size():
+				var tv := (xf.basis * Vector3(tg[j * 4], tg[j * 4 + 1], tg[j * 4 + 2])).normalized()
+				tg[j * 4] = tv.x
+				tg[j * 4 + 1] = tv.y
+				tg[j * 4 + 2] = tv.z
+			a[Mesh.ARRAY_TANGENT] = tg
 		a[Mesh.ARRAY_VERTEX] = pos
 		a[Mesh.ARRAY_NORMAL] = nrm
 		a[Mesh.ARRAY_COLOR] = col
-		a[Mesh.ARRAY_TANGENT] = null
-		var st := SurfaceTool.new()
-		st.create_from_arrays(a)
-		if part[1] == "bark":
-			st.generate_tangents() # for the bark normal map
-		st.commit(out)
+		# LOD index lists were made once per model (see _model) and still fit: the vertices
+		# are the same, only moved and recoloured.
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a, [], part[3])
 		out.surface_set_material(out.get_surface_count() - 1, _material(part[1], part[2]))
-	return with_lods(out)
-
-## Kit trees are thousands of triangles; let distant ones draw simplified versions.
-static func with_lods(m: ArrayMesh) -> ArrayMesh:
-	var im := ImporterMesh.new()
-	for s in m.get_surface_count():
-		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, m.surface_get_arrays(s), [], {}, m.surface_get_material(s))
-	im.generate_lods(25.0, 60.0, [])
-	return im.get_mesh()
+	return out
 
 ## Surface arrays of a kit model in its own space, cached.
 static func _model(mname: String) -> Dictionary:
@@ -153,6 +151,25 @@ static func _model(mname: String) -> Dictionary:
 		for j in pos.size():
 			pos[j].y -= lo
 		part[0][Mesh.ARRAY_VERTEX] = pos
+	# Tangents (for the bark normal map) and LODs, once per model. Simplifying a mesh runs
+	# on the worker pool and waits for it, so it must never happen inside a chunk job:
+	# preload_all calls this on the main thread.
+	for part in parts:
+		var st := SurfaceTool.new()
+		var arr: Array = part[0]
+		arr[Mesh.ARRAY_TANGENT] = null
+		st.create_from_arrays(arr)
+		if part[1] == "bark":
+			st.generate_tangents()
+		var im := ImporterMesh.new()
+		im.add_surface(Mesh.PRIMITIVE_TRIANGLES, st.commit_to_arrays())
+		if OS.get_thread_caller_id() == OS.get_main_thread_id():
+			im.generate_lods(25.0, 60.0, [])
+		part[0] = im.get_surface_arrays(0)
+		var lods := {}
+		for l in im.get_surface_lod_count(0):
+			lods[im.get_surface_lod_size(0, l)] = im.get_surface_lod_indices(0, l)
+		part.append(lods)
 	m = {"parts": parts, "height": hi - lo}
 	_lock.lock()
 	_models[mname] = m
@@ -225,27 +242,55 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 	if t == "iron_vein":
 		mat = _ore_material("iron")
 		col = col.darkened(0.25)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Merge the pieces as raw arrays. Never round-trip through a temporary ArrayMesh here:
+	# reading a mesh's arrays back asks the RenderingServer, which waits on the main thread,
+	# and this runs in chunk jobs the main thread may itself be waiting on (scene change).
+	var vs := PackedVector3Array()
+	var ns := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cs := PackedColorArray()
+	var ix := PackedInt32Array()
 	for pc in pieces:
 		var src := _model(pc[0])
 		if src.is_empty():
 			continue
+		var xf: Transform3D = pc[1]
+		var nb := xf.basis.inverse().transposed()
+		var c := Flora._jit(col, r, 0.06)
 		for part in src["parts"]:
-			var a: Array = (part[0] as Array).duplicate(true)
-			var n := (a[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
-			var cols := PackedColorArray()
-			cols.resize(n)
-			cols.fill(Flora._jit(col, r, 0.06))
-			a[Mesh.ARRAY_COLOR] = cols
-			a[Mesh.ARRAY_TANGENT] = null
-			var one := ArrayMesh.new()
-			one.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
-			st.append_from(one, 0, pc[1])
+			var a: Array = part[0]
+			var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var base_i := vs.size()
+			for j in pv.size():
+				vs.append(xf * pv[j])
+				ns.append((nb * pn[j]).normalized())
+				cs.append(c)
+			if a[Mesh.ARRAY_TEX_UV] != null:
+				uvs.append_array(a[Mesh.ARRAY_TEX_UV])
+			else:
+				var zero := PackedVector2Array()
+				zero.resize(pv.size())
+				uvs.append_array(zero)
+			if a[Mesh.ARRAY_INDEX] != null:
+				for k in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
+					ix.append(base_i + k)
+			else:
+				for k in pv.size():
+					ix.append(base_i + k)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = vs
+	arr[Mesh.ARRAY_NORMAL] = ns
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cs
+	arr[Mesh.ARRAY_INDEX] = ix
+	var st := SurfaceTool.new()
+	st.create_from_arrays(arr)
 	st.generate_tangents()
-	var out := st.commit()
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit_to_arrays())
 	out.surface_set_material(0, mat)
-	out = with_lods(out)
 	if t == "aether_crystal":
 		# The crystals themselves stay procedural (they glow and are the point of the node).
 		var k := MeshKit.new(sp & 0xFFFF)
@@ -254,10 +299,7 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 			var a2 := r.randf() * TAU
 			var b := Basis(Vector3(cos(a2), 0, sin(a2)).cross(Vector3.UP).normalized(), r.randf_range(0.1, 0.6))
 			k.crystal(cm, Transform3D(b, Vector3(cos(a2) * 0.35, 0.35, sin(a2) * 0.35)), r.randf_range(0.12, 0.26), r.randf_range(0.8, 2.4))
-		var km := k.commit(Materials.get_mat)
-		for s2 in km.get_surface_count():
-			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, km.surface_get_arrays(s2))
-			out.surface_set_material(out.get_surface_count() - 1, km.surface_get_material(s2))
+		k.commit(Materials.get_mat, out)
 	return out
 
 const ORES := {

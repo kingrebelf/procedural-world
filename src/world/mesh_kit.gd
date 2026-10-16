@@ -173,8 +173,9 @@ func crystal(mat: String, xf: Transform3D, radius: float, h: float, sides: int =
 			n = -n
 		tri(mat, xf, t0, apex, t1, n, n, n, color)
 
-func commit(materials: Callable) -> ArrayMesh:
-	var mesh := ArrayMesh.new()
+## Commits every bucket as a surface of `into` (or of a new mesh).
+func commit(materials: Callable, into: ArrayMesh = null) -> ArrayMesh:
+	var mesh := into if into != null else ArrayMesh.new()
 	var names := _st.keys()
 	names.sort()
 	for name in names:
