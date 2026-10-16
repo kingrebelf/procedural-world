@@ -176,7 +176,7 @@ func _run() -> void:
 		kc.rotation.y = face
 		kc.set_process(false)
 		kc.set_physics_process(false)
-		player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": -0.35, "slot": player.slot, "view": 1})
+		player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": -0.35, "slot": player.selected, "view": 1})
 		await _frames(3)
 		var hp0 := kc.hp
 		player._cooldown = 0.0
@@ -188,7 +188,7 @@ func _run() -> void:
 	var feet_fwd: Vector3 = -player.camera.global_transform.basis.z
 	feet_fwd.y = 0.0
 	kc.global_position = player.global_position + feet_fwd.normalized() * 1.5
-	player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": 0.0, "slot": player.slot, "view": 1})
+	player.set_state({"pos": player.global_position, "yaw": player.yaw(), "pitch": 0.0, "slot": player.selected, "view": 1})
 	await _frames(3)
 	var hp1 := kc.hp
 	player._cooldown = 0.0
