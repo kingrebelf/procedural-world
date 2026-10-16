@@ -29,7 +29,7 @@ var _feed_rows: Dictionary = {} ## type -> {row, qty, label, t}
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var cross := Control.new()
@@ -41,17 +41,14 @@ func _ready() -> void:
 	add_child(cross)
 
 	_prompt = UITheme.label("", 18)
-	_prompt.set_anchors_preset(Control.PRESET_CENTER)
-	_prompt.position = Vector2(-200, 28)
-	_prompt.size = Vector2(400, 30)
+	_pin(_prompt, Control.PRESET_CENTER, Rect2(-200, 28, 400, 30))
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_prompt.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	add_child(_prompt)
 
 	_hotbar = HBoxContainer.new()
-	_hotbar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_pin(_hotbar, Control.PRESET_CENTER_BOTTOM, Rect2(-((96 + 6) * 6) / 2.0, -112, (96 + 6) * 6, 90))
 	_hotbar.add_theme_constant_override("separation", 6)
-	_hotbar.position = Vector2(-((96 + 6) * 6) / 2.0, -112)
 	add_child(_hotbar)
 	for i in Inventory.HOTBAR:
 		var p := PanelContainer.new()
@@ -78,8 +75,7 @@ func _ready() -> void:
 		_slots.append({"panel": p, "name": n, "qty": q, "icon": ic})
 
 	var vit := VBoxContainer.new()
-	vit.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
-	vit.position = Vector2(28, -96)
+	_pin(vit, Control.PRESET_BOTTOM_LEFT, Rect2(28, -96, 260, 80))
 	add_child(vit)
 	_health = ProgressBar.new()
 	_health.custom_minimum_size = Vector2(260, 14)
@@ -91,9 +87,7 @@ func _ready() -> void:
 	vit.add_child(_money)
 
 	_banner_box = VBoxContainer.new()
-	_banner_box.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_banner_box.position = Vector2(-400, 70)
-	_banner_box.size = Vector2(800, 100)
+	_pin(_banner_box, Control.PRESET_CENTER_TOP, Rect2(-600, 70, 1200, 100))
 	_banner_box.modulate.a = 0.0
 	_banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_banner_box)
@@ -103,26 +97,26 @@ func _ready() -> void:
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 	_banner.add_theme_constant_override("shadow_offset_y", 2)
+	_banner.add_theme_constant_override("outline_size", 6)
+	_banner.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	_banner_sub.add_theme_constant_override("outline_size", 4)
+	_banner_sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
 	_banner_box.add_child(_banner_sub)
 	_banner_box.add_child(_banner)
 
 	_toasts = VBoxContainer.new()
-	_toasts.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_toasts.position = Vector2(-340, -320)
-	_toasts.size = Vector2(320, 300)
+	_pin(_toasts, Control.PRESET_BOTTOM_RIGHT, Rect2(-340, -320, 320, 300))
 	_toasts.alignment = BoxContainer.ALIGNMENT_END
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_toasts)
 
 	_info = UITheme.label("", 14, UITheme.DIM)
-	_info.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_info.position = Vector2(-330, 20)
-	_info.size = Vector2(310, 80)
+	_pin(_info, Control.PRESET_TOP_RIGHT, Rect2(-330, 20, 310, 80))
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(_info)
 
 	_fps = UITheme.label("", 14, UITheme.ACCENT_2)
-	_fps.position = Vector2(20, 20)
+	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 20, 300, 24))
 	add_child(_fps)
 
 	_under = ColorRect.new()
@@ -140,8 +134,7 @@ func _ready() -> void:
 	vit.add_child(_breath)
 	_build_look_panel()
 	_feed = VBoxContainer.new()
-	_feed.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	_feed.position = Vector2(28, -40)
+	_pin(_feed, Control.PRESET_CENTER_LEFT, Rect2(28, -40, 360, 300))
 	_feed.add_theme_constant_override("separation", 4)
 	_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_feed)
@@ -188,8 +181,8 @@ func _on_toast(text: String) -> void:
 func _build_look_panel() -> void:
 	_look = PanelContainer.new()
 	_look.add_theme_stylebox_override("panel", UITheme.sb(Color(0.05, 0.06, 0.07, 0.72), Color(1, 1, 1, 0.08), 8, 1, 12))
-	_look.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_look.position = Vector2(-360, 96)
+	_pin(_look, Control.PRESET_TOP_RIGHT, Rect2(-360, 96, 340, 40))
+	_look.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_look.custom_minimum_size = Vector2(340, 0)
 	_look.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_look.visible = false
@@ -265,6 +258,15 @@ func _on_item(type: String, qty: int) -> void:
 		_feed_rows.erase(type)
 		row.queue_free())
 	e["tw"] = tw
+
+## Anchors a control to a screen edge or corner with an explicit rectangle relative to
+## that anchor, so it stays in place whatever the window size was when the HUD was built.
+static func _pin(c: Control, preset: int, r: Rect2) -> void:
+	c.set_anchors_preset(preset)
+	c.offset_left = r.position.x
+	c.offset_top = r.position.y
+	c.offset_right = r.position.x + r.size.x
+	c.offset_bottom = r.position.y + r.size.y
 
 func _on_region(region: String, era: int) -> void:
 	_banner.text = region
