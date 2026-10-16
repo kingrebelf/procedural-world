@@ -21,7 +21,9 @@ const AUTOSAVE_INTERVAL := 10.0
 const DIRTY_FLUSH_DELAY := 0.75
 
 var store: WorldStore
-var seed: int = 0
+var seed: int = 0 ## the current planet's terrain seed
+var home_seed: int = 0 ## the world's own seed; every planet of its system derives from it
+var planet := 0 ## which planet of the system you are on (0 = home)
 var inventory := Inventory.new()
 var money := 0
 var health := 100.0
@@ -33,6 +35,8 @@ var player: Node3D ## Set by the player when it spawns.
 var pending_player_state = null
 ## Your vehicles out in the world (VehicleManager); saved with the player.
 var vehicles: Array = []
+## Where you last left each planet for orbit (planet -> Vector2), to land there again.
+var landings: Dictionary = {}
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
 var _dirty_timer := 0.0
@@ -71,16 +75,18 @@ func load_world(id: String) -> bool:
 	return true
 
 func _begin(fresh: bool) -> void:
-	seed = store.meta["seed"]
+	home_seed = store.meta["seed"]
+	seed = home_seed
 	day = store.meta.get("day", 0.3)
 	inventory = Inventory.new()
 	inventory.changed.connect(func(): _player_dirty = true)
-	discovery = store.load_discovery()
 	_dirty_chunks.clear()
 	_current_region = ""
 	pending_player_state = null
 	vehicles = []
+	landings = {}
 	var p = store.load_player()
+	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
 		inventory.from_data(p.get("inventory", {}))
 		money = p.get("money", 0)
@@ -92,6 +98,7 @@ func _begin(fresh: bool) -> void:
 		dead = false
 		stamina = stats.max_stamina()
 		vehicles = p.get("vehicles", []).duplicate(true)
+		landings = p.get("landings", {}).duplicate()
 		pending_player_state = p
 	else:
 		money = 50
@@ -114,6 +121,27 @@ func close_world() -> void:
 	save_all()
 	store = null
 	player = null
+	Planets.apply(Planets.get_planet(0, 0)) # back to an ordinary world for the title screen
+
+## Travel: saves this planet's land and map, then makes `n` the planet that streams in.
+func set_planet(n: int) -> void:
+	if store == null or n == planet:
+		return
+	flush_chunks()
+	store.save_discovery(discovery)
+	_enter_planet(n)
+	_player_dirty = true
+
+func _enter_planet(n: int) -> void:
+	planet = clampi(n, 0, Planets.COUNT - 1)
+	store.set_planet(planet)
+	seed = Planets.seed_of(home_seed, planet)
+	Planets.apply(Planets.get_planet(home_seed, planet))
+	discovery = store.load_discovery()
+	_current_region = ""
+
+func planet_info() -> Dictionary:
+	return Planets.get_planet(home_seed, planet)
 
 func save_all() -> void:
 	if store == null:
@@ -129,7 +157,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "planet": planet, "landings": landings}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:

@@ -8,6 +8,9 @@ const STORE_FORMAT := 1
 
 var root: String
 var meta: Dictionary = {}
+## Which planet's land and people are read and written (0 = the home world, kept at the
+## root so worlds from before spaceflight are unchanged; others live in planets/<n>/).
+var planet := 0
 ## In-memory store (the title screen's fly-over): chunks live only in RAM, nothing
 ## touches disk, and the oldest are dropped past MEM_LIMIT.
 var _mem = null
@@ -30,7 +33,16 @@ static func memory() -> WorldStore:
 
 ## Worlds created since rivers existed have them; older worlds keep their old terrain.
 func has_rivers() -> bool:
-	return int(meta.get("gen_version", 1)) >= 3
+	return planet != 0 or int(meta.get("gen_version", 1)) >= 3
+
+func set_planet(n: int) -> void:
+	planet = n
+	if _mem == null:
+		DirAccess.make_dir_recursive_absolute(_land().path_join("chunks"))
+		DirAccess.make_dir_recursive_absolute(_land().path_join("people"))
+
+func _land() -> String:
+	return root if planet == 0 else root.path_join("planets").path_join(str(planet))
 
 static func worlds_dir() -> String:
 	return "user://worlds"
@@ -129,14 +141,14 @@ func load_player():
 	return read_var(root.path_join("player.dat"), true)
 
 func save_discovery(data: Dictionary) -> void:
-	write_var(root.path_join("discovery.dat"), data, true)
+	write_var(_land().path_join("discovery.dat"), data, true)
 
 func load_discovery() -> Dictionary:
-	var d = read_var(root.path_join("discovery.dat"), true)
+	var d = read_var(_land().path_join("discovery.dat"), true)
 	return d if d is Dictionary else {"visited": {}, "regions": {}}
 
 func chunk_path(cx: int, cz: int) -> String:
-	return root.path_join("chunks").path_join("%d_%d.chunk" % [cx, cz])
+	return _land().path_join("chunks").path_join("%d_%d.chunk" % [cx, cz])
 
 func has_chunk(cx: int, cz: int) -> bool:
 	if _mem != null:
@@ -183,7 +195,7 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 # --- Settlements and their people ---------------------------------------------------
 
 func settlement_path(sx: int, sz: int) -> String:
-	return root.path_join("people").path_join("%d_%d.dat" % [sx, sz])
+	return _land().path_join("people").path_join("%d_%d.dat" % [sx, sz])
 
 func has_settlement(sx: int, sz: int) -> bool:
 	return FileAccess.file_exists(settlement_path(sx, sz))

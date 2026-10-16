@@ -26,6 +26,7 @@ func _ready() -> void:
 	# menu is up (opening a world sets both).
 	Game.seed = SEED
 	Game.day = 0.31
+	Planets.apply(Planets.get_planet(0, 0))
 	_gen = ChunkGenerator.new(SEED)
 	_noise.seed = SEED
 	_rig = Node3D.new()

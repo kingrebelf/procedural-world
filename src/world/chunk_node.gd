@@ -38,6 +38,7 @@ static func ensure_shared() -> void:
 			terrain_material.set_shader_parameter(t + "_tex", a)
 			terrain_material.set_shader_parameter(t + "_nrm", n)
 		terrain_material.set_shader_parameter("use_textures", all)
+		terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_mesh = _make_blade()

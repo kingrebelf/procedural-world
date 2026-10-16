@@ -985,13 +985,37 @@ func _ride(delta: float) -> void:
 	if _rest > 0.8:
 		Game.set_stamina(Game.stamina + 22.0 * delta)
 	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
+	if v.flies() and v.leaving >= Vehicle.LEAVE_TIME:
+		go_to_orbit()
+		return
 	if v.flies():
 		var g := vehicles.ground(v.global_position.x, v.global_position.z) if vehicles else NAN
 		text = "%d km/h   %s   [%s/%s] climb/descend   [%s] get off" % [roundi(v.velocity.length() * 3.6),
 			"altitude %d m" % roundi(v.global_position.y - g) if not is_nan(g) else "", _key("jump"), _key("crouch"), _key("interact")]
+		if v.at_ceiling:
+			text = "%d km/h   Top of the sky: keep holding [%s] to leave for orbit   [%s] descend" % [roundi(v.velocity.length() * 3.6), _key("jump"), _key("crouch")]
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
 
 var _ride_yaw := 0.0
 const SIT_HIPS := 0.5 ## hip height above the feet in the sitting pose
+
+## Up and out: the ship leaves the atmosphere for orbit. You'll land back above this spot
+## (or wherever you warp to); that landing is also what's saved while you're in orbit.
+func go_to_orbit() -> void:
+	var v := vehicle
+	if v == null or not is_instance_valid(v):
+		return
+	Game.landings[Game.planet] = Vector2(v.global_position.x, v.global_position.z)
+	var spot := OrbitView.landing_spot()
+	v.set_physics_process(false)
+	v.rec["pos"] = spot
+	var st := get_state()
+	st["pos"] = spot
+	st["riding"] = int(v.rec["id"])
+	Game.pending_player_state = st
+	set_physics_process(false)
+	Game.player = null
+	Game.toast.emit("Leaving the atmosphere")
+	get_tree().change_scene_to_file.call_deferred("res://src/space/orbit.tscn")

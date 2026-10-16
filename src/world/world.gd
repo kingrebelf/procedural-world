@@ -85,8 +85,9 @@ func _ready() -> void:
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	if OS.get_cmdline_user_args().has("--capture") and ResourceLoader.exists("res://tools/capture.gd"):
+	if OS.get_cmdline_user_args().has("--capture") and ResourceLoader.exists("res://tools/capture.gd") and not get_tree().root.has_node("CaptureTour"):
 		var cap: Node = load("res://tools/capture.gd").new()
+		cap.name = "CaptureTour"
 		cap.world = self
 		add_child(cap)
 
@@ -119,22 +120,7 @@ func _on_died(cause: String) -> void:
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:
-	var g := ChunkGenerator.new(Game.seed)
-	var rivers := Game.store != null and Game.store.has_rivers()
-	var best := Vector3(32, 0, 32)
-	var best_slope := INF
-	for n in 24:
-		var x := 8.0 + (n % 6) * 9.0
-		var z := 8.0 + int(n / 6) * 12.0
-		var w := g.field.era_weights(x, z)
-		var h0 := g.field.height(x, z, w)
-		var s := absf(g.field.height(x + 2, z) - h0) + absf(g.field.height(x, z + 2) - h0)
-		if h0 < Water.LEVEL + 1.0 or (rivers and g.field.river_t(x, z) < 3.0):
-			s += 100.0
-		if s < best_slope:
-			best_slope = s
-			best = Vector3(x, h0 + 1.0, z)
-	return best
+	return Planets.spawn_point(Game.seed, Game.store != null and Game.store.has_rivers())
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("screenshot"):

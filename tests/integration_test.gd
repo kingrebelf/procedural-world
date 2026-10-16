@@ -312,6 +312,47 @@ func _run() -> void:
 	var fresh := ChunkGenerator.new(game.seed, store.has_rivers()).generate(here_key.x, here_key.y)
 	check(absf(ChunkGenerator.height_at(fresh, lx, lz) - after) > 0.5, "snapshot, not regeneration, is the source of truth")
 
+	# Spaceflight: climb out of the sky to orbit, warp to another planet and land there.
+	change_scene_to_file("res://src/world/world.tscn")
+	await _frames(5)
+	world = current_scene
+	player = world.player
+	for i in 600:
+		await process_frame
+		if not player.frozen:
+			break
+	var home_seed: int = game.seed
+	var sh: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
+	for i in 10:
+		await physics_frame
+	player.mount(sh)
+	sh.leaving = Vehicle.LEAVE_TIME
+	sh.at_ceiling = true
+	for i in 20:
+		await process_frame
+	check(current_scene is OrbitView, "climbing out of the sky reaches orbit")
+	var target := -1
+	for pl in Planets.system(game.home_seed):
+		if pl["kind"] == "rust":
+			target = pl["n"]
+	OrbitView._arrive(target)
+	check(game.planet == target and game.seed != home_seed and WorldField.allowed_eras == [Eras.SCIFI], "warping makes the rust world current")
+	current_scene._land()
+	await _frames(5)
+	world = current_scene
+	player = world.player
+	for i in 900:
+		await process_frame
+		if player.vehicle != null:
+			break
+	check(player.vehicle != null and player.vehicle.kind == "ship", "you land flying your ship")
+	var pw: PackedFloat32Array = world.atmosphere.field.era_weights(player.global_position.x, player.global_position.z)
+	check(pw[Eras.SCIFI] > 0.99, "the rust world is all sci-fi land")
+	check(DirAccess.dir_exists_absolute(game.store.root.path_join("planets/%d/chunks" % target)), "the planet's land is saved apart from home")
+	game.close_world()
+	check(WorldField.allowed_eras.is_empty(), "closing the world resets planet rules")
+	check(game.load_world(world_id) and game.planet == target, "the save remembers which planet you're on")
+
 	game.close_world()
 	WorldStore.delete_world(world_id)
 	print("integration: %s" % ("PASSED" if _fail == 0 else "%d FAILED" % _fail))

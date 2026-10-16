@@ -159,6 +159,9 @@ func _run() -> void:
 		await _vehicles()
 	if only.is_empty() or only.has("11") or only.has("12"):
 		await _starship()
+	if only.is_empty() or only.has("13") or only.has("14") or only.has("15"):
+		await _space()
+		return
 	Game.close_world()
 	get_tree().quit()
 
@@ -219,6 +222,69 @@ func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
 		for o in c.data["objects"]:
 			if not o["st"].get("gone", false) and (c.position + o["p"]).distance_to(at) < r:
 				c.remove_object(o["i"])
+
+func _snap(name: String) -> void:
+	if only.is_empty() or only.has(name.substr(0, 2)):
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join(name + ".png"))
+		print("captured ", name)
+
+## Up to orbit, warp to the fey moon, and land there.
+func _space() -> void:
+	var p: Player = world.player
+	var vm: VehicleManager = world.vehicles
+	if p.vehicle:
+		p.dismount(true)
+	p.set_physics_process(true)
+	p.fly = false
+	var ship := vm.deploy(ItemDB.make("ship", 1, 1.0, {}), p.global_position + Vector3(0, 0, -10), p.yaw())
+	await _wait(10)
+	p.mount(ship)
+	ship.leaving = Vehicle.LEAVE_TIME
+	ship.at_ceiling = true
+	# The world (and this node's parent) goes away; keep the tour running from the root.
+	var tree := get_tree()
+	get_parent().remove_child(self)
+	tree.root.add_child(self)
+	for i in 600:
+		await tree.process_frame
+		if tree.current_scene is OrbitView:
+			break
+	var orbit: OrbitView = tree.current_scene
+	await _wait(settle_frames)
+	await _snap("13_orbit")
+	var fey := 1
+	for pl in Planets.system(Game.home_seed):
+		if pl["kind"] == "fey":
+			fey = pl["n"]
+	orbit._warp(fey)
+	await _wait(int(settle_frames * 0.6))
+	await _snap("14_warp")
+	while orbit._busy:
+		await tree.process_frame
+	await _wait(30)
+	orbit._land()
+	for i in 600:
+		await tree.process_frame
+		if tree.current_scene != orbit and tree.current_scene != null and tree.current_scene.get("player") != null:
+			break
+	world = tree.current_scene
+	p = world.player
+	for i in 3000:
+		await tree.process_frame
+		if p.vehicle != null:
+			break
+	if not p.third_person:
+		p.toggle_view()
+	Input.action_press("crouch")
+	await _wait(150)
+	Input.action_release("crouch")
+	p.set_state({"pos": p.global_position, "yaw": p.yaw(), "pitch": -0.3, "slot": 0, "view": 3, "riding": -1})
+	await _wait_loaded(p, world.streamer)
+	Game.day = 0.42
+	await _wait(settle_frames)
+	await _snap("15_fey_moon")
+	Game.close_world()
+	get_tree().quit()
 
 ## The flattest dry 24 m square near `from` (for setting things out to photograph).
 func _flat_spot(vm: VehicleManager, from: Vector3) -> Vector3:

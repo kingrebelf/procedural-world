@@ -45,8 +45,15 @@ func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite
 
 var _site_cache: Dictionary = {}
 
+## Eras a planet allows (empty = all three). Set by Planets.apply before any field of
+## that planet is built; read on worker threads, never changed while a world is open.
+static var allowed_eras: Array = []
+
 func site_era(ix: int, iz: int) -> int:
-	return WHash.hash2(seed, ix, iz, 101) % Eras.COUNT
+	var h := WHash.hash2(seed, ix, iz, 101)
+	if allowed_eras.is_empty():
+		return h % Eras.COUNT
+	return int(allowed_eras[h % allowed_eras.size()])
 
 ## Cached [position, era] for a Voronoi site (hashing in GDScript is the hot path).
 func _site(ix: int, iz: int) -> Array:

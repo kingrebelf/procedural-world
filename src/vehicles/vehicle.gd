@@ -16,7 +16,8 @@ const KINDS := {
 	"ship": {"name": "Starship", "model": "res://assets/models/ships/Striker.gltf", "length": 9.0, "yaw": PI,
 		"speed": 40.0, "boost": 2.5, "accel": 16.0, "turn": 1.4, "reverse": 12.0, "fly": true, "seat": 0.62, "seat_z": -0.6},
 }
-const CEILING := 180.0 ## metres above the ground a ship can climb to (orbit comes later)
+const CEILING := 180.0 ## metres above the ground a ship flies at most; climbing on leaves for orbit
+const LEAVE_TIME := 2.0
 const ANIMAL_YAW := PI ## the animal kit faces +z; vehicles drive toward -z (the Kenney craft already do)
 
 var rec: Dictionary
@@ -28,6 +29,8 @@ var drive := Vector2.ZERO
 var boosting := false
 var aim := Vector3.FORWARD ## flying: the direction the rider looks
 var lift := 0.0 ## flying: climb (+1) or descend (-1)
+var at_ceiling := false ## flying at the top of the sky
+var leaving := 0.0 ## seconds spent climbing against the top of the sky; past LEAVE_TIME, orbit
 var spd := 0.0 ## forward speed along the heading, m/s
 var seat := Vector3.ZERO ## where the rider's hips go, in local space
 var ground: Callable ## (x, z) -> terrain height or NAN while the chunk is not loaded
@@ -204,6 +207,11 @@ func _fly(delta: float, g: float) -> void:
 		velocity.y = maxf(velocity.y, 0.0) # the ground below isn't loaded: don't sink into it
 	elif global_position.y < g - 3.0:
 		global_position.y = g + 0.5
+	at_ceiling = not is_nan(g) and global_position.y - g > CEILING - 3.0
+	if at_ceiling and lift > 0.5 and rider != null:
+		leaving += delta
+	else:
+		leaving = 0.0
 	if not is_nan(g) and global_position.y - g > CEILING and velocity.y > 0.0:
 		velocity.y = 0.0
 	move_and_slide()

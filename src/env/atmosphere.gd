@@ -192,4 +192,5 @@ func _update_time_of_day() -> void:
 	var night_glow := 0.15 + 1.25 * (1.0 - daylight)
 	ChunkNode.ensure_shared()
 	ChunkNode.terrain_material.set_shader_parameter("night_glow", night_glow)
+	ChunkNode.terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
 	ChunkNode.grass_material.set_shader_parameter("night_glow", night_glow)

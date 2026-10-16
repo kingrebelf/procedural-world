@@ -630,3 +630,26 @@ func test_ore_names() -> void:
 	for sp in [1, 77, 4242, 99991]:
 		check(Flora.species_name("iron_vein", sp) == ObjectLibrary.label("iron_vein"), "an iron vein is named as iron, not a random colour")
 		check(Flora.species_name("rock", sp) == ObjectLibrary.label("rock"), "rocks keep their plain name")
+
+func test_planets() -> void:
+	var a := Planets.system(4242)
+	check(a.size() == Planets.COUNT and a[0]["kind"] == "home" and a[0]["seed"] == 4242, "home planet first, with the world seed")
+	check(var_to_str(a) == var_to_str(Planets.system(4242)), "star system is deterministic")
+	var kinds := {}
+	var names := {}
+	for p in a:
+		kinds[p["kind"]] = true
+		names[p["name"]] = true
+	check(kinds.size() == Planets.COUNT and names.size() == Planets.COUNT, "every planet differs in kind and name")
+	var store := _tmp_store("planets")
+	var home_path := store.chunk_path(1, 2)
+	store.set_planet(3)
+	check(store.chunk_path(1, 2) != home_path and store.has_rivers(), "another planet's land is stored apart")
+	Planets.apply({"kind": "fey", "seed": 1})
+	var f := WorldField.new(99)
+	var ok := true
+	for i in 40:
+		ok = ok and f.era_weights(i * 517.0, i * -311.0)[Eras.FANTASY] > 0.999
+	check(ok, "a fey moon is all fantasy")
+	Planets.apply({"kind": "home", "seed": 1})
+	check(WorldField.allowed_eras.is_empty(), "home allows every era")

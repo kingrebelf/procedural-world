@@ -34,6 +34,8 @@ func refresh() -> void:
 	var pp := player.global_position
 	var live := {}
 	for r in Game.vehicles:
+		if int(r.get("planet", 0)) != Game.planet:
+			continue # parked on another world (or out in space)
 		var id: int = r["id"]
 		live[id] = true
 		var near: bool = (r["pos"] as Vector3).distance_to(pp) < RANGE
@@ -71,7 +73,7 @@ func deploy(item: Dictionary, at: Vector3, yaw: float) -> Vehicle:
 	for r in Game.vehicles:
 		id = maxi(id, int(r["id"]) + 1)
 	var r := {"id": id, "kind": k, "pos": Vector3(at.x, maxf(h, surface if Vehicle.KINDS[k].has("hover") else h) + 0.4, at.z),
-		"yaw": yaw, "q": float(item.get("quality", 1.0)), "origin": item.get("origin", {})}
+		"yaw": yaw, "q": float(item.get("quality", 1.0)), "origin": item.get("origin", {}), "planet": Game.planet}
 	Game.vehicles.append(r)
 	Game.mark_player_dirty()
 	refresh()
