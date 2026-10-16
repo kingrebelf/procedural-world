@@ -74,9 +74,13 @@ void sky() {
 	if (era_scifi > 0.01) {
 		vec3 rn = normalize(vec3(0.25, 0.35, 1.0));
 		float plane = abs(dot(d, rn));
-		float ring = smoothstep(0.035, 0.0, plane) * smoothstep(0.0, 0.15, d.y);
-		float bands = 0.6 + 0.4 * sin(dot(d, vec3(1.0, 0.2, 0.0)) * 80.0);
-		col = mix(col, vec3(0.85, 0.80, 0.75) * (0.35 + daylight * 0.9) * bands, ring * era_scifi * 0.7);
+		// Rings: several soft concentric bands, brighter toward the inner edge.
+		float side = dot(d, normalize(vec3(1.0, 0.0, -0.25)));
+		float rr = plane / max(0.25, 1.0 - abs(side) * 0.5);
+		float ring = smoothstep(0.11, 0.06, rr) * smoothstep(0.0, 0.02, rr);
+		float bands = 0.55 + 0.25 * sin(rr * 220.0) + 0.2 * sin(rr * 61.0);
+		ring *= smoothstep(0.0, 0.12, d.y);
+		col = mix(col, vec3(0.88, 0.82, 0.74) * (0.25 + daylight * 0.75) * bands, ring * era_scifi * 0.45);
 		// Distant planet.
 		vec3 pd = normalize(vec3(-0.6, 0.35, -0.7));
 		float pl = smoothstep(0.9965, 0.9970, dot(d, pd));

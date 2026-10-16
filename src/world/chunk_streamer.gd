@@ -126,6 +126,7 @@ func _run_job(job: Dictionary) -> void:
 		res["terrain"] = ChunkNode.build_terrain_arrays(chunk, job["lod"])
 	if job["grass"] and job["mode"] != "lod":
 		res["grass"] = ChunkNode.build_grass_buffer(chunk, job["density"])
+		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0))
 	_mutex.lock()
 	_results.append(res)
 	_mutex.unlock()
@@ -151,6 +152,7 @@ func _collect() -> void:
 			node.set_near(d <= near_radius)
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
+				node.set_clutter(res["clutter"])
 			if k == _center:
 				Game.visit_chunk(node.data)
 			chunk_ready.emit(node)
@@ -160,6 +162,7 @@ func _collect() -> void:
 				node.set_terrain(res["terrain"], res["lod"])
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
+				node.set_clutter(res["clutter"])
 		# The center may have moved while this job ran; re-evaluate LOD/grass.
 		if chunks.has(k):
 			var node: ChunkNode = chunks[k]

@@ -1,6 +1,6 @@
 shader_type spatial;
-// Instanced grass blades with wind. Instance COLOR.rgb is the era-blended tint,
-// COLOR.a the fantasy glow amount.
+// Instanced grass blades with wind. INSTANCE_CUSTOM.rgb is the era-blended tint,
+// INSTANCE_CUSTOM.a the fantasy glow amount.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 uniform float wind_strength = 0.35;
@@ -17,8 +17,8 @@ void vertex() {
 	vec3 local_wind = (inverse(MODEL_MATRIX) * vec4(wind_dir.x, 0.0, wind_dir.y, 0.0)).xyz;
 	VERTEX.xz += normalize(local_wind.xz + vec2(0.0001)) * bend;
 	VERTEX.y -= abs(bend) * 0.3;
-	glow = COLOR.a;
-	tint = COLOR.rgb;
+	glow = INSTANCE_CUSTOM.a;
+	tint = INSTANCE_CUSTOM.rgb;
 }
 
 void fragment() {

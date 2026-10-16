@@ -31,6 +31,11 @@ func _ready() -> void:
 		player.global_position = find_spawn()
 	streamer.set_target(player)
 	atmosphere.target = player
+	var water := Water.new()
+	water.name = "Water"
+	water.target = player
+	water.atmosphere = atmosphere
+	add_child(water)
 
 	var ui := CanvasLayer.new()
 	add_child(ui)
@@ -64,6 +69,8 @@ func find_spawn() -> Vector3:
 		var w := g.field.era_weights(x, z)
 		var h0 := g.field.height(x, z, w)
 		var s := absf(g.field.height(x + 2, z) - h0) + absf(g.field.height(x, z + 2) - h0)
+		if h0 < Water.LEVEL + 1.0:
+			s += 100.0
 		if s < best_slope:
 			best_slope = s
 			best = Vector3(x, h0 + 1.0, z)

@@ -5,15 +5,15 @@ shader_type spatial;
 
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 
-uniform vec3 grass_m : source_color = vec3(0.24, 0.36, 0.12);
+uniform vec3 grass_m : source_color = vec3(0.20, 0.29, 0.10);
 uniform vec3 soil_m : source_color = vec3(0.36, 0.28, 0.18);
 uniform vec3 rock_m : source_color = vec3(0.55, 0.53, 0.49);
 uniform vec3 grass_f : source_color = vec3(0.10, 0.34, 0.33);
 uniform vec3 soil_f : source_color = vec3(0.22, 0.14, 0.28);
 uniform vec3 rock_f : source_color = vec3(0.36, 0.33, 0.45);
-uniform vec3 grass_s : source_color = vec3(0.20, 0.21, 0.22);
-uniform vec3 soil_s : source_color = vec3(0.13, 0.13, 0.15);
-uniform vec3 rock_s : source_color = vec3(0.42, 0.44, 0.47);
+uniform vec3 grass_s : source_color = vec3(0.30, 0.24, 0.19);
+uniform vec3 soil_s : source_color = vec3(0.20, 0.15, 0.12);
+uniform vec3 rock_s : source_color = vec3(0.36, 0.32, 0.30);
 uniform vec3 glow_f : source_color = vec3(0.35, 0.9, 0.8);
 uniform vec3 glow_s : source_color = vec3(0.2, 0.8, 1.0);
 uniform float detail_strength = 0.6;
@@ -34,6 +34,32 @@ float vnoise(vec2 p) {
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x),
 		mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
+}
+
+float hash13(vec3 p3) {
+	p3 = fract(p3 * 0.1031);
+	p3 += dot(p3, p3.zyx + 31.32);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+float vnoise3(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash13(i), hash13(i + vec3(1, 0, 0)), f.x), mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x), mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+// Cracked rock: ridged 3D noise gives crevices on cliffs from any direction.
+float rock3(vec3 p) {
+	float s = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < 4; i++) {
+		s += a * (1.0 - abs(vnoise3(p) * 2.0 - 1.0));
+		p = p * 2.1 + vec3(3.1, 1.7, 5.3);
+		a *= 0.5;
+	}
+	return s;
 }
 
 float fbm(vec2 p) {
@@ -67,12 +93,19 @@ void fragment() {
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
 	vec3 rock = rock_m * w.r + rock_f * w.g + rock_s * w.b;
 
-	// Rock strata on steep faces (triplanar-ish: use height and horizontal position).
+	// Rock: stratified bands plus 3D crevices so cliffs read as stone from every angle.
 	float strata = fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05));
-	rock *= 0.75 + 0.5 * strata;
+	float crev = rock3(wpos * 0.45);
+	rock *= (0.6 + 0.45 * strata) * (0.55 + 0.6 * crev);
 
+	// Grass: lush and dry patches, darker in hollows.
+	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
+	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.55 * w.r);
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
-	vec3 ground = mix(grass * (0.8 + 0.4 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
+	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
+	// Shoreline: wet sand/mud near the water level.
+	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
+	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)), shore);
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18);
 	vec3 col = mix(ground, rock, rock_mask);
 
@@ -83,7 +116,7 @@ void fragment() {
 		vec2 id = floor(p / 4.0);
 		float seam = 1.0 - smoothstep(0.0, 0.025, min(min(g.x, 1.0 - g.x), min(g.y, 1.0 - g.y)));
 		float flat_ = 1.0 - rock_mask;
-		plates = w.b * flat_ * step(0.45, fbm(id * 0.13));
+		plates = w.b * flat_ * step(0.4, fbm(id * 0.13));
 		col = mix(col, vec3(0.30, 0.31, 0.33) * (0.8 + 0.4 * hash12(id)), plates * 0.85);
 		col *= 1.0 - seam * plates * 0.6;
 		float lines = seam * plates * step(0.82, hash12(id + 3.0));
@@ -98,7 +131,7 @@ void fragment() {
 	}
 
 	ALBEDO = col * (0.92 + 0.16 * micro);
-	ROUGHNESS = mix(0.92, 0.55, plates) - 0.1 * rock_mask * w.b;
+	ROUGHNESS = mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b;
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
 

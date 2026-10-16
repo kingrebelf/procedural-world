@@ -58,9 +58,9 @@ func _ready() -> void:
 	we.environment = env
 	var cam_attr := CameraAttributesPractical.new()
 	cam_attr.auto_exposure_enabled = true
-	cam_attr.auto_exposure_scale = 0.3
+	cam_attr.auto_exposure_scale = 0.2
 	cam_attr.auto_exposure_min_sensitivity = 60.0
-	cam_attr.auto_exposure_max_sensitivity = 800.0
+	cam_attr.auto_exposure_max_sensitivity = 300.0
 	we.camera_attributes = cam_attr
 	add_child(we)
 
@@ -134,7 +134,7 @@ func _update_time_of_day() -> void:
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)
-	sun.light_energy = 2.4 * smoothstep(-0.05, 0.15, elev)
+	sun.light_energy = 2.0 * smoothstep(-0.05, 0.15, elev)
 	sun.visible = elev > -0.1
 	moon.visible = elev < 0.1
 	moon.light_energy = 0.14 * (1.0 - daylight)

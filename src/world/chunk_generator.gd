@@ -12,6 +12,7 @@ const SETTLEMENT_CELL := 256.0
 const SETTLEMENT_CHANCE := 0.35
 const FLAT_INNER := 30.0
 const FLAT_OUTER := 54.0
+const WATER_LEVEL := 0.0 ## Must match Water.LEVEL.
 
 var field: WorldField
 var seed: int
@@ -32,7 +33,10 @@ func settlement_at(sx: int, sz: int) -> Dictionary:
 	var era := WorldField.dominant(w)
 	if w[era] < 0.92:
 		return {}
-	return {"center": c, "era": era, "target_h": field.height(c.x, c.y, w), "sx": sx, "sz": sz}
+	var th := field.height(c.x, c.y, w)
+	if th < WATER_LEVEL + 1.5:
+		return {}
+	return {"center": c, "era": era, "target_h": th, "sx": sx, "sz": sz}
 
 func settlements_near(x0: float, z0: float, x1: float, z1: float) -> Array:
 	var out: Array = []
@@ -184,7 +188,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var sc := r.randf_range(0.75, 1.35)
 		var hp := r.randi_range(3, 5)
 		var yield_ := r.randi_range(3, 6)
-		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER + 6.0):
+		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER + 6.0):
 			continue
 		var types: Array = Eras.TREE_TYPES[era]
 		_add(chunk, types[int(roll / p * types.size()) % types.size()], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_})
@@ -200,7 +204,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.6, 1.8)
 		var left := r.randi_range(3, 7)
-		if _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER):
+		if _near_settlement(x0 + lx, z0 + lz, sites, FLAT_INNER) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5:
 			continue
 		if roll < Eras.ROCK_DENSITY[era] / 16.0:
 			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0})

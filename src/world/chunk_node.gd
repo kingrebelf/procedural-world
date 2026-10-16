@@ -21,6 +21,7 @@ var _height_shape: CollisionShape3D
 var _mm: Dictionary = {} ## type -> MultiMeshInstance3D
 var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _grass: MultiMeshInstance3D
+var _clutter: Array = []
 
 static func ensure_shared() -> void:
 	if terrain_material == null:
@@ -182,12 +183,49 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		if skip:
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
+		if y < 0.15:
+			continue
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.33, 0.50, 0.16) * w[0] + Color(0.12, 0.55, 0.5) * w[1] + Color(0.35, 0.38, 0.3) * w[2]
 		tint = tint.lerp(Color(0.55, 0.52, 0.25), r.randf() * 0.25 * w[0])
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[1] * 0.8])
 	return buf
+
+## Ground clutter (stones and flowers, tiny glowing mushrooms, alloy debris), keyed by
+## clutter mesh name. Deterministic per chunk, regenerated freely (never gameplay state).
+static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictionary:
+	var out := {}
+	if density <= 0.0:
+		return out
+	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 902)
+	for n in int(900 * density):
+		var lx := r.randf() * SIZE
+		var lz := r.randf() * SIZE
+		var pick := r.randf()
+		var yaw := r.randf() * TAU
+		var sc := r.randf_range(0.7, 1.4)
+		var w := ChunkGenerator.weights_at(chunk, lx, lz)
+		var acc := 0.0
+		var era := 0
+		for e in Eras.COUNT:
+			acc += w[e]
+			if pick <= acc:
+				era = e
+				break
+		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
+			continue
+		var y := ChunkGenerator.height_at(chunk, lx, lz)
+		if y < 0.2:
+			continue
+		var key := "clutter_%d" % era
+		if not out.has(key):
+			out[key] = PackedFloat32Array()
+		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
+		var buf: PackedFloat32Array = out[key]
+		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
+		out[key] = buf
+	return out
 
 # --- Main-thread upload ---------------------------------------------------------
 
@@ -239,10 +277,11 @@ func set_grass(buf: PackedFloat32Array) -> void:
 		_grass.queue_free()
 		_grass = null
 	if buf.is_empty():
+		set_clutter({})
 		return
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
+	mm.use_custom_data = true
 	mm.mesh = grass_mesh
 	mm.instance_count = buf.size() / 16
 	mm.buffer = buf
@@ -255,6 +294,28 @@ func set_grass(buf: PackedFloat32Array) -> void:
 	_grass.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	_grass.name = "Grass"
 	add_child(_grass)
+
+func set_clutter(buffers: Dictionary) -> void:
+	for c in _clutter:
+		c.queue_free()
+	_clutter.clear()
+	for t in buffers:
+		var buf: PackedFloat32Array = buffers[t]
+		if buf.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = ObjectLibrary.get_mesh(t)
+		mm.instance_count = buf.size() / 12
+		mm.buffer = buf
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = 70.0
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		mmi.visibility_range_end_margin = 10.0
+		add_child(mmi)
+		_clutter.append(mmi)
 
 func has_grass() -> bool:
 	return _grass != null

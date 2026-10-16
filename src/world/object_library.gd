@@ -88,6 +88,9 @@ static func get_mesh(t: String) -> ArrayMesh:
 		"comms_spire": _comms_spire(k)
 		"cargo_stack": _cargo_stack(k)
 		"trader": _trader(k)
+		"clutter_0": _clutter_medieval(k)
+		"clutter_1": _clutter_fantasy(k)
+		"clutter_2": _clutter_scifi(k)
 		_:
 			k.box("stone", I.translated(Vector3(0, 0.5, 0)), Vector3.ONE)
 	var mesh := k.commit(Materials.get_mat)
@@ -376,3 +379,40 @@ static func _trader(k: MeshKit) -> void:
 	# Wares on the counter.
 	for n in 5:
 		k.box("gold" if n % 2 else "glow_warm", I.translated(Vector3(-1.0 + n * 0.5, 1.18, 0.6)), Vector3(0.2, 0.16, 0.2))
+
+# --- Ground clutter (small, many, near the player only) -------------------------------
+
+static func _clutter_medieval(k: MeshKit) -> void:
+	var I := Transform3D.IDENTITY
+	var r := RandomNumberGenerator.new()
+	r.seed = 21
+	for n in 3:
+		k.sphere("stone", I.translated(Vector3(r.randf_range(-0.4, 0.4), 0.02, r.randf_range(-0.4, 0.4))), r.randf_range(0.06, 0.16), 4, 6, 0.4, 0.6)
+	var petals := [Color(0.95, 0.92, 0.85), Color(0.95, 0.8, 0.2), Color(0.75, 0.35, 0.8), Color(0.9, 0.25, 0.2)]
+	for n in 5:
+		var p := Vector3(r.randf_range(-0.5, 0.5), 0, r.randf_range(-0.5, 0.5))
+		var h := r.randf_range(0.18, 0.35)
+		k.cylinder("leaf", I.translated(p), 0.008, 0.006, h, 4, false)
+		k.sphere("painted", I.translated(p + Vector3(0, h, 0)), 0.035, 3, 5, 0.0, 0.5, petals[n % petals.size()])
+
+static func _clutter_fantasy(k: MeshKit) -> void:
+	var I := Transform3D.IDENTITY
+	var r := RandomNumberGenerator.new()
+	r.seed = 22
+	for n in 4:
+		var p := Vector3(r.randf_range(-0.5, 0.5), 0, r.randf_range(-0.5, 0.5))
+		var h := r.randf_range(0.08, 0.22)
+		k.cylinder("stem", I.translated(p), 0.012, 0.01, h, 5, false)
+		k.sphere("glow_teal" if n % 2 else "glow_violet", I.translated(p + Vector3(0, h, 0)), r.randf_range(0.03, 0.06), 4, 7, 0.0, 0.5, Color.WHITE, true)
+	for n in 2:
+		k.crystal("crystal", I.translated(Vector3(r.randf_range(-0.4, 0.4), -0.02, r.randf_range(-0.4, 0.4))), 0.03, r.randf_range(0.1, 0.25), 5)
+
+static func _clutter_scifi(k: MeshKit) -> void:
+	var I := Transform3D.IDENTITY
+	var r := RandomNumberGenerator.new()
+	r.seed = 23
+	for n in 3:
+		var b := Basis.from_euler(Vector3(r.randf_range(-0.3, 0.3), r.randf() * TAU, r.randf_range(-0.3, 0.3)))
+		k.box("metal" if n % 2 else "metal_dark", Transform3D(b, Vector3(r.randf_range(-0.5, 0.5), 0.02, r.randf_range(-0.5, 0.5))), Vector3(r.randf_range(0.1, 0.35), 0.02, r.randf_range(0.08, 0.2)))
+	k.cylinder("metal", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.2, 0.03, -0.2)), 0.025, 0.025, 0.12, 6)
+	k.box("glow_cyan", I.translated(Vector3(-0.2, 0.02, 0.25)), Vector3(0.05, 0.015, 0.05))
