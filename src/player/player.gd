@@ -174,13 +174,36 @@ func _animate_body(hspeed: float) -> void:
 		else:
 			body.play("walk", clampf(hspeed / CROUCH, 0.6, 1.5))
 	else:
-		body.play("idle")
+		var t: String = _held_type()
+		body.play("pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "idle"))
+	_grip_body()
+
+func _held_type() -> String:
+	var it = held_item()
+	return it["type"] if it != null else ""
+
+## Third person: guns point where you face; tools are carried angled down and forward
+## between swings, and left in the natural grip while a swing plays.
+func _grip_body() -> void:
+	if not third_person:
+		return
+	var t := _held_type()
+	if t == "":
+		return
+	var up := global_transform.basis.y
+	var fwd := -global_transform.basis.z
+	if Viewmodel.pointed(t):
+		body.reaim(body.hand_space(up), 0.0, body.hand_space(fwd))
+	elif body.busy():
+		body.reaim(Vector3.ZERO)
+	else:
+		body.reaim(body.hand_space(fwd * 0.55 - up * 0.8), 0.75)
 
 static func swing_anim(t: String) -> String:
 	if t == "":
 		return "punch"
 	var d := ItemDB.def(t)
-	if d.get("ranged", false):
+	if Viewmodel.pointed(t):
 		return "pistol"
 	if t.begins_with("sword"):
 		return "sword"
@@ -679,7 +702,7 @@ func use_held() -> void:
 	_cooldown = 0.55 if fresh else 0.9
 	viewmodel.swing()
 	if body:
-		body.play_once(swing_anim(it["type"] if it != null else ""))
+		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
 	var h := _hit_object()
 	if h.is_empty():
 		used_tool.emit("miss")
@@ -724,7 +747,7 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	it["charge"] = shots - 1
 	viewmodel.recoil()
 	if body:
-		body.play_once("pistol")
+		body.play_once("pistol", 0.4)
 	used_tool.emit("fire")
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position

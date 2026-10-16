@@ -1,6 +1,6 @@
 shader_type spatial;
 // Kit base body dressed by region. CUSTOM0 carries, per vertex: x = body region (from the
-// dominant skin bone), y = rest-pose height, z = rest-pose |x|. Each person sets their own
+// dominant skin bone), y = rest-pose height, z = rest-pose x (signed). Each person sets their own
 // colours and cut through instance uniforms, so everyone shares one material.
 //   regions: 0 head/neck, 1 torso, 2 upper arm, 3 forearm, 4 hand, 5 hips/thigh, 6 shin, 7 foot
 render_mode diffuse_burley, specular_schlick_ggx;
@@ -35,7 +35,9 @@ void fragment() {
 	float lum = dot(tex, vec3(0.299, 0.587, 0.114)) / skin_mean;
 	int region = int(rest.x + 0.5);
 	float h = rest.y;
-	if (arms_only > 0.5 && (region < 2 || region > 4)) {
+	// arms_only: 1 both arms, 2 only the arm on the -x side, 3 only the +x side.
+	bool other_arm = (arms_only > 1.5 && arms_only < 2.5 && rest.z > 0.0) || (arms_only > 2.5 && rest.z < 0.0);
+	if (arms_only > 0.5 && (region < 2 || region > 4 || other_arm)) {
 		discard;
 	}
 	// 0 skin, 1 shirt, 2 trousers, 3 boots
@@ -69,7 +71,7 @@ void fragment() {
 	NORMAL_MAP_DEPTH = nd;
 	// Sci-fi suits: a glowing seam down each side of the torso and along the sleeves.
 	if (accent_col.a > 0.0 && part == 1) {
-		float seam = (region == 1) ? 1.0 - smoothstep(0.004, 0.012, abs(rest.z - 0.13)) : 0.0;
+		float seam = (region == 1) ? 1.0 - smoothstep(0.004, 0.012, abs(abs(rest.z) - 0.13)) : 0.0;
 		EMISSION = accent_col.rgb * seam * 2.5;
 	}
 	EMISSION += vec3(0.6, 0.05, 0.02) * cut.w;

@@ -61,7 +61,7 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				best = bones[v * per + j]
 		custom[v * 3] = float(region_of_bind[best]) if best < region_of_bind.size() else 1.0
 		custom[v * 3 + 1] = verts[v].y
-		custom[v * 3 + 2] = absf(verts[v].x)
+		custom[v * 3 + 2] = verts[v].x
 	a[Mesh.ARRAY_CUSTOM0] = custom
 	# The importer packs extra UV and colour sets into the other custom channels (the
 	# female body has more than the male); drop them, the shader doesn't use them and
@@ -145,7 +145,7 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	anim = AnimationPlayer.new()
 	scene.add_child(anim)
 	anim.add_animation_library("", library())
-	anim.animation_finished.connect(func(_n): _oneshot = false)
+	anim.animation_finished.connect(func(_n): _end_shot())
 	play("idle")
 	return self
 
@@ -236,7 +236,7 @@ func _tool(era: int, job: String) -> void:
 	t.transform = grip_transform(skeleton, t)
 
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
-## pose: the shaft runs across the knuckles (index to pinky, as a fist holds a blade up), the fist closes around it
+## pose: the shaft runs across the knuckles and out past the thumb and index finger, the fist closes around it
 ## just past the knuckles, and the prop is held near the low end of its handle.
 ## `aim` (hand space, optional) points the prop that way instead, tilted `tilt` of the way
 ## from the knuckle line, for a first-person hold that reads well on screen.
@@ -253,7 +253,7 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 	var i := inv * sk.get_bone_global_rest(bi).origin
 	var p := inv * sk.get_bone_global_rest(bp).origin
 	var m := inv * sk.get_bone_global_rest(bm).origin
-	var up := (p - i).normalized()
+	var up := (i - p).normalized()
 	if aim != Vector3.ZERO:
 		if up.dot(aim) < 0.0:
 			up = -up
@@ -320,13 +320,17 @@ func hand_space(dir: Vector3) -> Vector3:
 	return (pose.basis.inverse() * dir).normalized()
 
 ## First-person arms: only the arms and hands are drawn, nothing casts shadows.
-func set_arms_only() -> void:
+## `right_only` hides the left arm (a one-handed tool).
+func set_arms_only(right_only := false) -> void:
 	_arms = true
+	var side := 1.0
+	if right_only and skeleton and skeleton.find_bone("hand_r") >= 0:
+		side = 2.0 if skeleton.get_bone_global_rest(skeleton.find_bone("hand_r")).origin.x < 0.0 else 3.0
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if m == _body:
-			m.set_instance_shader_parameter("arms_only", 1.0)
+			m.set_instance_shader_parameter("arms_only", side)
 		elif not _is_held(m):
 			m.visible = false
 
@@ -351,13 +355,34 @@ func play(state: String, speed := 1.0) -> void:
 	_current = state
 	anim.play(state, 0.25)
 
-func play_once(state: String) -> void:
+## Plays an action once, then returns to the looping state. `dur` (optional) fits the
+## action into that many seconds, sped up at most 2.2x. Looping clips (chopping) are
+## played for one cycle, so a single swing never keeps going.
+func play_once(state: String, dur := 0.0) -> void:
 	if anim == null or not anim.has_animation(state):
 		return
+	var a := anim.get_animation(state)
+	var speed := clampf(a.length / dur, 1.0, 2.2) if dur > 0.0 else 1.0
 	_oneshot = true
 	_current = state
-	anim.speed_scale = 1.0
+	_shot += 1
+	var my := _shot
+	anim.speed_scale = speed
 	anim.play(state, 0.1)
+	if a.loop_mode != Animation.LOOP_NONE or dur > 0.0:
+		get_tree().create_timer(a.length / speed, false).timeout.connect(func():
+			if my == _shot and is_instance_valid(self):
+				_end_shot())
+
+var _shot := 0
+
+## True while a one-shot action (swing, shot, hit) is playing.
+func busy() -> bool:
+	return _oneshot
+
+func _end_shot() -> void:
+	_oneshot = false
+	_current = "" # the next play() call picks the loop back up
 
 func set_flash(v: float) -> void:
 	if _body:

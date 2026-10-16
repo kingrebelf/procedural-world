@@ -15,6 +15,10 @@ var _type := ""
 var arms: HumanModel
 var look: Dictionary = {} ## the player's appearance (set before adding to the tree)
 const ARMS_REST := Vector3(0.08, -0.03, 0.0)
+## One-handed tools: only the right arm, further right and lower, the tool leaning in.
+const ARM_REST := Vector3(0.14, -0.07, -0.02)
+const GUN_REST := Vector3(0.1, -0.02, 0.0)
+const TOOL_AIM := Vector3(-0.35, 0.5, -0.8)
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()
@@ -54,52 +58,149 @@ static func prop_for(t: String) -> Node3D:
 		mi.position = Vector3(0, 0.12, 0)
 	return n
 
+## Held like a gun: the item points along the view instead of being raised.
+const POINTED := ["pulse_pistol", "pickaxe_plasma"]
+
+static func pointed(t: String) -> bool:
+	return t in POINTED or ItemDB.def(t).get("ranged", false)
+
+## Kit model, scale, and the colour the bronze metal is re-tinted to (the kit's wood,
+## leather and paint stay as they are). Handles run along +Y; guns point along -Z.
+const KIT := {
+	"pickaxe_iron": ["props/Pickaxe_Bronze", 0.72, Color(0.86, 0.88, 0.92)],
+	"pickaxe_mythril": ["props/Pickaxe_Bronze", 0.72, Color(0.45, 0.85, 1.0)],
+	"axe_iron": ["props/Axe_Bronze", 0.95, Color(0.86, 0.88, 0.92)],
+	"axe_mythril": ["props/Axe_Bronze", 0.95, Color(0.45, 0.85, 1.0)],
+	"sword_iron": ["props/Sword_Bronze", 0.85, Color(0.9, 0.92, 0.96)],
+	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
+	"pulse_pistol": ["scifi/Pistol_1", 0.3, null],
+	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
+}
+
 static func model(t: String) -> ArrayMesh:
 	if _models.has(t):
 		return _models[t]
-	var k := MeshKit.new(3)
-	var I := Transform3D.IDENTITY
-	var handle := "timber"
-	var head := "iron"
-	if t.ends_with("mythril"):
-		head = "crystal"
-	match t:
-		"pickaxe_iron", "pickaxe_mythril":
-			k.cylinder(handle, I.translated(Vector3(0, -0.25, 0)), 0.018, 0.016, 0.62, 6)
-			k.box(head, Transform3D(Basis(Vector3(0, 0, 1), 0.12), Vector3(0, 0.36, 0)), Vector3(0.42, 0.05, 0.05))
-			k.box(head, I.translated(Vector3(0, 0.36, 0)), Vector3(0.07, 0.08, 0.07))
-		"axe_iron", "axe_mythril":
-			k.cylinder(handle, I.translated(Vector3(0, -0.25, 0)), 0.018, 0.016, 0.62, 6)
-			k.box(head, I.translated(Vector3(0.07, 0.3, 0)), Vector3(0.14, 0.16, 0.02))
-		"pickaxe_plasma":
-			k.box("metal_dark", I, Vector3(0.08, 0.32, 0.1))
-			k.cylinder("iron", I.translated(Vector3(0, 0.16, 0)), 0.03, 0.01, 0.28, 8)
-			k.box("glow_cyan", I.translated(Vector3(0, 0.0, 0.051)), Vector3(0.03, 0.2, 0.01))
-		"sword_iron", "sword_runic":
-			k.box(handle, I.translated(Vector3(0, -0.12, 0)), Vector3(0.035, 0.18, 0.035))
-			k.box("gold" if t == "sword_runic" else "iron", I.translated(Vector3(0, -0.02, 0)), Vector3(0.18, 0.025, 0.04))
-			k.box("crystal" if t == "sword_runic" else "iron", I.translated(Vector3(0, 0.33, 0)), Vector3(0.05, 0.68, 0.012))
-		"hammer":
-			k.cylinder(handle, I.translated(Vector3(0, -0.15, 0)), 0.016, 0.014, 0.42, 6)
-			k.box(head, I.translated(Vector3(0, 0.08, 0)), Vector3(0.16, 0.06, 0.06))
-		"pulse_pistol":
-			k.box("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -0.25), Vector3(0, -0.08, 0.04)), Vector3(0.05, 0.14, 0.06))
-			k.box("metal", I.translated(Vector3(0, 0.0, -0.06)), Vector3(0.06, 0.07, 0.26))
-			k.box("glow_cyan", I.translated(Vector3(0, 0.038, -0.06)), Vector3(0.02, 0.005, 0.2))
-			k.cylinder("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.0, -0.18)), 0.02, 0.02, 0.06, 8)
-		_:
-			var def := ItemDB.def(t)
-			if def.is_empty():
-				return null
-			k.box("painted", I, Vector3(0.12, 0.12, 0.12), def.get("color", Color.WHITE))
-	_models[t] = k.commit(Materials.get_mat)
-	return _models[t]
+	var out: ArrayMesh = null
+	if KIT.has(t) and ResourceLoader.exists("res://assets/models/%s.gltf" % KIT[t][0]):
+		var e: Array = KIT[t]
+		var xf := Transform3D.IDENTITY.scaled(Vector3.ONE * e[1])
+		if pointed(t):
+			# The kit's guns point along +X with the grip at the origin.
+			xf = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO) * xf
+		out = kit_mesh(e[0], xf, e[2])
+		if t == "pickaxe_plasma":
+			# A glowing drill bit where the muzzle was.
+			var k := MeshKit.new(3)
+			k.cylinder("glow_cyan", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.29)), 0.028, 0.002, 0.14, 8)
+			k.cylinder("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.215)), 0.04, 0.034, 0.03, 10)
+			_append(out, k.commit(Materials.get_mat))
+	elif t == "hammer" and ResourceLoader.exists("res://assets/models/props/Pickaxe_Bronze.gltf"):
+		# The pickaxe's wooden handle, shortened, with a squared iron head.
+		out = kit_mesh("props/Pickaxe_Bronze", Transform3D.IDENTITY.scaled(Vector3(0.6, 0.5, 0.6)), null, true)
+		var k := MeshKit.new(3)
+		var hy := 0.25
+		k.box("metal", Transform3D.IDENTITY.translated(Vector3(0.02, hy, 0)), Vector3(0.17, 0.065, 0.065))
+		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.115, hy, 0)), 0.042, 0.042, 0.05, 10)
+		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.09, hy + 0.015, 0)), Vector3(0.07, 0.045, 0.05))
+		_append(out, k.commit(Materials.get_mat))
+	else:
+		var def := ItemDB.def(t)
+		if def.is_empty():
+			return null
+		var k := MeshKit.new(3)
+		k.box("painted", Transform3D.IDENTITY, Vector3(0.12, 0.12, 0.12), def.get("color", Color.WHITE))
+		out = k.commit(Materials.get_mat)
+	_models[t] = out
+	return out
+
+static func _append(to: ArrayMesh, from: ArrayMesh) -> void:
+	for i in from.get_surface_count():
+		to.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, from.surface_get_arrays(i))
+		to.surface_set_material(to.get_surface_count() - 1, from.surface_get_material(i))
+
+## A kit model flattened into one mesh. `tint` re-colours the parts textured as metal
+## (the bronze of the fantasy kit), keeping their shading. `wood_only` keeps only the
+## parts that are not metal.
+static func kit_mesh(file: String, xf: Transform3D, tint = null, wood_only := false) -> ArrayMesh:
+	var scene: Node3D = (load("res://assets/models/%s.gltf" % file) as PackedScene).instantiate()
+	var out := ArrayMesh.new()
+	for mi in scene.find_children("*", "MeshInstance3D", true, false):
+		var mxf: Transform3D = xf * HumanModel._rel(scene, mi)
+		var m: Mesh = (mi as MeshInstance3D).mesh
+		for si in m.get_surface_count():
+			var a: Array = m.surface_get_arrays(si)
+			var mat: Material = BuildCatalog._tamed((mi as MeshInstance3D).get_active_material(si))
+			var verts: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var norms: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var tans = a[Mesh.ARRAY_TANGENT]
+			var nb := mxf.basis.inverse().transposed()
+			for i in verts.size():
+				verts[i] = mxf * verts[i]
+				if norms.size() > i:
+					norms[i] = (nb * norms[i]).normalized()
+			if tans is PackedFloat32Array and tans.size() == verts.size() * 4:
+				for i in verts.size():
+					var tv := (mxf.basis * Vector3(tans[i * 4], tans[i * 4 + 1], tans[i * 4 + 2])).normalized()
+					tans[i * 4] = tv.x
+					tans[i * 4 + 1] = tv.y
+					tans[i * 4 + 2] = tv.z
+				a[Mesh.ARRAY_TANGENT] = tans
+			a[Mesh.ARRAY_VERTEX] = verts
+			a[Mesh.ARRAY_NORMAL] = norms
+			for c in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3, Mesh.ARRAY_BONES, Mesh.ARRAY_WEIGHTS]:
+				a[c] = null
+			if tint != null or wood_only:
+				var metal := _metal_mask(a, mat)
+				if tint != null and a[Mesh.ARRAY_COLOR] is PackedColorArray:
+					var cols: PackedColorArray = a[Mesh.ARRAY_COLOR]
+					for i in cols.size():
+						if metal[i]:
+							# Keep the kit's light and dark metal, in the new colour.
+							cols[i] = Color(tint) * clampf(cols[i].r / 0.71, 0.3, 1.2)
+							cols[i].a = 1.0
+					a[Mesh.ARRAY_COLOR] = cols
+				if wood_only and a[Mesh.ARRAY_INDEX] is PackedInt32Array:
+					var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+					var keep := PackedInt32Array()
+					for i in range(0, idx.size(), 3):
+						if not (metal[idx[i]] or metal[idx[i + 1]] or metal[idx[i + 2]]):
+							keep.append_array([idx[i], idx[i + 1], idx[i + 2]])
+					a[Mesh.ARRAY_INDEX] = keep
+			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a)
+			out.surface_set_material(out.get_surface_count() - 1, mat)
+	scene.free()
+	return out
+
+static var _tex_cache: Dictionary = {}
+
+## Which vertices sit on the grey (metal) part of the kit's trim texture.
+static func _metal_mask(a: Array, mat: Material) -> PackedByteArray:
+	var n: int = (a[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+	var mask := PackedByteArray()
+	mask.resize(n)
+	var tex: Texture2D = (mat as BaseMaterial3D).albedo_texture if mat is BaseMaterial3D else null
+	var uv = a[Mesh.ARRAY_TEX_UV]
+	if tex == null or not (uv is PackedVector2Array):
+		return mask
+	var img: Image = _tex_cache.get(tex.resource_path)
+	if img == null:
+		img = tex.get_image()
+		if img.is_compressed():
+			img.decompress()
+		_tex_cache[tex.resource_path] = img
+	var size := Vector2(img.get_size())
+	for i in n:
+		var p := Vector2i((uv[i] * size).posmod(size.x))
+		var c := img.get_pixelv(Vector2i(clampi(p.x, 0, img.get_width() - 1), clampi(p.y, 0, img.get_height() - 1)))
+		mask[i] = 1 if absf(c.r - c.b) < 0.1 and absf(c.r - c.g) < 0.1 else 0
+	return mask
 
 func show_item(t: String) -> void:
 	_type = t
 	if arms:
 		_mesh.mesh = null
-		_rest = ARMS_REST
+		arms.set_arms_only(t != "")
+		_rest = ARMS_REST if t == "" else (GUN_REST if pointed(t) else ARM_REST)
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -126,10 +227,10 @@ func _aim() -> void:
 		return
 	# The rig's own frame, so the item swings with the arms.
 	var b := global_transform.basis.orthonormalized()
-	if ItemDB.def(_type).get("ranged", false):
+	if pointed(_type):
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
-		arms.reaim(arms.hand_space(b * Vector3(0.25, 0.8, -0.6)), 0.6)
+		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
 
 func swing() -> void:
 	_swing_t = 0.0
