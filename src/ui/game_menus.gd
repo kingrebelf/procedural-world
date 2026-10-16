@@ -9,6 +9,9 @@ var _mode := ""
 var _swap_from := -1
 var _trader: Dictionary
 var _trader_chunk: ChunkNode
+var _store_obj: Dictionary ## the storage chest that is open
+var _store_chunk: ChunkNode
+var _store: Inventory
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -80,6 +83,19 @@ func open_trader(st: Dictionary, chunk: ChunkNode) -> void:
 	_trader_chunk = chunk
 	open("trade")
 
+func open_storage(o: Dictionary, chunk: ChunkNode) -> void:
+	_store_obj = o
+	_store_chunk = chunk
+	_store = Storage.open(o)
+	open("storage")
+
+## Writes the open chest back into its chunk, to be saved.
+func _store_changed() -> void:
+	Storage.save(_store_obj, _store)
+	if _store_chunk and is_instance_valid(_store_chunk):
+		Game.mark_chunk_dirty(_store_chunk.data)
+	_refresh()
+
 func _refresh() -> void:
 	if _mode == "":
 		return
@@ -91,6 +107,7 @@ func _refresh() -> void:
 		"inventory": _panel = _inventory_panel()
 		"craft": _panel = _craft_panel()
 		"trade": _panel = _trade_panel()
+		"storage": _panel = _storage_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
 	add_child(_panel)
@@ -380,6 +397,66 @@ func _craft_panel() -> Control:
 	(func(): sc.scroll_vertical = _craft_scroll).call_deferred()
 	v.add_child(sc)
 	return s[0]
+
+# --- Storage -------------------------------------------------------------------------
+
+func _storage_panel() -> Control:
+	var cname := String(BuildCatalog.def(BuildCatalog.id_of(_store_obj["t"])).get("name", "Chest"))
+	var kg := Game.inventory.weight()
+	var s := _shell(cname, "Click an item to move it across. Your pack: %.0f / %d kg." % [kg, int(Game.stats.carry_capacity())])
+	var v: VBoxContainer = s[1]
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 10)
+	bar.add_child(UITheme.label("IN THE %s  (%d / %d slots)" % [cname.to_upper(), _store.capacity - _store.free_slots(), _store.capacity], 15, UITheme.ACCENT))
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(sp)
+	bar.add_child(UITheme.button("Take all", func():
+		Storage.transfer_all(_store, Game.inventory)
+		_store_changed()))
+	bar.add_child(UITheme.button("Store all (not the hotbar)", func():
+		Storage.transfer_all(Game.inventory, _store, true)
+		_store_changed()))
+	v.add_child(bar)
+	var g := GridContainer.new()
+	g.columns = 10
+	g.add_theme_constant_override("h_separation", 6)
+	g.add_theme_constant_override("v_separation", 6)
+	for i in _store.capacity:
+		g.add_child(_move_button(_store, i, Game.inventory))
+	v.add_child(g)
+	v.add_child(HSeparator.new())
+	v.add_child(UITheme.label("YOUR PACK", 15, UITheme.ACCENT))
+	var pg := GridContainer.new()
+	pg.columns = 10
+	pg.add_theme_constant_override("h_separation", 6)
+	pg.add_theme_constant_override("v_separation", 6)
+	for i in Inventory.SIZE:
+		pg.add_child(_move_button(Game.inventory, i, _store))
+	v.add_child(pg)
+	return s[0]
+
+## A slot that sends its whole stack to the other side when clicked.
+func _move_button(from: Inventory, i: int, to: Inventory) -> Button:
+	var it = from.get_slot(i)
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(60, 60)
+	b.add_theme_font_size_override("font_size", 12)
+	if it != null:
+		b.text = ("%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else ""
+		b.icon = Icons.get_icon(it["type"])
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		b.tooltip_text = UITheme.describe_item(it) + "\n%.1f kg" % (ItemDB.weight(it["type"]) * it["qty"])
+		b.pressed.connect(func():
+			if Storage.transfer(from, i, to) == 0:
+				Game.toast.emit("No room")
+			_store_changed())
+	else:
+		b.disabled = true
+	return b
 
 # --- Trading -------------------------------------------------------------------------
 

@@ -14,6 +14,8 @@ const LIST := [
 	{"out": "vehicle_bay", "qty": 1, "in": {"alloy_plate": 8, "circuitry": 6, "power_cell": 2}, "at": "fabricator"},
 	{"out": "launch_pad", "qty": 1, "in": {"alloy_plate": 14, "circuitry": 8, "power_cell": 3}, "at": "vehicle_bay"},
 	{"out": "stable", "qty": 1, "in": {"planks": 16, "wood": 6, "iron_ingot": 2}, "at": "workbench"},
+	{"out": "storage_chest", "qty": 1, "in": {"planks": 8, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "storage_crate", "qty": 1, "in": {"alloy_plate": 4, "iron_ingot": 2}, "at": "fabricator"},
 	{"out": "hammer", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
 	{"out": "torch", "qty": 1, "in": {"wood": 1, "fiber": 2}},
 	{"out": "flashlight", "qty": 1, "in": {"iron_ingot": 1, "circuitry": 1, "power_cell": 1}, "at": "workbench"},

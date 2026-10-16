@@ -10,9 +10,11 @@ const SIZE := 50
 
 var slots: Array = []
 var next_uid := 1
+var capacity := SIZE ## slot count: your pack has SIZE, a storage chest its own
 
-func _init() -> void:
-	slots.resize(SIZE)
+func _init(n: int = SIZE) -> void:
+	capacity = n
+	slots.resize(n)
 
 const STACK_MAX := 9999
 const MAX_SOURCES := 8
@@ -80,7 +82,7 @@ static func _take_sources(item: Dictionary, qty: int) -> Array:
 func add(item: Dictionary) -> int:
 	item = item.duplicate(true)
 	if stacks(item):
-		for i in SIZE:
+		for i in capacity:
 			var s = slots[i]
 			if s != null and s["type"] == item["type"] and stacks(s) and s["qty"] < STACK_MAX:
 				var n: int = mini(item["qty"], STACK_MAX - s["qty"])
@@ -95,7 +97,7 @@ func add(item: Dictionary) -> int:
 				return 0
 	else:
 		item["qty"] = 1
-	for i in SIZE:
+	for i in capacity:
 		if slots[i] == null:
 			if item.get("uid", 0) == 0:
 				item["uid"] = next_uid
@@ -145,7 +147,7 @@ func average_quality(type: String) -> float:
 
 func remove_type(type: String, qty: int) -> int:
 	var removed := 0
-	for i in SIZE:
+	for i in capacity:
 		var s = slots[i]
 		if s == null or s["type"] != type:
 			continue
@@ -210,18 +212,18 @@ func to_data() -> Dictionary:
 
 func from_data(d: Dictionary) -> void:
 	slots = d.get("slots", []).duplicate(true)
-	slots.resize(SIZE)
+	slots.resize(capacity)
 	next_uid = d.get("next_uid", 1)
 	_compact()
 	changed.emit()
 
 ## Merges stacks of the same type (saves from before v0.2.5 kept one stack per quality).
 func _compact() -> void:
-	for i in SIZE:
+	for i in capacity:
 		var s = slots[i]
 		if s == null or not stacks(s):
 			continue
-		for j in range(i + 1, SIZE):
+		for j in range(i + 1, capacity):
 			var o = slots[j]
 			if o != null and o["type"] == s["type"] and stacks(o) and s["qty"] + o["qty"] <= STACK_MAX:
 				merge_into(s, o, o["qty"])

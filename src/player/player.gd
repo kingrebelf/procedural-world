@@ -537,9 +537,9 @@ func _find_focus() -> Dictionary:
 			var o: Dictionary = c.get_object(h["obj"])
 			if is_own_piece(o):
 				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
-				var station := d.has("station")
+				var station := d.has("station") or d.has("storage")
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
-					"verb": ("Craft at the %s   (hold: take down)" % String(d["name"]).to_lower()) if station else "Hold to take down %s" % d["name"]}
+					"verb": ("%s   (hold: take down)" % _station_verb(d)) if station else "Hold to take down %s" % d["name"]}
 	return best
 
 static func is_own_piece(o: Dictionary) -> bool:
@@ -580,7 +580,7 @@ func _update_decon(delta: float) -> void:
 		return
 	# Released early: a tap, so use the station or ride the vehicle.
 	if _decon_on["kind"] == "station" and decon < 0.5:
-		get_tree().call_group("trade_ui", "open", "craft")
+		_use_station()
 	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
 		mount(focus["vehicle"])
 	_decon_on = {}
@@ -589,6 +589,9 @@ func _update_decon(delta: float) -> void:
 ## Takes one of your own pieces down whole and puts it back in your pack.
 func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 	if not is_own_piece(o):
+		return false
+	if not Storage.is_empty(o):
+		Game.toast.emit("Empty the chest before taking it down")
 		return false
 	used_tool.emit("hit")
 	if body:
@@ -610,9 +613,24 @@ static func _use_of(o: Dictionary) -> Dictionary:
 			return {"kind": "trader", "verb": "Trade with %s" % String(o["st"].get("name", "the trader")).split(" ")[0], "h": 2.6}
 		"built":
 			var d := BuildCatalog.def(BuildCatalog.id_of(t))
-			if d.has("station"):
-				return {"kind": "station", "verb": "Craft at the %s" % String(d["name"]).to_lower(), "h": 1.2}
+			if d.has("station") or d.has("storage"):
+				return {"kind": "station", "verb": _station_verb(d), "h": 1.2}
 	return {}
+
+static func _station_verb(d: Dictionary) -> String:
+	if d.has("storage"):
+		return "Open the %s" % String(d["name"]).to_lower()
+	return "Craft at the %s" % String(d["name"]).to_lower()
+
+## Tap on a station: craft there, or open a storage chest.
+func _use_station() -> void:
+	var c = focus.get("chunk")
+	if c is ChunkNode and is_instance_valid(c):
+		var o: Dictionary = c.get_object(focus["i"])
+		if BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("storage"):
+			get_tree().call_group("trade_ui", "open_storage", o, c)
+			return
+	get_tree().call_group("trade_ui", "open", "craft")
 
 # --- Binoculars ----------------------------------------------------------------------
 ## Hold Use with binoculars: the view zooms in, and an animal under the crosshair (out to
@@ -714,7 +732,7 @@ func interact() -> void:
 					get_tree().call_group("dialogue_ui", "open_with", focus["npc"])
 				return
 			"station":
-				get_tree().call_group("trade_ui", "open", "craft")
+				_use_station()
 				return
 			"cache", "trader":
 				if is_instance_valid(focus["chunk"]):
@@ -911,6 +929,9 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 		xp += 2.0 * y[1]
 	if r["destroyed"]:
+		for it in Storage.spill(o):
+			if not Game.give(it):
+				Game.toast.emit("No room for the %s from the chest" % ItemDB.display_name(it).to_lower())
 		xp += clampf(Durability.max_hp(o) * 0.5, 3.0, 60.0)
 	if k0 != "built" and xp > 0.0:
 		Game.add_xp(xp, "Gathering" if how == "gathered" else ("Mining" if how == "mined" else "Salvaging"))

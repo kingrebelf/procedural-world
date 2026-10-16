@@ -64,6 +64,11 @@ const PIECES := {
 		"snap": "free", "mat": "metal", "hp": 16.0, "era": 1, "station": "cauldron", "light": Color(0.35, 1.0, 0.8)},
 	"fabricator": {"name": "Fabricator", "models": [["scifi/Prop_Computer", 0, Vector3.ZERO, 1.0], ["scifi/Prop_Crate3", 0, Vector3(0.95, 0.5, 0.0), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "station": "fabricator"},
+	# Storage: chests that keep what you put in them, forever.
+	"storage_chest": {"name": "Storage Chest", "models": [["props/Chest_Wood", 0, Vector3.ZERO, 1.0]],
+		"snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "storage": 30},
+	"storage_crate": {"name": "Cargo Locker", "models": [["scifi/Prop_Chest", 0, Vector3.ZERO, 1.0]],
+		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "storage": 50},
 	# Vehicle stations: where vehicles are put together (see Vehicle).
 	"vehicle_bay": {"name": "Vehicle Bay", "models": [["scifi/Platform_DarkPlates", 0, Vector3.ZERO, 1.0],
 		["scifi/Prop_Computer", 90, Vector3(-1.5, 0.05, 0.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, 1.6), 1.0],

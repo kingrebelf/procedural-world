@@ -39,7 +39,11 @@ func _run() -> void:
 	var mi := MeshInstance3D.new()
 	vp.add_child(mi)
 	DirAccess.make_dir_recursive_absolute("res://assets/icons/build")
+	# ICONS=a,b renders only those pieces (and no vehicles).
+	var only := OS.get_environment("ICONS").split(",", false)
 	for id in BuildCatalog.PIECES:
+		if not only.is_empty() and not id in only:
+			continue
 		var m := BuildCatalog.mesh(id)
 		mi.mesh = m
 		var aabb := m.get_aabb()
@@ -56,6 +60,9 @@ func _run() -> void:
 		img.resize(OUT, OUT, Image.INTERPOLATE_LANCZOS)
 		img.save_png("res://assets/icons/build/%s.png" % id)
 		print("icon ", id)
+	if not only.is_empty():
+		quit()
+		return
 	# Vehicles are nodes (the horse is rigged), not merged meshes.
 	mi.mesh = null
 	for k in Vehicle.KINDS:

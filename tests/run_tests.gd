@@ -579,6 +579,28 @@ func test_photo_textures_load() -> void:
 	check(Materials.photo("leaves", "card") != null, "leaf card")
 	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")
 
+func test_storage() -> void:
+	var o := {"t": "b:storage_chest", "i": 1, "st": {}}
+	check(Storage.capacity(o) == 30 and Storage.is_empty(o), "a new storage chest is empty, with 30 slots (%d)" % Storage.capacity(o))
+	var pack := Inventory.new()
+	pack.add(ItemDB.make("stone", 40, 1.0, {}))
+	pack.add(ItemDB.make("axe_iron", 1, 1.0, {}))
+	var box := Storage.open(o)
+	check(Storage.transfer(pack, 0, box) == 40 and pack.count("stone") == 0 and box.count("stone") == 40, "a stack moves into the chest")
+	Storage.save(o, box)
+	var again := Storage.open(JSON.parse_string(JSON.stringify(o)))
+	check(again.count("stone") == 40 and not Storage.is_empty(o), "the chest keeps its contents through a save")
+	Storage.transfer_all(again, pack)
+	check(pack.count("stone") == 40 and again.count("stone") == 0, "take all")
+	Storage.save(o, again)
+	check(Storage.is_empty(o), "emptied chest")
+	box = Storage.open(o)
+	box.add(ItemDB.make("planks", 5, 1.0, {}))
+	Storage.save(o, box)
+	var spilled := Storage.spill(o)
+	check(spilled.size() == 1 and spilled[0]["qty"] == 5 and Storage.is_empty(o), "a broken chest spills what it held")
+	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
+
 func test_hand_light() -> void:
 	var inv := Inventory.new()
 	var hl := HandLight.new()
