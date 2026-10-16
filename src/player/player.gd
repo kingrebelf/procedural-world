@@ -30,6 +30,7 @@ var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
+var _trigger_held := false ## semi-automatic weapons wait for the trigger to come back
 var hand_light: HandLight ## torch or flashlight in the off hand
 var ray: RayCast3D
 var builder: Builder
@@ -430,6 +431,8 @@ func _physics_process(delta: float) -> void:
 	_animate_body(Vector2(velocity.x, velocity.z).length())
 
 	var looking := not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad)
+	if not Input.is_action_pressed("use"):
+		_trigger_held = false
 	_binoculars(delta, looking and _holding_binoculars())
 	if looking and _cooldown <= 0.0 and not _holding_binoculars():
 		use_held()
@@ -902,7 +905,12 @@ func _harvest_under(h: Dictionary, q: float) -> bool:
 	return true
 
 func _fire(it: Dictionary, d: Dictionary) -> void:
-	_cooldown = 0.22
+	if not d.get("auto", false):
+		# One shot per pull of the trigger.
+		if _trigger_held:
+			return
+		_trigger_held = true
+	_cooldown = float(d.get("cooldown", 0.22))
 	var ammo_t: String = d.get("ammo", "")
 	var shots: int = it.get("charge", 0)
 	if shots <= 0:
@@ -922,7 +930,13 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2, [get_rid()])
 	var hit := space.intersect_ray(q)
 	var end: Vector3 = hit.get("position", to)
-	viewmodel.tracer(end)
+	viewmodel.tracer(end, String(d.get("tracer", "glow_cyan")))
+	if d.has("splash"):
+		_blast(end, float(d["splash"]), float(d.get("damage", 10)))
+		if hit.has("collider") and hit["collider"].has_meta("obj"):
+			var bc: ChunkNode = hit["collider"].get_meta("chunk")
+			damage_object(bc, bc.get_object(hit["collider"].get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
+		return
 	if hit.has("collider") and hit["collider"].has_meta("creature") and fauna:
 		fauna.player_hit(hit["collider"].get_meta("creature"), float(d.get("damage", 10)))
 		return
@@ -933,6 +947,26 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
 		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))
 		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, Durability.material(o["t"])), 0.8)
+
+## A blast: every animal within `radius` takes damage, less towards the edge.
+func _blast(at: Vector3, radius: float, dmg: float) -> void:
+	var fx := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.5
+	sm.height = 1.0
+	fx.mesh = sm
+	fx.material_override = Materials.get_mat("glow_violet")
+	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	get_tree().current_scene.add_child(fx)
+	fx.global_position = at
+	var tw := fx.create_tween()
+	tw.tween_property(fx, "scale", Vector3.ONE * radius * 2.0, 0.25)
+	tw.tween_callback(fx.queue_free)
+	if fauna == null:
+		return
+	for c in fauna.creatures_near(at, radius):
+		var f := 1.0 - 0.6 * clampf(c.global_position.distance_to(at) / radius, 0.0, 1.0)
+		fauna.player_hit(c, dmg * f)
 
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
 func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: float) -> void:

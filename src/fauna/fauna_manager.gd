@@ -101,6 +101,15 @@ func _spawn(cn: ChunkNode) -> Array:
 ## Melee aim help: the nearest live animal within reach and roughly in front of you.
 ## Animals are short and close when they attack, so a swing aimed level would pass over
 ## a wolf at your feet; this lets a swing at it land as it looks like it should.
+## Live animals within `radius` of a point.
+func creatures_near(at: Vector3, radius: float) -> Array:
+	var out := []
+	for k in _herds:
+		for c in _herds[k]:
+			if is_instance_valid(c) and c._body != null and c.global_position.distance_to(at) <= radius + float(c.p["size"]) * 0.5:
+				out.append(c)
+	return out
+
 func melee_target(eye: Vector3, fwd: Vector3, reach: float) -> Creature:
 	var f := Vector2(fwd.x, fwd.z).normalized()
 	var best: Creature = null

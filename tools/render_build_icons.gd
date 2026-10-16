@@ -60,7 +60,23 @@ func _run() -> void:
 		img.resize(OUT, OUT, Image.INTERPOLATE_LANCZOS)
 		img.save_png("res://assets/icons/build/%s.png" % id)
 		print("icon ", id)
-	if not only.is_empty():
+	# WEAPONS=a,b renders held items from their kit models (guns, crossbows).
+	for id in OS.get_environment("WEAPONS").split(",", false):
+		var m := Viewmodel.model(id)
+		mi.mesh = m
+		var aabb := m.get_aabb()
+		var c := aabb.get_center()
+		var r := aabb.size.length() * 0.5
+		var dir := Vector3(1.0, 0.35, 0.05).normalized()
+		cam.position = c + dir * (r / tan(deg_to_rad(cam.fov * 0.5)) * 0.95)
+		cam.look_at(c, Vector3.UP)
+		for i in 6:
+			await process_frame
+		var img := vp.get_texture().get_image()
+		img.resize(OUT, OUT, Image.INTERPOLATE_LANCZOS)
+		img.save_png("res://assets/icons/build/%s.png" % id)
+		print("icon ", id)
+	if not only.is_empty() or OS.get_environment("WEAPONS") != "":
 		quit()
 		return
 	# Vehicles are nodes (the horse is rigged), not merged meshes.

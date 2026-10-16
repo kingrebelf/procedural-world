@@ -74,6 +74,13 @@ const KIT := {
 	"sword_iron": ["props/Sword_Bronze", 0.85, Color(0.9, 0.92, 0.96)],
 	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
 	"pulse_pistol": ["scifi/Pistol_1", 0.3, null],
+	"crossbow": ["scifi/Crossbow_1", 0.3, null],
+	"crossbow_runic": ["scifi/Crossbow_2", 0.3, null],
+	"scrap_pistol": ["scifi/Pistol_3", 0.3, null],
+	"pulse_smg": ["scifi/SMG_1", 0.3, null],
+	"pulse_rifle": ["scifi/AR_1", 0.3, null],
+	"rail_rifle": ["scifi/Sniper_1", 0.3, null],
+	"arc_launcher": ["scifi/Grenade_1", 0.3, null],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
 }
 
@@ -265,7 +272,7 @@ func sway(delta: float, speed: float) -> void:
 	position = _rest + off + Vector3(-0.12 * s, 0.05 * s, -0.1 * s)
 	rotation = Vector3(-1.1 * s + _recoil * 0.25, 0.3 * s, 0.3 * s)
 
-func tracer(world_end: Vector3) -> void:
+func tracer(world_end: Vector3, mat := "glow_cyan") -> void:
 	var from := _mesh.global_position if arms == null else global_position + global_transform.basis * Vector3(0, -0.12, -0.5)
 	var start := from + -global_transform.basis.z * 0.25
 	var len := start.distance_to(world_end)
@@ -278,7 +285,12 @@ func tracer(world_end: Vector3) -> void:
 	cm.height = len
 	cm.radial_segments = 6
 	beam.mesh = cm
-	beam.material_override = Materials.get_mat("glow_cyan")
+	if mat == "bolt":
+		# A crossbow bolt: a thin dark shaft, not a beam of light.
+		cm.top_radius = 0.008
+		cm.bottom_radius = 0.008
+		mat = "bark"
+	beam.material_override = Materials.get_mat(mat)
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	get_tree().current_scene.add_child(beam)
 	var mid := (start + world_end) * 0.5

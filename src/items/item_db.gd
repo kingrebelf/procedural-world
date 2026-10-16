@@ -47,6 +47,17 @@ const ITEMS := {
 	"sword_iron": {"name": "Iron Sword", "era": Eras.MEDIEVAL, "value": 70, "stack": false, "kind": "weapon", "damage": 25, "range": 3.0},
 	"sword_runic": {"name": "Runic Blade", "era": Eras.FANTASY, "value": 220, "stack": false, "kind": "weapon", "damage": 45, "range": 3.2},
 	"pulse_pistol": {"name": "Pulse Pistol", "era": Eras.SCIFI, "value": 300, "stack": false, "kind": "weapon", "damage": 35, "range": 80.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 12},
+	# Ranged weapons, from the first crossbow to sci-fi rifles. "auto" fires while Use is
+	# held; the rest fire once per pull. "tracer" colours the shot, "splash" is a blast radius.
+	"crossbow": {"name": "Crossbow", "era": Eras.MEDIEVAL, "value": 60, "stack": false, "kind": "weapon", "damage": 32, "range": 70.0, "ranged": true, "ammo": "bolt", "shots_per_ammo": 1, "cooldown": 0.9, "tracer": "bolt"},
+	"crossbow_runic": {"name": "Runic Repeater", "era": Eras.FANTASY, "value": 240, "stack": false, "kind": "weapon", "damage": 42, "range": 90.0, "ranged": true, "ammo": "bolt", "shots_per_ammo": 1, "cooldown": 0.45, "tracer": "glow_violet"},
+	"scrap_pistol": {"name": "Scrap Revolver", "era": Eras.MEDIEVAL, "value": 110, "stack": false, "kind": "weapon", "damage": 24, "range": 60.0, "ranged": true, "ammo": "rounds", "shots_per_ammo": 1, "cooldown": 0.35, "tracer": "glow_warm"},
+	"pulse_smg": {"name": "Pulse SMG", "era": Eras.SCIFI, "value": 420, "stack": false, "kind": "weapon", "damage": 11, "range": 70.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 45, "cooldown": 0.08, "auto": true},
+	"pulse_rifle": {"name": "Pulse Rifle", "era": Eras.SCIFI, "value": 560, "stack": false, "kind": "weapon", "damage": 20, "range": 140.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 30, "cooldown": 0.13, "auto": true},
+	"rail_rifle": {"name": "Rail Rifle", "era": Eras.SCIFI, "value": 800, "stack": false, "kind": "weapon", "damage": 95, "range": 320.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 6, "cooldown": 1.2, "tracer": "glow_white"},
+	"arc_launcher": {"name": "Arc Launcher", "era": Eras.SCIFI, "value": 900, "stack": false, "kind": "weapon", "damage": 70, "range": 90.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 4, "cooldown": 1.0, "splash": 4.5, "tracer": "glow_violet"},
+	"bolt": {"name": "Crossbow Bolts", "era": ANY, "value": 1, "stack": true, "kind": "ammo", "color": Color(0.6, 0.45, 0.3)},
+	"rounds": {"name": "Revolver Rounds", "era": ANY, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.8, 0.65, 0.3)},
 	# Vehicles: use one to set it down in the world, then ride it (see Vehicle).
 	"speeder": {"name": "Hover Speeder", "era": Eras.SCIFI, "value": 420, "stack": false, "kind": "vehicle", "color": Color(1.0, 0.65, 0.15)},
 	"rover": {"name": "Survey Rover", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "vehicle", "color": Color(0.85, 0.85, 0.9)},
@@ -65,7 +76,8 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 ## Weight of one item in kg, where it differs from the default for its kind.
 const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,
 	"planks": 1.0, "iron_ingot": 2.0, "mythril_ingot": 1.2, "alloy_plate": 1.5, "power_cell": 0.4, "fiber": 0.1,
-	"hide": 1.0, "silver_chalice": 0.6, "moonpearl": 0.1, "data_core": 0.3, "binoculars": 0.8, "torch": 0.5, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
+	"hide": 1.0, "silver_chalice": 0.6, "moonpearl": 0.1, "data_core": 0.3, "binoculars": 0.8, "torch": 0.5, "crossbow": 3.0, "crossbow_runic": 3.2, "scrap_pistol": 1.4, "pulse_smg": 2.6, "pulse_rifle": 3.6,
+	"rail_rifle": 5.0, "arc_launcher": 5.5, "bolt": 0.05, "rounds": 0.02, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
 	"workbench": 15.0, "forge": 20.0, "anvil": 25.0}

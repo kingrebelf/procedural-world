@@ -579,6 +579,14 @@ func test_photo_textures_load() -> void:
 	check(Materials.photo("leaves", "card") != null, "leaf card")
 	check(Materials.photo("nonexistent", "albedo") == null, "missing textures fall back to procedural")
 
+func test_ranged_weapons() -> void:
+	for t in ["crossbow", "crossbow_runic", "scrap_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "arc_launcher"]:
+		var d := ItemDB.def(t)
+		check(d.get("ranged", false) and ItemDB.has(String(d["ammo"])), "%s fires %s" % [t, d.get("ammo", "?")])
+		check(Recipes.LIST.any(func(r): return r["out"] == t), "%s can be crafted" % t)
+		check(Viewmodel.model(t) != null and Viewmodel.model(t).get_surface_count() > 0, "%s has a model" % t)
+	check(Recipes.LIST.any(func(r): return r["out"] == "bolt" and not r.has("at")), "bolts can be made anywhere")
+
 func test_markers() -> void:
 	var mk := Markers.new()
 	var a := mk.add("Camp", 10.0, 20.0, 0)

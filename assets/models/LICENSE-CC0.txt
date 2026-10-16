@@ -2,7 +2,7 @@ Models and animations in this folder are by Quaternius (quaternius.com),
 released under CC0 1.0 Universal (public domain). No attribution required;
 credited here with thanks.
 
-scifi/Pistol_1 and Pistol_2 come from Quaternius' Sci-Fi Modular Gun Pack (CC0).
+scifi/Pistol_1, Pistol_2, Pistol_3, SMG_1, AR_1, Sniper_1, Crossbow_1, Crossbow_2 and Grenade_1 come from Quaternius' Sci-Fi Modular Gun Pack (CC0).
 
 animals/ comes from Quaternius' Ultimate Animated Animal Pack (CC0).
 

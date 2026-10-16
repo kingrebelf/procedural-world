@@ -7,6 +7,7 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
+global uniform float wind_time;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 // Repeats of the leaf texture across a card: >1 makes individual leaves smaller.
 uniform float uv_scale = 1.0;
@@ -21,11 +22,13 @@ void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	float h = max(VERTEX.y, 0.0);
 	float phase = dot(origin.xz, vec2(0.13, 0.17));
-	float t = TIME;
+	float t = wind_time; // the wind's own clock, so a change in wind never makes leaves jump
 	float ws = wind_strength;
-	// Slow whole-crown lean plus faster leaf flutter.
-	float lean = (sin(t * 0.7 + phase) * 0.5 + 0.6) * ws;
-	float flutter = sin(t * (3.0 + ws * 4.0) + VERTEX.x * 2.1 + VERTEX.z * 1.7 + phase * 3.0) * 0.08 * (0.3 + ws);
+	// Slow whole-crown lean plus faster leaf flutter, and the same rolling gust waves the
+	// grass shows.
+	float wave = smoothstep(0.2, 1.0, sin(dot(origin.xz, wind_dir) * 0.045 - t * 0.55 + sin(origin.x * 0.013) * 1.5));
+	float lean = (sin(t * 0.6 + phase) * 0.4 + 0.6 + wave * 0.5) * ws;
+	float flutter = sin(t * 3.5 + VERTEX.x * 2.1 + VERTEX.z * 1.7 + phase * 3.0) * 0.07 * (0.3 + ws);
 	// Bend grows with height but is capped, so tall trees sway rather than tilt over.
 	float k = min(h * h * 0.006, 0.6) * sway;
 	vec3 wl = (inverse(MODEL_MATRIX) * vec4(wind_dir.x, 0.0, wind_dir.y, 0.0)).xyz;
