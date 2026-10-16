@@ -68,20 +68,23 @@ NVIDIA RTX 3070 or better, an 8-core desktop CPU, 32 GB RAM, Windows 10/11 64-bi
 
 All bindings can be changed in Settings > Controls, for keyboard and controller.
 
-| Action | Key |
-|---|---|
-| Move / sprint / crouch / jump | WASD / Shift / Ctrl / Space |
-| Use tool or weapon | Left mouse |
-| Interact, open, trade | E |
-| Eat | F |
-| Inventory / Crafting / Atlas | Tab / R / M |
-| Character (spend attribute points) | K |
-| Place a building piece / turn it | Left mouse / Q |
-| Hotbar | 1 to 6, mouse wheel |
-| Previous / next hotbar (controller) | LB / RB |
-| Pause and settings | Esc |
-| Screenshot / FPS counter | F12 / F3 |
-| Cheat console (fly, noclip, god, speed, give, tp; type help) | ` |
+Controllers use ARK: Survival Ascended's layout.
+
+| Action | Keyboard and mouse | Controller |
+|---|---|---|
+| Move / look | WASD / mouse | Left stick / right stick |
+| Sprint / crouch / jump | Shift / Ctrl / Space | Left stick click / right stick click / A |
+| Swim: dive / rise | Look down and move, or Ctrl / Space | Look down and move, or right stick click / A |
+| Use tool or weapon | Left mouse | RT |
+| Interact, open, talk, trade (prompt floats over it) | E | Y |
+| Eat | F | X |
+| Inventory (drag items onto the hotbar) | Tab | B |
+| Crafting / Character / Atlas | R / K / M | D-pad up / D-pad down / View |
+| Hotbar | 1 to 0, mouse wheel | D-pad left/right; hold LB + Y, B, X, A, D-pad for slots 1 to 8 |
+| Turn a building piece | Q | RB |
+| Pause and settings | Esc | Menu |
+| Cheat console (fly, noclip, god, speed, give, tp, xp, level; type help) | ` | |
+| Screenshot / FPS counter | F12 / F3 | |
 
 ## Install
 

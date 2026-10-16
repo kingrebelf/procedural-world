@@ -199,15 +199,15 @@ func _settings_panel() -> Control:
 func _slot_button(i: int) -> Button:
 	var it = Game.inventory.get_slot(i)
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(104, 74)
-	b.clip_text = true
-	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	b.add_theme_font_size_override("font_size", 13)
+	b.custom_minimum_size = Vector2(76, 76)
+	b.add_theme_font_size_override("font_size", 12)
 	if it != null:
-		b.text = ItemDB.display_name(it) + (("\nx%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else "")
+		b.text = ("%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else ""
 		b.icon = Icons.get_icon(it["type"])
 		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b.tooltip_text = UITheme.describe_item(it)
 		var era: int = ItemDB.era_of(it["type"])
 		var c: Color = UITheme.ERA_COLORS[era] if era >= 0 else Color(0.7, 0.7, 0.7)
@@ -224,20 +224,43 @@ func _slot_button(i: int) -> Button:
 		else:
 			Game.inventory.swap(_swap_from, i)
 			_swap_from = -1)
+	# Drag and drop: drag any item onto another slot (or onto the hotbar row) to move,
+	# swap or merge it.
+	b.set_drag_forwarding(func(_at):
+		if Game.inventory.get_slot(i) == null:
+			return null
+		var prev := TextureRect.new()
+		prev.texture = Icons.get_icon(Game.inventory.get_slot(i)["type"])
+		prev.custom_minimum_size = Vector2(56, 56)
+		prev.size = Vector2(56, 56)
+		prev.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		prev.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		b.set_drag_preview(prev)
+		return {"inv_slot": i},
+		func(_at, d): return d is Dictionary and d.has("inv_slot"),
+		func(_at, d):
+			_swap_from = -1
+			if d["inv_slot"] != i:
+				Game.inventory.swap(d["inv_slot"], i))
 	return b
 
 func _inventory_panel() -> Control:
-	var s := _shell("Inventory", "Click an item, then a slot, to move it. The top row is your hotbar. Hover for provenance.")
+	var s := _shell("Inventory", "Drag items between slots, or click one and then another. Hover for where things came from.")
 	var v: VBoxContainer = s[1]
 	var g := GridContainer.new()
-	g.columns = 6
+	g.columns = Inventory.HOTBAR
 	g.add_theme_constant_override("h_separation", 6)
 	g.add_theme_constant_override("v_separation", 6)
-	for i in Inventory.SIZE:
+	for i in range(Inventory.HOTBAR, Inventory.SIZE):
 		g.add_child(_slot_button(i))
-		if i == Inventory.HOTBAR - 1:
-			pass
 	v.add_child(g)
+	v.add_child(UITheme.label("HOTBAR  ·  keys 1 to 0, or hold LB on a controller", 13, UITheme.ACCENT))
+	var hb := GridContainer.new()
+	hb.columns = Inventory.HOTBAR
+	hb.add_theme_constant_override("h_separation", 6)
+	for i in Inventory.HOTBAR:
+		hb.add_child(_slot_button(i))
+	v.add_child(hb)
 	return s[0]
 
 # --- Crafting ------------------------------------------------------------------------

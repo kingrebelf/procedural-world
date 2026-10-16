@@ -7,6 +7,9 @@ const PATH := "user://input.cfg"
 const DEADZONE := 0.2
 
 ## action -> [label, keyboard/mouse default, controller default]
+## The controller layout follows ARK: A jump, B inventory, Y use, left/right stick clicks
+## sprint and crouch, RT use the held item, D-pad left/right cycle the hotbar, and holding
+## LB turns A/B/X/Y and the D-pad into direct hotbar picks.
 ## Keyboard default: KEY_* int, or "mouse:<button>". Controller default: "btn:<JoyButton>"
 ## or "axis:<JoyAxis>:<+1|-1>".
 const ACTIONS := {
@@ -20,17 +23,18 @@ const ACTIONS := {
 	"look_right": ["Look right", -1, "axis:2:1"],
 	"jump": ["Jump", KEY_SPACE, "btn:0"],
 	"sprint": ["Sprint", KEY_SHIFT, "btn:7"],
-	"crouch": ["Crouch", KEY_CTRL, "btn:1"],
+	"crouch": ["Crouch / dive", KEY_CTRL, "btn:8"],
 	"use": ["Use tool / weapon", "mouse:1", "axis:5:1"],
-	"interact": ["Interact / talk / trade", KEY_E, "btn:2"],
-	"eat": ["Eat", KEY_F, "btn:13"],
-	"inventory": ["Inventory", KEY_TAB, "btn:3"],
+	"interact": ["Interact / talk / trade", KEY_E, "btn:3"],
+	"eat": ["Eat", KEY_F, "btn:2"],
+	"inventory": ["Inventory", KEY_TAB, "btn:1"],
 	"craft": ["Crafting", KEY_R, "btn:11"],
-	"map": ["Atlas", KEY_M, "btn:12"],
-	"character": ["Character and attributes", KEY_K, "btn:4"],
-	"rotate_build": ["Rotate building piece", KEY_Q, "btn:14"],
-	"hotbar_prev": ["Previous hotbar slot", -1, "btn:9"],
-	"hotbar_next": ["Next hotbar slot", -1, "btn:10"],
+	"map": ["Atlas", KEY_M, "btn:4"],
+	"character": ["Character and attributes", KEY_K, "btn:12"],
+	"rotate_build": ["Rotate building piece", KEY_Q, "btn:10"],
+	"hotbar_prev": ["Previous hotbar slot", -1, "btn:13"],
+	"hotbar_next": ["Next hotbar slot", -1, "btn:14"],
+	"hotbar_pick": ["Hold to pick a hotbar slot with A/B/X/Y and the D-pad", -1, "btn:9"],
 	"pause": ["Pause", KEY_ESCAPE, "btn:6"],
 	"slot_1": ["Hotbar 1", KEY_1, ""],
 	"slot_2": ["Hotbar 2", KEY_2, ""],
@@ -38,6 +42,10 @@ const ACTIONS := {
 	"slot_4": ["Hotbar 4", KEY_4, ""],
 	"slot_5": ["Hotbar 5", KEY_5, ""],
 	"slot_6": ["Hotbar 6", KEY_6, ""],
+	"slot_7": ["Hotbar 7", KEY_7, ""],
+	"slot_8": ["Hotbar 8", KEY_8, ""],
+	"slot_9": ["Hotbar 9", KEY_9, ""],
+	"slot_10": ["Hotbar 10", KEY_0, ""],
 	"debug_overlay": ["FPS counter", KEY_F3, ""],
 	"console": ["Console (cheats)", KEY_QUOTELEFT, ""],
 	"screenshot": ["Screenshot", KEY_F12, ""],

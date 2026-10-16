@@ -62,21 +62,36 @@ func _run() -> void:
 	var after := ChunkGenerator.height_at(here.data, lx, lz)
 	check(after < before - 0.5, "dig lowered terrain (%.2f -> %.2f)" % [before, after])
 
-	# Loot the first cache found.
+	# Loot the nearest cache by walking up to it, as a player would: the floating prompt
+	# should pick it and Interact should open it.
 	var looted := {}
+	var best_c: ChunkNode = null
+	var best_o := {}
 	for k in streamer.chunks:
 		var c: ChunkNode = streamer.chunks[k]
 		for o in c.data["objects"]:
 			if ObjectLibrary.kind(o["t"]) == "cache" and not o["st"].get("opened", false):
-				for it in o["st"]["loot"]:
-					game.give(it)
-				o["st"]["loot"] = []
-				o["st"]["opened"] = true
-				game.mark_chunk_dirty(c.data)
-				looted = {"key": k, "i": o["i"]}
+				if best_c == null or (c.position + o["p"]).distance_to(player.global_position) < (best_c.position + best_o["p"]).distance_to(player.global_position):
+					best_c = c
+					best_o = o
+	if best_c != null:
+		var c := best_c
+		var o := best_o
+		var cw: Vector3 = c.position + o["p"]
+		var stand := cw + Vector3(2.2, 0, 0)
+		stand.y = ChunkGenerator.height_at(c.data, o["p"].x + 2.2, o["p"].z) + 0.1
+		player.set_state({"pos": stand, "yaw": atan2(2.2, 0.0), "pitch": -0.35, "slot": 0})
+		for i in 300:
+			await _frames(1)
+			if streamer.is_ready_at(stand):
 				break
-		if not looted.is_empty():
-			break
+		player.global_position = stand
+		await _frames(20)
+		check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "walking up to a chest offers to open it (%s)" % player.focus.get("verb", "nothing"))
+		player.interact()
+		check(o["st"].get("opened", false), "interact opens the chest in focus")
+		looted = {"key": c.key, "i": o["i"]}
+	check(not looted.is_empty(), "found a chest to loot")
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.

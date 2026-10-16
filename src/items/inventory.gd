@@ -5,8 +5,8 @@ extends RefCounted
 
 signal changed
 
-const HOTBAR := 6
-const SIZE := 42
+const HOTBAR := 10
+const SIZE := 50
 
 var slots: Array = []
 var next_uid := 1

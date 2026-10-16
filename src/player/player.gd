@@ -121,6 +121,21 @@ func _refresh_held() -> void:
 	var it = held_item()
 	viewmodel.show_item(it["type"] if it != null else "")
 
+## Holding the pick button (LB) turns these into direct hotbar picks, in ARK's order:
+## Y, B, X, A, D-pad left, right, up, down for slots 1 to 8.
+const PICK_BUTTONS := [JOY_BUTTON_Y, JOY_BUTTON_B, JOY_BUTTON_X, JOY_BUTTON_A,
+	JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT, JOY_BUTTON_DPAD_UP, JOY_BUTTON_DPAD_DOWN]
+
+func _input(event: InputEvent) -> void:
+	if ui_open or not (event is InputEventJoypadButton) or event.is_action("hotbar_pick"):
+		return
+	if Input.is_action_pressed("hotbar_pick"):
+		if event.pressed:
+			var i := PICK_BUTTONS.find(event.button_index)
+			if i >= 0:
+				select(i)
+		get_viewport().set_input_as_handled()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if ui_open:
 		return
@@ -197,19 +212,29 @@ func _physics_process(delta: float) -> void:
 		_shape.disabled = noclip
 		move_and_slide()
 	elif swimming:
+		# Swim where you look: look down and push forward to dive, Space rises, Ctrl
+		# sinks. Underwater you are close to neutral and drift slowly up; at the surface
+		# you float with your chest at the waterline.
 		var fast := not winded and Input.is_action_pressed("sprint") and input.length() > 0.1
 		if fast:
 			_tire(10.0 * delta)
-		hv = hv.lerp(dir * SWIM * (1.4 if fast else 1.0) * Game.stats.speed_mult(), clampf(3.0 * delta, 0.0, 1.0))
-		var target_y := surface - 1.35
-		var vy_want := (target_y - global_position.y) * 2.2
-		if not ui_open and Input.is_action_pressed("crouch"):
-			vy_want = -2.2
-		elif not ui_open and Input.is_action_pressed("jump"):
-			vy_want = 2.5
-		velocity.y = lerpf(velocity.y, vy_want, clampf(4.0 * delta, 0.0, 1.0))
-		velocity.x = hv.x
-		velocity.z = hv.z
+		var look3 := camera.global_transform.basis * Vector3(input.x, 0, input.y)
+		if look3.length() > 1.0:
+			look3 = look3.normalized()
+		var want := look3 * SWIM * (1.5 if fast else 1.0) * Game.stats.speed_mult()
+		var float_y := surface - 1.35
+		var up := 0.0
+		if not ui_open:
+			up = (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
+		want.y += up * 2.6
+		var depth := float_y - global_position.y
+		if absf(up) < 0.1 and absf(look3.y) < 0.25:
+			# Not steering up or down: bob at the surface, or drift gently upward below it.
+			want.y += clampf(depth * 2.2, -2.0, 0.45)
+		if global_position.y > float_y and want.y > 0.0:
+			# Can't swim up out of the water; climb out at the shore instead.
+			want.y = minf(want.y, depth * 3.0)
+		velocity = velocity.lerp(want, clampf(3.0 * delta, 0.0, 1.0))
 		move_and_slide()
 	else:
 		var a := ACCEL if is_on_floor() else AIR_ACCEL
@@ -217,7 +242,7 @@ func _physics_process(delta: float) -> void:
 		velocity.x = hv.x
 		velocity.z = hv.z
 		if is_on_floor():
-			if not ui_open and Input.is_action_just_pressed("jump") and _tire(8.0):
+			if not ui_open and Input.is_action_just_pressed("jump") and not Input.is_action_pressed("hotbar_pick") and _tire(8.0):
 				velocity.y = JUMP
 		else:
 			velocity.y -= _gravity * delta
@@ -262,6 +287,7 @@ func _physics_process(delta: float) -> void:
 		use_held()
 	builder.update()
 	_update_look_target()
+	_update_focus(delta)
 
 func _snap_to_ground() -> void:
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(global_position)) if streamer else null
@@ -293,12 +319,92 @@ func _hit_object() -> Dictionary:
 			out["obj"] = col.get_meta("obj")
 	return out
 
+static func _key(action: String) -> String:
+	return Bindings.key_name(action, Game.using_pad)
+
+# --- Interaction focus ------------------------------------------------------------
+## What Interact acts on: the nearest usable thing in front of you, not only what the
+## crosshair is exactly on. The HUD floats a key prompt over it.
+
+const USE_RANGE := 3.6
+var focus: Dictionary = {}
+var _focus_t := 0.0
+
+func _update_focus(delta: float) -> void:
+	_focus_t -= delta
+	if _focus_t > 0.0:
+		return
+	_focus_t = 0.1
+	focus = {} if ui_open or builder.active() else _find_focus()
+
+## Lower is better; INF when out of reach or behind you.
+func _focus_score(eye: Vector3, fwd: Vector3, at: Vector3) -> float:
+	var to := at - eye
+	var d := to.length()
+	if d > USE_RANGE + 0.8 or d < 0.01:
+		return INF
+	var a := fwd.angle_to(to / d)
+	if a > 0.95:
+		return INF
+	return d + a * 4.0
+
+func _find_focus() -> Dictionary:
+	var eye := camera.global_position
+	var fwd := -camera.global_transform.basis.z
+	var best := {}
+	var best_s := INF
+	if npcs:
+		for n in npcs.all_nodes():
+			if not is_instance_valid(n) or n.rec.get("dead", false):
+				continue
+			var sc := _focus_score(eye, fwd, n.global_position + Vector3(0, 1.3, 0))
+			if sc < best_s:
+				best_s = sc
+				best = {"kind": "npc", "npc": n, "pos": n.global_position + Vector3(0, 2.1, 0), "verb": "Talk to %s" % n.rec["name"].split(" ")[0]}
+	if streamer:
+		var ck := ChunkStreamer.chunk_of(global_position)
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var c := streamer.get_chunk(ck + Vector2i(dx, dz))
+				if c == null:
+					continue
+				for o in c.data["objects"]:
+					if o["st"].get("gone", false):
+						continue
+					var wp: Vector3 = c.position + o["p"]
+					if wp.distance_squared_to(global_position) > 49.0:
+						continue
+					var use := _use_of(o)
+					if use.is_empty():
+						continue
+					var sc := _focus_score(eye, fwd, wp + Vector3(0, use["h"] * 0.5, 0))
+					if sc < best_s:
+						best_s = sc
+						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": use["verb"]}
+	return best
+
+## How an object can be used with Interact, or {} if it can't.
+static func _use_of(o: Dictionary) -> Dictionary:
+	var t: String = o["t"]
+	match ObjectLibrary.kind(t):
+		"cache":
+			if o["st"].get("opened", false):
+				return {}
+			return {"kind": "cache", "verb": "Open %s" % ObjectLibrary.label(t), "h": 1.0}
+		"trader":
+			return {"kind": "trader", "verb": "Trade with %s" % String(o["st"].get("name", "the trader")).split(" ")[0], "h": 2.6}
+		"built":
+			var d := BuildCatalog.def(BuildCatalog.id_of(t))
+			if d.has("station"):
+				return {"kind": "station", "verb": "Craft at the %s" % String(d["name"]).to_lower(), "h": 1.2}
+	return {}
+
 func _update_look_target() -> void:
 	var h := _hit_object()
 	var text := ""
 	var info := {}
 	if builder.active():
-		text = "[LMB] Place %s   [Q] Rotate" % BuildCatalog.def(builder.piece_id())["name"]
+		text = "[%s] Place %s   [%s] Rotate" % [_key("use"), BuildCatalog.def(builder.piece_id())["name"], _key("rotate_build")]
 		info = builder.info()
 	elif h.has("creature") and is_instance_valid(h["creature"]):
 		var cr: Creature = h["creature"]
@@ -309,7 +415,6 @@ func _update_look_target() -> void:
 			"lines": ["Drops: " + ", ".join(drops), "Hunt with a sword, axe or pistol"], "hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
 	elif h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
-		text = "[E] Talk to %s" % n.rec["name"].split(" ")[0]
 		var r := int(n.rec.get("rel", 0))
 		info = {"title": n.rec["name"], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
 			"lines": ["Feels %s toward you (%d)" % ["hostile" if r <= -40 else ("wary" if r < -5 else ("neutral" if r < 15 else "friendly")), r],
@@ -322,13 +427,13 @@ func _update_look_target() -> void:
 		var mat := Durability.material(t)
 		match k:
 			"cache":
-				text = "[E] Open %s" % ObjectLibrary.label(t) if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
+				text = "" if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
 			"trader":
-				text = "%s's stall" % o["st"]["name"]
+				text = ""
 			"built":
-				text = "[LMB] take down (returns the piece)"
+				text = "[%s] take down (returns the piece)" % _key("use")
 			_:
-				text = "[LMB] %s" % ("chop" if mat == "wood" or mat == "fungus" else "break")
+				text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
 		var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
 		if k == "cache" and not o["st"].get("opened", false):
 			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
@@ -342,7 +447,7 @@ func _update_look_target() -> void:
 	elif h.has("chunk"):
 		var held = held_item()
 		var can_dig: bool = held != null and ItemDB.def(held["type"]).has("dig")
-		info = {"title": "Ground", "sub": "Terrain", "lines": ["Dig with a pickaxe or drill for Stone" if not can_dig else "[LMB] dig: leaves a permanent crater"], "icon": "stone"}
+		info = {"title": "Ground", "sub": "Terrain", "lines": ["Dig with a pickaxe or drill for Stone" if not can_dig else "[%s] dig: leaves a permanent crater" % _key("use")], "icon": "stone"}
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
@@ -352,14 +457,29 @@ func _update_look_target() -> void:
 		look_info_changed.emit(info)
 
 func interact() -> void:
+	if not focus.is_empty():
+		match focus["kind"]:
+			"npc":
+				if is_instance_valid(focus["npc"]):
+					get_tree().call_group("dialogue_ui", "open_with", focus["npc"])
+				return
+			"station":
+				get_tree().call_group("trade_ui", "open", "craft")
+				return
+			"cache", "trader":
+				if is_instance_valid(focus["chunk"]):
+					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
+				_focus_t = 0.0
+				return
 	var h := _hit_object()
 	if h.has("npc") and is_instance_valid(h["npc"]):
 		get_tree().call_group("dialogue_ui", "open_with", h["npc"])
 		return
 	if not h.has("obj"):
 		return
-	var chunk: ChunkNode = h["chunk"]
-	var o: Dictionary = chunk.get_object(h["obj"])
+	_use_object(h["chunk"], (h["chunk"] as ChunkNode).get_object(h["obj"]))
+
+func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 	match ObjectLibrary.kind(o["t"]):
 		"cache":
 			if o["st"].get("opened", false):

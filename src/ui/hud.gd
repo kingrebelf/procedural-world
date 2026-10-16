@@ -9,6 +9,13 @@ var _prompt: Label
 var _hotbar: HBoxContainer
 var _slots: Array = []
 var _health: ProgressBar
+var _held_name: Label
+var _use_box: PanelContainer
+var _use_key: Label
+var _use_keycap: PanelContainer
+var _use_verb: Label
+const PAD_FACE := {0: ["A", Color(0.38, 0.75, 0.3)], 1: ["B", Color(0.85, 0.3, 0.27)], 2: ["X", Color(0.3, 0.55, 0.9)], 3: ["Y", Color(0.92, 0.75, 0.25)]}
+const PICK_GLYPHS := ["Y", "B", "X", "A", "←", "→", "↑", "↓"]
 var _health_val: Label
 var _stamina: ProgressBar
 var _stamina_val: Label
@@ -56,36 +63,48 @@ func _ready() -> void:
 	_prompt.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	add_child(_prompt)
 
+	# Ten slots, ARK style: big icons, the key in the corner, the count underneath, and the
+	# held item's name above the bar.
+	const SLOT := 60
+	var w := (SLOT + 5) * Inventory.HOTBAR
+	_held_name = UITheme.label("", 16)
+	_held_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_held_name.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	_pin(_held_name, Control.PRESET_CENTER_BOTTOM, Rect2(-200, -SLOT - 52, 400, 24))
+	add_child(_held_name)
 	_hotbar = HBoxContainer.new()
-	_pin(_hotbar, Control.PRESET_CENTER_BOTTOM, Rect2(-((96 + 6) * 6) / 2.0, -112, (96 + 6) * 6, 90))
-	_hotbar.add_theme_constant_override("separation", 6)
+	_pin(_hotbar, Control.PRESET_CENTER_BOTTOM, Rect2(-w / 2.0, -SLOT - 24, w, SLOT))
+	_hotbar.add_theme_constant_override("separation", 5)
+	_hotbar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_hotbar)
 	for i in Inventory.HOTBAR:
 		var p := PanelContainer.new()
-		p.custom_minimum_size = Vector2(96, 70)
-		var v := VBoxContainer.new()
-		v.add_theme_constant_override("separation", 0)
-		var n := UITheme.label("", 13)
-		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		n.custom_minimum_size = Vector2(80, 0)
-		var q := UITheme.label("", 13, UITheme.DIM)
-		var key := UITheme.label(str(i + 1), 11, UITheme.DIM)
+		p.custom_minimum_size = Vector2(SLOT, SLOT)
+		p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var box := Control.new()
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		p.add_child(box)
 		var ic := TextureRect.new()
-		ic.custom_minimum_size = Vector2(30, 30)
 		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		var top := HBoxContainer.new()
-		top.add_child(key)
-		top.add_child(ic)
-		v.add_child(top)
-		v.add_child(n)
-		v.add_child(q)
-		p.add_child(v)
+		_pin(ic, Control.PRESET_FULL_RECT, Rect2(4, 2, -8, -6))
+		box.add_child(ic)
+		var key := UITheme.label(str((i + 1) % 10), 11, UITheme.DIM)
+		_pin(key, Control.PRESET_TOP_LEFT, Rect2(-4, -8, 30, 16))
+		key.add_theme_constant_override("outline_size", 3)
+		key.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+		box.add_child(key)
+		var q := UITheme.label("", 12)
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_pin(q, Control.PRESET_BOTTOM_RIGHT, Rect2(-50, -12, 54, 16))
+		q.add_theme_constant_override("outline_size", 4)
+		q.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		box.add_child(q)
 		_hotbar.add_child(p)
-		_slots.append({"panel": p, "name": n, "qty": q, "icon": ic})
+		_slots.append({"panel": p, "qty": q, "icon": ic, "key": key})
 
 	var vit := VBoxContainer.new()
-	_pin(vit, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 300, 160))
+	_pin(vit, Control.PRESET_BOTTOM_LEFT, Rect2(24, -178, 260, 160))
 	vit.alignment = BoxContainer.ALIGNMENT_END
 	vit.add_theme_constant_override("separation", 3)
 	vit.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -161,6 +180,7 @@ func _ready() -> void:
 	_breath.visible = false
 	vit.add_child(_breath)
 	_build_look_panel()
+	_build_use_prompt()
 	_feed = VBoxContainer.new()
 	_pin(_feed, Control.PRESET_CENTER_LEFT, Rect2(28, -40, 360, 300))
 	_feed.add_theme_constant_override("separation", 4)
@@ -188,10 +208,11 @@ func _refresh() -> void:
 	for i in Inventory.HOTBAR:
 		var it = Game.inventory.get_slot(i)
 		var s: Dictionary = _slots[i]
-		s["name"].text = ItemDB.display_name(it) if it != null else ""
-		s["qty"].text = ("x%d" % it["qty"]) if it != null and ItemDB.is_stackable(it["type"]) else ""
+		s["qty"].text = ("%d" % it["qty"]) if it != null and ItemDB.is_stackable(it["type"]) else ""
 		s["icon"].texture = Icons.get_icon(it["type"]) if it != null else null
 		var sel := player != null and player.selected == i
+		if sel:
+			_held_name.text = ItemDB.display_name(it) if it != null else ""
 		s["panel"].add_theme_stylebox_override("panel", UITheme.sb(Color(0.08, 0.08, 0.09, 0.8 if sel else 0.55),
 			UITheme.ACCENT if sel else Color(1, 1, 1, 0.1), 6, 2 if sel else 1, 8))
 	_health.max_value = Game.max_health()
@@ -307,6 +328,46 @@ static func _pin(c: Control, preset: int, r: Rect2) -> void:
 	c.offset_right = r.position.x + r.size.x
 	c.offset_bottom = r.position.y + r.size.y
 
+## The floating "[E] Open chest" prompt that hovers over whatever Interact will use.
+func _build_use_prompt() -> void:
+	_use_box = PanelContainer.new()
+	_use_box.add_theme_stylebox_override("panel", UITheme.sb(Color(0.04, 0.045, 0.05, 0.78), Color(1, 1, 1, 0.12), 8, 1, 6))
+	_use_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_use_box.modulate.a = 0.0
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	_use_keycap = PanelContainer.new()
+	_use_keycap.custom_minimum_size = Vector2(26, 26)
+	_use_key = UITheme.label("E", 15, Color(0.08, 0.08, 0.09))
+	_use_key.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_use_key.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_use_keycap.add_child(_use_key)
+	h.add_child(_use_keycap)
+	_use_verb = UITheme.label("", 16)
+	h.add_child(_use_verb)
+	_use_box.add_child(h)
+	add_child(_use_box)
+
+func _update_use_prompt(delta: float) -> void:
+	var f: Dictionary = player.focus
+	var cam := get_viewport().get_camera_3d()
+	var show := not f.is_empty() and cam != null and not cam.is_position_behind(f["pos"]) and not player.ui_open
+	_use_box.modulate.a = move_toward(_use_box.modulate.a, 1.0 if show else 0.0, delta * 8.0)
+	if not show:
+		return
+	_use_verb.text = f["verb"]
+	var spec = Bindings.spec("interact", "pad" if Game.using_pad else "kb")
+	var pad_btn := String(spec).trim_prefix("btn:").to_int() if Game.using_pad and String(spec).begins_with("btn:") else -1
+	if PAD_FACE.has(pad_btn):
+		_use_key.text = PAD_FACE[pad_btn][0]
+		_use_keycap.add_theme_stylebox_override("panel", UITheme.sb(PAD_FACE[pad_btn][1], Color(0, 0, 0, 0.3), 13, 1, 2))
+	else:
+		_use_key.text = Bindings.describe(spec)
+		_use_keycap.add_theme_stylebox_override("panel", UITheme.sb(Color(0.9, 0.88, 0.82), Color(0.45, 0.42, 0.36), 5, 2, 4))
+	_use_box.reset_size()
+	var at := cam.unproject_position(f["pos"])
+	_use_box.position = (at - Vector2(_use_box.size.x * 0.5, _use_box.size.y)).round()
+
 ## A captioned bar: a small label and value above a coloured ProgressBar.
 static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
 	var row := HBoxContainer.new()
@@ -318,7 +379,7 @@ static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
 	row.add_child(val)
 	parent.add_child(row)
 	var b := ProgressBar.new()
-	b.custom_minimum_size = Vector2(300, h)
+	b.custom_minimum_size = Vector2(260, h)
 	b.show_percentage = false
 	b.add_theme_stylebox_override("fill", UITheme.sb(col, Color(0, 0, 0, 0), 4, 0, 0))
 	parent.add_child(b)
@@ -359,6 +420,7 @@ func _on_region(region: String, era: int) -> void:
 func _process(_d: float) -> void:
 	if player == null:
 		return
+	_update_use_prompt(_d)
 	var p := player.global_position
 	var t := fposmod(Game.day, 1.0) * 24.0
 	var heading := int(round(fposmod(-rad_to_deg(player.rotation.y), 360.0)))
@@ -367,6 +429,11 @@ func _process(_d: float) -> void:
 	_under.visible = player.underwater
 	_breath.visible = player.breath < Player.BREATH - 0.01
 	_breath.value = player.breath
+	# On a controller, holding the pick button shows which face button picks each slot.
+	var pick := Game.using_pad and Input.is_action_pressed("hotbar_pick")
+	for i in _slots.size():
+		_slots[i]["key"].text = (PICK_GLYPHS[i] if i < PICK_GLYPHS.size() else "") if pick else ("" if Game.using_pad else str((i + 1) % 10))
+		_slots[i]["key"].add_theme_color_override("font_color", UITheme.ACCENT if pick else UITheme.DIM)
 	_stamina.max_value = Game.max_stamina()
 	_stamina.value = Game.stamina
 	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]
