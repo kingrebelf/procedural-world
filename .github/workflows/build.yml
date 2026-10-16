@@ -31,10 +31,10 @@ jobs:
         run: godot --headless --path . --import || true
 
       - name: Run unit tests
-        run: godot --headless --path . --script res://tests/run_tests.gd
+        run: timeout 900 godot --headless --path . --script res://tests/run_tests.gd
 
       - name: Run end-to-end persistence test
-        run: godot --headless --path . --script res://tests/integration_test.gd
+        run: timeout 900 godot --headless --path . --script res://tests/integration_test.gd
 
       - name: Build games and installer
         run: ./tools/build.sh

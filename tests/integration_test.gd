@@ -166,6 +166,9 @@ func _run() -> void:
 	await _frames(3)
 	check(kc._kit != null and kc._kit.anim.is_playing(), "kit animal is animated (%s)" % kc.label())
 	# Hunting: an animal in front of you takes damage from a swing, wherever it faces.
+	# Hand the test animal to the fauna manager (so aim help finds it), and hold off its
+	# herd refresh, which would free a herd this far from the player.
+	world.fauna._scan = 1.0e9
 	world.fauna._herds[Vector2i(99999, 99999)] = [kc]
 	# Swing bare-handed: an empty hotbar slot, not the building piece left selected above.
 	var bare := Inventory.HOTBAR - 1
@@ -207,6 +210,7 @@ func _run() -> void:
 	player.use_held()
 	check(kc.hp < hp1, "a level swing hits an animal at your feet (%.0f -> %.0f hp)" % [hp1, kc.hp])
 	world.fauna._herds.erase(Vector2i(99999, 99999))
+	world.fauna._scan = 0.0
 	kc.hurt(1.0)
 	kc.die()
 	await _frames(2)
