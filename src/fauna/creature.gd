@@ -26,10 +26,15 @@ var _bite_cd := 0.0
 var _flash := 0.0
 
 const NAMES := [
-	{"quad": ["Red Deer", "Elk", "Wild Boar", "Grey Wolf", "Hare", "Aurochs"], "bird": ["Crow", "Kestrel", "Swallow"]},
-	{"quad": ["Mossback", "Glimmerhart", "Thornhound", "Fae Hare"], "hexa": ["Lantern Strider"], "bird": ["Glowmoth", "Wisp Finch"]},
+	{"quad": ["Red Deer", "Elk", "Wild Boar", "Grey Wolf", "Hare", "Aurochs", "Red Fox", "Wild Horse", "Wild Donkey"], "bird": ["Crow", "Kestrel", "Swallow"]},
+	{"quad": ["Mossback", "Glimmerhart", "Thornhound", "Fae Hare", "Woolly Lumen"], "hexa": ["Lantern Strider"], "bird": ["Glowmoth", "Wisp Finch"]},
 	{"quad": ["Dune Runner"], "hexa": ["Rust Crawler", "Hexapod"], "bird": ["Drift Jelly", "Scout Drone"]},
 ]
+
+## Species drawn with a rigged kit animal (AnimalModel) instead of the procedural body.
+const KIT_OF := {"Red Deer": "Deer", "Elk": "Stag", "Grey Wolf": "Wolf", "Aurochs": "Bull", "Red Fox": "Fox",
+	"Wild Horse": "Horse", "Wild Donkey": "Donkey", "Mossback": "Bull", "Glimmerhart": "Stag",
+	"Thornhound": "Wolf", "Woolly Lumen": "Alpaca", "Dune Runner": "Horse"}
 
 static func species(sp: int, era: int) -> Dictionary:
 	var r := RandomNumberGenerator.new()
@@ -46,7 +51,7 @@ static func species(sp: int, era: int) -> Dictionary:
 		temper = "neutral"
 	if name in ["Grey Wolf", "Thornhound"]:
 		temper = "aggressive"
-	if name in ["Hare", "Fae Hare", "Red Deer", "Glimmerhart"]:
+	if name in ["Hare", "Fae Hare", "Red Deer", "Glimmerhart", "Red Fox", "Wild Horse", "Wild Donkey", "Woolly Lumen"]:
 		temper = "skittish"
 	var size := r.randf_range(0.5, 1.6)
 	if name.contains("Hare"):
@@ -64,7 +69,13 @@ static func species(sp: int, era: int) -> Dictionary:
 		drops = [["alloy_scrap", r.randi_range(1, 3)], ["circuitry", 1]]
 	elif era == Eras.FANTASY and plan == "bird":
 		drops = [["glowberry", 1], ["aether_crystal", 1]]
+	var kit: String = KIT_OF.get(name, "")
+	var kit_scale := r.randf_range(0.88, 1.12)
+	if kit != "":
+		# Body size (bite reach, health) follows the real animal.
+		size = AnimalModel.HEIGHT[kit] / 1.2 * kit_scale
 	return {
+		"kit": kit, "kit_scale": kit_scale,
 		"plan": plan, "name": name, "temper": temper, "size": size, "col": col,
 		"col2": col.lightened(r.randf_range(0.1, 0.4)), "glow": r.randi() % 12,
 		"has_glow": era != Eras.MEDIEVAL and r.randf() < 0.7, "horns": plan == "quad" and r.randf() < 0.4,
@@ -145,6 +156,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 				want = 0.0
 				if _bite_cd <= 0.0:
 					_bite_cd = 1.3
+					if _kit:
+						_kit.play_once("Attack" if _kit.anim.has_animation("Attack") else "Attack_Headbutt")
 					manager.creature_bites(self)
 	_speed = move_toward(_speed, want, delta * 6.0)
 	var pos := global_position
@@ -167,6 +180,16 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	_animate(delta)
 
 func _animate(delta: float) -> void:
+	if _kit:
+		if _speed < 0.15:
+			_kit.play("Eating" if state == "graze" else "Idle")
+		elif _speed < 3.2:
+			_kit.play("Walk", clampf(_speed / 1.4, 0.5, 1.8))
+		else:
+			_kit.play("Gallop", clampf(_speed / 6.0, 0.6, 1.6))
+		if _flash > 0.0:
+			_flash -= delta
+		return
 	var sz: float = p["size"]
 	_phase += delta * (_speed * 4.0 / maxf(sz, 0.3) + (8.0 if p["plan"] == "bird" else 0.0))
 	var amt := clampf(_speed / 2.0, 0.0, 1.2)
@@ -186,12 +209,25 @@ func _animate(delta: float) -> void:
 func hurt(dmg: float) -> bool:
 	hp -= dmg
 	_flash = 0.25
+	if _kit and hp > 0.0:
+		_kit.play_once("Idle_HitReact1")
 	if p["temper"] != "aggressive":
 		state = "flee"
 	else:
 		state = "chase"
 	_think = 2.0
 	return hp <= 0.0
+
+## Killed: kit animals play their death and lie there a moment; others vanish.
+func die() -> void:
+	if _body:
+		_body.queue_free()
+		_body = null
+	if _kit == null:
+		queue_free()
+		return
+	_kit.play_once("Death")
+	get_tree().create_timer(4.0, false).timeout.connect(queue_free)
 
 # --- Model ----------------------------------------------------------------------------
 
@@ -234,9 +270,18 @@ static func _mat(c: Color, emit: bool) -> StandardMaterial3D:
 		_mats[k] = m
 	return _mats[k]
 
+var _kit: AnimalModel
+
 func _build() -> void:
 	_model = Node3D.new()
 	add_child(_model)
+	if AnimalModel.available(p.get("kit", "")):
+		# Medieval animals keep the kit's natural coats; others take the species' colours.
+		var tint = null if era == Eras.MEDIEVAL else p["col"]
+		var glow = Color.from_hsv(float(p["glow"]) / 12.0, 0.7, 1.0) if p["has_glow"] else null
+		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow)
+		_model.add_child(_kit)
+		return
 	var sz: float = p["size"]
 	_model.scale = Vector3(sz, sz, sz)
 	var c: Color = p["col"]

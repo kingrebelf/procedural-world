@@ -50,7 +50,9 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
   what it yields and the best tool.
 - Photo-textured terrain, bark, stone, timber, thatch, plaster and sci-fi panels, with snow on
   high peaks and glowing moss in fantasy lands.
-- Wildlife per region (grazers, predators, flyers) and alien ruins in the wilds.
+- Wildlife per region (grazers, predators, flyers) and alien ruins in the wilds. Deer, elk,
+  wolves, foxes, wild horses, donkeys and aurochs are fully animated, with glowing fantasy
+  and sci-fi variants.
 - No two regions alike: each region rolls its own tree, mushroom, rock and undergrowth species.
 - Wind that bends grass and trees, drives clouds and whips up waves on big water. Swim, dive
   and run out of breath.

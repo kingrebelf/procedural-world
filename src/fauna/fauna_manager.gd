@@ -113,4 +113,4 @@ func player_hit(c: Creature, dmg: float) -> void:
 	Game.add_xp(clampf(float(c.p["hp"]) / 3.0, 5.0, 80.0), "Hunting")
 	if _herds.has(k):
 		_herds[k].erase(c)
-	c.queue_free()
+	c.die()

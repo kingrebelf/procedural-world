@@ -132,6 +132,20 @@ func _run() -> void:
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
+	# Kit animals: a species drawn with a rigged model animates, reacts and dies.
+	var ksp := 0
+	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
+		ksp += 1
+	var kc := Creature.new()
+	kc.setup("test_kit", ksp, Eras.MEDIEVAL, player.global_position + Vector3(6, 0, 0), world.fauna)
+	world.fauna.add_child(kc)
+	await _frames(3)
+	check(kc._kit != null and kc._kit.anim.is_playing(), "kit animal is animated (%s)" % kc.label())
+	kc.hurt(1.0)
+	kc.die()
+	await _frames(2)
+	check(kc._kit._current == "Death" and kc._body == null, "kit animal plays its death and stops being hittable")
+
 	# Console cheats.
 	var con: DevConsole = world.console
 	con.run("god")
