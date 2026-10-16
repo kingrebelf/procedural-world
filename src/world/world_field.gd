@@ -178,15 +178,17 @@ func river_t(x: float, z: float) -> float:
 	var wz := z + _rwarp.get_noise_2d(x + 917.0, z - 433.0) * 60.0
 	return absf(_rivers.get_noise_2d(wx, wz)) / RIVER_W
 
-## Smoothed land level at a river grid node: the average over a 96 m cross.
+## Water level at a river grid node: just below the lowest ground within ~40 m, so the
+## river always sits in the bottom of its valley (never up on an embankment).
 func _river_node(ix: int, iz: int) -> float:
 	var x := ix * RIVER_CELL
 	var z := iz * RIVER_CELL
-	var sum := 0.0
-	for o in [Vector2(0, 0), Vector2(48, 0), Vector2(-48, 0), Vector2(0, 48), Vector2(0, -48),
-			Vector2(34, 34), Vector2(-34, 34), Vector2(34, -34), Vector2(-34, -34)]:
-		sum += height(x + o.x, z + o.y)
-	return sum / 9.0
+	var lo := INF
+	for o in [Vector2(0, 0), Vector2(40, 0), Vector2(-40, 0), Vector2(0, 40), Vector2(0, -40),
+			Vector2(20, 0), Vector2(-20, 0), Vector2(0, 20), Vector2(0, -20),
+			Vector2(28, 28), Vector2(-28, 28), Vector2(28, -28), Vector2(-28, -28)]:
+		lo = minf(lo, height(x + o.x, z + o.y))
+	return lo - 0.4
 
 ## The river's water level at (x, z); `cache` (Vector2i -> float) avoids recomputing nodes.
 func river_level(x: float, z: float, cache: Dictionary) -> float:
@@ -205,22 +207,20 @@ func river_level(x: float, z: float, cache: Dictionary) -> float:
 ## How strongly a river is present (0..1) given the land's height and the water level:
 ## none where the land towers over it, none below the sea.
 static func river_strength(land: float, level: float) -> float:
-	return (1.0 - smoothstep(10.0, 18.0, land - level)) * smoothstep(0.2, 1.2, level)
+	return (1.0 - smoothstep(12.0, 22.0, land - level)) * smoothstep(0.2, 1.2, level)
 
 ## Carves the river channel and banks into a terrain height.
 static func carve_river(h: float, t: float, level: float, m: float) -> float:
 	if m <= 0.0 or t >= 3.0:
 		return h
+	# Fully cut wherever the water shows (strength 0.3 and up), fading below that.
+	m = smoothstep(0.05, 0.3, m)
 	var target: float
 	if t < 1.0:
 		target = level - RIVER_DEPTH * (1.0 - t * t)
 		return lerpf(h, minf(h, target), m)
-	# Banks: cut down to just above the water, and fill low spots into a levee so the
-	# water never spills.
-	var bank := level + 0.35 + (t - 1.0) * (t - 1.0) * 1.6
-	var k := m * (1.0 - smoothstep(1.0, 3.0, t))
+	# Banks: the valley sides slope down to just above the water.
+	var bank := level + 0.3 + (t - 1.0) * (t - 1.0) * 1.4
 	if h > bank:
-		return lerpf(h, bank, k)
-	if t < 1.6:
-		return lerpf(h, level + 0.3, m * (1.0 - smoothstep(1.2, 1.6, t)))
+		return lerpf(h, bank, m * (1.0 - smoothstep(1.0, 3.0, t)))
 	return h
