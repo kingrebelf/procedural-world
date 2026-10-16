@@ -53,7 +53,7 @@ static func species(t: String, sp: int) -> Dictionary:
 				"form": form, "noun": nouns[form],
 				"height": r.randf_range(6.0, 15.0), "width": r.randf_range(1.6, 3.4) * (0.45 if form == "cypress" else 1.0),
 				"tiers": r.randi_range(4, 9), "droop": r.randf_range(0.2, 0.9),
-				"leaf": Color.from_hsv(r.randf_range(0.22, 0.45) if form != "larch" else r.randf_range(0.12, 0.18), r.randf_range(0.35, 0.7), r.randf_range(0.22, 0.45)),
+				"leaf": Color.from_hsv(r.randf_range(0.28, 0.42) if form != "larch" else r.randf_range(0.14, 0.2), r.randf_range(0.35, 0.6), r.randf_range(0.18, 0.34)),
 				"bark": Color.from_hsv(r.randf_range(0.03, 0.09), r.randf_range(0.3, 0.55), r.randf_range(0.2, 0.38)),
 			}
 		"glowcap":
@@ -252,12 +252,12 @@ static func _conifer(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> voi
 		var y := h * (0.18 + t * 0.75)
 		var rad := w * (1.0 - t * 0.85) * r.randf_range(0.85, 1.1)
 		var lc := _jit(leaf, r, 0.1)
-		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.75, 0.05, h / tiers * 1.7, 10, true, 0.25, 2, lc * 0.7)
+		k.cylinder("leaf_core_w", Transform3D.IDENTITY.translated(Vector3(0, y, 0)), rad * 0.55, 0.05, h / tiers * 1.6, 10, true, 0.25, 2, lc * 0.55)
 		var cards := int(10 + rad * 5)
 		for c in cards:
 			var a := TAU * c / cards + r.randf() * 0.3
 			var out := Vector3(cos(a), 0, sin(a))
-			var pos := Vector3(0, y + 0.4, 0) + out * rad * r.randf_range(0.45, 0.8)
+			var pos := Vector3(0, y + r.randf_range(0.0, 0.6), 0) + out * rad * r.randf_range(0.35, 0.8)
 			var b := Basis.looking_at(out, Vector3.UP).rotated(out.cross(Vector3.UP).normalized(), float(p["droop"]) + r.randf() * 0.4)
 			k.card("needle_card_w", Transform3D.IDENTITY, pos, b, rad * 0.9, 1.4, Vector3.UP * 0.5, _jit(lc, r, 0.12))
 	k.card("needle_card_w", Transform3D.IDENTITY, Vector3(0, h + 0.6, 0), Basis(), 0.8, 1.6, Vector3.ZERO, leaf)

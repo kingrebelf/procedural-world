@@ -24,10 +24,11 @@ void vertex() {
 	// Slow whole-crown lean plus faster leaf flutter.
 	float lean = (sin(t * 0.7 + phase) * 0.5 + 0.6) * ws;
 	float flutter = sin(t * (3.0 + ws * 4.0) + VERTEX.x * 2.1 + VERTEX.z * 1.7 + phase * 3.0) * 0.08 * (0.3 + ws);
-	float k = h * h * 0.006 * sway;
+	// Bend grows with height but is capped, so tall trees sway rather than tilt over.
+	float k = min(h * h * 0.006, 0.6) * sway;
 	vec3 wl = (inverse(MODEL_MATRIX) * vec4(wind_dir.x, 0.0, wind_dir.y, 0.0)).xyz;
 	vec2 wd = normalize(wl.xz + vec2(0.0001));
-	VERTEX.xz += wd * k * lean * 3.0;
+	VERTEX.xz += wd * k * lean * 1.2;
 	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * sway;
 	inst_col = COLOR.rgb;
 }
@@ -40,7 +41,9 @@ void fragment() {
 	ALBEDO = tex.rgb * albedo * inst_col;
 	// Bend normals toward the sky: cards facing the ground otherwise render near black.
 	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-	NORMAL = normalize(mix(NORMAL, up_v, 0.55));
+	if (!is_core) {
+		NORMAL = normalize(mix(NORMAL, up_v, 0.55));
+	}
 	ROUGHNESS = 0.8;
 	SPECULAR = 0.35;
 	BACKLIGHT = back * inst_col * 1.4;

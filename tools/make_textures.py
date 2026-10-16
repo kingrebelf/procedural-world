@@ -110,8 +110,8 @@ def make_leaf_card(src, out_name="leaves_card.png", size=512):
     alpha = np.clip((m - 0.07) / 0.08, 0, 1)
     lum = a @ np.array([0.299, 0.587, 0.114])
     mean = lum[alpha > 0.5].mean()
-    grey = np.repeat((lum / mean * 0.8)[..., None], 3, -1)
-    chroma = a / max(mean, 1e-3) * 0.8 * np.array([1.0, 0.85, 1.1])
+    grey = np.repeat((lum / mean * 0.62)[..., None], 3, -1)
+    chroma = a / max(mean, 1e-3) * 0.62 * np.array([1.0, 0.85, 1.1])
     rgb = (grey * 0.75 + chroma * 0.25).clip(0, 1)
     # Bleed leaf colour into the transparent area (coverage-weighted blur, widening until
     # every pixel is filled) so filtering and mipmaps never pull in the black background.

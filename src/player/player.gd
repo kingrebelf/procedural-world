@@ -82,7 +82,11 @@ func _apply_settings() -> void:
 	camera.fov = float(Settings.get_value("fov"))
 
 func get_state() -> Dictionary:
-	return {"pos": global_position, "yaw": _yaw, "pitch": _pitch, "slot": selected}
+	# The world saves from its own _exit_tree, after the player has already left the
+	# tree; the player is a direct child of the (untransformed) world, so position is
+	# the world position.
+	var pos := global_position if is_inside_tree() else position
+	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected}
 
 func set_state(d: Dictionary) -> void:
 	global_position = d.get("pos", global_position)
