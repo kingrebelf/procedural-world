@@ -193,7 +193,13 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
+	# The eye adapts in a few frames instead of seconds: after the night-sky shot the lake
+	# came out white, still exposed for the dark.
+	var ca := (world.atmosphere.get_child(0) as WorldEnvironment).camera_attributes as CameraAttributesPractical
+	var speed := ca.auto_exposure_speed
+	ca.auto_exposure_speed = 20.0
 	await _wait(settle_frames)
+	ca.auto_exposure_speed = speed
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
 	await _wait(3)
