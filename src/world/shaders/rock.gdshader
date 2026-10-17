@@ -15,7 +15,7 @@ uniform float tile = 1.6; // metres per repeat
 // How far (a fraction of the stone's size) its surface heaves in and out by where it
 // lies, so no two stones from one mesh share an outline. 0 for cave shells, whose
 // walls must stay where their collision is.
-uniform float wobble = 0.05;
+uniform float wobble = 0.07;
 uniform vec3 soil_col : source_color = vec3(0.2, 0.16, 0.11);
 uniform vec3 moss_col : source_color = vec3(0.24, 0.3, 0.12);
 const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
