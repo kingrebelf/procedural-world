@@ -32,7 +32,7 @@ func _ready() -> void:
 	_lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(_lines)
 	_input = LineEdit.new()
-	_input.placeholder_text = "Say something (Enter), or /help"
+	_input.placeholder_text = "Say something (Enter), /a to your alliance, or /help"
 	_input.max_length = 240
 	_input.visible = false
 	_input.text_submitted.connect(_send)
@@ -56,6 +56,11 @@ func _on_chat(from: String, text: String, kind: String) -> void:
 			l.text = "[color=#e8c26a]%s:[/color] %s" % [from.replace("[", "[lb]"), safe]
 		"admin":
 			l.text = "[color=#9ab]%s[/color]" % safe
+		"ally":
+			if from != "":
+				l.text = "[color=#7fdc8a][Alliance] %s:[/color] %s" % [from.replace("[", "[lb]"), safe]
+			else:
+				l.text = "[color=#7fdc8a]%s[/color]" % safe
 		_:
 			l.text = "[color=#cfd8b0]%s[/color]" % safe
 	_lines.add_child(l)
@@ -104,7 +109,9 @@ func _send(text: String) -> void:
 	text = text.strip_edges()
 	if text == "":
 		return
-	if text.begins_with("/"):
+	if text.begins_with("/a ") or text.begins_with("/ally "):
+		Net.ally("chat", text.substr(text.find(" ") + 1)) # to your alliance only
+	elif text.begins_with("/"):
 		_on_chat("", "> " + text, "admin")
 		Net.admin(text.substr(1))
 	else:

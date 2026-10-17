@@ -27,6 +27,8 @@ func _ready() -> void:
 	Game.money_changed.connect(func(_m): _refresh())
 	Game.stats_changed.connect(func(): if _mode == "character": _refresh())
 	Game.equipment_changed.connect(func(): if _mode == "inventory" or _mode == "character": _refresh())
+	Net.alliance_changed.connect(func(): if _mode == "players": _refresh())
+	Net.players_changed.connect(func(): if _mode == "players": _refresh())
 	_backdrop = TextureRect.new()
 	var g := Gradient.new()
 	g.colors = PackedColorArray([Color(0, 0, 0, 0.25), Color(0, 0, 0, 0.72)])
@@ -180,6 +182,7 @@ func _refresh() -> void:
 		"portal": _panel = _portal_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
+		"players": _panel = _players_panel()
 	_backdrop.visible = true
 	add_child(_panel)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
@@ -383,6 +386,10 @@ func _pause_panel() -> Control:
 	v.add_child(UITheme.big_button("Resume", close))
 	v.add_child(UITheme.big_button("Character", func(): open("character")))
 	v.add_child(UITheme.big_button("Atlas", func(): open("map")))
+	if Net.is_client():
+		v.add_child(UITheme.big_button("Players and alliance", func():
+			get_tree().paused = false
+			open("players")))
 	v.add_child(UITheme.big_button("Settings", func(): open("settings")))
 	v.add_child(UITheme.big_button("Leave the server" if Net.is_client() else "Save and quit to menu", func():
 		get_tree().paused = false
@@ -398,6 +405,79 @@ func _pause_panel() -> Control:
 		v.add_child(UITheme.label("On %s with %d other%s. Your character is saved on the server." % [Net.info.get("name", "a server"), Net.peers.size(), "" if Net.peers.size() == 1 else "s"], 14, UITheme.DIM))
 	else:
 		v.add_child(UITheme.label("Everything you see is saved the moment it first exists.", 14, UITheme.DIM))
+	return s[0]
+
+## Online: who is here, your alliance and invitations to others.
+const ALLY := Color(0.5, 0.86, 0.54)
+
+func _players_panel() -> Control:
+	var s := _shell("Players", "On %s" % Net.info.get("name", "the server"))
+	var v: VBoxContainer = s[1]
+	s[0].custom_minimum_size = Vector2(640, 0)
+	var on := bool(Net.option("alliances"))
+	var al := Net.alliance
+	var lead: bool = al.get("leader", "") == Net.my_pid
+	if not on:
+		v.add_child(UITheme.label("Alliances are turned off on this server.", 15, UITheme.DIM))
+	elif al.is_empty():
+		v.add_child(UITheme.heading("Alliance"))
+		v.add_child(UITheme.label("Allies can't hurt each other, open each other's locked doors and see each other on the map.", 15, UITheme.DIM))
+		var h := HBoxContainer.new()
+		var nm := LineEdit.new()
+		nm.max_length = 24
+		nm.placeholder_text = "Name your alliance"
+		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(nm)
+		h.add_child(UITheme.button("Found it", func(): Net.ally("create", nm.text)))
+		nm.text_submitted.connect(func(t): Net.ally("create", t))
+		v.add_child(h)
+		for inv in Net.ally_invites:
+			var r := HBoxContainer.new()
+			var l := UITheme.label("%s invites you to %s" % [inv["from"], inv["name"]], 16, ALLY)
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r.add_child(l)
+			var id: String = inv["id"]
+			r.add_child(UITheme.button("Join", func(): Net.ally("accept", id)))
+			r.add_child(UITheme.button("Decline", func(): Net.ally("decline", id)))
+			v.add_child(r)
+	else:
+		v.add_child(UITheme.heading("Alliance: %s" % al["name"]))
+		var here := {}
+		for p in Net.peers.values():
+			here[p["pid"]] = true
+		for pid in al["members"]:
+			var r := HBoxContainer.new()
+			var me: bool = pid == Net.my_pid
+			var tag := "  (leader)" if pid == al["leader"] else ""
+			var l := UITheme.label(String(al["members"][pid]) + (" (you)" if me else "") + tag, 16, ALLY if me or here.has(pid) else UITheme.DIM)
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			r.add_child(l)
+			if not me:
+				r.add_child(UITheme.label("online" if here.has(pid) else "away", 13, UITheme.DIM))
+				if lead:
+					var who: String = pid
+					r.add_child(UITheme.button("Make leader", func(): Net.ally("lead", who)))
+					r.add_child(UITheme.button("Remove", func(): Net.ally("kick", who)))
+			v.add_child(r)
+		v.add_child(UITheme.label("Type /a and a message in chat (T) to talk to your alliance.", 14, UITheme.DIM))
+		v.add_child(UITheme.button("Leave %s" % al["name"], func(): Net.ally("leave")))
+	v.add_child(UITheme.divider())
+	v.add_child(UITheme.heading("Online now"))
+	if Net.peers.is_empty():
+		v.add_child(UITheme.label("Nobody else is here right now.", 15, UITheme.DIM))
+	for p in Net.peers.values():
+		var r := HBoxContainer.new()
+		var pid: String = p["pid"]
+		var l := UITheme.label(String(p["name"]), 16, ALLY if Net.allied(pid) else UITheme.TEXT)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(l)
+		if int(p["planet"]) == Game.planet and player:
+			r.add_child(UITheme.label("%d m" % int(player.global_position.distance_to(p["pos"])), 13, UITheme.DIM))
+		if Net.allied(pid):
+			r.add_child(UITheme.label("Ally", 13, ALLY))
+		elif on and not al.is_empty():
+			r.add_child(UITheme.button("Invite", func(): Net.ally("invite", pid)))
+		v.add_child(r)
 	return s[0]
 
 func _settings_panel() -> Control:

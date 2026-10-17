@@ -91,11 +91,27 @@ debts, what people remember) are merged on the server, so two players changing t
 same place at once both keep their changes. With `pvp=false` players can't hurt each
 other.
 
+## Finding a server
+
+Join Server lists servers on your local network by themselves (servers answer on UDP
+port 24599 while `lan_discovery=true`), plus your favourites and the servers you joined
+before, each with its description, players, ping and whether it needs a password.
+Other players reach a server over the internet by its address (forward the game port,
+24600 by default, for UDP).
+
+## Alliances
+
+With `alliances=true`, players found an alliance from Players and alliance on the
+pause menu and invite others who are online (up to `max_alliance` members). Allies
+can't hurt each other even with PvP on, can open each other's locked doors, see each
+other on the map and the minimap, and talk with `/a <message>` in chat. The leader can
+remove members or hand over leadership; when the leader leaves, the next member leads.
+
 ## What is saved where
 
 Everything lives in `worlds/<world>/` beside the server: the land (`chunks/`), the
 people of each town (`people/`), each player's character (`players/`), the world clock
-(`world.dat`) and bans (`bans.dat`). Back up that folder to back up the world. Players
+(`world.dat`), alliances (`alliances.dat`) and bans (`bans.dat`). Back up that folder to back up the world. Players
 are known by a secret key their game makes, so nobody can take over someone's
 character by using their name.
 

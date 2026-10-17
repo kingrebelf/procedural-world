@@ -1019,7 +1019,7 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 					(o["st"]["loot"] as Array).append(Treasure.make_map(era, Game.origin_here("found", era, chunk.key)))
 				Game.mark_chunk_dirty(chunk.data)
 			var wp: Vector3 = chunk.position + o["p"]
-			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.owns_house_at(wp) else {}
+			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.may_use_house_at(wp) else {}
 			if not town.is_empty() and not _pick_lock(chunk, o, wp):
 				return
 			var loot: Array = o["st"]["loot"]
@@ -1055,7 +1055,7 @@ func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
 	if use["kind"] != "cache" or npcs == null or o["st"].has("wonder"):
 		return use["verb"]
 	var town := npcs.town_at(wp)
-	if town.is_empty() or Game.owns_house_at(wp):
+	if town.is_empty() or Game.may_use_house_at(wp):
 		return use["verb"]
 	var lock := lock_of(o)
 	if lock > 0:
@@ -1816,7 +1816,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		o["st"]["loot"] = []
 		if o["st"].has("treasure"):
 			Game.finish_treasure(int(o["st"]["treasure"]))
-		if spilled > 0 and npcs and not Game.owns_house_at(chunk.position + o["p"]):
+		if spilled > 0 and npcs and not Game.may_use_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
 		if k == "structure" or k == "trader":

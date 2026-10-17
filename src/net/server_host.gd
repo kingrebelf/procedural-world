@@ -40,6 +40,7 @@ var _save_t := 0.0
 var _clock_t := 0.0
 var mp: SceneMultiplayer
 var sync: ServerSync
+var alliances: ServerAlliances
 
 func start(c: ServerConfig) -> Error:
 	cfg = c
@@ -48,6 +49,7 @@ func start(c: ServerConfig) -> Error:
 		return ERR_CANT_OPEN
 	_load_index()
 	sync = ServerSync.new(self)
+	alliances = ServerAlliances.new(self, root.path_join("alliances.dat"))
 	use_ai()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(cfg.port, cfg.max_players + 4, 3)
@@ -216,6 +218,8 @@ func _on_peer_connected(peer: int) -> void:
 	for p in online:
 		if p != peer:
 			Net.c_joined.rpc_id(p, _card(peer))
+	alliances.rename(o["pid"], o["name"])
+	tell_alliance(o["pid"], alliances.view(o["pid"]))
 
 func _card(peer: int) -> Dictionary:
 	var o: Dictionary = online[peer]
@@ -257,6 +261,11 @@ func player_save(peer: int, data: PackedByteArray) -> void:
 	if int(d.get("planet", o["planet"])) != int(o["planet"]):
 		sync.drop_peer(peer, int(o["planet"]))
 	o["planet"] = int(d.get("planet", o["planet"]))
+	var hs: Array = []
+	for e in d.get("estates", []) if d.get("estates") is Array else []:
+		if e is Dictionary and e.has("x") and e.has("z"):
+			hs.append([int(e.get("planet", 0)), float(e["x"]), float(e["z"])])
+	alliances.set_homes(o["pid"], hs.slice(0, 32))
 	if d.get("pos") is Vector3:
 		o["pos"] = d["pos"]
 
@@ -582,7 +591,7 @@ func hurt_player(peer: int, target: int, dmg: float, cause: String, pvp: bool) -
 	if a["planet"] != b["planet"]:
 		return
 	if pvp:
-		if not bool(cfg.options.get("pvp", true)):
+		if not bool(cfg.options.get("pvp", true)) or alliances.allied(a["pid"], b["pid"]):
 			return
 		if (a["pos"] as Vector3).distance_to(b["pos"]) > HIT_RANGE:
 			return
@@ -622,6 +631,44 @@ func ai_chat(peer: int, id: int, system: String, messages: Array, background: bo
 
 # --- Clock and saving ---------------------------------------------------------------------------
 
+# --- Alliances ---------------------------------------------------------------------------
+
+const ALLY_EVERY := 2.0 ## seconds between allies' map positions
+var _ally_t := 0.0
+
+func ally(peer: int, cmd: String, arg: String) -> void:
+	if online.has(peer) and not online[peer].has("pending"):
+		alliances.command(online[peer]["pid"], online[peer]["name"], cmd.substr(0, 16), arg.substr(0, 240))
+
+func option(k: String):
+	return cfg.options.get(k, ServerConfig.OPTIONS.get(k))
+
+func peer_of(pid: String) -> int:
+	var q := pid_online(pid)
+	return q if q != 0 and not online[q].has("pending") else 0
+
+func tell_alliance(pid: String, v: Array) -> void:
+	var q := peer_of(pid)
+	if q != 0:
+		Net.c_alliance.rpc_id(q, v[0], v[1])
+
+func ally_note(pid: String, text: String) -> void:
+	var q := peer_of(pid)
+	if q != 0:
+		Net.c_chat.rpc_id(q, "", text, "ally")
+
+func ally_chat(pid: String, from: String, text: String) -> void:
+	var q := peer_of(pid)
+	if q != 0:
+		Net.c_chat.rpc_id(q, from, text, "ally")
+
+func _send_ally_positions() -> void:
+	var at := alliances.positions()
+	for pid in at:
+		var q := peer_of(pid)
+		if q != 0:
+			Net.c_allies_at.rpc_id(q, at[pid])
+
 ## Answers "who's there?" from Join Server screens on the local network.
 var _lan: PacketPeerUDP
 
@@ -652,6 +699,10 @@ func _process(delta: float) -> void:
 	if _lan != null:
 		_answer_lan()
 	_collect()
+	_ally_t -= delta
+	if _ally_t <= 0.0:
+		_ally_t = ALLY_EVERY
+		_send_ally_positions()
 	match String(cfg.options["time"]):
 		"day": day = floorf(day) + NOON
 		"night": day = floorf(day) + NIGHT
@@ -706,6 +757,9 @@ func chat(peer: int, text: String) -> void:
 	if text == "":
 		return
 	var o: Dictionary = online[peer]
+	if text.begins_with("/a ") or text.begins_with("/ally "):
+		alliances.command(o["pid"], o["name"], "chat", text.substr(text.find(" ") + 1))
+		return
 	if text.begins_with("/"):
 		admin_from(peer, text.substr(1))
 		return

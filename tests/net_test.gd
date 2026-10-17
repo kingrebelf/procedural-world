@@ -5,7 +5,7 @@ extends SceneTree
 ## edits a chunk, checks that the server saved it and pushed it to a second player (a
 ## separate process, tests/net_peer.gd), that his edit from an older copy is merged with
 ## yours instead of undoing it, that one of you runs the animals and the other sees them,
-## PvP (on, then off), the server lending its villager AI, and that your save comes back
+## PvP (on, then off), alliances, the server lending its villager AI, and that your save comes back
 ## when you rejoin.
 
 const PORT := 24731
@@ -218,6 +218,26 @@ func _run() -> void:
 	var bob_peer: int = net.peers.keys()[0] if net.peers.size() > 0 else 0
 	net.hurt_player(bob_peer, 10.0, "", true)
 	check(await _until(func(): return _said("hurt") != "", 600), "with PvP on, your blow hurts Bob (%s)" % str(_heard))
+
+	# Alliances: found one, invite Bob; allies can't hurt each other and share a chat.
+	var ally_lines: Array = []
+	net.chat.connect(func(f, text, k): if k == "ally": ally_lines.append([f, text]))
+	net.ally("create", "Test Alliance")
+	check(await _until(func(): return net.alliance.get("name", "") == "Test Alliance", 600), "you found an alliance (%s)" % net.alliance)
+	var bob_pid: String = net.peers[bob_peer]["pid"] if net.peers.has(bob_peer) else ""
+	net.ally("invite", bob_pid)
+	check(await _until(func(): return _said("ally") == "ally Test Alliance", 900), "Bob accepts your invitation (%s)" % str(_heard))
+	check(await _until(func(): return net.allied(bob_pid), 600) and not net.may_hurt(bob_pid), "and he is your ally")
+	check(await _until(func(): return net.allies_where().any(func(e): return e[0] == bob_pid), 600), "you see where your ally is")
+	var hurts := _heard.filter(func(h): return String(h).begins_with("hurt")).size()
+	net.hurt_player(bob_peer, 10.0, "", true)
+	await _frames(90)
+	check(_heard.filter(func(h): return String(h).begins_with("hurt")).size() == hurts, "allies can't hurt each other, even with PvP on")
+	net.ally("chat", "hold the bridge")
+	check(await _until(func(): return ally_lines.any(func(l): return l[0] == "Alice" and l[1] == "hold the bridge"), 600), "alliance chat")
+	check(FileAccess.file_exists(_data.path_join("worlds/nt/alliances.dat")), "the server keeps alliances")
+	net.ally("leave")
+	check(await _until(func(): return not net.allied(bob_pid) and net.alliance.is_empty(), 600), "you can leave your alliance")
 
 	# Chat commands and admin.
 	var replies: Array = []

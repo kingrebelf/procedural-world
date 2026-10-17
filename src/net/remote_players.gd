@@ -94,6 +94,7 @@ class Puppet extends Node3D:
 		tag.position.y = 2.1 + seat.y
 	func push(rec: Dictionary) -> void:
 		_samples.append([Time.get_ticks_msec(), rec["pos"], float(rec["yaw"])])
+		tag.modulate = Color(0.6, 1.0, 0.62) if Net.allied(String(rec["pid"])) else Color(1, 0.95, 0.85)
 		while _samples.size() > 8:
 			_samples.pop_front()
 		if body == null:

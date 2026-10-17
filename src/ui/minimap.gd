@@ -165,6 +165,15 @@ func _draw_over() -> void:
 			MapCanvas.draw_marker(_over, mk, at[0], 7.0)
 		else:
 			_edge_pin(c + (at[2] as Vector2).normalized() * (r - 7.0), col, Vector2(mk["x"], mk["z"]).distance_to(me))
+	# Your allies, wherever they are.
+	for al in Net.allies_where():
+		if int(al[2]) != Game.planet:
+			continue
+		var at: Array = _place(al[3].x, al[3].z)
+		if at[1]:
+			MapCanvas.draw_ally(_over, at[0], 4.0)
+		else:
+			_edge_pin(c + (at[2] as Vector2).normalized() * (r - 7.0), Color(0.42, 0.86, 0.5), Vector2(al[3].x, al[3].z).distance_to(me))
 	# The rim: a dark band, a thin gold line and the compass points turning with you.
 	_over.draw_arc(c, r - 1.0, 0, TAU, 72, Color(0.04, 0.05, 0.06, 0.85), 5.0, true)
 	_over.draw_arc(c, r - 3.5, 0, TAU, 72, UITheme.ACCENT * Color(1, 1, 1, 0.75), 1.2, true)

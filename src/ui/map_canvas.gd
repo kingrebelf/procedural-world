@@ -217,6 +217,12 @@ static func draw_ore(ci: CanvasItem, o: Dictionary, p: Vector2, s: float) -> voi
 	draw_icon(ci, "mine", p, s * 1.6)
 
 ## A person: a dot, gold for traders, and a ring for people you have spoken with.
+## Someone in your alliance: a green disc ringed in white.
+static func draw_ally(ci: CanvasItem, p: Vector2, s: float) -> void:
+	ci.draw_circle(p, s + 1.5, Color(0, 0, 0, 0.65))
+	ci.draw_circle(p, s, Color(0.42, 0.86, 0.5))
+	ci.draw_arc(p, s, 0, TAU, 20, Color(1, 1, 1, 0.9), 1.5, true)
+
 static func draw_person(ci: CanvasItem, p: Vector2, s: float, trader: bool, met: bool) -> void:
 	ci.draw_circle(p, s + 1.0, Color(0, 0, 0, 0.6))
 	ci.draw_circle(p, s, Color(1.0, 0.8, 0.35) if trader else Color(0.95, 0.92, 0.85))
