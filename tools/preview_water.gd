@@ -1,18 +1,22 @@
 extends SceneTree
 ## Renders a patch of lake (src/env/water.gdshader) over a sloping sandy bed, for judging
 ## the water's colour, see-through, foam and reflections:
-##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20]
+##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20] [--river]
+## --river uses the river shader instead (flowing diagonally, no edge fade).
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
 	var out := "user://water.png"
 	var pitch := -18.0
+	var shader := "res://src/env/water.gdshader"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
 		elif a.begins_with("--pitch="):
 			pitch = float(a.substr(8))
+		elif a == "--river":
+			shader = "res://src/env/river.gdshader"
 	get_root().size = Vector2i(1600, 900)
 	RenderingServer.global_shader_parameter_set("sun_dir_g", Vector3(0.4, 0.6, 0.3).normalized())
 	RenderingServer.global_shader_parameter_set("wind_dir", Vector2(1, 0.3))
@@ -50,7 +54,7 @@ func _run() -> void:
 	wm.subdivide_depth = 200
 	water.mesh = wm
 	var mat := ShaderMaterial.new()
-	mat.shader = load("res://src/env/water.gdshader")
+	mat.shader = load(shader)
 	water.material_override = mat
 	get_root().add_child(water)
 	var cam := Camera3D.new()
