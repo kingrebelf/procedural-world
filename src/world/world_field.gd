@@ -288,7 +288,7 @@ const LANDFORM_ODDS := [
 const LANDFORM_LOOK := [
 	[Color(0, 0, 0), 0.0, Color(0, 0, 0), 0.0, 0.0, 0.0],
 	[Color(0.66, 0.64, 0.58), 0.85, Color(0, 0, 0), 0.0, 0.0, 0.45], # karst: pale limestone
-	[Color(0.24, 0.23, 0.27), 0.9, Color(0, 0, 0), 0.0, 0.0, 0.0], # needles: dark basalt
+	[Color(0.24, 0.23, 0.27), 0.9, Color(0, 0, 0), 0.0, 0.0, 0.35], # needles: dark basalt, faintly banded
 	[Color(0.6, 0.58, 0.52), 0.8, Color(0, 0, 0), 0.0, 0.0, 0.6], # sinkholes: limestone
 	[Color(0.55, 0.5, 0.48), 0.75, Color(0, 0, 0), 0.0, 0.0, 0.0], # crags: granite
 	[Color(0.68, 0.4, 0.25), 0.9, Color(0.62, 0.45, 0.3), 0.35, 0.0, 1.0], # gorges: red sandstone
@@ -396,7 +396,12 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 				return Vector3(base, 0.0, 0.0)
 			var t := (cl.y - 0.5) / 0.5
 			var r := 7.0 + 5.0 * t
-			var q := clampf((cl.x + _detail.get_noise_2d(x, z) * 1.2) / r, 0.0, 2.0)
+			var bumps := _detail.get_noise_2d(x, z) * 1.2
+			if terrain_v >= 12:
+				# v12: no two alike and none a perfect cone: leaning, lopsided, with
+				# weathered grooves running down their sides.
+				bumps += _moss.get_noise_2d(x * 0.7, z * 0.7) * 3.0 + _detail.get_noise_2d(x * 3.2 + 91.0, z * 3.2) * 0.8
+			var q := clampf((cl.x + bumps) / r, 0.0, 2.0)
 			var spike := (26.0 + 50.0 * t) * pow(maxf(0.0, 1.0 - q), 1.7) + 3.0 * (1.0 - smoothstep(0.7, 1.6, q))
 			return Vector3(base, 0.0, spike * smoothstep(0.0, 3.0, cl.z))
 		LF_SINKHOLES:
