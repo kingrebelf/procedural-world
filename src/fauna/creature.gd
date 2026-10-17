@@ -398,6 +398,25 @@ func blocked(x: float, z: float) -> bool:
 ## The way to walk from `pos` heading `dir`: straight on if the ground ahead is clear,
 ## else the nearest clear bearing to either side, or ZERO if none is. An animal already
 ## in the water (chased in, or swimming) may keep going until it is out.
+## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
+## goal has swung round: same path, a tenth of the ground probes and rays.
+var _steer_at := Vector3.INF
+var _steer_from := Vector3.ZERO
+var _steer_turn := 0.0
+
+func _steer_cached(pos: Vector3, dir: Vector3) -> Vector3:
+	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
+	if pos.distance_squared_to(_steer_at) < reach * reach * 0.0625 and dir.dot(_steer_from) > 0.995:
+		return dir.rotated(Vector3.UP, _steer_turn)
+	var d := _steer(pos, dir)
+	if d == Vector3.ZERO:
+		_steer_at = Vector3.INF
+		return d
+	_steer_at = pos
+	_steer_from = dir
+	_steer_turn = dir.signed_angle_to(d, Vector3.UP)
+	return d
+
 func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
 	var wet_here := blocked_wet(pos.x, pos.z)
@@ -541,7 +560,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	if dir.length() > 0.05 and _speed > 0.01:
 		dir = dir.normalized()
 		if walks:
-			dir = _steer(pos, dir)
+			dir = _steer_cached(pos, dir)
 			if dir == Vector3.ZERO:
 				# Hemmed in by rock or water this way: stop and go somewhere else.
 				_speed = 0.0
