@@ -4055,9 +4055,21 @@ func test_boats_on_the_water() -> void:
 		var d: Dictionary = Boats.KINDS[s["boat"]]
 		check(float(s["clear"]) >= float(d["len"]) * 0.5 + 10.0, "%s fits its lake (clear %d m)" % [s["boat"], s["clear"]])
 		# Its loop stays on deep water.
-		for i in 12:
-			var p: Vector2 = Boats.pose_at(s, float(i) * 97.0)[0]
+		for i in 48:
+			var p: Vector2 = Boats.pose_at(s, float(i) * 37.0)[0]
 			check(gen.field.height(p.x, p.y) < 0.0, "%s sails on water at %s" % [s["boat"], p])
+		# Under way she keeps to her pace (no jumps), and she stops at anchor now and then.
+		var v := float(d["moves"])
+		if v > 0.0 and float(s["loop"]) > 0.0:
+			var still := 0
+			var prev: Vector2 = Boats.pose_at(s, 0.0)[0]
+			for i in range(1, 1200):
+				var q: Vector2 = Boats.pose_at(s, float(i))[0]
+				check(q.distance_to(prev) < v * 1.6 + 0.01, "%s never jumps along her loop (%.2f m in 1 s)" % [s["boat"], q.distance_to(prev)])
+				if q.distance_to(prev) < 0.001:
+					still += 1
+				prev = q
+			check((still > 30) == (float(d.get("rest", 0.0)) > 0.0), "%s lies at anchor between passages (%d s still)" % [s["boat"], still])
 		var era := int(d["era"])
 		var tech := WorldField.dominant(gen.field.era_weights(c.x, c.y)) == Eras.SCIFI
 		check((era == Eras.SCIFI) == tech, "%s matches the land's era" % s["boat"])
@@ -4077,6 +4089,26 @@ func test_boats_on_the_water() -> void:
 	Eras.theme = old_theme
 	WorldField.allowed_eras = old_eras
 	WorldField.terrain_v = old_v
+
+func test_boat_wake_waves() -> void:
+	# A cog at 2.6 m/s heading -z with her bow at the origin: her wake stands up behind her
+	# (both up and down), stays out of her hull and out of the water ahead of her.
+	var bm := BoatManager.new()
+	bm._wakes = [[Vector4(0, 0, 0, -1), Vector4(2.6, 20.0, 3.2, 1.0)]]
+	var hi := -1.0
+	var lo := 1.0
+	for z in range(0, 80):
+		for x in [-12.0, -6.0, 0.0, 6.0, 12.0]:
+			var h := bm.wake_at(x, float(z))
+			hi = maxf(hi, h)
+			lo = minf(lo, h)
+	check(hi > 0.08 and lo < -0.05, "a boat under way raises crests and troughs behind her (%.2f .. %.2f m)" % [hi, lo])
+	check(absf(bm.wake_at(0.0, 10.0)) < 0.02, "no wake inside her hull")
+	check(absf(bm.wake_at(0.0, -40.0)) < 0.001, "no wake ahead of her")
+	check(hi <= Water.WAKE_MAX and lo >= -Water.WAKE_MAX, "wakes stay within WAKE_MAX")
+	bm._wakes = []
+	check(bm.wake_at(0.0, 20.0) == 0.0, "no boats, no wake")
+	bm.free()
 
 func test_boat_models() -> void:
 	for k in Boats.KINDS:
