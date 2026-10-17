@@ -166,8 +166,13 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	_dress_up(era)
 	if style != "":
 		_add_hair(style, hair_col, BodyShape.thinning(b, age), b["skin"])
-	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
-		_add_hair("Hair_Beard", hair_col)
+	# Facial hair follows the hair colour (and greys a little sooner); sci-fi faces are
+	# clean-shaven or stubbled.
+	var bs := BodyShape.beard(b, age)
+	if era == Eras.SCIFI:
+		bs = mini(bs, 1)
+	if bs > 0:
+		_add_hair("Hair_Beard", BodyShape.hair_color(b, age + 5 if age >= 0 else age), 0.0, b["skin"], bs)
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
@@ -347,7 +352,8 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 
 ## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
 ## `thin` lets the scalp show through at the crown.
-func _add_hair(style: String, col: Color, thin := 0.0, scalp := Color(0, 0, 0, 0)) -> void:
+## `beard`: BodyShape.beard() style, for the beard mesh.
+func _add_hair(style: String, col: Color, thin := 0.0, scalp := Color(0, 0, 0, 0), beard := 0) -> void:
 	var path := DIR + style + ".gltf"
 	if not ResourceLoader.exists(path):
 		return
@@ -368,9 +374,15 @@ func _add_hair(style: String, col: Color, thin := 0.0, scalp := Color(0, 0, 0, 0
 		mi.set_instance_shader_parameter("thin", thin)
 		mi.set_instance_shader_parameter("scalp_col", scalp)
 		var lift: float = HairStrands.LIFT.get(style, 0.0)
+		if beard == 1:
+			lift = -0.0045 # stubble lies on the skin
 		mi.set_instance_shader_parameter("lift", lift)
-		var layers: Array = HairStrands.shells(mi, style)
+		mi.set_instance_shader_parameter("beard", float(beard))
+		var layers: Array = [] if beard == 1 else HairStrands.shells(mi, style)
 		for sh in layers:
+			sh.set_instance_shader_parameter("beard", float(beard))
+			if beard == 4:
+				sh.set_instance_shader_parameter("shell_depth", HairStrands.DEPTH[style] * 0.5)
 			sh.set_instance_shader_parameter("hair_col", col)
 			sh.set_instance_shader_parameter("strands", 1.0)
 			sh.set_instance_shader_parameter("thin", thin)

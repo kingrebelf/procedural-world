@@ -25,6 +25,9 @@ instance uniform float cap_y = 99.0;
 // The base layer stands this far off the scalp (m), so the head can't push through it
 // where the kit mesh hugs the skull (a parting, a buzz cut).
 instance uniform float lift = 0.0;
+// Beard style (BodyShape.beard): 1 stubble, 2 moustache, 3 goatee, 4 short, 5 full; the
+// kit beard mesh covers the whole jaw and is cut down to the style.
+instance uniform float beard = 0.0;
 
 varying vec4 rest;
 varying vec3 flow;
@@ -91,6 +94,22 @@ void fragment() {
 		} else if (sparse > 0.0) {
 			keep = step(sparse + 0.15 * tip, s);
 		}
+		if (beard > 0.5 && beard < 3.5) {
+			// Regions of the beard mesh (rest metres: mouth about 1.63 up, face forward
+			// +z), their edges broken by the strands.
+			float e = (s - 0.5) * 0.01;
+			float ax = abs(rest.x);
+			float lip = step(1.612 + e, rest.y) * step(rest.y, 1.648 + e) * step(ax, 0.042 + e) * step(0.055, rest.z);
+			float chin = step(rest.y, 1.618 + e) * step(ax, 0.03 + e) * step(0.045, rest.z);
+			if (beard < 1.5) {
+				// Stubble: sparse fine dots close up; further off, a shadow on the skin.
+				keep *= step(0.62 * smoothstep(0.35, 0.65, hi), fine);
+			} else if (beard < 2.5) {
+				keep *= lip;
+			} else {
+				keep *= max(lip, chin);
+			}
+		}
 		// Thinning hair: the scalp shows between single strands, most at the crown. Cut
 		// by the strand pattern alone (cut by the clumps it read as a patchy wig), and
 		// only while strands are big enough to see; further off the scalp tints the hair.
@@ -106,7 +125,11 @@ void fragment() {
 		float ao = mix(0.55, 1.0, clamp(shell * 0.8 + tip * 0.35 + 0.2, 0.0, 1.0));
 		vec3 col = hair_col.rgb * (0.5 + 0.8 * s) * (0.9 + 0.2 * wave) * mix(1.0, lum, 0.2) * ao;
 		if (scalp_col.a > 0.0) {
-			col = mix(col, scalp_col.rgb, bare * 0.6 * (1.0 - near));
+			float skin = bare * 0.6 * (1.0 - near);
+			if (beard > 0.5 && beard < 1.5) {
+				skin = 0.7 * (1.0 - smoothstep(0.35, 0.65, hi));
+			}
+			col = mix(col, scalp_col.rgb, skin);
 		}
 		ALBEDO = col;
 		// Each strand a little round: the normal tips across it with the strand pattern.
