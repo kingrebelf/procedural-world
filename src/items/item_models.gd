@@ -50,7 +50,7 @@ const SHAPES := {
 	"bronze_ingot": ["bar", Color(0.8, 0.58, 0.34), 0.38, Color(0.3, 0.42, 0.32), 0.18, 0.15, "oxhide"],
 	"silver_ingot": ["bar", Color(0.95, 0.94, 0.92), 0.25, Color(0.36, 0.33, 0.3), 0.22, 0.14, "bar"],
 	"silver_bar": ["bar", Color(0.95, 0.94, 0.92), 0.2, Color(0.36, 0.33, 0.3), 0.12, 0.17, "bar"],
-	"gold_ingot": ["bar", Color(1.0, 0.78, 0.36), 0.14, Color(0.8, 0.55, 0.25), 0.05, 0.13, "bar"],
+	"gold_ingot": ["bar", Color(1.0, 0.8, 0.42), 0.24, Color(0.8, 0.55, 0.25), 0.05, 0.13, "bar"],
 	"mythril_ingot": ["bar", Color(0.78, 0.9, 0.98), 0.18, Color(0.55, 0.75, 0.9), 0.1, 0.15, "bar"],
 	"titanium_ingot": ["bar", Color(0.62, 0.6, 0.58), 0.4, Color(0.5, 0.42, 0.6), 0.25, 0.16, "billet"],
 	"voidsteel_ingot": ["bar", Color(0.22, 0.2, 0.28), 0.25, Color(0.4, 0.2, 0.6), 0.3, 0.16, "billet"],
@@ -502,7 +502,7 @@ static func _oxhide(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: flo
 	for i in 10:
 		_disc(k, m, xf, Vector3(r.randf_range(-0.04, 0.04), th * 0.5 + 0.0003, r.randf_range(-0.07, 0.07)), Vector3.UP, r.randf_range(0.0015, 0.004), 7, col.darkened(0.15))
 
-static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float, patina: Color, amount: float, length: float, t: String) -> void:
+static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float, _patina_col: Color, _amount: float, length: float, _t: String) -> void:
 	var m := "im:metal@%.2f" % rough
 	var hw := length * 0.27
 	var ht := length * 0.17
@@ -517,38 +517,24 @@ static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float,
 	for i in 9:
 		var p := Vector3(r.randf_range(-0.38, 0.38) * length, -ht * 0.5 - 0.0004, r.randf_range(-0.7, 0.7) * hw)
 		_disc(k, m, xf, p, Vector3.DOWN, r.randf_range(0.003, 0.008), 7, c.darkened(0.35))
-	# The maker's stamp: a sunk rectangular cartouche across the top near one end, its floor
-	# dark, the maker's letters left standing in it (short strokes, as struck lettering
-	# reads at arm's length), and a smaller serial punch beside it.
-	var top_y := ht * 0.5 + 0.0004
-	var dark := c.darkened(0.12)
+	# Foundry marks struck straight into the metal near one end: a short line of maker's
+	# letters and a serial, each stroke a shallow dark nick, slightly uneven in spacing
+	# and depth, with no panel round them.
+	var top_y := ht * 0.5 + 0.0003
 	var cx := -length * 0.22
-	var cw2 := hw * 0.55
-	var ch2 := length * 0.06
-	_quad(k, m, xf, Vector3(cx - ch2, top_y, -cw2), Vector3(cx + ch2, top_y, -cw2), Vector3(cx + ch2, top_y, cw2), Vector3(cx - ch2, top_y, cw2), Vector3.UP, dark)
-	var letters := 4
-	for i in letters:
-		var lz := lerpf(-cw2 * 0.75, cw2 * 0.75, (i + 0.5) / letters)
-		for st in 2 + r.randi() % 2:
-			var a0 := Vector3(cx + r.randf_range(-0.6, 0.6) * ch2, top_y + 0.0002, lz + r.randf_range(-0.25, 0.25) * cw2 / letters)
-			var a1 := Vector3(cx + r.randf_range(-0.6, 0.6) * ch2, top_y + 0.0002, lz + r.randf_range(-0.25, 0.25) * cw2 / letters)
-			var w := (a1 - a0).cross(Vector3.UP).normalized() * 0.0007
-			_quad(k, m, xf, a0 - w, a1 - w, a1 + w, a0 + w, Vector3.UP, c.darkened(0.45))
-	var sx := cx + ch2 + length * 0.05
-	_quad(k, m, xf, Vector3(sx - 0.003, top_y, -cw2 * 0.6), Vector3(sx + 0.003, top_y, -cw2 * 0.6), Vector3(sx + 0.003, top_y, cw2 * 0.6), Vector3(sx - 0.003, top_y, cw2 * 0.6), Vector3.UP, c.darkened(0.25))
-	# Tarnish: dull patches over the faces.
-	for i in int(amount * 10.0):
-		var u := r.randf_range(-0.4, 0.4) * length
-		var pc := c.lerp(patina, r.randf_range(0.25, 0.5))
-		var rad := r.randf_range(0.004, 0.012)
-		var face := r.randi() % 3
-		if face == 0:
-			_disc(k, "im:metal@0.7", xf, Vector3(u, top_y + 0.0002, r.randf_range(-0.6, 0.6) * hw * 0.78), Vector3.UP, rad, 7, pc)
-		else:
-			var sz := 1.0 if face == 1 else -1.0
-			var y := r.randf_range(-0.3, 0.3) * ht
-			var zz := lerpf(hw, hw * 0.78, y / ht + 0.5) * sz + 0.0006 * sz
-			_disc(k, "im:metal@0.7", xf, Vector3(u, y, zz), Vector3(0, 0.25, sz).normalized(), rad, 7, pc)
+	for line in 2:
+		var lx := cx + line * length * 0.07
+		var count := 4 if line == 0 else 5
+		var span := hw * (0.9 if line == 0 else 0.7)
+		for i in count:
+			var lz := lerpf(-span * 0.5, span * 0.5, (i + 0.5) / count) + r.randf_range(-0.001, 0.001)
+			var cell := span / count * 0.32
+			for st in 2 + r.randi() % 2:
+				var a0 := Vector3(lx + r.randf_range(-1, 1) * cell * 1.4, top_y, lz + r.randf_range(-1, 1) * cell)
+				var a1 := Vector3(lx + r.randf_range(-1, 1) * cell * 1.4, top_y, lz + r.randf_range(-1, 1) * cell)
+				var w := (a1 - a0).cross(Vector3.UP).normalized() * 0.0005
+				_quad(k, m, xf, a0 - w, a1 - w, a1 + w, a0 + w, Vector3.UP, c.darkened(r.randf_range(0.3, 0.45)))
+	# Tarnish rides in the material's roughness; spotted patches read as stickers here.
 
 static func _nugget(k: MeshKit, r: RandomNumberGenerator, col: Color, size: float) -> void:
 	# Water-worn gold: soft, folded lumps fused together, bright where rubbed, dull in
@@ -1175,7 +1161,7 @@ static func _armour_mat(style: int, col: Color) -> Array:
 			return ["im:metal@0.18", col]
 	# Steel reflects about 55-60%: near-white item colours would read as chrome. Worn
 	# plate is brushed and dulled by handling, never mirror-polished.
-	return ["im:metal@0.52", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
+	return ["im:metal@0.6", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
 
 static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 	var d := ItemDB.def(t)
@@ -1186,7 +1172,7 @@ static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 	var c: Color = mc[1]
 	if style == Outfit.STYLE_PLATE and t.contains("iron"):
 		# Iron is darker and duller than steel, with a forge-black skin left on it.
-		m = "im:metal@0.66"
+		m = "im:metal@0.74"
 		c = c.darkened(0.3)
 	var soft := style == Outfit.STYLE_LEATHER or style == Outfit.STYLE_CLOTH
 	var trim := "im:hide" if soft else ("im:composite" if style == Outfit.STYLE_EXO else m)
@@ -1213,7 +1199,9 @@ static func _helm(k: MeshKit, m: String, c: Color, style: int, trim: String) -> 
 		var ph := v * PI * 0.5
 		# A slight point at the crown, the way a raised skull is drawn up.
 		var lift := 1.0 + peak * pow(cos(ph), 6.0)
-		return Vector3(cos(a) * sin(ph) * R, y + cos(ph) * R * tall * lift, sin(a) * sin(ph) * R)
+		# Raised by hammer: shallow, uneven facets over the skull, not a turned sphere.
+		var dent := 1.0 + 0.012 * sin(a * 11.0 + ph * 3.0) * sin(ph * 9.0) + 0.006 * sin(a * 23.0 - ph * 13.0)
+		return Vector3(cos(a) * sin(ph) * R * dent, y + cos(ph) * R * tall * lift * dent, sin(a) * sin(ph) * R * dent)
 	_sheet(k, m, Transform3D.IDENTITY, dome, 28, 10, 0.004, c, Color(0.2, 0.17, 0.13), "im:linen")
 	var metal := style == Outfit.STYLE_PLATE or style == Outfit.STYLE_CRYSTAL or style == Outfit.STYLE_MAIL
 	if metal:
