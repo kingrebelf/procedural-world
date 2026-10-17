@@ -64,6 +64,7 @@ var underwater := false
 var breath := BREATH
 var _drown_t := 0.0
 var steps := Footsteps.new()
+var swim := Swim.new()
 ## Your character: one body for third person (and your shadow in first person), and the
 ## arms in the viewmodel for first person. V toggles the camera.
 const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
@@ -378,7 +379,7 @@ func _physics_process(delta: float) -> void:
 	var jumped := false
 	var landed_vy := 0.0
 
-	# Water: float with the chest at the surface; dive with crouch, rise with jump.
+	# Water: swim (Swim) once it is chest-deep; wade below that.
 	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	swimming = surface - global_position.y > 1.15
@@ -394,37 +395,20 @@ func _physics_process(delta: float) -> void:
 		_shape.disabled = noclip
 		move_and_slide()
 	elif swimming:
-		# Swim where you look: look down and push forward to dive, Space rises, Ctrl
-		# sinks. Underwater you are close to neutral and drift slowly up; at the surface
-		# you float with your chest at the waterline.
-		var fast := not winded and Input.is_action_pressed("sprint") and input.length() > 0.1
-		if fast:
-			_tire(10.0 * delta)
-		var look3 := camera.global_transform.basis * Vector3(input.x, 0, input.y)
-		if look3.length() > 1.0:
-			look3 = look3.normalized()
-		var want := look3 * SWIM * (1.5 if fast else 1.0) * Game.stats.speed_mult() * pack
-		var float_y := surface - 1.35
-		var up := 0.0
-		if not ui_open:
-			up = (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
-		want.y += up * 2.6
-		var depth := float_y - global_position.y
-		if absf(up) < 0.1 and absf(look3.y) < 0.25:
-			# Not steering up or down: bob at the surface, or drift gently upward below it.
-			want.y += clampf(depth * 2.2, -2.0, 0.45)
-		if global_position.y > float_y and want.y > 0.0:
-			# Can't swim up out of the water; climb out at the shore instead.
-			want.y = minf(want.y, depth * 3.0)
-		velocity = velocity.lerp(want, clampf(3.0 * delta, 0.0, 1.0))
-		move_and_slide()
+		swim.step(self, delta, input, surface)
 	else:
 		var jump_ok := not ui_open and not Input.is_action_pressed("hotbar_pick")
 		var lift := jetpack.thrust(delta, jump_ok and Input.is_action_pressed("jump"), jump_ok and Input.is_action_just_pressed("jump"),
 			is_on_floor(), velocity.y, Game.inventory)
 		# Steering is much better under thrust than in a plain fall.
 		var a := ACCEL if is_on_floor() else (AIR_ACCEL * 2.4 if jetpack.firing else AIR_ACCEL)
-		hv = hv.lerp(dir * speed, clampf(a * delta, 0.0, 1.0))
+		# Wading: deeper water slows you, and a river's current leans on you.
+		var wet := surface - global_position.y
+		var push := Vector3.ZERO
+		if wet > 0.05:
+			var cur := Water.current(global_position.x, global_position.z) * Swim.wade_push(wet)
+			push = Vector3(cur.x, 0.0, cur.y)
+		hv = hv.lerp(dir * speed * Swim.wade(wet) + push, clampf(a * delta, 0.0, 1.0))
 		velocity.x = hv.x
 		velocity.z = hv.z
 		if is_on_floor():
@@ -442,6 +426,8 @@ func _physics_process(delta: float) -> void:
 			Audio.hold_loop("jetpack", 0.7)
 		if was_air and is_on_floor() and vy < -11.0:
 			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0, "You fell to your death")
+	if not fly:
+		swim.effects(self, delta, surface, swimming, underwater)
 	# Stamina: sprinting drains it; it refills after a moment's rest.
 	if sprinting and hv.length() > 1.0 and not swimming:
 		_tire(13.0 * delta)

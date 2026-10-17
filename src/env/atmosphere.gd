@@ -217,6 +217,17 @@ func _update_time_of_day() -> void:
 	env.volumetric_fog_density = dens * 0.5
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
+	if target and target.get("underwater"):
+		# Under water you see a few metres into a lit blue-green murk, darker at night.
+		var murk := Color(0.06, 0.2, 0.24).lerp(Color(0.01, 0.03, 0.05), 1.0 - daylight)
+		env.fog_light_color = murk
+		env.fog_density = 0.075
+		env.fog_sky_affect = 1.0
+		env.fog_sun_scatter = 0.3
+		env.volumetric_fog_density = 0.02
+		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
+	else:
+		env.fog_sun_scatter = 0.12
 	env.ambient_light_energy = lerpf(0.2, 0.6, daylight)
 	# Glowing plants and moss: a hint in the dark, not a lamp; you still want a torch.
 	var night_glow := 0.08 + 0.4 * (1.0 - daylight)

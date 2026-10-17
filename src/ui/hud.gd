@@ -279,7 +279,9 @@ func _ready() -> void:
 
 	_under = ColorRect.new()
 	_under.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_under.color = Color(0.05, 0.25, 0.3, 0.45)
+	var um := ShaderMaterial.new()
+	um.shader = load("res://src/env/underwater.gdshader")
+	_under.material = um
 	_under.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_under.visible = false
 	add_child(_under)
@@ -823,6 +825,11 @@ func _process(_d: float) -> void:
 		_cross.queue_redraw()
 	_update_crime()
 	_under.visible = player.underwater
+	if _under.visible:
+		var cam := player.camera.global_position
+		var um := _under.material as ShaderMaterial
+		um.set_shader_parameter("depth", Water.surface_height(cam.x, cam.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)) - cam.y)
+		um.set_shader_parameter("daylight", smoothstep(-0.12, 0.25, sin((fposmod(Game.day, 1.0) - 0.25) * TAU)))
 	_breath.max_value = Game.stats.max_breath()
 	_marks.player = player
 	_marks.queue_redraw()

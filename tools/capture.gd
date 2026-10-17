@@ -98,7 +98,7 @@ func _find_river(g: ChunkGenerator) -> Vector4:
 				return Vector4(q.x, q.y, p.x - d.x * 20.0 - d.y * 25.0, p.y - d.y * 20.0 + d.x * 25.0)
 	return Vector4.ZERO
 
-func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN) -> void:
+func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable()) -> void:
 	if not only.is_empty() and not only.has(name.substr(0, 2)):
 		return
 	var p: Player = world.player
@@ -125,6 +125,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
+	if before.is_valid():
+		await before.call()
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
@@ -219,6 +221,8 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
+	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
+		await _water_shots(g, shore)
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
 	if only.is_empty() or only.has("11") or only.has("12"):
@@ -455,6 +459,26 @@ func _starship() -> void:
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join("12_flight.png"))
 		print("captured 12_flight")
 	Input.action_release("move_forward")
+
+## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
+func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
+	var out := shore.normalized()
+	var deep := shore
+	for k in 60:
+		deep = shore + out * (k * 3.0)
+		if g.field.height(deep.x, deep.y) < Water.LEVEL - 9.0:
+			break
+	var p: Player = world.player
+	p.underwater = true
+	await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+	p.underwater = false
+	var spot := shore + out * 9.0
+	var burst := func() -> void:
+		for i in 3:
+			Splashes.splash(Vector3(spot.x, Water.surface_height(spot.x, spot.y, 0.0), spot.y), 1.2)
+			Splashes.ring(Vector3(spot.x + 2.0, 0.0, spot.y + 1.0), 1.6)
+			await _wait(4)
+	await _shot("36_splash", shore - out * 2.0, spot, 0.42, 2.2, Water.LEVEL + 0.6, burst)
 
 ## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
 func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:

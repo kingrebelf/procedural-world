@@ -55,6 +55,51 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 	await _frames(15)
 	check(player.focus.get("found", {}).get("pos", Vector3.INF) != plant, "a picked plant is gone")
 
+## Swimming: dropped into deep water you float up and ride with your chest at the
+## surface; a river carries you downstream; splashes are pooled and ready.
+func _water_checks(streamer: ChunkStreamer, player) -> void:
+	var back: Vector3 = player.global_position
+	var sea := Vector3.INF
+	var river := Vector3.INF
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for j in range(4, ChunkGenerator.SIZE - 4, 4):
+			for i in range(4, ChunkGenerator.SIZE - 4, 4):
+				var at := c.position + Vector3(i, 0, j)
+				if sea == Vector3.INF and ChunkGenerator.height_at(c.data, i, j) < Water.LEVEL - 6.0:
+					sea = at
+				if river == Vector3.INF and Water.current(at.x, at.z).length() > 0.8:
+					river = at
+	check(Splashes._fx != null and Splashes._fx._rings.size() == Splashes.RINGS, "splashes and ripples are pooled")
+	if sea == Vector3.INF:
+		print("  skip no deep water near spawn")
+	else:
+		player.global_position = Vector3(sea.x, Water.LEVEL - 4.0, sea.z)
+		player.velocity = Vector3.ZERO
+		for i in 3:
+			await physics_frame
+		check(player.swimming and player.underwater, "deep in the water you swim, eyes under")
+		for i in 360:
+			await physics_frame
+		var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
+		var off: float = player.global_position.y - (s - Swim.FLOAT_CHEST)
+		check(player.swimming and absf(off) < 0.6, "you float up and bob at the surface (%.2f m off)" % off)
+	if river == Vector3.INF:
+		print("  skip no river near spawn")
+	else:
+		var lv: float = Water.surface_height(river.x, river.z, 0.0)
+		player.global_position = Vector3(river.x, lv - 1.4, river.z)
+		player.velocity = Vector3.ZERO
+		var flow := Water.current(river.x, river.z)
+		for i in 90:
+			await physics_frame
+		var d := Vector2(player.global_position.x - river.x, player.global_position.z - river.z)
+		check(d.dot(flow.normalized()) > 0.5, "the river carries you downstream (%.1f m)" % d.dot(flow.normalized()))
+	player.global_position = back
+	player.velocity = Vector3.ZERO
+	for i in 30:
+		await physics_frame
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -204,6 +249,7 @@ func _run() -> void:
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
 	await _audio_checks(world, player)
+	await _water_checks(streamer, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.

@@ -4,6 +4,7 @@ shader_type spatial;
 // two phases that cross-fade, so the current never stretches or resets visibly.
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
+global uniform vec3 sun_dir_g;
 uniform vec3 shallow : source_color = vec3(0.2, 0.4, 0.4);
 uniform vec3 deep : source_color = vec3(0.03, 0.1, 0.12);
 uniform vec3 glow : source_color = vec3(0.1, 0.9, 0.8);
@@ -54,6 +55,11 @@ void fragment() {
 	float water_depth = clamp((-world.z - (-VERTEX.z)), 0.0, 50.0);
 	float k = 1.0 - exp(-water_depth / 2.5);
 	vec3 under = textureLod(screen_tex, SCREEN_UV + nw.xz * 0.015 * k, 1.0).rgb;
+	// Sun caustics dancing on the riverbed, carried downstream.
+	vec2 cq = (wpos.xz + off0 * 0.5) * 0.5;
+	float c1 = abs(n2(cq + n2(cq * 0.7 + TIME * 0.2) * 1.5) * 2.0);
+	float caus = pow(clamp(1.0 - c1 * 2.0, 0.0, 1.0), 4.0);
+	under *= 1.0 + caus * (1.0 - k) * 1.2 * smoothstep(-0.05, 0.3, sun_dir_g.y);
 	vec3 col = mix(under * shallow * 2.2, deep, k);
 	// Foam streaks where the current runs fast and at the banks.
 	float streak = smoothstep(0.18, 0.4, mix(h0, h1, w)) * length(flow) * 0.35;
