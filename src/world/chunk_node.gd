@@ -849,15 +849,16 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 		var b := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, turn) * Basis.from_euler(Vector3(tip.x, 0, tip.y))
 		b = b.scaled_local(Vector3(size, size * lerpf(flat, 1.0, rim), size * 0.8))
 		var p := Vector3(lx, y, lz) - nrm * size * lerpf(0.2, 0.12, rim)
-		# Never half in mid-air: where the face falls away under it (an upright block at a
-		# rim stood out over the drop, a big slab off a sheer face), it goes further into
-		# the hill until most of its base is on rock; failing that, it isn't there.
+		# Never stuck on in mid-air: where the face falls away under it (an upright block
+		# at a rim stood out over the drop, a big slab off a sheer face) it goes further
+		# into the hill until most of its base is on rock and a good part of it is inside;
+		# failing that, it isn't there.
 		var inward := Vector3(-nrm.x, 0.0, -nrm.z).normalized()
 		var tries := 0
-		while _crag_hangs(chunk, b, p, size) >= 3 and tries < 4:
+		while _crag_loose(chunk, kind, b, p, size) and tries < 5:
 			p += inward * size * 0.12
 			tries += 1
-		if tries == 4 and _crag_hangs(chunk, b, p, size) >= 3:
+		if tries == 5 and _crag_loose(chunk, kind, b, p, size):
 			continue
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
@@ -885,6 +886,27 @@ static func _crag_hangs(chunk: Dictionary, b: Basis, p: Vector3, size: float) ->
 		if w.y - ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)) > 0.15 * size:
 			n += 1
 	return n
+
+## How much of a crag (StoneKit `kind`, basis `b` at `p`) is inside the hill: the share
+## of its hull's corners under the ground (a sample of them).
+static func _crag_inside(chunk: Dictionary, kind: String, b: Basis, p: Vector3) -> float:
+	var hull := StoneKit.hull(kind)
+	if hull.is_empty():
+		return 1.0
+	var every := maxi(1, hull.size() / 64)
+	var n := 0
+	var under := 0
+	for i in range(0, hull.size(), every):
+		var w := p + b * hull[i]
+		n += 1
+		if w.y < ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)):
+			under += 1
+	return float(under) / float(n)
+
+## True when a crag would read as stuck on in mid-air: its base half over a drop, or
+## too little of it inside the hill.
+static func _crag_loose(chunk: Dictionary, kind: String, b: Basis, p: Vector3, size: float) -> bool:
+	return _crag_hangs(chunk, b, p, size) >= 3 or _crag_inside(chunk, kind, b, p) < 0.38
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and

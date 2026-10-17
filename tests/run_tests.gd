@@ -59,7 +59,8 @@ func test_memory_store_never_touches_disk() -> void:
 		s.save_chunk({"cx": 1000 + i, "cz": 0})
 	check(not s.has_chunk(4, -2) and s.has_chunk(1000 + WorldStore.MEM_LIMIT + 4, 0), "memory store drops the oldest chunks")
 
-## Crags set into cliffs never hang half in mid-air: most of every one's base is on rock.
+## Crags set into cliffs never hang in mid-air: most of every one's base is on rock, and
+## a good part of it is inside the hill.
 func test_crags_seated() -> void:
 	var g := ChunkGenerator.new(4242, true)
 	var total := 0
@@ -75,7 +76,7 @@ func test_crags_seated() -> void:
 				for n in range(0, buf.size(), 16):
 					var b := Basis(Vector3(buf[n], buf[n + 4], buf[n + 8]), Vector3(buf[n + 1], buf[n + 5], buf[n + 9]), Vector3(buf[n + 2], buf[n + 6], buf[n + 10]))
 					total += 1
-					if ChunkNode._crag_hangs(c, b, Vector3(buf[n + 3], buf[n + 7], buf[n + 11]), b.x.length()) >= 3:
+					if ChunkNode._crag_loose(c, String(k).substr(6), b, Vector3(buf[n + 3], buf[n + 7], buf[n + 11]), b.x.length()):
 						hanging += 1
 	check(total > 20, "cliffs carry crags (%d)" % total)
 	check(hanging == 0, "no crag hangs in mid-air (%d of %d)" % [hanging, total])
