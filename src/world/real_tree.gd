@@ -336,8 +336,8 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 	var area := 4.0 * PI * pow((rx * rx + ry * rx + rx * ry) / 3.0, 1.0)
 	var count := clampi(int(area * 3.4 / (size * size)), 140, 340)
 	if far:
-		count = clampi(count / 14, 10, 24)
-		size *= 3.0
+		count = clampi(count / 8, 16, 40)
+		size *= 2.4
 	var weep := form == "weeping"
 	for i in count:
 		var dir := Vector3(r.randf_range(-1, 1), r.randf_range(-0.75, 1), r.randf_range(-1, 1)).normalized()
@@ -501,9 +501,9 @@ static func _commit(bark: Buf, leaves: Buf, look: Array, lods: bool) -> ArrayMes
 		if lods and bark.marks.size() >= 4:
 			# marks: [start, trunk end, limbs end, twigs end]
 			if int(bark.marks[2]) < bark.ix.size():
-				bl[0.05] = bark.ix.slice(0, bark.marks[2])
+				bl[0.1] = bark.ix.slice(0, bark.marks[2])
 			if int(bark.marks[1]) < int(bark.marks[2]) or int(bark.marks[1]) < bark.ix.size():
-				bl[0.14] = bark.ix.slice(0, bark.marks[1])
+				bl[0.25] = bark.ix.slice(0, bark.marks[1])
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, bark.arrays(true), [], bl)
 		m.surface_set_material(m.get_surface_count() - 1, bark_material(look[1]))
 	if not leaves.v.is_empty():
@@ -518,8 +518,8 @@ static func _commit(bark: Buf, leaves: Buf, look: Array, lods: bool) -> ArrayMes
 				if q % 4 == 0:
 					quarter.append_array(leaves.ix.slice(q * 6, q * 6 + 6))
 			if quarter.size() >= 12:
-				ll[0.07] = half
-				ll[0.18] = quarter
+				ll[0.12] = half
+				ll[0.3] = quarter
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, leaves.arrays(false), [], ll)
 		m.surface_set_material(m.get_surface_count() - 1, leaf_material(look[0]))
 	return m

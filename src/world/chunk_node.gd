@@ -222,7 +222,7 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 ## never look identical.
 ## Trees drawn by RealTree switch to the merged far mesh beyond this distance (from the
 ## middle of the chunk).
-const TREE_NEAR := 170.0
+const TREE_NEAR := 320.0
 
 ## Instance buffers per mesh key, plus "~far": the far versions of every RealTree tree in
 ## the chunk merged into one mesh's surface arrays (one surface per material), so a
