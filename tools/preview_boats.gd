@@ -84,11 +84,13 @@ func _run() -> void:
 		lm = ShaderMaterial.new()
 		lm.shader = Shader.new()
 		lm.shader.code = """shader_type spatial;
-#include "res://src/env/water_wakes.gdshaderinc"
+global uniform vec2 wind_dir;
+global uniform float wind_strength;
+#include "res://src/env/water_swell.gdshaderinc"
 varying vec3 wp;
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; VERTEX.y += wake_height(wp.xz); }
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; VERTEX.y += wake(wp.xz).x; }
 void fragment() {
-	vec2 g = wake_slope(wp.xz);
+	vec2 g = wake(wp.xz).yz;
 	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-g.x, 1.0, -g.y)), 0.0)).xyz);
 	ALBEDO = vec3(0.03, 0.12, 0.18); ROUGHNESS = 0.12; SPECULAR = 0.7;
 }"""
@@ -125,12 +127,10 @@ void fragment() {
 				dd -= 0.5
 			if lm:
 				var hh: Dictionary = bm.HULLS[kind]
-				var wa := PackedVector4Array([Vector4(0, -L * 0.47, 0, -1)])
-				var wb := PackedVector4Array([Vector4(v, L, bm._width_at(hh, 0.45, 0.0), 1.0)])
-				wa.resize(8)
-				wb.resize(8)
-				lm.set_shader_parameter("wakes_a", wa)
-				lm.set_shader_parameter("wakes_b", wb)
+				var img := Image.create_empty(8, 2, false, Image.FORMAT_RGBAF)
+				img.set_pixel(0, 0, Color(0, -L * 0.47, 0, -1))
+				img.set_pixel(0, 1, Color(v, L, bm._width_at(hh, 0.45, 0.0), 1.0))
+				RenderingServer.global_shader_parameter_set("water_wake_boats", ImageTexture.create_from_image(img))
 			extra = [[Vector3(L * 1.6 + 8.0, L * 0.9 + 6.0, -L * 0.6), Vector3(4.0, 0.0, L * 2.0)], [Vector3(-6.0, 2.2, L * 0.5 + 6.0), Vector3(3.0, 0.0, L * 2.5 + 20.0)]]
 		var r := RandomNumberGenerator.new()
 		r.seed = 5

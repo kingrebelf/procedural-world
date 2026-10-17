@@ -40,7 +40,7 @@ float depth_at(vec2 p) {
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float y = swell(wpos.xz, TIME, swell_amp(depth_at(wpos.xz))).x + 0.035;
+	float y = swell(wpos.xz, TIME, swell_amp(depth_at(wpos.xz))).x + wake(wpos.xz).x + 0.035;
 	VERTEX.y += y - wpos.y;
 	wpos.y = y;
 	col = COLOR;

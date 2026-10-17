@@ -5,21 +5,23 @@
 // steep crests slanting out along the cusp lines at 19.5 degrees either side. They grow
 // with her speed and size, fade with distance behind her, and stay out of the hull itself
 // (no water standing up inside an open boat). BoatWake draws the foam that rides them.
+// water_swell.gdshaderinc adds them into wake(p), the one call every water shader makes.
 
-// x, z: her bow; heading x, z (unit, the way she faces).
-uniform vec4 wakes_a[8];
-// speed m/s, hull length, half-beam, strength 0..1 (0: a free slot).
-uniform vec4 wakes_b[8];
+// Boats under way (BoatManager, Water.set_boat_wakes): an 8x2 float texture, one column a
+// boat. Row 0: her bow x, z and heading x, z (unit, the way she faces). Row 1: speed m/s,
+// hull length, half-beam, strength 0..1 (0: a free slot). Must match BoatManager.wake_at(),
+// which answers the same heights for things that float.
+global uniform sampler2D water_wake_boats : filter_nearest, repeat_disable;
 
-// Height the wakes add at p (metres).
+// Height the boats' wakes add at p (metres).
 float wake_height(vec2 p) {
 	float h = 0.0;
 	for (int i = 0; i < 8; i++) {
-		vec4 b = wakes_b[i];
+		vec4 b = texelFetch(water_wake_boats, ivec2(i, 1), 0);
 		if (b.w <= 0.001) {
 			continue;
 		}
-		vec4 a = wakes_a[i];
+		vec4 a = texelFetch(water_wake_boats, ivec2(i, 0), 0);
 		vec2 f = a.zw;
 		vec2 d = p - a.xy;
 		float x = -dot(d, f); // metres behind her bow
@@ -53,13 +55,16 @@ float wake_height(vec2 p) {
 		float hull = (1.0 - smoothstep(beam * 0.85, beam * 1.2, ay)) * smoothstep(-L * 0.06, L * 0.02, x) * (1.0 - smoothstep(L * 0.95, L * 1.08, x));
 		h += A * (trans * 0.55 * decay + div * 0.8 * decay + bow) * (1.0 - hull);
 	}
-	return h;
+	return clamp(h, -0.6, 0.6); // Water.WAKE_MAX
 }
 
-// Its slope (xz gradient), by differences: the water's normal bends with it, so the
-// wake catches the light even where the water mesh is too coarse to carry the shape.
-vec2 wake_slope(vec2 p) {
+// Height and xz gradient (by differences), the shape wake(p) returns.
+vec3 boat_wakes(vec2 p) {
+	if (texelFetch(water_wake_boats, ivec2(0, 1), 0).w <= 0.001) {
+		return vec3(0.0); // no boats under way (BoatManager fills the nearest first)
+	}
+	float h = wake_height(p);
 	float e = 0.2;
-	return vec2(wake_height(p + vec2(e, 0.0)) - wake_height(p - vec2(e, 0.0)),
-		wake_height(p + vec2(0.0, e)) - wake_height(p - vec2(0.0, e))) / (2.0 * e);
+	return vec3(h, (wake_height(p + vec2(e, 0.0)) - wake_height(p - vec2(e, 0.0))) / (2.0 * e),
+		(wake_height(p + vec2(0.0, e)) - wake_height(p - vec2(0.0, e))) / (2.0 * e));
 }
