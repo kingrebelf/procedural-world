@@ -1820,6 +1820,23 @@ func test_world_themes() -> void:
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_kit_flora() -> void:
+	# Each plant its own look, from where it stands: stable, varied, mostly healthy.
+	var shades := {}
+	var tired := 0
+	for i in 400:
+		var lk := RealTree.plant_look(i * 3.7 - 600.0, i * -5.3 + 211.0)
+		check(lk == RealTree.plant_look(i * 3.7 - 600.0, i * -5.3 + 211.0), "a plant's look depends only on where it stands")
+		check(absf(lk.x) <= 1.0 and lk.y >= 0.0 and lk.y <= 0.39 and lk.z >= 0.0 and lk.z <= 0.33, "plant look %d within its ranges" % i)
+		shades[int((lk.x + 1.0) * 4.0)] = true
+		if lk.y > 0.15 or lk.z > 0.15:
+			tired += 1
+	check(shades.size() >= 7, "plants come in many leaf shades (%d)" % shades.size())
+	check(tired > 40 and tired < 240, "a few plants look tired, most healthy (%d of 400)" % tired)
+	var green := Color(0.4, 0.6, 0.3, 0.5)
+	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)) != RealTree.plant_leaf(green, Vector4(-0.8, 0, 0, 2.0)), "two looks give two leaf colours")
+	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)).b < green.b, "a warm look yellows the leaves")
+	check(not RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0, 0), 0.01), "a full crown has no gaps")
+	check(RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2) and not RealTree.plant_gap(Vector3(-1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2), "a thinned crown is thinnest on its own side")
 	var forms := {}
 	for t in ["oak", "pine"]:
 		for sp in range(1, 60):
