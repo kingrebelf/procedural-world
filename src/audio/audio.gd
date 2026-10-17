@@ -440,6 +440,8 @@ func _roof_over(pl: Node3D) -> Dictionary:
 	if hit.is_empty():
 		return {}
 	var col: Object = hit["collider"]
+	if col.has_meta("dungeon"):
+		return {"t": "cave"}
 	if col.has_meta("obj") and col.has_meta("chunk"):
 		var chunk: ChunkNode = col.get_meta("chunk")
 		var o: Dictionary = chunk.get_object(col.get_meta("obj"))

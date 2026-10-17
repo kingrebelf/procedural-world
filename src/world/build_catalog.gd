@@ -147,6 +147,39 @@ const PIECES := {
 		["village/Prop_WoodenFence_Single", 0, Vector3(-1.0, 0, -1.6), 0.97], ["village/Prop_WoodenFence_Single", 0, Vector3(1.0, 0, -1.6), 0.97],
 		["props/Barrel", 0, Vector3(2.2, 0, -1.0), 1.0]],
 		"snap": "free", "mat": "wood", "hp": 18.0, "era": 0, "station": "stable"},
+	# Power (see Power and PowerGrid): generators, batteries, poles, switches and electric
+	# lamps, early-industrial. Their moving and lit parts are PowerNode's (PowerKit.part).
+	# mount: wall (stands out of a wall you aim at) or ceiling (hangs from one).
+	"gen_woodgas": {"name": "Wood-gas Generator", "models": [], "proc": "pw_woodgas", "snap": "free", "mat": "metal", "hp": 40.0, "era": -1,
+		"power": {"role": "gen", "source": "fuel", "watts": 1500.0, "term": Vector3(0.4, 0.62, -0.42), "smoke": Vector3(0.52, 1.55, 0.25),
+			"fuel": {"wood": 120.0, "firewood": 90.0, "planks": 45.0, "charcoal": 240.0, "peat": 120.0, "coal": 240.0, "coal_briquettes": 260.0, "resin": 40.0}}},
+	"gen_diesel": {"name": "Diesel Generator", "models": [], "proc": "pw_diesel", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1,
+		"power": {"role": "gen", "source": "fuel", "watts": 3000.0, "term": Vector3(0.3, 0.88, 0.5), "smoke": Vector3(0.18, 1.52, 0.12),
+			"fuel": {"diesel_jerrycan": 900.0, "kerosene_can": 600.0, "lamp_oil": 240.0, "fuel_canister": 600.0, "oil_barrel": 2400.0}}},
+	"windmill": {"name": "Windmill", "models": [], "proc": "pw_windmill", "snap": "free", "mat": "wood", "hp": 45.0, "era": -1,
+		"power": {"role": "gen", "source": "wind", "watts": 400.0, "term": Vector3(1.0, 1.24, 1.0), "head": 7.84}},
+	"solar_array": {"name": "Solar Panel", "models": [], "proc": "pw_solar", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1,
+		"power": {"role": "gen", "source": "sun", "watts": 250.0, "term": Vector3(0.0, 0.95, 0.1)}},
+	"battery_bank": {"name": "Battery Bank", "models": [], "proc": "pw_battery", "snap": "free", "mat": "wood", "hp": 16.0, "era": -1,
+		"power": {"role": "store", "store": 2000.0, "rate": 1000.0, "term": Vector3(0.5, 1.12, 0.0)}},
+	"power_pole": {"name": "Power Pole", "models": [], "proc": "pw_pole", "snap": "free", "mat": "wood", "hp": 24.0, "era": -1,
+		"power": {"role": "node", "links": 8, "term": Vector3(0.0, 5.84, 0.0)}},
+	"junction_box": {"name": "Junction Box", "models": [], "proc": "pw_junction", "snap": "free", "mount": "wall", "mat": "metal", "hp": 10.0, "era": -1,
+		"power": {"role": "node", "links": 6, "term": Vector3(0.0, -0.25, 0.06)}},
+	"knife_switch": {"name": "Knife Switch", "models": [], "proc": "pw_switch", "snap": "free", "mount": "wall", "mat": "metal", "hp": 6.0, "era": -1,
+		"power": {"role": "switch", "links": 4, "term": Vector3(0.0, -0.2, 0.03)}},
+	"lamp_ceiling": {"name": "Ceiling Lamp", "models": [], "proc": "pw_lamp_ceiling", "snap": "free", "mount": "ceiling", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "use", "watts": 60.0, "prio": 0, "term": Vector3(0.0, -0.02, 0.0),
+			"lamp": {"part": "bulb", "pos": Vector3(0, -0.72, 0), "range": 10.0, "energy": 2.2, "color": Color(1.0, 0.8, 0.58)}}},
+	"lamp_wall": {"name": "Bulkhead Lamp", "models": [], "proc": "pw_lamp_wall", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "use", "watts": 40.0, "prio": 0, "term": Vector3(0.0, -0.06, 0.02),
+			"lamp": {"part": "globe", "pos": Vector3(0, 0.1, 0.2), "range": 8.0, "energy": 1.2, "color": Color(1.0, 0.8, 0.6)}}},
+	"floodlight": {"name": "Floodlight", "models": [], "proc": "pw_flood", "snap": "free", "mat": "metal", "hp": 10.0, "era": -1,
+		"power": {"role": "use", "watts": 300.0, "prio": 0, "term": Vector3(0.0, 1.3, 0.0),
+			"lamp": {"part": "flood_lens", "pos": Vector3(0, 1.72, -0.18), "aim": -15.0, "spot": 34.0, "range": 34.0, "energy": 6.0, "color": Color(1.0, 0.9, 0.78)}}},
+	"street_lamp": {"name": "Street Lamp", "models": [], "proc": "pw_street", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1,
+		"power": {"role": "use", "watts": 100.0, "prio": 0, "term": Vector3(0.0, 2.9, 0.0),
+			"lamp": {"part": "street_glass", "pos": Vector3(0, 3.0, -0.5), "light_at": Vector3(0, 3.12, -0.5), "range": 15.0, "energy": 2.6, "color": Color(1.0, 0.82, 0.6)}}},
 }
 
 const STATION_RANGE := 6.0
@@ -243,7 +276,9 @@ static func _build(id: String) -> ArrayMesh:
 
 ## Merges kit models ([path under assets/models, yaw degrees, offset, scale] each) into
 ## one mesh with a surface per material.
-static func merge_models(models: Array) -> ArrayMesh:
+## `tint`, if given, is called as tint(material, arrays) on each merged surface before it
+## is added, to colour its vertices.
+static func merge_models(models: Array, tint := Callable()) -> ArrayMesh:
 	var groups := {} ## material -> [[arrays, transform], ...]
 	var order: Array = []
 	for e in models:
@@ -260,7 +295,10 @@ static func merge_models(models: Array) -> ArrayMesh:
 			groups[mat].append([part[1], base * (part[2] as Transform3D)])
 	var out := ArrayMesh.new()
 	for mat in order:
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _merge_arrays(groups[mat]))
+		var arrays := _merge_arrays(groups[mat])
+		if tint.is_valid():
+			tint.call(mat, arrays)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
 
@@ -468,6 +506,9 @@ static func _node_xf(n: Node3D, root: Node) -> Transform3D:
 	return xf
 
 static func _proc(k: MeshKit, what: String) -> void:
+	if what.begins_with("pw_"):
+		PowerKit.proc(k, what)
+		return
 	var I := Transform3D.IDENTITY
 	match what:
 		"plinth":
@@ -794,6 +835,57 @@ static func built_near(streamer, pos: Vector3, radius: float) -> Array:
 				if wp.distance_to(pos) <= radius:
 					out.append({"id": id_of(o["t"]), "pos": wp, "yaw": float(o["r"])})
 	return out
+
+## Wild trees near `pos` (standing, not felled), each as [trunk foot, trunk radius,
+## crown bottom, top, crown reach], all world space, from the tree's mesh at its scale.
+static func trees_near(streamer, pos: Vector3, radius: float) -> Array:
+	var out: Array = []
+	if streamer == null:
+		return out
+	var ck := _chunk_of(pos)
+	var reach := int(ceil(radius / ChunkGenerator.SIZE))
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var c = streamer.get_chunk(ck + Vector2i(dx, dz))
+			if c == null:
+				continue
+			var origin := Vector3((ck.x + dx) * ChunkGenerator.SIZE, 0, (ck.y + dz) * ChunkGenerator.SIZE)
+			for o in c.data["objects"]:
+				if ObjectLibrary.kind(o["t"]) != "tree" or o["st"].get("gone", false):
+					continue
+				var wp: Vector3 = origin + o["p"]
+				if Vector2(wp.x - pos.x, wp.z - pos.z).length() > radius:
+					continue
+				out.append(tree_shape(ObjectLibrary.mesh_key(o), wp, float(o["s"])))
+	return out
+
+static var _tree_boxes := {} ## tree mesh key -> its AABB, unscaled
+
+## A tree as tree_in_way() reads it: its trunk a post up the middle, its crown a drum
+## from a third of the way up to the top, a little narrower than its widest leaves.
+static func tree_shape(key: String, at: Vector3, s: float) -> Array:
+	if not _tree_boxes.has(key):
+		var m := ObjectLibrary.get_mesh(key)
+		_tree_boxes[key] = m.get_aabb() if m != null else AABB(Vector3(-2, 0, -2), Vector3(4, 7, 4))
+	var bb: AABB = _tree_boxes[key]
+	var top := bb.end.y * s
+	var wide := maxf(maxf(absf(bb.position.x), absf(bb.end.x)), maxf(absf(bb.position.z), absf(bb.end.z))) * s
+	return [at, clampf(top * 0.03, 0.18, 0.5), at.y + top * 0.35, at.y + top, wide * 0.75]
+
+## True when a piece filling `box` (world space) would stand through a tree's trunk or
+## up into its crown (`trees` from trees_near). A floor laid under the crown is fine.
+static func tree_in_way(trees: Array, box: AABB) -> bool:
+	var lo := Vector2(box.position.x, box.position.z)
+	var hi := Vector2(box.end.x, box.end.z)
+	for t in trees:
+		var at: Vector3 = t[0]
+		var q := Vector2(at.x, at.z)
+		var d := q.distance_to(q.clamp(lo, hi))
+		if d < float(t[1]) and box.end.y > at.y + 0.1 and box.position.y < float(t[3]):
+			return true
+		if d < float(t[4]) and box.end.y > float(t[2]) + 0.2 and box.position.y < float(t[3]):
+			return true
+	return false
 
 ## True when a piece taking the same slot (see slot()) already sits at this spot.
 static func occupied(streamer, id: String, pos: Vector3, yaw: float) -> bool:

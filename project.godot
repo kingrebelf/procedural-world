@@ -5,7 +5,7 @@ config_version=5
 
 config/name="Procedural World"
 config/description="An infinite, persistent, first-person world that blends eras as you walk."
-config/version="0.3.46"
+config/version="0.3.48"
 run/main_scene="res://src/ui/main_menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="ProceduralWorld"
@@ -60,6 +60,18 @@ water_murk={
 water_map_rect={
 "type": "vec4",
 "value": Vector4(-800, -800, 1600, 0)
+}
+water_wake_map={
+"type": "sampler2D",
+"value": ""
+}
+water_wake_rect={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+water_wake_boats={
+"type": "sampler2D",
+"value": ""
 }
 night_glow_g={
 "type": "float",

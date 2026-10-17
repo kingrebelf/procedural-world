@@ -3,7 +3,8 @@ extends Control
 ## The round map in the corner: the painted land around you under its fog of war,
 ## turned so the way you face is up, with a compass ring, nearby places and wonders,
 ## and your markers pinned to the rim when they are out of range. The minimap zoom key
-## steps through three ranges.
+## steps through three ranges; the map overlay key steps through the overlays (creature
+## levels, danger, era, zones, landforms: MapLayers), with a legend beside the disc.
 
 const DIAM := 220.0
 const RANGES := [110.0, 200.0, 380.0] ## metres from centre to rim
@@ -85,6 +86,9 @@ func _ready() -> void:
 func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("minimap_zoom"):
 		zoom = (zoom + 1) % RANGES.size()
+	elif e.is_action_pressed("map_layer") and Game.map:
+		Game.map.set_layer((Game.map.layer + 1) % MapLayers.COUNT)
+		Game.toast.emit("Map overlay: %s" % MapLayers.NAMES[Game.map.layer])
 
 ## The angle the map turns so that where you face is up.
 func _turn() -> float:
@@ -197,10 +201,36 @@ func _draw_over() -> void:
 		_over.draw_circle(q, 9.0, Color(0.04, 0.05, 0.06, 0.8))
 		_over.draw_string(font, q + Vector2(-tw * 0.5, fs * 0.36), letters[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Color(1.0, 0.42, 0.35) if i == 0 else UITheme.TEXT)
+	_draw_layer(font, c, r)
 	MapCanvas.draw_player(_over, c, Vector2(0, -1), 8.0)
 	_draw_zone(font, c, r)
 	var zs := "%d m" % int(RANGES[zoom])
 	_over.draw_string(font, c + Vector2(r * 0.52, r * 0.98), zs, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.45))
+
+## The map overlay's rings of equal level (inside the rim) and its legend, left of the disc.
+func _draw_layer(font: Font, c: Vector2, r: float) -> void:
+	var l := MapLayers.current()
+	if l == MapLayers.OFF:
+		return
+	var to_px := func(x: float, z: float) -> Vector2: return _place(x, z)[0]
+	for ln in MapLayers.ring_lines(l, _canvas.center, RANGES[zoom] * 1.05, to_px):
+		var pts: PackedVector2Array = ln[0]
+		for k in pts.size() - 1:
+			if pts[k].distance_to(c) < r - 6.0 and pts[k + 1].distance_to(c) < r - 6.0:
+				_over.draw_line(pts[k], pts[k + 1], Color(0, 0, 0, 0.45), 3.0, true)
+				_over.draw_line(pts[k], pts[k + 1], Color(1, 0.95, 0.8, 0.85), 1.2, true)
+		# Named a little way along the ring, clear of your arrow in the middle.
+		var mid := Vector2(INF, INF)
+		for q in pts:
+			if q.distance_to(c) < r - 24.0 and q.distance_to(c) > 34.0:
+				mid = q
+				break
+		if mid.x < INF:
+			var s: String = ln[1]
+			var tw := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x
+			_over.draw_string_outline(font, mid + Vector2(-tw * 0.5, -4), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, 3, Color(0, 0, 0, 0.8))
+			_over.draw_string(font, mid + Vector2(-tw * 0.5, -4), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.96, 0.85))
+	MapLayers.draw_legend(_over, font, Vector2(-10, 6), l, _canvas.layer_mask, true, 11)
 
 ## A translucent band across the lower disc: the zone's name, kind and level range.
 func _draw_zone(font: Font, c: Vector2, r: float) -> void:

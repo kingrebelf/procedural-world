@@ -57,20 +57,21 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.55}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.22, "dungeon_wall": 0.3, "flagstone": 0.55}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
 	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
 	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}
 ## Photos used in their own colours rather than as greyscale detail under the material colour.
 const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 ## Own-colour photos shot brighter than the stone really is, toned down to a believable
-## albedo: castle_wall averages 0.65 linear, so 0.6 gives a pale limestone of about 0.39
-## that doesn't glare white in the sun, and (now the castle is that stone through, with no
-## darker rubble beside it) doesn't sink to near-black in the shade either.
-const PHOTO_TONE := {"castle_wall": 0.6}
+## albedo. The tone is an sRGB colour, so castle_wall (0.65 linear on average) at 0.7
+## (0.45 linear) is a weathered limestone of about 0.29: pale in the sun without glaring,
+## a soft grey in shade (0.6 made it 0.21, a dark grey slab whenever the sun was behind).
+const PHOTO_TONE := {"castle_wall": 0.7}
 ## Own-colour photos warmed or cooled to sit with what they're laid beside: the castle's
-## flagstones take the honey tone of its walls instead of a cold blue-grey.
-const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86)}
+## flagstones take the honey tone of its walls instead of a cold blue-grey, and the walls
+## keep that warmth in the blue light of the shade.
+const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86), "castle_wall": Color(1.0, 0.97, 0.9)}
 ## Normal strength per photo: the travertine's pores, stretched over big castle blocks,
 ## read as deep black pits at full strength.
 const PHOTO_NORMAL := {"panels": 0.45, "castle_wall": 0.6}
@@ -318,6 +319,11 @@ static func _get_mat(name: String) -> Material:
 			wm.shader = load("res://src/world/weathering.gdshader")
 			_cache[name] = wm
 			return wm
+		"sett_grime":
+			var gm := ShaderMaterial.new()
+			gm.shader = load("res://src/world/sett_grime.gdshader")
+			_cache[name] = gm
+			return gm
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
@@ -347,6 +353,8 @@ static func _get_mat(name: String) -> Material:
 		"thatch": m = _pbr(Color(0.62, 0.52, 0.30), 0.95, 0.0, "thatch", 0.09, 0.8, 1.8)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)
 		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "forged", 0.04, 1.0, 0.4)
+		# Cast and painted iron on machines: dull, so it doesn't mirror the dark ground black.
+		"cast_iron": m = _pbr(Color(0.36, 0.35, 0.34), 0.72, 0.35, "forged", 0.04, 1.0, 0.5)
 		"rust": m = _pbr(Color(0.55, 0.30, 0.18), 0.8, 0.4, "rust", 0.06, 1.2, 1.0)
 		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
 		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)

@@ -87,8 +87,9 @@ func _ready() -> void:
 	_pace = BodyShape.pace(b, age)
 	if HumanModel.available():
 		_human = HumanModel.new()
-		_human.build(b, int(rec["era"]), String(rec["job"]), age)
+		# Scaled first: what the hands hold is sized against it (HumanModel.hold).
 		_human.scale = Vector3(_scale, _scale, _scale)
+		_human.build(b, int(rec["era"]), String(rec["job"]), age)
 		add_child(_human)
 		_model = _human
 		if manager and manager.has_method("ground"):
@@ -234,7 +235,7 @@ func _update_perform(delta: float) -> void:
 		if perform_t <= 0.0 and _human:
 			_human.play_once("jump_land")
 	if perform == "sit" and _human:
-		if _stool == null and not _human.busy():
+		if _stool == null and not _human.busy() and not (manager.has_method("bench_under") and manager.bench_under(self)):
 			_stool = _make_stool()
 	if perform_t <= 0.0:
 		_end_perform()
@@ -247,10 +248,11 @@ func _make_stool() -> Node3D:
 	if int(rec["era"]) == Eras.SCIFI:
 		k.box("panel", I.translated(Vector3(0, seat * 0.5 - 0.02, 0)), Vector3(0.42, seat - 0.04, 0.42))
 	else:
-		k.cylinder("planks", I.translated(Vector3(0, seat - 0.035, 0)), 0.2, 0.2, 0.05, 12)
+		# Wide enough, and the legs splayed enough, to show past a skirt.
+		k.cylinder("planks", I.translated(Vector3(0, seat - 0.035, 0)), 0.23, 0.23, 0.05, 12)
 		for i in 3:
 			var a := TAU * i / 3.0
-			k.cylinder("planks", I.translated(Vector3(cos(a) * 0.12, (seat - 0.06) * 0.5, sin(a) * 0.12)), 0.025, 0.02, seat - 0.06, 6)
+			k.cylinder("planks", Transform3D(Basis(Vector3(-sin(a), 0, cos(a)), 0.22), Vector3(cos(a) * 0.17, (seat - 0.06) * 0.5, sin(a) * 0.17)), 0.028, 0.022, seat - 0.04, 6)
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(Materials.get_mat)
 	add_child(mi)
@@ -540,6 +542,9 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
 		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"
 	_human.set_upper(up)
+	# Day visitors standing about (MarketCrowd) are a background crowd: animated a little
+	# less often unless you are close.
+	_human.animator.calm = rec.has("visit") and not moving and not talking and _speech_t <= 0.0 and (perform == "" or perform == "sit")
 	if action == "attack" and attack_cd > 1.3 and not rec.has("band"):
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":

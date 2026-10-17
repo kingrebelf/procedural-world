@@ -1,0 +1,20 @@
+Procedural World: built-in natural voices
+==========================================
+
+This folder holds the game's offline voice program and voice model. Everything here is
+free for any use, including commercial use, with no royalties.
+
+- voice_server: part of Procedural World (MIT licence, see the game's LICENSE).
+  Source: tools/voice_server/voice_server.c in the game's repository.
+- Kokoro-82M voice model and voices, by hexgrad: Apache License 2.0
+  (data/LICENSE-kokoro.txt). https://huggingface.co/hexgrad/Kokoro-82M
+  The model's speaker table was resized and the voices were mixed for the game
+  (tools/voice_server/make_voices.py and assets/voices/catalog.json).
+- sherpa-onnx (sherpa-onnx-c-api library), by k2-fsa / Xiaomi: Apache License 2.0.
+  https://github.com/k2-fsa/sherpa-onnx
+- ONNX Runtime (onnxruntime library), by Microsoft: MIT License.
+  https://github.com/microsoft/onnxruntime
+- eSpeak NG pronunciation data (data/espeak-ng-data), built into sherpa-onnx's library:
+  GNU General Public License v3. Source: https://github.com/espeak-ng/espeak-ng
+  The voice program is a separate program the game starts; its source is published
+  under MIT, which is compatible with the GPL.

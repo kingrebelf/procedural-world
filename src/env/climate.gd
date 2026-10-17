@@ -62,9 +62,12 @@ static func base_temp(snow_line: float) -> float:
 
 ## The weather the sky is heading for at (x, z) at game hour `hours`. ground: land height
 ## there; lf: its landform (WorldField.landform_at); snow_line: the planet's.
-## Returns {cover, precip, snow, storm, mist, dust, wind, temp, wind_dir}: all 0..1 but
-## temp (degrees C) and wind_dir (unit Vector2, the way the wind blows toward).
-func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: float) -> Dictionary:
+## belt: the region's climate (WorldField.climate_at: warmth, wetness, 0.5 temperate), so
+## the tropics are hot and never snow and rainforest rains oftener than savanna.
+## Returns {cover, precip, snow, storm, mist, dust, wind, temp, wind_dir, hail, great,
+## bank}: all 0..1 but temp (degrees C), wind_dir (unit Vector2, the way the wind blows
+## toward) and great (the name of a great storm blowing, or "").
+func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: float, belt := Vector2(0.5, 0.5)) -> Dictionary:
 	lf = clampi(lf, 0, LF_MOIST.size() - 1)
 	# Where the front over you now was an hour ago is upwind: shift the clock by the
 	# distance along the prevailing wind.
@@ -78,7 +81,7 @@ func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: flo
 	var cell := _showers.get_noise_3d(sx * 0.0005, sz * 0.0005, hours * 0.18)
 	var unsettled := smoothstep(-0.15, 0.25, spell)
 	var hum := clampf(0.42 + spell * 0.85 + cell * 0.55 * unsettled, 0.0, 1.0)
-	hum = clampf(hum * LF_MOIST[lf] + (LF_MOIST[lf] - 1.0) * 0.25, 0.0, 1.0)
+	hum = clampf(hum * LF_MOIST[lf] + (LF_MOIST[lf] - 1.0) * 0.25 + (belt.y - 0.5) * 0.4, 0.0, 1.0)
 
 	# Temperature: falls with height to about -2 at the snow line, colder at night
 	# (coldest before dawn, warmest mid-afternoon), warm and cold spells over days.
@@ -88,6 +91,8 @@ func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: flo
 	var sunny := 1.0 - smoothstep(0.45, 0.85, hum)
 	temp += cos((tod - 0.62) * TAU) * (2.5 + 3.5 * sunny) + LF_WARM[lf] * (0.3 + 0.7 * smoothstep(0.3, 0.6, tod) * (1.0 - smoothstep(0.75, 0.9, tod)))
 	temp += _warmth.get_noise_1d(t * 0.012) * 7.0
+	# The climate belts: about ten degrees warmer in the tropics, colder toward the poles.
+	temp += (belt.x - 0.5) * 22.0
 
 	var cover := lerpf(0.06, 1.0, smoothstep(0.22, 0.72, hum))
 	var precip := smoothstep(0.6, 0.86, hum)

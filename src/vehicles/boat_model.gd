@@ -39,11 +39,13 @@ const SEATED := ["sit", "row", "sit_bench"]
 
 ## Hull shapes: L length, B beam, D draft at the keel, F freeboard amidships, rise (sheer
 ## at the ends), transom (stern width, 0 = pointed), deck (deck height or NAN for an open
-## boat), paint (sci-fi hulls are painted, not planked).
+## boat), paint (sci-fi hulls are painted, not planked), rake (how far the stern leans aft
+## toward the top, a share of L), round (how far the transom bulges aft at its middle, a
+## share of its half-width).
 const HULLS := {
 	"rowboat": {"L": 4.4, "B": 1.45, "D": 0.32, "F": 0.42, "rise": 0.18, "transom": 0.55, "deck": NAN},
 	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6, "tumble": 0.04},
-	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.4, "deck": 1.6, "tumble": 0.09},
+	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.34, "deck": 1.6, "tumble": 0.09, "rake": 0.03, "round": 0.35},
 	"launch": {"L": 7.5, "B": 2.5, "D": 0.55, "F": 0.7, "rise": 0.25, "transom": 0.8, "deck": 0.52, "paint": true},
 	"research_vessel": {"L": 26.0, "B": 7.0, "D": 2.4, "F": 2.1, "rise": 0.9, "transom": 0.85, "deck": 1.95, "paint": true},
 }
@@ -226,6 +228,8 @@ static func _hull_pt(h: Dictionary, u: float, v: float) -> Vector3:
 	# The bow rakes forward toward the top, the stern a little aft.
 	if u > 0.85:
 		z -= (u - 0.85) / 0.15 * v * float(h["L"]) * 0.05
+	elif u < 0.15:
+		z += (0.15 - u) / 0.15 * v * float(h["L"]) * float(h.get("rake", 0.0))
 	# Tumblehome: big wooden hulls draw in a little toward the rail.
 	var tumble := 1.0 - float(h.get("tumble", 0.0)) * smoothstep(0.7, 1.0, v)
 	return Vector3(s.x * pow(sin(a), 0.5) * tumble, -s.y + (s.y + s.z) * (1.0 - cos(a)), z)
@@ -241,6 +245,14 @@ static func _width_at(h: Dictionary, u: float, y: float) -> float:
 		else:
 			hi = m
 	return _hull_pt(h, u, (lo + hi) * 0.5).x
+
+## A flat quad facing along `hint`, flat-shaded.
+static func _quad_out(k: MeshKit, mat: String, a: Vector3, b: Vector3, c: Vector3, d: Vector3, hint: Vector3, col: Color) -> void:
+	var n := (b - a).cross(c - a).normalized()
+	if n.dot(hint) < 0.0:
+		n = -n
+	_tri_out(k, mat, a, b, c, n, n, n, hint, col)
+	_tri_out(k, mat, a, c, d, n, n, n, hint, col)
 
 ## A triangle facing along `hint` (the side it is seen from).
 static func _tri_out(k: MeshKit, mat: String, a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3, hint: Vector3, col: Color) -> void:
@@ -327,17 +339,24 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 			else:
 				k.quad(rm, Transform3D.IDENTITY, o0 + up, o1 + up, t1 + up, t0 + up)
 				k.quad(rm, Transform3D.IDENTITY, t1, t0, t0 + up, t1 + up)
-	# Transom: the flat stern, closing the hull.
+	# Transom: the stern, closing the hull; flat, or bulging aft at the middle ("round").
 	if float(h["transom"]) > 0.01:
+		var rd := float(h.get("round", 0.0))
 		for j in NV:
 			var a: Vector3 = grid[0][j]
 			var b: Vector3 = grid[0][j + 1]
 			var am := Vector3(-a.x, a.y, a.z)
 			var bm := Vector3(-b.x, b.y, b.z)
+			var ca := Vector3(0, a.y, a.z + a.x * rd)
+			var cb := Vector3(0, b.y, b.z + b.x * rd)
 			var c := col if (a.y + b.y) * 0.5 >= (0.3 if mat == "planks" else 0.12) or below.a <= 0.0 else below
-			_tri_out(k, mat, am, a, b, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, c)
-			_tri_out(k, mat, am, b, bm, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, c)
-			faces.append_array([am, a, b, am, b, bm])
+			for sd in [1.0, -1.0]:
+				var e0 := a if sd > 0.0 else am
+				var e1 := b if sd > 0.0 else bm
+				var n := Vector3(sd * rd, 0, 1).normalized()
+				_tri_out(k, mat, ca, e0, e1, Vector3.BACK, n, n, Vector3.BACK, c)
+				_tri_out(k, mat, ca, e1, cb, Vector3.BACK, n, Vector3.BACK, Vector3.BACK, c)
+				faces.append_array([ca, e0, e1, ca, e1, cb])
 	# Keel and stem: a timber (or steel) strip down the centreline.
 	var km := "timber" if mat == "planks" else "metal_dark"
 	for i in NU:
@@ -384,29 +403,33 @@ static func _rudder(k: MeshKit, h: Dictionary, head: float) -> void:
 	var zs := float(h["L"]) * 0.5
 	var bot := -float(h["D"]) * 0.7
 	var top := float(h["F"]) + float(h["rise"]) * 1.0
-	_beam(k, "timber", Vector3(0, bot - 0.05, zs + 0.04), Vector3(0, top + 0.1, zs + 0.04), 0.13)
-	var col := Color(0.42, 0.34, 0.27)
+	# The sternpost follows the raked, rounded stern: the transom's middle at each height.
+	var rd := float(h.get("round", 0.0))
+	var aft := func(y: float) -> float:
+		var q := _hull_pt(h, 0.0, acos(clampf(1.0 - (y - bot) / (top - bot), -1.0, 1.0)) * 2.0 / PI)
+		return q.z + q.x * rd
+	_beam(k, "timber", Vector3(0, bot - 0.05, aft.call(bot) + 0.04), Vector3(0, top + 0.1, aft.call(top) + 0.04), 0.13)
+	var col := Color(0.47, 0.38, 0.3)
 	var t := 0.07
 	# Blade outline (z behind the post, y): broad foot, a curve up the trailing edge.
 	var prof := [Vector2(0.12, bot), Vector2(1.25, bot + 0.15), Vector2(1.3, bot + 1.2), Vector2(1.05, 0.4),
 		Vector2(0.6, 1.2), Vector2(0.32, top - 0.2), Vector2(0.12, top - 0.2)]
 	var cz := Vector2(0.4, (bot + top) * 0.5)
+	var at := func(q: Vector2, x: float) -> Vector3: return Vector3(x, q.y, aft.call(q.y) + q.x)
 	for side in [1.0, -1.0]:
 		for i in prof.size():
 			var a: Vector2 = prof[i]
 			var b: Vector2 = prof[(i + 1) % prof.size()]
 			var n := Vector3(side, 0, 0)
-			_tri_out(k, "planks", Vector3(side * t, cz.y, zs + cz.x), Vector3(side * t, a.y, zs + a.x), Vector3(side * t, b.y, zs + b.x), n, n, n, n, col)
+			_tri_out(k, "planks", at.call(cz, side * t), at.call(a, side * t), at.call(b, side * t), n, n, n, n, col)
 	for i in prof.size():
 		var a: Vector2 = prof[i]
 		var b: Vector2 = prof[(i + 1) % prof.size()]
-		var pa := Vector3(0, a.y, zs + a.x)
-		var pb := Vector3(0, b.y, zs + b.x)
-		k.quad("planks", Transform3D.IDENTITY, pa + Vector3(t, 0, 0), pb + Vector3(t, 0, 0), pb - Vector3(t, 0, 0), pa - Vector3(t, 0, 0), col.darkened(0.15))
+		k.quad("planks", Transform3D.IDENTITY, at.call(a, t), at.call(b, t), at.call(b, -t), at.call(a, -t), col.darkened(0.15))
 	# Iron straps (pintles) binding blade to post, and the stock up to the tiller.
 	for y in [bot + 0.5, 0.2, top - 0.6]:
-		k.box("iron", Transform3D(Basis.IDENTITY, Vector3(0, y, zs + 0.35)), Vector3(t * 2.0 + 0.04, 0.08, 0.6))
-	_beam(k, "timber", Vector3(0, top - 0.25, zs + 0.2), Vector3(0, head, zs - 0.35), 0.09)
+		k.box("iron", Transform3D(Basis.IDENTITY, Vector3(0, y, aft.call(y) + 0.35)), Vector3(t * 2.0 + 0.04, 0.08, 0.6))
+	_beam(k, "timber", Vector3(0, top - 0.25, aft.call(top - 0.25) + 0.2), Vector3(0, head, aft.call(top) - 0.35), 0.09)
 
 ## Smooth normal at a grid point, pointing out of the hull.
 static func _hull_n(h: Dictionary, grid: Array, i: int, j: int, side: float) -> Vector3:
@@ -839,6 +862,16 @@ static func _oars(root: Node3D, seed: int) -> void:
 		mi.basis = oar_stroke(s, 0.0, 0.0)
 		root.add_child(mi)
 
+## The anchor cable as its own node ("Anchor"), so BoatNode can hide it while she sails.
+static func _anchor_cable(root: Node3D, mat: String, a: Vector3, b: Vector3, r: float) -> void:
+	var k := MeshKit.new(7)
+	_beam(k, mat, a, b, r, 6)
+	var mi := MeshInstance3D.new()
+	mi.name = "Anchor"
+	mi.mesh = k.commit(get_mat)
+	mi.visibility_range_end = 400.0
+	root.add_child(mi)
+
 ## An oar's pose at the rowlock on side s: `sweep` swings the blade toward the bow (+) or
 ## the stern (-), `dip` tips the blade down toward the water, `feather` turns it flat (1)
 ## or square to the stroke (0).
@@ -901,28 +934,67 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	var top := dy + cab.y + 0.12
 	# Framing on the castle's plain walls: corner posts, wales along its sides, a moulded
 	# cap under the rail and a pair of shuttered stern windows.
+	# The poop runs on aft over the stern as an overhanging gallery (z 9.1 to `ze`),
+	# narrowing toward its end and flaring out a little toward the top, on knees.
+	var ze := 11.5
+	var zt := float(h["L"]) * (0.5 + float(h.get("rake", 0.0))) # the stern's top edge
+	var yb := float(h["F"]) + float(h["rise"]) - 0.15 # the gallery's underside
+	var gw := func(z: float, y: float) -> float: return lerpf(hx, hx * 0.72, (z - 9.1) / (ze - 9.1)) + (y - yb) / (top - yb) * 0.12
+	var gc := Color(0.6, 0.48, 0.37)
+	for s in [-1.0, 1.0]:
+		var a := Vector3(s * gw.call(9.1, yb), yb, 9.1)
+		var b := Vector3(s * gw.call(ze, yb), yb, ze)
+		var c := Vector3(s * gw.call(ze, top), top, ze)
+		var d := Vector3(s * gw.call(9.1, top), top, 9.1)
+		_quad_out(k, "planks", a, b, c, d, Vector3(s, 0, 0), gc)
+		# A wale along the gallery and its corner post.
+		_beam(k, "timber", Vector3(s * (gw.call(9.1, yb + 0.9) + 0.03), yb + 0.9, 9.1), Vector3(s * (gw.call(ze, yb + 0.9) + 0.03), yb + 0.9, ze), 0.06)
+		_beam(k, "timber", b + Vector3(0, -0.08, 0.03), c + Vector3(0, 0.05, 0.03), 0.08)
+		# Knees: curved brackets from the stern up under the overhang, three timbers each.
+		var kx: float = s * 0.95
+		var pts := [Vector3(kx, yb - 1.0, zt - 0.3), Vector3(kx, yb - 0.55, zt + 0.25), Vector3(kx, yb - 0.2, ze - 0.55), Vector3(kx, yb, ze - 0.1)]
+		for i in 3:
+			_beam(k, "timber", pts[i], pts[i + 1], 0.07)
+	var hb: float = gw.call(ze, yb)
+	var ht: float = gw.call(ze, top)
+	_quad_out(k, "planks", Vector3(-hb, yb, ze), Vector3(hb, yb, ze), Vector3(ht, top, ze), Vector3(-ht, top, ze), Vector3.BACK, gc)
+	_quad_out(k, "planks", Vector3(-hx, yb, 9.1), Vector3(hx, yb, 9.1), Vector3(hb, yb, ze), Vector3(-hb, yb, ze), Vector3.DOWN, gc.darkened(0.25))
+	_quad_out(k, "wood_floor", Vector3(-hx, top, 9.1), Vector3(hx, top, 9.1), Vector3(ht, top, ze), Vector3(-ht, top, ze), Vector3.UP, Color(0.74, 0.62, 0.5))
+	var slab := BoxShape3D.new()
+	slab.size = Vector3(hx + ht, 0.12, ze - 9.1)
+	shapes.append([slab, Transform3D(Basis.IDENTITY, Vector3(0, top - 0.06, (9.1 + ze) * 0.5))])
+	# Shuttered stern windows and a moulded cap across the gallery's end.
+	for s in [-1.0, 1.0]:
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.7, yb + 0.75, ze + 0.03)), Vector3(0.55, 0.5, 0.06), Color(0.3, 0.22, 0.16))
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.7, yb + 0.75, ze + 0.06)), Vector3(0.65, 0.07, 0.04))
+	k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, top - 0.02, ze + 0.06)), Vector3(ht * 2.0 + 0.2, 0.18, 0.14))
+	# Framing on the castle's plain walls: corner posts, wales along its sides, a moulded
+	# cap under the rail.
 	for s in [-1.0, 1.0]:
 		for z in [4.9, 9.1]:
 			_beam(k, "timber", Vector3(s * (hx + 0.04), dy - 0.2, z), Vector3(s * (hx + 0.04), top + 0.05, z), 0.09)
 		for y in [dy + 0.9, dy + 1.8]:
 			k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * (hx + 0.05), y, 7.0)), Vector3(0.08, 0.12, 4.25))
 		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * (hx + 0.07), top - 0.02, 7.0)), Vector3(0.14, 0.18, 4.35))
-		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.8, dy + 1.5, 9.14)), Vector3(0.6, 0.55, 0.06), Color(0.3, 0.22, 0.16))
-		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.8, dy + 1.5, 9.17)), Vector3(0.7, 0.07, 0.04))
-	k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, top - 0.02, 9.16)), Vector3(hx * 2.0 + 0.2, 0.18, 0.14))
+	# The poop rail, round the castle and out along the gallery to its end.
 	for s in [-1.0, 1.0]:
-		_beam(k, "timber", Vector3(s * hx, top, 4.9), Vector3(s * hx, top, 9.1), 0.06)
-		_beam(k, "timber", Vector3(s * hx, top + 0.9, 4.9), Vector3(s * hx, top + 0.9, 9.1), 0.06)
-		for z in [4.9, 6.3, 7.7, 9.1]:
-			_beam(k, "timber", Vector3(s * hx, top, z), Vector3(s * hx, top + 0.9, z), 0.05)
+		var rail := [Vector3(s * hx, top, 4.9), Vector3(s * hx, top, 9.1), Vector3(s * ht, top, ze)]
+		for i in 2:
+			_beam(k, "timber", rail[i], rail[i + 1], 0.06)
+			_beam(k, "timber", rail[i] + Vector3(0, 0.9, 0), rail[i + 1] + Vector3(0, 0.9, 0), 0.06)
+		for z in [4.9, 6.3, 7.7, 9.1, (9.1 + ze) * 0.5, ze]:
+			var x: float = s * (hx if z <= 9.1 else lerpf(hx, ht, (z - 9.1) / (ze - 9.1)))
+			_beam(k, "timber", Vector3(x, top, z), Vector3(x, top + 0.9, z), 0.05)
 		var rs := BoxShape3D.new()
-		rs.size = Vector3(0.1, 1.0, 4.2)
-		shapes.append([rs, Transform3D(Basis.IDENTITY, Vector3(s * hx, top + 0.5, 7.0))])
-	_beam(k, "timber", Vector3(-hx, top + 0.9, 9.1), Vector3(hx, top + 0.9, 9.1), 0.06)
+		rs.size = Vector3(0.1, 1.0, ze - 4.9)
+		var mid := Vector3(s * (hx + ht) * 0.5, top + 0.5, (4.9 + ze) * 0.5)
+		shapes.append([rs, Transform3D(Basis.IDENTITY, mid)])
+	_beam(k, "timber", Vector3(-ht, top + 0.9, ze), Vector3(ht, top + 0.9, ze), 0.06)
 	var back := BoxShape3D.new()
-	back.size = Vector3(hx * 2.0, 1.0, 0.1)
-	shapes.append([back, Transform3D(Basis.IDENTITY, Vector3(0, top + 0.5, 9.1))])
-	_beam(k, "timber", Vector3(0, top + 0.85, 8.1), Vector3(0, top + 0.5, 9.6), 0.06)
+	back.size = Vector3(ht * 2.0, 1.0, 0.1)
+	shapes.append([back, Transform3D(Basis.IDENTITY, Vector3(0, top + 0.5, ze))])
+	# The tiller, from the helm to the rudder's head.
+	_beam(k, "timber", Vector3(0, top + 0.85, 8.1), Vector3(0, top + 0.5, zt - 0.35), 0.06)
 	_rudder(k, h, top + 0.5)
 	# Stairs from the waist up to the sterncastle, port side.
 	_stairs(k, shapes, Vector3(-hx + 0.6, dy, 2.75), Vector3(-hx + 0.6, top, 4.9), 0.9, "planks", Color(0.7, 0.58, 0.46))
@@ -976,8 +1048,8 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 		_line(k, mast + Vector3(0, 16.2, 0), mast + Vector3(s * 5.4, 12.6, -0.5), 0.01)
 	_line(k, mast + Vector3(0, 16.2, 0), Vector3(0, float(h["F"]) + 2.5, -13.1), 0.025)
 	_line(k, mast + Vector3(0, 15.8, 0), Vector3(0, top + 0.9, 9.1), 0.02)
-	# Anchor cable running from the bow down into the water.
-	_beam(k, "rope", Vector3(1.0, float(h["F"]) + 1.2, -9.4), Vector3(2.4, -3.0, -15.5), 0.06, 6)
+	# Anchor cable running from the bow down into the water (only while she lies at anchor).
+	_anchor_cable(root, "rope", Vector3(1.0, float(h["F"]) + 1.2, -9.4), Vector3(2.4, -3.0, -15.5), 0.06)
 	# Cargo in the waist.
 	for i in r.randi_range(3, 6):
 		var p := Vector3(r.randf_range(-2.0, 2.0), dy, r.randf_range(-4.0, 3.5))
@@ -1168,7 +1240,7 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	for z in [-4.5, -3.6]:
 		k.cylinder("hull_paint", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(-2.75, dy + 0.75, z)), 0.3, 0.3, 0.9, 12, true, 0.0, 1, Color(0.95, 0.95, 0.96))
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.6, dy + 0.35, -8.6)), 0.3, 0.3, 1.2, 12)
-	_beam(k, "metal_dark", Vector3(0.9, float(h["F"]) + 1.0, -11.2), Vector3(2.7, -3.2, -18.0), 0.05, 6)
+	_anchor_cable(root, "metal_dark", Vector3(0.9, float(h["F"]) + 1.0, -11.2), Vector3(2.7, -3.2, -18.0), 0.05)
 	_beam(k, "metal", Vector3(0, dy, -9.5), Vector3(0, dy + 6.0, -9.5), 0.08, 8)
 	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(0, dy + 6.05, -9.5)), Vector3(0.1, 0.1, 0.1))
 	k.box("glow_red", Transform3D(Basis.IDENTITY, Vector3(-2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))

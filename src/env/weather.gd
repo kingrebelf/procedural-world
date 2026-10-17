@@ -202,7 +202,7 @@ func _process(delta: float) -> void:
 func _sample(p: Vector3) -> Dictionary:
 	var lf := atmosphere.field.landform_at(p.x, p.z)
 	var ground := atmosphere.field.height(p.x, p.z)
-	var c := climate.at(Climate.hours_of(Game.day), p.x, p.z, ground, lf, Planets.snow_line)
+	var c := climate.at(Climate.hours_of(Game.day), p.x, p.z, ground, lf, Planets.snow_line, atmosphere.field.climate_at(p.x, p.z))
 	if forced >= 0:
 		var pr: Dictionary = PRESETS[forced]
 		c["hail"] = 0.0

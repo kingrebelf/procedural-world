@@ -1,5 +1,5 @@
 ; Procedural World - Windows installer (NSIS 3, Modern UI 2)
-; Build:  makensis -DVERSION=0.3.46 -DSRC_DIR=..\..\build\windows -DOUT_FILE=..\..\build\ProceduralWorld-Setup.exe installer.nsi
+; Build:  makensis -DVERSION=0.3.48 -DSRC_DIR=..\..\build\windows -DOUT_FILE=..\..\build\ProceduralWorld-Setup.exe installer.nsi
 
 Unicode true
 SetCompressor /SOLID lzma
@@ -13,7 +13,7 @@ RequestExecutionLevel admin
 !include "nsDialogs.nsh"
 
 !ifndef VERSION
-  !define VERSION "0.3.46"
+  !define VERSION "0.3.48"
 !endif
 !ifndef SRC_DIR
   !define SRC_DIR "..\..\build\windows"
@@ -103,6 +103,13 @@ Section "!Game files (required)" SecCore
   WriteRegDWORD HKLM "${UNINST_KEY}" "EstimatedSize" "$0"
 SectionEnd
 
+Section "Natural voices" SecVoices
+  ; The built-in voice program and voice model (tools/voice_server), if the build has them.
+  SetOutPath "$INSTDIR\voices"
+  File /nonfatal /r "${SRC_DIR}\voices\*.*"
+  SetOutPath "$INSTDIR"
+SectionEnd
+
 Section "Start Menu shortcuts" SecStart
   SetShellVarContext all
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
@@ -129,6 +136,7 @@ SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "The game itself."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecVoices} "Natural, human-sounding voices for the people of the world, with accents, that run offline on this PC (about 400 MB). Without them people use Windows' own speech voices."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecStart} "Start Menu entries for the game, your saved worlds folder and the uninstaller."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "A shortcut on the desktop."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecWindowed} "Start in a 1920x1080 window instead of fullscreen. You can change this any time in Settings."
@@ -180,6 +188,7 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\README.txt"
   Delete "$INSTDIR\Uninstall.exe"
+  RMDir /r "$INSTDIR\voices"
   RMDir "$INSTDIR"
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\*.lnk"

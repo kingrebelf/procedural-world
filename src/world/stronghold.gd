@@ -105,10 +105,11 @@ static func layout(g: ChunkGenerator, f: Dictionary) -> Array:
 			var q := Vector2(k * 8.0, HALF).rotated(-face)
 			put.call(pc[2] if side == 0 and k == 0 else pc[0], q, face)
 	put.call(pc[3], Vector2(0, -6.0), 0.0, {"tier": tier})
-	# Loot in the courtyard and the keep's doorway: more and better with the tier.
+	# A cache in the keep's doorway (and one more in a big fort's yard): the real hoard
+	# is below, in the dungeon under the courtyard (see Dungeon).
 	var caches := ["chest", "rune_coffer", "supply_pod"]
 	var luck := 0.25 + 0.25 * tier
-	for n in 1 + tier * 2:
+	for n in 1 + (1 if tier >= 3 else 0):
 		var t: String = caches[era] if r.randf() < 0.7 else caches[r.randi() % 3]
 		var q := Vector2(r.randf_range(-9, 9), r.randf_range(2, 10))
 		if n == 0:
@@ -162,14 +163,19 @@ static func town_wall(g: ChunkGenerator, s: Dictionary, items: Array) -> void:
 			else:
 				put.call("castle_wall", ang, mid)
 
+## How many stand guard up top.
+static func sentries(f: Dictionary) -> int:
+	return 2 + (1 if int(f["tier"]) >= 2 else 0)
+
 ## Guards in the courtyard, by world position: [{p, tier, id}].
 static func guards(f: Dictionary) -> Array:
 	var c: Vector2 = f["center"]
 	var out: Array = []
-	var n := 1 + int(f["tier"]) * 2
-	for i in n:
-		var a := TAU * i / n
-		var q := Vector2(cos(a) * 6.0, 4.0 + sin(a) * 5.0)
+	# Sentries either side of the gate, and one at the keep's door in a bigger fort: the
+	# rest keep the dungeon below.
+	var spots := [Vector2(-3.5, HALF - 4.0), Vector2(3.5, HALF - 4.0), Vector2(0, -1.5)]
+	for i in sentries(f):
+		var q: Vector2 = spots[i]
 		out.append({"p": c + q.rotated(-float(f["yaw"])), "tier": f["tier"], "id": "g%d_%d_%d" % [f["cx"], f["cz"], i]})
 	return out
 
@@ -206,9 +212,40 @@ static func build(t: String) -> ArrayMesh:
 				e.append(swap)
 			elif String(e[0]) == "village/Corner_Exterior_Brick":
 				e.append(quoins)
-	var mesh := BuildCatalog.merge_models(models)
-	k.commit(Materials.get_mat, mesh)
+	if era == 2:
+		var plain := BuildCatalog.merge_models(models)
+		k.commit(Materials.get_mat, plain)
+		return plain
+	var stone := face_stone_of(era)
+	var noise := FastNoiseLite.new()
+	noise.seed = WHash.str_hash(t) + v
+	noise.frequency = 0.25
+	noise.fractal_octaves = 3
+	var stone_mat := Materials.get_mat(stone)
+	var on_kit := func(mat: Material, arrays: Array) -> void:
+		if mat == stone_mat:
+			_patches(arrays, noise)
+	var on_boxes := func(name: String, arrays: Array) -> void:
+		if name == stone:
+			_patches(arrays, noise)
+	var mesh := BuildCatalog.merge_models(models, on_kit)
+	k.commit(Materials.get_mat, mesh, on_boxes)
 	return mesh
+
+## The castle's stone in its vertex colours: broad patches a few metres across where the
+## blocks run a shade lighter or darker, as quarry beds and weather leave them (one even
+## tone end to end read as a flat grey slab). The damp foot and rain streaks are _weather's.
+static func _patches(arrays: Array, noise: FastNoiseLite) -> void:
+	var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var old = arrays[Mesh.ARRAY_COLOR]
+	var has_old: bool = old != null and (old as PackedColorArray).size() == v.size()
+	var col := PackedColorArray()
+	col.resize(v.size())
+	for i in v.size():
+		var c: Color = old[i] if has_old else Color.WHITE
+		var tone := lerpf(0.84, 1.0, clampf(0.5 + noise.get_noise_3dv(v[i]) * 0.9, 0.0, 1.0))
+		col[i] = Color(c.r * tone, c.g * tone, c.b * tone, c.a)
+	arrays[Mesh.ARRAY_COLOR] = col
 
 static func face_stone_of(era: int) -> String:
 	return "crypt_stone" if era == 1 else "castle_stone"

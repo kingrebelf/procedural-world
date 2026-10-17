@@ -481,8 +481,11 @@ static func fell(g: ChunkGenerator, chunk: Dictionary, crashes: Array) -> void:
 			var roll := WHash.unit2(g.seed, int(floor(wx * 4.0)), int(floor(wz * 4.0)), 963)
 			if b <= 0.0 or roll > b * 1.6:
 				continue
-			if b < 0.55 and (o["t"] == "oak" or o["t"] == "pine"):
-				# Further out: still standing, but burnt bare.
+			if b < 0.55 and (o["t"] in ["oak", "pine", "palm", "tropic"]):
+				# Further out: still standing, but burnt bare (a palm or jungle tree to a
+				# broadleaf's bare snag).
+				if o["t"] != "pine":
+					o["t"] = "oak"
 				o["sp"] = _dead_species(o["t"], int(o.get("sp", 1)))
 				o["st"]["burnt"] = true
 				break
