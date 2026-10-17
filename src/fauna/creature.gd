@@ -763,7 +763,7 @@ func _build() -> void:
 		# Medieval animals keep the kit's natural coats; others take the species' colours.
 		var tint = p.get("tint", null if era == Eras.MEDIEVAL else p["col"])
 		var glow = Color.from_hsv(float(p["glow"]) / 12.0, 0.7, 1.0) if p["has_glow"] else null
-		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow)
+		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow, id.hash())
 		_model.add_child(_kit)
 		return
 	var sz: float = p["size"]
@@ -791,6 +791,7 @@ func _build() -> void:
 			_flap = {"Scout Drone": 0.06, "Drift Jelly": 0.3, "Glowmoth": 0.9}.get(String(p["name"]), 0.7)
 			var bmi := MeshInstance3D.new()
 			bmi.mesh = bm["body"]
+			bmi.set_instance_shader_parameter("seed", float(absi(id.hash()) % 65521))
 			_model.add_child(bmi)
 			var at: Vector3 = bm["wing_at"]
 			for side in [-1.0, 1.0]:
@@ -802,6 +803,7 @@ func _build() -> void:
 				# The left wing is the right one mirrored.
 				wmi.scale = Vector3(side, 1, 1)
 				w.add_child(wmi)
+				wmi.set_instance_shader_parameter("seed", float(absi(id.hash()) % 65521))
 				_wings.append(w)
 		_:
 			var leg_l: float = 0.55 * float(p["leg"])
