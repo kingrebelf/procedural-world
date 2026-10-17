@@ -1,5 +1,5 @@
 ; Procedural World - Windows installer (NSIS 3, Modern UI 2)
-; Build:  makensis -DVERSION=0.3.19 -DSRC_DIR=..\..\build\windows -DOUT_FILE=..\..\build\ProceduralWorld-Setup.exe installer.nsi
+; Build:  makensis -DVERSION=0.3.20 -DSRC_DIR=..\..\build\windows -DOUT_FILE=..\..\build\ProceduralWorld-Setup.exe installer.nsi
 
 Unicode true
 SetCompressor /SOLID lzma
@@ -13,7 +13,7 @@ RequestExecutionLevel admin
 !include "nsDialogs.nsh"
 
 !ifndef VERSION
-  !define VERSION "0.3.19"
+  !define VERSION "0.3.20"
 !endif
 !ifndef SRC_DIR
   !define SRC_DIR "..\..\build\windows"
