@@ -225,8 +225,9 @@ void sky() {
 
 	// Stars.
 	float night = 1.0 - daylight;
-	// Stars come out only once the sky is truly dark, not while dawn or dusk still lights it.
-	float star_vis = smoothstep(0.6, 0.97, night);
+	// Stars come out only once the sun is well down (past civil twilight), not while dawn or
+	// dusk still lights the sky; auto exposure would otherwise show them over a blue sky.
+	float star_vis = 1.0 - smoothstep(-0.2, -0.07, normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0)).y);
 	// Mip from whichever of two azimuths has no seam here: atan jumps by a whole turn
 	// behind you, and a mip picked across the jump would draw a line down the sky. Near the
 	// zenith the map squeezes, and the mips keep it from sparkling. (Derivatives are taken

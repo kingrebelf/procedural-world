@@ -109,6 +109,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
 	await _wait_loaded(p, streamer)
+	# Loading can take a long while on a slow renderer: put the clock back to the shot's time.
+	Game.day = day
 	# Use the real (snapshotted, flattened) height once the chunk exists.
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(p.global_position))
 	if c:
@@ -125,6 +127,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
+	# The clock ran on while things settled (a game hour per real minute).
+	Game.day = day
+	await _wait(3)
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
