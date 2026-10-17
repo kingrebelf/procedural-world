@@ -176,6 +176,14 @@ static func build(t: String) -> ArrayMesh:
 		_bunker(part, k, models)
 	else:
 		_stone(part, era == 1, k, models)
+		# Castle masonry is stone through: the village walls' wooden bands become stone
+		# string courses, and a tower is bare stone inside, not plaster.
+		var swap := {"MI_WoodTrim": BuildCatalog.kit_material("village/Corner_Exterior_Brick", "MI_RockTrim")}
+		if part == "tower":
+			swap["MI_Plaster"] = BuildCatalog.kit_material(BRICK, "MI_UnevenBrick")
+		for e in models:
+			if String(e[0]).begins_with("village/Wall_UnevenBrick") and not swap.values().has(null):
+				e.append(swap)
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
 	return mesh

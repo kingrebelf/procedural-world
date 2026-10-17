@@ -225,8 +225,12 @@ static func merge_models(models: Array) -> ArrayMesh:
 	var order: Array = []
 	for e in models:
 		var base := _xf(e)
+		# An optional fifth entry swaps the model's materials by name for others.
+		var swap: Dictionary = e[4] if e.size() > 4 else {}
 		for part in model_parts(String(e[0])):
 			var mat: Material = part[0]
+			if mat != null and swap.has(mat.resource_name):
+				mat = swap[mat.resource_name]
 			if not groups.has(mat):
 				groups[mat] = []
 				order.append(mat)
@@ -236,6 +240,13 @@ static func merge_models(models: Array) -> ArrayMesh:
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _merge_arrays(groups[mat]))
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
+
+## A kit model's material by name (null if it has none by that name).
+static func kit_material(model: String, name: String) -> Material:
+	for part in model_parts(model):
+		if part[0] != null and (part[0] as Material).resource_name == name:
+			return part[0]
+	return null
 
 ## Surfaces of each kit model as [material, arrays, transform]. Reading a mesh back from
 ## the renderer on a worker thread waits for the main thread (and hangs if the main
