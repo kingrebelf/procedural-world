@@ -1535,7 +1535,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -2865,6 +2865,26 @@ func test_no_double_floors() -> void:
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
 
+## Outpost blocks come in several looks by where they stand, each a whole building with
+## its own paint and fittings, and a look's key still finds its type's rooms.
+func test_outpost_variants() -> void:
+	for t in KitBase.VARIANTS:
+		var keys := {}
+		for i in 60:
+			keys[ObjectLibrary.mesh_key({"t": t, "p": Vector3(i * 7.3, 0, i * 3.1)})] = true
+		check(keys.size() == int(KitBase.VARIANTS[t]), "%s comes in %d looks (%s)" % [t, KitBase.VARIANTS[t], keys.keys()])
+		var plain := ObjectLibrary.get_mesh(t)
+		var plain_v := 0
+		for i in plain.get_surface_count():
+			plain_v += (plain.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		for key: String in keys:
+			check(key.get_slice(Stronghold.VAR, 0) == t, "%s is still a %s" % [key, t])
+			var m := ObjectLibrary.get_mesh(key)
+			var n := 0
+			for i in m.get_surface_count():
+				n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+			check(n > plain_v, "%s has its own paint and fittings (%d vertices, plain %d)" % [key, n, plain_v])
+
 static func _species_named(name: String, era: int) -> Dictionary:
 	for sp in range(1, 4000):
 		var p := Creature.species(sp, era)
@@ -3605,6 +3625,23 @@ func test_server_alliances() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
 
+func test_tool_models() -> void:
+	# Every tool and weapon with a built model is a real shape (not the fallback box),
+	# of a believable size, and is an item the game knows.
+	for t in ToolModels.BUILD:
+		check(not ItemDB.def(t).is_empty(), "%s: modelled item exists" % t)
+		var m := ToolModels.build(t)
+		check(m != null and m.get_surface_count() > 0, "%s: model builds" % t)
+		if m == null:
+			continue
+		var n := 0
+		for i in m.get_surface_count():
+			n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(n > 24, "%s: more than a box (%d verts)" % [t, n])
+		var s := m.get_aabb().size
+		check(maxf(s.x, maxf(s.y, s.z)) > 0.04 and maxf(s.x, maxf(s.y, s.z)) < 2.5, "%s: believable size %s" % [t, s])
+	check(Viewmodel._strike_axis("tomahawk") == Vector3.FORWARD and Viewmodel._strike_axis("warpick") == Vector3.RIGHT, "new axes and picks swing edge first")
+
 # --- Lived-in villages ------------------------------------------------------------
 
 func _medieval_town(gen: ChunkGenerator) -> Dictionary:
@@ -3616,6 +3653,20 @@ func _medieval_town(gen: ChunkGenerator) -> Dictionary:
 				if best.is_empty() or (s["center"] as Vector2).length() < (best["center"] as Vector2).length():
 					best = s
 	return best
+
+## A streamer of flat, empty chunks for TownLife, with objects placed by hand.
+class FakeTownStreamer extends Node:
+	class Chunk:
+		var data := {}
+	var chunks := {}
+	func get_chunk(k: Vector2i):
+		if not chunks.has(k):
+			var c := Chunk.new()
+			var hs := PackedFloat32Array()
+			hs.resize(ChunkGenerator.RES * ChunkGenerator.RES)
+			c.data = {"heights": hs, "objects": []}
+			chunks[k] = c
+		return chunks[k]
 
 func test_town_life() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
@@ -3629,6 +3680,47 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
+	var tl := TownLife.new()
+	tl.setup(gen, null, s)
+	var smokes := 0
+	var keyed := 0
+	for g in tl._pending:
+		for e in g["pieces"]:
+			if e["k"] == "smoke":
+				smokes += 1
+				if e.has("house") and int(e["house"]) == int(g["house"]):
+					keyed += 1
+	check(smokes > 0 and keyed == smokes, "every smoke piece knows its house (%d of %d)" % [keyed, smokes])
+	tl.free()
+	# An orchard tree (or a yard prop) where the player has built doesn't grow through it,
+	# and comes back when the building is dismantled.
+	var orch: Array = pl["orchards"]
+	check(not orch.is_empty(), "the town has an orchard")
+	if not orch.is_empty():
+		var t0: Dictionary = orch[0]["trees"][0]
+		var tp: Vector2 = t0["p"]
+		var tree := {"k": "tree", "p": tp, "yaw": t0["yaw"], "sp": orch[0]["sp"], "v": t0["v"], "s": t0["s"]}
+		var pile := {"k": "barrels", "p": tp + Vector2(5.0, 0.0), "seed": 1}
+		var fs := FakeTownStreamer.new()
+		var tl0 := TownLife.new()
+		tl0.gen = gen
+		tl0.site = s
+		tl0.streamer = fs
+		check(tl0._standing([tree, pile]).size() == 2, "with nothing built, the orchard tree and the prop stand")
+		var k := TownLife._chunk_of(Vector3(tp.x, 0, tp.y))
+		var lp := Vector3(tp.x - k.x * ChunkGenerator.SIZE + 1.5, 0, tp.y - k.y * ChunkGenerator.SIZE)
+		var fo := {"t": BuildCatalog.PREFIX + "foundation", "p": lp, "r": 0.0, "s": 1.0, "st": {}}
+		fs.get_chunk(k).data["objects"].append(fo)
+		var left := tl0._standing([tree, pile])
+		check(left.size() == 1 and left[0]["k"] == "barrels", "a foundation built 1.5 m from an orchard tree keeps it from being built")
+		var rev := TownLife._rev
+		TownLife.note_built(tp)
+		check(TownLife._rev == rev + 1 and tl0._seen != TownLife._rev, "a build is noted for the towns to stand aside")
+		fo["st"]["gone"] = true
+		check(tl0._standing([tree, pile]).size() == 2, "once it's dismantled the tree stands again")
+		tl0.free()
+		fs.free()
 	var kinds := {}
 	for e in pl["pieces"]:
 		kinds[e["k"]] = true
@@ -3862,6 +3954,30 @@ func test_crater_rims() -> void:
 			check(f.crater_spoil(p.x, p.y) > 0.6, "fresh spoil shows on the crest")
 			tested += 1
 	check(tested > 0, "found big craters to check")
+	# Old craters on a human world are grassed over: stony only along the inner lip.
+	var g := ChunkGenerator.new(4242, true)
+	var bare := 0
+	var grassy := 0
+	var lip_scree := 0.0
+	var lips := 0
+	for kz in range(25, 28):
+		for kx in range(25, 28):
+			var ch := g.generate(kx, kz)
+			if not ch.has("grassed"):
+				continue
+			var cov := GroundCover.build(ch)
+			for vj in ChunkGenerator.RES:
+				for vi in ChunkGenerator.RES:
+					var gw := GroundCover._look_cell(ch["grassed"], vi, vj, 1, 0)
+					var sp := GroundCover._look_cell(ch["look"], vi, vj, ChunkGenerator.LOOK_BYTES, 11)
+					var sc := cov[(vj * ChunkGenerator.RES + vi) * 4] / 255.0
+					if gw > 0.95 and sp < 0.01:
+						grassy += 1
+						bare += int(sc > 0.1)
+					elif gw > 0.95 and sp > 0.4:
+						lips += 1
+						lip_scree += sc
+	check(grassy > 500 and bare < grassy * 0.01, "an old crater field is grassed, not scree (%d of %d bare)" % [bare, grassy])
 	WorldField.terrain_v = 15
 	check(f.crater_spoil(5000, -3000) == 0.0, "older worlds keep their craters")
 	_restore_world(was)
@@ -3918,11 +4034,20 @@ func test_dreadnought_crash() -> void:
 	var bad := 0
 	var bits := 0
 	var burnt := 0
+	var felled := 0
+	var standing := 0
+	var snags := 0
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var nb := g.generate(k.x + d.x, k.y + d.y)
 		for o in nb["objects"]:
 			if o["t"] == WonderSite.DEBRIS:
 				bits += 1
+			elif o["t"] == WonderSite.TRUNK:
+				felled += 1
+			elif ObjectLibrary.kind(o["t"]) == "tree":
+				snags += int(o["st"].get("burnt", false) and String(Flora.species(o["t"], int(o["sp"]))["form"]) in ["dead", "snag"])
+				var wp: Vector3 = o["p"] + Vector3((k.x + d.x) * 64.0, 0, (k.y + d.y) * 64.0)
+				standing += int(WonderSite.blast(cr, wp.x, wp.z) > 0.95)
 		var lb: PackedByteArray = nb.get("look", PackedByteArray())
 		for i in range(10, lb.size(), ChunkGenerator.LOOK_BYTES):
 			burnt += int(lb[i] > 40)
@@ -3946,6 +4071,12 @@ func test_dreadnought_crash() -> void:
 				bad += 1
 	check(bad == 0, "the trench's chunks meet the wonder's (%d bad edge points)" % bad)
 	check(bits > 0 and burnt > 0, "wreckage (%d) and scorched ground (%d) reach the chunks round it" % [bits, burnt])
+	for o in ch["objects"]:
+		if o["t"] == WonderSite.TRUNK:
+			felled += 1
+	check(snags > 0, "further out the trees stand burnt bare (%d)" % snags)
+	check(standing == 0, "no tree stands where the blast hit hardest (%d do)" % standing)
+	check(felled > 0 and ObjectLibrary.kind(WonderSite.TRUNK) == "structure" and WonderSite.trunk(5, 1).get_surface_count() > 0, "the trees it reached lie snapped and scorched (%d)" % felled)
 	for sp in range(1, 7):
 		check(WonderSite.debris(sp, 1).get_surface_count() > 0, "wreckage kind %d has a mesh" % sp)
 	_restore_world(was)
@@ -3953,6 +4084,8 @@ func test_dreadnought_crash() -> void:
 func _ground(g: ChunkGenerator, p: Vector2) -> float:
 	var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
 	return ChunkGenerator.height_at(g.generate(k.x, k.y), p.x - k.x * 64.0, p.y - k.y * 64.0)
+
+# --- Boats ---------------------------------------------------------------------------------
 
 # --- Food, drink and containers ------------------------------------------------------
 
@@ -4019,6 +4152,42 @@ func test_animal_individuals() -> void:
 				check((mi as MeshInstance3D).get_surface_override_material(s).shader.resource_path == AnimalSkin.LOCK_SHADER, "horse locks use the lock shader")
 	check(locks >= 1, "a horse's mane and tail grow locks (%d)" % locks)
 	m.free()
+func test_camera_feel() -> void:
+	# Head bob: still at rest, moves when walking, dips on landing, and is gone when off.
+	var hb := HeadBob.new()
+	for i in 30:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+	check(hb.offset.length() < 0.001 and hb.tilt.length() < 0.001, "head bob rests when standing")
+	var lo := 0.0
+	var hi := -1.0
+	for i in 120:
+		hb.step(1.0 / 60.0, 1.0, fmod(i / 60.0, 1.0), 1.0, true, false, 0.0, 0.0, 0.0)
+		lo = minf(lo, hb.offset.y)
+		hi = maxf(hi, hb.offset.y)
+	check(hi - lo > 0.01 and hi - lo < 0.05, "walking bobs the eye a little (%.3f m)" % (hi - lo))
+	hb.reset()
+	var dip := 0.0
+	hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 8.0, 0.0)
+	for i in 60:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+		dip = minf(dip, hb.offset.y)
+	check(dip < -0.02 and dip > -0.15 and absf(hb.offset.y) < 0.01, "a landing dips the eye and springs back (%.3f m)" % dip)
+	hb.reset()
+	for i in 60:
+		hb.step(1.0 / 60.0, 0.0, fmod(i / 60.0, 1.0), 1.8, true, false, 1.0, 6.0, 0.0)
+	check(hb.offset.length() < 0.0001 and hb.tilt.length() < 0.0001, "head bob off keeps the eye still")
+	# Motion blur: skips still frames and cuts, and scales with the shutter.
+	var old := CameraBlur.strength
+	CameraBlur.strength = 0.3
+	var a := Transform3D.IDENTITY
+	check(CameraBlur.shutter_scale(a, a, 1.0 / 60.0) == 0.0, "no blur while the camera holds still")
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 1.2), 1.0 / 60.0) == 0.0, "no blur across a camera cut")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0), 0.3), "the shutter is strength / 60 s")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 120.0), 0.6), "the same shutter at a higher frame rate")
+	CameraBlur.strength = 0.0
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
+	CameraBlur.strength = old
+
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

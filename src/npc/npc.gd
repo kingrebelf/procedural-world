@@ -17,6 +17,8 @@ var target_player := false
 var talking := false ## True while the player is in a conversation with this NPC.
 var talk_here := false ## talking with you while someone else's game runs them (multiplayer)
 var decide_in := 0.0
+var lod_dt := 0.0 ## time saved up while NPCManager skips frames for this person
+var lod_tick := 0
 var think_at := 0.0
 var attack_cd := 0.0
 ## What their trade's routine has them doing (NPCRoles.duty_at), while action is "work".
@@ -118,6 +120,7 @@ func _ready() -> void:
 	_label.no_depth_test = false
 	_label.render_priority = Creature.TAG_PRIORITY
 	_label.outline_render_priority = Creature.TAG_PRIORITY - 1
+	Creature.crisp_tag(_label)
 	_label.width = 420
 	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_label.position.y = 2.05 * _scale

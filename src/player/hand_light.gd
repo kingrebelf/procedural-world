@@ -63,27 +63,64 @@ const TORCH_FLAME := [Vector3(0, 0.4, 0), 0.32]
 static func torch_fire() -> Node3D:
 	var n := FireFx.flame(TORCH_FLAME[1])
 	n.position = TORCH_FLAME[0]
-	n.add_child(FireFx.embers(TORCH_FLAME[1]))
+	n.add_child(FireFx.embers(TORCH_FLAME[1], false))
+	n.add_child(_torch_smoke(TORCH_FLAME[1]))
 	return n
+
+static var _wisp_mat: StandardMaterial3D
+
+## A burning rag's smoke: thin pale-grey wisps that leave the flame's tip, widen, drift and
+## fade. Already streaming when lit (preprocess), so it never starts as one dark clump.
+static func _torch_smoke(size: float) -> CPUParticles3D:
+	if _wisp_mat == null:
+		_wisp_mat = StandardMaterial3D.new()
+		_wisp_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_wisp_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_wisp_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		_wisp_mat.vertex_color_use_as_albedo = true
+		_wisp_mat.albedo_texture = FireFx._dot()
+		_wisp_mat.disable_receive_shadows = true
+	var s := CPUParticles3D.new()
+	s.name = "Smoke"
+	s.amount = 16
+	s.lifetime = 2.2
+	s.preprocess = 2.2
+	s.randomness = 0.6
+	s.local_coords = false
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * size * 0.32
+	q.material = _wisp_mat
+	s.mesh = q
+	s.position = Vector3(0, size * 0.9, 0)
+	s.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	s.emission_sphere_radius = size * 0.06
+	s.direction = Vector3.UP
+	s.spread = 10.0
+	s.initial_velocity_min = size * 1.0
+	s.initial_velocity_max = size * 1.8
+	s.gravity = Vector3(0, 0.1, 0)
+	s.damping_min = size * 0.4
+	s.damping_max = size * 0.8
+	s.tangential_accel_min = -size * 1.5
+	s.tangential_accel_max = size * 1.5
+	s.angle_max = 360.0
+	var sc := Curve.new()
+	sc.add_point(Vector2(0, 0.3))
+	sc.add_point(Vector2(1, 2.0))
+	s.scale_amount_curve = sc
+	var g := Gradient.new()
+	g.set_color(0, Color(0.62, 0.6, 0.58, 0.0))
+	g.add_point(0.12, Color(0.6, 0.58, 0.56, 0.1))
+	g.set_color(1, Color(0.7, 0.7, 0.7, 0.0))
+	s.color_ramp = g
+	s.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	s.visibility_range_end = 60.0
+	return s
 
 static func torch_model() -> ArrayMesh:
 	var k := MeshKit.new(5)
-	# A stick of rough wood with the grain along it.
-	k.cylinder("torch_wood", Transform3D.IDENTITY, 0.021, 0.025, 0.34, 10)
-	# A leather strip bound round and round the grip.
-	for i in 6:
-		var b := Basis(Vector3(0, 0, 1), 0.16).rotated(Vector3.UP, i * 2.1)
-		k.cylinder("leather", Transform3D(b, Vector3(0, 0.09 + i * 0.019, 0)), 0.0255, 0.0255, 0.018, 10)
-	# The head: rags soaked in pitch wound round it, each turn a little askew.
-	for i in 4:
-		var b := Basis(Vector3(1, 0, 0), 0.2 * (1.0 if i % 2 == 0 else -1.0)).rotated(Vector3.UP, i * 1.1)
-		var r := 0.035 + 0.004 * sin(i * 2.0)
-		k.cylinder("pitch_cloth", Transform3D(b, Vector3(0, 0.3 + i * 0.024, 0)), r, r * 0.95, 0.034, 10, true, 0.12)
-	# Coals glowing in the charred top; the flame is FireFx (torch_fire).
-	for i in 5:
-		var a := i * TAU / 5.0
-		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(cos(a) * 0.017, 0.4, sin(a) * 0.017)), 0.011, 4, 6, 0.3, 0.6)
-	return k.commit(Materials.get_mat)
+	ToolModels.torch(k)
+	return k.commit(ToolModels.mat)
 
 func is_on() -> bool:
 	return lit() != ""

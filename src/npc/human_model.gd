@@ -43,6 +43,9 @@ var _oneshot := false
 static func available() -> bool:
 	return ResourceLoader.exists(ANIMS) and ResourceLoader.exists(DIR + BODY[false] + ".gltf")
 
+## How far up the forearm from the wrist joint a sleeve ends.
+const WRIST_BACK := 0.02
+
 ## The body mesh with per-vertex region / rest height / |x| in CUSTOM0, built once per sex.
 static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 	var key := "body_%s" % fem
@@ -65,6 +68,11 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				r = REGION_OF[k]
 				break
 		region_of_bind.append(r)
+	# The wrist: forearm skin past it is the hand's, so a sleeve ends in a clean line
+	# there (Outfit cuts the shirt at the same place) instead of a fringe of triangles.
+	var wrist := INF
+	if sk and sk.find_bone("hand_l") >= 0:
+		wrist = absf(sk.get_bone_global_rest(sk.find_bone("hand_l")).origin.x) - WRIST_BACK
 	var custom := PackedFloat32Array()
 	custom.resize(verts.size() * 3)
 	for v in verts.size():
@@ -75,6 +83,8 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				bw = weights[v * per + j]
 				best = bones[v * per + j]
 		custom[v * 3] = float(region_of_bind[best]) if best < region_of_bind.size() else 1.0
+		if custom[v * 3] == 3.0 and absf(verts[v].x) > wrist:
+			custom[v * 3] = 4.0
 		custom[v * 3 + 1] = verts[v].y
 		custom[v * 3 + 2] = verts[v].x
 	a[Mesh.ARRAY_CUSTOM0] = custom
@@ -171,8 +181,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		if not String(mi.name).contains("_shell"):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, false)
 	if _body and _body.skin:
 		BodyShape.apply_girth(_body.skin, skeleton, shape)
 		_body.set_instance_shader_parameter("tone", float(shape["muscle"]))
@@ -194,6 +203,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	animator.ik = ik
 	gestures = BodyLanguage.new()
 	skeleton.add_child(gestures)
+	gestures.relaxed = true # idle clips clench the fists; empty hands hang loose
 	if _gripping:
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(_work_tool)
@@ -572,7 +582,9 @@ func _wrap(prop: Node3D) -> Dictionary:
 	var center := prop.transform * grip
 	# The rest frame and the attachment's frame are the same bone's.
 	var t := _held_type(prop)
-	var pose := "" if not Viewmodel.pointed(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	var pose := "" if not Viewmodel.pointed(t) or Viewmodel.is_bow(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	if prop.get_child_count() > 0 and prop.get_child(0) is MeshInstance3D and (prop.get_child(0) as MeshInstance3D).mesh is QuadMesh:
+		pose = "fist" # an icon card has no handle to close on: a loose fist under it
 	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
 
 static func _held_type(prop: Node3D) -> String:
@@ -637,6 +649,29 @@ func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	# (fwd, up) are in the bone's own space: the bone's basis maps them onto (f, u).
 	gestures.hand_r = Basis(f, u, f.cross(u)) * Basis(fwd, up, fwd.cross(up)).inverse()
 
+## Puts the left hand on `at` (world), fingers along `fingers`, palm facing `palm`: a
+## support hand under a long gun's fore-end. Vector3.ZERO for `at` lets the arm go.
+func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if at == Vector3.ZERO:
+		gestures.reach_l = {}
+		return
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	gestures.reach_l = {"at": skeleton.global_transform.affine_inverse() * at,
+		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
+
+## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
+func pull_in(at: Vector3) -> void:
+	if gestures == null or skeleton == null:
+		return
+	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+
+## The right shoulder in world space.
+func shoulder_r() -> Vector3:
+	var b := skeleton.find_bone("upperarm_r")
+	return skeleton.global_transform * skeleton.get_bone_global_pose(b).origin if b >= 0 else global_position
+
 ## Re-aims what the hand holds (first person: called every frame so the item keeps
 ## facing the view whatever the arms' animation does).
 func reaim(aim: Vector3, tilt := 0.0, point := Vector3.ZERO) -> void:
@@ -690,7 +725,21 @@ func _is_held(n: Node) -> bool:
 func set_shadow_only(on: bool) -> void:
 	_shadow_only = on
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, on)
+		if _no_shadow(mi):
+			# They cast no shadow, so a body seen only by its shadow hides them outright.
+			(mi as MeshInstance3D).visible = not on
+
+## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
+## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.
+## Hair shells (HairStrands) only fray the outline, which the base hair already shadows.
+static func _shadow_of(mi: Node, shadow_only: bool) -> GeometryInstance3D.ShadowCastingSetting:
+	if _no_shadow(mi):
+		return GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+static func _no_shadow(mi: Node) -> bool:
+	return mi.name == &"Eyes" or mi.name == &"Eyebrows" or String(mi.name).contains("_shell")
 
 ## Plays a looping state, cross-fading. Walk, jog and sprint all mean "on the move": the
 ## gait and its pace follow how fast the body really moves (HumanAnimator), so `speed`

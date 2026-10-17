@@ -58,7 +58,10 @@ func _run() -> void:
 	get_root().add_child(cam)
 	cam.make_current()
 	var vm := Viewmodel.new()
-	vm.look = Player.LOOK
+	# Player.LOOK, copied: naming Player would compile player.gd, which needs the Net and
+	# Game autoloads that a --script run doesn't load.
+	vm.look = {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
+		"cloth": Color(0.36, 0.42, 0.3), "cloth2": Color(0.28, 0.23, 0.18), "height": 1.0, "build": 0.5}
 	cam.add_child(vm)
 	if vm.arms and not wear.is_empty():
 		vm.arms.wear(wear)
