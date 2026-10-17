@@ -362,7 +362,7 @@ func _update_time_of_day() -> void:
 	var fog_c: Color = _blend(Eras.FOG_COLOR)
 	# Night haze: moonlit air is a dim blue-grey, so the far land fades instead of
 	# vanishing into black.
-	var night_fog := Color(0.03, 0.04, 0.07).lerp(Color(0.07, 0.09, 0.14), moonlit)
+	var night_fog := Color(0.045, 0.055, 0.085).lerp(Color(0.07, 0.09, 0.14), moonlit)
 	env.fog_light_color = fog_c.lerp(night_fog, 1.0 - daylight).lerp(Color(0.9, 0.55, 0.35), golden * 0.3 * daylight)
 	var dens: float = _blend(Eras.FOG_DENSITY)
 	# High up (flying), thicker distance fog hides the edge of the streamed world. Height is
@@ -405,7 +405,7 @@ func _update_time_of_day() -> void:
 	# night the land, the trees and the skyline still stand out as dim shapes.
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
 	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
-	env.ambient_light_color = Color(0.1, 0.12, 0.18)
+	env.ambient_light_color = Color(0.14, 0.17, 0.25)
 	env.ambient_light_energy = (lerpf(0.2, 0.6, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
