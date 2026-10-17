@@ -690,11 +690,15 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	if cr is Creature and cr._kit != null and not cr._kit.procedural():
 		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
 	if cr is Creature and cr._kit != null and not cr._kit.procedural():
-		# It falls limp, comes to rest, and the pose it lies in is kept with it.
+		# It falls limp, comes to rest, and the pose it lies in is kept with it. (The
+		# rest of the pack can't hurt you while you watch: later checks need your gear.)
+		var god: bool = game.cheats["god"]
+		game.cheats["god"] = true
 		for i in 900:
 			if world.corpses.record(key).has("rag"):
 				break
 			await physics_frame
+		game.cheats["god"] = god
 		var rag = world.corpses.record(key).get("rag")
 		var sk: Skeleton3D = cr._kit.skeleton()
 		check(rag is PackedFloat32Array and rag.size() == sk.get_bone_count() * 7, "the carcass falls as a ragdoll and keeps the pose it settled in")
