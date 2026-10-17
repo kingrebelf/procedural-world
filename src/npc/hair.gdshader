@@ -121,7 +121,7 @@ void fragment() {
 		}
 		if (beard > 0.5 && beard < 1.5) {
 			// Stubble: sparse fine dots close up; further off, a shadow on the skin.
-			keep *= step(0.62 * smoothstep(0.35, 0.65, hi), fine);
+			keep *= step(0.78 * smoothstep(0.35, 0.65, hi), fine);
 		}
 		// Regions of the beard mesh (rest metres: mouth about 1.63 up, face forward +z).
 		keep *= beard_mask(rest.xyz, beard, (s - 0.5) * 0.01);
@@ -141,7 +141,7 @@ void fragment() {
 		if (scalp_col.a > 0.0) {
 			float skin = bare * 0.6 * (1.0 - near);
 			if (beard > 0.5 && beard < 1.5) {
-				skin = 0.7 * (1.0 - smoothstep(0.35, 0.65, hi));
+				skin = 0.4 + 0.35 * (1.0 - smoothstep(0.35, 0.65, hi));
 			} else if (sparse > 0.0) {
 				skin = (sparse + 0.15 * tip) * (1.0 - near);
 			}
