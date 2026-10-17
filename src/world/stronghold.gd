@@ -178,10 +178,12 @@ static func build(t: String) -> ArrayMesh:
 		_stone(part, era == 1, k, models)
 		# Castle masonry is stone through: the village walls' wooden bands and the corner
 		# quoins become the castle's own stone (pale trim stone read as paint), and a tower
-		# is bare stone inside, not plaster.
+		# is bare dressed stone inside, not plaster.
 		var swap := {"MI_WoodTrim": Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")}
 		if part == "tower":
-			swap["MI_Plaster"] = BuildCatalog.kit_material(BRICK, "MI_UnevenBrick")
+			# Inside, dressed stone: the kit's rubble brick, lit close by the torches, read
+			# as big cartoon stones.
+			swap["MI_Plaster"] = Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")
 		var quoins := {"MI_RockTrim": swap["MI_WoodTrim"]}
 		for e in models:
 			if String(e[0]).begins_with("village/Wall_UnevenBrick") and not swap.values().has(null):
