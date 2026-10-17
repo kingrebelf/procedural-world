@@ -66,6 +66,19 @@ static func mesh(kind: String) -> ArrayMesh:
 	_lock.unlock()
 	return m
 
+## One collision hull per kind, shared by every stone of it: each stone's own turn and
+## squash go on its CollisionShape3D. (Jolt builds a hull once per shape, about 0.3 ms:
+## a hull per stone made a chunk's thousand stones freeze the game as it came near.)
+## Main thread only.
+static func shape(kind: String) -> ConvexPolygonShape3D:
+	if not _shapes.has(kind):
+		var sh := ConvexPolygonShape3D.new()
+		sh.points = hull(kind)
+		_shapes[kind] = sh
+	return _shapes[kind]
+
+static var _shapes: Dictionary = {}
+
 ## The points of a stone's collision hull, in mesh space (after mesh() built it).
 static func hull(kind: String) -> PackedVector3Array:
 	if not _hulls.has(kind):
