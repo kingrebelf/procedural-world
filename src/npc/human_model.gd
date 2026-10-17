@@ -21,7 +21,15 @@ static var _mats := {}
 
 var skeleton: Skeleton3D
 var anim: AnimationPlayer
+var gestures: BodyLanguage
 var _body: MeshInstance3D
+var _clothes: MeshInstance3D
+var _armour: MeshInstance3D
+var _shield: Node3D
+var _hair: Array = [] ## hair meshes, hidden under a helmet (beards stay)
+var _headgear_node: Node3D
+var _fem := false
+var _spec: Dictionary
 var _current := ""
 var _oneshot := false
 
@@ -111,6 +119,7 @@ static func library() -> AnimationLibrary:
 ## b: the persisted body record (NPCGen). Returns self for chaining.
 func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	var fem: bool = b["female"]
+	_fem = fem
 	var scene: Node3D = (load(DIR + BODY[fem] + ".gltf") as PackedScene).instantiate()
 	add_child(scene)
 	skeleton = scene.find_children("*", "Skeleton3D", true, false)[0]
@@ -128,12 +137,14 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 		else:
 			mi.material_override = _hair_mat(1)
 			mi.set_instance_shader_parameter("hair_col", hair_col)
+			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.
 	var styles: Array = HAIR_FEMALE if fem else HAIR_MALE
 	var style: String = styles[int(b["hair_style"]) % styles.size()]
 	if NPCGen.GUARD_JOBS.has(job):
 		style = "Hair_Buzzed" if not fem else "Hair_BuzzedFemale"
+	_dress_up(b, era, job)
 	if style != "":
 		_add_hair(style, hair_col)
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
@@ -146,8 +157,122 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	scene.add_child(anim)
 	anim.add_animation_library("", library())
 	anim.animation_finished.connect(func(_n): _end_shot())
+	gestures = BodyLanguage.new()
+	skeleton.add_child(gestures)
+	_eyelids(b)
 	play("idle")
 	return self
+
+## Real garments over the painted body (Outfit), in this person's colours.
+func _dress_up(b: Dictionary, era: int, job: String) -> void:
+	if _body == null or _body.skin == null:
+		return
+	_spec = Outfit.spec_for(b, era, job)
+	_clothes = MeshInstance3D.new()
+	_clothes.name = "Clothes"
+	_clothes.mesh = Outfit.clothes(_fem, _body.mesh, _body.skin, skeleton, _spec)
+	_clothes.skin = _body.skin
+	skeleton.add_child(_clothes)
+	_clothes.skeleton = NodePath("..")
+	_clothes.material_override = Outfit.cloth_material()
+	for k in ["shirt_col", "pants_col", "boot_col", "accent_col"]:
+		_clothes.set_instance_shader_parameter(k, _body.get_instance_shader_parameter(k))
+
+## Shows what this body wears: {slot: item} for any of Game.ARMOR_SLOTS. Armour is
+## drawn on the body (Outfit), a shield on the left forearm, and a helmet hides the hair.
+func wear(worn: Dictionary) -> void:
+	if _body == null or skeleton == null:
+		return
+	if _armour:
+		_armour.queue_free()
+		_armour = null
+	if _shield:
+		_shield.queue_free()
+		_shield = null
+	var m := Outfit.armour(_fem, _body.mesh, _body.skin, skeleton, worn)
+	if m.get_surface_count() > 0:
+		_armour = MeshInstance3D.new()
+		_armour.name = "Armour"
+		_armour.mesh = m
+		_armour.skin = _body.skin
+		skeleton.add_child(_armour)
+		_armour.skeleton = NodePath("..")
+		_armour.material_override = Outfit.armor_material()
+		var hb := skeleton.find_bone("Head")
+		if hb >= 0:
+			_armour.set_instance_shader_parameter("visor_y", skeleton.get_bone_global_rest(hb).origin.y + 0.085)
+		_armour.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if _arms:
+			_armour.visible = false
+	var helmet: bool = worn.get("head") is Dictionary
+	for h in _hair:
+		(h as Node3D).visible = not helmet
+	if _headgear_node:
+		_headgear_node.visible = not helmet
+	if worn.get("shield") is Dictionary:
+		_shield = _shield_mesh(worn["shield"])
+		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			mi.visible = not _arms
+
+func _shield_mesh(item: Dictionary) -> Node3D:
+	var lk := Outfit.look_of(item)
+	var k := MeshKit.new(3)
+	var I := Transform3D.IDENTITY
+	var col: Color = lk["color"]
+	match int(lk["style"]):
+		Outfit.STYLE_EXO:
+			k.cylinder("panel", I, 0.3, 0.3, 0.02, 6, true, 0.0, 1, col)
+			k.cylinder("glow_cyan", I.translated(Vector3(0, 0.012, 0)), 0.22, 0.22, 0.01, 6, true, 0.0, 1, col)
+		Outfit.STYLE_CRYSTAL:
+			k.cylinder("crystal@2", I, 0.28, 0.28, 0.025, 14, true, 0.0, 1, col)
+		_:
+			k.cylinder("planks", I, 0.3, 0.3, 0.03, 16, true, 0.0, 1, col)
+			k.cylinder("iron", I.translated(Vector3(0, 0.018, 0)), 0.07, 0.07, 0.03, 10)
+	var mi := MeshInstance3D.new()
+	mi.mesh = k.commit(Materials.get_mat)
+	var ba := _bone_attach("lowerarm_l")
+	ba.add_child(mi)
+	# Strapped to the back of the forearm (up in the rest pose, palms down), face out.
+	var rest := skeleton.get_bone_global_rest(skeleton.find_bone("lowerarm_l")).basis.orthonormalized()
+	var outward := (rest.inverse() * Vector3.UP).normalized()
+	mi.transform = Transform3D(Basis(Quaternion(Vector3.UP, outward)), outward * 0.07 + Vector3(0, 0.13, 0))
+	return ba
+
+## Two lids that close for blinks and winks (BodyLanguage drives them).
+func _eyelids(b: Dictionary) -> void:
+	var eyes: MeshInstance3D = null
+	for c in skeleton.get_children():
+		if c is MeshInstance3D and c.name == "Eyes":
+			eyes = c
+	var hb := skeleton.find_bone("Head")
+	if eyes == null or hb < 0:
+		return
+	var box := eyes.mesh.get_aabb()
+	var r := box.size.y * 0.5
+	var lid_mat := StandardMaterial3D.new()
+	lid_mat.albedo_color = (b["skin"] as Color).darkened(0.12)
+	lid_mat.roughness = 0.6
+	var sph := SphereMesh.new()
+	sph.radius = r * 1.12
+	sph.height = r * 2.24
+	sph.radial_segments = 10
+	sph.rings = 6
+	var inv := skeleton.get_bone_global_rest(hb).affine_inverse()
+	var ba := _bone_attach("Head")
+	for i in 2:
+		var x := box.position.x + r if i == 1 else box.end.x - r
+		var mi := MeshInstance3D.new()
+		mi.mesh = sph
+		mi.material_override = lid_mat
+		mi.position = inv * Vector3(x, box.get_center().y, box.get_center().z + r * 0.1)
+		mi.visible = false
+		ba.add_child(mi)
+		gestures.eyelids[i] = mi
+
+## Plays a hand or face gesture (BodyLanguage.names()) over the current animation.
+func gesture(name: String) -> bool:
+	return gestures != null and gestures.play(name)
 
 func _dress(b: Dictionary, era: int, job: String) -> void:
 	var cloth: Color = b["cloth"]
@@ -193,6 +318,8 @@ func _add_hair(style: String, col: Color) -> void:
 		var mat_name := mi.mesh.surface_get_material(0).resource_name if mi.mesh.surface_get_material(0) else ""
 		mi.material_override = _hair_mat(2 if mat_name.ends_with("2") else 1)
 		mi.set_instance_shader_parameter("hair_col", col)
+		if style != "Hair_Beard":
+			_hair.append(mi)
 	src.free()
 
 func _bone_attach(bone: String) -> BoneAttachment3D:
@@ -204,12 +331,8 @@ func _bone_attach(bone: String) -> BoneAttachment3D:
 func _headgear(era: int, job: String, b: Dictionary) -> void:
 	var k := MeshKit.new(7)
 	var I := Transform3D.IDENTITY
-	if NPCGen.GUARD_JOBS.has(job):
-		var mat := "iron" if era == Eras.MEDIEVAL else ("crystal@5" if era == Eras.FANTASY else "panel")
-		k.sphere(mat, I.translated(Vector3(0, 0.1, -0.01)) * Transform3D(Basis.from_scale(Vector3(1.0, 0.95, 1.08)), Vector3.ZERO), 0.135, 8, 12, 0.0, 1.0)
-		if era == Eras.MEDIEVAL:
-			k.box(mat, I.translated(Vector3(0, 0.06, 0.13)), Vector3(0.03, 0.12, 0.02))
-	elif era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
+	# Guards wear real armour instead (NPC.default_gear).
+	if era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
 		k.cylinder("thatch", I.translated(Vector3(0, 0.17, 0)), 0.095, 0.07, 0.09, 10)
 		k.cylinder("thatch", I.translated(Vector3(0, 0.15, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
@@ -218,7 +341,8 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 		return
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(Materials.get_mat)
-	_bone_attach("Head").add_child(mi)
+	_headgear_node = _bone_attach("Head")
+	_headgear_node.add_child(mi)
 
 ## Tools in hand for jobs that work with one.
 func _tool(era: int, job: String) -> void:
@@ -375,20 +499,44 @@ func play_once(state: String, dur := 0.0) -> void:
 				_end_shot())
 
 var _shot := 0
+var _holding := false
+
+## Plays an action once and stays in its last pose (playing dead) until release().
+func pose(state: String) -> void:
+	if anim == null or not anim.has_animation(state):
+		return
+	_oneshot = true
+	_holding = true
+	_current = state
+	_shot += 1
+	anim.speed_scale = 1.0
+	anim.play(state, 0.15)
+
+func release() -> void:
+	if _holding:
+		_holding = false
+		_end_shot()
 
 ## True while a one-shot action (swing, shot, hit) is playing.
 func busy() -> bool:
 	return _oneshot
 
 func _end_shot() -> void:
+	if _holding:
+		return
 	_oneshot = false
 	_current = "" # the next play() call picks the loop back up
 
 func set_flash(v: float) -> void:
 	if _body:
 		var c: Vector4 = _body.get_instance_shader_parameter("cut")
+		if is_equal_approx(c.w, v):
+			return
 		c.w = v
 		_body.set_instance_shader_parameter("cut", c)
+		for m in [_clothes, _armour]:
+			if m:
+				m.set_instance_shader_parameter("flash", v)
 
 ## Head turn toward a world point, applied after the animation each frame.
 func look_at_point(p: Vector3, amount: float) -> void:

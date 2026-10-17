@@ -42,6 +42,13 @@ var _scale := 1.0
 var _hit_flash := 0.0
 var _speaking := false
 
+var perform := ""
+var perform_t := 0.0
+var ambient := false ## the current performance was their own idea (ends when they move on)
+var _jump_y := 0.0
+var _stool: Node3D
+var gear_shown := ""
+
 static var _mats: Dictionary = {}
 static var _meshes: Dictionary = {}
 
@@ -90,6 +97,122 @@ func _ready() -> void:
 	global_position = rec["pos"]
 	rotation.y = float(rec.get("yaw", 0.0))
 	decide_in = randf() * 1.5
+	NPCSocial.ensure(rec)
+	refresh_gear()
+
+## Puts on whatever the record says this person wears and holds.
+func refresh_gear() -> void:
+	if _human == null:
+		return
+	var key := str(rec.get("gear", {})) + str(rec.get("held", null))
+	if key == gear_shown:
+		return
+	gear_shown = key
+	_human.wear(rec.get("gear", {}))
+	var held = rec.get("held", null)
+	if held is Dictionary:
+		_human.hold(Viewmodel.prop_for(held["type"], held))
+
+## Does something: a full-body action from NPCMind.PERFORM or a gesture from BodyLanguage.
+## Returns false if this person doesn't know how.
+func act(what: String, seconds := 0.0) -> bool:
+	what = what.strip_edges().to_lower().replace(" ", "_")
+	if what == "" or what == "none":
+		return false
+	if NPCMind.PERFORM.has(what):
+		var p: Array = NPCMind.PERFORM[what]
+		if what == "stand":
+			_end_perform()
+			return true
+		_end_perform()
+		ambient = false
+		perform = what
+		perform_t = seconds if seconds > 0.0 else float(p[1])
+		if _human:
+			match String(p[2]):
+				"once":
+					_human.play_once(p[0])
+				"hold":
+					_human.pose(p[0])
+				"sit":
+					_human.play_once("sit_down")
+				"jump":
+					_human.play_once("jump_start" if what == "jump" else p[0])
+					_jump_y = 0.0
+		return true
+	if _human and _human.gesture(what):
+		return true
+	return false
+
+func is_performing() -> bool:
+	return perform != ""
+
+func stop_perform() -> void:
+	_end_perform()
+
+func _end_perform() -> void:
+	if perform == "":
+		return
+	var was := perform
+	perform = ""
+	perform_t = 0.0
+	if _stool:
+		_stool.queue_free()
+		_stool = null
+	if _human:
+		_human.release()
+		match was:
+			"sit":
+				_human.play_once("stand_up")
+			"play_dead":
+				_human.play_once("get_up")
+	if _model:
+		_model.position.y = 0.0
+
+func _update_perform(delta: float) -> void:
+	if perform == "":
+		return
+	perform_t -= delta
+	var p: Array = NPCMind.PERFORM[perform]
+	if String(p[2]) == "jump":
+		# Up and down on a parabola, landing with the landing animation.
+		var dur: float = p[1]
+		var k := clampf(1.0 - perform_t / dur, 0.0, 1.0)
+		_jump_y = sin(k * PI) * (0.55 if perform == "jump" else 0.9)
+		if _model:
+			_model.position.y = _jump_y
+		if perform_t <= 0.0 and _human:
+			_human.play_once("jump_land")
+	if perform == "sit" and _human:
+		if _stool == null and not _human.busy():
+			_stool = _make_stool()
+	if perform_t <= 0.0:
+		_end_perform()
+
+## Something to sit on: people carry a stool (or a crate on the frontier).
+func _make_stool() -> Node3D:
+	var k := MeshKit.new(5)
+	var I := Transform3D.IDENTITY
+	var seat := 0.47
+	if int(rec["era"]) == Eras.SCIFI:
+		k.box("panel", I.translated(Vector3(0, seat * 0.5 - 0.02, 0)), Vector3(0.42, seat - 0.04, 0.42))
+	else:
+		k.cylinder("planks", I.translated(Vector3(0, seat - 0.035, 0)), 0.2, 0.2, 0.05, 12)
+		for i in 3:
+			var a := TAU * i / 3.0
+			k.cylinder("planks", I.translated(Vector3(cos(a) * 0.12, (seat - 0.06) * 0.5, sin(a) * 0.12)), 0.025, 0.02, seat - 0.06, 6)
+	var mi := MeshInstance3D.new()
+	mi.mesh = k.commit(Materials.get_mat)
+	add_child(mi)
+	# Under the hips, wherever the sitting pose put them.
+	var sk := _human.skeleton
+	var pb := sk.find_bone("pelvis")
+	if pb >= 0:
+		var hips := sk.global_transform * sk.get_bone_global_pose(pb).origin
+		var local := to_local(hips)
+		mi.position = Vector3(local.x, 0.0, local.z - 0.04)
+		mi.scale = Vector3.ONE * _scale
+	return mi
 
 func say(text: String, seconds: float = 5.0) -> void:
 	if text.strip_edges() == "":
@@ -133,8 +256,13 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		goal = Vector2(player_pos.x, player_pos.z)
 		stop_at = {"greet": 2.2, "follow": 3.0, "confront": 2.8, "attack": 1.3, "trade": 2.0}.get(action, 2.0)
 	var moving := false
+	_update_perform(delta)
+	# Doing something on the spot holds them there, unless they must run.
+	if perform != "" and action in ["flee", "attack"]:
+		_end_perform()
 	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
-	if not talking and goal != Vector2.INF and p2.distance_to(goal) > stop_at:
+	var stay := perform != "" and perform != "zombie"
+	if not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at:
 		var dir := (goal - p2).normalized()
 		# Keep a little personal space.
 		for o in others:
@@ -213,6 +341,20 @@ func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> voi
 func _animate_human(delta: float, moving: bool, run: bool) -> void:
 	if action == "attack" and attack_cd > 1.3:
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
+	if perform != "":
+		var p: Array = NPCMind.PERFORM[perform]
+		if perform == "zombie" and moving:
+			_human.play("zombie_walk", clampf(_speed / WALK, 0.5, 1.2))
+		elif String(p[2]) in ["loop", "sit"]:
+			_human.play(p[0])
+		elif String(p[2]) == "jump" and not _human.busy():
+			_human.play("jump_air")
+		elif String(p[2]) == "once" and not _human.busy():
+			perform_t = minf(perform_t, 0.05)
+		if _hit_flash > 0.0:
+			_hit_flash -= delta
+		_human.set_flash(clampf(_hit_flash * 4.0, 0.0, 1.0))
+		return
 	if moving:
 		if run:
 			_human.play("sprint" if action == "flee" else "jog", clampf(_speed / RUN, 0.5, 1.4))

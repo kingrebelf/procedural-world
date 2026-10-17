@@ -40,6 +40,12 @@ const DEFAULTS := {
 	"decide_url": "", ## Optional external fast-decision endpoint.
 	"decide_key": "",
 	"decide_timeout": 1.5,
+	"voices": true, ## People speak their lines aloud with this PC's text-to-speech voices.
+	"voice_volume": 80,
+	"voice_barks": true, ## Also speak greetings and calls from passers-by, not just conversation.
+	"stt_url": "", ## Speech-to-text server (OpenAI-compatible /audio/transcriptions); empty = the AI provider above.
+	"stt_key": "",
+	"stt_model": "",
 }
 
 const MAX_CONCURRENT := 2
@@ -321,3 +327,75 @@ static func parse_decisions(raw: String) -> Dictionary:
 		if e is Dictionary and e.has("id") and DecisionEngine.ACTIONS.has(String(e.get("action", ""))):
 			out[String(e["id"])] = e
 	return out
+
+# --- Speech to text ------------------------------------------------------------------------------
+
+## Where your voice is sent to become text: {url, key, model}, or {} if nowhere. Uses the
+## speech-to-text settings if set, otherwise the AI provider when it speaks the OpenAI
+## format (OpenAI itself, and local servers such as speaches or LocalAI). The Anthropic
+## API has no speech-to-text, so it needs a separate server.
+func stt_target() -> Dictionary:
+	var url := String(cfg["stt_url"]).strip_edges().trim_suffix("/")
+	var key := String(cfg["stt_key"]).strip_edges()
+	var model := String(cfg["stt_model"]).strip_edges()
+	if url == "":
+		if not enabled() or cfg["format"] != "openai" or cfg["provider"] == "openrouter":
+			return {}
+		url = String(cfg["base_url"]).strip_edges().trim_suffix("/")
+		key = String(cfg["api_key"]).strip_edges()
+	if not url.ends_with("/transcriptions"):
+		url += "/audio/transcriptions"
+	if model == "":
+		model = "gpt-4o-mini-transcribe" if url.contains("api.openai.com") else "whisper-1"
+	return {"url": url, "key": key, "model": model}
+
+func stt_enabled() -> bool:
+	return not stt_target().is_empty()
+
+## The multipart body of a transcription request. Pure, so it is unit-tested.
+static func build_transcription(target: Dictionary, wav: PackedByteArray, boundary: String) -> Dictionary:
+	var headers := PackedStringArray(["Content-Type: multipart/form-data; boundary=" + boundary])
+	if String(target.get("key", "")) != "":
+		headers.append("Authorization: Bearer " + target["key"])
+	var body := PackedByteArray()
+	for field in [["model", target["model"]], ["response_format", "json"]]:
+		body.append_array(("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % [boundary, field[0], field[1]]).to_utf8_buffer())
+	body.append_array(("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n" % boundary).to_utf8_buffer())
+	body.append_array(wav)
+	body.append_array(("\r\n--%s--\r\n" % boundary).to_utf8_buffer())
+	return {"url": target["url"], "headers": headers, "body": body}
+
+## Turns a WAV recording into text. Always returns {ok, text, error}.
+func transcribe(wav: PackedByteArray) -> Dictionary:
+	var target := stt_target()
+	if target.is_empty():
+		return {"ok": false, "text": "", "error": "No speech-to-text server (Settings > AI)"}
+	var req := build_transcription(target, wav, "pwboundary%d" % randi())
+	var http := HTTPRequest.new()
+	http.timeout = float(cfg["timeout"])
+	add_child(http)
+	var out := {"ok": false, "text": "", "error": ""}
+	var err := http.request_raw(req["url"], req["headers"], HTTPClient.METHOD_POST, req["body"])
+	if err != OK:
+		out["error"] = "Could not start request (%s)" % error_string(err)
+	else:
+		var res: Array = await http.request_completed
+		if res[0] != HTTPRequest.RESULT_SUCCESS:
+			out["error"] = _result_text(res[0])
+		else:
+			out = parse_transcription(res[1], (res[3] as PackedByteArray).get_string_from_utf8())
+	http.queue_free()
+	return out
+
+static func parse_transcription(code: int, raw: String) -> Dictionary:
+	var d = JSON.parse_string(raw) if raw != "" else null
+	if code < 200 or code >= 300:
+		var msg := "HTTP %d" % code
+		if d is Dictionary and d.get("error") is Dictionary:
+			msg += ": " + String(d["error"].get("message", ""))
+		return {"ok": false, "text": "", "error": msg}
+	if d is Dictionary and d.get("text") is String:
+		return {"ok": true, "text": String(d["text"]).strip_edges(), "error": ""}
+	if raw.strip_edges() != "" and not raw.strip_edges().begins_with("{"):
+		return {"ok": true, "text": raw.strip_edges(), "error": ""}
+	return {"ok": false, "text": "", "error": "No text in reply"}

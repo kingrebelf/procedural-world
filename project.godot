@@ -12,6 +12,11 @@ config/custom_user_dir_name="ProceduralWorld"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.png"
 
+[audio]
+
+driver/enable_input=true
+general/text_to_speech=true
+
 [autoload]
 
 Settings="*res://src/settings/graphics_settings.gd"

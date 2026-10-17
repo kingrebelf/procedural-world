@@ -110,6 +110,9 @@ func _ready() -> void:
 		body.build(LOOK, Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
+		# The armour you wear shows on your body (third person, and your shadow).
+		body.wear(Game.equipment)
+		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
 	jetpack = Jetpack.new()
 	add_child(jetpack)
 	_apply_view()

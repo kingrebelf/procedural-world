@@ -1,6 +1,8 @@
 class_name Economy
 ## Trader pricing. Trader state lives in the trader object's persisted state dict:
 ## { era, name, stock: {type: qty}, demand: {type: float}, last_day: float }
+## Optional (villagers trading their own goods, see NPCSocial.shop): pool (what they
+## stock), purse (all they can pay out), charge_mult / pay_mult (their mood and greed).
 
 const FOREIGN_MIN := 1.6
 const FOREIGN_MAX := 2.4
@@ -34,7 +36,7 @@ static func new_trader(era: int, rng: RandomNumberGenerator) -> Dictionary:
 static func _restock(st: Dictionary, cycle: int) -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.combine(st["restock_seed"], cycle)
-	var pool: Array = STOCK_POOLS[st["era"]]
+	var pool: Array = st.get("pool", STOCK_POOLS[st["era"]])
 	var stock := {}
 	for t in pool:
 		if r.randf() < 0.7:
@@ -53,13 +55,13 @@ static func buy_price(st: Dictionary, item: Dictionary) -> int:
 	var base: float = ItemDB.def(t).get("value", 1)
 	var demand: float = st["demand"].get(t, 1.0)
 	var rank := Rarity.of(item)
-	return maxi(1, int(round(base * (1.0 + 0.6 * rank * rank) * item.get("quality", 1.0) * era_factor(st["era"], t, st["foreign"]) * demand)))
+	return maxi(1, int(round(base * (1.0 + 0.6 * rank * rank) * item.get("quality", 1.0) * era_factor(st["era"], t, st["foreign"]) * demand * float(st.get("pay_mult", 1.0)))))
 
 ## What the trader charges the player for one unit of its stock.
 static func sell_price(st: Dictionary, t: String) -> int:
 	var base: float = ItemDB.def(t).get("value", 1)
 	var f: float = 1.0 if ItemDB.era_of(t) == st["era"] else st["foreign"]
-	return maxi(1, int(round(base * f * SELL_SPREAD)))
+	return maxi(1, int(round(base * f * SELL_SPREAD * float(st.get("charge_mult", 1.0)))))
 
 static func record_sale_to_trader(st: Dictionary, t: String, qty: int) -> void:
 	st["demand"][t] = st["demand"].get(t, 1.0) * pow(DEMAND_DROP, qty)
