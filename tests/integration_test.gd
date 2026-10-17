@@ -159,6 +159,7 @@ func _treasure(game, world, streamer: ChunkStreamer, player) -> Dictionary:
 ## A door hung through the real builder in a doorway you built: it opens and shuts,
 ## locks for its owner, needs picking when it's someone else's, and holds up its doorway.
 func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, here_key: Vector2i) -> void:
+	var back := {"pos": player.global_position, "yaw": player.yaw(), "pitch": -0.75, "slot": player.selected}
 	var dway := pc.add_built("wall_door", lp, 0.0, {"by": "you", "day": 0.0})
 	var dwp: Vector3 = pc.position + dway["p"]
 	game.give(ItemDB.make("door_wood", 1, 1.0, game.origin_here("crafted", -1, here_key)))
@@ -209,7 +210,13 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
 	player._use_door()
 	check(not Doors.is_open(door), "it stays shut on you")
+	# (With lockpicks in the pack that opened the minigame; leave it, and keep townsfolk
+	# out of this, so a bounty doesn't set the guards on the rest of the run.)
+	player.get_tree().call_group("lockpick_ui", "close_lock")
+	var npcs = player.npcs
+	player.npcs = null
 	player.use_door_after_lock(dc, door)
+	player.npcs = npcs
 	check(Doors.is_open(door) and not Doors.is_locked(door), "a picked lock opens the door")
 	door["st"]["owner"] = Doors.my_id()
 	check(not player.deconstruct(pc, dway) and not dway["st"].get("gone", false), "the doorway stays up while a door hangs in it")
@@ -217,6 +224,11 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	await _frames(2)
 	check(not dc._doors.has(door["i"]), "a door taken down is gone from the scene")
 	check(player.deconstruct(pc, dway), "then the doorway comes down")
+	# Leave the pack as it was: later checks need its free slots.
+	game.inventory.remove_type("door_wood", 1)
+	game.inventory.remove_type("wall_door", 1)
+	player.set_state(back)
+	await _frames(2)
 
 func _frames(n: int) -> void:
 	for i in n:
@@ -606,7 +618,9 @@ func _run() -> void:
 		check(not tch.is_empty() and tch["st"]["opened"] and not Treasure.covered(tc, tch), "the dug-up chest stays dug up and empty")
 		var th: Dictionary = game.hunt(tre["open"])
 		check(not th.is_empty() and not th["found"] and not (th["loot"] as Array).is_empty() and game.hunt(tre["id"])["found"], "hunts are saved, found or not, with what's buried")
-		check(game.markers.count_kind("treasure") == 1, "the open hunt keeps its X")
+		# (Only that hunt's X: a body searched since may have carried a map of its own.)
+		var xs: Array = game.markers.list.filter(func(mk): return mk["kind"] == "treasure" and int(mk.get("hunt", -1)) == int(tre["open"]))
+		check(xs.size() == 1, "the open hunt keeps its X")
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")
@@ -1329,6 +1343,12 @@ func _menu_checks(world, game, con) -> void:
 	menus.close()
 	game.markers.remove(edit_pin["id"])
 	AtlasView.selected = -1
+	# What the test has looted so far can fill the pack: two helmets and a slot to drag
+	# one into need room.
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= 3:
+			break
+		game.inventory.set_slot(i, null)
 	con.run("give helm_iron 1")
 	con.run("give helm_elven 1")
 	var hi := -1
