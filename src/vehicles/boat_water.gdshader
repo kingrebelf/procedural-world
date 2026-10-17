@@ -56,22 +56,31 @@ void fragment() {
 	float a = 0.0;
 	if (kind < 0.25) {
 		// Lapping at the hull: always a thin broken line, a white cushion at the bow under way.
-		float edge = 1.0 - UV.y;
-		float bow = UV.x * UV.x;
+		float edge = clamp(1.0 - UV.y, 0.0, 1.0);
+		float bow = clamp(UV.x, 0.0, 1.0);
+		bow *= bow;
 		float reach = mix(0.7, 1.0, clamp(speed * (0.25 + 0.75 * bow) * 1.4, 0.0, 1.0));
 		float e = smoothstep(1.0 - reach, 1.0, edge);
-		a = e * smoothstep(0.4, 0.75, n + e * 0.35) * mix(0.7, 0.95, speed * bow);
+		// Patchy and see-through: lumps of foam with clear water between.
+		float lumps = vn(wpos.xz * 1.3 - TIME * 0.15);
+		a = e * smoothstep(0.55, 0.85, n * 0.7 + lumps * 0.3 + e * 0.15) * mix(0.35, 0.7, speed * bow);
 	} else {
-		float across = 1.0 - abs(UV.y * 2.0 - 1.0);
-		float fade = pow(1.0 - UV.x, kind > 0.75 ? 1.2 : 1.6) * smoothstep(0.0, 0.04, UV.x);
+		// UV can stray a hair outside 0..1 between vertices: never raise a negative to a power
+		// (a NaN here poisons the auto exposure and washes out the whole view).
+		float along = clamp(UV.x, 0.0, 1.0);
+		float across = clamp(1.0 - abs(UV.y * 2.0 - 1.0), 0.0, 1.0);
+		float fade = pow(1.0 - along, kind > 0.75 ? 1.2 : 1.6) * smoothstep(0.0, 0.04, along);
 		float band = smoothstep(0.0, kind > 0.75 ? 0.7 : 0.45, across);
 		float churn = kind > 0.75 ? vn(wpos.xz * 4.0 + TIME * 1.3) * 0.3 : 0.0;
 		// Broken into crests along the arms, not a painted stripe.
-		float crests = smoothstep(0.25, 0.75, vn(vec2(UV.x * 30.0 - TIME * 0.5, UV.y * 3.0)));
+		float crests = smoothstep(0.25, 0.75, vn(vec2(along * 30.0 - TIME * 0.5, UV.y * 3.0)));
 		a = band * smoothstep(0.5, 0.85, n * 0.5 + crests * 0.5 + churn + band * 0.2) * fade * col.g * clamp(speed * 1.3, 0.0, 1.0) * 0.9;
 	}
-	ALBEDO = vec3(0.9, 0.93, 0.95);
-	ALPHA = clamp(a, 0.0, 1.0);
+	if (isnan(a) || isinf(a)) {
+		a = 0.0;
+	}
+	ALBEDO = vec3(0.78, 0.82, 0.84);
+	ALPHA = clamp(a, 0.0, 0.8);
 	ROUGHNESS = 0.55;
 	SPECULAR = 0.3;
 }
