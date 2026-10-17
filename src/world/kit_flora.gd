@@ -189,7 +189,7 @@ static func _roughen(a: Array, height: float) -> Array:
 	var n1 := FastNoiseLite.new()
 	n1.seed = 7101
 	n1.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-	n1.frequency = 2.4 / size
+	n1.frequency = 3.0 / size
 	n1.fractal_type = FastNoiseLite.FRACTAL_FBM
 	n1.fractal_octaves = 4
 	var n2 := FastNoiseLite.new()
@@ -213,12 +213,12 @@ static func _roughen(a: Array, height: float) -> Array:
 				vs.append(tri[k])
 				uvs.append(tri[k + 3])
 	# Push each corner out from the rock's middle (squashed, so a slab's top moves more
-	# than its ends): lumps a sixth of its size across, chips a twentieth.
+	# than its ends): lumps a seventh of its size across, chips a twentieth.
 	for i in vs.size():
 		var p := vs[i]
 		var dir := ((p - mid) * Vector3(1.0, 1.6, 1.0)).normalized()
 		var lift := smoothstep(0.0, 0.18 * height, p.y - lo.y)
-		var d := n1.get_noise_3dv(p) * 0.065 + (n2.get_noise_3dv(p) + 0.5) * 0.035
+		var d := n1.get_noise_3dv(p) * 0.1 + (n2.get_noise_3dv(p) + 0.5) * 0.05
 		var q := p + dir * d * size * lift
 		q.y = maxf(q.y, lo.y)
 		vs[i] = q
