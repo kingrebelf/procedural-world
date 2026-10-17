@@ -111,3 +111,31 @@ func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: flo
 	var wd := prevailing.rotated(ang)
 	return {"cover": cover, "precip": precip, "snow": snow, "storm": storm, "mist": mist, "dust": dust,
 		"wind": wind, "temp": temp, "wind_dir": wd}
+
+# --- Starfall nights (Starfall, plans/story.md) ------------------------------------------
+
+const STARFALL_CHANCE := 0.1 ## of a night being a starfall night
+const STARFALL_NIGHT := 0.19 ## days either side of midnight the shower runs
+## The ships whose names turn up stamped on the fragments: the three colony ships and
+## their escorts (plans/story.md).
+const SHIPS := ["ASTRAEA", "LONG PATIENCE", "HEARTHWARD", "VIGIL", "IRON PSALM", "MERIDIAN"]
+
+## Whether the night nearest `day` is a starfall night.
+static func starfall_is_night(seed: int, day: float) -> bool:
+	return WHash.unit2(seed, starfall_night_of(day), 0, 610) < STARFALL_CHANCE
+
+static func starfall_night_of(day: float) -> int:
+	return floori(day + 0.5)
+
+## How strong the shower is right now, 0 .. 1: none by day or on other nights, building
+## after dusk and fading before dawn.
+static func starfall(seed: int, day: float) -> float:
+	if not starfall_is_night(seed, day):
+		return 0.0
+	return 1.0 - smoothstep(STARFALL_NIGHT - 0.06, STARFALL_NIGHT, absf(day - starfall_night_of(day)))
+
+## The point in the sky the night's falling stars seem to come from.
+static func starfall_radiant(seed: int, n: int) -> Vector3:
+	var a := WHash.unit2(seed, n, 1, 611) * TAU
+	var el := lerpf(0.5, 1.2, WHash.unit2(seed, n, 2, 611))
+	return Vector3(cos(a) * cos(el), sin(el), sin(a) * cos(el))

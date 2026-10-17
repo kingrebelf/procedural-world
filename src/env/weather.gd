@@ -77,6 +77,7 @@ var _field: GPUParticlesCollisionHeightField3D
 var _flash: DirectionalLight3D
 var _bolts: Array = [] ## [MeshInstance3D, age, life, energy, direction]
 var _bolt_mat: ShaderMaterial
+var starfall: Starfall
 var _strike_slot := -1
 var _quality := 1
 var _enabled := true
@@ -103,6 +104,10 @@ func _ready() -> void:
 	add_child(_flash)
 	_bolt_mat = ShaderMaterial.new()
 	_bolt_mat.shader = load("res://src/env/bolt.gdshader")
+	starfall = Starfall.new()
+	starfall.name = "Starfall"
+	starfall.weather = self
+	add_child(starfall)
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()
 	for a in OS.get_cmdline_user_args():
@@ -136,6 +141,10 @@ func _apply_settings() -> void:
 func force(key: String) -> bool:
 	if key == "auto" or key == "":
 		forced = -1
+		starfall.forced = false
+		return true
+	if key == "starfall":
+		starfall.forced = true
 		return true
 	var i := KEYS.find(key)
 	if i < 0:

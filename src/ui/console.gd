@@ -15,7 +15,8 @@ const HELP := """Commands:
   time <hour>    set the time of day (0-24)
   tp <x> <z>     teleport
   weather [kind] show the weather, or force one: clear, fair, cloudy, overcast, mist, drizzle,
-                 rain, storm, snow, blizzard, dust; auto follows the climate again; strike = lightning
+                 rain, storm, snow, blizzard, dust, starfall; auto follows the climate again; strike = lightning;
+                 fall = a star comes down in front of you
   items          list item ids
   bench          performance test: what each graphics feature costs on this PC
   server <cmd>   on a server: run a server command (admins)
@@ -192,8 +193,11 @@ func run(text: String) -> String:
 			if a.size() > 1 and a[1] == "strike":
 				wx.strike_now = true
 				return "Lightning"
+			if a.size() > 1 and a[1] == "fall":
+				wx.starfall.land_now = true
+				return "A star falls"
 			if a.size() > 1 and not wx.force(a[1]):
-				return "Unknown weather. Try: " + ", ".join(Weather.KEYS) + ", auto"
+				return "Unknown weather. Try: " + ", ".join(Weather.KEYS) + ", starfall, auto"
 			return "%s, %d°C, wind %d%%, ground wet %d%%, snow %d%%%s" % [wx.describe(), roundi(wx.temp), roundi(wx.wind * 100.0),
 				roundi(wx.wet * 100.0), roundi(wx.snow_cover * 100.0), " (forced)" if wx.forced >= 0 else ""]
 		"tp":

@@ -22,7 +22,7 @@ const KIND := {
 	"bunker_wall": "structure", "bunker_tower": "structure", "bunker_gate": "structure", "bunker_keep": "structure",
 	"trader": "trader", "alien_ruin": "structure",
 	"signpost": "marker", "bridge": "structure", "cave": "structure", "cave_glow": "marker", "cave_crystal": "marker",
-	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure",
+	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure", "star_iron": "structure",
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
 	"w_column": "structure", "w_crystal": "structure", "w_pylon": "structure", "w_obelisk": "structure",

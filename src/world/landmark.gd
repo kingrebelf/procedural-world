@@ -8,13 +8,13 @@ class_name Landmark
 const LABELS := {
 	"summit_shrine": "Summit Shrine", "eyrie": "Giant's Eyrie", "sunken_altar": "Sunken Altar",
 	"fallen_star": "Fallen Star", "star_wreck": "Wrecked Starship", "titan_bones": "Titan's Bones",
-	"dolmen": "Dolmen",
+	"dolmen": "Dolmen", "star_iron": "Fallen Star",
 }
 ## Collision boxes (the meshes stand on y = 0).
 const SIZE := {
 	"summit_shrine": Vector3(3.8, 3.4, 3.8), "eyrie": Vector3(4.2, 1.0, 4.2), "sunken_altar": Vector3(2.4, 1.1, 1.3),
 	"fallen_star": Vector3(4.6, 3.2, 4.6), "star_wreck": Vector3(8.0, 3.6, 13.0), "titan_bones": Vector3(4.0, 2.6, 15.0),
-	"dolmen": Vector3(3.2, 2.0, 1.8),
+	"dolmen": Vector3(3.2, 2.0, 1.8), "star_iron": Vector3(3.0, 1.2, 3.0),
 }
 
 ## [landmark, where to put it: "high", "low" or "flat"] by landform.
@@ -94,6 +94,20 @@ static func build(t: String) -> ArrayMesh:
 				var b := Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), tilt)
 				k.crystal("crystal", Transform3D(b, Vector3(cos(a) * 1.0, 1.2 + r.randf_range(-0.2, 0.4), sin(a) * 1.0)),
 					r.randf_range(0.14, 0.26), r.randf_range(0.9, 1.7))
+		"star_iron":
+			# What a starfall night brings down (Starfall): a torn, scorched slab of hull
+			# driven into its crater, smaller shards and a ring of thrown-up earth round it.
+			k.box("metal_dark", Transform3D(Basis.from_euler(Vector3(0.55, 0.3, 0.2)), Vector3(0, 0.35, 0)), Vector3(1.9, 0.14, 1.2))
+			k.box("rust", Transform3D(Basis.from_euler(Vector3(0.62, 0.3, 0.24)), Vector3(0.05, 0.42, 0.08)), Vector3(1.5, 0.05, 0.9))
+			k.box("metal_dark", Transform3D(Basis.from_euler(Vector3(-0.3, 1.1, 0.7)), Vector3(-0.7, 0.25, 0.5)), Vector3(0.8, 0.5, 0.1))
+			for i in 5:
+				var a := i * TAU / 5.0 + r.randf_range(-0.4, 0.4)
+				var b := Basis.from_euler(Vector3(r.randf_range(-0.6, 0.6), r.randf() * TAU, r.randf_range(-0.6, 0.6)))
+				k.box("metal_dark" if i % 2 else "rust", Transform3D(b, Vector3(cos(a) * r.randf_range(1.0, 1.7), 0.08, sin(a) * r.randf_range(1.0, 1.7))),
+					Vector3(r.randf_range(0.2, 0.5), 0.04, r.randf_range(0.15, 0.35)))
+			for i in 9:
+				var a := i * TAU / 9.0 + r.randf_range(-0.2, 0.2)
+				k.sphere("ash", I.translated(Vector3(cos(a) * 2.6, -0.15, sin(a) * 2.6)), r.randf_range(0.5, 0.8), 4, 6, 0.3, 0.35)
 		"star_wreck":
 			# The same make of ship you fly, nose down in the sand, plating strewn about.
 			var hull := Transform3D(Basis.from_euler(Vector3(0.32, 0.4, 0.22)).scaled(Vector3.ONE * 1.5), Vector3(0, 0.2, 0))

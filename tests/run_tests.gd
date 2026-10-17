@@ -4233,3 +4233,23 @@ func test_climate() -> void:
 	var then := a.at(49.0, up.x, up.y, 8.0, WorldField.LF_NONE, 50.0)
 	check(absf(float(now["cover"]) - float(then["cover"])) < 0.25, "a front passing upwind an hour ago is over you now")
 	check(Climate.base_temp(6.0) < 0.0 and Climate.base_temp(50.0) > 10.0, "frozen worlds are cold")
+
+func test_starfall() -> void:
+	var nights := 0
+	for n in 2000:
+		if Climate.starfall_is_night(4242, float(n)):
+			nights += 1
+	check(nights > 120 and nights < 300, "about one night in ten is a starfall night (%d of 2000)" % nights)
+	var n0 := -1
+	for n in 200:
+		if Climate.starfall_is_night(4242, float(n)):
+			n0 = n
+			break
+	check(n0 >= 0, "a starfall night comes within 200 days")
+	check(Climate.starfall(4242, n0) > 0.99, "a starfall night is at its height at midnight")
+	check(Climate.starfall(4242, n0 + 0.5) == 0.0, "no falling stars at noon")
+	check(Climate.starfall(4242, n0 + 0.5) == Climate.starfall(4242, n0 + 0.5) and Climate.starfall_radiant(4242, n0) == Climate.starfall_radiant(4242, n0),
+		"the same night falls the same way for everyone")
+	check(Climate.starfall_radiant(4242, n0).y > 0.4, "the stars fall from high in the sky")
+	check(Landmark.has("star_iron") and Wonders.LANDMARKS.has("star_iron") and ObjectLibrary.kind("star_iron") == "structure",
+		"a fallen fragment is a landmark you can pry at")

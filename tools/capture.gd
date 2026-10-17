@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--weather=KIND] [--strike] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
+##   godot --path . res://src/world/world.tscn -- --capture [--weather=KIND] [--strike] [--fall] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -32,6 +32,9 @@ var beams := 1.0
 ## --strike: a lightning bolt strikes in front of the camera just before each picture
 ## (with --weather=storm; Weather).
 var strike := false
+## --fall: a falling star comes down in front of the camera before each picture, and
+## the night is a starfall night (Starfall; pair with --day=0.0).
+var fall := false
 ## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
 ## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
 var spin := 0.0
@@ -47,6 +50,8 @@ func _ready() -> void:
 			only = a.substr(8).split(",")
 		if a == "--strike":
 			strike = true
+		if a == "--fall":
+			fall = true
 		if a.begins_with("--hud="):
 			hud_mode = a.substr(6)
 		if a.begins_with("--env=") and a.count("=") == 2:
@@ -311,6 +316,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if strike and Weather.current != null:
 		Weather.current.strike_now = true
 		await _wait(3)
+	if fall and Weather.current != null:
+		Weather.current.starfall.forced = true
+		Weather.current.starfall.land_now = true
+		# Caught mid-fall, the fireball still high over the land.
+		await _wait_ms(1600)
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
