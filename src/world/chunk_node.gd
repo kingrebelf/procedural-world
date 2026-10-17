@@ -509,15 +509,24 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var era: int = Eras.nature(chunk.get("era", 0))
 		var bp := Biome.params(chunk["biome"], era)
 		var unders: Array = bp["under"]
-		for n in int(420 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
+		# Clumps and thickets where a slow noise of the land is high, scattered singles
+		# between (world space, so clumps run on across chunk edges).
+		var thicket := FastNoiseLite.new()
+		thicket.seed = int(chunk.get("seed", 0)) ^ 0x7B15
+		thicket.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		thicket.frequency = 0.045
+		thicket.fractal_octaves = 3
+		var ux0 := float(chunk["cx"]) * SIZE
+		var uz0 := float(chunk["cz"]) * SIZE
+		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
 			var lx := r.randf() * SIZE
 			var lz := r.randf() * SIZE
 			var pick := r.randi()
 			var yaw := r.randf() * TAU
 			var sc := r.randf_range(0.6, 1.5)
 			# Clumps: undergrowth gathers where a low-frequency mask is high.
-			var mask := sin(lx * 0.11 + float(chunk["cx"]) * 7.0) * cos(lz * 0.09 + float(chunk["cz"]) * 5.0)
-			if mask < -0.2 + r.randf() * 0.4:
+			var mask := thicket.get_noise_2d(ux0 + lx, uz0 + lz)
+			if r.randf() > 0.06 + 0.94 * smoothstep(0.0, 0.45, mask):
 				continue
 			var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:

@@ -4,7 +4,7 @@ extends SceneTree
 ## chunks and draws the ground cover, grass, undergrowth (by form), loose stones, trees,
 ## boulders and markers, plus a count per kind. Before/after checks for placement work.
 ##   godot --headless --path . --script res://tools/probe_ground.gd -- [--seed=4242]
-##     [--at=x,z] [--out=user://ground] [--spots=meadow,dunes,snow,town]
+##     [--at=x,z] [--out=user://ground] [--spots=meadow,dunes,snow,town,craters]
 ## Writes <out>/<spot>.png and prints the counts. (The work is in ground_map.gd: the
 ## world's scripts need the Game autoload, which exists only once the tree runs.)
 

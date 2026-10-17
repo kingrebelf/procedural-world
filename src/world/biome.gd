@@ -45,6 +45,14 @@ static func _roll(h: int, era: int) -> Dictionary:
 		flora.append({"t": t, "sp": r.randi() & 0x7FFFFFFF, "w": r.randf_range(0.2, 1.0)})
 	# One species usually dominates, as in real forests.
 	flora[0]["w"] = r.randf_range(1.5, 3.0)
+	# Dead trees and snags are the odd single, never a region's main tree: bare trunks
+	# all over green hills need a fire or a blight to explain them.
+	var total := 0.0
+	for f in flora:
+		total += float(f["w"])
+	for f in flora:
+		if Flora.species(f["t"], f["sp"]).get("form", "") in ["dead", "snag"]:
+			f["w"] = minf(float(f["w"]), total * 0.04)
 	var rocks: Array = []
 	for i in r.randi_range(1, 3):
 		rocks.append(r.randi() & 0x7FFFFFFF)

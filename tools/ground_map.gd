@@ -20,7 +20,7 @@ static func run() -> void:
 		var p := String(args["at"]).split(",")
 		spots["at"] = Vector2(float(p[0]), float(p[1]))
 	else:
-		var want := String(args.get("spots", "meadow,dunes,snow,town")).split(",")
+		var want := String(args.get("spots", "meadow,dunes,snow,town,craters")).split(",")
 		spots = _find(g, want)
 	for name in spots:
 		var p: Vector2 = spots[name]
@@ -48,6 +48,8 @@ static func _find(g: ChunkGenerator, want: PackedStringArray) -> Dictionary:
 		var h := g.field.height(p.x, p.y)
 		if h < 3.0:
 			continue
+		if "craters" in want and not found.has("craters") and g.field.landform_weights(p.x, p.y)[WorldField.LF_CRATERS] > 0.95:
+			found["craters"] = p
 		if "dunes" in want and not found.has("dunes") and g.field.landform_weights(p.x, p.y)[WorldField.LF_DUNES] > 0.95:
 			found["dunes"] = p
 		if "snow" in want and not found.has("snow") and h > Planets.snow_line - 4.0 and h < Planets.snow_line + 6.0:

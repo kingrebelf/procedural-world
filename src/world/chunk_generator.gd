@@ -931,19 +931,28 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
 		return 1.0
-	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
-	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
-	var k := (j * LOOK_N + i) * LOOK_BYTES
-	return 1.0 - maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7)
+	# Interpolated between the 4 m look points (the nearest point alone left square
+	# bare patches in the grass).
+	return 1.0 - maxf(_look_lerp(lb, lx, lz, 8), _look_lerp(lb, lx, lz, 7) * 0.7)
+
+## One byte of the landform look (0..1) at a point, interpolated between look points.
+static func _look_lerp(lb: PackedByteArray, lx: float, lz: float, b: int) -> float:
+	var fx := clampf(lx / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var fz := clampf(lz / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	fx -= i
+	fz -= j
+	var k := (j * LOOK_N + i) * LOOK_BYTES + b
+	var k2 := k + LOOK_N * LOOK_BYTES
+	return lerpf(lerpf(lb[k], lb[k + LOOK_BYTES], fx), lerpf(lb[k2], lb[k2 + LOOK_BYTES], fx), fz) / 255.0
 
 ## How much of the ground here is loose wind-blown sand (1 deep in dunes, 0 elsewhere).
 static func sand_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
 		return 0.0
-	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
-	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
-	return lb[(j * LOOK_N + i) * LOOK_BYTES + 8] / 255.0
+	return _look_lerp(lb, lx, lz, 8)
 
 ## How wet the ground is: 1 at the water's edge (river banks, lake and sea shores),
 ## falling to 0 a few metres up and away from it. Reeds and rushes grow only here.
@@ -1150,6 +1159,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 
 	# Rocks and ore, shaped by the region's geology.
 	r = WHash.rng(seed, cx, cz, 302)
+	var rc := WHash.rng(seed, cx, cz, 308)
 	for n in 16:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -1174,8 +1184,22 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
 			continue
+		# Boulders gather in fields and spills (a slow noise), with open ground between,
+		# rather than one every few strides.
+		var heap := smoothstep(-0.2, 0.5, field._moss.get_noise_2d((x0 + lx) * 1.2 + 913.0, (z0 + lz) * 1.2 - 377.0))
+		rd *= 0.2 + 1.8 * heap
 		if roll < rd / 16.0:
 			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0}, rocks[pick % rocks.size()], variant)
+			# In a boulder field, a few lesser ones lie about the big one (their own draws,
+			# so the rest of the chunk stays as it was).
+			for c in int(heap * 3.0 * rc.randf()):
+				var cp := Vector2(lx, lz) + Vector2(rc.randf_range(1.6, 4.5) * sc, 0).rotated(rc.randf() * TAU)
+				var cs := sc * rc.randf_range(0.35, 0.8)
+				var cyaw := rc.randf() * TAU
+				var cv := rc.randi() % Flora.VARIANTS
+				if cp.x < 1.0 or cp.y < 1.0 or cp.x > SIZE - 1.0 or cp.y > SIZE - 1.0 or road_at(chunk, cp.x, cp.y) > 0.15 or by_river(chunk, cp.x, cp.y) or in_cave(chunk, cp.x, cp.y) or sand_at(chunk, cp.x, cp.y) > 0.4 or slope_at(chunk, cp.x, cp.y) > 0.8 or _crowds_tree(chunk, cp.x, cp.y, 1.2 * cs + 0.8) or kept_out(plans, cp.x, cp.y, cs + 0.4) or _near_settlement(x0 + cp.x, z0 + cp.y, sites, 0.0):
+					continue
+				_add(chunk, "rock", era, cp.x, cp.y, cyaw, cs, {"left": maxi(left - 2, 2), "progress": 0.0}, rocks[(pick + c + 1) % rocks.size()], cv)
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
