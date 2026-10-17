@@ -223,6 +223,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var y := g.field.height(at.x, at.y) + height
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
+	var arrived := Time.get_ticks_msec()
 	await _wait_loaded(p, streamer)
 	# Loading can take a long while on a slow renderer: put the clock back to the shot's time.
 	Game.day = day
@@ -249,6 +250,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	# The eye adapts in a few frames instead of seconds: after the night-sky shot the lake
 	# came out white, still exposed for the dark.
 	var ca := (world.atmosphere.get_child(0) as WorldEnvironment).camera_attributes as CameraAttributesPractical
+	if ca.auto_exposure_enabled:
+		# Switching it back on makes the renderer take this view's brightness at once.
+		ca.auto_exposure_enabled = false
+		await _wait(1)
+		ca.auto_exposure_enabled = true
 	var speed := ca.auto_exposure_speed
 	ca.auto_exposure_speed = 20.0
 	await _wait(settle_frames)
@@ -262,6 +268,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
+	print("  %d ms after arriving, %d fps, cloud cover %.2f, underground %.2f" % [Time.get_ticks_msec() - arrived,
+		Engine.get_frames_per_second(), float(world.atmosphere.sky_mat.get_shader_parameter("cloud_cover")), world.atmosphere.underground])
 
 func _run() -> void:
 	await _wait(5)

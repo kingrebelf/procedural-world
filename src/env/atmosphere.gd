@@ -247,8 +247,10 @@ func _update_time_of_day() -> void:
 	env.fog_density = dens * 0.22 + alt * 0.0025
 	env.fog_sky_affect = 0.2 + alt * 0.8
 	# Light haze near you: thick volumetric fog washed the whole view out to white when
-	# looking towards the sun.
-	env.volumetric_fog_density = dens * 0.5 * vfog_boost
+	# looking towards the sun. Under a low sun the air holds more of it (morning mist,
+	# evening haze), so the light falls through the trees in shafts.
+	var haze := 1.0 + 2.5 * (1.0 - smoothstep(0.08, 0.4, elev)) * daylight
+	env.volumetric_fog_density = dens * 0.5 * haze * vfog_boost
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
 	if target and target.get("underwater"):
