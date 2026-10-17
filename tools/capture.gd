@@ -1129,7 +1129,7 @@ func _player_house() -> void:
 			if side == 0 and e % 3 == 1:
 				id = "wall_door_stone" if k == 0 else "wall_window"
 			elif e % 3 != 1 and side < 2:
-				id = "wall_window" if k == 1 or side == 0 else id
+				id = "wall_window" if k == 1 else ("wall_window_stone" if side == 0 else id)
 			var near_now := BuildCatalog.built_near(streamer, hit, 4.0)
 			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor", "near": near_now}))
 	# Stairs from the front left cell, climbing toward the back; the upper floor leaves

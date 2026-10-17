@@ -32,6 +32,8 @@ const PIECES := {
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
@@ -361,6 +363,14 @@ static func _tamed(m: Material) -> Material:
 	# white sheet: give them the tinted, reflective glass the rest of the game uses.
 	if m is BaseMaterial3D and m.resource_name == "M_Glass":
 		return Materials.get_mat("glass")
+	# The village kit's plaster normal map is authored for small props: on a whole wall it
+	# reads as cottage cheese. Lime plaster is smooth with only a gentle unevenness.
+	if m is BaseMaterial3D and m.resource_name == "MI_Plaster":
+		if not _tamed_mats.has(m):
+			var p := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			p.normal_scale = 0.3
+			_tamed_mats[m] = p
+		return _tamed_mats[m]
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
