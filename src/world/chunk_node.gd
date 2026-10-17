@@ -545,7 +545,9 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var key := "under#%d#%d" % [sp, era]
 			if not out.has(key):
 				out[key] = PackedFloat32Array()
-			var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
+			# No two alike: each stretched, squat or tall, and leaning a little.
+			var b := Basis.from_euler(Vector3(r.randf_range(-0.12, 0.12), 0, r.randf_range(-0.12, 0.12))) * Basis(Vector3.UP, yaw)
+			b = b.scaled_local(Vector3(sc * r.randf_range(0.8, 1.25), sc * r.randf_range(0.75, 1.3), sc * r.randf_range(0.8, 1.25)))
 			var buf: PackedFloat32Array = out[key]
 			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 			out[key] = buf
