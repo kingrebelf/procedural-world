@@ -53,6 +53,7 @@ var _look_hp: ProgressBar
 var _look_icon: TextureRect
 var _feed: VBoxContainer
 var _under: ColorRect
+var _bino: ColorRect ## the twin-circle view through raised binoculars
 var _breath: ProgressBar
 var _feed_rows: Dictionary = {} ## type -> {row, qty, label, t}
 var _badge: Control ## the round level badge on the vitals plate
@@ -284,6 +285,16 @@ func _ready() -> void:
 	_under.visible = false
 	add_child(_under)
 	move_child(_under, 0)
+	_bino = ColorRect.new()
+	_bino.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_bino.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bino.visible = false
+	var sh := Shader.new()
+	sh.code = BINO_SHADER
+	_bino.material = ShaderMaterial.new()
+	(_bino.material as ShaderMaterial).shader = sh
+	add_child(_bino)
+	move_child(_bino, 1)
 	_breath = ProgressBar.new()
 	_breath.add_theme_stylebox_override("fill", UITheme.bar_fill(Color(0.35, 0.7, 0.95)))
 	_breath.custom_minimum_size = Vector2(260, 8)
@@ -805,9 +816,25 @@ func _on_region(region: String, era: int) -> void:
 	tw.tween_interval(3.5)
 	tw.tween_property(_banner_box, "modulate:a", 0.0, 2.0)
 
+## Dark everywhere but two overlapping circles, softly edged, with a faint lens tint.
+const BINO_SHADER := """shader_type canvas_item;
+uniform float amount = 1.0;
+void fragment() {
+	vec2 px = 1.0 / SCREEN_PIXEL_SIZE;
+	vec2 p = (UV - 0.5) * px / px.y;
+	float r = 0.36;
+	float d = min(length(p - vec2(-0.2, 0.0)), length(p - vec2(0.2, 0.0)));
+	float inside = 1.0 - smoothstep(r - 0.02, r + 0.005, d);
+	float rim = smoothstep(r - 0.12, r, d) * inside;
+	COLOR = vec4(0.0, 0.0, 0.0, amount * mix(1.0, 0.45 * rim, inside));
+}"""
+
 func _process(_d: float) -> void:
 	if player == null:
 		return
+	_bino.visible = player._zoom > 0.75
+	if _bino.visible:
+		(_bino.material as ShaderMaterial).set_shader_parameter("amount", smoothstep(0.75, 1.0, player._zoom))
 	_update_use_prompt(_d)
 	var p := player.global_position
 	var t := fposmod(Game.day, 1.0) * 24.0

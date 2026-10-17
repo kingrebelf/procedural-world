@@ -312,6 +312,7 @@ static func _get_mat(name: String) -> Material:
 			m = _pbr(Color(0.05, 0.08, 0.16), 0.12, 0.6, "", 0, 1)
 			m.clearcoat_enabled = true
 			m.clearcoat = 0.8
+		"rubber": m = _pbr(Color(0.06, 0.06, 0.065), 0.85, 0.0, "cloth", 0.15, 1.0, 0.35)
 		"cloth": m = _pbr(Color(0.62, 0.20, 0.16), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"cloth_blue": m = _pbr(Color(0.2, 0.3, 0.6), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)

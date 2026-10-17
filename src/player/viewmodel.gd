@@ -18,6 +18,8 @@ const ARMS_REST := Vector3(0.08, -0.03, 0.0)
 ## One-handed tools: only the right arm, further right and lower, the tool leaning in.
 const ARM_REST := Vector3(0.14, -0.07, -0.02)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
+## Binoculars ride lower and nearer the middle, so they read as facing ahead.
+const BINO_REST := Vector3(0.0, -0.04, 0.02)
 const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
 ## A tool's head faces this far left of straight ahead, so it shows three-quarters on.
 const STRIKE_YAW := 0.6
@@ -76,7 +78,7 @@ static func aura_for(it) -> Material:
 	return m
 
 ## Held like a gun: the item points along the view instead of being raised.
-const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead"]
+const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars"]
 
 static func pointed(t: String) -> bool:
 	return t in POINTED or ItemDB.def(t).get("ranged", false)
@@ -134,6 +136,25 @@ static func _forged(t: String) -> ArrayMesh:
 			k.cylinder("metal_dark", Transform3D(ahead, Vector3(0, 0.03, 0.06)), 0.019, 0.019, 0.18, 10)
 			k.cylinder("metal", Transform3D(ahead, Vector3(0, 0.03, -0.12)), 0.021, 0.031, 0.06, 10)
 			k.cylinder("glow_white" if t == "flashlight" else "metal_dark", Transform3D(ahead, Vector3(0, 0.03, -0.18)), 0.028, 0.028, 0.004, 10)
+		"binoculars":
+			# Porro-prism field glasses pointing ahead: wide objective barrels in front,
+			# boxy prism housings, narrower eyepieces with rubber cups at the back, a
+			# centre hinge and focus wheel. The right barrel sits on the origin, so the
+			# hand wraps it.
+			var ahead := Basis(Vector3(1, 0, 0), -PI * 0.5)
+			var o := Vector3(-0.043, 0, 0)
+			for sx in [-1.0, 1.0]:
+				k.cylinder("rubber", Transform3D(ahead, o + Vector3(sx * 0.043, 0, 0.0)), 0.027, 0.029, 0.075, 14)
+				k.cylinder("metal_dark", Transform3D(ahead, o + Vector3(sx * 0.043, 0, -0.075)), 0.03, 0.03, 0.008, 14)
+				k.cylinder("glass", Transform3D(ahead, o + Vector3(sx * 0.043, 0, -0.0835)), 0.025, 0.025, 0.002, 14, true)
+				k.box("rubber", I.translated(o + Vector3(sx * 0.037, 0.012, 0.025)), Vector3(0.05, 0.05, 0.052))
+				k.cylinder("metal_dark", Transform3D(ahead, o + Vector3(sx * 0.031, 0.018, 0.075)), 0.016, 0.016, 0.026, 12)
+				k.cylinder("rubber", Transform3D(ahead, o + Vector3(sx * 0.031, 0.018, 0.09)), 0.02, 0.019, 0.015, 12)
+				k.cylinder("glass", Transform3D(ahead, o + Vector3(sx * 0.031, 0.018, 0.092)), 0.012, 0.012, 0.002, 10, true)
+			k.cylinder("metal_dark", Transform3D(ahead, o + Vector3(0, 0.026, 0.06)), 0.009, 0.009, 0.13, 10)
+			k.box("metal_dark", I.translated(o + Vector3(0, 0.024, -0.035)), Vector3(0.05, 0.01, 0.022))
+			k.box("metal_dark", I.translated(o + Vector3(0, 0.026, 0.035)), Vector3(0.045, 0.01, 0.02))
+			k.cylinder("rubber", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), o + Vector3(0.011, 0.038, 0.012)), 0.011, 0.011, 0.022, 14)
 		_:
 			return null
 	return k.commit(Materials.get_mat)
@@ -276,7 +297,7 @@ func show_item(t: String, it = null) -> void:
 	if arms:
 		_mesh.mesh = null
 		arms.set_arms_only(t != "")
-		_rest = ARMS_REST if t == "" else (GUN_REST if pointed(t) else ARM_REST)
+		_rest = ARMS_REST if t == "" else (BINO_REST if ItemDB.def(t).get("zoom", false) else (GUN_REST if pointed(t) else ARM_REST))
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -340,6 +361,8 @@ func reload_dip() -> void:
 	_dip_t = 0.0
 
 var ads := 0.0 ## set by Gunplay: 0 hip, 1 looking down the sights
+var raise := 0.0 ## set by Player: 0 binoculars lowered, 1 at the eyes
+var _raise_off := Vector3.ZERO
 var _dip_t := 1.0
 var _ads_off := Vector3.ZERO
 
@@ -361,6 +384,16 @@ func muzzle() -> Vector3:
 	var b := mi.mesh.get_aabb()
 	return mi.global_transform * Vector3(b.get_center().x, b.position.y + b.size.y * 0.75, b.position.z)
 
+## Between the binoculars' eyepieces (the back of the model, eyepieces along +Z), in the
+## rig's own space.
+func _eyepiece_local() -> Vector3:
+	var mi := _held_mesh()
+	if mi == null or mi.mesh == null:
+		return Vector3.ZERO
+	var b := mi.mesh.get_aabb()
+	var back := mi.global_transform * Vector3(b.get_center().x, b.get_center().y + b.size.y * 0.2, b.end.z)
+	return global_transform.affine_inverse() * back
+
 ## The point on the gun's top that lines up with the eye when aiming, in the rig's
 ## own space.
 func _sight_local() -> Vector3:
@@ -372,7 +405,7 @@ func _sight_local() -> Vector3:
 	return global_transform.affine_inverse() * top
 
 func sway(delta: float, speed: float) -> void:
-	var steady := 1.0 - 0.85 * ads
+	var steady := (1.0 - 0.85 * ads) * (1.0 - raise)
 	_sway_t += delta * (1.0 + speed * 6.0)
 	_swing_t = minf(1.0, _swing_t + delta * 2.4)
 	_recoil = maxf(0.0, _recoil - delta * 8.0)
@@ -386,6 +419,17 @@ func sway(delta: float, speed: float) -> void:
 		var want := Vector3(-sl.x - _rest.x, -sl.y - _rest.y - 0.012, 0.06)
 		_ads_off = _ads_off.lerp(want, clampf(delta * 20.0, 0.0, 1.0))
 	var aim_off := _ads_off * smoothstep(0.0, 1.0, ads)
+	# Binoculars: lift them until the eyepieces sit just in front of the eyes, then
+	# stop drawing them (the HUD shows the twin-circle view instead).
+	if raise > 0.001:
+		var el := _eyepiece_local()
+		var want := Vector3(-el.x - _rest.x, -el.y - _rest.y, -el.z - _rest.z - 0.1)
+		_raise_off = _raise_off.lerp(want, clampf(delta * 20.0, 0.0, 1.0))
+		aim_off += _raise_off * smoothstep(0.0, 1.0, raise)
+	var hide := raise > 0.8
+	if arms:
+		arms.visible = not hide
+	_mesh.visible = not hide
 	if arms:
 		# The whole rig swings down and across from just in front of the eyes.
 		position = _rest + aim_off + off + Vector3(-0.05 * s, -0.06 * s, -0.12 * s) + Vector3(0, -0.18 * dip, _recoil * 0.04 + 0.05 * dip)

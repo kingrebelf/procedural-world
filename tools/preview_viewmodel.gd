@@ -2,17 +2,21 @@ extends SceneTree
 ## Renders the first-person view of held items against a plain sky, for tuning how big
 ## and where tools sit on screen. Run windowed:
 ##   godot --path . --script res://tools/preview_viewmodel.gd -- --out=DIR [--items=a,b]
+##   [--raise=0.5] (binoculars part way up to the eyes)
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
 	var out := "user://viewmodel"
 	var items := ["pickaxe_iron", "axe_iron", "sword_iron", "torch", "pulse_rifle"]
+	var raise := 0.0
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
 		elif a.begins_with("--items="):
 			items = Array(a.substr(8).split(","))
+		elif a.begins_with("--raise="):
+			raise = a.substr(8).to_float()
 	DirAccess.make_dir_recursive_absolute(out)
 	get_root().size = Vector2i(1600, 900)
 	var env := WorldEnvironment.new()
@@ -41,6 +45,7 @@ func _run() -> void:
 	cam.add_child(vm)
 	for t in items:
 		vm.show_item(t)
+		vm.raise = raise
 		for i in 30:
 			vm.sway(1.0 / 60.0, 0.0)
 			await process_frame
