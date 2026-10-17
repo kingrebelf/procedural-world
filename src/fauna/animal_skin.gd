@@ -28,7 +28,7 @@ const LOOKS := {
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
 	"Bull": {"vary": 0.22, "strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
 		"belly": 0.08, "dorsal": 0.1, "patches": 0.2, "patch_col": Color(0.3, 0.2, 0.12), "blaze": 0.2},
-	"Horse": {"vary": 0.2, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
+	"Horse": {"vary": 0.2, "dapple": 0.35, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.1, "socks": 0.45, "sock_col": Color(0.66, 0.63, 0.58), "blaze": 0.5, "spots": 0.15, "spot_col": Color(0.5, 0.36, 0.24), "spot_size": 0.06},
 	"Horse_White": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},

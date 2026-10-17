@@ -30,6 +30,8 @@ uniform vec3 patch_col : source_color = vec3(0.9, 0.88, 0.84);
 uniform float socks = 0.0; // chance of pale (or dark) lower legs
 uniform vec3 sock_col : source_color = vec3(0.66, 0.63, 0.58);
 uniform float blaze = 0.0; // chance of a pale streak down the face
+uniform float dapple = 0.0; // chance of dapples: pale rings over the barrel and quarters
+uniform float mud = 0.75; // chance of mud on the lower legs and hooves
 uniform float vary = 0.12; // how much one animal's coat differs from the next
 uniform float phases = 0.0; // chance of a colour phase: darker or tawnier than most
 uniform vec3 phase_dark = vec3(0.55, 0.52, 0.5);
@@ -221,9 +223,30 @@ void fragment() {
 			c *= 1.0 + (gm - 0.5) * grizzle * 0.9;
 		}
 		h = (cl * fc * 0.25 + fi * ff * 0.5) * clump * 0.08 * fur;
+		// The lie of the coat, still there when single hairs are too fine to see: long
+		// soft streaks along the flow, and on short, sleek coats a sheen that follows them.
+		float sleek = role == 0 ? 1.0 - smoothstep(0.5, 1.0, fur) : 0.0;
+		float lie = n3(sc * vec3(1.0, 1.0, 0.16) / 0.045 + so * 2.0);
+		float lf = 1.0 - smoothstep(0.03, 0.12, px);
+		c *= 1.0 + (lie - 0.5) * 0.07 * lf;
+		h += (lie - 0.5) * 0.0004 * lf * sleek;
+		// Veins and the shape of muscle and tendon showing through a short coat, on the
+		// legs, neck and face.
+		if (sleek > 0.0) {
+			vec3 vp = pm * vec3(5.0, 1.6, 5.0) + so;
+			float vein = 1.0 - abs(fbm(vp) * 2.0 - 1.0);
+			float where = 1.0 - smoothstep(legs_y - 0.08, legs_y, q.y);
+			h += smoothstep(0.93, 0.99, vein) * 0.0006 * where * sleek * lf;
+		}
+		// Dapples: pale rounds ringed with darker coat, over the barrel and quarters.
+		if (dapple > 0.0 && h1(s + 14.0) < dapple) {
+			float d = cells(pm / 0.08 + so * 0.7);
+			float zone = torso * smoothstep(0.25, 0.5, t) * smoothstep(0.08, 0.2, q.z) * (1.0 - smoothstep(0.62, 0.75, q.z));
+			c *= 1.0 + (0.45 - smoothstep(0.15, 0.6, d + (fbm(pm * 20.0 + so) - 0.5) * 0.2)) * 0.16 * zone;
+		}
 		rim = 0.3 * fur;
-		rough = role == 1 ? 0.62 : 0.9 - coarse * 0.08;
-		spec = role == 1 ? 0.5 : 0.3;
+		rough = role == 1 ? 0.62 : 0.9 - coarse * 0.08 - sleek * (0.18 + 0.12 * lie);
+		spec = role == 1 ? 0.5 : 0.3 + 0.12 * sleek;
 	} else if (role == 2) {
 		// Bare skin: fine creases and pores, wet and dark at the nose tip.
 		float n = fbm(pm * 160.0 + so);
@@ -240,9 +263,36 @@ void fragment() {
 		h = (ring * 0.4 + grain * 0.6) * 0.0008;
 		rough = 0.5;
 		spec = 0.4;
+		if (q.y < 0.12) {
+			// Hooves: dark slate or pale horn (some striped), coarse grain down the
+			// wall, darker and worn toward the ground, a paler band at the hairline.
+			float pick = h1(s + 15.0);
+			vec3 hoof = pick < 0.6 ? vec3(0.1, 0.095, 0.09) : vec3(0.42, 0.36, 0.28);
+			float stripe_h = step(0.85, pick) * step(0.5, fract(atan(p.x, p.z) * 1.6 + fbm(pm * 30.0)));
+			hoof = mix(hoof, vec3(0.1, 0.095, 0.09), stripe_h);
+			float coarse_g = fbm(vec3(pm.x * 45.0, pm.y * 4.0, pm.z * 45.0) + so);
+			c = hoof * (0.8 + 0.4 * coarse_g) * mix(0.75, 1.1, smoothstep(0.0, 0.05, q.y));
+			c = mix(c, c * 1.4 + 0.04, smoothstep(0.075, 0.1, q.y) * 0.6);
+			rough = 0.6 - 0.15 * coarse_g;
+		}
 	} else {
 		rough = 0.04;
 		spec = 0.8;
+	}
+	// Mud splashed up the lower legs and caked on the hooves, its own height on each.
+	if (role <= 1 || role == 3) {
+		float m = step(h1(s + 30.0), mud) * mix(0.55, 1.0, h1(s + 31.0));
+		float top = legs_y * (0.18 + 0.35 * h1(s + 32.0));
+		float n = fbm(pm * 14.0 + so) - 0.5;
+		float caked = (1.0 - smoothstep(top - 0.03, top + 0.02, q.y + n * 0.09)) * m;
+		float splash = (1.0 - smoothstep(top, top + 0.12, q.y)) * smoothstep(0.62, 0.7, fbm(pm * 40.0 + so)) * m;
+		float mu = max(caked, splash * 0.8) * (role == 3 && q.y > 0.12 ? 0.0 : 1.0);
+		vec3 mud_col = mix(vec3(0.025, 0.017, 0.01), vec3(0.075, 0.05, 0.028), smoothstep(0.0, 0.5, h1(s + 33.0) + n));
+		c = mix(c, mud_col * (0.8 + 0.4 * fbm(pm * 30.0 + so)), mu * 0.95);
+		rough = mix(rough, 0.95, mu);
+		rim *= 1.0 - mu;
+		spec *= 1.0 - 0.6 * mu;
+		h += mu * fbm(pm * 90.0 + so) * 0.0004;
 	}
 	ALBEDO = clamp(c, vec3(0.0), vec3(1.0));
 	ROUGHNESS = rough;
