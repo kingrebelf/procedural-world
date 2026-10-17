@@ -12,6 +12,15 @@ TEMPLATES="${GODOT_TEMPLATES:-$HOME/.local/share/godot/export_templates/${GODOT_
 "$GODOT" --headless --path . --import >/dev/null 2>&1 || true
 "$GODOT" --headless --path . --export-release "Windows Desktop" build/windows/ProceduralWorld.exe
 "$GODOT" --headless --path . --export-release "Linux" build/linux/ProceduralWorld.x86_64
+# Built-in natural voices (tools/voice_server): the voice program and model beside each game.
+tools/voice_server/build.sh build/voicepack
+mkdir -p build/windows/voices/data build/linux/voices/data
+cp -a build/voicepack/windows/. build/windows/voices/
+cp -a build/voicepack/linux/. build/linux/voices/
+cp -a build/voicepack/data/. build/windows/voices/data/
+cp -a build/voicepack/data/. build/linux/voices/data/
+cp build/voicepack/LICENSES.txt build/windows/voices/
+cp build/voicepack/LICENSES.txt build/linux/voices/
 (cd installer/windows && makensis -V2 -DVERSION="$VERSION" -DSRC_DIR=../../build/windows \
   -DOUT_FILE="../../build/ProceduralWorld-$VERSION-Setup.exe" installer.nsi)
 (cd build/windows && zip -q -r "../ProceduralWorld-$VERSION-windows-portable.zip" .)
