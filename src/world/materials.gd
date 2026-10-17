@@ -344,6 +344,15 @@ static func _get_mat(name: String) -> Material:
 			if photo("fabric_linen", "detail") != null:
 				m.albedo_texture = photo("fabric_linen", "detail")
 				m.uv1_scale = Vector3.ONE * 16.0
+		# Homespun cloth (washing on the line, a scarecrow's shirt): colour from vertex
+		# colours, seen from both sides.
+		"linen":
+			m = _pbr(Color(0.9, 0.88, 0.82), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
+			if photo("fabric_linen", "detail") != null:
+				m.albedo_texture = photo("fabric_linen", "detail")
+				m.albedo_color = Color(1.15, 1.12, 1.05) # the weave averages 0.72
+				m.uv1_scale = Vector3.ONE * 6.0
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)
 		"moss": m = _pbr(Color(0.16, 0.42, 0.38), 0.95, 0.0, "leaf", 0.1, 0.6, 1.2)
 		"stem": m = _pbr(Color(0.86, 0.84, 0.76), 0.8, 0.0, "cap", 0.06, 0.6, 1.0)

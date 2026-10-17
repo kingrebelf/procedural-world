@@ -139,6 +139,7 @@ func _run_job(job: Dictionary) -> void:
 		chunk = job["given"]
 		res["data"] = chunk
 		res["replace"] = true
+		TownLife.annotate(ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers()), chunk)
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)
 		for mk in res["objects"]:
@@ -146,6 +147,8 @@ func _run_job(job: Dictionary) -> void:
 	elif job["mode"] == "load":
 		var gen := ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers())
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
+		# Village paths, gardens and fields: worked out afresh on every load, from the seed.
+		TownLife.annotate(gen, chunk)
 		res["data"] = chunk
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)

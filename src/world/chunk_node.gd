@@ -63,6 +63,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	var hs: PackedFloat32Array = chunk["heights"]
 	var wb: PackedByteArray = chunk["weights"]
 	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
+	var worn: PackedByteArray = chunk.get("worn", PackedByteArray())
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	var n := SIZE / step + 1
 	# Packed arrays held in an Array are copied on access, so the three look streams
@@ -105,6 +106,9 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			# There blue is only how paved the road is (the tech era's streets and roads).
 			var rd := rb[k] / 255.0 if not rb.is_empty() else 0.0
 			var ws := wb[wk + 2] / 255.0 * (1.0 if rd > 0.0 else 0.0) if human else wb[wk + 2] / 255.0
+			# Village paths, gardens and fields wear the ground bare too (never paved).
+			if not worn.is_empty():
+				rd = maxf(rd, worn[k] / 255.0)
 			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - rd)
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
@@ -397,7 +401,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
-		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
+		var on_road := maxf(ChunkGenerator.road_at(chunk, lx, lz), TownLife.wear_at(chunk, lx, lz))
 		if on_road > 0.5 or (on_road > 0.0 and r.randf() < on_road * 1.6):
 			continue
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
@@ -430,6 +434,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[biome_era] * lumen])
 		out[key] = buf
+	# Crops in rows in the fields and gardens of villages (TownLife).
+	TownLife.crops(chunk, out, density, plans)
 	# Waterweed on lake and sea beds, in beds of its own, thickest a couple of metres
 	# down and thinning out where the light fades. (Its own draws, so the grass above
 	# stays as it was.)

@@ -204,6 +204,9 @@ static func mesh(id: String) -> ArrayMesh:
 	return m
 
 static func _xf(entry: Array) -> Transform3D:
+	# An optional sixth entry places the model by a whole transform (tilted or leaning).
+	if entry.size() > 5 and entry[5] is Transform3D:
+		return entry[5]
 	var sc = entry[3]
 	var s: Vector3 = sc if sc is Vector3 else Vector3.ONE * float(sc)
 	return Transform3D(Basis(Vector3.UP, deg_to_rad(float(entry[1]))) * Basis.from_scale(s), entry[2])

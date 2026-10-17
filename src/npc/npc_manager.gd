@@ -129,6 +129,10 @@ func _load(site: Dictionary, id: String) -> void:
 	decor.setup(gen, streamer, site, data, Game.estates)
 	add_child(decor)
 	e["decor"] = decor
+	var life := TownLife.new()
+	life.setup(gen, streamer, site)
+	add_child(life)
+	e["life"] = life
 	var stale: bool = float(data.get("sim_day", -1.0)) < 0.0 or Game.day - float(data["sim_day"]) > 0.03
 	var hour := NPCMind.hour_now()
 	for rec in data["npcs"]:
@@ -181,6 +185,8 @@ func _unload(id: String) -> void:
 		n.queue_free()
 	if is_instance_valid(e.get("decor")):
 		e["decor"].queue_free()
+	if is_instance_valid(e.get("life")):
+		e["life"].queue_free()
 	settlements.erase(id)
 
 func save_all() -> void:
