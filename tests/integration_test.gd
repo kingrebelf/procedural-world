@@ -614,6 +614,7 @@ func _run() -> void:
 	world.fauna._scan = 0.0
 	await _corpses(game, world, player, kc)
 	await _bandits(game, world, player)
+	await _pirates(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -1104,6 +1105,55 @@ func _bandits(game, world, player) -> void:
 	var e2: Dictionary = world.npcs.settlements.get("b9_9_0", {})
 	check(e2.get("nodes", []).size() == 2, "the dead one doesn't come back with the band")
 	world.npcs._unload("b9_9_0")
+	game.health = 100.0
+
+## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
+## toll; paid, they sail off; hurt one and they all fight.
+func _pirates(game, world, player) -> void:
+	var at: Vector3 = player.global_position + Vector3(14.0, 0.0, 0.0)
+	var npcs: NPCManager = world.npcs
+	var b: BoatNode = npcs.spawn_pirates(at)
+	check(b != null and b.faction == "pirate", "a pirate boat puts out")
+	if b == null:
+		return
+	await _frames(3)
+	var crew: Dictionary = npcs.crew_of(b)
+	var nodes: Array = crew.get("nodes", [])
+	check(nodes.size() >= 2, "crewed by pirates (%d)" % nodes.size())
+	if nodes.is_empty():
+		return
+	var p0: NPC = nodes[0]
+	check(String(p0.rec.get("faction", "")) == "pirate" and Bandits.ranged(p0.rec), "armed to fight from the deck (%s)" % p0.rec.get("held", {}).get("type", ""))
+	npcs._decide_pirate(p0, crew, player.global_position, npcs.now())
+	var st: Dictionary = npcs._pirate_state(p0)
+	check(float(st["demand_until"]) > 0.0 and p0.action == "confront", "they hail you and demand a toll")
+	game.add_money(100)
+	var m0: int = game.money
+	var took: int = npcs.pay_toll(p0)
+	check(took > 0 and game.money == m0 - took and st["paid"], "paying them off (%d)" % took)
+	npcs._pirate_leave(st)
+	check(st["leaving"] and b.goal != Vector2.INF, "and they sail away")
+	world.boats.despawn(b)
+	npcs._pirates.clear()
+	await _frames(3)
+	var b2: BoatNode = npcs.spawn_pirates(at)
+	await _frames(3)
+	var crew2: Dictionary = npcs.crew_of(b2)
+	var nodes2: Array = crew2.get("nodes", [])
+	if nodes2.is_empty():
+		check(false, "a second crew boards")
+		return
+	var victim: NPC = nodes2[0]
+	var bounty0: int = game.crime.owed(String(crew2.get("sid", "")), game.day)
+	npcs.player_hit(victim, 5.0)
+	var st2: Dictionary = npcs._pirate_state(nodes2[nodes2.size() - 1])
+	check(st2["alert"], "hurt one and they all fight")
+	check(game.crime.owed(String(crew2.get("sid", "")), game.day) == bounty0, "fighting pirates is no crime")
+	var other: NPC = nodes2[nodes2.size() - 1]
+	npcs._decide_pirate(other, crew2, player.global_position, npcs.now())
+	check(other.action == "attack", "they shoot from the deck")
+	world.boats.despawn(b2)
+	npcs._pirates.clear()
 	game.health = 100.0
 
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
