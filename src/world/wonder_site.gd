@@ -221,7 +221,8 @@ static var _beams := {}
 ## become carved stone, gold and plain glinting glass (Ben: nothing glows on human worlds).
 const CALM := "@calm"
 const CALM_MATS := {"titan_glow": "titan_stone", "starfall_glass": "starfall_glass_dull",
-	"void_stone": "void_stone_dull", "glow_violet": "gold", "glow_red": "gold", "glow_teal": "gold"}
+	"void_stone": "void_stone_dull", "glow_violet": "gold", "glow_red": "gold", "glow_teal": "gold",
+	"glow_warm": "gold", "glow_cyan": "panel", "crystal": "glass", "crystal_violet": "glass"}
 static var _portal: Material
 
 ## The mesh of a wonder piece. `solid` leaves out the light (for collision).
