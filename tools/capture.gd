@@ -1255,8 +1255,19 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 		var close_in := func() -> void:
 			var c: Vector3 = near.center
 			var side := Vector3(c.x - p.camera.global_position.x, 0.0, c.z - p.camera.global_position.z).normalized()
-			var cam_at := c - side * (2.2 + near.f[5] as float)
+			var back: float = 2.2 + near.f[5] as float
+			var cam_at := c - side * back
 			cam_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
+			# From whichever side nothing (a rock, the bank) stands between eye and school.
+			var space := p.get_world_3d().direct_space_state
+			for k in 12:
+				var try_at := c - side.rotated(Vector3.UP, TAU * k / 12.0) * back
+				try_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
+				var q := PhysicsRayQueryParameters3D.create(try_at, c)
+				q.exclude = [p.get_rid()]
+				if space.intersect_ray(q).is_empty() and space.intersect_ray(PhysicsRayQueryParameters3D.create(c, try_at)).is_empty():
+					cam_at = try_at
+					break
 			var d := c - cam_at
 			var eye_off: Vector3 = p.camera.global_position - p.global_position
 			p.set_state({"pos": cam_at - eye_off, "yaw": atan2(-d.x, -d.z), "pitch": atan2(d.y, Vector2(d.x, d.z).length()), "slot": 0})
