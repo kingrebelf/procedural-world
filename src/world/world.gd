@@ -80,6 +80,12 @@ func _ready() -> void:
 	aquatic.streamer = streamer
 	aquatic.player = player
 	add_child(aquatic)
+	var dungeons := Dungeons.new()
+	dungeons.name = "Dungeons"
+	dungeons.streamer = streamer
+	dungeons.player = player
+	add_child(dungeons)
+	player.dungeons = dungeons
 	corpses = Corpses.new()
 	corpses.name = "Corpses"
 	corpses.streamer = streamer
@@ -119,6 +125,7 @@ func _ready() -> void:
 	var picking := LockpickUI.new()
 	picking.player = player
 	ui.add_child(picking)
+	dungeons.make_tracker(hud)
 	lore = LoreUI.new()
 	lore.player = player
 	ui.add_child(lore)
