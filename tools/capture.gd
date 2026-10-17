@@ -18,6 +18,8 @@ func _ready() -> void:
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# Nothing may kill the photographer (castle hounds did, mid-tour).
+	Game.cheats["god"] = true
 	_run.call_deferred()
 
 func _wait(n: int) -> void:
@@ -182,32 +184,45 @@ func _run() -> void:
 			var out := Vector2(0, 46).rotated(-float(best["yaw"]))
 			await _shot("11_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
 	if g.outposts and (only.is_empty() or only.has("16")):
-		# The nearest viaduct, from the side.
+		# The nearest tall viaduct (deck well above the valley under it), from the side.
 		var best_d := INF
 		var vm := Vector2.ZERO
 		var vd := Vector2.ZERO
 		var deck := 0.0
-		for rd in g.roads_near(-900.0, -900.0, 900.0, 900.0):
-			var pts: PackedVector2Array = rd["pts"]
-			var ar: PackedByteArray = rd["air"]
-			var lv: PackedFloat32Array = rd["level"]
-			for i in range(2, pts.size() - 2):
-				if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d:
-					best_d = pts[i].length()
-					vm = pts[i]
-					vd = (pts[i + 1] - pts[i - 1]).normalized()
-					deck = lv[i]
+		for need in [8.0, 3.0]:
+			for rd in g.roads_near(-1500.0, -1500.0, 1500.0, 1500.0):
+				var pts: PackedVector2Array = rd["pts"]
+				var ar: PackedByteArray = rd["air"]
+				var lv: PackedFloat32Array = rd["level"]
+				for i in range(2, pts.size() - 2):
+					if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d \
+							and lv[i] - g.field.height(pts[i].x, pts[i].y) > need:
+						best_d = pts[i].length()
+						vm = pts[i]
+						vd = (pts[i + 1] - pts[i - 1]).normalized()
+						deck = lv[i]
+			if best_d < INF:
+				break
 		if best_d < INF:
-			# Stand on whichever side the ground falls away, level with the deck.
+			# Stand level with the deck, off to one side, where no hill hides the arches:
+			# the first spot whose sight line to the middle of the span clears the ground.
 			var cam := vm + vd.orthogonal() * 48.0
-			var low := INF
-			for side in [-1.0, 1.0]:
-				for dist in [40.0, 55.0, 70.0]:
+			var found := false
+			for dist in [45.0, 60.0, 75.0, 90.0]:
+				for side in [-1.0, 1.0]:
 					var c: Vector2 = vm + vd.orthogonal() * dist * side + vd * 14.0
-					var h := g.field.height(c.x, c.y)
-					if h < low:
-						low = h
+					var eye := maxf(deck + 2.0, g.field.height(c.x, c.y) + 2.0)
+					var clear := true
+					for k in range(1, 10):
+						var f := k / 10.0
+						var q := c.lerp(vm, f)
+						if g.field.height(q.x, q.y) > lerpf(eye, deck - 4.0, f) - 0.5:
+							clear = false
+							break
+					if clear and not found:
 						cam = c
+						found = true
+			var low := g.field.height(cam.x, cam.y)
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
 	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
@@ -224,7 +239,9 @@ func _run() -> void:
 		await _shot("05_fantasy_village_night", c + Vector2(40, -34), c, 0.93)
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
-		await _shot("06_medieval_sunset", c + Vector2(-50, 14), c, 0.735)
+		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
+		# across the houses and their shadows reach toward you.
+		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
 	# Midnight, looking as far up as a player can: the stars and the Milky Way.
 	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
 	var shore := _find_shore(g)
