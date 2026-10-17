@@ -409,7 +409,9 @@ func _update_time_of_day() -> void:
 		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65).lerp(Color(0.32, 0.5, 0.38), silt)
 	else:
 		env.fog_sun_scatter = 0.12
-	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
+	# By day the open sky fills the shade well: a pale wall turned from the sun is a soft
+	# blue-grey, not near black. Less sky fill in the golden hour, so the side away from
+	# the sun falls into shade.
 	# At night the sky's light is starlight and airglow (and the moonlit sky's), weak but
 	# enough to see the shapes of the land on the side away from the moon.
 	# (Only in full night: dusk keeps its shaded side.) The night sky is too dark to light
@@ -418,7 +420,7 @@ func _update_time_of_day() -> void:
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
 	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
 	env.ambient_light_color = Color(0.14, 0.17, 0.25)
-	env.ambient_light_energy = (lerpf(0.2, 0.6, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
