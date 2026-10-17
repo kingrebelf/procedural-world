@@ -410,6 +410,9 @@ static func build(t: String) -> ArrayMesh:
 		"shrine": _shrine(k)
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
+	if t == "watchtower":
+		# Its pennant flies from the pole on the roof.
+		ClothFx.add_flag(mesh, Transform3D(Basis.IDENTITY, Vector3(0.06, 16.15, 0)), 1.2, 0.7, Color(0.62, 0.2, 0.16))
 	return mesh
 
 ## The furnished room.
@@ -465,6 +468,8 @@ static func interior(t: String) -> ArrayMesh:
 			k.box("timber", I.translated(Vector3(0, 3.18, -1.25)), Vector3(0.9, 0.04, 0.9))
 			k.box("stone_dark", I.translated(Vector3(0, 3.16, -1.25)), Vector3(0.8, 0.02, 0.8))
 	var mesh := BuildCatalog.merge_models(models)
+	# Indoors, banners stir only in a draught.
+	ClothFx.shelter(mesh)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
 
@@ -870,7 +875,6 @@ static func _watchtower(k: MeshKit, models: Array) -> void:
 		var ro := lerpf(2.3, 1.9, (y + 0.3) / 12.3)
 		k.box("glow_warm", I.translated(Vector3(0, y, ro - 0.02)), Vector3(0.3, 0.8, 0.1))
 	k.cylinder("timber", I.translated(Vector3(0, 12.5, 0)), 0.06, 0.06, 4.0, 5)
-	k.box("cloth", I.translated(Vector3(0.6, 15.8, 0)), Vector3(1.2, 0.7, 0.03))
 
 static func _hab_dome(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY

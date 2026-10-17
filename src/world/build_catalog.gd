@@ -233,17 +233,25 @@ static func merge_models(models: Array) -> ArrayMesh:
 		var base := _xf(e)
 		# An optional fifth entry swaps the model's materials by name for others.
 		var swap: Dictionary = e[4] if e.size() > 4 else {}
-		for part in model_parts(String(e[0])):
+		var parts := model_parts(String(e[0]))
+		for pk in parts.size():
+			var part: Array = parts[pk]
 			var mat: Material = part[0]
-			if mat != null and swap.has(mat.resource_name):
+			var arrays: Array = part[1]
+			if ClothFx.is_cloth(mat) and not swap.has(mat.resource_name):
+				# Banner cloth moves in the wind (ClothFx).
+				arrays = ClothFx.prepared(String(e[0]), pk, arrays)
+				mat = ClothFx.kit_material(mat)
+			elif mat != null and swap.has(mat.resource_name):
 				mat = swap[mat.resource_name]
 			if not groups.has(mat):
 				groups[mat] = []
 				order.append(mat)
-			groups[mat].append([part[1], base * (part[2] as Transform3D)])
+			groups[mat].append([arrays, base * (part[2] as Transform3D)])
 	var out := ArrayMesh.new()
 	for mat in order:
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _merge_arrays(groups[mat]))
+		var arrays := _merge_arrays(groups[mat])
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, ClothFx.FORMAT if arrays[Mesh.ARRAY_CUSTOM0] != null else 0)
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
 
@@ -292,9 +300,14 @@ static func model_parts(name: String) -> Array:
 ## UVs, colours and indices), all on the CPU.
 static func _merge_arrays(list: Array) -> Array:
 	var with_col := false
+	var with_custom := false
 	for e in list:
 		if e[0][Mesh.ARRAY_COLOR] != null:
 			with_col = true
+		if e[0][Mesh.ARRAY_CUSTOM0] != null:
+			with_custom = true
+	var c0 := PackedFloat32Array()
+	var c1 := PackedFloat32Array()
 	var v := PackedVector3Array()
 	var n := PackedVector3Array()
 	var tg := PackedFloat32Array()
@@ -336,6 +349,15 @@ static func _merge_arrays(list: Array) -> Array:
 			else:
 				for i in count:
 					col.append(Color.WHITE)
+		if with_custom:
+			# Cloth's hold (ClothFx): kept as it is, zero for anything else.
+			for ci in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1]:
+				var pc = a[ci]
+				var into := c0 if ci == Mesh.ARRAY_CUSTOM0 else c1
+				if pc != null and (pc as PackedFloat32Array).size() == count * 4:
+					into.append_array(pc)
+				else:
+					into.resize(into.size() + count * 4)
 		var pi = a[Mesh.ARRAY_INDEX]
 		if pi != null:
 			for i in pi:
@@ -351,6 +373,9 @@ static func _merge_arrays(list: Array) -> Array:
 	out[Mesh.ARRAY_TEX_UV] = uv
 	if with_col:
 		out[Mesh.ARRAY_COLOR] = col
+	if with_custom:
+		out[Mesh.ARRAY_CUSTOM0] = c0
+		out[Mesh.ARRAY_CUSTOM1] = c1
 	out[Mesh.ARRAY_INDEX] = idx
 	return out
 
