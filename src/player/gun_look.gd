@@ -135,9 +135,12 @@ static func mat(name: String) -> Material:
 		return _mats[name]
 	var m: StandardMaterial3D
 	match name:
-		"gun_metal": m = _base(Color(0.2, 0.21, 0.23), 0.34, 0.85)
-		"gun_blued": m = _base(Color(0.11, 0.12, 0.15), 0.3, 0.9)
-		"gun_polymer": m = _base(Color(0.045, 0.047, 0.05), 0.68, 0.0)
+		"gun_metal": m = finish(Color(0.24, 0.25, 0.27), 0.32, 0.85, Color(0.55, 0.55, 0.56), 0.1, 0.18)
+		# Blued steel: deep blue-black with a sheen, handling wear rubbed through to
+		# the bright steel in places.
+		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
+		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
+		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.11, 0.11, 0.115), 0.25, 0.45)
 		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
@@ -204,6 +207,39 @@ static func _wood(key: String, spec: Array, axis: String) -> StandardMaterial3D:
 	m.uv1_scale = Vector3(along if axis == "_x" else across, along if axis == "_y" else across, across if axis in ["_x", "_y"] else along)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_mats[key] = m
+	return m
+
+static var _wear_noise: FastNoiseLite
+
+## A worn finish: colour `c`, with patches of `wear_c` (bare metal showing through,
+## polished spots) over `wear` of the surface, roughness drifting a good deal more than
+## _base's, and a grain of strength `bump` in the normals.
+static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: float, bump: float) -> StandardMaterial3D:
+	var m := _base(Color.WHITE, rough, metal)
+	if _wear_noise == null:
+		_wear_noise = FastNoiseLite.new()
+		_wear_noise.frequency = 0.02
+		_wear_noise.fractal_octaves = 5
+		_wear_noise.fractal_gain = 0.6
+	var g := Gradient.new()
+	var edge := clampf(1.0 - wear, 0.05, 0.98)
+	g.offsets = PackedFloat32Array([0.0, 0.45, edge - 0.03, edge, 1.0])
+	g.colors = PackedColorArray([c * 0.8, c, c * 1.12, wear_c, wear_c])
+	var t := NoiseTexture2D.new()
+	t.seamless = true
+	t.noise = _wear_noise
+	t.color_ramp = g
+	m.albedo_texture = t
+	var r := NoiseTexture2D.new()
+	r.seamless = true
+	r.noise = _wear_noise
+	var rg := Gradient.new()
+	rg.set_color(0, Color(1, 1, 1))
+	rg.set_color(1, Color(0.5, 0.5, 0.5))
+	r.color_ramp = rg
+	m.roughness_texture = r
+	m.roughness = minf(rough * 1.3, 1.0)
+	m.normal_scale = bump
 	return m
 
 static func _base(c: Color, rough: float, metal: float) -> StandardMaterial3D:
