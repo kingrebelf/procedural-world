@@ -6,22 +6,20 @@ extends RefCounted
 ## Levels rise with distance from spawn (one per 150 m): on themed worlds these are the
 ## real zone levels (Eras.zone_level, which also knows a world's base level).
 
-const PER_LEVEL := 150.0 ## metres from spawn per zone level
-const BAND := 5 ## levels per band shown, e.g. 6-10
+const PER_LEVEL := 150.0 ## metres from spawn per zone level (Eras.LEVEL_STEP)
 
-## What each era's land offers, by level band (low, mid, high).
-const FINDS := [
-	["Oak and pine woods, wild animals and iron veins in the rocks. Villages trade and sell food.",
-		"Bandit-held castles with veteran guards, and richer iron in the hills.",
-		"Dread castle garrisons and wolf packs. Keeps hold the best medieval gear."],
-	["Glowcap groves, aether crystals and mushroom villages. Wisps and moths drift at night.",
-		"Crypts guarded by stalkers; aether clusters grow larger in the deep woods.",
-		"Elite crypt guards and old fey ruins with rare enchanted loot."],
-	["Alloy scrap fields, xeno plants and outposts with traders and terminals.",
-		"Bunkers held by sentry crawlers; scrap piles hide circuitry and power cells.",
-		"Elite sentries, wrecks and alien ruins with the best tech in the land."],
-]
-const KIND := ["Medieval lands", "Fey wilds", "Frontier tech"]
+## Human worlds by level band: medieval below 10, outposts from 10, portals from 40.
+const HUMAN := [[10, "Medieval lands", "Natural woods and wild animals, iron in the rocks, villages and castles. Medieval gear only."],
+	[20, "Borderlands", "Tougher castle garrisons, and the first human outposts with sci-fi gear."],
+	[40, "Human frontier", "Outposts hold most of the land: bunkers, alloy scrap and the best human tech."],
+	[9999, "High frontier", "Elite foes everywhere, and ancient portals to other worlds stand out here."]]
+## Alien worlds by era of the land: fey wilds near the origin, Vex tech further out.
+const ALIEN := {1: ["Fey wilds", "Glowcap groves, aether crystals and alien villages. Wisps drift at night."],
+	2: ["Vex tech lands", "Vex tech cities, xeno plants and alien creatures guarding the best tech."]}
+## Older, mixed worlds: one line per era.
+const MIXED := [["Medieval lands", "Oak and pine woods, wild animals, iron veins, villages and castles."],
+	["Fey wilds", "Glowcap groves, aether crystals, mushroom villages and crypts."],
+	["Frontier tech", "Alloy scrap fields, xeno plants, outposts with traders and bunkers."]]
 
 static var _field: WorldField
 static var _seed := -1
@@ -32,13 +30,30 @@ static func _field_for(seed: int) -> WorldField:
 		_seed = seed
 	return _field
 
-## {name, kind, era, level_lo, level_hi, finds, color} for world point (x, z).
+static func level_at(x: float, z: float) -> int:
+	return Eras.zone_level(x, z) if Eras.themed() else 1 + int(Vector2(x, z).length() / PER_LEVEL)
+
+## {name, kind, era, level, level_lo, level_hi, finds, color} for world point (x, z).
 static func at(seed: int, x: float, z: float) -> Dictionary:
 	var f := _field_for(seed)
 	var era := WorldField.dominant(f.era_weights(x, z))
-	var lv := Eras.zone_level(x, z) if Eras.theme != "" else 1 + int(Vector2(x, z).length() / PER_LEVEL)
-	var lo := (lv - 1) / BAND * BAND + 1
-	var band := clampi((lo - 1) / 10, 0, 2)
-	return {"name": f.region_name_at(x, z), "kind": KIND[era], "era": era,
-		"level_lo": lo, "level_hi": lo + BAND - 1, "finds": FINDS[era][band],
-		"color": UITheme.ERA_COLORS[era]}
+	var lv := level_at(x, z)
+	var lo := lv / 10 * 10
+	var kind: String
+	var finds: String
+	match Eras.theme:
+		"human":
+			for b in HUMAN:
+				if lv < b[0]:
+					kind = b[1]
+					finds = b[2]
+					break
+		"alien":
+			var a: Array = ALIEN.get(era, ALIEN[1])
+			kind = a[0]
+			finds = a[1]
+		_:
+			kind = MIXED[era][0]
+			finds = MIXED[era][1]
+	return {"name": f.region_name_at(x, z), "kind": kind, "era": era, "level": lv,
+		"level_lo": maxi(lo, 1), "level_hi": lo + 9, "finds": finds, "color": UITheme.ERA_COLORS[era]}

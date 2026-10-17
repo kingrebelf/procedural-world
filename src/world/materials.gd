@@ -121,7 +121,9 @@ static func _surface(ph: String, scale: float, rough: float, metal: float, glow:
 		m.normal_texture = photo(ph, "normal")
 	if glow > 0.0 and photo(ph, "emit") != null:
 		m.emission_enabled = true
+		# Multiply, so only the texture's lit parts glow (Add would light the whole face).
 		m.emission = Color.WHITE
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 		m.emission_texture = photo(ph, "emit")
 		m.emission_energy_multiplier = glow
 	m.uv1_triplanar = true
