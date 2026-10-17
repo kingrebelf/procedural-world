@@ -212,6 +212,7 @@ func _audio_tab() -> Control:
 	_slider(g, "master_volume", "Master volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(g, "music_volume", "Music volume", 0.0, 1.0, 0.05, "%.2f")
 	_slider(g, "sfx_volume", "Effects volume", 0.0, 1.0, 0.05, "%.2f")
+	_slider(g, "ambience_volume", "Ambience volume", 0.0, 1.0, 0.05, "%.2f")
 	return p
 
 # --- AI ----------------------------------------------------------------------------------

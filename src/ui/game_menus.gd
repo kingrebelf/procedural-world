@@ -86,6 +86,8 @@ func _toggle(m: String) -> void:
 
 func open(m: String) -> void:
 	_animate = _mode == ""
+	if _mode == "":
+		Audio.ui("ui/open")
 	_mode = m
 	_swap_from = -1
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -97,6 +99,8 @@ func open(m: String) -> void:
 	_refresh()
 
 func close() -> void:
+	if _mode != "":
+		Audio.ui("ui/close")
 	_mode = ""
 	if _panel:
 		_panel.queue_free()
