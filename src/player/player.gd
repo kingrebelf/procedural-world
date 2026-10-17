@@ -1391,7 +1391,7 @@ func use_held() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.randomize()
 		for y in Byproducts.of_digging(float(d["dig"]), rng):
-			Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("dug", -1, ck)))
+			Game.give_loot(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("dug", -1, ck)))
 
 ## Undergrowth has no collision, so a swing that reaches the ground (or nothing) first
 ## looks for a bush, fern or flower along the swing and pulls it up.
@@ -1409,7 +1409,7 @@ func _harvest_under(h: Dictionary, q: float) -> bool:
 	var era := int(parts[2])
 	var ck := ChunkStreamer.chunk_of(got["pos"])
 	for y in Flora.under_yield(int(parts[1]), era, randf()):
-		Game.give(ItemDB.make(y[0], y[1], q, Game.origin_here("gathered", era, ck)))
+		Game.give_loot(ItemDB.make(y[0], y[1], q, Game.origin_here("gathered", era, ck)))
 	return true
 
 ## Picks a plant by hand (Interact): the same yield as cutting it, at plain quality.
@@ -1463,7 +1463,7 @@ func _tick_fishing(delta: float) -> void:
 	if randf() < 0.7:
 		var ck := ChunkStreamer.chunk_of(global_position)
 		var n := 2 if randf() < 0.12 else 1
-		Game.give(ItemDB.make("fish_raw", n, randf_range(0.9, 1.15), Game.origin_here("caught", -1, ck)))
+		Game.give_loot(ItemDB.make("fish_raw", n, randf_range(0.9, 1.15), Game.origin_here("caught", -1, ck)))
 		Game.add_xp(5.0, "Fishing")
 		Audio.play("water/splash", -8.0)
 		Game.toast.emit("You caught %s!" % ("two fish" if n == 2 else "a fish"))
@@ -1513,7 +1513,7 @@ func _pick_plant(found: Dictionary) -> void:
 	var reap: float = ItemDB.def(held_item()["type"]).get("reap", 1.0) if held_item() != null else 1.0
 	for y in Flora.under_yield(int(parts[1]), era, randf()):
 		y[1] = int(ceil(int(y[1]) * reap))
-		Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("gathered", era, ck)))
+		Game.give_loot(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("gathered", era, ck)))
 		got.append("%s x%d" % [ItemDB.def(y[0])["name"], y[1]])
 	Game.toast.emit("Picked: " + ", ".join(got))
 
@@ -1781,7 +1781,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 	var twice := Rarity.has_affix(held_item(), "bountiful") and randf() < 0.25
 	var units := 0
 	for y in r["items"]:
-		Game.give(ItemDB.make(y[0], y[1] * (2 if twice else 1), quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
+		Game.give_loot(ItemDB.make(y[0], y[1] * (2 if twice else 1), quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 		xp += 2.0 * y[1]
 		units += int(y[1])
 	if units > 0 and Byproducts.FROM.has(o["t"]):
@@ -1790,7 +1790,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		var wp: Vector3 = chunk.position + o["p"]
 		var zone := Eras.zone_level(wp.x, wp.z) if Eras.themed() else 99
 		for y in Byproducts.of_object(o["t"], units, zone, rng):
-			Game.give(ItemDB.make(y[0], y[1], quality, Game.origin_here(how, o["e"], chunk.key)))
+			Game.give_loot(ItemDB.make(y[0], y[1], quality, Game.origin_here(how, o["e"], chunk.key)))
 			Game.toast.emit("Found %s" % ItemDB.def(y[0])["name"].to_lower())
 	if r["destroyed"]:
 		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):

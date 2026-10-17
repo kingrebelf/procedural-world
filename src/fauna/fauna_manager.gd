@@ -268,7 +268,7 @@ func player_hit(c: Creature, dmg: float) -> void:
 		Game.toast.emit("Killed %s. Hold [%s] on it to %s it" % [c.label(), Bindings.key_name("interact", Game.using_pad), CorpseLoot.verb(c.p).to_lower()])
 	else:
 		for d in c.p["drops"]:
-			Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
+			Game.give_loot(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
 		Game.toast.emit("Killed %s" % c.label())
 	if c.p.has("boss"):
 		# A wonder's keeper: its vault opens, and that is worth a great deal.

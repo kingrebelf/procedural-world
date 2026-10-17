@@ -414,6 +414,19 @@ func add_money(n: int) -> void:
 func mark_player_dirty() -> void:
 	_player_dirty = true
 
+## What you earned from the world (harvest, hunting, fishing): a server's loot_mult
+## scales how much, rounding at random so small yields still average out. Gives nothing
+## (and returns true) when that comes to none.
+func give_loot(item: Dictionary) -> bool:
+	var m := float(server_option("loot_mult", 1.0))
+	if not is_equal_approx(m, 1.0):
+		var x := float(item["qty"]) * m
+		var n := int(floor(x)) + (1 if randf() < x - floor(x) else 0)
+		if n <= 0:
+			return true
+		item["qty"] = n
+	return give(item)
+
 func give(item: Dictionary) -> bool:
 	if item["type"] == "_marks":
 		add_money(item["qty"])
@@ -667,6 +680,7 @@ func set_stamina(v: float) -> void:
 ## Experience for doing things in the world: gathering, crafting, building, hunting and
 ## discovering. Levels grant attribute points (spent on the Character screen).
 func add_xp(amount: float, why: String = "") -> void:
+	amount *= float(server_option("xp_mult", 1.0)) # a server's experience rate
 	var before := stats.xp
 	var lv := stats.level
 	var gained := stats.add_xp(amount)
