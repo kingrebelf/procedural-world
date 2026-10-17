@@ -53,5 +53,15 @@ func _run() -> void:
 	for m in ["inventory", "character", "craft", "pause"]:
 		menus.open(m)
 		await _shot(m)
+	# A few crafting tabs, and the search with "Can craft now".
+	for tab in ["Ammo", "Armour"]:
+		menus._craft_tab = tab
+		menus.open("craft")
+		await _shot("craft_" + tab.to_lower())
+	menus._craft_tab = "All"
+	menus._craft_find = "iron"
+	menus._craft_ready_only = true
+	menus.open("craft")
+	await _shot("craft_search")
 	menus.close()
 	quit()
