@@ -3865,3 +3865,42 @@ func test_provisions_models() -> void:
 		check(not Provisions.kit(e[0]).is_empty(), "%s has a stand-in" % e[0])
 		var km := BuildCatalog.merge_models([[e[0], 0, Vector3.ZERO, 1.0]])
 		check(absf(km.get_aabb().size.y - float(e[1])) < float(e[1]) * 0.2, "%s stands %.2f m tall" % [e[0], km.get_aabb().size.y])
+## No two of a herd alike: kit animals each get their own size (from the id, so it is
+## the same for everyone), and manes and tails grow hanging locks bound to the skeleton.
+func test_animal_individuals() -> void:
+	var sp := -1
+	for i in 400:
+		var p := Creature.species(i, Eras.MEDIEVAL)
+		if AnimalModel.available(p.get("kit", "")) and p["plan"] == "quad":
+			sp = i
+			break
+	check(sp >= 0, "a medieval kit species exists")
+	var scales := {}
+	for i in 12:
+		var c := Creature.new()
+		c.id = "herd_%d" % i
+		c.sp = sp
+		c.p = Creature.species(sp, Eras.MEDIEVAL)
+		c._individual()
+		scales[snappedf(float(c.p["kit_scale"]), 0.001)] = true
+		var again := Creature.new()
+		again.id = c.id
+		again.sp = sp
+		again.p = Creature.species(sp, Eras.MEDIEVAL)
+		again._individual()
+		check(is_equal_approx(float(again.p["kit_scale"]), float(c.p["kit_scale"])), "%s is the same size every time" % c.id)
+		c.free()
+		again.free()
+	check(scales.size() >= 8, "a herd of 12 comes in many sizes (%d)" % scales.size())
+	var m := AnimalModel.new().build("Horse", 1.0, null, null, 7)
+	var locks := 0
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			if mesh.surface_get_name(s) == AnimalSkin.LOCKS:
+				locks += 1
+				var a := mesh.surface_get_arrays(s)
+				check(a[Mesh.ARRAY_BONES] != null and (a[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 600, "horse locks are skinned and plentiful")
+				check((mi as MeshInstance3D).get_surface_override_material(s).shader.resource_path == AnimalSkin.LOCK_SHADER, "horse locks use the lock shader")
+	check(locks >= 1, "a horse's mane and tail grow locks (%d)" % locks)
+	m.free()

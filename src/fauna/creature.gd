@@ -260,10 +260,26 @@ func setup(_id: String, _sp: int, _era: int, at: Vector3, m: Node) -> void:
 	p = species(sp, era)
 	if sp > -200: # wild animals, guards and wonder bosses
 		_zone_scale(at)
+	_individual()
 	home = at
 	manager = m
 	hp = p["hp"]
 	name = "Creature_" + id
+
+## No two of a herd the same size: each kit animal is a little bigger or smaller than
+## its species, and now and then a young one about three quarters grown. From the id, so
+## every player sees the same animal. Bosses keep their set size.
+func _individual() -> void:
+	if not AnimalModel.available(p.get("kit", "")) or p.has("boss"):
+		return
+	var r := RandomNumberGenerator.new()
+	r.seed = id.hash()
+	var f := r.randf_range(0.88, 1.12)
+	if sp >= 0 and r.randf() < 0.12:
+		f = r.randf_range(0.7, 0.8)
+	p = p.duplicate()
+	p["kit_scale"] = float(p["kit_scale"]) * f
+	p["size"] = float(p["size"]) * f
 
 ## Wild animals and guards grow tougher with the zone level of where they live (themed
 ## worlds): about +12% health and +4% bite per level, so a level 40 zone's wolves are
