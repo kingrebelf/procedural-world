@@ -774,6 +774,10 @@ func end_talk(n: NPC) -> void:
 ## The player struck an NPC. Everyone remembers.
 func player_hit(n: NPC, damage: float) -> void:
 	var rec := n.rec
+	if rec.get("child", false):
+		# Children can't be hurt by the player: the blow is pulled.
+		n.say(NPCMind.bark(rec, "hurt"), 2.0)
+		return
 	var s := n.settlement
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
@@ -1054,6 +1058,8 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 	if n == null or not is_instance_valid(n):
 		return
 	var rec: Dictionary = n.rec
+	if rec.get("child", false):
+		return # nobody hurts children (player_hit refuses it where they are run too)
 	if killed:
 		rec["dead"] = true
 		rec["hp"] = 0.0

@@ -199,6 +199,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	posture.waddle = float(shape["waddle"])
 	posture.limp = float(shape["limp"])
 	posture.hip = float(shape["hip"])
+	posture.head_scale = float(shape["head"])
 	posture.animator = animator
 	skeleton.add_child(posture)
 	ik = HumanIK.new()
@@ -332,8 +333,29 @@ func _eyelids(b: Dictionary) -> void:
 func gesture(name: String) -> bool:
 	return gestures != null and gestures.play(name)
 
+## What a child may wear until Outfit dresses children itself (it marks such a wardrobe
+## with "child": true): the same colours cut as a plain, long-sleeved tunic over leggings
+## (shirt and trousers in sci-fi), so no bodice, apron, cape or coat made for an adult
+## ever reaches a child.
+static func child_safe(w: Dictionary, era: int) -> Dictionary:
+	if w.get("child", false):
+		return w
+	var cols: Dictionary = w["cols"].duplicate()
+	var shirt: Color = cols[Outfit.PART_SHIRT]
+	for part in [Outfit.PART_SKIRT, Outfit.PART_TRIM, Outfit.PART_APRON, Outfit.PART_CAPE]:
+		cols[part] = shirt
+	var sp := {"sleeves": 2, "hem": 0.0, "flare": 0.0, "vest": 0, "apron": 0.0, "bib": false, "cape": 0.0, "belt": true, "boot_h": 0.3}
+	if era == Eras.SCIFI:
+		sp["fit"] = 2.0
+	else:
+		sp["hem"] = 0.56
+		sp["flare"] = 0.08
+	return {"spec": sp, "cols": cols, "knit": false, "trim": false, "child": true}
+
 func _dress(b: Dictionary, era: int, job: String) -> void:
 	_wardrobe = Outfit.wardrobe(b, era, job)
+	if float(shape.get("child", 0.0)) > 0.0 or job == "child":
+		_wardrobe = child_safe(_wardrobe, era)
 	var sp: Dictionary = _wardrobe["spec"]
 	var cols: Dictionary = _wardrobe["cols"]
 	var accent := Color(0, 0, 0, 0)
