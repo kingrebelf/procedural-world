@@ -8,6 +8,7 @@ extends MeshInstance3D
 const LEVEL := 0.0
 const SIZE := 1600.0
 const DEPTH_RES := 128
+const MAX_CURRENT := 1.9 ## m/s, fast mid-stream; you can still swim against it
 
 var target: Node3D
 var atmosphere: Atmosphere
@@ -21,6 +22,7 @@ static var _wind := 0.3
 static var _dir := Vector2(0.8, 0.6)
 static var _depth_lookup: Callable
 static var _river_lookup: Callable
+static var _current_lookup: Callable
 
 func _ready() -> void:
 	var pm := PlaneMesh.new()
@@ -39,6 +41,8 @@ func _ready() -> void:
 	_mat.set_shader_parameter("depth_map", _depth_tex)
 	_depth_lookup = depth_at
 	_river_lookup = river_at
+	_current_lookup = current_at
+	add_child(Splashes.new())
 
 func _process(delta: float) -> void:
 	if target:
@@ -89,15 +93,83 @@ static func amplitude(depth: float) -> float:
 	var open := smoothstep(0.5, 14.0, depth)
 	return (0.04 + _wind * _wind * 1.1) * (0.15 + 0.85 * open)
 
-## A river's water level at (x, z), or NAN where there is no river.
+## A river's water level at (x, z), or NAN where there is no river. Blended between the
+## 2 m river cells, so swimming down a river doesn't step from cell to cell.
 func river_at(x: float, z: float) -> float:
-	if streamer == null:
+	if is_nan(_river_cell(x, z).x):
 		return NAN
+	var gx := x * 0.5
+	var gz := z * 0.5
+	var ix := floorf(gx)
+	var iz := floorf(gz)
+	var fx := gx - ix
+	var fz := gz - iz
+	var sum := 0.0
+	var wsum := 0.0
+	for c in 4:
+		var ox := float(c & 1)
+		var oz := float(c >> 1)
+		var lv := _river_cell((ix + ox) * 2.0, (iz + oz) * 2.0).x
+		if is_nan(lv):
+			continue
+		var w := (fx if ox > 0.0 else 1.0 - fx) * (fz if oz > 0.0 else 1.0 - fz)
+		sum += lv * w
+		wsum += w
+	return sum / wsum if wsum > 0.0001 else _river_cell(x, z).x
+
+## The river cell at (x, z): x = its water level (NAN where dry), y = how far across the
+## river it lies (0 mid-stream, 1 at the bank).
+func _river_cell(x: float, z: float) -> Vector2:
+	if streamer == null:
+		return Vector2(NAN, 1.0)
 	var k := ChunkStreamer.chunk_of(Vector3(x, 0, z))
 	var c := streamer.get_chunk(k)
-	if c == null:
-		return NAN
-	return ChunkGenerator.river_surface(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE)
+	if c == null or not c.data.has("river"):
+		return Vector2(NAN, 1.0)
+	var lx := x - k.x * ChunkGenerator.SIZE
+	var lz := z - k.y * ChunkGenerator.SIZE
+	var lv := ChunkGenerator.river_surface(c.data, lx, lz)
+	if is_nan(lv):
+		return Vector2(NAN, 1.0)
+	var rv: PackedFloat32Array = c.data["river"]
+	var N := ChunkGenerator.RIVER_N
+	var i := clampi(int(round(lx * 0.5)), 0, N - 1)
+	var j := clampi(int(round(lz * 0.5)), 0, N - 1)
+	return Vector2(lv, rv[(j * N + i) * 3 + 1])
+
+## How the water moves at (x, z), in metres per second across the ground: rivers run
+## downhill, fastest mid-stream and slack at the banks; lakes and the sea drift a little
+## with the wind.
+static func current(x: float, z: float) -> Vector2:
+	if _current_lookup.is_valid():
+		var c: Vector2 = _current_lookup.call(x, z)
+		if not is_nan(c.x):
+			return c
+	return _dir.normalized() * _wind * 0.25
+
+func current_at(x: float, z: float) -> Vector2:
+	var here := _river_cell(x, z)
+	if is_nan(here.x) or here.x <= LEVEL:
+		return Vector2(NAN, NAN)
+	var g := Vector2.ZERO
+	for a in [Vector2(2, 0), Vector2(0, 2)]:
+		var hi := _river_cell(x + a.x, z + a.y).x
+		var lo := _river_cell(x - a.x, z - a.y).x
+		var d := 0.0
+		if not is_nan(hi) and not is_nan(lo):
+			d = (hi - lo) * 0.25
+		elif not is_nan(hi):
+			d = (hi - here.x) * 0.5
+		elif not is_nan(lo):
+			d = (here.x - lo) * 0.5
+		if a.x > 0.0:
+			g.x = d
+		else:
+			g.y = d
+	if g.length() < 0.0005:
+		return Vector2.ZERO
+	var speed := clampf(0.6 + g.length() * 30.0, 0.6, MAX_CURRENT) * (1.0 - smoothstep(0.35, 1.05, here.y) * 0.85)
+	return -g.normalized() * speed
 
 ## Height of the water surface at (x, z) and time t: a river where there is one, else the
 ## sea (whose waves must match water.gdshader).

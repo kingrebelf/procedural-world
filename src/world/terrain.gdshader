@@ -321,6 +321,18 @@ void fragment() {
 		col = mix(col, col * vec3(0.9, 1.0, 1.15), w.g * 0.3);
 	}
 
+	// Sunlight focused by the waves into caustics on lake and sea beds, fading with depth.
+	if (wpos.y < 0.3) {
+		float under = smoothstep(0.3, -0.4, wpos.y);
+		vec2 cq = p * 0.45;
+		float ct = TIME * 0.6;
+		float c1 = vnoise(cq + vec2(ct * 0.5, -ct * 0.3) + vnoise(cq * 0.6 + ct * 0.2) * 1.8);
+		float c2 = vnoise(cq * 1.37 + vec2(-ct * 0.4, ct * 0.45) + vnoise(cq * 0.8 - ct * 0.15) * 1.6);
+		float caus = pow(1.0 - abs(c1 * 2.0 - 1.0), 7.0) + pow(1.0 - abs(c2 * 2.0 - 1.0), 7.0) * 0.7;
+		float lit = smoothstep(-0.05, 0.3, sun_dir_g.y) * (1.0 - cloud_shadow(wpos));
+		col *= 1.0 + caus * under * exp(wpos.y * 0.12) * lit * 1.4 * (1.0 - far);
+	}
+
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
 	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.75, snow);
