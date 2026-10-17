@@ -1007,16 +1007,11 @@ func _add_stone_shapes() -> void:
 		var kind: String = StoneKit.KINDS[int(_stones[i])]
 		var b := Basis(Vector3(_stones[i + 1], _stones[i + 5], _stones[i + 9]), Vector3(_stones[i + 2], _stones[i + 6], _stones[i + 10]),
 			Vector3(_stones[i + 3], _stones[i + 7], _stones[i + 11]))
-		# Hull points baked with the stone's own (squashed) scale: scaled collision shapes
-		# are best kept uniform.
-		var pts := PackedVector3Array()
-		for v in StoneKit.hull(kind):
-			pts.append(b * v)
-		var shape := ConvexPolygonShape3D.new()
-		shape.points = pts
+		# The kind's shared hull, turned and squashed (scaled_local: no shear, which Jolt
+		# can scale exactly).
 		var cs := CollisionShape3D.new()
-		cs.shape = shape
-		cs.position = Vector3(_stones[i + 4], _stones[i + 8], _stones[i + 12])
+		cs.shape = StoneKit.shape(kind)
+		cs.transform = Transform3D(b, Vector3(_stones[i + 4], _stones[i + 8], _stones[i + 12]))
 		_stone_body.add_child(cs)
 	add_child(_stone_body)
 
