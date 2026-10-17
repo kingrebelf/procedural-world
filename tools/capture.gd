@@ -595,7 +595,7 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
-	if only.is_empty() or only.has("96") or only.has("100") or only.has("101"):
+	if only.is_empty() or only.has("101") or only.has("102") or only.has("103"):
 		await _waterfall_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
@@ -1828,8 +1828,8 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
 
 ## Waterfalls (Waterfalls, v19 worlds with rivers), the nearest good one to the spawn:
-## 96 seen from the plunge pool below it, 100 from the bank beside its lip, looking over
-## the edge, 101 from further down the river, the fall in its valley.
+## 101 seen from the plunge pool below it, 102 from the bank beside its lip, looking over
+## the edge, 103 from further down the river, the fall in its valley.
 func _waterfall_shots(g: ChunkGenerator) -> void:
 	var best := {}
 	var bd := INF
@@ -1858,11 +1858,11 @@ func _waterfall_shots(g: ChunkGenerator) -> void:
 	print("waterfall at %s, %.1f m (%d tiers)" % [lip, float(best["drop"]), (best["steps"] as PackedFloat32Array).size()])
 	var face := Vector3(lip.x, low + h * 0.55, lip.y) + Vector3(d.x, 0.0, d.y) * 1.5
 	var below := lip + d * (Waterfalls.pool_radius(h) * 1.5 + h * 0.8 + 8.0) + side * 4.0
-	await _abs_shot("96_waterfall", Vector3(below.x, maxf(low, float(ground.call(below))) + 2.0, below.y), face, 0.42, false)
+	await _abs_shot("101_waterfall", Vector3(below.x, maxf(low, float(ground.call(below))) + 2.0, below.y), face, 0.42, false)
 	var bank := lip + side * 14.0 - d * 2.0
-	await _abs_shot("100_waterfall_lip", Vector3(bank.x, maxf(top, float(ground.call(bank))) + 1.7, bank.y), Vector3(lip.x, low, lip.y) + Vector3(d.x, 0.0, d.y) * 6.0, 0.42, false)
+	await _abs_shot("102_waterfall_lip", Vector3(bank.x, maxf(top, float(ground.call(bank))) + 1.7, bank.y), Vector3(lip.x, low, lip.y) + Vector3(d.x, 0.0, d.y) * 6.0, 0.42, false)
 	var far := lip + d * 75.0 + side * 22.0
-	await _abs_shot("101_waterfall_valley", Vector3(far.x, float(ground.call(far)) + 6.0, far.y), Vector3(lip.x, low + h * 0.5, lip.y), 0.4, false)
+	await _abs_shot("103_waterfall_valley", Vector3(far.x, float(ground.call(far)) + 6.0, far.y), Vector3(lip.x, low + h * 0.5, lip.y), 0.4, false)
 
 ## Boats (65-69, 88): a cog at anchor and a research vessel seen from the water, the cog's
 ## deck and the vessel's bridge from aboard, a small working boat with its crew, and the cog's stern
