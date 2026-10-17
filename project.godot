@@ -73,6 +73,26 @@ water_wake_boats={
 "type": "sampler2D",
 "value": ""
 }
+climate_wear_map_g={
+"type": "sampler2D",
+"value": ""
+}
+climate_wear_rect_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+climate_wear_now_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+shelter_map_g={
+"type": "sampler2D",
+"value": ""
+}
+shelter_rect_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
 night_glow_g={
 "type": "float",
 "value": 0.15

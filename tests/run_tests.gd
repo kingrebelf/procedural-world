@@ -4955,3 +4955,90 @@ func test_water_life() -> void:
 	for k in FishKit.KINDS:
 		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
 	WorldField.terrain_v = tv
+
+func test_climate_wear() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var f := WorldField.new(4242)
+	var g := WorldField.new(4242)
+	var mossy := 0
+	var cold := 0
+	var dusty := 0
+	var boggy := 0
+	var ranged := true
+	var same := true
+	var desert_dust := true
+	var home_mild := true
+	for iz in range(-15, 16):
+		for ix in range(-15, 16):
+			var x := ix * 400.0 + 17.0
+			var z := iz * 400.0 - 31.0
+			var c := ClimateWear.levels(f, x, z)
+			same = same and c == ClimateWear.levels(g, x, z)
+			for v in [c.r, c.g, c.b, c.a]:
+				ranged = ranged and v >= 0.0 and v <= 1.0
+			mossy += 1 if c.r > 0.8 else 0
+			cold += 1 if c.g > 0.6 else 0
+			dusty += 1 if c.b > 0.5 else 0
+			boggy += 1 if c.a > 0.5 else 0
+			var cl := f.climate_at(x, z)
+			var lf := f.landform_at(x, z)
+			if cl.y + WorldField.LF_WET[lf] < 0.15 and cl.x > 0.55:
+				desert_dust = desert_dust and c.b > 0.5
+			if Vector2(x, z).length() < 900.0:
+				home_mild = home_mild and c.g < 0.3
+	check(ranged, "levels are 0..1")
+	check(same, "levels are the same from any field of the seed (nothing to sync)")
+	check(mossy > 0 and cold > 0 and dusty > 0 and boggy > 0, "the world has wet, cold, dusty and boggy places (%d %d %d %d)" % [mossy, cold, dusty, boggy])
+	check(mossy < 961 and cold < 961 and dusty < 961, "and they are regions, not the whole world")
+	check(desert_dust, "hot dry land is dusty")
+	check(home_mild, "the land round the spawn is not frozen")
+	# The map holds the levels at its texel middles.
+	var b := ClimateWear.map_bytes(f, Vector2(-1000, 500), 640.0, 8)
+	check(b.size() == 8 * 8 * 4, "map is RES x RES RGBA8")
+	var lv := ClimateWear.levels(f, -1000 + 3.5 * 80.0, 500 + 5.5 * 80.0)
+	check(absi(b[(5 * 8 + 3) * 4 + 1] - int(round(lv.g * 255.0))) <= 1 and absi(b[(5 * 8 + 3) * 4] - int(round(lv.r * 255.0))) <= 1, "map texel = levels there")
+	check(absf(ClimateWear.bog(f, 123.0, 456.0) - ClimateWear.levels(f, 123.0, 456.0).a) < 1e-5, "bog() matches the map's bog")
+	WorldField.terrain_v = WorldField.CLIMATE_V - 1
+	var old := WorldField.new(4242)
+	var none := true
+	for i in 40:
+		var oc := ClimateWear.levels(old, i * 731.0 - 9000.0, i * -517.0 + 4000.0)
+		none = none and oc.g == 0.0
+	check(none, "worlds made before climates have no cold belts")
+	WorldField.terrain_v = was
+	# Built pieces weather toward their place's level over game days; the rest are old.
+	check(ClimateWear.maturity(-1.0, 5.0) == 1.0, "no build day: as old as the village")
+	check(ClimateWear.maturity(5.0, 5.0) == 0.0, "new built piece is clean")
+	check(absf(ClimateWear.maturity(5.0, 5.0 + ClimateWear.MATURE_DAYS * 0.5) - 0.5) < 1e-4, "half weathered half way")
+	check(ClimateWear.maturity(5.0, 500.0) == 1.0, "fully weathered in time")
+	check(ClimateWear.frost_now(10.22) > 0.9, "frost thickest before dawn")
+	check(ClimateWear.frost_now(10.5) == 0.0 and ClimateWear.frost_now(10.7) == 0.0, "no frost by day")
+	check(ClimateWear.frost_now(10.0) > 0.3, "frost growing at midnight")
+	var chunk := {"seed": 1, "cx": 0, "cz": 0, "objects": [
+		{"t": "b:wall_plaster", "i": 0, "p": Vector3(1, 0, 1), "r": 0.0, "s": 1.0, "st": {"day": 1e9}},
+		{"t": "b:wall_plaster", "i": 1, "p": Vector3(3, 0, 1), "r": 0.0, "s": 1.0, "st": {}}]}
+	var bufs := ChunkNode.build_object_buffers(chunk, false)
+	var buf: PackedFloat32Array = bufs[ObjectLibrary.mesh_key(chunk["objects"][0])]
+	check(buf.size() == 32 and buf[15] == 0.0 and buf[31] == 1.0, "a piece built today is clean, one with no day is old (instance alpha)")
+
+func test_kit_surfaces_worn() -> void:
+	var parts := BuildCatalog.model_parts("village/Wall_Plaster_Straight")
+	var worn := 0
+	for p in parts:
+		var m: Material = p[0]
+		if m is ShaderMaterial and (m as ShaderMaterial).shader.resource_path.ends_with("kit_surface.gdshader"):
+			worn += 1
+			var sm := m as ShaderMaterial
+			check(sm.get_shader_parameter("albedo_tex") != null, "worn %s keeps its colour map" % m.resource_name)
+			check(sm.get_shader_parameter("mean_lum") > 0.02, "worn %s has a mean brightness" % m.resource_name)
+	check(worn == parts.size() and worn > 0, "village wall surfaces weather (%d of %d)" % [worn, parts.size()])
+	for p in BuildCatalog.model_parts("village/Window_Wide_Round1"):
+		if p[0] != null and (p[0] as Material).resource_name == "MI_WindowGlass":
+			check(p[0] is BaseMaterial3D, "window glass stays glass")
+	var std := StandardMaterial3D.new()
+	check(BuildCatalog.worn(std, "props/Barrel") == std, "only the village kit weathers")
+	var glow := StandardMaterial3D.new()
+	glow.emission_enabled = true
+	glow.cull_mode = BaseMaterial3D.CULL_DISABLED
+	check(BuildCatalog.worn(glow, "village/X") == glow, "nothing glowing is touched")
