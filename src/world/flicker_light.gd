@@ -2,20 +2,18 @@ class_name FlickerLight
 extends OmniLight3D
 ## Firelight: it leaps and sinks with the flame it comes from (the flame beside it: the
 ## nearest FireFx flame among its parent's children, whose seed it takes, so both read
-## the same FireFx.life), warms as it sinks, and sways a little as the flame does, so the
-## shadows it throws move. Each fire is out of step with the others. It rests when it
-## is too far off to be seen.
+## the same FireFx.life) and warms as it sinks. Each fire is out of step with the others.
+## It rests when it is too far off to be seen. It never moves: a shadow-casting light
+## that moves has its shadows redrawn every frame, with every stall and its wares in
+## reach, and a town has many of these lights.
 
 var base := 1.0 ## the steady brightness it wavers about
 var seed := -1.0 ## the flame's seed (FireFx.flame), or below 0 to find it at _ready
 var depth := 0.45 ## how far it wavers: 0.45 a torch or hearth, less for a candle
-var sway := 0.02 ## how far it sways, in metres
-var _rest := Vector3.ZERO
 var _col := Color.WHITE
 
 func _ready() -> void:
 	base = light_energy
-	_rest = position
 	_col = light_color
 	if seed < 0.0:
 		_follow_flame()
@@ -38,7 +36,6 @@ func _follow_flame() -> void:
 		if fs < FireFx.SMALL:
 			# A candle or lamp burns steadier than an open fire.
 			depth = 0.22
-		sway = clampf(fs * 0.05, 0.004, 0.04)
 	else:
 		var at := global_position if is_inside_tree() else position
 		seed = fposmod(at.x * 0.0173 + at.z * 0.0291, 1.0)
@@ -66,4 +63,3 @@ func _process(_delta: float) -> void:
 	light_energy = base * (1.0 + depth * (l - 0.5) * 2.0)
 	# A low flame burns redder.
 	light_color = _col.lerp(Color(1.0, 0.42, 0.16), clampf((0.5 - l) * 0.35, 0.0, 0.2))
-	position = _rest + Vector3(FireFx._noise(t * 2.3 + seed * 71.0) - 0.5, (l - 0.5) * 0.6, FireFx._noise(t * 2.1 + seed * 37.0 + 5.0) - 0.5) * sway * 2.0
