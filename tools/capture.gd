@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--vfog=3] [--day=0.3]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--day=0.3]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -16,6 +16,8 @@ var hud_mode := ""
 ## --env=property=value sets a property of the world's Environment for this run, for A/B
 ## looks (tonemapper, exposure, contrast) without touching the game.
 var env_sets: Array = []
+## --cam=property=value does the same for the camera attributes (auto exposure limits).
+var cam_sets: Array = []
 ## --vfog=N scales the volumetric haze (light shafts) for this run.
 var vfog := 1.0
 ## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
@@ -33,6 +35,8 @@ func _ready() -> void:
 			hud_mode = a.substr(6)
 		if a.begins_with("--env=") and a.count("=") == 2:
 			env_sets.append(a.substr(6).split("="))
+		if a.begins_with("--cam=") and a.count("=") == 2:
+			cam_sets.append(a.substr(6).split("="))
 		if a.begins_with("--vfog="):
 			vfog = a.substr(7).to_float()
 		if a.begins_with("--day="):
@@ -288,6 +292,11 @@ func _run() -> void:
 		var v = str_to_var(kv[1])
 		env.set(kv[0], v if v != null else kv[1])
 		print("env ", kv[0], " = ", env.get(kv[0]))
+	for kv in cam_sets:
+		var ca := (world.atmosphere.get_child(0) as WorldEnvironment).camera_attributes
+		var v = str_to_var(kv[1])
+		ca.set(kv[0], v if v != null else kv[1])
+		print("cam ", kv[0], " = ", ca.get(kv[0]))
 	var g := ChunkGenerator.new(Game.seed)
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
