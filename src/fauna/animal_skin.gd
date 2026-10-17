@@ -395,6 +395,15 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		cdf.append(area)
 	if ids.is_empty() or area <= 0.0:
 		return {}
+	# A tail's hairs all fall from the dock to end together in a soft band below its
+	# lowest point, rather than starting and stopping all down its length.
+	var tail_end := INF
+	for t in ids:
+		for c in 3:
+			var tp := pos[tris[t * 3 + c]]
+			if tp.z < cz:
+				tail_end = minf(tail_end, tp.y)
+	tail_end -= ht * 0.1
 	var w := ht * 0.011
 	var count := clampi(int(area / (w * w * 4.0)), 40, 540)
 	var r := RandomNumberGenerator.new()
@@ -432,10 +441,15 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		var g0 := tris[t * 3 + near]
 		# A tail (behind the body's middle) hangs long; a mane falls short to one side.
 		var tail := p.z < cz
-		var length := ht * (r.randf_range(0.07, 0.18) if tail else r.randf_range(0.05, 0.09))
+		var length := ht * r.randf_range(0.05, 0.09)
+		if tail:
+			length = maxf(p.y - tail_end + ht * r.randf_range(-0.04, 0.02), ht * 0.06)
 		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
 		var d0 := (sn * (0.08 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.03 if tail else 0.35), 0, -0.12)).normalized()
-		var hang := Vector3(side * (0.0 if tail else 0.05), -1.0, -0.12).normalized()
+		var hang := Vector3(side * 0.05, -1.0, -0.12).normalized()
+		if tail:
+			# A tail's hairs gather in toward its middle as they fall.
+			hang = Vector3(clampf((cx - p.x) / (ht * 0.05), -1.0, 1.0) * 0.1, -1.0, -0.12).normalized()
 		var wave := r.randf() * TAU
 		var lw0 := w * r.randf_range(0.6, 1.1) * (1.1 if tail else 1.0)
 		var lid := r.randf()

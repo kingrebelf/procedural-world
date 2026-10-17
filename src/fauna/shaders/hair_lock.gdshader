@@ -1,6 +1,6 @@
 shader_type spatial;
 // The loose locks that hang off a mane or tail (AnimalSkin._locks): each strip ends
-// in two pointed clumps of their own lengths, lighter toward the ends, with fibres running
+// in two pointed clumps of their own lengths, with fibres running
 // down them. Coloured like the hair they grow from, with the same per-animal shade as
 // fur.gdshader, so a lock matches its own animal's mane.
 render_mode diffuse_burley, specular_schlick_ggx, cull_disabled;
@@ -58,14 +58,12 @@ void fragment() {
 	c = mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))), vary * 1.6 * h1(s + 6.1));
 	float ph = h1(s + 6.9);
 	if (phases > 0.0 && ph < phases) c *= ph < phases * 0.5 ? phase_dark : phase_warm;
-	// Fibres down each strand, each strand its own shade, sun-bleached toward the tips.
-	// The ends are lighter, so the fringe reads as fine hair, not dark lines.
+	// Fibres down each strand, each strand its own shade.
 	float fib = sin((UV.x * 2.0 + h1(si + lid) * 0.3) * 6.2832 * 10.0) * 0.5 + 0.5;
 	float ff = 1.0 - smoothstep(0.1, 0.4, fw * 10.0);
 	c *= (1.0 + (h1(si * 7.7 + lid * 3.0) - 0.5) * 0.08 * split) * (1.0 + (fib - 0.5) * 0.06 * ff);
 	// Darker near the root, where it lies under the rest of the fall, to meet the tail it hangs from.
 	c *= mix(0.78, 1.0, smoothstep(0.0, 0.6, along));
-	c = mix(c, c * 1.15 + vec3(0.012), smoothstep(0.6, 1.0, along));
 	ALBEDO = clamp(c, vec3(0.0), vec3(1.0));
 	// Lit as hair: by the direction the lock runs (its tangent), not the way its root
 	// faces, so locks rooted all round the tail shade alike instead of light and dark
@@ -85,5 +83,5 @@ void light() {
 	float ndl = dot(NORMAL, LIGHT);
 	float shade = across * mix(0.75, 1.0, clamp(ndl * 0.5 + 0.5, 0.0, 1.0));
 	float att = LIGHT_IS_DIRECTIONAL ? mix(0.25, 1.0, ATTENUATION) : ATTENUATION;
-	DIFFUSE_LIGHT += shade * 0.8 * att * LIGHT_COLOR / PI;
+	DIFFUSE_LIGHT += shade * 0.62 * att * LIGHT_COLOR / PI;
 }
