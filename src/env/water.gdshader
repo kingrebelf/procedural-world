@@ -23,6 +23,7 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 #include "res://src/env/water_ssr.gdshaderinc"
 #include "res://src/env/water_rings.gdshaderinc"
 #include "res://src/env/water_swell.gdshaderinc"
+#include "res://src/env/water_rain.gdshaderinc"
 
 varying vec3 wpos;
 varying float crest;
@@ -77,10 +78,11 @@ void vertex() {
 	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
 	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(murk_map, muv).r;
 	vec3 s = swell(wpos.xz, TIME, amp);
-	VERTEX.y += s.x;
-	wpos.y += s.x;
-	NORMAL = normalize(vec3(-s.y, 1.0, -s.z));
-	crest = s.x / max(amp, 0.001);
+	vec3 wk = wake(wpos.xz);
+	VERTEX.y += s.x + wk.x;
+	wpos.y += s.x + wk.x;
+	NORMAL = normalize(vec3(-s.y - wk.y, 1.0, -s.z - wk.z));
+	crest = s.x / max(amp * 1.69, 0.001); // -1 trough .. 1 the highest crests
 }
 
 void fragment() {
@@ -89,7 +91,7 @@ void fragment() {
 	float h = ripples(wpos.xz, t);
 	float rs = 0.5 + wind_strength * 1.2;
 	vec3 rn = vec3(-(ripples(wpos.xz + vec2(e, 0), t) - h) / e, 0.0, -(ripples(wpos.xz + vec2(0, e), t) - h) / e) * rs;
-	vec2 rg = ring_slope(wpos.xz);
+	vec2 rg = ring_slope(wpos.xz) + rain_slope(wpos.xz, t) * (1.0 - smoothstep(25.0, 60.0, -VERTEX.z));
 	vec3 swell_n = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	vec3 nw = normalize(swell_n + rn * 0.6 + vec3(-rg.x, 0.0, -rg.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
@@ -133,12 +135,16 @@ void fragment() {
 	// Broken into stretches, as real breakers are, never a ring round the whole shore.
 	rollers *= smoothstep(-0.05, 0.25, n2(wpos.xz * 0.05 + vec2(t * 0.03, 0.0)));
 	// Surf needs fetch: a sheltered pond barely laps, a big lake or the sea breaks.
-	float surf = (1.0 - 0.85 * murk) * exposure * smoothstep(0.05, 0.6, wind_strength);
+	// ...and a storm drives it harder still.
+	float surf = (1.0 - 0.85 * murk) * exposure * (smoothstep(0.05, 0.6, wind_strength) + 0.7 * smoothstep(0.6, 1.0, wind_strength));
 	// (Not on the tool in your hand where it dips into the water: it is no shore.)
 	float shore = clamp(edge_f * (0.12 + 0.75 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace
 		* smoothstep(1.0, 2.0, -world.z);
-	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
-	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n * (0.5 + 0.5 * lace);
+	float foam_n = smoothstep(-0.05, 0.15, n2(wpos.xz * 1.7 + t * 0.3)) * smoothstep(-0.2, 0.1, n2(wpos.xz * 0.31 - t * 0.05));
+	// The stronger the wind, the lower down the crests break: a breeze whitens only the
+	// tallest, a gale most of them, and the foam they leave trails downwind.
+	float cap_at = 0.6 - 0.35 * smoothstep(0.4, 1.0, wind_strength);
+	float caps = smoothstep(cap_at, cap_at + 0.3, crest) * smoothstep(0.35, 0.8, wind_strength) * foam_n * (0.5 + 0.5 * lace);
 	float foam = max(shore * 0.85, caps);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
 	seen *= 1.0 - foam;
