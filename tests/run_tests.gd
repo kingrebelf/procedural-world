@@ -1271,6 +1271,46 @@ func test_voice_and_quick_replies() -> void:
 	loud.encode_s16(400, -16384)
 	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
 
+## The built-in natural voices: everyone in a town sounds like someone else, voices fit
+## sex and age, accents fit the era, and long lines are spoken sentence by sentence.
+func test_builtin_voices() -> void:
+	check(Voice.catalog().size() >= 100, "voice table loaded (%d voices)" % Voice.catalog().size())
+	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
+		var r := RandomNumberGenerator.new()
+		r.seed = 7 + era
+		var seen := {}
+		var people := 0
+		var accents := {}
+		for i in 40:
+			var p := NPCGen.person(r, era, i, 12, -5)
+			p["job"] = NPCGen.JOBS[era][i % 8]
+			var o := Voice.builtin_for(p)
+			check(o == Voice.builtin_for(p), "a person keeps their voice")
+			var sid := int(String(o["voice"]).get_slice("@", 0))
+			var v: Dictionary = Voice.catalog()[sid]
+			check(v["sex"] == ("f" if p["body"]["female"] else "m") or Voice.is_child(p), "voice fits sex")
+			seen[[sid, o["pitch"]]] = true
+			accents[String(o["voice"]).get_slice("@", 1)] = true
+			people += 1
+		check(seen.size() == people, "era %d: no two people of a town share a voice (%d of %d)" % [era, seen.size(), people])
+		if era == Eras.MEDIEVAL:
+			check(not accents.has("en-US") and not accents.has("en-US-nyc"), "no American accents in the old lands")
+		else:
+			check(accents.has("en-US"), "frontier accents")
+	var kid := {"id": "3_4_9", "era": 0, "age": 8, "job": "farmer", "mood": "calm", "body": {"female": false, "build": 1.0},
+		"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+	var old := kid.duplicate(true)
+	old["age"] = 70
+	check(float(Voice.builtin_for(kid)["pitch"]) > 1.12, "children sound young")
+	check(float(Voice.builtin_for(old)["pitch"]) < 0.97, "old folk sound older")
+	check(float(Voice.builtin_for(old)["speed"]) * float(Voice.builtin_for(old)["pitch"]) < float(Voice.builtin_for(kid)["speed"]) * float(Voice.builtin_for(kid)["pitch"]), "old folk talk slower")
+	check(Voice.pieces("Aye. That's the miller's cart, not mine! Ask him yourself.") == ["Aye. That's the miller's cart, not mine!", "Ask him yourself."], "lines split into sentences")
+	check(Voice.pieces("No full stop here") == ["No full stop here"], "a line without a stop")
+	check(Voice.pieces("Hmm... let me think. Aye.") == ["Hmm... let me think. Aye."], "short bits stay together")
+	var svc = load("res://src/ai/ai_service.gd")
+	var body = JSON.parse_string(svc.build_speech({"url": "http://127.0.0.1:1/v1/audio/speech", "key": "t", "model": "builtin"}, "Hi", {"voice": "12@en-GB-scotland", "speed": 0.9, "pitch": 1.1})["body"])
+	check(body["voice"] == "12@en-GB-scotland" and is_equal_approx(float(body["speed"]), 0.9), "built-in voice request")
+
 func test_outfits() -> void:
 	if not HumanModel.available():
 		return
