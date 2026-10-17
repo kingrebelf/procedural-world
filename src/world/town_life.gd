@@ -457,6 +457,9 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 		var tint := Color(0.42, 0.52, 0.2).lerp(Color(0.8, 0.64, 0.32), ripe) if crop == "wheat" else Color(0.36, 0.5, 0.3)
 		var f := {"p": p, "yaw": yaw, "hx": hx, "hz": hz, "crop": crop, "rows": r.randi() % 2, "tint": tint,
 			"wear": float(CROPS[crop][3]), "seed": r.randi()}
+		# Harvest under way in a ripe wheat field: part of it cut, the sheaves stooked.
+		if crop == "wheat" and ripe > 0.7 and r.randf() < 0.7:
+			f["cut"] = r.randf_range(0.3, 0.65)
 		out["fields"].append(f)
 		out["soil"].append(f)
 		# A cart track from the field's near edge back toward town, ending at a road or
@@ -489,6 +492,25 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 					out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, Vector2(gate_x + 1.3, -ez)), "b": frame_to_world(p, yaw, b), "house": -1})
 				else:
 					out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a), "b": frame_to_world(p, yaw, b), "house": -1})
+			# The gate itself, a panel swung open outward on its hinge post.
+			var hinge := Vector2(gate_x - 1.3, -ez)
+			var sw := r.randf_range(0.5, 1.1)
+			out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, hinge), "b": frame_to_world(p, yaw, hinge + Vector2(cos(sw), -sin(sw)) * 2.4), "house": -1})
+		# Stooks standing in rows on the cut part of the field.
+		if f.has("cut"):
+			var rows_x := int(f["rows"]) == 0
+			var a_len := hx if rows_x else hz
+			var b_len := hz if rows_x else hx
+			var cut_to := -a_len + 2.0 * a_len * float(f["cut"])
+			var ao := -a_len + 1.4
+			while ao < cut_to - 0.8:
+				var bo := -b_len + 1.3
+				while bo < b_len - 1.0:
+					var l := Vector2(ao, bo) if rows_x else Vector2(bo, ao)
+					l += Vector2(r.randf_range(-0.4, 0.4), r.randf_range(-0.4, 0.4))
+					out["pieces"].append({"k": "stook", "p": frame_to_world(p, yaw, l), "yaw": r.randf() * TAU, "house": -1, "seed": r.randi()})
+					bo += r.randf_range(2.8, 3.6)
+				ao += r.randf_range(3.0, 3.8)
 		if crop == "wheat" and ripe > 0.6:
 			for n in r.randi_range(1, 2):
 				var l := Vector2(r.randf_range(-hx, hx), hz + 2.2)
@@ -562,7 +584,7 @@ static func annotate(gen: ChunkGenerator, chunk: Dictionary) -> void:
 				return wv * smoothstep(-0.6, 0.6, ex))
 			if f.has("crop") and not (CROPS[f["crop"]][0] as Array).is_empty():
 				crops.append({"p": p - Vector2(x0, z0), "yaw": yaw, "hx": hx, "hz": hz, "crop": f["crop"], "rows": int(f.get("rows", 0)),
-					"tint": f.get("tint", Color(0.36, 0.5, 0.3)), "seed": int(f.get("seed", 0))})
+					"tint": f.get("tint", Color(0.36, 0.5, 0.3)), "seed": int(f.get("seed", 0)), "cut": float(f.get("cut", 0.0))})
 		_clear_fields(chunk, pl, x0, z0)
 	if not worn.is_empty():
 		chunk["worn"] = worn
@@ -654,11 +676,14 @@ static func crops(chunk: Dictionary, out: Dictionary, density: float, plans: Arr
 				bo0 += furrow
 				tone = r.randf_range(0.74, 1.16)
 		var na := int(a_len * 2.0 / gap)
+		var cut_to := -a_len + 2.0 * a_len * float(bed.get("cut", 0.0)) if float(bed.get("cut", 0.0)) > 0.0 else -INF
 		for bi in offs.size():
 			var bo: float = offs[bi]
 			var sp: String = species[bi % species.size()]
 			for ai in na + 1:
 				var ao := -a_len + 0.2 + (a_len * 2.0 - 0.4) * ai / maxf(na, 1) + r.randf_range(-0.1, 0.1) * gap
+				if ao < cut_to:
+					continue # already reaped
 				var l := Vector2(ao, bo + r.randf_range(-0.06, 0.06)) if rows_x else Vector2(bo + r.randf_range(-0.06, 0.06), ao)
 				var q := frame_to_world(p, yaw, l)
 				var roll := r.randf()
@@ -696,6 +721,7 @@ var site: Dictionary
 var _pending: Array = [] ## groups waiting for their ground: {pieces: [...], house: int}
 var _flames: Array = [] ## lamp flames and lights, lit after dark
 var _lit := -1
+var _smokes: Array = []
 var _t := 0.0
 var _hour_t := 0.0
 var _shops: Dictionary = {} ## layout index of a shop's house -> true
@@ -782,11 +808,32 @@ func _house(i: int) -> Dictionary:
 			return {"y": float(o["p"].y), "s": float(o["s"]), "gone": o["st"].get("gone", false)}
 	return {"gone": true}
 
+## The share of hearths burning at an hour: most at breakfast and supper, fewer through
+## the working day, a few banked overnight.
+static func _fire_share(hr: float) -> float:
+	if hr >= 5.5 and hr < 9.0:
+		return 0.85
+	if hr >= 11.5 and hr < 13.0:
+		return 0.65
+	if hr >= 9.0 and hr < 17.0:
+		return 0.4
+	if hr >= 17.0 and hr < 21.0:
+		return 0.9
+	if hr >= 21.0 and hr < 23.0:
+		return 0.5
+	return 0.2
+
 func _process(delta: float) -> void:
 	_hour_t -= delta
 	if _hour_t <= 0.0:
 		_hour_t = 2.0
 		var hr := NPCMind.hour_now()
+		var share := _fire_share(hr)
+		for ps in _smokes:
+			if is_instance_valid(ps):
+				var on := float(ps.get_meta("keen")) < share
+				if ps.emitting != on:
+					ps.emitting = on
 		var lit := 1 if hr >= LIT_FROM or hr < LIT_TO else 0
 		if lit != _lit:
 			_lit = lit
@@ -866,6 +913,7 @@ func _build(pieces: Array, base: float) -> void:
 				else:
 					_fence(models, e["a"], e["b"], o2, oy, body)
 			"scarecrow": _scarecrow(k, xf, r)
+			"stook": _stook(k, xf, r)
 			"plinth": _plinth(k, xf, float(e["w"]), float(e["d"]), float(e["door"]), r, body)
 			"tree": _tree(root, e, at)
 			"torch_post": _torch_post(k, models, root, xf, body)
@@ -1046,27 +1094,60 @@ func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float)
 
 ## A haystack: a squat dome of hay with a pointed cap, wisps round the foot.
 static func _haystack(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator, body: StaticBody3D) -> void:
+	# A rick built by hand round a pole: a straight-sided stack swelling a little toward
+	# the eaves, a steep cone of thatch over it roped down with stone weights, and loose
+	# hay raked round the foot. Never a smooth dome (that reads as a machine bale).
 	var I := Transform3D.IDENTITY
-	var rad := r.randf_range(1.1, 1.5)
-	var h := r.randf_range(1.8, 2.5)
+	var rad := r.randf_range(1.2, 1.6)
+	var eave := r.randf_range(1.5, 2.1)
+	var cone := r.randf_range(1.6, 2.2)
 	var tone := Color(1, 1, 1) * r.randf_range(0.85, 1.05)
-	var waist := h * 0.42
-	k.cylinder("thatch", xf * I.translated(Vector3(0, -0.15, 0)), rad * 0.96, rad, waist + 0.17, 16, false, 0.05, 2, tone)
-	k.sphere("thatch", xf * I.translated(Vector3(0, waist, 0)), rad, 10, 16, 0.06, (h - waist) / rad, tone, true)
-	k.cylinder("timber", xf * I.translated(Vector3(0, h - 0.15, 0)), 0.035, 0.02, 0.5, 5)
-	# Loose hay pulled out round the foot.
-	for i in 12:
+	var lean := xf * Transform3D(Basis(Vector3(1, 0, 0), r.randf_range(-0.03, 0.03)), Vector3.ZERO)
+	k.cylinder("thatch", lean * I.translated(Vector3(0, -0.15, 0)), rad * 0.88, rad, eave + 0.15, 14, false, 0.09, 3, tone)
+	k.cylinder("thatch", lean * I.translated(Vector3(0, eave - 0.12, 0)), rad * 1.08, rad * 0.12, cone, 14, false, 0.07, 3, tone * 0.9)
+	k.cylinder("thatch", lean * I.translated(Vector3(0, eave + cone - 0.25, 0)), rad * 0.2, 0.02, 0.45, 8, false, 0.1, 1, tone * 0.75)
+	k.cylinder("timber", lean * I.translated(Vector3(0, eave + cone - 0.4, 0)), 0.04, 0.03, 0.9, 5)
+	# Ropes over the cone, each weighted with a stone at the eaves.
+	for i in 4:
+		var a := TAU * (i + r.randf() * 0.2) / 4.0
+		var d := Vector3(cos(a), 0, sin(a))
+		var top := Vector3(0, eave + cone - 0.3, 0) + d * rad * 0.18
+		var low := Vector3(0, eave - 0.05, 0) + d * rad * 1.1
+		var mid := (top + low) * 0.5 + d * 0.04
+		var rb := Basis.looking_at(low - top, Vector3.UP) * Basis(Vector3(1, 0, 0), -PI * 0.5)
+		k.cylinder("timber", lean * Transform3D(rb, top), 0.018, 0.018, top.distance_to(low), 4, false, 0.0, 1, Color(0.75, 0.68, 0.55))
+		k.sphere("stone", lean * I.translated(low + Vector3(0, -0.32, 0) + d * 0.06), 0.085, 4, 6, 0.25, 0.9, Color(0.75, 0.72, 0.68))
+		k.cylinder("timber", lean * I.translated(low + Vector3(0, -0.25, 0) + d * 0.05), 0.012, 0.012, 0.25, 3, false, 0.0, 1, Color(0.75, 0.68, 0.55))
+	# Loose hay raked round the foot.
+	for i in 10:
 		var a := r.randf() * TAU
-		var d := rad + r.randf_range(-0.1, 0.45)
+		var d := rad + r.randf_range(-0.1, 0.5)
 		k.sphere("thatch", xf * Transform3D(Basis(Vector3.UP, r.randf() * TAU), Vector3(cos(a) * d, 0.0, sin(a) * d)),
-			r.randf_range(0.18, 0.35), 4, 7, 0.2, 0.35, tone * 0.92, true)
+			r.randf_range(0.18, 0.32), 4, 7, 0.25, 0.3, tone * 0.92, true)
 	var cs := CollisionShape3D.new()
 	var cy := CylinderShape3D.new()
 	cy.radius = rad
-	cy.height = h
+	cy.height = eave + cone * 0.5
 	cs.shape = cy
-	cs.transform = xf * I.translated(Vector3(0, h * 0.5, 0))
+	cs.transform = xf * I.translated(Vector3(0, cy.height * 0.5, 0))
 	body.add_child(cs)
+
+## A stook: eight sheaves of cut wheat stood up leaning together to dry, ears up.
+static func _stook(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator) -> void:
+	var tone := Color(1.0, 0.92, 0.7) * r.randf_range(0.85, 1.05)
+	var n := 6 + r.randi() % 3
+	for i in n:
+		var a := TAU * (i + r.randf_range(-0.15, 0.15)) / n
+		var d := Vector3(cos(a), 0, sin(a))
+		var tilt := r.randf_range(0.2, 0.3)
+		var axis := Vector3.UP.cross(d).normalized()
+		var sb := Basis(axis, -tilt) # foot out, head in
+		var foot := d * r.randf_range(0.3, 0.38)
+		var h := r.randf_range(1.0, 1.2)
+		k.cylinder("thatch", xf * Transform3D(sb, foot), 0.12, 0.08, h, 6, false, 0.12, 1, tone * 0.85)
+		# The tie, then the ears flaring above it.
+		k.cylinder("timber", xf * Transform3D(sb, foot + sb * Vector3(0, h * 0.62, 0)), 0.085, 0.085, 0.05, 6, false, 0.0, 1, Color(0.7, 0.6, 0.4))
+		k.sphere("thatch", xf * Transform3D(sb, foot + sb * Vector3(0, h + 0.05, 0)), 0.15, 4, 6, 0.3, 1.4, tone)
 
 ## The kit wagon, sometimes loaded with hay.
 static func _cart(k: MeshKit, models: Array, xf: Transform3D, hay: bool, r: RandomNumberGenerator, body: StaticBody3D) -> void:
@@ -1250,7 +1331,14 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_pm.initial_velocity_min = 0.5
 		_smoke_pm.initial_velocity_max = 0.9
 		# Up and away downwind, slowing as it cools.
-		_smoke_pm.gravity = Vector3(0.32, 0.12, 0.14)
+		_smoke_pm.gravity = Vector3(0.55, 0.1, 0.24)
+		# Eddies tear the column into drifting puffs instead of a straight pillar.
+		_smoke_pm.turbulence_enabled = true
+		_smoke_pm.turbulence_noise_strength = 1.4
+		_smoke_pm.turbulence_noise_scale = 3.5
+		_smoke_pm.turbulence_noise_speed_random = 0.3
+		_smoke_pm.turbulence_influence_min = 0.06
+		_smoke_pm.turbulence_influence_max = 0.16
 		_smoke_pm.damping_min = 0.05
 		_smoke_pm.damping_max = 0.12
 		_smoke_pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
@@ -1296,4 +1384,13 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	ps.visibility_range_end = 450.0
 	ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ps.position = at
+	# Each household keeps its own fire: how thick its smoke, and how keen it is to have
+	# the hearth lit (see _fire_share).
+	var hr := RandomNumberGenerator.new()
+	hr.seed = WHash.str_hash("hearth%d:%s" % [int(e["house"]), str(p2)])
+	ps.amount_ratio = hr.randf_range(0.35, 1.0)
+	ps.speed_scale = hr.randf_range(0.8, 1.15)
+	ps.set_meta("keen", hr.randf())
+	ps.emitting = float(ps.get_meta("keen")) < _fire_share(NPCMind.hour_now())
+	_smokes.append(ps)
 	root.add_child(ps)

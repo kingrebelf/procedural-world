@@ -35,6 +35,8 @@ const VAR := "~var"
 const VARIANTS := {"castle_wall": 3, "castle_tower": 4}
 
 static func variant_key(o: Dictionary) -> String:
+	if not o.has("p"):
+		return o["t"] # a type alone (a footprint lookup): the plain build
 	var p: Vector3 = o["p"]
 	var h := absi(WHash.combine(int(round(p.x * 4.0)), int(round(p.z * 4.0))))
 	return "%s%s%d" % [o["t"], VAR, h % int(VARIANTS[o["t"]])]

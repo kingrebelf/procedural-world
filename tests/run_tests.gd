@@ -3257,6 +3257,11 @@ func test_town_life() -> void:
 			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
 				standing += 1
 	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
+	# their own, and every build shares the plain wall's ground plan.
+	var fw := ObjectLibrary.footprint({"t": "castle_wall"})
+	check(fw.size.x > 7.0 and fw.size.y > 1.5, "a castle wall has a footprint by type alone (%s)" % fw)
+	check(ObjectLibrary.mesh_key({"t": "castle_tower", "p": Vector3(3, 0, 5), "st": {}}).begins_with("castle_tower" + Stronghold.VAR), "a placed tower picks a build")
 	# Far from any town, nothing changes.
 	var wild := gen.generate(400, 400)
 	TownLife.annotate(gen, wild)

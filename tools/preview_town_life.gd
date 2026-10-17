@@ -78,6 +78,7 @@ func _run() -> void:
 		P.call("lantern", Vector2(-0.98, 3.1), 0.0, {"y": 2.0}),
 		{"k": "smoke", "l": Vector3(1.4, 7.05, -1.6), "p": Vector2.ZERO, "yaw": 0.0, "house": 0},
 		P.call("haystack", Vector2(9.0, 3.0), 0.0, {}),
+		P.call("stook", Vector2(6.0, 7.0), 0.3, {}), P.call("stook", Vector2(8.8, 7.4), 1.3, {}), P.call("stook", Vector2(6.4, 10.0), 2.0, {}),
 		P.call("cart", Vector2(9.5, -4.0), 0.3, {"hay": true}),
 		P.call("scarecrow", Vector2(-9.0, 5.0), 0.5, {}),
 		P.call("torch_post", Vector2(-3.0, 6.0), PI, {}),
@@ -92,7 +93,7 @@ func _run() -> void:
 	root.add_child(cam)
 	for s in [["front", Vector3(6, 3.2, 13), Vector3(0, 1.2, 0)], ["back", Vector3(-4, 4, -13), Vector3(0, 1, -3)],
 			["side", Vector3(13, 2.5, 2), Vector3(3, 1, 0)], ["washing", Vector3(-9, 1.8, 3), Vector3(-5, 1.3, -0.5)],
-			["farm", Vector3(2, 3, 14), Vector3(0, 1, 2)], ["wattle", Vector3(-9.5, 1.6, -11.5), Vector3(-5, 0.6, -6)]]:
+			["farm", Vector3(2, 2.5, 16), Vector3(7, 1, 7)], ["wattle", Vector3(-9.5, 1.6, -11.5), Vector3(-5, 0.6, -6)]]:
 		cam.position = s[1]
 		cam.look_at(s[2])
 		await _shot(s[0])
