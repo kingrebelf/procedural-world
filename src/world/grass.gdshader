@@ -30,7 +30,7 @@ void vertex() {
 	if (INSTANCE_CUSTOM.a < -0.5) {
 		// Under water: a slow to-and-fro, each clump in its own phase, the same in any wind.
 		float ph = TIME * 0.7 + wp.x * 0.37 + wp.z * 0.23;
-		bend = UV.y * UV.y * (sin(ph) * 0.22 + sin(ph * 2.3 + 1.7) * 0.07);
+		bend = UV.y * UV.y * (sin(ph) * 0.32 + sin(ph * 2.3 + 1.7) * 0.1);
 		local_wind = (inverse(MODEL_MATRIX) * vec4(0.8, 0.0, 0.6, 0.0)).xyz;
 	}
 	VERTEX.xz += normalize(local_wind.xz + vec2(0.0001)) * bend;

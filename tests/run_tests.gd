@@ -4449,3 +4449,71 @@ func test_fov_is_horizontal() -> void:
 	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
 	check(absf(gs.vertical_fov(121.28) - 90.0) < 0.05, "the old 90 tall is about 121 across")
 	check(is_equal_approx(float(gs.DEFAULTS["fov"]), 90.0), "the default view is 90 degrees across")
+
+
+func test_water_life() -> void:
+	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
+	# whole instances and its mesh builds. (On today's terrain, as a new world has it.)
+	var tv := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var f := AquaFlora.Field.new(4242)
+	var lakes: Array = []
+	var seas: Array = []
+	for j in range(-60, 60, 2):
+		for i in range(-60, 60, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			var h := g.field.height(x, z)
+			if h > -0.5 or h < -9.0:
+				continue
+			if f.sea_t(x, z) < 0.05 and h > -2.5 and lakes.size() < 8:
+				lakes.append(Vector2i(i, j))
+			elif f.sea_t(x, z) > 0.95 and h < -2.0 and seas.size() < 12:
+				seas.append(Vector2i(i, j))
+	check(lakes.size() > 0 and seas.size() > 0, "found lakes (%d) and sea (%d)" % [lakes.size(), seas.size()])
+	var lake := {}
+	for k in lakes:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, lake)
+	var sea := {}
+	for k in seas:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, sea)
+	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lakes have reeds and lily pads: %s" % [lake.keys()])
+	check(not lake.has("aq_coral_brain@0"), "no reef in a lake")
+	check(sea.has("aq_coral_branch@0") and sea.has("aq_kelp@0"), "the sea has reefs and kelp: %s" % [sea.keys()])
+	# Reefs stand on rock: some sea chunk has bommies, laid as stones.
+	var rocks := {}
+	var solid := PackedFloat32Array()
+	for k in seas:
+		AquaFlora.reef_rocks(g.generate(k.x, k.y), rocks, solid)
+	check(rocks.has("stone:rock_a") or rocks.has("stone:rock_b"), "reefs have rock bommies")
+	check(solid.size() % 13 == 0 and solid.size() > 0, "bommie rocks are solid")
+	# No coral in water under snowy mountains, however wide.
+	var cold := {}
+	var n_cold := 0
+	for j in range(-20, 20, 2):
+		for i in range(-20, 20, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			if n_cold < 6 and g.field.height(x, z) < -2.0 and f.warm(x, z) < 0.02:
+				n_cold += 1
+				AquaFlora.build(g.generate(i, j), 1.0, cold)
+	check(n_cold > 0 and not cold.has("aq_coral_branch@0") and not cold.has("aq_coral_brain@0"), "no coral in cold mountain water (%d chunks)" % n_cold)
+	var one := {}
+	var again := {}
+	var sea_chunk := g.generate(seas[0].x, seas[0].y)
+	AquaFlora.build(sea_chunk, 1.0, one)
+	AquaFlora.build(sea_chunk, 1.0, again)
+	check(one.hash() == again.hash(), "water plants are the same every time")
+	for k in lake.keys() + sea.keys():
+		var buf: PackedFloat32Array = lake.get(k, sea.get(k))
+		check(buf.size() % 16 == 0 and buf.size() > 0, "%s holds whole instances" % k)
+		check(AquaKit.SPECIES.has(k.get_slice("@", 0)), "%s is a known species" % k)
+	var dry := {}
+	AquaFlora.build(g.generate(0, 0), 1.0, dry)
+	check(dry.is_empty() or g.field.height(32.0, 32.0) < 1.0, "dry land grows no water plants")
+	for sp in AquaKit.SPECIES:
+		check(AquaKit.mesh(sp).get_surface_count() == 1, "%s mesh builds" % sp)
+	for k in FishKit.KINDS:
+		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
+	WorldField.terrain_v = tv

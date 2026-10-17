@@ -408,7 +408,7 @@ func _run() -> void:
 		var weeds := 0
 		var grass := ChunkNode.build_grass_buffers(bed, 1.0)
 		for key in grass:
-			if String(key).begins_with("weed@"):
+			if String(key).begins_with("weed"):
 				weeds += (grass[key] as PackedFloat32Array).size() / 16
 		var sunk := 0
 		var clutter := ChunkNode.build_clutter_buffers(bed, 1.0)

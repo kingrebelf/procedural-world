@@ -414,6 +414,23 @@ void fragment() {
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
+	// Lake and pond beds: soft olive-brown silt where the water is murky (Water's murk
+	// map), mottled, with drifts of dark rotting leaves; clear open water keeps its sand.
+	if (wpos.y < 0.0) {
+		vec2 muv = (p - water_map_rect.xy) / water_map_rect.z;
+		float murk = 0.0;
+		if (muv.x > 0.01 && muv.y > 0.01 && muv.x < 0.99 && muv.y < 0.99) {
+			murk = textureLod(water_murk, muv, 0.0).r;
+		}
+		float bed = murk * smoothstep(0.0, -0.8, wpos.y);
+		if (bed > 0.001) {
+			float mott = vnoise(p * 0.35) * 0.6 + vnoise(p * 2.1) * 0.4;
+			vec3 silt = mix(vec3(0.12, 0.11, 0.065), vec3(0.21, 0.18, 0.1), mott);
+			float litter = smoothstep(0.68, 0.78, vnoise(p * 4.7 + 7.0)) * (1.0 - far);
+			silt = mix(silt, vec3(0.17, 0.1, 0.05), litter * 0.7);
+			ground = mix(ground, silt * mix(vec3(1.0), mud_d, 0.6), bed);
+		}
+	}
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
 	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
 	// forking and dying out (sharp and close in some stretches, faint in others), with a
