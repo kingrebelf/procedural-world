@@ -168,7 +168,8 @@ static func _leaf_look(p: Dictionary) -> Array:
 		# The autumn photo has its own reds and oranges; browns are it dulled and darkened.
 		if leaf.s < 0.42:
 			return ["autumn", Color(0.82, 0.68, 0.55)]
-		return ["autumn", Color(1, 1, 1).lerp(Color(1.05, 0.95, 0.85), 0.5)]
+		# Reds a little muted: the photo alone is a postcard red.
+		return ["autumn", Color(0.86, 0.9, 0.92)]
 	# The photo is a mid green (hue ~0.25); shift toward the species' hue and value.
 	var want := Color.from_hsv(leaf.h, clampf(leaf.s * 0.75, 0.25, 0.7), 1.0)
 	var ref := Color.from_hsv(0.25, 0.55, 1.0)
@@ -422,6 +423,10 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 	var weep := form == "weeping"
 	for i in count:
 		var dir := Vector3(r.randf_range(-1, 1), r.randf_range(-0.75, 1), r.randf_range(-1, 1)).normalized()
+		if weep:
+			# Willow strands hang from the arching top of the crown, not its sides.
+			dir.y = absf(dir.y) * 0.8 + 0.05
+			dir = dir.normalized()
 		var depth := r.randf_range(0.62, 1.0) if r.randf() > 0.18 else r.randf_range(0.3, 0.6)
 		if far:
 			depth = r.randf_range(0.55, 0.85)
@@ -432,11 +437,12 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var len := size * r.randf_range(0.8, 1.2)
 		var wid := len
 		if weep:
-			# Hanging curtains: long sprays pointing down from the crown's outer half.
-			axis = (Vector3.DOWN * 2.0 + out * 0.35).normalized()
-			len *= 1.9
-			wid *= 0.75
-			at += Vector3.UP * len * 0.35
+			# Hanging strands of uneven length, falling from the arching top and out over the
+			# crown's edge (one length for all made a box with a flat hem).
+			axis = (Vector3.DOWN * 2.0 + out * r.randf_range(0.25, 0.9)).normalized()
+			len *= r.randf_range(1.2, 2.9) * lerpf(0.75, 1.15, clampf(1.0 - dir.y, 0.0, 1.0))
+			wid *= r.randf_range(0.45, 0.7)
+			at += Vector3.UP * len * 0.2
 		var side := _orth(axis).rotated(axis, r.randf_range(-0.9, 0.9))
 		# Stem end sits a little inside the shell so the spray grows outward.
 		at -= axis * len * 0.3
