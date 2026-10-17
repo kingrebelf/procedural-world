@@ -457,12 +457,12 @@ static func _monolith(r: RandomNumberGenerator) -> ArrayMesh:
 static func _menhir(r: RandomNumberGenerator) -> ArrayMesh:
 	var g := Geo.new()
 	g.add_mat("stone", Materials.get_mat("stone"))
-	g.add_mat("moss", Materials.get_mat("moss"))
+	g.add_mat("moss", organic(Color(0.12, 0.17, 0.07), Color(0.24, 0.3, 0.12), {"streaks": 0.2, "sss": 0.3, "rough": 0.95, "spot_amt": 0.5, "spot_col": Color(0.32, 0.36, 0.16), "spot_scale": 6.0}))
 	g.add_mat("rune", organic(Color(0.15, 0.4, 0.5), Color(0.4, 0.9, 1.0), {"glow": 0.9, "glow_col": Color(0.4, 0.85, 1.0), "streaks": 0.0, "sss": 0.6}))
 	var lean := Transform3D(Basis(Vector3(0, 0, 1), 0.06) * Basis().scaled(Vector3(1.0, 1.0, 0.55)), Vector3.ZERO)
 	var prof := PackedVector2Array([Vector2(0, 3.5), Vector2(0.22, 3.42), Vector2(0.4, 3.0), Vector2(0.5, 2.0), Vector2(0.56, 0.8), Vector2(0.64, 0.1), Vector2(0.66, -0.6)])
 	g.lathe("stone", prof, 9, lean, Vector2(0.12, 0.0), Color.WHITE, 0.14, r.randi() % 50)
-	g.lathe("moss", PackedVector2Array([Vector2(0.58, 0.45), Vector2(0.8, 0.15), Vector2(0.95, -0.1)]), 12, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 0.7)), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.25, 3)
+	g.lathe("moss", PackedVector2Array([Vector2(0.6, 0.3), Vector2(0.74, 0.1), Vector2(0.86, -0.1)]), 12, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 0.7)), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.25, 3)
 	# Glyphs: short bars and ticks set into the face (+z), following the stone's lean.
 	for i in 5:
 		var y := 0.9 + i * 0.42
@@ -479,6 +479,59 @@ static func _menhir(r: RandomNumberGenerator) -> ArrayMesh:
 		g.lathe("stone", PackedVector2Array([Vector2(0, 0.45), Vector2(0.35, 0.38), Vector2(0.5, 0.0), Vector2(0.45, -0.3)]), 7, Transform3D(Basis(Vector3.UP, a) * Basis().scaled(Vector3(1.4, 0.8, 0.8)), at), Vector2.ZERO, Color.WHITE, 0.2, i)
 	return g.commit()
 
+# --- Undergrowth -----------------------------------------------------------------
+
+## Smooth glow-bulb clumps and xeno tendril tufts in place of the old coloured beads:
+## one muted hue per species, lit softly from inside, so the ground reads as growth and
+## not as confetti. Returns null for forms the kit or Flora draw.
+static func under(sp: int, era: int) -> ArrayMesh:
+	var form := Flora.under_form(sp, era)
+	if form != "glowbulbs" and form != "tendrils":
+		return null
+	var r := _rng(sp, 77)
+	var hue := r.randf_range(0.42, 0.62) if era == Eras.FANTASY else r.randf_range(0.0, 0.12)
+	if era == Eras.FANTASY and r.randf() < 0.35:
+		hue = r.randf_range(0.72, 0.85)
+	var gcol := Color.from_hsv(hue, 0.55, 1.0)
+	var stalk := Color.from_hsv(fposmod(hue + 0.05, 1.0), 0.35, 0.32) if era == Eras.FANTASY else Color.from_hsv(r.randf_range(0.02, 0.08), 0.45, 0.28)
+	var g := Geo.new()
+	g.add_mat("stalk", organic(stalk.darkened(0.3), stalk.lightened(0.2), {"streaks": 0.5, "sss": 0.6, "rough": 0.7, "sway": 0.2}))
+	g.add_mat("bulb", organic(stalk.lerp(gcol, 0.35), gcol.lerp(Color.WHITE, 0.2), {"glow": 0.45, "glow_col": gcol, "sss": 1.0, "rough": 0.35, "streaks": 0.3, "sway": 0.2}))
+	if form == "glowbulbs":
+		for i in r.randi_range(3, 6):
+			var a := r.randf() * TAU
+			var base := Vector3(cos(a), 0, sin(a)) * r.randf_range(0.0, 0.45)
+			var h := r.randf_range(0.2, 0.65)
+			var lean := Vector3(r.randf_range(-0.15, 0.15), 1.0, r.randf_range(-0.15, 0.15)).normalized()
+			var pts := PackedVector3Array()
+			var ws := PackedFloat32Array()
+			for j in 5:
+				var t := float(j) / 4.0
+				pts.append(base + lean * h * t + Vector3(sin(t * 3.0 + a) * 0.03, 0, 0))
+				ws.append(lerpf(0.022, 0.012, t))
+			g.sweep("stalk", pts, ws, 5, Color.WHITE, false)
+			var br := r.randf_range(0.05, 0.1)
+			g.lathe("bulb", _ellipse(br, br * 1.35, 9), 10, Transform3D(Basis(), pts[4] + lean * br * 1.1), Vector2.ZERO, Color.WHITE, 0.08, i)
+		# Broad leaves at the foot.
+		g.add_mat("body", organic(stalk.darkened(0.2), stalk.lerp(gcol, 0.15).lightened(0.1), {"streaks": 0.6, "sss": 0.7, "rough": 0.6, "sway": 0.15}))
+		_leaves(g, r, 0.35, r.randi_range(3, 5))
+	else:
+		# Tendrils: a tuft of curling ribbon blades, faintly lit at the tips.
+		for i in r.randi_range(7, 13):
+			var a := r.randf() * TAU
+			var base := Vector3(cos(a), 0, sin(a)) * r.randf_range(0.0, 0.3)
+			var h := r.randf_range(0.5, 1.3)
+			var curl := r.randf_range(0.6, 1.6)
+			var pts := PackedVector3Array()
+			var ws := PackedFloat32Array()
+			for j in 8:
+				var t := float(j) / 7.0
+				var out := Vector3(cos(a), 0, sin(a)) * (sin(t * curl) * h * 0.35)
+				pts.append(base + out + Vector3(0, h * t - t * t * h * 0.15 * curl, 0))
+				ws.append(lerpf(0.035, 0.006, t))
+			g.ribbon("stalk" if r.randf() < 0.7 else "bulb", pts, ws, Vector3(-sin(a), 0, cos(a)), Color.WHITE, 0.3)
+	return g.commit()
+
 # --- Alien ruins ------------------------------------------------------------------
 
 ## Relics of whoever came before: smooth obsidian-like stone with glowing glyph seams
@@ -489,7 +542,7 @@ static func _ruin(p: Dictionary, r: RandomNumberGenerator) -> ArrayMesh:
 	var stone: Color = p["stone"]
 	var gcol := glow_colour(int(p["glow"]))
 	var sz: float = p["size"]
-	g.add_mat("xeno", organic(stone.darkened(0.25), stone.lightened(0.15), {"streaks": 0.7, "sss": 0.05, "rough": 0.28, "spot_amt": 0.25, "spot_col": stone.lightened(0.35), "spot_scale": 1.2}))
+	g.add_mat("xeno", organic(stone.darkened(0.25), stone.lightened(0.15), {"streaks": 0.7, "sss": 0.05, "rough": 0.28}))
 	g.add_mat("seam", organic(gcol.darkened(0.2), gcol, {"glow": 1.6, "glow_col": gcol, "streaks": 0.0, "sss": 0.9, "rough": 0.3}))
 	g.add_mat("core", crystal(gcol.lerp(Color.WHITE, 0.2), gcol.lerp(Color.WHITE, 0.7), 1.4, 0.9))
 	g.add_mat("rubble", Materials.get_mat("stone_dark"))
@@ -515,22 +568,30 @@ static func _ruin(p: Dictionary, r: RandomNumberGenerator) -> ArrayMesh:
 				var t := float(i) / 12.0
 				prof.append(Vector2(sin(PI * pow(t, 0.8)) * 2.2 * sz * (1.0 - 0.35 * t) + 0.02, (0.5 - t) * hl))
 			g.lathe("xeno", prof, 18, xf * Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.06, r.randi() % 50)
+			# Ribs hugging the hull where the plating has torn away.
 			for i in 6:
-				var z := (-0.35 + i * 0.13) * hl
+				var t := 0.2 + i * 0.12
+				var z := (0.5 - t) * hl
+				var rr := sin(PI * pow(t, 0.8)) * 2.2 * sz * (1.0 - 0.35 * t) + 0.12 * sz
 				var ring := PackedVector3Array()
 				var ws := PackedFloat32Array()
 				for j in 9:
-					var a := PI * (0.1 + 0.8 * j / 8.0)
-					ring.append(xf * Vector3(cos(a) * 2.5 * sz, sin(a) * 2.5 * sz * 0.9, z))
-					ws.append(0.16 * sz)
+					var a := PI * (0.12 + 0.76 * j / 8.0)
+					ring.append(xf * Vector3(cos(a) * rr, sin(a) * rr, z))
+					ws.append(0.14 * sz)
 				g.sweep("xeno", ring, ws, 6)
-			for i in 7:
-				var at := xf * Vector3(r.randf_range(-1.4, 1.4) * sz, r.randf_range(0.6, 1.9) * sz, r.randf_range(-0.4, 0.4) * hl)
-				g.prism("seam", at, Vector3(r.randf_range(-1, 1), 0.2, r.randf_range(-1, 1)), 0.08 * sz, r.randf_range(0.5, 1.2) * sz, 4, 0.1)
+			# Glowing ports in a row along each flank.
+			for side in [-1.0, 1.0]:
+				for i in 5:
+					var t := 0.25 + i * 0.12
+					var rr := sin(PI * pow(t, 0.8)) * 2.2 * sz * (1.0 - 0.35 * t)
+					var a: float = PI * 0.5 - side * 0.9
+					var n := Vector3(cos(a), sin(a), 0)
+					g.prism("seam", xf * (n * (rr - 0.05) + Vector3(0, 0, (0.5 - t) * hl)), xf.basis * n, 0.12 * sz, 0.1, 6, 0.0)
 			_core(g, xf * Vector3(0, 1.0 * sz, -0.1 * hl), 0.35 * sz)
-			for i in 6:
+			for i in 5:
 				var a := r.randf() * TAU
-				g.prism("xeno", Vector3(cos(a), 0, sin(a)) * r.randf_range(4.0, 7.0) * sz, Vector3(r.randf_range(-1, 1), 0.3, r.randf_range(-1, 1)), r.randf_range(0.3, 0.6) * sz, r.randf_range(0.6, 1.4) * sz, 5, 0.2, r.randf())
+				g.prism("rubble", Vector3(cos(a), -0.1, sin(a)) * r.randf_range(4.0, 6.5) * sz, Vector3(r.randf_range(-1, 1), 0.3, r.randf_range(-1, 1)), r.randf_range(0.15, 0.3) * sz, r.randf_range(0.4, 0.8) * sz, 5, 0.2, r.randf())
 		"obelisk":
 			var h := 9.0 * sz
 			var prof := PackedVector2Array([Vector2(0, h), Vector2(0.35 * sz, h * 0.93), Vector2(0.55 * sz, h * 0.6), Vector2(0.85 * sz, h * 0.15), Vector2(1.0 * sz, 0.4), Vector2(1.3 * sz, 0.3), Vector2(1.4 * sz, -0.5)])
@@ -569,7 +630,7 @@ static func _ruin(p: Dictionary, r: RandomNumberGenerator) -> ArrayMesh:
 		_:
 			# Seed pods on a mat of roots, softly lit from inside.
 			var n: int = p["count"]
-			g.add_mat("pod", organic(stone.lerp(gcol, 0.3), gcol.lightened(0.2), {"glow": 0.6, "glow_col": gcol, "sss": 1.0, "rough": 0.35, "streaks": 0.5}))
+			g.add_mat("pod", organic(stone.lerp(gcol, 0.1), stone.lightened(0.3).lerp(gcol, 0.25), {"glow": 0.35, "glow_col": gcol, "sss": 1.0, "rough": 0.55, "streaks": 0.6}))
 			for i in n:
 				var a := r.randf() * TAU
 				var d := r.randf_range(0.0, 3.5) * sz
@@ -610,8 +671,9 @@ static func _blade(g: Geo, at: Vector3, out: Vector3, h: float, w: float, lean: 
 
 ## A crystal core hovering in a faint shell.
 static func _core(g: Geo, at: Vector3, rad: float) -> void:
-	g.prism("core", at - Vector3(0, rad * 1.1, 0), Vector3.UP, rad * 0.55, rad * 1.4, 6, 0.4, 0.3)
-	g.prism("core", at + Vector3(0, rad * 0.25, 0), Vector3.DOWN, rad * 0.55, rad * 1.4, 6, 0.4, 0.3)
+	rad *= 1.7
+	g.prism("core", at - Vector3(0, rad * 0.3, 0), Vector3.UP, rad * 0.55, rad * 1.5, 6, 0.45, 0.3)
+	g.prism("core", at + Vector3(0, rad * 0.3, 0), Vector3.DOWN, rad * 0.55, rad * 1.5, 6, 0.45, 0.3)
 
 # --- Alien plants (sci-fi wilds) -------------------------------------------------
 

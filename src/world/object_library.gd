@@ -122,6 +122,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
 			if ku != null:
 				return ku
+			var hu := HiFlora.under(int(parts[1]), int(parts[2]))
+			if hu != null:
+				return hu
 			Flora.build_under(kit, int(parts[1]), int(parts[2]))
 			return kit.commit(Materials.get_mat)
 		var hm := HiFlora.build(parts[0], int(parts[1]), int(parts[2]))

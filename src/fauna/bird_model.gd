@@ -176,8 +176,8 @@ static func _jelly(p: Dictionary) -> Dictionary:
 		var ws := PackedFloat32Array()
 		for j in 8:
 			var u := float(j) / 7.0
-			var r := 0.22 * (1.0 - u * 0.4)
-			pts.append(Vector3(cos(a + u * 1.5) * r, -u * 0.9, sin(a + u * 1.5) * r))
+			var r := 0.22 * (1.0 - u * 0.25)
+			pts.append(Vector3(cos(a) * r + sin(u * 7.0 + a) * 0.03, -u * 0.9, sin(a) * r + cos(u * 6.0 + a) * 0.03))
 			ws.append(lerpf(0.012, 0.003, u))
 		g.sweep("tendril", pts, ws, 4)
 	var w := HiFlora.Geo.new()

@@ -74,6 +74,8 @@ func _run() -> void:
 				wmi.rotation.z = side * 0.15
 				node.add_child(wmi)
 			node.scale = Vector3.ONE * 4.0
+			# Tipped towards the camera so the wings show from above.
+			node.rotation.x = 1.0
 		else:
 			var ps: PackedScene = load("res://assets/models/%s.gltf" % n)
 			if ps == null:
