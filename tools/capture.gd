@@ -260,7 +260,7 @@ func _follow_river(g: ChunkGenerator, p: Vector2, d: Vector2, cache: Dictionary)
 	return at if at.distance_to(p) > 60.0 else Vector2.INF
 
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0) -> void:
-	if not only.is_empty() and not only.has(name.substr(0, 2)):
+	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
@@ -470,7 +470,7 @@ func _run() -> void:
 		await _landform_shots(g)
 	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
-	if only.is_empty() or only.has("96"):
+	if only.is_empty() or only.has("100"):
 		await _wear_shots(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
@@ -984,7 +984,7 @@ func _landform_shots(g: ChunkGenerator) -> void:
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
 
-## Village houses weathered by their climate (ClimateWear): the mossiest, the coldest
+## Village houses weathered by their climate (ClimateWear, shots 100_wear_*): the mossiest, the coldest
 ## (at dawn, for the hoar frost) and the dustiest village near spawn, a yard seen at eye
 ## height, and the inside of the mossy one, which must stay clean.
 func _wear_shots(g: ChunkGenerator) -> void:
@@ -1005,7 +1005,7 @@ func _wear_shots(g: ChunkGenerator) -> void:
 					if want[k] > score[k]:
 						score[k] = want[k]
 						pick[k] = s
-	var names := ["96_wear_wet", "96_wear_cold", "96_wear_dry"]
+	var names := ["100_wear_wet", "100_wear_cold", "100_wear_dry"]
 	for k in 3:
 		if pick[k].is_empty():
 			continue
@@ -1022,7 +1022,7 @@ func _wear_shots(g: ChunkGenerator) -> void:
 			TownLife.frame_to_world(hp, hy, Vector2(0.0, 0.0)), 0.27 if k == 1 else 0.42, 1.7,
 			g.field.height(hp.x, hp.y) + 2.5)
 		if k == 0:
-			await _shot("96_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(0.4, 0.6)),
+			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(0.4, 0.6)),
 				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 1.6,
 				g.field.height(hp.x, hp.y) + 0.8)
 
