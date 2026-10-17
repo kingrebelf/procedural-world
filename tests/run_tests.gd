@@ -3939,6 +3939,14 @@ func test_town_life() -> void:
 		fs.get_chunk(k).data["objects"].append(fo)
 		var left := tl0._standing([tree, pile])
 		check(left.size() == 1 and left[0]["k"] == "barrels", "a foundation built 1.5 m from an orchard tree keeps it from being built")
+		# Built a little beyond the trunk, but under the crown: the leaves would reach in.
+		var reach := TownLife.crown_reach(tree)
+		check(reach > 1.0 and reach < TownLife.REACH_MAX, "an orchard tree's crown reaches out (%.1f m)" % reach)
+		fo["p"] = lp + Vector3(reach + 0.5, 0, 0)
+		check(tl0._standing([tree]).is_empty(), "a wall built under an orchard tree's crown keeps it from being built")
+		fo["p"] = lp + Vector3(reach + TownLife.PIECE_HALF + TownLife.TREE_CLEAR + 0.3, 0, 0)
+		check(tl0._standing([tree]).size() == 1, "one built clear of the crown leaves the tree standing")
+		fo["p"] = lp
 		var rev := TownLife._rev
 		TownLife.note_built(tp)
 		check(TownLife._rev == rev + 1 and tl0._seen != TownLife._rev, "a build is noted for the towns to stand aside")
