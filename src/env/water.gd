@@ -7,6 +7,8 @@ extends MeshInstance3D
 
 const LEVEL := 0.0
 const SIZE := 1600.0
+## How far the water sheet reaches from its middle (past the distant land's edge).
+const REACH := 5400.0
 const DEPTH_RES := 128
 const MAX_CURRENT := 1.9 ## m/s, fast mid-stream; you can still swim against it
 
@@ -25,11 +27,7 @@ static var _river_lookup: Callable
 static var _current_lookup: Callable
 
 func _ready() -> void:
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(SIZE, SIZE)
-	pm.subdivide_width = 200
-	pm.subdivide_depth = 200
-	mesh = pm
+	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
 	material_override = _mat
@@ -61,6 +59,46 @@ func _process(delta: float) -> void:
 	if _depth_timer <= 0.0 and streamer != null:
 		_depth_timer = 1.5
 		_update_depth()
+
+## The water sheet: 8 m squares across the middle SIZE metres, then squares growing
+## outwards to REACH, so the sea runs on to the horizon under the distant land (FarLand)
+## instead of ending in a square edge.
+static func _sheet() -> ArrayMesh:
+	var cs := PackedFloat32Array()
+	var step := SIZE / 200.0
+	var x := SIZE * 0.5
+	var outer := PackedFloat32Array()
+	while x < REACH:
+		step *= 1.12
+		x = minf(x + step, REACH)
+		outer.append(x)
+	for i in range(outer.size() - 1, -1, -1):
+		cs.append(-outer[i])
+	for i in 201:
+		cs.append(-SIZE * 0.5 + i * SIZE / 200.0)
+	cs.append_array(outer)
+	var n := cs.size()
+	var verts := PackedVector3Array()
+	verts.resize(n * n)
+	var norms := PackedVector3Array()
+	norms.resize(n * n)
+	for j in n:
+		for i in n:
+			verts[j * n + i] = Vector3(cs[i], 0.0, cs[j])
+			norms[j * n + i] = Vector3.UP
+	var idx := PackedInt32Array()
+	for j in n - 1:
+		for i in n - 1:
+			var a := j * n + i
+			idx.append_array([a, a + 1, a + n + 1, a, a + n + 1, a + n])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_INDEX] = idx
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return am
 
 ## Water depth map around the player (metres below sea level, 0 on land), so the shader
 ## can grow waves over deep water and calm them in the shallows.

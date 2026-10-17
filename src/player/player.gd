@@ -98,7 +98,8 @@ func _ready() -> void:
 	head.add_child(_arm)
 	camera = Camera3D.new()
 	camera.near = 0.05
-	camera.far = 2400.0
+	# Far enough for the distant land (FarLand) to fade into the haze, not be cut off.
+	camera.far = 6000.0
 	camera.current = true
 	_arm.add_child(camera)
 	ray = RayCast3D.new()

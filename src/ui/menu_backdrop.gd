@@ -50,9 +50,13 @@ func _ready() -> void:
 	water.atmosphere = atmosphere
 	water.streamer = streamer
 	add_child(water)
+	var far := FarLand.new()
+	far.target = _rig
+	far.streamer = streamer
+	add_child(far)
 	cam = Camera3D.new()
 	cam.fov = 62.0
-	cam.far = 2000.0
+	cam.far = 6000.0
 	_rig.add_child(cam)
 	cam.current = true
 

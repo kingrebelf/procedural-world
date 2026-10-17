@@ -55,6 +55,11 @@ func _ready() -> void:
 	water.atmosphere = atmosphere
 	water.streamer = streamer
 	add_child(water)
+	var far := FarLand.new()
+	far.name = "FarLand"
+	far.target = player
+	far.streamer = streamer
+	add_child(far)
 
 	npcs = NPCManager.new()
 	npcs.name = "People"
