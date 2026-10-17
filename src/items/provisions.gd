@@ -1068,18 +1068,7 @@ static func _food(k: MeshKit, t: String) -> Variant:
 	var I := Transform3D.IDENTITY
 	match t:
 		"apple":
-			var red := Color(0.62, 0.05, 0.06)
-			var gold := Color(0.86, 0.66, 0.2)
-			var col := func(p: Vector3, a: float, t2: float) -> Color:
-				# Red streaked over yellow, yellower round the base, a darker flush on top.
-				var streak := _nz(Vector3(cos(a) * 3.0, t2 * 0.6, sin(a) * 3.0), 2.5) * 0.5 + 0.5
-				var c := gold.lerp(red, clampf(streak * 1.3 + t2 * 0.4 - 0.2, 0.0, 1.0))
-				return c.darkened(0.15 * smoothstep(0.7, 1.0, t2)).lerp(Color(0.95, 0.85, 0.55), 0.6 if _nz(p, 900.0) > 0.55 else 0.0)
-			var lumpy := func(a: float, _t2: float, p: Vector3) -> float: return 1.0 + 0.03 * sin(a * 5.0 + 0.7) + 0.025 * _nz(p, 40.0)
-			lathe(k, "pv_skin", I, _curve([Vector2(0, 0.009), Vector2(0.008, 0.004), Vector2(0.02, 0.001), Vector2(0.034, 0.008), Vector2(0.0405, 0.026), Vector2(0.041, 0.043), Vector2(0.036, 0.062), Vector2(0.022, 0.072), Vector2(0.01, 0.07), Vector2(0, 0.063)], 4), 32, col, lumpy)
-			tube(k, "pv_wood", I, PackedVector3Array([Vector3(0, 0.062, 0), Vector3(0.001, 0.074, 0), Vector3(0.004, 0.085, 0.001)]), PackedFloat32Array([0.0022, 0.0018, 0.0016]), 6, Color(0.32, 0.22, 0.12))
-			leaf(k, Transform3D(Basis(Vector3.FORWARD, -1.0) * Basis(Vector3.UP, 0.4), Vector3(0.003, 0.078, 0)), 0.05, 0.024, Color(0.2, 0.42, 0.1), 0.25)
-			return Vector3(0, 0.035, 0)
+			return _apple(k, 32, 4, true)
 		"pear":
 			var col := func(p: Vector3, a: float, t2: float) -> Color:
 				var c := Color(0.72, 0.72, 0.24).lerp(Color(0.85, 0.75, 0.3), 0.5 + 0.5 * sin(a))
@@ -2142,18 +2131,33 @@ static func kit(name: String) -> Array:
 	_kits[name] = out
 	return out
 
+## An apple, `segs` round and `steps` per span of its profile. The ones heaped in a crate
+## or barrel are built coarser and without their leaf: their facets stay under a pixel
+## from the nearest a customer leans over a stall, and a stall holds about ninety of them.
+static func _apple(k: MeshKit, segs: int, steps: int, with_leaf: bool) -> Vector3:
+	var I := Transform3D.IDENTITY
+	var red := Color(0.62, 0.05, 0.06)
+	var gold := Color(0.86, 0.66, 0.2)
+	var col := func(p: Vector3, a: float, t2: float) -> Color:
+		# Red streaked over yellow, yellower round the base, a darker flush on top.
+		var streak := _nz(Vector3(cos(a) * 3.0, t2 * 0.6, sin(a) * 3.0), 2.5) * 0.5 + 0.5
+		var c := gold.lerp(red, clampf(streak * 1.3 + t2 * 0.4 - 0.2, 0.0, 1.0))
+		return c.darkened(0.15 * smoothstep(0.7, 1.0, t2)).lerp(Color(0.95, 0.85, 0.55), 0.6 if _nz(p, 900.0) > 0.55 else 0.0)
+	var lumpy := func(a: float, _t2: float, p: Vector3) -> float: return 1.0 + 0.03 * sin(a * 5.0 + 0.7) + 0.025 * _nz(p, 40.0)
+	lathe(k, "pv_skin", I, _curve([Vector2(0, 0.009), Vector2(0.008, 0.004), Vector2(0.02, 0.001), Vector2(0.034, 0.008), Vector2(0.0405, 0.026), Vector2(0.041, 0.043), Vector2(0.036, 0.062), Vector2(0.022, 0.072), Vector2(0.01, 0.07), Vector2(0, 0.063)], steps), segs, col, lumpy)
+	tube(k, "pv_wood", I, PackedVector3Array([Vector3(0, 0.062, 0), Vector3(0.001, 0.074, 0), Vector3(0.004, 0.085, 0.001)]), PackedFloat32Array([0.0022, 0.0018, 0.0016]), 6, Color(0.32, 0.22, 0.12))
+	if with_leaf:
+		leaf(k, Transform3D(Basis(Vector3.FORWARD, -1.0) * Basis(Vector3.UP, 0.4), Vector3(0.003, 0.078, 0)), 0.05, 0.024, Color(0.2, 0.42, 0.1), 0.25)
+	return Vector3(0, 0.035, 0)
+
 ## Apples heaped in an open barrel or laid in a farm crate, as [mesh, transform] pairs.
 static func _apples(name: String) -> Array:
 	var bare: ArrayMesh = _models.get("kit:apple")
 	if bare == null:
 		# The apple without its leaf: thirty leaves in a crate look like a salad.
-		bare = ArrayMesh.new()
-		var src := model("apple")
-		var leaf_mat := _mat("pv_leaf")
-		for s in src.get_surface_count():
-			if src.surface_get_material(s) != leaf_mat:
-				bare.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, src.surface_get_arrays(s))
-				bare.surface_set_material(bare.get_surface_count() - 1, src.surface_get_material(s))
+		var k := MeshKit.new(WHash.str_hash("apple") & 0xFFFF)
+		_apple(k, 24, 2, false)
+		bare = k.commit(_mat)
 		_models["kit:apple"] = bare
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.str_hash(name)
