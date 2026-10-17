@@ -71,9 +71,20 @@ func all_nodes() -> Array:
 func settlement_of(n: NPC) -> Dictionary:
 	return n.settlement
 
+## The key a town is kept under in `settlements` (a band of outlaws has its own).
+static func key_of(s: Dictionary) -> String:
+	return String(s["band"]) if s.has("band") else NPCGen.settlement_id(s["sx"], s["sz"])
+
+## Which kind of thing it is for the server's holders: a town ("t") or a band ("b").
+static func kind_of(s: Dictionary) -> String:
+	return "b" if s.has("band") else "t"
+
+func _key2(s: Dictionary) -> Vector2i:
+	return Vector2i(int(s["sx"]), int(s["sz"]))
+
 ## The generator's site record (center, era, size...) of the settlement n lives in.
 func site_of(n: NPC) -> Dictionary:
-	var e = settlements.get(NPCGen.settlement_id(n.settlement["sx"], n.settlement["sz"]))
+	var e = settlements.get(key_of(n.settlement))
 	if e != null:
 		return e["site"]
 	return gen.settlement_at(n.settlement["sx"], n.settlement["sz"])
@@ -89,7 +100,7 @@ func houses_changed(site: Dictionary) -> void:
 	e["decor"].refresh()
 
 func mark_dirty(s: Dictionary) -> void:
-	var e = settlements.get(NPCGen.settlement_id(s["sx"], s["sz"]))
+	var e = settlements.get(key_of(s))
 	if e != null:
 		e["dirty"] = true
 
@@ -108,6 +119,10 @@ func _scan() -> void:
 		if not Game.store.prefetch_settlement(site):
 			continue # on a server: its people are on their way
 		_load(site, id)
+	# Outlaws passing through (Bandits): now and then, out in the wilds.
+	for b in Bandits.near(gen, Vector2(p.x, p.z), LOAD_R, Game.day):
+		if not settlements.has(String(b["id"])):
+			_load_band(b)
 	for id in settlements.keys():
 		var e: Dictionary = settlements[id]
 		var c: Vector2 = e["data"]["center"]
@@ -133,13 +148,19 @@ func _load(site: Dictionary, id: String) -> void:
 	decor.setup(gen, streamer, site, data, Game.estates)
 	add_child(decor)
 	e["decor"] = decor
+	# Where the town's work is done, and the anvils and crates people work at.
+	e["places"] = NPCRoles.places(gen, site, data)
+	var props := WorkProps.new()
+	props.setup(NPCRoles.props(e["places"], data), _ground)
+	add_child(props)
+	e["props"] = props
 	var stale: bool = float(data.get("sim_day", -1.0)) < 0.0 or Game.day - float(data["sim_day"]) > 0.03
 	var hour := NPCMind.hour_now()
 	for rec in data["npcs"]:
 		if rec.get("dead", false):
 			continue
 		if stale:
-			_catch_up(rec, data, hour)
+			_catch_up(rec, data, hour, e["places"])
 		_arriving.append([id, rec])
 	# On a server: one player runs these people, the others see them (Net.holds).
 	Net.watch("t", [[Vector2i(int(site["sx"]), int(site["sz"])), site["center"]]], [])
@@ -164,12 +185,15 @@ func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 
 ## Whether this game runs the town's people (always, offline).
 func runs(e: Dictionary) -> bool:
-	return Net.holds("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
+	return Net.holds(kind_of(e["data"]), _key2(e["data"]))
 
 ## Where someone would be at this hour if they had been living their day unobserved.
-func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
+func _catch_up(rec: Dictionary, data: Dictionary, hour: float, places := {}) -> void:
 	var at: Vector2
-	if hour >= 21.5 or hour < 6.0:
+	var duty := NPCRoles.duty_at(rec, places, hour, now())
+	if not duty.is_empty():
+		at = duty["target"]
+	elif hour >= 21.5 or hour < 6.0:
 		at = rec["home"]
 	elif hour >= 8.0 and hour < 18.0 or (rec["job"] == "trader" or rec.has("shop_kind")) and hour >= 7.0 and hour < 20.0:
 		at = rec["work"]
@@ -183,6 +207,15 @@ func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
 func _unload(id: String) -> void:
 	var e: Dictionary = settlements[id]
 	var k := Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"]))
+	if e["data"].has("band"):
+		Net.watch("b", [], [k])
+		for n in e["nodes"]:
+			_by_id.erase(n.rec["id"])
+			n.queue_free()
+		if is_instance_valid(e.get("decor")):
+			e["decor"].queue_free()
+		settlements.erase(id)
+		return
 	if runs(e) or e["dirty"]:
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
@@ -195,13 +228,15 @@ func _unload(id: String) -> void:
 		n.queue_free()
 	if is_instance_valid(e.get("decor")):
 		e["decor"].queue_free()
+	if is_instance_valid(e.get("props")):
+		e["props"].queue_free()
 	settlements.erase(id)
 
 func save_all() -> void:
 	if Game.store == null:
 		return
 	for e in settlements.values():
-		if not runs(e) and not e["dirty"]:
+		if e["data"].has("band") or not runs(e) and not e["dirty"]:
 			continue
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
@@ -227,7 +262,7 @@ func _process(delta: float) -> void:
 	var out: Array = []
 	for e in settlements.values():
 		var held := runs(e)
-		var shared := send and held and Net.shared("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
+		var shared := send and held and Net.shared(kind_of(e["data"]), _key2(e["data"]))
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
@@ -245,14 +280,8 @@ func _process(delta: float) -> void:
 			n.step(delta, _ground, tp, e["nodes"])
 			if shared:
 				out.append(n.net_state())
-			if n.action == "attack" and n.attack_cd <= 0.0 and tp.distance_to(n.global_position) < 1.7:
-				n.attack_cd = 1.4
-				var dmg := (6.0 + float(n.rec["traits"]["brave"]) * 6.0) * NPCSocial.hit_mult(n.rec)
-				if int(tg[0]) != 0:
-					Net.hurt_player(int(tg[0]), dmg, "Killed by %s" % n.rec["name"], false)
-					continue
-				var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
-				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(ceilf(took))])
+			if n.action == "attack" and n.attack_cd <= 0.0 and not n.talking:
+				_strike(n, tg, tp)
 	if not out.is_empty():
 		Net.send_mobs("n", out)
 	_stealth_t -= delta
@@ -273,7 +302,7 @@ func _process(delta: float) -> void:
 	if _save_t >= SAVE_EVERY:
 		_save_t = 0.0
 		for e in settlements.values():
-			if e["dirty"]:
+			if e["dirty"] and not e["data"].has("band"):
 				if runs(e):
 					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
@@ -295,11 +324,14 @@ func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dict
 		"noise": float(absi(hash(n.rec["id"] + str(int(t / 20.0)))) % 1000) / 1000.0,
 		"player_dist": n.global_position.distance_to(pp), "player_pos": Vector2(pp.x, pp.z),
 		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t, "day": NPCMind.day_num(),
-		"wanted": wanted,
+		"wanted": wanted, "duty": NPCRoles.duty_at(n.rec, e.get("places", {}), NPCMind.hour_now(), t),
 	}
 
 func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	if n.talking:
+		return
+	if e["data"].has("band"):
+		_decide_bandit(n, e, pp, t)
 		return
 	var rec := n.rec
 	var per := perception(n, e, pp, t, peer)
@@ -311,6 +343,12 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	n.target = d.get("target", Vector2.INF)
 	n.target_player = d.has("target_player")
 	rec["_action"] = n.action
+	var duty: Dictionary = per["duty"]
+	n.duty = duty if n.action == "work" else {}
+	rec["_duty"] = String(duty.get("label", "")) if n.action in ["work", "sleep"] else ""
+	n.face_to = Vector2.INF
+	if n.action == "socialize":
+		_find_company(n, e, pp)
 	var dist: float = per["player_dist"]
 	if n.action != prev:
 		# Ambient performances end when the person moves on to something else.
@@ -351,6 +389,18 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		elif n.action == "sit":
 			n.act("sit", randf_range(20.0, 45.0))
 			n.ambient = true
+	# At work: a meal sat down, a tune in the square, a prayer now and then, and a word
+	# about it for anyone passing.
+	if n.action == "work" and not n.duty.is_empty() and n.at_work():
+		var perf := String(n.duty.get("perform", ""))
+		if perf != "" and not n.is_performing():
+			n.act(perf, randf_range(25.0, 50.0))
+			n.ambient = true
+		elif String(n.duty.get("gesture", "")) != "" and not n.is_performing() and randf() < 0.12:
+			n.act(String(n.duty["gesture"]))
+		if dist < 9.0 and now() > float(n.get_meta("bark_t", 0.0)) and randf() < 0.2:
+			n.set_meta("bark_t", now() + randf_range(50.0, 110.0))
+			_bark(n, NPCRoles.line(n.duty, absi(hash(String(rec["id"]) + str(int(t))))), dist)
 	# Chatting with neighbours comes with hands.
 	if n.action == "socialize" and not n.is_performing() and randf() < 0.18:
 		n.act(["nod", "shrug", "think", "point", "tilt", "shake_head", "clap", "hips"][randi() % 8])
@@ -361,6 +411,38 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	rec["energy"] = clampf(float(rec.get("energy", 1.0)) + (0.02 if sleeping else -0.002), 0.0, 1.0)
 	rec["social"] = clampf(float(rec.get("social", 0.5)) + (0.03 if n.action == "socialize" else -0.003), 0.0, 1.0)
 	e["dirty"] = true
+
+## Someone to chat with: another person of the town out socialising, met halfway and
+## faced. Now and then (when you are near enough to hear) one of them says something and
+## the other answers: town news, or the small talk of their trades.
+func _find_company(n: NPC, e: Dictionary, pp: Vector3) -> void:
+	var best: NPC = null
+	var bd := 30.0
+	for o in e["nodes"]:
+		if o == n or not is_instance_valid(o) or o.action != "socialize" or o.talking:
+			continue
+		var d: float = o.global_position.distance_to(n.global_position)
+		if d < bd:
+			bd = d
+			best = o
+	if best == null:
+		return
+	var me := Vector2(n.global_position.x, n.global_position.z)
+	var them := Vector2(best.global_position.x, best.global_position.z)
+	var away := (me - them).normalized() if me.distance_to(them) > 0.1 else Vector2(1, 0)
+	n.target = them + away * 1.3
+	n.face_to = them
+	if bd > 2.2 or n.global_position.distance_to(pp) > 16.0 or now() < float(n.get_meta("chat_t", 0.0)) or randf() > 0.25:
+		return
+	n.set_meta("chat_t", now() + randf_range(25.0, 60.0))
+	best.set_meta("chat_t", n.get_meta("chat_t"))
+	var pair := NPCRoles.chatter(n.rec, best.rec, e["data"], absi(hash(String(n.rec["id"]) + str(int(now())))))
+	n.say(pair[0], 4.0)
+	n.act(["nod", "shrug", "point", "think", "hips"][randi() % 5])
+	get_tree().create_timer(3.2, false).timeout.connect(func():
+		if is_instance_valid(best) and best.action == "socialize":
+			best.say(pair[1], 4.0)
+			best.act(["nod", "shake_head", "shrug", "clap"][randi() % 4]))
 
 ## A line said out loud: shown above their head, and spoken if passers-by have voices.
 func _bark(n: NPC, line: String, dist: float) -> void:
@@ -400,6 +482,14 @@ func _give_gift(n: NPC) -> void:
 func instruct(n: NPC, action: String, seconds: float) -> void:
 	if action == "none" or action == "":
 		return
+	if n.settlement.has("band"):
+		# Outlaws answer to their band, not to instructions: a fight or a rout.
+		if action == "attack":
+			_band_alert(_entry_of(n.settlement), n)
+		elif action == "flee":
+			n.rec["routed"] = true
+		n.decide_in = 0.0
+		return
 	if action == "stop_following":
 		_overrides.erase(n.rec["id"])
 		n.decide_in = 0.0
@@ -415,7 +505,7 @@ func _external_decide(pp: Vector3) -> void:
 	var batch: Array = []
 	var t := now()
 	for e in settlements.values():
-		if not runs(e):
+		if not runs(e) or e["data"].has("band"):
 			continue
 		for n in e["nodes"]:
 			if n.global_position.distance_to(pp) < 90.0 and not n.talking:
@@ -440,7 +530,7 @@ func _background_think(pp: Vector3) -> void:
 	var t := now()
 	var pick: NPC = null
 	for e in settlements.values():
-		if not runs(e):
+		if not runs(e) or e["data"].has("band"):
 			continue
 		for n in e["nodes"]:
 			if n.talking or n.is_hidden() or n.think_at > t:
@@ -480,10 +570,20 @@ func begin_talk(n: NPC) -> void:
 	n.rec["met"] = int(n.rec.get("met", 0)) + 1
 	if int(n.rec["met"]) == 1:
 		NPCMind.remember(n.rec, "Met a traveller for the first time.")
+	if n.settlement.has("band"):
+		# They hold off while you talk (pay, bargain or bluff).
+		var be := _entry_of(n.settlement)
+		if not be.is_empty() and float(be["demand_until"]) > 0.0:
+			be["demand_until"] = now() + 3600.0
+		return
 	Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
 	mark_dirty(n.settlement)
 
 func end_talk(n: NPC) -> void:
+	if is_instance_valid(n) and n.settlement.has("band"):
+		var be := _entry_of(n.settlement)
+		if not be.is_empty() and float(be["demand_until"]) > now():
+			be["demand_until"] = now() + 4.0 # walked off without paying: last chance
 	if is_instance_valid(n):
 		n.talking = false
 		_tell_talk(n, false)
@@ -497,8 +597,11 @@ func player_hit(n: NPC, damage: float) -> void:
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
 	var tk := Vector2i(int(s["sx"]), int(s["sz"]))
-	if not Net.holds("t", tk):
-		Net.hit_mob("n", tk, String(rec["id"]), damage, rec["hp"] <= 0.0) # whoever runs them feels it too
+	if not Net.holds(kind_of(s), tk):
+		Net.hit_mob("nb" if s.has("band") else "n", tk, String(rec["id"]), damage, rec["hp"] <= 0.0) # whoever runs them feels it too
+	if s.has("band"):
+		_bandit_hit(n, damage)
+		return
 	NPCMind.change_rel(rec, -35)
 	rec["mood"] = "angry" if float(rec["traits"]["brave"]) > 0.5 else "afraid"
 	var e0 := _entry_of(s)
@@ -523,7 +626,7 @@ func player_hit(n: NPC, damage: float) -> void:
 				NPCMind.change_rel(o, -40)
 				NPCMind.remember(o, "The traveller killed %s." % rec["name"])
 		Game.toast.emit("%s is dead" % rec["name"])
-		var e: Dictionary = settlements.get(NPCGen.settlement_id(s["sx"], s["sz"]), {})
+		var e: Dictionary = settlements.get(key_of(s), {})
 		if e.has("nodes"):
 			e["nodes"].erase(n)
 		_by_id.erase(rec["id"])
@@ -545,7 +648,7 @@ func player_hit(n: NPC, damage: float) -> void:
 func player_vandalised(pos: Vector3, what: String) -> void:
 	for e in settlements.values():
 		var s: Dictionary = e["data"]
-		if (s["center"] as Vector2).distance_to(Vector2(pos.x, pos.z)) > 60.0:
+		if s.has("band") or (s["center"] as Vector2).distance_to(Vector2(pos.x, pos.z)) > 60.0:
 			continue
 		for n in e["nodes"]:
 			if n.global_position.distance_to(pos) < 45.0:
@@ -581,13 +684,15 @@ func trader_stall(n: NPC) -> Array:
 # --- Crime and stealth ------------------------------------------------------------------------
 
 func _entry_of(s: Dictionary) -> Dictionary:
-	return settlements.get(NPCGen.settlement_id(s["sx"], s["sz"]), {})
+	return settlements.get(key_of(s), {})
 
 ## The settlement whose ground `pos` is on, while its people are loaded: its entry
 ## ({data, nodes, outer, sid}), or {}. Things there belong to its people.
 func town_at(pos: Vector3) -> Dictionary:
 	for e in settlements.values():
 		var c: Vector2 = e["data"]["center"]
+		if e["data"].has("band"):
+			continue
 		if c.distance_to(Vector2(pos.x, pos.z)) <= float(e.get("outer", 60.0)) + 4.0 and not e["nodes"].is_empty():
 			return e
 	return {}
@@ -647,8 +752,8 @@ func witnesses(pos: Vector3, extra: Array = []) -> Array:
 	if player == null:
 		return out
 	for n in all_nodes():
-		if out.has(n) or not is_instance_valid(n):
-			continue
+		if out.has(n) or not is_instance_valid(n) or n.settlement.has("band"):
+			continue # outlaws don't call the guard
 		if n.global_position.distance_to(pos) > 30.0:
 			continue
 		if randf() < awareness(n, player.global_position):
@@ -742,7 +847,7 @@ func bounty_for(n: NPC) -> int:
 
 ## Something one of the people you run said: players near see it too.
 func said(n: NPC, text: String, seconds: float) -> void:
-	if Net.is_client() and n.settlement.has("sx") and Net.holds("t", Vector2i(int(n.settlement["sx"]), int(n.settlement["sz"]))):
+	if Net.is_client() and n.settlement.has("sx") and Net.holds(kind_of(n.settlement), _key2(n.settlement)):
 		Net.send_mob_say(String(n.rec["id"]), text, seconds)
 
 func _on_mob_said(id: String, text: String, secs: float) -> void:
@@ -753,7 +858,7 @@ func _on_mob_said(id: String, text: String, secs: float) -> void:
 ## Another player hit one of the people you run. Their game counts the crime and, if the
 ## blow killed, the death and the body; here the person feels it at once.
 func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int) -> void:
-	if kind != "n":
+	if kind != "n" and kind != "nb":
 		return
 	var n = _by_id.get(id)
 	if n == null or not is_instance_valid(n):
@@ -765,6 +870,10 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 		_drop_node(n)
 		return
 	rec["hp"] = maxf(1.0, float(rec.get("hp", 100.0)) - dmg)
+	if n.settlement.has("band"):
+		var be := _entry_of(n.settlement)
+		if not be.is_empty():
+			_band_alert(be, n)
 	n.flash_hit()
 	n.say(NPCMind.bark(rec, "hurt"), 3.0)
 	n.decide_in = 0.0
@@ -773,7 +882,7 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 ## Talking with someone another player's game runs: they hold still for you there too.
 func _tell_talk(n: NPC, on: bool) -> void:
 	var k := Vector2i(int(n.settlement["sx"]), int(n.settlement["sz"]))
-	if not Net.holds("t", k):
+	if not Net.holds(kind_of(n.settlement), k):
 		n.talk_here = on
 		Net.talk_mob(k, String(n.rec["id"]), on)
 
@@ -802,3 +911,179 @@ func _on_town_pushed(sx: int, sz: int) -> void:
 	for rec in e["data"]["npcs"]:
 		if not rec.get("dead", false) and not _by_id.has(rec["id"]):
 			_add_node(e, rec)
+
+# --- Outlaws -----------------------------------------------------------------------------------
+
+var _band_kills: Dictionary = {} ## outlaws killed this session (also kept in their camp's chunk)
+
+func _camp_chunk(b: Dictionary) -> ChunkNode:
+	if streamer == null:
+		return null
+	var camp: Vector2 = b["camp"]
+	return streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(camp.x, 0, camp.y)))
+
+## A band (Bandits.band_at) comes near: its camp and whoever of them is still alive.
+func _load_band(b: Dictionary) -> void:
+	var cn := _camp_chunk(b)
+	if cn == null:
+		return # its camp's ground hasn't loaded yet
+	var dead: Dictionary = cn.data.get("bandits_dead", {})
+	var data := {"sx": b["cell"].x, "sz": b["cell"].y, "center": b["camp"], "name": b["name"], "npcs": [], "rumors": [],
+		"band": b["id"], "era": b["era"], "sim_day": Game.day}
+	for rec in b["members"]:
+		if dead.has(rec["id"]) or _band_kills.has(rec["id"]):
+			continue
+		var h: Vector2 = rec["home"]
+		rec["pos"] = Vector3(h.x, gen.field.height(h.x, h.y), h.y)
+		data["npcs"].append(rec)
+	var e := {"data": data, "nodes": [], "dirty": false, "site": {}, "band": b, "sid": "", "outer": 0.0,
+		"alert": false, "demand_until": 0.0, "let_go_until": 0.0, "paid": false, "shouted": false}
+	settlements[String(b["id"])] = e
+	if data["npcs"].is_empty():
+		return
+	var camp := BanditCamp.new()
+	camp.setup(b, _ground)
+	add_child(camp)
+	e["decor"] = camp
+	for rec in data["npcs"]:
+		var n := _add_node(e, rec)
+		n.keep_off = 11.0 if Bandits.ranged(rec) else 0.0
+	Net.watch("b", [[b["cell"], b["camp"]]], [])
+
+## The band's next moves: spotting you, demanding your purse, fighting, running, and
+## otherwise walking their loop by day and sitting round the fire by night.
+func _decide_bandit(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
+	var b: Dictionary = e["band"]
+	var rec := n.rec
+	var dist := n.global_position.distance_to(pp)
+	var hour := NPCMind.hour_now()
+	var sneaking: bool = player != null and player.has_method("sneaking") and player.sneaking()
+	# Spotting you: they must be able to see you, and be near enough (less by night or if
+	# you sneak).
+	if not e["alert"] and not e["paid"] and dist < Bandits.spot_range(hour, sneaking) and awareness(n, pp) > 0.12:
+		if t < float(e["let_go_until"]):
+			if dist < 10.0:
+				_band_alert(e, n) # told you to clear off
+		elif float(e["demand_until"]) <= 0.0:
+			e["demand_until"] = t + Bandits.DEMAND_SECS
+			var lines: Array = Bandits.DEMANDS[1 if int(b["era"]) == Eras.SCIFI else 0]
+			_bark(n, lines[randi() % lines.size()], dist)
+			n.act("point")
+			Game.toast.emit("%s demand a toll. Pay up (talk to them), back off, or fight." % ("Raiders" if int(b["era"]) == Eras.SCIFI else "Bandits"))
+	if float(e["demand_until"]) > 0.0 and t > float(e["demand_until"]) and not e["alert"] and not e["paid"]:
+		e["demand_until"] = 0.0
+		if dist < Bandits.LEAVE_R:
+			_band_alert(e, n)
+		else:
+			e["let_go_until"] = t + 90.0
+			_bark(n, ["And stay gone!", "That's right, keep walking.", "Smart."][randi() % 3], dist)
+	var state := {"camp": b["camp"], "route": b["route"], "cell": b["cell"], "id": b["id"], "alert": e["alert"], "demand_until": e["demand_until"]}
+	for o in e["nodes"]:
+		if is_instance_valid(o) and String(o.rec["id"]).ends_with("_0") and o != n:
+			state["leader"] = Vector2(o.global_position.x, o.global_position.z)
+	var per := {"hour": hour, "pos": Vector2(n.global_position.x, n.global_position.z), "player_dist": dist,
+		"player_pos": Vector2(pp.x, pp.z), "now": t, "band": state}
+	var d := Bandits.decide(rec, per)
+	var prev := n.action
+	n.action = d["action"]
+	n.target = d.get("target", Vector2.INF)
+	n.target_player = d.has("target_player")
+	if n.action != prev:
+		if n.ambient and n.is_performing():
+			n.stop_perform()
+		if n.action == "flee":
+			_bark(n, Bandits.FLEE_LINES[randi() % Bandits.FLEE_LINES.size()], dist)
+	if d.has("camp") and not n.is_performing() and Vector2(n.global_position.x, n.global_position.z).distance_to(n.target) < 1.6:
+		n.act("sit", randf_range(40.0, 90.0))
+		n.ambient = true
+
+## The whole band turns on you.
+func _band_alert(e: Dictionary, by: NPC) -> void:
+	if e["alert"]:
+		return
+	e["alert"] = true
+	e["paid"] = false
+	e["demand_until"] = 0.0
+	var lines: Array = Bandits.ATTACK_LINES[1 if int(e["band"]["era"]) == Eras.SCIFI else 0]
+	if is_instance_valid(by) and player:
+		_bark(by, lines[randi() % lines.size()], by.global_position.distance_to(player.global_position))
+	for o in e["nodes"]:
+		if is_instance_valid(o):
+			o.decide_in = 0.0
+
+## You paid a band's toll (in a conversation): they leave you be.
+func pay_toll(n: NPC) -> int:
+	var e := _entry_of(n.settlement)
+	if e.is_empty() or not e.has("band") or e["alert"]:
+		return -1
+	var amt := Bandits.toll(Game.money, int(e["band"]["zone"]))
+	if amt <= 0:
+		return 0
+	Game.add_money(-amt)
+	NPCSocial.ensure(n.rec)
+	n.rec["purse"] = int(n.rec["purse"]) + amt
+	e["paid"] = true
+	e["demand_until"] = 0.0
+	_bark(n, Bandits.PAID_LINES[randi() % Bandits.PAID_LINES.size()], 2.0)
+	return amt
+
+## A blow from you (or anyone) or your shot: the band fights, and the dead stay dead.
+func _bandit_hit(n: NPC, _damage: float) -> void:
+	var rec := n.rec
+	var e := _entry_of(n.settlement)
+	if not e.is_empty():
+		_band_alert(e, n)
+	if float(rec["hp"]) > 0.0:
+		n.say(NPCMind.bark(rec, "hurt"), 2.5)
+		n.decide_in = 0.0
+		return
+	rec["dead"] = true
+	rec["hp"] = 0.0
+	_band_kills[rec["id"]] = true
+	if not e.is_empty():
+		var cn := _camp_chunk(e["band"])
+		if cn != null:
+			if not cn.data.has("bandits_dead"):
+				cn.data["bandits_dead"] = {}
+			cn.data["bandits_dead"][rec["id"]] = Game.day
+			Game.mark_chunk_dirty(cn.data)
+		e["nodes"].erase(n)
+	_by_id.erase(rec["id"])
+	Game.add_xp(20.0 + 6.0 * NPCSocial.level(rec), "Outlaw slain")
+	Game.toast.emit("%s is dead" % rec["name"])
+	if not e.is_empty() and e["nodes"].is_empty():
+		Game.add_xp(40.0 + 10.0 * float(e["band"]["zone"]), "Broke a %s" % String(e["band"]["name"]).to_lower())
+	if corpses:
+		corpses.add_person(n)
+	n.queue_free()
+
+## Someone out to hurt the player at `tp` strikes when they can: a blow up close, or for
+## an outlaw with a bow, sling or gun, a shot from range when they can see you.
+func _strike(n: NPC, tg: Array, tp: Vector3) -> void:
+	var d := tp.distance_to(n.global_position)
+	var shoots := n.settlement.has("band") and Bandits.ranged(n.rec)
+	var dmg := (6.0 + float(n.rec["traits"]["brave"]) * 6.0) * NPCSocial.hit_mult(n.rec)
+	if shoots and d > 2.0:
+		if d > 20.0:
+			return
+		var eye := n.global_position + Vector3(0, 1.5, 0)
+		var q := PhysicsRayQueryParameters3D.create(eye, tp + Vector3(0, 1.2, 0), 1)
+		if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			return
+		n.attack_cd = 2.4
+		n.strike(true)
+		if randf() > clampf(1.0 - d / 28.0, 0.35, 0.85):
+			return # missed
+		dmg *= 0.8
+	else:
+		if d >= 1.7:
+			return
+		n.attack_cd = 1.4
+		if n.settlement.has("band"):
+			n.strike(false)
+	var verb := "shoots" if shoots and d > 2.0 else "hits"
+	if int(tg[0]) != 0:
+		Net.hurt_player(int(tg[0]), dmg, "Killed by %s" % n.rec["name"], false)
+		return
+	var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
+	Game.toast.emit("%s %s you (-%d)" % [n.rec["name"].split(" ")[0], verb, int(ceilf(took))])

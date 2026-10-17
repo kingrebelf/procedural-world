@@ -309,6 +309,14 @@ func _act(action: String, d: Dictionary = {}) -> void:
 			manager.mark_dirty(npc.settlement)
 		"ask_repay":
 			npc.act("beckon")
+		"pay_toll":
+			var paid: int = manager.pay_toll(npc)
+			if paid > 0:
+				npc.act("hand_over")
+				Game.toast.emit("You paid %s %d Marks" % [first, paid])
+				_add_line("", "(You hand over %d Marks. They let you pass.)" % paid, UITheme.DIM)
+			elif paid == 0:
+				_add_line("", "(You have nothing to give.)", UITheme.DIM)
 		"trade":
 			_open_trade()
 		"join_guild":

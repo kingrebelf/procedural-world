@@ -970,6 +970,120 @@ func test_decision_engine() -> void:
 	for a in DecisionEngine.ACTIONS:
 		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront", "dance", "sit"] , "action known: " + a)
 
+func test_npc_roles() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var site: Dictionary = fx[1]
+	var s := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	var pl := NPCRoles.places(gen, site, s)
+	check(not (pl["gates"] as Array).is_empty() and not (pl["rounds"] as Array).is_empty(), "a town has gates and a guard's round")
+	for job in NPCRoles.ROUTINES:
+		for b in NPCRoles.ROUTINES[job]:
+			check(b[2] == "sleep" or NPCRoles.DUTIES.has(b[2]), "routine duty exists: %s %s" % [job, b[2]])
+	var f: Dictionary = s["npcs"][2].duplicate(true)
+	f["job"] = "farmer"
+	f["traits"]["diligent"] = 0.5
+	var d := NPCRoles.duty_at(f, pl, 9.0, 100.0)
+	check(d.get("duty", "") == "till", "a farmer is in the fields mid-morning (%s)" % d.get("duty", ""))
+	check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
+	check(NPCRoles.duty_at(f, pl, 9.0, 100.0)["target"] == d["target"], "the same stop at the same moment")
+	check(NPCRoles.duty_at(f, pl, 23.0, 100.0).is_empty(), "evenings are their own")
+	var per := {"hour": 9.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0, "duty": d}
+	var r := DecisionEngine.decide(f, per)
+	check(r["action"] == "work" and r["target"] == d["target"], "the routine drives their work (%s)" % r["action"])
+	var g: Dictionary = s["npcs"][1].duplicate(true)
+	g["job"] = "guard"
+	g["era"] = 0
+	g["id"] = "x_y_7"
+	var watch := false
+	for i in 30:
+		g["id"] = "x_y_%d" % (i + 2)
+		if NPCRoles.night_watch(g):
+			watch = true
+			break
+	check(watch, "some guards keep the night watch")
+	var nd := NPCRoles.duty_at(g, pl, 2.0, 0.0)
+	check(nd.get("duty", "") == "night_watch", "the night watch is out at 2am")
+	per["hour"] = 2.0
+	per["duty"] = nd
+	check(DecisionEngine.decide(g, per)["action"] == "work", "and awake")
+	per["hour"] = 11.0
+	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
+	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
+	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	# A weaponsmith keeps a forge outside the shop door for part of the day.
+	var shop := {}
+	for h in TownShops.shops_of(gen, site):
+		shop = h
+	if not shop.is_empty():
+		var ws: Dictionary = f.duplicate(true)
+		ws["shop_kind"] = "weaponsmith"
+		ws["shop_i"] = int(shop["i"])
+		var wd := NPCRoles.duty_at(ws, pl, 10.0, 0.0)
+		check(wd.get("duty", "") == "smithy" and (wd["target"] as Vector2).distance_to(TownShops.door_point(shop)) < 4.0, "a weaponsmith works a forge by the shop door (%s)" % wd.get("duty", ""))
+		check(NPCRoles.duty_at(ws, pl, 12.5, 0.0).is_empty(), "and keeps the counter the rest of the day")
+		var forge := false
+		for pr in NPCRoles.props(pl, {"npcs": [ws]}):
+			forge = forge or pr[0] == NPCRoles.PROPS["forge"]
+		check(forge, "with an anvil set out there")
+	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
+
+func test_bandits() -> void:
+	var gen := ChunkGenerator.new(777)
+	var was := Eras.theme
+	Eras.theme = "human"
+	var bands: Array = []
+	for day in 6:
+		bands.append_array(Bandits.near(gen, Vector2.ZERO, 3000.0, float(day)))
+	check(not bands.is_empty(), "bands roam the land (%d over six days)" % bands.size())
+	var cells := 0
+	for cz in range(-5, 5):
+		for cx in range(-5, 5):
+			cells += 1
+	check(bands.size() < cells * 6 / 2, "but only now and then (%d)" % bands.size())
+	var ok_spawn := true
+	var ok_towns := true
+	for b in bands:
+		var camp: Vector2 = b["camp"]
+		if camp.length() < Bandits.SAFE_R:
+			ok_spawn = false
+		for st in gen.settlements_near(camp.x - 200.0, camp.y - 200.0, camp.x + 200.0, camp.y + 200.0):
+			if (st["center"] as Vector2).distance_to(camp) < float(st["outer"]) + Bandits.TOWN_CLEAR:
+				ok_towns = false
+	check(ok_spawn, "no band camps near where you arrive")
+	check(ok_towns, "no band camps by a town")
+	var b: Dictionary = bands[0]
+	var again := Bandits.band_at(gen, b["cell"].x, b["cell"].y, int(String(b["id"]).get_slice("_", 2)))
+	check(var_to_bytes(again["members"]) == var_to_bytes(b["members"]), "the same band for everyone")
+	var m: Dictionary = b["members"][0]
+	check(m.has("band") and m["held"] is Dictionary and ItemDB.has(String(m["held"]["type"])), "outlaws are armed (%s)" % m["held"]["type"])
+	check(int(m["level"]) >= 1 and float(m["hp"]) >= 100.0, "and levelled by zone")
+	var near_spawn := Bandits.tier(Eras.MEDIEVAL, 3)
+	check(near_spawn == "low" and Bandits.tier(Eras.SCIFI, 30) == "raider", "poor cutthroats near spawn, raiders out on the frontier")
+	var state := {"camp": b["camp"], "route": b["route"], "cell": b["cell"], "id": b["id"], "alert": false, "demand_until": 0.0}
+	var per := {"hour": 12.0, "pos": b["camp"], "player_dist": 100.0, "player_pos": Vector2.ZERO, "now": 10.0, "band": state}
+	check(Bandits.decide(m, per)["action"] == "wander", "by day the band walks its loop")
+	per["hour"] = 23.0
+	var m2: Dictionary = b["members"][b["members"].size() - 1]
+	var na: String = Bandits.decide(m2, per)["action"]
+	check(na in ["sit", "idle"], "by night they sit round the fire or keep watch (%s)" % na)
+	per["hour"] = 12.0
+	state["demand_until"] = 20.0
+	per["player_dist"] = 6.0
+	check(Bandits.decide(m, per)["action"] == "confront", "they stop you and demand a toll")
+	state["alert"] = true
+	check(Bandits.decide(m, per)["action"] == "attack", "and fight if you won't pay")
+	var coward: Dictionary = m.duplicate(true)
+	coward["traits"]["brave"] = 0.2
+	coward["hp"] = 10.0
+	check(Bandits.decide(coward, per)["action"] == "flee", "badly hurt, a coward runs")
+	check(Bandits.toll(100, 1) >= 13 and Bandits.toll(5, 1) == 5, "the toll is a share of your purse")
+	var r := NPCMind.builtin_reply(m, {"name": "Bandit band", "npcs": b["members"], "rumors": []}, "Fine, I'll pay")
+	check(r["action"] == "pay_toll", "you can pay them off")
+	Eras.theme = "alien"
+	check(Bandits.near(gen, Vector2.ZERO, 3000.0, 0.0).is_empty(), "no bandits on alien worlds")
+	Eras.theme = was
+
 func test_npc_memory_and_replies() -> void:
 	var fx := _npc_fixture()
 	var gen: ChunkGenerator = fx[0]
