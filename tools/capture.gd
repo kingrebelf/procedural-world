@@ -468,7 +468,7 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
@@ -784,7 +784,7 @@ func _ground_shots(g: ChunkGenerator) -> void:
 			# front, and stays level behind for the camera.
 			for k in 16:
 				var d := Vector2.from_angle(k * TAU / 16.0)
-				var side := d.orthogonal()
+				var side: Vector2 = d.orthogonal()
 				var wall := true
 				for o: float in [-12.0, 0.0, 12.0]:
 					var q: Vector2 = p + side * o
@@ -1014,6 +1014,32 @@ func _climate_shots(g: ChunkGenerator) -> void:
 		print("climate shot ", shot, " at ", best, " ", g.field.region_name_at(best.x, best.y))
 		var cam := best + Vector2(-60, -35)
 		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
+	if only.is_empty() or only.has("96"):
+		await _border_shot(g)
+
+## Where two regions of different climate meet near the spawn, looking across the band
+## they blend over (WorldField.BLEND): the trees and ground should change gradually.
+func _border_shot(g: ChunkGenerator) -> void:
+	for r in range(256, 6000, 64):
+		for k in 48:
+			var a := TAU * k / 48.0
+			var p := Vector2(cos(a), sin(a)) * r
+			var b: Array = g.field.region_blend(p.x, p.y)
+			if float(b[2]) < 0.45 or not _low_ground(g, p):
+				continue
+			var c0 := WorldField.region_climate(int(b[0]))
+			var c1 := WorldField.region_climate(int(b[1]))
+			if c0.x < 0 or c0.x == c1.x:
+				continue
+			for d: Vector2 in [Vector2(90, 0), Vector2(0, 90), Vector2(64, 64), Vector2(64, -64)]:
+				var h0 := g.field.region_hash_at(p.x - d.x, p.y - d.y)
+				var h1 := g.field.region_hash_at(p.x + d.x, p.y + d.y)
+				if h0 != h1 and _low_ground(g, p - d) and _low_ground(g, p + d):
+					var side: Vector2 = d.orthogonal().normalized() * 70.0
+					print("border shot at ", p, " climates ", c0, " ", c1)
+					await _shot("96_biome_border", p + side, p - side, 0.42, 6.0)
+					return
+	print("no climate border found")
 
 func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
 	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))

@@ -5,13 +5,16 @@ class_name Power
 ##   role:   gen (makes power), store (holds it), use (draws it), node (a pole or junction
 ##           cables meet at), switch (passes power only while closed).
 ##   watts:  most a generator makes / what a consumer draws, in W.
-##   source: fuel (burns what is in its fuel store), wind, sun.
+##   source: fuel (burns what is in its fuel store), wind, sun, water (a wheel in running
+##           water: full output, or none on dry ground).
 ##   fuel:   item id -> seconds it runs at full output.
 ##   store / rate: a battery's size in Wh and how fast it charges or discharges, in W.
 ##   prio:   consumers brown out lowest first when there isn't enough (0 lights,
 ##           1 machines, 2 defences).
 ##   term:   where cables meet the piece, in its own space.
 ##   lamp:   {pos, range, energy, color, spot (cone degrees, 0 = all round)}.
+##   logic:  its part in the logic layer (see Signals); "logic" is also a role of its own,
+##           for levers, sensors and gates, which take no power and join no network.
 ## The state of each piece lives in its chunk object's `st`, saved with the chunk:
 ##   pw (Array of piece ids it is cabled to), on (bool: switched on / closed),
 ##   fuel (seconds left at full output), charge (Wh), pt (Game.day it was last run).
@@ -61,6 +64,11 @@ static func init_state(id: String, st: Dictionary) -> void:
 		st["fuel"] = 0.0
 	if s.has("store"):
 		st["charge"] = 0.0
+	if s.has("logic"):
+		st["si"] = []
+		st["so"] = []
+		if String(s["logic"].get("kind", "")) == "lever":
+			st["on"] = false
 
 static func links(o: Dictionary) -> Array:
 	return o["st"].get("pw", [])
@@ -148,20 +156,24 @@ static func solve(entries: Array, env: Dictionary, dt: float) -> Dictionary:
 		var s := spec(o)
 		var out := {"out": 0.0, "draw": 0.0, "powered": false, "flow": 0.0}
 		res["pieces"][e["id"]] = out
+		# Switched on, and (when a signal wire runs into it) told to run.
+		var runs := is_on(o) and bool(e.get("en", true))
 		match String(s.get("role", "")):
 			"gen":
 				var rated := float(s.get("watts", 0.0))
 				var src := String(s.get("source", ""))
 				if src == "fuel":
 					# An engine runs at whatever share of its rating the network takes.
-					if is_on(o) and float(o["st"].get("fuel", 0.0)) > 0.0:
+					if runs and float(o["st"].get("fuel", 0.0)) > 0.0:
 						fuel_gens.append([e, rated, out])
 						fuel_w += rated
 				else:
 					var w := 0.0
-					if is_on(o):
+					if runs:
 						if src == "wind":
 							w = rated * wind_curve(float(env.get("wind", 0.0))) * float(e.get("f", 1.0))
+						elif src == "water":
+							w = rated * float(e.get("f", 0.0))
 						elif src == "sun":
 							w = rated * float(e.get("f", 1.0)) * (1.0 - 0.75 * float(env.get("cloud", 0.0)))
 					out["out"] = w
@@ -172,7 +184,7 @@ static func solve(entries: Array, env: Dictionary, dt: float) -> Dictionary:
 				res["stored"] += float(o["st"].get("charge", 0.0))
 				res["capacity"] += float(s.get("store", 0.0))
 			"use":
-				var d := float(s.get("watts", 0.0)) if is_on(o) else 0.0
+				var d := float(s.get("watts", 0.0)) if runs else 0.0
 				out["draw"] = d
 				if d > 0.0:
 					users.append([e, s, out, d])
@@ -304,3 +316,9 @@ static func run_time(seconds: float) -> String:
 	if mins >= 60:
 		return "%d h %02d min" % [mins / 60, mins % 60]
 	return "%d min" % mins
+
+## Where signal wires meet the piece, in world space ("sterm", else where cables do).
+static func signal_terminal(o: Dictionary, origin: Vector3) -> Vector3:
+	var s := spec(o)
+	var t: Vector3 = s.get("sterm", s.get("term", Vector3(0, 0.5, 0)))
+	return origin + o["p"] + Basis(Vector3.UP, float(o["r"])) * t

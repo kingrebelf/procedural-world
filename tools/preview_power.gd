@@ -97,11 +97,55 @@ func _run() -> void:
 			rotor.rotation.z = 0.3
 			head.add_child(rotor)
 			box = box.merge(AABB(Vector3(-3.3, 4.8, -2.5), Vector3(6.6, 6.6, 4.0)))
-		if s.get("role", "") == "switch":
+		var bl: Dictionary = s.get("blade", {})
+		if bl.is_empty() and s.get("role", "") == "switch" and not s.has("logic"):
+			bl = {"part": "switch_blade", "pos": Vector3(0, -0.1, 0.07), "on": 0.0}
+		if not bl.is_empty():
 			var blade := MeshInstance3D.new()
-			blade.mesh = PowerKit.part("switch_blade")
-			blade.position = Vector3(0, -0.1, 0.07)
+			blade.mesh = PowerKit.part(String(bl["part"]))
+			blade.position = bl["pos"]
+			if bl.has("push"):
+				blade.position += bl["push"]
+			else:
+				blade.rotation.x = float(bl.get("on", 0.0))
 			root.add_child(blade)
+		var df: Dictionary = s.get("defence", {})
+		var tip: Node3D = null
+		if df.has("head"):
+			var turn := Node3D.new()
+			turn.position = df["head"]
+			turn.rotation.y = 0.5
+			if df.has("head_part"):
+				var hm := MeshInstance3D.new()
+				hm.mesh = PowerKit.part(String(df["head_part"]))
+				turn.add_child(hm)
+			tip = Node3D.new()
+			tip.position = df.get("tip_at", Vector3.ZERO)
+			tip.rotation.x = 0.12
+			var gm := MeshInstance3D.new()
+			gm.mesh = PowerKit.part(String(df["gun_part"]))
+			tip.add_child(gm)
+			turn.add_child(tip)
+			root.add_child(turn)
+			box = box.merge(AABB(Vector3(-0.6, 0.0, -1.5), Vector3(1.2, float((df["head"] as Vector3).y) + 0.8, 2.0)))
+		var au: Dictionary = s.get("auto", {})
+		var spn: Dictionary = au.get("spin", s.get("spin", {}))
+		if not spn.is_empty():
+			var smi := MeshInstance3D.new()
+			smi.mesh = PowerKit.part(String(spn["part"]))
+			smi.position = spn["pos"]
+			root.add_child(smi)
+		if au.has("arm"):
+			var ami := MeshInstance3D.new()
+			ami.mesh = PowerKit.part("robot_arm")
+			ami.position = au["arm"]
+			ami.rotation.y = 0.8
+			root.add_child(ami)
+		if df.has("clapper"):
+			var cm := MeshInstance3D.new()
+			cm.mesh = PowerKit.part("bell_clapper")
+			cm.position = df["clapper"]
+			root.add_child(cm)
 		var light: Light3D = null
 		var bulb_mat: StandardMaterial3D = null
 		if s.has("lamp"):
@@ -116,24 +160,29 @@ func _run() -> void:
 			bulb_mat.emission = l.get("color", Color(1, 0.8, 0.6))
 			bulb_mat.emission_energy_multiplier = 0.0
 			bulb.material_override = bulb_mat
-			root.add_child(bulb)
+			bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # as PowerNode has it
+			(tip if tip != null else root).add_child(bulb)
 			if float(l.get("spot", 0.0)) > 0.0:
 				var sp := SpotLight3D.new()
 				sp.spot_range = float(l["range"])
 				sp.spot_angle = float(l["spot"])
 				sp.rotation.x = deg_to_rad(float(l.get("aim", 0.0)))
+				sp.spot_attenuation = 0.9
+				sp.spot_angle_attenuation = 1.6
+				bulb.rotation.x = sp.rotation.x
 				light = sp
 			else:
 				var om := OmniLight3D.new()
 				om.omni_range = float(l["range"])
-				om.omni_attenuation = 1.4
+				om.omni_attenuation = float(l.get("atten", 1.4))
+				om.light_size = float(l.get("soft", 0.12))
 				light = om
 			light.light_color = l.get("color", Color(1, 0.8, 0.6))
 			light.light_energy = float(l["energy"])
 			light.shadow_enabled = true
 			light.position = l.get("light_at", l["pos"])
 			light.visible = false
-			root.add_child(light)
+			(tip if tip != null else root).add_child(light)
 		var c := root.position + box.get_center()
 		var r := box.size.length() * 0.5
 		var dist := r / tan(deg_to_rad(cam.fov * 0.5)) * 1.05
@@ -141,6 +190,17 @@ func _run() -> void:
 		var view := Vector3(0.45, 0.35, -1.0) if mount == "" else Vector3(0.5, 0.25, 1.0)
 		if mount == "ceiling":
 			view = Vector3(0.5, -0.15, 1.0)
+			if s.has("lamp"):
+				# Back and level, framing it and the pool it throws on the floor below.
+				view = Vector3(0.5, 0.1, 1.0)
+				dist *= 3.2
+				c += Vector3(0, -1.1, 0)
+		if float(s.get("lamp", {}).get("spot", 0.0)) > 0.0:
+			# From above and back, to see the pool it throws on the ground ahead.
+			view = Vector3(0.6, 0.9, -1.0)
+			dist *= 1.9
+		if s.get("source", "") == "sun":
+			view = Vector3(0.45, 0.6, 1.0) # its cells face its local +z
 		cam.position = c + view.normalized() * maxf(dist, 1.2)
 		cam.look_at(c)
 		cam.near = 0.02

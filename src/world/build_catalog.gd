@@ -26,17 +26,17 @@ const PIECES := {
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 14.0, "era": 0},
 	"floor_wood": {"name": "Wooden Floor", "models": [["village/Floor_WoodDark", 0, Vector3.ZERO, 1.0]],
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 6.0, "era": 0},
-	"wall_plaster": {"name": "Timber Wall", "models": [["village/Wall_Plaster_Straight", 0, Vector3.ZERO, 1.0]],
+	"wall_plaster": {"name": "Timber Wall", "models": [["village/Wall_Plaster_Straight", 0, Vector3.ZERO, 1.0]], "proc": "trim_wall",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]],
+	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]], "proc": "trim_wall",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
+	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]], "proc": "trim_window",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]], "proc": "trim_window",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]], "proc": "trim_door",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]], "proc": "trim_door",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"stairs_wood": {"name": "Wooden Stairs", "models": [["village/Stair_Interior_Solid", 0, Vector3(0, 0, 0.694), Vector3(1, 1.03, 0.8493)]],
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 8.0, "era": 0, "ramp": true, "foot": 0},
@@ -170,16 +170,106 @@ const PIECES := {
 		"power": {"role": "switch", "links": 4, "term": Vector3(0.0, -0.2, 0.03)}},
 	"lamp_ceiling": {"name": "Ceiling Lamp", "models": [], "proc": "pw_lamp_ceiling", "snap": "free", "mount": "ceiling", "mat": "metal", "hp": 4.0, "era": -1,
 		"power": {"role": "use", "watts": 60.0, "prio": 0, "term": Vector3(0.0, -0.02, 0.0),
-			"lamp": {"part": "bulb", "pos": Vector3(0, -0.72, 0), "range": 10.0, "energy": 2.2, "color": Color(1.0, 0.8, 0.58)}}},
+			"lamp": {"part": "bulb", "pos": Vector3(0, -0.3, 0), "light_at": Vector3(0, -0.36, 0), "range": 10.0, "energy": 2.6, "atten": 0.9, "color": Color(1.0, 0.8, 0.58)}}},
 	"lamp_wall": {"name": "Bulkhead Lamp", "models": [], "proc": "pw_lamp_wall", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
 		"power": {"role": "use", "watts": 40.0, "prio": 0, "term": Vector3(0.0, -0.06, 0.02),
-			"lamp": {"part": "globe", "pos": Vector3(0, 0.1, 0.2), "range": 8.0, "energy": 1.2, "color": Color(1.0, 0.8, 0.6)}}},
+			"lamp": {"part": "globe", "pos": Vector3(0, 0.1, 0.2), "soft": 0.3, "range": 8.0, "energy": 1.2, "color": Color(1.0, 0.8, 0.6)}}},
 	"floodlight": {"name": "Floodlight", "models": [], "proc": "pw_flood", "snap": "free", "mat": "metal", "hp": 10.0, "era": -1,
 		"power": {"role": "use", "watts": 300.0, "prio": 0, "term": Vector3(0.0, 1.3, 0.0),
-			"lamp": {"part": "flood_lens", "pos": Vector3(0, 1.72, -0.18), "aim": -15.0, "spot": 34.0, "range": 34.0, "energy": 6.0, "color": Color(1.0, 0.9, 0.78)}}},
+			"lamp": {"part": "flood_lens", "pos": Vector3(0, 1.636, -0.159), "light_at": Vector3(0, 1.579, -0.265), "aim": -28.0, "spot": 34.0, "range": 34.0, "energy": 9.0, "color": Color(1.0, 0.9, 0.78)}}},
 	"street_lamp": {"name": "Street Lamp", "models": [], "proc": "pw_street", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1,
 		"power": {"role": "use", "watts": 100.0, "prio": 0, "term": Vector3(0.0, 2.9, 0.0),
 			"lamp": {"part": "street_glass", "pos": Vector3(0, 3.0, -0.5), "light_at": Vector3(0, 3.12, -0.5), "range": 15.0, "energy": 2.6, "color": Color(1.0, 0.82, 0.6)}}},
+	# The logic layer (Signals): pieces that make, work on and act on a signal. Levers,
+	# sensors and gates take no power; a relay switches it, a door motor draws it.
+	"lever": {"name": "Lever", "models": [], "proc": "pw_lever", "snap": "free", "mount": "wall", "mat": "metal", "hp": 6.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.16, 0.03), "logic": {"kind": "lever", "out": true, "in": 0},
+			"blade": {"part": "lever_arm", "pos": Vector3(0, 0.02, 0.06), "on": 0.75, "off": 2.39}}},
+	"push_button": {"name": "Push Button", "models": [], "proc": "pw_button", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.08, 0.03), "logic": {"kind": "button", "out": true, "in": 0},
+			"blade": {"part": "button_cap", "pos": Vector3(0, 0, 0.055), "push": Vector3(0, 0, -0.014)}}},
+	"pressure_plate": {"name": "Pressure Plate", "models": [], "proc": "pw_plate", "snap": "free", "mat": "metal", "hp": 10.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, 0.03, -0.42), "logic": {"kind": "plate", "out": true, "in": 0},
+			"blade": {"part": "plate_top", "pos": Vector3(0, 0.05, 0), "push": Vector3(0, -0.018, 0)}}},
+	"motion_sensor": {"name": "Motion Sensor", "models": [], "proc": "pw_motion", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.08, 0.03), "logic": {"kind": "motion", "out": true, "in": 0}}},
+	"daylight_sensor": {"name": "Daylight Sensor", "models": [], "proc": "pw_daylight", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.08, 0.03), "logic": {"kind": "daylight", "out": true, "in": 0}}},
+	"logic_timer": {"name": "Timer", "models": [], "proc": "pw_timer", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.15, 0.04), "logic": {"kind": "timer", "out": true, "in": 0}}},
+	"logic_clock": {"name": "Time Switch", "models": [], "proc": "pw_clock", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.17, 0.04), "logic": {"kind": "clock", "out": true, "in": 0}}},
+	"logic_gate": {"name": "Logic Gate", "models": [], "proc": "pw_gate", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.15, 0.04), "logic": {"kind": "gate", "out": true, "in": 4}}},
+	"logic_latch": {"name": "Latch", "models": [], "proc": "pw_latch", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.15, 0.04), "logic": {"kind": "latch", "out": true, "in": 4}}},
+	"logic_counter": {"name": "Counter", "models": [], "proc": "pw_counter", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.15, 0.04), "logic": {"kind": "counter", "out": true, "in": 4}}},
+	"logic_delay": {"name": "Delay", "models": [], "proc": "pw_delay", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "logic", "links": 0, "sterm": Vector3(0.0, -0.15, 0.04), "logic": {"kind": "delay", "out": true, "in": 4}}},
+	"relay": {"name": "Relay", "models": [], "proc": "pw_relay", "snap": "free", "mount": "wall", "mat": "metal", "hp": 6.0, "era": -1,
+		"power": {"role": "switch", "links": 4, "term": Vector3(0.0, -0.22, 0.06), "sterm": Vector3(0.0, 0.2, 0.06), "logic": {"kind": "relay", "out": false, "in": 4}}},
+	"charge_sensor": {"name": "Charge Sensor", "models": [], "proc": "pw_charge", "snap": "free", "mount": "wall", "mat": "metal", "hp": 4.0, "era": -1,
+		"power": {"role": "node", "links": 1, "term": Vector3(0.0, -0.18, 0.05), "sterm": Vector3(0.07, -0.18, 0.05), "logic": {"kind": "charge", "out": true, "in": 0}}},
+	"door_motor": {"name": "Door Motor", "models": [], "proc": "pw_door_motor", "snap": "free", "mount": "wall", "mat": "metal", "hp": 12.0, "era": -1,
+		"power": {"role": "use", "watts": 80.0, "prio": 2, "term": Vector3(-0.12, -0.2, 0.08), "sterm": Vector3(0.12, -0.2, 0.08), "logic": {"kind": "motor", "out": false, "in": 2}}},
+	# Automation (Automation): belts, hoppers, arms and machines. Their out side is
+	# their local +z (away from you as you place them).
+	"conveyor_belt": {"name": "Conveyor Belt", "models": [], "proc": "pw_belt", "snap": "belt", "mat": "metal", "hp": 12.0, "era": -1,
+		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6}}},
+	"hopper": {"name": "Hopper", "models": [], "proc": "pw_hopper", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "storage": 8, "foot": 0.5,
+		"power": {"role": "box", "links": 0, "sterm": Vector3(0.0, 0.3, -0.42), "auto": {"kind": "hopper"}}},
+	"robot_arm": {"name": "Robot Arm", "models": [], "proc": "pw_robot_arm", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "foot": 0.3,
+		"power": {"role": "use", "watts": 60.0, "prio": 1, "term": Vector3(0.0, 0.2, -0.25), "auto": {"kind": "arm", "every": 1.2, "arm": Vector3(0, 0.5, 0)}}},
+	"auto_miner": {"name": "Auto-miner", "models": [], "proc": "pw_auto_miner", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
+		"power": {"role": "use", "watts": 400.0, "prio": 1, "term": Vector3(-0.5, 0.9, 0.3),
+			"auto": {"kind": "miner", "every": 8.0, "reach": 3.5, "spin": {"part": "drill_bit", "pos": Vector3(0, 0.95, -0.72), "axis": Vector3(0, 0, 1)}}}},
+	"quarry_drill": {"name": "Quarry Drill", "models": [], "proc": "pw_quarry", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1, "storage": 16, "foot": 1.0,
+		"power": {"role": "use", "watts": 900.0, "prio": 1, "term": Vector3(0.7, 1.2, 0.0),
+			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.25, 0), "axis": Vector3.UP}}}},
+	"electric_furnace": {"name": "Electric Furnace", "models": [], "proc": "pw_furnace", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
+		"power": {"role": "use", "watts": 1500.0, "prio": 1, "term": Vector3(0.0, 1.5, 0.3), "auto": {"kind": "smelter", "every": 6.0}}},
+	"power_sawmill": {"name": "Powered Sawmill", "models": [], "proc": "pw_sawmill", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 12, "foot": 0.9,
+		"power": {"role": "use", "watts": 600.0, "prio": 1, "term": Vector3(0.5, 0.6, 0.6),
+			"auto": {"kind": "sawmill", "every": 3.0, "spin": {"part": "saw_blade", "pos": Vector3(0, 0.88, 0), "axis": Vector3(1, 0, 0)}}}},
+	"assembler": {"name": "Assembler", "models": [], "proc": "pw_assembler", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 20, "foot": 0.8,
+		"power": {"role": "use", "watts": 800.0, "prio": 1, "term": Vector3(0.0, 1.6, 0.4), "auto": {"kind": "assembler", "every": 8.0}}},
+	"water_wheel": {"name": "Water Wheel", "models": [], "proc": "pw_water_wheel", "snap": "free", "mat": "wood", "hp": 60.0, "era": -1,
+		"power": {"role": "gen", "source": "water", "watts": 600.0, "links": 4, "term": Vector3(0.9, 1.9, 0.0),
+			"spin": {"part": "wheel_rim", "pos": Vector3(0, 1.4, 0), "axis": Vector3(1, 0, 0), "rate": 1.2}}},
+	"steam_engine": {"name": "Steam Engine", "models": [], "proc": "pw_steam", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1,
+		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(-0.35, 2.6, 0.3),
+			"spin": {"part": "flywheel", "pos": Vector3(0.62, 0.75, -0.2), "axis": Vector3(1, 0, 0), "rate": 5.0},
+			"fuel": {"coal": 300.0, "charcoal": 300.0, "coal_briquettes": 320.0, "peat": 150.0, "wood": 60.0, "firewood": 50.0}}},
+	# Powered defences (Defences): turrets, an electric fence, traps, an alarm bell and a
+	# searchlight. All prio 2: the last to brown out.
+	"auto_turret": {"name": "Auto Turret", "models": [], "proc": "pw_turret", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1,
+		"power": {"role": "use", "watts": 150.0, "prio": 2, "term": Vector3(0.0, 0.3, 0.32),
+			"defence": {"kind": "turret", "range": 26.0, "damage": 16.0, "every": 0.45, "barrels": 1, "eye": 1.3,
+				"ammo": {"rifle_cartridges": 1, "rounds": 1, "musket_balls": 1}, "head": Vector3(0, 1.08, 0), "head_part": "turret_head",
+				"tip_at": Vector3(0, 0.24, 0), "gun_part": "turret_gun", "muzzle": Vector3(0, 0.0, -0.98)}}},
+	"heavy_turret": {"name": "Heavy Turret", "models": [], "proc": "pw_heavy_turret", "snap": "free", "mat": "metal", "hp": 140.0, "era": -1,
+		"power": {"role": "use", "watts": 320.0, "prio": 2, "term": Vector3(0.0, 0.3, 0.55),
+			"defence": {"kind": "turret", "range": 38.0, "damage": 34.0, "every": 0.8, "barrels": 2, "eye": 1.6,
+				"ammo": {"rifle_cartridges": 1, "shotgun_shells": 1}, "head": Vector3(0, 1.28, 0), "head_part": "heavy_head",
+				"tip_at": Vector3(0, 0.3, 0), "gun_part": "heavy_gun", "muzzle": Vector3(0.0, 0.0, -1.35)}}},
+	"fence_post": {"name": "Electric Fence Post", "models": [], "proc": "pw_fence_post", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1,
+		"power": {"role": "use", "watts": 15.0, "prio": 2, "links": 4, "term": Vector3(0.0, 1.5, -0.13),
+			"defence": {"kind": "fence", "reach": 0.9, "damage": 9.0, "every": 1.0}}},
+	"spike_trap": {"name": "Spike Trap", "models": [], "proc": "pw_spike_trap", "snap": "free", "mat": "metal", "hp": 40.0, "era": -1,
+		"power": {"role": "use", "watts": 30.0, "prio": 2, "links": 2, "term": Vector3(0.0, 0.08, 0.56),
+			"defence": {"kind": "spikes", "damage": 35.0, "hold": 2.5},
+			"blade": {"part": "spikes", "pos": Vector3(0, -0.24, 0), "push": Vector3(0, 0.34, 0)}}},
+	"flame_trap": {"name": "Flame Trap", "models": [], "proc": "pw_flame_trap", "snap": "free", "mat": "metal", "hp": 40.0, "era": -1,
+		"power": {"role": "use", "watts": 40.0, "prio": 2, "term": Vector3(0.0, 0.3, 0.3),
+			"fuel": {"lamp_oil": 60.0, "kerosene_can": 200.0, "fuel_canister": 200.0, "diesel_jerrycan": 300.0, "oil_barrel": 600.0},
+			"defence": {"kind": "flame", "range": 4.5, "cone": 0.82, "dps": 16.0, "eye": 0.55, "nozzle": Vector3(0, 0.55, -0.42)}}},
+	"alarm_bell": {"name": "Alarm Bell", "models": [], "proc": "pw_alarm_bell", "snap": "free", "mount": "wall", "mat": "metal", "hp": 10.0, "era": -1,
+		"power": {"role": "use", "watts": 25.0, "prio": 2, "term": Vector3(0.0, -0.2, 0.05), "defence": {"kind": "bell", "clapper": Vector3(0, 0.02, 0.17)}}},
+	"searchlight": {"name": "Searchlight", "models": [], "proc": "pw_searchlight", "snap": "free", "mat": "metal", "hp": 30.0, "era": -1,
+		"power": {"role": "use", "watts": 400.0, "prio": 2, "term": Vector3(0.0, 0.4, 0.3),
+			"lamp": {"part": "search_lens", "pos": Vector3(0, 0, -0.36), "light_at": Vector3(0, 0, -0.42), "spot": 12.0, "range": 80.0, "energy": 10.0, "color": Color(1.0, 0.93, 0.82)},
+			"defence": {"kind": "search", "range": 60.0, "head": Vector3(0, 1.3, 0), "head_part": "search_yoke", "tip_at": Vector3(0, 0.3, 0), "gun_part": "search_drum"}}},
 }
 
 const STATION_RANGE := 6.0
@@ -511,6 +601,10 @@ static func _proc(k: MeshKit, what: String) -> void:
 		return
 	var I := Transform3D.IDENTITY
 	match what:
+		"trim_wall", "trim_window", "trim_door":
+			# The inside face finished: a skirting along its foot, a casing round a
+			# doorway, a sill under a window (the room is on the wall's -z side).
+			Trim.kit_wall(k, I, what.trim_prefix("trim_"))
 		"plinth":
 			# Stone block under the floor tile, reaching into the ground on slopes: a
 			# storey deep, so a foundation set a storey above the ground still meets it.
@@ -643,6 +737,11 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 	if mode == "free":
 		var yaw := snappedf(look_yaw + PI, PI / 12.0) + turn * PI * 0.5
 		return {"pos": Vector3(snappedf(hit.x, 0.1), hit.y, snappedf(hit.z, 0.1)), "yaw": yaw}
+	if mode == "belt":
+		# Conveyor belts: on a 1 m grid, running away from you (their +z), turned in
+		# quarter turns.
+		var by := snappedf(look_yaw + PI, PI * 0.5) + turn * PI * 0.5
+		return {"pos": Vector3(floorf(hit.x) + 0.5, hit.y, floorf(hit.z) + 0.5), "yaw": by}
 	var g: float = d["grid"]
 	var storey: float = d["storey"]
 	var ramp: bool = d.get("ramp", false)
@@ -708,7 +807,13 @@ static func candidates(id: String, hit: Vector3, look_yaw: float, turn: int, anc
 	var first := snap(id, hit, look_yaw, turn, anchor, on_ground, ctx)
 	var d := def(id)
 	var mode: String = d.get("snap", "free")
-	if mode == "free" or ctx.get("free", false) or not ctx.has("hit_pos"):
+	if mode == "belt" and ctx.has("hit_pos") and String(ctx.get("hit_id", "")) == id:
+		# Aimed at a belt: the next one carries on from its end, the same way (turned
+		# with the turn key).
+		var hy := float(ctx.get("hit_yaw", 0.0))
+		var nx: Vector3 = (ctx["hit_pos"] as Vector3) + Basis(Vector3.UP, hy) * Vector3(0, 0, 1)
+		return [{"pos": nx, "yaw": hy + turn * PI * 0.5}, first]
+	if mode == "free" or mode == "belt" or ctx.get("free", false) or not ctx.has("hit_pos"):
 		return [first]
 	var hd := def(String(ctx.get("hit_id", "")))
 	if float(hd.get("grid", 0.0)) != float(d["grid"]):
@@ -912,7 +1017,7 @@ static func nearest_in(near: Array, pos: Vector3, radius: float):
 	var best = null
 	var best_d := radius
 	for e in near:
-		if def(e["id"]).get("snap") == "free":
+		if def(e["id"]).get("snap") in ["free", "belt"]:
 			continue
 		var dd: float = (e["pos"] as Vector3).distance_to(pos)
 		if dd < best_d:

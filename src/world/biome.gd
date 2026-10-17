@@ -98,8 +98,32 @@ static func _roll(h: int, era: int) -> Dictionary:
 		"lumen": _lumen(h, era), ## how much its grass glows at night (0 in most places)
 	}
 	out["climate"] = clim
+	if clim.x >= 0:
+		_climate_ground(h, era, out)
 	_stand(h, era, out)
 	return out
+
+## What grows and lies on the ground by climate (v18; its own hash, so the rest of the
+## region's roll is unchanged): rainforest is closed canopy over thick, layered
+## undergrowth and little grass; savanna is open golden grass with few rocks; boreal
+## forest floors are ferns, flowers and reeds, not leafy bushes.
+static func _climate_ground(h: int, era: int, out: Dictionary) -> void:
+	var clim: Vector2i = out["climate"]
+	if clim.x == 3 and clim.y >= 2:
+		out["tree_density"] = maxf(float(out["tree_density"]), 1.2 if clim.y == 2 else 1.6)
+		out["under_density"] = maxf(float(out["under_density"]), 1.3 if clim.y == 2 else 1.7)
+		out["grass_density"] = float(out["grass_density"]) * (0.8 if clim.y == 2 else 0.65)
+	elif clim.x == 3:
+		out["rock_density"] = float(out["rock_density"]) * 0.35
+	elif clim.x == 0:
+		var r := RandomNumberGenerator.new()
+		r.seed = WHash.combine(h, era * 53 + 431)
+		var under: Array = out["under"]
+		for i in under.size():
+			for k in 24:
+				if Flora.under_form(int(under[i]), era) != "bush":
+					break
+				under[i] = r.randi() & 0x7FFFFFFF
 
 ## Kinds of tree by [warmth][wetness] level (WorldField.region_climate), as a bag to draw
 ## from: cold uplands of spruce and birch, the temperate middle as it always was, then
@@ -137,7 +161,7 @@ static func _fit_climate(flora: Array, clim: Vector2i, r: RandomNumberGenerator)
 ## dry heat, a cool grey-green in the cold.
 static func _climate_grass(g: Color, clim: Vector2i) -> Color:
 	if clim.x == 3:
-		return g.lerp(Color(0.24, 0.48, 0.12), 0.45) if clim.y >= 2 else g.lerp(Color(0.62, 0.55, 0.28), 0.45)
+		return g.lerp(Color(0.24, 0.48, 0.12), 0.45) if clim.y >= 2 else g.lerp(Color(0.66, 0.56, 0.27), 0.7 - 0.2 * clim.y)
 	if clim.x == 0:
 		return g.lerp(Color(0.32, 0.4, 0.26), 0.35)
 	return g
