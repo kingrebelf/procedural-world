@@ -54,8 +54,9 @@ class Buf:
 		return a
 
 ## A tapered tube along a polyline (bark). UVs wrap the bark photo around the girth
-## about once per 0.9 m of circumference and repeat along the length.
-static func _tube(b: Buf, pts: PackedVector3Array, radii: PackedFloat32Array, sides: int, col: Color, flare := 0.0) -> void:
+## about once per 0.9 m of circumference and repeat along the length. `lumps` makes the
+## girth uneven, ring to ring and around (no trunk is a turned pole).
+static func _tube(b: Buf, pts: PackedVector3Array, radii: PackedFloat32Array, sides: int, col: Color, flare := 0.0, lumps := 0.0) -> void:
 	var count := pts.size()
 	if count < 2:
 		return
@@ -63,6 +64,10 @@ static func _tube(b: Buf, pts: PackedVector3Array, radii: PackedFloat32Array, si
 	var wraps := maxf(1.0, roundf(TAU * radii[0] / 0.9))
 	var along := 0.0
 	var side_ref := Vector3.RIGHT
+	# Each tube its own buttresses and lumps.
+	var seed := WHash.h32(base * 2654435 + int(radii[0] * 10000.0))
+	var phase := WHash.to_unit(seed) * TAU
+	var lobes := 4.0 + float(seed % 3)
 	for i in count:
 		var dir: Vector3
 		if i == 0:
@@ -81,13 +86,20 @@ static func _tube(b: Buf, pts: PackedVector3Array, radii: PackedFloat32Array, si
 		side_ref = x
 		var y := dir.cross(x).normalized()
 		var r := radii[i]
+		if lumps > 0.0:
+			r *= 1.0 + lumps * (WHash.to_unit(WHash.h32(seed + i * 131)) * 2.0 - 1.0)
+		# Root flare at the foot, fading out over the first metre.
+		var fl := flare * (1.0 - clampf(pts[i].distance_to(pts[0]) / 1.0, 0.0, 1.0))
+		var ring_phase := phase + i * 1.3
 		for s in sides + 1:
 			var a := TAU * s / sides
 			var nn := (x * cos(a) + y * sin(a))
 			var rr := r
-			if flare > 0.0 and i == 0:
-				# Root flare: buttresses at the foot of the trunk.
-				rr *= 1.0 + flare * (0.6 + 0.4 * sin(a * 5.0))
+			if lumps > 0.0:
+				rr *= 1.0 + lumps * 0.5 * sin(a * 3.0 + ring_phase)
+			if fl > 0.0:
+				# Buttresses, uneven in size.
+				rr *= 1.0 + fl * (0.6 + 0.4 * sin(a * lobes + phase) * (0.7 + 0.3 * sin(a * 2.0 + phase * 1.7)))
 			b.v.append(pts[i] + nn * rr)
 			b.n.append(nn)
 			b.uv.append(Vector2(float(s) / sides * wraps, along / 1.2))
@@ -279,7 +291,7 @@ static func _make(t: String, p: Dictionary, r: RandomNumberGenerator, bark: Buf,
 	return [look[0], bark_tex]
 
 ## A limb's polyline from `from` along `dir`, curving by `bend` per segment (up for oaks,
-## down for willows) with a little random wander.
+## down for willows) with random wander and, on long limbs, the odd kink.
 static func _limb_pts(r: RandomNumberGenerator, from: Vector3, dir: Vector3, length: float, segs: int, bend: Vector3, wander: float) -> PackedVector3Array:
 	var pts := PackedVector3Array([from])
 	var d := dir.normalized()
@@ -287,9 +299,23 @@ static func _limb_pts(r: RandomNumberGenerator, from: Vector3, dir: Vector3, len
 	var step := length / segs
 	for i in segs:
 		d = (d + bend + Vector3(r.randf_range(-1, 1), r.randf_range(-0.5, 0.5), r.randf_range(-1, 1)) * wander).normalized()
+		if segs >= 4 and i > 0 and r.randf() < 0.18:
+			# Now and then a kink, where a limb lost its lead and a side shoot took over.
+			d = (d + Vector3(r.randf_range(-1, 1), r.randf_range(-0.3, 0.6), r.randf_range(-1, 1)) * 0.6).normalized()
 		p += d * step
 		pts.append(p)
 	return pts
+
+## A trunk's gentle S-bends: [first bend direction, second, phase, phase, amplitude (m)].
+static func _bow(r: RandomNumberGenerator, amp: float) -> Array:
+	var a := r.randf() * TAU
+	var b := a + r.randf_range(1.2, 2.4)
+	return [Vector3(cos(a), 0, sin(a)), Vector3(cos(b), 0, sin(b)), r.randf() * TAU, r.randf() * TAU, amp * r.randf_range(0.5, 1.2)]
+
+## Where the trunk has bowed to at fraction `f` of its height (0 at the foot).
+static func _bow_at(bw: Array, f: float) -> Vector3:
+	var amp: float = bw[4]
+	return ((bw[0] as Vector3) * sin(f * PI * 1.1 + float(bw[2])) + (bw[1] as Vector3) * sin(f * PI * 2.6 + float(bw[3])) * 0.5 - (bw[0] as Vector3) * sin(float(bw[2])) - (bw[1] as Vector3) * sin(float(bw[3])) * 0.5) * amp
 
 static func _taper(count: int, r0: float, r1: float) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
@@ -321,14 +347,16 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 	var radii := Vector3(rx, ry, rx)
 	# Trunk: rises through the crown and fades out near its top.
 	var tpts := PackedVector3Array()
-	var segs := 2 if far else 6
+	var bow := _bow(r, h * (0.012 if form == "column" else 0.028))
+	var top := ht + ry * 1.2
+	var segs := 3 if far else 9
 	for i in segs + 1:
 		var f := float(i) / segs
-		var y := lerpf(0.0, ht + ry * 1.2, f)
-		var wob := Vector3(sin(f * 5.0 + r.randf() * 0.3), 0, cos(f * 4.0)) * 0.08 * f * h * 0.1
-		tpts.append(Vector3(0, y, 0) + lean * f + wob)
+		# A short first step so the root flare can fade out over it.
+		var y := 0.0 if i == 0 else lerpf(0.45, top, float(i - 1) / (segs - 1))
+		tpts.append(Vector3(0, y, 0) + lean * (y / top) + _bow_at(bow, y / h))
 	bark.mark()
-	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * 0.25), 4 if far else 9, bark_col, 0.0 if far else 0.4)
+	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * 0.25), 4 if far else 9, bark_col, 0.0 if far else 0.4, 0.0 if far else 0.08)
 	bark.mark()
 	# Limbs from the upper trunk out toward the crown's shell; twigs from the limbs.
 	var tips: Array = [] # [point, outward direction]
@@ -339,15 +367,15 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var e := r.randf_range(elev.x, elev.y)
 		var dir := Vector3(cos(a) * cos(e), sin(e), sin(a) * cos(e))
 		var y0 := lerpf(ht * 0.95, ht + ry * 1.1, float(i) / limbs) + r.randf_range(-0.3, 0.3)
-		var from := Vector3(0, y0, 0) + lean * (y0 / h)
+		var from := Vector3(0, y0, 0) + lean * (y0 / top) + _bow_at(bow, y0 / h)
 		# Reach: most of the way to the crown shell along that direction.
 		var rel := from - centre
 		var reach := _shell_reach(rel, dir, radii) * r.randf_range(0.7, 0.92)
 		if reach < 0.4:
 			continue
 		if not far:
-			var pts := _limb_pts(r, from, dir, reach, 3, bend, 0.12)
-			_tube(bark, pts, _taper(pts.size(), g * lerpf(0.55, 0.35, float(i) / limbs), g * 0.08), 5, bark_col)
+			var pts := _limb_pts(r, from, dir, reach, 6, bend * 0.5, 0.3)
+			_tube(bark, pts, _taper(pts.size(), g * lerpf(0.55, 0.35, float(i) / limbs), g * 0.08), 5, bark_col, 0.0, 0.06)
 			twigs_at.append([pts, dir])
 			tips.append([pts[pts.size() - 1], dir])
 		else:
@@ -362,7 +390,7 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 				var reach := _shell_reach(at - centre, dir.normalized(), radii) * r.randf_range(0.6, 0.9)
 				if reach < 0.3:
 					continue
-				var tp := _limb_pts(r, at, dir, reach, 2, bend, 0.15)
+				var tp := _limb_pts(r, at, dir, reach, 3, bend * 0.67, 0.3)
 				_tube(bark, tp, _taper(tp.size(), g * 0.12, g * 0.03), 4, bark_col)
 				tips.append([tp[tp.size() - 1], dir.normalized()])
 	bark.mark()
@@ -427,12 +455,15 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 		"fir": droop *= 0.6
 	var bark_col := Color(1, 1, 1).lerp((p["bark"] as Color) * 2.2, 0.3)
 	var tpts := PackedVector3Array()
-	for i in 4:
-		var f := i / 3.0
-		tpts.append(Vector3(sin(f * 3.0) * 0.04, h * f, cos(f * 2.0) * 0.04))
+	var trad := PackedFloat32Array()
+	var bow := _bow(r, h * 0.012 + 0.08)
+	var steps: Array = [0.0, 0.035, 0.17, 0.33, 0.5, 0.67, 0.83, 1.0]
+	for f in steps:
+		tpts.append(Vector3(0, h * f, 0) + _bow_at(bow, f))
+		# The trunk thins fast up inside the crown, where the boughs hide it.
+		trad.append(lerpf(rb, rb * 0.5, f * 3.0) if f < 0.34 else (lerpf(rb * 0.5, rb * 0.22, (f - 0.33) * 3.0) if f < 0.67 else lerpf(rb * 0.22, 0.03, (f - 0.67) * 3.0)))
 	bark.mark()
-	# The trunk thins fast up inside the crown, where the boughs hide it.
-	_tube(bark, tpts, PackedFloat32Array([rb, rb * 0.5, rb * 0.22, 0.03]), 4 if far else 8, bark_col, 0.0 if far else 0.35)
+	_tube(bark, tpts, trad, 4 if far else 8, bark_col, 0.0 if far else 0.35, 0.0 if far else 0.07)
 	bark.mark()
 	bark.mark()
 	bark.mark()
@@ -459,7 +490,7 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 			var wid := clampf(len * 0.62, 0.45, 1.6) * (1.5 if far else 1.0)
 			var shade := lerpf(0.8, 1.08, t) * r.randf_range(0.92, 1.05)
 			var col := _jit(tint, r, 0.07) * shade
-			var at := Vector3(0, y, 0) + out * 0.05
+			var at := Vector3(0, y, 0) + _bow_at(bow, y / h) + out * 0.05
 			# The bough droops: flat card plus a steeper one across it, for depth.
 			var flat := axis.cross(Vector3.UP).normalized()
 			if flat.length() < 0.01:
@@ -471,7 +502,7 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 	# Leader: the spire above the last whorl.
 	for k in 2:
 		var side := Vector3(cos(k * PI * 0.5 + rot), 0, sin(k * PI * 0.5 + rot))
-		_card(leaves, Vector3(0, h - 1.4, 0), Vector3.UP, side, 1.6, 0.7, tint, centre, radii, true, 0.4)
+		_card(leaves, Vector3(0, h - 1.4, 0) + _bow_at(bow, (h - 1.4) / h), Vector3.UP, side, 1.6, 0.7, tint, centre, radii, true, 0.4)
 
 static func _dead(r: RandomNumberGenerator, p: Dictionary, h: float, g: float, bark: Buf, far: bool, conifer: bool) -> void:
 	var col := Color(0.82, 0.8, 0.78)
