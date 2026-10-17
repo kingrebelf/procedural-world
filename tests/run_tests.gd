@@ -1245,7 +1245,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ItemModels.mat("it_wood") in mats and ItemModels.mat("it_leather") in mats and ItemModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)

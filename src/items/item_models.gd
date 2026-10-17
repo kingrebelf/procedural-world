@@ -127,6 +127,21 @@ static func mat(name: String) -> Material:
 			m.roughness = 0.96
 			m.albedo_texture = _noise("weave", 0.3, Vector2.ONE, Color(0.78, 0.78, 0.78), Color(1, 1, 1))
 			m.uv1_scale = Vector3(20.0, 20.0, 1.0)
+		"it_pitch":
+			# Rag soaked in pitch: near black, a tarry sheen, lumpy where it pooled.
+			m.albedo_color = Color(0.11, 0.085, 0.06)
+			m.roughness = 0.38
+			m.albedo_texture = _noise("pitch", 0.12, Vector2.ONE, Color(0.55, 0.5, 0.45), Color(1, 1, 1), true)
+			m.normal_enabled = true
+			m.normal_texture = _noise("pitch", 0.12, Vector2.ONE, Color.BLACK, Color.WHITE, true, true)
+			m.normal_scale = 0.8
+			m.uv1_scale = Vector3(10.0, 10.0, 1.0)
+		"it_char":
+			# Burnt rag and wood: matt, grey-black, ash on the ridges.
+			m.albedo_color = Color(0.09, 0.08, 0.075)
+			m.roughness = 0.97
+			m.albedo_texture = _noise("char", 0.2, Vector2.ONE, Color(0.6, 0.6, 0.6), Color(2.4, 2.3, 2.2), true)
+			m.uv1_scale = Vector3(8.0, 8.0, 1.0)
 		"it_paper":
 			m.albedo_color = Color(0.93, 0.89, 0.78)
 			m.roughness = 0.9
@@ -638,6 +653,53 @@ static func build(t: String) -> ArrayMesh:
 	if grip is Vector3:
 		out.set_meta("grip", grip)
 	return out
+
+## A burning torch: a rough branch with a leather-bound grip, its head rag soaked in
+## pitch, wound round and round in lumpy turns, charred black on top where it burns. The
+## flame (HandLight.TORCH_FLAME) stands at y 0.4.
+static func torch(k: MeshKit) -> void:
+	# A split branch, not turned: it wanders a little and thickens toward the head.
+	var prof := [Vector2(0, 0.0), Vector2(0.017, 0.002), Vector2(0.019, 0.01)]
+	for i in 9:
+		var y := 0.03 + i * 0.03
+		prof.append(Vector2(0.019 + 0.0035 * float(i) / 8.0 + 0.0012 * sin(i * 2.7), y))
+	prof.append(Vector2(0.0, 0.29))
+	lathe(k, "it_wood", Transform3D.IDENTITY, prof, 9, Color(0.36, 0.26, 0.17), 0.86)
+	wrap_grip(k, 0.03, 0.15, 0.0205, Color(0.3, 0.19, 0.11), "it_leather", 0.016, 0.0025)
+	# The wad of rag under the windings: fat in the middle, tucked in at the bottom.
+	lathe(k, "it_pitch", Transform3D.IDENTITY, [Vector2(0.0, 0.255), Vector2(0.024, 0.258), Vector2(0.033, 0.285),
+		Vector2(0.037, 0.33), Vector2(0.034, 0.37), Vector2(0.028, 0.392), Vector2(0.0, 0.4)], 12)
+	# Strips of rag wound over it, each turn at its own slope and a little loose.
+	for s in 3:
+		var turns := 2.2 + s * 0.4
+		var steps := int(turns * 16.0)
+		var y0 := 0.262 + s * 0.035
+		var y1 := y0 + 0.07 + s * 0.012
+		var st := []
+		for i in steps + 1:
+			var f := float(i) / steps
+			var a := f * turns * TAU + s * 2.1
+			var y := lerpf(y0, y1, f) + 0.004 * sin(a * 3.0 + s)
+			var bulge := 0.034 + 0.005 * sin(PI * clampf((y - 0.255) / 0.15, 0.0, 1.0)) + 0.0025 * sin(a * 2.0 + s * 1.7)
+			var out := Vector3(cos(a), 0, sin(a))
+			var tang := Vector3(-sin(a), 0, cos(a))
+			var across := (Vector3.UP - tang * Vector3.UP.dot(tang)).normalized()
+			st.append(_at(out * bulge + Vector3(0, y, 0), across, out, sec_rect(0.012 - 0.003 * f, 0.0035, 0.5)))
+		sweep(k, "it_pitch", Transform3D.IDENTITY, st, false, Color(1, 1, 1).darkened(0.12 * s), true)
+	# A ragged end hanging loose from the last turn.
+	plate(k, "it_pitch", 3, 4, func(u, v):
+		return Vector3(0.034 - 0.008 * v, 0.266 - v * 0.026, (u - 0.5) * 0.02 + 0.003 * sin(v * 5.0)), 0.0025)
+	# Burnt crown: charred rag split open on top.
+	lathe(k, "it_char", Transform3D.IDENTITY, [Vector2(0.03, 0.375), Vector2(0.032, 0.388), Vector2(0.026, 0.402),
+		Vector2(0.012, 0.408), Vector2(0.0, 0.405)], 12)
+	for i in 6:
+		var a := i * TAU / 6.0 + 0.4
+		var c := Vector3(cos(a) * 0.022, 0.398, sin(a) * 0.022)
+		k.sphere("it_char", Transform3D(Basis(Vector3.UP, a), c), 0.007 + 0.002 * (i % 2), 3, 5, 0.5, 0.7)
+	# Coals glowing between the charred folds; the flame is FireFx (torch_fire).
+	for i in 4:
+		var a := i * TAU / 4.0
+		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(cos(a) * 0.012, 0.404, sin(a) * 0.012)), 0.006, 4, 6, 0.3, 0.6)
 
 ## Item -> the static function that builds it (returns the grip point, or null for the
 ## default: a hand's width up from the bottom).

@@ -68,22 +68,8 @@ static func torch_fire() -> Node3D:
 
 static func torch_model() -> ArrayMesh:
 	var k := MeshKit.new(5)
-	# A stick of rough wood with the grain along it.
-	k.cylinder("torch_wood", Transform3D.IDENTITY, 0.021, 0.025, 0.34, 10)
-	# A leather strip bound round and round the grip.
-	for i in 6:
-		var b := Basis(Vector3(0, 0, 1), 0.16).rotated(Vector3.UP, i * 2.1)
-		k.cylinder("leather", Transform3D(b, Vector3(0, 0.09 + i * 0.019, 0)), 0.0255, 0.0255, 0.018, 10)
-	# The head: rags soaked in pitch wound round it, each turn a little askew.
-	for i in 4:
-		var b := Basis(Vector3(1, 0, 0), 0.2 * (1.0 if i % 2 == 0 else -1.0)).rotated(Vector3.UP, i * 1.1)
-		var r := 0.035 + 0.004 * sin(i * 2.0)
-		k.cylinder("pitch_cloth", Transform3D(b, Vector3(0, 0.3 + i * 0.024, 0)), r, r * 0.95, 0.034, 10, true, 0.12)
-	# Coals glowing in the charred top; the flame is FireFx (torch_fire).
-	for i in 5:
-		var a := i * TAU / 5.0
-		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(cos(a) * 0.017, 0.4, sin(a) * 0.017)), 0.011, 4, 6, 0.3, 0.6)
-	return k.commit(Materials.get_mat)
+	ItemModels.torch(k)
+	return k.commit(ItemModels.mat)
 
 func is_on() -> bool:
 	return lit() != ""
