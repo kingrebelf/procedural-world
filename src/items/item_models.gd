@@ -486,22 +486,25 @@ static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float,
 	for i in 9:
 		var p := Vector3(r.randf_range(-0.38, 0.38) * length, -ht * 0.5 - 0.0004, r.randf_range(-0.7, 0.7) * hw)
 		_disc(k, m, xf, p, Vector3.DOWN, r.randf_range(0.003, 0.008), 7, c.darkened(0.35))
-	# The assayer's stamp: a round punch struck into the top, its rim sunk and dark,
-	# a raised mark left standing in it, and the fineness struck in a row beside it.
+	# The maker's stamp: a sunk rectangular cartouche across the top near one end, its floor
+	# dark, the maker's letters left standing in it (short strokes, as struck lettering
+	# reads at arm's length), and a smaller serial punch beside it.
 	var top_y := ht * 0.5 + 0.0004
-	var dark := c.darkened(0.5)
-	var at := Vector3(-length * 0.12, top_y, 0)
-	_disc(k, m, xf, at, Vector3.UP, 0.011, 18, dark, 0.0085)
-	_disc(k, m, xf, at + Vector3(0, -0.0002, 0), Vector3.UP, 0.0085, 18, c.darkened(0.2))
-	for i in 3:
-		var a := TAU * i / 3.0 + PI * 0.5
-		_quad(k, m, xf, at + Vector3(cos(a), 0, sin(a)) * 0.006 + Vector3(0, 0.0001, 0), at + Vector3(cos(a + 0.3), 0, sin(a + 0.3)) * 0.002 + Vector3(0, 0.0001, 0),
-			at + Vector3(0, 0.0001, 0), at + Vector3(cos(a - 0.3), 0, sin(a - 0.3)) * 0.002 + Vector3(0, 0.0001, 0), Vector3.UP, dark)
-	var x := length * 0.02
-	for i in 4:
-		var cw := 0.0035 if i % 2 == 0 else 0.0025
-		_quad(k, m, xf, Vector3(x, top_y, -0.004), Vector3(x + cw, top_y, -0.004), Vector3(x + cw, top_y, 0.004), Vector3(x, top_y, 0.004), Vector3.UP, dark)
-		x += cw + 0.0028
+	var dark := c.darkened(0.12)
+	var cx := -length * 0.22
+	var cw2 := hw * 0.55
+	var ch2 := length * 0.06
+	_quad(k, m, xf, Vector3(cx - ch2, top_y, -cw2), Vector3(cx + ch2, top_y, -cw2), Vector3(cx + ch2, top_y, cw2), Vector3(cx - ch2, top_y, cw2), Vector3.UP, dark)
+	var letters := 4
+	for i in letters:
+		var lz := lerpf(-cw2 * 0.75, cw2 * 0.75, (i + 0.5) / letters)
+		for st in 2 + r.randi() % 2:
+			var a0 := Vector3(cx + r.randf_range(-0.6, 0.6) * ch2, top_y + 0.0002, lz + r.randf_range(-0.25, 0.25) * cw2 / letters)
+			var a1 := Vector3(cx + r.randf_range(-0.6, 0.6) * ch2, top_y + 0.0002, lz + r.randf_range(-0.25, 0.25) * cw2 / letters)
+			var w := (a1 - a0).cross(Vector3.UP).normalized() * 0.0007
+			_quad(k, m, xf, a0 - w, a1 - w, a1 + w, a0 + w, Vector3.UP, c.darkened(0.45))
+	var sx := cx + ch2 + length * 0.05
+	_quad(k, m, xf, Vector3(sx - 0.003, top_y, -cw2 * 0.6), Vector3(sx + 0.003, top_y, -cw2 * 0.6), Vector3(sx + 0.003, top_y, cw2 * 0.6), Vector3(sx - 0.003, top_y, cw2 * 0.6), Vector3.UP, c.darkened(0.25))
 	# Tarnish: dull patches over the faces.
 	for i in int(amount * 10.0):
 		var u := r.randf_range(-0.4, 0.4) * length
@@ -788,14 +791,14 @@ static func _cake(k: MeshKit, col: Color) -> void:
 static func _hide(k: MeshKit, r: RandomNumberGenerator, m: String, hair: Color, flesh: Color) -> void:
 	_roll(k, r, m, hair, flesh, 0.04, 0.24, 0.12, "im:hide", Color(0.3, 0.2, 0.12))
 	# The hair: tufts lying along the roll, one way, longer and darker at their roots.
-	var long := 0.012 if m == "im:fur" else 0.006
-	for i in 260:
+	var long := 0.02 if m == "im:fur" else 0.011
+	for i in 420:
 		var a := r.randf() * TAU
 		var y := r.randf_range(-0.035, 0.195)
 		var base := Vector3(cos(a) * 0.043, y, sin(a) * 0.043)
 		var out := Vector3(cos(a), 0, sin(a))
 		var tip := base + out * long * 0.35 + Vector3(0, -long, 0) + Vector3(-sin(a), 0, cos(a)) * long * r.randf_range(-0.3, 0.3)
-		_tube(k, "im:fur", Transform3D.IDENTITY, PackedVector3Array([base, (base + tip) * 0.5 + out * long * 0.15, tip]), PackedFloat32Array([0.0022, 0.0016, 0.0002]), 4, hair.darkened(r.randf_range(-0.1, 0.25)), false)
+		_tube(k, "im:fur", Transform3D.IDENTITY, PackedVector3Array([base, (base + tip) * 0.5 + out * long * 0.15, tip]), PackedFloat32Array([0.0034, 0.0024, 0.0004]), 4, hair.darkened(r.randf_range(-0.1, 0.3)), false)
 	var noise := FastNoiseLite.new()
 	noise.seed = r.randi()
 	noise.frequency = 4.0
@@ -962,16 +965,16 @@ static func _bundle(k: MeshKit, r: RandomNumberGenerator, col: Color, heads: boo
 # --- Worked metal -----------------------------------------------------------------------
 
 static func _nails(k: MeshKit, r: RandomNumberGenerator) -> void:
-	# Hand-forged nails: square shanks tapering to a chisel point, hammered rose heads,
-	# a bundle of them tied with twine, dark iron with rust at the points.
-	for i in 9:
-		var a := TAU * i / 9.0
-		var off := Vector3(cos(a), 0, sin(a)) * 0.008 * (1.0 + (i % 2))
-		var flip := 1.0 if i % 3 != 0 else -1.0
-		var xf := Transform3D(Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3.RIGHT, (0.0 if flip > 0 else PI) + r.randf_range(-0.06, 0.06)), Vector3(off.x, 0.02, off.z))
-		k.cylinder("im:metal@0.6", xf.translated_local(Vector3(0, -0.035, 0)), 0.0024, 0.0005, 0.07, 4, false, 0.0, 1, Color(0.42, 0.4, 0.38))
-		k.cylinder("im:metal@0.6", xf.translated_local(Vector3(0, -0.037, 0)), 0.005, 0.0038, 0.003, 6, true, 0.0, 1, Color(0.38, 0.36, 0.34))
-	_torus(k, "im:rope", Transform3D(Basis.IDENTITY, Vector3(0, 0.012, 0)), 0.018, 0.0018, 14, 4, Color(0.6, 0.5, 0.36))
+	# A handful of hand-forged nails lying loose and crossed: square shanks tapering to a
+	# chisel point, flat hammered heads, dark iron with rust towards the points.
+	for i in 11:
+		var lay := Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3.FORWARD, PI * 0.5 + r.randf_range(-0.35, 0.35))
+		var at := Vector3(r.randf_range(-0.01, 0.01), 0.006 + i * 0.0045, r.randf_range(-0.01, 0.01))
+		var xf := Transform3D(lay, at)
+		var l := r.randf_range(0.05, 0.075)
+		var rust := Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.24, 0.12), r.randf_range(0.0, 0.5))
+		k.cylinder("im:metal@0.7", xf.translated_local(Vector3(0, -l * 0.5, 0)), 0.0022, 0.0005, l, 4, false, 0.0, 1, rust)
+		k.cylinder("im:metal@0.6", xf.translated_local(Vector3(0, -l * 0.5 - 0.0018, 0)), 0.0045, 0.0042, 0.0018, 7, true, 0.0, 1, Color(0.36, 0.34, 0.32))
 
 static func _gear(k: MeshKit, xf: Transform3D, rad: float, th: float, teeth: int, col: Color) -> void:
 	k.cylinder("im:metal@0.35", xf, rad, rad, th, 32, true, 0.0, 1, col)
@@ -1551,6 +1554,7 @@ static func _make(n: String) -> Material:
 		sm.set_shader_parameter("ore_col2", s[3])
 		sm.set_shader_parameter("vein_width", s[4] * 0.6)
 		sm.set_shader_parameter("vein_freq", 45.0)
+		sm.set_shader_parameter("grain_freq", 420.0)
 		sm.set_shader_parameter("ore_metal", s[5])
 		return sm
 	if n.begins_with("crystal:") or n.begins_with("crystal_glow:"):
