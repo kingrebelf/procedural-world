@@ -989,7 +989,7 @@ func _landform_shots(g: ChunkGenerator) -> void:
 ## height, and the inside of the mossy one, which must stay clean.
 func _wear_shots(g: ChunkGenerator) -> void:
 	var pick := [{}, {}, {}]
-	var score := [-1.0, -1.0, -1.0]
+	var score := [-INF, -INF, -INF]
 	for r in 30:
 		for sz in range(-r, r + 1):
 			for sx in range(-r, r + 1):
@@ -1000,7 +1000,13 @@ func _wear_shots(g: ChunkGenerator) -> void:
 					continue
 				var c: Vector2 = s["center"]
 				var lv := ClimateWear.levels(g.field, c.x, c.y)
-				var want := [lv.r, lv.g + smoothstep(WorldField.snow_line - 45.0, WorldField.snow_line - 5.0, g.field.height(c.x, c.y)), lv.b]
+				# The cold of height toward the snow line, as the shaders add it.
+				var alt := smoothstep(WorldField.snow_line - 22.0, WorldField.snow_line - 6.0, g.field.height(c.x, c.y))
+				var cold := maxf(lv.g, alt)
+				# Each climate pure (a wet village that isn't also snowy), and near, so the
+				# far shots load in time.
+				var near := c.length() / 20000.0
+				var want := [lv.r - cold - lv.b - near, cold - lv.b - near, lv.b - cold - lv.r * 0.5 - near]
 				for k in 3:
 					if want[k] > score[k]:
 						score[k] = want[k]
@@ -1008,9 +1014,11 @@ func _wear_shots(g: ChunkGenerator) -> void:
 	var names := ["100_wear_wet", "100_wear_cold", "100_wear_dry"]
 	for k in 3:
 		if pick[k].is_empty():
+			print("no village for ", names[k])
 			continue
 		var pl := TownLife.plan(g, pick[k])
 		if pl["houses"].is_empty():
+			print("no house for ", names[k])
 			continue
 		var h: Dictionary = pl["houses"][0]
 		var hp: Vector2 = h["p"]
@@ -1022,9 +1030,10 @@ func _wear_shots(g: ChunkGenerator) -> void:
 			TownLife.frame_to_world(hp, hy, Vector2(0.0, 0.0)), 0.27 if k == 1 else 0.42, 1.7,
 			g.field.height(hp.x, hp.y) + 2.5)
 		if k == 0:
-			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(0.4, 0.6)),
-				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 1.6,
-				g.field.height(hp.x, hp.y) + 0.8)
+			# Standing on the floor (the height is the feet's), looking at the far corner.
+			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.25, hd * 0.25)),
+				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 0.15,
+				g.field.height(hp.x, hp.y) + 1.0)
 
 ## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
 ## cold spruce uplands; standing on its edge looking in.

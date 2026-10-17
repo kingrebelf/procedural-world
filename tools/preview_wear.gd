@@ -1,7 +1,7 @@
 extends SceneTree
 ## Renders village cottages, boulders and oaks weathered by four climates side by side
 ## (ClimateWear): temperate, wet (moss), cold at dawn (snow and hoar frost), dry (dust),
-## then the wet cottage up close and from inside (which must stay clean):
+## each with a patch of grass, then the wet cottage up close and from inside (which must stay clean):
 ##   godot --path . --script res://tools/preview_wear.gd -- --out=<dir> [--day=0.27]
 
 const FRAME := Vector2i(1920, 900)
@@ -63,6 +63,9 @@ func _initialize() -> void:
 	cam.fov = 50
 	cam.far = 600.0
 	vp.add_child(cam)
+	cam.current = true
+	var grass_mat := ShaderMaterial.new()
+	grass_mat.shader = load("res://src/world/grass.gdshader")
 	var shelter := ShelterMap.new()
 	vp.add_child(shelter)
 	var oak := 0
@@ -86,6 +89,11 @@ func _initialize() -> void:
 			var tree := MultiMeshInstance3D.new()
 			tree.multimesh = _one(RealTree.build("oak", oak, 0), Transform3D(Basis(), Vector3(x - 10.0, 0, 7.0)), Color(1, 1, 1, 1))
 			vp.add_child(tree)
+		for sp in ["meadow", "tall", "flowers_0"]:
+			var g := MultiMeshInstance3D.new()
+			g.multimesh = _grass(sp, Vector2(x + 2.0, 7.5), 6.0, 140 if sp == "meadow" else 40, i)
+			g.material_override = grass_mat
+			vp.add_child(g)
 		print("%s at x %.0f" % [CLIMATES[i][0], x])
 	var mid := (n - 1) * GAP * 0.5
 	var shots := [["row", Vector3(mid, 10.0, 78.0), Vector3(mid, 3.0, 0.0)]]
@@ -97,10 +105,29 @@ func _initialize() -> void:
 		cam.look_at_from_position(shot[1], shot[2])
 		for f in 30:
 			await process_frame
-		var path: String = out + "/wear_%s.png" % shot[0]
+		await RenderingServer.frame_post_draw
+		var path: String = out + "/wear_%s%s.png" % [shot[0], "" if is_equal_approx(day, 0.27) else "_day%02d" % roundi(day * 100.0)]
 		vp.get_texture().get_image().save_png(path)
 		print("saved ", path)
 	quit()
+
+## Clumps of a grass species scattered over a disc, tinted meadow green (as ChunkNode lays
+## them: INSTANCE_CUSTOM the tint, alpha 0).
+func _grass(sp: String, at: Vector2, rad: float, count: int, salt: int) -> MultiMesh:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(sp) + salt
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	mm.mesh = GrassKit.mesh(sp)
+	mm.instance_count = count
+	for k in count:
+		var a := r.randf() * TAU
+		var d := sqrt(r.randf()) * rad
+		var b := Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3.ONE * r.randf_range(0.8, 1.2))
+		mm.set_instance_transform(k, Transform3D(b, Vector3(at.x + cos(a) * d, 0.0, at.y + sin(a) * d)))
+		mm.set_instance_custom_data(k, Color(0.42, 0.55, 0.22, 0.0))
+	return mm
 
 func _one(mesh: Mesh, xf: Transform3D, c: Color) -> MultiMesh:
 	var mm := MultiMesh.new()

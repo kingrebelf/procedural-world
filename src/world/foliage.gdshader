@@ -2,10 +2,13 @@ shader_type spatial;
 // Leaves and needles: alpha-scissored cards (or the opaque leaf core when is_core) that
 // sway with the world wind. Displacement grows with height above the mesh origin, so
 // trunks stay planted while crowns move; the phase comes from the instance position so
-// neighbouring trees never move in lockstep.
+// neighbouring trees never move in lockstep. Where it is cold (ClimateWear) snow dusts the
+// tops of leaves and boughs, and hoar frost rimes them on cold mornings.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 #include "res://src/world/plant_look.gdshaderinc"
+#include "res://src/world/noise2d.gdshaderinc"
+#include "res://src/env/climate_wear.gdshaderinc"
 
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
@@ -36,6 +39,7 @@ varying vec3 inst_col;
 varying vec3 crown_n;
 varying vec4 look;
 varying vec3 plant_p;
+varying vec3 winter; // snow lying, hoar frost, a patch value
 
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -61,6 +65,9 @@ void vertex() {
 	// Vertex and instance colours are authored as sRGB; shading happens in linear space.
 	inst_col = pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2));
 	crown_n = (MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	vec3 vw = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec4 lv = wear_levels(vw);
+	winter = vec3(smoothstep(0.55, 1.0, lv.y), wear_frost(lv), vnoise(vw.xz * 0.9 + vw.y * 0.7));
 }
 
 void fragment() {
@@ -92,4 +99,14 @@ void fragment() {
 	ROUGHNESS = 0.8;
 	SPECULAR = crown_normals ? 0.25 : 0.35;
 	BACKLIGHT = back * inst_col * 1.4;
+	if (winter.x + winter.y > 0.01) {
+		// Snow lies on what faces the sky, in clumps, leaving the undersides dark; rime
+		// catches every edge.
+		float up = dot(NORMAL, up_v);
+		float sn = winter.x * smoothstep(0.25, 0.75, up + (winter.z - 0.5) * 0.6) * 0.8;
+		float fr = clamp(winter.y * (0.2 + 0.35 * up), 0.0, 0.45) * (1.0 - sn);
+		ALBEDO = mix(mix(ALBEDO, WEAR_FROST, fr), WEAR_SNOW, sn);
+		ROUGHNESS = mix(0.8, 0.6, sn);
+		BACKLIGHT *= 1.0 - 0.8 * sn;
+	}
 }

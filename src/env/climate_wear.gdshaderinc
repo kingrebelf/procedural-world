@@ -22,7 +22,7 @@ vec4 wear_levels(vec3 p) {
 	if (climate_wear_rect_g.z > 0.0 && uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) {
 		l = texture(climate_wear_map_g, uv);
 	}
-	l.y = max(l.y, smoothstep(snow_line_g - 45.0, snow_line_g - 5.0, p.y));
+	l.y = max(l.y, smoothstep(snow_line_g - 22.0, snow_line_g - 6.0, p.y));
 	return l;
 }
 
