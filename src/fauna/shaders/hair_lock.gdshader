@@ -37,9 +37,10 @@ void fragment() {
 	// Clumps narrow to a point over their last third.
 	float cw = 0.5 * mix(1.0, 0.08, smoothstep(0.6, 1.0, along));
 	float strand = smoothstep(-fw, fw * 1.5, cw - abs(fx - 0.5));
-	// Soft edges: coverage thins out over the outer part of the lock instead of a cut.
-	float ld = 0.5 * mix(1.0, 0.3, smoothstep(0.4, 1.0, along)) - abs(UV.x - 0.5);
-	float lock = smoothstep(-max(fwidth(UV.x), 1e-4), 0.16, ld);
+	// Soft edges: coverage thins out over the outer part of the lock instead of a cut,
+	// and the lock draws to a point at its end, so tips never stop in a square row.
+	float ld = 0.5 * (1.0 - smoothstep(0.3, 1.0, along)) - abs(UV.x - 0.5);
+	float lock = smoothstep(-max(fwidth(UV.x), 1e-4), 0.12, ld);
 	float tip = clamp((len - UV.y) / max(fwidth(UV.y), 1e-4) + 0.5, 0.0, 1.0);
 	ALPHA = mix(lock, strand, split) * tip;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
