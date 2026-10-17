@@ -805,11 +805,14 @@ func generate(cx: int, cz: int) -> Dictionary:
 		look.resize(CN * CN * LOOK_BYTES)
 		for c in CN * CN:
 			WorldField.look_bytes(coarse_lf[c], look, c * LOOK_BYTES)
-			# v16: fresh spoil round the craters (byte 11), less on old grassed human worlds.
+			# v16: fresh spoil round the craters (byte 11). On human worlds the craters are
+			# old and grassed over (see crater_spoil), bare only on the inner lip.
 			var lc: float = coarse_lf[c][WorldField.LF_CRATERS]
-			if lc > WorldField.LF_FADE.x:
-				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP) * smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
-				look[c * LOOK_BYTES + 11] = int(round(sp * (0.55 if Eras.theme == "human" else 1.0) * 255.0))
+			if lc > WorldField.LF_FADE.x and WorldField.terrain_v >= 16:
+				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
+				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
+				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+
 			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
 			look = PackedByteArray()
@@ -1154,7 +1157,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
-			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
+			var lf := field.landform_at(x0 + lx, z0 + lz)
+			rd *= WorldField.LANDFORM_ROCKS[lf]
+			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
+				rd *= field.crater_rocks(x0 + lx, z0 + lz)
 		var rocks: Array = bp["rocks"]
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.

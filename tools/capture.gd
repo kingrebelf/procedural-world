@@ -516,12 +516,18 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 		for it in ZoneBorder.checkpoints(g, R, ZoneBorder._band(R), Rect2(-R - 100.0, -R - 100.0, 2.0 * R + 200.0, 2.0 * R + 200.0)):
 			if it["t"] == "border_bar" or it["t"] == "border_barrier":
 				cp = it
+				cp["R"] = R
 				break
 	if not cp.is_empty():
 		var x: Vector2 = cp["p"]
 		var f := Vector2(sin(float(cp["yaw"])), cos(float(cp["yaw"])))
-		var cam := x - f * 24.0 + f.orthogonal() * 4.0
-		await _shot("04_era_border", cam, x + f * 10.0, 0.4, 1.8, g.field.height(x.x, x.y) + 3.0, Callable(), 6.0)
+		# Stand back on the old side of the line (the road changes under the camera's
+		# gaze), off to the left of the road so the held tool doesn't hide the bar.
+		var back := 24.0
+		while back < 80.0 and (x - f * back).length() > float(cp["R"]) - 8.0:
+			back += 4.0
+		var cam := x - f * back - f.orthogonal() * 3.0
+		await _shot("04_era_border", cam, x + f * 6.0 - f.orthogonal() * 2.5, 0.4, 1.8, g.field.height(x.x, x.y) + 2.5, Callable(), 6.0)
 	else:
 		print("no zone checkpoint found")
 	# Stones across open ground: on the line, away from roads, looking along it.
@@ -542,8 +548,9 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 			open = open and _dry(g, Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0)
 		if not open or not _dry(g, p):
 			continue
-		var along := Vector2(cos(a + 0.05), sin(a + 0.05)) * R0
-		await _shot("73_zone_stones", p, along, 0.42, 1.8, NAN, Callable(), 3.0)
+		# Just inside the line, looking along it so the next few stones stand in a row.
+		var along := Vector2(cos(a + 0.035), sin(a + 0.035)) * R0
+		await _shot("73_zone_stones", Vector2(cos(a), sin(a)) * (R0 - 2.5), along, 0.42, 1.8, h + 0.6, Callable(), 3.0)
 		return
 	print("no open stretch of the zone line found")
 

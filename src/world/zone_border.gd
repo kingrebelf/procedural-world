@@ -11,7 +11,7 @@ class_name ZoneBorder
 
 ## Zone levels whose lower edge is marked (ZoneInfo.HUMAN's band edges).
 const BANDS := [10, 20, 40]
-const GAP := 24.0 ## metres of ring between boundary markers
+const GAP := 16.0 ## metres of ring between boundary markers (close enough to read as a line)
 const NEAR_ROAD := 4.5 ## markers stop this far from a road's edge
 
 const LABELS := {
@@ -174,7 +174,7 @@ static func _markers(g: ChunkGenerator, chunk: Dictionary, R: float, band: int, 
 		# Facing out across the line, leaning a touch.
 		var yaw := PI * 0.5 - a + (WHash.unit2(g.seed, i, int(R), 614) - 0.5) * 0.3
 		var era := WorldField.dominant(ChunkGenerator.weights_at(chunk, lx, lz))
-		g._add(chunk, t, era, lx, lz, yaw, 0.9 + WHash.unit2(g.seed, i, int(R), 615) * 0.25, {})
+		g._add(chunk, t, era, lx, lz, yaw, (1.15 if band == 0 else 0.9) + WHash.unit2(g.seed, i, int(R), 615) * 0.3, {})
 
 # --- Meshes ---------------------------------------------------------------------------
 
@@ -224,12 +224,13 @@ static func build(t: String) -> ArrayMesh:
 				k.box("castle_stone", I.translated(Vector3(x, 0.55, 0)), Vector3(0.7, 1.7, 0.7))
 				k.box("castle_stone", I.translated(Vector3(x, 1.45, 0)), Vector3(0.85, 0.18, 0.85))
 				k.sphere("castle_stone", I.translated(Vector3(x, 1.68, 0)), 0.22, 5, 8)
-			# The pole: pivot on the left post, raised at 70 degrees.
+			# The pole: pivot on the left post, raised at 57 degrees (clear of a rider's head
+			# over the road, and plain to see from down the road).
 			var piv := Vector3(-w + 0.55, 1.2, 0)
-			var up := Basis(Vector3.BACK, 1.22)
+			var up := Basis(Vector3.BACK, 1.0)
 			for b in 8:
 				var col := red if b % 2 == 0 else white
-				k.box("painted", Transform3D(up, piv + up * Vector3(0.45 + b * 0.82, 0, 0)), Vector3(0.82, 0.14, 0.14), col)
+				k.box("painted", Transform3D(up, piv + up * Vector3(0.45 + b * 0.82, 0, 0)), Vector3(0.82, 0.2, 0.2), col)
 			k.box("iron", Transform3D(up, piv + up * Vector3(-0.55, 0, 0)), Vector3(0.7, 0.3, 0.3))
 			k.cylinder("iron", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), piv + Vector3(0, 0, -0.25)), 0.07, 0.07, 0.5, 6)
 			# The rest the pole drops onto, and a crest on the far post.

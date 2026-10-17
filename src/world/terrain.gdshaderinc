@@ -400,9 +400,10 @@ void fragment() {
 	if (scar_v.x > 0.01) {
 		float burn = smoothstep(0.1, 0.6, scar_v.x + (meso - 0.5) * 0.5 + (micro - 0.5) * 0.15);
 		col = mix(col, col * vec3(0.2, 0.18, 0.17) + vec3(0.01), burn * 0.92);
-		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - rock_mask) * (1.0 - far * 0.5);
+		// Only on the flat trench floor where the melt pooled; banks and walls stay soot.
+		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - smoothstep(0.08, 0.2, slope)) * (1.0 - rock_mask) * (1.0 - far * 0.5);
 		col = mix(col, vec3(0.02, 0.026, 0.024) + vec3(0.025, 0.035, 0.028) * micro, glass);
-		tilt *= 1.0 - glass * 0.8;
+		tilt *= 1.0 - glass * 0.35;
 	}
 
 	// Roads and village squares (vertex alpha): packed earth and gravel, pale flagstones
@@ -437,11 +438,25 @@ void fragment() {
 			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35;
 			vec2 cid = floor(sq);
 			vec2 f = fract(sq) - 0.5;
-			float joint = smoothstep(0.36, 0.48, max(abs(f.x), abs(f.y))) * (1.0 - far);
+			float joint = smoothstep(0.34, 0.47, max(abs(f.x), abs(f.y))) * (1.0 - far);
 			float hs = hash12(cid);
-			vec3 sett = mix(vec3(0.3, 0.29, 0.27), vec3(0.47, 0.44, 0.4), hs) * (0.85 + 0.25 * micro);
-			rc = mix(sett, rm * 0.75, joint);
-			dome = f * 0.6 * (1.0 - joint) * (1.0 - far);
+			float hs2 = hash12(cid + 1.7);
+			// Old setts: each stone its own shade, some warm, some cool, sunk or tipped.
+			vec3 sett = mix(vec3(0.24, 0.23, 0.21), vec3(0.4, 0.37, 0.33), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
+			sett *= (0.78 + 0.22 * hs2) * (0.85 + 0.25 * micro);
+			// Mud trodden over the stones in drifts, and the joints packed with dirt and moss.
+			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2);
+			sett = mix(sett, rm * 0.8, dirt * 0.55);
+			float moss = smoothstep(0.42, 0.72, fbm(p * 0.21 + 41.0)) * (1.0 - dirt * 0.6);
+			vec3 fill = mix(rm * 0.6, vec3(0.13, 0.17, 0.07) * (0.8 + 0.4 * micro), moss * 0.75);
+			sett = mix(sett, fill, moss * 0.25 * hs2);
+			// Towards the edges stones are missing and the grass has crept in over them.
+			float in_road = smoothstep(0.3, 0.95, road + (meso - 0.5) * 0.35);
+			float keep = step(hash12(cid + 3.1), in_road * 1.35 - 0.1) * step(hash12(cid + 9.7), 0.97);
+			rc = mix(mix(rm * 0.85, fill, moss * 0.5), mix(sett, fill, joint), keep);
+			edge *= 1.0 - (1.0 - keep) * (1.0 - smoothstep(0.35, 0.8, in_road)) * 0.85;
+			vec2 tip = (vec2(hash12(cid + 4.2), hash12(cid + 6.6)) - 0.5) * 0.5;
+			dome = (f * 0.6 + tip) * (1.0 - joint) * keep * (1.0 - far);
 		}
 		paved = max(paved, b2);
 		if (paved > 0.01) {
@@ -583,9 +598,9 @@ void fragment() {
 
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
-	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.14, glass);
+	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
 	METALLIC = plates * 0.6;
-	SPECULAR = mix(0.4, 0.62, glass);
+	SPECULAR = mix(0.4, 0.5, glass);
 #ifdef FAR_LAND
 	ROUGHNESS = mix(mix(ROUGHNESS, 0.95, canopy), 0.06, river);
 	SPECULAR = mix(mix(0.4, 0.25, canopy), 0.5, river);

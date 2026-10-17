@@ -560,10 +560,11 @@ func _craters_v16(x: float, z: float) -> Vector2:
 			holes = -0.25 * r * (1.0 - pow(bq, 2.2))
 			rough = h * pow(q, 8.0)
 		else:
-			# The steep outer flank, then the blanket of ejecta, lumpy and thinning.
+			# The outer flank (gentler than the inner wall, so it grasses over rather than
+			# showing bare rock), then the blanket of ejecta, lumpy and thinning.
 			var o := q - 1.0
 			var hum := lerpf(1.0, 0.55 + 0.9 * (_detail.get_noise_2d(x * 0.32 + 7.0, z * 0.32) + 1.0) * 0.5, smoothstep(0.0, 0.2, o))
-			rough = h * (0.5 * exp(-o / 0.1) + 0.5 * pow(1.0 + o / 0.55, -2.0) * hum * lerpf(1.0, float(cr[4]), smoothstep(0.0, 0.3, o)))
+			rough = h * (0.5 * exp(-o / 0.2) + 0.5 * pow(1.0 + o / 0.55, -2.0) * hum * lerpf(1.0, float(cr[4]), smoothstep(0.0, 0.3, o)))
 		if r > 34.0:
 			rough += 0.11 * r * exp(-pow(q / 0.16, 2.0))
 		holes *= fade
@@ -581,13 +582,18 @@ func _craters_v16(x: float, z: float) -> Vector2:
 ## How much fresh crater spoil shows at (x, z), 0..1 (v16): broken rock along the crests
 ## and the upper walls, and the ejecta blanket in rays of paler spoil round each crater.
 ## The look's byte 11 (scaled by the landform's weight).
-func crater_spoil(x: float, z: float) -> float:
+## `grassed`: an old crater on a human world, long grown over, bare only where its steep
+## inner lip keeps crumbling.
+func crater_spoil(x: float, z: float, grassed := false) -> float:
 	if terrain_v < 16:
 		return 0.0
 	var cr := _crater_at(x, z)
 	if cr.is_empty():
 		return 0.0
 	var q: float = cr[5]
+	if grassed:
+		var lip := exp(-pow((q - 0.94) / 0.06, 2.0))
+		return clampf(lip * (0.55 + 0.6 * (_detail.get_noise_2d(x * 0.15 + 33.0, z * 0.15) + 1.0) * 0.5) * float(cr[4]), 0.0, 1.0)
 	var crest := exp(-pow((q - 1.0) / 0.13, 2.0))
 	# Rays: the direction out from the crater's middle, from the slope of the distance.
 	var d0 := _cell(x, z, CRATER_CELL, CRATER_SALT).x
@@ -596,6 +602,18 @@ func crater_spoil(x: float, z: float) -> float:
 	var o := maxf(q - 1.0, 0.0)
 	var blanket := (pow(1.0 + o / 0.7, -2.0) if q >= 1.0 else smoothstep(0.7, 1.0, q)) * (0.35 + 0.65 * ray)
 	return clampf(maxf(crest, blanket * 0.85) * float(cr[4]), 0.0, 1.0)
+
+## (v16) How many loose boulders lie here in a crater field, as a factor on the rock
+## density: few on the swept floor, most heaped on the inner wall and crest, then thinning
+## over the blanket, always in clumps rather than an even sprinkle.
+func crater_rocks(x: float, z: float) -> float:
+	var cr := _crater_at(x, z)
+	var clump := smoothstep(0.42, 0.72, (_detail.get_noise_2d(x * 0.06 + 91.0, z * 0.06) + 1.0) * 0.5)
+	var k := 0.5
+	if not cr.is_empty():
+		var q: float = cr[5]
+		k = lerpf(0.1, 2.6, smoothstep(0.7, 0.95, q)) * (1.0 - smoothstep(1.1, 1.6, q)) + 0.6 * smoothstep(1.1, 1.6, q)
+	return k * (0.15 + 1.7 * clump)
 
 # --- Rivers -----------------------------------------------------------------
 ## Rivers follow the zero line of a low-frequency noise, so they wind for kilometres and

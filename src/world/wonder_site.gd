@@ -133,7 +133,8 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 		crash = _plan_crash(g, wc, yaw, sum / n + 0.2)
 		if not crash.is_empty():
 			yaw = crash["yaw"]
-	_level(g, chunk, c, sum / n + 0.2)
+	# (A crash site is no plaza: churned ground, no paving and no ring of pillars.)
+	_level(g, chunk, c, sum / n + 0.2, crash.is_empty())
 	if not crash.is_empty():
 		scar(g, chunk, crash)
 	var put := func(type: String, q: Vector2, face: float, st := {}) -> void:
@@ -143,9 +144,8 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	for i in 8:
 		var a := (i + 0.5) * TAU / 8.0
 		var q := Vector2.from_angle(a) * RING
-		# (Not where the hull and its trench lie.)
-		if not crash.is_empty() and q.y < 2.0 and absf(q.x) < CRASH_HALF + 3.0:
-			continue
+		if not crash.is_empty():
+			break
 		put.call(PILLAR[t], q, -a + PI * 0.5)
 	# The vault in front of the centrepiece, sealed by its boss; three lesser hoards.
 	var boss_id := "%d_%d_wboss" % [cx, cz]
@@ -183,8 +183,8 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 		strew(g, chunk, crash)
 	return {"center": wc, "inner": CLEAR, "outer": CLEAR, "wonder": t}
 
-## Flattens the plaza to `h`, easing back into the land by EDGE.
-static func _level(g: ChunkGenerator, chunk: Dictionary, c: Vector2, h: float) -> void:
+## Flattens the plaza to `h`, easing back into the land by EDGE, and paves it if `paved`.
+static func _level(g: ChunkGenerator, chunk: Dictionary, c: Vector2, h: float, paved := true) -> void:
 	const R := ChunkGenerator.RES
 	var hs: PackedFloat32Array = chunk["heights"]
 	for j in range(maxi(1, int(c.y - EDGE) - 1), mini(R - 1, int(c.y + EDGE) + 2)):
@@ -194,6 +194,8 @@ static func _level(g: ChunkGenerator, chunk: Dictionary, c: Vector2, h: float) -
 				var k := j * R + i
 				hs[k] = lerpf(hs[k], h, 1.0 - smoothstep(PLAZA, EDGE, d))
 	chunk["heights"] = hs
+	if not paved:
+		return
 	# The plaza is paved (v4 worlds keep a road surface mask).
 	if g.towns and not chunk.has("road"):
 		var empty := PackedByteArray()
@@ -343,10 +345,12 @@ static func scorch(cr: Dictionary, x: float, z: float) -> float:
 	if q.y < -L - 6.0 or q.y > CRASH_NOSE + 60.0 or absf(q.x) > CRASH_HALF + 60.0:
 		return 0.0
 	var t := clampf((q.y + L) / L, 0.0, 1.0)
+	# A ragged edge: tongues of soot licking out into the grass and bays left unburnt.
+	var wob := (sin(x * 0.11 + 1.7 * sin(z * 0.07)) + sin(z * 0.13 + 1.3 * sin(x * 0.09 + 2.0)) + 0.6 * sin((x + z) * 0.31)) * 0.4
 	var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
-	var trench := (1.0 - smoothstep(wb + 2.0, wb + 9.0 + 8.0 * t, absf(q.x))) * smoothstep(0.02, 0.25, t)
-	trench *= lerpf(0.5, 1.0, t) * (1.0 - smoothstep(CRASH_NOSE, CRASH_NOSE + 8.0, q.y))
-	var burn := 1.0 - smoothstep(18.0, 50.0, Vector2(q.x * 0.75, q.y + 26.0).length())
+	var trench := (1.0 - smoothstep(wb + 2.0, wb + 9.0 + 8.0 * t, absf(q.x) + wob * 6.0)) * smoothstep(0.02, 0.25, t)
+	trench *= lerpf(0.5, 1.0, t) * (1.0 - smoothstep(CRASH_NOSE, CRASH_NOSE + 8.0, q.y + wob * 5.0))
+	var burn := 1.0 - smoothstep(14.0, 50.0, Vector2(q.x * 0.75, q.y + 26.0).length() + wob * 12.0)
 	return clampf(maxf(trench, burn * 0.9), 0.0, 1.0)
 
 ## The crash's mark on a chunk: the trench and its banks in the heights, scorched ground in
