@@ -93,7 +93,9 @@ func _run() -> void:
 	if dn == null:
 		quit(1)
 		return
-	await _frames(30)
+	var td := Time.get_ticks_msec()
+	while not dn.deep and Time.get_ticks_msec() - td < 5000:
+		await process_frame
 	check(dn.deep, "its levels are built when you're near")
 	while not dn._queue.is_empty():
 		await process_frame
