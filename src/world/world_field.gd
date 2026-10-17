@@ -490,6 +490,9 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_CRATERS:
 			# Plains scarred by impact craters with raised rims, big ones with central peaks.
 			var base := c * 0.5 + 6.0 + _plate.get_noise_2d(x, z) * 7.0
+			if terrain_v >= 16:
+				var hr := _craters_v16(x, z)
+				return Vector3(base, hr.x, hr.y)
 			var holes := 0.0
 			var rough := 0.0
 			var cl := _cell(x, z, 120.0, 2203.0)
@@ -518,6 +521,81 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			var n := (_spires.get_noise_2d(x * 1.4 - 911.0, z * 1.4) + 1.0) * 0.5
 			return Vector3(base, 0.0, _steps(pow(n, 1.8) * 30.0, 3.5, 0.45))
 	return Vector3(h, 0.0, 0.0)
+
+# --- Craters (v16) --------------------------------------------------------------------
+## Impact craters as they are: a bowl whose walls steepen up to a sharp, raised crest
+## (higher in places, never a perfect circle), a steep outer flank, then the ejecta
+## blanket thrown out round it, lumpy and thinning with distance; the big ones
+## flat-floored with a central peak. Small fresh pits pock the plain between them.
+
+const CRATER_CELL := 120.0
+const CRATER_SALT := 2203.0
+
+## [bowl radius, how round (rim wobble), rim height, cell fade, blanket fade, q (distance
+## over radius)] of the big crater whose cell holds (x, z), or [] if that cell has none.
+func _crater_at(x: float, z: float) -> Array:
+	var cl := _cell(x, z, CRATER_CELL, CRATER_SALT)
+	if cl.y < 0.35:
+		return []
+	var t := (cl.y - 0.35) / 0.65
+	var r := 14.0 + 34.0 * t
+	var q := (cl.x + _detail.get_noise_2d(x * 0.25, z * 0.25) * r * 0.09) / r
+	var rim := (0.09 * r + 1.2) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 0.08 + 40.0, z * 0.08) + 1.0) * 0.5)
+	return [r, cl.y, rim, smoothstep(0.0, 8.0, cl.z), smoothstep(0.0, 28.0, cl.z), q]
+
+## (holes, rough) of the v16 crater field at (x, z).
+func _craters_v16(x: float, z: float) -> Vector2:
+	var holes := 0.0
+	var rough := 0.0
+	var cr := _crater_at(x, z)
+	if not cr.is_empty():
+		var r: float = cr[0]
+		var h: float = cr[2]
+		var fade: float = cr[3]
+		var q: float = cr[5]
+		if q < 1.0:
+			# The bowl: walls steepening to the crest, the big ones flat-floored.
+			var fq := 0.4 * smoothstep(28.0, 46.0, r)
+			var bq := clampf((q - fq) / (1.0 - fq), 0.0, 1.0)
+			holes = -0.25 * r * (1.0 - pow(bq, 2.2))
+			rough = h * pow(q, 8.0)
+		else:
+			# The steep outer flank, then the blanket of ejecta, lumpy and thinning.
+			var o := q - 1.0
+			var hum := lerpf(1.0, 0.55 + 0.9 * (_detail.get_noise_2d(x * 0.32 + 7.0, z * 0.32) + 1.0) * 0.5, smoothstep(0.0, 0.2, o))
+			rough = h * (0.5 * exp(-o / 0.1) + 0.5 * pow(1.0 + o / 0.55, -2.0) * hum * lerpf(1.0, float(cr[4]), smoothstep(0.0, 0.3, o)))
+		if r > 34.0:
+			rough += 0.11 * r * exp(-pow(q / 0.16, 2.0))
+		holes *= fade
+		rough *= fade
+	var sm := _cell(x, z, 30.0, 3301.0)
+	if sm.y >= 0.6:
+		var r := 3.0 + 6.0 * (sm.y - 0.6) / 0.4
+		var q := (sm.x + _detail.get_noise_2d(x * 0.9, z * 0.9) * r * 0.08) / r
+		var fade := smoothstep(0.0, 2.0, sm.z)
+		var h := 0.1 * r + 0.25
+		holes -= 0.28 * r * maxf(0.0, 1.0 - pow(q, 2.2)) * fade
+		rough += (h * pow(minf(q, 1.0), 6.0) if q < 1.0 else h * (0.6 * exp(-(q - 1.0) / 0.12) + 0.4 * pow(1.0 + (q - 1.0) / 0.5, -2.0))) * fade
+	return Vector2(holes, rough)
+
+## How much fresh crater spoil shows at (x, z), 0..1 (v16): broken rock along the crests
+## and the upper walls, and the ejecta blanket in rays of paler spoil round each crater.
+## The look's byte 11 (scaled by the landform's weight).
+func crater_spoil(x: float, z: float) -> float:
+	if terrain_v < 16:
+		return 0.0
+	var cr := _crater_at(x, z)
+	if cr.is_empty():
+		return 0.0
+	var q: float = cr[5]
+	var crest := exp(-pow((q - 1.0) / 0.13, 2.0))
+	# Rays: the direction out from the crater's middle, from the slope of the distance.
+	var d0 := _cell(x, z, CRATER_CELL, CRATER_SALT).x
+	var a := atan2(_cell(x, z + 0.5, CRATER_CELL, CRATER_SALT).x - d0, _cell(x + 0.5, z, CRATER_CELL, CRATER_SALT).x - d0)
+	var ray := smoothstep(0.4, 0.85, (_detail.get_noise_2d(cos(a) * 6.0 + float(cr[1]) * 400.0, sin(a) * 6.0) + 1.0) * 0.5)
+	var o := maxf(q - 1.0, 0.0)
+	var blanket := (pow(1.0 + o / 0.7, -2.0) if q >= 1.0 else smoothstep(0.7, 1.0, q)) * (0.35 + 0.65 * ray)
+	return clampf(maxf(crest, blanket * 0.85) * float(cr[4]), 0.0, 1.0)
 
 # --- Rivers -----------------------------------------------------------------
 ## Rivers follow the zero line of a low-frequency noise, so they wind for kilometres and

@@ -3189,3 +3189,185 @@ func test_server_alliances() -> void:
 	check(not al.list.has(id), "an alliance ends with its last member")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
+
+# --- v16: zone lines, craters, the Fallen Dreadnought's crash ---------------------------
+
+func _human_world() -> Array:
+	var was := [Eras.theme, Eras.base_level, WorldField.allowed_eras, WorldField.terrain_v]
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	Planets.apply(Planets.get_planet(4242, 0, "human"))
+	return was
+
+func _restore_world(was: Array) -> void:
+	Eras.theme = was[0]
+	Eras.base_level = was[1]
+	WorldField.allowed_eras = was[2]
+	WorldField.terrain_v = was[3]
+
+func test_zone_borders() -> void:
+	var was := _human_world()
+	var rs := ZoneBorder.rings()
+	check(rs.size() == 3 and is_equal_approx(rs[0], 1350.0) and is_equal_approx(rs[1], 2850.0), "a human world marks its zone lines at levels 10, 20 and 40: %s" % rs)
+	check(ZoneBorder.road_rings() == Vector2(1350.0, 2850.0), "and the road surface changes at the first two")
+	check(ZoneInfo.band_range(12) == Vector2i(10, 19) and ZoneInfo.band_range(3) == Vector2i(1, 9) and ZoneInfo.band_range(44) == Vector2i(40, 55), "zone bands: %s %s %s" % [ZoneInfo.band_range(12), ZoneInfo.band_range(3), ZoneInfo.band_range(44)])
+	check(ZoneInfo.entering({"kind": "Borderlands", "band_lo": 10, "band_hi": 19}) == "Entering the Borderlands  ·  Lv 10-19", "the toast names the zone and its levels")
+	var g := ChunkGenerator.new(4242, true)
+	# Boundary stones all round the first line, in every chunk it crosses that has room.
+	var stones := 0
+	var chunks := 0
+	var seen := {}
+	for i in 60:
+		var a := i * TAU / 60.0
+		var p := Vector2(cos(a), sin(a)) * rs[0]
+		var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
+		if seen.has(k):
+			continue
+		seen[k] = true
+		chunks += 1
+		for o in g.generate(k.x, k.y)["objects"]:
+			if o["t"] == "border_stone":
+				stones += 1
+				var w := Vector2(k.x * 64.0 + o["p"].x, k.y * 64.0 + o["p"].z)
+				check(absf(w.length() - rs[0]) < 1.5, "a boundary stone stands on the line (%.1f m off)" % (w.length() - rs[0]))
+	check(stones > chunks / 2, "boundary stones along the line: %d in %d chunks" % [stones, chunks])
+	# Where a road crosses the second line: a barrier on the road, a sign and a booth by it.
+	var cps := ZoneBorder.checkpoints(g, rs[1], 1, Rect2(-3000, -3000, 6000, 6000))
+	var bars := cps.filter(func(c): return c["t"] == "border_barrier")
+	check(not bars.is_empty() and cps.size() == bars.size() * 3, "checkpoints where roads cross the line: %d" % bars.size())
+	if not bars.is_empty():
+		var x: Vector2 = bars[0]["p"]
+		var k := Vector2i(floori(x.x / 64.0), floori(x.y / 64.0))
+		var ch := g.generate(k.x, k.y)
+		var has := false
+		for o in ch["objects"]:
+			has = has or o["t"] == "border_barrier"
+		check(has, "the barrier is placed in its chunk")
+		check(ChunkGenerator.road_at(ch, x.x - k.x * 64.0, x.y - k.y * 64.0) > 0.5, "on the road")
+	for t in ZoneBorder.LABELS:
+		var m := ZoneBorder.build(t)
+		var lit := 0
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i) as StandardMaterial3D
+			if mat != null and mat.emission_enabled:
+				lit += 1
+		check(m.get_surface_count() > 0 and lit == 0, "%s has a mesh and nothing on it glows" % t)
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t) == ZoneBorder.LABELS[t], "%s is a labelled structure" % t)
+	_restore_world(was)
+	check(ZoneBorder.rings().is_empty() or Eras.theme == "human", "only human worlds have zone lines")
+
+func test_crater_rims() -> void:
+	var was := _human_world()
+	var f := WorldField.new(4242)
+	var tested := 0
+	for j in range(-40, 41):
+		for i in range(-40, 41):
+			if tested >= 6:
+				break
+			var p := Vector2(i, j) * 37.0 + Vector2(5000, -3000)
+			var c := f._crater_at(p.x, p.y)
+			if c.is_empty() or float(c[0]) < 30.0 or absf(float(c[5]) - 1.0) > 0.03 or float(c[3]) < 1.0 or float(c[4]) < 0.9:
+				continue
+			# Out from the middle of the crater, from the crest.
+			var d0 := f._cell(p.x, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x
+			var out := Vector2(f._cell(p.x + 0.5, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0, f._cell(p.x, p.y + 0.5, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0).normalized()
+			var r: float = c[0]
+			var crest := f._craters_v16(p.x, p.y)
+			var inside := f._craters_v16(p.x - out.x * r * 0.5, p.y - out.y * r * 0.5)
+			var blanket := f._craters_v16(p.x + out.x * r * 0.4, p.y + out.y * r * 0.4)
+			check(crest.y > 0.07 * r, "a crater's crest stands up (%.1f m on a %.0f m crater)" % [crest.y, r])
+			check(inside.x + inside.y < crest.y - 0.15 * r, "its bowl is well below the crest")
+			check(blanket.y > 0.05 and blanket.y < crest.y, "ejecta lies outside the rim, lower than it (%.2f m)" % blanket.y)
+			check(f.crater_spoil(p.x, p.y) > 0.6, "fresh spoil shows on the crest")
+			tested += 1
+	check(tested > 0, "found big craters to check")
+	WorldField.terrain_v = 15
+	check(f.crater_spoil(5000, -3000) == 0.0, "older worlds keep their craters")
+	_restore_world(was)
+
+func test_dreadnought_crash() -> void:
+	BuildCatalog.warm_kits()
+	var was := _human_world()
+	var g := ChunkGenerator.new(4242, true)
+	var cr := {}
+	var k := Vector2i.ZERO
+	for r in 6:
+		for wz in range(-r, r + 1):
+			for wx in range(-r, r + 1):
+				if not cr.is_empty() or maxi(absi(wx), absi(wz)) != r:
+					continue
+				var pick := WonderSite.cell_pick(g.seed, wx, wz)
+				if not pick.is_empty():
+					cr = WonderSite.crash_of(g, pick[0])
+					k = pick[0]
+	check(not cr.is_empty(), "a crashed dreadnought near the origin")
+	if cr.is_empty():
+		_restore_world(was)
+		return
+	check(float(cr["len"]) >= WonderSite.CRASH_MIN, "its trench runs %.0f m" % cr["len"])
+	var ch := g.generate(k.x, k.y)
+	var hull := {}
+	for o in ch["objects"]:
+		if o["t"] == "w_dreadnought":
+			hull = o
+	check(not hull.is_empty() and hull["st"].get("crash", false), "the hull lies at the end of it")
+	check(ObjectLibrary.mesh_key(hull) == "w_dreadnought" + WonderSite.CRASH + WonderSite.CALM, "a human world's crashed hull wears the calm mesh")
+	var m := ObjectLibrary.get_mesh(ObjectLibrary.mesh_key(hull))
+	var lit := 0
+	for i in m.get_surface_count():
+		var mat := m.surface_get_material(i) as StandardMaterial3D
+		if mat != null and mat.emission_enabled:
+			lit += 1
+	check(lit == 0 and m.get_aabb().size.z > 55.0, "it is capital-ship size (%.0f m) and nothing on it glows" % m.get_aabb().size.z)
+	# The trench: cut well into the land along its length, in the chunks it crosses.
+	var c := Vector2(cr["x"], cr["z"])
+	var deep := 0
+	var n := 0
+	for v in [-30.0, -60.0, -90.0]:
+		if v < -float(cr["len"]) + 20.0:
+			continue
+		var mid := c + Vector2(0, v).rotated(-float(cr["yaw"]))
+		var hm := _ground(g, mid)
+		var raw := g.field.height(mid.x, mid.y)
+		n += 1
+		if hm < raw - 1.5:
+			deep += 1
+	check(n > 0 and deep == n, "the trench is cut into the ground (%d of %d)" % [deep, n])
+	# Seams: neighbours meet the wonder's chunk, and the wreckage lies out round it.
+	var bad := 0
+	var bits := 0
+	var burnt := 0
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var nb := g.generate(k.x + d.x, k.y + d.y)
+		for o in nb["objects"]:
+			if o["t"] == WonderSite.DEBRIS:
+				bits += 1
+		var lb: PackedByteArray = nb.get("look", PackedByteArray())
+		for i in range(10, lb.size(), ChunkGenerator.LOOK_BYTES):
+			burnt += int(lb[i] > 40)
+		for t in ChunkGenerator.RES:
+			var a: float
+			var b: float
+			match d:
+				Vector2i(1, 0):
+					a = ch["heights"][t * ChunkGenerator.RES + ChunkGenerator.SIZE]
+					b = nb["heights"][t * ChunkGenerator.RES]
+				Vector2i(-1, 0):
+					a = ch["heights"][t * ChunkGenerator.RES]
+					b = nb["heights"][t * ChunkGenerator.RES + ChunkGenerator.SIZE]
+				Vector2i(0, 1):
+					a = ch["heights"][ChunkGenerator.SIZE * ChunkGenerator.RES + t]
+					b = nb["heights"][t]
+				_:
+					a = ch["heights"][t]
+					b = nb["heights"][ChunkGenerator.SIZE * ChunkGenerator.RES + t]
+			if absf(a - b) > 0.01:
+				bad += 1
+	check(bad == 0, "the trench's chunks meet the wonder's (%d bad edge points)" % bad)
+	check(bits > 0 and burnt > 0, "wreckage (%d) and scorched ground (%d) reach the chunks round it" % [bits, burnt])
+	for sp in range(1, 7):
+		check(WonderSite.debris(sp, 1).get_surface_count() > 0, "wreckage kind %d has a mesh" % sp)
+	_restore_world(was)
+
+func _ground(g: ChunkGenerator, p: Vector2) -> float:
+	var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
+	return ChunkGenerator.height_at(g.generate(k.x, k.y), p.x - k.x * 64.0, p.y - k.y * 64.0)

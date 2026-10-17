@@ -55,5 +55,24 @@ static func at(seed: int, x: float, z: float) -> Dictionary:
 		_:
 			kind = MIXED[era][0]
 			finds = MIXED[era][1]
-	return {"name": f.region_name_at(x, z), "kind": kind, "era": era, "level": lv,
+	var band := band_range(lv)
+	return {"name": f.region_name_at(x, z), "kind": kind, "era": era, "level": lv, "band_lo": band.x, "band_hi": band.y,
 		"level_lo": maxi(lo, 1), "level_hi": maxi(mini(lo + 9, maxi(Eras.max_level(), lv)), lv), "finds": finds, "color": UITheme.ERA_COLORS[era]}
+
+## The levels of the zone that level lv lies in: on human worlds a band of HUMAN (the
+## Borderlands are 10-19), elsewhere the ten levels round it.
+static func band_range(lv: int) -> Vector2i:
+	if Eras.theme == "human":
+		var lo := 1
+		for b in HUMAN:
+			if lv < b[0]:
+				return Vector2i(maxi(lo, Eras.base_level), mini(int(b[0]) - 1, Eras.max_level()))
+			lo = b[0]
+	var l0 := maxi(lv / 10 * 10, 1)
+	return Vector2i(l0, maxi(mini(l0 + 9, Eras.max_level()), lv))
+
+## The toast for walking into another zone: "Entering the Borderlands  ·  Lv 10-19".
+static func entering(z: Dictionary) -> String:
+	var kind := String(z["kind"])
+	var the := "" if kind.begins_with("The ") else "the "
+	return "Entering %s%s  ·  Lv %d-%d" % [the, kind, int(z["band_lo"]), int(z["band_hi"])]

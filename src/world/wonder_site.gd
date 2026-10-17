@@ -126,14 +126,27 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	var gate := r.randf() < GATE_CHANCE and Eras.theme != "human"
 	var t: String = "w_gate" if gate else BY_ERA[era]
 	var yaw := r.randf() * TAU
+	# v16: the Fallen Dreadnought lies at the end of the trench it ploughed, turned so the
+	# trench runs clear of roads, rivers, water and towns (the old small wreck if no way is).
+	var crash := {}
+	if t == "w_dreadnought" and WorldField.terrain_v >= 16:
+		crash = _plan_crash(g, wc, yaw, sum / n + 0.2)
+		if not crash.is_empty():
+			yaw = crash["yaw"]
 	_level(g, chunk, c, sum / n + 0.2)
+	if not crash.is_empty():
+		scar(g, chunk, crash)
 	var put := func(type: String, q: Vector2, face: float, st := {}) -> void:
 		var p: Vector2 = c + q.rotated(-yaw)
 		g._add(chunk, type, era, p.x, p.y, yaw + face, 1.0, st)
-	put.call(t, Vector2.ZERO, 0.0)
+	put.call(t, Vector2.ZERO, 0.0, {"crash": true} if not crash.is_empty() else {})
 	for i in 8:
 		var a := (i + 0.5) * TAU / 8.0
-		put.call(PILLAR[t], Vector2.from_angle(a) * RING, -a + PI * 0.5)
+		var q := Vector2.from_angle(a) * RING
+		# (Not where the hull and its trench lie.)
+		if not crash.is_empty() and q.y < 2.0 and absf(q.x) < CRASH_HALF + 3.0:
+			continue
+		put.call(PILLAR[t], q, -a + PI * 0.5)
 	# The vault in front of the centrepiece, sealed by its boss; three lesser hoards.
 	var boss_id := "%d_%d_wboss" % [cx, cz]
 	var origin := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
@@ -146,6 +159,9 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	for i in 3:
 		var a := PI * 0.5 + (i - 1) * 2.1 + r.randf_range(-0.2, 0.2)
 		var q := Vector2.from_angle(a) * (RING - 3.0)
+		if not crash.is_empty() and q.y < 0.0:
+			# Thrown clear of the hull, out on the plaza's open side.
+			q = Vector2(signf(q.x) * (CRASH_HALF + 4.5), 5.0)
 		var loot := ItemDB.roll_loot(era, r, origin, 0.9)
 		loot.append_array(treasure(era, r, origin, Rarity.EPIC, 1))
 		put.call(Eras.CACHE_TYPES[era] if r.randf() < 0.7 else Eras.CACHE_TYPES[r.randi() % Eras.COUNT], q, r.randf() * TAU, {"loot": loot, "opened": false, "wonder": t})
@@ -155,11 +171,16 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	var guards := 4 + r.randi_range(0, 2)
 	for i in guards:
 		var a := i * TAU / guards + r.randf_range(-0.2, 0.2)
+		if not crash.is_empty():
+			a = (i + 0.5) * PI / guards # on the open half of the plaza, not in the hull
 		var p := c + (Vector2.from_angle(a) * r.randf_range(9.0, 12.0)).rotated(-yaw)
 		chunk["guards"].append({"id": "%d_%d_w%d" % [cx, cz, i], "lx": p.x, "lz": p.y, "tier": 4 + int(r.randf() < 0.4), "era": era})
 	var bp := c + Vector2(0, front + 3.0).rotated(-yaw)
 	chunk["guards"].append({"id": boss_id, "lx": bp.x, "lz": bp.y, "tier": 100 + TYPES.find(t), "era": era})
 	chunk["wonder"] = {"t": t, "lx": c.x, "lz": c.y, "era": era, "boss": boss_id}
+	if not crash.is_empty():
+		chunk["wonder"]["crash"] = crash
+		strew(g, chunk, crash)
 	return {"center": wc, "inner": CLEAR, "outer": CLEAR, "wonder": t}
 
 ## Flattens the plaza to `h`, easing back into the land by EDGE.
@@ -219,6 +240,234 @@ static func of_chunk(chunk: Dictionary) -> Dictionary:
 	return {"t": w["t"], "x": chunk["cx"] * ChunkGenerator.SIZE + float(w["lx"]), "z": chunk["cz"] * ChunkGenerator.SIZE + float(w["lz"]),
 		"era": w["era"], "cleared": cleared}
 
+# --- The Fallen Dreadnought's crash site (v16) -----------------------------------------
+## The warship came in low along its local -z, touched down up to CRASH_LEN metres back
+## and ploughed a trench to where it lies, nose by the vault. The scar reaches into the
+## chunks round the wonder's: each carves the same trench (crash_ground is a function of
+## the world alone, so the chunks meet), scorches the same sand and strews the wreckage
+## that landed in it.
+
+const CRASH_LEN := 160.0 ## longest trench, touchdown to the plaza's middle
+const CRASH_MIN := 64.0 ## shorter than this and the old wreck lies there instead
+const CRASH_HALF := 14.0 ## half-width of the trench floor by the hull
+const CRASH_NOSE := 4.0 ## where the trench ends, a little past the plaza's middle
+const CRASH_REACH := 3 ## chunks from the wonder's chunk the scar can reach
+const CRASH_HULL := 66.0 ## how far back from the nose the hull lies
+const DEBRIS := "crash_debris"
+
+static var _crash_lock := Mutex.new()
+static var _crashes := {}
+
+## The way in for a dreadnought at wc on a plaza at height hb: the first of twelve
+## headings (from yaw0) whose trench runs CRASH_LEN on dry land, clear of rivers, roads,
+## towns and steep ground, else the one that runs furthest. {} if none runs CRASH_MIN.
+static func _plan_crash(g: ChunkGenerator, wc: Vector2, yaw0: float, hb: float) -> Dictionary:
+	var box := Rect2(wc, Vector2.ZERO).grow(CRASH_LEN + 40.0)
+	var roads := g.roads_near(box.position.x, box.position.y, box.end.x, box.end.y)
+	var towns: Array = g.settlements_near(box.position.x, box.position.y, box.end.x, box.end.y)
+	towns.append_array(g.forts_near(box.position.x, box.position.y, box.end.x, box.end.y))
+	var best := 0.0
+	var best_yaw := yaw0
+	for i in 12:
+		var yw := yaw0 + i * TAU / 12.0
+		var run := 0.0
+		var v := -8.0
+		while v >= -CRASH_LEN:
+			var ok := true
+			for u in [-CRASH_HALF - 8.0, 0.0, CRASH_HALF + 8.0]:
+				var p: Vector2 = wc + Vector2(u, v).rotated(-yw)
+				var h := g.field.height(p.x, p.y)
+				ok = ok and h > ChunkGenerator.WATER_LEVEL + 1.0 and absf(h - hb) < 16.0
+				ok = ok and not (g.rivers and g.field.river_t(p.x, p.y) < WorldField.RIVER_REACH + 2.0)
+				for st in towns:
+					ok = ok and p.distance_to(st["center"]) > float(st.get("outer", st.get("inner", 40.0))) + 12.0
+				for rd in roads:
+					ok = ok and _road_gap(rd, p) > ChunkGenerator.ROAD_HALF + 10.0
+			if not ok:
+				break
+			run = -v
+			v -= 8.0
+		if run > best + 0.5:
+			best = run
+			best_yaw = yw
+		if best >= CRASH_LEN:
+			break
+	if best < CRASH_MIN:
+		return {}
+	var tp := wc + Vector2(0, -best).rotated(-best_yaw)
+	return {"x": wc.x, "z": wc.y, "yaw": wrapf(best_yaw, 0.0, TAU), "hb": hb, "len": best,
+		"gl": g.field.height(tp.x, tp.y), "ph": fposmod(wc.x * 0.0137 + wc.y * 0.0191, TAU)}
+
+static func _road_gap(rd: Dictionary, p: Vector2) -> float:
+	var pts := ChunkGenerator.road_pts(rd)
+	var seg := ChunkGenerator._road_seg(pts, p)
+	var i := int(seg.x)
+	return p.distance_to(pts[i].lerp(pts[mini(i + 1, pts.size() - 1)], seg.y))
+
+## (across, along) of world point (x, z) in the crash's frame: along runs from the
+## touchdown (-len) to the plaza's middle (0).
+static func _crash_q(cr: Dictionary, x: float, z: float) -> Vector2:
+	return (Vector2(x, z) - Vector2(cr["x"], cr["z"])).rotated(cr["yaw"])
+
+## Ground height h at world (x, z) once the dreadnought has ploughed through: a graded
+## trench with a flat floor and steep sides, widening and deepening toward the hull, and
+## the spoil it threw heaped along both lips. The same in every chunk.
+static func crash_ground(cr: Dictionary, x: float, z: float, h: float) -> float:
+	var q := _crash_q(cr, x, z)
+	var L: float = cr["len"]
+	if q.y < -L - 6.0 or q.y > CRASH_NOSE + 16.0 or absf(q.x) > CRASH_HALF + 50.0:
+		return h
+	var t := clampf((q.y + L) / L, 0.0, 1.0)
+	var dig := smoothstep(0.0, 0.2, t)
+	# It skidded in on a slight curve, straightening as it slowed.
+	var u := absf(q.x - sin(q.y * 0.045 + float(cr["ph"])) * 3.0 * (1.0 - t))
+	var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
+	var fl := lerpf(float(cr["gl"]), float(cr["hb"]), t) - (1.0 + 4.0 * t) * dig + (1.0 - dig) * 3.0
+	if q.y > CRASH_NOSE:
+		fl += (q.y - CRASH_NOSE) * 1.3
+	var cut := fl + maxf(0.0, u - wb) * 1.1
+	if h > cut:
+		return cut
+	var lip := wb + maxf(0.0, h - fl) / 1.1
+	var bank := (0.6 + 3.4 * t) * dig * (1.0 - smoothstep(CRASH_NOSE, CRASH_NOSE + 10.0, q.y))
+	var d := u - lip
+	# Lumpy, as thrown earth is.
+	var lump := 0.75 + 0.5 * sin(q.y * 0.31 + u * 0.7 + float(cr["ph"]) * 3.0) * sin(q.y * 0.17 - u * 0.4)
+	return h + bank * lump * smoothstep(0.0, 2.0, d) * exp(-pow((d - 3.0) / (4.0 + 4.0 * t), 2.0))
+
+## How scorched the ground is at world (x, z), 0..1: the trench and its banks, worst by
+## the hull, and a burn round where it came to rest (the shader glasses the worst of it).
+static func scorch(cr: Dictionary, x: float, z: float) -> float:
+	var q := _crash_q(cr, x, z)
+	var L: float = cr["len"]
+	if q.y < -L - 6.0 or q.y > CRASH_NOSE + 60.0 or absf(q.x) > CRASH_HALF + 60.0:
+		return 0.0
+	var t := clampf((q.y + L) / L, 0.0, 1.0)
+	var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
+	var trench := (1.0 - smoothstep(wb + 2.0, wb + 9.0 + 8.0 * t, absf(q.x))) * smoothstep(0.02, 0.25, t)
+	trench *= lerpf(0.5, 1.0, t) * (1.0 - smoothstep(CRASH_NOSE, CRASH_NOSE + 8.0, q.y))
+	var burn := 1.0 - smoothstep(18.0, 50.0, Vector2(q.x * 0.75, q.y + 26.0).length())
+	return clampf(maxf(trench, burn * 0.9), 0.0, 1.0)
+
+## The crash's mark on a chunk: the trench and its banks in the heights, scorched ground in
+## the look (byte 10), the paving gone where the trench cuts the plaza, and the whole scar
+## kept clear of trees, boulders and the rest.
+static func scar(g: ChunkGenerator, chunk: Dictionary, cr: Dictionary) -> void:
+	const R := ChunkGenerator.RES
+	const S := ChunkGenerator.SIZE
+	var x0 := float(int(chunk["cx"]) * S)
+	var z0 := float(int(chunk["cz"]) * S)
+	var hs: PackedFloat32Array = chunk["heights"]
+	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
+	for j in R:
+		for i in R:
+			var k := j * R + i
+			var h1 := crash_ground(cr, x0 + i, z0 + j, hs[k])
+			if h1 < hs[k] - 0.3 and not rb.is_empty():
+				rb[k] = 0
+			hs[k] = h1
+	chunk["heights"] = hs
+	if not rb.is_empty():
+		chunk["road"] = rb
+	const N := ChunkGenerator.LOOK_N
+	const B := ChunkGenerator.LOOK_BYTES
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	for j in N:
+		for i in N:
+			var a := scorch(cr, x0 + i * ChunkGenerator.LOOK_STEP, z0 + j * ChunkGenerator.LOOK_STEP)
+			if a <= 0.004:
+				continue
+			if lb.is_empty():
+				lb.resize(N * N * B)
+			var at := (j * N + i) * B + 10
+			lb[at] = maxi(lb[at], int(round(a * 255.0)))
+	if not lb.is_empty():
+		chunk["look"] = lb
+	var ko: PackedFloat32Array = chunk.get("keep_out", PackedFloat32Array())
+	ko.append_array([float(cr["x"]) - x0, float(cr["z"]) - z0, float(cr["yaw"]),
+		-CRASH_HALF - 14.0, -float(cr["len"]) - 4.0, CRASH_HALF + 14.0, CRASH_NOSE + 6.0])
+	chunk["keep_out"] = ko
+
+## The wreckage strewn along the trench and flung round the hull, as
+## {q (across, along), sp, v, yaw}: the same list for every chunk.
+static func wreckage(seed: int, cr: Dictionary) -> Array:
+	var r := WHash.rng(seed, int(floor(float(cr["x"]))), int(floor(float(cr["z"]))), 961)
+	r.randf()
+	var L: float = cr["len"]
+	var out: Array = []
+	for i in 56:
+		var v := -lerpf(10.0, L, pow(r.randf(), 1.4))
+		var t := (v + L) / L
+		var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
+		var u := (1.0 if r.randf() < 0.5 else -1.0) * r.randf_range(0.0, wb + 20.0)
+		var sp := 1 + r.randi() % 6
+		var size := r.randi() % 3
+		var yaw := r.randf() * TAU
+		# Not inside the hull itself.
+		if absf(u) < CRASH_HALF and v > -CRASH_HULL - 4.0:
+			continue
+		out.append({"q": Vector2(u, v), "sp": sp, "v": size, "yaw": yaw})
+	for i in 10:
+		var a := r.randf_range(0.2, PI - 0.2)
+		var q := Vector2.from_angle(a) * r.randf_range(30.0, 58.0)
+		out.append({"q": q, "sp": 5 + r.randi() % 2, "v": r.randi() % 2, "yaw": r.randf() * TAU})
+	return out
+
+## Puts the wreckage of crash `cr` that lies in this chunk.
+static func strew(g: ChunkGenerator, chunk: Dictionary, cr: Dictionary) -> void:
+	const S := ChunkGenerator.SIZE
+	var x0 := float(int(chunk["cx"]) * S)
+	var z0 := float(int(chunk["cz"]) * S)
+	var c := Vector2(cr["x"], cr["z"])
+	for w in wreckage(g.seed, cr):
+		var p: Vector2 = c + (w["q"] as Vector2).rotated(-float(cr["yaw"]))
+		if not ChunkGenerator._inside(p, x0, z0):
+			continue
+		var lx := p.x - x0
+		var lz := p.y - z0
+		if ChunkGenerator.height_at(chunk, lx, lz) < ChunkGenerator.WATER_LEVEL + 0.3 or ChunkGenerator.road_at(chunk, lx, lz) > 0.0 or ChunkGenerator.by_river(chunk, lx, lz):
+			continue
+		g._add(chunk, DEBRIS, Eras.SCIFI, lx, lz, float(w["yaw"]), 1.0, {}, int(w["sp"]), int(w["v"]))
+
+## Crashes of nearby chunks whose scar can reach chunk (cx, cz) (not its own).
+static func crashes_near(g: ChunkGenerator, cx: int, cz: int) -> Array:
+	var out: Array = []
+	if WorldField.terrain_v < 16:
+		return out
+	for wz in range(floori(float(cz - CRASH_REACH) / CELL), floori(float(cz + CRASH_REACH) / CELL) + 1):
+		for wx in range(floori(float(cx - CRASH_REACH) / CELL), floori(float(cx + CRASH_REACH) / CELL) + 1):
+			var pick := cell_pick(g.seed, wx, wz)
+			if pick.is_empty():
+				continue
+			var k: Vector2i = pick[0]
+			if k == Vector2i(cx, cz) or maxi(absi(k.x - cx), absi(k.y - cz)) > CRASH_REACH:
+				continue
+			var cr := crash_of(g, k)
+			if not cr.is_empty():
+				out.append(cr)
+	return out
+
+## The crash in chunk k, or {} if its wonder is none or not a crashed dreadnought. Found
+## by generating that chunk (once per world; a dreadnought only stands in sci-fi land).
+static func crash_of(g: ChunkGenerator, k: Vector2i) -> Dictionary:
+	var key := "%d:%d:%d:%d:%s:%d" % [g.seed, k.x, k.y, WorldField.terrain_v, Eras.theme, int(g.rivers)]
+	_crash_lock.lock()
+	var have = _crashes.get(key)
+	_crash_lock.unlock()
+	if have != null:
+		return have
+	var cr := {}
+	const S := ChunkGenerator.SIZE
+	if g.field.era_weights((k.x + 0.5) * S, (k.y + 0.5) * S)[Eras.SCIFI] > 0.25:
+		var ch := g.generate(k.x, k.y)
+		cr = ch.get("wonder", {}).get("crash", {})
+	_crash_lock.lock()
+	if _crashes.size() > 512:
+		_crashes.clear()
+	_crashes[key] = cr
+	_crash_lock.unlock()
+	return cr
+
 # --- Meshes ---------------------------------------------------------------------------
 
 static var _beams := {}
@@ -230,8 +479,40 @@ const CALM_MATS := {"titan_glow": "titan_stone", "starfall_glass": "starfall_gla
 	"glow_warm": "gold", "glow_cyan": "panel", "crystal": "glass", "crystal_violet": "glass"}
 static var _portal: Material
 
-## The mesh of a wonder piece. `solid` leaves out the light (for collision).
-static func build(t: String, solid := false, calm := false) -> ArrayMesh:
+## Mesh key suffix for a Fallen Dreadnought lying at the end of its trench (v16).
+const CRASH := "@crash"
+
+## The mesh key of a placed wonder piece: crashed or not, calm on human worlds.
+static func mesh_key(o: Dictionary) -> String:
+	var key: String = o["t"]
+	if o.get("st", {}).get("crash", false):
+		key += CRASH
+	# On human worlds a wonder wears carved and inlaid stone, nothing that glows.
+	if Eras.theme == "human":
+		key += CALM
+	return key
+
+## The key of the mesh a wonder piece collides with (no light, any material).
+static func solid_key(o: Dictionary) -> String:
+	return String(o["t"]) + (CRASH if o.get("st", {}).get("crash", false) else "") + "~solid"
+
+static func _base_key(key: String) -> String:
+	return key.trim_suffix("~solid").trim_suffix(CALM).trim_suffix(CRASH)
+
+static func owns_key(key: String) -> bool:
+	return has(_base_key(key))
+
+static func build_key(key: String) -> ArrayMesh:
+	var solid := key.ends_with("~solid")
+	var k := key.trim_suffix("~solid")
+	var calm := k.ends_with(CALM)
+	k = k.trim_suffix(CALM)
+	var crash := k.ends_with(CRASH)
+	return build(k.trim_suffix(CRASH), solid, calm, crash)
+
+## The mesh of a wonder piece. `solid` leaves out the light (for collision); `crash` is
+## the v16 Fallen Dreadnought, full size in its trench.
+static func build(t: String, solid := false, calm := false, crash := false) -> ArrayMesh:
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.str_hash(t)
@@ -240,7 +521,7 @@ static func build(t: String, solid := false, calm := false) -> ArrayMesh:
 	match t:
 		"w_throne": _throne(k, r)
 		"w_worldroot": _worldroot(k, r)
-		"w_dreadnought": out = _dreadnought(k, r)
+		"w_dreadnought": out = _crashed(k, r, calm or solid) if crash else _dreadnought(k, r)
 		"w_gate": _gate(k, r, solid)
 		"w_column":
 			k.box("titan_glow", I.translated(Vector3(0, 0.3, 0)), Vector3(2.0, 0.6, 2.0))
@@ -474,6 +755,121 @@ static func _dreadnought(k: MeshKit, r: RandomNumberGenerator) -> ArrayMesh:
 	k.sphere("glow_red", I.translated(Vector3(6.5, 9.2, 4.0)), 0.3, 4, 6)
 	k.box("glow_cyan", Transform3D(Basis.from_euler(Vector3(0.18, 0.0, 0.22)), Vector3(0, 2.6, 6.5)), Vector3(3.0, 0.4, 0.05))
 	return out
+
+## The v16 Fallen Dreadnought: a warship of the Imperial make at capital-ship size (about
+## 67 m long and 28 across), lying nose by the vault (+z) at the end of its trench, rolled
+## onto one flank and sunk to the belly in the floor it dug. Plating torn off along its
+## sides, ribs bared where its back broke, a mast snapped over it. `calm` (human worlds)
+## leaves out the fires.
+static func _crashed(k: MeshKit, r: RandomNumberGenerator, calm: bool) -> ArrayMesh:
+	var I := Transform3D.IDENTITY
+	const SC := 3.6
+	var roll := Basis.from_euler(Vector3(0.06, 0.04, 0.24))
+	var hull := Transform3D(roll.scaled(Vector3.ONE * SC), Vector3(0, -0.4, CRASH_NOSE - 2.0 - 11.88 * SC))
+	var out := Landmark._merge(["ships/Imperial"], [hull])
+	# The high flank (+x rolls up): a breach in the back with ribs standing out of it.
+	for j in 7:
+		var z := -46.0 + j * 2.6
+		var prev := roll * Vector3(4.0, 5.5, z)
+		for s in 5:
+			var a := (s + 1) / 5.0 * PI * 0.55
+			var q := roll * Vector3(4.0 + sin(a) * 7.0, 5.5 + cos(a) * 3.5 - s * 0.2, z + r.randf_range(-0.2, 0.2))
+			_limb(k, "metal_dark", prev, q, 0.32, 0.26, 6)
+			prev = q
+	for j in 5:
+		k.box("scrap_plate", Transform3D(roll * Basis.from_euler(Vector3(r.randf_range(-0.4, 0.4), 0, r.randf_range(0.3, 1.1))),
+			roll * Vector3(r.randf_range(6.0, 10.0), 6.0, -45.0 + j * 3.4)), Vector3(r.randf_range(3.0, 5.0), 0.2, r.randf_range(2.0, 3.5)))
+	# Armour torn off along both flanks, half buried in the trench floor.
+	for i in 18:
+		var side := 1.0 if i % 2 == 0 else -1.0
+		var z := r.randf_range(-62.0, -4.0)
+		var b := Basis.from_euler(Vector3(r.randf_range(-0.5, 0.5), r.randf() * TAU, side * r.randf_range(0.4, 1.2)))
+		k.box("scrap_plate" if i % 3 else "metal_dark", Transform3D(b, Vector3(side * r.randf_range(13.0, 17.5), r.randf_range(-2.4, -1.2), z)),
+			Vector3(r.randf_range(2.5, 6.0), 0.22, r.randf_range(1.5, 3.5)))
+	# The mast snapped off at its foot: a jagged stump on the hull, the rest lying in the
+	# trench beside it with its dish.
+	_limb(k, "metal_dark", roll * Vector3(-1.0, 4.5, -22.0), roll * Vector3(-1.4, 9.0, -21.0), 0.75, 0.6)
+	_limb(k, "metal_dark", Vector3(-17.0, -1.6, -34.0), Vector3(-19.5, -0.6, -16.0), 0.6, 0.4)
+	k.box("panel", Transform3D(Basis.from_euler(Vector3(0.3, 0.5, -1.1)), Vector3(-19.0, 0.2, -14.6)), Vector3(3.2, 0.3, 1.6))
+	# Gun turrets still on the hull's back, barrels at all angles.
+	for i in 3:
+		var at := roll * Vector3(r.randf_range(-2.5, 2.5), 5.0, -14.0 - i * 13.0)
+		k.cylinder("metal_dark", Transform3D(roll, at), 2.2, 1.9, 1.3, 14)
+		for x in [-0.6, 0.6]:
+			var b := roll * Basis.from_euler(Vector3(PI * 0.5 - r.randf_range(0.1, 0.9), r.randf_range(-0.8, 0.8), 0))
+			k.cylinder("metal_dark", Transform3D(b, at + roll * Vector3(x, 0.9, 0.8)), 0.28, 0.22, 7.0, 8)
+	# Fires still burning in the wreck, and the reactor's red glow through a rent in the
+	# hull (alien worlds only: nothing glows on a human one).
+	if not calm:
+		for i in 6:
+			var p := roll * Vector3(r.randf_range(-8.0, 8.0), r.randf_range(4.0, 7.0), r.randf_range(-58.0, -6.0))
+			k.sphere("glow_red", I.translated(p), r.randf_range(0.5, 1.0), 4, 6, 0.4)
+			k.sphere("glow_warm", I.translated(p + Vector3(0, 0.6, 0)), 0.45, 4, 6, 0.4)
+		k.box("glow_red", Transform3D(roll, roll * Vector3(6.5, 5.0, -38.0)), Vector3(0.3, 2.5, 7.0))
+	return out
+
+## Wreckage of the Fallen Dreadnought, lying out along its trench. Kind 1-6: a torn hull
+## plate, a section of bared ribs, an engine pod, a turret thrown off its ring, a heap of
+## armour slabs, twisted scrap; size 0-2.
+static func debris(sp: int, v: int) -> ArrayMesh:
+	var k := MeshKit.new((sp * 31 + v * 7) & 0xFFFF)
+	var r := RandomNumberGenerator.new()
+	r.seed = sp * 977 + v * 13 + 5
+	var I := Transform3D.IDENTITY
+	var z: float = [0.7, 1.0, 1.5][clampi(v, 0, 2)]
+	match (sp - 1) % 6:
+		0:
+			# A hull plate bent over on itself, one edge dug into the ground.
+			for i in 3:
+				var b := Basis.from_euler(Vector3(0.2 + i * 0.22, 0, r.randf_range(-0.12, 0.12)))
+				k.box("scrap_plate", Transform3D(b, Vector3(0, 0.2 + i * 0.5, i * 1.15) * z), Vector3(4.6, 0.18, 1.3) * z)
+			k.box("metal_dark", Transform3D(Basis.from_euler(Vector3(0.42, 0, 0)), Vector3(0, 0.75, 1.1) * z), Vector3(4.4, 0.32, 0.22) * z)
+			k.box("metal_dark", Transform3D(Basis.from_euler(Vector3(0.42, 0, 0)), Vector3(1.6, 0.75, 1.1) * z), Vector3(0.22, 0.32, 3.2) * z)
+		1:
+			# Bared ribs: curved frames and a stringer standing out of the sand.
+			for j in 4:
+				var zz := (j - 1.5) * 1.7 * z
+				var prev := Vector3(-3.0 * z, -0.4, zz)
+				for s in 6:
+					var a := (s + 1) / 6.0 * PI * 0.85
+					var q := Vector3(-cos(a) * 3.0 * z, sin(a) * 2.8 * z - 0.4 - s * 0.05, zz + r.randf_range(-0.1, 0.1))
+					_limb(k, "metal_dark", prev, q, 0.17 * z, 0.15 * z, 5)
+					prev = q
+			_limb(k, "rust", Vector3(-1.4, 2.2, -3.2) * z, Vector3(-1.2, 2.3, 3.2) * z, 0.12 * z, 0.12 * z, 5)
+			k.box("scrap_plate", Transform3D(Basis.from_euler(Vector3(0, 0, 0.55)), Vector3(-2.1, 1.2, 0.6) * z), Vector3(2.4, 0.12, 4.0) * z)
+		2:
+			# An engine pod torn off and half sunk, its nozzle bell blown open.
+			var along := Basis(Vector3.RIGHT, PI * 0.5 + 0.07)
+			k.cylinder("metal_dark", Transform3D(along, Vector3(0, 0.5, -3.6) * z), 1.6 * z, 1.4 * z, 7.0 * z, 16)
+			k.cylinder("rust", Transform3D(along, Vector3(0, 0.5 + 0.49, 3.4) * z), 1.35 * z, 1.9 * z, 1.8 * z, 16, false)
+			k.cylinder("stone_dark", Transform3D(along, Vector3(0, 0.5 + 0.49, 3.3) * z), 1.15 * z, 1.15 * z, 0.1 * z, 16)
+			for f in 3:
+				var b := Basis(Vector3.BACK, f * TAU / 3.0 + 0.3)
+				k.box("panel", Transform3D(b, b * Vector3(0, 1.9, 0) * z + Vector3(0, 0.5, -1.0) * z), Vector3(0.18, 1.4, 3.0) * z, Color(0.55, 0.56, 0.58))
+		3:
+			# A turret thrown off its ring, tipped on its side, barrels askew.
+			var tip := Basis.from_euler(Vector3(0.35, 0, 0.5))
+			k.cylinder("panel", Transform3D(tip, Vector3(0, -0.3, 0)), 2.1 * z, 1.8 * z, 1.6 * z, 16, true, 0.0, 1, Color(0.5, 0.52, 0.55))
+			k.cylinder("metal_dark", Transform3D(tip, Vector3(0, -0.6, 0)), 1.6 * z, 1.6 * z, 0.5 * z, 16)
+			for x in [-0.6, 0.6]:
+				var b := tip * Basis.from_euler(Vector3(PI * 0.5 - r.randf_range(-0.3, 0.4), r.randf_range(-0.4, 0.4), 0))
+				k.cylinder("metal_dark", Transform3D(b, tip * Vector3(x, 1.0, 1.0) * z), 0.3 * z, 0.24 * z, 6.0 * z, 8)
+		4:
+			# Armour slabs fallen in a heap.
+			for i in 6:
+				var b := Basis.from_euler(Vector3(r.randf_range(-0.5, 0.5), r.randf() * TAU, r.randf_range(-0.5, 0.5)))
+				k.box("scrap_plate" if i % 2 else "metal_dark", Transform3D(b, Vector3(r.randf_range(-1.5, 1.5), 0.2 + i * 0.35, r.randf_range(-1.5, 1.5)) * z),
+					Vector3(r.randf_range(2.0, 3.6), 0.35, r.randf_range(1.2, 2.4)) * z)
+		_:
+			# Twisted scrap: buckled panels and snapped conduit.
+			for i in 7:
+				var b := Basis.from_euler(Vector3(r.randf_range(-0.9, 0.9), r.randf() * TAU, r.randf_range(-0.9, 0.9)))
+				k.box("scrap_plate" if i % 3 else "rust", Transform3D(b, Vector3(r.randf_range(-1.6, 1.6), 0.15, r.randf_range(-1.6, 1.6)) * z),
+					Vector3(r.randf_range(0.6, 1.8), 0.06, r.randf_range(0.4, 1.2)) * z)
+			for i in 3:
+				var a := Vector3(r.randf_range(-1.5, 1.5), -0.2, r.randf_range(-1.5, 1.5)) * z
+				_limb(k, "metal_dark", a, a + Vector3(r.randf_range(-1.5, 1.5), r.randf_range(0.6, 1.6), r.randf_range(-1.5, 1.5)) * z, 0.09 * z, 0.07 * z, 5)
+	return k.commit(Materials.get_mat)
 
 static func _gate(k: MeshKit, r: RandomNumberGenerator, solid: bool) -> void:
 	var I := Transform3D.IDENTITY
