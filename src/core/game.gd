@@ -44,6 +44,8 @@ var vehicles: Array = []
 ## Where you last left each planet for orbit (planet -> Vector2), to land there again.
 var landings: Dictionary = {}
 var markers := Markers.new() ## map pins and teleporters
+var guilds: Dictionary = {} ## guild (TownShops.GUILDS key) -> {day, town}
+var estates: Array = [] ## houses you bought: TownShops.estate records
 var map := WorldMap.new() ## the painted atlas under its fog of war
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
@@ -95,6 +97,8 @@ func _begin(fresh: bool) -> void:
 	equipment = {}
 	landings = {}
 	markers = Markers.new()
+	guilds = {}
+	estates = []
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -111,6 +115,8 @@ func _begin(fresh: bool) -> void:
 		equipment = p.get("equipment", {}).duplicate(true)
 		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
+		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
+		estates = (p.get("estates", []) as Array).duplicate(true)
 		pending_player_state = p
 	else:
 		money = 50
@@ -151,6 +157,31 @@ func set_planet(n: int) -> void:
 	_enter_planet(n)
 	_player_dirty = true
 
+## Joins a guild (TownShops.GUILDS key); membership counts in every hall of it.
+func join_guild(kind: String, town: String) -> void:
+	guilds[kind] = {"day": day, "town": town}
+	_player_dirty = true
+
+## Takes the deed to a house (TownShops.estate) and marks it on the map.
+func buy_house(e: Dictionary) -> void:
+	estates.append(e)
+	markers.add("Your house, %s" % e.get("town", ""), float(e["x"]), float(e["z"]), int(e.get("planet", planet)))
+	_player_dirty = true
+
+## Where you wake after falling: the door of your nearest house on this planet, if any.
+func home_near(at: Vector3) -> Variant:
+	var best = null
+	var bd := INF
+	for e in estates:
+		if int(e.get("planet", 0)) != planet:
+			continue
+		var p := Vector2(float(e["dx"]), float(e["dz"]))
+		var d := p.distance_to(Vector2(at.x, at.z))
+		if d < bd:
+			bd = d
+			best = p
+	return best
+
 ## Something saved with the player changed (markers, for one).
 func touch_player() -> void:
 	_player_dirty = true
@@ -183,7 +214,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data()}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:

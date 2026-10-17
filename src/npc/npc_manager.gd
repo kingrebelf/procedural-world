@@ -56,6 +56,23 @@ func all_nodes() -> Array:
 func settlement_of(n: NPC) -> Dictionary:
 	return n.settlement
 
+## The generator's site record (center, era, size...) of the settlement n lives in.
+func site_of(n: NPC) -> Dictionary:
+	var e = settlements.get(NPCGen.settlement_id(n.settlement["sx"], n.settlement["sz"]))
+	if e != null:
+		return e["site"]
+	return gen.settlement_at(n.settlement["sx"], n.settlement["sz"])
+
+## You bought a house in site: whoever lived there moves out, and it gets your sign.
+func houses_changed(site: Dictionary) -> void:
+	var e = settlements.get(NPCGen.settlement_id(site["sx"], site["sz"]))
+	if e == null:
+		return
+	TownShops.rehome(gen, site, e["data"], Game.estates)
+	e["dirty"] = true
+	e["decor"].estates = Game.estates
+	e["decor"].refresh()
+
 func mark_dirty(s: Dictionary) -> void:
 	var e = settlements.get(NPCGen.settlement_id(s["sx"], s["sz"]))
 	if e != null:
@@ -88,8 +105,17 @@ func _scan() -> void:
 
 func _load(site: Dictionary, id: String) -> void:
 	var data := Game.store.get_or_create_settlement(gen, site)
-	var e := {"data": data, "nodes": [], "dirty": false}
+	# Shops need keepers (hired once, on the first visit since shops came in).
+	var hired := TownShops.staff(gen, site, data)
+	TownShops.rehome(gen, site, data, Game.estates)
+	if hired:
+		Game.store.save_settlement(data)
+	var e := {"data": data, "nodes": [], "dirty": false, "site": site}
 	settlements[id] = e
+	var decor := TownDecor.new()
+	decor.setup(gen, streamer, site, data, Game.estates)
+	add_child(decor)
+	e["decor"] = decor
 	var stale: bool = float(data.get("sim_day", -1.0)) < 0.0 or Game.day - float(data["sim_day"]) > 0.03
 	var hour := NPCMind.hour_now()
 	for rec in data["npcs"]:
@@ -109,7 +135,7 @@ func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
 	var at: Vector2
 	if hour >= 21.5 or hour < 6.0:
 		at = rec["home"]
-	elif hour >= 8.0 and hour < 18.0 or rec["job"] == "trader" and hour >= 7.0 and hour < 20.0:
+	elif hour >= 8.0 and hour < 18.0 or (rec["job"] == "trader" or rec.has("shop_kind")) and hour >= 7.0 and hour < 20.0:
 		at = rec["work"]
 	else:
 		var c: Vector2 = data["center"]
@@ -125,6 +151,8 @@ func _unload(id: String) -> void:
 	for n in e["nodes"]:
 		_by_id.erase(n.rec["id"])
 		n.queue_free()
+	if is_instance_valid(e.get("decor")):
+		e["decor"].queue_free()
 	settlements.erase(id)
 
 func save_all() -> void:

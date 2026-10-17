@@ -101,6 +101,10 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 		"name": name, "npcs": npcs, "rumors": [], "sim_day": -1.0,
 	}
 
+## A new person of the settlement (shops hire newcomers when nobody fits).
+static func person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: int) -> Dictionary:
+	return _person(r, era, idx, sx, sz)
+
 static func _person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: int) -> Dictionary:
 	var first: String = FIRST[era][r.randi() % FIRST[era].size()]
 	var last: String = LAST[era][r.randi() % LAST[era].size()]

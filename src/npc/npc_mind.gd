@@ -6,7 +6,7 @@ const MAX_MEMORIES := 16
 const MAX_RUMORS := 8
 const MOODS := ["calm", "happy", "wary", "angry", "afraid", "sad", "curious"]
 const TALK_ACTIONS := ["none", "follow", "stop_following", "trade", "go_home", "flee", "attack", "leave",
-	"give_money", "lend_money", "gift", "ask_repay"]
+	"give_money", "lend_money", "gift", "ask_repay", "join_guild", "buy_house"]
 
 ## Full-body things a person can be asked to do (or does on a whim). Gestures
 ## (BodyLanguage.names()) are played over these. name -> [animation, seconds, mode]
@@ -86,6 +86,8 @@ static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictiona
 	lines.append("You speak in a way that is %s." % npc["speech"])
 	if npc["job"] == "trader":
 		lines.append("You run the market stall here and will happily trade.")
+	elif npc.has("shop_kind"):
+		lines.append(TownShops.prompt_line(npc))
 	lines.append("It is %s on day %d. You are currently feeling %s, and your goal is: %s." % [time_words(hour_now()), day_num(), npc.get("mood", "calm"), npc.get("goal", "") if npc.get("goal", "") != "" else "going about your day"])
 	lines.append("You are talking to a traveller. You have met them %d times before; %s." % [npc.get("met", 0), feeling(int(npc.get("rel", 0)))])
 	if ctx.get("held", "") != "":
@@ -173,6 +175,10 @@ const FAREWELL := [["Safe roads.", "Off with you, then.", "Gods keep you."], ["M
 ## Default suggestions for the player.
 static func default_options(npc: Dictionary) -> Array:
 	var o := ["Who are you?", "What is this place?", "Any news?"]
+	if npc.has("shop_kind"):
+		o[2] = "What do you sell?"
+		o.append({"land": "I'd like to buy a house."}.get(npc["shop_kind"], "Tell me about the guild." if TownShops.is_guild(npc["shop_kind"]) else "Let's trade."))
+		return o
 	o.append("Let's trade." if npc["job"] == "trader" else "Come with me.")
 	return o
 
@@ -289,6 +295,16 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 			out["do"] = "shake_head"
 			out["say"] = ["I'd rather not.", "Not for you, I won't.", "Ask me again when we're better acquainted.", "Do I look like a performing bear?"][h % 4]
 		return out
+	if npc.has("shop_kind"):
+		var kind: String = npc["shop_kind"]
+		if TownShops.is_guild(kind) and (q.contains("guild") or q.contains("join") or q.contains("member")):
+			out["say"] = TownShops.pitch(npc)
+			out["action"] = "join_guild"
+			return out
+		if kind == "land" and (q.contains("house") or q.contains("land") or q.contains("home") or q.contains("deed") or q.contains("property")):
+			out["say"] = "I've a few places free. Have a look."
+			out["action"] = "buy_house"
+			return out
 	if q.contains("bye") or q.contains("farewell") or q.contains("leave"):
 		out["say"] = FAREWELL[e][h % 3]
 	elif q.contains("who") or q.contains("name") or q.contains("yourself"):
@@ -303,13 +319,16 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		else:
 			out["say"] = "Not much. Mostly I worry about %s." % npc["worry"]
 	elif q.contains("trade") or q.contains("buy") or q.contains("sell") or q.contains("wares"):
-		if npc["job"] == "trader" or r >= -5:
-			out["say"] = "Let's see what you've got." if npc["job"] == "trader" else "I've a few things from my work. Have a look."
+		if npc.has("shop_kind") and npc["shop_kind"] == "land":
+			out["say"] = "Houses, traveller. Have a look at what's free."
+			out["action"] = "buy_house"
+		elif npc["job"] == "trader" or npc.has("shop_kind") or r >= -5:
+			out["say"] = "Let's see what you've got." if npc["job"] == "trader" or npc.has("shop_kind") else "I've a few things from my work. Have a look."
 			out["action"] = "trade"
 		else:
 			out["say"] = "Not with you. Try %s at the stall." % _trader_name(settlement)
 	elif q.contains("follow") or q.contains("come with"):
-		if r >= 20 and npc["job"] != "trader":
+		if r >= 20 and npc["job"] != "trader" and not npc.has("shop_kind"):
 			out["say"] = "Alright, lead the way."
 			out["action"] = "follow"
 			out["remember"] = "Agreed to travel with the traveller."
