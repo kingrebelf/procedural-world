@@ -852,7 +852,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	if apron > 0.0:
 		# Over the skirt it hangs from the same waist a little further out; over trousers
 		# it falls from the hips like a skirt of its own.
-		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.04, PART_APRON, Color.WHITE, 0.36, 0.012 if hem > 0.0 else 0.006)
+		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.0, PART_APRON, Color.WHITE, 0.3 if hem > 0.0 else 0.25, 0.012 if hem > 0.0 else 0.006)
 		if sp["bib"]:
 			# The bib: up the front of the belly and chest, narrowing to where it ties at the
 			# neck, skinned like the shirt under it.
