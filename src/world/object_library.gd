@@ -164,6 +164,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return ShipPad.build(key)
 	if key == WorldPortal.TYPE:
 		return WorldPortal.build()
+	if ForestFloor.has(key):
+		return ForestFloor.build(key)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):

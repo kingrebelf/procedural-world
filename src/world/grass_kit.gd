@@ -10,7 +10,10 @@ class_name GrassKit
 ## Every vertex carries its blade's own shade (COLOR.rgb, a multiplier on the instance's
 ## tint; COLOR.a 0 marks seed heads and petals, which keep their own colour), its height up
 ## the blade (UV.y, which drives the wind), and the distance over which the species
-## thins out (UV2: start, end), read by grass.gdshader.
+## thins out (UV2: start, end), read by grass.gdshader. CUSTOM0 lets the shader thin
+## blades that have shrunk below a pixel: xyz the vertex's offset from its blade's spine,
+## w the blade's width with its sign alternating blade to blade (+ widens, - fades), 0 on
+## stalks, seed heads, blooms and waterweed, which keep their own rule.
 
 const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed", "weed_1", "weed_2", "weed_3", "wheat", "cabbage", "leek"]
 ## [thinning starts, all gone] in metres from the camera.
@@ -25,6 +28,7 @@ const PETALS := [[Color(0.93, 0.93, 0.88), Color(0.95, 0.75, 0.15)], [Color(0.96
 const SHADE_SCALE := 0.7
 
 static var _meshes: Dictionary = {}
+static var _odd := false ## the next leaf blade's turn (built under _lock)
 static var _lock := Mutex.new()
 
 static func range_of(species: String) -> Vector2:
@@ -44,6 +48,8 @@ static func mesh(species: String) -> ArrayMesh:
 static func _build(species: String) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	st.set_custom_format(0, SurfaceTool.CUSTOM_RGBA_FLOAT)
+	_odd = false
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.str_hash(species)
 	var rg := range_of(species)
@@ -147,21 +153,32 @@ static func _blade(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, root:
 			col = shade.lerp(Color(1.35, 1.2, 0.62), t * t)
 		# Vertex colours are 8-bit, so blade shades are stored at SHADE_SCALE.
 		col = Color(col.r * SHADE_SCALE, col.g * SHADE_SCALE, col.b * SHADE_SCALE, 1.0)
-		pts.append([c - side * hw, c + side * hw, t, col])
+		pts.append([c - side * hw, c + side * hw, t, col, side * hw])
 	var n := basis * Vector3(0, 0.35, -1).normalized()
+	# Fine leaf blades take turns: past the distance where one is under a pixel wide, every
+	# other one fades to nothing and the rest widen to keep the cover (grass.gdshader).
+	var tag := 0.0
+	if leaf and w < 0.02:
+		tag = w * 2.0 * (-1.0 if _odd else 1.0)
+		_odd = not _odd
 	for i in segs:
 		var a: Array = pts[i]
 		var b: Array = pts[i + 1]
-		_v(st, a[0], n, 0.0, a[2], a[3], rg)
-		_v(st, b[0], n, 0.0, b[2], b[3], rg)
-		_v(st, a[1], n, 1.0, a[2], a[3], rg)
-		_v(st, a[1], n, 1.0, a[2], a[3], rg)
-		_v(st, b[0], n, 0.0, b[2], b[3], rg)
-		_v(st, b[1], n, 1.0, b[2], b[3], rg)
+		var oa := Color(-a[4].x, -a[4].y, -a[4].z, tag)
+		var ob := Color(-b[4].x, -b[4].y, -b[4].z, tag)
+		var ia := Color(a[4].x, a[4].y, a[4].z, tag)
+		var ib := Color(b[4].x, b[4].y, b[4].z, tag)
+		_v(st, a[0], n, 0.0, a[2], a[3], rg, oa)
+		_v(st, b[0], n, 0.0, b[2], b[3], rg, ob)
+		_v(st, a[1], n, 1.0, a[2], a[3], rg, ia)
+		_v(st, a[1], n, 1.0, a[2], a[3], rg, ia)
+		_v(st, b[0], n, 0.0, b[2], b[3], rg, ob)
+		_v(st, b[1], n, 1.0, b[2], b[3], rg, ib)
 	var top: Array = pts[segs]
 	return (top[0] + top[1]) * 0.5
 
-static func _v(st: SurfaceTool, p: Vector3, n: Vector3, u: float, t: float, col: Color, rg: Vector2) -> void:
+static func _v(st: SurfaceTool, p: Vector3, n: Vector3, u: float, t: float, col: Color, rg: Vector2, spine := Color(0, 0, 0, 0)) -> void:
+	st.set_custom(0, spine)
 	st.set_color(col)
 	st.set_normal(n)
 	st.set_uv(Vector2(u, t))

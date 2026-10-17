@@ -59,7 +59,8 @@ static func model_name(t: String, p: Dictionary, sp: int, v: int) -> String:
 ## forms that stay procedural (glow bulbs, xeno tendrils).
 static func build_under(sp: int, era: int) -> ArrayMesh:
 	var form := Flora.under_form(sp, era)
-	if not UNDER.has(form):
+	# (The kit's flower groups are one saturated orange; wild flowers are Flora's own.)
+	if not UNDER.has(form) or (form == "flowers" and era == Eras.MEDIEVAL):
 		return null
 	var e: Array = UNDER[form]
 	var r := Flora._rng(sp, 6)
