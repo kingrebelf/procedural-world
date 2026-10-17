@@ -115,7 +115,8 @@ static func build() -> ArrayMesh:
 		k.box("rune_stone", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * R, Y + sin(a) * R, 0)), Vector3(0.62, 0.9, 0.8))
 		if n % 4 == 0:
 			k.box("glow_violet", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * (R - 0.32), Y + sin(a) * (R - 0.32), 0)), Vector3(0.16, 0.36, 0.84))
-	k.cylinder("glow_violet", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, Y, 0)), R - 0.35, R - 0.35, 0.06, 32)
+	# A dim violet behind the turning light (FireFx.swirl), and all you see of it from afar.
+	k.cylinder("portal_door", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, Y, -0.03)), R - 0.35, R - 0.35, 0.06, 32)
 	# Feet of the ring and two leaning guardian stones with crystal caps.
 	for sx in [-1.0, 1.0]:
 		k.box("rune_stone", I.translated(Vector3(sx * 1.9, 0.9, 0)), Vector3(1.0, 1.1, 1.0))

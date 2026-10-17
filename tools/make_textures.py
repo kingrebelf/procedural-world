@@ -210,9 +210,23 @@ def make_fx(src_dir):
         print(name, "flipbook", size)
 
 
+def make_portal(src_dir):
+    """The magic flipbook's four fullest frames (its third row) as one strip: a portal
+    turns them in its door and cross-fades between them, so it shimmers without pulsing."""
+    p = Path(src_dir) / "magic_flipbook.png"
+    if not p.exists():
+        print("missing", p)
+        return
+    im = Image.open(p).convert("RGB")
+    f = im.width // 4
+    im.crop((0, 2 * f, 4 * f, 3 * f)).save(OUT / "fx" / "portal_swirl.png", optimize=True)
+    print("portal swirl", 4 * f, "x", f)
+
+
 if __name__ == "__main__":
     main(sys.argv[1])
     make_fabrics(sys.argv[1])
     make_fx(sys.argv[1])
+    make_portal(sys.argv[1])
     if (Path(sys.argv[1]) / "leaves.jpg").exists():
         make_leaf_card(Path(sys.argv[1]) / "leaves.jpg")

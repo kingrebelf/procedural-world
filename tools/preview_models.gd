@@ -2,6 +2,8 @@ extends SceneTree
 ## Renders kit models side by side on a grass plane, for judging how they look in-game.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_models.gd -- \
 ##     --out=/abs/path.png nature/CommonTree_1 nature/Pine_1 mesh:oak#1234#0 ...
+## fire:SIZE is a flame with sparks and smoke; swirl:SIZE:Y:Z a portal's swirl at height Y, Z ahead;
+## --frames=N waits N frames before saving (let sparks and smoke build up).
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -14,6 +16,7 @@ func _run() -> void:
 	var at0 := false
 	var cam_at := PackedFloat64Array()
 	var omnis: Array = []
+	var frames := 12
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -24,6 +27,8 @@ func _run() -> void:
 		elif a.begins_with("--omni="):
 			var v := a.substr(7).split_floats(",")
 			omnis.append(Vector3(v[0], v[1], v[2]))
+		elif a.begins_with("--frames="):
+			frames = int(a.substr(9))
 		elif not a.begins_with("--"):
 			names.append(a)
 	var vp := SubViewport.new()
@@ -68,6 +73,15 @@ func _run() -> void:
 			mi.mesh = ObjectLibrary.get_mesh(String(n).substr(5))
 			node = Node3D.new()
 			node.add_child(mi)
+		elif String(n).begins_with("fire:"):
+			node = FireFx.flame(float(String(n).get_slice(":", 1)))
+			node.add_child(FireFx.embers(float(String(n).get_slice(":", 1))))
+		elif String(n).begins_with("swirl:"):
+			node = Node3D.new()
+			var sw := FireFx.swirl(float(String(n).get_slice(":", 1)))
+			sw.position.y = float(String(n).get_slice(":", 2))
+			sw.position.z = float(String(n).get_slice(":", 3)) if String(n).get_slice_count(":") > 3 else 0.0
+			node.add_child(sw)
 		elif String(n).begins_with("bird:"):
 			# A procedural flier by species name, wings spread, e.g. bird:Kestrel.
 			var bn := String(n).substr(5)
@@ -127,7 +141,7 @@ func _run() -> void:
 		var w := maxf(x, top * 2.3)
 		cam.position = Vector3(x * 0.5, top * 0.55 + w * 0.08, w * 1.05)
 		cam.look_at(Vector3(x * 0.5, top * 0.4, 0))
-	for i in 12:
+	for i in frames:
 		await process_frame
 	vp.get_texture().get_image().save_png(out)
 	print("saved ", out)
