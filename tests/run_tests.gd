@@ -3680,6 +3680,17 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# The town's chest isn't left out on the square: it stands by a house's front door.
+	var lay := gen.settlement_layout(s)
+	for it in lay:
+		if Eras.CACHE_TYPES.has(it["t"]):
+			var by_door := false
+			for h in lay:
+				if KitHouse.has(h["t"]):
+					var l := TownLife.world_to_frame(h["p"], h["yaw"], it["p"])
+					var hd := KitHouse.size_of(h["t"])
+					by_door = by_door or (absf(l.x) < hd.x * 0.5 and l.y > hd.z * 0.5 and l.y < hd.z * 0.5 + 1.0)
+			check(by_door, "the town's chest stands against a house front, not mid-square")
 	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
 	var tl := TownLife.new()
 	tl.setup(gen, null, s)
@@ -3714,6 +3725,14 @@ func test_town_life() -> void:
 		fs.get_chunk(k).data["objects"].append(fo)
 		var left := tl0._standing([tree, pile])
 		check(left.size() == 1 and left[0]["k"] == "barrels", "a foundation built 1.5 m from an orchard tree keeps it from being built")
+		# Built a little beyond the trunk, but under the crown: the leaves would reach in.
+		var reach := TownLife.crown_reach(tree)
+		check(reach > 1.0 and reach < TownLife.REACH_MAX, "an orchard tree's crown reaches out (%.1f m)" % reach)
+		fo["p"] = lp + Vector3(reach + 0.5, 0, 0)
+		check(tl0._standing([tree]).is_empty(), "a wall built under an orchard tree's crown keeps it from being built")
+		fo["p"] = lp + Vector3(reach + TownLife.PIECE_HALF + TownLife.TREE_CLEAR + 0.3, 0, 0)
+		check(tl0._standing([tree]).size() == 1, "one built clear of the crown leaves the tree standing")
+		fo["p"] = lp
 		var rev := TownLife._rev
 		TownLife.note_built(tp)
 		check(TownLife._rev == rev + 1 and tl0._seen != TownLife._rev, "a build is noted for the towns to stand aside")
@@ -3764,6 +3783,13 @@ func test_town_life() -> void:
 			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
 				standing += 1
 	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# The market square: paved, a well or cross near the middle, stalls round it.
+	check(not (pl["square"] as Dictionary).is_empty(), "the town has a market square")
+	var sq_kinds := {}
+	for e in pl["pieces"]:
+		sq_kinds[e["k"]] = int(sq_kinds.get(e["k"], 0)) + 1
+	check(sq_kinds.has("well") or sq_kinds.has("cross"), "a well or market cross on the square")
+	check(int(sq_kinds.get("stall", 0)) >= 2, "stalls round the square (%d)" % int(sq_kinds.get("stall", 0)))
 	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
 	# their own, and every build shares the plain wall's ground plan.
 	var fw := ObjectLibrary.footprint({"t": "castle_wall"})
