@@ -367,6 +367,7 @@ func _process(delta: float) -> void:
 	if send:
 		_mob_t = 1.0 / Net.MOB_HZ
 	var out: Array = []
+	var cam := get_viewport().get_camera_3d()
 	for e in settlements.values():
 		var held := runs(e)
 		if e.has("boat") and is_instance_valid(e["boat"]):
@@ -399,7 +400,13 @@ func _process(delta: float) -> void:
 			if n.decide_in <= 0.0:
 				n.decide_in = randf_range(1.2, 2.4)
 				_decide(n, e, tp, t, int(tg[0]))
-			n.step(delta, _ground, tp, e["nodes"])
+			# Out of sight and going about their day, people step a quarter as often
+			# (with the time skipped): nothing on screen changes.
+			n.lod_dt += delta
+			n.lod_tick += 1
+			if n.lod_tick % _step_every(n, cam) == 0:
+				n.step(n.lod_dt, _ground, tp, e["nodes"])
+				n.lod_dt = 0.0
 			if shared:
 				out.append(n.net_state())
 			if n.action == "attack" and n.attack_cd <= 0.0 and not n.talking:
@@ -430,6 +437,16 @@ func _process(delta: float) -> void:
 					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
 				e["dirty"] = false
+
+## How many frames apart a person steps: every frame on screen, near you, or when busy
+## with you (talking, following, fleeing, fighting); every fourth frame otherwise.
+static func _step_every(n: NPC, cam: Camera3D) -> int:
+	if cam == null or n.talking or n.target_player or n.action == "flee" or n.action == "attack":
+		return 1
+	var p := n.global_position
+	if cam.global_position.distance_squared_to(p) < 144.0 or cam.is_position_in_frustum(p + Vector3.UP):
+		return 1
+	return 4
 
 ## What a person makes of the player at `pp`: you (peer 0), or online another player.
 func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dictionary:
