@@ -135,6 +135,7 @@ func _begin(fresh: bool) -> void:
 		inventory.add(ItemDB.make("crossbow", 1, 1.0, o))
 		inventory.add(ItemDB.make("bolt", 24, 1.0, o))
 		inventory.add(ItemDB.make("torch", 2, 1.0, o))
+		inventory.add(ItemDB.make("lockpick", 5, 1.0, o))
 	store.meta["last_played"] = Time.get_unix_time_from_system()
 	store.save_meta()
 	save_player()

@@ -10,7 +10,7 @@ class_name NPCSocial
 
 ## What each trade has to sell.
 const JOB_GOODS := {
-	"farmer": ["bread", "wild_berries", "fiber"], "smith": ["iron_ingot", "sword_iron", "pickaxe_iron", "hammer", "helm_iron"],
+	"farmer": ["bread", "wild_berries", "fiber"], "smith": ["iron_ingot", "lockpick", "sword_iron", "pickaxe_iron", "hammer", "helm_iron"],
 	"guard": ["sword_iron", "shield_wood", "crossbow", "bolt"], "innkeeper": ["bread", "cooked_meat", "health_potion"],
 	"hunter": ["hide", "raw_meat", "longbow", "arrow", "dagger"], "priest": ["health_potion", "silver_chalice"],
 	"weaver": ["fiber", "boots_leather", "gloves_leather"], "miller": ["bread", "planks"],
@@ -18,8 +18,8 @@ const JOB_GOODS := {
 	"runecarver": ["rune_tablet", "bracers_rune", "aether_crystal"], "bard": ["glowberry", "moonpearl"],
 	"mystic": ["aether_crystal", "moonpearl", "stamina_potion"], "beekeeper": ["glowberry", "wild_berries"],
 	"lamplighter": ["torch", "glowroot"], "scribe": ["rune_tablet", "binoculars"],
-	"engineer": ["circuitry", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
-	"scavenger": ["alloy_scrap", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
+	"engineer": ["circuitry", "lockpick", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
+	"scavenger": ["alloy_scrap", "lockpick", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
 	"security officer": ["pulse_pistol", "rounds", "helm_visor"], "data broker": ["data_core", "circuitry"],
 	"hydroponics tech": ["ration_pack", "fiber"], "courier": ["ration_pack", "power_cell", "binoculars"],
 }
@@ -184,9 +184,9 @@ static func gift_for(rec: Dictionary) -> Dictionary:
 # --- Pockets --------------------------------------------------------------------------------
 
 ## Small things anyone might carry, by era, besides the goods of their trade.
-const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion"],
+const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion", "lockpick"],
 	["glowberry", "bread", "moonpearl", "rune_tablet", "health_potion", "aether_crystal"],
-	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion"]]
+	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick"]]
 const POCKETS_EVERY := 3 ## days before their pockets fill again
 
 ## What this person carries that a quick hand could lift (not their purse, not worn gear).

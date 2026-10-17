@@ -48,6 +48,8 @@ const LIST := [
 	{"out": "cage", "qty": 1, "in": {"iron_ingot": 2}, "at": "workbench"},
 	{"out": "hammer", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
 	{"out": "torch", "qty": 1, "in": {"wood": 1, "fiber": 2}},
+	{"out": "lockpick", "qty": 4, "in": {"iron_ingot": 1}},
+	{"out": "lockpick", "qty": 4, "in": {"alloy_scrap": 1}},
 	{"out": "flashlight", "qty": 1, "in": {"iron_ingot": 1, "circuitry": 1, "power_cell": 1}, "at": "workbench"},
 	{"out": "flashlight", "qty": 1, "in": {"flashlight_dead": 1, "power_cell": 1}, "at": "workbench"},
 	# Jetpack and its fuel: rendered from wood and plant oil at a forge, or brewed from

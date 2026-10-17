@@ -1272,10 +1272,10 @@ func test_thief_skills() -> void:
 	check(s.notice_mult(true) < s.notice_mult(false), "crouching hides you")
 	var seen0 := s.notice_mult(true)
 	var pick0 := s.pickpocket_chance(10.0, true, 0.2)
-	var lock0 := s.lockpick_chance(2)
+	var lock0 := LockGame.sweet_half(2, s.skills["lock"])
 	check(s.pickpocket_chance(10.0, true, 0.2) > s.pickpocket_chance(10.0, false, 0.2), "picking from behind is easier")
 	check(s.pickpocket_chance(5.0, true, 0.2) > s.pickpocket_chance(120.0, true, 0.2), "dear things are harder to lift")
-	check(s.lockpick_chance(1) > s.lockpick_chance(3), "masterwork locks are harder")
+	check(LockGame.sweet_half(1, 0) > LockGame.sweet_half(3, 0), "master locks have a narrower sweet spot")
 	check(not s.spend_skill("sneak"), "skills cost points")
 	s.points = 2
 	check(s.spend_skill("sneak") and s.skills["sneak"] == 1 and s.points == 1, "a point buys a skill level")
@@ -1283,11 +1283,50 @@ func test_thief_skills() -> void:
 	check(s.practice("pick", Stats.practice_to_next(0) + 0.5) == 1 and s.skills["pick"] == 1, "practice raises a skill")
 	s.practice("lock", 100000.0)
 	check(s.skills["lock"] == Stats.SKILL_MAX, "skills top out")
-	check(s.notice_mult(true) < seen0 and s.pickpocket_chance(10.0, true, 0.2) > pick0 and s.lockpick_chance(2) > lock0, "skills help")
+	check(s.notice_mult(true) < seen0 and s.pickpocket_chance(10.0, true, 0.2) > pick0 and LockGame.sweet_half(2, s.skills["lock"]) > lock0, "skills help")
 	var back := Stats.from_data(JSON.parse_string(JSON.stringify(s.to_data())))
 	check(back.skills == s.skills and is_equal_approx(float(back.skill_xp["pick"]), float(s.skill_xp["pick"])), "skills survive a save")
 	var old := Stats.from_data({"level": 4, "attrs": {"str": 2}})
 	check(old.skills["sneak"] == 0 and old.level == 4, "old saves get skills at zero")
+
+func test_lock_game() -> void:
+	var g := LockGame.new(2, 0, 1234)
+	check(g.sweet >= -PI * 0.5 and g.sweet <= PI * 0.5, "the sweet spot is on the lock")
+	check(LockGame.new(2, 0, 1234).sweet == g.sweet, "the same chest keeps its sweet spot")
+	# Right on the sweet spot: the lock turns all the way and opens.
+	g.set_pick(g.sweet)
+	var r := ""
+	for i in 120:
+		r = g.step(1.0 / 60.0, true)
+		if r != "":
+			break
+	check(r == "open", "on the sweet spot the lock opens (%s)" % r)
+	# Way off: the lock jams and forcing it snaps the pick.
+	var h := LockGame.new(3, 0, 99)
+	h.set_pick(h.sweet + (1.2 if h.sweet < 0.0 else -1.2))
+	check(h.max_turn() < 0.2, "far off the sweet spot the lock barely turns")
+	r = ""
+	for i in 600:
+		r = h.step(1.0 / 60.0, true)
+		if r != "":
+			break
+	check(r == "broke" and h.turn == 0.0 and is_equal_approx(h.pick_hp, 1.0), "forcing a jammed lock snaps the pick, and the next starts fresh (%s)" % r)
+	# Near it: turns part way, more the closer you are.
+	var k := LockGame.new(1, 0, 7)
+	k.set_pick(k.sweet + k.half + 0.1)
+	var near := k.max_turn()
+	k.set_pick(k.sweet + k.half + 0.3 if k.sweet + k.half + 0.3 <= PI * 0.5 else k.sweet - k.half - 0.3)
+	check(near > k.max_turn() and near < 1.0, "the closer to the sweet spot, the further it turns")
+	# The pick can't move while the lock is turned.
+	k.set_pick(k.sweet + k.half + 0.1)
+	k.step(0.2, true)
+	var at := k.pick
+	k.set_pick(at + 0.5)
+	check(k.pick == at, "the pick holds still while you turn")
+	k.step(1.0, false)
+	check(k.turn == 0.0, "letting go springs the lock back")
+	check(LockGame.sweet_half(2, 50) > LockGame.sweet_half(2, 0) * 2.0, "Lockpicking widens the sweet spot")
+	check(ItemDB.has("lockpick") and Recipes.LIST.any(func(rr): return rr["out"] == "lockpick"), "lockpicks are an item you can make")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()

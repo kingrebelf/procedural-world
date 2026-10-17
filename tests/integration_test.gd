@@ -828,14 +828,27 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	player.set_state({"pos": stand + Vector3(0, 0.1, 0), "yaw": atan2(f.x, f.z), "pitch": -0.45, "slot": 0})
 	await _frames(20)
 	check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "facing the %s in the %s offers to open it (%s)" % [o["t"], o["st"]["inside"], player.focus.get("verb", "nothing")])
-	# Town chests may be locked: a few tries with the lockpick get it open.
-	for i in 40:
-		if Player.lock_of(o) <= 0:
-			break
-		player._lock_t = 0.0
+	# Town chests may be locked: the lockpicking minigame opens; on the sweet spot it gives
+	# and the chest is looted straight away.
+	if Player.lock_of(o) > 0:
+		var game = root.get_node("/root/Game")
+		if game.inventory.count("lockpick") <= 0:
+			game.inventory.add(ItemDB.make("lockpick", 3, 1.0, {}))
 		player.interact()
-	check(Player.lock_of(o) <= 0, "the lock gives in the end")
-	player.interact()
+		var ui: LockpickUI = player.get_tree().get_first_node_in_group("lockpick_ui")
+		check(ui != null and ui.is_open() and player.ui_open, "a locked chest opens the lockpicking minigame")
+		if ui and ui.is_open():
+			ui._game.set_pick(ui._game.sweet)
+			var r := ""
+			for i in 200:
+				r = ui._game.step(1.0 / 60.0, true)
+				if r != "":
+					break
+			check(r == "open", "on the sweet spot the lock turns all the way")
+			ui._opened()
+			check(Player.lock_of(o) <= 0 and not ui.is_open() and not player.ui_open, "the lock is open and the minigame closes")
+	else:
+		player.interact()
 	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
 	# Looting in town may have been seen; let the law forget so guards don't crowd later checks.
 	root.get_node("/root/Game").crime = Crime.new()
