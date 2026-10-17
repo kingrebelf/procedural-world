@@ -218,6 +218,8 @@ static func model(t: String) -> ArrayMesh:
 		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.115, hy, 0)), 0.042, 0.042, 0.05, 10)
 		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.09, hy + 0.015, 0)), Vector3(0.07, 0.045, 0.05))
 		_append(out, k.commit(Materials.get_mat))
+	elif ItemModels.has(t):
+		out = ItemModels.build(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():
@@ -372,9 +374,9 @@ func _aim() -> void:
 
 ## Which way the business end of a held tool faces in its model (Vector3.ZERO: no turn).
 static func _strike_axis(t: String) -> Vector3:
-	if t.begins_with("axe_") or t == "battle_axe":
+	if t.begins_with("axe_") or t in ["battle_axe", "hand_axe", "bronze_axe", "executioner_axe", "tomahawk", "chain_axe"]:
 		return Vector3.FORWARD
-	if t.begins_with("pickaxe_") and t != "pickaxe_plasma" or t == "hammer":
+	if t.begins_with("pickaxe_") and t != "pickaxe_plasma" or t in ["hammer", "warpick", "sledgehammer", "power_hammer"]:
 		return Vector3.RIGHT
 	return Vector3.ZERO
 
