@@ -26,6 +26,7 @@ const TABLE := {
 	"townhouse": ["stone", 160.0, [["stone", 16], ["planks", 14], ["wood", 6]]],
 	"bridge": ["stone", 900.0, [["stone", 60]]],
 	"cave": ["stone", 600.0, [["stone", 90]]],
+	"cave_glow": ["crystal", 14.0, [["aether_crystal", 3]]],
 	"signpost": ["wood", 8.0, [["planks", 2], ["wood", 1]]],
 	"market_stall": ["wood", 30.0, [["planks", 4], ["wood", 2], ["wild_berries", 3]]],
 	"fruit_cart": ["wood", 30.0, [["planks", 4], ["wood", 3], ["wild_berries", 2]]],

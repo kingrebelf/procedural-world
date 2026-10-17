@@ -1901,3 +1901,64 @@ func test_no_double_floors() -> void:
 	for t in KitHouse.FURNISH.keys() + Interiors.FURNISH.keys():
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
+
+func test_cave_networks() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = 8
+	var old := ChunkGenerator.new(4242, true)
+	var oc := old.generate(3, 1)
+	check(not oc.has("cave") and not oc.has("hole"), "worlds before v10 keep their old caves")
+	WorldField.terrain_v = 10
+	var g := ChunkGenerator.new(4242, true)
+	var nets: Array = []
+	for sz in range(-2, 2):
+		for sx in range(-2, 2):
+			var n := Caves.network(g, sx, sz)
+			if not n.is_empty():
+				nets.append(n)
+	check(nets.size() >= 3, "cave networks are common in hilly worlds (%d of 16 cells)" % nets.size())
+	if nets.is_empty():
+		WorldField.terrain_v = was
+		return
+	var net: Dictionary = nets[0]
+	var mo: Vector3 = net["mouth"]
+	var ps: PackedFloat32Array = net["prims"]
+	var lowest := INF
+	var reach := 0.0
+	for i in ps.size() / Caves.STRIDE:
+		var o := i * Caves.STRIDE
+		if int(ps[o]) == Caves.TUNNEL:
+			lowest = minf(lowest, minf(ps[o + 9], ps[o + 10]))
+			reach = maxf(reach, Vector2(ps[o + 4] - mo.x, ps[o + 6] - mo.z).length())
+	check(lowest >= Caves.MIN_FLOOR - 0.01, "cave floors stay above the water table (%f)" % lowest)
+	check(reach > 50.0, "a network reaches far from its mouth (%.0f m)" % reach)
+	var big := 0.0
+	for ch in net["chambers"]:
+		big = maxf(big, float(ch["rx"]))
+		var cc: Vector3 = ch["p"]
+		check(Caves.sdf(ps, cc) < 0.0, "chamber centres are open")
+	check(big > 8.0, "chambers are roomy (widest %.1f m)" % big)
+	# The mouth's chunk opens the ground, and the cave is meshed with collision.
+	var mc := Vector2i(int(floor(mo.x / ChunkGenerator.SIZE)), int(floor(mo.z / ChunkGenerator.SIZE)))
+	var ch := g.generate(mc.x, mc.y)
+	check(ch.has("cave") and ch.has("hole"), "the mouth's chunk keeps its cave and opening")
+	var again := ChunkGenerator.new(4242, true).generate(mc.x, mc.y)
+	check(again.get("cave") == ch.get("cave") and again.get("hole") == ch.get("hole"), "caves are deterministic")
+	check(ChunkGenerator.in_cave(ch, mo.x - mc.x * ChunkGenerator.SIZE, mo.z - mc.y * ChunkGenerator.SIZE), "nothing grows in the mouth")
+	var res := Caves.build(ch)
+	check(not res.is_empty() and (res["faces"] as PackedVector3Array).size() > 300, "cave walls are meshed (%d)" % (0 if res.is_empty() else (res["faces"] as PackedVector3Array).size()))
+	# Everything placed underground sits in open cave air, on its floor.
+	var under := 0
+	for sz in range(mc.y - 3, mc.y + 4):
+		for sx in range(mc.x - 3, mc.x + 4):
+			var c := g.generate(sx, sz)
+			if not c.has("cave"):
+				continue
+			for o in c["objects"]:
+				var p: Vector3 = o["p"]
+				if p.y < ChunkGenerator.height_at(c, p.x, p.z) - 3.0:
+					under += 1
+					var wp := p + Vector3(sx * ChunkGenerator.SIZE, 0.5, sz * ChunkGenerator.SIZE)
+					check(Caves.sdf(c["cave"], wp) < 0.0, "%s underground is in the open" % o["t"])
+	check(under > 3, "caves hold ore, crystals or loot (%d)" % under)
+	WorldField.terrain_v = was
