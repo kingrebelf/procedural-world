@@ -200,9 +200,14 @@ func _run() -> void:
 		var rm: Dictionary = pl["rooms"][ri]
 		if rm["kind"] == "vault":
 			var lv: int = rm["lv"]
-			var a := _floor(lv, Vector2i(rm["x"], rm["z"]))
-			var b := _floor(lv, Vector2i(rm["x"] + rm["w"] - 1, rm["z"] + rm["d"] - 1))
-			_stand(a, b + Vector3(0, 0.6, 0), -0.25)
+			# From its doorway, looking in at the hoard.
+			var dr: Dictionary = pl["doors"][rm["doors"][0]]
+			var inside: bool = Dungeon.room_of(pl, lv, dr["a"]) == ri
+			var out_c: Vector2i = dr["a"] + Dungeon.DIRS[dr["d"]] if inside else dr["a"]
+			var in_c: Vector2i = dr["a"] if inside else dr["a"] + Dungeon.DIRS[dr["d"]]
+			var o := _floor(lv, out_c)
+			var c := _floor(lv, in_c)
+			_stand(o + (c - o) * 0.3, c + Vector3(0, 0.3, 0), -0.3)
 			await _shot("8_treasury")
 			break
 

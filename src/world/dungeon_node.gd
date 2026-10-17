@@ -257,9 +257,11 @@ func _build_block(lv: int, bx: int, bz: int) -> void:
 			match Dungeon.kind(pl, lv, c):
 				Dungeon.ROOM:
 					_room_cell(lv, c, k, models, boxes)
+					_dress_cell(lv, c, k, models, boxes)
 					any = true
 				Dungeon.CORR:
 					_corr_cell(lv, c, k, models, boxes)
+					_dress_cell(lv, c, k, models, boxes)
 					any = true
 				Dungeon.STAIR:
 					var d := Dungeon.stair_dir(pl, lv, c)
@@ -279,6 +281,11 @@ func _build_block(lv: int, bx: int, bz: int) -> void:
 	mi.name = "Block_%d_%d_%d" % [lv, bx, bz]
 	mi.visible = false
 	add_child(mi)
+	# Candles burn (torches have their own flames and lights, see _build_parts).
+	for f in FireFx.prop_flames(models.filter(func(m): return m[0] != "props/Torch_Metal")):
+		var fl := FireFx.flame(float(f[1]))
+		fl.position = f[0]
+		mi.add_child(fl)
 	var body := _body(boxes)
 	add_child(body)
 	var lo := Dungeon.centre(pl, Vector2i(bx * BLOCK, bz * BLOCK)) - Vector2.ONE * Dungeon.CELL * 0.5
@@ -406,6 +413,183 @@ func _corr_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 			_box(k, boxes, _m["wall"], Transform3D(b, _v(cc + dv * (hw + 0.15), fy + (ch + 0.3) * 0.5)), Vector3(hw * 2.0 + 0.6, ch + 0.3, 0.3), tint)
 			_wall_dress(k, cc + dv * hw, dv, hw * 2.0, fy, ch)
 
+# --- Age and payoff -----------------------------------------------------------------
+
+## What time has left in a room or passage cell: rubble, bones and puddles on the floor,
+## cobwebs in the ceiling's corners, barrels or pots at a dead end, a rotten banner on a
+## wall; and in a treasury, the hoard heaped round the chests. Seeded per cell, so the
+## same every time, and drawn into the block's one mesh (nothing to collide with but a
+## barrel at a dead end).
+func _dress_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -> void:
+	var r := WHash.rng(WHash.str_hash(pl["id"]), c.x * 97 + c.y, lv, 961)
+	var fy := Dungeon.floor_y(pl, lv)
+	var cc := Dungeon.centre(pl, c)
+	var corr := Dungeon.kind(pl, lv, c) == Dungeon.CORR
+	var ri := -1 if corr else Dungeon.room_of(pl, lv, c)
+	var rk: String = "" if corr else String(pl["rooms"][ri]["kind"])
+	var h: float = Dungeon.CORR_H if corr else float(pl["rooms"][ri]["h"])
+	var reach := Dungeon.CORR_HALF if corr else Dungeon.CELL * 0.5 - Dungeon.WALL * 0.5
+	var sci := _era == Eras.SCIFI
+	# The sides that are wall here.
+	var shut: Array = []
+	for d in 4:
+		var nb: Vector2i = c + Dungeon.DIRS[d]
+		if corr:
+			if not Dungeon.is_open(pl, lv, c, d):
+				shut.append(d)
+		elif Dungeon.room_of(pl, lv, nb) != ri:
+			shut.append(d)
+	if rk == "vault":
+		_hoard(lv, c, r, k, models)
+	if rk in ["entry", "vault"] or shut.is_empty():
+		return
+	# Against a wall, clear of the middle (the way through, and the room's doorways).
+	var spot := func(d: int, along: float) -> Vector2:
+		var dv := Vector2(Dungeon.DIRS[d])
+		return cc + dv * (reach - 0.32) + Vector2(-dv.y, dv.x) * along
+	var dead := corr and shut.size() == 3
+	if dead:
+		var open_d := 0
+		for d in 4:
+			if not shut.has(d):
+				open_d = d
+		var end := (open_d + 2) % 4
+		var at: Vector2 = spot.call(end, r.randf_range(-0.5, 0.5))
+		var dv := Vector2(Dungeon.DIRS[end])
+		var yaw := rad_to_deg(atan2(-dv.x, -dv.y))
+		var what: String = ["props/Barrel", "props/Pot_1", "scifi/Prop_Crate3"][_era]
+		if r.randf() < 0.8:
+			_place_at(what, _v(at, fy), yaw + r.randf_range(-20, 20), k, models, boxes)
+		if not sci and r.randf() < 0.6:
+			var at2: Vector2 = spot.call(end, 0.62 if at.dot(Vector2(-dv.y, dv.x)) < 0.0 else -0.62)
+			_place_at(["props/Bucket_Wooden_1", "props/Vase_Rubble_Medium", "props/Barrel"][_era], _v(at2, fy), r.randf() * 360.0, k, models, null)
+	var wall: int = shut[r.randi() % shut.size()]
+	var along := r.randf_range(-0.6, 0.6) if corr else r.randf_range(-1.2, 1.2)
+	if r.randf() < (0.32 if corr else 0.22):
+		_rubble(_v(spot.call(wall, along), fy), r, k)
+	var bones: float = [0.12, 0.34, 0.0][_era] * (1.6 if rk in ["crypt", "ossuary", "cells"] else 1.0)
+	if r.randf() < bones:
+		_bones(_v(spot.call(shut[r.randi() % shut.size()], r.randf_range(-0.5, 0.5)), fy), r, k)
+	if r.randf() < (0.16 if corr else 0.1):
+		# Water (or oil, in a bunker) pooled where the floor dips, out in the open.
+		var at := cc + Vector2(r.randf_range(-0.5, 0.5), r.randf_range(-0.5, 0.5)) * (reach * 0.8)
+		var rad := r.randf_range(0.35, 0.8)
+		k.cylinder("glass", Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(1.0, 1.0, r.randf_range(0.5, 0.9))), _v(at, fy + 0.006)),
+			rad, rad, 0.008, 14, true, 0.35, 1, Color(0.16, 0.17, 0.17) if not sci else Color(0.08, 0.08, 0.07))
+	# Cobwebs where two walls meet the ceiling (not in a bunker: it's sealed and swept).
+	if not sci:
+		for i in shut.size():
+			var d1: int = shut[i]
+			var d2: int = (d1 + 1) % 4
+			if shut.has(d2) and r.randf() < (0.45 if corr else 0.35):
+				var v1 := Vector2(Dungeon.DIRS[d1])
+				var v2 := Vector2(Dungeon.DIRS[d2])
+				var corner := cc + (v1 + v2) * (reach - 0.02)
+				_cobweb(_v(corner, fy + h - 0.02), Vector3(-v1.x, 0, -v1.y), Vector3(-v2.x, 0, -v2.y), r, k)
+	# A rotten banner on a passage wall (a castle's colours, a crypt's grey shroud).
+	if corr and not sci and r.randf() < 0.1 and shut.size() == 2 and (shut[1] - shut[0]) == 2:
+		var d: int = shut[r.randi() % 2]
+		var dv := Vector2(Dungeon.DIRS[d])
+		_banner(_v(cc + dv * (reach - 0.03), fy + h - 0.35), dv, r, k)
+
+## A heap of fallen stone: a few big pieces, many small.
+func _rubble(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
+	var mat: String = _m["wall"] if _era != Eras.SCIFI else "scrap_plate"
+	var n := r.randi_range(5, 9)
+	for i in n:
+		var big := i < 2
+		var rad := r.randf_range(0.14, 0.24) if big else r.randf_range(0.04, 0.11)
+		var off := Vector3(r.randf_range(-0.45, 0.45), 0, r.randf_range(-0.3, 0.3)) * (0.6 if big else 1.0)
+		var b := Basis(Vector3(r.randf(), r.randf(), r.randf()).normalized(), r.randf() * TAU)
+		if _era == Eras.SCIFI:
+			k.box(mat, Transform3D(b, at + off + Vector3(0, rad * 0.3, 0)), Vector3(rad * 2.0, 0.02, rad * 1.4))
+		else:
+			k.sphere(mat if big else "stone_dark", Transform3D(b, at + off + Vector3(0, rad * 0.45, 0)), rad, 4, 6, 0.3, 0.6)
+
+## A skull and a few long bones, long dead.
+func _bones(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
+	var col := Color(0.86, 0.82, 0.72)
+	var sk := at + Vector3(r.randf_range(-0.2, 0.2), 0.08, r.randf_range(-0.15, 0.15))
+	var yaw := r.randf() * TAU
+	k.sphere("bone", Transform3D(Basis(Vector3.UP, yaw), sk), 0.095, 6, 8, 0.02, 0.85, col)
+	k.sphere("bone", Transform3D(Basis(Vector3.UP, yaw), sk + Basis(Vector3.UP, yaw) * Vector3(0, -0.045, 0.06)), 0.05, 4, 6, 0.0, 0.7, col)
+	for i in r.randi_range(2, 4):
+		var len := r.randf_range(0.28, 0.46)
+		var b := Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3(1, 0, 0), PI * 0.5)
+		var mid := at + Vector3(r.randf_range(-0.35, 0.35), 0.022, r.randf_range(-0.25, 0.25))
+		k.cylinder("bone", Transform3D(b, mid - b.y * len * 0.5), 0.016, 0.014, len, 6, false, 0.0, 1, col)
+		for e: float in [-0.5, 0.5]:
+			k.sphere("bone", Transform3D(b, mid + b.y * len * e), 0.028, 3, 5, 0.1, 0.8, col)
+
+## A web strung across a ceiling corner: spokes from the corner's three edges to a hub,
+## and a few rings round it.
+func _cobweb(corner: Vector3, e1: Vector3, e2: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
+	var col := Color(0.8, 0.8, 0.78)
+	var anchors := [corner + e1 * r.randf_range(0.35, 0.6), corner + e2 * r.randf_range(0.35, 0.6), corner + Vector3.DOWN * r.randf_range(0.3, 0.5)]
+	var hub: Vector3 = (anchors[0] + anchors[1] + anchors[2]) / 3.0 * 0.85 + corner * 0.15
+	var spokes: Array = []
+	for i in 3:
+		spokes.append(anchors[i])
+		spokes.append((anchors[i] + anchors[(i + 1) % 3]) * 0.5)
+	for p in spokes:
+		_strand(k, hub, p, col)
+	for t: float in [0.35, 0.65, 0.9]:
+		for i in spokes.size():
+			_strand(k, hub.lerp(spokes[i], t), hub.lerp(spokes[(i + 1) % spokes.size()], t + r.randf_range(-0.05, 0.05)), col)
+
+static func _strand(k: MeshKit, a: Vector3, b: Vector3, col: Color) -> void:
+	var d := b - a
+	var l := d.length()
+	if l < 0.01:
+		return
+	var z := d / l
+	var x := z.cross(Vector3.UP if absf(z.y) < 0.9 else Vector3.RIGHT).normalized()
+	k.box("linen", Transform3D(Basis(x, z.cross(x), z), (a + b) * 0.5), Vector3(0.004, 0.004, l), col)
+
+## A banner left to rot on its pole: ragged strips of different lengths.
+func _banner(top: Vector3, dv: Vector2, r: RandomNumberGenerator, k: MeshKit) -> void:
+	var across := Vector3(-dv.y, 0, dv.x)
+	var into := Vector3(dv.x, 0, dv.y)
+	var w := 0.7
+	var col: Color = [Color(0.42, 0.14, 0.12), Color(0.45, 0.44, 0.4)][_era].lerp(Color(0.3, 0.27, 0.22), r.randf() * 0.4)
+	k.cylinder("timber", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5).rotated(Vector3.UP, atan2(dv.x, dv.y) + PI * 0.5), top - into * 0.06), 0.02, 0.02, w + 0.2, 6)
+	var strips := 6
+	for i in strips:
+		var len := r.randf_range(0.5, 1.2) * (1.0 - absf(i - (strips - 1) * 0.5) * 0.08)
+		if r.randf() < 0.15:
+			continue # torn right off
+		var x := -w * 0.5 + w * (i + 0.5) / strips
+		var b := Basis(into, r.randf_range(-0.05, 0.05)) * Basis(across, 0.0)
+		var face := Basis(across, Vector3.UP, into)
+		k.box("linen", Transform3D(b * face, top - into * 0.08 + across * x + Vector3(0, -len * 0.5, 0)), Vector3(w / strips + 0.004, len, 0.01), col)
+
+## A treasury's hoard: coins spilling round its chests and heaped in the middle, a
+## chalice or two, and candles burning on the heap.
+func _hoard(lv: int, c: Vector2i, r: RandomNumberGenerator, k: MeshKit, models: Array) -> void:
+	var fy := Dungeon.floor_y(pl, lv)
+	var cc := Dungeon.centre(pl, c)
+	var reach := Dungeon.CELL * 0.5 - Dungeon.WALL * 0.5
+	if _era == Eras.SCIFI:
+		# Sealed cases, a strongbox open on top.
+		models.append(["scifi/Prop_Crate4", r.randf() * 360.0, _v(cc, fy), 1.0])
+		return
+	for it in pl["loot"]:
+		var p: Vector3 = it["p"]
+		if Dungeon.cell_at(pl, Vector2(p.x, p.z)) != c:
+			continue
+		for i in r.randi_range(2, 3):
+			var off := Vector2(r.randf_range(-0.7, 0.7), r.randf_range(-0.7, 0.7))
+			var at := Vector2(p.x, p.z) + off
+			if absf(at.x - cc.x) < reach - 0.2 and absf(at.y - cc.y) < reach - 0.2:
+				models.append(["props/Coin_Pile", r.randf() * 360.0, _v(at, fy), r.randf_range(0.7, 1.1)])
+	models.append(["props/Coin_Pile", r.randf() * 360.0, _v(cc, fy), 1.4])
+	models.append(["props/Coin_Pile", r.randf() * 360.0, _v(cc + Vector2(0.35, 0.2), fy), 1.1])
+	models.append(["props/Coin_Pile", r.randf() * 360.0, _v(cc + Vector2(-0.3, 0.28), fy), 0.9])
+	models.append(["props/Chalice", r.randf() * 360.0, _v(cc + Vector2(-0.2, -0.3), fy), 1.0])
+	if r.randf() < 0.6:
+		models.append(["props/Chalice", r.randf() * 360.0, _v(cc + Vector2(0.4, -0.15), fy), 0.85])
+	models.append(["props/CandleStick_Triple", r.randf() * 360.0, _v(cc + Vector2(0.05, -0.55), fy), 1.0])
+
 ## A flight of stairs from cell c heading d, from height hi at its top edge down to lo
 ## RUN cells on: treads (and a smooth ramp to walk on), walls each side and a sloping
 ## ceiling. The entrance flight is open to the gatehouse over its top part.
@@ -473,7 +657,7 @@ func _furnish_block(lv: int, cells: Rect2i, k: MeshKit, models: Array, boxes: Ar
 		var pick := r.randi()
 		for si in ss.size():
 			var s: Dictionary = ss[si]
-			var on := r.randf() < 0.62
+			var on := r.randf() < (0.8 if rm["kind"] != "vault" else 1.0)
 			if used.has(si) or list.is_empty() or not on:
 				continue
 			var p: Vector3 = s["w"]
@@ -520,8 +704,22 @@ func _furnish_block(lv: int, cells: Rect2i, k: MeshKit, models: Array, boxes: Ar
 			var at := Vector2(p.x, p.z) - dv * 0.06
 			k.box("metal_dark", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.55, at.y)), Vector3(0.9, 0.1, 0.12))
 			k.box("glow_white", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.49, at.y)), Vector3(0.8, 0.03, 0.08))
+		elif _free_standing(l):
+			models.append(["props/CandleStick_Stand", rad_to_deg(yaw), p, 1.0])
 		else:
 			models.append(["props/Torch_Metal", rad_to_deg(yaw), p + Vector3(0, 1.9, 0), 1.0])
+
+## A room's torch that found no wall left for it (a small treasury full of chests): it
+## stands on the floor instead, as a candle stand.
+func _free_standing(l: Dictionary) -> bool:
+	var ri := int(l.get("room", -1))
+	if ri < 0:
+		return false
+	var rm: Dictionary = pl["rooms"][ri]
+	var lo := Dungeon.centre(pl, Vector2i(rm["x"], rm["z"])) - Vector2.ONE * (Dungeon.CELL * 0.5 - Dungeon.WALL * 0.5)
+	var hi := Dungeon.centre(pl, Vector2i(int(rm["x"]) + int(rm["w"]) - 1, int(rm["z"]) + int(rm["d"]) - 1)) + Vector2.ONE * (Dungeon.CELL * 0.5 - Dungeon.WALL * 0.5)
+	var p: Vector3 = l["p"]
+	return minf(minf(p.x - lo.x, hi.x - p.x), minf(p.z - lo.y, hi.y - p.z)) > 0.3
 
 ## Furniture at a wall spot: standing against the wall, or hung on it.
 func _place(name: String, s: Dictionary, k: MeshKit, models: Array, boxes: Array) -> void:
@@ -728,9 +926,16 @@ func _build_parts() -> void:
 		if _era == Eras.SCIFI:
 			var dv := Vector2(-sin(yaw), -cos(yaw))
 			_add_lamp(l["lv"], Vector3(p.x - dv.x * 0.3, p.y + 2.35, p.z - dv.y * 0.3), 1.3, false)
+		elif _free_standing(l):
+			_add_lamp(l["lv"], p + Vector3(0, 1.45, 0), 1.2, false)
 		else:
 			var f: Array = FireFx.prop_flames([["props/Torch_Metal", rad_to_deg(yaw), p + Vector3(0, 1.9, 0), 1.0]])
 			_add_lamp(l["lv"], f[0][0] if not f.is_empty() else p + Vector3(0, 2.2, 0), 1.6, true)
+	# Candlelight on every treasury's hoard: the payoff is seen from its door.
+	for rm in pl["rooms"]:
+		if rm["kind"] == "vault" and _era != Eras.SCIFI:
+			var cc := Dungeon.centre(pl, Vector2i(rm["x"], rm["z"]))
+			_add_lamp(rm["lv"], Vector3(cc.x + 0.05, Dungeon.floor_y(pl, rm["lv"]) + 0.75, cc.y - 0.55), 1.1, false)
 	for li in pl["locks"].size():
 		_seals.append(_make_seal(li))
 	for pi in pl["parts"].size():
