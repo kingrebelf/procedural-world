@@ -277,6 +277,9 @@ func _build_block(lv: int, bx: int, bz: int) -> void:
 	if not any:
 		return
 	_furnish_block(lv, Rect2i(bx * BLOCK, bz * BLOCK, BLOCK, BLOCK), k, models, boxes)
+	for m in models:
+		if HOARD.has(m[0]) and m.size() == 4:
+			m.append(_hoard_swap(m[0]))
 	var mi := _mesh_node(k, models)
 	mi.name = "Block_%d_%d_%d" % [lv, bx, bz]
 	mi.visible = false
@@ -504,7 +507,7 @@ func _rubble(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
 		if _era == Eras.SCIFI:
 			k.box(mat, Transform3D(b, at + off + Vector3(0, rad * 0.3, 0)), Vector3(rad * 2.0, 0.02, rad * 1.4))
 		else:
-			k.sphere(mat if big else "stone_dark", Transform3D(b, at + off + Vector3(0, rad * 0.45, 0)), rad, 4, 6, 0.3, 0.6)
+			k.sphere(mat if big else "stone", Transform3D(b, at + off + Vector3(0, rad * 0.45, 0)), rad, 4, 6, 0.3, 0.6)
 
 ## A skull and a few long bones, long dead.
 func _bones(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
@@ -562,6 +565,25 @@ func _banner(top: Vector3, dv: Vector2, r: RandomNumberGenerator, k: MeshKit) ->
 		var b := Basis(into, r.randf_range(-0.05, 0.05)) * Basis(across, 0.0)
 		var face := Basis(across, Vector3.UP, into)
 		k.box("linen", Transform3D(b * face, top - into * 0.08 + across * x + Vector3(0, -len * 0.5, 0)), Vector3(w / strips + 0.004, len, 0.01), col)
+
+## Gold and silver read black by candlelight underground (nothing for a full metal to
+## reflect down here), so the hoard's metal is part metal, part lit colour.
+const HOARD := ["props/Coin_Pile", "props/Chalice"]
+static var _swaps := {}
+
+static func _hoard_swap(model: String) -> Dictionary:
+	if _swaps.has(model):
+		return _swaps[model]
+	var out := {}
+	for part in BuildCatalog.model_parts(model):
+		var m = part[0]
+		if m is BaseMaterial3D and not out.has(m.resource_name):
+			var d: BaseMaterial3D = m.duplicate()
+			d.metallic = 0.45
+			d.roughness = minf(d.roughness, 0.45)
+			out[m.resource_name] = d
+	_swaps[model] = out
+	return out
 
 ## A treasury's hoard: coins spilling round its chests and heaped in the middle, a
 ## chalice or two, and candles burning on the heap.
