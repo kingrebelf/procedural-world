@@ -135,7 +135,7 @@ static func _build(t: String) -> ArrayMesh:
 		var am := ka.commit(mat)
 		if String(ItemDB.def(t).get("slot", "")) == "chest" and Outfit.look_of({"type": t})["style"] == Outfit.STYLE_MAIL:
 			# Held by the top fold of the bundle.
-			am.set_meta("grip", Vector3(0, 0.13, 0))
+			am.set_meta("grip", Vector3(0, 0.11, 0))
 			am.set_meta("grip_r", 0.03)
 		if String(ItemDB.def(t).get("slot", "")) == "head":
 			# A helm is carried crown forward, the way a hand holds one by the back of its
@@ -520,9 +520,10 @@ static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float,
 	var hw := length * 0.27
 	var ht := length * 0.17
 	var e := 0.0045
-	# Built lying down (length along x, the narrow stamped face up, +y) and stood on end
-	# so the hand closes round it: bar x -> +Y, bar y -> +Z (towards the viewer).
-	var xf := Transform3D(Basis(Vector3(0, 1, 0), Vector3(0, 0, 1), Vector3(1, 0, 0)), Vector3(0, length * 0.5 - 0.04, 0))
+	# Built lying down (length along x, the stamped face up, +y) and turned so that face
+	# looks at the viewer (+Z) with the length across: a low, wide bar held by its lower
+	# edge, as you would hold an ingot up to look at it.
+	var xf := Transform3D(Basis(Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)), Vector3(0, hw, 0))
 	var c := col
 	_loft(k, m, xf, [_rect(length * 0.5 - e, hw - e, -ht * 0.5, e), _rect(length * 0.5, hw, -ht * 0.5 + e, e),
 		_rect(length * 0.45, hw * 0.78, ht * 0.5 - e, e), _rect(length * 0.45 - e, hw * 0.78 - e, ht * 0.5, e)], c)
@@ -1384,9 +1385,9 @@ static func _hauberk(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color) 
 	# A mail shirt as it is carried: folded into a heavy, sagging bundle about the size
 	# of a loaf (a real hauberk is 8-10 kg of rings), the rows of rings showing at the
 	# folds, a sleeve end and the hem hanging loose from the bottom.
-	var W := 0.12
-	var H := 0.16
-	var D := 0.035
+	var W := 0.1
+	var H := 0.13
+	var D := 0.03
 	for layer in 4:
 		var z := D - layer * D * 0.6
 		var f := func(u: float, v: float) -> Vector3:
