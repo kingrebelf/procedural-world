@@ -1471,9 +1471,17 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 		elif lots.size() - n <= outer.size():
 			t = outer[lots.size() - n - 1]
 		else:
-			t = "hab_block" if r.randf() < 0.6 else "lab_block"
-		# Face the nearer street.
+			# Now and then a lot stays open (a yard or a patch of ground nobody has built
+			# on yet) or holds a depot, so the blocks don't run on in an unbroken grid.
+			var u := r.randf()
+			if u < 0.12:
+				continue
+			t = "depot" if u < 0.2 else "hab_block" if u < 0.65 else "lab_block"
+		# Face the nearer street, set back from it by however much the lot's builder
+		# chose, and not quite centred on the lot.
 		var face := Vector2(0, -signf(q.y)) if absf(q.y) <= absf(q.x) else Vector2(-signf(q.x), 0)
+		if n >= 2:
+			q += -face * r.randf_range(-0.6, 1.4) + Vector2(face.y, -face.x) * r.randf_range(-1.0, 1.0)
 		var dir := face.rotated(ang)
 		items.append({"t": t, "p": c + q.rotated(ang), "yaw": atan2(dir.x, dir.y), "st": {}})
 	# Floodlights down both sides of each street, alternating.

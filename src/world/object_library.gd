@@ -100,9 +100,12 @@ static func mesh_key(o: Dictionary) -> String:
 	if sp == 0:
 		if WonderSite.has(o["t"]):
 			return WonderSite.mesh_key(o)
-		# Castle walls and towers come in a few builds, picked by where they stand.
+		# Castle walls and towers, and outpost blocks, come in a few builds, picked by
+		# where they stand.
 		if Stronghold.VARIANTS.has(o["t"]):
 			return Stronghold.variant_key(o)
+		if KitBase.VARIANTS.has(o["t"]):
+			return KitBase.variant_key(o)
 		return o["t"]
 	return "%s#%d#%d" % [o["t"], sp, int(o.get("v", 0))]
 
@@ -145,7 +148,7 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return KitHouse.build(key)
 	if Interiors.rebuilds(key):
 		return Interiors.build(key)
-	if KitBase.has(key):
+	if KitBase.has(key.get_slice(Stronghold.VAR, 0)):
 		return KitBase.build(key)
 	if Stronghold.has(key.get_slice(Stronghold.VAR, 0)):
 		return Stronghold.build(key)
