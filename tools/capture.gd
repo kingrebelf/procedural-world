@@ -972,7 +972,32 @@ func _forest_shots(g: ChunkGenerator) -> void:
 	var best := Vector2(top.x * 64.0 + 32.0, top.y * 64.0 + 32.0)
 	var most: int = count.call(top)
 	print("forest chunk ", best, " trees ", most)
-	await _shot("44_forest_close", best + Vector2(-14, -10), best + Vector2(20, 18), 0.4, 1.7, NAN, _draw_stats)
+	# Stand in a clearing among the trees: the spot in the chunk with the most trees 6-25 m
+	# away and none (trunk or crown) within 4 m, looking toward the thickest of them.
+	var trees: Array = []
+	for o in g.generate(top.x, top.y)["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree":
+			trees.append(Vector2(o["p"].x, o["p"].z) + Vector2(top.x * 64.0, top.y * 64.0))
+	var stand := best + Vector2(-14, -10)
+	var look := best + Vector2(20, 18)
+	var score := -1.0
+	for j in range(4, 61, 3):
+		for i in range(4, 61, 3):
+			var q := Vector2(top.x * 64.0 + i, top.y * 64.0 + j)
+			var near := INF
+			var pull := Vector2.ZERO
+			var n := 0
+			for tp in trees:
+				var d: float = q.distance_to(tp)
+				near = minf(near, d)
+				if d > 6.0 and d < 25.0:
+					n += 1
+					pull += (tp - q) / d
+			if near >= 4.0 and n > score and pull.length() > 0.01:
+				score = n
+				stand = q
+				look = q + pull.normalized() * 20.0
+	await _shot("44_forest_close", stand, look, 0.4, 1.7, NAN, _draw_stats)
 	await _shot("43_forest_overlook", best + Vector2(-90, -70), best, 0.4, 28.0, NAN, _draw_stats)
 
 func _draw_stats() -> void:
