@@ -15,8 +15,14 @@ uniform vec3 albedo : source_color = vec3(1.0);
 uniform vec3 back : source_color = vec3(0.3, 0.35, 0.12);
 uniform bool is_core = false;
 uniform float sway = 1.0;
+// RealTree crowns: vertex normals point out of the crown volume. Godot flips a back
+// face's normal before the fragment runs, which would light half the cards from inside,
+// so the crown normal is passed through unflipped instead.
+uniform bool crown_normals = false;
+uniform float alpha_cut = 0.45;
 
 varying vec3 inst_col;
+varying vec3 crown_n;
 
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -39,6 +45,7 @@ void vertex() {
 	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * min(sway, 1.0);
 	// Vertex and instance colours are authored as sRGB; shading happens in linear space.
 	inst_col = pow(COLOR.rgb, vec3(2.2));
+	crown_n = (MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 }
 
 void fragment() {
@@ -49,15 +56,19 @@ void fragment() {
 	vec2 px = uv * vec2(textureSize(albedo_tex, 0));
 	float lod = max(0.5 * log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px)))), 0.0);
 	tex.a *= 1.0 + lod * 0.28;
-	if (!is_core && tex.a < 0.45) {
+	if (!is_core && tex.a < alpha_cut) {
 		discard;
 	}
 	ALBEDO = tex.rgb * albedo * inst_col;
 	// Bend normals toward the sky: cards facing the ground otherwise render near black.
 	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
 	// The core's underside would otherwise go black in its own shadow.
-	NORMAL = normalize(mix(NORMAL, up_v, is_core ? 0.8 : 0.55));
+	if (crown_normals) {
+		NORMAL = normalize(mix(normalize(crown_n), up_v, 0.2));
+	} else {
+		NORMAL = normalize(mix(NORMAL, up_v, is_core ? 0.8 : 0.55));
+	}
 	ROUGHNESS = 0.8;
-	SPECULAR = 0.35;
+	SPECULAR = crown_normals ? 0.25 : 0.35;
 	BACKLIGHT = back * inst_col * 1.4;
 }

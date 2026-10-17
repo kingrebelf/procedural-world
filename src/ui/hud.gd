@@ -551,7 +551,8 @@ func show_death(cause: String) -> void:
 	var c := UITheme.label(cause, 22)
 	c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(c)
-	var w := UITheme.label("You keep everything you carry, but lose a quarter of your progress to the next level.", 16, UITheme.DIM)
+	var keep: bool = Game.server_option("death_penalty", "bag") == "keep"
+	var w := UITheme.label(("You keep everything you carry, but" if keep else "Everything you carried is in a bag where you fell, marked on your map. Anyone who finds it can take it.\nYou also") + " lose a quarter of your progress to the next level.", 16, UITheme.DIM)
 	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(w)
 	_death.add_child(v)
@@ -856,16 +857,6 @@ func _on_region(region: String, era: int) -> void:
 	tw.tween_interval(3.5)
 	tw.tween_property(_banner_box, "modulate:a", 0.0, 2.0)
 
-func _update_buffs() -> void:
-	var parts: PackedStringArray = []
-	for id in Game.buffs:
-		var b: Dictionary = Effects.BUFFS.get(id, {})
-		if not b.is_empty() and not b.get("hidden", false):
-			parts.append("%s %s" % [b["name"], Effects.clock(float(Game.buffs[id]))])
-	_buffs.text = "   ".join(parts)
-	_buffs.visible = not parts.is_empty()
-	_buffs.add_theme_color_override("font_color", Color(0.95, 0.5, 0.45) if Game.has_buff("poison") else UITheme.ACCENT)
-
 ## Dark everywhere but two overlapping circles, softly edged, with a faint lens tint.
 const BINO_SHADER := """shader_type canvas_item;
 uniform float amount = 1.0;
@@ -878,6 +869,16 @@ void fragment() {
 	float rim = smoothstep(r - 0.12, r, d) * inside;
 	COLOR = vec4(0.0, 0.0, 0.0, amount * mix(1.0, 0.45 * rim, inside));
 }"""
+
+func _update_buffs() -> void:
+	var parts: PackedStringArray = []
+	for id in Game.buffs:
+		var b: Dictionary = Effects.BUFFS.get(id, {})
+		if not b.is_empty() and not b.get("hidden", false):
+			parts.append("%s %s" % [b["name"], Effects.clock(float(Game.buffs[id]))])
+	_buffs.text = "   ".join(parts)
+	_buffs.visible = not parts.is_empty()
+	_buffs.add_theme_color_override("font_color", Color(0.95, 0.5, 0.45) if Game.has_buff("poison") else UITheme.ACCENT)
 
 func _process(_d: float) -> void:
 	if player == null:

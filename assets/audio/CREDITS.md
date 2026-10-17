@@ -3,8 +3,8 @@
 Everything here is CC0 (public domain) or made for this game.
 
 - **Kenney audio packs** (CC0, https://kenney.nl/assets/category:Audio): Impact Sounds
-  (footsteps, hits), RPG Audio (gravel steps, chop, cloth, coins, belts, knife draw),
-  Interface Sounds and UI Audio (clicks, hovers, tabs, toggles), Sci-fi Sounds (lasers,
+  (footsteps, hits), RPG Audio (gravel steps, chop, cloth, coins, belts, knife draw, doors, latches),
+  Interface Sounds and UI Audio (clicks, hovers, tabs, toggles), Sci-fi Sounds (lasers, sliding doors,
   explosions, thrusters, engines), Music Jingles (level up, discovery, death).
 - **OpenGameArt CC0 music and ambience**:
   - "Exploration Theme" by Cleyton Kauffman, https://opengameart.org/content/exploration-theme

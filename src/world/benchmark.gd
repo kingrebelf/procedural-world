@@ -52,11 +52,15 @@ func _tests() -> Array:
 	t.append(["Sun shadows", func(off: bool): atm.sun.shadow_enabled = not off])
 	t.append(["Sky lighting updates", func(off: bool):
 		atm.env.sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL if off else Sky.PROCESS_MODE_REALTIME])
-	t.append(["Grass", func(off: bool): _show_named(world.streamer, "Grass", not off)])
+	t.append(["Grass", func(off: bool):
+		for c in world.streamer.chunks.values():
+			for ch in c.get_children():
+				if ch.name.begins_with("Grass"):
+					ch.visible = not off])
 	t.append(["Ground clutter and small props", func(off: bool):
 		for c in world.streamer.chunks.values():
 			for ch in c.get_children():
-				if ch is GeometryInstance3D and ch.has_meta("range") and ch.name != "Grass":
+				if ch is GeometryInstance3D and ch.has_meta("range") and not ch.name.begins_with("Grass"):
 					ch.visible = not off])
 	t.append(["Trees and buildings", func(off: bool):
 		for c in world.streamer.chunks.values():

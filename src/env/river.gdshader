@@ -60,14 +60,23 @@ void fragment() {
 	float c1 = abs(n2(cq + n2(cq * 0.7 + TIME * 0.2) * 1.5) * 2.0);
 	float caus = pow(clamp(1.0 - c1 * 2.0, 0.0, 1.0), 4.0);
 	under *= 1.0 + caus * (1.0 - k) * 1.2 * smoothstep(-0.05, 0.3, sun_dir_g.y);
-	vec3 col = mix(under * shallow * 2.2, deep, k);
-	// Foam streaks where the current runs fast and at the banks.
+	// As in the lakes: the riverbed is already lit, so it is seen through (emission), with
+	// red and then green swallowed by depth; the water's own colour shows where it is deep.
+	vec3 trans = exp(-vec3(0.4, 0.14, 0.17) * water_depth * 1.5);
+	vec3 tint = mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3);
+	vec3 seen = under * trans * tint;
+	vec3 col = deep * (1.0 - trans.g) * 1.6;
+	// Foam streaks where the current runs fast, and a thin line at the banks.
 	float streak = smoothstep(0.18, 0.4, mix(h0, h1, w)) * length(flow) * 0.35;
-	float bank = 1.0 - smoothstep(0.0, 0.35, water_depth);
-	col = mix(col, vec3(0.86, 0.9, 0.92), clamp(streak + bank * 0.4, 0.0, 0.8));
+	float bank = 1.0 - smoothstep(0.0, 0.15, water_depth);
+	float foam = clamp(streak + bank * 0.4, 0.0, 0.8);
+	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
+	vec3 vdir = normalize((inverse(VIEW_MATRIX) * vec4(VIEW, 0.0)).xyz); // back toward the eye
+	float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(nw, vdir), 0.0, 1.0), 5.0);
+	seen *= (1.0 - foam) * (1.0 - fres);
 	ALBEDO = col;
 	ALPHA = edge * smoothstep(0.0, 0.25, water_depth);
 	ROUGHNESS = 0.06;
-	SPECULAR = 0.6;
-	EMISSION = glow * glow_amount * 0.4;
+	SPECULAR = 0.5;
+	EMISSION = seen + glow * glow_amount * 0.4;
 }

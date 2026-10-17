@@ -591,18 +591,19 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "vandalism": "Vandalism"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
-		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"]}.get(kind, ["Guards!"])
+		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"],
+		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
 		if not is_instance_valid(n):
 			continue
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
-			"lockpick": "breaking into a chest"}.get(kind, "committing a crime"))
+			"lockpick": "breaking into a chest", "vandalism": "smashing down a door"}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
 			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
