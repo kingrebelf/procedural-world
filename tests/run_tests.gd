@@ -1453,6 +1453,44 @@ func test_gaits() -> void:
 	check(h.animator.state() == "death", "posed bodies hold their pose")
 	h.free()
 
+## Everything a hand can hold is its real size (HeldScale): no six-foot pickaxes, in a
+## villager's hand or yours, whoever is holding it.
+func test_held_scale() -> void:
+	var checked := 0
+	for t: String in ItemDB.ITEMS:
+		if ItemDB.def(t).get("kind", "") in ["armor", "ammo", "resource", "vehicle", "station", "camp", "crop"]:
+			continue
+		var prop := Viewmodel.prop_for(t)
+		if not HeldScale.unmodelled(prop):
+			checked += 1
+			var p := HeldScale.problem(t, prop)
+			if HeldScale.OWED.has(t):
+				check(p != "", "%s is its real size now: take it off HeldScale.OWED" % t)
+			else:
+				check(p == "", p)
+		prop.free()
+	check(checked > 100, "most things held have a model to measure (%d)" % checked)
+	if not HumanModel.available():
+		return
+	var h := HumanModel.new()
+	h.scale = Vector3.ONE * 0.9
+	root.add_child(h)
+	h.build({"height": 1.0, "build": 1.0, "female": true, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.MEDIEVAL, "farmer")
+	var tool = h._held.get_child(0) if h._held else null
+	check(tool == null or String(tool.get_meta("item", "")) in HumanModel.WORK_TOOLS["farmer"], "a farmer works with a farm tool, not a pickaxe")
+	for job: String in HumanModel.WORK_TOOLS:
+		h._tool(job)
+		if h._held == null:
+			continue
+		var prop: Node3D = h._held.get_child(0)
+		var t := String(prop.get_meta("item", ""))
+		check(t in HumanModel.WORK_TOOLS[job], "a %s holds their own tool (%s)" % [job, t])
+		check(HeldScale.problem(t, prop) == "", "a %s's %s is its real size" % [job, t])
+		# The body is drawn at 0.9 of the rig; the tool is not shrunk (or grown) with it.
+		check(is_equal_approx(prop.transform.basis.get_scale().x * h.scale.x, 1.0), "a short person's %s is as big as anyone's" % t)
+		h.hold(null)
+	h.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return

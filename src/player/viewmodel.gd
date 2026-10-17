@@ -294,6 +294,7 @@ static func model(t: String) -> ArrayMesh:
 		var k := MeshKit.new(3)
 		k.box("painted", Transform3D.IDENTITY, Vector3(0.12, 0.12, 0.12), def.get("color", Color.WHITE))
 		out = k.commit(Materials.get_mat)
+		out.set_meta("placeholder", true) # no model yet: a painted block
 	_models[t] = out
 	return out
 
