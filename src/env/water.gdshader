@@ -112,15 +112,15 @@ void fragment() {
 	float water_depth = clamp((-world.z - (-VERTEX.z)), 0.0, 100.0);
 	// How deep the bed lies straight down (the path through the water is longer).
 	float vdepth = max(wpos.y - (INV_VIEW_MATRIX * vec4(world.xyz, 1.0)).y, 0.0);
-	float clear_m = mix(clarity, 1.4, murk);
+	float clear_m = mix(clarity, 2.2, murk);
 	float k = 1.0 - exp(-water_depth / clear_m);
 	vec2 refr_uv = SCREEN_UV + nw.xz * 0.02 * k;
 	vec3 under = textureLod(screen_tex, refr_uv, 1.0).rgb;
 	// What lies under the water is already lit, so it is seen through (emission), dimmed
 	// as the water swallows red first, then green: clear and sandy in the shallows,
 	// green-blue then dark further out. Lighting it again as albedo made lakes glare cyan.
-	// Silt in a pond swallows blue most and you see only a metre or so into it.
-	vec3 absorb = mix(vec3(0.4, 0.14, 0.17) * (4.0 / clarity), vec3(0.7, 0.55, 1.05), murk);
+	// Silt in a pond swallows blue most: the bed shows in the shallows, gone by two metres.
+	vec3 absorb = mix(vec3(0.4, 0.14, 0.17) * (4.0 / clarity), vec3(0.42, 0.33, 0.62), murk);
 	vec3 trans = exp(-absorb * water_depth * 1.5);
 	vec3 tint = mix(mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3), vec3(0.95, 1.0, 0.78), murk);
 	vec3 seen = under * trans * tint;
