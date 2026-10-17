@@ -396,12 +396,13 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 	if ids.is_empty() or area <= 0.0:
 		return {}
 	var w := ht * 0.011
-	var count := clampi(int(area / (w * w * 6.0)), 40, 360)
+	var count := clampi(int(area / (w * w * 4.0)), 40, 540)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed
 	var rows := 6
 	var v := PackedVector3Array()
 	var n := PackedVector3Array()
+	var tg := PackedFloat32Array()
 	var uv := PackedVector2Array()
 	var uv2 := PackedVector2Array()
 	var lb := PackedInt32Array()
@@ -431,12 +432,12 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		var g0 := tris[t * 3 + near]
 		# A tail (behind the body's middle) hangs long; a mane falls short to one side.
 		var tail := p.z < cz
-		var length := ht * (r.randf_range(0.09, 0.17) if tail else r.randf_range(0.05, 0.09))
+		var length := ht * (r.randf_range(0.07, 0.18) if tail else r.randf_range(0.05, 0.09))
 		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
 		var d0 := (sn * (0.08 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.03 if tail else 0.35), 0, -0.12)).normalized()
 		var hang := Vector3(side * (0.0 if tail else 0.05), -1.0, -0.12).normalized()
 		var wave := r.randf() * TAU
-		var lw0 := w * r.randf_range(0.7, 1.3) * (1.4 if tail else 1.0)
+		var lw0 := w * r.randf_range(0.6, 1.1) * (1.1 if tail else 1.0)
 		var lid := r.randf()
 		var q := p - sn * w * (0.6 if tail else 0.3)
 		var base := v.size()
@@ -455,6 +456,8 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 			for e in 2:
 				v.append(c + across * hw * (1.0 if e == 1 else -1.0))
 				n.append(sn)
+				# The tangent runs down the lock, for lighting it as hair (hair_lock.gdshader).
+				tg.append_array(PackedFloat32Array([dir.x, dir.y, dir.z, 1.0]))
 				uv.append(Vector2(float(e), u))
 				uv2.append(Vector2(lid, 0.0))
 				for m in 4:
@@ -472,6 +475,7 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = v
 	arr[Mesh.ARRAY_NORMAL] = n
+	arr[Mesh.ARRAY_TANGENT] = tg
 	arr[Mesh.ARRAY_TEX_UV] = uv
 	arr[Mesh.ARRAY_TEX_UV2] = uv2
 	arr[Mesh.ARRAY_BONES] = lb
