@@ -196,6 +196,9 @@ func _census() -> String:
 	return "scene: %d nodes, %d chunks, %d multimeshes (%d instances), %d meshes, %d bodies, %d lights (%d shadowed, %d of them within 55 m), %d particle systems" % [
 		nodes, world.streamer.chunks.size(), mmis, instances, meshes, bodies, lights, shadow_lights, near_lights, particles]
 
+static func _toggle_process(off: bool, nd: Node) -> void:
+	nd.process_mode = Node.PROCESS_MODE_DISABLED if off else Node.PROCESS_MODE_INHERIT
+
 func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> void:
 	await _goto(at, look, height)
 	var base: Dictionary = await _measure()
@@ -214,27 +217,32 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 			Settings.values = saved.duplicate()
 			Settings.apply()
 		return
-	# CPU: what each game system's scripts cost per frame (switched off one at a time).
+	# CPU: what each game system's scripts cost per frame (switched off one at a time). The
+	# baseline is measured again before each one: people keep arriving while this runs.
 	_out("  Script/physics cost by system (ms saved: frame / script / physics):")
+	var rows: Array = []
 	for n in ["People", "Wildlife", "Corpses", "Vehicles", "Water", "FarLand", "Chunks", "Treasure", "Player"]:
 		var nd := world.get_node_or_null(n)
-		if nd == null:
-			continue
-		var was := nd.process_mode
-		nd.process_mode = Node.PROCESS_MODE_DISABLED
+		if nd != null:
+			rows.append([n, _toggle_process.bind(nd)])
+	var people := world.get_node_or_null("People")
+	if people != null:
+		# What a person costs: the manager's step, their animation, and the bone fixes after it.
+		rows.append(["  manager", func(off: bool): people.set_process(not off)])
+		rows.append(["  animation", func(off: bool):
+			for a in people.find_children("*", "HumanAnimator", true, false):
+				a.set_process(not off)])
+		rows.append(["  IK/gestures", func(off: bool):
+			for m in people.find_children("*", "SkeletonModifier3D", true, false):
+				(m as SkeletonModifier3D).active = not off])
+	rows.append(["HUD and UI", _toggle_process.bind(world.hud.get_parent())])
+	rows.append(["Atmosphere", _toggle_process.bind(world.atmosphere)])
+	for r in rows:
+		var b0: Dictionary = await _measure()
+		(r[1] as Callable).call(true)
 		var m: Dictionary = await _measure()
-		nd.process_mode = was
-		_out("    %-12s %5.2f  %5.2f  %5.2f" % [n, base["frame"] - m["frame"], base["proc"] - m["proc"], base["phys"] - m["phys"]])
-	var ui := world.hud.get_parent() as CanvasLayer
-	ui.process_mode = Node.PROCESS_MODE_DISABLED
-	var mu: Dictionary = await _measure()
-	ui.process_mode = Node.PROCESS_MODE_INHERIT
-	_out("    %-12s %5.2f  %5.2f  %5.2f" % ["HUD and UI", base["frame"] - mu["frame"], base["proc"] - mu["proc"], base["phys"] - mu["phys"]])
-	var atm: Node = world.atmosphere
-	atm.process_mode = Node.PROCESS_MODE_DISABLED
-	var ma: Dictionary = await _measure()
-	atm.process_mode = Node.PROCESS_MODE_INHERIT
-	_out("    %-12s %5.2f  %5.2f  %5.2f" % ["Atmosphere", base["frame"] - ma["frame"], base["proc"] - ma["proc"], base["phys"] - ma["phys"]])
+		(r[1] as Callable).call(false)
+		_out("    %-12s %5.2f  %5.2f  %5.2f" % [r[0], b0["frame"] - m["frame"], b0["proc"] - m["proc"], b0["phys"] - m["phys"]])
 	if quick:
 		return
 	# GPU: the benchmark's feature list, measured here.

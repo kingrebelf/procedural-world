@@ -466,6 +466,15 @@ static func interior(t: String) -> ArrayMesh:
 			k.box("stone_dark", I.translated(Vector3(0, 3.16, -1.25)), Vector3(0.8, 0.02, 0.8))
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
+	# The kit's wall torches are empty iron baskets: fill each with pitch-soaked rag.
+	var wads := MeshKit.new(3)
+	var any := false
+	for m in models:
+		if m[0] == "props/Torch_Metal":
+			ToolModels.torch_wad(wads, Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * float(m[3])), m[2]))
+			any = true
+	if any:
+		wads.commit(ToolModels.mat, mesh)
 	return mesh
 
 ## Lamplit window panels of a sci-fi block's ground floor, drawn from further off.

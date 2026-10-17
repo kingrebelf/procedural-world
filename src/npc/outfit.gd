@@ -45,6 +45,18 @@ static func _src(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D) -> Dict
 		if bn == "":
 			bn = sk.get_bone_name(skin.get_bind_bone(i))
 		binds[bn] = i
+	# Every bind on a hand (the hand and its fingers) and the forearm it belongs to.
+	var to_arm := {}
+	for side in ["l", "r"]:
+		var hand := sk.find_bone("hand_" + side)
+		if hand < 0 or not binds.has("lowerarm_" + side):
+			continue
+		for i in skin.get_bind_count():
+			var b := sk.find_bone(String(skin.get_bind_name(i))) if skin.get_bind_name(i) != &"" else skin.get_bind_bone(i)
+			while b >= 0 and b != hand:
+				b = sk.get_bone_parent(b)
+			if b == hand:
+				to_arm[i] = int(binds["lowerarm_" + side])
 	var bone_y := func(n: String) -> Vector3:
 		var b := sk.find_bone(n)
 		return sk.get_bone_global_rest(b).origin if b >= 0 else Vector3.ZERO
@@ -57,7 +69,7 @@ static func _src(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D) -> Dict
 	var thigh_l: Vector3 = bone_y.call("thigh_l")
 	var s := {
 		"v": verts, "n": a[Mesh.ARRAY_NORMAL], "uv": a[Mesh.ARRAY_TEX_UV], "b": bones, "w": a[Mesh.ARRAY_WEIGHTS],
-		"r": region, "i": idx, "per": bones.size() / verts.size(), "binds": binds,
+		"r": region, "i": idx, "per": bones.size() / verts.size(), "binds": binds, "to_arm": to_arm,
 		"waist": lerpf(pelvis.y, spine1.y, 0.55), "crotch": pelvis.y - 0.09, "knee": calf.y,
 		"neck": neck.y, "head": head, "shoulder_x": absf(shoulder.x), "shoulder_y": shoulder.y,
 		"lx": 1.0 if thigh_l.x >= 0.0 else -1.0,
@@ -108,6 +120,9 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 	off.resize(v.size())
 	for i in v.size():
 		off[i] = pick.call(i, v[i], reg[i])
+	# A sleeve rides on the forearm, not the hand: weight on the hand moves to the forearm,
+	# or a turned wrist drags the cuff's edge out into shards over the hand.
+	var to_arm: Dictionary = s["to_arm"] if part == PART_SHIRT else {}
 	var remap := {}
 	var ov: PackedVector3Array = o["v"]
 	var base := ov.size()
@@ -131,7 +146,7 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 				o["n"].append(dir)
 				o["uv"].append(uv[k] if uv.size() > k else Vector2.ZERO)
 				for j in per:
-					o["b"].append(bones[k * per + j])
+					o["b"].append(to_arm.get(bones[k * per + j], bones[k * per + j]))
 					o["w"].append(wts[k * per + j])
 				o["c"].append_array([float(part), rp.y, rp.z, rp.x])
 				o["rn"].append_array([nr[k].x, nr[k].y, nr[k].z])
