@@ -160,17 +160,22 @@ func _run() -> void:
 			bulb_mat.emission = l.get("color", Color(1, 0.8, 0.6))
 			bulb_mat.emission_energy_multiplier = 0.0
 			bulb.material_override = bulb_mat
+			bulb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # as PowerNode has it
 			(tip if tip != null else root).add_child(bulb)
 			if float(l.get("spot", 0.0)) > 0.0:
 				var sp := SpotLight3D.new()
 				sp.spot_range = float(l["range"])
 				sp.spot_angle = float(l["spot"])
 				sp.rotation.x = deg_to_rad(float(l.get("aim", 0.0)))
+				sp.spot_attenuation = 0.9
+				sp.spot_angle_attenuation = 1.6
+				bulb.rotation.x = sp.rotation.x
 				light = sp
 			else:
 				var om := OmniLight3D.new()
 				om.omni_range = float(l["range"])
-				om.omni_attenuation = 1.4
+				om.omni_attenuation = float(l.get("atten", 1.4))
+				om.light_size = float(l.get("soft", 0.12))
 				light = om
 			light.light_color = l.get("color", Color(1, 0.8, 0.6))
 			light.light_energy = float(l["energy"])
@@ -185,6 +190,17 @@ func _run() -> void:
 		var view := Vector3(0.45, 0.35, -1.0) if mount == "" else Vector3(0.5, 0.25, 1.0)
 		if mount == "ceiling":
 			view = Vector3(0.5, -0.15, 1.0)
+			if s.has("lamp"):
+				# Back and level, framing it and the pool it throws on the floor below.
+				view = Vector3(0.5, 0.1, 1.0)
+				dist *= 3.2
+				c += Vector3(0, -1.1, 0)
+		if float(s.get("lamp", {}).get("spot", 0.0)) > 0.0:
+			# From above and back, to see the pool it throws on the ground ahead.
+			view = Vector3(0.6, 0.9, -1.0)
+			dist *= 1.9
+		if s.get("source", "") == "sun":
+			view = Vector3(0.45, 0.6, 1.0) # its cells face its local +z
 		cam.position = c + view.normalized() * maxf(dist, 1.2)
 		cam.look_at(c)
 		cam.near = 0.02

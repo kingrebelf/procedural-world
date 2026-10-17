@@ -167,6 +167,8 @@ func _mesh(part: String) -> MeshInstance3D:
 func _make_lamp(l: Dictionary) -> void:
 	_bulb = _mesh(String(l.get("part", "bulb")))
 	_bulb.position = l["pos"]
+	if float(l.get("spot", 0.0)) > 0.0:
+		_bulb.rotation.x = deg_to_rad(float(l.get("aim", 0.0)))
 	_bulb_mat = StandardMaterial3D.new()
 	_bulb_mat.albedo_color = Color(0.92, 0.9, 0.85, 0.55)
 	_bulb_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
@@ -190,13 +192,14 @@ func _make_lamp(l: Dictionary) -> void:
 	else:
 		var o := OmniLight3D.new()
 		o.omni_range = float(l["range"])
-		o.omni_attenuation = 1.4
+		o.omni_attenuation = float(l.get("atten", 1.4))
 		_light = o
 	_light.light_color = l.get("color", Color(1.0, 0.8, 0.58))
 	_light.light_energy = 0.0
 	_light.position = l.get("light_at", l["pos"])
 	if _light is OmniLight3D:
 		ChunkNode._cast_shadows(_light)
+		_light.light_size = float(l.get("soft", _light.light_size))
 	else:
 		_spot_shadows(_light)
 	_light.distance_fade_enabled = true

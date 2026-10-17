@@ -351,6 +351,8 @@ static func _get_mat(name: String) -> Material:
 		"timber": m = _timber()
 		"planks": m = _pbr(Color(0.55, 0.40, 0.26), 0.8, 0.0, "planks", 0.03, 0.5, 0.8)
 		"thatch": m = _pbr(Color(0.62, 0.52, 0.30), 0.95, 0.0, "thatch", 0.09, 0.8, 1.8)
+		# A dressed slate switchboard: smooth, dark, matt.
+		"slate_board": m = _pbr(Color(0.17, 0.18, 0.2), 0.55, 0.0, "", 0, 1)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)
 		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "forged", 0.04, 1.0, 0.4)
 		# Cast and painted iron on machines: dull, so it doesn't mirror the dark ground black.

@@ -13,6 +13,7 @@ const ENGINE_GREEN := Color(0.24, 0.33, 0.25)
 const GASIFIER := Color(1.0, 0.97, 0.94) ## a tint over the cast iron
 const ENAMEL := Color(0.86, 0.85, 0.8)
 const CERAMIC := Color(0.92, 0.9, 0.86)
+const STEEL_GREY := Color(0.36, 0.4, 0.38) ## painted sheet steel on switchgear
 
 static var _parts := {}
 static var _lock := Mutex.new()
@@ -209,12 +210,22 @@ static func proc(k: MeshKit, what: String) -> void:
 				beam(k, "metal", Vector3(x, 0, 0.35), Vector3(x, 0.78, 0.2), 0.03)
 				k.box("cobble", I.translated(Vector3(x, 0.05, -0.45)), Vector3(0.22, 0.1, 0.22))
 				k.box("cobble", I.translated(Vector3(x, 0.05, 0.35)), Vector3(0.22, 0.1, 0.22))
-			k.box("metal", Transform3D(pb, c), Vector3(2.02, 0.05, 1.12))
-			# 6 x 3 cells with thin gaps, each a little proud of the frame.
+			# A white backsheet behind the cells, in a raised aluminium frame; two rails
+			# across the back carry it on the stand.
+			k.box("painted", Transform3D(pb, c), Vector3(1.96, 0.03, 1.06), Color(0.84, 0.85, 0.86))
+			for z in [-0.545, 0.545]:
+				k.box("metal", Transform3D(pb, c + pb * Vector3(0, 0.0, z)), Vector3(2.04, 0.07, 0.035))
+			for x in [-1.005, 1.005]:
+				k.box("metal", Transform3D(pb, c + pb * Vector3(x, 0.0, 0)), Vector3(0.035, 0.07, 1.12))
+			for x in [-0.8, 0.8]:
+				k.box("metal", Transform3D(pb, c + pb * Vector3(x, -0.04, 0)), Vector3(0.05, 0.04, 1.06))
+			# 6 x 3 dark blue cells with thin gaps, each crossed by two silver busbars.
 			for i in 6:
 				for j in 3:
-					var p := c + pb * Vector3(-0.83 + i * 0.332, 0.03, -0.36 + j * 0.36)
+					var p := c + pb * Vector3(-0.83 + i * 0.332, 0.021, -0.36 + j * 0.36)
 					k.box("solar_cell", Transform3D(pb, p), Vector3(0.32, 0.012, 0.345))
+					for bx in [-0.08, 0.08]:
+						k.box("metal", Transform3D(pb, p + pb * Vector3(bx, 0.0065, 0)), Vector3(0.006, 0.002, 0.345))
 			k.box("painted", Transform3D(pb, c + pb * Vector3(0.0, -0.06, 0.0)), Vector3(0.2, 0.06, 0.14), Color(0.2, 0.2, 0.22))
 		"pw_battery":
 			# An oak rack holding two shelves of glass-jar lead cells, joined in series by
@@ -255,16 +266,16 @@ static func proc(k: MeshKit, what: String) -> void:
 				var a := PI * 0.5 * (n % 2)
 				beam(k, "cast_iron", Vector3(0, y, 0), Vector3(sin(a) * 0.3, y, cos(a) * 0.3 * (1 if n % 4 < 2 else -1)), 0.012)
 		"pw_junction":
-			# A cast-iron box on the wall with four cable glands below.
-			k.box("cast_iron", I.translated(Vector3(0, 0, 0.06)), Vector3(0.3, 0.36, 0.12), GASIFIER)
-			k.box("cast_iron", I.translated(Vector3(0, 0, 0.125)), Vector3(0.26, 0.32, 0.015), GASIFIER.lightened(0.08))
+			# A painted steel box on the wall with a screwed lid and four cable glands below.
+			k.box("painted", I.translated(Vector3(0, 0, 0.06)), Vector3(0.3, 0.36, 0.12), STEEL_GREY)
+			k.box("painted", I.translated(Vector3(0, 0, 0.125)), Vector3(0.26, 0.32, 0.015), STEEL_GREY.lightened(0.1))
 			for c in [Vector2(-0.11, -0.14), Vector2(0.11, -0.14), Vector2(-0.11, 0.14), Vector2(0.11, 0.14)]:
-				k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(c.x, c.y, 0.13)), 0.012, 0.012, 0.01, 6)
+				k.cylinder("metal", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(c.x, c.y, 0.13)), 0.012, 0.012, 0.01, 6)
 			for x in [-0.09, -0.03, 0.03, 0.09]:
 				k.cylinder("gold", I.translated(Vector3(x, -0.22, 0.06)), 0.02, 0.022, 0.05, 8, true, 0.0, 1, BRASS)
 		"pw_switch":
 			# A slate panel with two copper jaws and the hinge post; the blade is a part.
-			k.box("slate", I.translated(Vector3(0, 0, 0.02)), Vector3(0.22, 0.36, 0.04))
+			k.box("slate_board", I.translated(Vector3(0, 0, 0.02)), Vector3(0.22, 0.36, 0.04))
 			for y in [-0.14, 0.14]:
 				for x in [-0.08, 0.08]:
 					k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(x, y, 0.04)), 0.01, 0.01, 0.008, 6)
@@ -564,10 +575,21 @@ static func proc(k: MeshKit, what: String) -> void:
 		"pw_lamp_ceiling":
 			# A ceiling rose, a cloth flex, and a white enamel shade; the bulb is a part.
 			k.cylinder("painted", I.translated(Vector3(0, -0.03, 0)), 0.06, 0.06, 0.03, 12, true, 0.0, 1, ENAMEL)
-			k.cylinder("rubber", I.translated(Vector3(0, -0.62, 0)), 0.006, 0.006, 0.6, 5)
-			k.cylinder("gold", I.translated(Vector3(0, -0.7, 0)), 0.022, 0.026, 0.08, 10, true, 0.0, 1, BRASS)
-			k.cylinder("painted", I.translated(Vector3(0, -0.82, 0)), 0.2, 0.05, 0.13, 20, false, 0.0, 2, ENAMEL)
-			k.cylinder("painted", I.translated(Vector3(0, -0.825, 0)), 0.205, 0.205, 0.008, 20, false, 0.0, 1, Color(0.18, 0.2, 0.22))
+			k.cylinder("rubber", I.translated(Vector3(0, -0.2, 0)), 0.006, 0.006, 0.18, 5)
+			k.cylinder("gold", I.translated(Vector3(0, -0.28, 0)), 0.022, 0.026, 0.08, 10, true, 0.0, 1, BRASS)
+			k.cylinder("painted", I.translated(Vector3(0, -0.4, 0)), 0.2, 0.05, 0.13, 20, false, 0.0, 2, ENAMEL)
+			# Its white inside, facing in: it bounces the bulb's light down, and casts the
+			# shadow that keeps the ceiling above in the shade's shadow.
+			for n in 20:
+				var a0 := TAU * n / 20.0
+				var a1 := TAU * (n + 1) / 20.0
+				var q := [Vector3(cos(a0) * 0.192, -0.398, sin(a0) * 0.192), Vector3(cos(a1) * 0.192, -0.398, sin(a1) * 0.192),
+					Vector3(cos(a1) * 0.024, -0.262, sin(a1) * 0.024), Vector3(cos(a0) * 0.024, -0.262, sin(a0) * 0.024)]
+				var mid: Vector3 = (q[0] + q[2]) * 0.5
+				if ((q[1] - q[0]) as Vector3).cross(q[2] - q[0]).dot(Vector3(mid.x, 0, mid.z)) > 0.0:
+					q.reverse()
+				k.quad("painted", I, q[0], q[1], q[2], q[3], Color(0.95, 0.94, 0.9))
+			k.cylinder("painted", I.translated(Vector3(0, -0.405, 0)), 0.205, 0.205, 0.008, 20, false, 0.0, 1, Color(0.18, 0.2, 0.22))
 		"pw_lamp_wall":
 			# A cast bracket holding a bulkhead lamp: a ribbed glass globe in an iron cage.
 			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0)), 0.07, 0.07, 0.03, 12, true, 0.0, 1, GASIFIER)
@@ -579,7 +601,7 @@ static func proc(k: MeshKit, what: String) -> void:
 				beam(k, "cast_iron", p + Vector3(0, 0.03, 0), p + Vector3(0, 0.17, 0), 0.006, 4, GASIFIER)
 			k.cylinder("cast_iron", I.translated(Vector3(0, 0.18, 0.2)), 0.08, 0.04, 0.03, 10, true, 0.0, 1, GASIFIER)
 		"pw_flood":
-			# A folding tripod, a yoke and a deep square lamp head aimed a little down.
+			# A folding tripod, a yoke and a deep square lamp head aimed down at the ground ahead.
 			for n in 3:
 				var a := TAU * n / 3.0
 				beam(k, "cast_iron", Vector3(cos(a) * 0.5, 0, sin(a) * 0.5), Vector3(0, 1.3, 0), 0.02, 6, GASIFIER)
@@ -587,7 +609,7 @@ static func proc(k: MeshKit, what: String) -> void:
 			beam(k, "cast_iron", Vector3(-0.28, 1.55, 0), Vector3(0.28, 1.55, 0), 0.018, 6, GASIFIER)
 			for x in [-0.28, 0.28]:
 				beam(k, "cast_iron", Vector3(x, 1.55, 0), Vector3(x, 1.72, 0), 0.018, 6, GASIFIER)
-			var hb := Basis(Vector3(1, 0, 0), deg_to_rad(15.0))
+			var hb := Basis(Vector3(1, 0, 0), deg_to_rad(-28.0))
 			var hc := Vector3(0, 1.72, 0)
 			k.box("painted", Transform3D(hb, hc), Vector3(0.48, 0.4, 0.3), Color(0.42, 0.43, 0.4))
 			k.box("painted", Transform3D(hb, hc + hb * Vector3(0, 0, -0.16)), Vector3(0.52, 0.44, 0.03), Color(0.36, 0.37, 0.35))
