@@ -44,17 +44,17 @@ static func _build(species: String) -> ArrayMesh:
 	var rg := range_of(species)
 	match species:
 		"turf":
-			for b in 24:
+			for b in 30:
 				var off := _spot(r, 0.26)
-				_blade(st, r, rg, off, r.randf_range(0.12, 0.32), r.randf_range(0.011, 0.018), r.randf_range(0.02, 0.12), 2)
+				_blade(st, r, rg, off, r.randf_range(0.12, 0.3), r.randf_range(0.006, 0.011), r.randf_range(0.02, 0.12), 2)
 		"meadow":
-			for b in 16:
+			for b in 22:
 				var off := _spot(r, 0.3)
-				_blade(st, r, rg, off, r.randf_range(0.26, 0.62), r.randf_range(0.016, 0.028), r.randf_range(0.06, 0.24), 3)
+				_blade(st, r, rg, off, r.randf_range(0.24, 0.55), r.randf_range(0.009, 0.016), r.randf_range(0.06, 0.26), 3)
 		"tall":
-			for b in 7:
+			for b in 9:
 				var off := _spot(r, 0.26)
-				_blade(st, r, rg, off, r.randf_range(0.5, 0.95), r.randf_range(0.015, 0.022), r.randf_range(0.12, 0.34), 4)
+				_blade(st, r, rg, off, r.randf_range(0.5, 0.9), r.randf_range(0.008, 0.013), r.randf_range(0.12, 0.36), 4)
 			for b in 3:
 				# A seed stalk: a thin stem leaning out, an oat-like head at the top.
 				var off := _spot(r, 0.15)
@@ -70,7 +70,7 @@ static func _build(species: String) -> ArrayMesh:
 			var pc: Array = PETALS[int(species.substr(8)) % PETALS.size()]
 			for b in 6:
 				var off := _spot(r, 0.22)
-				_blade(st, r, rg, off, r.randf_range(0.12, 0.3), r.randf_range(0.014, 0.022), r.randf_range(0.04, 0.12), 2)
+				_blade(st, r, rg, off, r.randf_range(0.12, 0.3), r.randf_range(0.008, 0.013), r.randf_range(0.04, 0.12), 2)
 			for b in 3:
 				var off := _spot(r, 0.16)
 				var tip := _blade(st, r, rg, off, r.randf_range(0.22, 0.42), 0.005, r.randf_range(0.02, 0.08), 3, false)
@@ -91,13 +91,18 @@ static func _blade(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, root:
 	var v := r.randf_range(0.82, 1.14)
 	var shade := Color(v, v, v * r.randf_range(0.9, 1.05))
 	var dry := r.randf() < 0.18
+	# Tips drift from the blade's own green: paler and yellower on some, bluer on others.
+	var tip := Color(r.randf_range(0.9, 1.25), r.randf_range(1.0, 1.15), r.randf_range(0.65, 1.05))
+	var tip_amt := r.randf_range(0.15, 0.6)
 	var pts: Array = []
 	for i in segs + 1:
 		var t := i / float(segs)
 		var c := root + basis * Vector3(sin(t * twist) * lean * 0.3, t * h, t * t * lean)
-		var hw := w * (1.0 - pow(t, 1.4)) if leaf else w * (1.0 - t * 0.5)
+		var hw := w * (1.0 - pow(t, 1.15)) if leaf else w * (1.0 - t * 0.5)
 		var side := basis * Vector3(cos(t * twist), 0, -sin(t * twist))
 		var col := shade
+		if leaf:
+			col = Color(shade.r * lerpf(1.0, tip.r, t * t * tip_amt), shade.g * lerpf(1.0, tip.g, t * t * tip_amt), shade.b * lerpf(1.0, tip.b, t * t * tip_amt))
 		if dry:
 			col = shade.lerp(Color(1.35, 1.2, 0.62), t * t)
 		# Vertex colours are 8-bit, so blade shades are stored at SHADE_SCALE.

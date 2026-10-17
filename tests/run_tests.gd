@@ -592,6 +592,43 @@ static func _ray_hit(faces: PackedVector3Array, a: Vector3, b: Vector3) -> float
 			best = minf(best, a.distance_to(hit))
 	return best
 
+func test_biome_coherence() -> void:
+	# Broadleaf trees give way to conifers up by the snow line.
+	var bp := Biome.params(12345, Eras.MEDIEVAL)
+	var oak := {"t": "oak", "sp": 77, "w": 1.0}
+	check(Biome.by_altitude(bp, oak, WorldField.snow_line - 40.0, 0.5)["t"] == "oak", "oaks in the lowlands")
+	check(Biome.by_altitude(bp, oak, WorldField.snow_line + 2.0, 0.5)["t"] == "pine", "pines up by the snow")
+	# Nothing takes root or lies about on open dune sand, and only dune animals live there.
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(2024)
+	var dunes := 0
+	var on_sand := []
+	var animals_ok := true
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			if dunes >= 3 or g.field.site_landform(ix, iz) != WorldField.LF_DUNES:
+				continue
+			var p := g.field.site_pos(ix, iz)
+			if g.field.landform_weights(p.x, p.y)[WorldField.LF_DUNES] < 0.9:
+				continue
+			dunes += 1
+			var ch := g.generate(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+			for o in ch["objects"]:
+				var k := ObjectLibrary.kind(o["t"])
+				var at: Vector3 = o["p"]
+				if (k == "tree" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
+					on_sand.append(o["t"])
+			var fauna: Array = Biome.params(g.field.region_hash_at(p.x, p.y), Eras.MEDIEVAL)["fauna"]
+			for lx in [10.0, 32.0, 54.0]:
+				for pick in 6:
+					if ChunkGenerator.sand_at(ch, lx, 32.0) < 0.5:
+						continue
+					var sp := Creature.fits_habitat(fauna, pick, Eras.MEDIEVAL, ch, lx, 32.0)
+					animals_ok = animals_ok and (sp == 0 or Creature.species(sp, Eras.MEDIEVAL)["name"] in Creature.DUNE_ANIMALS)
+	check(dunes > 0, "dunes to look at")
+	check(on_sand.is_empty(), "no trees or boulders on dune sand (%s)" % [on_sand])
+	check(animals_ok, "only dune animals on the dunes")
+
 func test_landmarks() -> void:
 	# Each landmark mesh builds, about the size of its collision box.
 	for t in Landmark.LABELS:

@@ -116,10 +116,13 @@ static func species(t: String, sp: int) -> Dictionary:
 				"glow": r.randi() % 12, "size": r.randf_range(0.8, 1.6), "count": r.randi_range(4, 9),
 			}
 		"rock", "iron_vein", "aether_crystal", "alloy_scrap":
-			var shapes := ["boulder", "slab", "spire", "cluster", "flat"]
+			# Mostly rounded boulders and low flat rocks; an upright slab or spire now and
+			# then (a field of them reads as a graveyard).
 			var stone_hue: float = [0.08, 0.05, 0.6, 0.12, 0.0, 0.3][r.randi() % 6]
+			var su := r.randf()
+			var shape := "boulder" if su < 0.36 else ("flat" if su < 0.62 else ("cluster" if su < 0.84 else ("slab" if su < 0.95 else "spire")))
 			return {
-				"shape": shapes[r.randi() % shapes.size()], "noun": "",
+				"shape": shape, "noun": "",
 				"stone": Color.from_hsv(stone_hue, r.randf_range(0.02, 0.3), r.randf_range(0.3, 0.75)),
 				"squash": r.randf_range(0.45, 1.1), "rough": r.randf_range(0.2, 0.5),
 				"moss": r.randf() < 0.35, "glow": r.randi() % 12,

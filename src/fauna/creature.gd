@@ -177,6 +177,28 @@ static func boss_species(kind: int, era: int) -> Dictionary:
 	p["boss"] = t
 	return p
 
+## Real animals keep to the ground they live on: only hardy grazers, hares, foxes and
+## birds out on the dunes; deer, elk, wolves, hares, foxes and birds up by the snow.
+const DUNE_ANIMALS := ["Wild Horse", "Wild Donkey", "Hare", "Red Fox", "Crow", "Kestrel", "Swallow"]
+const SNOW_ANIMALS := ["Red Deer", "Elk", "Grey Wolf", "Hare", "Red Fox", "Crow", "Kestrel"]
+
+## The first of a region's animal species `fauna` (from index `pick` on) that lives on the
+## ground at (lx, lz) of the chunk, or 0 for none. Fantasy and alien beasts go anywhere.
+static func fits_habitat(fauna: Array, pick: int, era: int, chunk: Dictionary, lx: float, lz: float) -> int:
+	var first: int = fauna[pick % fauna.size()]
+	if era != Eras.MEDIEVAL:
+		return first
+	var sand := ChunkGenerator.sand_at(chunk, lx, lz) > 0.4
+	var cold := ChunkGenerator.height_at(chunk, lx, lz) > WorldField.snow_line - 6.0
+	if not sand and not cold:
+		return first
+	for n in fauna.size():
+		var sp: int = fauna[(pick + n) % fauna.size()]
+		var name: String = species(sp, era)["name"]
+		if (not sand or name in DUNE_ANIMALS) and (not cold or name in SNOW_ANIMALS):
+			return sp
+	return 0
+
 static func species(sp: int, era: int) -> Dictionary:
 	if sp <= -200:
 		return livestock_species(-sp - 200, era)

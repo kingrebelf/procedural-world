@@ -100,6 +100,7 @@ static func apply(p: Dictionary) -> void:
 	WorldField.allowed_eras = p.get("eras", k["eras"])
 	snow_line = k["snow"] # the terrain material picks it up (Atmosphere)
 	Biome.snow_line = snow_line
+	WorldField.snow_line = snow_line
 	Eras.theme = String(p.get("theme", ""))
 	Eras.base_level = int(p.get("base", 1))
 

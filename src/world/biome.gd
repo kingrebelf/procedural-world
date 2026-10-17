@@ -45,6 +45,14 @@ static func _roll(h: int, era: int) -> Dictionary:
 		flora.append({"t": t, "sp": r.randi() & 0x7FFFFFFF, "w": r.randf_range(0.2, 1.0)})
 	# One species usually dominates, as in real forests.
 	flora[0]["w"] = r.randf_range(1.5, 3.0)
+	# Dead trees and snags are the odd single, never a region's main tree: bare trunks
+	# all over green hills need a fire or a blight to explain them.
+	var total := 0.0
+	for f in flora:
+		total += float(f["w"])
+	for f in flora:
+		if Flora.species(f["t"], f["sp"]).get("form", "") in ["dead", "snag"]:
+			f["w"] = minf(float(f["w"]), total * 0.04)
 	var rocks: Array = []
 	for i in r.randi_range(1, 3):
 		rocks.append(r.randi() & 0x7FFFFFFF)
@@ -65,7 +73,9 @@ static func _roll(h: int, era: int) -> Dictionary:
 		"under_density": r.randf_range(0.3, 1.6),
 		"lush": lush, ## -1 dry and golden ... +1 lush and deep green
 		"grass_tint": grass,
-		"grass_density": clampf(r.randf_range(0.5, 1.4) + lush * 0.3, 0.2, 1.6),
+		# Dry regions grow golden grass, not bare earth: dryness shows in the colour and
+		# the mix of species, and thins the sward only a little.
+		"grass_density": clampf(r.randf_range(0.75, 1.2) + lush * 0.2, 0.7, 1.4),
 		"lumen": _lumen(h, era), ## how much its grass glows at night (0 in most places)
 	}
 	_stand(h, era, out)
@@ -132,6 +142,17 @@ static func fit_flora(p: Dictionary, f: Dictionary, y: float) -> Dictionary:
 	if f["t"] != "oak" or not bool(p.get("autumn", false)) or y < snow_line - 30.0:
 		return f
 	return hardy_flora(p)
+
+## Broadleaf trees give way to conifers on the way up to the snow: `f` (a pick_flora
+## result) for a tree rooted at height h, swapped for the region's own pine (or a pine of
+## its own) above a ragged line some way under the snow line. `u` jitters the line.
+static func by_altitude(p: Dictionary, f: Dictionary, h: float, u: float) -> Dictionary:
+	if f["t"] != "oak" or h < WorldField.snow_line - 26.0 + 14.0 * fposmod(u * 7.31, 1.0):
+		return f
+	for g in p["flora"]:
+		if g["t"] == "pine":
+			return g
+	return {"t": "pine", "sp": f["sp"], "w": f["w"]}
 
 ## Picks a species from a biome's flora list using a uniform random number.
 static func pick_flora(p: Dictionary, u: float) -> Dictionary:
