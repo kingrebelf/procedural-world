@@ -504,19 +504,26 @@ void fragment() {
 		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
 		vec2 dome = vec2(0.0);
 		if (b1 > 0.0 && b2 < 1.0) {
-			vec2 sq = p * vec2(2.3, 3.1);
+			// Small hand-cut stones (about 25 by 20 cm) in rows that wander, never a grid:
+			// the rows bow and drift, and each stone is its own size and rounded at the
+			// corners.
+			vec2 sq = p * vec2(3.9, 4.8) + vec2(vnoise(p * 0.9) - 0.5, vnoise(p * 0.7 + 5.0) - 0.5) * 0.9;
 			float row = floor(sq.y);
-			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35;
+			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35 + (vnoise(vec2(p.x * 0.5, row)) - 0.5) * 0.6;
 			vec2 cid = floor(sq);
 			vec2 f = fract(sq) - 0.5;
-			float joint = smoothstep(0.34, 0.47, max(abs(f.x), abs(f.y))) * (1.0 - far);
 			float hs = hash12(cid);
 			float hs2 = hash12(cid + 1.7);
-			// Old setts: each stone its own shade, some warm, some cool, sunk or tipped.
-			vec3 sett = mix(vec3(0.24, 0.23, 0.21), vec3(0.4, 0.37, 0.33), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
+			vec2 af = abs(f) / (vec2(0.42, 0.42) + vec2(hs, hs2) * 0.08);
+			float rr = pow(pow(af.x, 4.0) + pow(af.y, 4.0), 0.25);
+			float joint = smoothstep(0.8, 1.02, rr) * (1.0 - far);
+			// Old setts: dark, each stone its own shade, some warm, some cool, sunk or tipped.
+			vec3 sett = mix(vec3(0.15, 0.145, 0.135), vec3(0.3, 0.28, 0.25), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
 			sett *= (0.78 + 0.22 * hs2) * (0.85 + 0.25 * micro);
-			// Mud trodden over the stones in drifts, and the joints packed with dirt and moss.
-			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2);
+			// Mud trodden over the stones in drifts, thickest down the middle where feet
+			// and wheels go, and the joints packed with dirt and moss.
+			float tread = smoothstep(0.55, 0.95, road) * (0.6 + 0.4 * fbm(p * 0.3 + 2.0));
+			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2 + tread * 0.25);
 			sett = mix(sett, rm * 0.8, dirt * 0.55);
 			float moss = smoothstep(0.42, 0.72, fbm(p * 0.21 + 41.0)) * (1.0 - dirt * 0.6);
 			vec3 fill = mix(rm * 0.6, vec3(0.13, 0.17, 0.07) * (0.8 + 0.4 * micro), moss * 0.75);
