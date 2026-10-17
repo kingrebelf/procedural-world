@@ -27,8 +27,9 @@ var _arms: Array = [] ## [upper arm, its rest position from the clavicle, local 
 var _roll := -1 ## spine_01: the torso leans over the planted foot
 var _roll_axis := Vector3.ZERO
 
-## Bend per unit of stoop, radians; the neck and head lift back so the eyes stay level.
-const CHAIN := [["spine_01", 0.13], ["spine_02", 0.18], ["spine_03", 0.25], ["neck_01", -0.2], ["Head", -0.24]]
+## Bend per unit of stoop, radians: the back rounds, the neck pushes the head forward and
+## the head tips back up to look ahead (a little downcast).
+const CHAIN := [["spine_01", 0.15], ["spine_02", 0.22], ["spine_03", 0.3], ["neck_01", 0.12], ["Head", -0.64]]
 const KNEE := 0.2
 const SHOULDER := 0.18
 

@@ -54,20 +54,20 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 		w = minf(w, 0.5)
 	var soft := 1.0 - m
 	var f := 1.0 if fem else 0.0
-	var thin := 1.0 - 0.08 * old # limbs lose muscle with age
+	var thin := 1.0 - 0.17 * old # limbs lose muscle with age
 	# Character space: x across (left +), y up, z forward. [sx, sy, sz] scales the
 	# bone's flesh about its head plus `pivot`; [g] scales it across the bone's length.
 	var girth := {
-		"pelvis": [[1.0 + 0.16 * w + 0.07 * f - 0.03 * soft, 1.0, 1.0 + 0.2 * w + 0.04 * f], Vector3(0, 0, -0.02)],
-		"spine_01": [[0.97 + 0.36 * w - 0.03 * f, 1.0, 0.95 + 0.62 * w + 0.08 * old * (1.0 - w)], Vector3(0, 0, -0.08)],
-		"spine_02": [[0.95 + 0.3 * w - 0.05 * f, 1.0, 0.95 + 0.46 * w], Vector3(0, 0, -0.08)],
-		"spine_03": [[0.97 - 0.14 * soft + 0.14 * w, 1.0, 0.98 - 0.1 * soft + 0.2 * w], Vector3(0, 0, -0.09)],
-		"neck_01": [[1.0 - 0.18 * soft + 0.2 * w - 0.03 * f], Vector3.ZERO],
-		"clavicle": [[1.0 - 0.2 * soft + 0.1 * w], Vector3.ZERO],
-		"upperarm": [[(1.0 - 0.24 * soft + 0.26 * w) * thin], Vector3.ZERO],
-		"lowerarm": [[(1.0 - 0.14 * soft + 0.14 * w) * thin], Vector3.ZERO],
-		"thigh": [[(0.97 - 0.07 * soft + 0.26 * w + 0.05 * f) * thin], Vector3.ZERO],
-		"calf": [[(1.0 - 0.07 * soft + 0.14 * w) * thin], Vector3.ZERO],
+		"pelvis": [[1.0 + 0.24 * w + 0.07 * f - 0.03 * soft, 1.0, 1.0 + 0.3 * w + 0.04 * f], Vector3(0, 0, -0.02)],
+		"spine_01": [[0.97 + 0.48 * w - 0.03 * f, 1.0, 0.95 + 0.9 * w + 0.1 * old * (1.0 - w)], Vector3(0, 0, -0.08)],
+		"spine_02": [[0.95 + 0.4 * w - 0.05 * f, 1.0, 0.95 + 0.66 * w], Vector3(0, 0, -0.08)],
+		"spine_03": [[0.97 - 0.14 * soft + 0.18 * w - 0.05 * old, 1.0, 0.98 - 0.1 * soft + 0.26 * w], Vector3(0, 0, -0.09)],
+		"neck_01": [[1.0 - 0.18 * soft + 0.3 * w - 0.03 * f - 0.06 * old], Vector3.ZERO],
+		"clavicle": [[1.0 - 0.2 * soft + 0.14 * w], Vector3.ZERO],
+		"upperarm": [[(1.0 - 0.24 * soft + 0.36 * w) * thin], Vector3.ZERO],
+		"lowerarm": [[(1.0 - 0.14 * soft + 0.2 * w) * thin], Vector3.ZERO],
+		"thigh": [[(0.97 - 0.07 * soft + 0.36 * w + 0.05 * f) * thin], Vector3.ZERO],
+		"calf": [[(1.0 - 0.07 * soft + 0.2 * w) * thin], Vector3.ZERO],
 	}
 	# The old stoop (some much more than others); everyone slouches or stands tall a little.
 	var stoop := clampf(old * (0.45 + 0.75 * _rnd(b, "stoop")) + (_rnd(b, "slouch") - 0.4) * 0.25, -0.1, 1.0)
@@ -78,7 +78,7 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	if known and _rnd(b, "limp") < 0.05 + 0.12 * old:
 		limp = (0.5 + 0.5 * _rnd(b, "limp_how")) * (1.0 if _rnd(b, "limp_side") < 0.5 else -1.0)
 	var waddle := smoothstep(0.45, 1.0, w)
-	var arms_out := 0.03 + 0.16 * w + 0.04 * m
+	var arms_out := 0.03 + 0.24 * w + 0.04 * m
 	return {"age": yrs, "weight": w, "muscle": m, "old": old, "stoop": stoop, "female": fem, "shoulder_in": shoulder_in,
 		"limp": limp, "waddle": waddle, "arms_out": arms_out,
 		"girth": girth, "stature": stature(b, age), "pace": pace(b, age)}

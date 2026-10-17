@@ -48,6 +48,7 @@ func _run() -> void:
 			heads = true
 		elif a == "--check":
 			check = true
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out))
 	var vp := SubViewport.new()
 	vp.size = Vector2i(2400, 760)
 	vp.own_world_3d = true
