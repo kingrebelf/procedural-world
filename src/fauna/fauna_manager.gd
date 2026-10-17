@@ -20,6 +20,8 @@ var _mob_t := 0.0
 func _ready() -> void:
 	field = WorldField.new(Game.seed)
 	Net.mob_hit.connect(_on_mob_hit)
+	# Smooth and muscle the kit animals' meshes before the first herd shows up.
+	AnimalSkin.warm(AnimalModel.HEIGHT.keys())
 
 func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN

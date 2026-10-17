@@ -71,20 +71,33 @@ func procedural() -> bool:
 	return not anim.has_animation("Walk")
 
 ## tint: null keeps the kit's colours. glow: emission colour for the light coat, or null.
-func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalModel:
+## seed: this animal's own markings (AnimalSkin), stable for the same seed.
+func build(kind: String, size_mult := 1.0, tint = null, glow = null, seed := -1) -> AnimalModel:
 	var scene: Node3D = (load(path_of(kind)) as PackedScene).instantiate()
 	add_child(scene)
 	var v: Dictionary = VARIANTS.get(kind, {})
 	if v.has("coat") and tint == null:
 		tint = v["coat"]
+	var kit := String(v.get("base", kind))
+	var alien := kind.begins_with("Alien_")
+	var sks0 := scene.find_children("*", "Skeleton3D", true, false)
 	var box := AABB()
 	var first := true
-	for mi in scene.find_children("*", "MeshInstance3D", true, false):
+	var meshes := scene.find_children("*", "MeshInstance3D", true, false)
+	for mi in meshes:
 		var m := mi as MeshInstance3D
 		var b: AABB = m.transform * m.mesh.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
+	var k: float = HEIGHT.get(kind, 1.0) / maxf(box.size.y, 0.01) * size_mult
+	if seed < 0:
+		seed = randi()
+	for mi in meshes:
+		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if not alien and AnimalSkin.enabled:
+			_skin(m, kind, kit, tint, glow, box, k / size_mult, v, sks0[0] if not sks0.is_empty() else null, seed)
+			continue
 		for s in m.mesh.get_surface_count():
 			var hm := m.get_active_material(s)
 			if hm and String(hm.resource_name) in v.get("hide", []):
@@ -97,7 +110,6 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 					glows = glows or String(mat.resource_name).contains(g) and kind.begins_with("Alien_")
 				if mat is BaseMaterial3D and (String(mat.resource_name) in COAT or glows):
 					m.set_surface_override_material(s, _recolour(mat, tint, glow))
-	var k: float = HEIGHT.get(kind, 1.0) / maxf(box.size.y, 0.01) * size_mult
 	scene.scale = Vector3.ONE * k * (v["shape"] as Vector3 if v.has("shape") else Vector3.ONE)
 	_scene = scene
 	_box = box
@@ -124,6 +136,23 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 
 static var _mats := {}
 static var _hidden_mat: StandardMaterial3D
+
+## A kit animal's living skin (AnimalSkin): the smoothed, muscled mesh and the fur
+## shader in the kit's colours (or the species' tint), with this animal's own markings.
+func _skin(m: MeshInstance3D, kind: String, kit: String, tint, glow, box: AABB, unit: float, v: Dictionary, sk: Skeleton3D, seed: int) -> void:
+	m.mesh = AnimalSkin.mesh_for(kit, m.mesh as ArrayMesh, sk)
+	for s in m.mesh.get_surface_count():
+		var src := m.mesh.surface_get_material(s)
+		var mn := String(src.resource_name) if src else ""
+		if mn in v.get("hide", []):
+			m.set_surface_override_material(s, _hidden())
+			continue
+		var c: Color = (src as BaseMaterial3D).albedo_color if src is BaseMaterial3D else Color(0.4, 0.3, 0.2)
+		if tint != null and mn in COAT:
+			c = (tint as Color) * clampf(c.get_luminance() / 0.3, 0.2, 1.3)
+		var g = glow if glow != null and mn.contains("Light") else null
+		m.set_surface_override_material(s, AnimalSkin.material(kind, mn, c, g, box, unit))
+	m.set_instance_shader_parameter("seed", float(absi(seed) % 65521))
 
 ## A material that draws nothing (horns a variant doesn't have).
 static func _hidden() -> StandardMaterial3D:
