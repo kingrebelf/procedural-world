@@ -167,13 +167,12 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	_dress_up(era)
 	if style != "":
 		_add_hair(style, hair_col, BodyShape.thinning(b, age), b["skin"])
-	# Facial hair follows the hair colour (and greys a little sooner); sci-fi faces are
-	# clean-shaven or stubbled.
+	# Facial hair in the hair's own colour; sci-fi faces are clean-shaven or stubbled.
 	var bs := BodyShape.beard(b, age)
 	if era == Eras.SCIFI:
 		bs = mini(bs, 1)
 	if bs > 0:
-		_add_hair("Hair_Beard", BodyShape.hair_color(b, age + 5 if age >= 0 else age), 0.0, b["skin"], bs)
+		_add_hair("Hair_Beard", hair_col, 0.0, b["skin"], bs)
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
