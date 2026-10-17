@@ -30,8 +30,8 @@ void vertex() {
 	seed = 0.0;
 	if (individual) {
 		vec4 r = plant_rand((MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz, 1u);
-		// Most trees a little moss, some furred with it; lichen on about half.
-		growth = vec2(r.x * r.x * moss_scale, smoothstep(0.45, 1.0, r.y));
+		// From bare to furred with moss; lichen on about two thirds.
+		growth = vec2(r.x * moss_scale, smoothstep(0.35, 1.0, r.y));
 		seed = r.z * 97.0;
 	}
 }

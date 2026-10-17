@@ -234,18 +234,19 @@ static func plant_look(wx: float, wz: float) -> Vector4:
 	var h := WHash.h32(cx ^ WHash.h32(cz))
 	var g := WHash.h32(h)
 	var r := Vector4(h & 0xFFFF, h >> 16, g & 0xFFFF, g >> 16) / 65536.0
-	var dry := r.y * 0.08 if r.y < 0.75 else 0.06 + (r.y - 0.75) * 0.6
+	var dry := r.y * 0.12 if r.y < 0.6 else 0.07 + (r.y - 0.6) * 0.8
 	var thin := r.z * 0.15 if r.z < 0.6 else 0.09 + (r.z - 0.6) * 0.6
-	return Vector4((r.x * 2.0 - 1.0) * 0.8, dry, thin, r.w * TAU)
+	return Vector4(r.x * 2.0 - 1.0, dry, thin, r.w * TAU)
 
 ## A leaf vertex colour (sRGB) given that look, as plant_leaf() shades it.
 static func plant_leaf(c: Color, look: Vector4) -> Color:
-	var f := Vector3.ONE.lerp(Vector3(1.1, 1.03, 0.78), look.x) if look.x > 0.0 else Vector3.ONE.lerp(Vector3(0.88, 0.98, 1.08), -look.x)
+	var f := Vector3.ONE.lerp(Vector3(1.2, 1.06, 0.62), look.x) if look.x > 0.0 else Vector3.ONE.lerp(Vector3(0.8, 0.95, 1.12), -look.x)
+	f *= 0.8 + 0.36 * fposmod(look.w * 4.7, 1.0)
 	# The shader works in linear light; vertex colours are sRGB.
 	var out := Color(c.r * pow(f.x, 1.0 / 2.2), c.g * pow(f.y, 1.0 / 2.2), c.b * pow(f.z, 1.0 / 2.2), c.a)
 	if fposmod(c.a * 7.31, 1.0) >= 1.0 - look.y:
 		var lum := out.r * 0.3 + out.g * 0.59 + out.b * 0.11
-		out = out.lerp(Color(lum * 1.18, lum * 1.01, lum * 0.67, c.a), 0.8)
+		out = out.lerp(Color(lum * 1.165, lum * 1.018, lum * 0.716, c.a), 0.85)
 	return out
 
 ## Whether a spray centred at `p` (tree space) with random `card` is missing on that tree.

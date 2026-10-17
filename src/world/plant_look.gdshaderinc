@@ -20,24 +20,26 @@ vec4 plant_rand(vec3 origin, uint salt) {
 	return vec4(float(h & 0xFFFFu), float(h >> 16u), float(g & 0xFFFFu), float(g >> 16u)) / 65536.0;
 }
 
-// (leaf shade -0.8 cool blue-green .. 0.8 warm yellow-green, share of dry sprays, how
+// (leaf shade -1 cool blue-green .. 1 warm yellow-green, share of dry sprays, how
 // thin one side of the crown is, which side): most plants healthy and full, a few tired.
 vec4 plant_look(vec3 origin) {
 	vec4 r = plant_rand(origin, 0u);
-	float dry = r.y < 0.75 ? r.y * 0.08 : 0.06 + (r.y - 0.75) * 0.6;
+	float dry = r.y < 0.6 ? r.y * 0.12 : 0.07 + (r.y - 0.6) * 0.8;
 	float thin = r.z < 0.6 ? r.z * 0.15 : 0.09 + (r.z - 0.6) * 0.6;
-	return vec4((r.x * 2.0 - 1.0) * 0.8, dry, thin, r.w * 6.2831853);
+	return vec4(r.x * 2.0 - 1.0, dry, thin, r.w * 6.2831853);
 }
 
 // The leaf colour of a plant with that look: `card` is the spray's own random (its vertex
 // alpha), so the same sprays are dry whatever the light.
 vec3 plant_leaf(vec3 col, vec4 look, float card) {
-	vec3 warm = vec3(1.1, 1.03, 0.78);
-	vec3 cool = vec3(0.88, 0.98, 1.08);
+	vec3 warm = vec3(1.2, 1.06, 0.62);
+	vec3 cool = vec3(0.8, 0.95, 1.12);
 	col *= look.x > 0.0 ? mix(vec3(1.0), warm, look.x) : mix(vec3(1.0), cool, -look.x);
+	// Some crowns deep and dark, some light (from the side angle, which nothing else uses).
+	col *= 0.8 + 0.36 * fract(look.w * 4.7);
 	float dry = step(1.0 - look.y, fract(card * 7.31));
 	float lum = dot(col, vec3(0.3, 0.59, 0.11));
-	return mix(col, lum * vec3(1.45, 1.02, 0.42), dry * 0.8);
+	return mix(col, lum * vec3(1.4, 1.04, 0.48), dry * 0.85);
 }
 
 // Whether a spray at `p` (plant space) is missing: thinned crowns are thinnest on one side.
