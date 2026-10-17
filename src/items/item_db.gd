@@ -18,7 +18,7 @@ const ITEMS := {
 	"iron_ingot": {"name": "Iron Ingot", "era": Eras.MEDIEVAL, "value": 14, "stack": true, "kind": "resource", "color": Color(0.6, 0.6, 0.62)},
 	"mythril_ingot": {"name": "Mythril Ingot", "era": Eras.FANTASY, "value": 34, "stack": true, "kind": "resource", "color": Color(0.7, 0.9, 1.0)},
 	"alloy_plate": {"name": "Alloy Plate", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "resource", "color": Color(0.8, 0.82, 0.86)},
-	"power_cell": {"name": "Power Cell", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "resource", "color": Color(0.3, 0.9, 1.0)},
+	"power_cell": {"name": "Power Cell", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "resource", "spent": "power_cell_spent", "color": Color(0.3, 0.9, 1.0)},
 	# Treasure and trade goods
 	"silver_chalice": {"name": "Silver Chalice", "era": Eras.MEDIEVAL, "value": 60, "stack": true, "kind": "treasure", "color": Color(0.85, 0.85, 0.9)},
 	"moonpearl": {"name": "Moonpearl", "era": Eras.FANTASY, "value": 85, "stack": true, "kind": "treasure", "color": Color(0.9, 0.9, 1.0)},
@@ -449,7 +449,7 @@ const ITEMS := {
 	"proximity_mine": {"name": "Proximity Mine", "era": Eras.SCIFI, "value": 120, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 180.0, "radius": 2.5, "blast": 5.0}, "color": Color(0.3, 0.32, 0.3)},
 	"breach_charge": {"name": "Breach Charge", "era": Eras.SCIFI, "value": 90, "stack": true, "kind": "weapon", "damage": 260, "splash": 3.5, "range": 10.0, "ranged": true, "thrown": true, "ammo": "breach_charge", "shots_per_ammo": 1, "cooldown": 1.2, "tracer": "bolt", "color": Color(0.5, 0.4, 0.2)},
 	"rocket": {"name": "Rockets", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "ammo", "color": Color(0.45, 0.5, 0.35)},
-	"energy_cell": {"name": "Energy Cell", "era": Eras.SCIFI, "value": 25, "stack": true, "kind": "ammo", "color": Color(0.4, 0.6, 0.8)},
+	"energy_cell": {"name": "Energy Cell", "era": Eras.SCIFI, "value": 25, "stack": true, "kind": "ammo", "spent": "power_cell_spent", "color": Color(0.4, 0.6, 0.8)},
 	"plasma_canister": {"name": "Plasma Canister", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "ammo", "color": Color(0.35, 0.6, 0.55)},
 	"gauss_slugs": {"name": "Gauss Slugs", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "ammo", "color": Color(0.6, 0.62, 0.66)},
 	"smart_rounds": {"name": "Smart Rounds", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.75, 0.6, 0.35)},
@@ -728,6 +728,38 @@ const ITEMS := {
 	"summon_orb": {"name": "Guardian Orb", "era": Eras.SCIFI, "value": 3000, "stack": true, "kind": "kit", "cat": "Medicine", "buff": ["guardian", 300.0], "rarity_min": 3, "alien": true, "color": Color(0.7, 0.75, 0.9)},
 	"time_shard": {"name": "Time Shard", "era": Eras.SCIFI, "value": 3000, "stack": true, "kind": "kit", "cat": "Medicine", "buff": ["haste", 60.0], "rarity_min": 3, "alien": true, "color": Color(0.85, 0.75, 0.45)},
 	"invis_cloak_vial": {"name": "Veil Draught", "era": Eras.FANTASY, "value": 500, "stack": true, "kind": "food", "cat": "Medicine", "buff": ["hidden", 120.0], "alien": true, "color": Color(0.6, 0.65, 0.7)},
+	# Ammunition variants and fuels (pack E): better arrows, bolts, rounds and shells load
+	# first (AMMO_VARIANTS), cells leave a spent shell to recharge, fuels feed lanterns,
+	# jetpacks and the forge.
+	"arrow_fire": {"name": "Fire Arrows", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.7, 0.4, 0.2)},
+	"arrow_barbed": {"name": "Barbed Arrows", "era": Eras.MEDIEVAL, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.5, 0.45, 0.4)},
+	"arrow_steel": {"name": "Steel Arrows", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.6, 0.62, 0.65)},
+	"bolt_steel": {"name": "Steel Bolts", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.6, 0.62, 0.65)},
+	"bolt_explosive": {"name": "Blasting Bolts", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "ammo", "color": Color(0.3, 0.28, 0.25)},
+	"quiver": {"name": "Quiver", "era": Eras.MEDIEVAL, "value": 30, "stack": false, "kind": "armor", "slot": "back", "armor": 1, "bonus": {"reload": 0.15, "carry": 10.0}, "look": "leather", "color": Color(0.45, 0.3, 0.18)},
+	"rounds_hollow": {"name": "Hollow-point Rounds", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.75, 0.6, 0.35)},
+	"rounds_ap": {"name": "Steel-core Rounds", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "ammo", "color": Color(0.4, 0.42, 0.45)},
+	"rounds_box": {"name": "Box of Rounds", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "kit", "cat": "Ammo", "unpack": ["rounds", 30], "color": Color(0.6, 0.5, 0.35)},
+	"speed_loader": {"name": "Speed Loader", "era": Eras.SCIFI, "value": 45, "stack": false, "kind": "resource", "cat": "Ammo", "loader": "rounds", "color": Color(0.3, 0.3, 0.32)},
+	"rifle_clip": {"name": "Stripper Clip", "era": Eras.SCIFI, "value": 30, "stack": false, "kind": "resource", "cat": "Ammo", "loader": "rifle_cartridges", "color": Color(0.7, 0.6, 0.35)},
+	"slug_shells": {"name": "Slug Shells", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "ammo", "color": Color(0.25, 0.5, 0.3)},
+	"power_cell_small": {"name": "Small Power Cell", "era": Eras.SCIFI, "value": 20, "stack": true, "kind": "ammo", "spent": "power_cell_spent", "color": Color(0.45, 0.47, 0.5)},
+	"power_cell_large": {"name": "Heavy Power Cell", "era": Eras.SCIFI, "value": 80, "stack": true, "kind": "ammo", "spent": "power_cell_spent", "color": Color(0.35, 0.37, 0.4)},
+	"power_cell_spent": {"name": "Spent Power Cell", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "resource", "color": Color(0.3, 0.3, 0.3)},
+	"battery_pack_rifle": {"name": "Rifle Battery", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "ammo", "spent": "power_cell_spent", "color": Color(0.25, 0.27, 0.3)},
+	"capacitor_bank": {"name": "Capacitor Bank", "era": Eras.SCIFI, "value": 150, "stack": true, "kind": "ammo", "spent": "power_cell_spent", "color": Color(0.35, 0.3, 0.25)},
+	"charger_dock": {"name": "Cell Charger", "era": Eras.SCIFI, "value": 120, "stack": false, "kind": "resource", "cat": "Tools", "color": Color(0.3, 0.32, 0.35)},
+	"firewood": {"name": "Firewood", "era": Eras.MEDIEVAL, "value": 1, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.5, 0.36, 0.22)},
+	"coal_briquettes": {"name": "Coal Briquettes", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.15, 0.15, 0.15)},
+	"peat": {"name": "Peat Bricks", "era": Eras.MEDIEVAL, "value": 2, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.3, 0.22, 0.15)},
+	"kerosene_can": {"name": "Kerosene Can", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.7, 0.2, 0.15)},
+	"diesel_jerrycan": {"name": "Diesel Jerrycan", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.25, 0.4, 0.25)},
+	"hydrogen_cell": {"name": "Hydrogen Cell", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.9, 0.9, 0.92)},
+	"fusion_pellets": {"name": "Fusion Pellets", "era": Eras.SCIFI, "value": 150, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.6, 0.62, 0.66)},
+	"rocket_fuel": {"name": "Rocket Propellant", "era": Eras.SCIFI, "value": 70, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.25, 0.35, 0.6)},
+	"plasma_fuel": {"name": "Plasma Fuel", "era": Eras.SCIFI, "value": 110, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.35, 0.55, 0.6)},
+	"void_fuel": {"name": "Void Fuel", "era": Eras.SCIFI, "value": 600, "stack": true, "kind": "resource", "cat": "Fuel", "rarity_min": 3, "alien": true, "color": Color(0.2, 0.12, 0.3)},
+	"star_fuel": {"name": "Star Fuel", "era": Eras.SCIFI, "value": 1500, "stack": true, "kind": "resource", "cat": "Fuel", "rarity_min": 4, "alien": true, "color": Color(0.95, 0.8, 0.4)},
 }
 
 ## Player level that unlocks making (and placing) a thing, on themed worlds: the starting
@@ -843,7 +875,64 @@ const UNLOCK := {
 	"implant_eye": 55, "implant_spine": 58, "implant_heart": 62, "implant_arm": 56, "implant_brain": 64, "symbiote": 70,
 	"teleport_shard": 52, "shield_charm": 52, "revive_feather": 66, "summon_orb": 62, "time_shard": 62,
 	"invis_cloak_vial": 55,
+	# Ammunition variants and fuels (pack E).
+	"arrow_fire": 4, "arrow_barbed": 3, "arrow_steel": 7, "bolt_steel": 7, "bolt_explosive": 15, "quiver": 2,
+	"rounds_hollow": 12, "rounds_ap": 16, "rounds_box": 10, "speed_loader": 13, "rifle_clip": 13, "slug_shells": 12,
+	"power_cell_small": 10, "power_cell_large": 14, "power_cell_spent": 10, "battery_pack_rifle": 27, "capacitor_bank": 32,
+	"charger_dock": 12, "firewood": 1, "coal_briquettes": 3, "peat": 2, "kerosene_can": 12, "diesel_jerrycan": 20,
+	"hydrogen_cell": 28, "fusion_pellets": 40, "rocket_fuel": 30, "plasma_fuel": 35, "void_fuel": 55, "star_fuel": 65,
 }
+## Better loads a weapon takes first when you carry them, best first: {ammo: [[variant,
+## {damage: multiplier, pellets: count, splash: radius}]]}. Broadheads, steel and fire
+## arrows for bows, steel and blasting bolts, hollow-point and steel-core rounds, slugs
+## for a shotgun, bigger cells for energy guns.
+const AMMO_VARIANTS := {
+	"arrow": [["arrow_fire", {"damage": 1.5}], ["arrow_steel", {"damage": 1.4}], ["arrow_barbed", {"damage": 1.35}],
+		["broadhead_arrows", {"damage": 1.3}]],
+	"bolt": [["bolt_explosive", {"damage": 1.2, "splash": 2.5}], ["bolt_steel", {"damage": 1.35}]],
+	"rounds": [["rounds_ap", {"damage": 1.4}], ["rounds_hollow", {"damage": 1.3}]],
+	"rifle_cartridges": [["rounds_ap", {"damage": 1.3}]],
+	"shotgun_shells": [["slug_shells", {"damage": 5.0, "pellets": 1}]],
+	"shells_12g": [["slug_shells", {"damage": 5.0, "pellets": 1}]],
+	"power_cell": [["power_cell_large", {"damage": 1.15}], ["power_cell_small", {"damage": 0.85}]],
+	"energy_cell": [["capacitor_bank", {"damage": 1.3}], ["battery_pack_rifle", {"damage": 1.1}]],
+}
+
+## What a jetpack's tank burns, in the order it loads them, with seconds of thrust per
+## canister: plain jet fuel first, the richer fuels kept for when it runs out.
+const JET_FUELS := [["jet_fuel", 20.0], ["hydrogen_cell", 30.0], ["rocket_fuel", 40.0], ["plasma_fuel", 50.0],
+	["fusion_pellets", 60.0], ["void_fuel", 90.0], ["star_fuel", 150.0]]
+
+## Loads the next canister from `inv` into the jetpack `it`; its name, or "" when there is none.
+static func load_jet_fuel(it: Dictionary, inv) -> String:
+	for f in JET_FUELS:
+		if inv.remove_type(f[0], 1) > 0:
+			it["fuel"] = float(f[1])
+			it["tank"] = float(f[1])
+			return String(def(f[0]).get("name", f[0]))
+	return ""
+
+## What `ammo` a weapon loads next from `inv`: its best variant carried, else itself.
+static func ammo_next(inv, ammo: String) -> String:
+	for v in AMMO_VARIANTS.get(ammo, []):
+		if inv.count(v[0]) > 0:
+			return v[0]
+	return ammo
+
+## Every load of `ammo` carried in `inv`, variants included.
+static func ammo_carried(inv, ammo: String) -> int:
+	var n: int = inv.count(ammo)
+	for v in AMMO_VARIANTS.get(ammo, []):
+		n += inv.count(v[0])
+	return n
+
+## How a variant `loaded` changes shots from a weapon that takes `ammo` ({} for plain).
+static func ammo_mods(ammo: String, loaded: String) -> Dictionary:
+	for v in AMMO_VARIANTS.get(ammo, []):
+		if v[0] == loaded:
+			return v[1]
+	return {}
+
 static func unlock_level(out: String) -> int:
 	if not Eras.themed():
 		return 1
@@ -902,7 +991,8 @@ const GEAR_LOOT := [["sword_iron", "axe_iron", "crossbow", "scrap_pistol", "helm
 const DUNGEON_LOOT := [["gold_idol", "dungeon_key", "health_potion", "stamina_potion", "arrow", "potion_health_minor",
 		"potion_health_greater", "potion_stamina_greater", "antidote", "elixir_strength", "elixir_swiftness", "elixir_nightsight",
 		"scroll_red", "scroll_blue", "scroll_green", "holy_water", "broadhead_arrows", "throwing_knives", "javelin", "dice",
-		"letter_sealed", "book_leather", "silver_ingot", "gold_ingot", "gold_ore", "salve", "candle"],
+		"letter_sealed", "book_leather", "silver_ingot", "gold_ingot", "gold_ore", "salve", "candle", "arrow_barbed",
+		"arrow_steel", "arrow_fire", "bolt_steel", "coal_briquettes"],
 	["rune_tablet", "dungeon_key", "health_potion", "stamina_potion",
 		"acid_pod", "swarm_hive", "bio_ammo", "psi_crystal", "chitin_spikes", "relic_heart", "relic_seed", "relic_skull",
 		"shard_god", "egg_alien", "crown_hive", "bell_astral", "lantern_spirit", "feather_phoenix", "key_hive", "keystone",
@@ -917,7 +1007,9 @@ const DUNGEON_LOOT := [["gold_idol", "dungeon_key", "health_potion", "stamina_po
 		"plasma_canister", "gauss_slugs", "smart_rounds", "fuel_canister", "shells_12g", "keycard_red", "keycard_blue",
 		"keycard_gold", "credit_chip", "holo_projector", "datapad", "family_photo", "toy_robot", "fusion_core", "quantum_chip",
 		"medkit_mil", "stimpack", "trauma_kit", "antirad", "cryo_vial", "nanite_injector", "bio_gel", "defibrillator",
-		"shield_gen", "turret_deploy", "beacon_nav", "o2_canister", "flare_chem",
+		"shield_gen", "turret_deploy", "beacon_nav", "o2_canister", "flare_chem", "rounds_hollow", "rounds_ap",
+		"slug_shells", "bolt_explosive", "rounds_box", "kerosene_can", "hydrogen_cell", "rocket_fuel", "plasma_fuel",
+		"fusion_pellets", "void_fuel", "star_fuel",
 		"void_grenade", "stasis_mine", "star_charge", "gravity_well", "void_cell", "star_shards", "ion_core", "relic_eye",
 		"relic_cube", "relic_idol", "orb_memory", "tablet_star", "chalice_star", "mirror_void", "hourglass_time",
 		"core_titan", "coin_alien", "key_gate", "key_void", "key_star", "key_precursor", "map_galaxy", "codex_alien",
@@ -1050,7 +1142,13 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"elixir_void": 0.3, "elixir_star": 0.3, "serum_hive": 0.2, "nanite_swarm": 0.1, "regen_pod": 1.0, "mutagen": 0.2,
 	"implant_eye": 0.1, "implant_spine": 0.4, "implant_heart": 0.3, "implant_arm": 1.5, "implant_brain": 0.1,
 	"symbiote": 0.5, "teleport_shard": 0.1, "shield_charm": 0.1, "revive_feather": 0.05, "summon_orb": 0.5,
-	"time_shard": 0.1, "invis_cloak_vial": 0.2}
+	"time_shard": 0.1, "invis_cloak_vial": 0.2,
+	"arrow_fire": 0.04, "arrow_barbed": 0.04, "arrow_steel": 0.04, "bolt_steel": 0.05, "bolt_explosive": 0.1,
+	"quiver": 0.6, "rounds_hollow": 0.02, "rounds_ap": 0.02, "rounds_box": 0.8, "speed_loader": 0.2, "rifle_clip": 0.1,
+	"slug_shells": 0.06, "power_cell_small": 0.2, "power_cell_large": 0.8, "power_cell_spent": 0.2,
+	"battery_pack_rifle": 0.4, "capacitor_bank": 1.2, "charger_dock": 2.5, "firewood": 1.2, "coal_briquettes": 0.8,
+	"peat": 1.0, "kerosene_can": 4.0, "diesel_jerrycan": 12.0, "hydrogen_cell": 3.0, "fusion_pellets": 0.3,
+	"rocket_fuel": 6.0, "plasma_fuel": 2.0, "void_fuel": 1.5, "star_fuel": 0.5}
 const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 
@@ -1181,7 +1279,7 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		[["wood", 2, 6], ["iron_ore", 2, 5], ["iron_ingot", 1, 3], ["bread", 1, 3], ["copper_ore", 1, 4], ["tin_ore", 1, 3],
 			["coal", 1, 4], ["flint", 1, 3], ["rope", 1, 3], ["cloth", 1, 3], ["wool", 1, 4], ["candle", 1, 3], ["apple", 1, 4],
 			["potato", 1, 4], ["salted_meat", 1, 2], ["iron_nails", 4, 12], ["herb_red", 1, 3], ["bandage_linen", 1, 2],
-			["empty_vial", 1, 2], ["mead", 1, 1], ["silver_chalice", 1, 1]],
+			["empty_vial", 1, 2], ["mead", 1, 1], ["firewood", 2, 6], ["peat", 1, 3], ["silver_chalice", 1, 1]],
 		[["glowroot", 2, 5], ["aether_crystal", 1, 4], ["glowberry", 1, 4], ["mythril_ingot", 1, 2], ["chitin_plate", 1, 3],
 			["bio_gel_alien", 1, 3], ["psi_crystal", 4, 12], ["fruit_alien", 1, 3], ["fungus_alien", 1, 3], ["spore_sac", 1, 2],
 			["crystal_thread", 1, 2], ["moonpearl", 1, 1]],
@@ -1191,6 +1289,7 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			["titanium_ore", 1, 4], ["polymer", 2, 6], ["circuit_board", 1, 3], ["wiring_loom", 1, 2], ["battery_small", 1, 3],
 			["ration_bar", 1, 3], ["water_pouch", 1, 2], ["smart_rounds", 6, 20], ["energy_cell", 1, 3], ["microchip", 1, 2],
 			["voidstone_ore", 1, 3], ["alien_circuit", 1, 2], ["star_shards", 4, 10], ["coin_alien", 2, 8], ["food_void", 1, 1],
+			["power_cell_small", 1, 2], ["power_cell_spent", 1, 3], ["battery_pack_rifle", 1, 1], ["kerosene_can", 1, 1],
 			["data_core", 1, 1]],
 	]
 	var rare_tools := [["sword_iron", "axe_iron"], ["sword_runic", "pickaxe_mythril"], ["pulse_pistol", "pickaxe_plasma"]]

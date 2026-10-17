@@ -1185,6 +1185,12 @@ func grapple(reach: float) -> bool:
 ## Gun oil, scanners, beacons, air and the like (an item of kind "kit"). Kept ones
 ## ("keep") are not used up.
 func _use_kit(idx: int, fd: Dictionary, name: String) -> void:
+	if fd.has("unpack"):
+		# A box of rounds and the like: opened into what it holds.
+		Game.inventory.remove_at(idx, 1)
+		Game.give(ItemDB.make(String(fd["unpack"][0]), int(fd["unpack"][1]), 1.0, {}))
+		Game.toast.emit("You open the %s: %d %s" % [name.to_lower(), int(fd["unpack"][1]), ItemDB.def(fd["unpack"][0]).get("name", "").to_lower()])
+		return
 	if fd.get("revive", false):
 		Game.toast.emit("Keep the %s in your pack: it brings you back if you fall" % name.to_lower())
 		return

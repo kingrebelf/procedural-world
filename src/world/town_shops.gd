@@ -41,7 +41,8 @@ const KINDS := {
 			["Pulse Arms", "Hot Barrel", "Kinetic Solutions", "Frontier Firearms"]],
 		"goods": [["sword_iron", "battle_axe", "war_hammer", "mace", "spear", "dagger", "longbow", "crossbow", "arrow", "bolt",
 				"bronze_sword", "bronze_axe", "falchion", "morning_star", "warpick", "glaive", "shortbow", "composite_bow",
-				"broadhead_arrows", "javelin", "throwing_knives", "hand_axe", "hunting_spear"],
+				"broadhead_arrows", "javelin", "throwing_knives", "hand_axe", "hunting_spear", "arrow_barbed", "arrow_steel",
+				"arrow_fire", "bolt_steel", "quiver"],
 			["sword_runic", "crossbow_runic", "longbow", "spear", "dagger", "arrow", "bolt"],
 			["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "arc_launcher", "scrap_pistol", "rounds",
 				"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
@@ -50,7 +51,7 @@ const KINDS := {
 				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil", "laser_pistol", "smart_pistol", "needle_gun",
 				"carbine_combat", "auto_shotgun", "plasma_rifle", "gauss_rifle", "grenade_launcher", "vibro_knife", "stun_baton",
 				"combat_machete", "chain_axe", "smart_rounds", "energy_cell", "shells_12g", "plasma_canister", "gauss_slugs",
-				"frag_grenade_mk2", "smoke_grenade"]],
+				"frag_grenade_mk2", "smoke_grenade"], "rounds_hollow", "rounds_ap", "slug_shells", "speed_loader", "rifle_clip", "rounds_box", "bolt_explosive"],
 		"icon": ["sword_iron", "sword_runic", "pulse_rifle"],
 	},
 	"apothecary": {
@@ -76,7 +77,7 @@ const KINDS := {
 			["Depot 9", "Colony Stores", "Salvage & Supply", "The Cargo Bay"]],
 		"goods": [["bread", "torch", "planks", "wood", "pickaxe_iron", "axe_iron", "hammer", "binoculars", "fiber", "cooked_meat", "iron_ingot",
 				"rope", "cloth", "candle", "lamp_oil", "hand_lantern", "tinderbox", "flint", "waterskin", "bucket", "shovel", "sickle",
-				"saw", "fishing_rod", "bedroll", "salt", "flour", "charcoal", "iron_nails", "wool"],
+				"saw", "fishing_rod", "bedroll", "salt", "flour", "charcoal", "iron_nails", "wool", "firewood", "peat", "coal_briquettes"],
 			["glowberry", "glowroot", "torch", "axe_mythril", "pickaxe_mythril", "binoculars", "fiber", "mythril_ingot", "aether_crystal"],
 			["ration_pack", "power_cell", "flashlight", "circuitry", "alloy_plate", "pickaxe_plasma", "jet_fuel", "binoculars", "alloy_scrap",
 				"wrench", "crowbar", "hand_drill", "pickaxe_miner", "axe_lumber", "lamp_kerosene", "gears", "springs",
@@ -85,7 +86,9 @@ const KINDS := {
 				"beans_can", "jerky", "biscuit_hard", "apple_dried", "multitool", "survival_knife", "scanner", "flare_chem",
 				"rope_synth", "beacon_nav", "binoculars_digital", "toolbox_tech", "battery_small", "titanium_ingot", "polymer",
 				"circuit_board", "wiring_loom", "microchip", "servo", "optic_lens", "coolant", "magnet", "antenna", "solar_panel",
-				"hull_patch", "ration_bar", "water_pouch", "hydro_greens"]],
+				"hull_patch", "ration_bar", "water_pouch", "hydro_greens"], "kerosene_can", "diesel_jerrycan", "power_cell_small",
+				"power_cell_large", "charger_dock", "hydrogen_cell", "rocket_fuel", "plasma_fuel", "fusion_pellets", "battery_pack_rifle",
+				"capacitor_bank"],
 		"icon": ["pickaxe_iron", "glowberry", "power_cell"],
 	},
 	"tavern": {
@@ -182,7 +185,7 @@ const GUILDS := {
 	"pilots_guild": {"era": 2, "label": "Pilots' Guild", "job": "flight master", "fee": 280,
 		"names": ["Wings of the Frontier", "The Long Haul Club", "Skyward Union"], "favours": ["*"],
 		"goods": ["jet_fuel", "jetpack", "flashlight", "mag_boots", "speeder", "compass", "spectacles", "banjo",
-			"bandana", "grapple", "headset", "motion_tracker", "magboots_kit", "jetpack_military", "lucky_charm_dice"], "icon": "jetpack",
+			"bandana", "grapple", "headset", "motion_tracker", "magboots_kit", "jetpack_military", "lucky_charm_dice", "hydrogen_cell", "rocket_fuel"], "icon": "jetpack",
 		"perk": "Members get better prices in every shop."},
 }
 
