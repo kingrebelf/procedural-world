@@ -28,7 +28,7 @@ var look: Dictionary = {} ## the player's appearance (set before adding to the t
 const ARMS_REST := Vector3(0.08, -0.03, 0.0)
 ## One-handed tools: only the right arm, the fist low and right of the middle, held out a
 ## little so the whole hand and the handle below it show.
-const ARM_REST := Vector3(0.0, -0.02, -0.08)
+const ARM_REST := Vector3(-0.02, -0.05, -0.1)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
 ## Binoculars ride lower and nearer the middle, so they read as facing ahead.
 const BINO_REST := Vector3(0.0, -0.04, 0.02)
@@ -42,8 +42,18 @@ const BOW_REST := Vector3(-0.02, -0.1, -0.06)
 ## Lights carried by a ring or bail, hanging below the fist: the hand is raised and held
 ## upright so the lamp hangs in front of you, not below the view.
 const HANGING := ["hand_lantern", "lamp_kerosene"]
-const HANG_REST := Vector3(0.06, 0.08, -0.18)
-const HANG_AIM := Vector3(0.0, 1.0, -0.15)
+const HANG_REST := Vector3(-0.08, 0.04, -0.3)
+## Where the fist holding a lamp sits, from the eye.
+const HANG_HAND := Vector3(-0.03, -0.05, -0.4)
+const HANG_AIM := Vector3(0.05, 1.0, 0.0)
+## Each kind of tool has its own hold. A pick or hammer is held with the handle upright,
+## so its point or face leads straight down the view; a spear low and nearly level, its
+## point ahead; an axe, sword or anything else leaning forward (TOOL_AIM).
+const PICK_AIM := Vector3(-0.15, 1.0, -1.0)
+const SPEARS := ["hunting_spear", "bronze_spear", "javelin", "glaive", "halberd", "quarterstaff", "void_lance"]
+const SPEAR_AIM := Vector3(-0.08, 0.35, -1.0)
+const SPEAR_REST := Vector3(-0.04, 0.0, -0.04)
+const PICK_REST := Vector3(-0.04, -0.15, -0.14)
 ## Tools whose working end is below the hand (a shovel's blade): held the other way up,
 ## the blade raised ahead, the shaft running down past the wrist.
 const BLADE_UP := ["shovel"]
@@ -84,6 +94,9 @@ const BOW_CANT := 0.3
 ## A tool's head faces this far left of straight ahead: a pick's point and an axe's edge
 ## lead the swing, turned just enough to show the head three-quarters on.
 const STRIKE_YAW := 0.1
+## An axe's edge is turned a little further, so the blade's face shows and it reads as an
+## axe rather than a thin spike seen edge-on.
+const AXE_YAW := 0.35
 ## The swing's phases over its time (0..1): wind-up until WIND, the strike until STRIKE
 ## (full reach), recovery after. BACK: how far the wind-up draws back; CONTACT: the swing
 ## amount where the edge is brought onto what it was aimed at.
@@ -408,7 +421,7 @@ func show_item(t: String, it = null) -> void:
 		arms.rotation.y = PI + (LONG_YAW if two_handed(t) else 0.0)
 		arms.position = ARMS_AT
 		_rest = ARMS_REST if t == "" else (BINO_REST if ItemDB.def(t).get("zoom", false) else \
-			(LONG_REST if two_handed(t) else CARRY_REST if carried(t) else HANG_REST if t in HANGING else BOW_REST if is_bow(t) else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)))
+			(LONG_REST if two_handed(t) else CARRY_REST if carried(t) else HANG_REST if t in HANGING else SPEAR_REST if t in SPEARS else PICK_REST if _strike_axis(t) == Vector3.RIGHT else BOW_REST if is_bow(t) else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)))
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -441,25 +454,58 @@ func _aim() -> void:
 		arms.reaim(Vector3.ZERO)
 		_face_eye()
 	elif pointed(_type):
-		_hold_gun(b)
+		_hold_gun()
 		if two_handed(_type):
 			_support(b)
 	else:
 		# The wrist holds the tool up and away with the back of the hand toward you; the
 		# fingers stay closed round the handle.
-		arms.aim_grip(b * (HANG_AIM if _type in HANGING else (-TOOL_AIM if _type in BLADE_UP else TOOL_AIM)), b * TOOL_PALM)
+		arms.aim_grip(b * _tool_aim(_type), b * TOOL_PALM)
+		if _type in HANGING:
+			# Elbow bent and out to the side, the fist in front of the chest, so the
+			# lamp hangs clear of the forearm instead of behind it.
+			arms.pull_in((get_parent() as Node3D).global_transform * HANG_HAND)
 		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
 		var strike := _strike_axis(_type)
 		if strike != Vector3.ZERO and arms._held != null and arms._held.get_child_count() > 0:
 			var prop := arms._held.get_child(0) as Node3D
-			var want := prop.global_basis.inverse() * (b * (Basis(Vector3.UP, STRIKE_YAW) * Vector3.FORWARD))
+			var want := prop.global_basis.orthonormalized().inverse() * (b * (Basis(Vector3.UP, AXE_YAW if strike == Vector3.FORWARD else STRIKE_YAW) * Vector3.FORWARD))
 			want.y = 0.0
 			if want.length() > 0.01:
 				# About +Y, from the striking axis towards `want`.
 				var turn := Vector2(strike.x, -strike.z).angle_to(Vector2(want.x, -want.z))
 				prop.basis = prop.basis * Basis(Vector3.UP, turn)
+
+## What you hold is drawn as if through its own lens of this vertical field of view, not
+## the world camera's: at a wide world view a held tool would shrink and slide off to the
+## edge. The rig is scaled across the view (not along it) by the ratio of the two lenses'
+## spreads, which is exactly what drawing it at VIEW_FOV would do; depth is untouched.
+const VIEW_FOV := 70.0
+
+func _lens() -> void:
+	var cam := get_parent() as Camera3D
+	if cam == null:
+		return
+	var fov := deg_to_rad(cam.fov)
+	if cam.keep_aspect == Camera3D.KEEP_WIDTH:
+		var vp := get_viewport().get_visible_rect().size
+		fov = 2.0 * atan(tan(fov * 0.5) * vp.y / maxf(vp.x, 1.0))
+	var k := tan(fov * 0.5) / tan(deg_to_rad(VIEW_FOV) * 0.5)
+	scale = Vector3(k, k, 1.0)
+
+## Which way a tool's handle points (the rig's frame) in its hold.
+static func _tool_aim(t: String) -> Vector3:
+	if t in HANGING:
+		return HANG_AIM
+	if t in BLADE_UP:
+		return -TOOL_AIM
+	if t in SPEARS:
+		return SPEAR_AIM
+	if _strike_axis(t) == Vector3.RIGHT:
+		return PICK_AIM
+	return TOOL_AIM
 
 ## Where _hold_gun put the gun's model this frame (world).
 var _gun_xf := Transform3D.IDENTITY
@@ -468,7 +514,7 @@ var _gun_xf := Transform3D.IDENTITY
 ## the other way round: a long gun's stock sits in the shoulder with the barrel straight
 ## down the view, a heavy gun is held low at the hip, a pistol out ahead, a bow ahead and
 ## canted with its arrow line straight.
-func _hold_gun(b: Basis) -> void:
+func _hold_gun() -> void:
 	if arms._held == null or arms._held.get_child_count() == 0:
 		return
 	var prop := arms._held.get_child(0) as Node3D
@@ -476,14 +522,16 @@ func _hold_gun(b: Basis) -> void:
 	if mi == null or mi.mesh == null:
 		return
 	var m := mi.mesh
-	var gb := b
+	# Worked out in the rig's own space (pointing down -Z), so the lens scale (_lens)
+	# applies to the gun and the arms alike.
+	var gb := Basis.IDENTITY
 	var pin: Vector3 = m.get_meta("grip", Vector3.ZERO)
 	var at := BOW_GRIP if is_bow(_type) else PISTOL_GRIP
 	# Two hands on a gun: the body is turned and the right shoulder back where a stock
 	# would sit, so the left shoulder stays out of view.
 	var shoulder := LONG_BUTT - BUTT_POCKET if m.has_meta("fore") else SHOULDER_AT
 	if is_bow(_type):
-		gb = b * Basis(Vector3.BACK, BOW_CANT)
+		gb = Basis(Vector3.BACK, BOW_CANT)
 	elif m.has_meta("butt") and not _type in HIP:
 		pin = m.get_meta("butt")
 		at = LONG_BUTT
@@ -492,8 +540,7 @@ func _hold_gun(b: Basis) -> void:
 	# The arms come along with the gun: the right shoulder set where this hold puts it, so
 	# the hand always reaches.
 	arms.global_position += global_transform * shoulder - arms.shoulder_r()
-	at = global_transform * at
-	var xf := Transform3D(gb, at - gb * pin)
+	var xf := global_transform * Transform3D(gb, at - gb * pin)
 	_gun_xf = xf
 	arms.reaim(Vector3.ZERO)
 	arms.set_hand(xf * mi.transform.affine_inverse() * prop.transform.affine_inverse())
@@ -689,6 +736,7 @@ func _sight_local() -> Vector3:
 	return global_transform.affine_inverse() * top
 
 func sway(delta: float, speed: float) -> void:
+	_lens()
 	var steady := (1.0 - 0.85 * ads) * (1.0 - raise)
 	_sway_t += delta * (1.0 + speed * 6.0)
 	if _hold > 0.0:
