@@ -357,15 +357,23 @@ void fragment() {
 	float road = 1.0 - COLOR.a;
 	if (road > 0.01) {
 		float edge = smoothstep(0.2, 0.65, road + (micro - 0.5) * 0.3 + (meso - 0.5) * 0.25);
-		float stones = smoothstep(0.6, 0.85, vnoise(p * 2.3));
 		vec3 rm = soil * vec3(0.86, 0.8, 0.7) * (0.82 + 0.3 * micro);
-		rm = mix(rm, vec3(0.36, 0.34, 0.31), stones * 0.25);
+		if (use_textures) {
+			// Packed earth with drifts of trodden gravel, each edge following the stones.
+			vec3 gt = untiled(gravel_tex, p + 91.0, gp, GRAVEL_TILE, meso, far).rgb;
+			float a = layer(0.35 + 0.4 * fbm(p * 0.35 + 13.0), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro) * w.r;
+			rm = mix(rm, recolor(gt, GRAVEL_MEAN, soil * vec3(1.05, 1.0, 0.92) * 1.2, 0.55), a);
+			tilt = mix(tilt, untiled_n(gravel_nrm, p + 91.0, gp, GRAVEL_TILE, meso, far), a * edge);
+		} else {
+			float stones = smoothstep(0.6, 0.85, vnoise(p * 2.3));
+			rm = mix(rm, vec3(0.36, 0.34, 0.31), stones * 0.25);
+		}
 		float flags = smoothstep(0.08, 0.16, abs(fract(p.x * 0.6 + vnoise(p * 0.7) * 0.6) - 0.5)) * smoothstep(0.08, 0.16, abs(fract(p.y * 0.6) - 0.5));
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
 		vec3 rc = rm * w.r + rf * w.g + rs * w.b;
 		col = mix(col, rc, edge * (1.0 - rock_mask * 0.6));
-		tilt *= 1.0 - edge * 0.6;
+		tilt *= 1.0 - edge * 0.4;
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
