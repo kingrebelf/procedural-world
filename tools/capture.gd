@@ -470,6 +470,8 @@ func _run() -> void:
 		await _landform_shots(g)
 	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
+	if only.is_empty() or only.has("62"):
+		await _peaks_shot(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -1040,6 +1042,33 @@ func _border_shot(g: ChunkGenerator) -> void:
 					await _shot("96_biome_border", p + side, p - side, 0.42, 6.0)
 					return
 	print("no climate border found")
+
+## The highest snowy peak near the spawn, seen from lower ground a few hundred metres
+## off in the morning sun: rock faces, gullies and the snow lodged in them.
+func _peaks_shot(g: ChunkGenerator) -> void:
+	var peak := Vector3(0, -INF, 0)
+	for iz in range(-60, 61):
+		for ix in range(-60, 61):
+			var h := g.field.height(ix * 40.0, iz * 40.0)
+			if h > peak.y:
+				peak = Vector3(ix * 40.0, h, iz * 40.0)
+	if peak.y < WorldField.snow_line + 20.0:
+		print("no snowy peak near the spawn")
+		return
+	var top := Vector2(peak.x, peak.z)
+	var best := Vector2.INF
+	var low := INF
+	for k in 16:
+		var cam := top + Vector2.from_angle(TAU * k / 16.0) * 420.0
+		var h := g.field.height(cam.x, cam.y)
+		if h > WATER_SAFE + 1.0 and h < low:
+			low = h
+			best = cam
+	if best == Vector2.INF:
+		print("no ground to see the peak from")
+		return
+	print("peaks shot at ", best, " looking at ", peak)
+	await _shot("62_peaks", best, top, 0.36, 25.0, peak.y - 25.0)
 
 func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
 	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
