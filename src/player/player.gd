@@ -115,6 +115,7 @@ func _ready() -> void:
 	gunplay = Gunplay.new()
 	gunplay.player = self
 	add_child(gunplay)
+	add_child(ImpactFx.new())
 	gunplay.gun_event.connect(_gun_sound)
 	traps = Traps.new()
 	traps.player = self
@@ -265,9 +266,9 @@ func _grip_body() -> void:
 	if Viewmodel.pointed(t):
 		body.reaim(body.hand_space(up), 0.0, body.hand_space(fwd))
 	elif body.busy():
-		body.reaim(Vector3.ZERO)
+		body.aim_handle(Vector3.ZERO)
 	else:
-		body.reaim(body.hand_space(fwd * 0.55 - up * 0.8), 0.75)
+		body.aim_handle(fwd * 0.55 - up * 0.8, 0.75)
 
 static func swing_anim(t: String) -> String:
 	if t == "":
@@ -474,6 +475,10 @@ func _physics_process(delta: float) -> void:
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.ads = gunplay.ads
 	viewmodel.raise = _zoom
+	# What the crosshair is on, when it is within arm's length: the held item rests
+	# against it rather than sinking in.
+	var touch := ray.is_colliding() and ray.get_collision_point().distance_to(camera.global_position) < 1.4
+	viewmodel.near = {"point": ray.get_collision_point(), "normal": ray.get_collision_normal()} if touch else {}
 	viewmodel.sway(delta, hv.length() / SPRINT)
 	if not fly:
 		steps.tick(self, delta, Vector2(velocity.x, velocity.z).length(), is_on_floor(), _crouched, landed_vy, jumped)
@@ -649,7 +654,20 @@ static func is_own_piece(o: Dictionary) -> bool:
 		return false
 	if Doors.is_door(o["t"]):
 		return Doors.is_mine(o)
+	# Pieces record their builder; on a server their allies may take them down too.
+	# (Older pieces only say "by": "you".)
+	if o["st"].has("owner"):
+		return Doors.may_access(String(o["st"]["owner"]))
 	return String(o["st"].get("by", "you")) == "you"
+
+## "Built by you on day 3", or by whoever built it on a server.
+static func built_by(o: Dictionary) -> String:
+	var who := "you"
+	var owner := String(o["st"].get("owner", ""))
+	if owner != "" and owner != Doors.my_id():
+		var nm := String(o["st"].get("owner_name", ""))
+		who = nm if nm != "" and nm != "You" else "another player"
+	return "Built by %s on day %d" % [who, int(o["st"].get("day", 0)) + 1]
 
 # --- Deconstructing your own pieces -------------------------------------------------
 const DECON_TIME := 0.8
@@ -854,10 +872,15 @@ func _creature_info(cr: Creature) -> Dictionary:
 			"Distance %d m" % int(cr.global_position.distance_to(global_position))],
 		"hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
 
+## The animal under the crosshair (or in the binoculars), whose tag FaunaManager shows
+## at any distance.
+var looking_at: Creature = null
+
 func _update_look_target() -> void:
 	var h := _hit_object()
 	if spotted != null and is_instance_valid(spotted):
 		h = {"creature": spotted}
+	looking_at = h["creature"] if h.has("creature") and is_instance_valid(h["creature"]) else null
 	var text := ""
 	var info := {}
 	if builder.active():
@@ -905,9 +928,9 @@ func _update_look_target() -> void:
 					text = ""
 				_:
 					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
-			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
+			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else [built_by(o)]
 			if Doors.is_door(t):
-				lines = Doors.describe(o) if not is_own_piece(o) else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)] + Doors.describe(o)
+				lines = Doors.describe(o) if not is_own_piece(o) else [built_by(o)] + Doors.describe(o)
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
 			if k == "cache" and not o["st"].get("opened", false):
@@ -1338,7 +1361,6 @@ func use_held() -> void:
 	var force: float = Game.stats.damage_mult() * (1.0 if fresh else 0.5)
 	var hq: float = q * force
 	_cooldown = (0.55 if fresh else 0.9) / Game.stats.swing_mult() * (0.75 if d.get("swift", false) else 1.0) * float(d.get("swing", 1.0))
-	viewmodel.swing()
 	if body:
 		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
 	var h := _hit_object()
@@ -1348,6 +1370,9 @@ func use_held() -> void:
 		var c := fauna.melee_target(head, -camera.global_transform.basis.z, float(d.get("range", REACH)))
 		if c != null and (not h.has("point") or head.distance_to(h["point"]) > head.distance_to(c.global_position) - 0.5):
 			h = {"creature": c, "point": c.global_position}
+	# The swing comes down on what the crosshair is on and stops there; the blow's
+	# sound and marks wait for the moment it lands.
+	var land := viewmodel.swing(_cooldown, h if h.has("normal") else {})
 	if (h.is_empty() or (h.has("chunk") and not h.has("obj"))) and _harvest_under(h, q):
 		return
 	Audio.play("swing/whoosh", -10.0 if fresh else -14.0, 0.1)
@@ -1356,12 +1381,12 @@ func use_held() -> void:
 		return
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
-		Audio.play_at("hit/flesh", h["point"], -2.0)
+		_on_land(land, Audio.play_at.bind("hit/flesh", h["point"], -2.0))
 		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
-		Audio.play_at("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0)
+		_on_land(land, Audio.play_at.bind("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0))
 		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("rplayer"):
@@ -1373,7 +1398,16 @@ func use_held() -> void:
 		var o: Dictionary = chunk.get_object(h["obj"])
 		var mat := Durability.material(o["t"])
 		used_tool.emit("chop" if mat == "wood" or mat == "fungus" else "mine")
-		Audio.play_at("hit/plank" if ObjectLibrary.kind(o["t"]) == "built" else Audio.hit_bank(mat), h.get("point", chunk.position + o["p"]), -1.0 if fresh else -5.0)
+		var at: Vector3 = h.get("point", chunk.position + o["p"])
+		var sound := "hit/plank" if ObjectLibrary.kind(o["t"]) == "built" else Audio.hit_bank(mat)
+		var oi: int = h["obj"]
+		var steel := ImpactFx.steel_edge(it["type"] if it != null else "")
+		var along := _blow_dir()
+		_on_land(land, func():
+			Audio.play_at(sound, at, -1.0 if fresh else -5.0)
+			# No mark left hanging in the air where the thing was felled or broken.
+			var there: bool = is_instance_valid(chunk) and not chunk.get_object(oi)["st"].get("gone", false)
+			ImpactFx.strike(at, h.get("normal", Vector3.UP), mat, force if it != null else 0.4, steel, along, there))
 		if d.get("build", false) and is_own_piece(o):
 			# The builder's hammer takes your own pieces down in one blow.
 			damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
@@ -1383,7 +1417,9 @@ func use_held() -> void:
 		# Digging the ground itself: a persistent crater, and some stone.
 		used_tool.emit("dig")
 		var p: Vector3 = h["point"]
-		Audio.play_at("hit/dig", p, -2.0)
+		_on_land(land, func():
+			Audio.play_at("hit/dig", p, -2.0)
+			ImpactFx.strike(p, h.get("normal", Vector3.UP), "dirt", force, false, Vector3.ZERO, false))
 		streamer.dig(p, 1.6 + d["dig"] * 0.6, 0.35 * d["dig"] * hq)
 		var ck := ChunkStreamer.chunk_of(p)
 		if randf() < 0.5:
@@ -1392,6 +1428,17 @@ func use_held() -> void:
 		rng.randomize()
 		for y in Byproducts.of_digging(float(d["dig"]), rng):
 			Game.give_loot(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("dug", -1, ck)))
+
+## Runs `f` when a swing lands (`delay` seconds from now), or now if it already has.
+func _on_land(delay: float, f: Callable) -> void:
+	if delay <= 0.01 or not is_inside_tree():
+		f.call()
+		return
+	get_tree().create_timer(delay, false).timeout.connect(f)
+
+## Which way a melee blow travels in the world: down and across in front of you.
+func _blow_dir() -> Vector3:
+	return (camera.global_transform.basis * Vector3(-0.25, -0.75, -0.6)).normalized()
 
 ## Undergrowth has no collision, so a swing that reaches the ground (or nothing) first
 ## looks for a bush, fern or flower along the swing and pulls it up.
@@ -1793,6 +1840,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			Game.give_loot(ItemDB.make(y[0], y[1], quality, Game.origin_here(how, o["e"], chunk.key)))
 			Game.toast.emit("Found %s" % ItemDB.def(y[0])["name"].to_lower())
 	if r["destroyed"]:
+		ImpactFx.clear_near(chunk.position + o["p"], 3.0 * float(o.get("s", 1.0)))
 		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):
 			Game.markers.remove_object(chunk.key, o["i"])
 			Game.touch_player()

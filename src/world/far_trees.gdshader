@@ -51,7 +51,7 @@ void vertex() {
 	b_toward = vec3(to.x, 0.0, to.y);
 	VERTEX = stands ? base + b_right * (UV.x - 0.5) * w + vec3(0.0, UV.y * h, 0.0) : vec3(at.x, -10000.0, at.y);
 	NORMAL = b_toward;
-	look = vec4(pow(sp.rgb, vec3(2.2)), float(form));
+	look = vec4(pow(max(sp.rgb, vec3(0.0)), vec3(2.2)), float(form));
 	seed = hash12(c + 3.1);
 	wp = VERTEX;
 }

@@ -223,7 +223,7 @@ void fragment() {
 	vec3 grass = grass_m * w.r + grass_f * w.g + grass_s * w.b;
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
 	vec3 rock = rock_m * w.r + rock_f * w.g + rock_s * w.b;
-	rock = mix(rock, pow(stone_v.rgb, vec3(2.2)), stone_v.a);
+	rock = mix(rock, pow(max(stone_v.rgb, vec3(0.0)), vec3(2.2)), stone_v.a);
 
 	float dist = length(wpos - CAMERA_POSITION_WORLD);
 	float far = smoothstep(25.0, 140.0, dist);
@@ -315,7 +315,7 @@ void fragment() {
 	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
-		vec3 own = pow(soil_v.rgb, vec3(2.2));
+		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
 		float lm = dot(soil, LUM) / max(dot(soil_m * w.r + soil_f * w.g + soil_s * w.b, LUM), 0.001);
 		own *= clamp(mix(1.0, lm, 0.6), 0.6, 1.4) * (0.86 + 0.28 * meso) * (0.94 + 0.12 * micro);
 		ground = mix(ground, own, soil_v.a);
@@ -354,7 +354,7 @@ void fragment() {
 	if (use_textures && grit > 0.01) {
 		vec3 gt = untiled(gravel_tex, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far).rgb;
 		float a = layer(grit * (0.3 + 0.45 * fbm(p * 0.07 + 5.0)), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro);
-		ground = mix(ground, recolor(gt, GRAVEL_MEAN, pow(soil_v.rgb, vec3(2.2)) * 1.05, 0.6), a);
+		ground = mix(ground, recolor(gt, GRAVEL_MEAN, pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2)) * 1.05, 0.6), a);
 		tilt_c = mix(tilt_c, untiled_n(gravel_nrm, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far), a);
 		cov = max(cov, a);
 	}
@@ -362,12 +362,22 @@ void fragment() {
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
-	// Sand: wind ripples across the dunes.
+	// Sand: wind ripples, long near-parallel ridges straight across the wind (only bending
+	// slowly over a whole dune field), each with a long gentle windward side and a short
+	// steep lee; finer ripples on them close up. The slip faces (steep lee slopes of the
+	// dunes themselves) are smooth, paler, freshly slipped sand.
 	vec2 ripple = vec2(0.0);
 	if (form_v.x > 0.01) {
-		vec2 rd = normalize(vec2(0.8, 0.6) + vec2(fbm(p * 0.03), fbm(p * 0.03 + 9.0)) - 0.5);
-		float ph = dot(p, rd) * 4.2 + fbm(p * 0.35) * 5.0;
-		ripple = rd * cos(ph) * 0.35 * form_v.x * (1.0 - far);
+		vec2 rd = normalize(vec2(0.8, 0.6) + (vec2(fbm(p * 0.004), fbm(p * 0.004 + 9.0)) - 0.5) * 0.7);
+		float fp = max(length(gp.xy), length(gp.zw));
+		float ph = dot(p, rd) * 5.0 + fbm(p * 0.05) * 2.2;
+		float big = (cos(ph) + 0.5 * cos(2.0 * ph)) * (1.0 - smoothstep(0.12, 0.3, fp));
+		vec2 rd2 = rot2(rd, 0.2);
+		float ph2 = dot(p, rd2) * 21.0 + fbm(p * 0.25 + 3.0) * 3.0;
+		float fine = (cos(ph2) + 0.5 * cos(2.0 * ph2)) * (1.0 - smoothstep(0.025, 0.06, fp));
+		float lee = smoothstep(0.3, 0.5, dot(wnorm.xz, rd));
+		ripple = (rd * big * 0.45 + rd2 * fine * 0.18) * form_v.x * (1.0 - far) * (1.0 - 0.85 * lee);
+		ground *= 1.0 + 0.08 * lee * form_v.x;
 	}
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
@@ -418,29 +428,46 @@ void fragment() {
 	float snow = 0.0;
 	if (use_textures && cover_v.a > 0.01 && wpos.y > snow_line - 20.0) {
 		float under = dot(col, LUM) / max(dot(col, LUM) + 0.05, 0.001);
-		snow = smoothstep(0.25, 0.6, cover_v.a + (meso - 0.5) * 0.3 + (micro - 0.5) * 0.12 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
+		// A wide, ragged edge: patches and tongues of snow out into the grass, bare
+		// hollows inside it, never one clean line.
+		float frayed = (fbm(p * 0.13 + 3.0) - 0.5) * 0.32 + (meso - 0.5) * 0.38;
+		snow = smoothstep(0.17, 0.7, cover_v.a + frayed + (micro - 0.5) * 0.14 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
 		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.55, 0.85, slope));
 		// The map is per metre, so on a tall wall one triangle spans its snowy top and its
 		// foot: never let snow run down below the snow line's reach.
 		snow *= smoothstep(snow_line - 16.0, snow_line - 8.0, wpos.y + (macro - 0.5) * 8.0);
 		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb;
+		// Snow turned from the sun takes the blue of the sky that lights it.
+		st *= mix(vec3(0.84, 0.91, 1.0), vec3(1.0), smoothstep(-0.1, 0.45, dot(wnorm, sun_dir_g)));
 		// Thin snow lets the ground show as a grey-blue dusting before it closes over.
 		vec3 dust = mix(col, st * vec3(0.86, 0.9, 0.96), 0.6);
 		// (A little under real snow's brightness, so its relief still shows in full sun.)
 		col = mix(col, mix(dust, st * 0.8, smoothstep(0.4, 0.9, snow)), snow);
 		// Wind ripples: long low ridges across the drifts, wandering with the ground.
 		vec2 wd = vec2(0.83, 0.55);
-		vec2 rip = wd * cos(dot(p, wd) * 2.1 + meso * 9.0) * 0.09 * (1.0 - far);
-		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip, snow);
+		vec2 rip = wd * cos(dot(p, wd) * 2.1 + meso * 9.0) * 0.14 * (1.0 - far);
+		// Drifts: soft swells a few metres across, so the sun models the snow (lit faces,
+		// blue shade) instead of lighting one flat white sheet.
+		float de = 0.7;
+		float d0 = fbm(p * 0.21 + 7.0);
+		vec2 drift = -vec2(fbm((p + vec2(de, 0.0)) * 0.21 + 7.0) - d0, fbm((p + vec2(0.0, de)) * 0.21 + 7.0) - d0) / de * 1.4;
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip + drift * (1.0 - far * 0.5), snow);
 		rock_n *= 1.0 - snow;
-		// Glints: here and there a crystal faces just right and flashes the sun back.
-		if (snow > 0.5 && dist < 30.0 && sun_dir_g.y > 0.0) {
-			vec3 cell = floor(wpos * 24.0);
-			float hs = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-			vec3 facet = normalize(wnorm + (vec3(fract(hs * 13.1), fract(hs * 7.7), fract(hs * 3.3)) - 0.5) * 0.9);
+		// Glints: here and there a crystal faces just right and flashes the sun back, a
+		// point of light somewhere in its cell. Never under a pixel across: smaller ones
+		// fell between the pixels and nothing showed a few metres off.
+		if (snow > 0.5 && dist < 40.0 && sun_dir_g.y > 0.0) {
+			vec2 cg = wpos.xz * 12.0;
+			vec2 cell = floor(cg);
+			float hs = hash12(cell);
+			float hs2 = hash12(cell + 71.3);
+			vec3 facet = normalize(wnorm + (vec3(hs2, fract(hs * 7.7), fract(hs2 * 3.3 + hs)) - 0.5) * 0.8);
 			vec3 hv = normalize(normalize(CAMERA_POSITION_WORLD - wpos) + sun_dir_g);
-			float glint = step(0.985, hs) * pow(max(dot(facet, hv), 0.0), 60.0);
-			EMISSION += sun_light_g * glint * 2.5 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
+			vec2 spot = vec2(fract(hs2 * 31.7), fract(hs * 57.3)) * 0.6 + 0.2;
+			float r = max(0.07, max(length(gp.xy), length(gp.zw)) * 12.0 * 0.6);
+			float pt = 1.0 - smoothstep(r * 0.4, r, length(cg - cell - spot));
+			float glint = step(0.88, hs) * pow(max(dot(facet, hv), 0.0), 16.0) * pt;
+			EMISSION += sun_light_g * glint * 5.0 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(25.0, 40.0, dist)) * (1.0 - cloud_shadow(wpos));
 		}
 	}
 
@@ -484,7 +511,7 @@ void fragment() {
 		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
 		float dr = tree_density(fdat.a, p);
 		// Side on, the trees behind close the gaps.
-		float dg = 1.0 - pow(1.0 - dr, 1.0 + 2.5 * graze);
+		float dg = 1.0 - pow(max(1.0 - dr, 0.0), 1.0 + 2.5 * graze);
 		float detail = (1.0 - smoothstep(600.0, 1800.0, dist)) * smoothstep(0.12, 0.35, 1.0 - graze);
 		float paint = smoothstep(TREE_BB_FROM, TREE_BB_TO, dist);
 		vec2 cell;
@@ -503,7 +530,7 @@ void fragment() {
 		col *= 1.0 - 0.5 * lit * clamp(shade, 0.0, 1.0);
 		canopy = mix(dg * 0.85 * paint, own, detail);
 		float id = hash12(cell + 3.1);
-		vec3 cc = pow(mix(fdat.rgb, sp.rgb, detail), vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
+		vec3 cc = pow(max(mix(fdat.rgb, sp.rgb, detail), vec3(0.0)), vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
 		// Darker at a crown's rim, where its leaves turn under.
 		cc *= mix(1.0, mix(1.0, 0.7, smoothstep(0.55, 1.0, cr.y)), detail);
 		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);
@@ -549,9 +576,9 @@ void fragment() {
 			vnoise3(q + vec3(0, 0, e3)) + vnoise3((q + vec3(0, 0, e3)) * 2.3) * 0.5) - g0;
 		gr /= e3;
 		gr -= dot(gr, wnorm) * wnorm;
-		bump -= gr * detail_strength * 0.5 * steep * proc;
+		bump -= gr * detail_strength * 0.3 * steep * proc;
 	}
-	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.9 + vec3(ripple.x, 0.0, ripple.y));
+	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.55 + vec3(ripple.x, 0.0, ripple.y));
 #ifdef FAR_LAND
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
 	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), river));

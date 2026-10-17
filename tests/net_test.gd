@@ -169,7 +169,9 @@ func _run() -> void:
 	var lh: PackedFloat32Array = local["heights"]
 	check(hs.size() == lh.size() and absf(hs[hs.size() / 2] - lh[lh.size() / 2]) < 0.001, "server land matches the seed")
 
-	# A second player joins from another process and stands near this chunk.
+	# A second player joins from another process and stands near this chunk. (Listen to
+	# him from the start: he can say he's ready before he is drawn here.)
+	net.chat.connect(func(from, text, _k): if from == "Bob": _heard.append(text))
 	_peer = OS.create_process(OS.get_executable_path(), _godot_args(["--script", "res://tests/net_peer.gd", "--",
 		"--port=%d" % PORT, "--cx=%d" % k0.x, "--cz=%d" % k0.y, "--identity=netpeer"]))
 	check(await _until(func(): return net.peers.size() == 1, 2400), "the second player shows up in the roster")
@@ -177,7 +179,6 @@ func _run() -> void:
 	check(String(other.get("name", "")) == "Bob", "named Bob (%s)" % other.get("name", ""))
 	check(await _until(func(): return world.get_node("OtherPlayers").get_child_count() == 1, 1200), "and is drawn in the world")
 	# Bob says he's ready once he has this chunk; then we edit it.
-	net.chat.connect(func(from, text, _k): if from == "Bob": _heard.append(text))
 	check(await _until(func(): return _heard.has("ready"), 2400), "Bob chats (%s)" % str(_heard))
 	here.data["net_test"] = 4242
 	game.mark_chunk_dirty(here.data)

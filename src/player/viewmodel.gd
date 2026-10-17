@@ -9,27 +9,57 @@ static var _models: Dictionary = {}
 var _mesh: MeshInstance3D
 var _rest := Vector3(0.32, -0.3, -0.55)
 var _swing_t := 1.0
+var _swing_len := 0.42 ## seconds the whole swing takes
+var _peak := 1.0 ## how far the swing got before coming back (less when it hit something)
+var _hold := 0.0 ## seconds left resting against what it hit
+var _landed := false
+var _hit := {} ## the world "point" and "normal" this swing lands on
+var _off_full := Vector3.ZERO ## the drift that brings the edge onto the target
+var _tip_pts := PackedVector3Array()
+var _tip_of: Mesh ## the mesh _tip_pts were taken from
+## Set by the player each frame: the surface the crosshair is on, when it is close
+## ("point", "normal"), so the held item rests against it instead of sinking in.
+var near := {}
 var _recoil := 0.0
 var _sway_t := 0.0
 var _type := ""
 var arms: HumanModel
 var look: Dictionary = {} ## the player's appearance (set before adding to the tree)
 const ARMS_REST := Vector3(0.08, -0.03, 0.0)
-## One-handed tools: only the right arm, further right and lower, the tool leaning in.
-const ARM_REST := Vector3(0.14, -0.07, -0.02)
+## One-handed tools: only the right arm, the fist low and right of the middle, held out a
+## little so the whole hand and the handle below it show.
+const ARM_REST := Vector3(0.0, -0.02, -0.08)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
 ## Binoculars ride lower and nearer the middle, so they read as facing ahead.
 const BINO_REST := Vector3(0.0, -0.04, 0.02)
 ## A crossbow is long and wide: held further out and lower, so the prod sits under the
 ## sight line and the butt clears the corner of the screen.
 const CROSSBOW_REST := Vector3(0.06, -0.06, -0.12)
-const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
+const TOOL_AIM := Vector3(-0.1, 0.9, -0.85)
+## Which way the palm of a hand holding a tool faces: ahead and a little out, so you see
+## the back of the hand and its knuckles, the handle coming out of the top of the fist.
+const TOOL_PALM := Vector3(0.4, -0.2, -1.0)
 ## A gun's grip in the view: the knuckle line leans forward with a pistol grip's rake,
 ## the back of the hand points the fingers ahead and a little down round the grip.
 const GUN_KNUCKLES := Vector3(0.0, 0.9, -0.44)
 const GUN_FINGERS := Vector3(-0.15, -0.3, -0.95)
 ## A tool's head faces this far left of straight ahead, so it shows three-quarters on.
 const STRIKE_YAW := 0.6
+## The swing's phases over its time (0..1): wind-up until WIND, the strike until STRIKE
+## (full reach), recovery after. BACK: how far the wind-up draws back; CONTACT: the swing
+## amount where the edge is brought onto what it was aimed at.
+const WIND := 0.26
+const STRIKE := 0.44
+const BACK := -0.3
+const CONTACT := 0.7
+const HOLD := 0.07 ## seconds the edge rests in the surface before coming back
+## How far the rig may drift to put the edge on the target (metres, camera frame).
+const REACH_SIDE := 0.22
+const REACH_UP := 0.22
+const REACH_DOWN := 0.25
+const REACH_OUT := 0.3
+const REACH_IN := 0.25
+const TIP_POINTS := 320
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()
@@ -57,6 +87,7 @@ func _ready() -> void:
 ## its icon on a card.
 static func prop_for(t: String, it = null) -> Node3D:
 	var n := Node3D.new()
+	n.set_meta("item", t)
 	var mi := MeshInstance3D.new()
 	n.add_child(mi)
 	var d := ItemDB.def(t)
@@ -349,8 +380,10 @@ func _aim() -> void:
 		arms.aim_hand(b * GUN_KNUCKLES, b * GUN_FINGERS)
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
-		arms.aim_hand(Vector3.ZERO, Vector3.ZERO)
-		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
+		# The wrist holds the tool up and away with the back of the hand toward you; the
+		# fingers stay closed round the handle.
+		arms.aim_grip(b * TOOL_AIM, b * TOOL_PALM)
+		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
 		var strike := _strike_axis(_type)
@@ -371,8 +404,104 @@ static func _strike_axis(t: String) -> Vector3:
 		return Vector3.RIGHT
 	return Vector3.ZERO
 
-func swing() -> void:
+## A swing winds back, strikes and recovers. When it is aimed at something (`hit`: the
+## world "point" and "normal" the blow lands on) the rig drifts during the wind-up so the
+## striking edge comes down on that point, stops on the surface instead of passing
+## through, rests there a moment and comes back. Returns the seconds until the blow
+## lands, for the impact to show then. `duration` is how long the whole swing takes.
+func swing(duration := 0.42, hit := {}) -> float:
 	_swing_t = 0.0
+	_swing_len = maxf(0.25, duration * 0.92)
+	_peak = 1.0
+	_hold = 0.0
+	_landed = false
+	_hit = hit if hit.has("point") and hit.has("normal") else {}
+	_off_full = Vector3.ZERO
+	_tip_pts = PackedVector3Array()
+	_refresh_points()
+	var u := sqrt((CONTACT - BACK) / (1.0 - BACK))
+	return (WIND + (STRIKE - WIND) * u) * _swing_len
+
+## How far through its arc the swing is at time t (0..1): 0 at rest, BACK at the top of
+## the wind-up, 1 at full reach. The strike accelerates into the blow.
+func _swing_amount(t: float) -> float:
+	if t < WIND:
+		var u := t / WIND
+		return BACK * (1.0 - (1.0 - u) * (1.0 - u))
+	if t < STRIKE:
+		var u := (t - WIND) / (STRIKE - WIND)
+		return BACK + (1.0 - BACK) * u * u
+	return _peak * (1.0 - smoothstep(STRIKE, 1.0, t))
+
+## The rig's swing pose at swing amount s, in the camera's frame (before sway, aiming
+## and the drift towards a target).
+func _swing_pose(s: float) -> Array:
+	if arms:
+		# The whole rig swings down and across from just in front of the eyes.
+		return [Vector3(-0.05 * s, -0.06 * s, -0.12 * s), Vector3(-0.9 * s, 0.25 * s, 0.35 * s)]
+	return [Vector3(-0.12 * s, 0.05 * s, -0.1 * s), Vector3(-1.1 * s, 0.3 * s, 0.3 * s)]
+
+## The held item's vertices (a sample of them) in the rig's own frame. The grip holds
+## the item fixed to the rig through a swing, so these stay put while the rig moves.
+## Taken again only when the item changes.
+func _refresh_points() -> void:
+	var mi := _held_mesh()
+	var m: Mesh = mi.mesh if mi != null else null
+	if m == _tip_of and (m == null or not _tip_pts.is_empty()):
+		return
+	_tip_of = m
+	_tip_pts = PackedVector3Array()
+	if m == null:
+		return
+	var out := _tip_pts
+	var rel := global_transform.affine_inverse() * mi.global_transform
+	var all := PackedVector3Array()
+	for si in mi.mesh.get_surface_count():
+		all.append_array(mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX])
+	var step := maxi(1, all.size() / TIP_POINTS)
+	for k in range(0, all.size(), step):
+		out.append(rel * all[k])
+	_tip_pts = out
+
+## The rig's offset that brings the item's leading point onto the target at the moment
+## of contact, as far as arms can reach.
+func _reach_offset(cam_from_world: Transform3D) -> Vector3:
+	var p: Vector3 = cam_from_world * Vector3(_hit["point"])
+	var n: Vector3 = (cam_from_world.basis * Vector3(_hit["normal"])).normalized()
+	var pose := _swing_pose(CONTACT)
+	var rig := Transform3D(Basis.from_euler(pose[1]), _rest + pose[0])
+	var best := -INF
+	var lead := Vector3.ZERO
+	for q in _tip_pts:
+		var v := rig * q
+		var into := -v.dot(n)
+		if into > best:
+			best = into
+			lead = v
+	var off := p - lead
+	return Vector3(clampf(off.x, -REACH_SIDE, REACH_SIDE), clampf(off.y, -REACH_DOWN, REACH_UP), clampf(off.z, -REACH_OUT, REACH_IN))
+
+## Keeps the held item out of a surface: pushes the rig back off it, and when the
+## strike meets the one it was aimed at, stops the swing there.
+func _meet_surface(s: float, surf: Dictionary) -> void:
+	var parent := get_parent() as Node3D
+	_refresh_points()
+	if parent == null or _tip_pts.is_empty():
+		return
+	var to_world := parent.global_transform * transform
+	var p: Vector3 = surf["point"]
+	var n: Vector3 = Vector3(surf["normal"]).normalized()
+	var least := INF
+	for q in _tip_pts:
+		least = minf(least, (to_world * q - p).dot(n))
+	if least < 0.0:
+		position += (parent.global_basis.inverse() * n).normalized() * minf(-least, 0.6)
+	# Touching, or as good as (the strike moves several centimetres a frame).
+	if surf == _hit and not _landed and _swing_t >= WIND and _swing_t < STRIKE and (least <= 0.01 or s >= CONTACT and least < 0.05):
+		_landed = true
+		_peak = s
+		_swing_t = STRIKE
+		_hold = HOLD
 
 ## A shot's kick: the gun jumps back and its muzzle climbs, more for heavy weapons.
 func recoil(strength := 1.0) -> void:
@@ -429,10 +558,20 @@ func _sight_local() -> Vector3:
 func sway(delta: float, speed: float) -> void:
 	var steady := (1.0 - 0.85 * ads) * (1.0 - raise)
 	_sway_t += delta * (1.0 + speed * 6.0)
-	_swing_t = minf(1.0, _swing_t + delta * 2.4)
+	if _hold > 0.0:
+		_hold -= delta
+	else:
+		_swing_t = minf(1.0, _swing_t + delta / _swing_len)
 	_recoil = maxf(0.0, _recoil - delta * 8.0)
 	_dip_t = minf(1.0, _dip_t + delta * 1.4)
-	var s := sin(_swing_t * PI)
+	var s := _swing_amount(_swing_t)
+	var drift := Vector3.ZERO
+	if not _hit.is_empty() and _swing_t < 1.0:
+		var parent := get_parent() as Node3D
+		if parent != null and not _landed and _swing_t < STRIKE:
+			_off_full = _reach_offset(parent.global_transform.affine_inverse())
+		drift = _off_full * smoothstep(0.0, WIND, _swing_t) * (1.0 - smoothstep(STRIKE, 1.0, _swing_t))
+	var pose := _swing_pose(s)
 	var dip := sin(_dip_t * PI) # down and back up over a reload
 	var off := Vector3(sin(_sway_t) * 0.006 * (1.0 + speed * 3.0), absf(cos(_sway_t)) * 0.006 * (1.0 + speed * 3.0), _recoil * 0.06) * Vector3(steady, steady, 1.0)
 	# Aiming: slide the rig so the gun's top sits on the line of sight.
@@ -453,13 +592,16 @@ func sway(delta: float, speed: float) -> void:
 		arms.visible = not hide
 	_mesh.visible = not hide
 	if arms:
-		# The whole rig swings down and across from just in front of the eyes.
-		position = _rest + aim_off + off + Vector3(-0.05 * s, -0.06 * s, -0.12 * s) + Vector3(0, -0.18 * dip, _recoil * 0.04 + 0.05 * dip)
-		rotation = Vector3(-0.9 * s + _recoil * (0.12 * steady + 0.03) - 0.5 * dip, 0.25 * s, 0.35 * s + 0.4 * dip)
+		position = _rest + aim_off + off + pose[0] + drift + Vector3(0, -0.18 * dip, _recoil * 0.04 + 0.05 * dip)
+		rotation = pose[1] + Vector3(_recoil * (0.12 * steady + 0.03) - 0.5 * dip, 0.0, 0.4 * dip)
 		_aim()
-		return
-	position = _rest + aim_off + off + Vector3(-0.12 * s, 0.05 * s, -0.1 * s) + Vector3(0, -0.18 * dip, 0.05 * dip)
-	rotation = Vector3(-1.1 * s + _recoil * 0.25 * steady - 0.5 * dip, 0.3 * s, 0.3 * s + 0.4 * dip)
+	else:
+		position = _rest + aim_off + off + pose[0] + drift + Vector3(0, -0.18 * dip, 0.05 * dip)
+		rotation = pose[1] + Vector3(_recoil * 0.25 * steady - 0.5 * dip, 0.0, 0.4 * dip)
+	# Guns keep their aim; tools and blades rest against what is in front of them.
+	var surf := _hit if not _hit.is_empty() and _swing_t < 1.0 else ({} if pointed(_type) else near)
+	if not surf.is_empty() and not hide:
+		_meet_surface(s, surf)
 
 func tracer(world_end: Vector3, mat := "glow_cyan") -> void:
 	var from := _mesh.global_position if arms == null else global_position + global_transform.basis * Vector3(0, -0.12, -0.5)

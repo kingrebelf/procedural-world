@@ -114,6 +114,14 @@ var _palm0: Vector3
 ## Right-hand finger curls (thumb..pinky, 0..1) held while the hand grips something
 ## (HumanModel.hold), under any gesture; [] for none.
 var grip_r: Array = []
+## Finger bone -> local rotation for a hand closed round a handle (HandGrip); wins over
+## grip_r.
+var grip_rot: Dictionary = {}
+## {"axis": hand-space direction of what is held, "dir": skeleton-space direction to turn
+## it to, "w": how far}: the wrist turns over its animation; {} for none.
+var hand_aim: Dictionary = {}
+## How much of hand_r's turn the forearm takes instead of the wrist (0..1).
+var hand_share := 0.0
 ## The right hand's orientation in skeleton space, overriding the animation's (a gun
 ## held square to the view); null leaves the hand as animated.
 var hand_r = null
@@ -186,9 +194,36 @@ func _process_modification() -> void:
 	if hand_r != null and _bone("hand_r") >= 0:
 		var hb := _bone("hand_r")
 		var parent := sk.get_bone_parent(hb)
+		if hand_share > 0.0 and parent >= 0:
+			# The forearm rolls with part of the turn (only about its own length, so the
+			# hand stays where it is), and the wrist doesn't kink.
+			var g := sk.get_bone_global_pose(hb).basis.orthonormalized()
+			var turn := (Basis(hand_r) * g.inverse()).get_rotation_quaternion()
+			var along := (sk.get_bone_global_pose(hb).origin - sk.get_bone_global_pose(parent).origin).normalized()
+			var v := Vector3(turn.x, turn.y, turn.z)
+			var p := along * v.dot(along)
+			var twist := Quaternion(p.x, p.y, p.z, turn.w)
+			twist = twist.normalized() if twist.length_squared() > 1e-8 else Quaternion.IDENTITY
+			var part := Quaternion.IDENTITY.slerp(twist, hand_share)
+			var fb := sk.get_bone_global_pose(parent).basis.orthonormalized()
+			var fp := sk.get_bone_parent(parent)
+			var fpb := sk.get_bone_global_pose(fp).basis.orthonormalized() if fp >= 0 else Basis()
+			sk.set_bone_pose_rotation(parent, (fpb.inverse() * (Basis(part) * fb)).get_rotation_quaternion())
 		var pb := sk.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
 		sk.set_bone_pose_rotation(hb, (pb.inverse() * (hand_r as Basis)).get_rotation_quaternion())
-	if not grip_r.is_empty():
+	elif not hand_aim.is_empty() and _bone("hand_r") >= 0:
+		var hb := _bone("hand_r")
+		var g := sk.get_bone_global_pose(hb).basis.orthonormalized()
+		var cur: Vector3 = (g * Vector3(hand_aim["axis"])).normalized()
+		var turn := Quaternion(cur, Vector3(hand_aim["dir"])).slerp(Quaternion.IDENTITY, 1.0 - float(hand_aim["w"])) \
+			if cur.dot(hand_aim["dir"]) > -0.999 else Quaternion.IDENTITY
+		var parent := sk.get_bone_parent(hb)
+		var pb := sk.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
+		sk.set_bone_pose_rotation(hb, (pb.inverse() * (Basis(turn) * g)).get_rotation_quaternion())
+	if not grip_rot.is_empty():
+		for b in grip_rot:
+			sk.set_bone_pose_rotation(b, grip_rot[b])
+	elif not grip_r.is_empty():
 		for i in 5:
 			_finger(sk, "r", i, float(grip_r[i]), 1.0)
 	_t += dt

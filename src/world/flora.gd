@@ -61,7 +61,7 @@ static func species(t: String, sp: int) -> Dictionary:
 				"form": form, "noun": nouns[form],
 				"height": r.randf_range(6.0, 15.0), "width": r.randf_range(1.6, 3.4) * (0.45 if form == "cypress" else 1.0),
 				"tiers": r.randi_range(4, 9), "droop": r.randf_range(0.2, 0.9),
-				"leaf": Color.from_hsv(r.randf_range(0.28, 0.42) if form != "larch" else r.randf_range(0.14, 0.2), r.randf_range(0.35, 0.6), r.randf_range(0.18, 0.34)),
+				"leaf": Color.from_hsv(r.randf_range(0.28, 0.38) if form != "larch" else r.randf_range(0.14, 0.2), r.randf_range(0.35, 0.6), r.randf_range(0.18, 0.34)),
 				"bark": Color.from_hsv(r.randf_range(0.03, 0.09), r.randf_range(0.3, 0.55), r.randf_range(0.2, 0.38)),
 			}
 		"glowcap":

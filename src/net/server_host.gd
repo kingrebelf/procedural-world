@@ -538,7 +538,7 @@ const MOB_RANGE := 500.0 ## metres: puppets are drawn for players this close to 
 const HIT_RANGE := 120.0 ## metres: furthest a player can hurt another from (guns)
 
 func watch(peer: int, kind: String, p: int, adds: Array, removes: Array) -> void:
-	if online.has(peer) and kind in ["t", "f"] and p >= 0 and p < Planets.COUNT:
+	if online.has(peer) and kind in ["t", "f", "b"] and p >= 0 and p < Planets.COUNT:
 		sync.watch(peer, kind, p, adds, removes)
 
 ## Tells a player who runs a town or chunk they have loaded, and how many have it.
@@ -570,7 +570,9 @@ func mob_say(peer: int, p: int, id: String, text: String, secs: float) -> void:
 func mob_hit(peer: int, kind: String, p: int, k: Vector2i, id: String, dmg: float, killed: bool) -> void:
 	if not online.has(peer) or not is_finite(dmg) or dmg < 0.0:
 		return
-	var h := sync.holder_of(kind, Vector3i(p, k.x, k.y))
+	# People are held with their town ("t") or band ("b"), animals with their chunk.
+	var hk: String = {"n": "t", "nb": "b"}.get(kind, kind)
+	var h := sync.holder_of(hk, Vector3i(p, k.x, k.y))
 	if h != 0 and h != peer and online.has(h):
 		Net.c_mob_hit.rpc_id(h, kind, p, id, minf(dmg, 100000.0), killed, peer)
 

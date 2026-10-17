@@ -14,34 +14,40 @@ const DIR := "res://assets/models/"
 ##           a storey up), door (in a doorway you built, see Doors), free (anywhere, turned
 ##           with the rotate key).
 ##   grid / storey: cell size and floor-to-floor height in metres.
+##   span:   cells a roof covers along each side.
+##   ramp:   stairs. They climb away from you, two cells long; foot = cells from the
+##           piece's origin to the cell their foot stands in (along its local +z).
 ##   proc:   extra procedural parts built with MeshKit (see _proc).
 ##   station: crafting station id recipes can ask for.  light: colour of its glow.
 const PIECES := {
-	# Medieval village kit: 2 m cells, 3 m storeys.
+	# Medieval village kit: 2 m cells; storeys are as tall as its walls (3.12 m), so a wall
+	# stacked on a wall meets it edge to edge and an upper floor covers the wall tops.
 	"foundation": {"name": "Stone Foundation", "models": [["village/Floor_UnevenBrick", 0, Vector3.ZERO, 1.0]], "proc": "plinth",
-		"snap": "floor", "grid": 2.0, "storey": 3.0, "mat": "stone", "hp": 14.0, "era": 0},
+		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 14.0, "era": 0},
 	"floor_wood": {"name": "Wooden Floor", "models": [["village/Floor_WoodDark", 0, Vector3.ZERO, 1.0]],
-		"snap": "floor", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 6.0, "era": 0},
+		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 6.0, "era": 0},
 	"wall_plaster": {"name": "Timber Wall", "models": [["village/Wall_Plaster_Straight", 0, Vector3.ZERO, 1.0]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "stone", "hp": 16.0, "era": 0},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "stone", "hp": 16.0, "era": 0},
-	"stairs_wood": {"name": "Wooden Stairs", "models": [["village/Stair_Interior_Solid", 0, Vector3(0, 0, 1.0), 1.0]],
-		"snap": "floor", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 8.0, "era": 0, "ramp": true},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
+	"stairs_wood": {"name": "Wooden Stairs", "models": [["village/Stair_Interior_Solid", 0, Vector3(0, 0, 0.694), Vector3(1, 1.03, 0.8493)]],
+		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 8.0, "era": 0, "ramp": true, "foot": 0},
 	"roof_small": {"name": "Tiled Roof (4x4)", "models": [["village/Roof_RoundTiles_4x4", 0, Vector3.ZERO, 1.0],
 		["village/Roof_Front_Brick4", 0, Vector3(0, 0, 2), 1.0], ["village/Roof_Front_Brick4", 180, Vector3(0, 0, -2), 1.0]],
-		"snap": "roof_v", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
+		"snap": "roof_v", "span": 2, "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"roof_large": {"name": "Tiled Roof (6x6)", "models": [["village/Roof_RoundTiles_6x6", 0, Vector3.ZERO, 1.0],
 		["village/Roof_Front_Brick6", 0, Vector3(0, 0, 3), 1.0], ["village/Roof_Front_Brick6", 180, Vector3(0, 0, -3), 1.0]],
-		"snap": "roof_c", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 16.0, "era": 0},
+		"snap": "roof_c", "span": 3, "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 16.0, "era": 0},
 	"fence": {"name": "Wooden Fence", "models": [["village/Prop_WoodenFence_Single", 0, Vector3.ZERO, 0.97]],
-		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 4.0, "era": 0},
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 4.0, "era": 0},
 	# Sci-fi kit: 4 m cells, 5 m storeys. Its walls sit on a cell's -x edge; turn them
 	# onto the shared convention (along x, centred on the edge).
 	"platform": {"name": "Alloy Platform", "models": [["scifi/Platform_Metal", 0, Vector3.ZERO, 1.0]],
@@ -55,16 +61,16 @@ const PIECES := {
 	# Doors hang in a doorway you built ("fits"), at its spot and facing; each leaf's model
 	# origin is its hinge (Doors.leaf_xf). They open, close and lock (see Doors).
 	"door_wood": {"name": "Wooden Door", "models": [["village/Door_1_Round", 0, Vector3(-0.535, 0, -0.11), 1.0]],
-		"snap": "door", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 30.0, "era": 0,
+		"snap": "door", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 30.0, "era": 0,
 		"door": {"tier": 1, "fits": ["wall_door", "wall_door_stone"]}},
 	"door_iron": {"name": "Iron-bound Door", "models": [["village/Door_2_Round", 0, Vector3(-0.535, 0, -0.11), 1.0]],
-		"snap": "door", "grid": 2.0, "storey": 3.0, "mat": "metal", "hp": 40.0, "era": 0,
+		"snap": "door", "grid": 2.0, "storey": 3.12, "mat": "metal", "hp": 40.0, "era": 0,
 		"door": {"tier": 2, "fits": ["wall_door", "wall_door_stone"]}},
 	"door_bulkhead": {"name": "Bulkhead Door", "models": [["scifi/Door_Metal", 0, Vector3(0, 0, -0.05), 1.0], ["scifi/Door_Metal", 180, Vector3(0, 0, 0.05), 1.0]],
 		"snap": "door", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 160.0, "era": 2,
 		"door": {"tier": 3, "fits": ["door_scifi"], "slide": true}},
 	"stairs_scifi": {"name": "Alloy Stairs", "models": [["scifi/Platform_Stairs_4WideTall", 0, Vector3(0, 0, -2), Vector3(1, 5.0 / 3.0, 1.32)]],
-		"snap": "floor", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 30.0, "era": 2, "ramp": true},
+		"snap": "floor", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 30.0, "era": 2, "ramp": true, "foot": 1},
 	# Crafting stations.
 	"workbench": {"name": "Workbench", "models": [["props/Workbench", 0, Vector3.ZERO, 1.0], ["props/Workbench_Drawers", 0, Vector3.ZERO, 1.0]],
 		"snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "station": "workbench"},
@@ -357,12 +363,30 @@ static func _tamed(m: Material) -> Material:
 	# white sheet: give them the tinted, reflective glass the rest of the game uses.
 	if m is BaseMaterial3D and m.resource_name == "M_Glass":
 		return Materials.get_mat("glass")
+	# The village kit's plaster normal map is authored for small props: on a whole wall it
+	# reads as cottage cheese. Lime plaster is smooth with only a gentle unevenness.
+	if m is BaseMaterial3D and m.resource_name == "MI_Plaster":
+		if not _tamed_mats.has(m):
+			var p := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			p.normal_scale = 0.3
+			_tamed_mats[m] = p
+		return _tamed_mats[m]
+	if m is BaseMaterial3D and (m.resource_name.ends_with("_Dark") or m.resource_name.contains("Cables")):
+		# The cabled inset panels are near black: a dark grey that still shows its cables.
+		if not _tamed_mats.has(m):
+			var dk := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			dk.albedo_color = dk.albedo_color * 2.0
+			_tamed_mats[m] = dk
+		return _tamed_mats[m]
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
+		# Bare polished metal mirrors the dark ground and turned whole outposts black:
+		# the panels are painted plate, lighter, with a little sheen.
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-		c.metallic = 0.55
+		c.metallic = 0.2
 		c.roughness = maxf(c.roughness, 0.55)
+		c.albedo_color = c.albedo_color * 1.45
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
 
@@ -378,8 +402,9 @@ static func _proc(k: MeshKit, what: String) -> void:
 	var I := Transform3D.IDENTITY
 	match what:
 		"plinth":
-			# Stone block under the floor tile, reaching into the ground on slopes.
-			k.box("stone", I.translated(Vector3(0, -1.0, 0)), Vector3(2.0, 1.98, 2.0))
+			# Stone block under the floor tile, reaching into the ground on slopes: a
+			# storey deep, so a foundation set a storey above the ground still meets it.
+			k.box("stone", I.translated(Vector3(0, -1.57, 0)), Vector3(2.0, 3.12, 2.0))
 		"campfire":
 			# A ring of smooth, flat river stones, sooted a little.
 			for n in 11:
@@ -478,6 +503,20 @@ static func _ramp(m: ArrayMesh) -> Array:
 
 # --- Placement --------------------------------------------------------------------
 
+## On the ground, how far a floor's top may sit below the ground where you aim before it
+## goes up a storey instead. Above the ground it may float up to a storey less this: the
+## foundation's plinth reaches a storey down, so it still meets the ground.
+const SINK := 0.6
+
+## Which pieces can share a spot: a floor, stairs on it, walls round it and a roof over
+## it each take their own slot; furniture only minds other furniture.
+static func slot(id: String) -> String:
+	var d := def(id)
+	if d.get("ramp", false):
+		return "stairs"
+	var m: String = d.get("snap", "free")
+	return "roof" if m.begins_with("roof") else m
+
 ## Snaps a desired world position to the piece's grid. `anchor` is a nearby built
 ## piece's world origin (or null); storeys are counted from it. `turn` is a quarter-turn
 ## count for free pieces and flips walls. Returns {pos, yaw}.
@@ -496,24 +535,38 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 		return {"pos": Vector3(snappedf(hit.x, 0.1), hit.y, snappedf(hit.z, 0.1)), "yaw": yaw}
 	var g: float = d["grid"]
 	var storey: float = d["storey"]
+	var ramp: bool = d.get("ramp", false)
 	var y := hit.y
 	if anchor != null:
 		var a: Vector3 = anchor
-		# Aiming at a wall's top (or anything above it) means the next storey up.
-		var level := floorf((hit.y - a.y + 0.3) / storey)
-		# A floor or roof aimed at a wall goes on top of it: the ceiling of that storey,
-		# in the cell on your side of the wall.
-		if ctx.get("hit_mode", "") == "wall" and mode in ["floor", "roof_c", "roof_v"]:
-			level = floorf((hit.y - a.y) / storey) + 1.0
-		level += lift
-		if on_ground and level < 0.0:
-			level = 0.0
-		y = a.y + level * storey
+		var hit_mode := String(ctx.get("hit_mode", ""))
+		var level: float
+		if on_ground:
+			# On the ground: the storey of the building nearby whose floor level is nearest
+			# the ground here, standing a little proud of it rather than buried. (Counted
+			# from whichever piece is nearest, a roof as well as a foundation.)
+			level = ceilf((hit.y - a.y - SINK) / storey)
+		else:
+			# Aiming at a wall's top (or anything above it) means the next storey up.
+			level = floorf((hit.y - a.y + 0.3) / storey)
+			if hit_mode == "wall" and mode in ["floor", "roof_c", "roof_v"] and not ramp:
+				# A floor or roof aimed at a wall goes on top of it: the ceiling of that
+				# storey, in the cell on your side of the wall.
+				level = floorf((hit.y - a.y) / storey) + 1.0
+			elif hit_mode == "floor" and level < 0.0:
+				# The side of a foundation's plinth is still that floor's storey.
+				level = 0.0
+		y = a.y + (level + lift) * storey
 	else:
 		y += lift * storey
 	var cell := Vector3(floorf(hit.x / g) * g + g * 0.5, y, floorf(hit.z / g) * g + g * 0.5)
 	match mode:
 		"floor":
+			if ramp:
+				# Stairs climb away from you, their foot in the cell you aim at.
+				var sy := snappedf(look_yaw, PI * 0.5) + turn * PI * 0.5
+				var back := Basis(Vector3.UP, sy) * Vector3.BACK
+				return {"pos": cell - back * g * float(d.get("foot", 0)), "yaw": sy}
 			var yaw := snappedf(look_yaw + PI, PI * 0.5) + turn * PI * 0.5
 			return {"pos": cell, "yaw": yaw}
 		"roof_c":
@@ -524,19 +577,143 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 			var dx := hit.x - cell.x
 			var dz := hit.z - cell.z
 			var flip := PI if turn % 2 else 0.0
-			if absf(dx) > absf(dz):
-				return {"pos": Vector3(cell.x + signf(dx) * g * 0.5, y, cell.z), "yaw": PI * 0.5 + flip}
-			return {"pos": Vector3(cell.x, y, cell.z + signf(dz) * g * 0.5), "yaw": flip}
+			var e := Vector3(signf(dx), 0, 0) if absf(dx) > absf(dz) else Vector3(0, 0, signf(dz))
+			var pos := cell + e * g * 0.5
+			if ctx.has("near"):
+				return {"pos": pos, "yaw": face_out(ctx["near"], pos, e, g, ctx.get("eye")) + flip}
+			return {"pos": pos, "yaw": (PI * 0.5 if e.x != 0.0 else 0.0) + flip}
 	return {"pos": hit, "yaw": 0.0}
 
-## True when a piece of the same placement kind already sits at this spot.
-static func occupied(streamer, id: String, pos: Vector3, yaw: float) -> bool:
+## Where the held piece could go for this aim, best first; the builder takes the first
+## spot that's free. Usually just snap()'s spot, but aiming at a piece of the same kit:
+##   a wall at a wall: the next wall along the line (aiming near its end) or on top;
+##   a floor at a floor's top: the next cell over, on the side you aim at;
+##   a wall at a floor's top: the nearest free edge of that cell;
+##   a floor at a wall: the ceiling on your side, else the other side;
+##   a roof at the same roof: the next one edge to edge;
+##   a roof at a wall: on its top, over the cells whose walls it covers best.
+## ctx as for snap(), plus hit_pos / hit_yaw / hit_id of the built piece under the
+## crosshair, normal of the surface hit, eye (the camera) and near (built_near()).
+static func candidates(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = null, on_ground := true, ctx := {}) -> Array:
+	var first := snap(id, hit, look_yaw, turn, anchor, on_ground, ctx)
+	var d := def(id)
+	var mode: String = d.get("snap", "free")
+	if mode == "free" or ctx.get("free", false) or not ctx.has("hit_pos"):
+		return [first]
+	var hd := def(String(ctx.get("hit_id", "")))
+	if float(hd.get("grid", 0.0)) != float(d["grid"]):
+		return [first]
+	var g: float = d["grid"]
+	var storey: float = d["storey"]
+	var hp: Vector3 = ctx["hit_pos"]
+	var hyaw := float(ctx.get("hit_yaw", 0.0))
+	var hb := Basis(Vector3.UP, hyaw)
+	var hit_mode: String = hd.get("snap", "free")
+	var up := Vector3.UP * storey * int(ctx.get("lift", 0))
+	var rel := Vector3(hit.x - hp.x, 0.0, hit.z - hp.z)
+	var top_face: bool = (ctx.get("normal", Vector3.UP) as Vector3).y > 0.7
+	var fwd := Vector3(-sin(look_yaw), 0.0, -cos(look_yaw))
+	var flip := PI if turn % 2 else 0.0
+	var ramp: bool = d.get("ramp", false)
+	var out: Array = []
+	if mode == "wall" and hit_mode == "wall":
+		var t := rel.dot(hb.x) / (g * 0.5)
+		var sd := signf(t) if t != 0.0 else 1.0
+		var top := {"pos": hp + Vector3.UP * storey + up, "yaw": hyaw + flip}
+		var along := {"pos": hp + hb.x * sd * g + up, "yaw": hyaw + flip}
+		var other := {"pos": hp - hb.x * sd * g + up, "yaw": hyaw + flip}
+		out = [along, top] if absf(t) > 0.5 else [top, along, other]
+	elif mode == "floor" and not ramp and hit_mode == "floor" and not hd.get("ramp", false) and top_face:
+		# Raised a storey, the same cell may be free, so snap()'s spot comes first.
+		out = [first]
+		for dd in _sides(rel, fwd, g).slice(0, 2):
+			out.append({"pos": hp + dd * g + up, "yaw": first["yaw"]})
+	elif mode == "wall" and hit_mode == "floor" and not hd.get("ramp", false) and top_face:
+		out = [first]
+		for dd in _sides(rel, Vector3.ZERO, g):
+			var e: Vector3 = dd
+			out.append({"pos": hp + e * g * 0.5 + up, "yaw": _yaw_facing(e) + flip})
+	elif mode == "floor" and not ramp and hit_mode == "wall":
+		var mirror: Vector3 = first["pos"]
+		mirror = Vector3(2.0 * hp.x - mirror.x, mirror.y, 2.0 * hp.z - mirror.z)
+		out = [first, {"pos": mirror, "yaw": first["yaw"]}]
+	elif mode.begins_with("roof") and hit_mode == mode:
+		var step := g * float(d.get("span", 2))
+		for dd in _sides(rel, fwd, step):
+			out.append({"pos": hp + dd * step + up, "yaw": hyaw})
+	elif mode.begins_with("roof") and hit_mode == "wall":
+		var span := int(d.get("span", 2))
+		var half := g * span * 0.5
+		var eye: Vector3 = ctx.get("eye", hit + fwd * -2.0)
+		var away := Vector3(hp.x - eye.x, 0.0, hp.z - eye.z).normalized()
+		var near: Array = ctx.get("near", [])
+		var at := rel.dot(hb.x)
+		var scored: Array = []
+		for s in [-1.0, 1.0]:
+			for j in span:
+				var off := (j - (span - 1) * 0.5) * g
+				var c: Vector3 = hp + hb.x * off + hb.z * s * half + Vector3.UP * storey + up
+				var score: float = 10.0 * _walls_under(near, c, half, hp.y) + (hb.z * s).dot(away) - 0.2 * absf(off - at)
+				scored.append([score, {"pos": c, "yaw": first["yaw"]}])
+		scored.sort_custom(func(p, q): return p[0] > q[0])
+		for e in scored:
+			out.append(e[1])
+	return out if not out.is_empty() else [first]
+
+## A wall's dressed face (stone, brick, timber framing) is its local +z; the other face
+## is the plain inside. The yaw that turns it to face `out`.
+static func _yaw_facing(out: Vector3) -> float:
+	return atan2(out.x, out.z)
+
+## Which way a wall at `pos` on a cell edge should face, `e` pointing from the cell you
+## aimed at to the edge: away from a floor on one side (the room is inside), and with no
+## floor either side, toward you.
+static func face_out(near: Array, pos: Vector3, e: Vector3, g: float, eye = null) -> float:
+	var here := _floor_at(near, pos - e * g * 0.5)
+	var there := _floor_at(near, pos + e * g * 0.5)
+	if here != there:
+		return _yaw_facing(e if here else -e)
+	if eye != null:
+		var to_eye := Vector3((eye as Vector3).x - pos.x, 0, (eye as Vector3).z - pos.z)
+		return _yaw_facing(e if to_eye.dot(e) >= 0.0 else -e)
+	return _yaw_facing(e)
+
+## True when a floor (or foundation, or platform) has its middle at this cell centre, on
+## this level or below (an upper storey's walls go up before its floor does).
+static func _floor_at(near: Array, c: Vector3) -> bool:
+	for f in near:
+		var p: Vector3 = f["pos"]
+		if slot(f["id"]) == "floor" and absf(p.x - c.x) < 0.3 and absf(p.z - c.z) < 0.3 and p.y < c.y + 0.6:
+			return true
+	return false
+
+## The four sides of a cell (unit vectors), the one `rel` (the aim, from the cell's
+## middle) points at first; ties go to the side you face.
+static func _sides(rel: Vector3, fwd: Vector3, size: float) -> Array:
+	var dirs := [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]
+	var score := func(v: Vector3) -> float: return v.dot(rel) / maxf(size * 0.5, 0.01) + 0.35 * v.dot(fwd)
+	dirs.sort_custom(func(p, q): return score.call(p) > score.call(q))
+	return dirs
+
+## Walls standing on `base_y` inside a roof's square (centre c, half size half).
+static func _walls_under(near: Array, c: Vector3, half: float, base_y: float) -> int:
+	var n := 0
+	for e in near:
+		var p: Vector3 = e["pos"]
+		if slot(e["id"]) == "wall" and absf(p.y - base_y) < 0.3 and absf(p.x - c.x) <= half + 0.05 and absf(p.z - c.z) <= half + 0.05:
+			n += 1
+	return n
+
+## Built pieces (not taken down) within `radius` of pos across the loaded chunks around
+## it, as {id, pos (world), yaw}.
+static func built_near(streamer, pos: Vector3, radius: float) -> Array:
+	var out: Array = []
 	if streamer == null:
-		return false
-	var mode: String = def(id).get("snap", "free")
+		return out
 	var ck := _chunk_of(pos)
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
+	var reach := int(ceil(radius / ChunkGenerator.SIZE))
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
 			var c = streamer.get_chunk(ck + Vector2i(dx, dz))
 			if c == null:
 				continue
@@ -544,15 +721,49 @@ static func occupied(streamer, id: String, pos: Vector3, yaw: float) -> bool:
 			for o in c.data["objects"]:
 				if not is_built(o["t"]) or o["st"].get("gone", false):
 					continue
-				var other: String = def(id_of(o["t"])).get("snap", "free")
-				var dist: float = (origin + o["p"]).distance_to(pos)
-				if mode == "free" or other == "free":
-					if dist < 0.6:
-						return true
-				elif other == mode and dist < 0.2:
-					if mode != "wall" or is_equal_approx(absf(cos(o["r"] - yaw)), 1.0):
-						return true
+				var wp: Vector3 = origin + o["p"]
+				if wp.distance_to(pos) <= radius:
+					out.append({"id": id_of(o["t"]), "pos": wp, "yaw": float(o["r"])})
+	return out
+
+## True when a piece taking the same slot (see slot()) already sits at this spot.
+static func occupied(streamer, id: String, pos: Vector3, yaw: float) -> bool:
+	return occupied_in(built_near(streamer, pos, 1.0), id, pos, yaw)
+
+## occupied() against a list from built_near().
+static func occupied_in(near: Array, id: String, pos: Vector3, yaw: float) -> bool:
+	var s := slot(id)
+	for e in near:
+		var os := slot(e["id"])
+		if os != s:
+			continue
+		var dist: float = (e["pos"] as Vector3).distance_to(pos)
+		if s == "free":
+			if dist < 0.6:
+				return true
+		elif dist < 0.2:
+			if s != "wall" or is_equal_approx(absf(cos(float(e["yaw"]) - yaw)), 1.0):
+				return true
 	return false
+
+## The nearest grid piece's origin in a built_near() list within `radius` of pos, or null.
+static func nearest_in(near: Array, pos: Vector3, radius: float):
+	var best = null
+	var best_d := radius
+	for e in near:
+		if def(e["id"]).get("snap") == "free":
+			continue
+		var dd: float = (e["pos"] as Vector3).distance_to(pos)
+		if dd < best_d:
+			best_d = dd
+			best = e["pos"]
+	return best
+
+## A piece's world-space box at pos / yaw, from its mesh.
+static func world_aabb(id: String, pos: Vector3, yaw: float) -> AABB:
+	var a := mesh(id).get_aabb()
+	var xf := Transform3D(Basis(Vector3.UP, yaw), pos)
+	return xf * a
 
 ## Station ids within reach of a world position, from loaded chunks.
 static func stations_near(streamer, pos: Vector3) -> Dictionary:
@@ -576,26 +787,7 @@ static func stations_near(streamer, pos: Vector3) -> Dictionary:
 
 ## The nearest built piece origin (world space) within `radius` of pos, or null.
 static func nearest_piece(streamer, pos: Vector3, radius: float):
-	if streamer == null:
-		return null
-	var ck := _chunk_of(pos)
-	var best = null
-	var best_d := radius
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
-			var c = streamer.get_chunk(ck + Vector2i(dx, dz))
-			if c == null:
-				continue
-			var origin := Vector3((ck.x + dx) * ChunkGenerator.SIZE, 0, (ck.y + dz) * ChunkGenerator.SIZE)
-			for o in c.data["objects"]:
-				if not is_built(o["t"]) or o["st"].get("gone", false) or def(id_of(o["t"])).get("snap") == "free":
-					continue
-				var wp: Vector3 = origin + o["p"]
-				var dd := wp.distance_to(pos)
-				if dd < best_d:
-					best_d = dd
-					best = wp
-	return best
+	return nearest_in(built_near(streamer, pos, radius), pos, radius)
 
 ## Same as ChunkStreamer.chunk_of; kept here so this class does not depend on the
 ## streamer (which needs the Game autoload) and stays usable from tools and tests.
