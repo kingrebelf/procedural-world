@@ -333,6 +333,24 @@ static func fires(t: String) -> Array:
 	_fires[t] = out
 	return out
 
+## Stone rooms whose still air holds dust, so sunbeams show through their windows.
+const DUSTY := ["castle_keep", "crypt_keep", "castle_tower", "crypt_tower", "watchtower"]
+
+## The dusty air inside a stone room, in the object's own space (sunk like the object):
+## [centre, size], or [] for a room without.
+static func dust(t: String) -> Array:
+	if not t in DUSTY:
+		return []
+	if BOX.has(t):
+		var b: Array = BOX[t]
+		var half: Vector2 = b[0]
+		var y0: float = b[1]
+		var y1: float = b[2]
+		return [Vector3(0.0, (y0 + y1) * 0.5 - SINK, 0.0), Vector3(half.x * 2.0, y1 - y0, half.y * 2.0)]
+	var r: Array = ROUND[t]
+	var inner: float = float(r[0]) - float(r[2])
+	return [Vector3(0.0, (float(r[5]) + float(r[6])) * 0.5 - SINK, 0.0), Vector3(inner * 1.4, float(r[6]) - float(r[5]), inner * 1.4)]
+
 ## Lights in the object's own space (sunk like the object): [position, colour, energy, range].
 static func lights(t: String) -> Array:
 	if KitHouse.has(t):
