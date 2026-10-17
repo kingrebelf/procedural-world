@@ -38,6 +38,7 @@ var body: Node3D ## whose motion over the ground sets the pace
 var locomotion := true ## off for first-person arms, which ride the camera
 var lod := true ## off where the person must always animate fully (first-person arms)
 var manual := false ## advanced only by update() (tools stepping time exactly)
+var calm := false ## standing about doing nothing much (idling, chatting): updated less often unless close
 
 var _bt: AnimationNodeBlendTree
 var _gait := {} ## name -> {speed, len, phase}
@@ -298,6 +299,9 @@ func _lod_every() -> int:
 	var p := body.global_position
 	var d := cam.global_position.distance_to(p)
 	var every := 1 if d < 22.0 else (2 if d < 45.0 else (4 if d < 90.0 else 8))
+	if calm:
+		# A slow idle or a chat reads the same at half the rate from a few steps off.
+		every = 1 if d < 8.0 else (2 if d < 30.0 else (4 if d < 60.0 else 8))
 	if d > 5.0 and not cam.is_position_in_frustum(p + Vector3.UP):
 		every = maxi(every, 6)
 	if ik:
