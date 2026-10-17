@@ -18,6 +18,20 @@ var _udp: PacketPeerUDP
 var _scan_until := 0
 var _scan_t0 := 0
 
+## Whether an address is on this machine or a private local network (where LAN
+## discovery answers), not out on the internet.
+static func is_local(ip: String) -> bool:
+	if ip.begins_with("::ffff:"):
+		ip = ip.substr(7)
+	if ip == "::1" or ip.to_lower().begins_with("fe80:") or ip.to_lower().begins_with("fc") or ip.to_lower().begins_with("fd"):
+		return true
+	var q := ip.split(".")
+	if q.size() != 4:
+		return false
+	var a := q[0].to_int()
+	var b := q[1].to_int()
+	return a == 10 or a == 127 or (a == 172 and b >= 16 and b <= 31) or (a == 192 and b == 168) or (a == 169 and b == 254)
+
 ## Asks one server for its info. The answer comes as answered("host:port", info).
 func ask(host: String, port: int) -> void:
 	var key := "%s:%d" % [host, port]

@@ -109,6 +109,9 @@ func _run() -> void:
 	check(String(a1.get("name", "")) == "Test Server" and bool(a1.get("password", false)) and a1.has("ping"), "a server answers with its name, password flag and ping (%s)" % a1)
 	var lan: Dictionary = answers.get("lan:127.0.0.1:%d" % PORT, {})
 	check(String(lan.get("name", "")) == "Test Server" and int(lan.get("port", 0)) == PORT, "and on the local network (%s)" % lan)
+	check(ServerQuery.is_local("192.168.1.20") and ServerQuery.is_local("10.0.0.7") and ServerQuery.is_local("172.20.1.1") and ServerQuery.is_local("::1")
+		and not ServerQuery.is_local("8.8.8.8") and not ServerQuery.is_local("172.32.0.1") and not ServerQuery.is_local("2001:db8::1"),
+		"LAN discovery answers only this machine and private networks")
 	check(answers.get("127.0.0.1:%d" % (PORT + 50), {}).has("error"), "an address with no server says so")
 	q.queue_free()
 

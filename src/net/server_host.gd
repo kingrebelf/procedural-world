@@ -636,7 +636,9 @@ func _open_lan() -> void:
 func _answer_lan() -> void:
 	while _lan.get_available_packet_count() > 0:
 		var pkt := _lan.get_packet()
-		if pkt.get_string_from_utf8() != ServerQuery.HELLO:
+		# Only the local network: a server on the internet must not answer anyone's
+		# (possibly forged) "who's there?" with a bigger packet.
+		if pkt.get_string_from_utf8() != ServerQuery.HELLO or not ServerQuery.is_local(_lan.get_packet_ip()):
 			continue
 		var info := cfg.info(online.size())
 		info["game"] = "procedural-world"
