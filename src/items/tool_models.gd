@@ -845,15 +845,15 @@ static func _hammer(k: MeshKit):
 	# A claw hammer: a hickory handle with a swelling at the butt, a round steel face to +X
 	# and a split claw curving down to -X.
 	haft(k, -0.02, 0.33, 0.016, 0.013, HICKORY)
-	hammer_head(k, "it_iron", 0.315, 0.04, 0.019)
-	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.035, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.016, 0.0), Vector2(0.015, 0.012), Vector2(0.0, 0.013)], 12)
+	hammer_head(k, "it_iron", 0.315, 0.05, 0.023)
+	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.05, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.021, 0.0), Vector2(0.02, 0.014), Vector2(0.0, 0.015)], 12)
 	for z in [-1.0, 1.0]:
 		var st := []
 		for i in 7:
 			var f := float(i) / 6.0
 			var a := f * 0.9
-			var w := lerpf(0.011, 0.004, f)
-			st.append(_at(Vector3(-0.035 - sin(a) * 0.07, 0.315 - (1.0 - cos(a)) * 0.07, z * 0.0055), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0045, w, 0.3)))
+			var w := lerpf(0.014, 0.005, f)
+			st.append(_at(Vector3(-0.05 - sin(a) * 0.085, 0.315 - (1.0 - cos(a)) * 0.085, z * 0.0065), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0055, w, 0.3)))
 		sweep(k, "it_iron", Transform3D.IDENTITY, st, true)
 	_wedge(k, 0.315, 0.013)
 	return Vector3(0, 0.18, 0) # choked up toward the head, for light, aimed blows
