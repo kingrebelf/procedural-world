@@ -1596,7 +1596,8 @@ func test_kit_flora() -> void:
 	check(forms.size() >= 10, "trees come in many forms (%d)" % forms.size())
 	var bush := RealTree.build_bush(5, 1.0)
 	check(bush.get_surface_count() == 2 and bush.get_aabb().size.y < 1.6, "bushes are leaf sprays about a metre tall")
-	# Human worlds keep their trees green: the odd violet species is alien-only.
+	# Oaks keep green (or copper beech) leaves on every world: violet foliage belongs to
+	# alien flora, and oaks never grow there.
 	var was := Eras.theme
 	for th in ["human", "alien"]:
 		Eras.theme = th
@@ -1605,7 +1606,7 @@ func test_kit_flora() -> void:
 			var h := (Flora.species("oak", sp)["leaf"] as Color).h
 			if h > 0.7 and h < 0.97:
 				violet += 1
-		check((violet == 0) == (th == "human"), "violet oaks on %s worlds: %d" % [th, violet])
+		check(violet == 0, "no violet oaks on %s worlds: %d" % [th, violet])
 	Eras.theme = was
 	for n in KitFlora.ALL:
 		check(ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "kit model %s is in the repo" % n)
