@@ -42,8 +42,8 @@ const SEATED := ["sit", "row", "sit_bench"]
 ## boat), paint (sci-fi hulls are painted, not planked).
 const HULLS := {
 	"rowboat": {"L": 4.4, "B": 1.45, "D": 0.32, "F": 0.42, "rise": 0.18, "transom": 0.55, "deck": NAN},
-	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6},
-	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.62, "deck": 1.6},
+	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6, "tumble": 0.04},
+	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.62, "deck": 1.6, "tumble": 0.09},
 	"launch": {"L": 7.5, "B": 2.5, "D": 0.55, "F": 0.7, "rise": 0.25, "transom": 0.8, "deck": 0.52, "paint": true},
 	"research_vessel": {"L": 26.0, "B": 7.0, "D": 2.4, "F": 2.1, "rise": 0.9, "transom": 0.85, "deck": 1.95, "paint": true},
 }
@@ -201,7 +201,9 @@ static func _hull_pt(h: Dictionary, u: float, v: float) -> Vector3:
 	# The bow rakes forward toward the top, the stern a little aft.
 	if u > 0.85:
 		z -= (u - 0.85) / 0.15 * v * float(h["L"]) * 0.05
-	return Vector3(s.x * pow(sin(a), 0.5), -s.y + (s.y + s.z) * (1.0 - cos(a)), z)
+	# Tumblehome: big wooden hulls draw in a little toward the rail.
+	var tumble := 1.0 - float(h.get("tumble", 0.0)) * smoothstep(0.7, 1.0, v)
+	return Vector3(s.x * pow(sin(a), 0.5) * tumble, -s.y + (s.y + s.z) * (1.0 - cos(a)), z)
 
 ## Half-width of the hull at height y and u (deck edges).
 static func _width_at(h: Dictionary, u: float, y: float) -> float:
@@ -251,8 +253,28 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 				var n10 := _hull_n(h, grid, i + 1, j, side)
 				var n11 := _hull_n(h, grid, i + 1, j + 1, side)
 				var n01 := _hull_n(h, grid, i, j + 1, side)
-				_tri_out(k, mat, p00, p10, p11, n00, n10, n11, hint, c)
-				_tri_out(k, mat, p00, p11, p01, n00, n11, n01, hint, c)
+				if mat == "planks":
+					# Clinker: each strake's lower edge laps out over the one below, so the
+					# side reads as overlapping planks, each its own shade of weathered wood.
+					var hgt := maxf((p01 - p00).length(), 0.05)
+					var lap := clampf(hgt * 0.09, 0.012, 0.045)
+					var up := (p01 - p00) / hgt
+					var b00 := p00 + n00 * lap
+					var b10 := p10 + n10 * lap
+					var t00 := (n00 - up * (lap / hgt)).normalized()
+					var t10 := (n10 - up * (lap / hgt)).normalized()
+					var t11 := (n11 - up * (lap / hgt)).normalized()
+					var t01 := (n01 - up * (lap / hgt)).normalized()
+					var wv := fposmod(sin(float(j) * 12.9898 + floor(float(i) / 6.0) * 78.233 + side * 3.1) * 43758.5453, 1.0)
+					var sc := c.darkened(wv * 0.16) if c == col else c
+					_tri_out(k, mat, b00, b10, p11, t00, t10, t11, hint, sc)
+					_tri_out(k, mat, b00, p11, p01, t00, t11, t01, hint, sc)
+					if j > 0:
+						_tri_out(k, mat, p00, p10, b10, -up, -up, -up, -up + n00 * 0.2, sc.darkened(0.35))
+						_tri_out(k, mat, p00, b10, b00, -up, -up, -up, -up + n00 * 0.2, sc.darkened(0.35))
+				else:
+					_tri_out(k, mat, p00, p10, p11, n00, n10, n11, hint, c)
+					_tri_out(k, mat, p00, p11, p01, n00, n11, n01, hint, c)
 				faces.append_array([p00, p10, p11, p00, p11, p01])
 				# The inside, a plank's thickness in, seen from the deck or the bilge.
 				var q := func(p: Vector3) -> Vector3: return Vector3(p.x - side * th if absf(p.x) > th else 0.0, p.y + th * 0.5, p.z)
@@ -326,6 +348,36 @@ static func waterline(kind: String) -> PackedVector2Array:
 				var u := float(i) / n
 				out.append(Vector2(-maxf(_width_at(h, u, 0.0), 0.02), L * (0.5 - u)))
 	return out
+
+## Sternpost up the middle of the transom, and the rudder hung on it: a tapered blade,
+## broad below the water and narrowing to its stock, which rises to the tiller at `head`.
+static func _rudder(k: MeshKit, h: Dictionary, head: float) -> void:
+	var zs := float(h["L"]) * 0.5
+	var bot := -float(h["D"]) * 0.7
+	var top := float(h["F"]) + float(h["rise"]) * 1.0
+	_beam(k, "timber", Vector3(0, bot - 0.05, zs + 0.04), Vector3(0, top + 0.1, zs + 0.04), 0.13)
+	var col := Color(0.42, 0.34, 0.27)
+	var t := 0.07
+	# Blade outline (z behind the post, y): broad foot, a curve up the trailing edge.
+	var prof := [Vector2(0.12, bot), Vector2(1.25, bot + 0.15), Vector2(1.3, bot + 1.2), Vector2(1.05, 0.4),
+		Vector2(0.6, 1.2), Vector2(0.32, top - 0.2), Vector2(0.12, top - 0.2)]
+	var cz := Vector2(0.4, (bot + top) * 0.5)
+	for side in [1.0, -1.0]:
+		for i in prof.size():
+			var a: Vector2 = prof[i]
+			var b: Vector2 = prof[(i + 1) % prof.size()]
+			var n := Vector3(side, 0, 0)
+			_tri_out(k, "planks", Vector3(side * t, cz.y, zs + cz.x), Vector3(side * t, a.y, zs + a.x), Vector3(side * t, b.y, zs + b.x), n, n, n, n, col)
+	for i in prof.size():
+		var a: Vector2 = prof[i]
+		var b: Vector2 = prof[(i + 1) % prof.size()]
+		var pa := Vector3(0, a.y, zs + a.x)
+		var pb := Vector3(0, b.y, zs + b.x)
+		k.quad("planks", Transform3D.IDENTITY, pa + Vector3(t, 0, 0), pb + Vector3(t, 0, 0), pb - Vector3(t, 0, 0), pa - Vector3(t, 0, 0), col.darkened(0.15))
+	# Iron straps (pintles) binding blade to post, and the stock up to the tiller.
+	for y in [bot + 0.5, 0.2, top - 0.6]:
+		k.box("iron", Transform3D(Basis.IDENTITY, Vector3(0, y, zs + 0.35)), Vector3(t * 2.0 + 0.04, 0.08, 0.6))
+	_beam(k, "timber", Vector3(0, top - 0.25, zs + 0.2), Vector3(0, head, zs - 0.35), 0.09)
 
 ## Smooth normal at a grid point, pointing out of the hull.
 static func _hull_n(h: Dictionary, grid: Array, i: int, j: int, side: float) -> Vector3:
@@ -704,6 +756,17 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	var cab := Vector3(hx * 2.0, 2.3, 4.2)
 	_room(k, shapes, cab_c, cab, "-z", "planks", "wood_floor", "planks", Color(0.66, 0.54, 0.42))
 	var top := dy + cab.y + 0.12
+	# Framing on the castle's plain walls: corner posts, wales along its sides, a moulded
+	# cap under the rail and a pair of shuttered stern windows.
+	for s in [-1.0, 1.0]:
+		for z in [4.9, 9.1]:
+			_beam(k, "timber", Vector3(s * (hx + 0.04), dy - 0.2, z), Vector3(s * (hx + 0.04), top + 0.05, z), 0.09)
+		for y in [dy + 0.9, dy + 1.8]:
+			k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * (hx + 0.05), y, 7.0)), Vector3(0.08, 0.12, 4.25))
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * (hx + 0.07), top - 0.02, 7.0)), Vector3(0.14, 0.18, 4.35))
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.8, dy + 1.5, 9.14)), Vector3(0.6, 0.55, 0.06), Color(0.3, 0.22, 0.16))
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(s * 0.8, dy + 1.5, 9.17)), Vector3(0.7, 0.07, 0.04))
+	k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, top - 0.02, 9.16)), Vector3(hx * 2.0 + 0.2, 0.18, 0.14))
 	for s in [-1.0, 1.0]:
 		_beam(k, "timber", Vector3(s * hx, top, 4.9), Vector3(s * hx, top, 9.1), 0.06)
 		_beam(k, "timber", Vector3(s * hx, top + 0.9, 4.9), Vector3(s * hx, top + 0.9, 9.1), 0.06)
@@ -717,7 +780,7 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	back.size = Vector3(hx * 2.0, 1.0, 0.1)
 	shapes.append([back, Transform3D(Basis.IDENTITY, Vector3(0, top + 0.5, 9.1))])
 	_beam(k, "timber", Vector3(0, top + 0.85, 8.1), Vector3(0, top + 0.5, 9.6), 0.06)
-	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, -0.2, 10.2)), Vector3(0.14, 3.6, 1.2), Color(0.55, 0.45, 0.36))
+	_rudder(k, h, top + 0.5)
 	# Stairs from the waist up to the sterncastle, port side.
 	_stairs(k, shapes, Vector3(-hx + 0.6, dy, 2.75), Vector3(-hx + 0.6, top, 4.9), 0.9, "planks", Color(0.7, 0.58, 0.46))
 	# Inside: table and benches, the captain's chest, a bunk, a lantern, charts.

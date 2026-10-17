@@ -11,7 +11,7 @@ const SHOTS := {
 	"rowboat": [[Vector3(5, 2.6, 4), Vector3(0, 0.3, 0)], [Vector3(-1.6, 2.2, 3.6), Vector3(0, 0.2, -0.5)], [Vector3(4.5, 1.4, -1.5), Vector3(0, 0.5, 0.4)]],
 	"fishing_boat": [[Vector3(9, 4, 8), Vector3(0, 2.0, 0)], [Vector3(-1.2, 2.3, 4.2), Vector3(0, 1.0, -2)]],
 	"cog": [[Vector3(22, 9, 18), Vector3(0, 4, 0)], [Vector3(-14, 5, -16), Vector3(0, 3, 0)], [Vector3(1.8, 3.4, -4.5), Vector3(0, 3.0, 6)],
-		[Vector3(-1.5, 3.3, 5.2), Vector3(1.2, 2.0, 8.5)], [Vector3(14, 1.2, 1), Vector3(0, 1.5, -1)]],
+		[Vector3(-1.5, 3.3, 5.2), Vector3(1.2, 2.0, 8.5)], [Vector3(14, 1.2, 1), Vector3(0, 1.5, -1)], [Vector3(9, 2.5, 19), Vector3(0, 1.0, 9)]],
 	"life_raft": [[Vector3(4, 2.6, 4), Vector3(0, 0.6, 0)]],
 	"launch": [[Vector3(8, 4, 7), Vector3(0, 1.2, 0)], [Vector3(-1.0, 2.4, 4.6), Vector3(0.4, 1.2, -1)]],
 	"research_vessel": [[Vector3(26, 10, 22), Vector3(0, 4, 0)], [Vector3(-20, 6, -20), Vector3(0, 4, 0)], [Vector3(1.2, 6.3, 0.9), Vector3(0, 5.6, -2.2)],
