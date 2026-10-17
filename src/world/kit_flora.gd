@@ -370,7 +370,7 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 				pieces.append(["Rock_Medium_%d" % (1 + (sp + n) % 3), Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(sz, sz * sq * 1.2, sz) * u),
 					Vector3(cos(a) * 0.7, -0.05, sin(a) * 0.7))])
 		_: pieces.append([base, Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(1.0, 0.55 + sq * 0.6, 1.0) * u), Vector3(0, -0.1, 0))])
-	var mat: Material = Materials.get_mat("stone_w")
+	var mat: Material = StoneKit.material()
 	if t == "iron_vein":
 		mat = _ore_material("iron")
 		col = col.darkened(0.25)

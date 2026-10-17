@@ -142,7 +142,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if not is_nan(look_y):
 		tgt_h = look_y
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
-	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 0})
+	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
@@ -251,6 +251,8 @@ func _run() -> void:
 		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
+	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
+		await _ground_shots(g)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():
@@ -280,6 +282,82 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
+## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
+func _ground_shots(g: ChunkGenerator) -> void:
+	var meadow := Vector2.ZERO
+	var cliff := Vector4.ZERO
+	for i in 12000:
+		var a := i * 0.37
+		var p := Vector2(cos(a), sin(a)) * (50.0 + i * 3.0)
+		if g.field.era_weights(p.x, p.y)[Eras.MEDIEVAL] < 0.9:
+			continue
+		var h := g.field.height(p.x, p.y)
+		if h < 3.0:
+			continue
+		var flat := true
+		for k in 8:
+			var d := Vector2.from_angle(k * TAU / 8.0)
+			flat = flat and absf(g.field.height(p.x + d.x * 6.0, p.y + d.y * 6.0) - h) < 0.9
+		if not flat:
+			continue
+		if meadow == Vector2.ZERO:
+			var open := true
+			for k in 8:
+				var d := Vector2.from_angle(k * TAU / 8.0)
+				open = open and absf(g.field.height(p.x + d.x * 30.0, p.y + d.y * 30.0) - h) < 4.0
+			if open:
+				meadow = p
+		if cliff == Vector4.ZERO:
+			# A wall, not a lone pillar: the ground rises steeply ahead across a broad
+			# front, and stays level behind for the camera.
+			for k in 16:
+				var d := Vector2.from_angle(k * TAU / 16.0)
+				var side := d.orthogonal()
+				var wall := true
+				for o: float in [-12.0, 0.0, 12.0]:
+					var q: Vector2 = p + side * o
+					wall = wall and g.field.height(q.x + d.x * 20.0, q.y + d.y * 20.0) - h > 8.0
+					wall = wall and absf(g.field.height(q.x + d.x * 4.0, q.y + d.y * 4.0) - h) < 1.2
+				var back := p - d * 18.0
+				wall = wall and absf(g.field.height(back.x, back.y) - h) < 2.0
+				# On dry ground: no lake or river where the camera stands or looks.
+				if wall:
+					for t in 5:
+						wall = wall and _dry(g, back.lerp(p + d * 3.0, t / 4.0))
+				if wall:
+					cliff = Vector4(p.x, p.y, d.x, d.y)
+					break
+		if meadow != Vector2.ZERO and cliff != Vector4.ZERO:
+			break
+	if meadow != Vector2.ZERO:
+		await _shot("50_meadow", meadow, meadow + Vector2(40, 25), 0.4, 1.7)
+	if cliff != Vector4.ZERO:
+		var at := Vector2(cliff.x, cliff.y)
+		var d := Vector2(cliff.z, cliff.w)
+		var h := g.field.height(at.x, at.y)
+		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
+		# Standing at the cliff foot, looking down at the stones ahead.
+		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
+
+var _dry_chunks := {}
+var _dry_gen: ChunkGenerator
+
+## Whether a point is on land, above the sea and out of any river or river-fed lake
+## (those sit above sea level). Built with the world's own rivers flag, as the game is.
+func _dry(_g: ChunkGenerator, p: Vector2) -> bool:
+	if _dry_gen == null:
+		_dry_gen = ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var key := Vector2i(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+	if not _dry_chunks.has(key):
+		_dry_chunks[key] = _dry_gen.generate(key.x, key.y)
+	var c: Dictionary = _dry_chunks[key]
+	var lx := p.x - key.x * 64.0
+	var lz := p.y - key.y * 64.0
+	var h := ChunkGenerator.height_at(c, lx, lz)
+	var rs := ChunkGenerator.river_surface(c, lx, lz)
+	return h > ChunkGenerator.WATER_LEVEL + 1.5 and not ChunkGenerator.by_river(c, lx, lz) and (is_nan(rs) or h > rs + 1.0)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell

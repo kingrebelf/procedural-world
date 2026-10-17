@@ -1,6 +1,8 @@
 shader_type spatial;
 // Instanced grass blades with wind. INSTANCE_CUSTOM.rgb is the era-blended tint,
-// INSTANCE_CUSTOM.a the fantasy glow amount.
+// INSTANCE_CUSTOM.a the fantasy glow amount. Vertex COLOR (GrassKit): rgb the blade's own
+// shade times SHADE_SCALE, or with a = 0 the fixed colour of a petal or seed head. UV2 is
+// the distance over which the species thins out.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
 
@@ -8,8 +10,11 @@ global uniform float wind_strength;
 global uniform vec2 wind_dir;
 global uniform float wind_time;
 uniform float night_glow = 1.0;
+uniform float detail = 1.0; // graphics setting "detail_distance"
+const float SHADE_SCALE = 0.7;
 varying float glow;
 varying vec3 tint;
+varying float shade;
 
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -26,14 +31,26 @@ void vertex() {
 	glow = INSTANCE_CUSTOM.a;
 	// Tints are authored as sRGB colours; shading happens in linear space.
 	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
+	shade = 1.0 - 0.42 * cloud_shadow(wp);
+	// Thin out with distance: each clump has its own cut-off, so the field thins evenly
+	// instead of a hard edge; the clumps that remain grow a little to keep the cover.
+	float far = smoothstep(UV2.x * detail, UV2.y * detail, length(wp - CAMERA_POSITION_WORLD));
+	vec3 p3 = fract(vec3(wp.xzx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	float pick = fract((p3.x + p3.y) * p3.z);
+	VERTEX *= smoothstep(pick, pick + 0.12, (1.0 - far) * 1.12) * (1.0 + far * 0.4);
 }
 
 void fragment() {
-	vec3 base = tint;
-	ALBEDO = mix(base * 0.3, base * 1.05, UV.y);
+	bool own = COLOR.a < 0.5;
+	vec3 base = own ? pow(COLOR.rgb, vec3(2.2)) * shade : tint * COLOR.rgb / SHADE_SCALE;
+	ALBEDO = own ? base : mix(base * 0.35, base * 1.05, UV.y);
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.3;
-	BACKLIGHT = base * 0.45;
-	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, 0.65));
+	BACKLIGHT = base * (own ? 0.3 : 0.45);
+	// Rounded across the blade, and leaning toward up so a field shades like a surface.
+	vec3 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	vec3 n = normalize(mix(NORMAL, up, 0.55));
+	NORMAL = normalize(n + cross(n, up) * (UV.x - 0.5) * 0.6);
 	EMISSION = base * glow * smoothstep(0.75, 1.0, UV.y) * 1.2 * night_glow;
 }

@@ -1285,7 +1285,7 @@ func _check_landform_mesh() -> void:
 		check(c0.size() == verts.size() * 4 and c2.size() == verts.size() * 4 and pale > verts.size() / 2,
 			"karst terrain at LOD %d is pale limestone (%d of %d vertices)" % [step, pale, verts.size()])
 		var m := ArrayMesh.new()
-		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, ChunkNode.LOOK_FORMAT)
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, ChunkNode.LOOK_FORMAT | ChunkNode.COVER_FORMAT)
 		check(m.get_surface_count() == 1 and m.surface_get_format(0) & Mesh.ARRAY_FORMAT_CUSTOM0, "the LOD %d mesh takes the look" % step)
 
 ## The nearest level spot near `from` with nothing standing within 5 m, to stand on.
