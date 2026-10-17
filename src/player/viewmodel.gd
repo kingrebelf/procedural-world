@@ -18,7 +18,7 @@ const ARMS_REST := Vector3(0.08, -0.03, 0.0)
 ## One-handed tools: only the right arm, further right and lower, the tool leaning in.
 const ARM_REST := Vector3(0.14, -0.07, -0.02)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
-const TOOL_AIM := Vector3(-0.35, 0.5, -0.8)
+const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()
@@ -43,7 +43,7 @@ static func prop_for(t: String, it = null) -> Node3D:
 	var mi := MeshInstance3D.new()
 	n.add_child(mi)
 	var d := ItemDB.def(t)
-	if d.get("kind", "") in ["tool", "weapon"] and model(t) != null:
+	if d.get("kind", "") in ["tool", "weapon", "light"] and model(t) != null:
 		mi.mesh = model(t)
 		mi.material_overlay = aura_for(it)
 	else:
@@ -74,7 +74,7 @@ static func aura_for(it) -> Material:
 	return m
 
 ## Held like a gun: the item points along the view instead of being raised.
-const POINTED := ["pulse_pistol", "pickaxe_plasma"]
+const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead"]
 
 static func pointed(t: String) -> bool:
 	return t in POINTED or ItemDB.def(t).get("ranged", false)
@@ -82,8 +82,8 @@ static func pointed(t: String) -> bool:
 ## Kit model, scale, and the colour the bronze metal is re-tinted to (the kit's wood,
 ## leather and paint stay as they are). Handles run along +Y; guns point along -Z.
 const KIT := {
-	"pickaxe_iron": ["props/Pickaxe_Bronze", 0.72, Color(0.86, 0.88, 0.92)],
-	"pickaxe_mythril": ["props/Pickaxe_Bronze", 0.72, Color(0.45, 0.85, 1.0)],
+	"pickaxe_iron": ["props/Pickaxe_Bronze", 0.58, Color(0.86, 0.88, 0.92)],
+	"pickaxe_mythril": ["props/Pickaxe_Bronze", 0.58, Color(0.45, 0.85, 1.0)],
 	"axe_iron": ["props/Axe_Bronze", 0.95, Color(0.86, 0.88, 0.92)],
 	"axe_mythril": ["props/Axe_Bronze", 0.95, Color(0.45, 0.85, 1.0)],
 	"sword_iron": ["props/Sword_Bronze", 0.85, Color(0.9, 0.92, 0.96)],
@@ -133,6 +133,12 @@ static func _forged(t: String) -> ArrayMesh:
 					k.cylinder("timber", Transform3D(b, prev), 0.017, 0.017, d.length(), 6)
 				prev = p
 			k.cylinder("cloth", I.translated(Vector3(0, -0.75, 0)), 0.003, 0.003, 1.5, 4)
+		"flashlight", "flashlight_dead":
+			# Pointing ahead like a gun: a dark tube, a flared head, and the lens.
+			var ahead := Basis(Vector3(1, 0, 0), -PI * 0.5)
+			k.cylinder("metal_dark", Transform3D(ahead, Vector3(0, 0.03, 0.06)), 0.019, 0.019, 0.18, 10)
+			k.cylinder("metal", Transform3D(ahead, Vector3(0, 0.03, -0.12)), 0.021, 0.031, 0.06, 10)
+			k.cylinder("glow_white" if t == "flashlight" else "metal_dark", Transform3D(ahead, Vector3(0, 0.03, -0.18)), 0.028, 0.028, 0.004, 10)
 		_:
 			return null
 	return k.commit(Materials.get_mat)
@@ -157,6 +163,8 @@ static func model(t: String) -> ArrayMesh:
 			k.cylinder("glow_cyan", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.29)), 0.028, 0.002, 0.14, 8)
 			k.cylinder("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.215)), 0.04, 0.034, 0.03, 10)
 			_append(out, k.commit(Materials.get_mat))
+	elif t == "torch":
+		out = HandLight.torch_model()
 	elif _forged(t) != null:
 		out = _forged(t)
 	elif t == "hammer" and ResourceLoader.exists("res://assets/models/props/Pickaxe_Bronze.gltf"):
@@ -300,9 +308,9 @@ func _aim() -> void:
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
 		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
-		# An axe's edge (its -Z) must face where you swing: the grip only fixes the
-		# handle, so turn the head about the handle until the edge leads.
-		if _type.begins_with("axe_") and arms._held != null and arms._held.get_child_count() > 0:
+		# The grip only fixes the handle: turn an axe's or a pick's head about it so its
+		# flat (local -Z) faces ahead and the head shows side-on, blade or picks across.
+		if (_type.begins_with("axe_") or _type.begins_with("pickaxe_")) and arms._held != null and arms._held.get_child_count() > 0:
 			var prop := arms._held.get_child(0) as Node3D
 			var want := prop.global_basis.inverse() * (b * Vector3.FORWARD)
 			want.y = 0.0
