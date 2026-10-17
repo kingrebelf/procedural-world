@@ -284,6 +284,20 @@ func _run() -> void:
 	check(streamer.chunks.size() >= 9, "chunks streamed in (%d)" % streamer.chunks.size())
 	var here: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var here_key: Vector2i = here.key
+	# A chunk in grass range that landed bare (its load was asked for before a jump brought
+	# it near) grows its grass once its next job comes back.
+	for i in 300:
+		if here.grass_built and not streamer._jobs.has(here_key):
+			break
+		await process_frame
+	here.set_grass({})
+	here.grass_built = false
+	streamer._submit(here_key, "lod")
+	for i in 900:
+		if here.grass_built:
+			break
+		await process_frame
+	check(here.grass_built and here.has_grass(), "a chunk that landed bare in grass range grows its grass")
 
 	# The atlas paints the land that streams in and lifts the fog where you stand.
 	for i in 60:

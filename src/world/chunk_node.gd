@@ -1115,6 +1115,9 @@ func apply_detail() -> void:
 func has_grass() -> bool:
 	return not _grass.is_empty()
 
+## The streamer has grown this chunk's grass (which may be none at all, on rock or water).
+var grass_built := false
+
 ## Collision and interactive bodies only exist near the player.
 func set_near(on: bool) -> void:
 	if on == near:

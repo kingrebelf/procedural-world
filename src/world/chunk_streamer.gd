@@ -92,14 +92,21 @@ func _retarget() -> void:
 		node.set_near(d <= near_radius)
 		if node.lod != lod_for(d) and not _jobs.has(k):
 			_submit(k, "lod")
-		var want_grass := d <= grass_radius and grass_density > 0.0
-		if want_grass and not node.has_grass() and not _jobs.has(k):
-			_submit(k, "grass")
-		elif not want_grass and node.has_grass():
-			node.set_grass({})
+		_check_grass(k, node, d)
 	var cur := chunks.get(_center) as ChunkNode
 	if cur != null and not preview:
 		Game.visit_chunk(cur.data)
+
+## Grows grass on a chunk that came within grass range and clears it from one that left.
+## Checked on every move and after every job: a chunk loaded without grass (asked for when
+## it was still out of range) that lands after a jump would otherwise stay bare.
+func _check_grass(k: Vector2i, node: ChunkNode, d: int) -> void:
+	var want_grass := d <= grass_radius and grass_density > 0.0
+	if want_grass and not node.grass_built and not _jobs.has(k):
+		_submit(k, "grass")
+	elif not want_grass and node.grass_built:
+		node.set_grass({})
+		node.grass_built = false
 
 func _wanted() -> Array:
 	var out: Array = []
@@ -212,6 +219,7 @@ func _collect() -> void:
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
+				node.grass_built = true
 			if k == _center and not preview:
 				Game.visit_chunk(node.data)
 			chunk_ready.emit(node)
@@ -225,6 +233,7 @@ func _collect() -> void:
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
+				node.grass_built = true
 		if _replacing.has(k) and not _jobs.has(k):
 			if chunks.has(k):
 				_submit_replace(k)
@@ -237,6 +246,7 @@ func _collect() -> void:
 			node.set_near(d <= near_radius)
 			if node.lod != lod_for(d) and not _jobs.has(k):
 				_submit(k, "lod")
+			_check_grass(k, node, d)
 
 ## Swaps in a newer copy of a chunk (another player's edit, from the server): the
 ## loaded chunk is rebuilt from it in the background and replaced when ready.
@@ -351,3 +361,4 @@ func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	_center = Vector2i(999999, 999999)
 	for k in chunks:
 		chunks[k].set_grass({})
+		chunks[k].grass_built = false
