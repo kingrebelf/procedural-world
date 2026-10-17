@@ -13,7 +13,8 @@ const ACTIONS := ["idle", "wander", "work", "socialize", "go_home", "sleep", "gr
 ## per (perception):
 ##   hour: float 0..24, pos: Vector2, center: Vector2, noise: float 0..1,
 ##   player_dist: float, player_pos: Vector2, player_armed: bool,
-##   override: {action, until, target?} from dialogue / LLM / external service, now: float
+##   override: {action, until, target?} from dialogue / LLM / external service, now: float,
+##   wanted: int 0..5, the player's wanted level in this NPC's settlement (Crime)
 static func decide(npc: Dictionary, per: Dictionary) -> Dictionary:
 	var t: Dictionary = npc["traits"]
 	var hour: float = per["hour"]
@@ -67,6 +68,21 @@ static func decide(npc: Dictionary, per: Dictionary) -> Dictionary:
 			s["confront"] = 0.8 + float(t["brave"]) * 0.4
 	if rel <= -0.6 and pd < 25.0 and (guard or float(t["brave"]) > 0.8):
 		s["attack"] = 1.25 + float(t["brave"]) * 0.3
+	# Wanted here: guards come to collect, and from three stars attack on sight;
+	# townsfolk keep clear, and at five stars the brave ones join in.
+	var wanted: int = int(per.get("wanted", 0))
+	if wanted > 0:
+		s.erase("greet")
+		s.erase("gift")
+		if guard and pd < 40.0:
+			if wanted >= 3:
+				s["attack"] = maxf(s.get("attack", 0.0), 1.6)
+			else:
+				s["confront"] = maxf(s.get("confront", 0.0), 1.3)
+		elif not guard and pd < 16.0 and wanted >= 2:
+			s["flee"] = maxf(s.get("flee", 0.0), (1.0 - float(t["brave"])) * 1.2)
+			if wanted >= 5 and float(t["brave"]) > 0.7:
+				s["attack"] = maxf(s.get("attack", 0.0), 1.3)
 	if night and s.has("greet"):
 		s["greet"] *= 0.3
 
@@ -128,6 +144,6 @@ static func snapshot(npc: Dictionary, per: Dictionary) -> Dictionary:
 		"traits": npc["traits"], "rel": npc.get("rel", 0), "mood": npc.get("mood", "calm"),
 		"energy": snappedf(npc.get("energy", 1.0), 0.01), "hp": npc.get("hp", 100.0),
 		"hour": snappedf(per["hour"], 0.1), "player_dist": snappedf(minf(per.get("player_dist", 999.0), 999.0), 0.1),
-		"player_armed": per.get("player_armed", false), "goal": npc.get("goal", ""),
+		"player_armed": per.get("player_armed", false), "player_wanted": per.get("wanted", 0), "goal": npc.get("goal", ""),
 		"current": npc.get("_action", "idle"),
 	}

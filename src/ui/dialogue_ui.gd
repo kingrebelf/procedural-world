@@ -81,6 +81,10 @@ func close_talk() -> void:
 	Cursor.restore()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _pick_npc != null and event.is_action_pressed("pause"):
+		close_pickpocket()
+		get_viewport().set_input_as_handled()
+		return
 	if npc != null and event.is_action_pressed("pause"):
 		close_talk()
 		get_viewport().set_input_as_handled()
@@ -109,6 +113,8 @@ func _input(event: InputEvent) -> void:
 func _process(_d: float) -> void:
 	if _mic.recording and _mic_btn:
 		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
+	if _pick_npc != null and (not is_instance_valid(_pick_npc) or _pick_npc.global_position.distance_to(player.global_position) > 2.8 or _pick_npc.action in ["flee", "attack", "confront"]):
+		close_pickpocket()
 	if npc != null and (not is_instance_valid(npc) or npc.global_position.distance_to(player.global_position) > 8.0):
 		npc = null if not is_instance_valid(npc) else npc
 		if npc == null:
@@ -147,6 +153,13 @@ func _build() -> void:
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
+	var owe := manager.bounty_for(npc)
+	if owe > 0 and NPCGen.GUARD_JOBS.has(npc.rec["job"]):
+		var pay := UITheme.button("Pay bounty (%d)" % owe, func(): pass)
+		pay.pressed.connect(func(): _pay_bounty(pay))
+		pay.disabled = Game.money < owe
+		pay.tooltip_text = "Settle what you owe %s and the guards stand down." % npc.settlement["name"]
+		head.add_child(pay)
 	var kind: String = npc.rec.get("shop_kind", "")
 	if kind == "land":
 		head.add_child(UITheme.button("Houses", _show_houses))
@@ -325,6 +338,156 @@ func _who() -> String:
 func _shop() -> Dictionary:
 	var site := manager.site_of(npc)
 	return {} if site.is_empty() else TownShops.shop_of(manager.gen, site, npc.rec)
+
+func _pay_bounty(btn: Button) -> void:
+	var paid := manager.pay_bounty(npc)
+	if paid < 0:
+		return
+	var line: String = ["Your debt to %s is paid. Keep your hands to yourself." % npc.settlement["name"], "Fine. You're free to go, for now.", "Paid in full. Don't let me catch you again."][randi() % 3]
+	_add_line("", "(You pay a %d Mark bounty.)" % paid, UITheme.DIM)
+	_add_line(npc.rec["name"].split(" ")[0], line, UITheme.ACCENT)
+	npc.say(line, 5.0)
+	Voice.speak(npc.rec, line)
+	_history.append({"role": "user", "content": "(The traveller pays the %d Mark bounty they owed the town.)" % paid})
+	_history.append({"role": "assistant", "content": JSON.stringify({"say": line})})
+	npc.act("nod")
+	btn.text = "Bounty paid"
+	btn.disabled = true
+
+# --- Pickpocketing ------------------------------------------------------------------------------
+## Crouch behind someone and Interact: a small window of what they carry, each with its
+## chance. Fail and they catch you; their town puts a bounty on you.
+
+var _pick_npc: NPC
+var _pick_panel: PanelContainer
+
+func open_pickpocket(n: NPC) -> void:
+	if npc != null or _pick_npc != null or menus.is_open() or not is_instance_valid(n):
+		return
+	if n.talking or n.action in ["flee", "attack", "confront"]:
+		Game.toast.emit("%s is watching you too closely" % n.rec["name"].split(" ")[0])
+		return
+	if int(n.rec.get("caught_pick_day", -99)) == NPCMind.day_num():
+		Game.toast.emit("%s is keeping a hand on their purse today" % n.rec["name"].split(" ")[0])
+		return
+	_pick_npc = n
+	visible = true
+	player.ui_open = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_build_pick()
+
+func close_pickpocket() -> void:
+	if _pick_npc == null and _pick_panel == null:
+		return
+	_pick_npc = null
+	if _pick_panel:
+		_pick_panel.queue_free()
+		_pick_panel = null
+	if npc == null:
+		visible = false
+		player.ui_open = false
+		Cursor.restore()
+
+## Their back to you counts, and how alert they are right now.
+func _pick_odds(worth: float) -> float:
+	var n := _pick_npc
+	var fwd := Vector2(sin(n.rotation.y), cos(n.rotation.y))
+	var to := Vector2(player.global_position.x - n.global_position.x, player.global_position.z - n.global_position.z)
+	var behind := to.length() < 0.01 or fwd.dot(to.normalized()) < 0.0
+	return Game.stats.pickpocket_chance(worth, behind, manager.awareness(n, player.global_position))
+
+func _build_pick() -> void:
+	if _pick_panel:
+		_pick_panel.queue_free()
+	var n := _pick_npc
+	var rec := n.rec
+	NPCSocial.ensure(rec)
+	_pick_panel = PanelContainer.new()
+	_pick_panel.add_theme_stylebox_override("panel", UITheme.tex_sb("panel", 16, 14))
+	_pick_panel.anchor_left = 0.5
+	_pick_panel.anchor_right = 0.5
+	_pick_panel.anchor_top = 0.5
+	_pick_panel.anchor_bottom = 0.5
+	_pick_panel.offset_left = -300
+	_pick_panel.offset_right = 300
+	_pick_panel.offset_top = -40
+	_pick_panel.offset_bottom = 300
+	add_child(_pick_panel)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	_pick_panel.add_child(v)
+	var head := HBoxContainer.new()
+	var first: String = rec["name"].split(" ")[0]
+	var t := UITheme.title("Pick %s's pocket" % first, 22)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(UITheme.button("Leave", close_pickpocket))
+	v.add_child(head)
+	v.add_child(UITheme.label("Pickpocketing %d  ·  stay behind them; dearer things are harder to lift" % Game.stats.skills["pick"], 14, UITheme.DIM))
+	var purse := int(rec["purse"])
+	if purse > 0:
+		var take := maxi(1, purse)
+		var odds := _pick_odds(float(take) * 0.6)
+		v.add_child(_pick_row("Purse: %d Marks" % take, odds, func(): _try_pick(-1, take)))
+	var pk: Array = NPCSocial.pockets(rec)
+	for i in pk.size():
+		var it: Dictionary = pk[i]
+		var worth := float(ItemDB.def(it["type"]).get("value", 1)) * float(it.get("qty", 1))
+		var idx := i
+		v.add_child(_pick_row(ItemDB.display_name(it) + ("  x%d" % it["qty"] if int(it.get("qty", 1)) > 1 else ""), _pick_odds(worth), func(): _try_pick(idx, 0)))
+	if purse <= 0 and pk.is_empty():
+		v.add_child(UITheme.label("Their pockets are empty.", 16, UITheme.DIM))
+
+func _pick_row(text: String, odds: float, cb: Callable) -> Control:
+	var row := HBoxContainer.new()
+	var l := UITheme.label(text, 17)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(l)
+	var c := UITheme.label("%d%%" % int(round(odds * 100.0)), 17, UITheme.ACCENT if odds >= 0.5 else Color(0.95, 0.5, 0.4))
+	c.custom_minimum_size = Vector2(56, 0)
+	row.add_child(c)
+	row.add_child(UITheme.button("Steal", cb))
+	return row
+
+## idx >= 0: an item from their pockets; idx -1: `marks` from their purse.
+func _try_pick(idx: int, marks: int) -> void:
+	var n := _pick_npc
+	if n == null or not is_instance_valid(n):
+		close_pickpocket()
+		return
+	var rec := n.rec
+	var first: String = rec["name"].split(" ")[0]
+	var pk: Array = NPCSocial.pockets(rec)
+	var worth := float(marks) * 0.6
+	if idx >= 0:
+		if idx >= pk.size():
+			return
+		worth = float(ItemDB.def(pk[idx]["type"]).get("value", 1)) * float(pk[idx].get("qty", 1))
+	if randf() < _pick_odds(worth):
+		var what := ""
+		if idx < 0:
+			var got := NPCSocial.lift_marks(rec, marks)
+			Game.add_money(got)
+			what = "%d Marks" % got
+		else:
+			var it: Dictionary = pk[idx]
+			if not Game.give(it.duplicate(true)):
+				return
+			pk.remove_at(idx)
+			what = ItemDB.display_name(it)
+		Game.practice("pick", 3.0 + sqrt(worth))
+		Game.add_xp(2.0 + sqrt(worth) * 0.5, "Pickpocketing")
+		Game.toast.emit("Lifted %s from %s" % [what, first])
+		manager.mark_dirty(n.settlement)
+		_build_pick()
+		return
+	# Caught.
+	Game.practice("pick", 1.0)
+	rec["caught_pick_day"] = NPCMind.day_num()
+	close_pickpocket()
+	manager.report_crime(n.global_position, "pickpocket", int(worth), "", n)
+	n.decide_in = 0.0
+	manager.mark_dirty(n.settlement)
 
 func _open_trade() -> void:
 	if npc.rec.has("shop_kind"):

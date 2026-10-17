@@ -283,15 +283,52 @@ func _character_panel() -> Control:
 		g.add_child(b)
 		g.add_child(UITheme.label(Stats.BLURBS[attr], 15, UITheme.DIM))
 	v.add_child(g)
+	# Thieves' skills: the same points buy levels, and practice raises them too.
+	v.add_child(UITheme.heading("Skills"))
+	var sg := GridContainer.new()
+	sg.columns = 4
+	sg.add_theme_constant_override("h_separation", 18)
+	sg.add_theme_constant_override("v_separation", 10)
+	for k in Stats.SKILLS:
+		var sk: String = k
+		var lv: int = st.skills[sk]
+		var nm := VBoxContainer.new()
+		nm.add_theme_constant_override("separation", 2)
+		nm.add_child(UITheme.label(Stats.SKILL_NAMES[sk], 20))
+		var pr := ProgressBar.new()
+		pr.custom_minimum_size = Vector2(130, 5)
+		pr.show_percentage = false
+		pr.max_value = Stats.practice_to_next(lv)
+		pr.value = float(st.skill_xp[sk]) if lv < Stats.SKILL_MAX else pr.max_value
+		pr.add_theme_stylebox_override("fill", UITheme.sb(Color(0.55, 0.75, 0.95), Color(0, 0, 0, 0), 2, 0, 0))
+		pr.tooltip_text = "Practice: %d / %d" % [int(st.skill_xp[sk]), int(pr.max_value)]
+		nm.add_child(pr)
+		sg.add_child(nm)
+		var val := UITheme.label("%d" % lv, 22, UITheme.ACCENT)
+		val.custom_minimum_size = Vector2(40, 0)
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		sg.add_child(val)
+		var b := UITheme.button("+", func(): Game.spend_skill_point(sk))
+		_small_button(b)
+		b.disabled = st.points <= 0 or lv >= Stats.SKILL_MAX
+		b.custom_minimum_size = Vector2(44, 0)
+		sg.add_child(b)
+		var blurb := String(Stats.SKILL_BLURBS[sk]).replace("[crouch]", "[%s]" % Bindings.key_name("crouch", Game.using_pad)).replace("[interact]", "[%s]" % Bindings.key_name("interact", Game.using_pad))
+		sg.add_child(UITheme.label(blurb, 15, UITheme.DIM))
+	v.add_child(sg)
+	var w := Game.crime.worst(Game.day)
+	if not w.is_empty():
+		v.add_child(UITheme.label("Wanted in %s (%d of %d stars)  ·  %d Marks bounty. Pay a guard there, or lie low and it cools off." % [w["name"], w["stars"], Crime.MAX_STARS, w["b"]], 16, Color(0.95, 0.45, 0.38)))
 	v.add_child(HSeparator.new())
 	var d := GridContainer.new()
-	d.columns = 2
+	d.columns = 4
 	d.add_theme_constant_override("h_separation", 24)
 	for row in [["Health", "%d" % int(st.max_health())], ["Stamina", "%d" % int(st.max_stamina())],
 			["Damage and harvesting", "x%.2f" % st.damage_mult()], ["Move speed", "x%.2f" % st.speed_mult()],
 			["Swing speed", "x%.2f" % st.swing_mult()], ["Carry weight", "%.1f / %d kg" % [Game.inventory.weight(), int(st.carry_capacity())]],
 			["Breath", "%d s" % int(st.max_breath())], ["Experience gain", "x%.2f" % st.xp_mult()],
 			["Crafted quality", "x%.2f" % st.craft_quality_mult()],
+			["Noticed while sneaking", "x%.2f" % st.notice_mult(true)],
 			["Armour", "%d  (takes %d%% of damage)" % [int(Game.armor()), int(round(10000.0 / (100.0 + Game.armor())))]]]:
 		d.add_child(UITheme.label(row[0], 16, UITheme.DIM))
 		d.add_child(UITheme.label(row[1], 16))

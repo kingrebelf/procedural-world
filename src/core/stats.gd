@@ -2,7 +2,9 @@ class_name Stats
 extends RefCounted
 ## The player's level, experience and attributes. Every level grants points to spend on
 ## five attributes, and the attributes shape the body: health, stamina, strength of
-## blows and how much you can carry, speed, breath and how fast you learn. Pure data so it can be saved and tested.
+## blows and how much you can carry, speed, breath and how fast you learn. Skills
+## (sneaking, pickpocketing, lockpicking) take the same points and also grow with practice,
+## the way thieves' skills do in other open-world games. Pure data so it can be saved and tested.
 
 const MAX_LEVEL := 100
 const POINTS_PER_LEVEL := 3
@@ -20,10 +22,23 @@ const BASE_STAMINA := 100.0
 const BASE_CARRY := 60.0 ## kg you can carry before you slow down
 const BASE_BREATH := 30.0 ## seconds underwater
 
+## Skills: points raise them one level each, and doing the thing earns practice that
+## raises them too. They top out at SKILL_MAX.
+const SKILLS := ["sneak", "pick", "lock"]
+const SKILL_NAMES := {"sneak": "Sneaking", "pick": "Pickpocketing", "lock": "Lockpicking"}
+const SKILL_BLURBS := {
+	"sneak": "Crouch [crouch] to sneak: people notice you 1.5% less per level",
+	"pick": "Crouch behind someone and [interact] to pick their pockets: +1.5% chance per level",
+	"lock": "Pick the locks on chests in town: +2% chance per level",
+}
+const SKILL_MAX := 50
+
 var level := 1
 var xp := 0 ## progress inside the current level
 var points := 0
 var attrs := {"str": 0, "end": 0, "agi": 0, "oxy": 0, "int": 0}
+var skills := {"sneak": 0, "pick": 0, "lock": 0}
+var skill_xp := {"sneak": 0.0, "pick": 0.0, "lock": 0.0} ## practice toward the next level
 
 ## Experience needed to go from level n to n + 1.
 static func xp_to_next(n: int) -> int:
@@ -50,6 +65,48 @@ func spend(attr: String) -> bool:
 	attrs[attr] += 1
 	points -= 1
 	return true
+
+## Spends a point on a skill (one level).
+func spend_skill(sk: String) -> bool:
+	if points <= 0 or not skills.has(sk) or skills[sk] >= SKILL_MAX:
+		return false
+	skills[sk] += 1
+	skill_xp[sk] = 0.0
+	points -= 1
+	return true
+
+## Practice needed to raise a skill from level n.
+static func practice_to_next(n: int) -> float:
+	return 12.0 + 6.0 * float(n)
+
+## Practice from doing the thing. Returns how many levels the skill gained.
+func practice(sk: String, amount: float) -> int:
+	if not skills.has(sk) or amount <= 0.0 or skills[sk] >= SKILL_MAX:
+		return 0
+	skill_xp[sk] = float(skill_xp[sk]) + amount * xp_mult()
+	var gained := 0
+	while skills[sk] < SKILL_MAX and float(skill_xp[sk]) >= practice_to_next(skills[sk]):
+		skill_xp[sk] = float(skill_xp[sk]) - practice_to_next(skills[sk])
+		skills[sk] += 1
+		gained += 1
+	if skills[sk] >= SKILL_MAX:
+		skill_xp[sk] = 0.0
+	return gained
+
+## How easily people notice you (1 = standing in the open). Crouching more than halves
+## it, and every level of Sneaking takes a little more off.
+func notice_mult(crouched: bool) -> float:
+	return (0.45 if crouched else 1.0) * (1.0 - 0.015 * skills["sneak"])
+
+## Chance to lift something from a pocket. `worth` is its value in Marks; `behind`
+## when they face away from you; `aware` 0..1 how alert they already are.
+func pickpocket_chance(worth: float, behind: bool, aware: float) -> float:
+	var c: float = 0.45 + 0.015 * skills["pick"] + (0.15 if behind else -0.15) - 0.25 * aware - clampf(worth / 160.0, 0.0, 0.4)
+	return clampf(c, 0.05, 0.95)
+
+## Chance to pick a lock of difficulty 1 (simple) to 3 (masterwork).
+func lockpick_chance(difficulty: int) -> float:
+	return clampf(0.75 - 0.22 * float(difficulty - 1) + 0.02 * skills["lock"], 0.05, 0.97)
 
 func max_health() -> float:
 	return BASE_HEALTH + 10.0 * attrs["end"]
@@ -80,7 +137,7 @@ func craft_quality_mult() -> float:
 	return 1.0 + 0.01 * attrs["int"]
 
 func to_data() -> Dictionary:
-	return {"level": level, "xp": xp, "points": points, "attrs": attrs.duplicate()}
+	return {"level": level, "xp": xp, "points": points, "attrs": attrs.duplicate(), "skills": skills.duplicate(), "skill_xp": skill_xp.duplicate()}
 
 static func from_data(d) -> Stats:
 	var s := Stats.new()
@@ -92,4 +149,9 @@ static func from_data(d) -> Stats:
 		if a is Dictionary:
 			for k in ATTRS:
 				s.attrs[k] = maxi(0, int(a.get(k, 0)))
+		var sk = d.get("skills", {})
+		var sx = d.get("skill_xp", {})
+		for k in SKILLS:
+			s.skills[k] = clampi(int(sk.get(k, 0)) if sk is Dictionary else 0, 0, SKILL_MAX)
+			s.skill_xp[k] = maxf(0.0, float(sx.get(k, 0.0)) if sx is Dictionary else 0.0)
 	return s

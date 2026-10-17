@@ -1211,6 +1211,80 @@ func test_levelling_and_attributes() -> void:
 		s.add_xp(1000000)
 	check(s.level == Stats.MAX_LEVEL and s.xp == 0, "level cap holds")
 
+func test_thief_skills() -> void:
+	var s := Stats.new()
+	check(s.skills["sneak"] == 0 and s.skills["pick"] == 0 and s.skills["lock"] == 0, "skills start at zero")
+	check(s.notice_mult(true) < s.notice_mult(false), "crouching hides you")
+	var seen0 := s.notice_mult(true)
+	var pick0 := s.pickpocket_chance(10.0, true, 0.2)
+	var lock0 := s.lockpick_chance(2)
+	check(s.pickpocket_chance(10.0, true, 0.2) > s.pickpocket_chance(10.0, false, 0.2), "picking from behind is easier")
+	check(s.pickpocket_chance(5.0, true, 0.2) > s.pickpocket_chance(120.0, true, 0.2), "dear things are harder to lift")
+	check(s.lockpick_chance(1) > s.lockpick_chance(3), "masterwork locks are harder")
+	check(not s.spend_skill("sneak"), "skills cost points")
+	s.points = 2
+	check(s.spend_skill("sneak") and s.skills["sneak"] == 1 and s.points == 1, "a point buys a skill level")
+	check(not s.spend_skill("juggling"), "unknown skill rejected")
+	check(s.practice("pick", Stats.practice_to_next(0) + 0.5) == 1 and s.skills["pick"] == 1, "practice raises a skill")
+	s.practice("lock", 100000.0)
+	check(s.skills["lock"] == Stats.SKILL_MAX, "skills top out")
+	check(s.notice_mult(true) < seen0 and s.pickpocket_chance(10.0, true, 0.2) > pick0 and s.lockpick_chance(2) > lock0, "skills help")
+	var back := Stats.from_data(JSON.parse_string(JSON.stringify(s.to_data())))
+	check(back.skills == s.skills and is_equal_approx(float(back.skill_xp["pick"]), float(s.skill_xp["pick"])), "skills survive a save")
+	var old := Stats.from_data({"level": 4, "attrs": {"str": 2}})
+	check(old.skills["sneak"] == 0 and old.level == 4, "old saves get skills at zero")
+
+func test_bounty_and_wanted() -> void:
+	var c := Crime.new()
+	check(c.stars("0:1_2", 3.0) == 0 and c.worst(3.0).is_empty(), "not wanted at first")
+	c.add("0:1_2", "Ashford", 20, 3.0)
+	check(c.stars("0:1_2", 3.0) == 1 and c.owed("0:1_2", 3.0) == 20, "a small theft is one star")
+	c.add("0:1_2", "Ashford", 300, 3.2)
+	check(c.stars("0:1_2", 3.2) == 3, "a big haul is three stars (%d)" % c.stars("0:1_2", 3.2))
+	check(c.owed("0:1_2", 4.0) == 320, "no cooling off on the first day")
+	check(c.owed("0:1_2", 5.2) == 160, "then it halves each day (%d)" % c.owed("0:1_2", 5.2))
+	c.add("0:9_9", "Brookmere", 5, 3.0)
+	check(c.worst(3.2)["name"] == "Ashford" and c.worst(3.2)["stars"] == 3, "the worst town shows")
+	var back := Crime.from_data(JSON.parse_string(JSON.stringify(c.to_data())))
+	check(back.owed("0:1_2", 3.2) == 320 and back.owed("0:9_9", 3.0) == 5, "bounties survive a save")
+	c.clear("0:1_2")
+	check(c.owed("0:1_2", 3.2) == 0, "paying clears it")
+	check(c.owed("0:9_9", 30.0) == 0, "small bounties cool to nothing")
+	c.prune(30.0)
+	check(c.bounty.is_empty(), "cold bounties are dropped")
+	check(Crime.stars_for(Crime.STARS[4]) == 5 and Crime.stars_for(0) == 0, "star thresholds")
+	# Guards and townsfolk react to the wanted level.
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var st := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var g: Dictionary = st["npcs"][1].duplicate(true)
+	g["job"] = NPCGen.GUARD_JOBS[g["era"]]
+	g["rel"] = 0
+	var per := {"hour": 11.0, "pos": Vector2.ZERO, "center": st["center"], "player_dist": 12.0, "noise": 0.5, "now": 0.0, "wanted": 1}
+	check(DecisionEngine.decide(g, per)["action"] == "confront", "a guard comes to collect a bounty")
+	per["wanted"] = 3
+	check(DecisionEngine.decide(g, per)["action"] == "attack", "at three stars guards attack")
+	var f: Dictionary = st["npcs"][2].duplicate(true)
+	f["job"] = "farmer"
+	f["rel"] = 0
+	f["traits"]["brave"] = 0.1
+	per["player_dist"] = 6.0
+	check(DecisionEngine.decide(f, per)["action"] == "flee", "townsfolk keep clear of a wanted criminal")
+	per["wanted"] = 0
+	check(DecisionEngine.decide(g, per)["action"] != "attack", "no bounty, no fight")
+
+func test_pockets() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var st := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var rec: Dictionary = st["npcs"][2].duplicate(true)
+	var pk := NPCSocial.pockets(rec)
+	check(pk.size() >= 0 and pk.size() <= 3 and NPCSocial.pockets(rec) == pk, "pockets are stable within a few days")
+	for it in pk:
+		check(ItemDB.has(it["type"]) and ItemDB.def(it["type"]).get("kind", "") != "armor", "pocket item %s" % it["type"])
+	var purse := int(rec["purse"])
+	check(NPCSocial.lift_marks(rec, purse + 50) == purse and int(rec["purse"]) == 0, "lifting a purse takes no more than it holds")
+
 func test_vehicles() -> void:
 	for k in Vehicle.KINDS:
 		check(ItemDB.def(k).get("kind", "") == "vehicle" and not ItemDB.is_stackable(k), "%s is a vehicle item" % k)

@@ -148,7 +148,7 @@ seconds the game posts the people near you:
     {"id": "3_-2_4", "name": "Edda Thorne", "job": "farmer", "era": "Medieval",
      "traits": {"friendly": 0.7, "brave": 0.4, "curious": 0.5, "diligent": 0.8, "greedy": 0.2},
      "rel": 5, "mood": "calm", "energy": 0.62, "hp": 100, "hour": 14.5,
-     "player_dist": 12.3, "player_armed": false, "goal": "", "current": "work"}
+     "player_dist": 12.3, "player_armed": false, "player_wanted": 0, "goal": "", "current": "work"}
   ]
 }
 ```
@@ -158,6 +158,9 @@ Reply within the timeout (default 1.5 s) with:
 ```json
 {"decisions": [{"id": "3_-2_4", "action": "greet", "seconds": 20, "say": "Morning!"}]}
 ```
+
+`player_wanted` is the player's wanted level (0 to 5 stars) in that person's settlement:
+the built-in engine sends guards to confront a wanted player and to attack from 3 stars.
 
 `seconds` (optional) holds the action that long; `say` (optional) is shown above their head.
 People you leave out, unknown actions, slow replies and errors all fall back to the built-in
