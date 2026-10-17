@@ -898,7 +898,7 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 				return
 			var wp: Vector3 = chunk.position + o["p"]
-			var town := _robbed_town(wp)
+			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.owns_house_at(wp) else {}
 			if not town.is_empty() and not _pick_lock(chunk, o, wp):
 				return
 			var loot: Array = o["st"]["loot"]
@@ -925,17 +925,12 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 
 # --- Theft --------------------------------------------------------------------------
 
-## The town a chest at `wp` belongs to, or {} (out in the wild, or in a house you bought).
-func _robbed_town(wp: Vector3) -> Dictionary:
-	if npcs == null or Game.owns_at(wp):
-		return {}
-	return npcs.town_at(wp)
-
 ## The prompt for a cache, saying when it belongs to someone in town (and how likely the lock is to give).
 func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
-	if use["kind"] != "cache" or o["st"].has("wonder"):
+	if use["kind"] != "cache" or npcs == null or o["st"].has("wonder"):
 		return use["verb"]
-	if _robbed_town(wp).is_empty():
+	var town := npcs.town_at(wp)
+	if town.is_empty() or Game.owns_house_at(wp):
 		return use["verb"]
 	var lock := lock_of(o)
 	if lock > 0:
@@ -1283,7 +1278,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			if Game.give(it):
 				spilled += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 		o["st"]["loot"] = []
-		if spilled > 0 and not _robbed_town(chunk.position + o["p"]).is_empty():
+		if spilled > 0 and npcs and not Game.owns_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
 		if k == "structure" or k == "trader":

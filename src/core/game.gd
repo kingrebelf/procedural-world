@@ -98,9 +98,9 @@ func _begin(fresh: bool) -> void:
 	equipment = {}
 	landings = {}
 	markers = Markers.new()
+	crime = Crime.new()
 	guilds = {}
 	estates = []
-	crime = Crime.new()
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -117,9 +117,9 @@ func _begin(fresh: bool) -> void:
 		equipment = p.get("equipment", {}).duplicate(true)
 		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
+		crime = Crime.from_data(p.get("crime"))
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
-		crime = Crime.from_data(p.get("crime"))
 		pending_player_state = p
 	else:
 		money = 50
@@ -185,10 +185,10 @@ func home_near(at: Vector3) -> Variant:
 			best = p
 	return best
 
-## True when `at` is inside a house you bought on this planet: what's in it is yours.
-func owns_at(at: Vector3) -> bool:
+## True when `at` is inside a house you own (what's in it is yours to take).
+func owns_house_at(at: Vector3) -> bool:
 	for e in estates:
-		if int(e.get("planet", 0)) == planet and Vector2(float(e["x"]), float(e["z"])).distance_to(Vector2(at.x, at.z)) < 6.0:
+		if int(e.get("planet", 0)) == planet and Vector2(float(e["x"]), float(e["z"])).distance_to(Vector2(at.x, at.z)) < 7.0:
 			return true
 	return false
 

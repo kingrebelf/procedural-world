@@ -111,10 +111,10 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(_d: float) -> void:
-	if _mic.recording and _mic_btn:
-		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
 	if _pick_npc != null and (not is_instance_valid(_pick_npc) or _pick_npc.global_position.distance_to(player.global_position) > 2.8 or _pick_npc.action in ["flee", "attack", "confront"]):
 		close_pickpocket()
+	if _mic.recording and _mic_btn:
+		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
 	if npc != null and (not is_instance_valid(npc) or npc.global_position.distance_to(player.global_position) > 8.0):
 		npc = null if not is_instance_valid(npc) else npc
 		if npc == null:
