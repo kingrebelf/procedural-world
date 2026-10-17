@@ -119,6 +119,13 @@ func apply_settings() -> void:
 	RenderingServer.environment_set_volumetric_fog_volume_size(64 if vf < 2 else 128, 64 if vf < 2 else 128)
 	RenderingServer.environment_set_volumetric_fog_filter_active(vf >= 2)
 	sun.directional_shadow_max_distance = float(Settings.get_value("shadow_distance"))
+	# Low shadows: two cascades instead of four (half the shadow passes).
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if int(Settings.get_value("shadows")) == 0 \
+		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	var cq := int(Settings.get_value("clouds"))
+	sky_mat.set_shader_parameter("volumetric_clouds", cq > 0)
+	sky_mat.set_shader_parameter("cloud_steps", 16 if cq == 1 else 28)
+	sky_mat.set_shader_parameter("cloud_light_steps", 2 if cq == 1 else 4)
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
 

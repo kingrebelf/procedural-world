@@ -15,6 +15,10 @@ uniform float era_fantasy = 0.0;
 uniform float era_scifi = 0.0;
 uniform float time_s = 0.0;
 uniform float cloud_cover = 0.5;
+// Cloud quality (graphics settings): ray-marched clouds or the flat deck, and march steps.
+uniform bool volumetric_clouds = true;
+uniform int cloud_steps = 28;
+uniform int cloud_light_steps = 4;
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
 
@@ -89,7 +93,7 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 	float t0 = CLOUD_LO / d.y;
 	float t1 = min(CLOUD_HI / d.y, 60000.0);
 	if (t0 > 60000.0) return vec4(0.0);
-	const int STEPS = 28;
+	int STEPS = cloud_steps;
 	float dt = (t1 - t0) / float(STEPS);
 	float t = t0 + dt * hash(vec3(jitter_px, time_s));
 	vec2 drift = cloud_drift;
@@ -103,8 +107,10 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 		if (den > 0.002) {
 			// Light: a few steps toward the sun.
 			float od = 0.0;
-			for (int j = 1; j <= 4; j++) {
-				od += cloud_density(p + sun * (110.0 * float(j * j)), drift, true) * 110.0 * float(2 * j - 1);
+			// Fewer light steps reach the same distance with longer strides.
+			float stride = 1760.0 / float(cloud_light_steps * cloud_light_steps);
+			for (int j = 1; j <= cloud_light_steps; j++) {
+				od += cloud_density(p + sun * (stride * float(j * j)), drift, true) * stride * float(2 * j - 1);
 			}
 			float sigma = 0.012;
 			float beer = exp(-od * sigma * 0.55);
@@ -129,7 +135,8 @@ void sky() {
 		vec3 sunh = LIGHT0_DIRECTION;
 		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sunh.y)) * daylight;
 		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035);
-		vec4 c = march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy);
+		// Flat-cloud quality skips the march entirely.
+		vec4 c = volumetric_clouds ? march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy) : vec4(0.0);
 		COLOR = c.rgb;
 		ALPHA = c.a;
 	} else {
@@ -197,7 +204,7 @@ void sky() {
 
 	// Clouds: a lit cloud deck drifting with the wind. Density from fbm, cover from the
 	// weather; the sun side gets silver lining, the far side is shaded.
-	if (!AT_CUBEMAP_PASS) {
+	if (!AT_CUBEMAP_PASS && volumetric_clouds) {
 		// Volumetric clouds from the half-resolution pass.
 		col = col * (1.0 - HALF_RES_COLOR.a) + HALF_RES_COLOR.rgb;
 	} else if (d.y > 0.0) {

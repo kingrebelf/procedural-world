@@ -67,6 +67,9 @@ func _option(g: GridContainer, key: String, text: String, items: Array, hint: St
 		if key == "preset":
 			if items[i] != "Custom":
 				Settings.apply_preset(items[i])
+		elif key == "fsr_mode":
+			if i < Settings.FSR_MODES.size():
+				Settings.set_fsr_mode(i)
 		else:
 			Settings.set_value(key, vals[i]))
 	g.add_child(o)
@@ -105,7 +108,9 @@ func _graphics_tab() -> Control:
 	var p := _page("Graphics")
 	var g := _grid(p)
 	_option(g, "preset", "Quality preset", Settings.PRESET_NAMES, "Low targets integrated GPUs; High targets an RTX 3070 at 1440p.")
-	_option(g, "upscaler", "Upscaling", ["Bilinear", "AMD FSR 1.0", "AMD FSR 2.2"], "FSR 2.2 is temporal and replaces TAA.")
+	_option(g, "fsr_mode", "FSR 2 upscaling", Settings.FSR_MODES + ["Off / custom"],
+		"Renders fewer pixels and rebuilds a sharp full-resolution image. The biggest frame-rate gain at 1440p and 4K: Quality renders 67% of the width and height, Performance 50%.")
+	_option(g, "upscaler", "Upscaler", ["Bilinear", "AMD FSR 1.0", "AMD FSR 2.2"], "FSR 2.2 is temporal and replaces TAA.")
 	_slider(g, "render_scale", "Render scale", 0.5, 2.0, 0.05, "%.0f%%", "Below 100% renders fewer pixels and upscales; above 100% supersamples.")
 	_rows["render_scale"]["fmt"] = "%.2fx"
 	_slider(g, "sharpness", "Upscaler sharpness", 0.0, 2.0, 0.1, "%.1f", "FSR sharpening (0 = sharpest).")
@@ -118,10 +123,15 @@ func _graphics_tab() -> Control:
 	_option(g, "volumetric_fog", "Volumetric fog", ["Off", "Normal", "High"])
 	_check(g, "glow", "Bloom")
 	_check(g, "auto_exposure", "Auto exposure")
+	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")
+	_option(g, "effects", "Effects quality", ["Low", "Medium", "High"], "Sample counts for ambient occlusion, screen-space and SDFGI light. Low and Medium run GI at half resolution.")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
+	_slider(g, "detail_distance", "Detail distance", 0.4, 1.5, 0.1, "%.1fx", "How far grass, ground clutter and small props are drawn. Trees and buildings are not affected.")
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")
+	_option(g, "mesh_detail", "Mesh detail", ["Low", "Medium", "High", "Ultra"], "How soon distant models switch to simpler versions.")
+	_option(g, "anisotropic", "Texture filtering", ["Bilinear", "2x anisotropic", "4x anisotropic", "8x anisotropic", "16x anisotropic"])
 	_check(g, "menu_flyover", "Live title-screen world", "A flight over a generated world behind the main menu.")
-	var note := UITheme.label("Hardware ray tracing is not available in Godot 4.5; SDFGI and SSR provide dynamic bounced light and reflections instead.", 13, UITheme.DIM)
+	var note := UITheme.label("Turn on Display > Show FPS counter to see whether the GPU or the CPU limits your frame rate. Hardware ray tracing and DLSS are not available in Godot 4.5; SDFGI and SSR provide bounced light and reflections, and FSR 2 does the upscaling.", 13, UITheme.DIM)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(300, 0)
 	g.add_child(note)
@@ -332,6 +342,9 @@ func _sync() -> void:
 		if c is OptionButton:
 			if key == "preset":
 				c.select(Settings.PRESET_NAMES.find(v))
+			elif key == "fsr_mode":
+				var m := Settings.fsr_mode()
+				c.select(m if m >= 0 else Settings.FSR_MODES.size())
 			else:
 				var idx: int = r["values"].find(v)
 				if idx < 0:

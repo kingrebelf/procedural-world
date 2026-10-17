@@ -13,16 +13,29 @@ enum Upscaler { BILINEAR, FSR1, FSR2 }
 
 const PRESET_NAMES := ["Low", "Medium", "High", "Ultra", "Custom"]
 
+## Quality keys a preset sets. "effects" (0-2) scales SSAO/SSIL/SDFGI sample counts and
+## half-resolution GI; "clouds" 0 is a flat painted deck, 1-2 ray-marched volumetric clouds;
+## "detail_distance" scales how far grass, clutter and small props are drawn;
+## "mesh_detail" 0-3 is the LOD bias (Low switches to simpler meshes sooner).
 const PRESETS := {
-	"Low": {"render_scale": 0.75, "upscaler": Upscaler.FSR1, "aa": AA.FXAA, "shadows": 0, "shadow_distance": 120.0,
-		"gi": GI.OFF, "ssao": false, "ssr": false, "volumetric_fog": 0, "glow": true, "view_distance": 3, "grass_density": 0.3},
-	"Medium": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 1, "shadow_distance": 200.0,
-		"gi": GI.SSIL, "ssao": true, "ssr": false, "volumetric_fog": 1, "glow": true, "view_distance": 4, "grass_density": 0.6},
+	"Low": {"render_scale": 0.67, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 0, "shadow_distance": 120.0,
+		"gi": GI.OFF, "ssao": false, "ssr": false, "volumetric_fog": 0, "glow": true, "view_distance": 3, "grass_density": 0.3,
+		"effects": 0, "clouds": 0, "detail_distance": 0.6, "mesh_detail": 0},
+	"Medium": {"render_scale": 0.77, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 1, "shadow_distance": 200.0,
+		"gi": GI.SSIL, "ssao": true, "ssr": false, "volumetric_fog": 1, "glow": true, "view_distance": 4, "grass_density": 0.6,
+		"effects": 1, "clouds": 1, "detail_distance": 0.8, "mesh_detail": 1},
 	"High": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0,
-		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 1, "glow": true, "view_distance": 5, "grass_density": 1.0},
+		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 1, "glow": true, "view_distance": 5, "grass_density": 1.0,
+		"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2},
 	"Ultra": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 3, "shadow_distance": 450.0,
-		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 2, "glow": true, "view_distance": 7, "grass_density": 1.4},
+		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 2, "glow": true, "view_distance": 7, "grass_density": 1.4,
+		"effects": 2, "clouds": 2, "detail_distance": 1.4, "mesh_detail": 3},
 }
+
+## FSR 2 quality modes (AMD's names) and the render scale each uses.
+const FSR_MODES := ["Native AA", "Quality", "Balanced", "Performance", "Ultra Performance"]
+const FSR_SCALES := [1.0, 0.67, 0.59, 0.5, 0.33]
+const MESH_LOD := [6.0, 3.0, 1.0, 0.5] ## Viewport.mesh_lod_threshold per mesh_detail level
 
 const DEFAULTS := {
 	"preset": "High",
@@ -30,6 +43,7 @@ const DEFAULTS := {
 	"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "sharpness": 0.2,
 	"aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0, "gi": GI.SDFGI, "ssao": true, "ssr": true,
 	"volumetric_fog": 1, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
+	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "stick_sensitivity": 3.0,
 	"master_volume": 0.8, "music_volume": 0.6, "sfx_volume": 0.8,
 	"show_fps": false, "menu_flyover": true,
@@ -42,7 +56,8 @@ const SHADOW_FILTERS := [RenderingServer.SHADOW_QUALITY_HARD, RenderingServer.SH
 var values: Dictionary = DEFAULTS.duplicate()
 
 func _ready() -> void:
-	load_settings()
+	if not load_settings():
+		_first_run()
 	apply()
 
 func get_value(k: String):
@@ -66,12 +81,51 @@ func apply_preset(name: String) -> void:
 	apply()
 	save_settings()
 
-func load_settings() -> void:
+## Returns false when there is no settings file yet (first run).
+func load_settings() -> bool:
 	var cf := ConfigFile.new()
 	if cf.load(PATH) != OK:
-		return
+		return false
 	for k in DEFAULTS:
 		values[k] = cf.get_value("settings", k, DEFAULTS[k])
+	return true
+
+## First run: High, but upscale with FSR 2 on big screens so the game renders about a
+## 1440p image (4K native is 2.25x the pixels and the main cost on fast GPUs).
+func _first_run() -> void:
+	for k in PRESETS["High"]:
+		values[k] = PRESETS["High"][k]
+	var scale := recommended_scale()
+	if scale < 1.0:
+		values["upscaler"] = Upscaler.FSR2
+		values["render_scale"] = scale
+		values["preset"] = "Custom"
+
+## The FSR 2 scale that brings the screen down to roughly 1440p (1.0 at or below it).
+func recommended_scale() -> float:
+	if DisplayServer.get_name() == "headless":
+		return 1.0
+	var h := DisplayServer.screen_get_size().y
+	if h <= 1600:
+		return 1.0
+	for i in FSR_SCALES.size():
+		if h * FSR_SCALES[i] <= 1600.0:
+			return FSR_SCALES[i]
+	return 0.5
+
+## Picks an FSR 2 quality mode: switches the upscaler to FSR 2 and sets the render scale.
+func set_fsr_mode(i: int) -> void:
+	values["upscaler"] = Upscaler.FSR2
+	set_value("render_scale", FSR_SCALES[clampi(i, 0, FSR_SCALES.size() - 1)])
+
+## The FSR 2 mode matching the current render scale, or -1.
+func fsr_mode() -> int:
+	if int(values["upscaler"]) != Upscaler.FSR2:
+		return -1
+	for i in FSR_SCALES.size():
+		if absf(float(values["render_scale"]) - FSR_SCALES[i]) < 0.011:
+			return i
+	return -1
 
 func save_settings() -> void:
 	var cf := ConfigFile.new()
@@ -106,7 +160,20 @@ func apply() -> void:
 	vp.use_taa = aa == AA.TAA and up != Upscaler.FSR2
 	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == AA.FXAA else (Viewport.SCREEN_SPACE_AA_SMAA if aa == AA.SMAA else Viewport.SCREEN_SPACE_AA_DISABLED)
 	vp.msaa_3d = {AA.MSAA2: Viewport.MSAA_2X, AA.MSAA4: Viewport.MSAA_4X, AA.MSAA8: Viewport.MSAA_8X}.get(aa, Viewport.MSAA_DISABLED)
-	vp.mesh_lod_threshold = 1.0
+	vp.mesh_lod_threshold = MESH_LOD[clampi(int(values["mesh_detail"]), 0, 3)]
+	vp.anisotropic_filtering_level = clampi(int(values["anisotropic"]), 0, 4) as Viewport.AnisotropicFiltering
+
+	# Screen-space effects and GI cost: sample counts and half resolution.
+	var fx := clampi(int(values["effects"]), 0, 2)
+	RenderingServer.environment_set_ssao_quality([RenderingServer.ENV_SSAO_QUALITY_LOW, RenderingServer.ENV_SSAO_QUALITY_MEDIUM,
+		RenderingServer.ENV_SSAO_QUALITY_HIGH][fx], fx < 2, 0.5, 2, 50.0, 300.0)
+	RenderingServer.environment_set_ssil_quality([RenderingServer.ENV_SSIL_QUALITY_LOW, RenderingServer.ENV_SSIL_QUALITY_MEDIUM,
+		RenderingServer.ENV_SSIL_QUALITY_HIGH][fx], fx < 2, 0.5, 4, 50.0, 300.0)
+	RenderingServer.gi_set_use_half_resolution(fx < 2)
+	RenderingServer.environment_set_sdfgi_ray_count([RenderingServer.ENV_SDFGI_RAY_COUNT_4, RenderingServer.ENV_SDFGI_RAY_COUNT_8,
+		RenderingServer.ENV_SDFGI_RAY_COUNT_16][fx])
+	RenderingServer.environment_set_sdfgi_frames_to_converge([RenderingServer.ENV_SDFGI_CONVERGE_IN_30_FRAMES,
+		RenderingServer.ENV_SDFGI_CONVERGE_IN_20_FRAMES, RenderingServer.ENV_SDFGI_CONVERGE_IN_15_FRAMES][fx])
 
 	var sq := clampi(int(values["shadows"]), 0, 3)
 	RenderingServer.directional_shadow_atlas_set_size(SHADOW_SIZES[sq], true)
