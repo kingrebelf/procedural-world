@@ -571,8 +571,8 @@ static func _revolver_build(k: MeshKit, barrel: float, frame: String, steel: Str
 	for p in [Vector3(-0.0102, y - 0.01, -0.006), Vector3(-0.0102, y - 0.016, -0.04), Vector3(-0.0102, y - 0.002, 0.004)]:
 		_pin(k, steel, p, 0.0022, 0.0205)
 	# Plow-handle grip with a backstrap.
-	var g := _grip(k, grip, Vector3(0, y - 0.016, 0.016), 0.28, 0.088, 0.0118, 0.0128, "", 0.3)
-	GunLook._loft(k, guard, [Vector3(0, y - 0.006, 0.028), Vector3(0, y - 0.045, 0.04), Vector3(0, y - 0.08, 0.056), Vector3(0, y - 0.09, 0.06)],
+	var g := _grip(k, grip, Vector3(0, y - 0.016, 0.016), 0.08, 0.086, 0.0118, 0.0128, "", 0.75)
+	GunLook._loft(k, guard, [Vector3(0, y - 0.006, 0.028), Vector3(0, y - 0.045, 0.034), Vector3(0, y - 0.08, 0.06), Vector3(0, y - 0.09, 0.07)],
 		[0.0055, 0.006, 0.0065, 0.006], [0.0025, 0.0025, 0.0025, 0.0025], Vector3.FORWARD, 10)
 	_pin(k, steel, Vector3(-0.0125, g.y - 0.006, g.z), 0.0028, 0.025)
 	return g
@@ -697,9 +697,9 @@ static func _bolt_rifle(k: MeshKit) -> Vector3:
 static func _derringer(k: MeshKit) -> Vector3:
 	var y := 0.022
 	for s in [0.0, 1.0]:
-		_barrel(k, "gun_blued", Vector3(0, y - s * 0.0135, -0.012), 0.076, 0.0075, 0.0072, 0.0052, 16)
-	_box(k, "gun_blued", Vector3(0, y - 0.0068, -0.05), Vector3(0.005, 0.02, 0.076))
-	_box(k, "gun_blued", Vector3(0, y + 0.0078, -0.05), Vector3(0.004, 0.002, 0.07)) # rib
+		_barrel(k, "gun_blued", Vector3(0, y - s * 0.0112, -0.012), 0.076, 0.0058, 0.0056, 0.0042, 16)
+	_box(k, "gun_blued", Vector3(0, y - 0.0056, -0.05), Vector3(0.0035, 0.014, 0.076))
+	_box(k, "gun_blued", Vector3(0, y + 0.0062, -0.05), Vector3(0.003, 0.0016, 0.07)) # rib
 	_block(k, "gun_case", Vector3(0, y - 0.005, 0.002), Vector3(0.016, 0.03, 0.028))
 	_pin(k, "gun_blued", Vector3(-0.0085, y - 0.014, -0.008), 0.003, 0.017)
 	_pin(k, "gun_blued", Vector3(0.0035, y + 0.006, -0.004), 0.0035, 0.006) # barrel latch
@@ -726,10 +726,10 @@ static func _flare_gun(k: MeshKit) -> Vector3:
 	_hammer(k, "gun_blued", Vector3(0, y + 0.012, 0.024), 0.022)
 	_guard(k, "gun_brass", y - 0.033, -0.04, 0.01, 0.022, 0.009)
 	_trigger(k, "gun_blued", Vector3(0, y - 0.033, -0.016), 0.016)
-	var g := _grip(k, "gun_walnut_y", Vector3(0, y - 0.022, 0.018), 0.4, 0.1, 0.0145, 0.018, "gun_brass")
-	GunLook._rod(k, "gun_worn", [Vector3(0, y - 0.124, 0.06), Vector3(0, y - 0.134, 0.058), Vector3(0, y - 0.137, 0.048), Vector3(0, y - 0.128, 0.044), Vector3(0, y - 0.124, 0.05)], 0.0018, 6)
-	for d in [0.03, 0.07]:
-		_pin(k, "gun_brass", Vector3(-0.016, y - 0.022 - d, 0.018 + d * 0.4), 0.003, 0.032)
+	var g := _grip(k, "gun_walnut_y", Vector3(0, y - 0.022, 0.018), 0.18, 0.09, 0.016, 0.021, "gun_brass", -0.1)
+	GunLook._rod(k, "gun_worn", [Vector3(0, y - 0.114, 0.038), Vector3(0, y - 0.124, 0.036), Vector3(0, y - 0.127, 0.026), Vector3(0, y - 0.118, 0.022), Vector3(0, y - 0.114, 0.028)], 0.0018, 6)
+	for d in [0.03, 0.065]:
+		_pin(k, "gun_brass", Vector3(-0.0175, y - 0.022 - d, 0.018 + d * 0.18), 0.003, 0.035)
 	return g
 
 ## A band-powered speargun: a teak beam, a stainless shaft with a barbed tip, two rubber
@@ -1099,13 +1099,13 @@ static func _laser_pistol(k: MeshKit) -> Vector3:
 	_rear_sight(k, "gun_metal", Vector3(0, y + 0.019, 0.02), 0.014, 0.006)
 	_guard(k, "gun_metal", y - 0.021, -0.06, -0.008, 0.026, 0.01)
 	_trigger(k, "gun_metal", Vector3(0, y - 0.021, -0.034), 0.017)
-	var g := _grip(k, "gun_metal", Vector3(0, y - 0.02, 0.0), 0.28, 0.088, 0.0125, 0.02)
-	_grip_panels(k, "gun_rubber", Vector3(0, y - 0.02, 0.0), 0.28, 0.088, 0.0125, 0.02)
+	var g := _grip(k, "gun_metal", Vector3(0, y - 0.02, 0.0), 0.28, 0.076, 0.0125, 0.019)
+	_grip_panels(k, "gun_rubber", Vector3(0, y - 0.02, 0.0), 0.28, 0.076, 0.0125, 0.019)
 	# The energy cell: a ribbed metal canister in the base of the grip.
-	var end := Vector3(0, y - 0.02, 0.0) + Vector3(0, -1, 0.28).normalized() * 0.088
-	GunLook._loft(k, "gun_metal", [end + Vector3(0, 0.006, -0.002), end + Vector3(0, -0.012, 0.004)], [0.0135, 0.0135], [0.0195, 0.0195], Vector3.FORWARD, 14)
+	var end := Vector3(0, y - 0.02, 0.0) + Vector3(0, -1, 0.28).normalized() * 0.076
+	GunLook._loft(k, "gun_metal", [end + Vector3(0, 0.004, -0.001), end + Vector3(0, -0.007, 0.002)], [0.0132, 0.0132], [0.0188, 0.0188], Vector3.FORWARD, 14)
 	for n in 2:
-		_box(k, "gun_bore", end + Vector3(0.0138, -0.002 - n * 0.006, 0.001), Vector3(0.001, 0.002, 0.03), 0.28)
+		_box(k, "gun_bore", end + Vector3(0.0135, -0.0005 - n * 0.004, 0.001), Vector3(0.001, 0.0015, 0.03), 0.28)
 	return g
 
 ## A plasma rifle (bullpup): a moulded body with the plasma canister seated behind the
@@ -1271,7 +1271,7 @@ static func _star_pistol(k: MeshKit) -> Vector3:
 	_hammer(k, "gun_gold", Vector3(0, y + 0.012, 0.02), 0.02)
 	_guard(k, "gun_gold", y - 0.022, -0.05, 0.0, 0.022, 0.008)
 	_trigger(k, "gun_gold", Vector3(0, y - 0.022, -0.026), 0.016)
-	var g := _grip(k, "gun_ebony_y", Vector3(0, y - 0.016, 0.012), 0.35, 0.1, 0.014, 0.018, "gun_gold", 0.15)
+	var g := _grip(k, "gun_ebony_y", Vector3(0, y - 0.016, 0.012), 0.6, 0.095, 0.0135, 0.017, "gun_gold", -0.35)
 	return g
 
 ## A singularity projector: a sphere of black glass in a gimbal of two steel rings, on a
