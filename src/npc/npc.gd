@@ -72,6 +72,9 @@ func _ready() -> void:
 	_body = AnimatableBody3D.new()
 	_body.collision_layer = 2
 	_body.collision_mask = 0
+	# Follow the model as it walks. With sync_to_physics on, a body under a moving parent
+	# stays where it spawned, so shots aimed at the person passed straight through.
+	_body.sync_to_physics = false
 	_body.set_meta("npc", self)
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
