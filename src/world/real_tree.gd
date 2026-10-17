@@ -155,8 +155,9 @@ static func _leaf_look(p: Dictionary) -> Array:
 
 static func _needle_tint(p: Dictionary) -> Color:
 	var leaf: Color = p.get("leaf", Color(0.2, 0.35, 0.2))
-	# The needle card is near grey: the tint is the colour.
-	return Color.from_hsv(leaf.h, clampf(leaf.s * 0.85, 0.3, 0.65), clampf(leaf.v * 1.9, 0.38, 0.62))
+	# The needle card is near grey: the tint is the colour. Spruce and fir are dark: a
+	# bright tint turned their sunlit tops mint green.
+	return Color.from_hsv(leaf.h, clampf(leaf.s * 0.85, 0.3, 0.65), clampf(leaf.v * 1.6, 0.3, 0.48))
 
 static func _jit(c: Color, r: RandomNumberGenerator, amt: float) -> Color:
 	var f := r.randf_range(1.0 - amt, 1.0 + amt)
@@ -380,8 +381,8 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 	var w: float = float(p["width"]) * 0.62
 	var rb: float = float(p["width"]) * 0.12 + 0.12
 	var base_frac := 0.14
-	var spacing := 0.42
-	var per := 6
+	var spacing := 0.37
+	var per := 7
 	var droop: float = float(p.get("droop", 0.5))
 	match form:
 		"cypress": base_frac = 0.06; spacing = 0.32; per = 7
@@ -393,7 +394,8 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 		var f := i / 3.0
 		tpts.append(Vector3(sin(f * 3.0) * 0.04, h * f, cos(f * 2.0) * 0.04))
 	bark.mark()
-	_tube(bark, tpts, _taper(4, rb, 0.03), 4 if far else 8, bark_col, 0.0 if far else 0.35)
+	# The trunk thins fast up inside the crown, where the boughs hide it.
+	_tube(bark, tpts, PackedFloat32Array([rb, rb * 0.5, rb * 0.22, 0.03]), 4 if far else 8, bark_col, 0.0 if far else 0.35)
 	bark.mark()
 	bark.mark()
 	bark.mark()
@@ -543,6 +545,9 @@ static func _material(key: String) -> Material:
 		# Gentle: crowns lean and leaves tremble, never thrash.
 		sm.set_shader_parameter("sway", 0.5 if kind == "needle" else 0.8)
 		sm.set_shader_parameter("alpha_cut", 0.4 if kind == "needle" else 0.5)
+		# Boughs are deep in shade where they leave the trunk, lit out at their tips.
+		sm.set_shader_parameter("stem_shade", 0.35 if kind == "needle" else 0.0)
+		sm.set_shader_parameter("crown_up", 0.45 if kind == "needle" else 0.2)
 		m = sm
 	else:
 		var bm := StandardMaterial3D.new()

@@ -388,8 +388,9 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
-		# Clumps with gaps of bare ground between them.
-		if roll > smoothstep(-0.6, 0.15, clump.get_noise_2d(wx, wz)):
+		# Clumps with gaps of shorter ground between them (narrow ones: wide bare gaps made
+		# a meadow look like a lawn with tufts on it).
+		if roll > smoothstep(-0.8, 0.0, clump.get_noise_2d(wx, wz)):
 			continue
 		if ChunkGenerator.kept_out(plans, lx, lz, 0.2):
 			continue
