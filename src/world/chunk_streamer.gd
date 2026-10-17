@@ -163,6 +163,11 @@ func _run_job(job: Dictionary) -> void:
 		# Cave walls only up close, where the ground has its openings.
 		if chunk.has("cave"):
 			res["cave"] = Caves.build(chunk) if job["lod"] == 1 else {}
+	if job["mode"] == "load":
+		res["crags"] = ChunkNode.build_crag_buffers(chunk)
+		for mk in res["crags"]:
+			if String(mk).begins_with("stone:"):
+				StoneKit.mesh(String(mk).substr(6))
 	if job["grass"] and job["mode"] != "lod":
 		res["grass"] = ChunkNode.build_grass_buffers(chunk, job["density"], cover)
 		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0), cover)
@@ -201,6 +206,7 @@ func _collect() -> void:
 			node.set_cave(res.get("cave", {}))
 			node.cover = res["cover"]
 			add_child(node)
+			node.set_crags(res.get("crags", {}))
 			chunks[k] = node
 			node.set_near(d <= near_radius)
 			if res.has("grass") and d <= grass_radius:

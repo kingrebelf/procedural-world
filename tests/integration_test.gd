@@ -403,6 +403,42 @@ func _run() -> void:
 					sunk += 1 if b[i + 7] < -0.6 else 0
 		check(weeds > 20 and sunk > 20, "a lake bed has waterweed and stones (%d weeds, %d stones)" % [weeds, sunk])
 
+	# Cliffs are dressed with crags: big rocks set into the steep faces only, the same
+	# each time the chunk is built, each one solid.
+	var steep := {}
+	for r in 12:
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if steep.is_empty() and maxi(absi(dx), absi(dz)) == r:
+					var ch := lg.generate(dx, dz)
+					var n := 0
+					for j in 16:
+						for i in 16:
+							n += 1 if ChunkGenerator.slope_at(ch, i * 4.0 + 2.0, j * 4.0 + 2.0) > 1.3 else 0
+					if n > 12:
+						steep = ch
+	if steep.is_empty():
+		print("  no cliffs near spawn: crags not checked")
+	else:
+		var crags := ChunkNode.build_crag_buffers(steep)
+		var placed := 0
+		var on_steep := true
+		for key in crags:
+			if String(key).begins_with("stone:"):
+				var b: PackedFloat32Array = crags[key]
+				for i in range(0, b.size(), 16):
+					placed += 1
+					# (The rock sits a little into the face from the point it was placed on, and
+					# the ones at a rim stand by the level ground above it.)
+					var face := 0.0
+					for o in [Vector2.ZERO, Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
+						face = maxf(face, ChunkGenerator.slope_at(steep, clampf(b[i + 3] + o.x, 0.0, 64.0), clampf(b[i + 11] + o.y, 0.0, 64.0)))
+					on_steep = on_steep and face > 0.8
+		var again := ChunkNode.build_crag_buffers(steep)
+		check(placed > 3 and on_steep, "cliffs are dressed with crags on their steep faces (%d)" % placed)
+		check(again.get("stone:rock_a") == crags.get("stone:rock_a") and again.get("stone:rock_b") == crags.get("stone:rock_b"), "crags are the same every time")
+		check((crags.get("~crags", PackedFloat32Array()) as PackedFloat32Array).size() / 13 == placed, "every crag is solid")
+
 	# Loot the nearest cache by walking up to it, as a player would: the floating prompt
 	# should pick it and Interact should open it.
 	var looted := {}
@@ -500,6 +536,8 @@ func _run() -> void:
 	kc.update_tag(true, 1)
 	check(kc._tag_label.render_priority > 1 and kc._tag_label.outline_render_priority > 1
 		and Creature._bar_mat.render_priority > 1, "animal name tags draw over the water")
+	# ...but walls and roofs still hide them (they are depth-tested).
+	check(not kc._tag_label.no_depth_test and not Creature._bar_mat.shader.code.contains("depth_test_disabled"), "animal name tags are hidden behind walls")
 	# An animal stuck in the water next to ground that isn't loaded yet stays put instead
 	# of jumping onto the missing ground (it went to NaN and vanished for good).
 	var uc := Creature.new()
