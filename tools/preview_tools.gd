@@ -54,6 +54,9 @@ func _run() -> void:
 		var s := 0.95 / maxf(ab.size.y, maxf(ab.size.x, ab.size.z))
 		# Handle (+Y) lies to the right, a little toward the camera.
 		var b := Basis(Vector3.BACK, PI * 0.5 - 0.35) * Basis(Vector3.UP, 0.6)
+		if ab.size.y < 1.6 * maxf(ab.size.x, ab.size.z):
+			# Squat things (a pot, a box, a lamp) stand upright, seen a little from above.
+			b = Basis(Vector3.RIGHT, 0.45) * Basis(Vector3.UP, 0.6)
 		mi.basis = b.scaled(Vector3.ONE * s)
 		var c := (b.scaled(Vector3.ONE * s)) * ab.get_center()
 		mi.position = Vector3((i % cols) * 1.28, -(i / cols) * 1.04, 0) - c

@@ -863,14 +863,19 @@ static func _zweihander(k: MeshKit):
 
 static func _halberd(k: MeshKit):
 	pole(k, -0.9, 1.0, 0.018, 0.017, ASH)
-	spear_head(k, "it_steel", 1.0, 0.22, 0.016, Color.WHITE, 0.018)
-	axe_head(k, "it_iron", 0.92, 0.17, 0.2, 0.0, 0.016, Color.WHITE, 0.018)
-	pick_head(k, "it_iron", 0.92, 0.0, 0.0, 0.0)
+	# Iron langets riveted down the shaft below the head.
+	for s in [-1.0, 1.0]:
+		k.box("it_iron", Transform3D(Basis(), Vector3(s * 0.019, 0.8, 0)), Vector3(0.004, 0.2, 0.012))
+	spear_head(k, "it_steel", 1.0, 0.26, 0.018, Color.WHITE, 0.018)
+	# A broad, slightly hooked axe blade on one side...
+	axe_head(k, "it_steel", 0.9, 0.25, 0.3, 0.06, 0.014, Color.WHITE, 0.018)
+	# ...and a long back fluke curving down on the other.
 	var st := []
-	for i in 7:
-		var f := float(i) / 6.0
-		st.append(_at(Vector3(0, 0.92 - f * f * 0.03, 0.03 + f * 0.11), Vector3(1, 0, 0), Vector3(0, 1, 0), sec_rect(0.006 * (1.0 - f * 0.8), 0.012 * (1.0 - f * 0.9))))
-	sweep(k, "it_iron", Transform3D.IDENTITY, st)
+	for i in 9:
+		var f := float(i) / 8.0
+		st.append(_at(Vector3(0, 0.93 - f * f * 0.07, 0.025 + f * 0.15), Vector3(1, 0, 0), Vector3(0, 1, 0),
+			sec_rect(0.005 * (1.0 - f * 0.7), 0.016 * (1.0 - f * 0.92))))
+	sweep(k, "it_steel", Transform3D.IDENTITY, st)
 	return Vector3(0, 0.1, 0)
 
 static func _glaive(k: MeshKit):
@@ -1055,16 +1060,27 @@ static func _saw(k: MeshKit):
 		k.tri("it_steel", Transform3D.IDENTITY, Vector3(w, y, 0), Vector3(w + 0.006, y + 0.004, 0), Vector3(w, y + 0.016, 0), Vector3.FORWARD, Vector3.FORWARD, Vector3.FORWARD)
 
 static func _tongs(k: MeshKit):
+	# Two forged arms riveted where they cross: long handles below, short curved jaws above
+	# that meet at their tips.
+	var pivot := 0.27
 	for s in [-1.0, 1.0]:
 		var st := []
-		for i in 11:
-			var f := float(i) / 10.0
-			var x: float = s * (0.012 - 0.01 * f) if f < 0.7 else s * (0.004 + 0.02 * (f - 0.7))
-			st.append(_at(Vector3(x, -0.02 + f * 0.42, 0.0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(0.0055, 0.0055, 6)))
+		for i in 17:
+			var f := float(i) / 16.0
+			var y := -0.02 + f * 0.36
+			var x: float
+			if y < pivot:
+				x = s * 0.024 * (pivot - y) / (pivot + 0.02)
+			else:
+				var g := (y - pivot) / (0.34 - pivot)
+				x = -s * 0.016 * sin(g * PI * 0.85)
+			var r := 0.0055 if y < pivot - 0.02 else 0.0065
+			st.append(_at(Vector3(x, y, s * 0.004), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(r, r * 0.8, 6)))
 		sweep(k, "it_iron", Transform3D.IDENTITY, st, false)
-		plate(k, "it_iron", 2, 3, func(u, v):
-			return Vector3(s * (0.01 + 0.004 * v), 0.38 + v * 0.06, (u - 0.5) * 0.025), 0.004)
-	k.cylinder("it_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.27, -0.008)), 0.006, 0.006, 0.016, 8)
+		# The jaw's flat bit, turned in to grip.
+		k.box("it_iron", Transform3D(Basis(Vector3(0, 0, 1), s * 0.3), Vector3(-s * 0.004, 0.345, s * 0.004)), Vector3(0.006, 0.022, 0.018))
+	k.cylinder("it_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, pivot, 0)), 0.008, 0.008, 0.02, 10)
+	return Vector3(0, 0.05, 0)
 
 static func _bucket(k: MeshKit):
 	# Staves bound with two iron hoops, a rope bail to carry it by.
@@ -1115,15 +1131,18 @@ static func _candle(k: MeshKit):
 	return Vector3(0.0, 0.0, 0)
 
 static func _tinderbox(k: MeshKit):
-	# A tin box with a hinged lid, a C-shaped steel striker and a flint on top.
-	k.box("it_iron", Transform3D(Basis(), Vector3(0, 0.02, 0)), Vector3(0.09, 0.03, 0.06), Color(0.75, 0.75, 0.75))
-	k.box("it_iron", Transform3D(Basis(), Vector3(0, 0.037, 0)), Vector3(0.094, 0.004, 0.064), Color(0.65, 0.65, 0.65))
+	# A small flat wooden box with a brass-hinged lid; the C-shaped steel striker and a
+	# flint lie on top.
+	k.box("it_wood", Transform3D(Basis(), Vector3(0, 0.014, 0)), Vector3(0.085, 0.024, 0.055), Color(0.5, 0.34, 0.2))
+	k.box("it_wood", Transform3D(Basis(), Vector3(0, 0.029, 0)), Vector3(0.088, 0.007, 0.058), Color(0.44, 0.29, 0.17))
+	for x in [-0.025, 0.025]:
+		k.box("it_brass", Transform3D(Basis(), Vector3(x, 0.024, 0.0295)), Vector3(0.012, 0.012, 0.002))
 	var st := []
 	for i in 11:
 		var a := lerpf(0.5, TAU - 0.5, float(i) / 10.0)
-		st.append(_at(Vector3(cos(a) * 0.02, 0.045, sin(a) * 0.012), Vector3(0, 1, 0), Vector3(cos(a), 0, sin(a)), sec_rect(0.004, 0.0025)))
+		st.append(_at(Vector3(cos(a) * 0.022 - 0.01, 0.0355, sin(a) * 0.013), Vector3(0, 1, 0), Vector3(cos(a), 0, sin(a)), sec_rect(0.004, 0.0025)))
 	sweep(k, "it_steel", Transform3D.IDENTITY, st, true)
-	k.sphere("it_flint", Transform3D(Basis(), Vector3(0.025, 0.045, 0.01)), 0.01, 3, 5, 0.4, 0.7, FLINT)
+	k.sphere("it_flint", Transform3D(Basis(), Vector3(0.026, 0.039, 0.008)), 0.01, 3, 5, 0.4, 0.7, FLINT)
 
 static func _quill_ink(k: MeshKit):
 	lathe(k, "it_glass", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.032, 0.03), Vector2(0.015, 0.045), Vector2(0.012, 0.055), Vector2(0, 0.055)], 12)
@@ -1137,20 +1156,28 @@ static func _quill_ink(k: MeshKit):
 		return xf * Vector3(lerpf(-w * 0.6, w, u), y, 0), 0.0008)
 
 static func _mortar_pestle(k: MeshKit):
-	lathe(k, "it_stone", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(0.05, 0.0), Vector2(0.06, 0.04), Vector2(0.058, 0.07), Vector2(0.045, 0.07), Vector2(0.04, 0.04), Vector2(0, 0.025)], 16, Color(0.6, 0.58, 0.55))
-	k.cylinder("it_wood", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.005, 0.03, 0)), 0.012, 0.009, 0.14, 8, true, 0.0, 1, BIRCH)
+	# A stone bowl, thick-walled and hollow, and a club-ended pestle leaning in it.
+	lathe(k, "it_stone", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(0.05, 0.0), Vector2(0.066, 0.012),
+		Vector2(0.074, 0.04), Vector2(0.073, 0.066), Vector2(0.067, 0.072), Vector2(0.056, 0.07),
+		Vector2(0.05, 0.045), Vector2(0.032, 0.024), Vector2(0.0, 0.019)], 18, Color(0.66, 0.63, 0.58))
+	lathe(k, "it_stone", Transform3D(Basis(Vector3(0, 0, 1), 0.5), Vector3(0.012, 0.024, 0)), [Vector2(0, 0.0),
+		Vector2(0.015, 0.004), Vector2(0.018, 0.022), Vector2(0.011, 0.055), Vector2(0.009, 0.12),
+		Vector2(0.012, 0.135), Vector2(0.0, 0.142)], 10, Color(0.6, 0.57, 0.53))
+	return Vector3(0, 0.035, 0)
 
 static func _cauldron_small(k: MeshKit):
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0, -0.02), Vector2(0.06, -0.015), Vector2(0.1, 0.04), Vector2(0.095, 0.1), Vector2(0.085, 0.11), Vector2(0.09, 0.115), Vector2(0.08, 0.115), Vector2(0.075, 0.105), Vector2(0.088, 0.06), Vector2(0, 0.0)], 16, Color(0.6, 0.6, 0.6))
-	for i in 3:
-		var a := TAU * i / 3.0
-		k.cylinder("it_iron", Transform3D(Basis(), Vector3(cos(a) * 0.05, -0.05, sin(a) * 0.05)), 0.008, 0.012, 0.04, 6)
+	# A cast-iron pot: round belly, rolled lip, two lugs and a wire bail to carry it by.
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0, -0.015), Vector2(0.05, -0.012), Vector2(0.09, 0.02),
+		Vector2(0.1, 0.055), Vector2(0.09, 0.1), Vector2(0.084, 0.108), Vector2(0.09, 0.114), Vector2(0.082, 0.118),
+		Vector2(0.077, 0.108), Vector2(0.085, 0.06), Vector2(0.06, 0.0), Vector2(0, -0.005)], 18, Color(0.55, 0.55, 0.56))
+	for s in [-1.0, 1.0]:
+		k.box("it_iron", Transform3D(Basis(), Vector3(s * 0.092, 0.1, 0)), Vector3(0.012, 0.018, 0.012), Color(0.55, 0.55, 0.56))
 	var st := []
 	for i in 13:
 		var a := PI * i / 12.0
-		st.append(_at(Vector3(cos(a) * 0.092, 0.11 + sin(a) * 0.09, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.0035, 0.0035, 6)))
+		st.append(_at(Vector3(cos(a) * 0.094, 0.105 + sin(a) * 0.09, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.0028, 0.0028, 6)))
 	sweep(k, "it_iron", Transform3D.IDENTITY, st, false)
-	return Vector3(0, 0.2, 0)
+	return Vector3(0, 0.19, 0)
 
 # Frontier (the old west on the way out): steel, brass, walnut.
 
@@ -1240,18 +1267,26 @@ static func _axe_lumber(k: MeshKit):
 	return Vector3(0, 0.06, 0)
 
 static func _lamp_kerosene(k: MeshKit):
+	# A hurricane lamp: brass fuel font, burner collar with its wick-winder, a tall bulging
+	# glass chimney with the flat wick inside, a wire guard and a bail on top.
 	var by := -0.22
-	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0, by), Vector2(0.06, by), Vector2(0.065, by + 0.04), Vector2(0.05, by + 0.07), Vector2(0.03, by + 0.075), Vector2(0, by + 0.075)], 14)
-	lathe(k, "it_glass", Transform3D.IDENTITY, [Vector2(0.028, by + 0.075), Vector2(0.04, by + 0.1), Vector2(0.042, by + 0.13), Vector2(0.025, by + 0.17), Vector2(0.022, by + 0.22)], 14)
-	k.box("it_paper", Transform3D(Basis(), Vector3(0, by + 0.09, 0)), Vector3(0.016, 0.02, 0.002), Color(0.95, 0.9, 0.8))
-	for s in [-1.0, 1.0]:
-		k.cylinder("it_iron", Transform3D(Basis(), Vector3(s * 0.045, by + 0.07, 0)), 0.0025, 0.0025, 0.16, 5)
+	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0, by), Vector2(0.058, by), Vector2(0.066, by + 0.02),
+		Vector2(0.062, by + 0.05), Vector2(0.04, by + 0.066), Vector2(0.024, by + 0.07), Vector2(0, by + 0.07)], 16)
+	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0.024, by + 0.068), Vector2(0.03, by + 0.075), Vector2(0.03, by + 0.088), Vector2(0.026, by + 0.09)], 12)
+	k.cylinder("it_brass", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, by + 0.08, 0.034)), 0.006, 0.006, 0.01, 8)
+	lathe(k, "it_glass", Transform3D.IDENTITY, [Vector2(0.026, by + 0.09), Vector2(0.044, by + 0.12), Vector2(0.046, by + 0.15),
+		Vector2(0.03, by + 0.19), Vector2(0.022, by + 0.22)], 16)
+	k.box("it_cloth", Transform3D(Basis(), Vector3(0, by + 0.1, 0)), Vector3(0.012, 0.012, 0.002), Color(0.2, 0.17, 0.14))
+	for i in 4:
+		var a := TAU * i / 4.0 + PI * 0.25
+		k.cylinder("it_iron", Transform3D(Basis(), Vector3(cos(a) * 0.05, by + 0.155, sin(a) * 0.05)), 0.0022, 0.0022, 0.13, 5)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.024, by + 0.22), Vector2(0.034, by + 0.225), Vector2(0.03, by + 0.235), Vector2(0, by + 0.238)], 12)
 	var st := []
 	for i in 13:
 		var a := PI * i / 12.0
-		st.append(_at(Vector3(cos(a) * 0.045, by + 0.23 + sin(a) * 0.045, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.0028, 0.0028, 6)))
+		st.append(_at(Vector3(cos(a) * 0.045, by + 0.238 + sin(a) * 0.045, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.0028, 0.0028, 6)))
 	sweep(k, "it_iron", Transform3D.IDENTITY, st, false)
-	return Vector3(0, by + 0.27, 0)
+	return Vector3(0, by + 0.28, 0)
 
 static func _dynamite(k: MeshKit):
 	for i in 3:
@@ -1481,8 +1516,19 @@ static func _nova_staff(k: MeshKit):
 	return Vector3(0, 0.0, 0)
 
 static func _orb(k: MeshKit, c: Color, shell: String):
+	# A grown shell in segments, the light of its charge showing through the seams, a
+	# capped stalk on top with the trigger ring through it.
 	k.sphere(shell, Transform3D(Basis(), Vector3(0, 0.04, 0)), 0.035, 8, 12, 0.15, 1.0, Color(0.3, 0.28, 0.34))
-	k.sphere("it_crystal", Transform3D(Basis(), Vector3(0, 0.04, 0)), 0.022, 6, 8, 0.0, 1.0, c)
+	for i in 4:
+		var a := PI * i / 4.0
+		var st := []
+		for j in 17:
+			var b := PI * 2.0 * j / 16.0
+			var p := Vector3(cos(b) * 0.0362, sin(b) * 0.0362, 0)
+			st.append(_at(Basis(Vector3.UP, a) * p + Vector3(0, 0.04, 0), Basis(Vector3.UP, a) * Vector3(0, 0, 1), Basis(Vector3.UP, a) * p.normalized(), sec_round(0.0016, 0.0012, 5)))
+		sweep(k, "it_crystal", Transform3D.IDENTITY, st, false, c, false)
+	lathe(k, shell, Transform3D.IDENTITY, [Vector2(0.016, 0.07), Vector2(0.014, 0.08), Vector2(0.009, 0.088), Vector2(0, 0.09)], 10, Color(0.24, 0.22, 0.27))
+	_ring(k, Vector3(0.014, 0.084, 0), 0.008)
 
 static func _void_grenade(k: MeshKit):
 	_orb(k, Color(0.5, 0.35, 0.9, 0.85), "it_chitin")
