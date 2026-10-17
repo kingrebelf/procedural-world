@@ -589,15 +589,19 @@ func _starship() -> void:
 ## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 	var out := shore_out
-	var deep := shore
+	var deep := Vector2.INF
 	for k in 60:
-		deep = shore + out * (k * 3.0)
-		if g.field.height(deep.x, deep.y) < Water.LEVEL - 9.0:
+		var q := shore + out * (k * 3.0)
+		if g.field.height(q.x, q.y) < Water.LEVEL - 9.0:
+			deep = q
 			break
-	var p: Player = world.player
-	p.underwater = true
-	await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
-	p.underwater = false
+	# (Only where the lake is deep enough to stand under: anywhere else this would be dry
+	# land seen through the underwater look.)
+	if deep != Vector2.INF:
+		var p: Player = world.player
+		p.underwater = true
+		await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+		p.underwater = false
 	var spot := shore + out * 9.0
 	var burst := func() -> void:
 		for i in 3:
