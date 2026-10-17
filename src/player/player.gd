@@ -530,7 +530,9 @@ func _find_focus() -> Dictionary:
 			var sc := _focus_score(eye, fwd, n.global_position + Vector3(0, 1.3, 0))
 			if sc < best_s:
 				best_s = sc
-				best = {"kind": "npc", "npc": n, "pos": n.global_position + Vector3(0, 2.1, 0), "verb": "Talk to %s" % n.rec["name"].split(" ")[0]}
+				var first: String = n.rec["name"].split(" ")[0]
+				best = {"kind": "npc", "npc": n, "pos": n.global_position + Vector3(0, 2.1, 0),
+					"verb": ("Pick %s's pocket" % first) if sneaking() and not n.talking else "Talk to %s" % first}
 	if vehicles:
 		for v in vehicles.all_nodes():
 			var sc := _focus_score(eye, fwd, v.global_position + Vector3(0, v.height * 0.5, 0))
@@ -557,7 +559,7 @@ func _find_focus() -> Dictionary:
 					var sc := _focus_score(eye, fwd, wp + Vector3(0, use["h"] * 0.5, 0))
 					if sc < best_s:
 						best_s = sc
-						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": use["verb"]}
+						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use)}
 	# A piece you built, right under the crosshair, can be taken down (or used, if a station).
 	if not best.get("kind", "") in ["npc", "vehicle"]:
 		var h := _hit_object()
@@ -570,6 +572,10 @@ func _find_focus() -> Dictionary:
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
 					"verb": ("%s   (hold: take down)" % _station_verb(d)) if station else "Hold to take down %s" % d["name"]}
 	return best
+
+## Crouched on foot: sneaking (people notice you less; Interact on someone picks their pocket).
+func sneaking() -> bool:
+	return _crouched and vehicle == null
 
 static func is_own_piece(o: Dictionary) -> bool:
 	return ObjectLibrary.kind(o["t"]) == "built" and not o["st"].get("gone", false) and String(o["st"].get("by", "you")) == "you"
@@ -782,7 +788,7 @@ func interact() -> void:
 		match focus["kind"]:
 			"npc":
 				if is_instance_valid(focus["npc"]):
-					get_tree().call_group("dialogue_ui", "open_with", focus["npc"])
+					get_tree().call_group("dialogue_ui", "open_pickpocket" if sneaking() else "open_with", focus["npc"])
 				return
 			"station":
 				_use_station()
@@ -799,7 +805,7 @@ func interact() -> void:
 				return
 	var h := _hit_object()
 	if h.has("npc") and is_instance_valid(h["npc"]):
-		get_tree().call_group("dialogue_ui", "open_with", h["npc"])
+		get_tree().call_group("dialogue_ui", "open_pickpocket" if sneaking() else "open_with", h["npc"])
 		return
 	if not h.has("obj"):
 		return
@@ -817,19 +823,78 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			if WonderSite.sealed(chunk.data, o):
 				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 				return
+			var wp: Vector3 = chunk.position + o["p"]
+			var town: Dictionary = npcs.town_at(wp) if npcs else {}
+			if not town.is_empty() and not _pick_lock(chunk, o, wp):
+				return
 			var loot: Array = o["st"]["loot"]
 			var kept: Array = []
+			var worth := 0
 			for it in loot:
 				if not Game.give(it):
 					kept.append(it)
+				else:
+					worth += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 			o["st"]["loot"] = kept
 			o["st"]["opened"] = kept.is_empty()
 			Game.mark_chunk_dirty(chunk.data)
+			if not town.is_empty() and worth > 0:
+				# It belonged to someone here. Seen or not, it's stolen.
+				if not npcs.report_crime(wp, "theft", worth, ObjectLibrary.label(o["t"]).to_lower()):
+					Game.toast.emit("Stolen unseen (%d Marks' worth)" % worth)
+					Game.practice("sneak", 2.0)
 			if o["st"].has("wonder"):
 				Game.map.note_chunk(chunk.data)
 		"trader":
 			Economy.tick(o["st"], Game.day)
 			get_tree().call_group("trade_ui", "open_trader", o["st"], chunk)
+
+# --- Theft --------------------------------------------------------------------------
+
+## The prompt for a cache, saying when it belongs to someone in town (and how likely the lock is to give).
+func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
+	if use["kind"] != "cache" or npcs == null or o["st"].has("wonder"):
+		return use["verb"]
+	var town := npcs.town_at(wp)
+	if town.is_empty():
+		return use["verb"]
+	var lock := lock_of(o)
+	if lock > 0:
+		return "Pick the lock  (%d%%, steal)" % int(round(Game.stats.lockpick_chance(lock) * 100.0))
+	return "Steal from the %s" % ObjectLibrary.label(o["t"]).to_lower()
+
+## How hard a town chest's lock is: 0 for none or picked, 1..3. Chosen once per chest.
+static func lock_of(o: Dictionary) -> int:
+	var st: Dictionary = o["st"]
+	if not st.has("lock"):
+		var h := absi(hash(str(o["p"]) + String(o["t"])))
+		st["lock"] = 0 if h % 10 < 4 else 1 + (h / 10) % 3
+	return int(st["lock"])
+
+var _lock_t := 0.0
+## Tries the lock on a town chest. True when it is open (or never was locked). A failed
+## try makes noise someone may hear.
+func _pick_lock(chunk: ChunkNode, o: Dictionary, wp: Vector3) -> bool:
+	var lock := lock_of(o)
+	if lock <= 0:
+		return true
+	var t := Time.get_ticks_msec() / 1000.0
+	if t < _lock_t:
+		return false
+	_lock_t = t + 0.8
+	used_tool.emit("hit")
+	if body:
+		body.play_once("interact")
+	Game.mark_chunk_dirty(chunk.data)
+	if randf() < Game.stats.lockpick_chance(lock):
+		o["st"]["lock"] = 0
+		Game.practice("lock", 4.0 + 3.0 * lock)
+		Game.toast.emit("The lock clicks open")
+		return true
+	Game.practice("lock", 1.0 + lock)
+	Game.toast.emit("The lock holds. Try again")
+	npcs.report_crime(wp, "lockpick", 0, "")
+	return false
 
 func eat() -> void:
 	var it = held_item()
@@ -1080,10 +1145,14 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 	if k0 != "built" and xp > 0.0:
 		Game.add_xp(xp, "Gathering" if how == "gathered" else ("Mining" if how == "mined" else "Salvaging"))
 	if r["destroyed"]:
-		# A destroyed cache spills whatever was still inside.
+		# A destroyed cache spills whatever was still inside (stolen, in a town).
+		var spilled := 0
 		for it in o["st"].get("loot", []):
-			Game.give(it)
+			if Game.give(it):
+				spilled += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 		o["st"]["loot"] = []
+		if spilled > 0 and npcs:
+			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
 		if k == "structure" or k == "trader":
 			Game.toast.emit("Destroyed %s" % ObjectLibrary.label_of(o))

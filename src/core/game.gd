@@ -30,6 +30,7 @@ var money := 0
 var health := 100.0
 var stamina := 100.0
 var stats := Stats.new()
+var crime := Crime.new() ## bounties and wanted level, per settlement
 var day := 0.3
 var discovery: Dictionary = {"visited": {}, "regions": {}}
 var player: Node3D ## Set by the player when it spawns.
@@ -95,6 +96,7 @@ func _begin(fresh: bool) -> void:
 	equipment = {}
 	landings = {}
 	markers = Markers.new()
+	crime = Crime.new()
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -111,6 +113,7 @@ func _begin(fresh: bool) -> void:
 		equipment = p.get("equipment", {}).duplicate(true)
 		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
+		crime = Crime.from_data(p.get("crime"))
 		pending_player_state = p
 	else:
 		money = 50
@@ -183,7 +186,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data()}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "crime": crime.to_data()}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -410,6 +413,39 @@ func spend_point(attr: String) -> bool:
 	_player_dirty = true
 	stats_changed.emit()
 	return true
+
+func spend_skill_point(sk: String) -> bool:
+	if not stats.spend_skill(sk):
+		return false
+	_player_dirty = true
+	stats_changed.emit()
+	return true
+
+## Practice at a skill from doing it; tells you when it goes up.
+func practice(sk: String, amount: float) -> void:
+	var gained := stats.practice(sk, amount)
+	_player_dirty = true
+	if gained > 0:
+		toast.emit("%s rose to %d" % [Stats.SKILL_NAMES[sk], stats.skills[sk]])
+		stats_changed.emit()
+
+## A crime someone saw: adds to the bounty in that settlement and says what it came to.
+signal wanted_changed
+func add_bounty(sid: String, town: String, amount: int, why: String) -> void:
+	var before := crime.stars(sid, day)
+	var b := crime.add(sid, town, amount, day)
+	var now_stars := Crime.stars_for(b)
+	_player_dirty = true
+	if now_stars > before:
+		toast.emit("%s! Wanted in %s: %d star%s" % [why, town, now_stars, "" if now_stars == 1 else "s"])
+	else:
+		toast.emit("%s: bounty in %s is now %d Marks" % [why, town, b])
+	wanted_changed.emit()
+
+func clear_bounty(sid: String) -> void:
+	crime.clear(sid)
+	_player_dirty = true
+	wanted_changed.emit()
 
 func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 	return {"how": how, "era": era, "chunk": chunk, "day": snappedf(day, 0.01)}

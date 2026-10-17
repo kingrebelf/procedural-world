@@ -181,6 +181,41 @@ static func gift_for(rec: Dictionary) -> Dictionary:
 		return {"item": ItemDB.make(goods[r.randi() % goods.size()], 1, 1.0, {})}
 	return {"marks": maxi(1, mini(int(rec["purse"]) / 4, r.randi_range(3, 15)))}
 
+# --- Pockets --------------------------------------------------------------------------------
+
+## Small things anyone might carry, by era, besides the goods of their trade.
+const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion"],
+	["glowberry", "bread", "moonpearl", "rune_tablet", "health_potion", "aether_crystal"],
+	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion"]]
+const POCKETS_EVERY := 3 ## days before their pockets fill again
+
+## What this person carries that a quick hand could lift (not their purse, not worn gear).
+## Fills again every few days.
+static func pockets(rec: Dictionary) -> Array:
+	ensure(rec)
+	var cycle := day() / POCKETS_EVERY
+	if int(rec.get("pockets_cycle", -1)) != cycle or not rec.get("pockets") is Array:
+		var r := _rng(rec, 31 + cycle)
+		var out: Array = []
+		var goods: Array = JOB_GOODS.get(rec["job"], [])
+		var bits: Array = POCKET_BITS[clampi(int(rec["era"]), 0, 2)]
+		for i in r.randi_range(1, 3):
+			var t: String = goods[r.randi() % goods.size()] if not goods.is_empty() and r.randf() < 0.55 else bits[r.randi() % bits.size()]
+			if not ItemDB.has(t) or ItemDB.def(t).get("kind", "") in ["armor", "vehicle"]:
+				continue
+			var stack := ItemDB.is_stackable(t)
+			out.append(ItemDB.make(t, r.randi_range(1, 4) if stack else 1, 1.0, {"how": "stolen", "era": int(rec["era"])}))
+		rec["pockets"] = out
+		rec["pockets_cycle"] = cycle
+	return rec["pockets"]
+
+## Takes Marks out of someone's purse without asking. Returns what was taken.
+static func lift_marks(rec: Dictionary, amount: int) -> int:
+	ensure(rec)
+	amount = clampi(amount, 0, int(rec["purse"]))
+	_set_purse(rec, int(rec["purse"]) - amount)
+	return amount
+
 # --- Trading ----------------------------------------------------------------------------------
 
 ## The person's goods as a trader state for Economy and the trade window. Prices lean

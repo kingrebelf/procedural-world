@@ -61,6 +61,8 @@ var _mouse_hint: PanelContainer
 var _mouse_key: PanelContainer
 var _mouse_text: Label
 var _mouse_state := -1
+var _wanted: WantedBar ## wanted stars under the compass
+var _eye: Label ## the sneak eye above the crosshair while crouched
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -248,6 +250,16 @@ func _ready() -> void:
 	_compass.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_compass)
 	_build_mouse_hint()
+	_wanted = WantedBar.new()
+	_pin(_wanted, Control.PRESET_CENTER_TOP, Rect2(-300, 58, 600, 30))
+	_wanted.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_wanted)
+	_eye = UITheme.label("", 15)
+	_pin(_eye, Control.PRESET_CENTER, Rect2(-120, -58, 240, 22))
+	_eye.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_eye.add_theme_constant_override("outline_size", 4)
+	_eye.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	add_child(_eye)
 
 	_fps = UITheme.label("", 14, UITheme.ACCENT_2)
 	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 16, 520, 64))
@@ -760,6 +772,7 @@ func _process(_d: float) -> void:
 	_compass.queue_redraw()
 	_update_mouse_hint()
 	_update_cross()
+	_update_crime()
 	_under.visible = player.underwater
 	_breath.max_value = Game.stats.max_breath()
 	_marks.player = player
@@ -826,6 +839,26 @@ class MarkerLayer extends Control:
 
 ## FPS plus where the frame time goes: GPU render time vs. CPU (game logic + render
 ## submission). If CPU is the larger number, lowering graphics settings will not help much.
+## Wanted stars (the worst town you are wanted in) and, while crouched, how close anyone
+## is to noticing you.
+func _update_crime() -> void:
+	var w := Game.crime.worst(Game.day)
+	_wanted.show_wanted(w)
+	var m = player.npcs
+	if not player.sneaking() or player.ui_open:
+		_eye.text = ""
+		return
+	var det: float = m.detection if m else 0.0
+	if m == null or not m.watched or det < 0.2:
+		_eye.text = "( HIDDEN )"
+		_eye.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.75))
+	elif det < 0.5:
+		_eye.text = "( CAUTION )"
+		_eye.add_theme_color_override("font_color", Color(0.98, 0.78, 0.35))
+	else:
+		_eye.text = "( DETECTED )"
+		_eye.add_theme_color_override("font_color", Color(1.0, 0.4, 0.32))
+
 func _perf_text() -> String:
 	_perf_t -= get_process_delta_time()
 	if _perf_t > 0.0 and _perf_cache != "":
@@ -897,3 +930,53 @@ class Compass extends Control:
 				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -6), p + Vector2(4, 0), p + Vector2(0, 6), p + Vector2(-4, 0)]), c)
 		# The centre notch.
 		draw_colored_polygon(PackedVector2Array([Vector2(w * 0.5 - 6, 0), Vector2(w * 0.5 + 6, 0), Vector2(w * 0.5, 7)]), UITheme.ACCENT)
+
+## "WANTED", five drawn stars (the fonts have no star glyph) and where and how much.
+class WantedBar extends Control:
+	var stars := 0
+	var text := ""
+	var _key := ""
+	const RED := Color(0.98, 0.36, 0.3)
+
+	func show_wanted(w: Dictionary) -> void:
+		var k := str(w)
+		if k == _key:
+			return
+		_key = k
+		stars = int(w.get("stars", 0))
+		text = "" if w.is_empty() else "%s  ·  %d Marks" % [w["name"], w["b"]]
+		visible = stars > 0
+		queue_redraw()
+
+	func _draw() -> void:
+		var f := get_theme_default_font()
+		var fs := 17
+		var head := "WANTED"
+		var hw := f.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var tw := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var sw := 22.0
+		var total := hw + 12.0 + sw * Crime.MAX_STARS + 12.0 + tw
+		var x := (size.x - total) * 0.5
+		var base := size.y * 0.5 + fs * 0.35
+		draw_string_outline(f, Vector2(x, base), head, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0, 0, 0, 0.85))
+		draw_string(f, Vector2(x, base), head, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, RED)
+		x += hw + 12.0
+		for i in Crime.MAX_STARS:
+			_star(Vector2(x + sw * 0.5, size.y * 0.5), 9.0, i < stars)
+			x += sw
+		x += 12.0
+		draw_string_outline(f, Vector2(x, base), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0, 0, 0, 0.85))
+		draw_string(f, Vector2(x, base), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.95, 0.9, 0.85))
+
+	func _star(c: Vector2, r: float, lit: bool) -> void:
+		var pts := PackedVector2Array()
+		for i in 10:
+			var a := -PI * 0.5 + i * PI / 5.0
+			pts.append(c + Vector2(cos(a), sin(a)) * (r if i % 2 == 0 else r * 0.45))
+		var outline := pts.duplicate()
+		outline.append(pts[0])
+		if lit:
+			draw_colored_polygon(pts, Color(1.0, 0.8, 0.3))
+		else:
+			draw_colored_polygon(pts, Color(0, 0, 0, 0.35))
+		draw_polyline(outline, Color(0, 0, 0, 0.8) if lit else Color(1, 1, 1, 0.45), 1.5, true)

@@ -26,6 +26,11 @@ var _think_t := 0.0
 var _deciding := false
 var _thinking := false
 var _ground := Callable(self, "ground")
+var _stealth_t := 0.0
+## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
+## whether anyone is near enough to watch at all.
+var detection := 0.0
+var watched := false
 
 func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
@@ -88,7 +93,7 @@ func _scan() -> void:
 
 func _load(site: Dictionary, id: String) -> void:
 	var data := Game.store.get_or_create_settlement(gen, site)
-	var e := {"data": data, "nodes": [], "dirty": false}
+	var e := {"data": data, "nodes": [], "dirty": false, "outer": float(site.get("outer", 60.0)), "sid": "%d:%s" % [Game.planet, id]}
 	settlements[id] = e
 	var stale: bool = float(data.get("sim_day", -1.0)) < 0.0 or Game.day - float(data["sim_day"]) > 0.03
 	var hour := NPCMind.hour_now()
@@ -161,6 +166,10 @@ func _process(delta: float) -> void:
 				var dmg := 6.0 + float(n.rec["traits"]["brave"]) * 6.0
 				var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
 				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(ceilf(took))])
+	_stealth_t -= delta
+	if _stealth_t <= 0.0:
+		_stealth_t = 0.2
+		_update_stealth(0.2)
 	_decide_t -= delta
 	if _decide_t <= 0.0:
 		_decide_t = DECIDE_EVERY
@@ -189,6 +198,7 @@ func perception(n: NPC, e: Dictionary, pp: Vector3, t: float) -> Dictionary:
 		"noise": float(absi(hash(n.rec["id"] + str(int(t / 20.0)))) % 1000) / 1000.0,
 		"player_dist": n.global_position.distance_to(pp), "player_pos": Vector2(pp.x, pp.z),
 		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t, "day": NPCMind.day_num(),
+		"wanted": Game.crime.stars(String(e.get("sid", "")), Game.day),
 	}
 
 func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
@@ -227,7 +237,12 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
 					else:
 						n.act(["wave", "wave", "nod", "salute" if NPCGen.GUARD_JOBS.has(rec["job"]) else "wave"][randi() % 4])
 			"confront", "attack", "flee":
-				_bark(n, NPCMind.bark(rec, n.action), dist)
+				var owe := Game.crime.owed(String(e.get("sid", "")), Game.day)
+				if owe > 0 and NPCGen.GUARD_JOBS.has(rec["job"]):
+					_bark(n, ("Stop right there, criminal! You owe %s %d Marks. Pay up or face the law." % [e["data"]["name"], owe]) if n.action == "confront"
+						else ["Thief! Cut them down!", "You'll answer for your crimes!", "Stop, in the name of %s!" % e["data"]["name"]][randi() % 3], dist)
+				else:
+					_bark(n, NPCMind.bark(rec, n.action), dist)
 				if n.action == "confront":
 					n.act("point" if float(rec["traits"]["brave"]) < 0.7 else "fist")
 	# Dancing in the square and sitting down start once they get there.
@@ -379,6 +394,15 @@ func player_hit(n: NPC, damage: float) -> void:
 	n.flash_hit()
 	NPCMind.change_rel(rec, -35)
 	rec["mood"] = "angry" if float(rec["traits"]["brave"]) > 0.5 else "afraid"
+	var e0 := _entry_of(s)
+	if not e0.is_empty():
+		# They saw who hit them. Assault is fined once a minute per person, so one fight
+		# isn't a fortune; a killing always is.
+		if rec["hp"] <= 0.0:
+			Game.add_bounty(e0["sid"], s["name"], Crime.FINES["murder"], "Murder")
+		elif now() - float(rec.get("_fined_t", -999.0)) > 60.0:
+			rec["_fined_t"] = now()
+			Game.add_bounty(e0["sid"], s["name"], Crime.FINES["assault"], "Assault")
 	for o in all_nodes():
 		if o != n and o.settlement == s and o.global_position.distance_to(n.global_position) < 40.0:
 			NPCMind.change_rel(o.rec, -15)
@@ -420,6 +444,8 @@ func player_vandalised(pos: Vector3, what: String) -> void:
 				n.decide_in = 0.0
 				if what == "" and randf() < 0.3:
 					n.say(["Hey! Stop that!", "Leave that alone!", "What do you think you're doing?"][randi() % 3], 3.0)
+		if what != "" and not witnesses(pos).is_empty():
+			Game.add_bounty(String(e["sid"]), s["name"], Crime.FINES["vandalism"] * 5, "Vandalism")
 		if what != "":
 			NPCMind.add_rumor(s, "The traveller destroyed the %s." % what.to_lower())
 			for p in s["npcs"]:
@@ -442,3 +468,162 @@ func trader_stall(n: NPC) -> Array:
 			if wp.distance_to(sp) < 0.5:
 				return [o["st"], c]
 	return []
+
+# --- Crime and stealth ------------------------------------------------------------------------
+
+func _entry_of(s: Dictionary) -> Dictionary:
+	return settlements.get(NPCGen.settlement_id(s["sx"], s["sz"]), {})
+
+## The settlement whose ground `pos` is on, while its people are loaded: its entry
+## ({data, nodes, outer, sid}), or {}. Things there belong to its people.
+func town_at(pos: Vector3) -> Dictionary:
+	for e in settlements.values():
+		var c: Vector2 = e["data"]["center"]
+		if c.distance_to(Vector2(pos.x, pos.z)) <= float(e.get("outer", 60.0)) + 4.0 and not e["nodes"].is_empty():
+			return e
+	return {}
+
+## Whose house `pos` is in (the person living nearest), or null.
+func owner_near(e: Dictionary, pos: Vector3) -> Variant:
+	var best = null
+	var bd := 9.0
+	for rec in e["data"]["npcs"]:
+		if rec.get("dead", false):
+			continue
+		var d := (rec["home"] as Vector2).distance_to(Vector2(pos.x, pos.z))
+		if d < bd:
+			bd = d
+			best = rec
+	return best
+
+## How likely this person is to notice the player right now, 0..1: by distance, the
+## dark, whether they face you, walls in the way, your sneaking and whether you run.
+func awareness(n: NPC, pp: Vector3) -> float:
+	if not is_instance_valid(n) or n.is_hidden() or n.rec.get("dead", false):
+		return 0.0
+	if n.talking:
+		return 1.0
+	var eye := n.global_position + Vector3(0, 1.6, 0)
+	var me := pp + Vector3(0, 1.0, 0)
+	var d := eye.distance_to(me)
+	var hour := NPCMind.hour_now()
+	var dark := hour >= 20.5 or hour < 5.5
+	var lit: bool = player != null and "hand_light" in player and player.hand_light != null and player.hand_light.is_on()
+	var reach := 22.0 * (0.5 if dark and not lit else 1.0)
+	if d > reach:
+		return 0.0
+	var a := pow(1.0 - d / reach, 0.6)
+	# Facing you, or with their back turned (they still hear you up close).
+	var fwd := Vector2(sin(n.rotation.y), cos(n.rotation.y))
+	var to := Vector2(me.x - eye.x, me.z - eye.z)
+	if to.length() > 0.01 and fwd.dot(to.normalized()) < 0.2:
+		a *= 0.25 if d > 3.0 else 0.55
+	if n.action == "sleep":
+		a *= 0.2
+	var crouched: bool = player != null and player.has_method("sneaking") and player.sneaking()
+	var moving: float = player.velocity.length() if player is CharacterBody3D else 0.0
+	a *= Game.stats.notice_mult(crouched) * (1.5 if moving > 6.0 else 1.0)
+	if a <= 0.01:
+		return 0.0
+	# Walls between you hide you, mostly.
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(eye, me, 1)
+	if not space.intersect_ray(q).is_empty():
+		a *= 0.12
+	return clampf(a, 0.0, 1.0)
+
+## Everyone who notices what you just did at `pos` (rolled now). `extra` people always count.
+func witnesses(pos: Vector3, extra: Array = []) -> Array:
+	var out: Array = extra.duplicate()
+	if player == null:
+		return out
+	for n in all_nodes():
+		if out.has(n) or not is_instance_valid(n):
+			continue
+		if n.global_position.distance_to(pos) > 30.0:
+			continue
+		if randf() < awareness(n, player.global_position):
+			out.append(n)
+	return out
+
+## A crime in a town: if anyone sees it (or `caught_by` caught you at it), the town puts a
+## bounty on you, the witnesses think less of you and shout, and guards come running.
+## kind: a Crime.FINES key; worth: Marks taken. Returns true if you were seen.
+## Other systems (shops, stalls) call this when you take what isn't yours.
+func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_by: NPC = null) -> bool:
+	var e := town_at(pos)
+	if e.is_empty():
+		return false
+	var seen := witnesses(pos, [caught_by] if caught_by != null else [])
+	if seen.is_empty():
+		return false
+	var s: Dictionary = e["data"]
+	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
+	var why := {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing"}.get(kind, "Crime")
+	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
+	var shout := {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
+		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
+		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"]}.get(kind, ["Guards!"])
+	var shouted := false
+	for n in seen:
+		if not is_instance_valid(n):
+			continue
+		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
+		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
+			"lockpick": "breaking into a chest"}.get(kind, "committing a crime"))
+		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
+		if not shouted:
+			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
+			n.act("point")
+			shouted = true
+		n.decide_in = 0.0
+	# Word gets to the guards.
+	for n in e["nodes"]:
+		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
+			n.decide_in = 0.0
+	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest"}.get(kind, "breaking the law"))
+	e["dirty"] = true
+	return true
+
+## The sneak eye: how near anyone is to noticing you. Sneaking past people unseen is
+## practice at Sneaking.
+func _update_stealth(dt: float) -> void:
+	if player == null:
+		return
+	var pp := player.global_position
+	var best := 0.0
+	var any := false
+	for n in all_nodes():
+		if not is_instance_valid(n) or n.global_position.distance_to(pp) > 24.0:
+			continue
+		any = true
+		best = maxf(best, awareness(n, pp))
+	detection = best
+	watched = any
+	var crouched: bool = player.has_method("sneaking") and player.sneaking()
+	if crouched and any and best < 0.35 and player.velocity.length() > 0.5:
+		Game.practice("sneak", 0.5 * dt)
+
+## Pay off your bounty in this person's town (to a guard). Returns what was paid, or -1.
+func pay_bounty(n: NPC) -> int:
+	var e := _entry_of(n.settlement)
+	if e.is_empty():
+		return -1
+	var owe := Game.crime.owed(String(e["sid"]), Game.day)
+	if owe <= 0 or Game.money < owe:
+		return -1
+	Game.add_money(-owe)
+	Game.clear_bounty(String(e["sid"]))
+	# The law is satisfied: guards stand down.
+	for o in e["nodes"]:
+		if NPCGen.GUARD_JOBS.has(o.rec["job"]):
+			o.rec["rel"] = maxi(int(o.rec.get("rel", 0)), -20)
+			_overrides.erase(o.rec["id"])
+			o.decide_in = 0.0
+	NPCMind.remember(n.rec, "The traveller paid a %d Mark bounty." % owe)
+	e["dirty"] = true
+	return owe
+
+func bounty_for(n: NPC) -> int:
+	var e := _entry_of(n.settlement)
+	return 0 if e.is_empty() else Game.crime.owed(String(e["sid"]), Game.day)
