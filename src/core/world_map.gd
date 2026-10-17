@@ -32,6 +32,9 @@ var _index_dirty := false
 var _gen: ChunkGenerator
 var _gen_seed := -1
 static var _brushes := {}
+var _missing := {} ## pages known not to exist
+var _clock := 0.0
+const MAX_PAGES := 40
 
 class Page:
 	var color: Image
@@ -42,6 +45,7 @@ class Page:
 	var color_dirty := true
 	var fog_dirty := true
 	var unsaved := false
+	var used := 0.0 ## when it was last asked for
 
 	func _init() -> void:
 		color = Image.create_empty(PX, PX, false, Image.FORMAT_RGB8)
@@ -72,6 +76,7 @@ func open(store: WorldStore, visited: Dictionary) -> void:
 
 func close() -> void:
 	_pages.clear()
+	_missing.clear()
 	pois = {}
 	wonders = {}
 	_queue.clear()
@@ -102,9 +107,12 @@ static func page_of_chunk(c: Vector2i) -> Vector2i:
 
 ## The page at `k`, loaded from disk, or created when `make`; null when there is none.
 func page(k: Vector2i, make := false) -> Page:
-	if _pages.has(k):
-		return _pages[k]
-	var pg: Page = null
+	var pg: Page = _pages.get(k)
+	if pg != null:
+		pg.used = _clock
+		return pg
+	if not make and _missing.has(k):
+		return null
 	if _dir != "" and FileAccess.file_exists(_page_path(k)):
 		var d = WorldStore.read_var(_page_path(k), true)
 		if d is Dictionary and (d.get("c") as PackedByteArray).size() == PX * PX * 3:
@@ -114,11 +122,26 @@ func page(k: Vector2i, make := false) -> Page:
 			pg.painted = d["p"]
 	if pg == null and make:
 		pg = Page.new()
-	if pg != null:
-		_pages[k] = pg
-	elif _dir == "" or not make:
+	if pg == null:
+		# Remember that there is nothing here, so drawing doesn't ask the disk every frame.
+		_missing[k] = true
 		return null
+	_missing.erase(k)
+	pg.used = _clock
+	_pages[k] = pg
 	return pg
+
+## Keeps memory bounded on long journeys: saves and drops pages not used for a while.
+func _evict() -> void:
+	if _pages.size() <= MAX_PAGES:
+		return
+	for k in _pages.keys():
+		var pg: Page = _pages[k]
+		if _clock - pg.used > 10.0:
+			if pg.unsaved and _dir != "":
+				WorldStore.write_var(_page_path(k), {"c": pg.color.get_data(), "f": pg.fog.get_data(), "p": pg.painted}, true)
+			if _dir != "":
+				_pages.erase(k)
 
 ## [colour, fog] textures of page `k`, or [] if nothing of it is known. Main thread.
 func textures(k: Vector2i) -> Array:
@@ -215,6 +238,7 @@ func _generator() -> ChunkGenerator:
 
 ## Paints waiting chunks, lifts the fog around the player and notices wonders.
 func process(delta: float, player: Node3D) -> void:
+	_clock += delta
 	var budget := 3
 	while budget > 0 and not _queue.is_empty():
 		var ch: Dictionary = _queue.pop_front()
@@ -249,6 +273,7 @@ func process(delta: float, player: Node3D) -> void:
 	if _save_t <= 0.0:
 		_save_t = 20.0
 		save()
+		_evict()
 
 func _find_wonders(pos: Vector2) -> void:
 	for key in wonders:

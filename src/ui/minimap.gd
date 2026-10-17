@@ -107,14 +107,17 @@ func _draw_over() -> void:
 	# Places you can see on the map.
 	var reach: float = RANGES[zoom] * 1.05
 	var me := _canvas.center
-	for key in Game.map.pois:
-		for poi in Game.map.pois[key]:
-			var wp := Vector2(poi["x"], poi["z"])
-			if absf(wp.x - me.x) > reach or absf(wp.y - me.y) > reach or Game.map.revealed(wp.x, wp.y) < 0.45:
-				continue
-			var at: Array = _place(wp.x, wp.y)
-			if at[1]:
-				MapCanvas.draw_poi(_over, poi["k"], at[0], 5.0, MapCanvas.POI_COLORS.get(poi["k"], Color.WHITE))
+	var c0 := Vector2i(floori((me.x - reach) / ChunkGenerator.SIZE), floori((me.y - reach) / ChunkGenerator.SIZE))
+	var c1 := Vector2i(floori((me.x + reach) / ChunkGenerator.SIZE), floori((me.y + reach) / ChunkGenerator.SIZE))
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			for poi in Game.map.pois.get("%d,%d" % [cx, cz], []):
+				var wp := Vector2(poi["x"], poi["z"])
+				if absf(wp.x - me.x) > reach or absf(wp.y - me.y) > reach or Game.map.revealed(wp.x, wp.y) < 0.45:
+					continue
+				var at: Array = _place(wp.x, wp.y)
+				if at[1]:
+					MapCanvas.draw_poi(_over, poi["k"], at[0], 5.0, MapCanvas.POI_COLORS.get(poi["k"], Color.WHITE))
 	# Wonders: shown once their chunk has loaded near you, pinned to the rim beyond range.
 	for key in Game.map.wonders:
 		var w: Dictionary = Game.map.wonders[key]
