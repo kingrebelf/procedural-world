@@ -144,7 +144,7 @@ static func _mark_settlement(wp: Vector3) -> String:
 ## The hidden landmarks: a first visit pays well; some give a little more every day.
 static func _landmark(o: Dictionary, rng: RandomNumberGenerator, origin: Dictionary, wp: Vector3) -> String:
 	var st: Dictionary = o["st"]
-	var first := not st.get("used", false)
+	var first: bool = not st.get("used", false)
 	st["used"] = true
 	if first:
 		Game.add_xp(LANDMARK_XP, "Discovery")
