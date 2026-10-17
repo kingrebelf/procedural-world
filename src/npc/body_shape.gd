@@ -124,12 +124,13 @@ static func hair_color(b: Dictionary, age := -1) -> Color:
 
 ## Facial hair for a man: 0 clean-shaven, 1 stubble, 2 moustache, 3 moustache and chin
 ## (goatee), 4 short beard, 5 full beard. The young grow fewer full beards, the old more.
-## `age` < 0 (players): a full beard on odd hair styles, as players chose it.
+## `age` < 0 (players and age-less previews): facial hair on odd hair styles, as players
+## chose it, its style (moustache to full beard) their own.
 static func beard(b: Dictionary, age := -1) -> int:
 	if b.get("female", false):
 		return 0
 	if age < 0:
-		return 5 if int(b.get("hair_style", 0)) % 2 == 1 else 0
+		return 2 + mini(int(_rnd(b, "beard") * 4.0), 3) if int(b.get("hair_style", 0)) % 2 == 1 else 0
 	var r := _rnd(b, "beard")
 	var full := smoothstep(18.0, 40.0, float(age)) # share of full beards grows with age
 	var odds := [0.3, 0.18, 0.12, 0.14, 0.13 * (0.5 + 0.5 * full), 0.13 * full]
