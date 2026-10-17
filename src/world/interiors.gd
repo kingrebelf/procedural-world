@@ -333,23 +333,21 @@ static func fires(t: String) -> Array:
 	_fires[t] = out
 	return out
 
-## Stone rooms whose still air holds dust, so sunbeams show through their windows.
-const DUSTY := ["castle_keep", "crypt_keep", "castle_tower", "crypt_tower", "watchtower"]
-
-## The dusty air inside a stone room, in the object's own space (sunk like the object):
-## [centre, size], or [] for a room without.
-static func dust(t: String) -> Array:
-	if not t in DUSTY:
+## The windows the sun shines in through, drawn as beams in the room's air (SunBeams), in
+## the object's own space (sunk like the object): [centre of the opening on the wall's
+## inner face, inward normal, half width, half height, the room's floor and ceiling
+## heights, its half size across x and z]. A stone tower's arrow slits, one storey under
+## its top (Stronghold._face, row 2, every other module).
+static func sun_windows(t: String) -> Array:
+	if not TOWER.has(t):
 		return []
-	if BOX.has(t):
-		var b: Array = BOX[t]
-		var half: Vector2 = b[0]
-		var y0: float = b[1]
-		var y1: float = b[2]
-		return [Vector3(0.0, (y0 + y1) * 0.5 - SINK, 0.0), Vector3(half.x * 2.0, y1 - y0, half.y * 2.0)]
-	var r: Array = ROUND[t]
-	var inner: float = float(r[0]) - float(r[2])
-	return [Vector3(0.0, (float(r[5]) + float(r[6])) * 0.5 - SINK, 0.0), Vector3(inner * 1.4, float(r[6]) - float(r[5]), inner * 1.4)]
+	var out: Array = []
+	var b0: Array = BOX[t]
+	for side in 4:
+		var b := Basis(Vector3.UP, side * PI / 2.0)
+		for x in [-1.0, 3.0]:
+			out.append([b * Vector3(x, 7.775 - SINK, 3.7), b * Vector3(0, 0, -1), 0.3, 0.725, float(b0[1]) - SINK, float(b0[2]) - SINK, b0[0]])
+	return out
 
 ## Lights in the object's own space (sunk like the object): [position, colour, energy, range].
 static func lights(t: String) -> Array:

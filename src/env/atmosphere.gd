@@ -313,6 +313,9 @@ func _update_time_of_day() -> void:
 		moon.light_energy *= lit
 		env.fog_density *= lerpf(1.0, 0.4, underground)
 		env.volumetric_fog_density *= lit
+	# The sunlight a window lets in as a beam (SunBeams), gone under heavy cloud.
+	var beam := sun.light_color * (sun.light_energy * (1.0 - smoothstep(0.55, 0.9, cover)) if sun.visible else 0.0)
+	RenderingServer.global_shader_parameter_set("sun_light_g", Vector3(beam.r, beam.g, beam.b))
 	# Glowing plants and moss: a hint in the dark, not a lamp; you still want a torch.
 	var night_glow := 0.08 + 0.4 * (1.0 - daylight)
 	ChunkNode.ensure_shared()

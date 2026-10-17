@@ -1011,9 +1011,9 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.distance_fade_length = 15.0
 		hl.position = l[0]
 		b.add_child(hl)
-	var dust := Interiors.dust(o["t"])
-	if not dust.is_empty():
-		b.add_child(_dust_volume(dust))
+	var beams := SunBeams.node(o["t"])
+	if beams != null:
+		b.add_child(beams)
 	for f in Interiors.fires(o["t"]):
 		var fl := FireFx.flame(f[1])
 		fl.position = f[0]
@@ -1059,23 +1059,6 @@ func _add_obj_body(o: Dictionary) -> void:
 
 ## Room lights, fires and lamps cast shadows near you: furniture and beams throw them, and
 ## the light stays inside its walls instead of shining out through them.
-static var _dust_mat: FogMaterial
-
-## The still, dusty air of a stone room (Interiors.dust: its centre and size), where the
-## sun through a window or arrow slit falls as a visible beam.
-static func _dust_volume(box: Array) -> FogVolume:
-	if _dust_mat == null:
-		_dust_mat = FogMaterial.new()
-		_dust_mat.density = 0.045
-		_dust_mat.albedo = Color(0.86, 0.8, 0.72)
-		_dust_mat.edge_fade = 0.15
-	var fv := FogVolume.new()
-	fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
-	fv.size = box[1]
-	fv.position = box[0]
-	fv.material = _dust_mat
-	return fv
-
 static func _cast_shadows(l: OmniLight3D) -> void:
 	l.shadow_enabled = true
 	l.shadow_bias = 0.04

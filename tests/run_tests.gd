@@ -312,6 +312,25 @@ func test_house_interiors() -> void:
 		var floor_at := inside.y - _ray_hit(faces, inside, Vector3(0, -2.0, inside.z))
 		check(absf(floor_at - KitHouse.FLOOR) < 0.01, "%s: the floor collides where it is drawn (%.2f)" % [t, floor_at])
 
+## Sunbeams come in where a tower's arrow slits are: a ray along each window's normal
+## passes the walls there into the room, and the beams' boxes are built.
+func test_sun_windows() -> void:
+	for t in Interiors.TOWER:
+		var wins := Interiors.sun_windows(t)
+		check(wins.size() == 8, "%s lets the sun in through its eight arrow slits (%d)" % [t, wins.size()])
+		var tm := ObjectLibrary.get_mesh(t).generate_triangle_mesh()
+		var open := 0
+		for w in wins:
+			# The shell is drawn sunk by SINK: back into its own space.
+			var c: Vector3 = (w[0] as Vector3) + Vector3(0, Interiors.SINK, 0)
+			var n: Vector3 = w[1]
+			if tm.intersect_segment(c - n * 2.0, c + n * 0.5).is_empty():
+				open += 1
+		check(open == wins.size(), "%s: every sun window is an opening in its walls (%d of %d)" % [t, open, wins.size()])
+		var m := SunBeams.mesh(t)
+		check(m != null and m.surface_get_array_len(0) == 8 * wins.size(), "%s has a beam box per window" % t)
+	check(SunBeams.mesh("cottage") == null and Interiors.sun_windows("castle_keep").is_empty(), "rooms without arrow slits have no beams")
+
 func test_room_interiors() -> void:
 	for t in Interiors.FURNISH:
 		var shell := ObjectLibrary.get_mesh(t)

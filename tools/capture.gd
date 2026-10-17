@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--day=0.3]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -24,6 +24,8 @@ var shafts := 1.0
 var vfog := 1.0
 ## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
 var day_override := -1.0
+## --beams=N scales the sunbeams through windows for this run.
+var beams := 1.0
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -43,6 +45,8 @@ func _ready() -> void:
 			shafts = a.substr(9).to_float()
 		if a.begins_with("--vfog="):
 			vfog = a.substr(7).to_float()
+		if a.begins_with("--beams="):
+			beams = a.substr(8).to_float()
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
@@ -315,6 +319,7 @@ func _run() -> void:
 	_apply_hud_mode()
 	world.atmosphere.vfog_boost = vfog
 	world.atmosphere.shaft_boost = shafts
+	SunBeams.material().set_shader_parameter("strength", beams)
 	for kv in env_sets:
 		var env: Environment = world.atmosphere.env
 		var v = str_to_var(kv[1])
