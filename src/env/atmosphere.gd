@@ -61,7 +61,9 @@ func _ready() -> void:
 	env.fog_sky_affect = 0.2
 	env.volumetric_fog_length = 96.0
 	env.volumetric_fog_detail_spread = 2.0
-	env.volumetric_fog_anisotropy = 0.35
+	# Forward scattering: the haze lights up toward the sun, so where leaves and trunks
+	# shade it the light falls in shafts.
+	env.volumetric_fog_anisotropy = 0.5
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.98
 	env.adjustment_contrast = 1.1
@@ -93,6 +95,7 @@ func _ready() -> void:
 	sun.shadow_bias = 0.03
 	sun.shadow_normal_bias = 1.2
 	sun.light_angular_distance = 0.5
+	sun.light_volumetric_fog_energy = 1.4
 	sun.directional_shadow_split_1 = 0.06
 	sun.directional_shadow_split_2 = 0.18
 	sun.directional_shadow_split_3 = 0.45

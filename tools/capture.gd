@@ -292,7 +292,7 @@ func _run() -> void:
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
 		await _cave_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
-	if only.is_empty() or only.has("43") or only.has("44"):
+	if only.is_empty() or only.has("43") or only.has("44") or only.has("58"):
 		await _forest_shots(g)
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	var fan := _find_settlement(g, Eras.FANTASY)
@@ -1133,6 +1133,11 @@ func _forest_shots(g: ChunkGenerator) -> void:
 				stand = q
 				look = q + pull.normalized() * 20.0
 	await _shot("44_forest_close", stand, look, 0.4, 1.7, NAN, _draw_stats)
+	# Into the low morning sun through the trees: light shafts in the haze.
+	var sa := (0.29 - 0.25) * TAU
+	var sd := Vector3(cos(sa), sin(sa), 0.35).normalized()
+	var sun_at := stand + Vector2(sd.x, sd.z).normalized() * 30.0
+	await _shot("58_forest_sun", stand, sun_at, 0.29, 1.7, g.field.height(stand.x, stand.y) + 1.7 + 30.0 * 0.12)
 	await _shot("43_forest_overlook", best + Vector2(-90, -70), best, 0.4, 28.0, NAN, _draw_stats)
 
 func _draw_stats() -> void:
