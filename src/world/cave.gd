@@ -106,7 +106,7 @@ static func build(sp: int) -> ArrayMesh:
 	st.generate_tangents()
 	var out := ArrayMesh.new()
 	st.commit(out)
-	out.surface_set_material(0, StoneKit.material())
+	out.surface_set_material(0, StoneKit.cave_material())
 	return out
 
 static func shape(sp: int) -> Array:

@@ -37,6 +37,27 @@ static func material() -> Material:
 	_lock.unlock()
 	return m
 
+## The rock material for cave shells: their walls hold still (no wobble), since you walk
+## against their collision.
+static func cave_material() -> Material:
+	_lock.lock()
+	var m := _cave_mat
+	_lock.unlock()
+	if m != null:
+		return m
+	var base := material()
+	m = base.duplicate() if base is ShaderMaterial else base
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).set_shader_parameter("wobble", 0.0)
+	_lock.lock()
+	if _cave_mat == null:
+		_cave_mat = m
+	m = _cave_mat
+	_lock.unlock()
+	return m
+
+static var _cave_mat: Material
+
 static func mesh(kind: String) -> ArrayMesh:
 	_lock.lock()
 	var m: ArrayMesh = _meshes.get(kind)
@@ -50,8 +71,10 @@ static func mesh(kind: String) -> ArrayMesh:
 		m.surface_set_material(0, material())
 		var pts := PackedVector3Array()
 		var seen := {}
+		# One point per 7 cm cell: the weathered kit rocks have thousands of corners, and a
+		# hull of them all costs Jolt far more to build for a difference no foot can feel.
 		for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
-			var key := Vector3i(roundi(v.x * 40.0), roundi(v.y * 40.0), roundi(v.z * 40.0))
+			var key := Vector3i(roundi(v.x * 14.0), roundi(v.y * 14.0), roundi(v.z * 14.0))
 			if not seen.has(key):
 				seen[key] = true
 				pts.append(v)
