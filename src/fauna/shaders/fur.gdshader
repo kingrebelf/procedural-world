@@ -99,9 +99,14 @@ void fragment() {
 		c = mix(base, other, 0.5 * (1.0 - smoothstep(0.0, 1.0, seam + n * 0.7)));
 	}
 	// This animal's own shade of its species' coat.
-	c *= 1.0 + vary * (h1(s + 4.1) - 0.5) * 2.0;
-	c.r *= 1.0 + vary * 0.5 * (h1(s + 5.3) - 0.5);
-	c.b *= 1.0 - vary * 0.5 * (h1(s + 5.3) - 0.5);
+	// Pushed away from the average, so two animals side by side rarely match.
+	float sh = h1(s + 4.1) * 2.0 - 1.0;
+	sh = sign(sh) * mix(0.4, 1.0, abs(sh));
+	c *= 1.0 + vary * sh * 1.4;
+	float warm = h1(s + 5.3) * 2.0 - 1.0;
+	c.r *= 1.0 + vary * 0.6 * warm;
+	c.b *= 1.0 - vary * 0.6 * warm;
+	c = mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))), vary * 1.6 * h1(s + 6.1));
 	float h = 0.0;
 	float rough = 0.88;
 	float spec = 0.35;
@@ -123,12 +128,14 @@ void fragment() {
 		c *= mix(1.0, fpick < 0.25 ? 0.75 : (fpick > 0.8 ? 1.15 : 1.0), face);
 		c *= 1.0 - dor * smoothstep(0.55, 1.0, t + edge * 0.15) * torso * (1.0 - 0.5 * mid);
 		vec3 pale = mix(c, vec3(dot(c, vec3(0.33))) * 1.35 + 0.08, 0.6);
+		// Some animals carry a darker saddle over the back.
+		c *= 1.0 - 0.3 * step(0.55, h1(s + 24.0)) * smoothstep(0.55, 0.85, t + edge * 0.3) * torso * smoothstep(0.25, 0.4, q.z) * (1.0 - smoothstep(0.6, 0.72, q.z));
 		c = mix(c, pale, bel * (1.0 - smoothstep(0.1, 0.4, t + edge * 0.2)) * torso);
 		c *= 1.0 - stripe * (1.0 - smoothstep(0.04, 0.12, mid + edge * 0.04)) * smoothstep(0.7, 0.9, t) * 0.55;
 		// Pied patches: big, ragged, different on every animal.
 		float pick = h1(s + 7.7);
 		if (patches > 0.0 && pick < patches * 1.4) {
-			float n = fbm(pm * 1.3 + so * 0.37) + (fbm(pm * 7.0 + so) - 0.5) * 0.12;
+			float n = fbm(pm * 2.2 + so * 0.37) + (fbm(pm * 7.0 + so) - 0.5) * 0.12;
 			float amt = mix(0.62, 0.42, patches * h1(s + 8.1));
 			c = mix(c, patch_col, smoothstep(amt, amt + 0.015, n));
 		}
@@ -159,7 +166,7 @@ void fragment() {
 		// The hair itself: locks and single hairs, stretched the way they lie.
 		vec3 f = flow(q, p);
 		// Hair doesn't lie perfectly straight: whorls and partings.
-		f = normalize(f + (vec3(fbm(pm * 3.0 + so), fbm(pm * 3.0 + so + 9.1), fbm(pm * 3.0 + so + 4.7)) - 0.5) * 0.8);
+		if (role == 0) f = normalize(f + (vec3(fbm(pm * 3.0 + so), fbm(pm * 3.0 + so + 9.1), fbm(pm * 3.0 + so + 4.7)) - 0.5) * 0.8);
 		// Shorter hair on the legs and face.
 		float short_hair = mix(0.6, 1.0, torso) * mix(1.0, 0.65, smoothstep(0.86, 0.92, q.z));
 		vec3 a = normalize(cross(f, abs(f.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)));
@@ -170,21 +177,35 @@ void fragment() {
 		float ck = role == 1 ? clump * 2.5 : clump * short_hair;
 		float sk = role == 1 ? strand * 3.0 : strand * 0.75 * short_hair;
 		float cl = n3(sc * vec3(1.0, 1.0, stretch * 1.5) / ck + so);
-		float fi = n3(sc * vec3(1.0, 1.0, stretch) / sk + so * 2.0);
+		// Single hairs as short strokes along the flow: staggered cells, each one hair
+		// with its own shade, in two crossing layers.
+		float fi = 0.0;
+		for (int layer = 0; layer < 2; layer++) {
+			vec2 hp = layer == 0 ? vec2(sc.x, sc.z) : vec2(sc.y + 0.37 * sk, sc.z + 2.1 * sk);
+			hp /= vec2(sk, sk * (role == 1 ? 14.0 : 5.0));
+			float col_i = floor(hp.x);
+			hp.y += h1(col_i + float(layer) * 17.0 + so.x);
+			vec2 cell = floor(hp);
+			vec2 fr = fract(hp);
+			float rn = h3(vec3(cell, float(layer)) + so);
+			float off = 0.5 + (rn - 0.5) * 0.4;
+			float stroke = (1.0 - smoothstep(0.12, 0.38, abs(fr.x - off))) * smoothstep(0.0, 0.25, fr.y) * (1.0 - smoothstep(0.75, 1.0, fr.y));
+			fi = max(fi, stroke * (0.55 + 0.45 * rn));
+		}
 		float fc = 1.0 - smoothstep(ck * 0.4, ck * 1.6, px);
 		float ff = 1.0 - smoothstep(sk * 0.4, sk * 1.6, px);
 		fi = mix(fi, smoothstep(0.35, 0.75, fi), coarse);
-		float hv = (cl - 0.5) * fc * 0.25 + (fi - 0.5) * ff * (0.6 + coarse * 0.4);
+		float hv = (cl - 0.5) * fc * 0.1 + (fi - 0.45) * ff * (0.7 + coarse * 0.4);
 		c *= 1.0 + hv * fur * (0.75 + coarse * 0.5);
 		// Dark hair still catches the light along each strand.
-		c += vec3(0.035) * max(hv, 0.0) * fur * (role == 1 ? 2.5 : 0.6);
+		c += vec3(0.035) * max(hv, 0.0) * fur * (role == 1 ? 1.2 : 0.6);
 		// Guard hairs banded pale and dark: grizzled wolves, agouti hares.
 		if (grizzle > 0.0) {
 			float g = n3(sc * vec3(1.0, 1.0, 0.5) / (strand * 1.6) + so * 3.0);
 			float gm = mix(0.5, g, 1.0 - smoothstep(strand * 0.6, strand * 2.5, px));
 			c *= 1.0 + (gm - 0.5) * grizzle * 0.9;
 		}
-		h = (cl * fc * 0.6 + fi * ff * 0.4) * clump * 0.08 * fur;
+		h = (cl * fc * 0.25 + fi * ff * 0.5) * clump * 0.08 * fur;
 		rim = 0.3 * fur;
 		rough = role == 1 ? 0.62 : 0.9 - coarse * 0.08;
 		spec = role == 1 ? 0.5 : 0.3;
@@ -200,7 +221,7 @@ void fragment() {
 		// Horn and hoof: growth rings and lengthwise grain.
 		float ring = sin(pm.y * 900.0 + fbm(pm * 40.0) * 6.0) * 0.5 + 0.5;
 		float grain = fbm(vec3(pm.x * 120.0, pm.y * 12.0, pm.z * 120.0) + so);
-		c *= 0.82 + 0.3 * grain;
+		c *= (0.82 + 0.3 * grain) * 0.7;
 		h = (ring * 0.4 + grain * 0.6) * 0.0008;
 		rough = 0.5;
 		spec = 0.4;

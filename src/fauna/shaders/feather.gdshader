@@ -47,14 +47,16 @@ void fragment() {
 		c = mix(col_a, col_b, smoothstep(0.0, 1.0, UV.y));
 		float barbs = sin((ax * 6.0 + UV.y * 1.0) * 70.0) * 0.5 + 0.5;
 		float bf = 1.0 - smoothstep(0.01, 0.04, px);
-		c *= 0.9 + 0.2 * barbs * bf;
+		c *= 0.94 + 0.12 * barbs * bf;
+		// Vanes are soft and slightly uneven, not printed.
+		c *= 0.9 + 0.2 * h2(vec2(floor(UV.y * 9.0 + ax * 4.0), sign(x)) + s);
 		c *= 1.0 - 0.35 * smoothstep(0.6, 1.0, UV.y); // darker tips
 		if (bars > 0.0) {
 			float b = sin(UV.y * 31.4 + h1(s) * 6.28 + ax * 2.0);
 			c *= 1.0 - bars * smoothstep(0.55, 0.8, b);
 		}
 		float shaft = 1.0 - smoothstep(0.015, 0.035, ax);
-		c = mix(c, col_b * 1.3 + 0.05, shaft * 0.6);
+		c = mix(c, c * 1.25 + 0.02, shaft * 0.35);
 		c *= 1.0 - 0.2 * smoothstep(0.38, 0.5, ax); // the vane's ragged edge
 		h = (barbs * bf * 0.3 + shaft) * 0.0008;
 	} else {
@@ -63,7 +65,9 @@ void fragment() {
 		vec2 g = vec2(UV.x * a, UV.y * r);
 		if (mode == 2) g = vec2(UV.y * r, UV.x * a);
 		float row = floor(g.y);
-		g.x += mod(row, 2.0) * 0.5;
+		g.x += mod(row, 2.0) * 0.5 + (h2(vec2(row, s)) - 0.5) * 0.4;
+		// Rows wander a little, so the plumage is not a printed grid of scales.
+		g.y += (sin(g.x * 1.7 + row) * 0.5 + 0.5) * 0.35;
 		vec2 cell = floor(g);
 		vec2 f = fract(g);
 		// Each feather's rounded tip points tailward (+y). Outside the curve lies the
@@ -76,11 +80,13 @@ void fragment() {
 		c = mix(col_a, col_b, smoothstep(0.0, 1.0, mode == 0 ? UV.y : UV.x));
 		c *= 0.92 + 0.16 * rnd;
 		float df = 1.0 - smoothstep(0.08, 0.25, px * r);
-		c *= 1.0 + fringe * edge * df;
-		c *= 1.0 - 0.18 * (1.0 - own) * smoothstep(1.0, 1.25, e) * df;
+		c *= 1.0 + fringe * 0.5 * edge * df;
+		c *= 1.0 - 0.08 * (1.0 - own) * smoothstep(1.0, 1.25, e) * df;
+		// Soft, fluffy body feathers: a cloudy shade over the rows.
+		c *= 0.92 + 0.16 * h2(floor(UV * vec2(5.0, 7.0)) + s);
 		float barbs = sin((abs(f.x - 0.5) * 3.0 + f.y) * 40.0) * 0.5 + 0.5;
 		c *= 1.0 + (barbs - 0.5) * 0.06 * df;
-		h = (own * e * 0.8 + barbs * 0.05) * df * 0.0012;
+		h = (own * e * 0.8 + barbs * 0.05) * df * 0.0006;
 	}
 	c *= 1.0 + 0.16 * (h1(s + 3.0) - 0.5);
 	float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);

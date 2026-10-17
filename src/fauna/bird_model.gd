@@ -82,7 +82,9 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	g.add_mat("body", _feather(pal[0], pal[1], 0.15 if glows else 0.0, gcol, 0, name))
 	g.add_mat("dark", _feather(pal[2], pal[2].lightened(0.15), 0.0, Color.WHITE, 1, name))
 	g.add_mat("beak", HiFlora.organic(pal[3].darkened(0.2), pal[3], {"streaks": 0.0, "sss": 0.1, "rough": 0.45}))
-	g.add_mat("eye", HiFlora.organic(Color(0.02, 0.02, 0.02), Color(0.05, 0.04, 0.03), {"streaks": 0.0, "sss": 0.0, "rough": 0.1}))
+	# Eyes: a dark pupil in a coloured iris, wet and glossy.
+	var iris := Color(0.35, 0.2, 0.06) if name == "Kestrel" else (Color(0.28, 0.2, 0.1) if name == "Crow" else Color(0.18, 0.11, 0.06))
+	g.add_mat("eye", HiFlora.organic(Color(0.01, 0.01, 0.01), iris, {"streaks": 0.0, "sss": 0.0, "rough": 0.03}))
 	if glows:
 		g.add_mat("glow", HiFlora.organic(gcol.darkened(0.3), gcol, {"glow": 1.4, "glow_col": gcol, "streaks": 0.2, "sss": 0.9, "rough": 0.4}))
 	var fat := 1.18 if finch else 1.0
@@ -97,7 +99,7 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var bl := 0.045 if finch else (0.075 if name == "Crow" else 0.055)
 	g.prism("beak", Vector3(0, 0.034, 0.238), Vector3(0, -0.22 if name == "Kestrel" else -0.1, 1.0), 0.02 if not finch else 0.024, bl, 5, 0.75)
 	for s in [-1.0, 1.0]:
-		g.lathe("eye", HiFlora._ellipse(0.013, 0.013, 6), 8, Transform3D(Basis(), Vector3(s * 0.05, 0.058, 0.205)))
+		g.lathe("eye", HiFlora._ellipse(0.0095, 0.0095, 6), 10, Transform3D(Basis(), Vector3(s * 0.051, 0.058, 0.205)))
 	# Tail fan, forked on swallows, with glowing streamers on wisp finches.
 	var n := 7
 	for i in n:

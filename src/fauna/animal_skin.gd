@@ -17,13 +17,13 @@ const LEVELS := 2
 ## where the legs meet the body and the back's top (0..1 of the height), and the chances
 ## and colours of each marking. Missing keys take the defaults in fur.gdshader.
 const LOOKS := {
-	"Deer": {"vary": 0.2, "strand": 0.003, "clump": 0.016, "fur": 0.8, "muscle": 1.0, "legs_y": 0.42, "back_y": 0.62,
+	"Deer": {"vary": 0.24, "strand": 0.003, "clump": 0.016, "fur": 0.8, "muscle": 1.0, "legs_y": 0.42, "back_y": 0.62,
 		"belly": 0.4, "dorsal": 0.2, "spots": 0.25, "spot_col": Color(0.82, 0.74, 0.62), "spot_size": 0.035},
-	"Stag": {"vary": 0.2, "strand": 0.0035, "clump": 0.02, "fur": 0.85, "muscle": 1.2, "legs_y": 0.42, "back_y": 0.6,
+	"Stag": {"vary": 0.24, "strand": 0.0035, "clump": 0.02, "fur": 0.85, "muscle": 1.2, "legs_y": 0.42, "back_y": 0.6,
 		"belly": 0.4, "dorsal": 0.25},
 	"Cow": {"strand": 0.003, "clump": 0.024, "fur": 0.55, "muscle": 0.6, "legs_y": 0.36, "back_y": 0.66,
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
-	"Bull": {"strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
+	"Bull": {"vary": 0.22, "strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
 		"belly": 0.08, "dorsal": 0.1, "patches": 0.2, "patch_col": Color(0.3, 0.2, 0.12), "blaze": 0.2},
 	"Horse": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.1, "socks": 0.45, "sock_col": Color(0.66, 0.63, 0.58), "blaze": 0.5, "spots": 0.15, "spot_col": Color(0.5, 0.36, 0.24), "spot_size": 0.06},
@@ -31,11 +31,11 @@ const LOOKS := {
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},
 	"Donkey": {"strand": 0.003, "clump": 0.02, "fur": 0.75, "muscle": 0.8, "legs_y": 0.4, "back_y": 0.66,
 		"belly": 0.5, "dorsal": 0.1, "stripe": 0.7, "socks": 0.15, "sock_col": Color(0.12, 0.1, 0.09)},
-	"Alpaca": {"vary": 0.2, "strand": 0.006, "clump": 0.045, "fur": 1.4, "coarse": 0.3, "muscle": 0.15, "legs_y": 0.32, "back_y": 0.52,
+	"Alpaca": {"vary": 0.24, "strand": 0.006, "clump": 0.045, "fur": 1.4, "coarse": 0.3, "muscle": 0.15, "legs_y": 0.32, "back_y": 0.52,
 		"belly": 0.15, "dorsal": 0.0, "patches": 0.35, "patch_col": Color(0.86, 0.82, 0.74)},
 	"Wolf": {"vary": 0.32, "strand": 0.004, "clump": 0.022, "fur": 1.15, "muscle": 0.6, "legs_y": 0.4, "back_y": 0.68,
 		"belly": 0.35, "dorsal": 0.5, "stripe": 0.25, "grizzle": 0.7},
-	"Fox": {"vary": 0.2, "strand": 0.003, "clump": 0.016, "fur": 1.0, "muscle": 0.4, "legs_y": 0.34, "back_y": 0.62,
+	"Fox": {"vary": 0.24, "strand": 0.003, "clump": 0.016, "fur": 1.0, "muscle": 0.4, "legs_y": 0.34, "back_y": 0.62,
 		"belly": 0.25, "dorsal": 0.15, "grizzle": 0.25},
 	"Husky": {"strand": 0.004, "clump": 0.022, "fur": 1.15, "muscle": 0.4, "legs_y": 0.38, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.15, "grizzle": 0.3, "socks": 0.2},
@@ -573,7 +573,8 @@ static func _seams(pos: PackedVector3Array, tris: PackedInt32Array, tsurf: Packe
 	owner.fill(-1)
 	var seam := PackedByteArray()
 	seam.resize(n)
-	var coat := func(sf: int) -> bool: return roles[sf] == FUR or roles[sf] == HAIR
+	# Only coat meets coat: a mane or tail stays its own colour to the edge.
+	var coat := func(sf: int) -> bool: return roles[sf] == FUR
 	for t in tsurf.size():
 		var sf := tsurf[t]
 		if not coat.call(sf):
