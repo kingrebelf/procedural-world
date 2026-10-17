@@ -379,6 +379,122 @@ func test_landforms() -> void:
 		check(WorldField.new(2024).height(c.x, c.y) == at14, "v14 worlds keep their towers")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
+## v19 rock towers are believable: none taller than its width allows or squeezed into a
+## thin sheer fin between its neighbours, none standing alone on open ground, and no
+## higher than about fifteen storeys over the valley; older worlds keep theirs and the
+## other landforms are untouched.
+func test_believable_towers() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var f := WorldField.new(2024)
+	var deep := {}
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			var lf := f.site_landform(ix, iz)
+			var p := f.site_pos(ix, iz)
+			if (lf == WorldField.LF_KARST or lf == WorldField.LF_NEEDLES) and not deep.has(lf) and f.landform_weights(p.x, p.y)[lf] > 0.97:
+				deep[lf] = p
+	check(deep.size() == 2, "found karst and needle country (%d)" % deep.size())
+	for lf in deep:
+		var c: Vector2 = deep[lf]
+		var st := {}
+		for tv in [ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION]:
+			WorldField.terrain_v = tv
+			st[tv] = _tower_stats(WorldField.new(2024), c, 200)
+		var o: Dictionary = st[ChunkGenerator.GEN_VERSION - 2]
+		var n: Dictionary = st[ChunkGenerator.GEN_VERSION]
+		var name: String = WorldField.LANDFORM_NAMES[lf]
+		print("  %-12s old: top %.1f m, %d towers, worst height:width %.2f, %d lone; new: top %.1f m, %d towers, worst %.2f, %d lone" % [name,
+			o["top"], o["towers"], o["worst"], o["lone"], n["top"], n["towers"], n["worst"], n["lone"]])
+		var cap := WorldField.TOWER_ASPECT if lf == WorldField.LF_KARST else WorldField.NEEDLE_ASPECT
+		check(n["worst"] <= cap * 1.25, "%s: no tower is much taller than it is wide (%.2f)" % [name, n["worst"]])
+		check(n["top"] > 25.0 and n["top"] < 52.0, "%s still tower, but no higher than about fifteen storeys (%.1f m)" % [name, n["top"]])
+		check(n["towers"] >= 3, "%s: the towers are still there (%d)" % [name, n["towers"]])
+		check(n["lone"] == 0, "%s: no tall tower stands alone (%d)" % [name, n["lone"]])
+	# Old worlds keep their towers; every other landform is the same in v19 as before it.
+	var other := 0
+	var same := true
+	for iz in range(-12, 12):
+		for ix in range(-12, 12):
+			var p := f.site_pos(ix, iz)
+			var lw := f.landform_weights(p.x, p.y)
+			if lw[WorldField.LF_KARST] > 0.0 or lw[WorldField.LF_NEEDLES] > 0.0:
+				continue
+			for k in 4:
+				var x := p.x + k * 37.0 - 60.0
+				var z := p.y - k * 23.0 + 30.0
+				WorldField.terrain_v = ChunkGenerator.GEN_VERSION - 1
+				var a := WorldField.new(2024).shape(x, z)
+				WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+				var b := WorldField.new(2024).shape(x, z)
+				same = same and a == b
+				other += 1
+	check(same and other > 200, "land away from towers is unchanged by v19 (%d samples)" % other)
+	var c0: Vector2 = deep[WorldField.LF_KARST]
+	var line := {}
+	for tv in [ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION]:
+		WorldField.terrain_v = tv
+		var fv := WorldField.new(2024)
+		var hs := PackedFloat32Array()
+		for i in 100:
+			hs.append(fv.height(c0.x + i * 2.0 - 100.0, c0.y + i * 0.7))
+		check(not line.has(tv) or line[tv] == hs, "older worlds keep their towers")
+		line[tv] = hs
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	check(line[ChunkGenerator.GEN_VERSION - 2] != line[ChunkGenerator.GEN_VERSION], "new worlds get the new towers")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+
+## Towers in an n x n metre patch round c: the highest relief, how many towers stand
+## over 12 m, the worst height-to-width (width: of the part above half its height) and
+## how many over 20 m have no other tower over 8 m within 50 m.
+func _tower_stats(f: WorldField, c: Vector2, n: int) -> Dictionary:
+	var rel := PackedFloat32Array()
+	rel.resize(n * n)
+	var top := 0.0
+	for j in n:
+		for i in n:
+			var sh := f.shape(c.x + i - n / 2, c.y + j - n / 2)
+			rel[j * n + i] = sh.z + sh.y
+			top = maxf(top, sh.z)
+	var peaks: Array[Vector3] = []
+	for j in range(4, n - 4):
+		for i in range(4, n - 4):
+			var h := rel[j * n + i]
+			if h < 8.0:
+				continue
+			var peak := true
+			for dj in range(-4, 5):
+				for di in range(-4, 5):
+					if (di != 0 or dj != 0) and rel[(j + dj) * n + i + di] >= h:
+						peak = false
+			if peak:
+				peaks.append(Vector3(i, j, h))
+	var worst := 0.0
+	var towers := 0
+	var lone := 0
+	for p in peaks:
+		if p.z < 12.0:
+			continue
+		towers += 1
+		# Flood the part of it above half its height.
+		var seen := {}
+		var todo := [Vector2i(int(p.x), int(p.y))]
+		var area := 0
+		while not todo.is_empty() and area < 4000:
+			var q: Vector2i = todo.pop_back()
+			if seen.has(q) or q.x < 0 or q.y < 0 or q.x >= n or q.y >= n or rel[q.y * n + q.x] < p.z * 0.5:
+				continue
+			seen[q] = true
+			area += 1
+			todo.append_array([q + Vector2i.LEFT, q + Vector2i.RIGHT, q + Vector2i.UP, q + Vector2i.DOWN])
+		# A cone's half-height section is half its foot: compare the height to twice it.
+		worst = maxf(worst, p.z / (4.0 * sqrt(area / PI)))
+		if p.z >= 20.0 and p.x > 50 and p.y > 50 and p.x < n - 50 and p.y < n - 50:
+			var friend := false
+			for p2 in peaks:
+				friend = friend or (p2 != p and p2.z >= 8.0 and Vector2(p.x, p.y).distance_to(Vector2(p2.x, p2.y)) < 50.0)
+			lone += 0 if friend else 1
+	return {"top": top, "towers": towers, "worst": worst, "lone": lone}
+
 func test_house_interiors() -> void:
 	for t in KitHouse.PLANS:
 		var dm := KitHouse._dims(t)
