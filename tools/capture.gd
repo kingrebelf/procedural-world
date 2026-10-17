@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--vfog=3]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--vfog=3] [--day=0.3]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -18,6 +18,8 @@ var hud_mode := ""
 var env_sets: Array = []
 ## --vfog=N scales the volumetric haze (light shafts) for this run.
 var vfog := 1.0
+## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
+var day_override := -1.0
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -33,6 +35,8 @@ func _ready() -> void:
 			env_sets.append(a.substr(6).split("="))
 		if a.begins_with("--vfog="):
 			vfog = a.substr(7).to_float()
+		if a.begins_with("--day="):
+			day_override = a.substr(6).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -174,6 +178,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		return
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
+	if day_override >= 0.0:
+		day = day_override
 	Game.day = day
 	var g := ChunkGenerator.new(Game.seed)
 	var y := g.field.height(at.x, at.y) + height
