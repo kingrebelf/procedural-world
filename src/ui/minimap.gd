@@ -111,15 +111,29 @@ func _draw_over() -> void:
 	var c1 := Vector2i(floori((me.x + reach) / ChunkGenerator.SIZE), floori((me.y + reach) / ChunkGenerator.SIZE))
 	for cz in range(c0.y, c1.y + 1):
 		for cx in range(c0.x, c1.x + 1):
-			for poi in Game.map.pois.get("%d,%d" % [cx, cz], []):
+			var key := "%d,%d" % [cx, cz]
+			for o in Game.map.ores.get(key, []):
+				if Game.map.shows("ore_" + o["t"]) and Game.map.revealed(o["x"], o["z"]) >= 0.45:
+					var at: Array = _place(o["x"], o["z"])
+					if at[1]:
+						MapCanvas.draw_ore(_over, o, at[0], 5.0)
+			for poi in Game.map.pois.get(key, []):
 				var wp := Vector2(poi["x"], poi["z"])
-				if absf(wp.x - me.x) > reach or absf(wp.y - me.y) > reach or Game.map.revealed(wp.x, wp.y) < 0.45:
+				if not Game.map.shows(poi["k"]) or absf(wp.x - me.x) > reach or absf(wp.y - me.y) > reach or Game.map.revealed(wp.x, wp.y) < 0.45:
 					continue
 				var at: Array = _place(wp.x, wp.y)
 				if at[1]:
 					MapCanvas.draw_poi(_over, poi, at[0], 6.5)
+	# People about: villagers near you, ringed once you have spoken with them.
+	if Game.map.shows("people"):
+		var npcs := get_tree().get_first_node_in_group("npc_manager")
+		if npcs:
+			for n in npcs.all_nodes():
+				var at: Array = _place(n.global_position.x, n.global_position.z)
+				if at[1]:
+					MapCanvas.draw_person(_over, at[0], 2.6, n.rec.get("job", "") == "trader", Game.map.people.has(String(n.rec["id"])))
 	# Wonders: shown once their chunk has loaded near you, pinned to the rim beyond range.
-	for key in Game.map.wonders:
+	for key in Game.map.wonders if Game.map.shows("wonder") else {}:
 		var w: Dictionary = Game.map.wonders[key]
 		var at: Array = _place(w["x"], w["z"])
 		if at[1]:
@@ -127,7 +141,7 @@ func _draw_over() -> void:
 		elif (at[2] as Vector2).length() < r * 4.0:
 			_edge_pin(c + (at[2] as Vector2).normalized() * (r - 7.0), WonderSite.COLORS[w["t"]], Vector2(w["x"], w["z"]).distance_to(me))
 	# Your markers and teleporters.
-	for mk in Game.markers.on_planet(Game.planet):
+	for mk in Game.markers.on_planet(Game.planet) if Game.map.shows("marker") else []:
 		var at: Array = _place(mk["x"], mk["z"])
 		var col := Color(0.45, 0.9, 1.0) if mk["kind"] == "teleporter" else Markers.color_of(mk)
 		if at[1]:

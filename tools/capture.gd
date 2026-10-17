@@ -363,6 +363,8 @@ func _wonder_shots() -> void:
 	if only.is_empty() or only.has("32"):
 		world.player.global_position = Vector3(wc.x + front.x * 60.0, world.player.global_position.y, wc.y + front.y * 60.0)
 		await _wait(120)
+		var mk := Game.markers.add("Dreadnought crash", wc.x + 30.0, wc.y + 20.0, Game.planet, "pin", {"icon": "danger", "color": 2})
+		AtlasView.selected = int(mk["id"])
 		world.menus.open("map")
 		await _wait(30)
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join("32_atlas.png"))

@@ -654,6 +654,8 @@ func remove_object(i: int) -> void:
 		_obj_bodies.erase(i)
 	set_objects(build_object_buffers(data))
 	Game.mark_chunk_dirty(data)
+	if ObjectLibrary.kind(o["t"]) == "ore":
+		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
 
 ## Lowers terrain in a smooth crater around local point (lx, lz). Returns true if changed.
 func dig(lx: float, lz: float, radius: float, depth: float) -> bool:

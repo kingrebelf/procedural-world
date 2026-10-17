@@ -363,6 +363,7 @@ func begin_talk(n: NPC) -> void:
 	n.rec["met"] = int(n.rec.get("met", 0)) + 1
 	if int(n.rec["met"]) == 1:
 		NPCMind.remember(n.rec, "Met a traveller for the first time.")
+	Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
 	mark_dirty(n.settlement)
 
 func end_talk(n: NPC) -> void:
