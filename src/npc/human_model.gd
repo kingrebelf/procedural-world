@@ -662,10 +662,12 @@ func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void
 		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
 
 ## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
-func pull_in(at: Vector3) -> void:
+func pull_in(at: Vector3, elbow := Vector3.ZERO) -> void:
 	if gestures == null or skeleton == null:
 		return
 	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+	if at != Vector3.ZERO and elbow != Vector3.ZERO:
+		gestures.reach_r["pole"] = (skeleton.global_basis.orthonormalized().inverse() * elbow).normalized()
 
 ## Puts the right hand exactly at `xf` (world): the arm reaches the wrist there and the
 ## hand turns to its basis. What it holds then lands where its own placement says.

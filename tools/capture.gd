@@ -322,6 +322,10 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
 func _process(delta: float) -> void:
+	# The player is frozen for the shots (no physics step), but what it holds should still
+	# settle into its hold as it does in play.
+	if world and world.player and not world.player.is_physics_processing() and world.player.viewmodel.visible:
+		world.player.viewmodel.sway(delta, 0.0)
 	if _spinning and world and world.player:
 		world.player._yaw += deg_to_rad(spin) * delta
 		world.player._apply_look()

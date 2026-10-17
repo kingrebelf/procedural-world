@@ -341,7 +341,8 @@ func _reach(sk: Skeleton3D, side: String, r: Dictionary, hand := true) -> void:
 	var d := clampf(to.length(), absf(l1 - l2) + 0.01, l1 + l2 - 0.002)
 	var u := to.normalized()
 	var out := _frame.x if side == "l" else -_frame.x
-	var pole := -_frame.y + out * 0.7
+	# Which way the elbow points: down and out unless the reach names its own.
+	var pole: Vector3 = r.get("pole", -_frame.y + out * 0.7)
 	var pp := (pole - u * pole.dot(u)).normalized()
 	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
 	var elbow := s + (u * cos(a) + pp * sin(a)) * l1

@@ -44,10 +44,14 @@ const BOW_REST := Vector3(-0.02, -0.1, -0.06)
 ## Lights carried by a ring or bail, hanging below the fist: the hand is raised and held
 ## upright so the lamp hangs in front of you, not below the view.
 const HANGING := ["hand_lantern", "lamp_kerosene"]
-const HANG_REST := Vector3(-0.08, 0.04, -0.3)
-## Where the fist holding a lamp sits, in the rig's own space (so the lens scales it with
-## the arm; about a hand below the eye and an arm's length ahead).
-const HANG_HAND := Vector3(0.05, -0.09, -0.1)
+const HANG_REST := Vector3.ZERO
+## Where the shoulder and the fist holding a lamp sit, in the rig's own space (so the lens
+## scales them together): the arm comes up from low on the right, so the lamp hanging
+## below the fist stays clear of the forearm at any field of view.
+const HANG_SHOULDER := Vector3(0.3, -0.2, -0.06)
+const HANG_HAND := Vector3(-0.04, 0.0, -0.44)
+## The elbow out to the side and a little down, the forearm across toward the fist.
+const HANG_ELBOW := Vector3(1.0, -0.35, 0.0)
 const HANG_AIM := Vector3(0.05, 1.0, 0.0)
 ## Each kind of tool has its own hold. A pick or hammer is held with the handle upright,
 ## so its point or face leads straight down the view; a spear low and nearly level, its
@@ -471,7 +475,8 @@ func _aim() -> void:
 		if _type in HANGING:
 			# Elbow bent and out to the side, the fist in front of the chest, so the
 			# lamp hangs clear of the forearm instead of behind it.
-			arms.pull_in(global_transform * HANG_HAND)
+			arms.global_position += global_transform * HANG_SHOULDER - arms.shoulder_r()
+			arms.pull_in(global_transform * HANG_HAND, global_basis.orthonormalized() * HANG_ELBOW)
 		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
