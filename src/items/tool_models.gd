@@ -4,7 +4,7 @@ class_name ToolModels
 ## are (forged steel with a ground edge, cast bronze, grained ash and oak, wrapped leather,
 ## knapped flint, wax, glass). Handles run along +Y with the hand near the bottom (or at
 ## the model's "grip" meta); an axe's edge faces -Z, a pick's point and a hammer's face +X;
-## bows and guns point along -Z.
+## spear points and daggers along +Y. (Bows and guns are Firearms.)
 ##
 ## Built on the main thread (they are shown in the hand and on shop counters).
 
@@ -602,34 +602,6 @@ static func chain(k: MeshKit, a: Vector3, b: Vector3, links: int, r: float) -> v
 			ring.append(_at(p, nrm, tan.cross(nrm).normalized(), sec_round(r, r, 5)))
 		sweep(k, "it_iron", Transform3D.IDENTITY, ring, false, Color.WHITE, false)
 
-## A bow, upright, its back toward -Z: limbs tapering from the riser to the tips, the
-## string straight between the nocks. `recurve` flips the tips forward.
-static func bow(k: MeshKit, half: float, depth: float, col: Color, m := "it_wood", recurve := 0.0, grip_col := Color(0.3, 0.19, 0.11)) -> void:
-	var st := []
-	var n := 24
-	var tips := []
-	for i in n + 1:
-		var f := float(i) / n * 2.0 - 1.0
-		var y := f * half
-		var z := -depth * (1.0 - f * f) + recurve * pow(absf(f), 6.0)
-		var dz := -depth * (-2.0 * f) + recurve * 6.0 * pow(absf(f), 5.0) * signf(f)
-		var tang := Vector3(0, half, dz).normalized()
-		var thick := lerpf(0.011, 0.005, absf(f))
-		var wide := lerpf(0.016, 0.008, absf(f))
-		if absf(f) < 0.12:
-			thick = 0.016
-			wide = 0.018
-		var nrm := Vector3(0, -tang.z, tang.y)
-		st.append(_at(Vector3(0, y, z), Vector3(1, 0, 0), nrm, sec_round(wide, thick, 8)))
-		if i == 0 or i == n:
-			tips.append(Vector3(0, y, z))
-	sweep(k, m, Transform3D.IDENTITY, st, false, col)
-	wrap_grip(k, -0.06, 0.06, 0.0, grip_col, "it_leather", 0.012, 0.002)
-	# The string, a thin cord from nock to nock.
-	var a: Vector3 = tips[0]
-	var b: Vector3 = tips[1]
-	k.cylinder("it_cord", Transform3D(Basis(), a), 0.0016, 0.0016, (b - a).length(), 5, false, 0.0, 1, Color(0.85, 0.82, 0.72))
-
 # --- The catalogue ---------------------------------------------------------------------
 
 ## Colours of the woods and finishes the catalogue uses.
@@ -728,8 +700,7 @@ const BUILD := {
 	"rapier": "_rapier", "zweihander": "_zweihander", "halberd": "_halberd", "glaive": "_glaive",
 	"morning_star": "_morning_star", "kings_mace": "_kings_mace", "flail": "_flail",
 	"warpick": "_warpick", "executioner_axe": "_executioner_axe", "dragonbone_dagger": "_dragonbone_dagger",
-	"throwing_knives": "_throwing_knives", "shortbow": "_shortbow", "composite_bow": "_composite_bow",
-	"royal_bow": "_royal_bow", "sling": "_sling", "shovel": "_shovel", "hoe": "_hoe", "sickle": "_sickle",
+	"throwing_knives": "_throwing_knives", 	"shovel": "_shovel", "hoe": "_hoe", "sickle": "_sickle",
 	"fishing_rod": "_fishing_rod", "saw": "_saw", "tongs": "_tongs", "bucket": "_bucket",
 	"hand_lantern": "_hand_lantern", "candle": "_candle", "tinderbox": "_tinderbox",
 	"quill_ink": "_quill_ink", "mortar_pestle": "_mortar_pestle", "cauldron_small": "_cauldron_small",
@@ -746,8 +717,7 @@ const BUILD := {
 	"binoculars_digital": "_binoculars_digital", "toolbox_tech": "_toolbox_tech", "flare_chem": "_flare_chem",
 	"chitin_sword": "_chitin_sword", "psi_blade": "_psi_blade", "void_lance": "_void_lance",
 	"grav_hammer": "_grav_hammer", "ion_scythe": "_ion_scythe", "worldbreaker": "_worldbreaker",
-	"phase_daggers": "_phase_daggers", "plasma_whip": "_plasma_whip", "crystal_bow": "_crystal_bow",
-	"eclipse_bow": "_eclipse_bow", "nova_staff": "_nova_staff", "void_grenade": "_void_grenade",
+	"phase_daggers": "_phase_daggers", "plasma_whip": "_plasma_whip", 	"void_grenade": "_void_grenade",
 	"pickaxe_iron": "_pickaxe_iron", "pickaxe_mythril": "_pickaxe_mythril", "axe_iron": "_axe_iron",
 	"axe_mythril": "_axe_mythril", "battle_axe": "_battle_axe", "hammer": "_hammer", "sword_iron": "_sword_iron",
 	"sword_runic": "_sword_runic", "dagger": "_dagger", "skinning_knife": "_skinning_knife",
@@ -1038,36 +1008,6 @@ static func _merge_into(k: MeshKit, sub: MeshKit, xf: Transform3D) -> void:
 			var i2 := tri_i[t + 2]
 			# MeshKit.tri takes counter-clockwise order; committed triangles are clockwise.
 			k.tri(name, xf, v[i0], v[i2], v[i1], n[i0], n[i2], n[i1], c[i0])
-
-static func _shortbow(k: MeshKit):
-	bow(k, 0.5, 0.11, ASH)
-	return Vector3.ZERO
-
-static func _composite_bow(k: MeshKit):
-	bow(k, 0.52, 0.09, Color(0.42, 0.28, 0.16), "it_wood", 0.06, Color(0.5, 0.12, 0.08))
-	# Horn bellies on the limbs.
-	for s in [-1.0, 1.0]:
-		k.sphere("it_bone", Transform3D(Basis.from_scale(Vector3(0.5, 2.0, 0.5)), Vector3(0, s * 0.42, -0.04)), 0.012, 4, 6, 0.0, 1.0, Color(0.25, 0.22, 0.2))
-	return Vector3.ZERO
-
-static func _royal_bow(k: MeshKit):
-	bow(k, 0.85, 0.15, Color(0.36, 0.23, 0.14), "it_wood", 0.0, Color(0.45, 0.08, 0.1))
-	for s in [-1.0, 1.0]:
-		lathe(k, "it_gold", Transform3D(Basis(), Vector3(0, s * 0.84, 0.0)), [Vector2(0, -0.02), Vector2(0.008, -0.015), Vector2(0.009, 0.015), Vector2(0, 0.02)], 8)
-	return Vector3.ZERO
-
-static func _sling(k: MeshKit):
-	# Two cords from your fist to a leather pouch holding a stone.
-	var pouch := Vector3(0.0, -0.32, -0.03)
-	for x in [-0.03, 0.03]:
-		var a := Vector3(x * 0.2, 0.0, 0)
-		var b := pouch + Vector3(x, 0.02, 0)
-		var d := b - a
-		k.cylinder("it_cord", Transform3D(Basis(Vector3.UP.cross(d.normalized()).normalized(), Vector3.UP.angle_to(d.normalized())), a), 0.002, 0.002, d.length(), 5, false, 0.0, 1, CORD)
-	k.sphere("it_leather", Transform3D(Basis.from_scale(Vector3(1.4, 0.6, 1.0)), pouch), 0.03, 5, 8, 0.1, 1.0, LEATHER, false)
-	k.sphere("it_stone", Transform3D(Basis(), pouch + Vector3(0, 0.012, 0)), 0.02, 4, 7, 0.2, 0.8, Color(0.55, 0.53, 0.5))
-	k.sphere("it_cord", Transform3D(Basis(), Vector3(0, 0.0, 0)), 0.012, 4, 6, 0.0, 1.0, CORD)
-	return Vector3(0, 0.0, 0)
 
 static func _shovel(k: MeshKit):
 	pole(k, -0.15, 0.85, 0.017, 0.016, ASH)
@@ -1573,22 +1513,6 @@ static func _plasma_whip(k: MeshKit):
 		var f := float(i) / 30.0
 		st.append(_at(Vector3(sin(f * 7.0) * 0.06 * f, 0.16 - f * 0.55, cos(f * 5.0) * 0.04 * f), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(0.006 * (1.0 - f * 0.7), 0.006 * (1.0 - f * 0.7), 6)))
 	sweep(k, "glow_violet", Transform3D.IDENTITY, st, false)
-
-static func _crystal_bow(k: MeshKit):
-	bow(k, 0.55, 0.1, Color(0.7, 0.75, 1.0, 0.8), "it_crystal", 0.03, Color(0.25, 0.22, 0.3))
-	return Vector3.ZERO
-
-static func _eclipse_bow(k: MeshKit):
-	bow(k, 0.6, 0.12, Color(0.2, 0.17, 0.24), "it_chitin", 0.07, Color(0.4, 0.3, 0.5))
-	return Vector3.ZERO
-
-static func _nova_staff(k: MeshKit):
-	pole(k, -0.85, 0.85, 0.016, 0.014, Color(0.25, 0.2, 0.3), "it_chitin")
-	for i in 3:
-		var a := TAU * i / 3.0
-		k.cylinder("alien_hull", Transform3D(Basis(Vector3(-sin(a), 0, cos(a)), 0.35), Vector3(cos(a) * 0.01, 0.85, sin(a) * 0.01)), 0.006, 0.003, 0.12, 6)
-	k.sphere("it_crystal", Transform3D(Basis(), Vector3(0, 0.95, 0)), 0.035, 8, 10, 0.0, 1.0, Color(0.95, 0.8, 0.5, 0.8))
-	return Vector3(0, 0.0, 0)
 
 static func _orb(k: MeshKit, c: Color, shell: String):
 	# A grown shell in segments, the light of its charge showing through the seams, a
