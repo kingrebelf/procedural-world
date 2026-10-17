@@ -93,6 +93,8 @@ static func _body_mat(fem: bool) -> ShaderMaterial:
 		m.set_shader_parameter("skin_tex", load(DIR + "body_%s_albedo.png" % g))
 		m.set_shader_parameter("normal_tex", load(DIR + "body_%s_normal.png" % g))
 		m.set_shader_parameter("skin_mean", 0.49 if fem else 0.47)
+		m.set_shader_parameter("rough_tex", load(DIR + "body_%s_rough.png" % g))
+		m.set_shader_parameter("skin_avg", Vector3(0.667, 0.466, 0.322) if fem else Vector3(0.655, 0.454, 0.316))
 		_mats[key] = m
 	return _mats[key]
 
@@ -212,12 +214,12 @@ func wear(worn: Dictionary) -> void:
 			_armour.set_instance_shader_parameter("visor_y", skeleton.get_bone_global_rest(hb).origin.y + 0.085)
 		_armour.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _arms:
-			_armour.visible = false
+			_arms_cut(_armour)
 	var helmet: bool = worn.get("head") is Dictionary
 	for h in _hair:
-		(h as Node3D).visible = not helmet
+		(h as Node3D).visible = not helmet and not _arms
 	if _headgear_node:
-		_headgear_node.visible = not helmet
+		_headgear_node.visible = not helmet and not _arms
 	if worn.get("shield") is Dictionary:
 		_shield = _shield_mesh(worn["shield"])
 		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
@@ -505,13 +507,25 @@ func set_arms_only(right_only := false) -> void:
 	var side := 1.0
 	if right_only and skeleton and skeleton.find_bone("hand_r") >= 0:
 		side = 2.0 if skeleton.get_bone_global_rest(skeleton.find_bone("hand_r")).origin.x < 0.0 else 3.0
+	_side = side
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if m == _body:
 			m.set_instance_shader_parameter("arms_only", side)
+		elif m == _clothes or m == _armour:
+			# The real sleeve and any armour on the arms and hands, cut at the shoulder.
+			_arms_cut(m)
 		elif not _is_held(m):
 			m.visible = false
+
+var _side := 1.0
+
+func _arms_cut(m: MeshInstance3D) -> void:
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	m.set_instance_shader_parameter("arms_only", _side)
+	var bu := skeleton.find_bone("upperarm_l")
+	m.set_instance_shader_parameter("arms_x", (absf(skeleton.get_bone_global_rest(bu).origin.x) if bu >= 0 else 0.2) + 0.04)
 
 func _is_held(n: Node) -> bool:
 	return _held != null and _held.is_ancestor_of(n)

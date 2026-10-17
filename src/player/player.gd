@@ -459,6 +459,7 @@ func _physics_process(delta: float) -> void:
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.ads = gunplay.ads
+	viewmodel.raise = _zoom
 	viewmodel.sway(delta, hv.length() / SPRINT)
 	if not fly:
 		steps.tick(self, delta, Vector2(velocity.x, velocity.z).length(), is_on_floor(), _crouched, landed_vy, jumped)
