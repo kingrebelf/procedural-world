@@ -49,7 +49,8 @@ func open_with(n: NPC) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var first: String = NPCMind.bark(n.rec, "greet") if int(n.rec.get("rel", 0)) > -40 else "What do you want?"
 	_add_line(n.rec["name"].split(" ")[0], first, UITheme.ACCENT)
-	Voice.speak(n.rec, first)
+	Voice.speak(n.rec, first, 0.0, true, n)
+	Voice.prefetch(n.rec, ["think", "yes", "no", "maybe"].map(func(k): return Interject.line(n.rec, k)))
 	if int(n.rec.get("rel", 0)) > 10:
 		n.act("wave")
 	elif NPCSocial.overdue(n.rec):
@@ -57,7 +58,8 @@ func open_with(n: NPC) -> void:
 	_history.append({"role": "user", "content": "(The traveller walks up to you.)"})
 	_history.append({"role": "assistant", "content": JSON.stringify({"say": first})})
 	_set_options(NPCMind.default_options(n.rec))
-	_entry.grab_focus()
+	# The text box waits for Enter or a click, so the voice key always works.
+	_status.text = "Hold %s to talk, or press Enter to type." % _voice_key()
 
 func close_talk() -> void:
 	if npc == null:
@@ -80,6 +82,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		close_talk()
 		get_viewport().set_input_as_handled()
 		return
+	if npc != null and event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+		_entry.grab_focus()
+		get_viewport().set_input_as_handled()
+		return
 	# Hold the voice key to speak to whoever you are looking at (or are talking to).
 	if InputMap.has_action("voice") and event.is_action("voice") and not event.is_echo():
 		if event.is_pressed():
@@ -87,7 +93,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				var f: Dictionary = player.focus if "focus" in player else {}
 				if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")):
 					open_with(f["npc"])
-					_entry.release_focus() # so the key isn't typed, and its release reaches us
 			if npc != null:
 				_mic_start()
 		get_viewport().set_input_as_handled()
@@ -99,6 +104,8 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(_d: float) -> void:
+	if _mic.recording and _mic_btn:
+		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
 	if npc != null and (not is_instance_valid(npc) or npc.global_position.distance_to(player.global_position) > 8.0):
 		npc = null if not is_instance_valid(npc) else npc
 		if npc == null:
@@ -196,16 +203,28 @@ func _send(text: String) -> void:
 	if text == "" or _busy or npc == null:
 		return
 	_entry.text = ""
+	_entry.release_focus() # back to the voice key
 	_add_line("You", text, UITheme.ACCENT_2)
 	_history.append({"role": "user", "content": text})
 	var n := npc
 	var d: Dictionary
+	var quick := ""
 	if AI.dialogue_enabled():
 		_busy = true
 		_status.text = "%s is thinking..." % n.rec["name"].split(" ")[0]
 		var held = player.held_item()
 		var ctx := {"held": ItemDB.display_name(held) if held != null else ""}
-		var r: Dictionary = await AI.chat_json(NPCMind.system_prompt(n.rec, n.settlement, ctx), _history.slice(-12))
+		var msgs := _history.slice(-12)
+		if AI.get_value("quick_replies"):
+			quick = await _quick_reply(n, text)
+			if npc != n:
+				_busy = false
+				return
+			if quick != "":
+				# The model hears what was already said, so its answer carries on from it.
+				msgs = msgs.duplicate(true)
+				msgs[-1] = {"role": "user", "content": text + Interject.note_for_model(quick)}
+		var r: Dictionary = await AI.chat_json(NPCMind.system_prompt(n.rec, n.settlement, ctx), msgs)
 		_busy = false
 		if npc != n:
 			return
@@ -218,14 +237,19 @@ func _send(text: String) -> void:
 	else:
 		d = NPCMind.builtin_reply(n.rec, n.settlement, text)
 	var say := String(d.get("say", "...")).strip_edges().left(600)
+	var said := quick.to_lower().trim_suffix("...").trim_suffix(".")
+	if quick != "" and say.to_lower().begins_with(said):
+		say = say.substr(said.length()).lstrip(".!,; ").strip_edges() # don't say it twice
+		if say == "":
+			say = "..."
 	var doing := NPCMind.reply_do(d)
-	var mem := {"say": say}
+	var mem := {"say": (quick + " " + say) if quick != "" else say}
 	if doing != "":
 		mem["do"] = doing
 	_history.append({"role": "assistant", "content": JSON.stringify(mem)})
 	_add_line(n.rec["name"].split(" ")[0], say + ("  [i](%s)[/i]" % doing.replace("_", " ") if doing != "" else ""), UITheme.ACCENT)
 	n.say(say, 6.0)
-	Voice.speak(n.rec, say)
+	Voice.speak(n.rec, say, 0.0, true, n, quick != "")
 	var action := NPCMind.apply_reply(n.rec, n.settlement, d)
 	var opts := NPCMind.clean_options(d)
 	_set_options(opts if not opts.is_empty() else NPCMind.default_options(n.rec))
@@ -390,7 +414,7 @@ func _reaction(note: String, line: String, doing: String) -> void:
 	if line != "":
 		_add_line(npc.rec["name"].split(" ")[0], line, UITheme.ACCENT)
 		npc.say(line, 5.0)
-		Voice.speak(npc.rec, line)
+		Voice.speak(npc.rec, line, 0.0, true, npc)
 		_history.append({"role": "assistant", "content": JSON.stringify({"say": line})})
 	npc.act(doing)
 	_panel_header_refresh()
@@ -439,18 +463,40 @@ func _voice_key() -> String:
 	var ev := InputMap.action_get_events("voice") if InputMap.has_action("voice") else []
 	return ev[0].as_text().split(" ")[0] if not ev.is_empty() else "B"
 
+## Says the instant answer for `text` ("Yes.", "Hmm, let me think...") with a fitting
+## gesture, and returns it ("" when they just wait for the model).
+func _quick_reply(n: NPC, text: String) -> String:
+	var kind: String = await AI.interject(n.rec, text)
+	if npc != n:
+		return ""
+	var line := Interject.line(n.rec, kind)
+	if line == "":
+		return ""
+	_add_line(n.rec["name"].split(" ")[0], line, UITheme.ACCENT)
+	n.say(line, 2.5)
+	Voice.speak(n.rec, line, 0.0, true, n)
+	n.act(Interject.GESTURE.get(kind, ""))
+	return line
+
+## A voice problem: in the status line and in the conversation, where it can't be missed.
+func _problem(text: String) -> void:
+	_status.text = text
+	_log.append_text("[color=#ff9a80][i]%s[/i][/color]\n" % text.replace("[", "("))
+
 func _mic_start() -> void:
-	if npc == null or _busy:
+	if npc == null or _busy or _mic.recording:
 		return
-	if not AI.stt_enabled():
-		_status.text = "Speech-to-text isn't set up. In Settings > AI, use an OpenAI-compatible provider, or set a speech-to-text server."
+	if not AI.stt_enabled() and OS.get_name() != "Windows":
+		_problem("Speech-to-text isn't set up. In Settings > AI, set a speech-to-text server (or use the OpenAI provider).")
 		return
 	if not _mic.start():
-		_status.text = "No microphone input available (check your OS microphone permission)."
+		_problem("No microphone input available (check your OS microphone permission).")
 		return
-	_status.text = "Listening... release to send."
+	Voice.hush() # don't talk over you
+	npc.act("tilt")
+	_status.text = "Listening... release %s to send." % _voice_key()
 	if _mic_btn:
-		_mic_btn.text = "Listening..."
+		_mic_btn.text = "Listening |"
 
 func _mic_stop() -> void:
 	if _mic_btn:
@@ -459,14 +505,20 @@ func _mic_stop() -> void:
 		return
 	var wav := _mic.stop()
 	if wav.is_empty():
-		_status.text = _mode_text()
+		_status.text = "Too short. Hold %s while you speak." % _voice_key()
+		return
+	if _mic.last_peak < 0.004:
+		_problem("Your microphone sent only silence. Check that apps may use the microphone (Windows: Settings > Privacy & security > Microphone) and that your mic is the default input device (now: %s)." % Microphone.device())
 		return
 	_status.text = "Understanding what you said..."
 	var r: Dictionary = await AI.transcribe(wav)
 	if npc == null:
 		return
 	if not r["ok"] or String(r["text"]).strip_edges() == "":
-		_status.text = "Couldn't make that out (%s)." % (r["error"] if r["error"] != "" else "silence")
+		var why := "Couldn't make that out (%s)." % (r["error"] if r["error"] != "" else "silence")
+		if r.get("via", "") == "windows" and not AI.stt_enabled():
+			why += " For better recognition, set a speech-to-text server in Settings > AI."
+		_problem(why)
 		return
 	_status.text = _mode_text()
 	_send(r["text"])

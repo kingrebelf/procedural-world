@@ -11,8 +11,11 @@ const MAX_SECONDS := 30.0
 
 var _player: AudioStreamPlayer
 var _rec: AudioEffectRecord
+var _meter: AudioEffectSpectrumAnalyzerInstance
 var _t := 0.0
 var recording := false
+## Loudest sample of the last recording, 0..1 (near 0 means the microphone sent silence).
+var last_peak := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -28,8 +31,11 @@ func _setup() -> bool:
 		bus = AudioServer.bus_count - 1
 		AudioServer.set_bus_name(bus, BUS)
 		AudioServer.add_bus_effect(bus, AudioEffectRecord.new())
+		AudioServer.add_bus_effect(bus, AudioEffectSpectrumAnalyzer.new())
 		AudioServer.set_bus_mute(bus, true) # never play your own voice back
 	_rec = AudioServer.get_bus_effect(bus, 0) as AudioEffectRecord
+	if AudioServer.get_bus_effect_count(bus) > 1:
+		_meter = AudioServer.get_bus_effect_instance(bus, 1) as AudioEffectSpectrumAnalyzerInstance
 	_player = AudioStreamPlayer.new()
 	_player.stream = AudioStreamMicrophone.new()
 	_player.bus = BUS
@@ -51,6 +57,17 @@ func _process(delta: float) -> void:
 		if _t > MAX_SECONDS:
 			stop()
 
+## How loud the microphone is right now, 0..1, for a level meter.
+func level() -> float:
+	if not recording or _meter == null:
+		return 0.0
+	var m := _meter.get_magnitude_for_frequency_range(80.0, 4000.0)
+	return clampf((linear_to_db(maxf(m.x, m.y) + 1e-7) + 70.0) / 55.0, 0.0, 1.0)
+
+## The input device in use (for messages when nothing is heard).
+static func device() -> String:
+	return AudioServer.input_device
+
 ## Stops and returns the recording as WAV bytes (empty if too short or nothing heard).
 func stop() -> PackedByteArray:
 	if not recording:
@@ -60,8 +77,17 @@ func stop() -> PackedByteArray:
 	var w := _rec.get_recording()
 	_player.stop()
 	if w == null or _t < 0.3:
+		last_peak = 0.0
 		return PackedByteArray()
+	last_peak = peak(w.data)
 	return to_wav16k(w)
+
+## Loudest 16-bit sample, 0..1.
+static func peak(data: PackedByteArray) -> float:
+	var top := 0
+	for i in range(0, data.size() - 1, 8):
+		top = maxi(top, absi(data.decode_s16(i)))
+	return float(top) / 32768.0
 
 ## Downmixes a 16-bit recording to mono and resamples it to 16 kHz.
 static func to_wav16k(w: AudioStreamWAV) -> PackedByteArray:

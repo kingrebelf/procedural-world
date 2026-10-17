@@ -46,6 +46,11 @@ const DEFAULTS := {
 	"stt_url": "", ## Speech-to-text server (OpenAI-compatible /audio/transcriptions); empty = the AI provider above.
 	"stt_key": "",
 	"stt_model": "",
+	"voice_engine": "auto", ## "auto" (natural AI voices when a server for them is set, else this PC's), "ai" or "system".
+	"tts_url": "", ## Natural voices: an OpenAI-compatible /audio/speech server (OpenAI, or a local Kokoro / speaches server).
+	"tts_key": "",
+	"tts_model": "",
+	"quick_replies": true, ## People answer "Yes.", "Hmm, let me think..." at once while the model works out the rest.
 }
 
 const MAX_CONCURRENT := 2
@@ -365,11 +370,25 @@ static func build_transcription(target: Dictionary, wav: PackedByteArray, bounda
 	body.append_array(("\r\n--%s--\r\n" % boundary).to_utf8_buffer())
 	return {"url": target["url"], "headers": headers, "body": body}
 
-## Turns a WAV recording into text. Always returns {ok, text, error}.
+## Turns a WAV recording into text. Always returns {ok, text, error, via}. Uses the
+## speech-to-text server when there is one; on Windows, when there is none or it fails,
+## the speech recogniser built into Windows does it offline.
 func transcribe(wav: PackedByteArray) -> Dictionary:
+	var out := {"ok": false, "text": "", "error": "No speech-to-text server (Settings > AI)"}
+	if stt_enabled():
+		out = await _transcribe_server(wav)
+		out["via"] = "server"
+	if not out["ok"] and OS.get_name() == "Windows":
+		var w: Dictionary = await _transcribe_windows(wav)
+		if w["ok"] or not stt_enabled():
+			if not w["ok"] and stt_enabled():
+				w["error"] = "%s; Windows speech recognition: %s" % [out["error"], w["error"]]
+			out = w
+			out["via"] = "windows"
+	return out
+
+func _transcribe_server(wav: PackedByteArray) -> Dictionary:
 	var target := stt_target()
-	if target.is_empty():
-		return {"ok": false, "text": "", "error": "No speech-to-text server (Settings > AI)"}
 	var req := build_transcription(target, wav, "pwboundary%d" % randi())
 	var http := HTTPRequest.new()
 	http.timeout = float(cfg["timeout"])
@@ -399,3 +418,185 @@ static func parse_transcription(code: int, raw: String) -> Dictionary:
 	if raw.strip_edges() != "" and not raw.strip_edges().begins_with("{"):
 		return {"ok": true, "text": raw.strip_edges(), "error": ""}
 	return {"ok": false, "text": "", "error": "No text in reply"}
+
+## Windows' own offline recogniser (System.Speech dictation), run through PowerShell on a
+## thread so the game keeps running.
+const WIN_STT := """Add-Type -AssemblyName System.Speech
+$ri = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Where-Object { $_.Culture.TwoLetterISOLanguageName -eq 'en' } | Select-Object -First 1
+if (-not $ri) { $ri = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() | Select-Object -First 1 }
+if (-not $ri) { Write-Output 'ERR:Windows has no speech recogniser installed (Settings > Time & language > Speech)'; exit 0 }
+$r = New-Object System.Speech.Recognition.SpeechRecognitionEngine($ri)
+$r.LoadGrammar((New-Object System.Speech.Recognition.DictationGrammar))
+$r.SetInputToWaveFile($args[0])
+$out = @()
+for ($i = 0; $i -lt 20; $i++) { $res = $r.Recognize(); if ($res -eq $null) { break }; $out += $res.Text }
+Write-Output ('OK:' + ($out -join ' '))
+"""
+
+func _transcribe_windows(wav: PackedByteArray) -> Dictionary:
+	var dir := OS.get_user_data_dir()
+	var wav_path := dir.path_join("voice_in.wav")
+	var ps_path := dir.path_join("voice_in.ps1")
+	var f := FileAccess.open(wav_path, FileAccess.WRITE)
+	if f == null:
+		return {"ok": false, "text": "", "error": "Could not save the recording"}
+	f.store_buffer(wav)
+	f.close()
+	f = FileAccess.open(ps_path, FileAccess.WRITE)
+	f.store_string(WIN_STT)
+	f.close()
+	var th := Thread.new()
+	th.start(func() -> String:
+		var o: Array = []
+		OS.execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ps_path, wav_path], o, true)
+		return "\n".join(o))
+	while th.is_alive():
+		await get_tree().process_frame
+	return parse_windows_stt(String(th.wait_to_finish()))
+
+static func parse_windows_stt(raw: String) -> Dictionary:
+	for l in raw.split("\n"):
+		l = l.strip_edges()
+		if l.begins_with("OK:"):
+			var t := l.substr(3).strip_edges()
+			return {"ok": t != "", "text": t, "error": "" if t != "" else "silence"}
+		if l.begins_with("ERR:"):
+			return {"ok": false, "text": "", "error": l.substr(4).strip_edges()}
+	return {"ok": false, "text": "", "error": "Windows speech recognition didn't answer (%s)" % raw.strip_edges().left(120)}
+
+# --- Natural voices (text to speech) ----------------------------------------------------------
+
+## Where lines go to become natural speech: {url, key, model}, or {} for none. An empty
+## address uses the AI provider only when that is OpenAI itself; local chat servers
+## (Ollama, LM Studio...) don't speak, so they need a voice server set here, such as a
+## free local Kokoro or speaches server.
+func tts_target() -> Dictionary:
+	var url := String(cfg["tts_url"]).strip_edges().trim_suffix("/")
+	var key := String(cfg["tts_key"]).strip_edges()
+	if url == "":
+		if not enabled() or cfg["provider"] != "openai":
+			return {}
+		url = String(cfg["base_url"]).strip_edges().trim_suffix("/")
+		key = String(cfg["api_key"]).strip_edges()
+	if not url.ends_with("/speech"):
+		url += "/audio/speech"
+	var model := String(cfg["tts_model"]).strip_edges()
+	if model == "":
+		model = "gpt-4o-mini-tts" if url.contains("api.openai.com") else "kokoro"
+	return {"url": url, "key": key, "model": model}
+
+## "ai" (natural voices from a server), "system" (this PC's voices) or "" (silent).
+func voice_engine() -> String:
+	if not bool(cfg["voices"]):
+		return ""
+	var e := String(cfg["voice_engine"])
+	if e == "system":
+		return "system"
+	if not tts_target().is_empty() and _tts_fails < 3:
+		return "ai"
+	return "system" if e == "auto" or e == "ai" else ""
+
+var _tts_fails := 0
+
+## The HTTP request for one spoken line. Pure, so it is unit-tested. opts: {voice,
+## instructions, speed}. Raw 24 kHz 16-bit mono PCM comes back.
+static func build_speech(target: Dictionary, text: String, opts: Dictionary) -> Dictionary:
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	if String(target.get("key", "")) != "":
+		headers.append("Authorization: Bearer " + target["key"])
+	var body := {"model": target["model"], "input": text, "voice": opts.get("voice", "alloy"), "response_format": "pcm"}
+	if String(opts.get("instructions", "")) != "" and String(target["model"]).begins_with("gpt-4o"):
+		body["instructions"] = opts["instructions"]
+	elif absf(float(opts.get("speed", 1.0)) - 1.0) > 0.02:
+		body["speed"] = snappedf(float(opts["speed"]), 0.01)
+	return {"url": target["url"], "headers": headers, "body": JSON.stringify(body)}
+
+## Speaks `text` on the voice server. Returns {ok, audio: AudioStream, error}.
+func speech(text: String, opts: Dictionary) -> Dictionary:
+	var target := tts_target()
+	if target.is_empty():
+		return {"ok": false, "error": "No voice server"}
+	var req := build_speech(target, text, opts)
+	var http := HTTPRequest.new()
+	http.timeout = minf(float(cfg["timeout"]), 20.0)
+	add_child(http)
+	var out := {"ok": false, "error": ""}
+	if http.request(req["url"], req["headers"], HTTPClient.METHOD_POST, req["body"]) != OK:
+		out["error"] = "Could not start request"
+	else:
+		var res: Array = await http.request_completed
+		if res[0] != HTTPRequest.RESULT_SUCCESS:
+			out["error"] = _result_text(res[0])
+		elif res[1] < 200 or res[1] >= 300:
+			var d = JSON.parse_string((res[3] as PackedByteArray).get_string_from_utf8())
+			out["error"] = "HTTP %d%s" % [res[1], (": " + String(d["error"].get("message", ""))) if d is Dictionary and d.get("error") is Dictionary else ""]
+		else:
+			var a := audio_from_bytes(res[3])
+			if a:
+				out = {"ok": true, "audio": a, "error": ""}
+			else:
+				out["error"] = "Unreadable audio"
+	http.queue_free()
+	_tts_fails = 0 if out["ok"] else _tts_fails + 1
+	if not out["ok"]:
+		_set_status("Voice server: " + out["error"])
+	return out
+
+## A playable stream from what a voice server sent: raw 24 kHz PCM, WAV or MP3.
+static func audio_from_bytes(b: PackedByteArray) -> AudioStream:
+	if b.size() < 64:
+		return null
+	if b[0] == 0x49 and b[1] == 0x44 and b[2] == 0x33 or b[0] == 0xFF and (b[1] & 0xE0) == 0xE0:
+		var mp := AudioStreamMP3.new()
+		mp.data = b
+		return mp
+	var rate := 24000
+	var ch := 1
+	var pcm := b
+	if b.slice(0, 4).get_string_from_ascii() == "RIFF":
+		# Streamed WAVs can carry bogus sizes, so walk the chunks and take all after "data".
+		var at := 12
+		pcm = PackedByteArray()
+		while at + 8 <= b.size():
+			var id := b.slice(at, at + 4).get_string_from_ascii()
+			var sz := b.decode_u32(at + 4)
+			if id == "fmt ":
+				ch = b.decode_u16(at + 10)
+				rate = b.decode_u32(at + 12)
+			elif id == "data":
+				pcm = b.slice(at + 8)
+				break
+			at += 8 + sz + (sz & 1)
+		if pcm.is_empty():
+			return null
+	if pcm.size() & 1:
+		pcm.resize(pcm.size() - 1)
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.stereo = ch == 2
+	w.data = pcm
+	return w
+
+# --- Quick replies ----------------------------------------------------------------------------
+
+## The instant answer kind for what the traveller just said (see Interject): the fast
+## decision service picks if one is set and answers quickly, else the local rules do.
+func interject(rec: Dictionary, text: String) -> String:
+	var local := Interject.pick_local(rec, text)
+	if not decide_enabled():
+		return local
+	var headers := PackedStringArray(["Content-Type: application/json"])
+	var key := String(cfg["decide_key"]).strip_edges()
+	if key != "":
+		headers.append("Authorization: Bearer " + key)
+	var http := HTTPRequest.new()
+	http.timeout = minf(float(cfg["decide_timeout"]), 0.8)
+	add_child(http)
+	var pick := ""
+	if http.request(String(cfg["decide_url"]).strip_edges(), headers, HTTPClient.METHOD_POST, JSON.stringify(Interject.request_body(rec, text, local))) == OK:
+		var res: Array = await http.request_completed
+		if res[0] == HTTPRequest.RESULT_SUCCESS and res[1] >= 200 and res[1] < 300:
+			pick = Interject.parse_pick((res[3] as PackedByteArray).get_string_from_utf8())
+	http.queue_free()
+	return pick if pick != "" else local

@@ -253,12 +253,29 @@ func _ai_tab() -> Control:
 	_ai_slider(g, "max_rpm", "Max model requests per minute", 2, 120, 1, "%d")
 	_ai_line(g, "decide_url", "Fast decision service URL", "Optional. An HTTP endpoint that picks NPC actions every 2 s (see docs/AI.md). Leave empty to use the built-in engine.")
 	_ai_line(g, "decide_key", "Decision service key", "Optional bearer token for the decision service.", true)
-	_ai_check(g, "voices", "Spoken voices", "People say their lines aloud with this PC's built-in text-to-speech voices. Works offline.")
+	_ai_check(g, "voices", "Spoken voices", "People say their lines aloud.")
+	_label(g, "Voice engine", "Natural voices come from a voice server (below) and sound like real people with accents. This PC's voices work offline but sound robotic.")
+	var eng := OptionButton.new()
+	for t in ["Natural when a voice server is set, else this PC's", "Natural voices (voice server)", "This PC's voices"]:
+		eng.add_item(t)
+	eng.select(maxi(["auto", "ai", "system"].find(AI.get_value("voice_engine")), 0))
+	eng.item_selected.connect(func(i): AI.set_value("voice_engine", ["auto", "ai", "system"][i]))
+	g.add_child(eng)
+	_ai_fields["voice_engine"] = eng
+	_ai_line(g, "tts_url", "Voice server", "OpenAI-compatible /audio/speech. Empty uses the OpenAI provider above if that is your provider. Free and local: a Kokoro server (e.g. Kokoro-FastAPI, http://127.0.0.1:8880/v1) or speaches. Cloud: https://api.openai.com/v1")
+	_ai_line(g, "tts_model", "Voice model", "Empty picks gpt-4o-mini-tts for OpenAI (accents and tone per person), kokoro elsewhere.")
+	_ai_line(g, "tts_key", "Voice server key", "Only if the voice server differs from the provider above.", true)
+	_ai_check(g, "quick_replies", "Quick replies", "People answer \"Yes.\", \"No.\" or \"Hmm, let me think about that.\" straight away (picked by the fast decision service if set), then the full reply follows.")
 	_ai_check(g, "voice_barks", "Passers-by speak too", "Greetings and shouts from people nearby are spoken, not only conversations.")
 	_ai_slider(g, "voice_volume", "Voice volume", 0, 100, 5, "%d")
 	_ai_line(g, "stt_url", "Speech-to-text server", "For talking with your microphone (hold B near someone). Empty uses the provider above if it is OpenAI-compatible. Any server with /audio/transcriptions works, e.g. https://api.openai.com/v1 or a local speaches / LocalAI server.")
 	_ai_line(g, "stt_model", "Speech-to-text model", "Empty picks gpt-4o-mini-transcribe for OpenAI, whisper-1 elsewhere.")
 	_ai_line(g, "stt_key", "Speech-to-text key", "Only if the speech-to-text server differs from the provider above.", true)
+	var vrow := HBoxContainer.new()
+	vrow.add_child(UITheme.button("Test voice", _voice_test))
+	vrow.add_child(UITheme.button("Test microphone (3 s)", _mic_test))
+	_label(g, "Voice checks", "Hear a sample voice, or record three seconds and see what was understood.")
+	g.add_child(vrow)
 	var test := UITheme.button("Test connection", _ai_test)
 	g.add_child(test)
 	_ai_status = UITheme.label(AI.last_status, 14, UITheme.DIM)
@@ -321,9 +338,12 @@ func _ai_refresh() -> void:
 			c.set_pressed_no_signal(bool(v))
 		elif k == "format":
 			c.select(1 if v == "anthropic" else 0)
+		elif k == "voice_engine":
+			c.select(maxi(["auto", "ai", "system"].find(v), 0))
 	var off: bool = AI.get_value("provider") == "off"
 	for k in _ai_fields:
-		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key"]:
+		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key",
+				"voice_engine", "tts_url", "tts_model", "tts_key", "quick_replies"]:
 			var c = _ai_fields[k]
 			if c is BaseButton:
 				c.disabled = off
@@ -331,6 +351,52 @@ func _ai_refresh() -> void:
 				c.editable = not off
 			elif c is Range:
 				c.editable = not off
+
+func _voice_test() -> void:
+	var rec := {"id": "voice_test_%d" % randi(), "name": "Edda Thorne", "job": "farmer", "era": 0, "age": 40, "mood": "happy",
+		"body": {"female": randf() < 0.5}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
+	var e := AI.voice_engine()
+	if e == "":
+		_ai_status.text = "Spoken voices are off."
+		return
+	if e == "ai":
+		_ai_status.text = "Asking the voice server..."
+		var r: Dictionary = await AI.speech("Well met, traveller! Fine weather for the road, isn't it?", Voice.natural_for(rec))
+		if not is_instance_valid(_ai_status):
+			return
+		if not r["ok"]:
+			_ai_status.text = "Voice server failed: %s. Using this PC's voices until it works." % r["error"]
+			return
+		_ai_status.text = "Natural voice: %s." % Voice.natural_for(rec)["voice"]
+	else:
+		var v := Voice.voice_for(rec)
+		_ai_status.text = "This PC's voice: %s. For natural voices, set a voice server." % (v.get("id", "none") if not v.is_empty() else "none installed")
+	Voice.speak(rec, "Well met, traveller! Fine weather for the road, isn't it?")
+
+func _mic_test() -> void:
+	var mic := Microphone.new()
+	add_child(mic)
+	if not mic.start():
+		_ai_status.text = "No microphone input available (check your OS microphone permission)."
+		mic.queue_free()
+		return
+	_ai_status.text = "Recording for 3 seconds: say something..."
+	var top := 0.0
+	for i in 30:
+		await get_tree().create_timer(0.1, true, false, true).timeout
+		top = maxf(top, mic.level())
+	var wav := mic.stop()
+	var peak := mic.last_peak
+	mic.queue_free()
+	if not is_instance_valid(_ai_status):
+		return
+	if peak < 0.004:
+		_ai_status.text = "Only silence came in from %s. Check Windows Settings > Privacy & security > Microphone and the default input device." % Microphone.device()
+		return
+	_ai_status.text = "Heard you (level %d%%). Understanding..." % int(peak * 100.0)
+	var r: Dictionary = await AI.transcribe(wav)
+	if is_instance_valid(_ai_status):
+		_ai_status.text = ("Understood (%s): \"%s\"" % [r.get("via", "?"), r["text"]]) if r["ok"] else "Heard you, but speech-to-text failed: %s" % r["error"]
 
 func _ai_test() -> void:
 	_ai_status.text = "Testing..."

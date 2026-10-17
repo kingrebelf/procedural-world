@@ -42,20 +42,45 @@ own: guards start in their era's armour. In a conversation:
 
 ## Voices
 
-People speak their lines aloud with your PC's built-in text-to-speech voices (Settings >
-AI > Spoken voices). Each person keeps a voice that suits them, with pitch and pace from
-their age, temperament and mood. Nothing leaves your PC.
+People speak their lines aloud (Settings > AI > Spoken voices), each with a voice of their
+own. There are two engines:
 
-To talk with your own voice, hold **B** while looking at someone (or hold **Hold to speak**
-in the conversation window). The recording is turned into text by a speech-to-text server:
+| Engine | How it sounds | What to set |
+|---|---|---|
+| **Natural voices** | Like real people, with an accent and manner per person (West Country, Scottish, Irish, Welsh in the old worlds; Australian, Californian, London... in the sci-fi one), heard from where they stand. | **Voice server**: OpenAI (`gpt-4o-mini-tts`, uses your OpenAI key automatically when OpenAI is the provider) or a free local [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) / [speaches](https://github.com/speaches-ai/speaches) server, e.g. `http://127.0.0.1:8880/v1`. Kokoro gives British voices in the old worlds and a mix in the sci-fi one. |
+| **This PC's voices** | The operating system's speech voices. Works offline, but sounds robotic unless you have "Natural", "Neural", "Enhanced" or "Premium" voices installed (they are preferred automatically). | Nothing. |
+
+With **Voice engine** on the first option, natural voices are used whenever a voice server
+is set and answering, and this PC's voices otherwise. **Test voice** plays a sample.
+
+### Talking with your own voice
+
+Hold **B** while looking at someone, or inside a conversation (press **Enter** to type
+instead), or hold **Hold to speak**. The button shows your microphone level while you talk;
+if only silence comes in, the conversation says so, and which input device is in use. The
+recording becomes text through:
 
 | Setup | What to set |
 |---|---|
 | OpenAI provider | Nothing: it uses the same key, with `gpt-4o-mini-transcribe`. |
-| Local (Ollama, LM Studio, Anthropic...) | **Speech-to-text server**: any OpenAI-compatible `/audio/transcriptions` server, e.g. a local [speaches](https://github.com/speaches-ai/speaches) or LocalAI at `http://127.0.0.1:8000/v1`, or `https://api.openai.com/v1` with a key. |
+| Any other provider | **Speech-to-text server**: any OpenAI-compatible `/audio/transcriptions` server, e.g. a local speaches or LocalAI at `http://127.0.0.1:8000/v1`, or `https://api.openai.com/v1` with a key. |
+| Nothing set, on Windows | Windows' own offline speech recogniser is used. It needs no setup but is less accurate. It is also the fallback when the server fails. |
 
-The Anthropic API has no speech-to-text, so with Claude as the provider set a separate
-speech-to-text server.
+**Test microphone (3 s)** in Settings > AI records you and shows what was understood.
+
+### Quick replies
+
+With an AI provider, a reply takes a moment, so people first answer straight away from a
+fixed list with a fitting gesture: "Yes." (nod), "No." (head shake), "Hmm, let me think
+about that." (thinking pose), "Maybe.", a greeting, "You're welcome.", "Excuse me?"... or
+nothing, and just wait. The model's full answer follows on from it. Requests use the same
+rules as the built-in dialogue, so a quick "Yes" is something they will actually do.
+
+The fast decision service (below) can make the pick: alongside its usual batches it
+receives `{"version": 1, "kind": "interject", "said": "...", "suggested": "think",
+"options": ["yes", "no", "think", "maybe", "greet", "thanks", "surprised", "offended", "none"],
+"lines": {"yes": "Aye.", ...}, "npc": {...}}` and answers `{"pick": "think"}` within 0.8 s,
+or anything else to keep the suggested pick. Turn it off with **Quick replies**.
 
 ## Choosing a model
 
