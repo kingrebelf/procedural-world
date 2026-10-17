@@ -165,15 +165,53 @@ func _find_river(g: ChunkGenerator) -> Vector4:
 		var lv := g.field.river_level(p.x, p.y, cache)
 		if WorldField.river_strength(g.field.height(p.x, p.y), lv) < 0.8:
 			continue
+		# A real reach, not a pool where the river noise only dips near zero (the shot once
+		# framed a round pond): follow the water 80 m both ways from the point.
+		var along := Vector2.ZERO
+		var best := INF
 		for k in 16:
 			var d := Vector2.from_angle(k * TAU / 16.0)
-			var q := p + d * 26.0
+			var q := p + d * 10.0
 			var t := g.field.river_t(q.x, q.y)
-			if t > 1.8 and t < 3.5:
-				return Vector4(q.x, q.y, p.x - d.x * 20.0 - d.y * 25.0, p.y - d.y * 20.0 + d.x * 25.0)
+			if t < best:
+				best = t
+				along = d
+		var fwd := _follow_river(g, p, along, cache)
+		if fwd == Vector2.INF or _follow_river(g, p, -along, cache) == Vector2.INF:
+			continue
+		# Stand on the bank and look down the reach, so the water winds off into the distance.
+		along = (fwd - p).normalized()
+		for side in [1.0, -1.0]:
+			for off in [22.0, 28.0, 34.0, 18.0]:
+				var q: Vector2 = p + along.orthogonal() * side * off - along * 12.0
+				var t := g.field.river_t(q.x, q.y)
+				if t > 1.8 and t < 3.5:
+					return Vector4(q.x, q.y, fwd.x, fwd.y)
 	return Vector4.ZERO
 
-func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable()) -> void:
+## Walks 80 m along the river from p, starting toward d and keeping to the deepest line;
+## where it got to, or INF if the water ends (a pool, not a river).
+func _follow_river(g: ChunkGenerator, p: Vector2, d: Vector2, cache: Dictionary) -> Vector2:
+	var at := p
+	for step in 10:
+		var best := Vector2.INF
+		var best_t := INF
+		for turn in [-0.35, -0.17, 0.0, 0.17, 0.35]:
+			var q: Vector2 = at + d.rotated(turn) * 8.0
+			var t := g.field.river_t(q.x, q.y)
+			if t < best_t:
+				best_t = t
+				best = q
+		if best_t > 0.5:
+			return Vector2.INF
+		if WorldField.river_strength(g.field.height(best.x, best.y), g.field.river_level(best.x, best.y, cache)) < 0.5:
+			return Vector2.INF
+		d = (best - at).normalized()
+		at = best
+	# Circling round inside a pool doesn't count.
+	return at if at.distance_to(p) > 60.0 else Vector2.INF
+
+func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0) -> void:
 	if not only.is_empty() and not only.has(name.substr(0, 2)):
 		return
 	var p: Player = world.player
@@ -202,6 +240,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		tgt_h = ChunkGenerator.height_at(tc.data, look_at.x - tc.key.x * 64.0, look_at.y - tc.key.y * 64.0) + 3.0
 	if not is_nan(look_y):
 		tgt_h = look_y
+	if sight > 0.0:
+		_clear_line(streamer, Vector3(at.x, y, at.y), Vector3(look_at.x, tgt_h, look_at.y), sight)
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
@@ -318,8 +358,8 @@ func _run() -> void:
 						found = true
 			# The field's heights miss rock spires and cliffs (the shot once faced a rock
 			# wall): check the sight line against what is really there.
-			var cands: Array = [cam] if found else []
-			for dist in [45.0, 60.0, 75.0, 90.0, 110.0]:
+			var cands: Array = []
+			for dist in [32.0, 45.0, 60.0, 75.0, 90.0, 110.0]:
 				for side in [-1.0, 1.0]:
 					for along in [14.0, -14.0, 30.0]:
 						cands.append(vm + vd.orthogonal() * dist * side + vd * along)
@@ -327,7 +367,7 @@ func _run() -> void:
 			if seen != Vector2.INF:
 				cam = seen
 			var low := g.field.height(cam.x, cam.y)
-			await _shot("16_viaduct", cam, vm, 0.4, maxf(deck - low + 2.0, 2.0), deck - 4.0)
+			await _shot("16_viaduct", cam, vm, 0.4, maxf(deck - low + 2.0, 2.0), deck - 4.0, Callable(), 4.0)
 	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
@@ -360,7 +400,7 @@ func _run() -> void:
 		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
-		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
+		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
 		await _water_shots(g, shore)
 	if only.is_empty() or only.has("09") or only.has("10"):
@@ -710,6 +750,21 @@ func _clear_trees(streamer: ChunkStreamer, eye: Vector3, r: float) -> void:
 				continue
 			var w: Vector3 = c.position + o["p"]
 			if Vector2(w.x - eye.x, w.z - eye.z).length() < r:
+				c.remove_object(o["i"])
+
+## Fells the trees standing within r of the sight line, short of the subject (a pine
+## once stood in the middle of the viaduct shot).
+func _clear_line(streamer: ChunkStreamer, eye: Vector3, target: Vector3, r: float) -> void:
+	var a := Vector2(eye.x, eye.z)
+	var ab := Vector2(target.x, target.z) - a
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for o in c.data["objects"]:
+			if o["st"].get("gone", false) or ObjectLibrary.kind(o["t"]) != "tree":
+				continue
+			var w: Vector3 = c.position + o["p"]
+			var f := clampf((Vector2(w.x, w.z) - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+			if f < 0.8 and Vector2(w.x, w.z).distance_to(a + ab * f) < r:
 				c.remove_object(o["i"])
 
 ## A starship on its launch pad, then in flight over the land.
