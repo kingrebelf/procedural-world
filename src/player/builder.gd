@@ -145,6 +145,10 @@ func place() -> bool:
 	var it = player.held_item()
 	if it == null or it["type"] != _id:
 		return false
+	var need := Recipes.unlock_level(_id)
+	if Game.stats.level < need:
+		Game.toast.emit("You can build a %s from level %d" % [String(BuildCatalog.def(_id)["name"]).to_lower(), need])
+		return false
 	Game.inventory.remove_at(player.selected, 1)
 	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], {"by": "you", "day": snappedf(Game.day, 0.01)})
 	if BuildCatalog.def(_id).get("teleporter", false):

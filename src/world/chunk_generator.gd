@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 8 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level.
+const GEN_VERSION := 9 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -952,6 +952,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	var wonder := WonderSite.place(self, chunk, sites)
 	if not wonder.is_empty():
 		sites = sites + [wonder]
+	# A portal to other worlds, rarer still and only far out in the high zones.
+	var portal := WorldPortal.place(self, chunk)
+	if not portal.is_empty():
+		sites = sites + [portal]
 
 	if towns:
 		_place_cave(chunk, sites)
@@ -1037,7 +1041,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 
 	# Alien ruins: rare, strange, very tough. Anywhere outside settlements.
 	r = WHash.rng(seed, cx, cz, 305)
-	if r.randf() < 0.035:
+	if r.randf() < 0.035 and Eras.theme != "human":
 		var lx := r.randf_range(10, SIZE - 10)
 		var lz := r.randf_range(10, SIZE - 10)
 		var sp := r.randi() & 0x7FFFFFFF
@@ -1385,7 +1389,11 @@ func _place_landmark(chunk: Dictionary, sites: Array, origin: Dictionary) -> voi
 		"fallen_star":
 			_add(chunk, t, era, best.x, best.y, yaw, 1.0)
 			var op := best + Vector2(3.6, 0).rotated(-yaw + 2.0)
-			_add(chunk, "aether_crystal", Eras.FANTASY, op.x, op.y, r.randf() * TAU, 1.6, {"left": 14, "progress": 0.0}, r.randi() & 0x7FFFFFFF, 0)
+			if Eras.theme == "human":
+				# A human world's fallen star leaves plain meteoric iron, not living crystal.
+				_add(chunk, "iron_vein", Eras.MEDIEVAL, op.x, op.y, r.randf() * TAU, 1.6, {"left": 14, "progress": 0.0}, r.randi() & 0x7FFFFFFF, 0)
+			else:
+				_add(chunk, "aether_crystal", Eras.FANTASY, op.x, op.y, r.randf() * TAU, 1.6, {"left": 14, "progress": 0.0}, r.randi() & 0x7FFFFFFF, 0)
 		_:
 			_add(chunk, t, era, best.x, best.y, yaw, 1.0)
 	# The prize: deep-dungeon odds, waiting beside (or on) the landmark.

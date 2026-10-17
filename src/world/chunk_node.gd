@@ -85,6 +85,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 	# Packed arrays held in an Array are copied on access, so the three look streams
 	# are separate locals (passed to helpers by reference).
 	var has_look := not lb.is_empty()
+	var human := Eras.theme == "human"
 	var l0 := PackedByteArray()
 	var l1 := PackedByteArray()
 	var l2 := PackedByteArray()
@@ -115,7 +116,9 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 			norms[v] = Vector3(-(hr - hl) / dx, 1.0, -(hu - hd) / dz).normalized()
 			var wk := k * Eras.COUNT
 			# Alpha: 1 minus how much road surface shows (roads and village squares).
-			cols[v] = Color(wb[wk] / 255.0, wb[wk + 1] / 255.0, wb[wk + 2] / 255.0, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
+			# Human worlds dress their sci-fi land as the medieval wilds (Eras.look).
+			var ws := 0.0 if human else wb[wk + 2] / 255.0
+			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
 	for j in n - 1:
@@ -259,7 +262,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		return buf
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 901)
 	var biome_tint := Color(0, 0, 0, 0)
-	var biome_era: int = chunk.get("era", 0)
+	var biome_era: int = Eras.nature(chunk.get("era", 0))
 	var lumen := 0.0
 	if chunk.has("biome"):
 		var bp := Biome.params(chunk["biome"], biome_era)
@@ -283,7 +286,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.6, 1.5)
 		var pick := r.randf()
-		var w := ChunkGenerator.weights_at(chunk, lx, lz)
+		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var dens := w[0] * Eras.GRASS_DENSITY[0] + w[1] * Eras.GRASS_DENSITY[1] + w[2] * Eras.GRASS_DENSITY[2]
 		if pick > dens:
 			continue
@@ -329,7 +332,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		var pick := r.randf()
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.7, 1.4)
-		var w := ChunkGenerator.weights_at(chunk, lx, lz)
+		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var acc := 0.0
 		var era := 0
 		for e in Eras.COUNT:
@@ -351,7 +354,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		out[key] = buf
 	# Undergrowth: the region's own ferns, bushes, flowers and stranger things.
 	if chunk.has("biome"):
-		var era: int = chunk.get("era", 0)
+		var era: int = Eras.nature(chunk.get("era", 0))
 		var bp := Biome.params(chunk["biome"], era)
 		var unders: Array = bp["under"]
 		for n in int(420 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
@@ -364,7 +367,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			var mask := sin(lx * 0.11 + float(chunk["cx"]) * 7.0) * cos(lz * 0.09 + float(chunk["cz"]) * 5.0)
 			if mask < -0.2 + r.randf() * 0.4:
 				continue
-			var w := ChunkGenerator.weights_at(chunk, lx, lz)
+			var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			# Bare sand and dust grow little (the size roll doubles as the chance).

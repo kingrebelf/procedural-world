@@ -1222,6 +1222,72 @@ func test_planets() -> void:
 	Planets.apply({"kind": "home", "seed": 1})
 	check(WorldField.allowed_eras.is_empty(), "home allows every era")
 
+## Themed worlds: human home and two human worlds, two alien ones; eras, levels, gear
+## and portals all follow the distance from the heart of the land.
+func test_world_themes() -> void:
+	var sys := Planets.system(4242, "human")
+	check(sys[0]["kind"] == "homeland" and sys[0]["theme"] == "human" and int(sys[0]["base"]) == 1, "a new world's home is a human world")
+	var alien := 0
+	for p in sys:
+		if p["theme"] == "alien":
+			alien += 1
+			check(int(p["base"]) >= 50, "alien worlds are level 50+ (%s)" % p["kind"])
+	check(alien == 2, "two alien worlds are linked to a human home")
+	check(var_to_str(Planets.system(4242)) != var_to_str(sys), "old worlds keep their old system")
+	Planets.apply(sys[0])
+	check(Eras.theme == "human" and WorldField.allowed_eras == [Eras.MEDIEVAL, Eras.SCIFI], "applying the home world sets its theme")
+	var f := WorldField.new(77)
+	var near_ok := true
+	for i in 30:
+		var a := i * 0.7
+		near_ok = near_ok and f.era_weights(cos(a) * 700.0, sin(a) * 700.0)[Eras.MEDIEVAL] > 0.99
+	check(near_ok, "the land round the start is all medieval")
+	var far := 0
+	for i in 60:
+		var a := i * 0.37
+		if WorldField.dominant(f.era_weights(cos(a) * 5000.0, sin(a) * 5000.0)) == Eras.SCIFI:
+			far += 1
+	check(far > 25 and far < 60, "far out, most land is sci-fi (%d of 60)" % far)
+	check(Eras.zone_level(0, 0) == 1 and Eras.zone_level(1500, 0) == 11 and Eras.zone_level(0, -6000) == 41, "zone levels rise 1 per 150 m")
+	check(Eras.nature(Eras.SCIFI) == Eras.MEDIEVAL and Eras.look(PackedFloat32Array([0.2, 0, 0.8]))[Eras.MEDIEVAL] > 0.99, "human sci-fi land looks natural")
+	check(Biome.params(12345, Eras.SCIFI)["lumen"] == 0.0 and Biome.params(54321, Eras.SCIFI)["flora"][0]["t"] in ["oak", "pine"], "no glow and natural trees on a human world")
+	check(Recipes.unlock_level("sword_iron") == 1 and Recipes.unlock_level("pulse_pistol") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("scrap_pistol") == 10, "advanced weapons unlock at level 10")
+	check(Recipes.unlock_level("wall_scifi") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("wall_plaster") == 1 and Recipes.unlock_level("ship") == Recipes.SHIP_LEVEL, "building unlocks by level; a starship at 35")
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	var gun := false
+	for i in 300:
+		for it in ItemDB.roll_loot(Eras.MEDIEVAL, r, {"chunk": Vector2i(1, 1), "how": "found"}, 0.0):
+			gun = gun or it["type"] == "scrap_pistol"
+	check(not gun, "no guns in the caches round the start")
+	var g := ChunkGenerator.new(77, true)
+	var found := 0
+	var low := 0
+	for wz in range(-6, 7):
+		for wx in range(-6, 7):
+			var p := WorldPortal.spot(g, wx, wz)
+			if p != Vector2.INF:
+				found += 1
+				if Eras.zone_level(p.x, p.y) < WorldPortal.MIN_LEVEL:
+					low += 1
+	check(found > 3 and low == 0, "portals only stand in level 40+ zones (%d found)" % found)
+	var np := WorldPortal.nearest(g, Vector2(6500, 0))
+	check(np != Vector2.INF and np.distance_to(Vector2(6500, 0)) < 4000.0, "the nearest portal can be found from afar")
+	if np != Vector2.INF:
+		var cx := int(floor(np.x / 64.0))
+		var cz := int(floor(np.y / 64.0))
+		var ch := g.generate(cx, cz)
+		var has := false
+		for o in ch["objects"]:
+			has = has or o["t"] == WorldPortal.TYPE
+		check(has, "the portal is built into its chunk")
+	Planets.apply(sys[3])
+	check(Eras.theme == "alien" and Eras.zone_level(0, 0) >= 50, "alien worlds start at level 50")
+	var npc := NPCGen._person(r, Eras.SCIFI, 0, 0, 0)
+	check(npc["race"] == "Vex" and not NPCGen.SKIN.has(npc["body"]["skin"]), "alien worlds' people are not human")
+	Planets.apply(Planets.get_planet(0, 0))
+	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
+
 func test_kit_flora() -> void:
 	for t in ["oak", "pine"]:
 		for sp in range(1, 40):

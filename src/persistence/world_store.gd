@@ -68,7 +68,8 @@ static func list_worlds() -> Array:
 	out.sort_custom(func(a, b): return a.get("last_played", 0) > b.get("last_played", 0))
 	return out
 
-static func create_world(name: String, seed: int) -> WorldStore:
+## theme: "human" for new worlds (Planets, Eras.theme); "" makes an old-style mixed world.
+static func create_world(name: String, seed: int, theme := "") -> WorldStore:
 	var id := "%s_%d" % [name.to_lower().replace(" ", "_").validate_filename(), Time.get_unix_time_from_system()]
 	var s := WorldStore.new(worlds_dir().path_join(id))
 	s.meta = {
@@ -77,6 +78,8 @@ static func create_world(name: String, seed: int) -> WorldStore:
 		"created": Time.get_unix_time_from_system(), "last_played": Time.get_unix_time_from_system(),
 		"play_time": 0.0, "day": 0.3,
 	}
+	if theme != "":
+		s.meta["theme"] = theme
 	s.save_meta()
 	return s
 

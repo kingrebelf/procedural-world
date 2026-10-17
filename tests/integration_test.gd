@@ -417,11 +417,11 @@ func _run() -> void:
 		await process_frame
 	check(current_scene is OrbitView, "climbing out of the sky reaches orbit")
 	var target := -1
-	for pl in Planets.system(game.home_seed):
-		if pl["kind"] == "rust":
+	for pl in game.worlds():
+		if pl["kind"] == "fey":
 			target = pl["n"]
 	OrbitView._arrive(target)
-	check(game.planet == target and game.seed != home_seed and WorldField.allowed_eras == [Eras.SCIFI], "warping makes the rust world current")
+	check(game.planet == target and game.seed != home_seed and WorldField.allowed_eras == [Eras.FANTASY, Eras.SCIFI] and Eras.theme == "alien", "warping makes the fey world current")
 	current_scene._land()
 	await _frames(5)
 	world = current_scene
@@ -432,8 +432,27 @@ func _run() -> void:
 			break
 	check(player.vehicle != null and player.vehicle.kind == "ship", "you land flying your ship")
 	var pw: PackedFloat32Array = world.atmosphere.field.era_weights(player.global_position.x, player.global_position.z)
-	check(pw[Eras.SCIFI] > 0.99, "the rust world is all sci-fi land")
+	check(pw[Eras.FANTASY] > 0.99, "the fey world's heart is all fey land")
 	check(DirAccess.dir_exists_absolute(game.store.root.path_join("planets/%d/chunks" % target)), "the planet's land is saved apart from home")
+	# Through a portal from the fey world to the verdant one, then the fey world remembers
+	# the portal you left by.
+	var gone_from := Vector2(player.global_position.x, player.global_position.z)
+	player.dismount(true)
+	var verdant := 1
+	for pl in game.worlds():
+		if pl["kind"] == "verdant":
+			verdant = pl["n"]
+	game.travel_portal(player, verdant, gone_from)
+	await _frames(5)
+	world = current_scene
+	player = world.player
+	for i in 900:
+		await process_frame
+		if not player.frozen:
+			break
+	check(game.planet == verdant and Eras.theme == "human" and not player.frozen and player.is_inside_tree(), "a portal takes you to another world, on your feet")
+	check(game.landings.get(target) == gone_from, "the world you left remembers the portal you used")
+	target = verdant
 	game.close_world()
 	check(WorldField.allowed_eras.is_empty(), "closing the world resets planet rules")
 	check(game.load_world(world_id) and game.planet == target, "the save remembers which planet you're on")

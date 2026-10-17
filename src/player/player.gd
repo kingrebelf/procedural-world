@@ -147,6 +147,9 @@ func set_state(d: Dictionary) -> void:
 	if hand_light:
 		hand_light.from_data(d.get("light", {}))
 	_apply_look()
+	if d.get("drop", false):
+		# Just through a portal: drop onto the ground once it has streamed in.
+		teleport_to(global_position.x, global_position.z)
 
 ## Sends you to a spot on this world: you drop in from above once the ground there has
 ## streamed in (the same path the console's tp uses).
@@ -633,6 +636,8 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 ## How an object can be used with Interact, or {} if it can't.
 static func _use_of(o: Dictionary) -> Dictionary:
 	var t: String = o["t"]
+	if t == WorldPortal.TYPE:
+		return {"kind": "portal", "verb": "Step into the portal", "h": 3.4}
 	if Wonders.has(t):
 		var w := Wonders.use_of(o, Game.day)
 		return {} if w.is_empty() else {"kind": "wonder", "verb": w["verb"], "h": w["h"]}
@@ -731,7 +736,11 @@ func _update_look_target() -> void:
 		var t: String = o["t"]
 		var k := ObjectLibrary.kind(t)
 		var mat := Durability.material(t)
-		if Wonders.unbreakable(t):
+		if t == WorldPortal.TYPE:
+			text = "[%s] Step into the portal" % _key("interact")
+			info = {"title": "Ancient Portal", "sub": "Zone level %d" % Eras.zone_level(global_position.x, global_position.z),
+				"lines": ["A door to the other worlds bound to this one", "Can't be broken"]}
+		elif Wonders.unbreakable(t):
 			# A relic: what it does instead of what it yields.
 			var w := Wonders.use_of(o, Game.day)
 			text = ("[%s] %s" % [_key("interact"), w["verb"]]) if not w.is_empty() else Wonders.describe(o, Game.day)
@@ -787,6 +796,11 @@ func interact() -> void:
 			"station":
 				_use_station()
 				return
+			"portal":
+				if is_instance_valid(focus["chunk"]):
+					get_tree().call_group("trade_ui", "open_portal", focus["chunk"].get_object(focus["i"]), focus["chunk"])
+				_focus_t = 0.0
+				return
 			"wonder":
 				if is_instance_valid(focus["chunk"]):
 					_use_wonder(focus["chunk"], focus["chunk"].get_object(focus["i"]))
@@ -806,6 +820,9 @@ func interact() -> void:
 	_use_object(h["chunk"], (h["chunk"] as ChunkNode).get_object(h["obj"]))
 
 func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
+	if o["t"] == WorldPortal.TYPE:
+		get_tree().call_group("trade_ui", "open_portal", o, chunk)
+		return
 	if Wonders.has(o["t"]):
 		_use_wonder(chunk, o)
 		return

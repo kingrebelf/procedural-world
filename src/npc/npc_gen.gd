@@ -101,15 +101,33 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 		"name": name, "npcs": npcs, "rumors": [], "sim_day": -1.0,
 	}
 
+## Alien worlds' people (Eras.theme "alien"): the Sylvari of the fey wilds and the
+## Vex of the xeno tech cities, tall and slight, with skin and hair no human has.
+const ALIEN_SKIN := [Color(0.42, 0.6, 0.78), Color(0.55, 0.42, 0.72), Color(0.38, 0.62, 0.5), Color(0.68, 0.7, 0.76), Color(0.3, 0.42, 0.62), Color(0.62, 0.5, 0.4)]
+const ALIEN_HAIR := [Color(0.92, 0.94, 0.98), Color(0.3, 0.75, 0.75), Color(0.55, 0.3, 0.75), Color(0.12, 0.14, 0.3), Color(0.85, 0.55, 0.25)]
+const ALIEN_FIRST := ["Zhar", "Vexil", "Quorra", "Ixa", "Thessk", "Oru", "Nyx", "Kael", "Sorrin", "Yevra", "Tzal", "Iruun", "Xelia", "Vorn", "Ashka", "Pell"]
+const ALIEN_LAST := ["of Hive Ruun", "Kh'tal", "Seventh-Spire", "Vael'ox", "Driftborn", "Nul-Arax", "of the Lattice", "Ossk"]
+const RACES := ["Sylvari", "Vex"]
+
 static func _person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: int) -> Dictionary:
+	var alien := Eras.theme == "alien"
 	var first: String = FIRST[era][r.randi() % FIRST[era].size()]
 	var last: String = LAST[era][r.randi() % LAST[era].size()]
+	if alien and era == Eras.SCIFI:
+		first = ALIEN_FIRST[r.randi() % ALIEN_FIRST.size()]
+		last = ALIEN_LAST[r.randi() % ALIEN_LAST.size()]
 	var cloth: Array = CLOTH[era]
 	var body := {
 		"height": r.randf_range(0.9, 1.08), "build": r.randf_range(0.85, 1.2), "female": r.randf() < 0.5,
 		"skin": SKIN[r.randi() % SKIN.size()], "hair": HAIR[r.randi() % HAIR.size()],
 		"hair_style": r.randi() % 4, "cloth": cloth[r.randi() % cloth.size()], "cloth2": cloth[r.randi() % cloth.size()],
 	}
+	if alien:
+		# Drawn after the human rolls, so the rest of the person matches a human world's.
+		body["skin"] = ALIEN_SKIN[r.randi() % ALIEN_SKIN.size()]
+		body["hair"] = ALIEN_HAIR[r.randi() % ALIEN_HAIR.size()]
+		body["height"] = float(body["height"]) * 1.08
+		body["build"] = float(body["build"]) * 0.88
 	return {
 		"id": "%d_%d_%d" % [sx, sz, idx],
 		"name": "%s %s" % [first, last], "era": era, "body": body,
@@ -120,7 +138,8 @@ static func _person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: i
 		},
 		"likes": LIKES[era][r.randi() % LIKES[era].size()],
 		"worry": WORRIES[era][r.randi() % WORRIES[era].size()],
-		"speech": SPEECH[era],
+		"speech": SPEECH[era] + (", not quite human in turn of phrase" if alien else ""),
+		"race": (RACES[1] if era == Eras.SCIFI else RACES[0]) if alien else "Human",
 		"age": r.randi_range(18, 70),
 		"hp": 100.0, "dead": false,
 		"rel": 0, "met": 0, "mem": [], "goal": "", "mood": "calm",
@@ -130,4 +149,7 @@ static func _person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: i
 
 ## One-line description used by both the built-in dialogue and the LLM prompt.
 static func describe(p: Dictionary) -> String:
+	var race := String(p.get("race", "Human"))
+	if race != "Human":
+		return "%s, a %d-year-old %s %s" % [p["name"], p["age"], race, p["job"]]
 	return "%s, a %d-year-old %s %s" % [p["name"], p["age"], Eras.NAMES[p["era"]].to_lower(), p["job"]]

@@ -27,6 +27,15 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 
 - Infinite streamed terrain in 64 m chunks, generated on worker threads.
 - Three eras with continuous blending of terrain, materials, vegetation, fog and sky.
+- **Human and alien worlds.** Every new game starts on a human world, in medieval land:
+  natural forests and animals, nothing that glows. The land grows more dangerous and
+  rewarding the further out you go (one zone level per 150 m), and human sci-fi outposts
+  take over a few kilometres out. Sci-fi gear, guns and building pieces unlock from level
+  10, starships from level 35. Alien worlds (zone level 50 and up) have the glowing fey
+  wilds, xeno tech cities, alien creatures and alien people. Worlds made before this keep
+  their mix of eras.
+- **Ancient portals.** Rare rune rings stand only in level 40+ zones. Step through one to
+  any world linked to yours, human or alien, and come back out of the same portal.
 - Settlements with traders whose prices depend on where goods come from and how much you
   have already sold them.
 - Pickaxes, axes, swords, a builder's hammer, a plasma drill and a pulse pistol; mining,
@@ -40,11 +49,11 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
 - **Vehicles.** Build a vehicle bay to put together a hover speeder (skims over land and
   water) or a survey rover, or a stable to saddle a riding horse. Set one down from your
   pack, ride it, and pack it up again; vehicles stay where you leave them.
-- **Starships.** Build a launch pad at the vehicle bay, then a starship on the pad. It flies
+- **Starships.** Build a launch pad at the vehicle bay (level 30), then a starship on the pad (level 35). It flies
   where you look: climb, dive, boost low over the land, and set down anywhere flat.
 - **Planets and warp.** Keep climbing at the top of the sky to reach orbit. Every world has
-  a star system of five planets (a verdant world, a fey moon, a rust world, a frozen world
-  and home), each with its own land, people and map, saved separately. Warp between them
+  five linked planets (on new worlds: home, a verdant and a frozen human world, a fey moon
+  and a xeno world), each with its own land, people and map, saved separately. Warp between them
   from orbit and land wherever you like.
 - Rivers wind through the lowlands of new worlds, in valleys of their own. Swim in them.
 - Health, stamina and experience. Sprinting, jumping and swinging tire you; gathering,

@@ -140,8 +140,9 @@ func _process(delta: float) -> void:
 		if _sample_timer <= 0.0:
 			_sample_timer = 0.25
 			var p := target.global_position
-			_target_w = field.era_weights(p.x, p.z)
-			_ground = maxf(field.height(p.x, p.z, _target_w), 0.0)
+			var ew := field.era_weights(p.x, p.z)
+			_ground = maxf(field.height(p.x, p.z, ew), 0.0)
+			_target_w = Eras.look(ew) # human worlds keep a natural sky over their outposts
 		for e in Eras.COUNT:
 			_w[e] = lerpf(_w[e], _target_w[e], clampf(delta * 0.8, 0.0, 1.0))
 	_update_time_of_day()

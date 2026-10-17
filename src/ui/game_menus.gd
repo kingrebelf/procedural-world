@@ -118,6 +118,14 @@ func open_storage(o: Dictionary, chunk: ChunkNode) -> void:
 	_store = Storage.open(o)
 	open("storage")
 
+## An ancient portal: pick a world to step through to.
+func open_portal(o: Dictionary, chunk: ChunkNode) -> void:
+	_store_obj = o
+	_portal_at = Vector2(chunk.position.x + o["p"].x, chunk.position.z + o["p"].z)
+	open("portal")
+
+var _portal_at := Vector2.ZERO
+
 ## Writes the open chest back into its chunk, to be saved.
 func open_travel(o: Dictionary, chunk: ChunkNode) -> void:
 	_store_obj = o
@@ -143,6 +151,7 @@ func _refresh() -> void:
 		"trade": _panel = _trade_panel()
 		"storage": _panel = _storage_panel()
 		"travel": _panel = _travel_panel()
+		"portal": _panel = _portal_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
 	_backdrop.visible = true
@@ -522,7 +531,7 @@ static func _icon_rect(type: String, px: int) -> TextureRect:
 	return r
 
 func _do_craft(r: Dictionary, times: int, stations: Dictionary) -> void:
-	if not Recipes.station_ok(r, stations):
+	if not Recipes.station_ok(r, stations) or not Recipes.level_ok(r, Game.stats.level):
 		return
 	var pos := player.global_position if player else Vector3.ZERO
 	var ck := ChunkStreamer.chunk_of(pos)
@@ -566,11 +575,17 @@ func _craft_panel() -> Control:
 	sc.add_child(list)
 	# Recipes you can make first, then the rest in their usual order.
 	var order: Array = Recipes.LIST.filter(func(r): return _craft_tab == "All" or _recipe_tab(r) == _craft_tab)
-	var ready := func(r): return Recipes.station_ok(r, stations) and Recipes.max_crafts(Game.inventory, r) > 0
-	order.sort_custom(func(x, y): return ready.call(x) and not ready.call(y))
+	var lv := Game.stats.level
+	var ready := func(r): return Recipes.station_ok(r, stations) and Recipes.level_ok(r, lv) and Recipes.max_crafts(Game.inventory, r) > 0
+	# Locked recipes go last, soonest unlocked first.
+	order.sort_custom(func(x, y):
+		if ready.call(x) != ready.call(y):
+			return ready.call(x)
+		return Recipes.unlock_level(x["out"]) < Recipes.unlock_level(y["out"]) and not Recipes.level_ok(x, lv))
 	for r in order:
 		var at_ok := Recipes.station_ok(r, stations)
-		var most := Recipes.max_crafts(Game.inventory, r) if at_ok else 0
+		var unlocked := Recipes.level_ok(r, lv)
+		var most := Recipes.max_crafts(Game.inventory, r) if at_ok and unlocked else 0
 		var card := PanelContainer.new()
 		card.add_theme_stylebox_override("panel", UITheme.tex_sb("tab" if most > 0 else "disabled", 10, 6))
 		var row := HBoxContainer.new()
@@ -581,9 +596,11 @@ func _craft_panel() -> Control:
 		name_box.custom_minimum_size = Vector2(210, 0)
 		name_box.add_child(UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17, UITheme.TEXT if most > 0 else UITheme.DIM))
 		var status := ("Can make %d" % most) if most > 0 else "Missing materials"
-		if not at_ok:
+		if not unlocked:
+			status = "Unlocks at level %d" % Recipes.unlock_level(r["out"])
+		elif not at_ok:
 			status = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
-		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok else UITheme.DIM)))
+		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked else UITheme.DIM)))
 		row.add_child(name_box)
 		var ins := HBoxContainer.new()
 		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -697,6 +714,27 @@ func _travel_panel() -> Control:
 		v.add_child(row)
 	if not any:
 		v.add_child(UITheme.label("No other teleporters yet. Build another one somewhere else to link them.", 16, UITheme.DIM))
+	return s[0]
+
+func _portal_panel() -> Control:
+	var s := _shell("Ancient Portal", "The ring hums. Through it lie the other worlds bound to this one; the alien ones are deadly.")
+	var v: VBoxContainer = s[1]
+	for p in Game.worlds():
+		var n: int = p["n"]
+		if n == Game.planet:
+			continue
+		var row := HBoxContainer.new()
+		var been := Game.landings.has(n) or n == 0
+		var l := UITheme.label("%s   ·   %s   ·   zone level %d+%s" % [p["name"], Planets.theme_label(p), int(p["base"]), "" if been else "   ·   unexplored"], 17,
+			Color(0.85, 0.6, 1.0) if p.get("theme", "") == "alien" else UITheme.TEXT)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.custom_minimum_size = Vector2(520, 0)
+		row.add_child(l)
+		var from := _portal_at
+		row.add_child(UITheme.button("Step through", func():
+			close()
+			Game.travel_portal(player, n, from)))
+		v.add_child(row)
 	return s[0]
 
 static func _dist(d: float) -> String:

@@ -84,6 +84,12 @@ func site_era(ix: int, iz: int) -> int:
 	var h := WHash.hash2(seed, ix, iz, 101)
 	if allowed_eras.is_empty():
 		return h % Eras.COUNT
+	if Eras.themed() and allowed_eras.size() == 2:
+		# Themed worlds progress outward: the first era all round the origin, the second
+		# appearing past the frontier and taking over most of the far land.
+		var d := site_pos(ix, iz).length()
+		var far := smoothstep(Eras.FRONTIER, Eras.HEARTLAND, d) * 0.8
+		return int(allowed_eras[1 if WHash.unit2(seed, ix, iz, 107) < far else 0])
 	return int(allowed_eras[h % allowed_eras.size()])
 
 ## Cached [position, era] for a Voronoi site (hashing in GDScript is the hot path).

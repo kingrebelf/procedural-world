@@ -29,6 +29,7 @@ const KIND := {
 	"pad_bob": "structure", "pad_challenger": "structure", "pad_dispatcher": "structure", "pad_executioner": "structure",
 	"pad_imperial": "structure", "pad_insurgent": "structure", "pad_omen": "structure", "pad_pancake": "structure",
 	"pad_spitfire": "structure", "pad_zenith": "structure",
+	"world_portal": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -58,6 +59,7 @@ const LABEL := {
 	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
+	"world_portal": "Ancient Portal",
 }
 
 static func kind(t: String) -> String:
@@ -136,6 +138,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return WonderSite.build(key)
 	if ShipPad.has(key):
 		return ShipPad.build(key)
+	if key == WorldPortal.TYPE:
+		return WorldPortal.build()
 	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
 		return WonderSite.build(key.trim_suffix("~solid"), true)
 	if TOWN_PROPS.has(key):
@@ -270,6 +274,16 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = fs
 			_lock.unlock()
 		return fs
+	if t == WorldPortal.TYPE:
+		_lock.lock()
+		var ps = _shapes.get(t)
+		_lock.unlock()
+		if ps == null:
+			ps = [get_mesh(t).create_trimesh_shape(), Vector3.ZERO]
+			_lock.lock()
+			_shapes[t] = ps
+			_lock.unlock()
+		return ps
 	if t == "alien_ruin" and sp != 0:
 		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
 		# core, instead of into a box around the whole thing.
