@@ -451,12 +451,12 @@ func _run() -> void:
 		await _landform_shots(g)
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
-	if not ZoneBorder.rings().is_empty() and WorldField.terrain_v >= 16 and (only.is_empty() or only.has("04") or only.has("70")):
+	if not ZoneBorder.rings().is_empty() and WorldField.terrain_v >= 16 and (only.is_empty() or only.has("04") or only.has("73")):
 		await _zone_shots(g)
 	else:
 		var b := _find_border(g)
 		await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
-	if WorldField.terrain_v >= 16 and (only.is_empty() or only.has("71") or only.has("72")):
+	if WorldField.terrain_v >= 16 and (only.is_empty() or only.has("74") or only.has("75")):
 		await _crash_and_crater_shots(g)
 	if not fan.is_empty():
 		var c: Vector2 = fan["center"]
@@ -543,7 +543,7 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 		if not open or not _dry(g, p):
 			continue
 		var along := Vector2(cos(a + 0.05), sin(a + 0.05)) * R0
-		await _shot("70_zone_stones", p, along, 0.42, 1.8, NAN, Callable(), 3.0)
+		await _shot("73_zone_stones", p, along, 0.42, 1.8, NAN, Callable(), 3.0)
 		return
 	print("no open stretch of the zone line found")
 
@@ -551,7 +551,7 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 ## crest of a big crater, looking across its bowl to the far rim and the ejecta beyond.
 func _crash_and_crater_shots(_g: ChunkGenerator) -> void:
 	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
-	if only.is_empty() or only.has("71"):
+	if only.is_empty() or only.has("74"):
 		var cr := {}
 		for r in 16:
 			for wz in range(-r, r + 1):
@@ -568,8 +568,8 @@ func _crash_and_crater_shots(_g: ChunkGenerator) -> void:
 			var back := Vector2(0, -float(cr["len"]) * 0.75).rotated(-float(cr["yaw"]))
 			var cam := c + back + back.orthogonal().normalized() * 26.0
 			print("dreadnought crash at ", c, " trench ", cr["len"], " m")
-			await _shot("71_dreadnought_trench", cam, c + back * 0.15, 0.38, 22.0, float(cr["hb"]) + 2.0)
-	if only.is_empty() or only.has("72"):
+			await _shot("74_dreadnought_trench", cam, c + back * 0.15, 0.38, 22.0, float(cr["hb"]) + 2.0)
+	if only.is_empty() or only.has("75"):
 		var best := Vector2.INF
 		for rr in 14:
 			for iz in range(-rr, rr + 1):
@@ -603,7 +603,7 @@ func _crash_and_crater_shots(_g: ChunkGenerator) -> void:
 		var p: Vector2 = top["p"]
 		var mid: Vector2 = top["mid"]
 		var cam := p + (p - mid).normalized() * 6.0 + (p - mid).orthogonal().normalized() * 10.0
-		await _shot("72_crater_rim", cam, mid + (mid - p) * 0.6, 0.4, 3.0, g.field.height(mid.x, mid.y) + 4.0)
+		await _shot("75_crater_rim", cam, mid + (mid - p) * 0.6, 0.4, 3.0, g.field.height(mid.x, mid.y) + 4.0)
 
 ## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
 ## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
