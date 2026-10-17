@@ -218,6 +218,9 @@ func _ready() -> void:
 	_body = AnimatableBody3D.new()
 	_body.collision_layer = 2
 	_body.collision_mask = 0
+	# Follow the model as it walks. With sync_to_physics on, a body under a moving parent
+	# stays where it spawned, so shots aimed at the animal passed straight through it.
+	_body.sync_to_physics = false
 	_body.set_meta("creature", self)
 	# Hit box fitted to the whole model (head, body and legs), so a big animal can be hit
 	# wherever you swing at it, not only in a small ball at its middle.
