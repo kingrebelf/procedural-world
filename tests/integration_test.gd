@@ -444,11 +444,13 @@ func _run() -> void:
 				var b: PackedFloat32Array = crags[key]
 				for i in range(0, b.size(), 16):
 					placed += 1
-					# (The rock sits a little into the face from the point it was placed on, and
-					# the ones at a rim stand by the level ground above it.)
+					# (The rock sits into the face from the point it was placed on, up to half its
+					# size further where it would otherwise jut out, and the ones at a rim stand by
+					# the level ground above it.)
 					var face := 0.0
-					for o in [Vector2.ZERO, Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
-						face = maxf(face, ChunkGenerator.slope_at(steep, clampf(b[i + 3] + o.x, 0.0, 64.0), clampf(b[i + 11] + o.y, 0.0, 64.0)))
+					var reach := maxf(3.0, Vector3(b[i], b[i + 4], b[i + 8]).length() * 0.7)
+					for o in [Vector2.ZERO, Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+						face = maxf(face, ChunkGenerator.slope_at(steep, clampf(b[i + 3] + o.x * reach, 0.0, 64.0), clampf(b[i + 11] + o.y * reach, 0.0, 64.0)))
 					on_steep = on_steep and face > 0.8
 		var again := ChunkNode.build_crag_buffers(steep)
 		check(placed > 3 and on_steep, "cliffs are dressed with crags on their steep faces (%d)" % placed)
