@@ -34,6 +34,8 @@ func _ready() -> void:
 	sky_mat.shader = load("res://src/env/sky.gdshader")
 	if ResourceLoader.exists("res://assets/textures/sky/night_stars.jpg"):
 		sky_mat.set_shader_parameter("night_stars", load("res://assets/textures/sky/night_stars.jpg"))
+	if ResourceLoader.exists("res://assets/textures/sky/moon.png"):
+		sky_mat.set_shader_parameter("moon_tex", load("res://assets/textures/sky/moon.png"))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
@@ -62,9 +64,11 @@ func _ready() -> void:
 	env.volumetric_fog_anisotropy = 0.35
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.98
-	env.adjustment_contrast = 1.06
+	env.adjustment_contrast = 1.1
 	env.ssao_radius = 1.4
-	env.ssao_intensity = 1.6
+	env.ssao_intensity = 2.0
+	# A little AO on direct light too, so things sit on the ground even in sunlight.
+	env.ssao_light_affect = 0.15
 	env.ssil_radius = 6.0
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_cascades = 4
@@ -211,7 +215,9 @@ func _update_time_of_day() -> void:
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)
-	sun.light_energy = 2.0 * smoothstep(-0.05, 0.15, elev)
+	# The low sun is still strong, and warmer: long, hard, golden shadows at dusk instead of
+	# a flat grey wash.
+	sun.light_energy = 2.0 * smoothstep(-0.05, 0.08, elev) * (1.0 + 0.2 * golden)
 	sun.visible = elev > -0.1
 	moon.visible = elev < 0.1
 	moon.light_energy = 0.14 * (1.0 - daylight)
@@ -250,7 +256,9 @@ func _update_time_of_day() -> void:
 		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
 	else:
 		env.fog_sun_scatter = 0.12
-	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.05, underground)
+	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
+	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

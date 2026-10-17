@@ -31,6 +31,8 @@ func _run() -> void:
 	mat.shader = load("res://src/env/sky.gdshader")
 	if ResourceLoader.exists("res://assets/textures/sky/night_stars.jpg"):
 		mat.set_shader_parameter("night_stars", load("res://assets/textures/sky/night_stars.jpg"))
+	if ResourceLoader.exists("res://assets/textures/sky/moon.png"):
+		mat.set_shader_parameter("moon_tex", load("res://assets/textures/sky/moon.png"))
 	mat.set_shader_parameter("daylight", daylight)
 	mat.set_shader_parameter("cloud_cover", cover)
 	mat.set_shader_parameter("time_s", 100.0)
@@ -48,6 +50,9 @@ func _run() -> void:
 	var dir := Vector3(sqrt(maxf(0.0, 1.0 - sun_y * sun_y - 0.1)), sun_y, 0.3).normalized()
 	sun.look_at_from_position(Vector3.ZERO, -dir, Vector3.UP)
 	sun.light_energy = 2.0 * smoothstep(-0.05, 0.15, sun_y)
+	# As in the game: the sun light goes out below the horizon, the sky still knows where it is.
+	sun.visible = sun_y > -0.1
+	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
 	get_root().add_child(sun)
 	var cam := Camera3D.new()
 	cam.fov = 70.0

@@ -219,7 +219,7 @@ func _run() -> void:
 		var c: Vector2 = med["center"]
 		await _shot("06_medieval_sunset", c + Vector2(-50, 14), c, 0.735)
 	# Midnight, looking as far up as a player can: the stars and the Milky Way.
-	await _shot("38_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
+	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)

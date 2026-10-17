@@ -19,6 +19,11 @@ uniform float cloud_cover = 0.5;
 // hemisphere's stars and Milky Way, zenith at the top row. It wheels once a day.
 uniform sampler2D night_stars : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float stars_turn = 0.0;
+// Ben's moon painting (assets/textures/sky/moon.png, cropped to the disc by tools/make_sky.py).
+uniform sampler2D moon_tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform float moon_size = 0.045;
+// The moon and the night clouds go by sun_dir_g (clouds.gdshaderinc), not LIGHT0: the sun
+// light itself is switched off at night.
 uniform float stars_gain = 1.3;
 // Cloud quality (graphics settings): ray-marched clouds or the flat deck, and march steps.
 uniform bool volumetric_clouds = true;
@@ -165,9 +170,15 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 void sky() {
 	vec3 d = EYEDIR;
 	if (AT_HALF_RES_PASS) {
-		vec3 sunh = LIGHT0_DIRECTION;
-		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sunh.y)) * daylight;
-		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035);
+		// By day the sun lights the clouds; once it is well down, the moon opposite it
+		// does, faintly and silver. Both are dark at the hand-over, so nothing jumps.
+		vec3 sg = normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0));
+		float ws = smoothstep(-0.08, 0.0, sg.y);
+		float wm = 1.0 - smoothstep(-0.16, -0.08, sg.y);
+		vec3 sunh = sg.y > -0.08 ? sg : -sg;
+		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sg.y)) * daylight * ws
+			+ vec3(0.5, 0.58, 0.75) * 0.16 * wm * (1.0 - daylight);
+		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035) * (0.35 + 0.65 * daylight);
 		// Flat-cloud quality skips the march entirely.
 		vec4 c = volumetric_clouds ? march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy) : vec4(0.0);
 		COLOR = c.rgb;
@@ -192,9 +203,25 @@ void sky() {
 	if (LIGHT0_ENABLED) {
 		col += LIGHT0_COLOR * (smoothstep(0.9994, 0.9998, sd) * 40.0 + pow(sd, 400.0) * 3.0) * LIGHT0_ENERGY * step(-0.05, sun_h);
 	}
-	// Moon opposite the sun.
-	float md = max(dot(d, -sun), 0.0);
-	col += vec3(0.85, 0.9, 1.0) * smoothstep(0.9990, 0.9994, md) * 2.0 * (1.0 - daylight);
+	// Moon opposite the sun, full as it should be there, with a faint halo in the haze.
+	// Its face is laid out on the plane facing you; derivatives are taken outside the branch.
+	vec3 mdir = -normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0));
+	vec3 mr = normalize(abs(mdir.y) > 0.999 ? vec3(1.0, 0.0, 0.0) : cross(vec3(0.0, 1.0, 0.0), mdir));
+	vec3 mu = cross(mdir, mr);
+	vec2 mq = vec2(dot(d, mr), dot(d, mu)) / moon_size;
+	vec2 mgx = dFdx(mq) * 0.5;
+	vec2 mgy = dFdy(mq) * 0.5;
+	float md = dot(d, mdir);
+	float moon_vis = 1.0 - daylight * 0.7;
+	if (md > 0.0) {
+		float mrad = length(mq);
+		col += vec3(0.55, 0.65, 0.85) * 0.05 / (1.0 + mrad * mrad * 0.3) * (1.0 - daylight);
+		if (mrad < 1.0 && !AT_CUBEMAP_PASS) {
+			vec3 face = textureGrad(moon_tex, vec2(0.5 + mq.x * 0.5, 0.5 - mq.y * 0.5), vec2(mgx.x, -mgx.y), vec2(mgy.x, -mgy.y)).rgb;
+			float edge = smoothstep(1.0, 0.96, mrad);
+			col = mix(col, face * 1.5 + col * 0.25, edge * moon_vis);
+		}
+	}
 
 	// Stars.
 	float night = 1.0 - daylight;
