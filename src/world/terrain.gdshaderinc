@@ -816,6 +816,36 @@ void fragment() {
 	snow *= 1.0 - river;
 #endif
 
+	// Faces: relief at the size of the rock itself, in metres, rather than a skin of
+	// little blobs (which, with the photo's own bump, read as wrinkled hide). Rain cuts
+	// rills down any steep face, earth or stone; rock also has fracture lines, bedding
+	// ledges (each bed jutting at its foot and leaning back above) and, on a mountain
+	// side, gullies tens of metres apart, darker where they gather the wet. Each eases
+	// off once a pixel spans a good part of it, so none of them crawls in the distance.
+	vec3 face_gr = vec3(0.0);
+	if (steep > 0.01) {
+		float fw = length(fwidth(wpos));
+		vec4 rl = vnoise3d(wpos * vec3(0.55, 0.045, 0.55) + 13.0);
+		vec3 gr = sign(rl.x - 0.5) * 0.5 * rl.yzw * vec3(0.55, 0.045, 0.55) * (1.0 - smoothstep(0.3, 0.9, fw));
+		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
+		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
+		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask * (1.0 - smoothstep(0.8, 2.5, fw));
+		vec4 gl = vnoise3d(wpos * vec3(0.05, 0.005, 0.05) + 31.0);
+		float gully = (1.0 - smoothstep(0.0, 0.12, abs(gl.x - 0.5))) * rock_mask * steep * (1.0 - smoothstep(4.0, 12.0, fw));
+		gr += sign(gl.x - 0.5) * 3.0 * gl.yzw * vec3(0.05, 0.005, 0.05) * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
+		col *= 1.0 - 0.18 * gully * (1.0 - snow);
+		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
+		float bf = fract(bed);
+		float foot = smoothstep(0.0, 0.2, bf);
+		float dfoot = bf < 0.2 ? 150.0 * bf * (1.0 - bf * 5.0) : 0.0;
+		// Some beds stand proud along a stretch and fade back into the face elsewhere.
+		float proud = smoothstep(0.3, 0.7, vnoise(vec2((wpos.x - wpos.z) * 0.07, floor(bed) * 1.7)));
+		proud *= 0.3 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.1, 0.4, fwidth(bed)));
+		gr.y += proud * (dfoot * (1.0 - bf) - foot) / 2.3;
+		gr -= dot(gr, wnorm) * wnorm;
+		face_gr = gr * steep * (1.0 - snow * 0.8);
+	}
+
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
 	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
@@ -837,28 +867,7 @@ void fragment() {
 	vec3 dn = normalize(vec3(-(hx - h0) / e * detail_strength * rs, 1.0, -(hz - h0) / e * detail_strength * rs));
 	float proc = use_textures ? 0.35 : 1.0;
 	vec3 bump = vec3(dn.x, 0.0, dn.z) * proc * (1.0 - steep) * (1.0 - snow * 0.7);
-	if (steep > 0.01) {
-		// Faces: relief at the size of the rock itself, in metres, rather than a skin of
-		// little blobs (which, with the photo's own bump, read as wrinkled hide). Rain cuts
-		// rills down any steep face, earth or stone; rock also has fracture lines and
-		// bedding ledges, each bed jutting at its foot and leaning back above.
-		vec4 rl = vnoise3d(wpos * vec3(0.55, 0.045, 0.55) + 13.0);
-		vec3 gr = sign(rl.x - 0.5) * 0.5 * rl.yzw * vec3(0.55, 0.045, 0.55);
-		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
-		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
-		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask;
-		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
-		float bf = fract(bed);
-		float foot = smoothstep(0.0, 0.2, bf);
-		float dfoot = bf < 0.2 ? 30.0 * bf * (1.0 - bf * 5.0) : 0.0;
-		// Some beds stand proud along a stretch and fade back into the face elsewhere, and
-		// the ledges ease off once a pixel spans a good part of a bed.
-		float proud = smoothstep(0.3, 0.7, vnoise(vec2((wpos.x - wpos.z) * 0.07, floor(bed) * 1.7)));
-		proud *= 0.3 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.1, 0.4, fwidth(bed)));
-		gr.y += proud * (dfoot * (1.0 - bf) - foot) / 2.3;
-		gr -= dot(gr, wnorm) * wnorm;
-		bump -= gr * steep * (1.0 - snow * 0.8);
-	}
+	bump -= face_gr;
 	// The photo's fine bump fades with distance, where it only adds crawling grain.
 	float rock_bump = mix(0.42, 0.14, smoothstep(6.0, 45.0, dist));
 	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * rock_bump + vec3(ripple.x, 0.0, ripple.y));
