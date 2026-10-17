@@ -41,10 +41,10 @@ const ARMOUR_SLOTS := ["head", "chest", "hands", "legs", "feet", "ring", "neck"]
 ## item -> [shape, args...]. Colours are albedo (sRGB); metals use their real reflectance.
 const SHAPES := {
 	# Metal: [bar, colour, roughness, patina colour, patina amount, length, form]. Forms
-	# follow how each metal really came: iron as a forged currency bar, copper as a
+	# follow how each metal really came: iron as a rough cast bar, copper as a
 	# plano-convex bun from the furnace bottom, bronze as an oxhide slab, precious
 	# metals as stamped trapezoid bars, steel and sci-fi alloys as machined billets.
-	"iron_ingot": ["bar", Color(0.56, 0.55, 0.54), 0.5, Color(0.45, 0.24, 0.12), 0.35, 0.16, "currency"],
+	"iron_ingot": ["bar", Color(0.46, 0.45, 0.44), 0.62, Color(0.45, 0.24, 0.12), 0.45, 0.15, "bar"],
 	"steel_ingot": ["bar", Color(0.66, 0.67, 0.69), 0.3, Color(0.35, 0.36, 0.4), 0.15, 0.16, "billet"],
 	"copper_ingot": ["bar", Color(0.95, 0.62, 0.48), 0.35, Color(0.32, 0.55, 0.45), 0.2, 0.15, "bun"],
 	"bronze_ingot": ["bar", Color(0.8, 0.58, 0.34), 0.38, Color(0.3, 0.42, 0.32), 0.18, 0.15, "oxhide"],
@@ -132,7 +132,12 @@ static func _build(t: String) -> ArrayMesh:
 		var ra := RandomNumberGenerator.new()
 		ra.seed = WHash.str_hash(t)
 		_armour(ka, ra, t)
-		return ka.commit(mat)
+		var am := ka.commit(mat)
+		if String(ItemDB.def(t).get("slot", "")) == "head":
+			# A helm is carried crown forward, the way a hand holds one by the back of its
+			# rim, so the skull and nasal show and not the lining.
+			am = _transformed(am, Transform3D(Basis(Vector3.RIGHT, 0.75), Vector3.ZERO))
+		return am
 	var s: Array = SHAPES[t]
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
 	var r := RandomNumberGenerator.new()
@@ -174,6 +179,32 @@ static func _build(t: String) -> ArrayMesh:
 	return k.commit(mat)
 
 # --- Geometry helpers -------------------------------------------------------------------
+
+## The mesh with every surface moved by `xf` (positions, normals, tangents).
+static func _transformed(src: ArrayMesh, xf: Transform3D) -> ArrayMesh:
+	var out := ArrayMesh.new()
+	for i in src.get_surface_count():
+		var arr := src.surface_get_arrays(i)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		for j in v.size():
+			v[j] = xf * v[j]
+		arr[Mesh.ARRAY_VERTEX] = v
+		if arr[Mesh.ARRAY_NORMAL] != null:
+			var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			for j in n.size():
+				n[j] = xf.basis * n[j]
+			arr[Mesh.ARRAY_NORMAL] = n
+		if arr[Mesh.ARRAY_TANGENT] != null:
+			var tg: PackedFloat32Array = arr[Mesh.ARRAY_TANGENT]
+			for j in range(0, tg.size(), 4):
+				var tv := xf.basis * Vector3(tg[j], tg[j + 1], tg[j + 2])
+				tg[j] = tv.x
+				tg[j + 1] = tv.y
+				tg[j + 2] = tv.z
+			arr[Mesh.ARRAY_TANGENT] = tg
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		out.surface_set_material(i, src.surface_get_material(i))
+	return out
 
 ## A triangle facing whichever way its vertex normals point (so callers need not track
 ## winding).
@@ -1142,8 +1173,9 @@ static func _armour_mat(style: int, col: Color) -> Array:
 			return ["im:composite", col]
 		Outfit.STYLE_CRYSTAL:
 			return ["im:metal@0.18", col]
-	# Steel reflects about 55-60%: near-white item colours would read as chrome.
-	return ["im:metal@0.38", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
+	# Steel reflects about 55-60%: near-white item colours would read as chrome. Worn
+	# plate is brushed and dulled by handling, never mirror-polished.
+	return ["im:metal@0.52", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
 
 static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 	var d := ItemDB.def(t)
@@ -1152,11 +1184,15 @@ static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 	var mc := _armour_mat(style, lk["color"])
 	var m: String = mc[0]
 	var c: Color = mc[1]
+	if style == Outfit.STYLE_PLATE and t.contains("iron"):
+		# Iron is darker and duller than steel, with a forge-black skin left on it.
+		m = "im:metal@0.66"
+		c = c.darkened(0.3)
 	var soft := style == Outfit.STYLE_LEATHER or style == Outfit.STYLE_CLOTH
 	var trim := "im:hide" if soft else ("im:composite" if style == Outfit.STYLE_EXO else m)
 	match String(d.get("slot", "")):
 		"head": _helm(k, m, c, style, trim)
-		"chest": _cuirass(k, r, m, c, style, soft)
+		"chest": _hauberk(k, r, m, c) if style == Outfit.STYLE_MAIL else _cuirass(k, r, m, c, style, soft)
 		"hands": _gauntlet(k, m, c, style, soft)
 		"legs": _greave(k, m, c, style, soft)
 		"feet": _boot(k, m, c, style, soft)
@@ -1250,15 +1286,19 @@ static func _cuirass(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color, 
 	var openings := func(u: float) -> float:
 		# How far the top edge is cut down at this point across: the neck in the
 		# middle, an arm hole at each side.
-		var neck := exp(-pow((u - 0.5) / 0.13, 2.0)) * 0.13
-		var arms := (exp(-pow(u / 0.12, 2.0)) + exp(-pow((1.0 - u) / 0.12, 2.0))) * 0.17
+		# A shallow round neck scoop and rounded armholes, not a deep V.
+		var dn := clampf(absf(u - 0.5) / 0.17, 0.0, 1.0)
+		var neck := sqrt(1.0 - dn * dn) * 0.055
+		var da := clampf(minf(u, 1.0 - u) / 0.16, 0.0, 1.0)
+		var arms := sqrt(1.0 - da * da) * 0.13
 		return neck + arms
 	var front := func(u: float, v: float) -> Vector3:
-		var a := lerpf(-1.3, 1.3, u)
+		var a := lerpf(-1.5, 1.5, u)
 		var top: float = H - openings.call(u)
 		var y := v * top - 0.04
 		var t := y / H
-		var depth := 0.075 + 0.03 * sin(clampf(t, 0.0, 1.0) * PI * 0.85 + 0.25)
+		# Swelling over the chest, drawn in at the waist.
+		var depth := 0.075 + 0.03 * sin(clampf(t, 0.0, 1.0) * PI * 0.85 + 0.25) + 0.018 * exp(-pow((t - 0.62) / 0.22, 2.0))
 		var ridge: float = 0.012 * exp(-pow((u - 0.5) / 0.04, 2.0)) * (0.3 + 0.7 * t) if not soft else 0.0
 		var wide := W * (0.85 + 0.15 * smoothstep(0.5, 0.85, t))
 		var p := Vector3(sin(a) * wide, y, cos(a) * depth + ridge)
@@ -1290,7 +1330,8 @@ static func _cuirass(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color, 
 	# The backplate behind it: flatter, with the same openings.
 	var back := func(u: float, v: float) -> Vector3:
 		var p: Vector3 = front.call(u, v)
-		return Vector3(p.x * 0.98, p.y, -absf(p.z) * 0.7 - 0.02)
+		# Closing the shell: it meets the breastplate at the sides.
+		return Vector3(p.x, p.y, -absf(p.z) * 0.75)
 	_sheet(k, m, Transform3D.IDENTITY, back, 14, 8, th, c.darkened(0.12), c.darkened(0.45))
 	# Fauld: three lames below the waist, each lapping over the next, riveted at the sides.
 	for i in 3:
@@ -1325,6 +1366,32 @@ static func _cuirass(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color, 
 		var s1: Vector3 = back.call(0.5 + side * 0.5, 0.35)
 		_tube(k, "leather", Transform3D.IDENTITY, PackedVector3Array([s0, (s0 + s1) * 0.5 + Vector3(side * 0.01, 0, 0), s1]), PackedFloat32Array([0.006, 0.006, 0.006]), 4, Color.WHITE)
 		_torus(k, "im:metal@0.4", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), s0 + Vector3(side * 0.004, 0, 0)), 0.007, 0.0015, 10, 4, Color(0.6, 0.5, 0.3))
+
+static func _hauberk(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color) -> void:
+	# A mail shirt hangs: no plate silhouette, just a heavy drape of rings over the
+	# shoulders, folds running down the body, short wide sleeves, a ragged hem.
+	var W := 0.2
+	var H := 0.46
+	var folds := func(u: float, v: float) -> float:
+		return 0.01 * sin(u * PI * 7.0 + v * 1.5) * (1.0 - v * 0.7) + 0.005 * sin(u * PI * 13.0 + 1.0)
+	for side: float in [1.0, -1.0]:
+		var f := func(u: float, v: float) -> Vector3:
+			var x := (u - 0.5) * 2.0 * W * (1.0 + 0.08 * (1.0 - v))
+			var dn := clampf(absf(u - 0.5) / 0.16, 0.0, 1.0)
+			var neck := sqrt(1.0 - dn * dn) * (0.05 if side > 0.0 else 0.02)
+			var sh := pow(absf(u - 0.5) * 2.0, 2.0) * 0.05 * v
+			var y := -0.06 + v * (H - neck) - sh - 0.012 * sin(u * PI * 9.0) * (1.0 - v)
+			var z: float = (0.065 * sqrt(sin(u * PI)) + folds.call(u, v)) * side
+			return Vector3(x, y, z)
+		_sheet(k, m, Transform3D.IDENTITY, f, 24, 12, 0.005, c, c.darkened(0.4), m)
+	for side: float in [-1.0, 1.0]:
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for i in 6:
+			var t := i / 5.0
+			path.append(Vector3(side * (W - 0.03 + t * 0.06), H - 0.13 - t * 0.2, 0.0))
+			radii.append(lerpf(0.055, 0.05, t))
+		_tube(k, m, Transform3D.IDENTITY, path, radii, 10, c, false)
 
 static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
 	# A gauntlet as a hand just left it: a leather glove underneath, fingers half curled,
@@ -1433,7 +1500,9 @@ static func _boot(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> vo
 		sole.append(flat)
 	# Built along +y (length) with z up; turned so the toe points +z and up is +y.
 	var xf := Transform3D(Basis(Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)), Vector3(0, heel_y, -0.05))
-	_loft(k, m, xf, rings, c)
+	# Plate sabatons are lames over a leather shoe, not a solid metal foot.
+	var plate := not soft and style != Outfit.STYLE_MAIL
+	_loft(k, "leather" if plate else m, xf, rings, Color(0.42, 0.32, 0.24) if plate else c)
 	_loft(k, "leather", xf, sole, Color(0.3, 0.24, 0.2))
 	# Stacked heel.
 	_block(k, "leather", Transform3D(Basis.IDENTITY, Vector3(0, heel_y - 0.022, -0.02)), Vector3(0.07, 0.022, 0.065), 0.004, Color(0.26, 0.2, 0.16))
@@ -1451,12 +1520,12 @@ static func _boot(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> vo
 			_block(k, "im:rope", Transform3D(Basis(Vector3.BACK, 0.4 if i % 2 else -0.4), Vector3(0, y, 0.031)), Vector3(0.026, 0.003, 0.003), 0.0, Color(0.25, 0.18, 0.12))
 	elif style != Outfit.STYLE_MAIL:
 		# Sabaton lames over the toes, each lapping the one in front.
-		for i in 4:
-			var t := 0.45 + i * 0.12
+		for i in 5:
+			var t := 0.3 + i * 0.12
 			var lame := func(u: float, v: float) -> Vector3:
 				var a := PI * u
-				var w := 0.046 - i * 0.002
-				var h := lerpf(0.06, 0.036, t) + 0.003
+				var w := 0.047 - i * 0.003
+				var h := lerpf(0.075, 0.034, t) + 0.004
 				return Vector3(cos(a) * w, (t + v * 0.13) * L, sin(a) * (h + 0.002 * (1.0 - v)))
 			_sheet(k, m, xf, lame, 8, 1, 0.002, c.lightened(0.04), c.darkened(0.4))
 
