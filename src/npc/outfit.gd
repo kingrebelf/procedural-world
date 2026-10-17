@@ -250,38 +250,6 @@ static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color) -> void:
 			var b := a + cols + 1
 			o["i"].append_array([a, a + 1, b, a + 1, b + 1, b])
 
-## An apron's bib: a panel up the front of the chest from the waist, riding on the spine.
-static func _bib(s: Dictionary, o: Dictionary, bottom: float, top: float, out: float) -> void:
-	var cols := 8
-	var rows := maxi(3, int((top - bottom) / 0.05))
-	var base: int = o["v"].size()
-	var v: PackedVector3Array = s["v"]
-	var reg: PackedInt32Array = s["r"]
-	var front := -INF
-	for ri in rows + 1:
-		var k := float(ri) / rows
-		var y := lerpf(bottom, top, k)
-		var half := lerpf(0.13, 0.11, k)
-		# In front of the body at this height, and above the bust it only slopes back
-		# gently instead of tucking in under it.
-		var fz := -INF
-		for i in v.size():
-			if (reg[i] == 1 or reg[i] == 5) and absf(v[i].y - y) < 0.025 and absf(v[i].x) < half:
-				fz = maxf(fz, v[i].z)
-		front = fz if ri == 0 else maxf(fz, front - 0.012)
-		var u := clampf((y - float(s["waist"])) / maxf(top - float(s["waist"]), 0.01), 0.0, 1.0)
-		var wb := {"spine_03": u, "spine_01": 1.0 - u} if y > float(s["waist"]) else {"pelvis": 0.6, "spine_01": 0.4}
-		for ci in cols + 1:
-			var c := float(ci) / cols
-			var x := lerpf(-half, half, c)
-			var z := front + out - 0.03 * pow(x / half, 2.0)
-			_vert(s, o, Vector3(x, y, z), Vector3(x * 2.0, 0, 1), Vector2(c, k), wb, PART_APRON, Color.WHITE)
-	for ri in rows:
-		for ci in cols:
-			var a := base + ri * (cols + 1) + ci
-			var b := a + cols + 1
-			o["i"].append_array([a, b, a + 1, a + 1, b, b + 1])
-
 ## A belt: a short band around the waist.
 static func _belt(s: Dictionary, o: Dictionary, y: float, col: Color, part := PART_BELT, width := 0.045, out := 0.012) -> void:
 	var segs := 24
@@ -615,7 +583,12 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		# it falls from the hips like a skirt of its own.
 		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.04, PART_APRON, Color.WHITE, 0.36, 0.012 if hem > 0.0 else 0.006)
 		if sp["bib"]:
-			_bib(s, o, waist - 0.02, float(s["shoulder_y"]) - 0.12, 0.034 if vest > 0 else 0.024)
+			# The bib: the front of the chest and belly, skinned like the shirt under it.
+			var bib_top: float = float(s["shoulder_y"]) - 0.1
+			_shell(s, o, PART_APRON, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+				if (r == 1 or r == 5) and p.y > waist - 0.05 and p.y < bib_top and p.z > -0.02 and absf(p.x) < 0.13:
+					return 0.03 if vest > 0 else 0.02
+				return -1.0)
 	if sp["belt"]:
 		var loose := hem > 0.0 or apron > 0.0 or vest == 3
 		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04, 0.034 if loose else 0.014)
