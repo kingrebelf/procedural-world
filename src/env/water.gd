@@ -32,6 +32,8 @@ static var _current_lookup: Callable
 static var _murk_lookup: Callable
 
 func _ready() -> void:
+	if not _boat_lookup.is_valid():
+		RenderingServer.global_shader_parameter_set("water_wake_boats", _no_boat_wakes())
 	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
@@ -283,7 +285,15 @@ static var _boat_lookup: Callable
 
 static func set_boat_wakes(tex: Texture2D, lookup: Callable) -> void:
 	_boat_lookup = lookup if tex != null else Callable()
-	RenderingServer.global_shader_parameter_set("water_wake_boats", tex)
+	RenderingServer.global_shader_parameter_set("water_wake_boats", tex if tex != null else _no_boat_wakes())
+
+## An all-zero wake table. With no texture bound the shader reads Godot's white default,
+## every slot looks live, and a phantom wake rises by the world origin.
+static var _no_boats: ImageTexture
+static func _no_boat_wakes() -> ImageTexture:
+	if _no_boats == null:
+		_no_boats = ImageTexture.create_from_image(Image.create(8, 2, false, Image.FORMAT_RGBAF))
+	return _no_boats
 
 ## A river's water level at (x, z), or NAN where there is no river. Blended between the
 ## 2 m river cells, so swimming down a river doesn't step from cell to cell.

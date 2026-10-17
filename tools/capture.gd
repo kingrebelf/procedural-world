@@ -1555,8 +1555,9 @@ func _boat_shots(g: ChunkGenerator) -> void:
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
 		# The cog under way from high on her quarter, her wake spreading out behind.
 		"cog_wake": [["89_cog_wake", Vector3(16.0, 15.0, 30.0), Vector3(0, 0, 26.0)],
-			# Low over the water beside her wake, to see its waves stand up.
-			["89_cog_wake_low", Vector3(14.0, 0.8, 42.0), Vector3(0, 0.4, 18.0)]],
+			# Low astern, just off her track, looking up the wake to her stern: the
+			# transverse waves and the arms stand up between the camera and her.
+			["89_cog_wake_low", Vector3(4.0, 1.8, 30.0), Vector3(0, 0.0, 14.0)]],
 	}
 	for key in views:
 		var bk: String = "cog" if key == "cog_wake" else key
