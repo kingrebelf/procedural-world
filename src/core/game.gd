@@ -15,6 +15,7 @@ signal toast(text: String)
 signal region_entered(name: String, era: int)
 signal item_gained(type: String, qty: int)
 signal saving ## Emitted before everything is written, so other systems can save too.
+signal discovered(title: String, sub: String, color: Color) ## a wonder found or conquered
 
 const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
 const AUTOSAVE_INTERVAL := 10.0
@@ -43,6 +44,7 @@ var vehicles: Array = []
 ## Where you last left each planet for orbit (planet -> Vector2), to land there again.
 var landings: Dictionary = {}
 var markers := Markers.new() ## map pins and teleporters
+var map := WorldMap.new() ## the painted atlas under its fog of war
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
 var _dirty_timer := 0.0
@@ -133,6 +135,7 @@ func close_world() -> void:
 	if store == null:
 		return
 	save_all()
+	map.close()
 	store = null
 	player = null
 	Planets.apply(Planets.get_planet(0, 0)) # back to an ordinary world for the title screen
@@ -144,6 +147,7 @@ func set_planet(n: int) -> void:
 		return
 	flush_chunks()
 	store.save_discovery(discovery)
+	map.save()
 	_enter_planet(n)
 	_player_dirty = true
 
@@ -158,6 +162,7 @@ func _enter_planet(n: int) -> void:
 	WorldField.terrain_v = store.terrain_version()
 	Planets.apply(Planets.get_planet(home_seed, planet))
 	discovery = store.load_discovery()
+	map.open(store, discovery["visited"])
 	_current_region = ""
 
 func planet_info() -> Dictionary:
@@ -173,6 +178,7 @@ func save_all() -> void:
 	store.meta["last_played"] = Time.get_unix_time_from_system()
 	store.save_meta()
 	store.save_discovery(discovery)
+	map.save()
 
 func save_player() -> void:
 	if store == null:
@@ -192,6 +198,7 @@ func _process(delta: float) -> void:
 		return
 	if not get_tree().paused:
 		day += delta / DAY_SECONDS
+		map.process(delta, player)
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
 	if not _dirty_chunks.is_empty():
 		_dirty_timer -= delta

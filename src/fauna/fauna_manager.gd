@@ -152,7 +152,14 @@ func player_hit(c: Creature, dmg: float) -> void:
 	for d in c.p["drops"]:
 		Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
 	Game.toast.emit("Killed %s" % c.label())
-	Game.add_xp(clampf(float(c.p["hp"]) / 3.0, 5.0, 80.0), "Hunting")
+	if c.p.has("boss"):
+		# A wonder's keeper: its vault opens, and that is worth a great deal.
+		Game.add_xp(600.0, "Slew " + c.label())
+		Game.discovered.emit(c.label() + " has fallen", "The vault of %s is unsealed" % WonderSite.label(c.p["boss"]), WonderSite.COLORS[c.p["boss"]])
+		if cn != null:
+			Game.map.note_chunk(cn.data)
+	else:
+		Game.add_xp(clampf(float(c.p["hp"]) / 3.0, 5.0, 80.0), "Hunting")
 	if _herds.has(k):
 		_herds[k].erase(c)
 	c.die()

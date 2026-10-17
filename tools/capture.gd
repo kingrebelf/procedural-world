@@ -197,6 +197,8 @@ func _run() -> void:
 						low = h
 						cam = c
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
+	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
+		await _wonder_shots()
 	if g.landforms:
 		await _landform_shots(g)
 	var b := _find_border(g)
@@ -264,6 +266,46 @@ func _landform_shots(g: ChunkGenerator) -> void:
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
 
 const WATER_SAFE := 1.0
+
+## The nearest wonder by day and by night, then the atlas and minimap around it.
+func _wonder_shots() -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var ch := {}
+	for r in 6:
+		for wz in range(-r, r + 1):
+			for wx in range(-r, r + 1):
+				if not ch.is_empty() or maxi(absi(wx), absi(wz)) != r:
+					continue
+				var pick := WonderSite.cell_pick(g.seed, wx, wz)
+				if pick.is_empty():
+					continue
+				var k: Vector2i = pick[0]
+				var c := g.generate(k.x, k.y)
+				if c.has("wonder"):
+					ch = c
+	if ch.is_empty():
+		print("no wonder near the origin")
+		return
+	var w: Dictionary = ch["wonder"]
+	var wc := Vector2(ch["cx"] * 64.0 + float(w["lx"]), ch["cz"] * 64.0 + float(w["lz"]))
+	var yaw := 0.0
+	for o in ch["objects"]:
+		if o["t"] == w["t"]:
+			yaw = o["r"]
+	var front := Vector2(0, 1).rotated(-yaw)
+	var cam := wc + front * 40.0 + front.orthogonal() * 14.0
+	print("wonder ", w["t"], " at ", wc)
+	await _shot("30_wonder", cam, wc, 0.42, 6.0, ChunkGenerator.height_at(ch, w["lx"], w["lz"]) + 8.0)
+	await _shot("31_wonder_night", wc + front * 140.0, wc, 0.9, 12.0, ChunkGenerator.height_at(ch, w["lx"], w["lz"]) + 40.0)
+	if only.is_empty() or only.has("32"):
+		world.player.global_position = Vector3(wc.x + front.x * 60.0, world.player.global_position.y, wc.y + front.y * 60.0)
+		await _wait(120)
+		world.menus.open("map")
+		await _wait(30)
+		get_viewport().get_texture().get_image().save_png(out_dir.path_join("32_atlas.png"))
+		print("captured 32_atlas")
+		world.menus.close()
+		await _wait(5)
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:

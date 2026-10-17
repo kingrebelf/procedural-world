@@ -1320,3 +1320,95 @@ func test_strongholds() -> void:
 	check(absf(ChunkGenerator.height_at(ch, lx, lz) - float(found["target_h"])) < 0.6, "the courtyard is levelled")
 	var sp := Creature.guard_species(found["era"], 3)
 	check(sp["temper"] == "aggressive" and float(sp["hp"]) > 120.0, "dread guards are tough (%s hp)" % sp["hp"])
+
+func test_wonder_sites() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(777, true)
+	var found: Dictionary = {}
+	var tried := 0
+	var picks := 0
+	for wz in range(-4, 4):
+		for wx in range(-4, 4):
+			var pick := WonderSite.cell_pick(g.seed, wx, wz)
+			tried += 1
+			if pick.is_empty():
+				continue
+			picks += 1
+			var k: Vector2i = pick[0]
+			var ch := g.generate(k.x, k.y)
+			if ch.has("wonder"):
+				found = ch
+				break
+		if not found.is_empty():
+			break
+	var all := 0
+	for wz in range(-6, 6):
+		for wx in range(-6, 6):
+			all += 0 if WonderSite.cell_pick(g.seed, wx, wz).is_empty() else 1
+	check(all > 20 and all < 124, "about half the cells try for a wonder (%d of 144)" % all)
+	check(not found.is_empty(), "a wonder turns up within a few cells")
+	if found.is_empty():
+		return
+	var w: Dictionary = found["wonder"]
+	var t: String = w["t"]
+	var pillars := 0
+	var centre := 0
+	var vault := {}
+	var hoards := 0
+	for o in found["objects"]:
+		if o["t"] == t:
+			centre += 1
+		elif o["t"] == WonderSite.PILLAR[t]:
+			pillars += 1
+		elif o["st"].has("seal"):
+			vault = o
+		elif o["st"].has("wonder"):
+			hoards += 1
+	check(centre == 1 and pillars == 8 and hoards == 3, "a centrepiece, eight pillars and three hoards (%d, %d, %d)" % [centre, pillars, hoards])
+	check(not vault.is_empty() and WonderSite.sealed(found, vault), "the vault is sealed")
+	var top := 0
+	for it in vault.get("st", {}).get("loot", []):
+		if it.has("rarity") and int(it["rarity"]) >= Rarity.LEGENDARY:
+			top += 1
+	check(top >= 2, "the vault holds at least two legendary pieces (%d)" % top)
+	# Nothing grows on the plaza and it is level.
+	var c := Vector2(w["lx"], w["lz"])
+	var h0 := ChunkGenerator.height_at(found, c.x, c.y)
+	var flat := true
+	for a in 8:
+		var q := c + Vector2.from_angle(a * TAU / 8.0) * 12.0
+		flat = flat and absf(ChunkGenerator.height_at(found, q.x, q.y) - h0) < 0.6
+	check(flat, "the plaza is level")
+	var trees := 0
+	for o in found["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree" and Vector2(o["p"].x, o["p"].z).distance_to(c) < WonderSite.PLAZA:
+			trees += 1
+	check(trees == 0, "no trees on the plaza")
+	# Guards: elites and one boss, which unseals the vault when it dies.
+	var boss := {}
+	var elites := 0
+	for gd in found["guards"]:
+		if int(gd["tier"]) >= 100:
+			boss = gd
+		elif int(gd["tier"]) >= 4:
+			elites += 1
+	check(elites >= 4 and not boss.is_empty(), "elite guards and a boss")
+	var bp := Creature.species(-int(boss["tier"]), int(boss["era"]))
+	check(bp.has("boss") and float(bp["hp"]) >= 1000.0 and Creature.level_of(bp) == 60, "the boss is level 60 with %d hp" % bp["hp"])
+	var ep := Creature.species(-5, 0)
+	check(float(ep["hp"]) > float(Creature.species(-3, 0)["hp"]) and String(ep["name"]).begins_with("Mythic"), "wonder guards outclass stronghold guards")
+	found["fauna_dead"] = {boss["id"]: 1.0}
+	check(not WonderSite.sealed(found, vault), "the vault opens once the boss is dead")
+	# Same seed, same wonder.
+	var again := g.generate(int(found["cx"]), int(found["cz"]))
+	check(again.get("wonder", {}).get("t", "") == t, "wonders are deterministic")
+
+func test_wonder_meshes() -> void:
+	BuildCatalog.warm_kits()
+	for t in WonderSite.LABELS:
+		var m := WonderSite.build(t)
+		check(m != null and m.get_surface_count() > 0, "%s has a mesh" % t)
+		check(ObjectLibrary.kind(t) == "structure" and Wonders.unbreakable(t), "%s is an unbreakable structure" % t)
+	var solid := WonderSite.build("w_gate", true)
+	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
+

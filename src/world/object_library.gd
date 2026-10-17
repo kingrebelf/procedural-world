@@ -24,6 +24,8 @@ const KIND := {
 	"signpost": "marker", "bridge": "structure", "cave": "structure",
 	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure",
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
+	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
+	"w_column": "structure", "w_crystal": "structure", "w_pylon": "structure", "w_obelisk": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -67,6 +69,8 @@ static func label(t: String) -> String:
 		return Stronghold.LABELS[t]
 	if Landmark.has(t):
 		return Landmark.LABELS[t]
+	if WonderSite.has(t):
+		return WonderSite.label(t)
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -119,6 +123,10 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Stronghold.build(key)
 	if Landmark.has(key):
 		return Landmark.build(key)
+	if WonderSite.has(key):
+		return WonderSite.build(key)
+	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
+		return WonderSite.build(key.trim_suffix("~solid"), true)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
@@ -232,13 +240,14 @@ static func shape_of(o: Dictionary) -> Array:
 	var k := kind(t)
 	if t == "bridge" and sp != 0:
 		return Bridge.shape(sp)
-	if Stronghold.has(t):
-		# Walk through gates and doorways: collide with the real geometry.
+	if Stronghold.has(t) or WonderSite.has(t):
+		# Walk through gates and doorways: collide with the real geometry (a wonder's
+		# without its beam of light).
 		_lock.lock()
 		var fs = _shapes.get(t)
 		_lock.unlock()
 		if fs == null:
-			fs = [get_mesh(t).create_trimesh_shape(), Vector3.ZERO]
+			fs = [get_mesh(t + "~solid" if WonderSite.has(t) else t).create_trimesh_shape(), Vector3.ZERO]
 			_lock.lock()
 			_shapes[t] = fs
 			_lock.unlock()

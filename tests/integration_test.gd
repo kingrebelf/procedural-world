@@ -39,6 +39,16 @@ func _run() -> void:
 	var here: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var here_key: Vector2i = here.key
 
+	# The atlas paints the land that streams in and lifts the fog where you stand.
+	for i in 60:
+		await process_frame
+	var ppos: Vector3 = player.global_position
+	check(game.map.revealed(ppos.x, ppos.z) > 0.9, "the fog has lifted where you stand")
+	check(game.map.revealed(ppos.x + 600.0, ppos.z) == 0.0, "but not far away")
+	check(not game.map.textures(WorldMap.page_of_chunk(here_key)).is_empty(), "the map page under you is painted")
+	check(world.hud._minimap != null and world.hud._minimap.player == player, "the HUD has a minimap")
+	await _map_unit_checks()
+
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
 	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
 	game.give(ItemDB.make("jet_fuel", 2, 1.0, {}))
@@ -349,6 +359,7 @@ func _run() -> void:
 	# Where the player ends up after physics settles (they may be standing on what was built).
 	var pos_before: Vector3 = player.global_position
 
+	var map_seen: float = game.map.revealed(pos_before.x, pos_before.z)
 	# Quit to menu: this is what the pause menu does.
 	game.close_world()
 	change_scene_to_file("res://src/ui/main_menu.tscn")
@@ -371,6 +382,7 @@ func _run() -> void:
 	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")
+	check(absf(game.map.revealed(pos_before.x, pos_before.z) - map_seen) < 0.01 and map_seen > 0.9, "the atlas remembers where the fog lifted")
 	var c4 = store.load_chunk(placed["key"].x, placed["key"].y)
 	check(c4["objects"][placed["i"]]["t"] == "b:foundation" and c4["objects"][placed["i"]]["p"].distance_to(placed["p"]) < 0.001, "built foundation saved in place")
 	check(c4["objects"][bwb["i"]]["t"] == "b:workbench", "workbench saved")
@@ -608,3 +620,25 @@ func _open_ground(streamer: ChunkStreamer, from: Vector3) -> Vector3:
 				if clear:
 					best = wp
 	return best
+
+func _map_unit_checks() -> void:
+	var g := ChunkGenerator.new(31337, true)
+	var ch := g.generate(2, -3)
+	var tile := WorldMap.paint_tile(ch)
+	check(tile.size() == WorldMap.CPX * WorldMap.CPX * 3, "a chunk paints a full tile")
+	var distinct := {}
+	for i in range(0, tile.size(), 3 * 37):
+		distinct[Vector3i(tile[i], tile[i + 1], tile[i + 2])] = true
+	check(distinct.size() > 8, "the painted land is shaded, not flat (%d colours)" % distinct.size())
+	var m := WorldMap.new()
+	m.open(WorldStore.memory(), {})
+	m.paint(ch)
+	check(m.textures(Vector2i(0, -1)).size() == 2, "the page holding the chunk has textures")
+	var at := Vector2(2 * 64 + 32, -3 * 64 + 32)
+	check(m.revealed(at.x, at.y) == 0.0, "fog until you have been there")
+	m.reveal(at, 60.0)
+	check(m.revealed(at.x, at.y) > 0.95, "the fog lifts where you stand")
+	check(m.revealed(at.x + 25.0, at.y) > 0.9 and m.revealed(at.x + 200.0, at.y) == 0.0, "only nearby")
+	# A circle across a page corner lifts the fog on every page it touches.
+	m.reveal(Vector2(0, 0), 40.0)
+	check(m.revealed(-5, -5) > 0.9 and m.revealed(5, 5) > 0.9 and m.revealed(-5, 5) > 0.9, "reveals cross page edges")

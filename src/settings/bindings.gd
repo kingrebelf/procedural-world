@@ -33,6 +33,7 @@ const ACTIONS := {
 	"inventory": ["Inventory", KEY_TAB, "btn:1"],
 	"craft": ["Crafting", KEY_R, "btn:11"],
 	"map": ["Atlas", KEY_M, "btn:4"],
+	"minimap_zoom": ["Minimap zoom", KEY_N, ""],
 	"character": ["Character and attributes", KEY_K, "btn:12"],
 	"rotate_build": ["Rotate building piece", KEY_Q, "btn:10"],
 	"build_raise": ["Raise building piece (while placing)", KEY_X, "btn:11"],
