@@ -183,6 +183,102 @@ func test_terrain_has_no_cliffs_from_blending() -> void:
 	check(blend_samples > 200, "walk sampled transition bands (%d)" % blend_samples)
 	check(worst_blend < 3.0, "transition bands stay walkable-ish (worst %f)" % worst_blend)
 
+func test_landforms() -> void:
+	WorldField.terrain_v = 6
+	var f6 := WorldField.new(2024)
+	var flat := true
+	for i in 300:
+		var sh := f6.shape(i * 37.0 - 5000.0, i * 13.0)
+		flat = flat and sh.y == 0.0 and sh.z == 0.0 and f6.landform_weights(i * 37.0, 0.0)[WorldField.LF_KARST] == 0.0
+	check(flat, "v6 worlds have no landforms")
+	WorldField.terrain_v = 7
+	var f := WorldField.new(2024)
+	# Every landform turns up, each in the eras that have it.
+	var deep := {}
+	var seen := {}
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			var lf := f.site_landform(ix, iz)
+			seen[lf] = true
+			var era := f.site_era(ix, iz)
+			var ok := false
+			for o in WorldField.LANDFORM_ODDS[era]:
+				ok = ok or o[0] == lf
+			if not ok:
+				check(false, "landform %d is not one of era %d's" % [lf, era])
+			var p := f.site_pos(ix, iz)
+			if not deep.has(lf) and f.landform_weights(p.x, p.y)[lf] > 0.97:
+				deep[lf] = p
+	check(seen.size() == WorldField.LF_COUNT, "all %d landforms appear (%d)" % [WorldField.LF_COUNT, seen.size()])
+	# Deep inside each, the land has that landform's character.
+	for lf in deep:
+		var c: Vector2 = deep[lf]
+		var hi := -INF
+		var lo := INF
+		var rough_hi := 0.0
+		var hole_lo := 0.0
+		var wet := 0
+		var n := 0
+		for j in 40:
+			for i in 40:
+				var x := c.x + (i - 20) * 4.0
+				var z := c.y + (j - 20) * 4.0
+				if f.landform_weights(x, z)[lf] < 0.9:
+					continue
+				var sh := f.shape(x, z)
+				var h := sh.x + sh.y + sh.z
+				hi = maxf(hi, h)
+				lo = minf(lo, h)
+				rough_hi = maxf(rough_hi, sh.z)
+				hole_lo = minf(hole_lo, sh.y)
+				wet += 1 if h < ChunkGenerator.WATER_LEVEL else 0
+				n += 1
+		var name: String = WorldField.LANDFORM_NAMES[lf]
+		print("  %-12s samples %4d  height %6.1f..%6.1f  rough %5.1f  holes %6.1f  wet %3d%%" % [name, n, lo, hi, rough_hi, hole_lo, 100 * wet / maxi(n, 1)])
+		match lf:
+			WorldField.LF_KARST:
+				check(rough_hi > 30.0, "karst has towers (%.1f)" % rough_hi)
+			WorldField.LF_NEEDLES:
+				check(rough_hi > 25.0, "needles rise high (%.1f)" % rough_hi)
+			WorldField.LF_SINKHOLES:
+				check(hole_lo < -10.0, "sinkholes are deep (%.1f)" % hole_lo)
+			WorldField.LF_CRATERS:
+				check(hole_lo < -3.0 and rough_hi > 1.0, "craters have bowls and rims (%.1f, %.1f)" % [hole_lo, rough_hi])
+			WorldField.LF_GORGE:
+				check(hole_lo < -15.0, "gorges are deep (%.1f)" % hole_lo)
+			WorldField.LF_LAKES:
+				check(wet * 100 > n * 15 and wet * 100 < n * 85, "lake country is part water (%d of %d)" % [wet, n])
+			WorldField.LF_DUNES:
+				check(rough_hi > 2.0 and rough_hi < 12.0, "dunes are dune-sized (%.1f)" % rough_hi)
+			WorldField.LF_BADLANDS, WorldField.LF_CRAGS:
+				check(rough_hi > 6.0, "%s are rugged (%.1f)" % [name, rough_hi])
+	check(deep.size() >= WorldField.LF_COUNT - 2, "found the heart of most landforms (%d)" % deep.size())
+	# The smooth base that roads and rivers plan on has no tears between regions.
+	var worst := 0.0
+	for i in 20000:
+		var x := -10000.0 + i * 1.0
+		var z := 300.0 + sin(i * 0.01) * 400.0
+		worst = maxf(worst, absf(f.shape(x + 1.0, z).x - f.shape(x, z).x))
+	check(worst < 3.0, "landform bases blend smoothly (worst step %.2f m)" % worst)
+	# Chunks generate with them, the towers included, in reasonable time.
+	if deep.has(WorldField.LF_KARST):
+		var g := ChunkGenerator.new(2024)
+		var k: Vector2 = deep[WorldField.LF_KARST]
+		var t0 := Time.get_ticks_msec()
+		var top := -INF
+		for o in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1)]:
+			var ch := g.generate(int(floor(k.x / 64.0)) + o.x, int(floor(k.y / 64.0)) + o.y)
+			for h in ch["heights"]:
+				top = maxf(top, h)
+		print("  karst chunks: %d ms each, top %.1f m" % [(Time.get_ticks_msec() - t0) / 3, top])
+		check(top > f.shape(k.x, k.y).x + 15.0, "karst chunks hold towers (%.1f)" % top)
+		var ch := g.generate(int(floor(k.x / 64.0)), int(floor(k.y / 64.0)))
+		check(ch.has("look") and (ch["look"] as PackedByteArray).size() == ChunkGenerator.LOOK_N * ChunkGenerator.LOOK_N * ChunkGenerator.LOOK_BYTES, "karst chunks carry their look")
+		check(String(ch["region"]).ends_with("Pillars"), "the region is named for its landform (%s)" % ch["region"])
+		# (The terrain mesh built from it is checked in the integration test: ChunkNode
+		# needs the Game autoload.)
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+
 func test_all_eras_appear_with_transitions() -> void:
 	var f := WorldField.new(99)
 	var seen := [0, 0, 0]
@@ -860,8 +956,10 @@ func test_road_profiles() -> void:
 			if dh > ChunkGenerator.ROAD_STEP * 0.25:
 				steep += 1
 		for i in lv.size():
-			cut = maxf(cut, g.field.height(pts[i].x, pts[i].y) - lv[i])
-			fills.append(lv[i] - g.field.height(pts[i].x, pts[i].y))
+			# Roads cut through rough relief (tors, towers) by design; measure the base.
+			var sh := g.field.shape(pts[i].x, pts[i].y)
+			cut = maxf(cut, sh.x + sh.y - lv[i])
+			fills.append(lv[i] - sh.x - sh.y)
 			if ar[i] == 1:
 				air += 1
 				held[Vector2i(int(floor(pts[i].x / ChunkGenerator.SIZE)), int(floor(pts[i].y / ChunkGenerator.SIZE)))] = true

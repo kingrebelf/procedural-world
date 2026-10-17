@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 6 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns.
+const GEN_VERSION := 7 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -13,6 +13,10 @@ const SETTLEMENT_CHANCE := 0.35
 const FLAT_INNER := 30.0
 const FLAT_OUTER := 54.0
 const WATER_LEVEL := 0.0 ## Must match Water.LEVEL.
+## Landform look (WorldField.look_bytes) per point of a 4 m grid, LOOK_N points a side.
+const LOOK_BYTES := 12
+const LOOK_STEP := 4
+const LOOK_N := SIZE / LOOK_STEP + 1
 
 var field: WorldField
 var seed: int
@@ -25,6 +29,8 @@ var towns := false
 var outposts := false
 ## v6: the biggest medieval towns are walled.
 var walls := false
+## v7: regions have landforms (WorldField.shape).
+var landforms := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
@@ -51,6 +57,7 @@ func _init(world_seed: int, with_rivers := false) -> void:
 	towns = WorldField.terrain_v >= 4
 	outposts = WorldField.terrain_v >= 5
 	walls = WorldField.terrain_v >= 6
+	landforms = WorldField.terrain_v >= 7
 	if outposts:
 		road_reach = 26.0
 
@@ -73,7 +80,7 @@ func _settlement_at(sx: int, sz: int) -> Dictionary:
 	var era := WorldField.dominant(w)
 	if w[era] < 0.92:
 		return {}
-	var th := field.height(c.x, c.y, w)
+	var th := field.shape(c.x, c.y, w).x
 	if th < WATER_LEVEL + 1.5:
 		return {}
 	var size := 0
@@ -180,14 +187,19 @@ func road_profile(a: Dictionary, b: Dictionary) -> Dictionary:
 	var best_cost := INF
 	for bend in [base, -0.42, -0.26, -0.1, 0.1, 0.26, 0.42]:
 		var pts := _road_line(a, b, bend)
+		# The road is laid on the land without its rough relief (it cuts through tors
+		# and towers, see WorldField.shape) but the route avoids them where it can.
 		var raw := PackedFloat32Array()
+		var full := PackedFloat32Array()
 		for p in pts:
-			raw.append(field.height(p.x, p.y))
+			var sh := field.shape(p.x, p.y)
+			raw.append(sh.x + sh.y)
+			full.append(sh.x + sh.y + sh.z)
 		# Climbing costs, climbing steeper than the road may costs far more, and so do
 		# lakes; a longer way round costs its length.
 		var cost := 0.0
 		for i in pts.size() - 1:
-			var dh := absf(raw[i + 1] - raw[i])
+			var dh := absf(full[i + 1] - full[i])
 			cost += ROAD_STEP * 0.15 + dh + 6.0 * maxf(0.0, dh - ROAD_STEP * ROAD_GRADE)
 			if raw[i] < WATER_LEVEL + 0.5:
 				cost += 25.0
@@ -481,11 +493,16 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var coarse: Array = []
 	const STEP := 4
 	const CN := SIZE / STEP + 1
+	var coarse_lf: Array = []
 	for j in CN:
 		for i in CN:
 			coarse.append(field.era_weights(x0 + i * STEP, z0 + j * STEP))
+			if landforms:
+				coarse_lf.append(field.landform_weights(x0 + i * STEP, z0 + j * STEP))
 	var w := PackedFloat32Array()
 	w.resize(Eras.COUNT)
+	var lw := PackedFloat32Array()
+	lw.resize(WorldField.LF_COUNT)
 	# Rivers: only chunks a river comes near pay for them.
 	var has_river := false
 	if rivers:
@@ -523,7 +540,25 @@ func generate(cx: int, cz: int) -> Dictionary:
 			for e in Eras.COUNT:
 				w[e] = lerpf(lerpf(w00[e], w10[e], fx), lerpf(w01[e], w11[e], fx), fz)
 			var k := j * RES + i
-			var h := field.height(x, z, w)
+			var h: float
+			var rough := 0.0
+			var rt := INF
+			if has_river:
+				rt = field.river_t(x, z)
+			if landforms:
+				var l00: PackedFloat32Array = coarse_lf[gj * CN + gi]
+				var l10: PackedFloat32Array = coarse_lf[gj * CN + gi + 1]
+				var l01: PackedFloat32Array = coarse_lf[(gj + 1) * CN + gi]
+				var l11: PackedFloat32Array = coarse_lf[(gj + 1) * CN + gi + 1]
+				for e in WorldField.LF_COUNT:
+					lw[e] = lerpf(lerpf(l00[e], l10[e], fx), lerpf(l01[e], l11[e], fx), fz)
+				var sh := field.shape(x, z, w, lw)
+				# A river fills the holes it runs over rather than plunging into them.
+				var holes := sh.y * smoothstep(WorldField.RIVER_REACH, WorldField.RIVER_REACH + 4.0, rt)
+				rough = sh.z
+				h = sh.x + holes + rough
+			else:
+				h = field.height(x, z, w)
 			var on_road := 0.0
 			if not rf.is_empty() and rf[0][k] < road_reach and rf[2][k] == 0:
 				var d: float = rf[0][k]
@@ -553,9 +588,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 					road_mask[k] = int(round(on_road * 255.0))
 					any_road = true
 			if has_river:
-				var t := field.river_t(x, z)
+				var t := rt
 				var lv := field.river_level(x, z, level_cache)
-				var m := WorldField.river_strength(h, lv)
+				# Towers and tors don't stop a river; it cuts its way past them.
+				var m := WorldField.river_strength(h - rough, lv)
 				for st in sites:
 					m *= smoothstep(st["outer"], st["outer"] + 30.0, Vector2(x, z).distance_to(st["center"]))
 				h = WorldField.carve_river(h, t, lv, m)
@@ -568,6 +604,16 @@ func generate(cx: int, cz: int) -> Dictionary:
 			for e in Eras.COUNT:
 				weights[k * Eras.COUNT + e] = int(round(w[e] * 255.0))
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
+	# v7: what the landforms do to the colour of rock and ground, on the 4 m grid.
+	var look := PackedByteArray()
+	if landforms:
+		var any := false
+		look.resize(CN * CN * LOOK_BYTES)
+		for c in CN * CN:
+			WorldField.look_bytes(coarse_lf[c], look, c * LOOK_BYTES)
+			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0
+		if not any:
+			look = PackedByteArray()
 	var chunk := {
 		"format": FORMAT, "gen_version": GEN_VERSION, "seed": seed,
 		"cx": cx, "cz": cz,
@@ -579,6 +625,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 	}
 	if has_river:
 		chunk["river"] = river
+	if not look.is_empty():
+		chunk["look"] = look
 	if any_road:
 		chunk["road"] = road_mask
 	if has_river and not roads.is_empty():
@@ -593,6 +641,28 @@ static func _crowds_tree(chunk: Dictionary, lx: float, lz: float, gap: float) ->
 		if ObjectLibrary.kind(o["t"]) == "tree" and Vector2(o["p"].x - lx, o["p"].z - lz).length() < gap:
 			return true
 	return false
+
+## The landform's rock colour at a point of the chunk (rgb) and how much it shows (a);
+## transparent where no landform colours the rock.
+static func stone_at(chunk: Dictionary, lx: float, lz: float) -> Color:
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	if lb.is_empty():
+		return Color(0, 0, 0, 0)
+	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
+	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
+	var k := (j * LOOK_N + i) * LOOK_BYTES
+	return Color(lb[k] / 255.0, lb[k + 1] / 255.0, lb[k + 2] / 255.0, lb[k + 3] / 255.0)
+
+## How much grass and undergrowth a landform's ground allows here (0 on sand dunes,
+## less on dust and clay, 1 elsewhere).
+static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	if lb.is_empty():
+		return 1.0
+	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
+	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
+	var k := (j * LOOK_N + i) * LOOK_BYTES
+	return 1.0 - maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7)
 
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
@@ -716,6 +786,8 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var pick := r.randf()
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
+		if landforms:
+			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz):
 			continue
 		var f := Biome.pick_flora(bp, pick)
@@ -738,6 +810,8 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var pick := r.randf()
 			var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
+			if landforms:
+				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
 			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2):
 				continue
 			var f := Biome.pick_flora(bp, pick)
@@ -760,6 +834,8 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			continue
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
+		if landforms:
+			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
 		var rocks: Array = bp["rocks"]
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.

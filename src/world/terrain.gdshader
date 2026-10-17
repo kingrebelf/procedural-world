@@ -56,6 +56,11 @@ uniform float night_glow = 1.0;
 
 varying vec3 wpos;
 varying vec3 wnorm;
+// Landform look (v7 worlds): rock colour + amount, ground colour + amount, soft (sand,
+// no bare rock on its slopes) and strata (banded rock).
+varying vec4 stone_v;
+varying vec4 soil_v;
+varying vec2 form_v;
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -154,6 +159,9 @@ vec3 recolor(vec3 t, vec3 mean, vec3 pal, float k) {
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	stone_v = CUSTOM0;
+	soil_v = CUSTOM1;
+	form_v = CUSTOM2.xy;
 }
 
 void fragment() {
@@ -170,6 +178,7 @@ void fragment() {
 	vec3 grass = grass_m * w.r + grass_f * w.g + grass_s * w.b;
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
 	vec3 rock = rock_m * w.r + rock_f * w.g + rock_s * w.b;
+	rock = mix(rock, pow(stone_v.rgb, vec3(2.2)), stone_v.a);
 
 	float dist = length(wpos - CAMERA_POSITION_WORLD);
 	float far = smoothstep(25.0, 140.0, dist);
@@ -211,7 +220,7 @@ void fragment() {
 		bw /= bw.x + bw.y + bw.z;
 		vec3 rp = wpos / ROCK_TILE;
 		vec3 rt = texture(rock_tex, rp.zy).rgb * bw.x + texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y + texture(rock_tex, rp.xy).rgb * bw.z;
-		rock = recolor(rt, ROCK_MEAN, rock, 0.5) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
+		rock = recolor(rt, ROCK_MEAN, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
 		vec3 nx = texture(rock_nrm, rp.zy).xyz * 2.0 - 1.0;
 		vec3 nz = texture(rock_nrm, rp.xy).xyz * 2.0 - 1.0;
 		vec3 ny = texture(rock_nrm, rp.xz * 0.8 + 0.5).xyz * 2.0 - 1.0;
@@ -223,15 +232,38 @@ void fragment() {
 		rock *= (0.6 + 0.45 * strata) * (0.55 + 0.6 * crev);
 	}
 
+	// Strata: layered bands of paler and redder stone that wander gently with height.
+	if (form_v.y > 0.01) {
+		float lay = wpos.y * 0.55 + fbm(p * 0.02) * 2.5;
+		float band = smoothstep(0.25, 0.75, fbm(vec2(lay, 3.7)));
+		float fine = vnoise(vec2(wpos.y * 4.0, (wpos.x + wpos.z) * 0.15));
+		vec3 alt = rock * vec3(1.25, 1.05, 0.85);
+		rock = mix(rock, mix(rock * 0.78, alt, band) * (0.9 + 0.2 * fine), form_v.y);
+	}
+
 	// Grass: lush and dry patches, darker in hollows.
 	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
 	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.55 * w.r);
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
 	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
+	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
+	if (soil_v.a > 0.01) {
+		vec3 own = pow(soil_v.rgb, vec3(2.2));
+		float lm = dot(soil, LUM) / max(dot(soil_m * w.r + soil_f * w.g + soil_s * w.b, LUM), 0.001);
+		own *= clamp(mix(1.0, lm, 0.6), 0.6, 1.4) * (0.86 + 0.28 * meso) * (0.94 + 0.12 * micro);
+		ground = mix(ground, own, soil_v.a);
+	}
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
-	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18);
+	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
+	// Sand: wind ripples across the dunes.
+	vec2 ripple = vec2(0.0);
+	if (form_v.x > 0.01) {
+		vec2 rd = normalize(vec2(0.8, 0.6) + vec2(fbm(p * 0.03), fbm(p * 0.03 + 9.0)) - 0.5);
+		float ph = dot(p, rd) * 4.2 + fbm(p * 0.35) * 5.0;
+		ripple = rd * cos(ph) * 0.35 * form_v.x * (1.0 - far);
+	}
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
 		vec2 tm = untiled_n(mud_nrm, p + 23.0, MUD_TILE, meso, far);
@@ -293,6 +325,6 @@ void fragment() {
 	float rs = 1.0 + rock_mask * 1.5;
 	vec3 dn = normalize(vec3(-(hx - h0) / e * detail_strength * rs, 1.0, -(hz - h0) / e * detail_strength * rs));
 	float proc = use_textures ? 0.35 : 1.0;
-	vec3 n = normalize(wnorm + vec3(dn.x, 0.0, dn.z) * proc * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9);
+	vec3 n = normalize(wnorm + vec3(dn.x, 0.0, dn.z) * proc * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 + vec3(ripple.x, 0.0, ripple.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

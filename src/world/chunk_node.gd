@@ -80,7 +80,18 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 	var hs: PackedFloat32Array = chunk["heights"]
 	var wb: PackedByteArray = chunk["weights"]
 	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	var n := SIZE / step + 1
+	# Packed arrays held in an Array are copied on access, so the three look streams
+	# are separate locals (passed to helpers by reference).
+	var has_look := not lb.is_empty()
+	var l0 := PackedByteArray()
+	var l1 := PackedByteArray()
+	var l2 := PackedByteArray()
+	if has_look:
+		l0.resize(n * n * 4)
+		l1.resize(n * n * 4)
+		l2.resize(n * n * 4)
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
@@ -105,6 +116,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 			var wk := k * Eras.COUNT
 			# Alpha: 1 minus how much road surface shows (roads and village squares).
 			cols[v] = Color(wb[wk] / 255.0, wb[wk + 1] / 255.0, wb[wk + 2] / 255.0, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
+			if has_look:
+				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
 	for j in n - 1:
 		for i in n - 1:
 			var a := j * n + i
@@ -115,13 +128,55 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 			idx.append_array([a, b, d, a, d, c])
 	if step > 1:
 		_add_skirts(n, verts, norms, cols, idx, 3.0 * step)
+		if has_look:
+			_skirt_looks(n, l0, l1, l2)
 	var arr := []
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
+	if has_look:
+		arr[Mesh.ARRAY_CUSTOM0] = l0
+		arr[Mesh.ARRAY_CUSTOM1] = l1
+		arr[Mesh.ARRAY_CUSTOM2] = l2
 	return arr
+
+## Vertex format flags for terrain arrays that carry a landform look.
+const LOOK_FORMAT := (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) \
+	| (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT) \
+	| (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT)
+
+## The landform look at grid point (gi, gj), interpolated from the chunk's 4 m grid into
+## the three custom arrays at byte `at`.
+static func _look_at(lb: PackedByteArray, gi: int, gj: int, l0: PackedByteArray, l1: PackedByteArray, l2: PackedByteArray, at: int) -> void:
+	const N := ChunkGenerator.LOOK_N
+	var ci := mini(gi / ChunkGenerator.LOOK_STEP, N - 2)
+	var cj := mini(gj / ChunkGenerator.LOOK_STEP, N - 2)
+	var fx := (gi - ci * ChunkGenerator.LOOK_STEP) / float(ChunkGenerator.LOOK_STEP)
+	var fz := (gj - cj * ChunkGenerator.LOOK_STEP) / float(ChunkGenerator.LOOK_STEP)
+	var k00 := (cj * N + ci) * ChunkGenerator.LOOK_BYTES
+	var k10 := k00 + ChunkGenerator.LOOK_BYTES
+	var k01 := k00 + N * ChunkGenerator.LOOK_BYTES
+	var k11 := k01 + ChunkGenerator.LOOK_BYTES
+	for b in 4:
+		l0[at + b] = int(round(lerpf(lerpf(lb[k00 + b], lb[k10 + b], fx), lerpf(lb[k01 + b], lb[k11 + b], fx), fz)))
+		l1[at + b] = int(round(lerpf(lerpf(lb[k00 + b + 4], lb[k10 + b + 4], fx), lerpf(lb[k01 + b + 4], lb[k11 + b + 4], fx), fz)))
+		l2[at + b] = int(round(lerpf(lerpf(lb[k00 + b + 8], lb[k10 + b + 8], fx), lerpf(lb[k01 + b + 8], lb[k11 + b + 8], fx), fz)))
+
+## Skirt vertices (added in _add_skirts' edge order) copy their edge vertex's look.
+static func _skirt_looks(n: int, l0: PackedByteArray, l1: PackedByteArray, l2: PackedByteArray) -> void:
+	var edges: Array = [[], [], [], []]
+	for i in n:
+		edges[0].append(i)
+		edges[1].append((n - 1) * n + i)
+		edges[2].append(i * n)
+		edges[3].append(i * n + n - 1)
+	for e in edges:
+		for v in e:
+			l0.append_array(l0.slice(v * 4, v * 4 + 4))
+			l1.append_array(l1.slice(v * 4, v * 4 + 4))
+			l2.append_array(l2.slice(v * 4, v * 4 + 4))
 
 static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, depth: float) -> void:
 	var edges := []
@@ -178,6 +233,13 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 		if organic:
 			var v := lerpf(0.86, 1.1, u2)
 			tint = Color(v * lerpf(0.96, 1.04, u1), v, v * lerpf(0.96, 1.04, 1.0 - u1))
+		if k == "rock":
+			# Boulders are made of the landform's own stone (pale limestone among karst
+			# towers, black basalt under the needles).
+			var st := ChunkGenerator.stone_at(chunk, p.x, p.z)
+			if st.a > 0.0:
+				var to := Color(clampf(st.r / 0.5, 0.45, 1.5), clampf(st.g / 0.5, 0.45, 1.5), clampf(st.b / 0.5, 0.45, 1.5))
+				tint = tint * Color(1, 1, 1).lerp(to, st.a * 0.85)
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0])
 		by_key[key] = buf
@@ -218,6 +280,8 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		if pick > dens:
 			continue
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.55:
+			continue
+		if pick > dens * ChunkGenerator.cover_at(chunk, lx, lz):
 			continue
 		var skip := false
 		for b in blocked:
@@ -293,6 +357,9 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 				continue
 			var w := ChunkGenerator.weights_at(chunk, lx, lz)
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
+				continue
+			# Bare sand and dust grow little (the size roll doubles as the chance).
+			if (sc - 0.6) / 0.9 > ChunkGenerator.cover_at(chunk, lx, lz):
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz):
@@ -370,7 +437,7 @@ func setup(chunk: Dictionary, terrain_arrays: Array, step: int, obj_buffers: Dic
 func set_terrain(arrays: Array, step: int) -> void:
 	lod = step
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, LOOK_FORMAT if arrays[Mesh.ARRAY_CUSTOM0] != null else 0)
 	mesh.surface_set_material(0, terrain_material)
 	_terrain.mesh = mesh
 	if _height_shape != null:

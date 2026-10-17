@@ -127,6 +127,12 @@ func _run() -> void:
 			fi = i
 	game.inventory.swap(fi, 5)
 	player.select(5)
+	# Stand on open, level ground for it (wherever the chest left us may face a rock or a
+	# terrace riser).
+	var site := _open_ground(streamer, player.global_position)
+	check(site != Vector3.INF, "found open level ground to build on")
+	if site != Vector3.INF:
+		player.global_position = site
 	player.set_state({"pos": player.global_position, "yaw": 0.3, "pitch": -0.75, "slot": 5})
 	await _frames(4)
 	var built_before := 0
@@ -134,7 +140,7 @@ func _run() -> void:
 		if BuildCatalog.is_built(o["t"]):
 			built_before += 1
 	check(player.builder.active(), "holding a foundation starts building")
-	check(player.builder.place(), "foundation placed where the player looks")
+	check(player.builder.place(), "foundation placed where the player looks (%s)" % player.builder._target)
 	check(game.inventory.count("foundation") == 2, "placing uses one piece")
 	await _frames(2)
 	var placed := {}
@@ -401,5 +407,60 @@ func _run() -> void:
 
 	game.close_world()
 	WorldStore.delete_world(world_id)
+	_check_landform_mesh()
 	print("integration: %s" % ("PASSED" if _fail == 0 else "%d FAILED" % _fail))
 	quit(1 if _fail > 0 else 0)
+
+## v7 landforms colour the terrain through vertex data: a karst chunk's mesh carries
+## pale limestone for every vertex, at every LOD.
+func _check_landform_mesh() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(2024)
+	var at := Vector2.INF
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			var p := g.field.site_pos(ix, iz)
+			if at == Vector2.INF and g.field.site_landform(ix, iz) == WorldField.LF_KARST and g.field.landform_weights(p.x, p.y)[WorldField.LF_KARST] > 0.97:
+				at = p
+	check(at != Vector2.INF, "found a karst region")
+	if at == Vector2.INF:
+		return
+	var ch := g.generate(int(floor(at.x / 64.0)), int(floor(at.y / 64.0)))
+	for step in [1, 2, 4]:
+		var arr := ChunkNode.build_terrain_arrays(ch, step)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var c0: PackedByteArray = arr[Mesh.ARRAY_CUSTOM0]
+		var c2: PackedByteArray = arr[Mesh.ARRAY_CUSTOM2]
+		var pale := 0
+		for i in verts.size():
+			pale += 1 if c0[i * 4 + 3] > 150 and c0[i * 4] > 140 else 0
+		check(c0.size() == verts.size() * 4 and c2.size() == verts.size() * 4 and pale > verts.size() / 2,
+			"karst terrain at LOD %d is pale limestone (%d of %d vertices)" % [step, pale, verts.size()])
+		var m := ArrayMesh.new()
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, ChunkNode.LOOK_FORMAT)
+		check(m.get_surface_count() == 1 and m.surface_get_format(0) & Mesh.ARRAY_FORMAT_CUSTOM0, "the LOD %d mesh takes the look" % step)
+
+## The nearest level spot near `from` with nothing standing within 5 m, to stand on.
+func _open_ground(streamer: ChunkStreamer, from: Vector3) -> Vector3:
+	var best := Vector3.INF
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for j in range(4, 61, 4):
+			for i in range(4, 61, 4):
+				var h := ChunkGenerator.height_at(c.data, i, j)
+				var wp := c.position + Vector3(i, h + 0.1, j)
+				if h < ChunkGenerator.WATER_LEVEL + 0.8 or wp.distance_to(from) >= best.distance_to(from):
+					continue
+				var level := true
+				for o in [Vector2(0, 0), Vector2(2.5, 0), Vector2(-1.5, 2.5), Vector2(0, -2.5), Vector2(2.5, 2.5)]:
+					level = level and ChunkGenerator.slope_at(c.data, i + o.x, j + o.y) < 0.12
+				if not level or ChunkGenerator.road_at(c.data, i, j) > 0.0:
+					continue
+				var clear := true
+				for o in c.data["objects"]:
+					if not o["st"].get("gone", false) and Vector2(o["p"].x - i, o["p"].z - j).length() < 5.0:
+						clear = false
+						break
+				if clear:
+					best = wp
+	return best

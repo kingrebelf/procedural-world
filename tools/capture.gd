@@ -142,7 +142,8 @@ func _run() -> void:
 		var ways: Array = g.road_angles(town) if not town.is_empty() else []
 		if not ways.is_empty():
 			var tc: Vector2 = town["center"]
-			await _shot("01_medieval_town", tc + Vector2.from_angle(ways[0]) * 78.0, tc, 0.40, 5.0)
+			# High enough to see over the trees along the road and the wall beyond.
+			await _shot("01_medieval_town", tc + Vector2.from_angle(ways[0]) * 100.0, tc, 0.40, 18.0, float(town["target_h"]) + 4.0)
 		else:
 			await _shot("01_medieval_town", c + Vector2(44, 30), c, 0.40)
 	var f := _find_era(g, Eras.FANTASY, 0.995)
@@ -196,6 +197,8 @@ func _run() -> void:
 						low = h
 						cam = c
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
+	if g.landforms:
+		await _landform_shots(g)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():
@@ -219,6 +222,48 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## v7 landforms, each from the heart of the nearest region that has it: towers and
+## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.
+const LANDFORM_SHOTS := {
+	"17_karst": WorldField.LF_KARST, "18_needles": WorldField.LF_NEEDLES, "19_dunes": WorldField.LF_DUNES,
+	"20_craters": WorldField.LF_CRATERS, "21_gorge": WorldField.LF_GORGE, "22_badlands": WorldField.LF_BADLANDS,
+	"23_crags": WorldField.LF_CRAGS, "24_sinkholes": WorldField.LF_SINKHOLES, "25_lakes": WorldField.LF_LAKES,
+	"26_terraces": WorldField.LF_TERRACES,
+}
+
+func _landform_shots(g: ChunkGenerator) -> void:
+	for shot in LANDFORM_SHOTS:
+		if not only.is_empty() and not only.has(String(shot).substr(0, 2)):
+			continue
+		var lf: int = LANDFORM_SHOTS[shot]
+		var best := Vector2.INF
+		for r in 14:
+			for iz in range(-r, r + 1):
+				for ix in range(-r, r + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != r:
+						continue
+					var p := g.field.site_pos(ix, iz)
+					if g.field.site_landform(ix, iz) == lf and g.field.landform_weights(p.x, p.y)[lf] > 0.95:
+						best = p
+		if best == Vector2.INF:
+			print("no region with landform ", lf)
+			continue
+		var looking_down := lf in [WorldField.LF_CRATERS, WorldField.LF_GORGE, WorldField.LF_SINKHOLES, WorldField.LF_LAKES, WorldField.LF_TERRACES]
+		var cam := best
+		var pick := INF if not looking_down else -INF
+		for k in 12:
+			var c := best + Vector2.from_angle(k * TAU / 12.0) * 70.0
+			var h := g.field.height(c.x, c.y)
+			if h < WATER_SAFE:
+				continue
+			if (h < pick) != looking_down:
+				pick = h
+				cam = c
+		var tgt := g.field.height(best.x, best.y)
+		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
+
+const WATER_SAFE := 1.0
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:
