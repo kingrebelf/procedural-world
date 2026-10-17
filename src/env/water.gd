@@ -35,6 +35,9 @@ func _ready() -> void:
 	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
+	for a in OS.get_cmdline_user_args(): # TEMP hull-split diagnosis
+		if a.begins_with("--water-debug="):
+			_mat.set_shader_parameter("debug_view", a.substr(14).to_int())
 	material_override = _mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	position.y = LEVEL
