@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -19,6 +19,13 @@ func _ready() -> void:
 			settle_frames = a.substr(9).to_int()
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
+		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
+		# which effect an artefact comes from.
+		if a.begins_with("--set=") and a.count("=") == 2:
+			var kv := a.substr(6).split("=")
+			Settings.set_value(kv[0], str_to_var(kv[1]) if str_to_var(kv[1]) != null else kv[1], false)
+			print("setting ", kv[0], " = ", Settings.get_value(kv[0]))
+	Settings.apply()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	# Nothing may kill the photographer (castle hounds did, mid-tour).
 	Game.cheats["god"] = true

@@ -2,7 +2,10 @@ extends SceneTree
 ## Renders a patch of lake (src/env/water.gdshader) over a sloping sandy bed, for judging
 ## the water's colour, see-through, foam and reflections:
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20] [--river]
-## --river uses the river shader instead (flowing diagonally, no edge fade).
+##     [--under [--novfog] [--nooverlay]]
+## --river uses the river shader instead (flowing diagonally, no edge fade). --under puts
+## the eye 2.5 m under the surface with the game's underwater fog and overlay (either can
+## be left out, to tell which one an artefact comes from).
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -10,6 +13,9 @@ func _run() -> void:
 	var out := "user://water.png"
 	var pitch := -18.0
 	var shader := "res://src/env/water.gdshader"
+	var under := false
+	var vfog := true
+	var overlay := true
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -17,6 +23,12 @@ func _run() -> void:
 			pitch = float(a.substr(8))
 		elif a == "--river":
 			shader = "res://src/env/river.gdshader"
+		elif a == "--under":
+			under = true
+		elif a == "--novfog":
+			vfog = false
+		elif a == "--nooverlay":
+			overlay = false
 	get_root().size = Vector2i(1600, 900)
 	RenderingServer.global_shader_parameter_set("sun_dir_g", Vector3(0.4, 0.6, 0.3).normalized())
 	RenderingServer.global_shader_parameter_set("wind_dir", Vector2(1, 0.3))
@@ -29,6 +41,32 @@ func _run() -> void:
 	env.environment.background_mode = Environment.BG_SKY
 	env.environment.sky = sky
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.environment.glow_enabled = true
+	if under:
+		# As Atmosphere sets it when the player is under water.
+		var e := env.environment
+		e.fog_enabled = true
+		e.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+		e.fog_light_color = Color(0.06, 0.2, 0.24)
+		e.fog_density = 0.075
+		e.fog_sky_affect = 1.0
+		e.fog_sun_scatter = 0.3
+		e.volumetric_fog_enabled = vfog
+		e.volumetric_fog_density = 0.02
+		e.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
+		e.volumetric_fog_length = 96.0
+		e.volumetric_fog_detail_spread = 2.0
+		e.volumetric_fog_anisotropy = 0.35
+		if overlay:
+			var layer := CanvasLayer.new()
+			var rect := ColorRect.new()
+			rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+			var um := ShaderMaterial.new()
+			um.shader = load("res://src/env/underwater.gdshader")
+			um.set_shader_parameter("depth", 2.5)
+			rect.material = um
+			layer.add_child(rect)
+			get_root().add_child(layer)
 	get_root().add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.look_at_from_position(Vector3.ZERO, -Vector3(0.4, 0.6, 0.3), Vector3.UP)
@@ -60,7 +98,7 @@ func _run() -> void:
 	var cam := Camera3D.new()
 	cam.fov = 70.0
 	get_root().add_child(cam)
-	cam.position = Vector3(0, 1.8, 8)
+	cam.position = Vector3(0, 1.8, 8) if not under else Vector3(0, -2.5, -40)
 	cam.rotation = Vector3(deg_to_rad(pitch), 0, 0)
 	cam.make_current()
 	for i in 30:
