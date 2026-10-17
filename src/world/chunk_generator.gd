@@ -318,10 +318,12 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 	var dist := PackedFloat32Array()
 	var level := PackedFloat32Array()
 	var air := PackedByteArray()
+	var side := PackedByteArray() ## 1 on the left of the road (going along its points)
 	dist.resize(RES * RES)
 	dist.fill(INF)
 	level.resize(RES * RES)
 	air.resize(RES * RES)
+	side.resize(RES * RES)
 	var rr := road_reach
 	var area := Rect2(x0 - rr, z0 - rr, SIZE + 2.0 * rr, SIZE + 2.0 * rr)
 	for rd in roads:
@@ -353,7 +355,8 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 						dist[k] = d
 						level[k] = lerpf(ha, hb, t)
 						air[k] = up
-	return [dist, level, air]
+						side[k] = 1 if ab.cross(q - a) > 0.0 else 0
+	return [dist, level, air, side]
 
 ## A stone bridge wherever a road crosses running river water inside this chunk. Each
 ## crossing is found the same way from any chunk, so exactly one chunk owns it.
@@ -708,8 +711,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var rf: Array = _road_field(x0, z0, roads) if not roads.is_empty() else []
 	var road_mask := PackedByteArray()
 	var any_road := false
+	# How far each point of a road is from its middle line, to one side or the other
+	# (128 + 40 per metre; 0 off the road), for the wheel ruts the terrain shader wears
+	# into it.
+	var road_mid := PackedByteArray()
+	var any_mid := false
 	if towns:
 		road_mask.resize(RES * RES)
+		if not rf.is_empty():
+			road_mid.resize(RES * RES)
 	var forts := forts_near(x0, z0, x0 + SIZE, z0 + SIZE)
 	var flat: Array = sites + forts
 	var street_ang: Array = []
@@ -764,6 +774,9 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * (1.7 if outposts else 0.9), road_reach - ROAD_HALF - 2.0)
 				h = lerpf(h, lv, (1.0 - smoothstep(ROAD_HALF, verge, d)) * dry)
 				on_road = (1.0 - smoothstep(ROAD_HALF - 0.8, ROAD_HALF + 1.0, d)) * dry
+				if towns and on_road > 0.0:
+					road_mid[k] = 128 + int(round(minf(d, 3.15) * 40.0)) * (1 if rf[3][k] == 1 else -1)
+					any_mid = true
 			if towns:
 				for si in sites.size():
 					var st: Dictionary = sites[si]
@@ -824,6 +837,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["look"] = look
 	if any_road:
 		chunk["road"] = road_mask
+		if any_mid:
+			chunk["road_mid"] = road_mid
 	if has_river and not roads.is_empty():
 		_place_bridges(chunk, roads)
 	if outposts and not roads.is_empty():

@@ -83,6 +83,9 @@ varying vec4 stone_v;
 varying vec4 soil_v;
 varying vec2 form_v;
 varying vec4 cover_v;
+// On a road up close: 128 + 40 per metre from its middle line (less on its other
+// side), over 255; 0 off a road.
+varying float road_d_v;
 #ifdef FAR_LAND
 // The forest seen from afar: crown colour (sRGB) and how densely the trees stand; and
 // the distance from a river's centre (in six half-widths: under 1/6 is water).
@@ -173,7 +176,9 @@ void vertex() {
 	soil_v = CUSTOM1;
 	form_v = CUSTOM2.xy;
 	cover_v = CUSTOM3;
+	road_d_v = CUSTOM2.z;
 #ifdef FAR_LAND
+	road_d_v = 0.0;
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
 	river_v = CUSTOM2.w;
 	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
@@ -205,6 +210,13 @@ void fragment() {
 	w /= max(w.r + w.g + w.b, 0.001);
 	float slope = 1.0 - clamp(wnorm.y, 0.0, 1.0);
 	vec2 p = wpos.xz;
+	// A road's middle line: how far this point is from it in metres, to one side or the
+	// other, and which way that distance grows, for the wheel ruts.
+	float rd_known = step(0.5, road_d_v * 255.0);
+	float rd_m = (road_d_v * 255.0 - 128.0) / 40.0;
+	mat2 jm = mat2(vec2(dwx.x, dwy.x), vec2(dwx.z, dwy.z));
+	vec2 rd_dir = abs(determinant(jm)) > 1e-14 ? inverse(jm) * vec2(dFdx(road_d_v), dFdy(road_d_v)) : vec2(0.0);
+	rd_dir /= max(length(rd_dir), 1e-9);
 
 	// Multi-scale variation: macro patches, meso clumps, micro grain. On steep faces the
 	// ground plane squeezes a whole cliff into a few texels of x/z, which drew the grain
@@ -312,7 +324,16 @@ void fragment() {
 	float swathe = fbm(p * 0.035 + 21.0);
 	g *= mix(vec3(0.82, 0.9, 0.8), vec3(1.12, 1.08, 0.92), smoothstep(0.3, 0.7, swathe));
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
-	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
+	// Where the grass grows the ground between the tufts is short turf, with moss in the
+	// damp hollows and clumps of clover; bare earth only shows in small worn spots
+	// (fantasy and sci-fi soil keeps its broad patches).
+	float worn = smoothstep(0.62, 0.85, vnoise(p * 0.9 + 17.0) * 0.55 + micro * 0.45);
+	float bare = soil_mask * 0.7 * mix(1.0, worn, w.r);
+	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso));
+	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro);
+	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
+	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
+	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
 		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
@@ -382,7 +403,7 @@ void fragment() {
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
 		vec2 tm = untiled_n(mud_nrm, p + 23.0, gp, MUD_TILE, meso, far);
-		tilt = mix(mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tilt_c, cov), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
+		tilt = mix(mix(mix(mix(tilt_g, tilt_s, bare), tilt_c, cov), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
 	}
 	vec3 col = mix(ground, rock, rock_mask);
 
@@ -391,12 +412,14 @@ void fragment() {
 	float road = 1.0 - COLOR.a;
 	if (road > 0.01) {
 		float edge = smoothstep(0.2, 0.65, road + (micro - 0.5) * 0.3 + (meso - 0.5) * 0.25);
-		vec3 rm = soil * vec3(0.86, 0.8, 0.7) * (0.82 + 0.3 * micro);
+		// Worn earth: trodden dry and dusty, paler and greyer than the soil beside it.
+		vec3 dusty = mix(vec3(dot(soil, LUM)), soil, 0.62) * vec3(1.08, 1.02, 0.93);
+		vec3 rm = dusty * (0.82 + 0.3 * micro);
 		if (use_textures) {
 			// Packed earth with drifts of trodden gravel, each edge following the stones.
 			vec3 gt = untiled(gravel_tex, p + 91.0, gp, GRAVEL_TILE, meso, far).rgb;
 			float a = layer(0.35 + 0.4 * fbm(p * 0.35 + 13.0), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro) * w.r;
-			rm = mix(rm, recolor(gt, GRAVEL_MEAN, soil * vec3(1.05, 1.0, 0.92) * 1.2, 0.55), a);
+			rm = mix(rm, recolor(gt, GRAVEL_MEAN, dusty * 1.15, 0.55), a);
 			tilt = mix(tilt, untiled_n(gravel_nrm, p + 91.0, gp, GRAVEL_TILE, meso, far), a * edge);
 		} else {
 			float stones = smoothstep(0.6, 0.85, vnoise(p * 2.3));
@@ -406,6 +429,26 @@ void fragment() {
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
 		vec3 rc = rm * w.r + rf * w.g + rs * w.b;
+		// Wheel ruts in the earth roads: two tracks a cart's width apart, packed dark and
+		// smooth and sunk a few centimetres, and a strip of grass left between them.
+		float cart = edge * w.r * (1.0 - paved) * (1.0 - far) * rd_known * (1.0 - smoothstep(2.0, 3.0, abs(rd_m)));
+		vec2 rut_tilt = vec2(0.0);
+		if (cart > 0.01) {
+			// The track wanders a little within the road.
+			float sx = rd_m - (fbm(p * 0.09 + 5.0) - 0.5) * 0.5;
+			float off = abs(sx) - 0.8;
+			float hw = 0.24 + 0.06 * meso;
+			float t = clamp((abs(off) - hw * 0.35) / (hw * 0.65), 0.0, 1.0);
+			float rut = 1.0 - t * t * (3.0 - 2.0 * t);
+			// Packed smooth and darker (damp in the bottom), the loose gravel thrown out.
+			rc = mix(rc, rm * vec3(0.8, 0.78, 0.76) * (0.92 + 0.12 * micro), rut * cart * 0.8);
+			tilt = mix(tilt, tilt * 0.35, rut * cart);
+			// Its walls: the ground climbs 4 cm out of the rut.
+			rut_tilt = -rd_dir * sign(sx) * sign(off) * 0.04 * 6.0 * t * (1.0 - t) / (hw * 0.65) * cart;
+			// Between the ruts, where no wheel or hoof goes, a ragged strip of grass.
+			float crown = (1.0 - smoothstep(0.18, 0.4, abs(sx))) * smoothstep(0.35, 0.6, meso + (micro - 0.5) * 0.5);
+			rc = mix(rc, col * (0.75 + 0.3 * micro), crown * cart * 0.75);
+		}
 		if (paved > 0.01) {
 			// Asphalt: fine dark grit, greyer where it has worn and weathered.
 			vec3 asph = vec3(0.07, 0.07, 0.068);
@@ -420,6 +463,7 @@ void fragment() {
 		}
 		col = mix(col, rc, edge * (1.0 - rock_mask * 0.6));
 		tilt *= 1.0 - edge * mix(0.4, 0.85, paved);
+		tilt += rut_tilt;
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
