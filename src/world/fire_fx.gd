@@ -6,15 +6,17 @@ extends RefCounted
 ## sits at its base. For hearths, campfires and torches.
 
 const SHEET := "res://assets/textures/fx/fire_flipbook.png"
-## Each frame's flame stands this share of the frame above its bottom edge.
-const FOOT := 0.12
+## Each frame's flame stands this share of the frame above its bottom edge (a jet hangs
+## this share below its top edge), per sheet.
+const FOOT := {"fire": 0.12, "jet": 0.02}
 const FPS := 12.0
 
-static var _mat: ShaderMaterial
+static var _mats: Dictionary = {}
 
-static func material() -> ShaderMaterial:
-	if _mat != null:
-		return _mat
+## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
+static func material(sheet := "fire") -> ShaderMaterial:
+	if _mats.has(sheet):
+		return _mats[sheet]
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode unshaded, blend_premul_alpha, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, world_vertex_coords;
@@ -54,26 +56,28 @@ void fragment() {
 	ALPHA = clamp(max(col.r, max(col.g, col.b)) * 1.3, 0.0, 1.0);
 }
 """
-	_mat = ShaderMaterial.new()
-	_mat.shader = sh
-	_mat.set_shader_parameter("fps", FPS)
-	if ResourceLoader.exists(SHEET):
-		_mat.set_shader_parameter("tex", load(SHEET))
-	return _mat
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	m.set_shader_parameter("fps", FPS * (1.6 if sheet == "jet" else 1.0))
+	var path := SHEET.replace("fire_", sheet + "_")
+	if ResourceLoader.exists(path):
+		m.set_shader_parameter("tex", load(path))
+	_mats[sheet] = m
+	return m
 
-## A flame `size` metres tall, its base at the returned node's origin: two cards out of
-## step give it body.
-static func flame(size: float, tint := Color(1, 1, 1, 1)) -> Node3D:
+## A flame `size` metres tall, its base at the returned node's origin (or, with `hang`,
+## hanging from it, as a jet from a nozzle): two cards out of step give it body.
+static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false) -> Node3D:
 	var n := Node3D.new()
 	n.name = "Flame"
 	for i in 2:
 		var s := size * (1.0 if i == 0 else 0.7)
 		var q := QuadMesh.new()
 		q.size = Vector2(s, s)
-		q.center_offset = Vector3(0, s * (0.5 - FOOT), 0)
+		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
 		var mi := MeshInstance3D.new()
 		mi.mesh = q
-		mi.material_override = material()
+		mi.material_override = material(sheet)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# The cards turn in the shader, so their box must hold them at any angle.
 		mi.extra_cull_margin = s

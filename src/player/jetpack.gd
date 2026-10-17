@@ -13,7 +13,7 @@ const HOLD_DELAY := 0.28 ## after a normal jump, hold this long to fire
 var firing := false
 var _air_hold := 0.0
 var _pack: MeshInstance3D
-var _flames: Array[MeshInstance3D] = []
+var _flames: Array[Node3D] = []
 var _light: OmniLight3D
 var _flicker := 0.0
 var _empty_warned := false
@@ -25,17 +25,15 @@ func _ready() -> void:
 	_pack.position = Vector3(0, 1.05, 0.2)
 	_pack.visible = false
 	add_child(_pack)
-	var flame := flame_model()
 	for x in [-0.11, 0.11]:
-		var f := MeshInstance3D.new()
-		f.mesh = flame
-		f.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Ben's blue jet flipbook, hanging from each nozzle.
+		var f := FireFx.flame(0.75, Color(1, 1, 1, 1), "jet", true)
 		f.position = Vector3(x, 0.93, 0.27)
 		f.visible = false
 		add_child(f)
 		_flames.append(f)
 	_light = OmniLight3D.new()
-	_light.light_color = Color(1.0, 0.6, 0.28)
+	_light.light_color = Color(0.55, 0.75, 1.0)
 	_light.omni_range = 7.0
 	_light.light_energy = 0.0
 	_light.position = Vector3(0, 0.6, 0.3)
@@ -50,12 +48,6 @@ static func pack_model() -> ArrayMesh:
 		k.sphere("metal", Transform3D.IDENTITY.translated(Vector3(x, 0.21, 0.04)), 0.075, 6, 12, 0.0, 1.0, Color.WHITE, true)
 		k.cylinder("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, -0.25, 0.04)), 0.05, 0.065, 0.08, 10)
 		k.box("cloth", Transform3D.IDENTITY.translated(Vector3(x, 0.05, 0.04)), Vector3(0.16, 0.035, 0.16), Color(0.25, 0.25, 0.27))
-	return k.commit(Materials.get_mat)
-
-static func flame_model() -> ArrayMesh:
-	var k := MeshKit.new(8)
-	k.cylinder("glow_warm", Transform3D(Basis(Vector3.RIGHT, PI), Vector3.ZERO), 0.05, 0.005, 0.42, 8)
-	k.cylinder("glow_white", Transform3D(Basis(Vector3.RIGHT, PI), Vector3.ZERO), 0.028, 0.004, 0.2, 8)
 	return k.commit(Materials.get_mat)
 
 ## The jetpack you are wearing, or null.
