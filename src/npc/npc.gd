@@ -27,6 +27,8 @@ var face_to := Vector2.INF
 ## on the way there (a load, a torch). Streamed to players who don't run this person.
 var work_anim := ""
 var upper_anim := ""
+## An archer or gunner holds off this far from whoever they attack (0: up close).
+var keep_off := 0.0
 
 var _body: AnimatableBody3D
 var _model: Node3D
@@ -170,6 +172,18 @@ func act(what: String, seconds := 0.0) -> bool:
 		return true
 	return false
 
+## A blow or a shot at whoever they are fighting (the hit itself is the manager's).
+func strike(ranged: bool) -> void:
+	last_act = "strike_r" if ranged else "strike"
+	acts += 1
+	if _human:
+		var held = rec.get("held", null)
+		var t := String(held.get("type", "")) if held is Dictionary else ""
+		if ranged:
+			_human.play_once("throw" if t in ["sling", "javelin", "throwing_knives"] else "pistol")
+		else:
+			_human.play_once(["slash_a", "slash_b", "sword"][randi() % 3] if t != "" else "punch")
+
 func is_performing() -> bool:
 	return perform != ""
 
@@ -285,6 +299,10 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	if target_player:
 		goal = Vector2(player_pos.x, player_pos.z)
 		stop_at = {"greet": 2.2, "follow": 3.0, "confront": 2.8, "attack": 1.3, "trade": 2.0}.get(action, 2.0)
+		if action == "attack" and keep_off > 0.0:
+			stop_at = keep_off
+		elif action == "confront" and rec.has("band"):
+			stop_at = 4.5
 	elif rec.has("room"):
 		# Shopkeepers go in and out by the door.
 		goal = TownShops.route(rec["room"], p2, goal)
@@ -388,7 +406,10 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 		_seen_acts = int(st[8]) # what they did before you came is over
 	elif int(st[8]) != _seen_acts:
 		_seen_acts = int(st[8])
-		act(String(st[7]), 600.0 if String(st[4]) != "" else 0.0)
+		if String(st[7]).begins_with("strike"):
+			strike(String(st[7]) == "strike_r")
+		else:
+			act(String(st[7]), 600.0 if String(st[4]) != "" else 0.0)
 	if String(st[4]) == "" and perform != "":
 		_end_perform()
 	elif perform != "":
@@ -447,10 +468,10 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	# Shop floors aren't the ground under them.
 	_human.ik.feet_here = not rec.has("room")
 	var up := upper_anim if moving else ""
-	if moving and NPCGen.GUARD_JOBS.has(rec["job"]) and action in ["confront", "attack"]:
-		up = "sword_idle"
+	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
+		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"
 	_human.set_upper(up)
-	if action == "attack" and attack_cd > 1.3:
+	if action == "attack" and attack_cd > 1.3 and not rec.has("band"):
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":
 		var p: Array = NPCMind.PERFORM[perform]
@@ -479,7 +500,10 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 		# Chatting with a neighbour: they take turns to talk.
 		_human.play("talk" if (int(Time.get_ticks_msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
 	elif action in ["confront", "attack"]:
-		_human.play("sword_idle" if NPCGen.GUARD_JOBS.has(rec["job"]) else "fold_arms")
+		if rec.has("band"):
+			_human.play("pistol_idle" if keep_off > 0.0 else "sword_idle")
+		else:
+			_human.play("sword_idle" if NPCGen.GUARD_JOBS.has(rec["job"]) else "fold_arms")
 	else:
 		_human.play("idle")
 	if _hit_flash > 0.0:

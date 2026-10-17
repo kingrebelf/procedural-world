@@ -973,6 +973,62 @@ func test_npc_roles() -> void:
 	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
 	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
 
+func test_bandits() -> void:
+	var gen := ChunkGenerator.new(777)
+	var was := Eras.theme
+	Eras.theme = "human"
+	var bands: Array = []
+	for day in 6:
+		bands.append_array(Bandits.near(gen, Vector2.ZERO, 3000.0, float(day)))
+	check(not bands.is_empty(), "bands roam the land (%d over six days)" % bands.size())
+	var cells := 0
+	for cz in range(-5, 5):
+		for cx in range(-5, 5):
+			cells += 1
+	check(bands.size() < cells * 6 / 2, "but only now and then (%d)" % bands.size())
+	var ok_spawn := true
+	var ok_towns := true
+	for b in bands:
+		var camp: Vector2 = b["camp"]
+		if camp.length() < Bandits.SAFE_R:
+			ok_spawn = false
+		for st in gen.settlements_near(camp.x - 200.0, camp.y - 200.0, camp.x + 200.0, camp.y + 200.0):
+			if (st["center"] as Vector2).distance_to(camp) < float(st["outer"]) + Bandits.TOWN_CLEAR:
+				ok_towns = false
+	check(ok_spawn, "no band camps near where you arrive")
+	check(ok_towns, "no band camps by a town")
+	var b: Dictionary = bands[0]
+	var again := Bandits.band_at(gen, b["cell"].x, b["cell"].y, int(String(b["id"]).get_slice("_", 2)))
+	check(var_to_bytes(again["members"]) == var_to_bytes(b["members"]), "the same band for everyone")
+	var m: Dictionary = b["members"][0]
+	check(m.has("band") and m["held"] is Dictionary and ItemDB.has(String(m["held"]["type"])), "outlaws are armed (%s)" % m["held"]["type"])
+	check(int(m["level"]) >= 1 and float(m["hp"]) >= 100.0, "and levelled by zone")
+	var near_spawn := Bandits.tier(Eras.MEDIEVAL, 3)
+	check(near_spawn == "low" and Bandits.tier(Eras.SCIFI, 30) == "raider", "poor cutthroats near spawn, raiders out on the frontier")
+	var state := {"camp": b["camp"], "route": b["route"], "cell": b["cell"], "id": b["id"], "alert": false, "demand_until": 0.0}
+	var per := {"hour": 12.0, "pos": b["camp"], "player_dist": 100.0, "player_pos": Vector2.ZERO, "now": 10.0, "band": state}
+	check(Bandits.decide(m, per)["action"] == "wander", "by day the band walks its loop")
+	per["hour"] = 23.0
+	var m2: Dictionary = b["members"][b["members"].size() - 1]
+	var na: String = Bandits.decide(m2, per)["action"]
+	check(na in ["sit", "idle"], "by night they sit round the fire or keep watch (%s)" % na)
+	per["hour"] = 12.0
+	state["demand_until"] = 20.0
+	per["player_dist"] = 6.0
+	check(Bandits.decide(m, per)["action"] == "confront", "they stop you and demand a toll")
+	state["alert"] = true
+	check(Bandits.decide(m, per)["action"] == "attack", "and fight if you won't pay")
+	var coward: Dictionary = m.duplicate(true)
+	coward["traits"]["brave"] = 0.2
+	coward["hp"] = 10.0
+	check(Bandits.decide(coward, per)["action"] == "flee", "badly hurt, a coward runs")
+	check(Bandits.toll(100, 1) >= 13 and Bandits.toll(5, 1) == 5, "the toll is a share of your purse")
+	var r := NPCMind.builtin_reply(m, {"name": "Bandit band", "npcs": b["members"], "rumors": []}, "Fine, I'll pay")
+	check(r["action"] == "pay_toll", "you can pay them off")
+	Eras.theme = "alien"
+	check(Bandits.near(gen, Vector2.ZERO, 3000.0, 0.0).is_empty(), "no bandits on alien worlds")
+	Eras.theme = was
+
 func test_npc_memory_and_replies() -> void:
 	var fx := _npc_fixture()
 	var gen: ChunkGenerator = fx[0]

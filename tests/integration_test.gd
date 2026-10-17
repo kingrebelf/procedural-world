@@ -555,6 +555,7 @@ func _run() -> void:
 	world.fauna._herds.erase(Vector2i(99999, 99999))
 	world.fauna._scan = 0.0
 	await _corpses(game, world, player, kc)
+	await _bandits(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -987,6 +988,65 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	check(Corpses.still_worn(world.corpses.record(body["key"])).is_empty(), "taken armour comes off the body")
 	if menus._mode != "":
 		menus.close()
+
+## Outlaws: a band camped beside you spawns with its fire, stops you and demands a toll,
+## fights when hit, and the one you kill stays dead (kept in its camp's chunk) and
+## leaves a body to loot.
+func _bandits(game, world, player) -> void:
+	var at: Vector3 = player.global_position
+	var camp := Vector2(at.x + 9.0, at.z + 4.0)
+	var r := RandomNumberGenerator.new()
+	r.seed = 77
+	var b := {"id": "b9_9_0", "cell": Vector2i(9999, 9998), "camp": camp, "era": Eras.MEDIEVAL, "zone": 3,
+		"route": [camp + Vector2(30, 0), camp + Vector2(0, 30)], "name": "Bandit band", "members": []}
+	for i in 3:
+		b["members"].append(Bandits._member(r, Eras.MEDIEVAL, 3, i, "b9_9_0", camp, 9999, 9998))
+	world.npcs._load_band(b)
+	await _frames(5)
+	var e: Dictionary = world.npcs.settlements.get("b9_9_0", {})
+	check(not e.is_empty() and e["nodes"].size() == 3, "a band near you comes to life (%d)" % (e.get("nodes", []).size()))
+	if e.is_empty() or e["nodes"].is_empty():
+		return
+	check(is_instance_valid(e.get("decor")), "with its camp")
+	check(not world.npcs.town_at(Vector3(camp.x, at.y, camp.y)).has("band"), "a band's camp is not a town")
+	for n in e["nodes"]:
+		n.decide_in = 0.0
+	await _frames(10)
+	var n0: NPC = e["nodes"][0]
+	world.npcs.begin_talk(n0)
+	var paid: int = game.money
+	game.add_money(100)
+	var took: int = world.npcs.pay_toll(n0)
+	world.npcs.end_talk(n0)
+	check(took > 0 and e["paid"] and game.money == paid + 100 - took, "paying the toll buys your way past (%d)" % took)
+	var victim: NPC = e["nodes"][1]
+	var vid := String(victim.rec["id"])
+	victim.rec["hp"] = 1.0
+	world.npcs.player_hit(victim, 50.0)
+	await _frames(3)
+	check(e["alert"] and not e["paid"], "hurt one and the band fights")
+	check(not is_instance_valid(victim) or victim.is_queued_for_deletion(), "the dead outlaw is gone")
+	var cn: ChunkNode = world.npcs._camp_chunk(b)
+	check(cn != null and cn.data.get("bandits_dead", {}).has(vid), "and stays dead (kept in the camp's chunk)")
+	var body := false
+	for c in world.corpses.near(victim.global_position if is_instance_valid(victim) else Vector3(camp.x, at.y, camp.y), 30.0):
+		if c["rec"]["kind"] == "person" and String(c["rec"].get("who", "")) == vid:
+			body = true
+	check(body, "leaving a body to search")
+	for i in 30:
+		await _frames(2)
+	var fighting := 0
+	for n in e["nodes"]:
+		if is_instance_valid(n) and n.action in ["attack", "flee"]:
+			fighting += 1
+	check(fighting > 0, "the rest come for you (or run)")
+	world.npcs._unload("b9_9_0")
+	world.npcs._band_kills.clear()
+	world.npcs._load_band(b)
+	var e2: Dictionary = world.npcs.settlements.get("b9_9_0", {})
+	check(e2.get("nodes", []).size() == 2, "the dead one doesn't come back with the band")
+	world.npcs._unload("b9_9_0")
+	game.health = 100.0
 
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.

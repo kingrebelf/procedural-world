@@ -6,7 +6,7 @@ const MAX_MEMORIES := 16
 const MAX_RUMORS := 8
 const MOODS := ["calm", "happy", "wary", "angry", "afraid", "sad", "curious"]
 const TALK_ACTIONS := ["none", "follow", "stop_following", "trade", "go_home", "flee", "attack", "leave",
-	"give_money", "lend_money", "gift", "ask_repay", "join_guild", "buy_house"]
+	"give_money", "lend_money", "gift", "ask_repay", "join_guild", "buy_house", "pay_toll"]
 
 ## Full-body things a person can be asked to do (or does on a whim). Gestures
 ## (BodyLanguage.names()) are played over these. name -> [animation, seconds, mode]
@@ -89,7 +89,11 @@ static func world_line() -> String:
 static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictionary) -> String:
 	var t: Dictionary = npc["traits"]
 	var lines := PackedStringArray()
-	lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
+	if npc.has("band"):
+		lines.append("You are %s, an outlaw in a %s of %d camped out in the wilds, far from any town. You live by robbing travellers on the roads." % [NPCGen.describe(npc), String(settlement["name"]).to_lower(), (settlement["npcs"] as Array).size()])
+		lines.append("You have stopped this traveller and want their money. If they agree to pay, take it with action \"pay_toll\" and let them go. If they refuse, insult you or threaten you, use \"attack\" (unless you are scared of them: then \"flee\"). You can be bargained with, bluffed or frightened, in character.")
+	else:
+		lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
 	lines.append(world_line())
 	lines.append("Your personality (0 to 1): friendliness %.1f, bravery %.1f, curiosity %.1f, diligence %.1f, greed %.1f. You like %s. You worry about %s." % [t["friendly"], t["brave"], t["curious"], t["diligent"], t["greedy"], npc["likes"], npc["worry"]])
 	lines.append("You speak in a way that is %s." % npc["speech"])
@@ -188,6 +192,8 @@ const FAREWELL := [["Safe roads.", "Off with you, then.", "Gods keep you."], ["M
 
 ## Default suggestions for the player.
 static func default_options(npc: Dictionary) -> Array:
+	if npc.has("band"):
+		return ["Fine, take it. (pay the toll)", "I'm not paying you anything.", "Who are you people?"]
 	var o := ["Who are you?", "What is this place?", "Any news?"]
 	if npc.has("shop_kind"):
 		o[2] = "What do you sell?"
@@ -255,6 +261,8 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 	var r := int(npc.get("rel", 0))
 	var h := absi(hash(text + str(game_day())))
 	var out := {"say": "", "action": "none", "rel_change": 0, "remember": "", "options": default_options(npc)}
+	if npc.has("band"):
+		return _outlaw_reply(npc, q, h)
 	if r <= -40:
 		out["say"] = ["Keep away from me.", "I've nothing to say to you.", "Leave, before I call the guard."][h % 3]
 		out["mood"] = "afraid" if float(npc["traits"]["brave"]) < 0.5 else "angry"
@@ -362,6 +370,29 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["rel_change"] = 1
 	else:
 		out["say"] = ["Hm. Can't say I follow.", "Is that so?", "Interesting. Tell me more another time.", "If you say so."][h % 4]
+	return out
+
+## An outlaw who has stopped you: pay, and you go; refuse or threaten, and they fight.
+static func _outlaw_reply(npc: Dictionary, q: String, h: int) -> Dictionary:
+	var out := {"say": "", "action": "none", "rel_change": 0, "remember": "", "options": ["Fine, take it. (pay the toll)", "I'm not paying you anything.", "Who are you people?"]}
+	var brave := float(npc["traits"]["brave"])
+	if q.contains("pay") or q.contains("take it") or q.contains("toll") or q.contains("here") or (q.contains("money") and not q.contains("no")):
+		out["say"] = ["Wise. Very wise.", "There, that didn't hurt, did it?", "Pleasure doing business."][h % 3]
+		out["action"] = "pay_toll"
+		out["do"] = "nod"
+	elif q.contains("not pay") or q.contains("no") or q.contains("never") or q.contains("kill") or q.contains("die") or q.contains("fight") or q.contains("leave me"):
+		if brave < 0.3:
+			out["say"] = ["Alright, alright! No need for that!", "Not worth it. Go on, then."][h % 2]
+			out["action"] = "flee"
+		else:
+			out["say"] = ["Wrong answer.", "Then we'll take it off your corpse.", "Have it your way!"][h % 3]
+			out["action"] = "attack"
+			out["do"] = "fist"
+	elif q.contains("who") or q.contains("name"):
+		out["say"] = "%s. Folk on this road know the name. Now, your purse." % npc["name"]
+	else:
+		out["say"] = ["Stop stalling. Coin, now.", "I'm not here to chat.", "Purse. Now. Or else."][h % 3]
+		out["do"] = "point"
 	return out
 
 static func _asked_amount(q: String) -> int:
