@@ -304,6 +304,7 @@ func _power_checks(game, world, player: Player, pc: ChunkNode, lp: Vector3) -> v
 	check(await wait.call(false), "the lamp switches off on its own")
 	await _signal_checks(game, grid, player, pc, lp, gen, lamp, mk, lit, wait)
 	await _defence_checks(game, world, grid, player, pc, lp, gen, mk)
+	await _automation_checks(game, grid, player, pc, lp, gen, mk)
 	var before: int = game.inventory.count("copper_wire")
 	check(player.deconstruct(pc, sw) and sw["st"].get("gone", false), "the switch comes down")
 	check(game.inventory.count("copper_wire") > before and Power.links(gen).is_empty(), "its cables come down with it, as wire")
@@ -444,6 +445,39 @@ func _defence_checks(game, world, grid: PowerGrid, player: Player, pc: ChunkNode
 	for o in [tur, bell, lever]:
 		player.deconstruct(pc, o)
 	for t in ["auto_turret", "alarm_bell", "lever", "rifle_cartridges", "signal_wire"]:
+		game.inventory.remove_type(t, game.inventory.count(t))
+
+## A hopper tips stone onto two powered belts, which carry it into a chest.
+func _automation_checks(game, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Vector3, gen: Dictionary, mk: Callable) -> void:
+	_make_room(game, 4)
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	game.give(ItemDB.make("wood", 6, 1.0, game.origin_here("crafted", -1, pc.key)))
+	grid.use_piece(pc, gen, false)
+	var base := lp + Vector3(-6, 0, 2)
+	var hop: Dictionary = mk.call("hopper", base)
+	var b1: Dictionary = mk.call("conveyor_belt", base + Vector3(0, 0, 1))
+	var b2: Dictionary = mk.call("conveyor_belt", base + Vector3(0, 0, 2))
+	var chest: Dictionary = pc.add_built("storage_chest", base + Vector3(0, 0, 3), 0.0, {"by": "you", "day": 0.0})
+	var w1: String = grid.connect_pieces(pc, gen, pc, b1)
+	var w2: String = grid.connect_pieces(pc, b1, pc, b2)
+	check(w1 == "" and w2 == "", "the belts are cabled to the generator (%s / %s)" % [w1, w2])
+	var inv := Storage.open(hop)
+	inv.add(ItemDB.make("stone", 3, 1.0, {}))
+	Storage.save(hop, inv)
+	var t0 := Time.get_ticks_msec()
+	while Storage.open(chest).count("stone") < 3 and Time.get_ticks_msec() - t0 < 8000:
+		await process_frame
+	check(Storage.open(chest).count("stone") == 3, "the hopper's stone rides the belts into the chest (%d)" % Storage.open(chest).count("stone"))
+	check(" ".join(grid.describe(pc, b1, false)).contains("Carrying"), "a belt's look-at says what it carries")
+	var pn: PowerNode = pc.power_node(b1["i"])
+	check(pn != null and pn._belt != null, "a belt draws the items riding it")
+	for o in [b1, b2, hop]:
+		player.deconstruct(pc, o)
+	var cinv := Storage.open(chest)
+	cinv.remove_type("stone", 3)
+	Storage.save(chest, cinv)
+	player.deconstruct(pc, chest)
+	for t in ["conveyor_belt", "hopper", "storage_chest"]:
 		game.inventory.remove_type(t, game.inventory.count(t))
 
 func _frames(n: int) -> void:

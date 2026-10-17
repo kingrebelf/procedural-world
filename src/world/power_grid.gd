@@ -39,6 +39,7 @@ var _signal_mat: StandardMaterial3D
 var _sig := {} ## piece id -> its output last tick (Signals)
 var _mem := {} ## piece id -> its logic scratch (Signals.step)
 var _en := {} ## piece id -> whether the signal wired into it is on (only pieces with one)
+var _ver := 0 ## counts network rebuilds (cached neighbours are worked out again after one)
 
 func _ready() -> void:
 	current = self
@@ -51,6 +52,10 @@ func _ready() -> void:
 		streamer.chunk_ready.connect(func(n: ChunkNode): _scan(n))
 
 func _exit_tree() -> void:
+	for k in _touched:
+		if is_instance_valid(_touched[k]):
+			Game.mark_chunk_dirty((_touched[k] as ChunkNode).data)
+	_touched.clear()
 	if current == self:
 		current = null
 
@@ -161,6 +166,12 @@ func _rebuild() -> void:
 	for id in pieces:
 		if Power.spec(pieces[id]).get("source", "") == "wind":
 			_site[id] = _exposure(id, pieces[id])
+		elif Power.spec(pieces[id]).get("source", "") == "water":
+			_site[id] = _in_water(id, pieces[id])
+	_ver += 1
+	for id in pieces:
+		if Automation.is_auto(pieces[id]) and not _mem.get(id, {}).has("seen"):
+			_machine_catch_up(id, pieces[id])
 	for n in _nets.size():
 		_catch_up(_nets[n])
 	_draw_cables(pieces)
@@ -186,6 +197,22 @@ func _exposure(id: String, o: Dictionary) -> float:
 		return 1.0
 	return clampf(1.0 + (at.y - sum / n) / 30.0, 0.6, 1.5)
 
+## A water wheel's share of its rating: 1 with running water (a river) or the sea's
+## edge beside it, 0 on dry ground.
+func _in_water(id: String, o: Dictionary) -> float:
+	var c := chunk_of_id(id)
+	if c == null:
+		return 0.0
+	var at: Vector3 = c.position + o["p"]
+	for a in 9:
+		var p := at if a == 8 else at + Vector3(cos(a * TAU / 8.0), 0, sin(a * TAU / 8.0)) * 2.5
+		if not is_nan(Water.river_surface(p.x, p.z)):
+			return 1.0
+		var cn := streamer.get_chunk(ChunkStreamer.chunk_of(p)) if streamer != null else null
+		if cn != null and ChunkGenerator.height_at(cn.data, p.x - cn.position.x, p.z - cn.position.z) < Water.LEVEL:
+			return 0.6 # tide and waves turn it, less than a river
+	return 0.0
+
 func _entries(net: Array, sun: Vector3) -> Array:
 	var out: Array = []
 	for id in net:
@@ -195,6 +222,7 @@ func _entries(net: Array, sun: Vector3) -> Array:
 		var f := 1.0
 		match String(Power.spec(o).get("source", "")):
 			"wind": f = float(_site.get(id, 1.0))
+			"water": f = float(_site.get(id, 0.0))
 			"sun": f = Power.solar_factor(float(o["r"]), sun)
 		out.append({"id": id, "o": o, "f": f, "en": bool(_en.get(id, true))})
 	return out
@@ -224,6 +252,9 @@ func _tick(dt: float) -> void:
 				_drive_door(e["id"], e["o"], bool(me.get("powered", false)) and bool(e["en"]))
 			elif Defences.is_defence(e["o"]):
 				_defend(e["id"], e["o"], Power.is_on(e["o"]) and bool(me.get("powered", false)), bool(e["en"]), dt)
+			elif Automation.is_auto(e["o"]):
+				var runs := Power.role(e["o"]) == "box" or (Power.is_on(e["o"]) and bool(me.get("powered", false)))
+				_automate(e["id"], e["o"], runs and bool(e["en"]), dt)
 
 # --- Signals --------------------------------------------------------------------------
 
@@ -361,6 +392,168 @@ func _drive_door(id: String, o: Dictionary, want: bool) -> void:
 	var slide := bool(Doors.spec(door).get("slide", false))
 	var wp: Vector3 = dc.position + door["p"] + Vector3(0, 1.2, 0)
 	Audio.play_at(("door/slide_open" if slide else "door/open") if want else ("door/slide_close" if slide else "door/close"), wp, -4.0)
+
+# --- Automation -----------------------------------------------------------------------
+
+## One tick of a belt, hopper, arm or machine (see Automation). `runs`: powered (a hopper
+## always), and told to by its signal if one is wired in.
+func _automate(id: String, o: Dictionary, runs: bool, dt: float) -> void:
+	var c := chunk_of_id(id)
+	if c == null:
+		return
+	var mem: Dictionary = _mem.get(id, {})
+	_mem[id] = mem
+	mem["seen"] = true
+	var pn := c.power_node(int(o["i"]))
+	var k := Automation.kind(o)
+	if pn != null:
+		pn.set_running(runs and k != "hopper")
+	if not runs or not _authority(c.key):
+		if pn != null and k == "belt":
+			pn.show_belt(o["st"].get("q", []), 0.0)
+		return
+	var s := Automation.spec(o)
+	match k:
+		"belt":
+			var at_end := Automation.roll(o, dt)
+			if at_end:
+				var next := _neighbour(id, o, c, true)
+				if not next.is_empty():
+					var q: Array = o["st"]["q"]
+					if Automation.put(next["o"], q[0][0]):
+						q.pop_front()
+						_moved(next["chunk"], c)
+			if pn != null:
+				pn.show_belt(o["st"].get("q", []), float(s.get("speed", 1.5)))
+		"arm":
+			mem["t"] = float(mem.get("t", 0.0)) + dt
+			if float(mem["t"]) < float(s.get("every", 1.0)):
+				return
+			mem["t"] = 0.0
+			var from := _neighbour(id, o, c, false)
+			var to := _neighbour(id, o, c, true)
+			if from.is_empty() or to.is_empty():
+				return
+			var it := Automation.take(from["o"], String(o["st"].get("flt", "")))
+			if it.is_empty():
+				return
+			if Automation.put(to["o"], it):
+				_moved(from["chunk"], to["chunk"])
+				if pn != null:
+					pn.swing()
+			else:
+				Automation.put(from["o"], it) # no room: back where it came from
+		_:
+			# Machines and hoppers: work (machines), then push what is made out the front.
+			if k != "hopper":
+				mem["w"] = float(mem.get("w", 0.0)) + dt
+				if float(mem["w"]) >= float(s.get("every", 5.0)):
+					mem["w"] = 0.0
+					if Automation.work(o, _vein_of(id, o, c, mem), _zone(c, o), Game.origin_here("machined", -1, c.key), _rng):
+						_touched[c.key] = c
+			mem["p"] = float(mem.get("p", 0.0)) + dt
+			if float(mem["p"]) >= Automation.PUSH_EVERY:
+				mem["p"] = 0.0
+				var next := _neighbour(id, o, c, true)
+				if not next.is_empty() and Automation.kind(next["o"]) != "arm":
+					var it := Automation.take(o)
+					if not it.is_empty():
+						if Automation.put(next["o"], it):
+							_moved(next["chunk"], c)
+						else:
+							Automation.put(o, it)
+
+var _rng := RandomNumberGenerator.new()
+var _touched := {} ## chunk key -> ChunkNode whose belts, machines or chests changed since the last save
+
+## Items moved between pieces: both chunks go into the next periodic save (marking them
+## dirty each move would hold the save off for as long as the belts run).
+func _moved(a: ChunkNode, b: ChunkNode) -> void:
+	_touched[a.key] = a
+	_touched[b.key] = b
+
+func _zone(c: ChunkNode, o: Dictionary) -> int:
+	var wp: Vector3 = c.position + o["p"]
+	return Eras.zone_level(wp.x, wp.z) if Eras.themed() else 99
+
+## The vein an auto-miner drills (worked out once per network rebuild).
+func _vein_of(id: String, o: Dictionary, c: ChunkNode, mem: Dictionary) -> String:
+	if Automation.kind(o) != "miner":
+		return ""
+	if int(mem.get("vv", -1)) != _ver:
+		mem["vv"] = _ver
+		mem["vein"] = Automation.vein_near(c, c.position + o["p"], float(Automation.spec(o).get("reach", 3.0)))
+	return String(mem["vein"])
+
+## The piece in front of (`ahead`) or behind a piece that items can go into or come out
+## of, as {chunk, o}, or {}. Cached until the networks are worked out again.
+func _neighbour(id: String, o: Dictionary, c: ChunkNode, ahead: bool) -> Dictionary:
+	var mem: Dictionary = _mem[id]
+	var key := "na" if ahead else "nb"
+	if int(mem.get(key + "v", -1)) == _ver:
+		var hit = mem.get(key)
+		if hit == null:
+			return {}
+		var hc := streamer.get_chunk(hit[0]) if streamer != null else null
+		if hc != null and int(hit[1]) < hc.data["objects"].size():
+			var ho: Dictionary = hc.data["objects"][hit[1]]
+			if not ho["st"].get("gone", false):
+				return {"chunk": hc, "o": ho}
+	mem[key + "v"] = _ver
+	mem[key] = null
+	var dist := Automation.reach(o) + 0.5
+	var at := Automation.ahead_of(o, c.position, dist if ahead else -dist)
+	var found := container_at(at, id)
+	if not found.is_empty():
+		mem[key] = [(found["chunk"] as ChunkNode).key, int(found["o"]["i"])]
+	return found
+
+## The belt, chest or machine standing at world point `at` (not `except`), as {chunk, o}.
+func container_at(at: Vector3, except := "") -> Dictionary:
+	if streamer == null:
+		return {}
+	var ck := ChunkStreamer.chunk_of(at)
+	var best := {}
+	var best_d := INF
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var cn := streamer.get_chunk(ck + Vector2i(dx, dz))
+			if cn == null:
+				continue
+			for ob in cn.data["objects"]:
+				if ob["st"].get("gone", false) or not Automation.is_container(ob["t"]):
+					continue
+				if Power.id_for(cn.key, int(ob["i"])) == except:
+					continue
+				var p: Vector3 = cn.position + ob["p"]
+				var d := Vector2(p.x - at.x, p.z - at.z).length()
+				if d <= maxf(Automation.reach(ob), 0.5) and absf(p.y - at.y) < 1.2 and d < best_d:
+					best_d = d
+					best = {"chunk": cn, "o": ob}
+	return best
+
+## A machine that was away (its chunk unloaded) makes up the cycles it missed, as far as
+## its store has room. Only drills: the others would have run out of what to work.
+func _machine_catch_up(id: String, o: Dictionary) -> void:
+	var k := Automation.kind(o)
+	if k != "miner" and k != "quarry":
+		return
+	var last := float(o["st"].get("pt", -1.0))
+	var c := chunk_of_id(id)
+	if last < 0.0 or c == null or not _authority(c.key) or not Power.is_on(o):
+		return
+	var secs := minf(Game.day - last, CATCH_UP_MAX) * Game.day_seconds
+	var cycles := mini(int(secs / float(Automation.spec(o).get("every", 5.0))), Automation.CATCH_UP_MAX)
+	var mem: Dictionary = _mem.get(id, {})
+	_mem[id] = mem
+	var vein := _vein_of(id, o, c, mem)
+	var made := 0
+	for n in cycles:
+		if not Automation.work(o, vein, _zone(c, o), Game.origin_here("machined", -1, c.key), _rng):
+			break
+		made += 1
+	if made > 0:
+		Game.mark_chunk_dirty(c.data)
 
 # --- Defences -------------------------------------------------------------------------
 
@@ -594,7 +787,7 @@ func _pose(id: String, o: Dictionary, r: Dictionary) -> void:
 	var running := false
 	match String(s.get("source", "")):
 		"fuel": running = float(r.get("out", 0.0)) > 0.0 or (Power.is_on(o) and bool(_en.get(id, true)) and float(o["st"].get("fuel", 0.0)) > 0.0)
-		"wind", "sun": running = float(r.get("out", 0.0)) > 1.0
+		"wind", "sun", "water": running = float(r.get("out", 0.0)) > 1.0
 	var closed := Power.is_on(o) if Signals.kind(o) in ["", "lever", "relay", "motor"] else _signal(id)
 	pn.apply(Power.is_on(o) and bool(r.get("powered", false)), running, closed)
 
@@ -603,6 +796,10 @@ func _pose(id: String, o: Dictionary, r: Dictionary) -> void:
 ## (or the only one there) saves them, so two players' copies don't fight.
 func _save_running() -> void:
 	var net = get_tree().root.get_node_or_null("Net")
+	for k in _touched:
+		if is_instance_valid(_touched[k]):
+			Game.mark_chunk_dirty((_touched[k] as ChunkNode).data)
+	_touched.clear()
 	for k in _index:
 		var e: Array = _index[k]
 		var c: ChunkNode = e[0]
@@ -734,6 +931,9 @@ static func verb(o: Dictionary, sneaking: bool) -> String:
 	var lv := Signals.verb(o, sneaking)
 	if lv != "":
 		return lv
+	var av := _auto_verb(o, sneaking, nm)
+	if av != "":
+		return av
 	if Power.role(o) == "switch" and not Signals.inputs(o).is_empty():
 		return "Check the %s" % nm
 	match String(s.get("role", "")):
@@ -772,7 +972,7 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 	var s := Power.spec(o)
 	var nm := String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("name", "piece")).to_lower()
 	var id := id_of(chunk, o)
-	if _use_logic(chunk, o, sneaking, nm):
+	if _use_logic(chunk, o, sneaking, nm) or _use_auto(chunk, o, sneaking, nm):
 		return
 	match String(s.get("role", "")):
 		"gen":
@@ -828,6 +1028,48 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 	if n != null and not _dirty:
 		_tick(0.0)
 
+## What Interact does on an automation piece ("" for the usual power use).
+static func _auto_verb(o: Dictionary, sneaking: bool, nm: String) -> String:
+	if not Automation.is_auto(o):
+		return ""
+	match Automation.kind(o):
+		"arm":
+			return "Set what it moves to what you hold" if sneaking else "Switch %s the %s" % ["off" if Power.is_on(o) else "on", nm]
+		"assembler":
+			if sneaking:
+				return "Pick what it makes"
+		"belt":
+			return "Switch %s the %s" % ["off" if Power.is_on(o) else "on", nm]
+	if Storage.capacity(o) > 0 and not sneaking:
+		return "Open the %s" % nm
+	return ""
+
+## Interact on an automation piece. False when it is the usual power use (on / off).
+func _use_auto(chunk: ChunkNode, o: Dictionary, sneaking: bool, nm: String) -> bool:
+	if not Automation.is_auto(o):
+		return false
+	match Automation.kind(o):
+		"arm":
+			if not sneaking:
+				return false
+			var it = Game.player.held_item() if Game.player is Player else null
+			o["st"]["flt"] = "" if it == null else String(it["type"])
+			Game.toast.emit("The %s now moves %s" % [nm, "everything" if it == null else String(ItemDB.def(it["type"]).get("name", it["type"]))])
+			Game.mark_chunk_dirty(chunk.data)
+			return true
+		"assembler":
+			if sneaking:
+				var what := Automation.next_recipe(o)
+				Game.toast.emit("The %s now makes %s" % [nm, what] if what != "" else "Put the ingredients for what it should make in it first")
+				Game.mark_chunk_dirty(chunk.data)
+				return true
+		"belt":
+			return false
+	if Storage.capacity(o) > 0 and not sneaking:
+		get_tree().call_group("trade_ui", "open_storage", o, chunk)
+		return true
+	return false
+
 ## Interact on a logic piece: pull a lever, press a button, or turn a setting on a step.
 ## False when the piece has nothing of the kind (and the power use goes ahead).
 func _use_logic(chunk: ChunkNode, o: Dictionary, sneaking: bool, nm: String) -> bool:
@@ -878,7 +1120,9 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 	var r := network_of(id)
 	var me: Dictionary = r.get("pieces", {}).get(id, {})
 	var lines := signal_lines(id, o)
-	if Power.role(o) == "logic":
+	if Automation.is_auto(o):
+		lines.append_array(Automation.lines(o))
+	if Power.role(o) == "logic" or Power.role(o) == "box":
 		return lines
 	match String(s.get("role", "")):
 		"gen":
@@ -892,6 +1136,9 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 					lines.append("%s  ·  making %s of %s" % ["Sails locked" if not Power.is_on(o) else "Turning", Power.watts(out), Power.watts(float(s["watts"]))])
 					var f := float(_site.get(id, 1.0))
 					lines.append("Wind %d%%  ·  %s" % [roundi(wind * 100.0), "well exposed" if f > 1.15 else ("sheltered" if f < 0.85 else "open ground")])
+				"water":
+					lines.append("Making %s of %s" % [Power.watts(out), Power.watts(float(s["watts"]))])
+					lines.append("In running water" if float(_site.get(id, 0.0)) >= 1.0 else ("At the sea's edge" if float(_site.get(id, 0.0)) > 0.0 else "On dry ground: build it in a river"))
 				"sun":
 					var f := Power.solar_factor(float(o["r"]), Atmosphere.sun_dir)
 					lines.append("Making %s of %s" % [Power.watts(out), Power.watts(float(s["watts"]))])

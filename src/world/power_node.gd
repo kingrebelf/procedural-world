@@ -39,6 +39,18 @@ var _smoke_mat: StandardMaterial3D
 
 const TURN_SPEED := 2.4 ## rad/s a turret head turns
 
+# Automation (Automation): a belt's riding items, a machine's turning part, an arm.
+var _belt: MultiMeshInstance3D
+var _belt_q: Array = [] ## [[colour, how far along], ...] as drawn
+var _belt_v := 0.0
+var _spinner: Node3D
+var _spin_axis := Vector3.UP
+var _spin_rate := 0.0
+var _spin_max := 9.0
+var _machine_on := false
+var _arm: Node3D
+var _arm_t := 0.0
+
 const BULB_ENERGY := 5.0 ## a lit bulb's own brightness (it lights; nothing else glows)
 const FILAMENT := 7.0 ## of full brightness per second a bulb warms up or fades
 const OPEN_ANGLE := -1.75 ## how far an open knife switch's blade hangs out
@@ -73,6 +85,36 @@ func setup(c: ChunkNode, o: Dictionary) -> void:
 		_clapper.position = df["clapper"]
 		_clapper.add_child(_mesh("bell_clapper"))
 		add_child(_clapper)
+	var au: Dictionary = _spec.get("auto", {})
+	if au.get("kind", "") == "belt":
+		_belt = MultiMeshInstance3D.new()
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.22, 0.14, 0.22)
+		mm.mesh = bm
+		mm.instance_count = 4
+		mm.visible_instance_count = 0
+		_belt.multimesh = mm
+		var bmat := StandardMaterial3D.new()
+		bmat.vertex_color_use_as_albedo = true
+		bmat.roughness = 0.8
+		_belt.material_override = bmat
+		add_child(_belt)
+	if au.has("spin") or _spec.has("spin"):
+		var sp: Dictionary = au.get("spin", _spec.get("spin", {}))
+		_spin_max = float(sp.get("rate", 9.0))
+		_spinner = Node3D.new()
+		_spinner.position = sp["pos"]
+		_spinner.add_child(_mesh(String(sp["part"])))
+		_spin_axis = sp.get("axis", Vector3.UP)
+		add_child(_spinner)
+	if au.has("arm"):
+		_arm = Node3D.new()
+		_arm.position = au["arm"]
+		_arm.add_child(_mesh("robot_arm"))
+		add_child(_arm)
 	if _spec.has("lamp"):
 		_make_lamp(_spec["lamp"])
 		if _tip != null:
@@ -114,7 +156,7 @@ func setup(c: ChunkNode, o: Dictionary) -> void:
 		_smoke.position = (_spec["smoke"] as Vector3) - Vector3(0, 0.75, 0)
 		add_child(_smoke)
 		_set_smoke(false)
-	set_process(_head != null or _blade != null or _spec.has("lamp") or _turn != null)
+	set_process(_head != null or _blade != null or _spec.has("lamp") or _turn != null or _belt != null)
 
 func _mesh(part: String) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -181,7 +223,7 @@ func apply(lit: bool, running: bool, closed: bool) -> void:
 	if _running != running:
 		_running = running
 		_set_smoke(running and _smoke != null)
-	if not is_processing() and (_light != null or _blade != null or _head != null):
+	if not is_processing() and (_light != null or _blade != null or _head != null or _spinner != null):
 		set_process(true)
 
 func _pose_blade() -> void:
@@ -259,6 +301,29 @@ func set_flame(on: bool) -> void:
 	if _light == null:
 		return
 
+## A machine works (its drill or blade turns) or stops.
+func set_running(on: bool) -> void:
+	if _machine_on == on:
+		return
+	_machine_on = on
+	if (_spinner != null or _belt != null) and not is_processing():
+		set_process(true)
+
+## A belt's items, as the grid has them: drawn moving on at `speed` until the next tick.
+func show_belt(q: Array, speed: float) -> void:
+	_belt_q.clear()
+	for e in q:
+		var c: Color = ItemDB.def(String(e[0]["type"])).get("color", Color(0.6, 0.55, 0.5))
+		_belt_q.append([c, float(e[1])])
+	_belt_v = speed
+	if not is_processing():
+		set_process(true)
+
+## A robot arm makes one move.
+func swing() -> void:
+	_arm_t = 1.0
+	set_process(true)
+
 ## The bell's clapper swings.
 func ring() -> void:
 	_ring = 1.0
@@ -324,6 +389,26 @@ func _process(delta: float) -> void:
 		_flash_t -= delta
 		if _flash_t <= 0.0:
 			_flash.visible = false
+		busy = true
+	if _belt != null:
+		var mm := _belt.multimesh
+		var n := mini(_belt_q.size(), mm.instance_count)
+		var ahead := 2.0
+		for i in n:
+			var e: Array = _belt_q[i]
+			e[1] = minf(float(e[1]) + _belt_v * delta, minf(1.0, ahead - Automation.GAP))
+			ahead = float(e[1])
+			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, float(i) * 0.7), Vector3(0, 0.27, float(e[1]) - 0.5)))
+			mm.set_instance_color(i, e[0])
+		mm.visible_instance_count = n
+		busy = busy or (n > 0 and _belt_v > 0.0)
+	if _spinner != null:
+		_spin_rate = move_toward(_spin_rate, _spin_max if (_machine_on or _running) else 0.0, delta * _spin_max * 0.6)
+		_spinner.rotate_object_local(_spin_axis, _spin_rate * delta)
+		busy = busy or _spin_rate > 0.0
+	if _arm != null and _arm_t > 0.0:
+		_arm_t = maxf(0.0, _arm_t - delta * 1.6)
+		_arm.rotation.y = sin((1.0 - _arm_t) * PI) * PI
 		busy = true
 	if _clapper != null and _ring > 0.0:
 		_ring = maxf(0.0, _ring - delta * 2.0)

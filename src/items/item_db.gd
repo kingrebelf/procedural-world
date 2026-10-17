@@ -798,6 +798,8 @@ const UNLOCK := {
 	"logic_delay": 12, "charge_sensor": 12, "motion_sensor": 13, "door_motor": 13,
 	"alarm_bell": 10, "spike_trap": 11, "fence_post": 12, "searchlight": 13, "auto_turret": 14, "flame_trap": 15,
 	"heavy_turret": 18,
+	"conveyor_belt": 12, "hopper": 11, "robot_arm": 13, "auto_miner": 13, "quarry_drill": 16, "electric_furnace": 14,
+	"power_sawmill": 12, "assembler": 15, "water_wheel": 10, "steam_engine": 12,
 	# The medieval age, step by step: stone and hide, then bronze (forge), iron and
 	# studded leather (anvil), then steel, and the finest work last.
 	"shortbow": 2, "javelin": 2, "sickle": 2, "saw": 2, "shovel": 2, "lamp_oil": 2, "quill_ink": 2, "antidote": 2,
@@ -1047,7 +1049,9 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"lever": 10, "push_button": 8, "pressure_plate": 22, "motion_sensor": 40, "daylight_sensor": 24, "logic_timer": 26,
 	"logic_clock": 34, "logic_gate": 24, "logic_latch": 22, "logic_counter": 26, "logic_delay": 24, "relay": 20,
 	"charge_sensor": 30, "door_motor": 70, "auto_turret": 260, "heavy_turret": 520, "fence_post": 18, "spike_trap": 70,
-	"flame_trap": 120, "alarm_bell": 40, "searchlight": 140}
+	"flame_trap": 120, "alarm_bell": 40, "searchlight": 140, "conveyor_belt": 16, "hopper": 30, "robot_arm": 90,
+	"auto_miner": 220, "quarry_drill": 380, "electric_furnace": 260, "power_sawmill": 160, "assembler": 300,
+	"water_wheel": 120, "steam_engine": 280}
 
 ## Weight of one item in kg, where it differs from the default for its kind.
 const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,

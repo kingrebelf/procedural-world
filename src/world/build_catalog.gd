@@ -213,6 +213,34 @@ const PIECES := {
 		"power": {"role": "node", "links": 1, "term": Vector3(0.0, -0.18, 0.05), "sterm": Vector3(0.07, -0.18, 0.05), "logic": {"kind": "charge", "out": true, "in": 0}}},
 	"door_motor": {"name": "Door Motor", "models": [], "proc": "pw_door_motor", "snap": "free", "mount": "wall", "mat": "metal", "hp": 12.0, "era": -1,
 		"power": {"role": "use", "watts": 80.0, "prio": 2, "term": Vector3(-0.12, -0.2, 0.08), "sterm": Vector3(0.12, -0.2, 0.08), "logic": {"kind": "motor", "out": false, "in": 2}}},
+	# Automation (Automation): belts, hoppers, arms and machines. Their out side is
+	# their local +z (away from you as you place them).
+	"conveyor_belt": {"name": "Conveyor Belt", "models": [], "proc": "pw_belt", "snap": "belt", "mat": "metal", "hp": 12.0, "era": -1,
+		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6}}},
+	"hopper": {"name": "Hopper", "models": [], "proc": "pw_hopper", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "storage": 8, "foot": 0.5,
+		"power": {"role": "box", "links": 0, "sterm": Vector3(0.0, 0.3, -0.42), "auto": {"kind": "hopper"}}},
+	"robot_arm": {"name": "Robot Arm", "models": [], "proc": "pw_robot_arm", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "foot": 0.3,
+		"power": {"role": "use", "watts": 60.0, "prio": 1, "term": Vector3(0.0, 0.2, -0.25), "auto": {"kind": "arm", "every": 1.2, "arm": Vector3(0, 0.5, 0)}}},
+	"auto_miner": {"name": "Auto-miner", "models": [], "proc": "pw_auto_miner", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
+		"power": {"role": "use", "watts": 400.0, "prio": 1, "term": Vector3(-0.5, 0.9, 0.3),
+			"auto": {"kind": "miner", "every": 8.0, "reach": 3.5, "spin": {"part": "drill_bit", "pos": Vector3(0, 0.95, -0.72), "axis": Vector3(0, 0, 1)}}}},
+	"quarry_drill": {"name": "Quarry Drill", "models": [], "proc": "pw_quarry", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1, "storage": 16, "foot": 1.0,
+		"power": {"role": "use", "watts": 900.0, "prio": 1, "term": Vector3(0.7, 1.2, 0.0),
+			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.25, 0), "axis": Vector3.UP}}}},
+	"electric_furnace": {"name": "Electric Furnace", "models": [], "proc": "pw_furnace", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
+		"power": {"role": "use", "watts": 1500.0, "prio": 1, "term": Vector3(0.0, 1.5, 0.3), "auto": {"kind": "smelter", "every": 6.0}}},
+	"power_sawmill": {"name": "Powered Sawmill", "models": [], "proc": "pw_sawmill", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 12, "foot": 0.9,
+		"power": {"role": "use", "watts": 600.0, "prio": 1, "term": Vector3(0.5, 0.6, 0.6),
+			"auto": {"kind": "sawmill", "every": 3.0, "spin": {"part": "saw_blade", "pos": Vector3(0, 0.88, 0), "axis": Vector3(1, 0, 0)}}}},
+	"assembler": {"name": "Assembler", "models": [], "proc": "pw_assembler", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 20, "foot": 0.8,
+		"power": {"role": "use", "watts": 800.0, "prio": 1, "term": Vector3(0.0, 1.6, 0.4), "auto": {"kind": "assembler", "every": 8.0}}},
+	"water_wheel": {"name": "Water Wheel", "models": [], "proc": "pw_water_wheel", "snap": "free", "mat": "wood", "hp": 60.0, "era": -1,
+		"power": {"role": "gen", "source": "water", "watts": 600.0, "links": 4, "term": Vector3(0.9, 1.9, 0.0),
+			"spin": {"part": "wheel_rim", "pos": Vector3(0, 1.4, 0), "axis": Vector3(1, 0, 0), "rate": 1.2}}},
+	"steam_engine": {"name": "Steam Engine", "models": [], "proc": "pw_steam", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1,
+		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(-0.35, 2.6, 0.3),
+			"spin": {"part": "flywheel", "pos": Vector3(0.62, 0.75, -0.2), "axis": Vector3(1, 0, 0), "rate": 5.0},
+			"fuel": {"coal": 300.0, "charcoal": 300.0, "coal_briquettes": 320.0, "peat": 150.0, "wood": 60.0, "firewood": 50.0}}},
 	# Powered defences (Defences): turrets, an electric fence, traps, an alarm bell and a
 	# searchlight. All prio 2: the last to brown out.
 	"auto_turret": {"name": "Auto Turret", "models": [], "proc": "pw_turret", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1,
@@ -700,6 +728,11 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 	if mode == "free":
 		var yaw := snappedf(look_yaw + PI, PI / 12.0) + turn * PI * 0.5
 		return {"pos": Vector3(snappedf(hit.x, 0.1), hit.y, snappedf(hit.z, 0.1)), "yaw": yaw}
+	if mode == "belt":
+		# Conveyor belts: on a 1 m grid, running away from you (their +z), turned in
+		# quarter turns.
+		var by := snappedf(look_yaw + PI, PI * 0.5) + turn * PI * 0.5
+		return {"pos": Vector3(floorf(hit.x) + 0.5, hit.y, floorf(hit.z) + 0.5), "yaw": by}
 	var g: float = d["grid"]
 	var storey: float = d["storey"]
 	var ramp: bool = d.get("ramp", false)
@@ -765,7 +798,13 @@ static func candidates(id: String, hit: Vector3, look_yaw: float, turn: int, anc
 	var first := snap(id, hit, look_yaw, turn, anchor, on_ground, ctx)
 	var d := def(id)
 	var mode: String = d.get("snap", "free")
-	if mode == "free" or ctx.get("free", false) or not ctx.has("hit_pos"):
+	if mode == "belt" and ctx.has("hit_pos") and String(ctx.get("hit_id", "")) == id:
+		# Aimed at a belt: the next one carries on from its end, the same way (turned
+		# with the turn key).
+		var hy := float(ctx.get("hit_yaw", 0.0))
+		var nx: Vector3 = (ctx["hit_pos"] as Vector3) + Basis(Vector3.UP, hy) * Vector3(0, 0, 1)
+		return [{"pos": nx, "yaw": hy + turn * PI * 0.5}, first]
+	if mode == "free" or mode == "belt" or ctx.get("free", false) or not ctx.has("hit_pos"):
 		return [first]
 	var hd := def(String(ctx.get("hit_id", "")))
 	if float(hd.get("grid", 0.0)) != float(d["grid"]):
@@ -969,7 +1008,7 @@ static func nearest_in(near: Array, pos: Vector3, radius: float):
 	var best = null
 	var best_d := radius
 	for e in near:
-		if def(e["id"]).get("snap") == "free":
+		if def(e["id"]).get("snap") in ["free", "belt"]:
 			continue
 		var dd: float = (e["pos"] as Vector3).distance_to(pos)
 		if dd < best_d:

@@ -4672,3 +4672,51 @@ func test_fov_is_horizontal() -> void:
 	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
 	check(absf(gs.vertical_fov(121.28) - 90.0) < 0.05, "the old 90 tall is about 121 across")
 	check(is_equal_approx(float(gs.DEFAULTS["fov"]), 90.0), "the default view is 90 degrees across")
+
+func test_power_automation() -> void:
+	var belt := _pw("conveyor_belt", 0)
+	var rock := ItemDB.make("stone", 1, 1.0, {})
+	check(Automation.put(belt, rock) and not Automation.put(belt, rock.duplicate()), "a belt takes an item at its start, then not another right on top")
+	Automation.roll(belt, 0.3)
+	check(Automation.put(belt, rock.duplicate()), "once the first has moved on, the next goes on")
+	var ended := false
+	for n in 10:
+		ended = Automation.roll(belt, 0.1) or ended
+	check(ended and float(belt["st"]["q"][0][1]) == 1.0, "the front item reaches the end")
+	check(float(belt["st"]["q"][0][1]) - float(belt["st"]["q"][1][1]) >= Automation.GAP - 0.001, "items keep their gap")
+	check(Automation.take(belt)["type"] == "stone" and belt["st"]["q"].size() == 1, "an arm can take the front item off")
+	# A furnace smelts ore put in it and gives out only the ingots.
+	var fur := _pw("electric_furnace", 1)
+	check(not Automation.put(fur, ItemDB.make("planks", 1, 1.0, {})), "a furnace won't take planks")
+	for n in 4:
+		check(Automation.put(fur, ItemDB.make("iron_ore", 1, 1.0, {})), "a furnace takes iron ore")
+	var rng := RandomNumberGenerator.new()
+	check(Automation.work(fur, "", 10, {}, rng), "it smelts")
+	var inv := Storage.open(fur)
+	check(inv.count("iron_ingot") >= 1 and inv.count("iron_ore") < 4, "ore became ingots (%d ingots, %d ore)" % [inv.count("iron_ingot"), inv.count("iron_ore")])
+	check(Automation.take(fur)["type"] == "iron_ingot", "it lets go of the ingots, not the ore")
+	# A sawmill saws logs.
+	var saw := _pw("power_sawmill", 2)
+	Automation.put(saw, ItemDB.make("wood", 1, 1.0, {}))
+	check(Automation.work(saw, "", 10, {}, rng) and Storage.open(saw).count("planks") == 6, "a sawmill makes 6 planks a log")
+	# An auto-miner drills its vein for ever; with no vein it does nothing.
+	var miner := _pw("auto_miner", 3)
+	check(not Automation.work(miner, "", 10, {}, rng), "no vein, no ore")
+	for n in 3:
+		Automation.work(miner, "iron_vein", 10, {}, rng)
+	check(Storage.open(miner).count("iron_ore") == 3, "three cycles, three iron ore")
+	check(not Automation.put(miner, ItemDB.make("stone", 1, 1.0, {})), "nothing goes into a miner")
+	check(Automation.main_yield("rock") == "stone", "a quarry digs stone")
+	# An assembler picks a recipe it has the makings for.
+	var asm := _pw("assembler", 4)
+	check(Automation.next_recipe(asm) == "", "an empty assembler has nothing to make")
+	Automation.put(asm, ItemDB.make("copper_wire", 1, 1.0, {}))
+	Automation.put(asm, ItemDB.make("resin", 1, 1.0, {}))
+	var what := Automation.next_recipe(asm)
+	check(what != "" and Automation.work(asm, "", 10, {}, rng), "with wire and resin in it, it makes something (%s)" % what)
+	check(Automation.is_container("b:storage_chest") and Automation.is_container("b:conveyor_belt") and not Automation.is_container("b:robot_arm"), "chests and belts hold items, arms don't")
+	var wheel := _pw("water_wheel", 5)
+	var r := Power.solve([{"id": "w", "o": wheel, "f": 1.0}, {"id": "l", "o": _pw("lamp_ceiling", 6), "f": 1.0}], {}, 1.0)
+	check(is_equal_approx(float(r["supply"]), 600.0), "a water wheel in a river makes its full 600 W")
+	r = Power.solve([{"id": "w", "o": _pw("water_wheel", 5), "f": 0.0}], {}, 1.0)
+	check(float(r["supply"]) == 0.0, "and nothing on dry ground")

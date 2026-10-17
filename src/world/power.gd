@@ -5,7 +5,8 @@ class_name Power
 ##   role:   gen (makes power), store (holds it), use (draws it), node (a pole or junction
 ##           cables meet at), switch (passes power only while closed).
 ##   watts:  most a generator makes / what a consumer draws, in W.
-##   source: fuel (burns what is in its fuel store), wind, sun.
+##   source: fuel (burns what is in its fuel store), wind, sun, water (a wheel in running
+##           water: full output, or none on dry ground).
 ##   fuel:   item id -> seconds it runs at full output.
 ##   store / rate: a battery's size in Wh and how fast it charges or discharges, in W.
 ##   prio:   consumers brown out lowest first when there isn't enough (0 lights,
@@ -171,6 +172,8 @@ static func solve(entries: Array, env: Dictionary, dt: float) -> Dictionary:
 					if runs:
 						if src == "wind":
 							w = rated * wind_curve(float(env.get("wind", 0.0))) * float(e.get("f", 1.0))
+						elif src == "water":
+							w = rated * float(e.get("f", 0.0))
 						elif src == "sun":
 							w = rated * float(e.get("f", 1.0)) * (1.0 - 0.75 * float(env.get("cloud", 0.0)))
 					out["out"] = w

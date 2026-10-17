@@ -128,6 +128,19 @@ func _run() -> void:
 			turn.add_child(tip)
 			root.add_child(turn)
 			box = box.merge(AABB(Vector3(-0.6, 0.0, -1.5), Vector3(1.2, float((df["head"] as Vector3).y) + 0.8, 2.0)))
+		var au: Dictionary = s.get("auto", {})
+		var spn: Dictionary = au.get("spin", s.get("spin", {}))
+		if not spn.is_empty():
+			var smi := MeshInstance3D.new()
+			smi.mesh = PowerKit.part(String(spn["part"]))
+			smi.position = spn["pos"]
+			root.add_child(smi)
+		if au.has("arm"):
+			var ami := MeshInstance3D.new()
+			ami.mesh = PowerKit.part("robot_arm")
+			ami.position = au["arm"]
+			ami.rotation.y = 0.8
+			root.add_child(ami)
 		if df.has("clapper"):
 			var cm := MeshInstance3D.new()
 			cm.mesh = PowerKit.part("bell_clapper")

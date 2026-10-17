@@ -456,6 +456,111 @@ static func proc(k: MeshKit, what: String) -> void:
 				beam(k, "cast_iron", b * Vector3(0, 0, 0.65), Vector3(0, 1.15, 0), 0.03, 6, GASIFIER)
 			k.cylinder("cast_iron", I.translated(Vector3(0, 1.15, 0)), 0.16, 0.16, 0.12, 16, true, 0.0, 1, GASIFIER)
 			k.box("cast_iron", I.translated(Vector3(0, 0.45, 0.15)), Vector3(0.2, 0.22, 0.14), GASIFIER)
+		"pw_belt":
+			# A 1 m conveyor: a steel frame on four legs, rollers and a rubber belt running
+			# along +z, with the drive motor at the side.
+			for x in [-0.32, 0.32]:
+				k.box("cast_iron", I.translated(Vector3(x, 0.17, 0)), Vector3(0.04, 0.08, 1.0), GASIFIER.darkened(0.1))
+				for z in [-0.42, 0.42]:
+					beam(k, "cast_iron", Vector3(x, 0.0, z), Vector3(x, 0.15, z), 0.02)
+			for n in 5:
+				k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.17, -0.4 + n * 0.2)), 0.03, 0.03, 0.6, 8, true, 0.0, 1, GASIFIER.lightened(0.05))
+			k.box("rubber", I.translated(Vector3(0, 0.205, 0)), Vector3(0.58, 0.012, 1.0))
+			k.cylinder("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.4, 0.14, 0.0)), 0.05, 0.05, 0.12, 10, true, 0.0, 1, ENGINE_GREEN)
+		"pw_hopper":
+			# A riveted steel funnel on four legs, its spout out the +z side.
+			for x in [-0.36, 0.36]:
+				for z in [-0.36, 0.36]:
+					beam(k, "cast_iron", Vector3(x, 0, z), Vector3(x * 0.9, 0.55, z * 0.9), 0.025)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.45, 0)), 0.18, 0.46, 0.5, 4, false, 0.0, 1, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 0.4, 0.32)), Vector3(0.18, 0.12, 0.3), GASIFIER.darkened(0.1))
+			rivets(k, Vector3(-0.3, 0.92, -0.3), Vector3(0.3, 0.92, -0.3), 4, Vector3(0, 0.3, -1))
+		"pw_robot_arm":
+			# A turntable base with its motor; the arm is a part that swings round.
+			k.cylinder("cast_iron", I, 0.24, 0.26, 0.12, 18, true, 0.0, 1, GASIFIER.darkened(0.1))
+			k.cylinder("painted", I.translated(Vector3(0, 0.12, 0)), 0.16, 0.16, 0.36, 16, true, 0.0, 1, Color(0.78, 0.55, 0.12))
+			k.box("cast_iron", I.translated(Vector3(0, 0.15, -0.22)), Vector3(0.14, 0.14, 0.1), GASIFIER)
+		"pw_auto_miner":
+			# A skid-mounted drill rig: engine house with the motor, a gearbox and a boom
+			# that holds the drill out front (-z) at the rock. The bit is a part that turns.
+			k.box("planks", I.translated(Vector3(0, 0.06, 0)), Vector3(1.1, 0.12, 1.4))
+			k.box("painted", I.translated(Vector3(0, 0.55, 0.25)), Vector3(0.9, 0.85, 0.8), Color(0.62, 0.5, 0.14))
+			k.box("painted", I.translated(Vector3(0, 1.0, 0.25)), Vector3(0.96, 0.06, 0.86), Color(0.52, 0.42, 0.12))
+			for n in 6:
+				k.box("cast_iron", I.translated(Vector3(-0.47, 0.5, 0.0 + n * 0.1)), Vector3(0.02, 0.4, 0.05), GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 0.95, -0.3)), Vector3(0.36, 0.36, 0.4), GASIFIER)
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.95, -0.5)), 0.08, 0.08, 0.2, 12, true, 0.0, 1, GASIFIER.darkened(0.2))
+			beam(k, "cast_iron", Vector3(-0.3, 0.12, -0.5), Vector3(-0.15, 0.9, -0.5), 0.03)
+			beam(k, "cast_iron", Vector3(0.3, 0.12, -0.5), Vector3(0.15, 0.9, -0.5), 0.03)
+			k.box("cast_iron", I.translated(Vector3(0, 0.3, 0.72)), Vector3(0.3, 0.22, 0.1), GASIFIER)
+		"pw_quarry":
+			# A derrick: four legs braced over the hole, a winch house, the drill shaft
+			# down the middle (its bit is a part that turns).
+			for x in [-0.8, 0.8]:
+				for z in [-0.8, 0.8]:
+					beam(k, "cast_iron", Vector3(x, 0, z), Vector3(x * 0.25, 2.6, z * 0.25), 0.045, 6, GASIFIER)
+			for y in [0.8, 1.6]:
+				var w: float = 0.8 - float(y) * 0.21
+				for e in [[Vector3(-w, y, -w), Vector3(w, y, -w)], [Vector3(w, y, -w), Vector3(w, y, w)], [Vector3(w, y, w), Vector3(-w, y, w)], [Vector3(-w, y, w), Vector3(-w, y, -w)]]:
+					beam(k, "cast_iron", e[0], e[1], 0.025, 6, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 2.65, 0)), Vector3(0.5, 0.12, 0.5), GASIFIER)
+			beam(k, "cast_iron", Vector3(0, 0.3, 0), Vector3(0, 2.6, 0), 0.04, 8, GASIFIER.darkened(0.2))
+			k.box("painted", I.translated(Vector3(0.7, 0.45, 0.0)), Vector3(0.5, 0.9, 0.6), ENGINE_GREEN)
+			k.cylinder("cobble", I.translated(Vector3(0, -0.02, 0)), 0.55, 0.6, 0.06, 18)
+		"pw_furnace":
+			# A brick-lined steel box with a heavy door, a crucible chute on top and a
+			# junction box; the heat is inside (nothing glows).
+			k.box("painted", I.translated(Vector3(0, 0.65, 0)), Vector3(1.2, 1.3, 1.1), Color(0.3, 0.3, 0.32))
+			k.box("cast_iron", I.translated(Vector3(0, 0.6, -0.56)), Vector3(0.6, 0.6, 0.06), GASIFIER.darkened(0.2))
+			beam(k, "cast_iron", Vector3(-0.2, 0.6, -0.62), Vector3(0.2, 0.6, -0.62), 0.02)
+			for y in [0.1, 1.2]:
+				k.box("cast_iron", I.translated(Vector3(0, y, 0)), Vector3(1.24, 0.08, 1.14), GASIFIER)
+			k.cylinder("cast_iron", I.translated(Vector3(-0.3, 1.3, 0.2)), 0.12, 0.08, 0.5, 12, true, 0.0, 1, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0.3, 1.38, 0.0)), Vector3(0.3, 0.16, 0.5), GASIFIER.darkened(0.1))
+			k.box("cast_iron", I.translated(Vector3(0, 0.4, 0.58)), Vector3(0.3, 0.12, 0.12), GASIFIER)
+		"pw_sawmill":
+			# A timber bench with a feed table; the big circular blade is a part.
+			k.box("planks", I.translated(Vector3(0, 0.72, 0)), Vector3(0.9, 0.08, 1.8))
+			for x in [-0.38, 0.38]:
+				for z in [-0.8, 0.8]:
+					timber(k, Vector3(x, 0, z), Vector3(x, 0.7, z), 0.09)
+			k.box("painted", I.translated(Vector3(0.0, 0.35, 0.0)), Vector3(0.5, 0.45, 0.6), ENGINE_GREEN)
+			k.box("cast_iron", I.translated(Vector3(0, 0.98, 0)), Vector3(0.06, 0.3, 0.7), GASIFIER.lightened(0.05))
+		"pw_assembler":
+			# A machine cabinet: its works (gear trains and a stamping head) on the front
+			# behind glass, a feed hopper on top, the chute out the back (+z).
+			k.box("painted", I.translated(Vector3(0, 0.75, 0)), Vector3(1.2, 1.5, 1.0), Color(0.36, 0.4, 0.46))
+			k.box("painted", I.translated(Vector3(0, 0.75, -0.505)), Vector3(1.0, 1.1, 0.01), Color(0.18, 0.2, 0.22))
+			for g in 3:
+				k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(-0.3 + g * 0.3, 1.0, -0.53)), 0.11 - g * 0.02, 0.11 - g * 0.02, 0.03, 18, true, 0.0, 1, BRASS)
+			k.box("cast_iron", I.translated(Vector3(0, 0.55, -0.55)), Vector3(0.3, 0.3, 0.06), GASIFIER)
+			beam(k, "cast_iron", Vector3(0, 0.75, -0.56), Vector3(0, 0.95, -0.56), 0.025)
+			k.box("clear_glass", I.translated(Vector3(0, 0.75, -0.6)), Vector3(1.04, 1.14, 0.006))
+			for x in [-0.52, 0.52]:
+				k.box("painted", I.translated(Vector3(x, 0.75, -0.56)), Vector3(0.04, 1.18, 0.1), Color(0.3, 0.33, 0.38))
+			k.cylinder("cast_iron", I.translated(Vector3(0, 1.5, 0)), 0.12, 0.34, 0.4, 4, false, 0.0, 1, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 0.3, 0.56)), Vector3(0.3, 0.16, 0.12), GASIFIER)
+		"pw_water_wheel":
+			# An undershot wheel's frame: two timber A-frames and the axle bearing; the
+			# wheel is a part that turns about x.
+			for x in [-0.75, 0.75]:
+				timber(k, Vector3(x, 0, -1.0), Vector3(x, 1.5, 0), 0.12)
+				timber(k, Vector3(x, 0, 1.0), Vector3(x, 1.5, 0), 0.12)
+				k.box("cast_iron", I.translated(Vector3(x, 1.42, 0)), Vector3(0.16, 0.14, 0.2), GASIFIER)
+			k.box("painted", I.translated(Vector3(0.95, 1.5, 0.0)), Vector3(0.3, 0.4, 0.4), ENGINE_GREEN)
+		"pw_steam":
+			# A horizontal boiler with its firebox, a tall stack, the cylinder and the
+			# flywheel (a part) driving a dynamo.
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.75, -0.9)), 0.45, 0.45, 1.6, 20, true, 0.0, 1, GASIFIER)
+			for z in [-0.75, -0.25, 0.25]:
+				k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.75, z)), 0.47, 0.47, 0.04, 20, true, 0.0, 1, GASIFIER.darkened(0.2))
+			k.box("cast_iron", I.translated(Vector3(0, 0.35, 0.78)), Vector3(0.9, 0.7, 0.5), GASIFIER.darkened(0.1))
+			k.box("cast_iron", I.translated(Vector3(0, 0.3, 1.04)), Vector3(0.3, 0.26, 0.03), GASIFIER.darkened(0.3))
+			k.cylinder("rust", I.translated(Vector3(-0.35, 1.0, 0.3)), 0.11, 0.1, 1.6, 12)
+			k.box("painted", I.translated(Vector3(0.45, 0.6, -0.2)), Vector3(0.18, 0.3, 0.6), ENGINE_GREEN)
+			k.cylinder("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.62, 0.75, 0.45)), 0.18, 0.18, 0.3, 14, true, 0.0, 1, Color(0.2, 0.2, 0.22))
+			for x in [-0.4, 0.4]:
+				k.box("planks", I.translated(Vector3(x, 0.05, 0)), Vector3(0.14, 0.1, 2.0))
 		"pw_lamp_ceiling":
 			# A ceiling rose, a cloth flex, and a white enamel shade; the bulb is a part.
 			k.cylinder("painted", I.translated(Vector3(0, -0.03, 0)), 0.06, 0.06, 0.03, 12, true, 0.0, 1, ENAMEL)
@@ -626,6 +731,52 @@ static func part(name: String) -> ArrayMesh:
 				k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x, 0, 0)), 0.03, 0.03, 0.06, 8)
 		"search_lens":
 			k.cylinder("glass", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3.ZERO), 0.25, 0.25, 0.01, 22)
+		"robot_arm":
+			# Two links and a gripper, reaching out along -z from the turntable.
+			k.cylinder("painted", I, 0.1, 0.1, 0.12, 12, true, 0.0, 1, Color(0.78, 0.55, 0.12))
+			beam(k, "painted", Vector3(0, 0.06, 0), Vector3(0, 0.45, -0.25), 0.04, 8, Color(0.78, 0.55, 0.12))
+			k.sphere("cast_iron", I.translated(Vector3(0, 0.45, -0.25)), 0.055, 5, 10)
+			beam(k, "painted", Vector3(0, 0.45, -0.25), Vector3(0, 0.2, -0.62), 0.035, 8, Color(0.78, 0.55, 0.12))
+			for x in [-0.04, 0.04]:
+				k.box("cast_iron", I.translated(Vector3(x, 0.14, -0.64)), Vector3(0.015, 0.1, 0.03), GASIFIER)
+		"drill_bit":
+			# A spiral rock drill along -z.
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0, 0)), 0.07, 0.07, 0.1, 10, true, 0.0, 1, GASIFIER)
+			for n in 8:
+				var b := Basis(Vector3(0, 0, 1), n * 0.8)
+				k.box("cast_iron", Transform3D(b, Vector3(0, 0, -0.12 - n * 0.06)), Vector3(0.16 - n * 0.012, 0.02, 0.04), GASIFIER.lightened(0.08))
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0, -0.1)), 0.025, 0.004, 0.5, 8, true, 0.0, 1, GASIFIER.lightened(0.08))
+		"quarry_bit":
+			k.cylinder("cast_iron", I.translated(Vector3(0, -0.2, 0)), 0.2, 0.06, 0.3, 12, true, 0.0, 1, GASIFIER.lightened(0.05))
+			for n in 4:
+				var b := Basis(Vector3.UP, n * PI * 0.5)
+				k.box("cast_iron", Transform3D(b, b * Vector3(0.18, -0.1, 0)), Vector3(0.12, 0.05, 0.04), GASIFIER)
+		"saw_blade":
+			# A big circular saw blade standing up in the bench, turning about x.
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO), 0.32, 0.32, 0.006, 32, true, 0.0, 1, GASIFIER.lightened(0.2))
+			for n in 24:
+				var a := TAU * n / 24.0
+				k.box("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), a), Vector3(0, cos(a), sin(a)) * 0.33), Vector3(0.008, 0.025, 0.025), GASIFIER.lightened(0.2))
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO), 0.05, 0.05, 0.03, 10)
+		"wheel_rim":
+			# The water wheel: two rims on spokes with paddles between, turning about x.
+			for x in [-0.6, 0.6]:
+				for n in 16:
+					var a0 := TAU * n / 16.0
+					var a1 := TAU * (n + 1) / 16.0
+					timber(k, Vector3(x, cos(a0), sin(a0)) * Vector3(1, 1.35, 1.35), Vector3(x, cos(a1), sin(a1)) * Vector3(1, 1.35, 1.35), 0.07)
+				for n in 6:
+					var a := TAU * n / 6.0
+					timber(k, Vector3(x, 0, 0), Vector3(x, cos(a) * 1.3, sin(a) * 1.3), 0.06)
+			for n in 12:
+				var a := TAU * n / 12.0
+				k.box("planks", Transform3D(Basis(Vector3(1, 0, 0), a), Vector3(0, cos(a), sin(a)) * 1.3), Vector3(1.2, 0.04, 0.3))
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO), 0.08, 0.08, 1.5, 10, true, 0.0, 1, GASIFIER)
+		"flywheel":
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3.ZERO), 0.5, 0.5, 0.08, 24, true, 0.0, 1, GASIFIER.darkened(0.1))
+			for n in 6:
+				var a := TAU * n / 6.0
+				k.box("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), a), Vector3(0, cos(a), sin(a)) * 0.25), Vector3(0.05, 0.42, 0.06), GASIFIER.darkened(0.15))
 		"bulb":
 			# A pear-shaped glass bulb, its neck up.
 			k.sphere("glass", I.translated(Vector3(0, -0.035, 0)), 0.035, 8, 12, 0.0, 1.15)
