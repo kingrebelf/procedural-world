@@ -11,6 +11,7 @@ var npcs: NPCManager
 var fauna: FaunaManager
 var vehicles: VehicleManager
 var dialogue: DialogueUI
+var lore: LoreUI
 
 func _ready() -> void:
 	if not Game.is_playing():
@@ -80,6 +81,9 @@ func _ready() -> void:
 	dialogue.menus = menus
 	dialogue.manager = npcs
 	ui.add_child(dialogue)
+	lore = LoreUI.new()
+	lore.player = player
+	ui.add_child(lore)
 	console = DevConsole.new()
 	console.player = player
 	ui.add_child(console)

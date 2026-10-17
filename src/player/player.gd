@@ -549,6 +549,14 @@ func _find_focus() -> Dictionary:
 					if o["st"].get("gone", false):
 						continue
 					var wp: Vector3 = c.position + o["p"]
+					if Lore.has(o["t"]) and wp.distance_squared_to(global_position) < 196.0:
+						# Terminals, books and the like inside rooms, each its own prompt.
+						for k in Lore.spots(o["t"]).size():
+							var at: Vector3 = c.position + Lore.anchor(o, k)
+							var sl := _focus_score(eye, fwd, at)
+							if sl < best_s and _can_see(eye, at):
+								best_s = sl
+								best = {"kind": "lore", "chunk": c, "i": o["i"], "spot": k, "pos": at + Vector3(0, 0.3, 0), "verb": Lore.verb(o, k)}
 					if wp.distance_squared_to(global_position) > 49.0:
 						continue
 					var use := _use_of(o)
@@ -570,6 +578,12 @@ func _find_focus() -> Dictionary:
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
 					"verb": ("%s   (hold: take down)" % _station_verb(d)) if station else "Hold to take down %s" % d["name"]}
 	return best
+
+## True when nothing stands between the eye and `at` (a prop seen through a wall isn't).
+func _can_see(eye: Vector3, at: Vector3) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(eye, at, 1, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or (hit["position"] as Vector3).distance_to(eye) > eye.distance_to(at) - 0.75
 
 static func is_own_piece(o: Dictionary) -> bool:
 	return ObjectLibrary.kind(o["t"]) == "built" and not o["st"].get("gone", false) and String(o["st"].get("by", "you")) == "you"
@@ -795,6 +809,12 @@ func interact() -> void:
 			"cache", "trader":
 				if is_instance_valid(focus["chunk"]):
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
+				_focus_t = 0.0
+				return
+			"lore":
+				if is_instance_valid(focus["chunk"]):
+					get_tree().call_group("lore_ui", "open_spot", focus["chunk"], focus["i"], focus["spot"])
+					used_tool.emit("interact")
 				_focus_t = 0.0
 				return
 	var h := _hit_object()
@@ -1102,7 +1122,7 @@ static func _focus_key(f: Dictionary) -> String:
 	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
 		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
 	if f.has("chunk") and is_instance_valid(f["chunk"]):
-		return "%s:%d" % [(f["chunk"] as ChunkNode).key, int(f["i"])]
+		return "%s:%d%s" % [(f["chunk"] as ChunkNode).key, int(f["i"]), (":%d" % int(f["spot"])) if f.has("spot") else ""]
 	return ""
 
 ## Sets the held vehicle down a few steps ahead.
