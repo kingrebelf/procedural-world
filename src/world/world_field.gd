@@ -436,6 +436,10 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_TERRACES:
 			# Hillsides stepped into flat terraces.
 			var base := h * 1.2 + 3.0
+			if terrain_v >= 13:
+				# v13: deeper steps with wider banks between them, so a terrace edge spans a
+				# few metres of ground and reads as a bank, not a saw-tooth on the 1 m grid.
+				return Vector3(base, 0.0, _steps(base, 3.0, 0.42) - base)
 			return Vector3(base, 0.0, _steps(base, 2.4, 0.22) - base)
 		LF_LAKES:
 			# Low country with as much water as land: lakes, islands and long peninsulas.

@@ -101,6 +101,8 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 	var snow_line := Planets.snow_line
 	var out := PackedByteArray()
 	out.resize(n * 4)
+	var sn := PackedFloat32Array()
+	sn.resize(n)
 	for j in RES:
 		for i in RES:
 			var k := j * RES + i
@@ -132,7 +134,18 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			out[k * 4] = int(scree * 255.0)
 			out[k * 4 + 1] = int(gravel * 255.0)
 			out[k * 4 + 2] = int(litter[k] * (1.0 - scree * 0.7) * 255.0)
-			out[k * 4 + 3] = int(clampf(snow, 0.0, 1.0) * 255.0)
+			sn[k] = clampf(snow, 0.0, 1.0)
+	# Snow softened over the metre around (inside the chunk; its edge stays as worked out,
+	# to meet the next chunk's), so one snowy point among bare ones is a soft patch, not a
+	# white triangle.
+	for j in RES:
+		for i in RES:
+			var k := j * RES + i
+			var v := sn[k]
+			if i > 0 and j > 0 and i < RES - 1 and j < RES - 1:
+				v = v * 0.4 + (sn[k - 1] + sn[k + 1] + sn[k - RES] + sn[k + RES]) * 0.1 \
+					+ (sn[k - RES - 1] + sn[k - RES + 1] + sn[k + RES - 1] + sn[k + RES + 1]) * 0.05
+			out[k * 4 + 3] = int(v * 255.0)
 	return out
 
 ## The cover at a point of the chunk, interpolated: Color(scree, gravel, litter, snow).
