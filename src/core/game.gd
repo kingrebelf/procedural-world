@@ -690,6 +690,21 @@ func spend_point(attr: String) -> bool:
 	stats_changed.emit()
 	return true
 
+## Fits the implant in pack slot `idx`: used up, its attribute points kept for good.
+func fit_implant(idx: int) -> bool:
+	var it = inventory.get_slot(idx)
+	if it == null:
+		return false
+	var d := ItemDB.def(it["type"])
+	if not d.has("implant") or not stats.fit_implant(String(it["type"]), d["implant"]):
+		return false
+	inventory.remove_at(idx, 1)
+	if d["implant"].has("end"):
+		set_health(health + 10.0 * int(d["implant"]["end"]))
+	_player_dirty = true
+	stats_changed.emit()
+	return true
+
 func spend_skill_point(sk: String) -> bool:
 	if not stats.spend_skill(sk):
 		return false

@@ -1064,6 +1064,16 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player._cooldown = 0.0
 	player.use_held()
 	check(game.markers.count_kind("pin") == marks0 + 1 and game.inventory.count("beacon_nav") == 1, "a nav beacon marks the map")
+	# The alien endgame (pack D): an implant is fitted for good, once.
+	var str0: int = game.stats.attrs["str"]
+	game.inventory.set_slot(slot, ItemDB.make("implant_arm", 1, 1.0, {}))
+	player.select(slot)
+	await _frames(2)
+	player._cooldown = 0.0
+	player.use_held()
+	check(game.stats.attrs["str"] == str0 + 1 and game.inventory.count("implant_arm") == 0, "an arm implant is fitted and makes you stronger")
+	game.stats.attrs["str"] = str0
+	game.stats.implants.clear()
 	game.inventory.set_slot(slot, null)
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,

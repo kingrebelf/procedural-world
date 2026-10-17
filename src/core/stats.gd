@@ -147,8 +147,22 @@ func xp_mult() -> float:
 func craft_quality_mult() -> float:
 	return 1.0 + 0.01 * attrs["int"]
 
+## Implants fitted (item types): each raised attributes for good, and fits only once.
+var implants: Array = []
+
+## Fits an implant: `raise` is {attr: points}. False if one of that kind is already in.
+func fit_implant(type: String, raise: Dictionary) -> bool:
+	if implants.has(type):
+		return false
+	implants.append(type)
+	for a in raise:
+		if attrs.has(a):
+			attrs[a] += int(raise[a])
+	return true
+
 func to_data() -> Dictionary:
-	return {"level": level, "xp": xp, "points": points, "attrs": attrs.duplicate(), "skills": skills.duplicate(), "skill_xp": skill_xp.duplicate()}
+	return {"level": level, "xp": xp, "points": points, "attrs": attrs.duplicate(), "skills": skills.duplicate(), "skill_xp": skill_xp.duplicate(),
+		"implants": implants.duplicate()}
 
 static func from_data(d) -> Stats:
 	var s := Stats.new()
@@ -160,6 +174,10 @@ static func from_data(d) -> Stats:
 		if a is Dictionary:
 			for k in ATTRS:
 				s.attrs[k] = maxi(0, int(a.get(k, 0)))
+		var im = d.get("implants", [])
+		if im is Array:
+			for t in im:
+				s.implants.append(String(t))
 		var sk = d.get("skills", {})
 		var sx = d.get("skill_xp", {})
 		for k in SKILLS:

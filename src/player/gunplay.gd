@@ -74,6 +74,23 @@ const HANDLING := {
 	"smoke_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"breach_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
 	"flare_chem": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 20.0, "drop": 1.0, "zoom": 1.1},
+	# The alien endgame (pack D): living guns spit spikes and spores, crystal bows draw
+	# light, xeno tech fires star shards, void and ions.
+	"bio_rifle": {"mag": 30, "reload": 1.8, "recoil": 1.0, "spread": 1.4, "speed": 260.0, "drop": 0.4, "zoom": 1.6},
+	"star_pistol": {"mag": 10, "reload": 1.2, "recoil": 2.0, "spread": 0.9, "speed": 600.0, "drop": 0.0, "zoom": 1.3},
+	"crystal_bow": {"mag": 1, "reload": 0.6, "recoil": 0.6, "spread": 0.5, "speed": 110.0, "drop": 0.5, "zoom": 1.5, "auto_reload": true},
+	"hive_cannon": {"mag": 3, "reload": 2.6, "recoil": 6.0, "spread": 1.2, "speed": 45.0, "drop": 0.6, "zoom": 1.3},
+	"singularity_orb": {"mag": 2, "reload": 2.4, "recoil": 3.0, "spread": 0.8, "speed": 35.0, "drop": 0.0, "zoom": 1.2},
+	"spore_launcher": {"mag": 4, "reload": 2.0, "recoil": 3.0, "spread": 1.4, "speed": 35.0, "drop": 1.0, "zoom": 1.2},
+	"shard_gauntlet": {"mag": 24, "reload": 1.4, "recoil": 0.6, "spread": 2.0, "speed": 180.0, "drop": 0.3, "zoom": 1.2},
+	"precursor_rifle": {"mag": 16, "reload": 1.8, "recoil": 2.5, "spread": 0.6, "speed": 900.0, "drop": 0.0, "zoom": 2.5, "ads_spread": 0.05},
+	"nova_staff": {"mag": 4, "reload": 2.2, "recoil": 4.0, "spread": 0.8, "speed": 70.0, "drop": 0.0, "zoom": 1.4},
+	"eclipse_bow": {"mag": 1, "reload": 0.55, "recoil": 0.7, "spread": 0.4, "speed": 140.0, "drop": 0.3, "zoom": 1.8, "auto_reload": true},
+	"void_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"acid_pod": {"mag": 1, "reload": 0.0, "recoil": 0.4, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
+	"swarm_hive": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 20.0, "drop": 1.0, "zoom": 1.1},
+	"star_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
+	"gravity_well": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
 }
 ## Better arrows a bow nocks first when you carry them: [ammo, alternative, damage multiplier].
 const BETTER_AMMO := {"arrow": ["broadhead_arrows", 1.3]}
