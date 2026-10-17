@@ -887,6 +887,7 @@ func test_build_pieces() -> void:
 	var fr := BuildCatalog.snap("wall_plaster", Vector3(1.37, 0.6, 2.11), 0.0, 1, null, true, {"free": true, "lift": 1})
 	check(fr["pos"].is_equal_approx(Vector3(1.25, 0.75, 2.0)) and is_equal_approx(fr["yaw"], PI + PI / 12.0), "grid off places freely (%s, %.2f)" % [fr["pos"], fr["yaw"]])
 	_build_snapping()
+	_grass_under_floors()
 	# Taking a piece down refunds it.
 	var o := {"t": "b:wall_stone", "s": 1.0, "st": {}}
 	var res := Durability.hit(o, 1000.0)
@@ -1622,6 +1623,34 @@ func test_storage() -> void:
 	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
 
 ## Placement polish: what can share a spot, stairs, and carrying on from a piece you aim at.
+## No grass grows up through a floor the player laid, even one at the chunk's edge.
+func _grass_under_floors() -> void:
+	var g := ChunkGenerator.new(4242)
+	var floors := Rect2(56, 20, 8, 6) # four by three cells, the last one on the chunk's edge
+	var chunk := {}
+	var bare := {}
+	for i in 60:
+		chunk = g.generate(i, 3)
+		bare = ChunkNode.build_grass_buffers(chunk, 1.0)
+		if _grass_in(bare, floors) > 100:
+			break
+	check(_grass_in(bare, floors) > 50, "the test ground is grassy (%d blades)" % _grass_in(bare, floors))
+	for x in [57.0, 59.0, 61.0, 63.0]:
+		for z in [21.0, 23.0, 25.0]:
+			var id := "foundation" if z < 25.0 else "floor_wood"
+			chunk["objects"].append({"i": chunk["objects"].size(), "t": BuildCatalog.PREFIX + id, "p": Vector3(x, 0, z), "r": 0.0, "s": 1.0, "e": 0, "st": {}})
+	var n := _grass_in(ChunkNode.build_grass_buffers(chunk, 1.0), floors.grow(-0.05))
+	check(n == 0, "no grass grows through the floors (%d blades)" % n)
+
+func _grass_in(bufs: Dictionary, r: Rect2) -> int:
+	var n := 0
+	for k in bufs:
+		var b: PackedFloat32Array = bufs[k]
+		for i in range(0, b.size(), 16):
+			if r.has_point(Vector2(b[i + 3], b[i + 11])):
+				n += 1
+	return n
+
 func _build_snapping() -> void:
 	# Walls are as tall as the storey, so stacked walls meet edge to edge.
 	var wa := BuildCatalog.mesh("wall_plaster").get_aabb()

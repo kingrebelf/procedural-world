@@ -243,8 +243,7 @@ func place() -> bool:
 		Game.markers.add(nm, pos.x, pos.z, Game.planet, "teleporter", {"key": str(chunk.key), "i": o["i"]})
 		Game.touch_player()
 		Game.toast.emit("%s linked. Mark it on the Atlas, travel from any other one." % nm)
-	# Clear grass and flowers growing through the new piece.
-	player.streamer.refresh_grass(chunk.key)
+	# (ChunkNode.add_object clears the grass and flowers under the new piece.)
 	return true
 
 ## Look-at panel contents while holding a piece.
