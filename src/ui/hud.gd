@@ -932,9 +932,9 @@ func _process(_d: float) -> void:
 	var jp = Jetpack.worn()
 	_fuel.get_meta("row").visible = jp != null
 	if jp != null:
-		_fuel.max_value = Jetpack.TANK
+		_fuel.max_value = float(jp.get("tank", Jetpack.TANK))
 		_fuel.value = float(jp.get("fuel", 0.0))
-		_fuel_val.text = "%d s  +%d canisters" % [int(ceilf(_fuel.value)), Game.inventory.count("jet_fuel")]
+		_fuel_val.text = "%d s  +%d canisters" % [int(ceilf(_fuel.value)), Jetpack.canisters(Game.inventory)]
 	var show: bool = Settings.get_value("show_fps")
 	if show != _fps.visible:
 		# GPU timing costs a query per frame, so only measure while the counter is shown.

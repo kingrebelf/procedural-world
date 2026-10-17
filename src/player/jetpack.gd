@@ -5,7 +5,9 @@ extends Node3D
 ## from its tank and loads the next canister from your pack when the tank runs dry.
 ## Lives under the player, at your back.
 
-const TANK := 20.0 ## seconds of thrust in one canister (the tank holds one)
+const TANK := 20.0 ## seconds of thrust in one canister of Jet Fuel (the tank holds one)
+## What the tank burns (ItemDB.JET_FUELS).
+const FUELS := ItemDB.JET_FUELS
 const LIFT := 9.0 ## upward acceleration over gravity, m/s^2
 const MAX_CLIMB := 8.0 ## climb speed it stops accelerating at
 const HOLD_DELAY := 0.28 ## after a normal jump, hold this long to fire
@@ -60,7 +62,19 @@ static func fuel_total(inv: Inventory) -> float:
 	var it = worn()
 	if it == null:
 		return 0.0
-	return float(it.get("fuel", 0.0)) + inv.count("jet_fuel") * TANK
+	var total := float(it.get("fuel", 0.0))
+	for f in FUELS:
+		total += inv.count(f[0]) * float(f[1])
+	return total
+
+## Canisters of any jetpack fuel in the pack.
+static func canisters(inv: Inventory) -> int:
+	var n := 0
+	for f in FUELS:
+		n += inv.count(f[0])
+	return n
+
+
 
 ## Upward acceleration to add this physics frame (0 when not firing).
 ## `held`/`pressed`: the Jump action; `vy`: current vertical speed.
@@ -75,10 +89,10 @@ func thrust(delta: float, held: bool, pressed: bool, on_floor: bool, vy: float, 
 	else:
 		_air_hold = 0.0
 	if want and float(it.get("fuel", 0.0)) <= 0.0:
-		if inv.remove_type("jet_fuel", 1) > 0:
-			it["fuel"] = TANK
+		var loaded := ItemDB.load_jet_fuel(it, inv)
+		if loaded != "":
 			Game._player_dirty = true
-			Game.toast.emit("Jetpack: loaded a fuel canister (%d left)" % inv.count("jet_fuel"))
+			Game.toast.emit("Jetpack: loaded %s (%d canisters left)" % [loaded.to_lower(), canisters(inv)])
 		elif not _empty_warned:
 			_empty_warned = true
 			Game.toast.emit("Jetpack out of fuel: make Jet Fuel at a forge or fabricator")

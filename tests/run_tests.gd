@@ -1695,8 +1695,8 @@ func test_pack_a_items() -> void:
 	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
 		found[t] = true
 	for t in known:
-		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead"]:
-			continue # butchered, from treasure maps, caught, or a spent flashlight
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead", "power_cell_spent"]:
+			continue # butchered, from treasure maps, caught, or a spent flashlight or cell
 		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
 	# Level gates rise with the age: stone first, steel later, the finest last.
 	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
@@ -2541,3 +2541,32 @@ func test_pack_d_items() -> void:
 	var parts := CorpseLoot.animal_yields({"name": "Test Beast", "size": 1.5, "drops": [["raw_meat", 1], ["hide", 1]]}, 1.0, 0.0, rng).map(func(e): return e[0])
 	Eras.theme = was
 	check(parts.has("hide_xeno") and parts.has("meat_xeno"), "an alien beast gives xeno hide and meat (%s)" % str(parts))
+
+func test_pack_e_items() -> void:
+	# Better loads go in first, and each changes the shot.
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("arrow", 10, 1.0, {}))
+	check(ItemDB.ammo_next(inv, "arrow") == "arrow", "plain arrows when that is all you carry")
+	inv.add(ItemDB.make("arrow_barbed", 5, 1.0, {}))
+	inv.add(ItemDB.make("arrow_fire", 3, 1.0, {}))
+	check(ItemDB.ammo_next(inv, "arrow") == "arrow_fire", "fire arrows are nocked first")
+	check(ItemDB.ammo_carried(inv, "arrow") == 18, "every kind of arrow counts toward what a bow can shoot")
+	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("damage", 1.0)) > 1.0, "a fire arrow hits harder")
+	check(ItemDB.ammo_mods("arrow", "arrow").is_empty(), "a plain arrow is plain")
+	check(int(ItemDB.ammo_mods("shotgun_shells", "slug_shells").get("pellets", 8)) == 1, "a slug is one heavy ball")
+	for a in ItemDB.AMMO_VARIANTS:
+		for v in ItemDB.AMMO_VARIANTS[a]:
+			check(ItemDB.has(v[0]) and ItemDB.has(a), "%s is a real load for %s" % [v[0], a])
+	check(String(ItemDB.def("speed_loader").get("loader", "")) == "rounds", "a speed loader holds rounds")
+	check(String(ItemDB.def("power_cell").get("spent", "")) == "power_cell_spent", "a used cell leaves its shell")
+	# Jetpack fuels: jet fuel first, and every kind adds thrust.
+	check(ItemDB.JET_FUELS[0][0] == "jet_fuel", "plain jet fuel loads first")
+	var inv2 := Inventory.new()
+	inv2.add(ItemDB.make("rocket_fuel", 1, 1.0, {}))
+	var tank := {"type": "jetpack"}
+	check(ItemDB.load_jet_fuel(tank, inv2) != "" and float(tank["fuel"]) == 40.0 and inv2.count("rocket_fuel") == 0, "rocket propellant fills the jetpack's tank")
+	for f in ItemDB.JET_FUELS:
+		check(ItemDB.has(f[0]), "%s is a real fuel" % f[0])
+	for f in HandLight.LANTERN_FUEL:
+		check(ItemDB.has(f[0]), "%s is a real lantern fuel" % f[0])
+	check(Effects.describe(ItemDB.def("rounds_box")).size() > 0 and Effects.describe(ItemDB.def("rifle_clip")).size() > 0, "boxes and clips say what they do")

@@ -850,6 +850,20 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.use_held()
 	check(player.gunplay._shots.size() - before_shots == int(ItemDB.def("double_shotgun")["pellets"]) and int(sg["charge"]) == 1, "a shotgun blast is %d pellets for one shell" % (player.gunplay._shots.size() - before_shots))
 	await _frames(30)
+	# Ammunition (pack E): a speed loader fills a revolver in one go, steel-core first.
+	var rv := ItemDB.make("revolver_six", 1, 1.0, {})
+	rv["charge"] = 0
+	game.inventory.set_slot(slot, rv)
+	player.select(slot)
+	game.give(ItemDB.make("speed_loader", 1, 1.0, {}))
+	game.give(ItemDB.make("rounds_ap", 8, 1.0, {}))
+	await _frames(2)
+	check(player.gunplay.start_reload(rv), "the revolver starts loading")
+	await create_timer(player.gunplay.reload_total + 0.4).timeout
+	check(int(rv["charge"]) == 6 and rv.get("loaded", "") == "rounds_ap" and game.inventory.count("rounds_ap") == 2, "a speed loader fills the cylinder at once, steel-core first (%d)" % int(rv["charge"]))
+	game.inventory.remove_type("rounds_ap", 99)
+	game.inventory.remove_type("speed_loader", 1)
+	await _frames(30)
 	game.inventory.set_slot(slot, ItemDB.make("bear_trap", 2, 1.0, {}))
 	player.select(slot)
 	await _frames(2)
