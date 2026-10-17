@@ -69,8 +69,9 @@ const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall"
 ## a soft grey in shade (0.6 made it 0.21, a dark grey slab whenever the sun was behind).
 const PHOTO_TONE := {"castle_wall": 0.7}
 ## Own-colour photos warmed or cooled to sit with what they're laid beside: the castle's
-## flagstones take the honey tone of its walls instead of a cold blue-grey.
-const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86)}
+## flagstones take the honey tone of its walls instead of a cold blue-grey, and the walls
+## keep that warmth in the blue light of the shade.
+const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86), "castle_wall": Color(1.0, 0.97, 0.9)}
 ## Normal strength per photo: the travertine's pores, stretched over big castle blocks,
 ## read as deep black pits at full strength.
 const PHOTO_NORMAL := {"panels": 0.45, "castle_wall": 0.6}
