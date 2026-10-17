@@ -123,6 +123,32 @@ static func get_mat(name: String) -> Material:
 			s.albedo_color = Color(0.62, 0.46, 0.3)
 			s.roughness = 0.6
 			m = s
+		"upholstery":
+			var s := StandardMaterial3D.new()
+			s.albedo_color = Color.WHITE
+			s.vertex_color_use_as_albedo = true
+			s.vertex_color_is_srgb = true
+			s.roughness = 0.85
+			var tex := Materials.photo("fabric_linen", "detail")
+			if tex:
+				s.albedo_texture = tex
+				s.uv1_triplanar = true
+				s.uv1_scale = Vector3.ONE * 2.0
+			m = s
+		"ceiling":
+			# Plain painted ceiling panels, quiet rather than a sheet of bare metal.
+			var s := StandardMaterial3D.new()
+			s.albedo_color = Color(0.88, 0.89, 0.9)
+			s.roughness = 0.7
+			m = s
+		"lens":
+			# Frosted glass of lamps and running lights: bright when lit, never glowing.
+			var s := StandardMaterial3D.new()
+			s.albedo_color = Color(0.94, 0.95, 0.96)
+			s.roughness = 0.25
+			s.clearcoat_enabled = true
+			s.clearcoat = 0.7
+			m = s
 		"rope":
 			var s := StandardMaterial3D.new()
 			s.albedo_color = Color(0.5, 0.42, 0.3)
@@ -616,8 +642,10 @@ static func _net(k: MeshKit, p: Vector3) -> void:
 
 static func _lantern(root: Node3D, k: MeshKit, p: Vector3, tech := false) -> void:
 	if tech:
-		k.box("metal_dark", Transform3D(Basis.IDENTITY, p), Vector3(0.3, 0.06, 0.12))
-		k.box("glow_white", Transform3D(Basis.IDENTITY, p - Vector3(0, 0.04, 0)), Vector3(0.26, 0.02, 0.09))
+		# A flush ceiling fitting: brushed frame round a frosted diffuser (lit by the light
+		# below it, not glowing itself).
+		k.box("metal", Transform3D(Basis.IDENTITY, p), Vector3(0.62, 0.04, 0.26))
+		k.box("lens", Transform3D(Basis.IDENTITY, p - Vector3(0, 0.022, 0)), Vector3(0.56, 0.01, 0.2))
 	else:
 		k.cylinder("iron", Transform3D(Basis.IDENTITY, p - Vector3(0, 0.14, 0)), 0.08, 0.06, 0.24, 6, true)
 		k.cylinder("glow_warm", Transform3D(Basis.IDENTITY, p - Vector3(0, 0.1, 0)), 0.045, 0.045, 0.14, 6, true)
@@ -631,6 +659,22 @@ static func _lantern(root: Node3D, k: MeshKit, p: Vector3, tech := false) -> voi
 	l.distance_fade_begin = 50.0
 	l.distance_fade_length = 20.0
 	root.add_child(l)
+
+## A bridge chair facing the bow: pedestal on a foot plate, padded seat and back with
+## piping, and armrests.
+static func _helm_chair(k: MeshKit, p: Vector3) -> void:
+	var cloth := Color(0.36, 0.42, 0.5)
+	k.cylinder("metal", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.015, 0)), 0.24, 0.26, 0.03, 16, true)
+	k.cylinder("metal", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.26, 0)), 0.045, 0.055, 0.46, 10, true)
+	k.box("metal_dark", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.5, 0)), Vector3(0.44, 0.03, 0.42))
+	k.box("upholstery", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.55, 0.02)), Vector3(0.5, 0.08, 0.48), cloth)
+	k.box("upholstery", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.6, 0.02)), Vector3(0.44, 0.03, 0.42), cloth.lightened(0.06))
+	var back := Transform3D(Basis(Vector3.RIGHT, -0.18), p + Vector3(0, 0.93, 0.26))
+	k.box("upholstery", back, Vector3(0.48, 0.62, 0.09), cloth)
+	k.box("metal_dark", back.translated_local(Vector3(0, 0, 0.05)), Vector3(0.44, 0.58, 0.02))
+	for s in [-1.0, 1.0]:
+		k.box("metal_dark", Transform3D(Basis.IDENTITY, p + Vector3(s * 0.27, 0.68, 0.05)), Vector3(0.04, 0.16, 0.04))
+		k.box("upholstery", Transform3D(Basis.IDENTITY, p + Vector3(s * 0.27, 0.77, 0.02)), Vector3(0.07, 0.05, 0.36), cloth.darkened(0.25))
 
 # --- Kinds ---------------------------------------------------------------------------------
 
@@ -910,7 +954,7 @@ static func _launch(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void
 		_beam(k, "metal", Vector3(s * 0.95, dy + 0.4, 3.4), Vector3(s * 1.2, dy + 2.6, 4.2), 0.012)
 	# Navigation lights.
 	k.box("glow_red", Transform3D(Basis.IDENTITY, Vector3(-0.9, dy + 0.75, -1.8)), Vector3(0.04, 0.05, 0.1))
-	k.box("glow_white", Transform3D(Basis.IDENTITY, Vector3(0.45, dy + 3.12, 0.6)), Vector3(0.06, 0.06, 0.06))
+	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(0.45, dy + 3.12, 0.6)), Vector3(0.06, 0.06, 0.06))
 	if r.randf() < 0.6:
 		_coil(k, Vector3(-0.6, dy, -1.6), 0.2)
 
@@ -924,11 +968,11 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	# of windows all round, a stair up the side and a radar mast on top.
 	var lab_c := Vector3(0, dy, 1.6)
 	var lab := Vector3(5.2, 2.6, 8.0)
-	_room(k, shapes, lab_c, lab, "+z", "hull_paint", "scifi_floor", "scifi_floor", Color(0.92, 0.93, 0.95), true, "panel")
+	_room(k, shapes, lab_c, lab, "+z", "hull_paint", "scifi_floor", "scifi_floor", Color(0.92, 0.93, 0.95), true, "ceiling")
 	var bdeck := dy + lab.y + 0.12
 	var br_c := Vector3(0, bdeck, -0.6)
 	var br := Vector3(5.6, 2.4, 3.6)
-	_room(k, shapes, br_c, br, "+z", "hull_paint", "scifi_floor", "hull_paint", Color(0.93, 0.94, 0.96), true, "panel")
+	_room(k, shapes, br_c, br, "+z", "hull_paint", "scifi_floor", "hull_paint", Color(0.93, 0.94, 0.96), true, "ceiling")
 	_stairs(k, shapes, Vector3(-2.15, dy, 8.2), Vector3(-2.15, bdeck, 5.4), 0.85, "metal")
 	# The bridge deck's open part behind the wheelhouse, with rails.
 	for s in [-1.0, 1.0]:
@@ -945,9 +989,7 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 		k.box("screen", Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(x, bf + 1.05, -1.85)), Vector3(1.0, 0.03, 0.4))
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.RIGHT, -1.1), Vector3(0.0, bf + 1.1, -1.65)), 0.22, 0.22, 0.05, 16)
 	for x in [-0.9, 0.9]:
-		k.cylinder("metal_dark", Transform3D(Basis.IDENTITY, Vector3(x, bf, -0.9)), 0.05, 0.05, 0.5, 8)
-		k.box("leather", Transform3D(Basis.IDENTITY, Vector3(x, bf + 0.55, -0.9)), Vector3(0.5, 0.1, 0.5), Color(0.3, 0.32, 0.36))
-		k.box("leather", Transform3D(Basis.IDENTITY, Vector3(x, bf + 0.9, -0.62)), Vector3(0.5, 0.6, 0.08), Color(0.3, 0.32, 0.36))
+		_helm_chair(k, Vector3(x, bf, -0.9))
 	_lantern(root, k, Vector3(0, bf + br.y - 0.06, -0.6), true)
 	# Lab below: benches with sample tanks, a terminal, bunks along the side, a locker.
 	var lf := dy
@@ -1003,9 +1045,9 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.6, dy + 0.35, -8.6)), 0.3, 0.3, 1.2, 12)
 	_beam(k, "metal_dark", Vector3(0.9, float(h["F"]) + 1.0, -11.2), Vector3(2.7, -3.2, -18.0), 0.05, 6)
 	_beam(k, "metal", Vector3(0, dy, -9.5), Vector3(0, dy + 6.0, -9.5), 0.08, 8)
-	k.box("glow_white", Transform3D(Basis.IDENTITY, Vector3(0, dy + 6.05, -9.5)), Vector3(0.1, 0.1, 0.1))
+	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(0, dy + 6.05, -9.5)), Vector3(0.1, 0.1, 0.1))
 	k.box("glow_red", Transform3D(Basis.IDENTITY, Vector3(-2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
-	k.box("glow_white", Transform3D(Basis.IDENTITY, Vector3(2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
+	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
 	# Name boards and a hull stripe.
 	for s in [-1.0, 1.0]:
 		var hw := _width_at(h, 0.12, 1.0)
