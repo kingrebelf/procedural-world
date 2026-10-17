@@ -649,7 +649,20 @@ static func is_own_piece(o: Dictionary) -> bool:
 		return false
 	if Doors.is_door(o["t"]):
 		return Doors.is_mine(o)
+	# Pieces record their builder; on a server their allies may take them down too.
+	# (Older pieces only say "by": "you".)
+	if o["st"].has("owner"):
+		return Doors.may_access(String(o["st"]["owner"]))
 	return String(o["st"].get("by", "you")) == "you"
+
+## "Built by you on day 3", or by whoever built it on a server.
+static func built_by(o: Dictionary) -> String:
+	var who := "you"
+	var owner := String(o["st"].get("owner", ""))
+	if owner != "" and owner != Doors.my_id():
+		var nm := String(o["st"].get("owner_name", ""))
+		who = nm if nm != "" and nm != "You" else "another player"
+	return "Built by %s on day %d" % [who, int(o["st"].get("day", 0)) + 1]
 
 # --- Deconstructing your own pieces -------------------------------------------------
 const DECON_TIME := 0.8
@@ -905,9 +918,9 @@ func _update_look_target() -> void:
 					text = ""
 				_:
 					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
-			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
+			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else [built_by(o)]
 			if Doors.is_door(t):
-				lines = Doors.describe(o) if not is_own_piece(o) else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)] + Doors.describe(o)
+				lines = Doors.describe(o) if not is_own_piece(o) else [built_by(o)] + Doors.describe(o)
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
 			if k == "cache" and not o["st"].get("opened", false):

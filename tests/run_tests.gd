@@ -791,25 +791,26 @@ func test_build_pieces() -> void:
 	var w := BuildCatalog.snap("wall_plaster", Vector3(4.3, 0.2, 7.1), 0.0, 0, Vector3(5, 0, 7), false)
 	check(w["pos"].is_equal_approx(Vector3(4, 0, 7)) and is_equal_approx(w["yaw"], PI * 0.5), "wall snaps to the x edge (%s)" % w["pos"])
 	var w2 := BuildCatalog.snap("wall_plaster", Vector3(5.1, 3.3, 7.9), 0.0, 0, Vector3(5, 0, 7), false)
-	check(w2["pos"].is_equal_approx(Vector3(5, 3, 8)) and is_equal_approx(w2["yaw"], 0.0), "aiming at a wall top builds the next storey (%s)" % w2["pos"])
+	check(w2["pos"].is_equal_approx(Vector3(5, 3.12, 8)) and is_equal_approx(w2["yaw"], 0.0), "aiming at a wall top builds the next storey (%s)" % w2["pos"])
 	var f := BuildCatalog.snap("platform", Vector3(-1.0, 2.0, 9.5), 0.0, 0)
 	check(f["pos"].is_equal_approx(Vector3(-2, 2, 10)), "sci-fi platforms use 4 m cells (%s)" % f["pos"])
-	var rv := BuildCatalog.snap("roof_small", Vector3(3.2, 3.0, 4.9), 0.0, 0, Vector3(3, 0, 5), false)
-	check(rv["pos"].is_equal_approx(Vector3(4, 3, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
+	var rv := BuildCatalog.snap("roof_small", Vector3(3.2, 3.2, 4.9), 0.0, 0, Vector3(3, 0, 5), false)
+	check(rv["pos"].is_equal_approx(Vector3(4, 3.12, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
 	var g := BuildCatalog.snap("floor_wood", Vector3(1.0, -0.8, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
 	check(is_equal_approx(g["pos"].y, 0.0), "ground below a house keeps the floor level")
 	# A floor aimed at the side of a wall goes on top of it, in the cell on your side.
 	var fw := BuildCatalog.snap("floor_wood", Vector3(4.05, 1.5, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
-	check(fw["pos"].is_equal_approx(Vector3(5, 3, 7)), "floor aimed at a wall sits on its top (%s)" % fw["pos"])
+	check(fw["pos"].is_equal_approx(Vector3(5, 3.12, 7)), "floor aimed at a wall sits on its top (%s)" % fw["pos"])
 	var rw := BuildCatalog.snap("roof_small", Vector3(4.05, 2.9, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
-	check(is_equal_approx(rw["pos"].y, 3.0), "roof aimed at a wall sits on its top (%s)" % rw["pos"])
+	check(is_equal_approx(rw["pos"].y, 3.12), "roof aimed at a wall sits on its top (%s)" % rw["pos"])
 	# Raise / lower by storeys, and free placement off the grid.
 	var up := BuildCatalog.snap("floor_wood", Vector3(1.0, 0.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": 2})
-	check(is_equal_approx(up["pos"].y, 6.0), "raise lifts a piece two storeys (%s)" % up["pos"])
+	check(is_equal_approx(up["pos"].y, 6.24), "raise lifts a piece two storeys (%s)" % up["pos"])
 	var dn := BuildCatalog.snap("floor_wood", Vector3(1.0, 3.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": -1})
 	check(is_equal_approx(dn["pos"].y, 0.0), "lower drops a piece a storey (%s)" % dn["pos"])
 	var fr := BuildCatalog.snap("wall_plaster", Vector3(1.37, 0.6, 2.11), 0.0, 1, null, true, {"free": true, "lift": 1})
 	check(fr["pos"].is_equal_approx(Vector3(1.25, 0.75, 2.0)) and is_equal_approx(fr["yaw"], PI + PI / 12.0), "grid off places freely (%s, %.2f)" % [fr["pos"], fr["yaw"]])
+	_build_snapping()
 	# Taking a piece down refunds it.
 	var o := {"t": "b:wall_stone", "s": 1.0, "st": {}}
 	var res := Durability.hit(o, 1000.0)
@@ -1361,6 +1362,72 @@ func test_storage() -> void:
 	var spilled := Storage.spill(o)
 	check(spilled.size() == 1 and spilled[0]["qty"] == 5 and Storage.is_empty(o), "a broken chest spills what it held")
 	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
+
+## Placement polish: what can share a spot, stairs, and carrying on from a piece you aim at.
+func _build_snapping() -> void:
+	# Walls are as tall as the storey, so stacked walls meet edge to edge.
+	var wa := BuildCatalog.mesh("wall_plaster").get_aabb()
+	check(absf(wa.end.y - float(BuildCatalog.def("wall_plaster")["storey"])) < 0.02, "village walls fill one storey (%.3f)" % wa.end.y)
+	# The plinth reaches a storey down; the stairs rise exactly one storey over two cells.
+	check(BuildCatalog.mesh("foundation").get_aabb().position.y < -3.0, "a foundation's plinth reaches a storey down")
+	var sa := BuildCatalog.mesh("stairs_wood").get_aabb()
+	check(absf(sa.end.y - 3.12) < 0.05 and absf(sa.position.z + 3.0) < 0.05 and absf(sa.end.z - 1.0) < 0.05, "wooden stairs fill two cells, one storey up (%s)" % sa)
+	# Furniture minds only furniture; stairs can stand on a floor.
+	var near := [{"id": "foundation", "pos": Vector3(1, 0, 1), "yaw": 0.0}, {"id": "wall_plaster", "pos": Vector3(1, 0, 2), "yaw": 0.0},
+		{"id": "chair", "pos": Vector3(3, 0, 3), "yaw": 0.0}]
+	check(not BuildCatalog.occupied_in(near, "table", Vector3(1, 0.01, 1), 0.0), "furniture fits in the middle of a floor")
+	check(not BuildCatalog.occupied_in(near, "bench", Vector3(1, 0.01, 1.9), 0.0), "and against a wall")
+	check(BuildCatalog.occupied_in(near, "stool", Vector3(3.2, 0, 3.1), 0.0), "but not on top of other furniture")
+	check(not BuildCatalog.occupied_in(near, "stairs_wood", Vector3(1, 0, 1), 0.0), "stairs stand on a floor")
+	check(BuildCatalog.occupied_in(near, "floor_wood", Vector3(1, 0, 1), 0.0), "one floor per cell")
+	# Stairs climb away from you, foot in the aimed cell, for both kits.
+	for id in ["stairs_wood", "stairs_scifi"]:
+		var st := BuildCatalog.snap(id, Vector3(1.0, 0.0, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
+		var box := BuildCatalog.world_aabb(id, st["pos"], st["yaw"])
+		var g: float = BuildCatalog.def(id)["grid"]
+		var cell := Vector3(floorf(1.0 / g) * g + g * 0.5, 0, floorf(1.0 / g) * g + g * 0.5)
+		check(absf(box.end.z - (cell.z + g * 0.5)) < 0.1 and box.position.z < cell.z - g, "%s: foot in the aimed cell, climbing away (%s)" % [id, box])
+		var hi := BuildCatalog.mesh(id)
+		var top_z := 0.0
+		var top_y := -1.0
+		for s in hi.get_surface_count():
+			for v in (hi.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				var w: Vector3 = Transform3D(Basis(Vector3.UP, st["yaw"]), st["pos"]) * v
+				if w.y > top_y:
+					top_y = w.y
+					top_z = w.z
+		check(top_z < cell.z - g * 0.5, "%s: the high end is the far one" % id)
+	# A foundation on the ground beside a house keeps to its floor level even when the
+	# nearest piece is its roof.
+	var gr := BuildCatalog.snap("foundation", Vector3(7.0, 0.3, 1.0), 0.0, 0, Vector3(4, 6.24, 2), true)
+	check(is_equal_approx(gr["pos"].y, 0.0), "ground placement finds the storey nearest the ground (%s)" % gr["pos"])
+	# Aiming at a foundation's side is still its storey.
+	var sf := BuildCatalog.snap("wall_stone", Vector3(2.05, -0.8, 1.2), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "floor"})
+	check(is_equal_approx(sf["pos"].y, 0.0), "a wall aimed at a plinth's side stands on that floor (%s)" % sf["pos"])
+	# Aiming at a floor's top carries on to the next cell on that side.
+	var ctx := {"hit_mode": "floor", "hit_pos": Vector3(1, 0, 1), "hit_yaw": 0.0, "hit_id": "foundation", "normal": Vector3.UP}
+	var fc := BuildCatalog.candidates("foundation", Vector3(1.8, 0.01, 1.1), 0.0, 0, Vector3(1, 0, 1), false, ctx)
+	var pick = fc.filter(func(e): return not BuildCatalog.occupied_in(near, "foundation", e["pos"], e["yaw"]))
+	check(not pick.is_empty() and (pick[0]["pos"] as Vector3).is_equal_approx(Vector3(3, 0, 1)), "the next floor goes on the side you aim at (%s)" % [pick])
+	# A wall aimed at a wall: near its end the next along, in the middle on top.
+	var wctx := {"hit_mode": "wall", "hit_pos": Vector3(1, 0, 2), "hit_yaw": 0.0, "hit_id": "wall_plaster", "normal": Vector3.BACK}
+	var wend := BuildCatalog.candidates("wall_plaster", Vector3(1.85, 1.5, 2.05), 0.0, 0, Vector3(1, 0, 2), false, wctx)
+	check((wend[0]["pos"] as Vector3).is_equal_approx(Vector3(3, 0, 2)), "a wall aimed at another's end continues the line (%s)" % wend[0]["pos"])
+	var wmid := BuildCatalog.candidates("wall_plaster", Vector3(1.1, 1.0, 2.05), 0.0, 0, Vector3(1, 0, 2), false, wctx)
+	check((wmid[0]["pos"] as Vector3).is_equal_approx(Vector3(1, 3.12, 2)), "aimed at its middle it stacks on top (%s)" % wmid[0]["pos"])
+	# A roof aimed at a wall covers the room that wall belongs to.
+	var room := []
+	for e in [[Vector3(1, 0, 0), 0.0], [Vector3(3, 0, 0), 0.0], [Vector3(1, 0, 4), 0.0], [Vector3(3, 0, 4), 0.0],
+			[Vector3(0, 0, 1), PI * 0.5], [Vector3(0, 0, 3), PI * 0.5], [Vector3(4, 0, 1), PI * 0.5], [Vector3(4, 0, 3), PI * 0.5]]:
+		room.append({"id": "wall_plaster", "pos": e[0], "yaw": e[1]})
+	var rctx := {"hit_mode": "wall", "hit_pos": Vector3(1, 0, 4), "hit_yaw": 0.0, "hit_id": "wall_plaster", "normal": Vector3.UP,
+		"eye": Vector3(1, 1.6, 2), "near": room}
+	var rc := BuildCatalog.candidates("roof_small", Vector3(1.2, 3.12, 4.0), 0.0, 0, Vector3(1, 0, 4), false, rctx)
+	check((rc[0]["pos"] as Vector3).is_equal_approx(Vector3(2, 3.12, 2)), "a roof on a wall top covers its room, even seen from inside (%s)" % rc[0]["pos"])
+	# A roof aimed at the same roof goes edge to edge.
+	var rrc := BuildCatalog.candidates("roof_small", Vector3(3.5, 4.0, 2.2), 0.0, 0, Vector3(2, 3.12, 2), false,
+		{"hit_mode": "roof_v", "hit_pos": Vector3(2, 3.12, 2), "hit_yaw": 0.0, "hit_id": "roof_small", "normal": Vector3.UP})
+	check((rrc[0]["pos"] as Vector3).is_equal_approx(Vector3(6, 3.12, 2)), "roofs line up edge to edge (%s)" % rrc[0]["pos"])
 
 class DoorStreamerShim:
 	var chunks := {}
