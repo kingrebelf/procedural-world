@@ -130,12 +130,15 @@ func _update_mask() -> void:
 			_mask_img.set_pixel(i, j, Color(1, 0, 0))
 	_mask_tex.update(_mask_img)
 
-## What the workers need, read on the main thread (the world's seed and its settings).
+## What the workers need, read on the main thread: the world's seed and settings, from
+## the streamer's own world when it has one (the title screen's fly-over).
 func _job_inputs(center: Vector2) -> Dictionary:
-	return {"center": center, "seed": Game.seed, "terrain_v": WorldField.terrain_v,
+	var st: WorldStore = streamer.store if streamer.store else Game.store
+	var sd: int = streamer.seed if streamer.store else Game.seed
+	return {"center": center, "seed": sd, "terrain_v": WorldField.terrain_v,
 		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
-		"rivers": Game.store.has_rivers() if Game.store else true,
-		"field": WorldField.new(Game.seed)}
+		"rivers": st.has_rivers() if st else true,
+		"field": WorldField.new(sd)}
 
 ## On a worker, one at a time: the main thread reads the results once each task is done.
 func _build_strip(j0: int) -> void:
