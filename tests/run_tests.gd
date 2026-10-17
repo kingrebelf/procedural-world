@@ -1548,7 +1548,11 @@ func test_body_variety() -> void:
 	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
 		for k in 12:
 			girl["cloth"] = Color(0.1 + 0.07 * k, 0.4, 0.3)
-			var w := HumanModel.child_safe(Outfit.wardrobe(girl, era, "child"), era)
+			var own := Outfit.wardrobe(girl, era, "child")
+			var w := HumanModel.child_safe(own, era)
+			if own.get("child", false):
+				check(w == own, "Outfit's own child outfits are kept")
+				continue
 			var sp: Dictionary = w["spec"]
 			check(int(sp["vest"]) == 0 and float(sp["apron"]) == 0.0 and float(sp["cape"]) == 0.0 and not sp.get("open", false) and w["child"], "children never wear adult garments")
 	if not HumanModel.available():
