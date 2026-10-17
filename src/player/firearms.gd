@@ -1454,7 +1454,7 @@ static func _nocks(k: MeshKit, tips: Array, m := "gun_horn") -> void:
 ## horn nocks, a leather grip, an arrow on the string.
 static func _longbow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_yew_y", 0.07, 0.036, 0.044)
-	var tips := _limbs(k, "gun_yew_y", 0.9, 0.07, 0.16, 0.036, 0.016, 0.042, 0.02, 0.0, "gun_maple_y")
+	var tips := _limbs(k, "gun_yew_y", 0.9, 0.07, 0.16, 0.042, 0.019, 0.05, 0.024, 0.0, "gun_maple_y")
 	_nocks(k, tips)
 	_arrow(k, _bow_string(k, tips), 0.78, "gun_worn")
 	return Vector3.ZERO
@@ -1462,7 +1462,7 @@ static func _longbow(k: MeshKit) -> Vector3:
 ## A hunter's shortbow of ash: 1.2 m, a plain leather grip.
 static func _shortbow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_ash_y", 0.06, 0.034, 0.038)
-	var tips := _limbs(k, "gun_ash_y", 0.6, 0.06, 0.13, 0.036, 0.016, 0.032, 0.016)
+	var tips := _limbs(k, "gun_ash_y", 0.6, 0.06, 0.13, 0.042, 0.019, 0.04, 0.02)
 	for t in tips:
 		k.sphere("gun_ash", Transform3D(Basis(), t), 0.007, 5, 8)
 	_arrow(k, _bow_string(k, tips), 0.66, "gun_worn")
@@ -1472,7 +1472,7 @@ static func _shortbow(k: MeshKit) -> Vector3:
 ## recurved profile with stiff bone-tipped ears and string bridges. Short and powerful.
 static func _composite_bow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_walnut_y", 0.065, 0.032, 0.036, "gun_red")
-	var tips := _limbs(k, "gun_horn", 0.46, 0.065, 0.1, 0.04, 0.028, 0.03, 0.022, 0.0, "gun_sinew")
+	var tips := _limbs(k, "gun_horn", 0.46, 0.065, 0.1, 0.046, 0.032, 0.036, 0.026, 0.0, "gun_sinew")
 	var ears: Array = []
 	for i in 2:
 		var t: Vector3 = tips[i]
@@ -1490,13 +1490,13 @@ static func _composite_bow(k: MeshKit) -> Vector3:
 ## a fine bodkin arrow.
 static func _royal_bow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_yew_y", 0.075, 0.032, 0.036, "gun_red")
-	var tips := _limbs(k, "gun_yew_y", 0.92, 0.075, 0.17, 0.038, 0.016, 0.044, 0.02, 0.0, "gun_maple_y")
+	var tips := _limbs(k, "gun_yew_y", 0.92, 0.075, 0.17, 0.044, 0.019, 0.052, 0.024, 0.0, "gun_maple_y")
 	for s in [1.0, -1.0]:
 		for y in [0.08, 0.24, 0.5]:
 			var f: float = (y - 0.075) / (0.92 - 0.075)
 			var z: float = 0.17 * f * f
 			GunLook._loft(k, "gun_gold", [Vector3(0, s * y - 0.004, z), Vector3(0, s * y + 0.004, z)],
-				[lerpf(0.044, 0.02, f) * 0.56, lerpf(0.044, 0.02, f) * 0.56], [lerpf(0.038, 0.016, f) * 0.56, lerpf(0.038, 0.016, f) * 0.56], Vector3.RIGHT, 12)
+				[lerpf(0.052, 0.024, f) * 0.56, lerpf(0.052, 0.024, f) * 0.56], [lerpf(0.044, 0.019, f) * 0.56, lerpf(0.044, 0.019, f) * 0.56], Vector3.RIGHT, 12)
 	_nocks(k, tips, "gun_gold")
 	_arrow(k, _bow_string(k, tips), 0.8, "gun_bright", "gun_red")
 	return Vector3.ZERO
@@ -1568,13 +1568,16 @@ static func _sling(k: MeshKit) -> Vector3:
 		for i in 9:
 			var f := i / 8.0
 			var bow := sin(f * PI) * 0.03
-			c.append(Vector3(s * (0.006 + 0.05 * f + bow * 0.6), -0.012 - 0.37 * f, -0.02 * f))
-		GunLook._rod(k, "gun_string", c, 0.0028, 6)
+			c.append(Vector3(s * (0.006 + 0.05 * f + bow * 0.5), -0.012 - 0.37 * f, -0.02 * f + s * (0.045 * f + bow * 0.4)))
+		GunLook._rod(k, "gun_string", c, 0.0036, 6)
 	k.sphere("gun_string", Transform3D(Basis(), Vector3(0.008, -0.004, 0.0)), 0.007, 5, 8, 0.2)
 	# The pouch: a dished oval of leather with the stone in it, open toward the hand.
-	k.sphere("gun_leather", Transform3D(Basis.from_scale(Vector3(1.0, 0.55, 0.7)), pouch), 0.058, 8, 16, 0.08, 1.0, Color.WHITE, true)
-	k.sphere("gun_leather", Transform3D(Basis.from_scale(Vector3(1.0, -0.25, 0.7)), pouch), 0.058, 8, 16, 0.08, 1.0, Color.WHITE, true)
-	k.sphere("gun_flint", Transform3D(Basis(), pouch + Vector3(0, 0.014, 0)), 0.026, 8, 12, 0.14)
+	k.sphere("gun_leather", Transform3D(Basis.from_scale(Vector3(1.0, 0.55, 0.75)), pouch), 0.075, 8, 16, 0.08, 1.0, Color.WHITE, true)
+	k.sphere("gun_leather", Transform3D(Basis.from_scale(Vector3(1.0, -0.3, 0.75)), pouch), 0.075, 8, 16, 0.08, 1.0, Color.WHITE, true)
+	k.sphere("gun_flint", Transform3D(Basis(), pouch + Vector3(0, 0.02, 0)), 0.034, 8, 12, 0.14)
+	# Holes punched through the pouch where each cord is tied off.
+	for s in [-1.0, 1.0]:
+		k.sphere("gun_string", Transform3D(Basis(), pouch + Vector3(s * 0.07, 0.006, 0)), 0.008, 5, 8, 0.2)
 	return Vector3.ZERO
 
 # --- Alien weapons (faint inner light allowed) ---------------------------------------
@@ -1652,12 +1655,12 @@ static func _shard_gauntlet(k: MeshKit) -> Vector3:
 	# The fist closes inside round a grip bar at the origin; the bracer runs back up the arm.
 	k.cylinder("gun_bone", Transform3D(Basis(), Vector3(0, -0.04, 0)), 0.011, 0.011, 0.08, 10)
 	_grip_r = 0.011
-	GunLook._loft(k, "gun_chitin", [Vector3(0, 0.0, 0.06), Vector3(0, 0.0, 0.14), Vector3(0, 0.0, 0.24)], [0.045, 0.048, 0.044], [0.045, 0.05, 0.046], Vector3.UP, 20)
+	# One shell from the knuckles back up the forearm: the fist's glove swelling into the
+	# bracer, so the two read as a single piece.
+	GunLook._loft(k, "gun_chitin", [Vector3(0, 0.0, -0.058), Vector3(0, -0.004, -0.03), Vector3(0, -0.006, 0.02), Vector3(0, -0.004, 0.07),
+		Vector3(0, 0.0, 0.14), Vector3(0, 0.0, 0.24)], [0.032, 0.042, 0.046, 0.045, 0.048, 0.044], [0.04, 0.048, 0.05, 0.047, 0.05, 0.046], Vector3.UP, 20)
 	for n in 3:
 		_tube(k, "gun_bone", Vector3(0, 0.0, 0.08 + n * 0.07), 0.01, 0.05, 0.05, 20)
-	# The glove: a chitin shell round the fist, joining the bracer to the knuckle plate.
-	GunLook._loft(k, "gun_chitin", [Vector3(0, -0.004, 0.07), Vector3(0, -0.006, 0.02), Vector3(0, -0.004, -0.03), Vector3(0, 0.0, -0.058)],
-		[0.044, 0.046, 0.042, 0.032], [0.045, 0.05, 0.048, 0.04], Vector3.UP, 20)
 	# Plates over the back of the hand and knuckles.
 	for n in 3:
 		_block(k, "gun_chitin", Vector3(0.028 - n * 0.002, 0.0, 0.03 - n * 0.032), Vector3(0.022, 0.07 - n * 0.006, 0.034))
@@ -1675,7 +1678,7 @@ static func _shard_gauntlet(k: MeshKit) -> Vector3:
 ## a faint violet light, a crystal arrow.
 static func _crystal_bow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_bright", 0.07, 0.032, 0.034, "gun_chitin")
-	var tips := _limbs(k, "gun_bright", 0.62, 0.07, 0.12, 0.036, 0.015, 0.032, 0.016, 0.06)
+	var tips := _limbs(k, "gun_bright", 0.62, 0.07, 0.12, 0.042, 0.018, 0.038, 0.02, 0.06)
 	for s in [1.0, -1.0]:
 		for n in 4:
 			var f := 0.15 + n * 0.22
@@ -1691,7 +1694,7 @@ static func _crystal_bow(k: MeshKit) -> Vector3:
 ## rim lit faintly like the corona round an eclipsed sun.
 static func _eclipse_bow(k: MeshKit) -> Vector3:
 	_riser(k, "gun_ebony_y", 0.08, 0.034, 0.036, "gun_leather")
-	var tips := _limbs(k, "gun_ebony_y", 0.66, 0.08, 0.13, 0.04, 0.015, 0.034, 0.016, 0.07, "gun_gold")
+	var tips := _limbs(k, "gun_ebony_y", 0.66, 0.08, 0.13, 0.046, 0.018, 0.04, 0.02, 0.07, "gun_gold")
 	var c := Vector3(0, 0.0, -0.03)
 	var ring: Array = []
 	for n in 33:

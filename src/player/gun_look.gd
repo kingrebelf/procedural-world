@@ -234,11 +234,14 @@ static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: fl
 	r.seamless = true
 	r.noise = _wear_noise
 	var rg := Gradient.new()
-	rg.set_color(0, Color(1, 1, 1))
-	rg.set_color(1, Color(0.5, 0.5, 0.5))
+	# Strong contrast: matt where the finish is fresh, glossy where hands have polished
+	# it, so highlights break up across the steel.
+	rg.offsets = PackedFloat32Array([0.0, 1.0])
+	rg.colors = PackedColorArray([Color(1, 1, 1), Color(0.25, 0.25, 0.25)])
 	r.color_ramp = rg
 	m.roughness_texture = r
-	m.roughness = minf(rough * 1.3, 1.0)
+	m.roughness = minf(rough * 1.6, 1.0)
+	m.metallic_specular = 0.75
 	m.normal_scale = bump
 	return m
 
