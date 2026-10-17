@@ -132,11 +132,13 @@ static func aura_for(it) -> Material:
 ## Held like a gun: the item points along the view instead of being raised.
 const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars"]
 
-## Bows are held like a tool, fist closed round the middle of the stave, not like a gun.
+## Bows built along +Y (ItemModels, the forged longbow) are held like a tool, fist closed
+## round the middle of the stave. A bow GunLook builds points along -Z like a gun and is
+## held like one.
 const BOWS := ["shortbow", "longbow", "composite_bow", "royal_bow", "crystal_bow", "eclipse_bow"]
 
 static func is_bow(t: String) -> bool:
-	return t in BOWS
+	return t in BOWS and not GunLook.has(t)
 
 static func pointed(t: String) -> bool:
 	return t in POINTED or ItemDB.def(t).get("ranged", false)
