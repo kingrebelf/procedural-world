@@ -720,6 +720,9 @@ func set_arms_only(right_only := false) -> void:
 			_arms_cut(m)
 		elif not _is_held(m):
 			m.visible = false
+	# First person: no blinking, or the shut eyelids show up in front of the camera.
+	if gestures:
+		gestures.eyelids = [null, null]
 
 var _side := 1.0
 
