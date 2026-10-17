@@ -400,7 +400,7 @@ static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: 
 			o["i"].append_array([a, b, a + 1, a + 1, b, b + 1])
 
 ## A cape from the shoulders to `hem`, hanging clear of the back and the legs.
-static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color) -> void:
+static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color, clear := 0.0) -> void:
 	var top: float = s["shoulder_y"] + 0.02
 	var waist: float = s["waist"]
 	var cols := 14
@@ -416,7 +416,8 @@ static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color) -> void:
 		var y := lerpf(top, hem, k)
 		var m := _measure(s, y, 0.03)
 		rz_back = minf(rz_back, float(m["back"]))
-		var depth := maxf(cz - rz_back, 0.1) + 0.035 + 0.05 * k
+		# Below the waist it also clears a tunic or skirt hanging under it.
+		var depth := maxf(cz - rz_back, 0.1) + 0.035 + 0.05 * k + clear * smoothstep(waist + 0.05, waist - 0.1, y)
 		var wide := float(s["shoulder_x"]) * lerpf(1.02, 1.35, k) + 0.02
 		var arc := deg_to_rad(lerpf(88.0, 74.0, k))
 		for ci in cols + 1:
@@ -853,10 +854,13 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		# it falls from the hips like a skirt of its own.
 		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.04, PART_APRON, Color.WHITE, 0.36, 0.012 if hem > 0.0 else 0.006)
 		if sp["bib"]:
-			# The bib: the front of the chest and belly, skinned like the shirt under it.
-			var bib_top: float = float(s["shoulder_y"]) - 0.1
+			# The bib: up the front of the belly and chest, narrowing to where it ties at the
+			# neck, skinned like the shirt under it.
+			var neck: float = s["neck"]
+			var sy: float = s["shoulder_y"]
 			_shell(s, o, PART_APRON, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-				if (r == 1 or r == 5) and p.y > waist - 0.05 and p.y < bib_top and p.z > -0.02 and absf(p.x) < 0.13:
+				var half := lerpf(0.14, 0.075, smoothstep(sy - 0.16, neck, p.y))
+				if (r == 1 or r == 5 or r == 0) and p.y > waist - 0.05 and p.y < neck + 0.015 and p.z > 0.0 and absf(p.x) < half:
 					return 0.03 if vest > 0 else 0.02
 				return -1.0, 20, 0.008)
 	if sp["belt"]:
@@ -865,7 +869,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		if sp.get("pouch", 0) != 0:
 			_pouch(s, o, waist - 0.035, float(sp["pouch"]))
 	if sp["cape"] > 0.0:
-		_cape(s, o, sp["cape"], Color.WHITE)
+		_cape(s, o, sp["cape"], Color.WHITE, (0.03 + float(sp["flare"]) * 0.5) if hem > 0.0 or apron > 0.0 else 0.0)
 		# A mantle over the shoulders that the cape hangs from, so it wraps the shoulder
 		# line instead of starting at a straight edge behind them.
 		var sy: float = s["shoulder_y"]
