@@ -808,6 +808,8 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 		cols[PART_PANTS] = fab.call(b.get("cloth2", Color(0.3, 0.28, 0.25)), FAB_WOOL)
 		sp["vest"] = 1
 		cols[PART_TRIM] = fab.call(pick.call(HIDE), FAB_LEATHER)
+	elif is_child(b, job):
+		_child(sp, cols, era, fem, pick, fab, chance)
 	elif era == Eras.SCIFI:
 		_scifi(sp, cols, role, fem, pick, fab, chance)
 	else:
@@ -918,13 +920,56 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 			var c: Color = cols[part]
 			var d: Color = c.darkened(0.45) if skin.v > 0.45 else c.lerp(Color(0.25, 0.33, 0.45), 0.7)
 			cols[part] = Color(d.r, d.g, d.b, c.a)
-	if sp["belt"] and job != "" and role != "cleric" and chance.call(0.55):
+	if sp["belt"] and job != "" and role != "cleric" and not is_child(b, job) and chance.call(0.55):
 		sp["pouch"] = 1 if chance.call(0.5) else -1
 	for part in [PART_SKIRT, PART_TRIM, PART_APRON, PART_CAPE]:
 		if not cols.has(part):
 			cols[part] = cols.get(PART_SHIRT, Color(0.5, 0.4, 0.3, 0.0))
 	cols[PART_BOOTS] = fab.call(pick.call(BOOTS) if era != Eras.SCIFI else pick.call([Color(0.14, 0.15, 0.17), Color(0.3, 0.24, 0.17)]), FAB_LEATHER)
 	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim}
+
+## Whether this person is a child or a teenager (they dress as one, never in adult gear).
+static func is_child(b: Dictionary, job: String) -> bool:
+	return job == "child" or bool(b.get("child", false)) or int(b.get("age", 30)) < 18
+
+## Children and teens: plain, modest everyday clothes with high necklines. Girls wear a
+## long kirtle or a smock over a skirt, boys a long tunic over hose or a shirt and
+## trousers; no bodices, aprons, capes, pouches or anything of a trade. Out in the
+## sci-fi reaches, a plain shirt and trousers or a one-piece suit.
+static func _child(sp: Dictionary, cols: Dictionary, era: int, fem: bool, pick: Callable, fab: Callable, chance: Callable) -> void:
+	sp["boot_h"] = 0.26 if chance.call(0.6) else 0.32
+	if era == Eras.SCIFI:
+		sp["boot_h"] = 0.32
+		var main: Color = pick.call(UTILITY + DYED.slice(2, 6) + EARTH.slice(0, 4))
+		var suit: bool = chance.call(0.3)
+		cols[PART_SHIRT] = fab.call(main, FAB_CANVAS if suit else FAB_LINEN)
+		cols[PART_PANTS] = fab.call(main if suit else pick.call(UTILITY + [Color(0.24, 0.26, 0.3)]), FAB_CANVAS)
+		sp["sleeves"] = 1 if chance.call(0.5) else 2
+		sp["belt"] = false
+		return
+	var everyday: Array = (FAIR if era == Eras.FANTASY else DYED) + EARTH + UNDYED
+	var top: Color = pick.call(everyday)
+	sp["sleeves"] = 2 if chance.call(0.7) else 1
+	sp["belt"] = chance.call(0.6)
+	if fem:
+		# A kirtle all of one colour, or a linen smock over a coloured skirt; long, but
+		# shorter on the little ones so they can run.
+		sp["hem"] = [0.14, 0.2, 0.26][int(chance.call(0.5)) + int(chance.call(0.5))]
+		sp["flare"] = [0.06, 0.09][int(chance.call(0.5))]
+		var smock: bool = chance.call(0.45)
+		cols[PART_SHIRT] = fab.call(pick.call(UNDYED) if smock else top, FAB_LINEN if smock else FAB_WOOL)
+		cols[PART_SKIRT] = fab.call(top, FAB_WOOL if chance.call(0.6) else FAB_LINEN)
+		cols[PART_PANTS] = fab.call(pick.call(LEGWEAR), FAB_WOOL)
+	else:
+		cols[PART_PANTS] = fab.call(pick.call(LEGWEAR), FAB_WOOL)
+		if chance.call(0.6):
+			# A long tunic over hose.
+			cols[PART_SHIRT] = fab.call(top, FAB_WOOL if chance.call(0.5) else FAB_LINEN)
+			sp["hem"] = [0.6, 0.66][int(chance.call(0.5))]
+			sp["flare"] = 0.1
+			cols[PART_SKIRT] = cols[PART_SHIRT]
+		else:
+			cols[PART_SHIRT] = fab.call(pick.call(UNDYED) if chance.call(0.6) else top, FAB_LINEN)
 
 ## Whether cloth of colour `c` could pass for bare skin of tone `skin`.
 static func _near(c: Color, skin: Color) -> bool:

@@ -1563,6 +1563,17 @@ func test_wardrobes() -> void:
 			check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "%s's clothes don't pass for bare skin" % job)
 	check(looks.size() >= 36, "nobody dresses like anyone else (%d looks in 40)" % looks.size())
 	check(men_in_gowns == 0, "men wear tunics and trousers, not gowns")
+	# Children dress as children in every era: nothing low-cut, nothing of a trade.
+	for i in 60:
+		var p := NPCGen.person(r, Eras.MEDIEVAL, i, 0, 0)
+		p["body"]["female"] = i % 2 == 0
+		for era in [Eras.MEDIEVAL, Eras.FANTASY, Eras.SCIFI]:
+			var w := Outfit.wardrobe(p["body"], era, "child")
+			var sp: Dictionary = w["spec"]
+			check(sp["vest"] == 0 and sp["apron"] == 0.0 and not sp["bib"] and sp["cape"] == 0.0 and not sp.has("pouch") and not sp.get("open", false),
+				"a child wears no bodice, apron, cape, pouch or coat (%s)" % str(sp))
+			for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
+				check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "a child's clothes don't pass for bare skin")
 	if not HumanModel.available():
 		return
 	var h := HumanModel.new()
