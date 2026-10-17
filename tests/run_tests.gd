@@ -1415,6 +1415,17 @@ func _build_snapping() -> void:
 	check((wend[0]["pos"] as Vector3).is_equal_approx(Vector3(3, 0, 2)), "a wall aimed at another's end continues the line (%s)" % wend[0]["pos"])
 	var wmid := BuildCatalog.candidates("wall_plaster", Vector3(1.1, 1.0, 2.05), 0.0, 0, Vector3(1, 0, 2), false, wctx)
 	check((wmid[0]["pos"] as Vector3).is_equal_approx(Vector3(1, 3.12, 2)), "aimed at its middle it stacks on top (%s)" % wmid[0]["pos"])
+	# A wall's dressed face (local +z) turns away from the room it closes, aimed from inside
+	# or out, on the ground floor or the storey above; with no floor either side, toward you.
+	var fnear := [{"id": "foundation", "pos": Vector3(1, 0, 1), "yaw": 0.0}]
+	var out_in := BuildCatalog.snap("wall_stone", Vector3(1.9, 0.5, 1.2), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "floor", "near": fnear})
+	var out_out := BuildCatalog.snap("wall_stone", Vector3(2.1, 0.5, 1.2), 0.0, 0, Vector3(1, 0, 1), true, {"near": fnear})
+	var out_up := BuildCatalog.snap("wall_stone", Vector3(1.0, 3.6, -0.1), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "wall", "near": fnear})
+	var dressed := func(s: Dictionary) -> Vector3: return Basis(Vector3.UP, float(s["yaw"])) * Vector3.BACK
+	check(dressed.call(out_in).is_equal_approx(Vector3(1, 0, 0)) and dressed.call(out_out).is_equal_approx(Vector3(1, 0, 0)), "walls face out of the room (%s, %s)" % [dressed.call(out_in), dressed.call(out_out)])
+	check(dressed.call(out_up).is_equal_approx(Vector3(0, 0, -1)), "upstairs too, before its floor is down (%s)" % dressed.call(out_up))
+	var bare := BuildCatalog.snap("fence", Vector3(10.9, 0.0, 10.2), 0.0, 0, null, true, {"near": [], "eye": Vector3(10, 1.6, 14)})
+	check(dressed.call(bare).is_equal_approx(Vector3(0, 0, 1)), "a lone fence shows you its good side (%s)" % dressed.call(bare))
 	# A roof aimed at a wall covers the room that wall belongs to.
 	var room := []
 	for e in [[Vector3(1, 0, 0), 0.0], [Vector3(3, 0, 0), 0.0], [Vector3(1, 0, 4), 0.0], [Vector3(3, 0, 4), 0.0],
