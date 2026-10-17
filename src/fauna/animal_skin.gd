@@ -433,12 +433,12 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		var tail := p.z < cz
 		var length := ht * (r.randf_range(0.09, 0.17) if tail else r.randf_range(0.05, 0.09))
 		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
-		var d0 := (sn * (0.2 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.1 if tail else 0.35), 0, -0.12)).normalized()
-		var hang := Vector3(side * 0.05, -1.0, -0.12).normalized()
+		var d0 := (sn * (0.08 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.03 if tail else 0.35), 0, -0.12)).normalized()
+		var hang := Vector3(side * (0.0 if tail else 0.05), -1.0, -0.12).normalized()
 		var wave := r.randf() * TAU
-		var lw0 := w * r.randf_range(0.7, 1.3)
+		var lw0 := w * r.randf_range(0.7, 1.3) * (1.4 if tail else 1.0)
 		var lid := r.randf()
-		var q := p - sn * w * 0.3
+		var q := p - sn * w * (0.6 if tail else 0.3)
 		var base := v.size()
 		var dir := d0
 		for j in rows:

@@ -31,11 +31,11 @@ void fragment() {
 	float fx = fract(x);
 	float fw = max(fwidth(x), 1e-4);
 	float split = 1.0 - smoothstep(0.3, 0.8, fw);
-	float len = mix(0.85, 0.5 + 0.5 * h1(si * 3.1 + lid * 17.0), split);
+	float len = mix(0.88, 0.7 + 0.3 * h1(si * 3.1 + lid * 17.0), split);
 	float along = UV.y / len;
-	float taper = mix(1.0, 0.35, smoothstep(0.35, 1.0, along));
+	float taper = mix(1.0, 0.55, smoothstep(0.45, 1.0, along));
 	float strand = clamp((0.5 * taper - abs(fx - 0.5)) / fw + 0.5, 0.0, 1.0);
-	float lock = clamp((0.5 * mix(1.0, 0.3, smoothstep(0.3, 1.0, along)) - abs(UV.x - 0.5)) / max(fwidth(UV.x), 1e-4) + 0.5, 0.0, 1.0);
+	float lock = clamp((0.5 * mix(1.0, 0.45, smoothstep(0.4, 1.0, along)) - abs(UV.x - 0.5)) / max(fwidth(UV.x), 1e-4) + 0.5, 0.0, 1.0);
 	float tip = clamp((len - UV.y) / max(fwidth(UV.y), 1e-4) + 0.5, 0.0, 1.0);
 	ALPHA = mix(lock, strand, split) * tip;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
