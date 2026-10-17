@@ -1571,6 +1571,15 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 
 ## Walks up to a cache inside a room, as a player would, and opens it.
 func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
+	# The checks before this fill the pack, and a full pack leaves the loot in the chest
+	# (which read here as the chest not opening, now and then): make room first.
+	var inv: Inventory = root.get_node("/root/Game").inventory
+	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR - 1, -1):
+		if inv.free_slots() >= 12:
+			break
+		var it = inv.get_slot(i)
+		if it != null and it["type"] != "lockpick":
+			inv.set_slot(i, null)
 	var f := Vector3(sin(o["r"]), 0, cos(o["r"]))
 	var cw: Vector3 = c.position + o["p"]
 	var stand := cw + f * 1.3
@@ -1598,7 +1607,7 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 			check(Player.lock_of(o) <= 0 and not ui.is_open() and not player.ui_open, "the lock is open and the minigame closes")
 	else:
 		player.interact()
-	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
+	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it (%d left in it, %d free slots, facing %s)" % [(o["st"]["loot"] as Array).size(), inv.free_slots(), player.focus.get("kind", "nothing")])
 	# Looting in town may have been seen; let the law forget so guards don't crowd later checks.
 	root.get_node("/root/Game").crime = Crime.new()
 

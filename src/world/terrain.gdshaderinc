@@ -436,9 +436,14 @@ void fragment() {
 	// Where the slope turns to rock: up close by the rock's own relief, so its proud faces
 	// come through first and grass and soil fill the low places between them in a crisp,
 	// ragged edge (a straight slope blend smeared a soft green fog over the cliff foot);
-	// far off, the plain blend.
+	// far off, the plain blend. Grass holds on in tufts and turfs a metre or so across,
+	// not in grains (the fine grain sprinkled a wide speckled band where a face eased off).
+	float tufts = vnoise(p * 0.9 + 7.7) * 0.6 + vnoise(p * 2.1 + 3.3) * 0.4;
+	if (steep > 0.01) {
+		tufts = mix(tufts, vnoise3(wpos * 0.9 + 7.7) * 0.6 + vnoise3(wpos * 2.1 + 3.3) * 0.4, steep);
+	}
 	float rock_at = (slope + (meso - 0.5) * 0.18 - 0.32) / 0.2;
-	float rock_mask = mix(smoothstep(0.38, 0.62, rock_at + (rock_hi - 0.5) * 0.7 + (micro - 0.5) * 0.35),
+	float rock_mask = mix(smoothstep(0.44, 0.56, rock_at + (rock_hi - 0.5) * 0.5 + (tufts - 0.5) * 0.6 + (micro - 0.5) * 0.06),
 		smoothstep(0.0, 1.0, rock_at), far) * (1.0 - form_v.x);
 	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
 	// forking and dying out (sharp and close in some stretches, faint in others), with a

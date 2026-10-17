@@ -856,7 +856,7 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 		var inward := Vector3(-nrm.x, 0.0, -nrm.z).normalized()
 		var tries := 0
 		while _crag_loose(chunk, kind, b, p, size) and tries < 5:
-			p += inward * size * 0.12
+			p += inward * size * 0.1
 			tries += 1
 		if tries == 5 and _crag_loose(chunk, kind, b, p, size):
 			continue
@@ -903,10 +903,33 @@ static func _crag_inside(chunk: Dictionary, kind: String, b: Basis, p: Vector3) 
 			under += 1
 	return float(under) / float(n)
 
-## True when a crag would read as stuck on in mid-air: its base half over a drop, or
-## too little of it inside the hill.
+## Most air allowed under a crag's lower half (_crag_air): a third of its size, and never
+## more than a metre and a half under the biggest.
+const AIR_SHARE := 0.33
+const AIR_MAX := 1.5
+
+## The most air under a crag, in metres: over its hull's lower half (a sample of the
+## corners below its middle), how far the highest stands above the ground straight under
+## it. A crag standing well into a slope can still jut out over the fall of it, with
+## daylight under its outer side, and from across a crater or valley it hangs there.
+static func _crag_air(chunk: Dictionary, kind: String, b: Basis, p: Vector3) -> float:
+	var hull := StoneKit.hull(kind)
+	if hull.is_empty():
+		return 0.0
+	var mid := (p + b * Vector3(0.0, 0.5, 0.0)).y
+	var every := maxi(1, hull.size() / 64)
+	var most := 0.0
+	for i in range(0, hull.size(), every):
+		var w := p + b * hull[i]
+		if w.y < mid:
+			most = maxf(most, w.y - ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)))
+	return most
+
+## True when a crag would read as stuck on in mid-air: its base half over a drop, too
+## little of it inside the hill, or daylight under its lower side.
 static func _crag_loose(chunk: Dictionary, kind: String, b: Basis, p: Vector3, size: float) -> bool:
-	return _crag_hangs(chunk, b, p, size) >= 3 or _crag_inside(chunk, kind, b, p) < 0.38
+	return _crag_hangs(chunk, b, p, size) >= 3 or _crag_inside(chunk, kind, b, p) < 0.38 \
+		or _crag_air(chunk, kind, b, p) > minf(AIR_SHARE * size, AIR_MAX)
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
