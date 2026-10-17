@@ -323,6 +323,8 @@ func _run() -> void:
 		await _wonder_shots()
 	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
 		await _wonder_types()
+	if g.eggs and (only.is_empty() or only.has("53") or only.has("54") or only.has("55") or only.has("56") or only.has("57")):
+		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -993,6 +995,34 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
+func _egg_shots(g: ChunkGenerator) -> void:
+	var names := {"sword_stone": "53_egg_sword", "gnome_ring": "54_egg_gnome", "msg_bottle": "55_egg_bottle", "lost_camp": "56_egg_camp", "tiny_door": "57_egg_door"}
+	var view := {"sword_stone": [5.0, 1.6, 1.0], "gnome_ring": [4.2, 1.4, 0.3], "msg_bottle": [2.2, 1.2, 0.0], "lost_camp": [6.5, 1.8, 0.6], "tiny_door": [2.6, 0.9, 0.4]}
+	var best := {}
+	for r in 12:
+		for wz in range(-r, r + 1):
+			for wx in range(-r, r + 1):
+				if maxi(absi(wx), absi(wz)) != r:
+					continue
+				var e := EasterEggs.plan(g, wx, wz)
+				if not e.is_empty() and not best.has(e["t"]):
+					best[e["t"]] = e
+	for t in EasterEggs.TYPES:
+		if not best.has(t) or (not only.is_empty() and not only.has(String(names[t]).substr(0, 2))):
+			continue
+		var p: Vector2 = best[t]["p"]
+		var k := Vector2i(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+		for o in g.generate(k.x, k.y)["objects"]:
+			if o["t"] != t:
+				continue
+			var at := Vector2(k.x * 64.0 + o["p"].x, k.y * 64.0 + o["p"].z)
+			var v: Array = view[t]
+			# From in front (+z of the find, turned by its yaw), a little to one side.
+			var front := Vector2(sin(o["r"] + 0.35), cos(o["r"] + 0.35))
+			await _shot(names[t], at + front * float(v[0]), at, 0.4, float(v[1]), float(o["p"].y) + float(v[2]))
+			print("egg ", t, " at ", at)
 
 ## The densest woodland near spawn: a close look under the trees (44) and an overlook from
 ## a rise like the one players stand on (43), each followed by a draw-call breakdown so

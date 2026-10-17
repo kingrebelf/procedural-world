@@ -882,7 +882,10 @@ func _update_look_target() -> void:
 			# A relic: what it does instead of what it yields.
 			var w := Wonders.use_of(o, Game.day)
 			text = ("[%s] %s" % [_key("interact"), w["verb"]]) if not w.is_empty() else Wonders.describe(o, Game.day)
-			if WonderSite.has(t):
+			if EasterEggs.has(t):
+				info = {"title": EasterEggs.label(t), "sub": "Secret",
+					"lines": [Wonders.describe(o, Game.day), "Can't be broken: use it with [%s]" % _key("interact")], "icon": EasterEggs.ICON[t]}
+			elif WonderSite.has(t):
 				info = {"title": WonderSite.label(t), "sub": "Wonder  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
 					"lines": [WonderSite.lore(t), "Can't be broken"], "icon": Durability.yields(o)[0][0]}
 			else:

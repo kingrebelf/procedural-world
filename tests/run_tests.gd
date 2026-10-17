@@ -2791,3 +2791,78 @@ func test_pack_c_items() -> void:
 	Eras.theme = was
 	check(early_ok, "frontier caches hold no sci-fi gear")
 	check(late > 30, "far-out caches hold the sci-fi age (%d)" % late)
+
+func test_easter_eggs() -> void:
+	var keep_tv := WorldField.terrain_v
+	var keep_theme := Eras.theme
+	var keep_eras := WorldField.allowed_eras
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	WorldField.allowed_eras = [Eras.MEDIEVAL, Eras.SCIFI]
+	Eras.theme = "human"
+	var g := ChunkGenerator.new(4242, true)
+	var kinds := {}
+	var plans: Array = []
+	for wz in range(-5, 5):
+		for wx in range(-5, 5):
+			var e := EasterEggs.plan(g, wx, wz)
+			if e.is_empty():
+				continue
+			plans.append(e)
+			kinds[e["t"]] = true
+			var p: Vector2 = e["p"]
+			check(EasterEggs.cell_of(int(floor(p.x / ChunkGenerator.SIZE)), int(floor(p.y / ChunkGenerator.SIZE))) == Vector2i(wx, wz), "a find stays in its own cell")
+			if int(e["era"]) == Eras.SCIFI:
+				check(e["t"] in ["lost_camp", "msg_bottle"], "no sword, gnome or tiny door in human sci-fi land (%s)" % e["t"])
+	check(plans.size() > 10 and plans.size() < 60, "finds are rare but there (%d of 100 cells)" % plans.size())
+	check(kinds.size() >= 4, "most kinds of find turn up (%s)" % str(kinds.keys()))
+	# Pure in the seed: a fresh generator plans the same.
+	EasterEggs._plans.clear()
+	var g2 := ChunkGenerator.new(4242, true)
+	var e0: Dictionary = plans[0]
+	var c0 := EasterEggs.cell_of(int(floor(e0["p"].x / ChunkGenerator.SIZE)), int(floor(e0["p"].y / ChunkGenerator.SIZE)))
+	check(EasterEggs.plan(g2, c0.x, c0.y) == e0, "plans are deterministic")
+	# The chunk that holds a planned find places it, once, near the spot.
+	var placed := 0
+	for e in plans.slice(0, 6):
+		var p: Vector2 = e["p"]
+		var cx := int(floor(p.x / ChunkGenerator.SIZE))
+		var cz := int(floor(p.y / ChunkGenerator.SIZE))
+		var n := 0
+		for o in g.generate(cx, cz)["objects"]:
+			if o["t"] == e["t"]:
+				n += 1
+				check(Vector2(cx * ChunkGenerator.SIZE + o["p"].x, cz * ChunkGenerator.SIZE + o["p"].z).distance_to(p) < 10.0, "placed near its planned spot")
+		check(n <= 1, "one find per chunk")
+		placed += n
+	check(placed >= 5, "planned finds get placed (%d of 6)" % placed)
+	# A journal's rumour points at another find, not at itself.
+	var near := EasterEggs.nearest(g, e0["p"], 1400.0, e0["p"])
+	check(near.is_empty() or (near["p"] as Vector2).distance_to(e0["p"]) > 30.0, "a rumour points elsewhere")
+	# Using them: what they offer before and after.
+	var sword := {"t": "sword_stone", "e": 0, "i": 0, "st": {}}
+	check(Wonders.has("sword_stone") and Wonders.unbreakable("sword_stone"), "finds are used, not broken")
+	check(Wonders.use_of(sword, 3.0).get("verb", "") != "", "an untouched sword offers a pull")
+	check(ObjectLibrary.mesh_key(sword) == "sword_stone", "sword mesh before")
+	sword["st"]["drawn"] = true
+	check(Wonders.use_of(sword, 3.0).is_empty(), "a drawn sword offers nothing")
+	check(ObjectLibrary.mesh_key(sword) == "sword_stone~drawn", "an empty stone once drawn")
+	var door := {"t": "tiny_door", "e": 0, "i": 0, "st": {"used": true, "day": 3}}
+	check(EasterEggs.use_of(door, 3.5).is_empty() and not EasterEggs.use_of(door, 4.1).is_empty(), "the tiny door answers once a day")
+	check(ObjectLibrary.mesh_key({"t": "lost_camp", "e": Eras.SCIFI, "st": {}}) == "lost_camp~s", "the sci-fi camp")
+	for t in EasterEggs.TYPES:
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t) == EasterEggs.LABELS[t], "%s is a labelled structure" % t)
+		check(ObjectLibrary.get_mesh(t).get_surface_count() > 0, "%s has a mesh" % t)
+		check(not ItemDB.def(EasterEggs.ICON[t]).is_empty(), "%s has an icon item" % t)
+	# Alien worlds keep only the explorer's camp.
+	Eras.theme = "alien"
+	WorldField.allowed_eras = [Eras.FANTASY, Eras.SCIFI]
+	EasterEggs._plans.clear()
+	var ga := ChunkGenerator.new(99, true)
+	for wz in range(-3, 3):
+		for wx in range(-3, 3):
+			var e := EasterEggs.plan(ga, wx, wz)
+			check(e.is_empty() or e["t"] == "lost_camp", "alien worlds only hide camps")
+	EasterEggs._plans.clear()
+	WorldField.terrain_v = keep_tv
+	Eras.theme = keep_theme
+	WorldField.allowed_eras = keep_eras

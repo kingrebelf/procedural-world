@@ -65,6 +65,8 @@ const LABEL := {
 static func kind(t: String) -> String:
 	if BuildCatalog.is_built(t):
 		return "built"
+	if EasterEggs.has(t):
+		return "structure"
 	return KIND.get(t, "marker")
 
 static func label(t: String) -> String:
@@ -74,6 +76,8 @@ static func label(t: String) -> String:
 		return Stronghold.LABELS[t]
 	if Landmark.has(t):
 		return Landmark.LABELS[t]
+	if EasterEggs.has(t):
+		return EasterEggs.label(t)
 	if WonderSite.has(t):
 		return WonderSite.label(t)
 	if ShipPad.has(t):
@@ -87,6 +91,8 @@ const MAX_MESHES := 400
 ## snapshots have no species and use the classic mesh for their type.
 static func mesh_key(o: Dictionary) -> String:
 	var sp: int = o.get("sp", 0)
+	if EasterEggs.has(o["t"]):
+		return EasterEggs.mesh_key(o)
 	if sp == 0:
 		# On human worlds a wonder wears carved and inlaid stone, nothing that glows.
 		if Eras.theme == "human" and WonderSite.has(o["t"]):
@@ -121,6 +127,8 @@ static func get_mesh(key: String) -> ArrayMesh:
 static func _build_mesh(key: String) -> ArrayMesh:
 	if BuildCatalog.is_built(key):
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
+	if EasterEggs.owns_key(key):
+		return EasterEggs.build(key)
 	if key.ends_with("~in"):
 		var room := key.trim_suffix("~in")
 		return KitHouse.interior(room) if KitHouse.has(room) else Interiors.interior(room)
@@ -411,7 +419,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else EasterEggs.SIZE[t] if EasterEggs.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
 				"spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)

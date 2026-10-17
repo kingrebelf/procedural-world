@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 10 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves).
+const GEN_VERSION := 11 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs).
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -33,6 +33,8 @@ var walls := false
 var landforms := false
 ## v10: caves are tunnel networks under the hills, not shells on the ground.
 var deep_caves := false
+## v11: hidden finds (EasterEggs).
+var eggs := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
@@ -62,6 +64,7 @@ func _init(world_seed: int, with_rivers := false) -> void:
 	walls = WorldField.terrain_v >= 6
 	landforms = WorldField.terrain_v >= 7
 	deep_caves = WorldField.terrain_v >= 10
+	eggs = WorldField.terrain_v >= 11
 	if outposts:
 		road_reach = 26.0
 
@@ -1062,6 +1065,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
 	if landforms:
 		_place_landmark(chunk, sites, origin)
+	# v11: a hidden find, very rarely, once the buildings and landmarks have their room.
+	if eggs:
+		EasterEggs.place(self, chunk)
 
 	# Nothing grows or lies inside a building (or a neighbour's reaching in).
 	var plans := keep_out(chunk)
