@@ -20,6 +20,7 @@ const LAYERS := {
 	"wind": ["wind", 0.55], "wind_strong": ["wind_strong", 0.6], "birds": ["birds", 0.5],
 	"crickets": ["crickets", 0.45], "water": ["water", 0.6], "surf": ["surf", 0.6],
 	"fantasy": ["fantasy", 0.4], "scifi": ["scifi", 0.35], "cave": ["dungeon", 0.7],
+	"rain": ["rain", 0.65], "rain_roof": ["rain_roof", 0.7],
 }
 
 ## Music by mood; a mood picks one of its tracks each time it plays.
@@ -385,6 +386,8 @@ func _sample_env() -> Dictionary:
 	e["fantasy"] = w[1] if w.size() > 1 else 0.0
 	e["scifi"] = w[2] if w.size() > 2 else 0.0
 	e["wind"] = float(atm.wind_strength)
+	var wx: Weather = atm.get("weather")
+	e["rain"] = wx.precip * (1.0 - wx.snow) if wx != null else 0.0
 	e["underwater"] = bool(pl.get("underwater"))
 	e["swimming"] = bool(pl.get("swimming"))
 	var era := WorldField.dominant(w)
@@ -473,6 +476,13 @@ func _set_targets(e: Dictionary) -> void:
 	_layer_target["surf"] = open * clampf(float(e["sea"]) * 2.2, 0.0, 1.0) * (1.0 - clampf(float(e["water"]) * 2.0, 0.0, 1.0) * 0.5)
 	_layer_target["fantasy"] = open * smoothstep(0.3, 0.9, float(e["fantasy"])) * (0.5 + 0.5 * (1.0 - day))
 	_layer_target["scifi"] = smoothstep(0.3, 0.9, float(e["scifi"])) * (1.0 if inside else 0.7)
+	# Rain (Weather): all round you outdoors; indoors, drumming on the roof over you and
+	# muffled through the walls. Birds and crickets go quiet in it.
+	var rain := clampf(float(e.get("rain", 0.0)) * 1.2, 0.0, 1.0)
+	_layer_target["rain"] = rain * (0.35 if inside else 1.0)
+	_layer_target["rain_roof"] = rain if inside else 0.0
+	_layer_target["birds"] *= 1.0 - smoothstep(0.1, 0.4, rain)
+	_layer_target["crickets"] *= 1.0 - smoothstep(0.1, 0.4, rain)
 	if e["underwater"]:
 		for id in _layer_target:
 			_layer_target[id] *= 0.4

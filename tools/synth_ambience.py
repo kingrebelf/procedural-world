@@ -9,6 +9,7 @@ of one whole loop (circular), modulations use whole cycles per loop, and scatter
 events wrap around the end.
 
     python3 tools/synth_ambience.py assets/audio
+    python3 tools/synth_ambience.py assets/audio weather   (only the weather sounds)
 """
 import os
 import subprocess
@@ -254,6 +255,98 @@ def splash(var):
     return norm(x + bub[:, 0], 0.6)
 
 
+def rain(sec):
+    """Steady rain out in the open: a bright hiss of countless drops, a soft low wash of
+    water running off, and nearer drops ticking on leaves and ground."""
+    n = int(sec * SR)
+    hiss = shaped_noise(n, 500, 13000, tilt=-0.35)
+    wash = shaped_noise(n, 80, 900, tilt=-0.8) * 0.35
+    ticks = np.zeros((n, 2))
+    for _ in range(int(sec * 260)):
+        d = rng.uniform(0.002, 0.008)
+        m = int(d * SR)
+        ev = rng.standard_normal(m) * np.exp(-np.arange(m) / (m * 0.25))
+        ev = np.diff(ev, prepend=0.0)  # thin, bright
+        place(ticks, ev, int(rng.integers(n)), rng.uniform(0.02, 0.12), rng.uniform(-0.9, 0.9))
+    x = hiss * slow_mod(n, 5, 0.12)[:, None] + wash + ticks
+    return norm(x, 0.6)
+
+
+def rain_roof(sec):
+    """Rain heard from inside: the patter of drops on the roof over your head, a low hum
+    of the whole roof under it, and now and then a drip from the eaves."""
+    n = int(sec * SR)
+    hum = shaped_noise(n, 60, 700, tilt=-0.9) * 0.4
+    hiss = shaped_noise(n, 600, 5000, tilt=-0.6) * 0.2
+    pat = np.zeros((n, 2))
+    for _ in range(int(sec * 140)):
+        d = rng.uniform(0.006, 0.02)
+        m = int(d * SR)
+        t = np.arange(m) / SR
+        f0 = rng.uniform(250, 900)
+        ev = (np.sin(2 * np.pi * f0 * t) * 0.6 + rng.standard_normal(m) * 0.4) * np.exp(-t / (d * 0.3))
+        place(pat, ev, int(rng.integers(n)), rng.uniform(0.04, 0.2), rng.uniform(-0.7, 0.7))
+    drips = np.zeros((n, 2))
+    at = 0
+    while at < n:
+        at += int(rng.uniform(0.4, 1.6) * SR)
+        d = 0.09
+        t = np.arange(int(d * SR)) / SR
+        f = rng.uniform(900, 1500) * (1 + 0.6 * t / d)
+        ev = np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t / 0.018)
+        place(drips, ev, at % n, rng.uniform(0.08, 0.2), rng.uniform(-0.5, 0.5))
+    x = hum * slow_mod(n, 4, 0.15)[:, None] + hiss + pat + drips
+    return norm(x, 0.6)
+
+
+def _lowpassed(x, hz):
+    f = np.fft.rfftfreq(len(x), 1 / SR)
+    return np.fft.irfft(np.fft.rfft(x) / (1 + (f / hz) ** 4), len(x))
+
+
+def thunder(var, near):
+    """A thunderclap. Near: the crack of the stroke, a tearing crackle, then the roll.
+    Far: only the roll, low and slow to swell (the air has eaten the highs)."""
+    sec = 7.0 + var * 1.5 + (0 if near else 2.0)
+    n = int(sec * SR)
+    t = np.arange(n) / SR
+    out = np.zeros((n, 2))
+    # The roll: deep noise rising and falling in a few slow surges as the sound arrives
+    # from each part of the channel.
+    base = shaped_noise(n, 18, 260 if near else 140, tilt=-1.4)
+    surges = np.zeros(n)
+    for _ in range(int(rng.integers(3, 6))):
+        c = rng.uniform(0.15, 0.75) * sec
+        w = rng.uniform(0.4, 1.4)
+        surges += rng.uniform(0.4, 1.0) * np.exp(-((t - c) / w) ** 2)
+    attack = 0.02 if near else 0.6
+    env = (1 - np.exp(-t / attack)) * np.exp(-t / (sec * 0.32)) * (0.6 + surges)
+    out += base * env[:, None]
+    if near:
+        # The crack: a sharp broadband burst, then crackle tearing on for a moment.
+        m = int(0.08 * SR)
+        crack = rng.standard_normal(m) * np.exp(-np.arange(m) / (m * 0.2))
+        place(out, _lowpassed(crack, 6000) * 2.0, int(0.01 * SR), 1.0, rng.uniform(-0.3, 0.3))
+        for _ in range(60):
+            d = rng.uniform(0.003, 0.02)
+            mm = int(d * SR)
+            ev = rng.standard_normal(mm) * np.exp(-np.arange(mm) / (mm * 0.3))
+            place(out, _lowpassed(ev, 3000), int(rng.uniform(0.02, 0.6) * SR), rng.uniform(0.1, 0.5) * 1.5, rng.uniform(-0.6, 0.6))
+    return norm(out, 0.85 if near else 0.7)
+
+
+def weather(out):
+    global rng
+    rng = np.random.default_rng(2718)  # its own seed: the other sounds stay as they are
+    amb = os.path.join(out, "ambience")
+    write_ogg(os.path.join(amb, "rain.ogg"), rain(20), 2)
+    write_ogg(os.path.join(amb, "rain_roof.ogg"), rain_roof(20), 1)
+    sfx = os.path.join(out, "sfx", "weather")
+    for i in range(3):
+        write_ogg(os.path.join(sfx, "thunder_near_%d.ogg" % i), thunder(i, True), 2)
+        write_ogg(os.path.join(sfx, "thunder_far_%d.ogg" % i), thunder(i, False), 1)
+
+
 def write_ogg(path, data, q):
     data = np.asarray(data, dtype=np.float64)
     if data.ndim == 1:
@@ -274,6 +367,9 @@ def write_ogg(path, data, q):
 
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "assets/audio"
+    if len(sys.argv) > 2 and sys.argv[2] == "weather":
+        weather(out)
+        return
     amb = os.path.join(out, "ambience")
     write_ogg(os.path.join(amb, "wind.ogg"), wind(24), 1)
     write_ogg(os.path.join(amb, "wind_strong.ogg"), wind(24, True), 1)

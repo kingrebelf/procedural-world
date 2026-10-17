@@ -30,6 +30,8 @@ var streamer: Node3D ## a ChunkStreamer (untyped: tests load this without the Ga
 ## 0 in the open .. 1 deep in a cave: daylight, sky light and haze fade out underground.
 var underground := 0.0
 var _under_target := 0.0
+## Rain, snow, storms and the rest (a child, so it runs after this each frame).
+var weather: Weather
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -149,6 +151,10 @@ func _ready() -> void:
 	_gust_noise.fractal_type = FastNoiseLite.FRACTAL_NONE
 	Settings.changed.connect(apply_settings)
 	apply_settings()
+	weather = Weather.new()
+	weather.name = "Weather"
+	weather.atmosphere = self
+	add_child(weather)
 
 func apply_settings() -> void:
 	var gi := int(Settings.get_value("gi"))
@@ -251,6 +257,8 @@ func _update_wind(delta: float) -> void:
 	# Weather drifts over in-game hours; gusts swell and die away over several seconds.
 	var gt := Game.day * Game.DAY_SECONDS
 	var base := 0.32 + _wind_noise.get_noise_1d(gt * 0.0006) * 0.75
+	if weather != null:
+		base = weather.wind # fronts, storms and gales
 	var want := smoothstep(0.0, 0.6, _gust_noise.get_noise_1d(gt * 0.045 + 500.0)) * 0.35 * (0.4 + base)
 	# Rise slower than the noise can, and fall slower still.
 	_gust = lerpf(_gust, want, clampf(delta * (0.6 if want > _gust else 0.3), 0.0, 1.0))
@@ -261,10 +269,12 @@ func _update_wind(delta: float) -> void:
 	_cloud_drift += wind_dir * delta * (6.0 + wind_strength * 22.0)
 	RenderingServer.global_shader_parameter_set("cloud_drift", _cloud_drift)
 	var ang := _wind_noise.get_noise_1d(gt * 0.0002 + 900.0) * TAU * 1.5
-	wind_dir = Vector2(cos(ang), sin(ang))
+	wind_dir = Vector2(cos(ang), sin(ang)) if weather == null else weather.wind_dir
 	RenderingServer.global_shader_parameter_set("wind_strength", wind_strength)
 	# Cloud cover follows the weather: windy spells are cloudier.
 	var cover := clampf(0.35 + _wind_noise.get_noise_1d(gt * 0.0004 + 300.0) * 0.6 + wind_strength * 0.25, 0.05, 0.95)
+	if weather != null:
+		cover = weather.cover
 	sky_mat.set_shader_parameter("cloud_cover", cover)
 	RenderingServer.global_shader_parameter_set("cloud_cover_g", cover)
 	sun.shadow_opacity = lerpf(1.0, 0.75, cover)

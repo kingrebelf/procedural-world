@@ -71,7 +71,7 @@ func _ready() -> void:
 	add_child(_info)
 	# What this kind of zone holds, under the clock.
 	_finds = UITheme.label("", 12, Color(1, 1, 1, 0.72))
-	_finds.position = Vector2(-10, DIAM + 24)
+	_finds.position = Vector2(-10, DIAM + 42) # under the clock and the weather
 	_finds.size = Vector2(DIAM + 20, 52)
 	_finds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_finds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -101,7 +101,9 @@ func _process(delta: float) -> void:
 	_disc.rotation = _turn()
 	_over.queue_redraw()
 	var t := fposmod(Game.day, 1.0) * 24.0
-	_info.text = "Day %d  %02d:%02d   ·   %d, %d" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), int(p.x), int(p.z)]
+	# The weather and the air's temperature (Weather).
+	var wx := "\n%s  ·  %d°C" % [Weather.current.describe(), roundi(Weather.current.temp)] if Weather.current != null else ""
+	_info.text = "Day %d  %02d:%02d   ·   %d, %d%s" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), int(p.x), int(p.z), wx]
 	_zone_t -= delta
 	if _zone_t <= 0.0:
 		_zone_t = 0.5
