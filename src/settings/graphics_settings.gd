@@ -177,6 +177,8 @@ func apply() -> void:
 
 	var sq := clampi(int(values["shadows"]), 0, 3)
 	RenderingServer.directional_shadow_atlas_set_size(SHADOW_SIZES[sq], true)
+	# Lamps, hearths and torches share one atlas for their shadows.
+	vp.positional_shadow_atlas_size = SHADOW_SIZES[sq]
 	RenderingServer.directional_soft_shadow_filter_set_quality(SHADOW_FILTERS[sq])
 	RenderingServer.positional_soft_shadow_filter_set_quality(SHADOW_FILTERS[sq])
 

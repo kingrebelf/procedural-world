@@ -92,12 +92,22 @@ static func look(w: PackedFloat32Array) -> PackedFloat32Array:
 	o[SCIFI] = 0.0
 	return o
 
+## Highest zone level on a human world: the far frontier tops out a little past the
+## portal zones (WorldPortal.MIN_LEVEL), below the alien endgame worlds.
+const HUMAN_MAX_LEVEL := 55
+## Highest zone level on an alien world (they start at 50-60).
+const ALIEN_MAX_LEVEL := 80
+
+## The highest zone level on the current world.
+static func max_level() -> int:
+	return ALIEN_MAX_LEVEL if theme == "alien" else HUMAN_MAX_LEVEL
+
 ## How dangerous and rewarding the land at (x, z) is: base_level at the origin, one level
-## more every LEVEL_STEP metres. Older worlds are level 1 everywhere.
+## more every LEVEL_STEP metres, up to max_level(). Older worlds are level 1 everywhere.
 static func zone_level(x: float, z: float) -> int:
 	if theme == "":
 		return 1
-	return base_level + int(Vector2(x, z).length() / LEVEL_STEP)
+	return mini(base_level + int(Vector2(x, z).length() / LEVEL_STEP), maxi(max_level(), base_level))
 
 ## Extra loot luck for caches out in higher zones (0 near the start).
 static func zone_luck(x: float, z: float) -> float:

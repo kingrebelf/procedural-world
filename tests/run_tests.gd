@@ -1658,6 +1658,17 @@ func test_world_themes() -> void:
 			far += 1
 	check(far > 25 and far < 60, "far out, most land is sci-fi (%d of 60)" % far)
 	check(Eras.zone_level(0, 0) == 1 and Eras.zone_level(1500, 0) == 11 and Eras.zone_level(0, -6000) == 41, "zone levels rise 1 per 150 m")
+	check(Eras.zone_level(26364, -9360) == Eras.HUMAN_MAX_LEVEL and Eras.zone_level(0, 200000) == Eras.HUMAN_MAX_LEVEL, "human zone levels stop at %d" % Eras.HUMAN_MAX_LEVEL)
+	check(int(ZoneInfo.at(77, 26364, -9360)["level_hi"]) <= Eras.HUMAN_MAX_LEVEL, "the minimap never shows a band past the cap")
+	# Wonder guardians rate by their zone: a boss near the start is a few levels up, not 60.
+	var boss := Creature.species(-100, Eras.MEDIEVAL)
+	boss["zone"] = 3
+	var elite := Creature.species(-5, Eras.MEDIEVAL)
+	elite["zone"] = 3
+	var blv := Creature.level_of(boss)
+	var elv := Creature.level_of(elite)
+	check(blv > elv and elv > 3 and blv <= 3 + WonderSite.BOSS_ABOVE, "a Lv 3 zone's boss is Lv %d and its elites Lv %d" % [blv, elv])
+	check(float(boss["hp"]) > float(elite["hp"]), "the boss still outlasts its elites")
 	check(Eras.nature(Eras.SCIFI) == Eras.MEDIEVAL and Eras.look(PackedFloat32Array([0.2, 0, 0.8]))[Eras.MEDIEVAL] > 0.99, "human sci-fi land looks natural")
 	check(Biome.params(12345, Eras.SCIFI)["lumen"] == 0.0 and Biome.params(54321, Eras.SCIFI)["flora"][0]["t"] in ["oak", "pine"], "no glow and natural trees on a human world")
 	check(Recipes.unlock_level("sword_iron") == 1 and Recipes.unlock_level("pulse_pistol") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("scrap_pistol") == 10, "advanced weapons unlock at level 10")
@@ -2066,6 +2077,10 @@ func test_village_livestock() -> void:
 			best = minf(best, Vector2(o["p"].x - h["lx"], o["p"].z - h["lz"]).length())
 		near = near and best < 10.0
 	check(near, "livestock stand by the houses (%s)" % [names])
+	# Every walking animal has a real model: none falls back to the block body.
+	for e in Creature.NAMES.size():
+		for n in Creature.NAMES[e].get("quad", []) + Creature.NAMES[e].get("hexa", []):
+			check(AnimalModel.available(Creature.KIT_OF.get(n, "")), "%s has a rigged model" % n)
 	check(var_to_bytes(Creature.livestock_for(9, village)) == var_to_bytes(Creature.livestock_for(9, village)), "the same animals every time")
 	var wild := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": [houses[0]]}
 	check(Creature.livestock_for(9, wild).is_empty(), "a lone house keeps no livestock")
@@ -2234,7 +2249,10 @@ func test_wonder_meshes() -> void:
 		check(ObjectLibrary.kind(t) == "structure" and Wonders.unbreakable(t), "%s is an unbreakable structure" % t)
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
-	# Human worlds: nothing on the wonders they can have glows (the locator beam aside).
+	# Human worlds: nothing on the wonders they can have glows, not even the locator beam.
+	for t in ["w_throne", "w_dreadnought"]:
+		check(_beam_surfaces(WonderSite.build(t, false, true)) == 0, "a human world's %s has no beam of light" % t)
+	check(_beam_surfaces(WonderSite.build("w_throne")) > 0, "an alien world's throne keeps its beam")
 	for t in ["w_throne", "w_dreadnought", "w_column", "w_pylon"]:
 		var calm := WonderSite.build(t, true, true)
 		var lit := 0
@@ -2251,6 +2269,14 @@ func test_wonder_meshes() -> void:
 	check(ObjectLibrary.mesh_key(o) == "w_throne", "alien worlds keep the glow")
 	Eras.theme = was
 
+
+func _beam_surfaces(m: ArrayMesh) -> int:
+	var n := 0
+	for i in m.get_surface_count():
+		var mat := m.surface_get_material(i) as StandardMaterial3D
+		if mat != null and mat.blend_mode == BaseMaterial3D.BLEND_MODE_ADD:
+			n += 1
+	return n
 
 ## Nothing grows through a floor: trees, rocks, caches and markers keep out of every
 ## building's ground plan, including a neighbour chunk's building reaching in.
