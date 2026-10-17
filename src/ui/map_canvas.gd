@@ -70,6 +70,18 @@ const ICON := {"player": 0, "village": 1, "town": 2, "fort": 3, "dungeon": 4, "c
 	"quest": 18, "pin": 19, "death": 20, "vehicle": 21, "horse": 22, "ship": 23,
 	"well": 24, "trader": 25, "smithy": 26, "inn": 27, "teleporter": 28, "danger": 29}
 
+static var _icon_tex := {}
+
+## One cell of the marker sheet as its own texture (for buttons).
+static func icon_texture(name: String) -> Texture2D:
+	if not _icon_tex.has(name):
+		var i: int = ICON.get(name, 6)
+		var t := AtlasTexture.new()
+		t.atlas = MARKERS
+		t.region = Rect2((i % 6) * 128, (i / 6) * 128, 128, 128)
+		_icon_tex[name] = t
+	return _icon_tex[name]
+
 ## Draws icon `name` centred on p, `s` pixels across.
 static func draw_icon(ci: CanvasItem, name: String, p: Vector2, s: float, tint := Color.WHITE) -> void:
 	var i: int = ICON.get(name, 6)
@@ -176,12 +188,33 @@ static func draw_player(ci: CanvasItem, p: Vector2, dir: Vector2, s: float) -> v
 	draw_icon(ci, "player", Vector2.ZERO, s * 2.6)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-## A map pin or teleporter.
+## A map pin or teleporter: a pin in the marker's colour, or its chosen icon on a disc
+## of that colour.
 static func draw_marker(ci: CanvasItem, mk: Dictionary, p: Vector2, s: float) -> void:
 	if mk["kind"] == "teleporter":
 		draw_icon(ci, "teleporter", p, s * 2.4)
+		return
+	var col := Markers.color_of(mk)
+	var icon: String = mk.get("icon", "pin")
+	if icon == "pin":
+		draw_icon(ci, "pin", p - Vector2(0, s * 0.9), s * 2.4, col.lerp(Color.WHITE, 0.35))
 	else:
-		draw_icon(ci, "pin", p - Vector2(0, s * 0.9), s * 2.4, Markers.color_of(mk).lerp(Color.WHITE, 0.35))
+		ci.draw_circle(p, s * 1.15, Color(0, 0, 0, 0.6))
+		ci.draw_circle(p, s * 1.0, col)
+		draw_icon(ci, icon, p, s * 1.9)
+
+## An ore deposit: the mine icon on a small disc in the ore's colour.
+static func draw_ore(ci: CanvasItem, o: Dictionary, p: Vector2, s: float) -> void:
+	ci.draw_circle(p, s * 0.95, Color(0, 0, 0, 0.55))
+	ci.draw_circle(p, s * 0.8, WorldMap.ORE_COLORS.get(o["t"], Color.WHITE))
+	draw_icon(ci, "mine", p, s * 1.6)
+
+## A person: a dot, gold for traders, and a ring for people you have spoken with.
+static func draw_person(ci: CanvasItem, p: Vector2, s: float, trader: bool, met: bool) -> void:
+	ci.draw_circle(p, s + 1.0, Color(0, 0, 0, 0.6))
+	ci.draw_circle(p, s, Color(1.0, 0.8, 0.35) if trader else Color(0.95, 0.92, 0.85))
+	if met:
+		ci.draw_arc(p, s + 2.5, 0, TAU, 16, Color(0.45, 0.9, 1.0), 1.5, true)
 
 static func _grow(pts: PackedVector2Array, c: Vector2, by: float) -> PackedVector2Array:
 	var out := PackedVector2Array()

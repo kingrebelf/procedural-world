@@ -24,6 +24,8 @@ const CLEAR := 27.0 ## nothing else grows or stands this close
 const TYPES := ["w_throne", "w_worldroot", "w_dreadnought", "w_gate"]
 const NAMES := {"w_throne": "Titan's Throne", "w_worldroot": "The Worldroot", "w_dreadnought": "Fallen Dreadnought", "w_gate": "Starfall Gate"}
 const BY_ERA := ["w_throne", "w_worldroot", "w_dreadnought"]
+## How far in front of each centrepiece its vault stands (the boss a little further out).
+const FRONT := {"w_throne": 8.2, "w_worldroot": 6.5, "w_dreadnought": 11.0, "w_gate": 4.0}
 const PILLAR := {"w_throne": "w_column", "w_worldroot": "w_crystal", "w_dreadnought": "w_pylon", "w_gate": "w_obelisk"}
 const LABELS := {
 	"w_throne": "Titan's Throne", "w_worldroot": "The Worldroot", "w_dreadnought": "Fallen Dreadnought", "w_gate": "Starfall Gate",
@@ -133,7 +135,7 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	vault_loot.append_array(treasure(era, r, origin, Rarity.LEGENDARY, 2))
 	vault_loot.append(treasure(era, r, origin, Rarity.EPIC, 1)[0])
 	vault_loot.append({"type": "_marks", "qty": r.randi_range(1500, 3000)})
-	var front: float = {"w_throne": 8.2, "w_worldroot": 6.5, "w_dreadnought": 11.0, "w_gate": 4.0}[t]
+	var front: float = FRONT[t]
 	put.call(Eras.CACHE_TYPES[era], Vector2(0, front), PI, {"loot": vault_loot, "opened": false, "wonder": t, "seal": boss_id})
 	for i in 3:
 		var a := PI * 0.5 + (i - 1) * 2.1 + r.randf_range(-0.2, 0.2)
@@ -228,16 +230,16 @@ static func build(t: String, solid := false) -> ArrayMesh:
 		"w_dreadnought": out = _dreadnought(k, r)
 		"w_gate": _gate(k, r, solid)
 		"w_column":
-			k.box("castle_stone", I.translated(Vector3(0, 0.3, 0)), Vector3(2.0, 0.6, 2.0))
-			k.box("castle_stone", I.translated(Vector3(0, -1.5, 0)), Vector3(2.0, 3.0, 2.0))
-			k.cylinder("castle_stone", I.translated(Vector3(0, 0.6, 0)), 0.62, 0.52, 6.2, 10, false, 0.03, 3)
+			k.box("titan_glow", I.translated(Vector3(0, 0.3, 0)), Vector3(2.0, 0.6, 2.0))
+			k.box("titan_stone", I.translated(Vector3(0, -1.5, 0)), Vector3(2.0, 3.0, 2.0))
+			k.cylinder("titan_stone", I.translated(Vector3(0, 0.6, 0)), 0.62, 0.52, 6.2, 10, false, 0.03, 3)
 			k.cylinder("gold", I.translated(Vector3(0, 2.4, 0)), 0.66, 0.66, 0.18, 10, false)
-			k.box("castle_stone", I.translated(Vector3(0, 6.95, 0)), Vector3(1.6, 0.5, 1.6))
+			k.box("titan_stone", I.translated(Vector3(0, 6.95, 0)), Vector3(1.6, 0.5, 1.6))
 			k.cylinder("iron", I.translated(Vector3(0, 7.2, 0)), 0.5, 0.65, 0.5, 8)
 			k.sphere("glow_warm", I.translated(Vector3(0, 7.75, 0)), 0.36, 5, 8, 0.25)
 			k.sphere("moss", I.translated(Vector3(0.5, 0.65, 0.4)), 0.5, 4, 7, 0.25, 0.4)
 		"w_crystal":
-			k.sphere("stone_dark", I.translated(Vector3(0, 0.1, 0)), 1.3, 5, 9, 0.3, 0.45)
+			k.sphere("root_bark", I.translated(Vector3(0, 0.1, 0)), 1.3, 5, 9, 0.3, 0.45)
 			k.crystal("crystal_violet", I, 0.6, 5.0, 6, 0.3)
 			for i in 4:
 				var a := i * TAU / 4.0 + 0.4
@@ -245,7 +247,7 @@ static func build(t: String, solid := false) -> ArrayMesh:
 				k.crystal("crystal", Transform3D(b, Vector3(cos(a) * 0.7, 0.0, sin(a) * 0.7)), 0.28, r.randf_range(1.6, 2.6))
 			k.sphere("glow_teal", I.translated(Vector3(0, 0.5, 0)), 0.32, 4, 6)
 		"w_pylon":
-			k.box("metal_dark", I.translated(Vector3(0, -1.0, 0)), Vector3(2.2, 2.6, 2.2))
+			k.box("starfall_glass", I.translated(Vector3(0, -1.0, 0)), Vector3(2.2, 2.6, 2.2))
 			k.box("panel", I.translated(Vector3(0, 0.3, 0)), Vector3(2.0, 0.6, 2.0))
 			k.box("metal_dark", I.translated(Vector3(0, 3.6, 0)), Vector3(1.0, 6.0, 1.0))
 			for side in 4:
@@ -254,14 +256,16 @@ static func build(t: String, solid := false) -> ArrayMesh:
 			k.box("panel", I.translated(Vector3(0, 6.75, 0)), Vector3(1.6, 0.3, 1.6))
 			k.sphere("glow_red", I.translated(Vector3(0, 7.15, 0)), 0.22, 4, 6)
 		"w_obelisk":
-			k.box("stone_dark", I.translated(Vector3(0, -1.0, 0)), Vector3(1.8, 2.4, 1.8))
+			k.box("void_stone", I.translated(Vector3(0, -1.0, 0)), Vector3(1.8, 2.4, 1.8))
 			k.box("rune_stone", I.translated(Vector3(0, 0.25, 0)), Vector3(1.6, 0.5, 1.6))
-			k.cylinder("stone_dark", Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(0, 0.5, 0)), 0.8, 0.45, 6.0, 4, false)
-			k.cylinder("stone_dark", Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(0, 6.5, 0)), 0.45, 0.0, 1.0, 4, false)
+			k.cylinder("void_stone", Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(0, 0.5, 0)), 0.8, 0.45, 6.0, 4, false)
+			k.cylinder("void_stone", Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3(0, 6.5, 0)), 0.45, 0.0, 1.0, 4, false)
 			for side in 4:
 				var b := Basis(Vector3.UP, side * PI * 0.5)
 				for row in 4:
 					k.box("glow_violet", Transform3D(b, b * Vector3(0, 1.3 + row * 1.25, 0.58 - row * 0.045)), Vector3(0.3, 0.5, 0.03))
+	if is_centre(t):
+		_vault_floor(k, FRONT[t])
 	if not solid and is_centre(t):
 		_beam(k, t)
 	return k.commit(_mat, out)
@@ -272,6 +276,13 @@ static func _mat(name: String) -> Material:
 	if name == "portal":
 		return _portal_mat()
 	return Materials.get_mat(name)
+
+## The void-stone floor the vault and its keeper stand on, ringed with light.
+static func _vault_floor(k: MeshKit, front: float) -> void:
+	var at := Transform3D.IDENTITY.translated(Vector3(0, -0.4, front + 1.5))
+	k.cylinder("void_stone", at, 4.4, 4.2, 0.5, 24)
+	k.cylinder("glow_violet", at.translated(Vector3(0, 0.5, 0)), 4.22, 4.22, 0.03, 24)
+	k.cylinder("void_stone", at.translated(Vector3(0, 0.5, 0)), 4.0, 4.0, 0.04, 24)
 
 ## A tall, soft column of light, brightest low down, so the wonder can be found from afar.
 static func _beam(k: MeshKit, t: String) -> void:
@@ -336,35 +347,35 @@ static func _limb(k: MeshKit, mat: String, a: Vector3, b: Vector3, ra: float, rb
 static func _throne(k: MeshKit, r: RandomNumberGenerator) -> void:
 	var I := Transform3D.IDENTITY
 	# The dais: three broad steps on a deep footing.
-	k.box("castle_stone", I.translated(Vector3(0, -2.0, 0)), Vector3(13.0, 4.0, 13.0))
-	k.box("castle_stone", I.translated(Vector3(0, 0.3, 0)), Vector3(12.6, 0.6, 12.6))
-	k.box("castle_stone", I.translated(Vector3(0, 0.9, -0.6)), Vector3(10.4, 0.6, 10.4))
-	k.box("flagstone", I.translated(Vector3(0, 1.5, -1.2)), Vector3(8.4, 0.6, 8.2))
+	k.box("void_stone", I.translated(Vector3(0, -2.0, 0)), Vector3(13.0, 4.0, 13.0))
+	k.box("titan_stone", I.translated(Vector3(0, 0.3, 0)), Vector3(12.6, 0.6, 12.6))
+	k.box("titan_stone", I.translated(Vector3(0, 0.9, -0.6)), Vector3(10.4, 0.6, 10.4))
+	k.box("titan_glow", I.translated(Vector3(0, 1.5, -1.2)), Vector3(8.4, 0.6, 8.2))
 	# The throne itself.
-	k.box("castle_stone", I.translated(Vector3(0, 3.0, -1.8)), Vector3(6.4, 2.4, 4.0))
-	k.box("castle_stone", I.translated(Vector3(0, 7.6, -4.2)), Vector3(7.0, 11.0, 1.4))
+	k.box("titan_stone", I.translated(Vector3(0, 3.0, -1.8)), Vector3(6.4, 2.4, 4.0))
+	k.box("titan_glow", I.translated(Vector3(0, 7.6, -4.2)), Vector3(7.0, 11.0, 1.4))
 	k.cylinder("gold", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 12.0, -3.45)), 1.4, 1.4, 0.2, 16)
 	for x in [-3.6, 3.6]:
-		k.box("castle_stone", I.translated(Vector3(x, 4.8, -1.8)), Vector3(1.2, 1.2, 4.2))
-		k.box("castle_stone", I.translated(Vector3(x, 3.0, -0.2)), Vector3(1.2, 2.4, 1.0))
+		k.box("titan_stone", I.translated(Vector3(x, 4.8, -1.8)), Vector3(1.2, 1.2, 4.2))
+		k.box("titan_stone", I.translated(Vector3(x, 3.0, -0.2)), Vector3(1.2, 2.4, 1.0))
 		k.sphere("gold", I.translated(Vector3(x, 5.6, 0.2)), 0.45, 5, 8)
-		k.cylinder("castle_stone", I.translated(Vector3(x * 0.95, 13.1, -4.2)), 0.55, 0.0, 2.0, 6)
+		k.cylinder("titan_stone", I.translated(Vector3(x * 0.95, 13.1, -4.2)), 0.55, 0.0, 2.0, 6)
 	# The king: legs, a broad body, arms on a sword planted before him.
 	for s in [-1.0, 1.0]:
-		_limb(k, "castle_stone", Vector3(s * 1.2, 4.6, -2.2), Vector3(s * 1.25, 4.6, 1.2), 0.95, 0.85)
-		_limb(k, "castle_stone", Vector3(s * 1.25, 4.4, 1.3), Vector3(s * 1.3, 1.8, 1.6), 0.8, 0.7)
-		k.box("castle_stone", I.translated(Vector3(s * 1.3, 2.15, 2.2)), Vector3(1.3, 0.7, 2.2))
-	k.box("castle_stone", I.translated(Vector3(0, 7.4, -2.4)), Vector3(4.6, 5.2, 2.6))
+		_limb(k, "titan_stone", Vector3(s * 1.2, 4.6, -2.2), Vector3(s * 1.25, 4.6, 1.2), 0.95, 0.85)
+		_limb(k, "titan_stone", Vector3(s * 1.25, 4.4, 1.3), Vector3(s * 1.3, 1.8, 1.6), 0.8, 0.7)
+		k.box("titan_stone", I.translated(Vector3(s * 1.3, 2.15, 2.2)), Vector3(1.3, 0.7, 2.2))
+	k.box("titan_stone", I.translated(Vector3(0, 7.4, -2.4)), Vector3(4.6, 5.2, 2.6))
 	k.box("cloth", I.translated(Vector3(0, 6.4, -1.05)), Vector3(4.2, 3.4, 0.08))
 	k.box("gold", I.translated(Vector3(0, 5.0, -1.05)), Vector3(4.7, 0.4, 2.8))
 	for s in [-1.0, 1.0]:
-		k.sphere("castle_stone", I.translated(Vector3(s * 2.75, 9.6, -2.4)), 1.25, 6, 9)
-		_limb(k, "castle_stone", Vector3(s * 2.9, 9.4, -2.2), Vector3(s * 2.4, 7.0, 0.4), 0.7, 0.6)
-		_limb(k, "castle_stone", Vector3(s * 2.4, 7.0, 0.4), Vector3(s * 0.6, 8.0, 2.9), 0.6, 0.5)
-		k.sphere("castle_stone", I.translated(Vector3(s * 0.55, 8.0, 3.0)), 0.55, 5, 7)
-	k.cylinder("castle_stone", I.translated(Vector3(0, 9.9, -2.4)), 0.8, 0.75, 0.9, 10)
-	k.sphere("castle_stone", I.translated(Vector3(0, 11.6, -2.3)), 1.35, 8, 10, 0.04, 1.1)
-	k.box("castle_stone", Transform3D(Basis(Vector3.RIGHT, 0.25), Vector3(0, 10.6, -1.25)), Vector3(1.3, 1.5, 0.6))
+		k.sphere("titan_stone", I.translated(Vector3(s * 2.75, 9.6, -2.4)), 1.25, 6, 9)
+		_limb(k, "titan_stone", Vector3(s * 2.9, 9.4, -2.2), Vector3(s * 2.4, 7.0, 0.4), 0.7, 0.6)
+		_limb(k, "titan_stone", Vector3(s * 2.4, 7.0, 0.4), Vector3(s * 0.6, 8.0, 2.9), 0.6, 0.5)
+		k.sphere("titan_stone", I.translated(Vector3(s * 0.55, 8.0, 3.0)), 0.55, 5, 7)
+	k.cylinder("titan_stone", I.translated(Vector3(0, 9.9, -2.4)), 0.8, 0.75, 0.9, 10)
+	k.sphere("titan_stone", I.translated(Vector3(0, 11.6, -2.3)), 1.35, 8, 10, 0.04, 1.1)
+	k.box("titan_stone", Transform3D(Basis(Vector3.RIGHT, 0.25), Vector3(0, 10.6, -1.25)), Vector3(1.3, 1.5, 0.6))
 	k.cylinder("gold", I.translated(Vector3(0, 12.55, -2.3)), 1.15, 1.25, 0.6, 12, false)
 	for i in 8:
 		var a := i * TAU / 8.0
@@ -386,8 +397,8 @@ static func _throne(k: MeshKit, r: RandomNumberGenerator) -> void:
 
 static func _worldroot(k: MeshKit, r: RandomNumberGenerator) -> void:
 	var I := Transform3D.IDENTITY
-	k.cylinder("bark", I.translated(Vector3(0, -3.0, 0)), 3.8, 3.4, 3.0, 16, false, 0.12, 2)
-	k.cylinder("bark", I, 3.4, 1.5, 26.0, 16, false, 0.18, 8)
+	k.cylinder("root_bark", I.translated(Vector3(0, -3.0, 0)), 3.8, 3.4, 3.0, 16, false, 0.12, 2)
+	k.cylinder("root_bark", I, 3.4, 1.5, 26.0, 16, false, 0.18, 8)
 	# Buttress roots arch out and dive into the plaza.
 	for i in 9:
 		var a := i * TAU / 9.0 + r.randf_range(-0.15, 0.15)
@@ -397,7 +408,7 @@ static func _worldroot(k: MeshKit, r: RandomNumberGenerator) -> void:
 		for s in 6:
 			var u := (s + 1) / 6.0
 			var q := d * (2.6 + u * reach) + Vector3(0, 3.2 * (1.0 - u) + sin(u * PI) * 1.4 - u * 0.8, 0)
-			_limb(k, "bark", prev, q, 1.1 - u * 0.5, 1.0 - u * 0.55, 7)
+			_limb(k, "root_bark", prev, q, 1.1 - u * 0.5, 1.0 - u * 0.55, 7)
 			prev = q
 		k.sphere("glow_violet", I.translated(d * (3.5 + reach * 0.5) + Vector3(r.randf_range(-0.8, 0.8), 0.15, r.randf_range(-0.8, 0.8))), 0.25, 4, 6)
 		k.sphere("cap_violet", I.translated(d * (3.2 + reach * 0.4) + Vector3(0.6, 0.3, 0.6)), 0.55, 5, 8, 0.1, 0.4, Color.WHITE, true)
@@ -407,7 +418,7 @@ static func _worldroot(k: MeshKit, r: RandomNumberGenerator) -> void:
 		var a := i * TAU / 7.0 + 0.3
 		var y := 17.0 + (i % 3) * 3.0
 		var end := Vector3(cos(a) * 9.5, y + 4.5, sin(a) * 9.5)
-		_limb(k, "bark", Vector3(cos(a) * 1.2, y, sin(a) * 1.2), end, 1.0, 0.45, 7)
+		_limb(k, "root_bark", Vector3(cos(a) * 1.2, y, sin(a) * 1.2), end, 1.0, 0.45, 7)
 		crowns.append(end)
 	crowns.append(Vector3(0, 29.0, 0))
 	for c in crowns:
@@ -431,7 +442,7 @@ static func _dreadnought(k: MeshKit, r: RandomNumberGenerator) -> ArrayMesh:
 	for i in 10:
 		var a := r.randf() * TAU
 		var d := r.randf_range(7.0, 14.0)
-		k.sphere("stone_dark", I.translated(Vector3(cos(a) * d, -0.4, sin(a) * d)), r.randf_range(1.2, 2.4), 5, 8, 0.3, 0.4)
+		k.sphere("starfall_glass", I.translated(Vector3(cos(a) * d, -0.4, sin(a) * d)), r.randf_range(1.2, 2.4), 5, 8, 0.3, 0.4)
 	for i in 14:
 		var a := r.randf() * TAU
 		var d := r.randf_range(6.0, 14.0)
@@ -449,9 +460,9 @@ static func _dreadnought(k: MeshKit, r: RandomNumberGenerator) -> ArrayMesh:
 static func _gate(k: MeshKit, r: RandomNumberGenerator, solid: bool) -> void:
 	var I := Transform3D.IDENTITY
 	k.cylinder("flagstone", I.translated(Vector3(0, -3.0, 0)), 9.2, 9.0, 3.6, 24)
-	k.cylinder("rune_stone", I.translated(Vector3(0, 0.6, 0)), 7.5, 7.0, 0.4, 24)
+	k.cylinder("void_stone", I.translated(Vector3(0, 0.6, 0)), 7.5, 7.0, 0.4, 24)
 	for x in [-5.8, 5.8]:
-		k.box("stone_dark", I.translated(Vector3(x, 1.5, 0)), Vector3(2.6, 3.0, 3.0))
+		k.box("gate_metal", I.translated(Vector3(x, 1.5, 0)), Vector3(2.6, 3.0, 3.0))
 	# The ring: twenty rune stones on a circle standing across z, the keystone in gold.
 	const RAD := 7.0
 	const CY := 8.2
@@ -459,7 +470,7 @@ static func _gate(k: MeshKit, r: RandomNumberGenerator, solid: bool) -> void:
 		var a := i * TAU / 20.0
 		var p := Vector3(cos(a) * RAD, CY + sin(a) * RAD, 0)
 		var b := Basis(Vector3.BACK, a)
-		k.box("gold" if i == 5 else "stone_dark", Transform3D(b, p), Vector3(1.5, 2.5, 1.8))
+		k.box("gold" if i == 5 else "gate_metal", Transform3D(b, p), Vector3(1.5, 2.5, 1.8))
 		k.box("glow_violet", Transform3D(b, p + Vector3(0, 0, 0.92)), Vector3(0.3, 1.2, 0.04))
 		k.box("glow_violet", Transform3D(b, p - Vector3(0, 0, 0.92)), Vector3(0.3, 1.2, 0.04))
 	if not solid:

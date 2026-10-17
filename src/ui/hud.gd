@@ -242,7 +242,7 @@ func _ready() -> void:
 	_info.visible = false # the minimap shows the day, time and where you are
 	add_child(_info)
 	_minimap = Minimap.new()
-	_pin(_minimap, Control.PRESET_TOP_RIGHT, Rect2(-Minimap.DIAM - 22, 18, Minimap.DIAM, Minimap.DIAM + 40))
+	_pin(_minimap, Control.PRESET_TOP_RIGHT, Rect2(-Minimap.DIAM - 22, 18, Minimap.DIAM, Minimap.DIAM + 80))
 	add_child(_minimap)
 	# Top centre: a compass strip with your markers on it.
 	_compass = Compass.new()
@@ -368,7 +368,7 @@ func _on_toast(text: String) -> void:
 func _build_look_panel() -> void:
 	_look = PanelContainer.new()
 	_look.add_theme_stylebox_override("panel", UITheme.tex_sb("panel", 14, 10))
-	_pin(_look, Control.PRESET_TOP_RIGHT, Rect2(-360, Minimap.DIAM + 72, 340, 40)) # under the minimap
+	_pin(_look, Control.PRESET_TOP_RIGHT, Rect2(-360, Minimap.DIAM + 112, 340, 40)) # under the minimap
 	_look.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_look.custom_minimum_size = Vector2(340, 0)
 	_look.mouse_filter = Control.MOUSE_FILTER_IGNORE

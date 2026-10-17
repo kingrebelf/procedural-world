@@ -1,8 +1,9 @@
 class_name AtlasView
 extends Control
 ## The atlas: the whole painted map under its fog of war. Drag to pan, scroll to zoom
-## (towards the cursor), click to drop a marker, right-click a marker to remove it, and
-## hover a place to see what it is and how far.
+## (towards the cursor), click to drop a marker, click a marker to edit it, right-click a
+## marker to remove it, and hover a place to see what it is and how far. What shows
+## follows the map's filters.
 
 signal changed
 
@@ -11,6 +12,7 @@ var _canvas: MapCanvas
 var _icons: Control
 static var _pan := Vector2.ZERO ## world offset from the player (kept while the atlas rebuilds)
 static var _ppm := 0.5 ## pixels per metre
+static var selected := -1 ## the marker being edited in the side panel
 var _drag := false
 var _dragged := 0.0
 var _hover := Vector2(-1, -1)
@@ -36,6 +38,11 @@ func _me() -> Vector2:
 
 func recentre() -> void:
 	_pan = Vector2.ZERO
+
+## Pans so world point (x, z) is in the middle.
+static func focus(x: float, z: float, me: Vector2) -> void:
+	_pan = Vector2(x, z) - me
+	_ppm = maxf(_ppm, 0.6)
 
 func zoom_by(f: float, at := Vector2(-1, -1)) -> void:
 	if at.x < 0.0:
@@ -88,6 +95,12 @@ func _gui_input(e: InputEvent) -> void:
 			_dragged += e.relative.length()
 			_pan -= e.relative / _ppm
 
+func _marker_at(p: Vector2) -> Dictionary:
+	for mk in Game.markers.on_planet(Game.planet):
+		if _canvas.to_local_px(mk["x"], mk["z"]).distance_to(p) < 12.0:
+			return mk
+	return {}
+
 ## Everything drawn over the map, as [kind, screen point, label, payload].
 func _things() -> Array:
 	var out: Array = []
@@ -106,7 +119,7 @@ func _things() -> Array:
 	for key in Game.map.wonders:
 		var w: Dictionary = Game.map.wonders[key]
 		out.append(["wonder", _canvas.to_local_px(w["x"], w["z"]), WonderSite.label(w["t"]) if w.get("found", false) else "Something powerful", w])
-	for mk in Game.markers.on_planet(Game.planet):
+	for mk in Game.markers.on_planet(Game.planet) if Game.map.shows("marker") else []:
 		out.append(["marker", _canvas.to_local_px(mk["x"], mk["z"]), mk["name"], mk])
 	return out
 
@@ -121,8 +134,16 @@ func _draw_icons() -> void:
 			"wonder":
 				MapCanvas.draw_wonder(_icons, th[3], p, 11.0, _t)
 			"marker":
+				if int(th[3]["id"]) == selected:
+					_icons.draw_arc(p, 15.0 + sin(_t * 5.0) * 1.5, 0, TAU, 24, UITheme.ACCENT, 2.0, true)
 				MapCanvas.draw_marker(_icons, th[3], p, 9.0)
 				_label(font, p + Vector2(12, 5), th[2], 13, Color(1, 1, 1, 0.9))
+			"ore":
+				MapCanvas.draw_ore(_icons, th[3], p, 6.5)
+			"npc":
+				MapCanvas.draw_person(_icons, p, 3.0, th[3].get("job", "") == "trader", Game.map.people.has(String(th[3]["id"])))
+			"met":
+				MapCanvas.draw_person(_icons, p, 3.0, th[3].get("job", "") == "trader", true)
 			_:
 				var s := 8.0 if th[0] != "town" else 8.0 + float(th[3].get("size", 0)) * 2.0
 				MapCanvas.draw_poi(_icons, th[3], p, s)

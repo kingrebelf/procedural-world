@@ -104,6 +104,32 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+## A photo surface in its own colours, its glowing parts lit by "<photo>_emit" when
+## `glow` > 0. Falls back to plain stone when the photo is missing.
+static func _surface(ph: String, scale: float, rough: float, metal: float, glow: float) -> StandardMaterial3D:
+	var alb := photo(ph, "albedo")
+	if alb == null:
+		return _pbr(Color(0.4, 0.4, 0.42), rough, metal, "stone", 0.02, 0.35, 1.4)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = alb
+	m.roughness = rough
+	m.metallic = metal
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	if photo(ph, "normal") != null:
+		m.normal_enabled = true
+		m.normal_texture = photo(ph, "normal")
+	if glow > 0.0 and photo(ph, "emit") != null:
+		m.emission_enabled = true
+		m.emission = Color.WHITE
+		m.emission_texture = photo(ph, "emit")
+		m.emission_energy_multiplier = glow
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * scale
+	m.uv1_triplanar_sharpness = 4.0
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
 static func _glow(c: Color, energy: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = c.darkened(0.3)
@@ -318,6 +344,13 @@ static func _get_mat(name: String) -> Material:
 		"needle_card": m = _foliage("needle", Color(0.22, 0.38, 0.2), Color(0.12, 0.2, 0.05))
 		"moss_card": m = _foliage("leaf", Color(0.2, 0.6, 0.55), Color(0.1, 0.5, 0.45))
 		"rune_stone": m = _pbr(Color(0.24, 0.26, 0.30), 0.8, 0.0, "stone", 0.02, 0.35, 1.6)
+		# Wonder surfaces from Ben's art: [photo, repeats per metre, roughness, metallic, glow].
+		"titan_stone": m = _surface("titan_stone", 0.2, 0.85, 0.1, 0.0)
+		"titan_glow": m = _surface("titan_stone_glow", 0.25, 0.8, 0.1, 3.0)
+		"root_bark": m = _surface("worldroot_bark", 0.3, 0.95, 0.0, 2.5)
+		"starfall_glass": m = _surface("starfall_glass", 0.14, 0.15, 0.3, 1.2)
+		"gate_metal": m = _surface("gate_ring_metal", 0.22, 0.35, 0.7, 2.5)
+		"void_stone": m = _surface("void_stone", 0.25, 0.6, 0.0, 1.6)
 		"glow_cyan": m = _glow(Color(0.2, 0.85, 1.0), 4.0)
 		"glow_teal": m = _glow(Color(0.2, 1.0, 0.8), 3.0)
 		"glow_violet": m = _glow(Color(0.7, 0.4, 1.0), 3.0)

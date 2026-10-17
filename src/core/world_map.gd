@@ -20,6 +20,54 @@ const FIND := 75.0 ## how close you must come to a wonder to know it
 
 var pois := {} ## "cx,cz" -> [{k, name, x, z, era}]
 var wonders := {} ## "cx,cz" -> {t, x, z, era, cleared, found}
+var ores := {} ## "cx,cz" -> [{t, x, z, n}]: each kind of ore in the chunk, at its middle
+var people := {} ## npc id -> {name, job, town, x, z}: everyone you have spoken with
+## What the atlas and minimap show, by category (see category()); missing means shown.
+var filters := {}
+
+## Filter categories in the order the atlas lists them: [key, label, icon].
+const CATEGORIES := [["wonder", "Wonders", "wonder"], ["town", "Settlements", "village"],
+	["fort", "Strongholds", "fort"], ["landmark", "Landmarks", "landmark"], ["cave", "Caves", "cave"],
+	["trader", "Traders", "trader"], ["people", "People", "quest"],
+	["ore_iron_vein", "Iron", "mine"], ["ore_aether_crystal", "Aether crystal", "mine"],
+	["ore_alloy_scrap", "Alloy scrap", "mine"], ["marker", "Markers", "pin"]]
+const ORE_COLORS := {"iron_vein": Color(0.85, 0.55, 0.4), "aether_crystal": Color(0.55, 0.85, 1.0), "alloy_scrap": Color(0.8, 0.82, 0.85)}
+
+func shows(cat: String) -> bool:
+	return filters.get(cat, true)
+
+func set_shown(cat: String, on: bool) -> void:
+	filters[cat] = on
+	_index_dirty = true
+
+## Everything known of one category as [{name, x, z, ...}], for the atlas's finder.
+func known(cat: String) -> Array:
+	var out: Array = []
+	if cat == "people":
+		for id in people:
+			out.append(people[id])
+	elif cat.begins_with("ore_"):
+		var t := cat.trim_prefix("ore_")
+		for key in ores:
+			for o in ores[key]:
+				if o["t"] == t and revealed(o["x"], o["z"]) >= 0.45:
+					out.append({"name": "%s (%d)" % [ObjectLibrary.label(t), o["n"]], "x": o["x"], "z": o["z"]})
+	elif cat == "wonder":
+		for key in wonders:
+			if wonders[key].get("found", false):
+				out.append({"name": WonderSite.label(wonders[key]["t"]), "x": wonders[key]["x"], "z": wonders[key]["z"]})
+	else:
+		for key in pois:
+			for poi in pois[key]:
+				if poi["k"] == cat and revealed(poi["x"], poi["z"]) >= 0.45:
+					out.append(poi)
+	return out
+
+## Remembers someone you have spoken with, where they work.
+func note_person(rec: Dictionary, town: String) -> void:
+	var w: Vector2 = rec.get("work", Vector2(rec["pos"].x, rec["pos"].z))
+	people[String(rec["id"])] = {"name": rec["name"], "job": String(rec.get("job", "")), "town": town, "x": w.x, "z": w.y}
+	_index_dirty = true
 var _pages := {} ## Vector2i -> Page
 var _dir := ""
 var _store: WorldStore
@@ -68,6 +116,9 @@ func open(store: WorldStore, visited: Dictionary) -> void:
 		if idx is Dictionary:
 			pois = idx.get("pois", {})
 			wonders = idx.get("wonders", {})
+			ores = idx.get("ores", {})
+			people = idx.get("people", {})
+			filters = idx.get("filters", {})
 	for key in visited:
 		var p: PackedStringArray = String(key).split(",")
 		var k := Vector2i(p[0].to_int(), p[1].to_int())
@@ -79,6 +130,9 @@ func close() -> void:
 	_missing.clear()
 	pois = {}
 	wonders = {}
+	ores = {}
+	people = {}
+	filters = {}
 	_queue.clear()
 	_migrate.clear()
 	_last = Vector2(INF, INF)
@@ -94,7 +148,7 @@ func save() -> void:
 			WorldStore.write_var(_page_path(k), {"c": pg.color.get_data(), "f": pg.fog.get_data(), "p": pg.painted}, true)
 			pg.unsaved = false
 	if _index_dirty:
-		WorldStore.write_var(_dir.path_join("index.dat"), {"pois": pois, "wonders": wonders}, true)
+		WorldStore.write_var(_dir.path_join("index.dat"), {"pois": pois, "wonders": wonders, "ores": ores, "people": people, "filters": filters}, true)
 		_index_dirty = false
 
 func _page_path(k: Vector2i) -> String:
@@ -201,11 +255,12 @@ func _note_places(chunk: Dictionary) -> void:
 		if old.is_empty() or old.get("cleared", false) != w["cleared"]:
 			wonders[key] = w
 			_index_dirty = true
+	var x0 := float(chunk["cx"]) * ChunkGenerator.SIZE
+	var z0 := float(chunk["cz"]) * ChunkGenerator.SIZE
+	_note_ores(chunk, key, x0, z0)
 	if pois.has(key):
 		return
 	var out: Array = []
-	var x0 := float(chunk["cx"]) * ChunkGenerator.SIZE
-	var z0 := float(chunk["cz"]) * ChunkGenerator.SIZE
 	var g := _generator()
 	if g != null:
 		for s in g.settlements_near(x0, z0, x0 + ChunkGenerator.SIZE, z0 + ChunkGenerator.SIZE):
@@ -225,6 +280,28 @@ func _note_places(chunk: Dictionary) -> void:
 			out.append({"k": "trader", "name": String(o["st"].get("name", "Trader")), "x": p.x, "z": p.y, "era": o["e"]})
 	pois[key] = out
 	_index_dirty = true
+
+## The ore left standing in a chunk, one entry per kind at the middle of its deposits.
+## Redone whenever the chunk loads or a vein is mined out.
+func _note_ores(chunk: Dictionary, key: String, x0: float, z0: float) -> void:
+	var by := {}
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) != "ore" or o["st"].get("gone", false):
+			continue
+		var e: Array = by.get(o["t"], [Vector2.ZERO, 0])
+		e[0] += Vector2(o["p"].x, o["p"].z)
+		e[1] += 1
+		by[o["t"]] = e
+	var out: Array = []
+	for t in by:
+		var c: Vector2 = by[t][0] / by[t][1]
+		out.append({"t": t, "x": x0 + c.x, "z": z0 + c.y, "n": by[t][1]})
+	if out.is_empty():
+		if ores.erase(key):
+			_index_dirty = true
+	elif ores.get(key, []) != out:
+		ores[key] = out
+		_index_dirty = true
 
 func _generator() -> ChunkGenerator:
 	if Game.store == null:

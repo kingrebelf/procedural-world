@@ -884,6 +884,7 @@ func _map_panel() -> Control:
 	var s := _shell("Atlas", "The land you have seen, under the fog of everything you haven't. %d regions discovered." % Game.discovery["regions"].size())
 	var v: VBoxContainer = s[1]
 	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 12)
 	v.add_child(h)
 	var left := VBoxContainer.new()
 	h.add_child(left)
@@ -897,9 +898,22 @@ func _map_panel() -> Control:
 	tools.add_child(UITheme.button("Zoom in", func(): m.zoom_by(1.5)))
 	tools.add_child(UITheme.button("Zoom out", func(): m.zoom_by(1.0 / 1.5)))
 	left.add_child(tools)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(340, 610)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	var side := VBoxContainer.new()
-	side.custom_minimum_size = Vector2(300, 0)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side.add_theme_constant_override("separation", 6)
+	scroll.add_child(side)
 	var me := Vector2(player.global_position.x, player.global_position.z) if player else Vector2.ZERO
+	var sel := Game.markers.get_by_id(AtlasView.selected)
+	if not sel.is_empty() and sel["kind"] == "pin" and int(sel["planet"]) == Game.planet:
+		_marker_editor(side, sel)
+		side.add_child(HSeparator.new())
+	_map_filters(side)
+	side.add_child(HSeparator.new())
+	_map_finder(side, me)
+	side.add_child(HSeparator.new())
 	side.add_child(UITheme.label("Wonders", 18, UITheme.ACCENT))
 	var any := false
 	for key in Game.map.wonders:
@@ -913,22 +927,28 @@ func _map_panel() -> Control:
 		side.add_child(UITheme.label("None found yet. Look for a beam of light on the horizon.", 13, UITheme.DIM))
 	side.add_child(HSeparator.new())
 	side.add_child(UITheme.label("Markers", 18, UITheme.ACCENT))
+	side.add_child(UITheme.label("Click the map to drop one, click a marker to edit it.", 13, UITheme.DIM))
 	side.add_child(UITheme.button("Mark where I stand", func():
 		if player:
 			var n := Game.markers.count_kind("pin") + 1
-			Game.markers.add("Marker %d" % n, player.global_position.x, player.global_position.z, Game.planet)
+			var mk := Game.markers.add("Marker %d" % n, player.global_position.x, player.global_position.z, Game.planet)
+			AtlasView.selected = int(mk["id"])
 			Game.touch_player()
 			_refresh()))
 	for mk in Game.markers.on_planet(Game.planet):
 		var row := HBoxContainer.new()
 		var l := UITheme.label("%s  ·  %s" % [mk["name"], _dist(Vector2(mk["x"], mk["z"]).distance_to(me))], 14, Markers.color_of(mk))
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.clip_text = true
 		row.add_child(l)
+		var mx: float = mk["x"]
+		var mz: float = mk["z"]
+		row.add_child(_mini_button("Show", func():
+			AtlasView.focus(mx, mz, me)))
 		if mk["kind"] == "pin":
 			var id: int = mk["id"]
-			row.add_child(UITheme.button("Remove", func():
-				Game.markers.remove(id)
-				Game.touch_player()
+			row.add_child(_mini_button("Edit", func():
+				AtlasView.selected = id
 				_refresh()))
 		side.add_child(row)
 	side.add_child(HSeparator.new())
@@ -938,8 +958,150 @@ func _map_panel() -> Control:
 	names.sort_custom(func(a, b): return regions[a]["day"] < regions[b]["day"])
 	for n in names.slice(maxi(0, names.size() - 8)):
 		side.add_child(UITheme.label("%s  ·  day %d" % [n, int(regions[n]["day"]) + 1], 14, UITheme.ERA_COLORS[regions[n]["era"]]))
-	h.add_child(side)
+	h.add_child(scroll)
 	return s[0]
+
+func _mini_button(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+	b.add_theme_font_size_override("font_size", 13)
+	_small_button(b)
+	b.pressed.connect(cb)
+	return b
+
+## Rename a marker, pick its colour and icon, or delete it. Changes save as you make them.
+func _marker_editor(side: VBoxContainer, mk: Dictionary) -> void:
+	var id: int = mk["id"]
+	side.add_child(UITheme.label("Edit marker", 18, UITheme.ACCENT))
+	var name_e := LineEdit.new()
+	name_e.text = mk["name"]
+	name_e.max_length = 40
+	name_e.placeholder_text = "Marker name"
+	var commit := func(_t = null) -> void:
+		if name_e.text.strip_edges() != "" and name_e.text != Game.markers.get_by_id(id).get("name", ""):
+			Game.markers.edit(id, {"name": name_e.text})
+			Game.touch_player()
+	name_e.text_submitted.connect(func(t):
+		commit.call(t)
+		name_e.release_focus()
+		_refresh.call_deferred())
+	name_e.focus_exited.connect(commit)
+	side.add_child(name_e)
+	var cols := GridContainer.new()
+	cols.columns = 10
+	cols.add_theme_constant_override("h_separation", 4)
+	for i in Markers.COLORS.size():
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(26, 26)
+		b.focus_mode = Control.FOCUS_NONE
+		var on := int(mk.get("color", 0)) % Markers.COLORS.size() == i
+		var sb := UITheme.sb(Markers.COLORS[i], Color.WHITE if on else Color(0, 0, 0, 0.6), 13, 3 if on else 1, 0)
+		for st in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(st, sb)
+		b.tooltip_text = "Colour"
+		b.pressed.connect(func():
+			commit.call()
+			Game.markers.edit(id, {"color": i})
+			Game.touch_player()
+			_refresh())
+		cols.add_child(b)
+	side.add_child(cols)
+	var icons := GridContainer.new()
+	icons.columns = 6
+	for ic in Markers.ICONS:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(46, 46)
+		b.focus_mode = Control.FOCUS_NONE
+		b.icon = MapCanvas.icon_texture(ic)
+		b.expand_icon = true
+		b.tooltip_text = String(ic).capitalize()
+		if String(mk.get("icon", "pin")) == ic:
+			b.add_theme_stylebox_override("normal", UITheme.sb(Color(1, 1, 1, 0.12), UITheme.ACCENT, 6, 2, 4))
+		b.pressed.connect(func():
+			commit.call()
+			Game.markers.edit(id, {"icon": ic})
+			Game.touch_player()
+			_refresh())
+		icons.add_child(b)
+	side.add_child(icons)
+	var row := HBoxContainer.new()
+	row.add_child(_mini_button("Done", func():
+		commit.call()
+		AtlasView.selected = -1
+		_refresh()))
+	row.add_child(_mini_button("Delete", func():
+		Game.markers.remove(id)
+		AtlasView.selected = -1
+		Game.touch_player()
+		_refresh()))
+	side.add_child(row)
+
+## Ticks for what the atlas and minimap show.
+func _map_filters(side: VBoxContainer) -> void:
+	side.add_child(UITheme.label("Show on map", 18, UITheme.ACCENT))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	for c in WorldMap.CATEGORIES:
+		var cat: String = c[0]
+		var cb := CheckBox.new()
+		cb.text = c[1]
+		cb.icon = MapCanvas.icon_texture(c[2])
+		cb.expand_icon = true
+		cb.add_theme_constant_override("icon_max_width", 22)
+		cb.add_theme_font_size_override("font_size", 14)
+		cb.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+		cb.button_pressed = Game.map.shows(cat)
+		cb.toggled.connect(func(on): Game.map.set_shown(cat, on))
+		grid.add_child(cb)
+	side.add_child(grid)
+
+static var _find := "ore_iron_vein"
+
+## The nearest known places of one kind, each with a button to look at it on the map and
+## one to pin it (so the minimap points the way).
+func _map_finder(side: VBoxContainer, me: Vector2) -> void:
+	var head := HBoxContainer.new()
+	var t := UITheme.label("Find", 18, UITheme.ACCENT)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	var pick := OptionButton.new()
+	pick.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+	for c in WorldMap.CATEGORIES:
+		if c[0] == "marker":
+			continue
+		pick.add_item(c[1])
+		pick.set_item_metadata(pick.item_count - 1, c[0])
+		if c[0] == _find:
+			pick.select(pick.item_count - 1)
+	pick.item_selected.connect(func(i):
+		_find = pick.get_item_metadata(i)
+		_refresh())
+	head.add_child(pick)
+	side.add_child(head)
+	var found: Array = Game.map.known(_find)
+	found.sort_custom(func(a, b): return Vector2(a["x"], a["z"]).distance_squared_to(me) < Vector2(b["x"], b["z"]).distance_squared_to(me))
+	if found.is_empty():
+		side.add_child(UITheme.label("None seen yet. Explore, and what you pass is remembered here.", 13, UITheme.DIM))
+	for f in found.slice(0, 6):
+		var row := HBoxContainer.new()
+		var name: String = f["name"]
+		if f.has("job") and f.has("town"):
+			name = "%s, %s of %s" % [f["name"], f["job"], f["town"]]
+		var l := UITheme.label("%s  ·  %s" % [name, _dist(Vector2(f["x"], f["z"]).distance_to(me))], 14, UITheme.TEXT)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.clip_text = true
+		row.add_child(l)
+		var fx: float = f["x"]
+		var fz: float = f["z"]
+		row.add_child(_mini_button("Show", func(): AtlasView.focus(fx, fz, me)))
+		var icon: String = "mine" if _find.begins_with("ore_") else "quest"
+		row.add_child(_mini_button("Pin", func():
+			var mk := Game.markers.add(name.left(40), fx, fz, Game.planet, "pin", {"icon": icon})
+			AtlasView.selected = int(mk["id"])
+			Game.touch_player()
+			_refresh()))
+		side.add_child(row)
 
 
 ## One worn-armour slot. Drop matching armour from the pack on it to wear it, drag it back

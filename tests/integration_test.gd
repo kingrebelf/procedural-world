@@ -88,6 +88,13 @@ func _run() -> void:
 	check(world.hud._minimap != null and world.hud._minimap.player == player, "the HUD has a minimap")
 	var ver: Label = world.hud.get_node_or_null("Version")
 	check(ver != null and ver.text == "v%s" % ProjectSettings.get_setting("application/config/version"), "the HUD shows the version in a corner (%s)" % (ver.text if ver else "none"))
+	await process_frame
+	var mc: Vector2 = world.hud._minimap._canvas.center
+	check(mc.distance_to(Vector2(ppos.x, ppos.z)) < 2.0, "the minimap follows you (%s vs %s)" % [mc, Vector2(ppos.x, ppos.z)])
+	var zone: Dictionary = world.hud._minimap._zone
+	check(not zone.is_empty() and zone["level_lo"] == 1 and String(zone["finds"]) != "", "the minimap names the zone, its levels and what's found there (%s)" % zone.get("name", ""))
+	var far := ZoneInfo.at(game.seed, 3000.0, 0.0)
+	check(far["level_lo"] == 21 and far["level_hi"] == 25, "zones further out are higher level")
 	await _map_unit_checks()
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
@@ -984,6 +991,34 @@ func _map_unit_checks() -> void:
 	# A circle across a page corner lifts the fog on every page it touches.
 	m.reveal(Vector2(0, 0), 40.0)
 	check(m.revealed(-5, -5) > 0.9 and m.revealed(5, 5) > 0.9 and m.revealed(-5, 5) > 0.9, "reveals cross page edges")
+	# Ore deposits are remembered per chunk and forgotten when mined out.
+	var orech := {}
+	for k in [Vector2i(2, -3), Vector2i(0, 0), Vector2i(1, 1), Vector2i(-2, 4), Vector2i(5, 5), Vector2i(-6, -1), Vector2i(3, 7), Vector2i(8, -2)]:
+		var c := g.generate(k.x, k.y)
+		if c["objects"].any(func(o): return ObjectLibrary.kind(o["t"]) == "ore"):
+			orech = c
+			break
+	check(not orech.is_empty(), "found a chunk with ore")
+	if not orech.is_empty():
+		var key := "%d,%d" % [orech["cx"], orech["cz"]]
+		m.note_chunk(orech)
+		check(m.ores.has(key) and int(m.ores[key][0]["n"]) > 0, "the map notes the ore in a chunk")
+		for o in orech["objects"]:
+			if ObjectLibrary.kind(o["t"]) == "ore":
+				o["st"]["gone"] = true
+		m.note_chunk(orech)
+		check(not m.ores.has(key), "mined-out ore drops off the map")
+	m.set_shown("cave", false)
+	check(not m.shows("cave") and m.shows("town"), "filters hide one kind only")
+	m.note_person({"id": "1_2_3", "name": "Ada Vale", "job": "smith", "work": Vector2(10, 20), "pos": Vector3.ZERO}, "Elmford")
+	check(m.known("people").size() == 1 and m.known("people")[0]["town"] == "Elmford", "people you met are remembered")
+	var mk := Markers.new()
+	var pin := mk.add("Marker 1", 1, 2, 0)
+	mk.edit(pin["id"], {"name": "  Iron here ", "color": 7, "icon": "mine"})
+	check(pin["name"] == "Iron here" and pin["color"] == 7 and pin["icon"] == "mine", "a marker can be renamed, recoloured and given an icon")
+	mk.edit(pin["id"], {"name": "", "icon": "nonsense"})
+	check(pin["name"] == "Iron here" and pin["icon"] == "mine", "blank names and unknown icons are ignored")
+	check(Markers.from_data(mk.to_data()).get_by_id(pin["id"])["icon"] == "mine", "marker edits are saved")
 
 ## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
 func _menu_checks(world, game, con) -> void:
@@ -991,11 +1026,15 @@ func _menu_checks(world, game, con) -> void:
 	# worn, the old piece lands in the slot the new one came from, and dragging it out
 	# puts it in the chosen slot.
 	var menus: GameMenus = world.menus
+	var edit_pin: Dictionary = game.markers.add("Edit me", 0, 0, game.planet)
+	AtlasView.selected = int(edit_pin["id"])
 	for m in ["inventory", "craft", "character", "map", "pause"]:
 		menus.open(m)
 		await _frames(2)
 		check(menus._panel != null and is_instance_valid(menus._panel), "%s screen builds" % m)
 	menus.close()
+	game.markers.remove(edit_pin["id"])
+	AtlasView.selected = -1
 	con.run("give helm_iron 1")
 	con.run("give helm_elven 1")
 	var hi := -1
