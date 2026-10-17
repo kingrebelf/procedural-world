@@ -300,7 +300,8 @@ func _send_state(pl: Node3D) -> void:
 	var body = pl.get("body")
 	if body is HumanModel:
 		anim = body._current if body._current != "" else "idle"
-		speed = body.anim.speed_scale if body.anim else 1.0
+		# The pace of a looping state (gaits follow the body's own motion on arrival).
+		speed = body.animator._state_speed if body.animator else 1.0
 		shot = body._shot if body.busy() else 0
 	var pos: Vector3 = pl.global_position
 	if pl.get("vehicle") != null and is_instance_valid(pl.vehicle):
