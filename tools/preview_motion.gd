@@ -215,7 +215,7 @@ func _animal_strip(path: String, kind: String, v: float) -> void:
 	var t := 0.0
 	var shot := 0
 	var next := 2.0
-	var far := 5.0 + float(AnimalModel.HEIGHT.get(kind, 1.5)) * 1.6
+	var far := 6.0 + float(AnimalModel.HEIGHT.get(kind, 1.5)) * 1.6 + v * 0.35
 	while shot < COLS:
 		z += v * DT
 		a.global_position = Vector3(0, ground(0, z), z)
@@ -224,8 +224,12 @@ func _animal_strip(path: String, kind: String, v: float) -> void:
 		await process_frame
 		t += DT
 		if t >= next:
-			cam.global_position = Vector3(far, ground(0, z) + 0.9, z)
-			cam.look_at(Vector3(0, ground(0, z) + 0.6, z))
+			if shot == 0:
+				# The camera stays put over the strip, so a planted hoof should keep its
+				# place in the frame as well as on the grid.
+				var mid := z + v * (0.12 if v < 3.0 else 0.05) * (COLS - 1) * 0.5
+				cam.global_position = Vector3(far, ground(0, mid) + 0.9, mid)
+				cam.look_at(Vector3(0, ground(0, mid) + 0.6, mid))
 			for i in 2:
 				await process_frame
 			var img := vp.get_texture().get_image()
@@ -237,7 +241,7 @@ func _animal_strip(path: String, kind: String, v: float) -> void:
 	sheet.save_png(path)
 	print("saved ", path)
 
-## An animal walks round a tight circle on the hillside, seen from above.
+## An animal walks round a tight circle on the hillside, seen from straight above it.
 func _animal_circle(path: String, kind: String) -> void:
 	_clear()
 	var a := AnimalModel.new()
@@ -264,8 +268,10 @@ func _animal_circle(path: String, kind: String) -> void:
 		await process_frame
 		t += DT
 		if t >= next:
-			cam.global_position = c + Vector3(0, 7.5, -4.0)
-			cam.look_at(c)
+			# Straight down from above the horse, its head up the frame.
+			var at := a.global_position
+			cam.global_position = at + Vector3(0, 8.5, 0)
+			cam.look_at(at, a.global_basis.z)
 			for i in 2:
 				await process_frame
 			var img := vp.get_texture().get_image()
