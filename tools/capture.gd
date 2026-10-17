@@ -1282,14 +1282,24 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 	# the water with it.
 	if life == null:
 		return
+	# Fish live only round the player: when the earlier shots were skipped (--shots=83)
+	# the player is still at spawn, so go and stand by the lily pond (or the reef) and
+	# let its fish turn up.
+	var near := _biggest_school(life, p.global_position)
+	if near == null:
+		for what in ["pad", "reef", "kelp"]:
+			if best[what][0] == 0:
+				continue
+			var at: Vector2 = best[what][1]
+			p.global_position = Vector3(at.x, g.field.height(at.x, at.y) + 1.5, at.y)
+			await _wait_loaded(p, world.streamer)
+			await _wait(60)
+			near = _biggest_school(life, p.global_position)
+			if near != null:
+				break
 	_print_water_life(life)
-	var eye := p.global_position
-	var near: AquaticLife.School = null
-	for k in life._groups:
-		for grp in life._groups[k]:
-			# The biggest school within reach.
-			if grp is AquaticLife.School and grp.center.distance_to(eye) < 60.0 and (near == null or grp.pos.size() > near.pos.size()):
-				near = grp
+	if near == null:
+		print("83_fish_school: no school found near any water spot")
 	if near != null:
 		var cpos: Vector3 = near.center
 		var from := _under_water_spot(g, Vector2(cpos.x, cpos.z), 3.5)
@@ -1319,7 +1329,24 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 			await _wait(3)
 		await _shot("83_fish_school", from, Vector2(near.center.x, near.center.z), 0.45, eye_y - g.field.height(from.x, from.y), near.center.y, close_in)
 		p.underwater = false
+	elif best["pad"][0] > 0:
+		# No school anywhere: still a picture, under the lily pond, so the shot is never missing.
+		var at: Vector2 = best["pad"][1]
+		var from := _clear_water_spot(g, at, 6.0, 0.5)
+		var ground := g.field.height(from.x, from.y)
+		p.underwater = true
+		await _shot("83_fish_school", from, at, 0.45, minf(1.2, -0.6 - ground), Water.LEVEL - 0.8)
+		p.underwater = false
 	life.calm = false
+
+## The biggest school of fish within 60 m of `eye`, or null.
+func _biggest_school(life: AquaticLife, eye: Vector3) -> AquaticLife.School:
+	var near: AquaticLife.School = null
+	for k in life._groups:
+		for grp in life._groups[k]:
+			if grp is AquaticLife.School and grp.center.distance_to(eye) < 60.0 and (near == null or grp.pos.size() > near.pos.size()):
+				near = grp
+	return near
 
 ## A point `r` metres from `at`, under the water, from which nothing on the bed stands
 ## between the eye and the subject (`up` metres above the bed at `at`): of those, the
