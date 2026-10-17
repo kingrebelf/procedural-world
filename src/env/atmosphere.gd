@@ -142,6 +142,9 @@ func apply_settings() -> void:
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
 
+## Scales the open-air volumetric haze (tools try looks with it; 1 in the game).
+var vfog_boost := 1.0
+
 ## Era weights currently blended into the atmosphere (smoothed).
 func current_weights() -> PackedFloat32Array:
 	return _w
@@ -245,7 +248,7 @@ func _update_time_of_day() -> void:
 	env.fog_sky_affect = 0.2 + alt * 0.8
 	# Light haze near you: thick volumetric fog washed the whole view out to white when
 	# looking towards the sun.
-	env.volumetric_fog_density = dens * 0.5
+	env.volumetric_fog_density = dens * 0.5 * vfog_boost
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
 	if target and target.get("underwater"):

@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--vfog=3]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -16,6 +16,8 @@ var hud_mode := ""
 ## --env=property=value sets a property of the world's Environment for this run, for A/B
 ## looks (tonemapper, exposure, contrast) without touching the game.
 var env_sets: Array = []
+## --vfog=N scales the volumetric haze (light shafts) for this run.
+var vfog := 1.0
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -29,6 +31,8 @@ func _ready() -> void:
 			hud_mode = a.substr(6)
 		if a.begins_with("--env=") and a.count("=") == 2:
 			env_sets.append(a.substr(6).split("="))
+		if a.begins_with("--vfog="):
+			vfog = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -216,6 +220,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 func _run() -> void:
 	await _wait(5)
 	_apply_hud_mode()
+	world.atmosphere.vfog_boost = vfog
 	for kv in env_sets:
 		var env: Environment = world.atmosphere.env
 		var v = str_to_var(kv[1])
