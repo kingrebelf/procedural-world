@@ -389,9 +389,13 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 			continue
 		cands.append({"p": p, "yaw": yaw, "hx": hx, "hz": hz, "rad": rad, "score": (hi - lo) / (rad * 2.0), "n": attempt})
 	cands.sort_custom(func(x, y): return float(x["score"]) < float(y["score"]) or (float(x["score"]) == float(y["score"]) and int(x["n"]) < int(y["n"])))
+	# Hill towns farm the steeper slopes too, rather than going without.
+	var steep := 0.28
+	if cands.filter(func(x): return float(x["score"]) < steep).size() < want_fields * 2:
+		steep = 0.48
 	for cd in cands:
-		var orchard: bool = (out["orchards"] as Array).size() < want_orchards and float(cd["rad"]) > 9.0 and float(cd["score"]) < 0.4
-		if not orchard and ((out["fields"] as Array).size() >= want_fields or float(cd["score"]) > 0.28):
+		var orchard: bool = (out["orchards"] as Array).size() < want_orchards and float(cd["rad"]) > 9.0 and float(cd["score"]) < steep + 0.12
+		if not orchard and ((out["fields"] as Array).size() >= want_fields or float(cd["score"]) > steep):
 			continue
 		var p: Vector2 = cd["p"]
 		var yaw: float = cd["yaw"]
@@ -426,6 +430,20 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 			"wear": float(CROPS[crop][3]), "seed": r.randi()}
 		out["fields"].append(f)
 		out["soil"].append(f)
+		# A cart track from the field's near edge back toward town, ending at a road or
+		# outside the wall.
+		var cur := frame_to_world(p, yaw, Vector2(r.randf_range(-hx, hx) * 0.5, -hz - 0.6))
+		var stop := inner + (5.5 if bool(s.get("walled", false)) else -2.0)
+		for step in 40:
+			var on_road := false
+			for pl: PackedVector2Array in ctx["roads"]:
+				if _line_d(cur, pl) < ChunkGenerator.ROAD_HALF:
+					on_road = true
+			if on_road or cur.distance_to(c) < stop:
+				break
+			var nxt := cur + (c - cur).normalized().rotated(sin(step * 0.5 + yaw) * 0.15) * 2.0
+			out["paths"].append([cur, nxt, 0.75, 0.6])
+			cur = nxt
 		# Fences along the side facing town, sometimes a second side; a haystack or two by
 		# a ripe field, a scarecrow among the crops, now and then a cart at the edge.
 		var near := -1.0 # the -z edge faces town
@@ -584,7 +602,7 @@ static func crops(chunk: Dictionary, out: Dictionary, density: float, plans: Arr
 					continue
 				if roll < 0.04:
 					continue # gaps in the rows
-				if ChunkGenerator.slope_at(chunk, q.x, q.y) > 0.4 or ChunkGenerator.road_at(chunk, q.x, q.y) > 0.05:
+				if ChunkGenerator.slope_at(chunk, q.x, q.y) > 0.6 or ChunkGenerator.road_at(chunk, q.x, q.y) > 0.05:
 					continue
 				var y := ChunkGenerator.height_at(chunk, q.x, q.y)
 				if y < 0.3 or ChunkGenerator.by_river(chunk, q.x, q.y) or ChunkGenerator.kept_out(plans, q.x, q.y, 0.4):
@@ -1097,16 +1115,16 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_pm.scale_min = 0.7
 		_smoke_pm.scale_max = 1.1
 		var sc := Curve.new()
-		sc.add_point(Vector2(0, 0.35))
-		sc.add_point(Vector2(0.5, 1.4))
-		sc.add_point(Vector2(1, 2.4))
+		sc.add_point(Vector2(0, 0.3))
+		sc.add_point(Vector2(0.5, 1.0))
+		sc.add_point(Vector2(1, 1.0))
 		var st := CurveTexture.new()
 		st.curve = sc
 		_smoke_pm.scale_curve = st
 		var g := Gradient.new()
 		g.set_color(0, Color(0.5, 0.48, 0.46, 0.0))
-		g.add_point(0.12, Color(0.52, 0.5, 0.48, 0.42))
-		g.add_point(0.55, Color(0.62, 0.61, 0.6, 0.22))
+		g.add_point(0.1, Color(0.5, 0.48, 0.46, 0.7))
+		g.add_point(0.55, Color(0.6, 0.59, 0.58, 0.4))
 		g.set_color(g.get_point_count() - 1, Color(0.7, 0.7, 0.7, 0.0))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
@@ -1116,18 +1134,18 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_pm.anim_offset_min = 0.2
 		_smoke_pm.anim_offset_max = 0.45
 	var ps := GPUParticles3D.new()
-	ps.amount = 16
-	ps.lifetime = 9.0
-	ps.preprocess = 9.0
+	ps.amount = 26
+	ps.lifetime = 12.0
+	ps.preprocess = 12.0
 	ps.randomness = 0.4
 	ps.local_coords = false
 	ps.process_material = _smoke_pm
 	var q := QuadMesh.new()
-	q.size = Vector2(1.1, 1.1)
+	q.size = Vector2(3.6, 3.6) # (the scale curve takes a puff from 1 m to its full size)
 	q.material = _smoke_mat
 	ps.draw_pass_1 = q
-	ps.visibility_aabb = AABB(Vector3(-4, -1, -4), Vector3(14, 12, 10))
-	ps.visibility_range_end = 320.0
+	ps.visibility_aabb = AABB(Vector3(-6, -2, -6), Vector3(20, 18, 14))
+	ps.visibility_range_end = 450.0
 	ps.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	ps.position = at
 	root.add_child(ps)
