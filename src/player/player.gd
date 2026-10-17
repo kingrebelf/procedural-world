@@ -166,9 +166,9 @@ func held_item():
 func _refresh_held() -> void:
 	var it = held_item()
 	var t: String = it["type"] if it != null else ""
-	viewmodel.show_item(t)
+	viewmodel.show_item(t, it)
 	if body:
-		body.hold(Viewmodel.prop_for(t) if t != "" else null)
+		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
 
 func toggle_view() -> void:
@@ -309,6 +309,8 @@ func _physics_process(delta: float) -> void:
 		else:
 			return
 	_cooldown = maxf(0.0, _cooldown - delta)
+	if Game.health < Game.max_health() and Game.health > 0.0 and Game.wearing_affix("mending"):
+		Game.set_health(Game.health + delta * 0.8)
 	var lmsg := hand_light.tick(delta, Game.inventory)
 	if lmsg != "":
 		Game.toast.emit(lmsg)
@@ -726,7 +728,7 @@ func _update_look_target() -> void:
 			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
 		lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
 		var held = held_item()
-		var d: Dictionary = ItemDB.def(held["type"]) if held != null else Durability.FIST
+		var d: Dictionary = ItemDB.stats(held) if held != null else Durability.FIST
 		var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
 		lines.append("About %d hits with %s" % [hits, ItemDB.display_name(held) if held != null else "bare hands"])
 		info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ("Yours" if k == "built" else "")],
@@ -798,11 +800,14 @@ func eat() -> void:
 	if idx < 0:
 		Game.toast.emit("No food.")
 		return
-	if Game.health >= Game.max_health():
+	var fd := ItemDB.def(it["type"])
+	if Game.health >= Game.max_health() and not fd.get("stamina", false):
 		Game.toast.emit("You're not hungry.")
 		return
 	Game.inventory.remove_at(idx, 1)
-	Game.set_health(Game.health + ItemDB.def(it["type"]).get("heal", 10))
+	Game.set_health(Game.health + fd.get("heal", 10))
+	if fd.get("stamina", false):
+		Game.set_stamina(Game.max_stamina())
 	Game.toast.emit("Ate %s" % ItemDB.display_name(it))
 
 ## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
@@ -824,6 +829,10 @@ func _tire(n: float) -> bool:
 
 func use_held() -> void:
 	var it = held_item()
+	if it != null and ItemDB.def(it["type"]).get("kind", "") == "armor":
+		_cooldown = 0.4
+		Game.equip(selected)
+		return
 	if it != null and Vehicle.is_vehicle_item(it["type"]):
 		_cooldown = 0.5
 		deploy_vehicle()
@@ -834,7 +843,7 @@ func use_held() -> void:
 			used_tool.emit("build")
 			Game.add_xp(4.0, "Building")
 		return
-	var d: Dictionary = ItemDB.def(it["type"]) if it != null else Durability.FIST
+	var d: Dictionary = ItemDB.stats(it) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
 	if d.get("ranged", false):
 		_fire(it, d)
@@ -843,7 +852,7 @@ func use_held() -> void:
 	var fresh := _tire(5.0)
 	var force: float = Game.stats.damage_mult() * (1.0 if fresh else 0.5)
 	var hq: float = q * force
-	_cooldown = (0.55 if fresh else 0.9) / Game.stats.swing_mult()
+	_cooldown = (0.55 if fresh else 0.9) / Game.stats.swing_mult() * (0.75 if d.get("swift", false) else 1.0) * float(d.get("swing", 1.0))
 	viewmodel.swing()
 	if body:
 		body.play_once(swing_anim(it["type"] if it != null else ""), _cooldown + 0.1)
@@ -861,11 +870,11 @@ func use_held() -> void:
 		return
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
-		fauna.player_hit(h["creature"], float(d.get("damage", 2)) * hq)
+		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq)
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
-		npcs.player_hit(h["npc"], float(d.get("damage", 2)) * hq)
+		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq)
 		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
@@ -938,15 +947,34 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 			damage_object(bc, bc.get_object(hit["collider"].get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
 		return
 	if hit.has("collider") and hit["collider"].has_meta("creature") and fauna:
-		fauna.player_hit(hit["collider"].get_meta("creature"), float(d.get("damage", 10)))
+		_strike(it, hit["collider"].get_meta("creature"), null, float(d.get("damage", 10)) * it.get("quality", 1.0))
 		return
 	if hit.has("collider") and hit["collider"].has_meta("npc") and npcs:
-		npcs.player_hit(hit["collider"].get_meta("npc"), float(d.get("damage", 10)))
+		_strike(it, null, hit["collider"].get_meta("npc"), float(d.get("damage", 10)) * it.get("quality", 1.0))
 		return
 	if hit.has("collider") and hit["collider"].has_meta("obj"):
 		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
 		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))
 		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, Durability.material(o["t"])), 0.8)
+
+## A hit on a creature or person, with the held item's abilities: critical strikes,
+## life drain and arcs of lightning to whatever stands close by.
+func _strike(it, creature, npc, dmg: float) -> void:
+	if Rarity.has_affix(it, "keen") and randf() < 0.2:
+		dmg *= 2.0
+		Game.toast.emit("Critical hit!")
+	var at: Vector3 = creature.global_position if creature != null else npc.global_position
+	if creature != null:
+		fauna.player_hit(creature, dmg)
+	else:
+		npcs.player_hit(npc, dmg)
+	if Rarity.has_affix(it, "vampiric"):
+		Game.set_health(minf(Game.max_health(), Game.health + dmg * 0.08))
+	if Rarity.has_affix(it, "shock") and fauna:
+		viewmodel.tracer(at + Vector3(0, 1.0, 0), "glow_cyan")
+		for c in fauna.creatures_near(at, 3.0):
+			if c != creature:
+				fauna.player_hit(c, dmg * 0.4)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float) -> void:
@@ -975,8 +1003,9 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 	var mat0 := Durability.material(o["t"])
 	var how := "reclaimed" if k0 == "built" else ("salvaged" if k0 in ["structure", "cache", "trader", "marker"] or mat0 == "metal" else ("gathered" if k0 == "tree" else "mined"))
 	var xp := 0.0
+	var twice := Rarity.has_affix(held_item(), "bountiful") and randf() < 0.25
 	for y in r["items"]:
-		Game.give(ItemDB.make(y[0], y[1], quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
+		Game.give(ItemDB.make(y[0], y[1] * (2 if twice else 1), quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 		xp += 2.0 * y[1]
 	if r["destroyed"]:
 		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):

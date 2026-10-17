@@ -71,8 +71,5 @@ static func build(t: String) -> ArrayMesh:
 	k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, top - 0.05, 0)), Vector3(w - 0.5, 0.1, d - 0.5))
 	k.box("stone", Transform3D.IDENTITY.translated(Vector3(0, -0.4, 0)), Vector3(w + 0.5, 0.9, d + 0.5))
 	var mesh := BuildCatalog.merge_models(models)
-	var pm := k.commit(Materials.get_mat)
-	for i in pm.get_surface_count():
-		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pm.surface_get_arrays(i))
-		mesh.surface_set_material(mesh.get_surface_count() - 1, pm.surface_get_material(i))
+	k.commit(Materials.get_mat, mesh)
 	return mesh

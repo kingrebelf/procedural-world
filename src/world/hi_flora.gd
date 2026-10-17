@@ -25,6 +25,9 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 		"crystal_tree": return _crystal_tree(Flora.species(t, sp), _rng(sp, v))
 		"solar_mast": return _xeno(sp, _rng(sp, v))
 		"aether_crystal": return _crystal_cluster(sp, _rng(sp, v))
+		"crystal_shard": return _monolith(_rng(sp, v))
+		"standing_stone": return _menhir(_rng(sp, v))
+		"alien_ruin": return _ruin(Flora.species(t, sp), _rng(sp, v))
 	return null
 
 static func _rng(sp: int, v: int) -> RandomNumberGenerator:
@@ -260,6 +263,12 @@ static func _cap_profile(kind: String, sr: float) -> Array:
 		"funnel":
 			top = PackedVector2Array([Vector2(0, 0.06), Vector2(0.25, 0.1), Vector2(0.5, 0.24), Vector2(0.75, 0.42), Vector2(0.95, 0.6), Vector2(1.03, 0.66), Vector2(1.04, 0.6)])
 			under = PackedVector2Array([Vector2(0.95, 0.5), Vector2(0.72, 0.3), Vector2(0.45, 0.1), Vector2(sr * 1.4, -0.04), Vector2(sr, -0.14)])
+		"shelf":
+			# A broad, thick-lipped bracket cap.
+			top = PackedVector2Array([Vector2(0, 0.32), Vector2(0.3, 0.3), Vector2(0.6, 0.22), Vector2(0.84, 0.12), Vector2(1.0, 0.02), Vector2(1.03, -0.07)])
+			under = PackedVector2Array([Vector2(0.99, -0.13), Vector2(0.72, -0.1), Vector2(0.45, -0.09), Vector2(sr * 1.3, -0.08), Vector2(sr, -0.14)])
+		_:
+			return _cap_profile("dome", sr)
 	return [top, under]
 
 static func _mushroom(p: Dictionary, r: RandomNumberGenerator) -> ArrayMesh:
@@ -421,6 +430,188 @@ static func _crystal_cluster(sp: int, r: RandomNumberGenerator) -> ArrayMesh:
 		var big := 1.0 if i < 3 else r.randf_range(0.35, 0.75)
 		g.prism("shard", Vector3(cos(a), 0, sin(a)) * r.randf_range(0.0, 0.45) + Vector3(0, 0.25, 0), dir, 0.16 * big + 0.05, r.randf_range(0.8, 1.8) * big + 0.3, 6, r.randf_range(0.2, 0.4), r.randf() * TAU)
 	return g.commit()
+
+## A fantasy wayside marker: a tall crystal spire split out of a rocky plinth, lesser
+## shards around its foot and splinters hanging in the air beside it.
+static func _monolith(r: RandomNumberGenerator) -> ArrayMesh:
+	var g := Geo.new()
+	var tint := Color(0.62, 0.4, 1.0)
+	g.add_mat("shard", crystal(tint, tint.lerp(Color.WHITE, 0.55), 1.1, 0.85))
+	g.add_mat("rock", Materials.get_mat("stone_dark"))
+	var rock := PackedVector2Array([Vector2(0, 0.75), Vector2(0.55, 0.68), Vector2(1.15, 0.4), Vector2(1.45, 0.05), Vector2(1.4, -0.45)])
+	g.lathe("rock", rock, 16, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 0.85)), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.28, r.randi() % 100)
+	g.prism("shard", Vector3(0, 0.3, 0), Vector3(0.06, 1.0, 0.03), 0.44, 4.6, 6, 0.28, 0.2)
+	g.prism("shard", Vector3(0.18, 0.4, -0.1), Vector3(0.3, 1.0, -0.1), 0.24, 2.8, 6, 0.35, 0.9)
+	for i in 6:
+		var a := TAU * i / 6.0 + r.randf() * 0.6
+		var dir := Vector3(cos(a) * 0.55, 1.0, sin(a) * 0.55)
+		g.prism("shard", Vector3(cos(a), 0, sin(a)) * r.randf_range(0.45, 0.8) + Vector3(0, 0.25, 0), dir, r.randf_range(0.1, 0.2), r.randf_range(0.7, 1.8), 6, 0.35, r.randf() * TAU)
+	for i in 5:
+		var a := r.randf() * TAU
+		var y := r.randf_range(1.4, 4.2)
+		g.prism("shard", Vector3(cos(a) * 1.0, y, sin(a) * 1.0), Vector3(r.randf_range(-0.3, 0.3), 1.0, r.randf_range(-0.3, 0.3)), 0.07, r.randf_range(0.3, 0.6), 6, 0.5, r.randf())
+	return g.commit()
+
+## A medieval standing stone: a weathered, leaning menhir with a mossy foot and old
+## runes cut into its face that glow faintly after dark.
+static func _menhir(r: RandomNumberGenerator) -> ArrayMesh:
+	var g := Geo.new()
+	g.add_mat("stone", Materials.get_mat("stone"))
+	g.add_mat("moss", Materials.get_mat("moss"))
+	g.add_mat("rune", organic(Color(0.15, 0.4, 0.5), Color(0.4, 0.9, 1.0), {"glow": 0.9, "glow_col": Color(0.4, 0.85, 1.0), "streaks": 0.0, "sss": 0.6}))
+	var lean := Transform3D(Basis(Vector3(0, 0, 1), 0.06) * Basis().scaled(Vector3(1.0, 1.0, 0.55)), Vector3.ZERO)
+	var prof := PackedVector2Array([Vector2(0, 3.5), Vector2(0.22, 3.42), Vector2(0.4, 3.0), Vector2(0.5, 2.0), Vector2(0.56, 0.8), Vector2(0.64, 0.1), Vector2(0.66, -0.6)])
+	g.lathe("stone", prof, 9, lean, Vector2(0.12, 0.0), Color.WHITE, 0.14, r.randi() % 50)
+	g.lathe("moss", PackedVector2Array([Vector2(0.58, 0.45), Vector2(0.8, 0.15), Vector2(0.95, -0.1)]), 12, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 0.7)), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.25, 3)
+	# Glyphs: short bars and ticks set into the face (+z), following the stone's lean.
+	for i in 5:
+		var y := 0.9 + i * 0.42
+		var face := 0.55 * lerpf(0.58, 0.48, (y - 0.8) / 2.2) - 0.015
+		var c := lean.basis * Vector3(0, y, 0) + Vector3(0, 0, face)
+		g.prism("rune", c + Vector3(-0.14, 0, 0), Vector3.RIGHT, 0.028, 0.28, 4, 0.0, PI * 0.25)
+		if r.randf() < 0.7:
+			var d := Vector3(r.randf_range(-0.6, 0.6), 1.0, 0)
+			g.prism("rune", c + Vector3(r.randf_range(-0.1, 0.1), 0.0, 0.0), d, 0.025, 0.2, 4, 0.0, PI * 0.25)
+	# A few fallen stones of the old circle around it.
+	for i in r.randi_range(1, 3):
+		var a := r.randf() * TAU
+		var at := Vector3(cos(a), -0.15, sin(a)) * r.randf_range(1.8, 2.8)
+		g.lathe("stone", PackedVector2Array([Vector2(0, 0.45), Vector2(0.35, 0.38), Vector2(0.5, 0.0), Vector2(0.45, -0.3)]), 7, Transform3D(Basis(Vector3.UP, a) * Basis().scaled(Vector3(1.4, 0.8, 0.8)), at), Vector2.ZERO, Color.WHITE, 0.2, i)
+	return g.commit()
+
+# --- Alien ruins ------------------------------------------------------------------
+
+## Relics of whoever came before: smooth obsidian-like stone with glowing glyph seams
+## and hovering crystal cores. Forms: a circle of curved blades, a half-buried hull, a
+## singing obelisk, a pointed glyph arch, and a cluster of seed pods.
+static func _ruin(p: Dictionary, r: RandomNumberGenerator) -> ArrayMesh:
+	var g := Geo.new()
+	var stone: Color = p["stone"]
+	var gcol := glow_colour(int(p["glow"]))
+	var sz: float = p["size"]
+	g.add_mat("xeno", organic(stone.darkened(0.25), stone.lightened(0.15), {"streaks": 0.7, "sss": 0.05, "rough": 0.28, "spot_amt": 0.25, "spot_col": stone.lightened(0.35), "spot_scale": 1.2}))
+	g.add_mat("seam", organic(gcol.darkened(0.2), gcol, {"glow": 1.6, "glow_col": gcol, "streaks": 0.0, "sss": 0.9, "rough": 0.3}))
+	g.add_mat("core", crystal(gcol.lerp(Color.WHITE, 0.2), gcol.lerp(Color.WHITE, 0.7), 1.4, 0.9))
+	g.add_mat("rubble", Materials.get_mat("stone_dark"))
+	match String(p["form"]):
+		"monoliths":
+			var n: int = p["count"]
+			var rad := 5.0 * sz
+			for i in n:
+				var a := TAU * i / n + r.randf_range(-0.1, 0.1)
+				var h := r.randf_range(3.2, 6.5) * sz
+				var out := Vector3(cos(a), 0, sin(a))
+				var lean := r.randf_range(-0.15, 0.3)
+				_blade(g, out * rad, out, h, 0.55 * sz, lean, r)
+			g.lathe("xeno", PackedVector2Array([Vector2(0, 0.45), Vector2(1.5 * sz, 0.42), Vector2(1.9 * sz, 0.15), Vector2(2.0 * sz, -0.4)]), 24, Transform3D.IDENTITY)
+			g.lathe("seam", PackedVector2Array([Vector2(1.2 * sz, 0.47), Vector2(1.35 * sz, 0.47), Vector2(1.35 * sz, 0.4)]), 24, Transform3D.IDENTITY)
+			_core(g, Vector3(0, 2.0 * sz, 0), 0.45 * sz)
+		"hull":
+			# A long hull nosed into the ground, ribs showing through torn plating.
+			var hl := 9.0 * sz
+			var xf := Transform3D(Basis.from_euler(Vector3(r.randf_range(0.25, 0.45), r.randf() * TAU, r.randf_range(-0.3, 0.3))), Vector3(0, 0.6 * sz, 0))
+			var prof := PackedVector2Array()
+			for i in 13:
+				var t := float(i) / 12.0
+				prof.append(Vector2(sin(PI * pow(t, 0.8)) * 2.2 * sz * (1.0 - 0.35 * t) + 0.02, (0.5 - t) * hl))
+			g.lathe("xeno", prof, 18, xf * Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.06, r.randi() % 50)
+			for i in 6:
+				var z := (-0.35 + i * 0.13) * hl
+				var ring := PackedVector3Array()
+				var ws := PackedFloat32Array()
+				for j in 9:
+					var a := PI * (0.1 + 0.8 * j / 8.0)
+					ring.append(xf * Vector3(cos(a) * 2.5 * sz, sin(a) * 2.5 * sz * 0.9, z))
+					ws.append(0.16 * sz)
+				g.sweep("xeno", ring, ws, 6)
+			for i in 7:
+				var at := xf * Vector3(r.randf_range(-1.4, 1.4) * sz, r.randf_range(0.6, 1.9) * sz, r.randf_range(-0.4, 0.4) * hl)
+				g.prism("seam", at, Vector3(r.randf_range(-1, 1), 0.2, r.randf_range(-1, 1)), 0.08 * sz, r.randf_range(0.5, 1.2) * sz, 4, 0.1)
+			_core(g, xf * Vector3(0, 1.0 * sz, -0.1 * hl), 0.35 * sz)
+			for i in 6:
+				var a := r.randf() * TAU
+				g.prism("xeno", Vector3(cos(a), 0, sin(a)) * r.randf_range(4.0, 7.0) * sz, Vector3(r.randf_range(-1, 1), 0.3, r.randf_range(-1, 1)), r.randf_range(0.3, 0.6) * sz, r.randf_range(0.6, 1.4) * sz, 5, 0.2, r.randf())
+		"obelisk":
+			var h := 9.0 * sz
+			var prof := PackedVector2Array([Vector2(0, h), Vector2(0.35 * sz, h * 0.93), Vector2(0.55 * sz, h * 0.6), Vector2(0.85 * sz, h * 0.15), Vector2(1.0 * sz, 0.4), Vector2(1.3 * sz, 0.3), Vector2(1.4 * sz, -0.5)])
+			g.lathe("xeno", prof, 4, Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3.ZERO))
+			for i in 5:
+				var y := (1.3 + i * 1.45) * sz
+				var w := lerpf(0.98, 0.5, y / h) * sz
+				g.lathe("seam", PackedVector2Array([Vector2(w * 1.02, y + 0.06), Vector2(w * 1.06, y), Vector2(w * 1.02, y - 0.06)]), 4, Transform3D(Basis(Vector3.UP, PI * 0.25), Vector3.ZERO))
+			_core(g, Vector3(0, h + 1.2 * sz, 0), 0.5 * sz)
+			for i in 3:
+				var a := TAU * i / 3.0 + 0.4
+				_blade(g, Vector3(cos(a), 0, sin(a)) * 2.6 * sz, Vector3(cos(a), 0, sin(a)), 1.8 * sz, 0.4 * sz, 0.5, r)
+		"arch":
+			var w := 4.0 * sz
+			var h := 7.0 * sz
+			for side in [-1.0, 1.0]:
+				var pts := PackedVector3Array()
+				var ws := PackedFloat32Array()
+				for i in 13:
+					var t := float(i) / 12.0
+					# A pointed (two-centred) arch: each leg curves in to the apex.
+					var x: float = side * w * (1.0 - pow(t, 2.2))
+					pts.append(Vector3(x, h * sin(t * PI * 0.5), 0))
+					ws.append(lerpf(0.75, 0.32, t) * sz)
+				g.sweep("xeno", pts, ws, 7, Color.WHITE, false)
+				var seam := PackedVector3Array()
+				var sw := PackedFloat32Array()
+				for i in 11:
+					var t := 0.08 + float(i) / 10.0 * 0.84
+					var x: float = side * w * (1.0 - pow(t, 2.2))
+					seam.append(Vector3(x, h * sin(t * PI * 0.5), lerpf(0.72, 0.3, t) * sz))
+					sw.append(0.06 * sz)
+				g.sweep("seam", seam, sw, 5)
+				g.lathe("xeno", PackedVector2Array([Vector2(0, 0.7), Vector2(1.0 * sz, 0.6), Vector2(1.25 * sz, 0.0), Vector2(1.3 * sz, -0.5)]), 8, Transform3D(Basis(), Vector3(side * w, 0, 0)))
+			_core(g, Vector3(0, h * 0.62, 0), 0.4 * sz)
+		_:
+			# Seed pods on a mat of roots, softly lit from inside.
+			var n: int = p["count"]
+			g.add_mat("pod", organic(stone.lerp(gcol, 0.3), gcol.lightened(0.2), {"glow": 0.6, "glow_col": gcol, "sss": 1.0, "rough": 0.35, "streaks": 0.5}))
+			for i in n:
+				var a := r.randf() * TAU
+				var d := r.randf_range(0.0, 3.5) * sz
+				var ph := r.randf_range(1.2, 3.2) * sz
+				var xf := Transform3D(Basis(Vector3(cos(a + PI / 2), 0, sin(a + PI / 2)), r.randf_range(-0.3, 0.3)), Vector3(cos(a) * d, ph * 0.45, sin(a) * d))
+				g.lathe("pod", _ellipse(ph * 0.33, ph * 0.5, 12), 14, xf, Vector2.ZERO, Color.WHITE, 0.05, i)
+				g.lathe("xeno", PackedVector2Array([Vector2(0, -ph * 0.38), Vector2(ph * 0.24, -ph * 0.42), Vector2(ph * 0.3, -ph * 0.6)]), 10, xf)
+			for i in 12:
+				var a := r.randf() * TAU
+				var pts := PackedVector3Array()
+				var ws := PackedFloat32Array()
+				for j in 6:
+					var t := float(j) / 5.0
+					pts.append(Vector3(cos(a + t * 0.5) * (0.5 + t * 4.5) * sz, 0.12 - t * 0.3 + sin(t * 9.0 + a) * 0.08, sin(a + t * 0.5) * (0.5 + t * 4.5) * sz))
+					ws.append(lerpf(0.22, 0.05, t) * sz)
+				g.sweep("xeno", pts, ws, 5)
+	return g.commit()
+
+## A curved stone blade rising from the ground, leaning out, with a glowing seam up
+## its inner face.
+static func _blade(g: Geo, at: Vector3, out: Vector3, h: float, w: float, lean: float, r: RandomNumberGenerator) -> void:
+	var side := out.cross(Vector3.UP).normalized()
+	var pts := PackedVector3Array()
+	var ws := PackedFloat32Array()
+	for i in 9:
+		var t := float(i) / 8.0
+		pts.append(at + Vector3(0, h * t - 0.5, 0) + out * lean * h * t * t)
+		ws.append(w * (1.0 - 0.65 * t) + 0.05)
+	g.sweep("xeno", pts, ws, 5)
+	var seam := PackedVector3Array()
+	var sw := PackedFloat32Array()
+	for i in 7:
+		var t := 0.1 + float(i) / 6.0 * 0.75
+		seam.append(at + Vector3(0, h * t - 0.5, 0) + out * (lean * h * t * t - w * (1.0 - 0.65 * t) * 0.95))
+		sw.append(0.05)
+	g.sweep("seam", seam, sw, 4)
+	g.prism("rubble", at + out * 0.6 + side * r.randf_range(-0.6, 0.6), Vector3(r.randf_range(-1, 1), 0.4, r.randf_range(-1, 1)), w * 0.5, w * 0.9, 5, 0.2, r.randf())
+
+## A crystal core hovering in a faint shell.
+static func _core(g: Geo, at: Vector3, rad: float) -> void:
+	g.prism("core", at - Vector3(0, rad * 1.1, 0), Vector3.UP, rad * 0.55, rad * 1.4, 6, 0.4, 0.3)
+	g.prism("core", at + Vector3(0, rad * 0.25, 0), Vector3.DOWN, rad * 0.55, rad * 1.4, 6, 0.4, 0.3)
 
 # --- Alien plants (sci-fi wilds) -------------------------------------------------
 

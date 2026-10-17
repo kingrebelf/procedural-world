@@ -22,6 +22,7 @@ func _ready() -> void:
 		Game.new_world("Quick World", seed_arg)
 	atmosphere = Atmosphere.new()
 	add_child(atmosphere)
+	BuildCatalog.warm_kits()
 	streamer = ChunkStreamer.new()
 	streamer.name = "Chunks"
 	add_child(streamer)

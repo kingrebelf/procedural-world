@@ -10,7 +10,7 @@ const HELP := """Commands:
   heal           full health and stamina
   xp <n>         gain experience
   level <n>      jump to a level (points included)
-  give <item> [n]  e.g. give iron_ingot 20, give workbench
+  give <item> [n] [rank]  e.g. give iron_ingot 20, give sword_iron 1 5 (rank 0 Common .. 5 Mythic)
   money <n>      add Marks
   time <hour>    set the time of day (0-24)
   tp <x> <z>     teleport
@@ -136,8 +136,15 @@ func run(text: String) -> String:
 			var n := a[2].to_int() if a.size() > 2 else 1
 			var ck := ChunkStreamer.chunk_of(player.global_position)
 			var made := 0
+			# give <item> [count] [rank 0-5]: gear of a chosen rank, with random abilities.
+			var rank := a[3].to_int() if a.size() > 3 else -1
+			var rng := RandomNumberGenerator.new()
+			rng.randomize()
 			for i in (1 if ItemDB.is_stackable(a[1]) else clampi(n, 1, 40)):
-				if Game.give(ItemDB.make(a[1], n if ItemDB.is_stackable(a[1]) else 1, 1.0, Game.origin_here("conjured", -1, ck))):
+				var it := ItemDB.make(a[1], n if ItemDB.is_stackable(a[1]) else 1, 1.0, Game.origin_here("conjured", -1, ck))
+				if rank >= 0:
+					Rarity.apply(it, clampi(rank, 0, Rarity.MYTHIC), rng)
+				if Game.give(it):
 					made += n if ItemDB.is_stackable(a[1]) else 1
 			return "Gave %d %s" % [made, ItemDB.def(a[1])["name"]]
 		"xp":

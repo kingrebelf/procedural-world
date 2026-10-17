@@ -139,6 +139,31 @@ static func is_piece_item(type: String) -> bool:
 static func label(t: String) -> String:
 	return def(id_of(t)).get("name", id_of(t).capitalize())
 
+static var _kept: Array = []
+
+## Loads every kit model and texture the world builds meshes from on the main thread, at
+## world start, so chunk workers only ever take them from the resource cache. A worker
+## loading a scene at the same moment as the main thread could deadlock both.
+static func warm_kits() -> void:
+	if not _kept.is_empty():
+		return
+	for sub in ["village", "scifi", "props", "nature"]:
+		# list_directory sees through the .import remaps of an exported game.
+		for f in ResourceLoader.list_directory(DIR + sub):
+			if f.ends_with(".gltf") or (sub == "nature" and f.ends_with(".png")):
+				var r = load(DIR + sub + "/" + f)
+				if r != null:
+					_kept.append(r)
+				if f.ends_with(".gltf") and sub != "nature":
+					model_parts(sub + "/" + f.get_basename())
+	# Photo textures and shaders that materials built on worker threads use.
+	for f in ResourceLoader.list_directory("res://assets/textures"):
+		if f.ends_with(".jpg") or f.ends_with(".png"):
+			_kept.append(load("res://assets/textures/" + f))
+	for sh in ["res://src/world/foliage.gdshader", "res://src/world/ore.gdshader", "res://src/world/shaders/organic.gdshader",
+			"res://src/world/shaders/crystal.gdshader"]:
+		_kept.append(load(sh))
+
 ## Loads every piece mesh on the calling thread (the main thread, at world start), so
 ## chunk worker threads only ever read the cache.
 static func warm() -> void:
@@ -169,44 +194,126 @@ static func _build(id: String) -> ArrayMesh:
 	if d.has("proc"):
 		var k := MeshKit.new(WHash.str_hash(id) & 0xFFFF)
 		_proc(k, String(d["proc"]))
-		var pm := k.commit(Materials.get_mat)
-		for s in pm.get_surface_count():
-			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, pm.surface_get_arrays(s))
-			out.surface_set_material(out.get_surface_count() - 1, pm.surface_get_material(s))
+		k.commit(Materials.get_mat, out)
 	return out
 
 ## Merges kit models ([path under assets/models, yaw degrees, offset, scale] each) into
 ## one mesh with a surface per material.
 static func merge_models(models: Array) -> ArrayMesh:
-	var tools := {}
+	var groups := {} ## material -> [[arrays, transform], ...]
 	var order: Array = []
 	for e in models:
-		var ps: PackedScene = load(DIR + String(e[0]) + ".gltf")
-		if ps == null:
-			push_warning("missing kit model " + String(e[0]))
-			continue
-		var root := ps.instantiate()
 		var base := _xf(e)
+		for part in model_parts(String(e[0])):
+			var mat: Material = part[0]
+			if not groups.has(mat):
+				groups[mat] = []
+				order.append(mat)
+			groups[mat].append([part[1], base * (part[2] as Transform3D)])
+	var out := ArrayMesh.new()
+	for mat in order:
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _merge_arrays(groups[mat]))
+		out.surface_set_material(out.get_surface_count() - 1, mat)
+	return out
+
+## Surfaces of each kit model as [material, arrays, transform]. Reading a mesh back from
+## the renderer on a worker thread waits for the main thread (and hangs if the main
+## thread is waiting for that worker), so they are read on the main thread at world start.
+static var _parts := {}
+
+static func model_parts(name: String) -> Array:
+	_lock.lock()
+	var have = _parts.get(name)
+	_lock.unlock()
+	if have != null:
+		return have
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		push_warning("kit model read off the main thread: " + name)
+	var out: Array = []
+	var ps: PackedScene = load(DIR + name + ".gltf")
+	if ps == null:
+		push_warning("missing kit model " + name)
+	else:
+		var root := ps.instantiate()
 		for c in root.find_children("*", "MeshInstance3D", true, false):
 			var mi := c as MeshInstance3D
-			var xf := base * _node_xf(mi, root)
+			var xf := _node_xf(mi, root)
 			for s in mi.mesh.get_surface_count():
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
 				var mat: Material = _tamed(om if om != null else mi.mesh.surface_get_material(s))
-				if not tools.has(mat):
-					var st := SurfaceTool.new()
-					st.begin(Mesh.PRIMITIVE_TRIANGLES)
-					tools[mat] = st
-					order.append(mat)
-				(tools[mat] as SurfaceTool).append_from(mi.mesh, s, xf)
+				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
-	var out := ArrayMesh.new()
-	for mat in order:
-		var st: SurfaceTool = tools[mat]
-		st.commit(out)
-		out.surface_set_material(out.get_surface_count() - 1, mat)
+	_lock.lock()
+	_parts[name] = out
+	_lock.unlock()
+	return out
+
+## One surface's arrays from several transformed ones (positions, normals, tangents,
+## UVs, colours and indices), all on the CPU.
+static func _merge_arrays(list: Array) -> Array:
+	var with_col := false
+	for e in list:
+		if e[0][Mesh.ARRAY_COLOR] != null:
+			with_col = true
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var tg := PackedFloat32Array()
+	var uv := PackedVector2Array()
+	var col := PackedColorArray()
+	var idx := PackedInt32Array()
+	for e in list:
+		var a: Array = e[0]
+		var xf: Transform3D = e[1]
+		var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		var count := pv.size()
+		var base := v.size()
+		v.append_array(xf * pv)
+		var nb := xf.basis.inverse().transposed()
+		var pn = a[Mesh.ARRAY_NORMAL]
+		if pn != null:
+			for q in pn:
+				n.append((nb * q).normalized())
+		else:
+			for i in count:
+				n.append(Vector3.UP)
+		var pt = a[Mesh.ARRAY_TANGENT]
+		if pt != null and (pt as PackedFloat32Array).size() == count * 4:
+			for i in count:
+				var t3 := (xf.basis * Vector3(pt[i * 4], pt[i * 4 + 1], pt[i * 4 + 2])).normalized()
+				tg.append_array([t3.x, t3.y, t3.z, pt[i * 4 + 3]])
+		else:
+			for i in count:
+				tg.append_array([1.0, 0.0, 0.0, 1.0])
+		var pu = a[Mesh.ARRAY_TEX_UV]
+		if pu != null and (pu as PackedVector2Array).size() == count:
+			uv.append_array(pu)
+		else:
+			uv.resize(uv.size() + count)
+		if with_col:
+			var pc = a[Mesh.ARRAY_COLOR]
+			if pc != null and (pc as PackedColorArray).size() == count:
+				col.append_array(pc)
+			else:
+				for i in count:
+					col.append(Color.WHITE)
+		var pi = a[Mesh.ARRAY_INDEX]
+		if pi != null:
+			for i in pi:
+				idx.append(base + i)
+		else:
+			for i in count:
+				idx.append(base + i)
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = v
+	out[Mesh.ARRAY_NORMAL] = n
+	out[Mesh.ARRAY_TANGENT] = tg
+	out[Mesh.ARRAY_TEX_UV] = uv
+	if with_col:
+		out[Mesh.ARRAY_COLOR] = col
+	out[Mesh.ARRAY_INDEX] = idx
 	return out
 
 static var _tamed_mats := {}

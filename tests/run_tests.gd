@@ -9,9 +9,11 @@ var _current := ""
 
 func _initialize() -> void:
 	var t0 := Time.get_ticks_msec()
+	# TEST_ONLY=part runs just the tests whose names contain it.
+	var only := OS.get_environment("TEST_ONLY")
 	for m in get_method_list():
 		var n: String = m["name"]
-		if n.begins_with("test_"):
+		if n.begins_with("test_") and (only == "" or n.contains(only)):
 			_current = n
 			call(n)
 	print("\n%d checks passed, %d failed (%d ms)" % [_passes, _failures, Time.get_ticks_msec() - t0])
@@ -780,3 +782,163 @@ func test_creature_levels() -> void:
 	for r in Recipes.LIST:
 		made = made or r["out"] == "binoculars"
 	check(made, "binoculars can be crafted")
+
+func test_gear_ranks() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var counts := [0, 0, 0, 0, 0, 0]
+	var lucky := [0, 0, 0, 0, 0, 0]
+	for i in 4000:
+		counts[Rarity.roll(rng, 0.0)] += 1
+		lucky[Rarity.roll(rng, 1.0)] += 1
+	check(counts[0] > counts[2] and counts[2] > counts[4], "lower ranks are commoner (%s)" % [counts])
+	check(lucky[4] + lucky[5] > (counts[4] + counts[5]) * 3, "luck favours the top ranks (%s vs %s)" % [lucky, counts])
+	var sword := ItemDB.make("sword_iron", 1, 1.0, {})
+	check(Rarity.of(sword) == Rarity.COMMON and ItemDB.stats(sword)["damage"] == 25.0, "plain gear keeps its stats")
+	Rarity.apply(sword, Rarity.MYTHIC, rng)
+	check(sword["affixes"].size() == 4, "a mythic has four abilities")
+	check(float(ItemDB.stats(sword)["damage"]) > 25.0 * 1.5, "a mythic hits much harder")
+	check(sword["name"] != "", "an epic or better has its own name")
+	for id in sword["affixes"]:
+		check("melee" in Rarity.AFFIXES[id]["kinds"], "a sword only gets melee abilities (%s)" % id)
+	check(Rarity.of({"type": "wood", "qty": 3}) == Rarity.COMMON, "resources have no rank")
+	check(Rarity.of({"type": "sword_iron", "quality": 1.3}) == Rarity.UNCOMMON, "old fine gear reads as uncommon")
+	var bread := ItemDB.make("bread", 2, 1.0, {}, rng)
+	check(not bread.has("rarity"), "food never rolls a rank")
+	# Dangerous places pay better.
+	var poor := 0
+	var rich := 0
+	for i in 300:
+		for it in ItemDB.roll_loot(0, rng, {}, 0.0):
+			poor += Rarity.of(it) if it["type"] != "_marks" else 0
+		for it in ItemDB.roll_loot(0, rng, {}, 1.0):
+			rich += Rarity.of(it) if it["type"] != "_marks" else 0
+	check(rich > poor * 3, "lucky loot has better gear (%d vs %d)" % [rich, poor])
+
+func test_armor_items() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var slots := {}
+	for t in ItemDB.ITEMS:
+		var d: Dictionary = ItemDB.ITEMS[t]
+		if d.get("kind", "") == "armor":
+			check(d.get("slot", "") in ["head", "chest", "hands", "legs", "feet", "shield"], "%s has a slot" % t)
+			check(float(d.get("armor", 0)) > 0.0, "%s protects" % t)
+			slots[d["slot"]] = true
+	check(slots.size() == 6, "armour for every slot")
+	var helm := ItemDB.make("helm_iron", 1, 1.0, {})
+	Rarity.apply(helm, Rarity.LEGENDARY, rng)
+	check(float(ItemDB.stats(helm)["armor"]) > 8.0, "ranked armour protects more")
+	for id in helm["affixes"]:
+		check("armor" in Rarity.AFFIXES[id]["kinds"], "armour only gets armour abilities (%s)" % id)
+	var craftable := {}
+	for r in Recipes.LIST:
+		craftable[r["out"]] = true
+	check(craftable.has("mail_iron") and craftable.has("plate_mythril") and craftable.has("exo_chest"), "armour can be crafted in every era")
+
+func test_road_profiles() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var roads := g.roads_near(-1600.0, -1600.0, 1600.0, 1600.0)
+	check(roads.size() > 3, "v5 roads exist (%d)" % roads.size())
+	var worst := 0.0
+	var steep := 0
+	var steps := 0
+	var cut := 0.0
+	var air := 0
+	var held := {}
+	var fills: Array = []
+	for rd in roads:
+		var lv: PackedFloat32Array = rd["level"]
+		var pts: PackedVector2Array = rd["pts"]
+		var ar: PackedByteArray = rd["air"]
+		check(lv.size() == pts.size() and ar.size() == pts.size(), "a level and a viaduct flag for every point")
+		for i in lv.size() - 1:
+			var dh := absf(lv[i + 1] - lv[i])
+			worst = maxf(worst, dh)
+			steps += 1
+			if dh > ChunkGenerator.ROAD_STEP * 0.25:
+				steep += 1
+		for i in lv.size():
+			cut = maxf(cut, g.field.height(pts[i].x, pts[i].y) - lv[i])
+			fills.append(lv[i] - g.field.height(pts[i].x, pts[i].y))
+			if ar[i] == 1:
+				air += 1
+				held[Vector2i(int(floor(pts[i].x / ChunkGenerator.SIZE)), int(floor(pts[i].y / ChunkGenerator.SIZE)))] = true
+	fills.sort()
+	print("  roads %d, worst step %.2f m, steep %d/%d, deepest cut %.1f m, viaduct points %d, fill p50 %.1f p90 %.1f p99 %.1f max %.1f" % [roads.size(), worst, steep, steps, cut, air,
+		fills[fills.size() / 2], fills[fills.size() * 9 / 10], fills[fills.size() * 99 / 100], fills[-1]])
+	check(worst <= ChunkGenerator.ROAD_STEP * ChunkGenerator.ROAD_GRADE * 1.8 + 0.01, "roads never climb steeper than the steepest grade (worst %.2f m per step)" % worst)
+	check(cut <= ChunkGenerator.ROAD_CUT + 0.01, "roads never cut deeper than %.0f m into a hill (%.1f)" % [ChunkGenerator.ROAD_CUT, cut])
+	# Chunks a viaduct crosses get spans.
+	var spans := 0
+	var n := 0
+	for k in held:
+		if n >= 12:
+			break
+		n += 1
+		for o in g.generate(k.x, k.y)["objects"]:
+			if o["t"] == "bridge" and Bridge.is_viaduct(int(o.get("sp", 0))):
+				spans += 1
+	check(air == 0 or spans > 0, "viaducts carry roads over dips (%d spans in %d chunks)" % [spans, n])
+	var m := Bridge.build(Bridge.pack_viaduct(24.0, 9.0, 2.0))
+	check(m.get_surface_count() > 0 and absf(m.get_aabb().end.y - (9.0 + 1.0 + 0.92)) < 0.6, "a viaduct span climbs from end to end")
+
+func test_scenery_meshes() -> void:
+	# Alien ruins in every form, the wayside markers and the fliers all build.
+	var forms := {}
+	for sp in range(1, 400, 7):
+		var f: String = Flora.species("alien_ruin", sp)["form"]
+		if forms.has(f):
+			continue
+		forms[f] = true
+		var m := HiFlora.build("alien_ruin", sp, 0)
+		check(m != null and m.get_surface_count() >= 2 and m.get_aabb().size.y > 2.0, "alien ruin '%s' builds (%s)" % [f, m.get_aabb().size if m else "null"])
+	check(forms.size() == 5, "all five ruin forms seen (%s)" % [forms.keys()])
+	for t in ["crystal_shard", "standing_stone", "beacon"]:
+		var m := ObjectLibrary.get_mesh(t)
+		check(m != null and m.get_surface_count() > 0 and m.get_aabb().size.y > 2.5, "%s builds (%s)" % [t, m.get_aabb().size if m else "null"])
+	for era in 3:
+		for nm in Creature.NAMES[era].get("bird", []):
+			var bm := BirdModel.build({"name": nm, "col": Color(0.4, 0.3, 0.2), "col2": Color(0.6, 0.5, 0.4), "glow": 3, "has_glow": true}, era)
+			var body: ArrayMesh = bm["body"]
+			var wing: ArrayMesh = bm["wing"]
+			check(body.get_surface_count() > 0 and wing.get_surface_count() > 0 and wing.get_aabb().size.x > 0.2, "%s has a body and wings" % nm)
+	for kind in ["dome", "flat", "cone", "bell", "funnel", "shelf"]:
+		check(HiFlora._cap_profile(kind, 0.1)[0].size() > 3, "mushroom cap '%s' has a profile" % kind)
+
+func test_strongholds() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var found := {}
+	for cz in range(-6, 6):
+		for cx in range(-6, 6):
+			var f := Stronghold.at_cell(g, cx, cz)
+			if not f.is_empty():
+				found = f
+				break
+		if not found.is_empty():
+			break
+	check(not found.is_empty(), "strongholds exist")
+	if found.is_empty():
+		return
+	var lay := Stronghold.layout(g, found)
+	var kinds := {}
+	for it in lay:
+		kinds[it["t"]] = int(kinds.get(it["t"], 0)) + 1
+	var pc: Array = Stronghold.PIECES[found["era"]]
+	check(kinds.get(pc[1], 0) == 4 and kinds.get(pc[2], 0) == 1 and kinds.get(pc[3], 0) == 1 and kinds.get(pc[0], 0) == 11, "four towers, a gate, a keep and eleven walls (%s)" % [kinds])
+	check(Stronghold.guards(found).size() == 1 + int(found["tier"]) * 2, "guards scale with the tier")
+	# The chunk at the centre holds pieces and is flat across the courtyard.
+	var c: Vector2 = found["center"]
+	var ch := g.generate(int(floor(c.x / ChunkGenerator.SIZE)), int(floor(c.y / ChunkGenerator.SIZE)))
+	var here := 0
+	for o in ch["objects"]:
+		if Stronghold.has(o["t"]):
+			here += 1
+	check(here > 0, "the centre chunk holds stronghold pieces")
+	var lx: float = c.x - ch["cx"] * ChunkGenerator.SIZE
+	var lz: float = c.y - ch["cz"] * ChunkGenerator.SIZE
+	check(absf(ChunkGenerator.height_at(ch, lx, lz) - float(found["target_h"])) < 0.6, "the courtyard is levelled")
+	var sp := Creature.guard_species(found["era"], 3)
+	check(sp["temper"] == "aggressive" and float(sp["hp"]) > 120.0, "dread guards are tough (%s hp)" % sp["hp"])

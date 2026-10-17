@@ -52,7 +52,8 @@ static func buy_price(st: Dictionary, item: Dictionary) -> int:
 	var t: String = item["type"]
 	var base: float = ItemDB.def(t).get("value", 1)
 	var demand: float = st["demand"].get(t, 1.0)
-	return maxi(1, int(round(base * item.get("quality", 1.0) * era_factor(st["era"], t, st["foreign"]) * demand)))
+	var rank := Rarity.of(item)
+	return maxi(1, int(round(base * (1.0 + 0.6 * rank * rank) * item.get("quality", 1.0) * era_factor(st["era"], t, st["foreign"]) * demand)))
 
 ## What the trader charges the player for one unit of its stock.
 static func sell_price(st: Dictionary, t: String) -> int:

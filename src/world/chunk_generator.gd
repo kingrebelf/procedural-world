@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 4 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas.
+const GEN_VERSION := 5 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -21,7 +21,10 @@ var seed: int
 var rivers := false
 ## v4 worlds: settlements come in sizes (hamlet, village, town) joined by roads.
 var towns := false
+## v5: sci-fi outposts on a street grid.
+var outposts := false
 var _site_cache := {}
+var _fort_cache := {}
 var _road_cache := {}
 
 ## Flat radii [inner, outer] for hamlets, villages and towns (v4 worlds).
@@ -30,12 +33,23 @@ const MAX_OUTER := 80.0
 const ROAD_HALF := 2.4 ## half-width of the beaten surface
 const ROAD_STEP := 4.0 ## spacing of road centreline points
 const ROAD_REACH := 18.0 ## furthest the land eases toward a road
+## v5 roads: chosen among several routes for the gentlest climb, laid at a limited grade,
+## and carried on viaducts where the ground falls away beneath them.
+const ROAD_GRADE := 0.12 ## steepest climb, rise per metre
+const ROAD_CUT := 5.0 ## deepest the road cuts into a hill before it climbs harder
+const ROAD_FILL := 3.5 ## higher than this above the ground and it goes on a viaduct
+var road_reach := ROAD_REACH
+static var _profiles := {}
+static var _profile_lock := Mutex.new()
 
 func _init(world_seed: int, with_rivers := false) -> void:
 	seed = world_seed & WHash.MASK
 	field = WorldField.new(seed)
 	rivers = with_rivers
 	towns = WorldField.terrain_v >= 4
+	outposts = WorldField.terrain_v >= 5
+	if outposts:
+		road_reach = 26.0
 
 # --- Settlements -------------------------------------------------------------
 
@@ -119,23 +133,102 @@ func owned_roads(s: Dictionary) -> Array:
 ## The road between two settlements: a gently bowed, meandering line of points
 ## ROAD_STEP apart, from square to square.
 func road_points(a: Dictionary, b: Dictionary) -> PackedVector2Array:
+	if outposts:
+		return road_profile(a, b)["pts"]
 	var key := Vector4i(a["sx"], a["sz"], b["sx"], b["sz"])
 	if _road_cache.has(key):
 		return _road_cache[key]
+	var bend := (WHash.unit2(seed, a["sx"] * 7 + b["sx"], a["sz"] * 7 + b["sz"], 205) - 0.5) * 0.36
+	var pts := _road_line(a, b, bend)
+	_road_cache[key] = pts
+	return pts
+
+## A bowed, meandering line of points ROAD_STEP apart; `bend` is the bow as a fraction
+## of the length.
+func _road_line(a: Dictionary, b: Dictionary, bend: float) -> PackedVector2Array:
 	var pa: Vector2 = a["center"]
 	var pb: Vector2 = b["center"]
 	var length := pa.distance_to(pb)
 	var n := maxi(2, int(ceil(length / ROAD_STEP)))
 	var perp := (pb - pa).orthogonal().normalized()
-	var bend := (WHash.unit2(seed, a["sx"] * 7 + b["sx"], a["sz"] * 7 + b["sz"], 205) - 0.5) * 0.36 * length
 	var pts := PackedVector2Array()
 	for i in n + 1:
 		var t := float(i) / n
-		var p := pa.lerp(pb, t) + perp * sin(PI * t) * bend
+		var p := pa.lerp(pb, t) + perp * sin(PI * t) * bend * length
 		p += perp * field._rwarp.get_noise_2d(p.x * 1.7, p.y * 1.7) * 16.0 * sin(PI * t)
 		pts.append(p)
-	_road_cache[key] = pts
 	return pts
+
+## v5: the road between two settlements with its surface level at every point and
+## where it rides a viaduct. Shared by every generator of the world (they are made per
+## chunk job), since choosing the route samples the land all along it.
+func road_profile(a: Dictionary, b: Dictionary) -> Dictionary:
+	var key := [seed, a["sx"], a["sz"], b["sx"], b["sz"]]
+	_profile_lock.lock()
+	var have = _profiles.get(key)
+	_profile_lock.unlock()
+	if have != null:
+		return have
+	var base := (WHash.unit2(seed, a["sx"] * 7 + b["sx"], a["sz"] * 7 + b["sz"], 205) - 0.5) * 0.36
+	var best := {}
+	var best_cost := INF
+	for bend in [base, -0.42, -0.26, -0.1, 0.1, 0.26, 0.42]:
+		var pts := _road_line(a, b, bend)
+		var raw := PackedFloat32Array()
+		for p in pts:
+			raw.append(field.height(p.x, p.y))
+		# Climbing costs, climbing steeper than the road may costs far more, and so do
+		# lakes; a longer way round costs its length.
+		var cost := 0.0
+		for i in pts.size() - 1:
+			var dh := absf(raw[i + 1] - raw[i])
+			cost += ROAD_STEP * 0.15 + dh + 6.0 * maxf(0.0, dh - ROAD_STEP * ROAD_GRADE)
+			if raw[i] < WATER_LEVEL + 0.5:
+				cost += 25.0
+		if cost < best_cost:
+			best_cost = cost
+			best = {"pts": pts, "raw": raw}
+	var pts: PackedVector2Array = best["pts"]
+	var raw: PackedFloat32Array = best["raw"]
+	var n := pts.size()
+	var level := PackedFloat32Array()
+	level.resize(n)
+	for i in n:
+		var sum := 0.0
+		for o in range(-3, 4):
+			sum += raw[clampi(i + o, 0, n - 1)]
+		level[i] = sum / 7.0
+	# Limit the grade both ways, then don't let it dig a slot through a hill: where the
+	# cut would be deeper than ROAD_CUT the road rides higher. Then where that leaves it
+	# climbing steeply, raise it ahead of the climb (on an embankment or a viaduct) so it
+	# never rises faster than the steepest grade.
+	var g := ROAD_GRADE * ROAD_STEP
+	for i in range(1, n):
+		level[i] = clampf(level[i], level[i - 1] - g, level[i - 1] + g)
+	for i in range(n - 2, -1, -1):
+		level[i] = clampf(level[i], level[i + 1] - g, level[i + 1] + g)
+	for i in n:
+		level[i] = maxf(level[i], raw[i] - ROAD_CUT)
+	g *= 1.8
+	for i in range(1, n):
+		level[i] = maxf(level[i], level[i - 1] - g)
+	for i in range(n - 2, -1, -1):
+		level[i] = maxf(level[i], level[i + 1] - g)
+	var air := PackedByteArray()
+	air.resize(n)
+	for i in n:
+		air[i] = 1 if level[i] - raw[i] > ROAD_FILL and i > 2 and i < n - 3 else 0
+	# Fill single-point gaps so a viaduct is not broken by one high spot.
+	for i in range(1, n - 1):
+		if air[i] == 0 and air[i - 1] == 1 and air[i + 1] == 1:
+			air[i] = 1
+	var out := {"pts": pts, "level": level, "air": air}
+	_profile_lock.lock()
+	if _profiles.size() > 4000:
+		_profiles.clear()
+	_profiles[key] = out
+	_profile_lock.unlock()
+	return out
 
 ## Every road whose verge reaches the rectangle.
 func roads_near(x0: float, z0: float, x1: float, z1: float) -> Array:
@@ -143,7 +236,7 @@ func roads_near(x0: float, z0: float, x1: float, z1: float) -> Array:
 	if not towns:
 		return out
 	var m := 2.0 * SETTLEMENT_CELL + 150.0
-	var area := Rect2(x0 - ROAD_REACH - 1.0, z0 - ROAD_REACH - 1.0, x1 - x0 + 2.0 * ROAD_REACH + 2.0, z1 - z0 + 2.0 * ROAD_REACH + 2.0)
+	var area := Rect2(x0 - road_reach - 1.0, z0 - road_reach - 1.0, x1 - x0 + 2.0 * road_reach + 2.0, z1 - z0 + 2.0 * road_reach + 2.0)
 	for sz in range(int(floor((z0 - m) / SETTLEMENT_CELL)), int(floor(z1 / SETTLEMENT_CELL)) + 1):
 		for sx in range(int(floor((x0 - m) / SETTLEMENT_CELL)), int(floor(x1 / SETTLEMENT_CELL)) + 1):
 			var s := settlement_at(sx, sz)
@@ -159,8 +252,12 @@ func roads_near(x0: float, z0: float, x1: float, z1: float) -> Array:
 					for p in pts:
 						bb = bb.expand(p)
 					if bb.intersects(area):
-						out.append(pts)
+						out.append(road_profile(s, t) if outposts else {"pts": pts})
 	return out
+
+## The centreline of a road from roads_near.
+static func road_pts(rd: Dictionary) -> PackedVector2Array:
+	return rd["pts"]
 
 ## Smoothed land height along a road at point i (the level its surface is laid at).
 func _road_level(pts: PackedVector2Array, i: int, raw: Dictionary) -> float:
@@ -172,29 +269,37 @@ func _road_level(pts: PackedVector2Array, i: int, raw: Dictionary) -> float:
 		sum += raw[j]
 	return sum / 7.0
 
-## For every vertex of the chunk near a road: [distance to the centreline, road level].
+## For every vertex of the chunk near a road: [distance to the centreline, road level,
+## 1 where the road is on a viaduct there].
 func _road_field(x0: float, z0: float, roads: Array) -> Array:
 	var dist := PackedFloat32Array()
 	var level := PackedFloat32Array()
+	var air := PackedByteArray()
 	dist.resize(RES * RES)
 	dist.fill(INF)
 	level.resize(RES * RES)
-	var area := Rect2(x0 - ROAD_REACH, z0 - ROAD_REACH, SIZE + 2.0 * ROAD_REACH, SIZE + 2.0 * ROAD_REACH)
-	for pts in roads:
+	air.resize(RES * RES)
+	var rr := road_reach
+	var area := Rect2(x0 - rr, z0 - rr, SIZE + 2.0 * rr, SIZE + 2.0 * rr)
+	for rd in roads:
+		var pts: PackedVector2Array = rd["pts"]
+		var lv: PackedFloat32Array = rd.get("level", PackedFloat32Array())
+		var ar: PackedByteArray = rd.get("air", PackedByteArray())
 		var raw := {}
 		for i in pts.size() - 1:
 			var a: Vector2 = pts[i]
 			var b: Vector2 = pts[i + 1]
 			if not Rect2(a, Vector2.ZERO).expand(b).intersects(area):
 				continue
-			var ha := _road_level(pts, i, raw)
-			var hb := _road_level(pts, i + 1, raw)
+			var ha := lv[i] if not lv.is_empty() else _road_level(pts, i, raw)
+			var hb := lv[i + 1] if not lv.is_empty() else _road_level(pts, i + 1, raw)
+			var up := 1 if not ar.is_empty() and ar[i] == 1 and ar[i + 1] == 1 else 0
 			var ab := b - a
 			var l2 := maxf(ab.length_squared(), 0.0001)
-			var i0 := clampi(int(floor(minf(a.x, b.x) - ROAD_REACH - x0)), 0, RES - 1)
-			var i1 := clampi(int(ceil(maxf(a.x, b.x) + ROAD_REACH - x0)), 0, RES - 1)
-			var j0 := clampi(int(floor(minf(a.y, b.y) - ROAD_REACH - z0)), 0, RES - 1)
-			var j1 := clampi(int(ceil(maxf(a.y, b.y) + ROAD_REACH - z0)), 0, RES - 1)
+			var i0 := clampi(int(floor(minf(a.x, b.x) - rr - x0)), 0, RES - 1)
+			var i1 := clampi(int(ceil(maxf(a.x, b.x) + rr - x0)), 0, RES - 1)
+			var j0 := clampi(int(floor(minf(a.y, b.y) - rr - z0)), 0, RES - 1)
+			var j1 := clampi(int(ceil(maxf(a.y, b.y) + rr - z0)), 0, RES - 1)
 			for j in range(j0, j1 + 1):
 				for ii in range(i0, i1 + 1):
 					var q := Vector2(x0 + ii, z0 + j)
@@ -204,15 +309,20 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 					if d < dist[k]:
 						dist[k] = d
 						level[k] = lerpf(ha, hb, t)
-	return [dist, level]
+						air[k] = up
+	return [dist, level, air]
 
 ## A stone bridge wherever a road crosses running river water inside this chunk. Each
 ## crossing is found the same way from any chunk, so exactly one chunk owns it.
 func _place_bridges(chunk: Dictionary, roads: Array) -> void:
 	var x0 := float(int(chunk["cx"]) * SIZE)
 	var z0 := float(int(chunk["cz"]) * SIZE)
-	for pts in roads:
+	for rd in roads:
+		var pts: PackedVector2Array = rd["pts"]
+		var ar: PackedByteArray = rd.get("air", PackedByteArray())
 		for i in range(1, pts.size() - 1):
+			if not ar.is_empty() and ar[i] == 1:
+				continue # a viaduct already carries the road over
 			var p: Vector2 = pts[i]
 			if p.x < x0 - ROAD_STEP or p.x > x0 + SIZE + ROAD_STEP or p.y < z0 - ROAD_STEP or p.y > z0 + SIZE + ROAD_STEP:
 				continue
@@ -248,6 +358,42 @@ func _place_bridges(chunk: Dictionary, roads: Array) -> void:
 				continue # the road runs along the river here, not across it
 			var deck := level + 1.7 - height_at(chunk, lx, lz)
 			_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack(wet + 2.0, deck), 0)
+
+## v5: viaducts where a road runs high above the ground, in spans of at most 40 m. Each
+## span belongs to the chunk holding its middle.
+func _place_viaducts(chunk: Dictionary, roads: Array) -> void:
+	var x0 := float(int(chunk["cx"]) * SIZE)
+	var z0 := float(int(chunk["cz"]) * SIZE)
+	for rd in roads:
+		var pts: PackedVector2Array = rd["pts"]
+		var ar: PackedByteArray = rd["air"]
+		var lv: PackedFloat32Array = rd["level"]
+		var i := 0
+		while i < pts.size():
+			if ar[i] == 0:
+				i += 1
+				continue
+			var j := i
+			while j + 1 < pts.size() and ar[j + 1] == 1:
+				j += 1
+			# Points i..j are in the air; the deck runs from i-1 to j+1, cut into spans.
+			var a := maxi(i - 1, 0)
+			var b := mini(j + 1, pts.size() - 1)
+			var pieces := maxi(1, int(ceil((b - a) * ROAD_STEP / 40.0)))
+			for s in pieces:
+				var pa := a + int(round(float(b - a) * s / pieces))
+				var pb := a + int(round(float(b - a) * (s + 1) / pieces))
+				var mid := (pts[pa] + pts[pb]) * 0.5
+				if mid.x < x0 or mid.x >= x0 + SIZE or mid.y < z0 or mid.y >= z0 + SIZE:
+					continue
+				var lx := mid.x - x0
+				var lz := mid.y - z0
+				var dir := (pts[pb] - pts[pa]).normalized()
+				# The deck's top sits on the road's level at both ends.
+				var deck := (lv[pa] + lv[pb]) * 0.5 + 0.05 - height_at(chunk, lx, lz)
+				var span := pts[pa].distance_to(pts[pb])
+				_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack_viaduct(span, deck, lv[pb] - lv[pa]), 0)
+			i = j + 1
 
 ## A cave in rocky hillsides now and then: its mouth faces downhill, with ore seams
 ## inside and sometimes a cache at the back.
@@ -298,7 +444,7 @@ func _place_cave(chunk: Dictionary, sites: Array) -> void:
 	if r.randf() < 0.6:
 		var back := basis * Vector3(r.randf_range(-1.5, 1.5), 0, -d.x * 0.45)
 		var o := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
-		_add(chunk, Eras.CACHE_TYPES[era], era, lx + back.x, lz + back.z, yaw, 1.0, {"loot": ItemDB.roll_loot(era, r, o), "opened": false})
+		_add(chunk, Eras.CACHE_TYPES[era], era, lx + back.x, lz + back.z, yaw, 1.0, {"loot": ItemDB.roll_loot(era, r, o, 0.3), "opened": false})
 
 ## Inside a cave of this chunk (nothing grows there).
 static func in_cave(chunk: Dictionary, lx: float, lz: float) -> bool:
@@ -347,6 +493,11 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var any_road := false
 	if towns:
 		road_mask.resize(RES * RES)
+	var forts := forts_near(x0, z0, x0 + SIZE, z0 + SIZE)
+	var flat: Array = sites + forts
+	var street_ang: Array = []
+	for st in sites:
+		street_ang.append(outpost_angle(st) if outposts and int(st["era"]) == Eras.SCIFI else NAN)
 	var level_cache := {}
 	var river := PackedFloat32Array()
 	if has_river:
@@ -368,19 +519,30 @@ func generate(cx: int, cz: int) -> Dictionary:
 			var k := j * RES + i
 			var h := field.height(x, z, w)
 			var on_road := 0.0
-			if not rf.is_empty() and rf[0][k] < ROAD_REACH:
+			if not rf.is_empty() and rf[0][k] < road_reach and rf[2][k] == 0:
 				var d: float = rf[0][k]
 				var lv: float = rf[1][k]
 				# Not across lakes or the sea; the land eases down (or up) to the road's
-				# level over a verge that widens with the height it has to make up.
+				# level over a verge that widens with the height it has to make up (more
+				# gently in v5 worlds, so cuttings have banks rather than walls).
 				var dry := smoothstep(WATER_LEVEL + 0.2, WATER_LEVEL + 1.2, lv)
-				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * 0.9, ROAD_REACH - ROAD_HALF - 2.0)
+				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * (1.7 if outposts else 0.9), road_reach - ROAD_HALF - 2.0)
 				h = lerpf(h, lv, (1.0 - smoothstep(ROAD_HALF, verge, d)) * dry)
 				on_road = (1.0 - smoothstep(ROAD_HALF - 0.8, ROAD_HALF + 1.0, d)) * dry
 			if towns:
-				for st in sites:
+				for si in sites.size():
+					var st: Dictionary = sites[si]
 					var dc := Vector2(x, z).distance_to(st["center"])
 					on_road = maxf(on_road, 1.0 - smoothstep(7.0 + st["size"] * 3.0, 11.0 + st["size"] * 4.0, dc))
+					if not is_nan(street_ang[si]):
+						var sd := outpost_street_d(st, street_ang[si], Vector2(x, z))
+						on_road = maxf(on_road, 1.0 - smoothstep(ROAD_HALF - 0.5, ROAD_HALF + 1.2, sd))
+				# A stronghold's courtyard is paved.
+				for f in forts:
+					var q := (Vector2(x, z) - f["center"] as Vector2).rotated(float(f["yaw"]))
+					on_road = maxf(on_road, 1.0 - smoothstep(10.5, 12.5, maxf(absf(q.x), absf(q.y))))
+					if q.y > 0.0 and q.y < Stronghold.HALF + 10.0:
+						on_road = maxf(on_road, 1.0 - smoothstep(1.6, 2.6, absf(q.x)))
 				if on_road > 0.0:
 					road_mask[k] = int(round(on_road * 255.0))
 					any_road = true
@@ -396,7 +558,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 					river[rk] = lv
 					river[rk + 1] = t
 					river[rk + 2] = m
-			heights[k] = _flatten(x, z, h, sites)
+			heights[k] = _flatten(x, z, h, flat)
 			for e in Eras.COUNT:
 				weights[k * Eras.COUNT + e] = int(round(w[e] * 255.0))
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
@@ -415,6 +577,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["road"] = road_mask
 	if has_river and not roads.is_empty():
 		_place_bridges(chunk, roads)
+	if outposts and not roads.is_empty():
+		_place_viaducts(chunk, roads)
 	_place_objects(chunk, sites)
 	return chunk
 
@@ -514,9 +678,13 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	var z0 := float(cz * SIZE)
 	var origin := {"chunk": Vector2i(cx, cz)}
 
-	# Settlements first so they claim their space.
+	# Settlements first so they claim their space, then strongholds.
 	for s in sites:
 		_place_settlement(chunk, s, x0, z0)
+	var forts := forts_near(x0, z0, x0 + SIZE, z0 + SIZE)
+	for f in forts:
+		_place_fort(chunk, f, x0, z0)
+	sites = sites + forts
 
 	if towns:
 		_place_cave(chunk, sites)
@@ -601,7 +769,11 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var lz := r.randf_range(10, SIZE - 10)
 		var sp := r.randi() & 0x7FFFFFFF
 		var yaw := r.randf() * TAU
-		if not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) or road_at(chunk, lx, lz) > 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4:
+		var ok := not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) or road_at(chunk, lx, lz) > 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
+		if outposts:
+			# v5: away from settlements and roads, on dry, fairly level ground.
+			ok = not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) and road_at(chunk, lx, lz) <= 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
+		if ok:
 			var era := WorldField.dominant(weights_at(chunk, lx, lz))
 			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
 
@@ -630,6 +802,38 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5:
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
 
+## Strongholds whose flat ground reaches into this rectangle (v5 worlds).
+func forts_near(x0: float, z0: float, x1: float, z1: float) -> Array:
+	var out: Array = []
+	if not outposts:
+		return out
+	var span := float(Stronghold.CELL * SIZE)
+	for cz in range(int(floor((z0 - Stronghold.OUTER) / span)), int(floor((z1 + Stronghold.OUTER) / span)) + 1):
+		for cx in range(int(floor((x0 - Stronghold.OUTER) / span)), int(floor((x1 + Stronghold.OUTER) / span)) + 1):
+			var key := Vector2i(cx, cz)
+			if not _fort_cache.has(key):
+				_fort_cache[key] = Stronghold.at_cell(self, cx, cz)
+			var f: Dictionary = _fort_cache[key]
+			if f.is_empty():
+				continue
+			var c: Vector2 = f["center"]
+			if c.x + Stronghold.OUTER >= x0 and c.x - Stronghold.OUTER <= x1 and c.y + Stronghold.OUTER >= z0 and c.y - Stronghold.OUTER <= z1:
+				out.append(f)
+	return out
+
+func _place_fort(chunk: Dictionary, f: Dictionary, x0: float, z0: float) -> void:
+	var era: int = f["era"]
+	for it in Stronghold.layout(self, f):
+		var p: Vector2 = it["p"]
+		if p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE:
+			_add(chunk, it["t"], era, p.x - x0, p.y - z0, it["yaw"], 1.0, it["st"])
+	for g in Stronghold.guards(f):
+		var p: Vector2 = g["p"]
+		if p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE:
+			if not chunk.has("guards"):
+				chunk["guards"] = []
+			chunk["guards"].append({"id": g["id"], "lx": p.x - x0, "lz": p.y - z0, "tier": g["tier"], "era": era})
+
 ## Everything a settlement contains, in world coordinates. Deterministic per site, so
 ## the NPC system can find homes and the stall without loading every chunk.
 func settlement_layout(s: Dictionary) -> Array:
@@ -640,7 +844,9 @@ func settlement_layout(s: Dictionary) -> Array:
 	items.append({"t": "trader", "p": c + Vector2(r.randf_range(-3, 3), r.randf_range(-3, 3)), "yaw": r.randf() * TAU,
 		"st": Economy.new_trader(era, r)})
 	var kit: Array = Eras.TOWN_TYPES[era] if towns else Eras.STRUCTURE_TYPES[era]
-	if towns:
+	if outposts and era == Eras.SCIFI:
+		_outpost_grid(s, r, items)
+	elif towns:
 		_town_rings(s, r, kit, items)
 		if era == Eras.MEDIEVAL:
 			_market(s, items)
@@ -694,6 +900,84 @@ func _town_rings(s: Dictionary, r: RandomNumberGenerator, kit: Array, items: Arr
 				continue
 			var p := c + Vector2(cos(ang), sin(ang)) * rad
 			items.append({"t": t, "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
+
+## Sci-fi outposts sit on a street grid: a main street carrying the first road through
+## town and a cross street, buildings on square lots facing the nearer street, fenced
+## solar farms and depots on the outer lots, floodlights along the streets.
+const LOT := 16.0
+
+func outpost_angle(s: Dictionary) -> float:
+	var ways := road_angles(s)
+	if not ways.is_empty():
+		return ways[0]
+	return WHash.rng(seed, s["sx"], s["sz"], 403).randf() * TAU
+
+## Distance from p to the outpost's two streets (inside the town only).
+func outpost_street_d(s: Dictionary, ang: float, p: Vector2) -> float:
+	var q := (p - s["center"] as Vector2).rotated(-ang)
+	if q.length() > float(s["inner"]) - 2.0:
+		return INF
+	return minf(absf(q.x), absf(q.y))
+
+func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> void:
+	var c: Vector2 = s["center"]
+	var size := int(s["size"])
+	var inner := float(s["inner"])
+	var ang := outpost_angle(s)
+	var ways := road_angles(s)
+	var lots: Array = []
+	for i in range(-3, 4):
+		for j in range(-3, 4):
+			if i == 0 or j == 0:
+				continue
+			var q := Vector2((absi(i) - 0.5) * LOT + 3.0, (absi(j) - 0.5) * LOT + 3.0) * Vector2(signi(i), signi(j))
+			if q.length() + 5.0 > inner + 2.0:
+				continue
+			var p := c + q.rotated(ang)
+			# Keep other roads into town clear.
+			var blocked := false
+			for w in ways.slice(1):
+				var dir := Vector2.from_angle(w)
+				var t := (p - c).dot(dir)
+				if t > 0.0 and absf((p - c).cross(dir)) < ROAD_HALF + 8.0:
+					blocked = true
+			if not blocked:
+				lots.append(q)
+	lots.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.length() < b.length())
+	var outer: Array = []
+	if size >= 1:
+		outer.append("solar_farm")
+		outer.append("depot")
+	if size >= 2:
+		outer.append("solar_farm")
+	for n in lots.size():
+		var q: Vector2 = lots[n]
+		var t: String
+		if n == 0:
+			t = "ops_tower"
+		elif n == 1 and size >= 1:
+			t = "comms_spire"
+		elif lots.size() - n <= outer.size():
+			t = outer[lots.size() - n - 1]
+		else:
+			t = "hab_block" if r.randf() < 0.6 else "lab_block"
+		# Face the nearer street.
+		var face := Vector2(0, -signf(q.y)) if absf(q.y) <= absf(q.x) else Vector2(-signf(q.x), 0)
+		var dir := face.rotated(ang)
+		items.append({"t": t, "p": c + q.rotated(ang), "yaw": atan2(dir.x, dir.y), "st": {}})
+	# Floodlights down both sides of each street, alternating.
+	for k in 4:
+		var along := Vector2.from_angle(ang + k * PI / 2)
+		var side := along.rotated(PI / 2)
+		var m := 0
+		var d := 9.0
+		while d < inner - 4.0:
+			var sgn := 1.0 if m % 2 == 0 else -1.0
+			var p := c + along * d + side * sgn * (ROAD_HALF + 1.6)
+			var to := -side * sgn
+			items.append({"t": "outpost_light", "p": p, "yaw": atan2(to.x, to.y), "st": {}})
+			d += 12.0
+			m += 1
 
 ## Stalls, carts and barrels around a medieval square, clear of the roads.
 func _market(s: Dictionary, items: Array) -> void:

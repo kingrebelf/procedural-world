@@ -1,0 +1,270 @@
+class_name Stronghold
+## Walled strongholds out in the wilds: a medieval castle, a ruined fantasy crypt or a
+## sci-fi bunker. Towers at the corners, curtain walls with a gate, a keep at the back
+## and guards in the courtyard. The harder the stronghold (tier 1 to 3), the more and
+## the better the loot in its chests, coffers and supply crates.
+##
+## Strongholds sit one per CELL x CELL chunks at most, away from settlements and roads,
+## on ground flattened like a settlement's.
+
+const CELL := 5
+const CHANCE := 0.4
+const HALF := 16.0 ## tower centres from the middle
+const INNER := 30.0 ## flat ground radius
+const OUTER := 42.0
+
+## Piece types per era: [wall, tower, gate, keep].
+const PIECES := [
+	["castle_wall", "castle_tower", "castle_gate", "castle_keep"],
+	["crypt_wall", "crypt_tower", "crypt_gate", "crypt_keep"],
+	["bunker_wall", "bunker_tower", "bunker_gate", "bunker_keep"],
+]
+const NAMES := ["Castle", "Ruined Crypt", "Bunker"]
+const LABELS := {
+	"castle_wall": "Castle Wall", "castle_tower": "Castle Tower", "castle_gate": "Castle Gate", "castle_keep": "Castle Keep",
+	"crypt_wall": "Crypt Wall", "crypt_tower": "Crypt Tower", "crypt_gate": "Crypt Gate", "crypt_keep": "Mausoleum",
+	"bunker_wall": "Bunker Wall", "bunker_tower": "Bunker Tower", "bunker_gate": "Bunker Gate", "bunker_keep": "Command Block",
+}
+
+static func has(t: String) -> bool:
+	return LABELS.has(t)
+
+# --- Placement ---------------------------------------------------------------
+
+## The stronghold of a cell, or {} if it has none. `g` supplies terrain, settlements
+## and roads.
+static func at_cell(g: ChunkGenerator, cx: int, cz: int) -> Dictionary:
+	var r := WHash.rng(g.seed, cx, cz, 901)
+	if r.randf() > CHANCE:
+		return {}
+	var span := CELL * ChunkGenerator.SIZE
+	var c := Vector2((cx + r.randf_range(0.25, 0.75)) * span, (cz + r.randf_range(0.25, 0.75)) * span)
+	var yaw := r.randf() * TAU
+	var tier := 1 + int(r.randf() * 2.999)
+	var w := g.field.era_weights(c.x, c.y)
+	var era := WorldField.dominant(w)
+	if w[era] < 0.8:
+		return {}
+	# Level enough ground, above water, clear of settlements and roads.
+	var sites := g.settlements_near(c.x - 140, c.y - 140, c.x + 140, c.y + 140)
+	for s in sites:
+		if c.distance_to(s["center"]) < float(s["outer"]) + OUTER + 30.0:
+			return {}
+	var lo := INF
+	var hi := -INF
+	var sum := 0.0
+	for k in 9:
+		var p := c + Vector2.from_angle(k * TAU / 8.0) * (INNER if k < 8 else 0.0)
+		var h := g.field.height(p.x, p.y, g.field.era_weights(p.x, p.y))
+		lo = minf(lo, h)
+		hi = maxf(hi, h)
+		sum += h
+	if hi - lo > 9.0 or lo < ChunkGenerator.WATER_LEVEL + 1.5:
+		return {}
+	if g.towns:
+		for rd in g.roads_near(c.x - OUTER - 10, c.y - OUTER - 10, c.x + OUTER + 10, c.y + OUTER + 10):
+			var pts: PackedVector2Array = rd["pts"]
+			for p in pts:
+				if p.distance_to(c) < OUTER + 8.0:
+					return {}
+	return {"center": c, "yaw": yaw, "tier": tier, "era": era, "target_h": sum / 9.0 + 0.3,
+		"inner": INNER, "outer": OUTER, "cx": cx, "cz": cz, "fort": true}
+
+## Everything the stronghold contains, in world coordinates.
+static func layout(g: ChunkGenerator, f: Dictionary) -> Array:
+	var c: Vector2 = f["center"]
+	var yaw: float = f["yaw"]
+	var era: int = f["era"]
+	var tier: int = f["tier"]
+	var pc: Array = PIECES[era]
+	var r := WHash.rng(g.seed, f["cx"], f["cz"], 902)
+	var items: Array = []
+	var put := func(t: String, q: Vector2, face: float, st := {}) -> void:
+		items.append({"t": t, "p": c + q.rotated(-yaw), "yaw": yaw + face, "st": st})
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			put.call(pc[1], Vector2(sx, sz) * HALF, 0.0)
+	# Walls: three 8 m sections per side, the gate in the middle of the front (+z).
+	for side in 4:
+		var face := side * PI / 2.0
+		for k in [-1, 0, 1]:
+			var q := Vector2(k * 8.0, HALF).rotated(-face)
+			put.call(pc[2] if side == 0 and k == 0 else pc[0], q, face)
+	put.call(pc[3], Vector2(0, -6.0), 0.0)
+	# Loot in the courtyard and the keep's doorway: more and better with the tier.
+	var caches := ["chest", "rune_coffer", "supply_pod"]
+	var luck := 0.25 + 0.25 * tier
+	for n in 1 + tier * 2:
+		var t: String = caches[era] if r.randf() < 0.7 else caches[r.randi() % 3]
+		var q := Vector2(r.randf_range(-9, 9), r.randf_range(2, 10))
+		if n == 0:
+			q = Vector2(0, 0.5)
+		var o := {"chunk": Vector2i(int(floor((c + q.rotated(-yaw)).x / ChunkGenerator.SIZE)), int(floor((c + q.rotated(-yaw)).y / ChunkGenerator.SIZE))), "era": era, "how": "looted"}
+		put.call(t, q, r.randf() * TAU, {"loot": ItemDB.roll_loot(era, r, o, luck), "opened": false})
+	return items
+
+## Guards in the courtyard, by world position: [{p, tier, id}].
+static func guards(f: Dictionary) -> Array:
+	var c: Vector2 = f["center"]
+	var out: Array = []
+	var n := 1 + int(f["tier"]) * 2
+	for i in n:
+		var a := TAU * i / n
+		var q := Vector2(cos(a) * 6.0, 4.0 + sin(a) * 5.0)
+		out.append({"p": c + q.rotated(-float(f["yaw"])), "tier": f["tier"], "id": "g%d_%d_%d" % [f["cx"], f["cz"], i]})
+	return out
+
+# --- Meshes ------------------------------------------------------------------
+
+static func build(t: String) -> ArrayMesh:
+	if t == "bunker_keep":
+		return KitBase.build("lab_block")
+	if t == "bunker_tower":
+		return KitBase.build("ops_tower")
+	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
+	var models: Array = []
+	var era := 0 if t.begins_with("castle") else (1 if t.begins_with("crypt") else 2)
+	var part := t.split("_")[1]
+	if era == 2:
+		_bunker(part, k, models)
+	else:
+		_stone(part, era == 1, k, models)
+	var mesh := BuildCatalog.merge_models(models)
+	k.commit(Materials.get_mat, mesh)
+	return mesh
+
+const BRICK := "village/Wall_UnevenBrick_Straight"
+const BRICK_WIN := "village/Wall_UnevenBrick_Window_Thin_Round"
+
+## Merlons along a wall top from x0 to x1 at height y, z offset zo.
+static func _merlons(k: MeshKit, mat: String, x0: float, x1: float, y: float, zo: float, yaw: float, broken: bool, r: RandomNumberGenerator) -> void:
+	var b := Basis(Vector3.UP, yaw)
+	var x := x0 + 0.5
+	while x < x1 - 0.2:
+		if not broken or r.randf() > 0.35:
+			var h := 0.9 if not broken else r.randf_range(0.3, 0.9)
+			k.box(mat, Transform3D(b, b * Vector3(x, y + h * 0.5, zo)), Vector3(0.8, h, 0.5))
+		x += 1.4
+
+## Brick walls on one face of a run of 2 m modules: `n` modules centred on the origin
+## along local x, facing `yaw`, `rows` storeys high.
+static func _face(models: Array, n: int, rows: int, yaw: float, out: float, win_row: int, broken: bool, r: RandomNumberGenerator) -> void:
+	var b := Basis(Vector3.UP, yaw)
+	for row in rows:
+		for m in n:
+			if broken and row == rows - 1 and r.randf() < 0.35:
+				continue
+			var x := -n + 1.0 + m * 2.0
+			var piece := BRICK_WIN if row == win_row and m % 2 == 1 else BRICK
+			models.append([piece, rad_to_deg(yaw), b * Vector3(x, row * 3.0, out), 1.0])
+
+static func _stone(part: String, ruined: bool, k: MeshKit, models: Array) -> void:
+	var r := WHash.rng(WHash.str_hash(part), 1 if ruined else 0, 0, 7)
+	var face_stone := "crypt_stone" if ruined else "castle_stone"
+	match part:
+		"wall":
+			# 8 m of curtain wall, 6 m high, with a walkway and merlons on the outer edge.
+			_face(models, 4, 2, 0.0, 0.8, -1, ruined, r)
+			_face(models, 4, 2, PI, 0.8, -1, ruined, r)
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 2.9, 0)), Vector3(8.0, 5.8, 1.5))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 6.05, 0)), Vector3(8.0, 0.3, 2.0))
+			_merlons(k, face_stone, -4.0, 4.0, 6.2, 0.75, 0.0, ruined, r)
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.2, 4.0, 2.0))
+		"tower":
+			# 8 m square, four storeys, arrow slits, a crenellated top.
+			for side in 4:
+				var yaw := side * PI / 2.0
+				_face(models, 4, 4, yaw, 4.0, 2, ruined, r)
+			for c in [Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)]:
+				for row in 4:
+					models.append(["village/Corner_Exterior_Brick", 0, c + Vector3(0, row * 3.0, 0), 1.0])
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 6.0, 0)), Vector3(7.6, 12.0, 7.6))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 12.15, 0)), Vector3(8.6, 0.3, 8.6))
+			for side in 4:
+				_merlons(k, face_stone, -4.2, 4.2, 12.3, 4.05, side * PI / 2.0, ruined, r)
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
+			if not ruined:
+				k.cylinder("timber", Transform3D.IDENTITY.translated(Vector3(0, 12.3, 0)), 0.06, 0.05, 4.5, 6)
+				k.box("cloth", Transform3D.IDENTITY.translated(Vector3(0.75, 15.9, 0)), Vector3(1.4, 0.9, 0.03))
+			else:
+				for n in 3:
+					models.append(["village/Prop_Vine5" if n % 2 else "village/Prop_Vine2", n * 90, Basis(Vector3.UP, n * PI / 2) * Vector3(r.randf_range(-2, 2), 6.0, 4.1), 1.0])
+				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(0, 7.5, 4.05)), Vector3(0.5, 0.9, 0.04))
+		"gate":
+			# An arch 4 m wide through 8 m of wall, the portcullis drawn up.
+			var b0 := Basis.IDENTITY
+			for face in [0.0, PI]:
+				var b := Basis(Vector3.UP, face)
+				for x in [-3.0, 3.0]:
+					for row in 2:
+						models.append([BRICK, rad_to_deg(face), b * Vector3(x, row * 3.0, 0.8), 1.0])
+			for x in [-3.0, 3.0]:
+				k.box(face_stone, Transform3D(b0, Vector3(x, 2.9, 0)), Vector3(2.0, 5.8, 1.5))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 5.0, 0)), Vector3(4.0, 2.0, 2.0))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 6.05, 0)), Vector3(8.0, 0.3, 2.0))
+			_merlons(k, face_stone, -4.0, 4.0, 6.2, 0.75, 0.0, ruined, r)
+			for x in [-1.5, -0.75, 0.0, 0.75, 1.5]:
+				k.box("iron", Transform3D.IDENTITY.translated(Vector3(x, 3.6, 0.0)), Vector3(0.08, 0.9, 0.08))
+			k.box("iron", Transform3D.IDENTITY.translated(Vector3(0, 3.2, 0.0)), Vector3(3.9, 0.08, 0.08))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(-3.0, -2.0, 0)), Vector3(2.2, 4.0, 2.0))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(3.0, -2.0, 0)), Vector3(2.2, 4.0, 2.0))
+			k.box("flagstone", Transform3D.IDENTITY.translated(Vector3(0, -0.45, 0)), Vector3(4.0, 0.9, 2.2))
+			if ruined:
+				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(0, 5.2, 1.02)), Vector3(1.2, 0.25, 0.04))
+		"keep":
+			# 8 by 8 m, three storeys, a door to the courtyard, crenellated roof.
+			for side in 4:
+				var yaw := side * PI / 2.0
+				_face(models, 4, 3, yaw, 4.0, 1, ruined, r)
+			for c in [Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)]:
+				for row in 3:
+					models.append(["village/Corner_Exterior_Brick", 0, c + Vector3(0, row * 3.0, 0), 1.0])
+			# Doorway: replace the front wall's ground row middle module with a door.
+			models.append(["village/Wall_UnevenBrick_Door_Round", 0, Vector3(1, 0, 4.0), 1.0])
+			models.append(["village/Door_1_Round", 0, Vector3(1 - 0.53, 0, 3.88), 1.0])
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 9.15, 0)), Vector3(8.6, 0.3, 8.6))
+			for side in 4:
+				_merlons(k, face_stone, -4.2, 4.2, 9.3, 4.05, side * PI / 2.0, ruined, r)
+			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 0.05, 0)), Vector3(7.6, 0.1, 7.6))
+			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.95, 0)), Vector3(7.6, 0.1, 7.6))
+			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
+			if ruined:
+				for n in 2:
+					models.append(["village/Prop_Vine2", 180 * n, Basis(Vector3.UP, n * PI) * Vector3(-2.0, 4.0, 4.1), 1.0])
+				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(1, 3.4, 4.12)), Vector3(1.0, 0.3, 0.04))
+			else:
+				k.box("glow_warm", Transform3D.IDENTITY.translated(Vector3(-1, 4.6, 3.9)), Vector3(0.6, 1.4, 0.04))
+
+## Sci-fi bunker pieces from the outpost kit.
+static func _bunker(part: String, k: MeshKit, models: Array) -> void:
+	match part:
+		"wall":
+			for face in [0.0, 180.0]:
+				var b := Basis(Vector3.UP, deg_to_rad(face))
+				for x in [-2.0, 2.0]:
+					# A kit wall sits on its tile's -x edge: turn it to face out along z.
+					var at := b * Vector3(x, 0, -0.4)
+					models.append(["scifi/WallBand_Straight", face + 90.0, at, 1.0])
+					models.append(["scifi/TopCables_Straight", face + 90.0, at, 1.0])
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 2.5, 0)), Vector3(8.0, 5.0, 2.4))
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 5.05, 0)), Vector3(8.0, 0.1, 3.4))
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.2, 4.0, 3.4))
+			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 4.6, 1.75)), Vector3(6.0, 0.06, 0.04))
+		"tower":
+			models.append(["scifi/Column_Large_Straight", 0, Vector3(0, 0, 0), 1.2])
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 6.0, 0)), Vector3(6.0, 12.0, 6.0))
+			k.box("panel", Transform3D.IDENTITY.translated(Vector3(0, 12.3, 0)), Vector3(7.0, 0.6, 7.0))
+			k.box("glass", Transform3D.IDENTITY.translated(Vector3(0, 10.5, 3.02)), Vector3(4.0, 1.0, 0.04))
+			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 13.0, 0)), Vector3(0.3, 0.3, 0.3))
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(6.4, 4.0, 6.4))
+			for side in 4:
+				var b := Basis(Vector3.UP, side * PI / 2.0)
+				k.box("glow_cyan", Transform3D(b, b * Vector3(0, 6.0, 3.02)), Vector3(0.1, 8.0, 0.04))
+		"gate":
+			for x in [-3.0, 3.0]:
+				models.append(["scifi/Column_Pipes", 0, Vector3(x, 0, 0), 1.0])
+				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, 2.5, 0)), Vector3(2.0, 5.0, 3.2))
+				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, -2.0, 0)), Vector3(2.2, 4.0, 3.4))
+			models.append(["scifi/Door_Frame_Square", 0, Vector3(0, 0, 1.0), 0.85])
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 4.7, 0)), Vector3(4.0, 0.6, 3.2))
+			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 4.5, 1.62)), Vector3(3.0, 0.08, 0.04))

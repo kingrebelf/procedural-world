@@ -20,6 +20,7 @@ var _phase := 0.0
 var _speed := 0.0
 var _legs: Array = []
 var _wings: Array = []
+var _flap := 0.7 ## wing beat amplitude, radians
 var _model: Node3D
 var _body: AnimatableBody3D
 var _bite_cd := 0.0
@@ -34,9 +35,44 @@ const NAMES := [
 ## Species drawn with a rigged kit animal (AnimalModel) instead of the procedural body.
 const KIT_OF := {"Red Deer": "Deer", "Elk": "Stag", "Grey Wolf": "Wolf", "Aurochs": "Bull", "Red Fox": "Fox",
 	"Wild Horse": "Horse", "Wild Donkey": "Donkey", "Mossback": "Bull", "Glimmerhart": "Stag",
-	"Thornhound": "Wolf", "Woolly Lumen": "Alpaca", "Dune Runner": "Horse"}
+	"Thornhound": "Wolf", "Woolly Lumen": "Alpaca", "Dune Runner": "Horse",
+	"Rust Crawler": "Alien_Scolitex", "Hexapod": "Alien_Scolitex", "Lantern Strider": "Alien_Scolitex",
+	"Drift Jelly": "Alien_Oculichrysalis", "Scout Drone": "Alien_Cyclop"}
+
+## Stronghold guards (negative species, -tier): hounds, crypt stalkers and sentry
+## crawlers, tougher and harder-biting with each tier.
+const GUARD_NAMES := ["Castle Hound", "Crypt Stalker", "Sentry Crawler"]
+const GUARD_RANKS := ["", "Veteran ", "Dread "]
+
+static func guard_species(era: int, tier: int) -> Dictionary:
+	var p := species(911 + era * 7, era)
+	p["name"] = GUARD_RANKS[clampi(tier - 1, 0, 2)] + GUARD_NAMES[era]
+	p["temper"] = "aggressive"
+	p["herd"] = 1
+	if era == Eras.SCIFI:
+		p["plan"] = "hexa"
+		p["kit"] = "Alien_Scolitex"
+		p["kit_scale"] = 1.0 + 0.12 * tier
+		p["size"] = AnimalModel.HEIGHT["Alien_Scolitex"] / 1.2 * float(p["kit_scale"])
+		p["col"] = Color(0.55, 0.22, 0.12)
+		p["col2"] = Color(0.75, 0.3, 0.15)
+		p["has_glow"] = true
+		p["drops"] = [["alloy_scrap", 2 + tier], ["circuitry", tier]]
+	else:
+		p["plan"] = "quad"
+		p["kit"] = "Wolf"
+		p["kit_scale"] = 1.05 + 0.08 * tier
+		p["size"] = AnimalModel.HEIGHT["Wolf"] / 1.2 * float(p["kit_scale"])
+		p["drops"] = [["raw_meat", 2], ["hide", 1 + tier]]
+	p["speed"] = 2.6 + 0.3 * tier
+	p["hp"] = (18.0 + float(p["size"]) * 30.0) * (1.0 + 0.9 * tier)
+	p["bite_mult"] = 1.0 + 0.5 * tier
+	p["guard"] = tier
+	return p
 
 static func species(sp: int, era: int) -> Dictionary:
+	if sp < 0:
+		return guard_species(era, -sp)
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.combine(sp, 31)
 	var plans: Array = [["quad", "quad", "quad", "bird"], ["quad", "hexa", "bird", "bird"], ["hexa", "hexa", "quad", "bird"]][era]
@@ -124,10 +160,11 @@ static func level_of(sp_p: Dictionary) -> int:
 	var lv := 1.0 + (float(sp_p["hp"]) - 18.0) / 8.0
 	if sp_p["temper"] == "aggressive":
 		lv += 2.0
+	lv += float(sp_p.get("guard", 0)) * 4.0
 	return clampi(int(round(lv)), 1, 60)
 
 func bite_damage() -> float:
-	return 4.0 + float(p["size"]) * 6.0
+	return (4.0 + float(p["size"]) * 6.0) * float(p.get("bite_mult", 1.0))
 
 # --- Floating tag: level, name and health -----------------------------------------
 var _tag: Node3D
@@ -258,6 +295,22 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	_animate(delta)
 
 func _animate(delta: float) -> void:
+	if _kit and _kit.procedural():
+		# Idle-only aliens: a scuttling bob when moving, a slow hover for fliers.
+		_phase += delta * (2.0 + _speed * 5.0)
+		var amt := clampf(_speed / 2.0, 0.0, 1.0)
+		_kit.play("Idle", 1.0 + amt)
+		if p["plan"] == "bird":
+			_kit.position.y = sin(_phase * 0.6) * 0.15
+			_kit.rotation.z = sin(_phase * 0.3) * 0.08
+		else:
+			_kit.position.y = absf(sin(_phase)) * 0.06 * amt
+			_kit.rotation.z = sin(_phase) * 0.05 * amt
+			_kit.rotation.x = -0.06 * amt
+		if _flash > 0.0:
+			_flash -= delta
+			_kit.position.x = sin(_flash * 80.0) * 0.05
+		return
 	if _kit:
 		if _speed < 0.15:
 			_kit.play("Eating" if state == "graze" else "Idle")
@@ -275,7 +328,7 @@ func _animate(delta: float) -> void:
 		var leg: Node3D = _legs[i]
 		leg.rotation.x = sin(_phase + (PI if i % 2 == 1 else 0.0) + (PI * 0.5 if i >= 2 else 0.0)) * 0.6 * amt
 	for i in _wings.size():
-		(_wings[i] as Node3D).rotation.z = (1.0 if i == 0 else -1.0) * sin(_phase) * 0.7
+		(_wings[i] as Node3D).rotation.z = (1.0 if i == 0 else -1.0) * sin(_phase) * _flap
 	if state == "graze" and _model.get_child_count() > 0:
 		_model.rotation.x = lerpf(_model.rotation.x, 0.25, delta * 2.0)
 	else:
@@ -304,6 +357,11 @@ func die() -> void:
 	if _kit == null:
 		queue_free()
 		return
+	if _kit.procedural():
+		# No death animation: keel over and sink.
+		var tw := create_tween().set_parallel()
+		tw.tween_property(_kit, "rotation:z", PI * 0.5, 0.6)
+		tw.tween_property(_kit, "position:y", -0.6, 3.5)
 	_kit.play_once("Death")
 	get_tree().create_timer(4.0, false).timeout.connect(queue_free)
 
@@ -381,15 +439,21 @@ func _build() -> void:
 		return m
 	match String(p["plan"]):
 		"bird":
-			_mesh(_model, sph.call(0.18), c, Vector3.ZERO, Vector3.ZERO, Vector3(0.8, 0.7, 1.4), p["has_glow"] and era != Eras.SCIFI)
-			_mesh(_model, sph.call(0.1), c2, Vector3(0, 0.06, 0.24))
+			var bm := BirdModel.build(p, era)
+			_flap = {"Scout Drone": 0.06, "Drift Jelly": 0.3, "Glowmoth": 0.9}.get(String(p["name"]), 0.7)
+			var bmi := MeshInstance3D.new()
+			bmi.mesh = bm["body"]
+			_model.add_child(bmi)
+			var at: Vector3 = bm["wing_at"]
 			for side in [-1.0, 1.0]:
 				var w := Node3D.new()
-				w.position = Vector3(side * 0.12, 0.05, 0)
+				w.position = Vector3(side * at.x, at.y, at.z)
 				_model.add_child(w)
-				var bm := BoxMesh.new()
-				bm.size = Vector3(0.5, 0.02, 0.22)
-				_mesh(w, bm, c2 if not p["has_glow"] else glow, Vector3(side * 0.26, 0, 0), Vector3.ZERO, Vector3.ONE, p["has_glow"])
+				var wmi := MeshInstance3D.new()
+				wmi.mesh = bm["wing"]
+				# The left wing is the right one mirrored.
+				wmi.scale = Vector3(side, 1, 1)
+				w.add_child(wmi)
 				_wings.append(w)
 		_:
 			var leg_l: float = 0.55 * float(p["leg"])

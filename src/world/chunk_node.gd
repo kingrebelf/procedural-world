@@ -24,7 +24,7 @@ var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _grass: MultiMeshInstance3D
 var _clutter: Array = []
 
-const TERRAIN_TEXTURES := ["grass", "dirt", "glowmoss", "darksoil", "reddust", "rock", "mud", "snow"]
+const TERRAIN_TEXTURES := ["grass", "dirt", "glowmoss", "darksoil", "regolith", "rock", "mud", "snow"]
 
 static func ensure_shared() -> void:
 	if terrain_material == null:

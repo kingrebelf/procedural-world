@@ -56,6 +56,24 @@ func _run() -> void:
 			mi.mesh = ObjectLibrary.get_mesh(String(n).substr(5))
 			node = Node3D.new()
 			node.add_child(mi)
+		elif String(n).begins_with("bird:"):
+			# A procedural flier by species name, wings spread, e.g. bird:Kestrel.
+			var bn := String(n).substr(5)
+			var era := Eras.MEDIEVAL if bn in ["Crow", "Kestrel", "Swallow"] else (Eras.FANTASY if bn in ["Glowmoth", "Wisp Finch"] else Eras.SCIFI)
+			var bm := BirdModel.build({"name": bn, "col": Color(0.35, 0.3, 0.6), "col2": Color(0.6, 0.55, 0.85), "glow": 7, "has_glow": era != Eras.MEDIEVAL}, era)
+			node = Node3D.new()
+			var body := MeshInstance3D.new()
+			body.mesh = bm["body"]
+			node.add_child(body)
+			var at: Vector3 = bm["wing_at"]
+			for side in [-1.0, 1.0]:
+				var wmi := MeshInstance3D.new()
+				wmi.mesh = bm["wing"]
+				wmi.scale = Vector3(side, 1, 1)
+				wmi.position = Vector3(side * at.x, at.y, at.z)
+				wmi.rotation.z = side * 0.15
+				node.add_child(wmi)
+			node.scale = Vector3.ONE * 4.0
 		else:
 			var ps: PackedScene = load("res://assets/models/%s.gltf" % n)
 			if ps == null:

@@ -56,6 +56,40 @@ const ITEMS := {
 	"pulse_rifle": {"name": "Pulse Rifle", "era": Eras.SCIFI, "value": 560, "stack": false, "kind": "weapon", "damage": 20, "range": 140.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 30, "cooldown": 0.13, "auto": true},
 	"rail_rifle": {"name": "Rail Rifle", "era": Eras.SCIFI, "value": 800, "stack": false, "kind": "weapon", "damage": 95, "range": 320.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 6, "cooldown": 1.2, "tracer": "glow_white"},
 	"arc_launcher": {"name": "Arc Launcher", "era": Eras.SCIFI, "value": 900, "stack": false, "kind": "weapon", "damage": 70, "range": 90.0, "ranged": true, "ammo": "power_cell", "shots_per_ammo": 4, "cooldown": 1.0, "splash": 4.5, "tracer": "glow_violet"},
+	# Armour: use it to put it on (see Game.equip). "armor" adds up across the four slots.
+	"helm_iron": {"name": "Iron Helm", "era": Eras.MEDIEVAL, "value": 50, "stack": false, "kind": "armor", "slot": "head", "armor": 8, "color": Color(0.55, 0.56, 0.6)},
+	"mail_iron": {"name": "Chainmail Hauberk", "era": Eras.MEDIEVAL, "value": 90, "stack": false, "kind": "armor", "slot": "chest", "armor": 16, "color": Color(0.5, 0.52, 0.56)},
+	"greaves_iron": {"name": "Iron Greaves", "era": Eras.MEDIEVAL, "value": 60, "stack": false, "kind": "armor", "slot": "legs", "armor": 10, "color": Color(0.5, 0.5, 0.54)},
+	"boots_leather": {"name": "Leather Boots", "era": Eras.MEDIEVAL, "value": 25, "stack": false, "kind": "armor", "slot": "feet", "armor": 4, "color": Color(0.45, 0.3, 0.2)},
+	"helm_elven": {"name": "Elven Leaf Helm", "era": Eras.FANTASY, "value": 150, "stack": false, "kind": "armor", "slot": "head", "armor": 13, "color": Color(0.4, 0.8, 0.75)},
+	"plate_mythril": {"name": "Mythril Breastplate", "era": Eras.FANTASY, "value": 280, "stack": false, "kind": "armor", "slot": "chest", "armor": 26, "color": Color(0.7, 0.85, 1.0)},
+	"guards_mythril": {"name": "Mythril Leg Guards", "era": Eras.FANTASY, "value": 180, "stack": false, "kind": "armor", "slot": "legs", "armor": 16, "color": Color(0.68, 0.82, 0.95)},
+	"boots_elven": {"name": "Elven Boots", "era": Eras.FANTASY, "value": 90, "stack": false, "kind": "armor", "slot": "feet", "armor": 7, "color": Color(0.3, 0.55, 0.35)},
+	"helm_visor": {"name": "Visor Helmet", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "armor", "slot": "head", "armor": 18, "color": Color(0.8, 0.82, 0.86)},
+	"exo_chest": {"name": "Exo-Suit Chest", "era": Eras.SCIFI, "value": 520, "stack": false, "kind": "armor", "slot": "chest", "armor": 36, "color": Color(0.75, 0.77, 0.8)},
+	"exo_legs": {"name": "Exo-Suit Legs", "era": Eras.SCIFI, "value": 340, "stack": false, "kind": "armor", "slot": "legs", "armor": 22, "color": Color(0.72, 0.74, 0.78)},
+	"mag_boots": {"name": "Mag Boots", "era": Eras.SCIFI, "value": 160, "stack": false, "kind": "armor", "slot": "feet", "armor": 9, "color": Color(0.4, 0.42, 0.46)},
+	"gloves_leather": {"name": "Leather Gloves", "era": Eras.MEDIEVAL, "value": 20, "stack": false, "kind": "armor", "slot": "hands", "armor": 3, "color": Color(0.4, 0.28, 0.2)},
+	"shield_wood": {"name": "Round Shield", "era": Eras.MEDIEVAL, "value": 45, "stack": false, "kind": "armor", "slot": "shield", "armor": 10, "color": Color(0.55, 0.4, 0.25)},
+	"bracers_rune": {"name": "Rune Bracers", "era": Eras.FANTASY, "value": 110, "stack": false, "kind": "armor", "slot": "hands", "armor": 6, "color": Color(0.7, 0.8, 0.9)},
+	"shield_crystal": {"name": "Crescent Ward", "era": Eras.FANTASY, "value": 200, "stack": false, "kind": "armor", "slot": "shield", "armor": 16, "color": Color(0.6, 0.85, 1.0)},
+	"gauntlets_power": {"name": "Power Gauntlets", "era": Eras.SCIFI, "value": 240, "stack": false, "kind": "armor", "slot": "hands", "armor": 9, "color": Color(0.45, 0.46, 0.5)},
+	"shield_emitter": {"name": "Hex Shield Emitter", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "armor", "slot": "shield", "armor": 22, "color": Color(0.5, 0.85, 1.0)},
+	# Heavier weapons; "swing" scales the time between swings.
+	"battle_axe": {"name": "Battle Axe", "era": Eras.MEDIEVAL, "value": 110, "stack": false, "kind": "weapon", "damage": 36, "range": 3.2, "swing": 1.3, "chop": 0.8},
+	"war_hammer": {"name": "War Hammer", "era": Eras.MEDIEVAL, "value": 120, "stack": false, "kind": "weapon", "damage": 40, "range": 3.0, "swing": 1.45, "mine": 0.6},
+	"mace": {"name": "Flanged Mace", "era": Eras.MEDIEVAL, "value": 90, "stack": false, "kind": "weapon", "damage": 30, "range": 2.8, "swing": 1.1},
+	"spear": {"name": "Iron Spear", "era": Eras.MEDIEVAL, "value": 60, "stack": false, "kind": "weapon", "damage": 24, "range": 4.4, "swing": 1.0},
+	"dagger": {"name": "Curved Dagger", "era": ANY, "value": 50, "stack": false, "kind": "weapon", "damage": 15, "range": 2.4, "swing": 0.55},
+	"longbow": {"name": "Longbow", "era": Eras.MEDIEVAL, "value": 80, "stack": false, "kind": "weapon", "damage": 30, "range": 95.0, "ranged": true, "ammo": "arrow", "shots_per_ammo": 1, "cooldown": 0.75, "tracer": "bolt"},
+	"arrow": {"name": "Arrows", "era": ANY, "value": 1, "stack": true, "kind": "ammo", "color": Color(0.55, 0.42, 0.28)},
+	# Dungeon treasure and potions.
+	"rune_tablet": {"name": "Rune Tablet", "era": Eras.FANTASY, "value": 150, "stack": true, "kind": "treasure", "color": Color(0.6, 0.4, 1.0)},
+	"gold_idol": {"name": "Golden Skull Idol", "era": Eras.MEDIEVAL, "value": 200, "stack": true, "kind": "treasure", "color": Color(1.0, 0.8, 0.3)},
+	"void_gem": {"name": "Void Gem", "era": Eras.SCIFI, "value": 240, "stack": true, "kind": "treasure", "color": Color(0.7, 0.35, 1.0)},
+	"dungeon_key": {"name": "Ornate Key", "era": ANY, "value": 40, "stack": true, "kind": "treasure", "color": Color(0.8, 0.65, 0.3)},
+	"health_potion": {"name": "Health Potion", "era": ANY, "value": 30, "stack": true, "kind": "food", "heal": 80, "color": Color(0.9, 0.15, 0.15)},
+	"stamina_potion": {"name": "Stamina Potion", "era": ANY, "value": 25, "stack": true, "kind": "food", "heal": 0, "stamina": true, "color": Color(0.3, 0.9, 0.35)},
 	"bolt": {"name": "Crossbow Bolts", "era": ANY, "value": 1, "stack": true, "kind": "ammo", "color": Color(0.6, 0.45, 0.3)},
 	"rounds": {"name": "Revolver Rounds", "era": ANY, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.8, 0.65, 0.3)},
 	# Vehicles: use one to set it down in the world, then ride it (see Vehicle).
@@ -64,6 +98,15 @@ const ITEMS := {
 	"ship": {"name": "Starship", "era": Eras.SCIFI, "value": 1600, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.7, 0.25)},
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
 }
+
+## Gear that turns up in caches and dungeons, per era.
+const GEAR_LOOT := [["sword_iron", "axe_iron", "crossbow", "scrap_pistol", "helm_iron", "mail_iron", "greaves_iron", "boots_leather",
+		"gloves_leather", "shield_wood", "battle_axe", "war_hammer", "mace", "spear", "dagger", "longbow"],
+	["sword_runic", "crossbow_runic", "axe_mythril", "helm_elven", "plate_mythril", "guards_mythril", "boots_elven", "bracers_rune", "shield_crystal", "dagger"],
+	["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "helm_visor", "exo_chest", "exo_legs", "mag_boots", "gauntlets_power", "shield_emitter"]]
+## Treasure only strongholds and caves give up.
+const DUNGEON_LOOT := [["gold_idol", "dungeon_key", "health_potion", "stamina_potion", "arrow"],
+	["rune_tablet", "dungeon_key", "health_potion", "stamina_potion"], ["void_gem", "dungeon_key", "health_potion", "stamina_potion"]]
 
 const NAME_PARTS := ["Varn", "Esk", "Thal", "Orrin", "Myr", "Kael", "Sorr", "Ilsa", "Brand", "Quill", "Hale", "Nyx"]
 
@@ -81,7 +124,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
 	"workbench": 15.0, "forge": 20.0, "anvil": 25.0}
-const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0,
+const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 
 static var _piece_defs := {}
@@ -123,14 +166,41 @@ static func era_of(type: String) -> int:
 	return def(type).get("era", ANY)
 
 ## Builds a fully specified item instance. `uid` is assigned by the inventory.
-static func make(type: String, qty: int, quality: float, origin: Dictionary, rng: RandomNumberGenerator = null) -> Dictionary:
+## Gear made with an `rng` rolls a rank (see Rarity); `luck` raises the odds.
+static func make(type: String, qty: int, quality: float, origin: Dictionary, rng: RandomNumberGenerator = null, luck := 0.0) -> Dictionary:
 	var item := {"uid": 0, "type": type, "qty": qty, "quality": snappedf(quality, 0.05), "name": "", "origin": origin}
-	if not is_stackable(type) and rng != null and quality >= 1.25:
-		item["name"] = "%s of %s" % [def(type)["name"], NAME_PARTS[rng.randi() % NAME_PARTS.size()]]
+	if rng != null and Rarity.is_gear(type):
+		Rarity.apply(item, Rarity.roll(rng, luck + clampf((quality - 1.0) * 1.5, 0.0, 0.5)), rng)
 	return item
 
+## The item's working stats: its definition with rank and abilities applied.
+static func stats(item) -> Dictionary:
+	if not item is Dictionary:
+		return {}
+	var d: Dictionary = def(item["type"]).duplicate()
+	if not Rarity.is_gear(item["type"]):
+		return d
+	var p := Rarity.power(item)
+	if Rarity.has_affix(item, "brutal"):
+		p *= 1.3
+	if d.has("damage"):
+		d["damage"] = float(d["damage"]) * p
+	if Rarity.has_affix(item, "swift"):
+		d["cooldown"] = float(d.get("cooldown", 0.55)) * 0.75
+		d["swift"] = true
+	if Rarity.has_affix(item, "reach") and d.has("range"):
+		d["range"] = float(d["range"]) * 1.4
+	if Rarity.has_affix(item, "prospector"):
+		for k in ["mine", "chop", "dig"]:
+			if d.has(k):
+				d[k] = float(d[k]) * 1.5
+	if d.has("armor"):
+		d["armor"] = float(d["armor"]) * (1.0 + 0.1 * Rarity.of(item)) * (1.15 if Rarity.has_affix(item, "warding") else 1.0)
+	return d
+
 ## Deterministic loot for a cache. Called once at generation; the result is snapshotted.
-static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary) -> Array:
+## `luck` (0 to 1) is how dangerous the place was: more and better gear.
+static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, luck := 0.0) -> Array:
 	var loot: Array = []
 	var pools := [
 		[["wood", 2, 6], ["iron_ore", 2, 5], ["iron_ingot", 1, 3], ["bread", 1, 3], ["silver_chalice", 1, 1]],
@@ -146,8 +216,13 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary) 
 			idx = 0
 		var e: Array = pool[idx]
 		loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
-	if rng.randf() < 0.12:
-		var t: Array = rare_tools[era]
-		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng))
-	loot.append({"type": "_marks", "qty": rng.randi_range(5, 40)})
+	if rng.randf() < 0.12 + luck * 0.7:
+		var t: Array = rare_tools[era] + GEAR_LOOT[era]
+		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, luck))
+	if luck > 0.0:
+		var extra: Array = DUNGEON_LOOT[era]
+		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
+			var t: String = extra[rng.randi() % extra.size()]
+			loot.append(make(t, rng.randi_range(1, 3) if t != "arrow" else rng.randi_range(8, 20), rng.randf_range(0.9, 1.2), origin))
+	loot.append({"type": "_marks", "qty": int(rng.randi_range(5, 40) * (1.0 + luck * 4.0))})
 	return loot

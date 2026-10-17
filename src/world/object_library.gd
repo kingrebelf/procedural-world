@@ -15,6 +15,11 @@ const KIND := {
 	"market_stall": "structure", "fruit_cart": "structure", "wagon": "structure", "barrels": "structure",
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
+	"hab_block": "structure", "lab_block": "structure", "ops_tower": "structure",
+	"solar_farm": "structure", "depot": "structure", "outpost_light": "structure",
+	"castle_wall": "structure", "castle_tower": "structure", "castle_gate": "structure", "castle_keep": "structure",
+	"crypt_wall": "structure", "crypt_tower": "structure", "crypt_gate": "structure", "crypt_keep": "structure",
+	"bunker_wall": "structure", "bunker_tower": "structure", "bunker_gate": "structure", "bunker_keep": "structure",
 	"trader": "trader", "alien_ruin": "structure",
 	"signpost": "marker", "bridge": "structure", "cave": "structure",
 }
@@ -41,6 +46,8 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Xeno Plant",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
+	"hab_block": "Hab Block", "lab_block": "Lab Block", "ops_tower": "Ops Tower", "solar_farm": "Solar Farm",
+	"depot": "Cargo Depot", "outpost_light": "Floodlight",
 	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
@@ -54,6 +61,8 @@ static func kind(t: String) -> String:
 static func label(t: String) -> String:
 	if BuildCatalog.is_built(t):
 		return BuildCatalog.label(t)
+	if Stronghold.has(t):
+		return Stronghold.LABELS[t]
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -96,6 +105,10 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
 	if KitHouse.has(key):
 		return KitHouse.build(key)
+	if KitBase.has(key):
+		return KitBase.build(key)
+	if Stronghold.has(key):
+		return Stronghold.build(key)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
@@ -149,16 +162,19 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			for n in 3:
 				k.box("glow_teal", I.translated(Vector3(-0.4 + n * 0.4, 0.45, 0.41)), Vector3(0.18, 0.3, 0.02))
 		"supply_pod": return BuildCatalog.merge_models([["scifi/Prop_Chest", 0, Vector3.ZERO, 1.0]])
-		"standing_stone":
-			k.box("stone", Transform3D(Basis(Vector3(0, 0, 1), 0.06), Vector3(0, 1.5, 0)), Vector3(0.9, 3.2, 0.5))
-			k.sphere("moss", I.translated(Vector3(0, 0.1, 0)), 0.7, 5, 8, 0.4, 0.3)
-		"crystal_shard":
-			k.crystal("crystal_violet", Transform3D(Basis(Vector3(1, 0, 0), 0.12), Vector3.ZERO), 0.45, 4.2)
-			k.crystal("crystal_violet", Transform3D(Basis(Vector3(0, 0, 1), -0.4), Vector3(0.4, 0, 0)), 0.25, 1.8)
+		"standing_stone": return HiFlora.build("standing_stone", 1, 0)
+		"crystal_shard": return HiFlora.build("crystal_shard", 1, 0)
 		"beacon":
-			k.cylinder("metal_dark", I, 0.35, 0.18, 4.0, 8)
-			k.box("glow_cyan", I.translated(Vector3(0, 2.0, 0)), Vector3(0.42, 0.06, 0.42))
-			k.sphere("glow_red", I.translated(Vector3(0, 4.15, 0)), 0.18, 5, 8)
+			# A navigation pylon: a pipe column on a plated plinth, a light at the top.
+			var bm := BuildCatalog.merge_models([["scifi/Column_Pipes", 0, Vector3(0, 0.3, 0), 1.0],
+				["scifi/Prop_AccessPoint", 0, Vector3(0.62, 0.0, 0), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(0, 0.3, 0.85), 0.8],
+				["scifi/Prop_Light_Floor", 180, Vector3(0, 0.3, -0.85), 0.8], ["scifi/Prop_Crate3", 20, Vector3(0.75, 0.6, 0.75), 0.55]])
+			k.box("metal_dark", I, Vector3(2.4, 0.6, 2.4))
+			k.box("metal", I.translated(Vector3(0, 0.31, 0)), Vector3(2.2, 0.02, 2.2))
+			k.cylinder("metal_dark", I.translated(Vector3(0, 5.25, 0)), 0.52, 0.3, 0.3, 10)
+			k.sphere("glow_red", I.translated(Vector3(0, 5.75, 0)), 0.22, 5, 8)
+			k.box("glow_cyan", I.translated(Vector3(0, 3.6, 0)), Vector3(0.96, 0.06, 0.96))
+			return k.commit(Materials.get_mat, bm)
 		"signpost":
 			# A weathered post with an arrow pointing down the road (local -z) and one back.
 			k.cylinder("timber", I, 0.09, 0.08, 2.6, 6)
@@ -192,6 +208,17 @@ static func shape_of(o: Dictionary) -> Array:
 	var k := kind(t)
 	if t == "bridge" and sp != 0:
 		return Bridge.shape(sp)
+	if Stronghold.has(t):
+		# Walk through gates and doorways: collide with the real geometry.
+		_lock.lock()
+		var fs = _shapes.get(t)
+		_lock.unlock()
+		if fs == null:
+			fs = [get_mesh(t).create_trimesh_shape(), Vector3.ZERO]
+			_lock.lock()
+			_shapes[t] = fs
+			_lock.unlock()
+		return fs
 	if t == "cave" and sp != 0:
 		var key := mesh_key(o)
 		_lock.lock()
@@ -264,7 +291,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
 				"watchtower", "spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)
@@ -534,12 +561,12 @@ static func _clutter_fantasy(k: MeshKit) -> void:
 	for n in 2:
 		k.crystal("crystal", I.translated(Vector3(r.randf_range(-0.4, 0.4), -0.02, r.randf_range(-0.4, 0.4))), 0.03, r.randf_range(0.1, 0.25), 5)
 
+## Sci-fi ground: weathered grit and the odd dull fragment, no glowing specks.
 static func _clutter_scifi(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY
 	var r := RandomNumberGenerator.new()
 	r.seed = 23
-	for n in 3:
-		var b := Basis.from_euler(Vector3(r.randf_range(-0.3, 0.3), r.randf() * TAU, r.randf_range(-0.3, 0.3)))
-		k.box("metal" if n % 2 else "metal_dark", Transform3D(b, Vector3(r.randf_range(-0.5, 0.5), 0.02, r.randf_range(-0.5, 0.5))), Vector3(r.randf_range(0.1, 0.35), 0.02, r.randf_range(0.08, 0.2)))
-	k.cylinder("metal", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.2, 0.03, -0.2)), 0.025, 0.025, 0.12, 6)
-	k.box("glow_cyan", I.translated(Vector3(-0.2, 0.02, 0.25)), Vector3(0.05, 0.015, 0.05))
+	for n in 4:
+		k.sphere("stone_dark", I.translated(Vector3(r.randf_range(-0.45, 0.45), 0.01, r.randf_range(-0.45, 0.45))), r.randf_range(0.05, 0.13), 4, 6, 0.4, 0.6)
+	var b := Basis.from_euler(Vector3(0.15, r.randf() * TAU, -0.1))
+	k.box("rust", Transform3D(b, Vector3(0.25, 0.015, -0.2)), Vector3(0.22, 0.02, 0.12))

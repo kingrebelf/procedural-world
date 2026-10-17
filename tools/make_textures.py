@@ -21,6 +21,8 @@ SOURCES = {
     "bark_oak": 5.0, "bark_birch": 3.0, "cobble": 5.0,
     "planks": 4.0, "thatch": 3.0, "plaster": 3.0, "glowmoss": 2.5, "darksoil": 3.0,
     "reddust": 3.0, "panels": 5.0, "rust": 4.0, "snow": 3.5,
+    # From Ben's prompts (2026-10-17): sci-fi ground, stronghold stone.
+    "regolith": 2.5, "castle_wall": 5.0, "dungeon_wall": 5.0, "flagstone": 5.0,
 }
 
 

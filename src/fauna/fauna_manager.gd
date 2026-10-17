@@ -65,6 +65,9 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var out: Array = []
 	var cx: int = chunk["cx"]
 	var cz: int = chunk["cz"]
+	# Stronghold guards (see Stronghold.guards), stored in the chunk.
+	for g in chunk.get("guards", []):
+		out.append({"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]})
 	var r := WHash.rng(seed, cx, cz, 701)
 	if r.randf() > HERD_CHANCE:
 		return out
@@ -130,9 +133,9 @@ func melee_target(eye: Vector3, fwd: Vector3, reach: float) -> Creature:
 	return best
 
 func creature_bites(c: Creature) -> void:
-	var dmg := 4.0 + float(c.p["size"]) * 6.0
-	Game.set_health(Game.health - dmg, "Killed by a %s" % c.label())
-	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(dmg)])
+	var dmg := c.bite_damage()
+	var took := Game.hurt(dmg, "Killed by a %s" % c.label(), func(back: float): player_hit(c, back))
+	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(ceilf(took))])
 
 ## The player hit an animal. Kills are permanent and pay out the species' drops.
 func player_hit(c: Creature, dmg: float) -> void:

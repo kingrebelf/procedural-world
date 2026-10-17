@@ -184,10 +184,35 @@ func _character_panel() -> Control:
 			["Damage and harvesting", "x%.2f" % st.damage_mult()], ["Move speed", "x%.2f" % st.speed_mult()],
 			["Swing speed", "x%.2f" % st.swing_mult()], ["Carry weight", "%.1f / %d kg" % [Game.inventory.weight(), int(st.carry_capacity())]],
 			["Breath", "%d s" % int(st.max_breath())], ["Experience gain", "x%.2f" % st.xp_mult()],
-			["Crafted quality", "x%.2f" % st.craft_quality_mult()]]:
+			["Crafted quality", "x%.2f" % st.craft_quality_mult()],
+			["Armour", "%d  (takes %d%% of damage)" % [int(Game.armor()), int(round(10000.0 / (100.0 + Game.armor())))]]]:
 		d.add_child(UITheme.label(row[0], 16, UITheme.DIM))
 		d.add_child(UITheme.label(row[1], 16))
 	v.add_child(d)
+	v.add_child(HSeparator.new())
+	# Worn armour: use armour from the hotbar to put it on, click a slot to take it off.
+	v.add_child(UITheme.label("Worn armour (use armour from your hotbar to put it on, click to take off)", 14, UITheme.DIM))
+	var eq := HBoxContainer.new()
+	eq.add_theme_constant_override("separation", 8)
+	for where in Game.ARMOR_SLOTS:
+		var it = Game.equipment.get(where)
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(76, 76)
+		b.add_theme_font_size_override("font_size", 11)
+		if it != null:
+			b.icon = Icons.get_icon(it["type"])
+			b.expand_icon = true
+			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.tooltip_text = UITheme.describe_item(it)
+			b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
+			b.pressed.connect(func():
+				if Game.unequip(where):
+					open("character"))
+		else:
+			b.text = where.capitalize()
+			b.disabled = true
+		eq.add_child(b)
+	v.add_child(eq)
 	return s[0]
 
 # --- Pause -----------------------------------------------------------------------
@@ -233,9 +258,7 @@ func _slot_button(i: int) -> Button:
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b.tooltip_text = UITheme.describe_item(it)
-		var era: int = ItemDB.era_of(it["type"])
-		var c: Color = UITheme.ERA_COLORS[era] if era >= 0 else Color(0.7, 0.7, 0.7)
-		b.add_theme_stylebox_override("normal", UITheme.sb(Color(0.1, 0.11, 0.12, 0.9), c * Color(1, 1, 1, 0.5), 6, 1, 6))
+		b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
 	if i == _swap_from:
 		b.add_theme_stylebox_override("normal", UITheme.sb(Color(0.25, 0.2, 0.1, 0.95), UITheme.ACCENT, 6, 2, 6))
 	if i < Inventory.HOTBAR:
@@ -457,6 +480,7 @@ func _move_button(from: Inventory, i: int, to: Inventory) -> Button:
 		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b.tooltip_text = UITheme.describe_item(it) + "\n%.1f kg" % (ItemDB.weight(it["type"]) * it["qty"])
+		b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
 		b.pressed.connect(func():
 			if Storage.transfer(from, i, to) == 0:
 				Game.toast.emit("No room")

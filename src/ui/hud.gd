@@ -235,8 +235,16 @@ func _refresh() -> void:
 		var sel := player != null and player.selected == i
 		if sel:
 			_held_name.text = ItemDB.display_name(it) if it != null else ""
-		s["panel"].add_theme_stylebox_override("panel", UITheme.sb(Color(0.08, 0.08, 0.09, 0.8 if sel else 0.55),
-			UITheme.ACCENT if sel else Color(1, 1, 1, 0.1), 6, 2 if sel else 1, 8))
+		var box := UITheme.rarity_sb(it, Color(0.08, 0.08, 0.09, 0.8 if sel else 0.55), 2, 8) if it != null and Rarity.of(it) > 0 else \
+			UITheme.sb(Color(0.08, 0.08, 0.09, 0.8 if sel else 0.55), Color(1, 1, 1, 0.1), 6, 1, 8)
+		if sel:
+			box.border_color = UITheme.ACCENT
+			box.set_border_width_all(2)
+		s["panel"].add_theme_stylebox_override("panel", box)
+		if sel and it != null and Rarity.of(it) > 0:
+			_held_name.add_theme_color_override("font_color", Rarity.color(it))
+		elif sel:
+			_held_name.remove_theme_color_override("font_color")
 	_health.max_value = Game.max_health()
 	_health.value = Game.health
 	_health_val.text = "%d / %d" % [ceili(Game.health), int(Game.max_health())]

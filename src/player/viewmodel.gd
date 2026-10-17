@@ -38,13 +38,14 @@ func _ready() -> void:
 
 ## The item as something a hand can hold: tools and weapons as models, anything else as
 ## its icon on a card.
-static func prop_for(t: String) -> Node3D:
+static func prop_for(t: String, it = null) -> Node3D:
 	var n := Node3D.new()
 	var mi := MeshInstance3D.new()
 	n.add_child(mi)
 	var d := ItemDB.def(t)
 	if d.get("kind", "") in ["tool", "weapon"] and model(t) != null:
 		mi.mesh = model(t)
+		mi.material_overlay = aura_for(it)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)
@@ -57,6 +58,20 @@ static func prop_for(t: String) -> Node3D:
 		mi.material_override = m
 		mi.position = Vector3(0, 0.12, 0)
 	return n
+
+static var _aura_shader: Shader
+
+## Ranked gear shimmers in its ability's colour; Common and Uncommon stay plain.
+static func aura_for(it) -> Material:
+	if not it is Dictionary or Rarity.of(it) < Rarity.RARE:
+		return null
+	if _aura_shader == null:
+		_aura_shader = load("res://src/player/rarity_aura.gdshader")
+	var m := ShaderMaterial.new()
+	m.shader = _aura_shader
+	m.set_shader_parameter("aura", Rarity.glow(it))
+	m.set_shader_parameter("strength", 0.25 + 0.2 * (Rarity.of(it) - Rarity.RARE))
+	return m
 
 ## Held like a gun: the item points along the view instead of being raised.
 const POINTED := ["pulse_pistol", "pickaxe_plasma"]
@@ -82,7 +97,45 @@ const KIT := {
 	"rail_rifle": ["scifi/Sniper_1", 0.3, null],
 	"arc_launcher": ["scifi/Grenade_1", 0.3, null],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
+	"dagger": ["props/Sword_Bronze", 0.5, Color(0.88, 0.9, 0.95)],
+	"battle_axe": ["props/Axe_Bronze", 1.15, Color(0.7, 0.72, 0.76)],
 }
+
+## Weapons with no kit model, forged from parts: handle along +Y, grip at the origin.
+static func _forged(t: String) -> ArrayMesh:
+	var k := MeshKit.new(5)
+	var I := Transform3D.IDENTITY
+	match t:
+		"war_hammer":
+			k.cylinder("timber", I.translated(Vector3(0, -0.12, 0)), 0.022, 0.02, 0.78, 8)
+			k.box("iron", I.translated(Vector3(0, 0.62, 0)), Vector3(0.24, 0.11, 0.11))
+			k.box("iron", I.translated(Vector3(0.13, 0.62, 0)), Vector3(0.03, 0.13, 0.13))
+			k.box("iron", I.translated(Vector3(-0.13, 0.62, 0)), Vector3(0.03, 0.13, 0.13))
+		"mace":
+			k.cylinder("timber", I.translated(Vector3(0, -0.12, 0)), 0.02, 0.018, 0.62, 8)
+			k.sphere("iron", I.translated(Vector3(0, 0.55, 0)), 0.075, 6, 10)
+			for n in 8:
+				var a := TAU * n / 8.0
+				k.cylinder("iron", Transform3D(Basis(Vector3(-sin(a), 0, cos(a)), PI * 0.5), Vector3(cos(a) * 0.06, 0.55 + (0.03 if n % 2 else -0.03), sin(a) * 0.06)), 0.018, 0.0, 0.07, 5)
+			k.sphere("iron", I.translated(Vector3(0, 0.64, 0)), 0.02, 4, 6)
+		"spear":
+			k.cylinder("timber", I.translated(Vector3(0, -0.6, 0)), 0.018, 0.018, 1.75, 8)
+			k.cylinder("iron", I.translated(Vector3(0, 1.15, 0)), 0.03, 0.0, 0.26, 4)
+			k.cylinder("iron", I.translated(Vector3(0, 1.1, 0)), 0.022, 0.022, 0.06, 8)
+		"longbow":
+			var prev := Vector3.ZERO
+			for n in 13:
+				var f := (n / 12.0) * 2.0 - 1.0
+				var p := Vector3(0, f * 0.75, -0.16 * (1.0 - f * f))
+				if n > 0:
+					var d := p - prev
+					var b := Basis(Vector3.UP.cross(d.normalized()).normalized(), Vector3.UP.angle_to(d)) if absf(d.normalized().y) < 0.999 else Basis.IDENTITY
+					k.cylinder("timber", Transform3D(b, prev), 0.017, 0.017, d.length(), 6)
+				prev = p
+			k.cylinder("cloth", I.translated(Vector3(0, -0.75, 0)), 0.003, 0.003, 1.5, 4)
+		_:
+			return null
+	return k.commit(Materials.get_mat)
 
 static func model(t: String) -> ArrayMesh:
 	if _models.has(t):
@@ -104,6 +157,8 @@ static func model(t: String) -> ArrayMesh:
 			k.cylinder("glow_cyan", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.29)), 0.028, 0.002, 0.14, 8)
 			k.cylinder("metal_dark", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.035, -0.215)), 0.04, 0.034, 0.03, 10)
 			_append(out, k.commit(Materials.get_mat))
+	elif _forged(t) != null:
+		out = _forged(t)
 	elif t == "hammer" and ResourceLoader.exists("res://assets/models/props/Pickaxe_Bronze.gltf"):
 		# The pickaxe's wooden handle, shortened, with a squared iron head.
 		out = kit_mesh("props/Pickaxe_Bronze", Transform3D.IDENTITY.scaled(Vector3(0.6, 0.5, 0.6)), null, true)
@@ -205,8 +260,11 @@ static func _metal_mask(a: Array, mat: Material) -> PackedByteArray:
 		mask[i] = 1 if absf(c.r - c.b) < 0.1 and absf(c.r - c.g) < 0.1 else 0
 	return mask
 
-func show_item(t: String) -> void:
+var _item = null
+
+func show_item(t: String, it = null) -> void:
 	_type = t
+	_item = it
 	if arms:
 		_mesh.mesh = null
 		arms.set_arms_only(t != "")
@@ -214,6 +272,7 @@ func show_item(t: String) -> void:
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
+	_mesh.material_overlay = aura_for(it)
 	if t.begins_with("pulse"):
 		_mesh.rotation = Vector3(0, 0, 0)
 		_rest = Vector3(0.22, -0.2, -0.45)
@@ -228,7 +287,7 @@ func _hold_later(t: String) -> void:
 	await get_tree().process_frame
 	if t != _type:
 		return
-	arms.hold(prop_for(t) if t != "" else null)
+	arms.hold(prop_for(t, _item) if t != "" else null)
 	_aim()
 
 ## Keeps the held item pointing the right way on screen: tools up and away, guns forward.

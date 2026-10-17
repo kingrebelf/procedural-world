@@ -16,24 +16,41 @@ const SHEET_ORDER := [
 	"pickaxe_iron", "pickaxe_mythril", "pickaxe_plasma", "axe_iron", "axe_mythril", "sword_iron",
 	"sword_runic", "pulse_pistol", "gold_coin", "raw_meat", "hide", "cooked_meat",
 ]
+## The second sheet: armour, weapons and dungeon loot (tools/slice_icons.py --grid).
+const SHEET2_PATH := "res://assets/icons/items2.png"
+const SHEET2_ORDER := [
+	"helm_iron", "mail_iron", "greaves_iron", "boots_leather", "shield_wood", "gloves_leather",
+	"helm_elven", "plate_mythril", "guards_mythril", "boots_elven", "shield_crystal", "bracers_rune",
+	"helm_visor", "exo_chest", "exo_legs", "mag_boots", "shield_emitter", "gauntlets_power",
+	"battle_axe", "war_hammer", "longbow", "spear", "dagger", "mace",
+	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
+]
 const BUILD_DIR := "res://assets/icons/build/"
-static var _sheet: Image
-static var _sheet_checked := false
+static var _sheets: Dictionary = {}
+
+static func _sheet_image(path: String) -> Image:
+	if not _sheets.has(path):
+		_sheets[path] = null
+		if ResourceLoader.exists(path):
+			var tex := load(path) as Texture2D
+			if tex:
+				_sheets[path] = tex.get_image()
+	return _sheets[path]
 
 static func _from_sheet(type: String) -> Texture2D:
-	if not _sheet_checked:
-		_sheet_checked = true
-		if ResourceLoader.exists(SHEET_PATH):
-			var tex := load(SHEET_PATH) as Texture2D
-			if tex:
-				_sheet = tex.get_image()
-	var idx := SHEET_ORDER.find(type)
-	if _sheet == null or idx < 0:
+	var order: Array = SHEET_ORDER
+	var path := SHEET_PATH
+	if SHEET2_ORDER.has(type):
+		order = SHEET2_ORDER
+		path = SHEET2_PATH
+	var idx := order.find(type)
+	var sheet := _sheet_image(path) if idx >= 0 else null
+	if sheet == null:
 		return null
-	var rows := ceili(SHEET_ORDER.size() / float(SHEET_COLS))
-	var cw := _sheet.get_width() / SHEET_COLS
-	var ch := _sheet.get_height() / rows
-	var cell := _sheet.get_region(Rect2i((idx % SHEET_COLS) * cw, (idx / SHEET_COLS) * ch, cw, ch))
+	var rows := ceili(order.size() / float(SHEET_COLS))
+	var cw := sheet.get_width() / SHEET_COLS
+	var ch := sheet.get_height() / rows
+	var cell := sheet.get_region(Rect2i((idx % SHEET_COLS) * cw, (idx / SHEET_COLS) * ch, cw, ch))
 	cell.resize(96, 96, Image.INTERPOLATE_LANCZOS)
 	return ImageTexture.create_from_image(cell)
 
@@ -158,6 +175,26 @@ static func get_icon(type: String) -> Texture2D:
 				_rect(img, Rect2(12, 22, 38, 12), Color(0.3, 0.32, 0.36))
 				_rect(img, Rect2(16, 34, 10, 18), Color(0.25, 0.26, 0.3))
 				_rect(img, Rect2(34, 25, 14, 3), Color(0.3, 0.9, 1.0))
+			elif kind == "armor":
+				var hi := c.lightened(0.3)
+				match String(d.get("slot", "")):
+					"head":
+						_ellipse(img, Vector2(32, 30), Vector2(17, 18), c)
+						_rect(img, Rect2(15, 30, 34, 18), c)
+						_rect(img, Rect2(20, 30, 24, 5), Color(0.08, 0.09, 0.1) if d.get("era", 0) != Eras.SCIFI else Color(0.3, 0.9, 1.0))
+						_ellipse(img, Vector2(26, 20), Vector2(5, 4), hi)
+					"chest":
+						_poly(img, [Vector2(12, 16), Vector2(24, 10), Vector2(32, 16), Vector2(40, 10), Vector2(52, 16), Vector2(48, 30), Vector2(46, 54), Vector2(18, 54), Vector2(16, 30)], c)
+						_line(img, Vector2(32, 18), Vector2(32, 50), 2, c.darkened(0.3))
+						_poly(img, [Vector2(20, 18), Vector2(28, 20), Vector2(26, 30), Vector2(20, 28)], hi)
+					"legs":
+						_poly(img, [Vector2(18, 10), Vector2(46, 10), Vector2(46, 56), Vector2(36, 56), Vector2(32, 24), Vector2(28, 56), Vector2(18, 56)], c)
+						_rect(img, Rect2(18, 10, 28, 6), c.darkened(0.3))
+						_rect(img, Rect2(20, 30, 6, 6), hi)
+					_:
+						_poly(img, [Vector2(20, 12), Vector2(34, 12), Vector2(34, 40), Vector2(52, 46), Vector2(52, 54), Vector2(18, 54)], c)
+						_rect(img, Rect2(18, 50, 34, 4), c.darkened(0.4))
+						_rect(img, Rect2(22, 14, 8, 4), hi)
 			elif kind == "food":
 				_circle(img, Vector2(32, 32), 16.0, c)
 			else:

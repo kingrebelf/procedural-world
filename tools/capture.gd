@@ -147,7 +147,40 @@ func _run() -> void:
 	await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
 	if not sci.is_empty():
 		var c: Vector2 = sci["center"]
-		await _shot("03_scifi_outpost", c + Vector2(-42, 38), c, 0.55, 2.5)
+		var big := _find_settlement(g, Eras.SCIFI, 1) if g.outposts else {}
+		if not big.is_empty():
+			var bc: Vector2 = big["center"]
+			var a := g.outpost_angle(big) + 0.6
+			await _shot("03_scifi_outpost", bc + Vector2.from_angle(a) * 62.0, bc, 0.55, 14.0)
+		else:
+			await _shot("03_scifi_outpost", c + Vector2(-42, 38), c, 0.55, 2.5)
+	if g.outposts and (only.is_empty() or only.has("11")):
+		# The nearest stronghold, from outside its gate.
+		var best := {}
+		for r in 8:
+			for cz in range(-r, r + 1):
+				for cx in range(-r, r + 1):
+					if best.is_empty() and maxi(absi(cx), absi(cz)) == r:
+						best = Stronghold.at_cell(g, cx, cz)
+		if not best.is_empty():
+			var fc: Vector2 = best["center"]
+			var out := Vector2(0, 46).rotated(-float(best["yaw"]))
+			await _shot("11_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
+	if g.outposts and (only.is_empty() or only.has("16")):
+		# The nearest viaduct, from the side.
+		var best_d := INF
+		var vm := Vector2.ZERO
+		var vd := Vector2.ZERO
+		for rd in g.roads_near(-900.0, -900.0, 900.0, 900.0):
+			var pts: PackedVector2Array = rd["pts"]
+			var ar: PackedByteArray = rd["air"]
+			for i in range(2, pts.size() - 2):
+				if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d:
+					best_d = pts[i].length()
+					vm = pts[i]
+					vd = (pts[i + 1] - pts[i - 1]).normalized()
+		if best_d < INF:
+			await _shot("16_viaduct", vm + vd.orthogonal() * 48.0 + vd * 14.0, vm, 0.4, 6.0)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():

@@ -119,7 +119,7 @@ func weight() -> float:
 	var w := 0.0
 	for s in slots:
 		if s != null:
-			w += ItemDB.weight(s["type"]) * s["qty"]
+			w += ItemDB.weight(s["type"]) * s["qty"] * (0.1 if Rarity.has_affix(s, "featherweight") else 1.0)
 	return w
 
 func free_slots() -> int:

@@ -64,8 +64,29 @@ const LIST := [
 	{"out": "pickaxe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}, "at": "anvil"},
 	{"out": "axe_mythril", "qty": 1, "in": {"mythril_ingot": 2, "planks": 2}, "at": "anvil"},
 	{"out": "sword_runic", "qty": 1, "in": {"mythril_ingot": 3, "aether_crystal": 2}, "at": "anvil"},
+	{"out": "helm_iron", "qty": 1, "in": {"iron_ingot": 3, "hide": 1}, "at": "anvil"},
+	{"out": "mail_iron", "qty": 1, "in": {"iron_ingot": 6, "hide": 2}, "at": "anvil"},
+	{"out": "greaves_iron", "qty": 1, "in": {"iron_ingot": 4, "hide": 1}, "at": "anvil"},
+	{"out": "boots_leather", "qty": 1, "in": {"hide": 3, "fiber": 2}, "at": "workbench"},
+	{"out": "helm_elven", "qty": 1, "in": {"mythril_ingot": 2, "glowroot": 2, "aether_crystal": 1}, "at": "anvil"},
+	{"out": "plate_mythril", "qty": 1, "in": {"mythril_ingot": 5, "aether_crystal": 2}, "at": "anvil"},
+	{"out": "guards_mythril", "qty": 1, "in": {"mythril_ingot": 3, "hide": 1}, "at": "anvil"},
+	{"out": "boots_elven", "qty": 1, "in": {"hide": 2, "glowroot": 2, "fiber": 2}, "at": "workbench"},
 	{"out": "crossbow", "qty": 1, "in": {"planks": 3, "iron_ingot": 1, "fiber": 4}, "at": "workbench"},
 	{"out": "bolt", "qty": 8, "in": {"wood": 1, "stone": 1}},
+	{"out": "arrow", "qty": 8, "in": {"wood": 1, "stone": 1, "fiber": 1}},
+	{"out": "longbow", "qty": 1, "in": {"wood": 3, "fiber": 4}, "at": "workbench"},
+	{"out": "spear", "qty": 1, "in": {"wood": 2, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "dagger", "qty": 1, "in": {"iron_ingot": 1, "hide": 1}, "at": "anvil"},
+	{"out": "mace", "qty": 1, "in": {"iron_ingot": 3, "planks": 1}, "at": "anvil"},
+	{"out": "battle_axe", "qty": 1, "in": {"iron_ingot": 4, "planks": 2}, "at": "anvil"},
+	{"out": "war_hammer", "qty": 1, "in": {"iron_ingot": 5, "planks": 2}, "at": "anvil"},
+	{"out": "gloves_leather", "qty": 1, "in": {"hide": 2, "fiber": 1}, "at": "workbench"},
+	{"out": "shield_wood", "qty": 1, "in": {"planks": 4, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "bracers_rune", "qty": 1, "in": {"mythril_ingot": 1, "aether_crystal": 1}, "at": "anvil"},
+	{"out": "shield_crystal", "qty": 1, "in": {"mythril_ingot": 2, "aether_crystal": 4}, "at": "anvil"},
+	{"out": "health_potion", "qty": 1, "in": {"glowberry": 2, "wild_berries": 2}, "at": "campfire"},
+	{"out": "stamina_potion", "qty": 1, "in": {"wild_berries": 3, "fiber": 1}, "at": "campfire"},
 	{"out": "bolt", "qty": 20, "in": {"planks": 1, "iron_ingot": 1}, "at": "workbench"},
 	{"out": "scrap_pistol", "qty": 1, "in": {"iron_ingot": 4, "planks": 1}, "at": "anvil"},
 	{"out": "rounds", "qty": 12, "in": {"iron_ingot": 1, "stone": 1}, "at": "anvil"},
@@ -76,6 +97,12 @@ const LIST := [
 	{"out": "arc_launcher", "qty": 1, "in": {"alloy_plate": 6, "circuitry": 6, "power_cell": 4, "aether_crystal": 3}, "at": "fabricator"},
 	{"out": "pickaxe_plasma", "qty": 1, "in": {"alloy_plate": 2, "power_cell": 1, "mythril_ingot": 1}, "at": "fabricator"},
 	{"out": "pulse_pistol", "qty": 1, "in": {"alloy_plate": 2, "circuitry": 2, "power_cell": 1}, "at": "fabricator"},
+	{"out": "helm_visor", "qty": 1, "in": {"alloy_plate": 3, "circuitry": 2}, "at": "fabricator"},
+	{"out": "exo_chest", "qty": 1, "in": {"alloy_plate": 6, "circuitry": 3, "power_cell": 1}, "at": "fabricator"},
+	{"out": "exo_legs", "qty": 1, "in": {"alloy_plate": 4, "circuitry": 2}, "at": "fabricator"},
+	{"out": "mag_boots", "qty": 1, "in": {"alloy_plate": 2, "power_cell": 1}, "at": "fabricator"},
+	{"out": "gauntlets_power", "qty": 1, "in": {"alloy_plate": 2, "circuitry": 2}, "at": "fabricator"},
+	{"out": "shield_emitter", "qty": 1, "in": {"alloy_plate": 3, "power_cell": 2, "circuitry": 2}, "at": "fabricator"},
 	# Vehicles.
 	{"out": "speeder", "qty": 1, "in": {"alloy_plate": 6, "power_cell": 2, "circuitry": 4}, "at": "vehicle_bay"},
 	{"out": "rover", "qty": 1, "in": {"alloy_plate": 8, "power_cell": 2, "iron_ingot": 4, "circuitry": 2}, "at": "vehicle_bay"},
@@ -155,6 +182,9 @@ static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, t
 	if ItemDB.is_stackable(recipe["out"]):
 		inv.add(ItemDB.make(recipe["out"], recipe["qty"] * n, q, o))
 	else:
+		# Crafted gear rolls a rank too; skilled hands do a little better.
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
 		for k in n * int(recipe["qty"]):
-			inv.add(ItemDB.make(recipe["out"], 1, q, o))
+			inv.add(ItemDB.make(recipe["out"], 1, q, o, rng, clampf((skill - 1.0) * 1.5, 0.0, 0.3)))
 	return n

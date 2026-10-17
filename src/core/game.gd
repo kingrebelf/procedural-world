@@ -33,6 +33,11 @@ var day := 0.3
 var discovery: Dictionary = {"visited": {}, "regions": {}}
 var player: Node3D ## Set by the player when it spawns.
 var pending_player_state = null
+## Armour you are wearing, by slot (ARMOR_SLOTS); saved with the player.
+var equipment: Dictionary = {}
+const ARMOR_SLOTS := ["head", "chest", "hands", "legs", "feet", "shield"]
+signal equipment_changed
+
 ## Your vehicles out in the world (VehicleManager); saved with the player.
 var vehicles: Array = []
 ## Where you last left each planet for orbit (planet -> Vector2), to land there again.
@@ -85,6 +90,7 @@ func _begin(fresh: bool) -> void:
 	_current_region = ""
 	pending_player_state = null
 	vehicles = []
+	equipment = {}
 	landings = {}
 	markers = Markers.new()
 	var p = store.load_player()
@@ -100,6 +106,7 @@ func _begin(fresh: bool) -> void:
 		dead = false
 		stamina = stats.max_stamina()
 		vehicles = p.get("vehicles", []).duplicate(true)
+		equipment = p.get("equipment", {}).duplicate(true)
 		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
 		pending_player_state = p
@@ -170,7 +177,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "planet": planet, "landings": landings, "markers": markers.to_data()}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data()}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -275,6 +282,55 @@ func revive() -> void:
 	_player_dirty = true
 	health_changed.emit(health)
 	revived.emit()
+
+## Puts on armour from an inventory slot, swapping out whatever was in its place.
+func equip(slot_index: int) -> bool:
+	var it = inventory.get_slot(slot_index)
+	if it == null or ItemDB.def(it["type"]).get("kind", "") != "armor":
+		return false
+	var where: String = ItemDB.def(it["type"])["slot"]
+	inventory.remove_at(slot_index, 1)
+	if equipment.has(where):
+		inventory.add(equipment[where])
+	equipment[where] = it
+	_player_dirty = true
+	equipment_changed.emit()
+	toast.emit("Wearing %s" % ItemDB.display_name(it))
+	return true
+
+func unequip(where: String) -> bool:
+	if not equipment.has(where):
+		return false
+	if inventory.add(equipment[where]) != 0:
+		toast.emit("No room to take it off")
+		return false
+	equipment.erase(where)
+	_player_dirty = true
+	equipment_changed.emit()
+	return true
+
+## Total armour worn.
+func armor() -> float:
+	var a := 0.0
+	for k in equipment:
+		var it: Dictionary = equipment[k]
+		a += float(ItemDB.stats(it).get("armor", 0.0)) * float(it.get("quality", 1.0))
+	return a
+
+func wearing_affix(id: String) -> bool:
+	for k in equipment:
+		if Rarity.has_affix(equipment[k], id):
+			return true
+	return false
+
+## Damage from an attack after armour (each 100 armour halves it). Thorned armour hurts
+## the attacker back: `reflect` gets the amount to return.
+func hurt(dmg: float, cause: String, reflect: Callable = Callable()) -> float:
+	var taken := dmg * 100.0 / (100.0 + armor())
+	set_health(health - taken, cause)
+	if reflect.is_valid() and wearing_affix("thorns"):
+		reflect.call(dmg * 0.25)
+	return taken
 
 func max_health() -> float:
 	return stats.max_health()

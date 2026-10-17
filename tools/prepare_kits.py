@@ -99,7 +99,12 @@ VILLAGE = ["Floor_WoodDark", "Floor_UnevenBrick", "Floor_Brick", "Wall_Plaster_S
     "Wall_Plaster_Window_Thin_Round", "Window_Thin_Round1", "Wall_UnevenBrick_Window_Thin_Round", "Corner_Exterior_Brick",
     "Prop_Vine2", "Prop_Vine5", "Balcony_Simple_Straight", "Overhang_Plaster_Long"]
 SCIFI = ["Platform_Metal", "Platform_DarkPlates", "WallAstra_Straight", "WallAstra_Straight_Window", "TopSimple_Straight",
-    "Door_Frame_Square", "Platform_Stairs_4WideTall", "Column_Simple", "Prop_Computer", "Prop_Crate3", "Prop_Light_Floor"]
+    "Door_Frame_Square", "Platform_Stairs_4WideTall", "Column_Simple", "Prop_Computer", "Prop_Crate3", "Prop_Light_Floor",
+    # Outpost buildings and yard props.
+    "WallAstra_Straight_Flat_Window", "WallBand_Straight", "WallWindow_Straight", "TopAstra_Straight", "TopCables_Straight",
+    "TopPlastic_Straight", "Door_Metal", "Platform_Simple", "Platform_Squares", "Column_Astra", "Column_Pipes", "Column_Large_Straight",
+    "Prop_Light_Wide", "Prop_Barrel_Large", "Prop_Crate4", "Prop_Vent_Big", "Prop_Vent_Small", "Prop_Fan_Small", "Prop_AccessPoint",
+    "Prop_PipeHolder", "ShortWall_Metal2_Straight", "ShortWall_DarkMetal2_Straight", "Prop_Rail_4", "Prop_Cable_3"]
 PROPS = ["Workbench", "Workbench_Drawers", "Anvil_Log", "Cauldron", "Whetstone", "Barrel", "Crate_Wooden", "Bucket_Metal",
     "Axe_Bronze", "Pickaxe_Bronze", "Sword_Bronze", "Shield_Wooden", "Torch_Metal",
     # Furniture and decor you can build.

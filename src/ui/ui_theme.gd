@@ -22,6 +22,16 @@ static func sb(bg: Color, border: Color = Color(1, 1, 1, 0.08), radius: int = 6,
 	s.anti_aliasing = true
 	return s
 
+## A slot frame in the item's rank colour; Uncommon and up glow, brighter by rank.
+static func rarity_sb(it: Dictionary, bg: Color, bw := 2, pad := 6) -> StyleBoxFlat:
+	var r := Rarity.of(it)
+	var c := Rarity.color(it)
+	var s := sb(bg.lerp(c * Color(0.35, 0.35, 0.35, 1.0), 0.12 * r), c * Color(1, 1, 1, 0.45 if r == 0 else 0.95), 6, bw if r > 0 else 1, pad)
+	if r > 0:
+		s.shadow_color = c * Color(1, 1, 1, 0.25 + 0.1 * r)
+		s.shadow_size = 2 + r * 2
+	return s
+
 static func get_theme() -> Theme:
 	if _theme != null:
 		return _theme
@@ -85,8 +95,17 @@ static func describe_item(it: Dictionary) -> String:
 	var d := ItemDB.def(it["type"])
 	var lines := [ItemDB.display_name(it)]
 	var era: int = d.get("era", -1)
-	lines.append("%s %s" % [Eras.NAMES[era] if era >= 0 else "Common", d.get("kind", "item")])
-	lines.append("Quality %d%%   Value %d" % [int(it.get("quality", 1.0) * 100), d.get("value", 0)])
+	if Rarity.is_gear(it["type"]):
+		lines.append("%s %s %s" % [Rarity.NAMES[Rarity.of(it)], Eras.NAMES[era] if era >= 0 else "", d.get("kind", "item")])
+		var st := ItemDB.stats(it)
+		if st.has("damage"):
+			lines.append("Damage %d" % int(round(float(st["damage"]) * it.get("quality", 1.0))))
+		if st.has("armor"):
+			lines.append("Armour %d" % int(round(float(st["armor"]) * it.get("quality", 1.0))))
+		lines.append_array(Rarity.describe(it))
+	else:
+		lines.append("%s %s" % [Eras.NAMES[era] if era >= 0 else "Common", d.get("kind", "item")])
+	lines.append("Quality %d%%   Value %d" % [int(it.get("quality", 1.0) * 100), int(d.get("value", 0) * (1.0 + 0.6 * Rarity.of(it) * Rarity.of(it)))])
 	var srcs: Array = Inventory.sources_of(it) if Inventory.stacks(it) else [[it.get("origin", {}), it.get("qty", 1)]]
 	for pair in srcs:
 		var line := _origin_line(pair[0])

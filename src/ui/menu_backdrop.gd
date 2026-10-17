@@ -37,6 +37,7 @@ func _ready() -> void:
 	atmosphere = Atmosphere.new()
 	add_child(atmosphere)
 	atmosphere.target = _rig
+	BuildCatalog.warm_kits()
 	streamer = ChunkStreamer.new()
 	streamer.store = WorldStore.memory()
 	streamer.seed = SEED

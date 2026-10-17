@@ -24,7 +24,7 @@ var _mesa: FastNoiseLite
 
 ## Terrain generation in force. Worlds created before v4 keep the older shapes, so chunks
 ## generated later still meet the ones already saved. Set when a world opens (Game).
-static var terrain_v := 4
+static var terrain_v := 5
 
 func _init(world_seed: int) -> void:
 	seed = world_seed & WHash.MASK

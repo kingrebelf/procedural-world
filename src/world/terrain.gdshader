@@ -28,7 +28,7 @@ TEX(grass_tex); NRM(grass_nrm);
 TEX(dirt_tex); NRM(dirt_nrm);
 TEX(glowmoss_tex); NRM(glowmoss_nrm);
 TEX(darksoil_tex); NRM(darksoil_nrm);
-TEX(reddust_tex); NRM(reddust_nrm);
+TEX(regolith_tex); NRM(regolith_nrm);
 TEX(rock_tex); NRM(rock_nrm);
 TEX(mud_tex); NRM(mud_nrm);
 TEX(snow_tex); NRM(snow_nrm);
@@ -41,7 +41,7 @@ const vec3 GRASS_MEAN = vec3(0.1191, 0.1707, 0.0626);
 const vec3 DIRT_MEAN = vec3(0.1918, 0.1228, 0.0773);
 const vec3 GLOWMOSS_MEAN = vec3(0.0054, 0.0724, 0.0557);
 const vec3 DARKSOIL_MEAN = vec3(0.0399, 0.0322, 0.0412);
-const vec3 REDDUST_MEAN = vec3(0.4765, 0.121, 0.0456);
+const vec3 REGOLITH_MEAN = vec3(0.1887, 0.1621, 0.1343);
 const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
 const vec3 MUD_MEAN = vec3(0.1112, 0.094, 0.0732);
 const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
@@ -196,10 +196,10 @@ void fragment() {
 			tilt_s += w.g * untiled_n(darksoil_nrm, p + 17.0, DIRT_TILE, meso, far);
 		}
 		if (w.b > 0.01) {
-			vec3 dt = ground(reddust_tex, wpos, wnorm, vec2(29.0), DUST_TILE, meso, far).rgb;
-			gm += w.b * recolor(dt, REDDUST_MEAN, grass_s, 0.45);
-			gs += w.b * recolor(dt, REDDUST_MEAN, soil_s, 0.45);
-			vec2 dn2 = untiled_n(reddust_nrm, p + 29.0, DUST_TILE, meso, far);
+			vec3 dt = ground(regolith_tex, wpos, wnorm, vec2(29.0), DUST_TILE, meso, far).rgb;
+			gm += w.b * recolor(dt, REGOLITH_MEAN, grass_s, 0.45);
+			gs += w.b * recolor(dt, REGOLITH_MEAN, soil_s, 0.45);
+			vec2 dn2 = untiled_n(regolith_nrm, p + 29.0, DUST_TILE, meso, far);
 			tilt_g += w.b * dn2;
 			tilt_s += w.b * dn2;
 		}
@@ -265,13 +265,11 @@ void fragment() {
 		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, SNOW_TILE, meso, far), snow);
 	}
 
-	// Sci-fi: weathered dust and ash with faint mineral sparkle; no panel grid.
+	// Sci-fi: weathered dust and ash; no panel grid, no glitter.
 	float plates = 0.0;
 	if (w.b > 0.01) {
 		float ash = fbm(p * 0.05 + 31.0);
 		col = mix(col, col * vec3(1.08, 0.95, 0.88) * (0.85 + 0.3 * ash), w.b * 0.5);
-		float glint = smoothstep(0.93, 0.99, vnoise(p * 6.0)) * (1.0 - rock_mask);
-		EMISSION += glow_s * glint * w.b * 0.12 * night_glow;
 	}
 
 	// Fantasy: bioluminescent spores in the moss (from the moss texture when present).

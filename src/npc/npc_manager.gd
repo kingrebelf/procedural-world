@@ -159,8 +159,8 @@ func _process(delta: float) -> void:
 			if n.action == "attack" and n.attack_cd <= 0.0 and pp.distance_to(n.global_position) < 1.7:
 				n.attack_cd = 1.4
 				var dmg := 6.0 + float(n.rec["traits"]["brave"]) * 6.0
-				Game.set_health(Game.health - dmg, "Killed by %s" % n.rec["name"])
-				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(dmg)])
+				var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
+				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(ceilf(took))])
 	_decide_t -= delta
 	if _decide_t <= 0.0:
 		_decide_t = DECIDE_EVERY

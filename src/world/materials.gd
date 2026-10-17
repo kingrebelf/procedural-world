@@ -57,11 +57,12 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.22, "dungeon_wall": 0.3, "flagstone": 0.3}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
-	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels"}
+	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
+	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}
 ## Photos used in their own colours rather than as greyscale detail under the material colour.
-const PHOTO_COLOUR := ["cobble", "thatch", "rust"]
+const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 
 static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: float, tri_scale: float, normal_scale: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -262,6 +263,9 @@ static func _get_mat(name: String) -> Material:
 		"stone": m = _pbr(Color(0.56, 0.54, 0.50), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"stone_dark": m = _pbr(Color(0.30, 0.29, 0.30), 0.85, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cobble": m = _pbr(Color(0.5, 0.48, 0.45), 0.9, 0.0, "cobble", 0.05, 0.5, 2.0)
+		"castle_stone": m = _pbr(Color(0.78, 0.74, 0.66), 0.9, 0.0, "castle_stone", 0.02, 0.35, 1.4)
+		"crypt_stone": m = _pbr(Color(0.4, 0.41, 0.4), 0.9, 0.0, "crypt_stone", 0.02, 0.35, 1.4)
+		"flagstone": m = _pbr(Color(0.45, 0.43, 0.4), 0.9, 0.0, "flagstone", 0.02, 0.35, 1.4)
 		"plaster": m = _pbr(Color(0.86, 0.82, 0.72), 0.9, 0.0, "plaster", 0.04, 0.3, 0.5)
 		"timber": m = _pbr(Color(0.36, 0.25, 0.16), 0.8, 0.0, "bark", 0.05, 0.6, 0.8)
 		"planks": m = _pbr(Color(0.55, 0.40, 0.26), 0.8, 0.0, "planks", 0.03, 0.5, 0.8)
@@ -277,6 +281,10 @@ static func _get_mat(name: String) -> Material:
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)
+		"solar_cell":
+			m = _pbr(Color(0.05, 0.08, 0.16), 0.12, 0.6, "", 0, 1)
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.8
 		"cloth": m = _pbr(Color(0.62, 0.20, 0.16), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"cloth_blue": m = _pbr(Color(0.2, 0.3, 0.6), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)

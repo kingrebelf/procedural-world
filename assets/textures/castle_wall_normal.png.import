@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://vcud02ykjl7b"
-path.s3tc="res://.godot/imported/cobble_detail.jpg-03a32da5c9ab156f9105c9cd1bf87751.s3tc.ctex"
+uid="uid://d35uolk2j55lv"
+path.s3tc="res://.godot/imported/castle_wall_normal.png-ac3a1a58a29fda17c4c86c5832e82f84.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/textures/cobble_detail.jpg"
-dest_files=["res://.godot/imported/cobble_detail.jpg-03a32da5c9ab156f9105c9cd1bf87751.s3tc.ctex"]
+source_file="res://assets/textures/castle_wall_normal.png"
+dest_files=["res://.godot/imported/castle_wall_normal.png-ac3a1a58a29fda17c4c86c5832e82f84.s3tc.ctex"]
 
 [params]
 
@@ -22,7 +22,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
@@ -38,4 +38,4 @@ process/normal_map_invert_y=false
 process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
-detect_3d/compress_to=0
+detect_3d/compress_to=1
