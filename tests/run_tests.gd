@@ -1290,6 +1290,93 @@ func test_storage() -> void:
 	check(spilled.size() == 1 and spilled[0]["qty"] == 5 and Storage.is_empty(o), "a broken chest spills what it held")
 	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
 
+class DoorStreamerShim:
+	var chunks := {}
+	func get_chunk(k: Vector2i):
+		return chunks.get(k)
+
+func test_doors() -> void:
+	for id in ["door_wood", "door_iron", "door_bulkhead"]:
+		check(Doors.is_door_piece(id) and Doors.is_door(BuildCatalog.PREFIX + id), "%s is a door" % id)
+		check(BuildCatalog.mesh(id) != null and BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a model" % id)
+		check(Recipes.LIST.any(func(r): return r["out"] == id), "%s can be crafted" % id)
+		check(ItemDB.has(id) and ItemDB.def(id).get("kind", "") == "placeable", "%s is a building item" % id)
+		for m in BuildCatalog.def(id)["models"]:
+			check(Doors.leaf_mesh(String(m[0])).get_surface_count() > 0, "%s leaf %s has a mesh" % [id, m[0]])
+	check(Doors.fits("wall_door").has("door_wood") and Doors.fits("wall_door_stone").has("door_iron") and Doors.fits("door_scifi") == ["door_bulkhead"], "doors fit their doorways")
+	check(Doors.fits("wall_plaster").is_empty(), "a plain wall takes no door")
+	check(not Doors.is_door("b:wall_door") and not Doors.is_door("oak"), "a doorway isn't a door")
+	check(ItemDB.UNLOCK["door_wood"] < ItemDB.UNLOCK["door_iron"] and ItemDB.UNLOCK["door_iron"] < Eras.UNLOCK_LEVEL and ItemDB.UNLOCK["door_bulkhead"] >= Eras.UNLOCK_LEVEL, "plank doors before iron-bound, both medieval; bulkheads later")
+	var o := {"t": "b:door_wood", "i": 0, "p": Vector3(4, 0, 4), "r": 0.0, "s": 1.0, "e": 0, "st": {"by": "you"}}
+	Doors.init_state(o["st"])
+	check(not Doors.is_open(o) and not Doors.is_locked(o) and Doors.is_mine(o) and Doors.owner_of(o) == Doors.my_id(), "a new door is shut, unlocked and yours")
+	check(Doors.toggle(o, 1.0) == "opened" and Doors.is_open(o), "it opens")
+	check(Doors.toggle(o, 1.0) == "closed" and not Doors.is_open(o), "and shuts")
+	check(Doors.set_locked(o, true) and Doors.is_locked(o) and Doors.can_open(o), "you lock it and still have the key")
+	check(Doors.can_open(o), "no lock to pick on your own door")
+	# Someone else's locked door.
+	var theirs := {"t": "b:door_iron", "i": 1, "p": Vector3.ZERO, "r": 0.0, "s": 1.0, "e": 0, "st": {}}
+	Doors.init_state(theirs["st"])
+	theirs["st"]["owner"] = "player_42"
+	check(Doors.toggle(theirs, 1.0) == "opened", "an unlocked door opens for anyone")
+	Doors.toggle(theirs, 1.0)
+	theirs["st"]["locked"] = true
+	check(not Doors.can_open(theirs) and Doors.toggle(theirs, 1.0) == "locked" and not Doors.is_open(theirs), "a stranger's locked door stays shut")
+	check(not Doors.set_locked(theirs, false) and Doors.is_locked(theirs), "and you can't unlock it")
+	check(not Doors.grant(theirs, Doors.my_id()), "nor give yourself a key")
+	check(Doors.tier(theirs) == 2 and Doors.verb(theirs, false).begins_with("Pick the adept lock"), "an iron-bound lock is adept to pick")
+	theirs["st"]["access"] = [Doors.my_id()]
+	check(Doors.can_open(theirs), "the access list lets you in")
+	theirs["st"]["access"] = []
+	Doors.picked(theirs, -1.0)
+	check(not Doors.is_locked(theirs) and Doors.is_open(theirs) and float(theirs["st"]["side"]) == -1.0, "a picked lock opens away from you")
+	check(Doors.grant(o, "friend") and Doors.has_access(o, "friend") and not Doors.has_access(o, "stranger"), "you can hand out a key")
+	check(Doors.revoke(o, "friend") and not Doors.has_access(o, "friend"), "and take it back")
+	check(Doors.may_access("") and Doors.may_access(Doors.my_id()) and not Doors.may_access("player_42"), "may_access: no owner, or you")
+	# Swinging away from whoever opened it, with the hinge on either side.
+	for e in [["village/Door_1_Round", 0, Vector3(-0.535, 0, -0.11), 1.0], ["village/Door_1_Round", 180, Vector3(0.535, 0, -0.11), 1.0]]:
+		var edge := Vector3(1.0, 1.0, 0.0)
+		var shut: Vector3 = Doors.leaf_xf(e, false, 0.0, 1.0) * edge
+		check(shut.is_equal_approx(BuildCatalog._xf(e) * edge), "a shut leaf sits where the model puts it")
+		check((Doors.leaf_xf(e, false, 1.0, 1.0) * edge).z < shut.z - 0.5, "opened from the front, it swings to the back (yaw %d)" % e[1])
+		check((Doors.leaf_xf(e, false, 1.0, -1.0) * edge).z > shut.z + 0.5, "opened from the back, it swings to the front (yaw %d)" % e[1])
+		check(Doors.leaf_xf(e, false, 1.0, 1.0).origin.is_equal_approx(BuildCatalog._xf(e).origin), "a leaf turns on its hinge")
+	var bulk: Array = BuildCatalog.def("door_bulkhead")["models"]
+	var l0 := Doors.leaf_xf(bulk[0], true, 1.0, 1.0).origin - BuildCatalog._xf(bulk[0]).origin
+	var l1 := Doors.leaf_xf(bulk[1], true, 1.0, 1.0).origin - BuildCatalog._xf(bulk[1]).origin
+	check(l0.x < -1.5 and l1.x > 1.5 and absf(l0.z) < 0.01, "bulkhead leaves slide apart")
+	check(Doors.side_of(o, Vector3(4, 0, 4), Vector3(4, 0, 6)) == 1.0 and Doors.side_of(o, Vector3(4, 0, 4), Vector3(4, 0, 2)) == -1.0, "which side of a door you stand on")
+	# Hanging a door in a doorway, and the door found there afterwards.
+	var cd := {"cx": 0, "cz": 0, "objects": [{"t": "b:wall_door", "i": 0, "p": Vector3(5, 2, 7), "r": PI * 0.5, "s": 1.0, "e": 0, "st": {}}]}
+	var shim := DoorStreamerShim.new()
+	shim.chunks[Vector2i(0, 0)] = {"data": cd}
+	var eye := Vector3(9, 3.6, 7)
+	var dw := Doors.doorway_near(shim, "door_wood", eye, Vector3(1, 2.5, 7))
+	check(not dw.is_empty() and (dw["pos"] as Vector3).is_equal_approx(Vector3(5, 2, 7)) and is_equal_approx(float(dw["yaw"]), PI * 0.5), "aiming through a doorway finds it")
+	check(Doors.doorway_near(shim, "door_bulkhead", eye, Vector3(1, 2.5, 7)).is_empty(), "a bulkhead doesn't hang in a village doorway")
+	check(Doors.doorway_near(shim, "door_wood", eye, Vector3(9, 0, 1)).is_empty(), "nothing when aiming away")
+	check(Doors.door_at(shim, Vector3(5, 2, 7)).is_empty(), "no door there yet")
+	var hung := {"t": "b:door_wood", "i": 1, "p": Vector3(5, 2, 7), "r": PI * 0.5, "s": 1.0, "e": 0, "st": {"by": "you"}}
+	Doors.init_state(hung["st"])
+	cd["objects"].append(hung)
+	check(not Doors.door_at(shim, Vector3(5, 2, 7)).is_empty(), "the door in a doorway is found")
+	check(BuildCatalog.occupied(shim, "door_iron", Vector3(5, 2, 7), PI * 1.5), "a doorway holds one door")
+	# Door state is saved with the chunk.
+	var s := _tmp_store("doors")
+	var g := ChunkGenerator.new(77)
+	var c := s.get_or_create_chunk(g, 1, 1)
+	var st := {"by": "you"}
+	Doors.init_state(st)
+	st["locked"] = true
+	st["open"] = true
+	st["side"] = -1.0
+	st["access"] = ["friend"]
+	c["objects"].append({"t": "b:door_iron", "i": c["objects"].size(), "p": Vector3(3, 1, 3), "r": 0.0, "s": 1.0, "e": 0, "st": st})
+	s.save_chunk(c)
+	var back = s.load_chunk(1, 1)
+	var bd: Dictionary = back["objects"][back["objects"].size() - 1]
+	check(Doors.is_door(bd["t"]) and Doors.is_locked(bd) and Doors.is_open(bd) and float(bd["st"]["side"]) == -1.0 and Doors.has_access(bd, "friend") and Doors.is_mine(bd), "a door keeps its lock, owner, keys and swing through a save")
+
 func test_hand_light() -> void:
 	var inv := Inventory.new()
 	var hl := HandLight.new()
