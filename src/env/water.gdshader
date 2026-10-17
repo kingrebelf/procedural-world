@@ -114,7 +114,9 @@ void fragment() {
 	// Foam: a broken line where the water meets the shore (not over every shallow flat),
 	// and whitecaps on wave crests in a strong wind.
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
-	float shore = (1.0 - smoothstep(0.0, 0.12 + amp * 0.5, water_depth)) * (0.4 + 0.6 * smoothstep(0.0, 0.3, n2(wpos.xz * 0.9 - t * 0.2) + 0.15));
+	// (Not on the tool in your hand where it dips into the water: it is no shore.)
+	float shore = (1.0 - smoothstep(0.0, 0.12 + amp * 0.5, water_depth)) * (0.4 + 0.6 * smoothstep(0.0, 0.3, n2(wpos.xz * 0.9 - t * 0.2) + 0.15))
+		* smoothstep(1.0, 2.0, -world.z);
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n;
 	float foam = max(shore * 0.55 * (0.6 + 0.4 * sin(t * 1.5 + wpos.x * 0.8 + wpos.z * 0.5)), caps);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);

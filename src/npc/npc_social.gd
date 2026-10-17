@@ -28,6 +28,13 @@ const JOB_GOODS := {
 	"pilot": ["power_cell", "flashlight", "ration_pack", "compass", "coffee_pot", "jerky"],
 	"security officer": ["pulse_pistol", "rounds", "helm_visor"], "data broker": ["data_core", "circuitry"],
 	"hydroponics tech": ["ration_pack", "fiber"], "courier": ["ration_pack", "power_cell", "binoculars"],
+	# Boat crews (Boats).
+	"fisher": ["fish_raw", "fish_cooked", "fishing_rod", "rope", "salt"], "deckhand": ["rope", "fish_raw", "planks"],
+	"captain": ["sextant", "compass", "treasure_map", "hand_lantern", "rope"], "sailor": ["rope", "fish_cooked", "dagger", "compass"],
+	"ship's cook": ["fish_cooked", "bread", "salt", "salted_meat", "mead"], "lookout": ["binoculars", "fish_cooked"],
+	"castaway": ["flare"], "boat pilot": ["fish_raw", "rope_synth", "power_cell", "ration_pack", "flare"],
+	"marine biologist": ["fish_raw", "data_core", "binoculars", "ration_pack"], "ship engineer": ["wrench", "power_cell", "copper_wire", "valve", "rope_synth"],
+	"pirate": ["dagger", "rope", "treasure_map", "mead", "fish_cooked"],
 }
 
 ## What guards wear on duty, by era.

@@ -6,6 +6,20 @@ extends RefCounted
 
 var _st: Dictionary = {} ## material name -> SurfaceTool
 var _noise: FastNoiseLite
+## While a grained box or cylinder is being added: (local point, local normal) -> UV.
+var _uv_fn := Callable()
+
+## Materials whose texture is wood grain, laid along each box's long axis and each
+## cylinder's length (a beam is cut along the tree), not projected from the world.
+const GRAIN := {"timber": true}
+## Where across the grain photo its three boards that run the whole tile without an end
+## joint lie, and how much of one board a narrow face may span (the board is 0.16 wide):
+## a beam shows one board's grain, not the seams between them.
+const BOARDS := [0.087, 0.416, 0.917]
+const BOARD_SPAN := 0.12
+const GRAIN_SCALE := 0.8 ## photo tiles per metre
+## Faces wider than this show the photo's boards side by side, as planking.
+const PLANKED := 0.4
 
 func _init(noise_seed: int = 1) -> void:
 	_noise = FastNoiseLite.new()
@@ -24,7 +38,7 @@ func _v(st: SurfaceTool, xf: Transform3D, nb: Basis, p: Vector3, n: Vector3, col
 	var wp := xf * p
 	st.set_normal((nb * n).normalized())
 	st.set_color(color)
-	st.set_uv(Vector2(wp.x + wp.z, wp.y))
+	st.set_uv(_uv_fn.call(p, n) if _uv_fn.is_valid() else Vector2(wp.x + wp.z, wp.y))
 	st.add_vertex(wp)
 
 ## Adds triangle (a, b, c) given counter-clockwise when seen from the front side.
@@ -63,15 +77,56 @@ func box(mat: String, xf: Transform3D, size: Vector3, color := Color.WHITE) -> v
 		Vector3(-h.x, -h.y, -h.z), Vector3(h.x, -h.y, -h.z), Vector3(h.x, h.y, -h.z), Vector3(-h.x, h.y, -h.z),
 		Vector3(-h.x, -h.y, h.z), Vector3(h.x, -h.y, h.z), Vector3(h.x, h.y, h.z), Vector3(-h.x, h.y, h.z),
 	]
+	if GRAIN.has(mat):
+		_uv_fn = _box_grain(xf, size)
 	quad(mat, xf, p[4], p[5], p[6], p[7], color) # +z
 	quad(mat, xf, p[1], p[0], p[3], p[2], color) # -z
 	quad(mat, xf, p[5], p[1], p[2], p[6], color) # +x
 	quad(mat, xf, p[0], p[4], p[7], p[3], color) # -x
 	quad(mat, xf, p[7], p[6], p[2], p[3], color) # +y
 	quad(mat, xf, p[0], p[1], p[5], p[4], color) # -y
+	_uv_fn = Callable()
+
+## Which board of the grain photo a piece shows and how far along it starts, picked from
+## where the piece is so neighbouring beams differ.
+func _grain_pick(xf: Transform3D) -> Vector2:
+	var h := absi(hash(xf.origin.snapped(Vector3.ONE * 0.01)))
+	return Vector2(BOARDS[h % BOARDS.size()], float(h % 997) / 997.0)
+
+## Grain UVs for a box: along its longest side; each narrow face centred on one board,
+## wide faces planked, the end grain flat.
+func _box_grain(xf: Transform3D, size: Vector3) -> Callable:
+	var sc := Vector3(xf.basis.x.length(), xf.basis.y.length(), xf.basis.z.length())
+	var s := size * sc
+	var l := s.max_axis_index()
+	var pick := _grain_pick(xf)
+	return func(p: Vector3, n: Vector3) -> Vector2:
+		var na := n.abs().max_axis_index()
+		if na == l:
+			return Vector2(p[(l + 1) % 3] * sc[(l + 1) % 3], p[(l + 2) % 3] * sc[(l + 2) % 3]) * GRAIN_SCALE
+		var a := 3 - l - na
+		var across := p[a] * sc[a]
+		var su := GRAIN_SCALE if s[a] > PLANKED else minf(GRAIN_SCALE, BOARD_SPAN / maxf(s[a], 0.001))
+		return Vector2(pick.x + across * su, p[l] * sc[l] * GRAIN_SCALE + pick.y)
+
+## Grain UVs for a cylinder: along its length, mirrored round the back so there is no
+## seam, the caps flat.
+func _cylinder_grain(xf: Transform3D, r: float) -> Callable:
+	var sr := xf.basis.x.length()
+	var sy := xf.basis.y.length()
+	var half := PI * r * sr
+	var su := GRAIN_SCALE if half > PLANKED else minf(GRAIN_SCALE, BOARD_SPAN / maxf(half, 0.001))
+	var pick := _grain_pick(xf)
+	return func(p: Vector3, n: Vector3) -> Vector2:
+		if absf(n.y) > 0.9:
+			return Vector2(p.x, p.z) * sr * GRAIN_SCALE
+		var round_ := absf(atan2(p.z, p.x)) / PI
+		return Vector2(pick.x + (round_ - 0.5) * half * su, p.y * sy * GRAIN_SCALE + pick.y)
 
 ## Cylinder / cone frustum from y=0 to y=h. `wobble` adds organic noise to the radius.
 func cylinder(mat: String, xf: Transform3D, rb: float, rt: float, h: float, segs: int = 12, caps: bool = true, wobble: float = 0.0, rings: int = 1, color := Color.WHITE) -> void:
+	if GRAIN.has(mat):
+		_uv_fn = _cylinder_grain(xf, maxf(rb, rt))
 	var slope := (rb - rt) / maxf(h, 0.0001)
 	var ring_pts: Array = []
 	for r in rings + 1:
@@ -109,6 +164,7 @@ func cylinder(mat: String, xf: Transform3D, rb: float, rt: float, h: float, segs
 			if rt > 0.0001:
 				tri(mat, xf, Vector3(0, h, 0), top[s2], top[s], Vector3.UP, Vector3.UP, Vector3.UP, color)
 			tri(mat, xf, Vector3.ZERO, bot[s], bot[s2], Vector3.DOWN, Vector3.DOWN, Vector3.DOWN, color)
+	_uv_fn = Callable()
 
 ## Displaced sphere ("blob"): organic foliage, boulders, caps.
 func sphere(mat: String, xf: Transform3D, radius: float, rings: int = 8, segs: int = 12, displace: float = 0.0, squash: float = 1.0, color := Color.WHITE, half: bool = false) -> void:
