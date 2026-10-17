@@ -76,8 +76,8 @@ void fragment() {
 			float feathers = 0.5 + 0.5 * sin(back * 1.7 + wob + (across - 0.5) * 6.0 - TIME * 1.3);
 			feathers = smoothstep(0.62, 0.98, feathers) * smoothstep(0.25, 0.65, vn(vec2(back * 0.9, across * 4.0 + TIME * 0.2)));
 			float swell_of_it = 0.55 + 0.45 * vn(vec2(back * 0.12, 9.1));
-			// Only the first stretch breaks white; further back the arms are ripples, not foam.
-			float whiten = mix(1.0, 0.12, smoothstep(3.0, 28.0, back));
+			// Only the first stretch breaks white; past ~28 m the arms are pure swell (height and normal), no foam.
+			float whiten = 1.0 - smoothstep(3.0, 28.0, back);
 			a = band * smoothstep(0.3, 0.95, n * 0.4 + feathers * 0.5 + band * 0.15) * f * whiten * swell_of_it * 0.75;
 		} else if (kind < 0.85) {
 			// Transverse waves: curved crests across her track (bowed back at the middle),
