@@ -356,8 +356,10 @@ static func _hang(s: Dictionary, top: float, hem: float, flare: float, extra: fl
 	for ri in rings + 1:
 		var y := lerpf(top, hem, float(ri) / rings)
 		var m := _measure(s, y)
-		rx = maxf(rx, float(m["rx"]) * 1.03 + 0.016)
-		front = maxf(front, float(m["cz"]) + float(m["rz"]) * 1.06 + 0.018)
+		# Snug at the waistband, easing out to clear the hips below it.
+		var ease := lerpf(0.008, 0.016, smoothstep(0.0, 0.08, top - y))
+		rx = maxf(rx, float(m["rx"]) * 1.03 + ease)
+		front = maxf(front, float(m["cz"]) + float(m["rz"]) * 1.06 + ease + 0.002)
 		back = minf(back, float(m["back"]) - 0.02)
 		rz = maxf(rz, (front - back) * 0.5)
 		var drop := top - y
@@ -370,7 +372,7 @@ static func _hang(s: Dictionary, top: float, hem: float, flare: float, extra: fl
 ## is how much of the way round it goes, centred on the front (1 = all the way), or on the
 ## back for an open coat (`behind`).
 static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: float, part: int, col: Color, arc := 1.0, extra := 0.0, ring_top := -1.0, behind := false) -> void:
-	var segs := 28 if arc >= 1.0 else maxi(6, int(28 * arc))
+	var segs := 56 if arc >= 1.0 else maxi(8, int(56 * arc))
 	var hang := _hang(s, ring_top if ring_top > 0.0 else top, hem, flare, extra)
 	var base: int = o["v"].size()
 	var rows := 0
@@ -381,10 +383,15 @@ static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: 
 		var k := clampf((top - y) / maxf(top - hem, 0.01), 0.0, 1.0)
 		var rx: float = h["rx"]
 		var rz: float = h["rz"]
+		# Gathered at the waist: soft pleats that open out toward the hem, so the cloth
+		# reads as fabric falling in folds rather than a drum.
+		var amp := lerpf(0.003, 0.016, sqrt(k))
 		for si in segs + 1:
 			var ang := lerpf(-PI * arc, PI * arc, float(si) / segs) + (PI if behind else 0.0)
-			var p := Vector3(sin(ang) * rx, y, float(h["cz"]) + cos(ang) * rz)
-			_vert(s, o, p, Vector3(sin(ang) / rx, 0.12 * k, cos(ang) / rz), Vector2(float(si) / segs * 3.0 * arc, k * 2.0), _leg_weights(s, p, top), part, col)
+			var pleat := 1.0 + amp * sin(ang * 14.0) / maxf(rx, 0.05)
+			var p := Vector3(sin(ang) * rx * pleat, y, float(h["cz"]) + cos(ang) * rz * pleat)
+			var n := Vector3(sin(ang) / rx, 0.12 * k, cos(ang) / rz).rotated(Vector3.UP, -atan(amp * 14.0 * cos(ang * 14.0) / maxf(rx, 0.05)))
+			_vert(s, o, p, n, Vector2(float(si) / segs * 3.0 * arc, k * 2.0), _leg_weights(s, p, top), part, col)
 		rows += 1
 	for ri in rows - 1:
 		for si in segs:
@@ -854,7 +861,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 				return -1.0, 20, 0.008)
 	if sp["belt"]:
 		var loose := hem > 0.0 or apron > 0.0 or vest == 3
-		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.034 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
+		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.026 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
 		if sp.get("pouch", 0) != 0:
 			_pouch(s, o, waist - 0.035, float(sp["pouch"]))
 	if sp["cape"] > 0.0:
