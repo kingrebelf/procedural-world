@@ -616,7 +616,7 @@ func test_biome_coherence() -> void:
 			for o in ch["objects"]:
 				var k := ObjectLibrary.kind(o["t"])
 				var at: Vector3 = o["p"]
-				if (k == "tree" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
+				if (k == "tree" and o["t"] != "palm" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
 					on_sand.append(o["t"])
 			var fauna: Array = Biome.params(g.field.region_hash_at(p.x, p.y), Eras.MEDIEVAL)["fauna"]
 			for lx in [10.0, 32.0, 54.0]:
@@ -626,7 +626,7 @@ func test_biome_coherence() -> void:
 					var sp := Creature.fits_habitat(fauna, pick, Eras.MEDIEVAL, ch, lx, 32.0)
 					animals_ok = animals_ok and (sp == 0 or Creature.species(sp, Eras.MEDIEVAL)["name"] in Creature.DUNE_ANIMALS)
 	check(dunes > 0, "dunes to look at")
-	check(on_sand.is_empty(), "no trees or boulders on dune sand (%s)" % [on_sand])
+	check(on_sand.is_empty(), "no trees (but palms) or boulders on dune sand (%s)" % [on_sand])
 	check(animals_ok, "only dune animals on the dunes")
 
 func test_landmarks() -> void:
@@ -2436,6 +2436,119 @@ func test_world_themes() -> void:
 	check(npc["race"] == "Vex" and not NPCGen.SKIN.has(npc["body"]["skin"]), "alien worlds' people are not human")
 	Planets.apply(Planets.get_planet(0, 0))
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
+
+func test_climates() -> void:
+	# Worlds made before climates keep their biomes exactly: no climate bits, no palms.
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = WorldField.CLIMATE_V - 1
+	var old := ChunkGenerator.new(4242)
+	check(WorldField.region_climate(old.field.region_hash_at(3000.0, 1200.0)) == Vector2i(-1, -1), "old worlds have no climates")
+	var palms_old := 0
+	for i in 400:
+		for f in Biome.params(WHash.h32(i * 13 + 5), Eras.MEDIEVAL)["flora"]:
+			palms_old += 1 if f["t"] == "palm" or f["t"] == "tropic" else 0
+	check(palms_old == 0, "no palms in old worlds")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var kinds := {}
+	var hot_wet := 0
+	var hot_trees := 0
+	var cold := 0
+	var cold_palms := 0
+	var near_palms := 0
+	for iz in range(-14, 15):
+		for ix in range(-14, 15):
+			var p := Vector2(ix * 400.0, iz * 400.0)
+			var h := g.field.region_hash_at(p.x, p.y)
+			var c := WorldField.region_climate(h)
+			kinds[c] = true
+			var bp := Biome.params(h, Eras.MEDIEVAL)
+			var tropical := 0
+			for f in bp["flora"]:
+				if f["t"] == "palm" or f["t"] == "tropic":
+					tropical += 1
+			if c.x == 3 and c.y >= 2:
+				hot_wet += 1
+				hot_trees += 1 if tropical > 0 else 0
+			if c.x == 0:
+				cold += 1
+				cold_palms += tropical
+			if p.length() < 900.0:
+				near_palms += tropical
+	check(kinds.size() >= 12, "a world has many climates (%d)" % kinds.size())
+	check(hot_wet > 3 and hot_trees == hot_wet, "the wet tropics grow palms and jungle (%d of %d)" % [hot_trees, hot_wet])
+	check(cold > 3 and cold_palms == 0, "no palms in the cold")
+	check(near_palms == 0, "the land round the spawn is temperate")
+	# A climate is the same wherever it is asked for in a region, and region_climate reads
+	# it back from the hash.
+	var q := g.field.region_site_at(2500.0, -1800.0)
+	var sp := g.field.site_pos(q.x, q.y)
+	check(g.field.region_hash_at(sp.x, sp.y) == g.field.region_hash_at(2500.0, -1800.0), "one hash per region")
+	# Every palm form builds, near and far, with whole-frond LOD groups.
+	var forms := {}
+	for s in range(1, 400):
+		var pp := Flora.species("palm", s)
+		if forms.has(pp["form"]):
+			continue
+		forms[pp["form"]] = true
+		var m := RealTree.build("palm", s, 0)
+		check(m != null and m.get_surface_count() == 2, "a %s builds bark and leaves" % pp["form"])
+		var far := RealTree.far_parts("palm", s, 1)
+		var lv: PackedVector3Array = far["leaf"][Mesh.ARRAY_VERTEX]
+		var li: PackedInt32Array = far["leaf"][Mesh.ARRAY_INDEX]
+		check(lv.size() > 0 and lv.size() % 4 == 0 and li.size() == lv.size() / 4 * 6, "a far %s is whole leaf cards" % pp["form"])
+	check(forms.size() == 5, "five kinds of palm (%s)" % [forms.keys()])
+	for s in range(1, 60):
+		var tp := Flora.species("tropic", s)
+		check(RealTree.build("tropic", s, 0) != null, "a %s builds" % tp["form"])
+		break
+	check(ObjectLibrary.kind("palm") == "tree" and ObjectLibrary.kind("tropic") == "tree" and Durability.TABLE.has("palm"), "palms can be felled")
+	check(FarLand.FORMS["palm"] == FarLand.FORM_PALM, "distant palms stand as palms")
+	# Regions meet in a band of mixed plants, not on a line: walking from one site to the
+	# next, the neighbour's share rises from none to half at the line.
+	var s0 := g.field.site_pos(3, 2)
+	var s1 := g.field.site_pos(4, 2)
+	var shares := []
+	for k in 81:
+		var p := s0.lerp(s1, k / 80.0)
+		var bl := g.field.region_blend(p.x, p.y)
+		shares.append(float(bl[2]))
+	var steady := true
+	for k in range(1, 81):
+		steady = steady and absf(float(shares[k]) - float(shares[k - 1])) < 0.2
+	check(float(shares[0]) == 0.0 and shares.max() > 0.4 and steady, "regions blend gradually (%s)" % [shares])
+	var ca := g.generate(20, 7)
+	var cb := g.generate(21, 7)
+	var agree := ca.has("biome_mix") and cb.has("biome_mix")
+	for j in ChunkGenerator.MIX_N:
+		agree = agree and ChunkGenerator.biome_pick(ca, 64.0, j * 8.0, 0.3) == ChunkGenerator.biome_pick(cb, 0.0, j * 8.0, 0.3)
+	check(agree, "neighbouring chunks agree on how their regions blend")
+	# Mixing species at a border moves nothing: same objects, same places, same order.
+	var changed := 0
+	var same := true
+	var edge_pts := 0
+	for k in 41:
+		var p := s0.lerp(s1, k / 40.0)
+		if float(g.field.region_blend(p.x, p.y)[2]) < 0.3:
+			continue
+		edge_pts += 1
+		var bx := int(floor(p.x / 64.0))
+		var bz := int(floor(p.y / 64.0))
+		g.mix_species = false
+		var plain := g.generate(bx, bz)
+		g.mix_species = true
+		var mixed := g.generate(bx, bz)
+		same = same and plain["objects"].size() == mixed["objects"].size()
+		for i in mini(plain["objects"].size(), mixed["objects"].size()):
+			var o1: Dictionary = plain["objects"][i]
+			var o2: Dictionary = mixed["objects"][i]
+			same = same and o1["p"] == o2["p"] and o1["i"] == o2["i"] and o1["s"] == o2["s"]
+			changed += 1 if o1.get("sp", 0) != o2.get("sp", 0) else 0
+	check(edge_pts > 0 and same, "mixing species at a border keeps every object in its place")
+	check(changed > 0, "the neighbour's species mix in near the border (%d)" % changed)
+	var grid := ChunkGenerator.biome_mix_grid(ca, Eras.MEDIEVAL, ["grass_tint", "lush", "grass_density"])
+	check(grid.size() == ChunkGenerator.MIX_N * ChunkGenerator.MIX_N and grid[0].size() == 5, "grass blends tint, lushness and thickness")
+	WorldField.terrain_v = was
 
 func test_kit_flora() -> void:
 	# Autumn by the stand: a region's broadleaves have all turned or none have; reds, golds

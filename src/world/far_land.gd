@@ -304,7 +304,7 @@ static func build_rows(job: Dictionary, j0: int, j1: int, gen: ChunkGenerator = 
 				lt = 0.0
 				for f in WorldField.LF_COUNT:
 					lt += lw[f] * WorldField.LANDFORM_TREES[f]
-			var rh := field.region_hash_at(x, z)
+			var rh := field.region_hash_mixed(x, z)
 			var trees := 0.0
 			var tint := Color(0, 0, 0)
 			var era_t := [0.0, 0.0, 0.0]
@@ -447,16 +447,18 @@ static func canopy_colour(bp: Dictionary) -> Color:
 		wt += float(f["w"])
 	return sum / wt if wt > 0.0 else Color(0.3, 0.35, 0.2)
 
-## A distant tree's form, as forest_hgt.g holds it (over 255; FORM_* in
+## A distant tree's form, as forest_hgt.g holds it (form * 255 / 6; FORM_* in
 ## forest.gdshaderinc): a round crown, a mushroom cap, bare (dead) limbs, a crystal spike,
-## a mast or a conifer's spire.
+## a mast, a conifer's spire or a palm's star of fronds on its bare stem.
 const FORM_BROADLEAF := 0
-const FORM_CAP := 51
-const FORM_BARE := 102
-const FORM_CRYSTAL := 153
-const FORM_MAST := 204
-const FORM_CONIFER := 255
-const FORMS := {"oak": FORM_BROADLEAF, "pine": FORM_CONIFER, "glowcap": FORM_CAP, "crystal_tree": FORM_CRYSTAL, "solar_mast": FORM_MAST}
+const FORM_CAP := 43
+const FORM_BARE := 85
+const FORM_CRYSTAL := 128
+const FORM_MAST := 170
+const FORM_CONIFER := 213
+const FORM_PALM := 255
+const FORMS := {"oak": FORM_BROADLEAF, "pine": FORM_CONIFER, "palm": FORM_PALM, "tropic": FORM_BROADLEAF,
+	"glowcap": FORM_CAP, "crystal_tree": FORM_CRYSTAL, "solar_mast": FORM_MAST}
 
 ## The mean colour of RealTree's leaf photos (sRGB, over their opaque texels).
 const LEAF_MEAN := {"oak": Color(0.353, 0.49, 0.224), "autumn": Color(0.812, 0.373, 0.184), "needle": Color(0.627, 0.722, 0.565)}
