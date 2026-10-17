@@ -133,6 +133,10 @@ static func _build(t: String) -> ArrayMesh:
 		ra.seed = WHash.str_hash(t)
 		_armour(ka, ra, t)
 		var am := ka.commit(mat)
+		if String(ItemDB.def(t).get("slot", "")) == "chest" and Outfit.look_of({"type": t})["style"] == Outfit.STYLE_MAIL:
+			# Held by the top fold of the bundle.
+			am.set_meta("grip", Vector3(0, 0.13, 0))
+			am.set_meta("grip_r", 0.03)
 		if String(ItemDB.def(t).get("slot", "")) == "head":
 			# A helm is carried crown forward, the way a hand holds one by the back of its
 			# rim, so the skull and nasal show and not the lining.
@@ -169,7 +173,13 @@ static func _build(t: String) -> ArrayMesh:
 		"cloth": _cloth(k, r, s[1])
 		"skein": _skein(k, r, s[1])
 		"bundle": _bundle(k, r, s[1], s[2])
-		"nails": _nails(k, r)
+		"nails":
+			_nails(k, r)
+			var nm := k.commit(mat)
+			# Pinched near the bottom, so most of the handful shows above the fingers.
+			nm.set_meta("grip", Vector3(0, 0.006, 0))
+			nm.set_meta("grip_r", 0.008)
+			return nm
 		"gears": _gears(k)
 		"spring": _spring(k)
 		"pipe": _pipe(k)
@@ -995,16 +1005,18 @@ static func _bundle(k: MeshKit, r: RandomNumberGenerator, col: Color, heads: boo
 # --- Worked metal -----------------------------------------------------------------------
 
 static func _nails(k: MeshKit, r: RandomNumberGenerator) -> void:
-	# A handful of hand-forged nails lying loose and crossed: square shanks tapering to a
+	# A small handful of hand-forged nails held together: square shanks tapering to a
 	# chisel point, flat hammered heads, dark iron with rust towards the points.
-	for i in 11:
-		var lay := Basis(Vector3.UP, r.randf() * TAU) * Basis(Vector3.FORWARD, PI * 0.5 + r.randf_range(-0.35, 0.35))
-		var at := Vector3(r.randf_range(-0.01, 0.01), 0.006 + i * 0.0045, r.randf_range(-0.01, 0.01))
+	for i in 7:
+		var lay := Basis(Vector3.UP, r.randf_range(-0.5, 0.5)) * Basis(Vector3.FORWARD, r.randf_range(-0.35, 0.35))
+		var at := Vector3(r.randf_range(-0.006, 0.006), 0.025, r.randf_range(-0.006, 0.006))
 		var xf := Transform3D(lay, at)
-		var l := r.randf_range(0.05, 0.075)
+		var l := r.randf_range(0.045, 0.06)
 		var rust := Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.24, 0.12), r.randf_range(0.0, 0.5))
-		k.cylinder("im:metal@0.7", xf.translated_local(Vector3(0, -l * 0.5, 0)), 0.0022, 0.0005, l, 4, false, 0.0, 1, rust)
-		k.cylinder("im:metal@0.6", xf.translated_local(Vector3(0, -l * 0.5 - 0.0018, 0)), 0.0045, 0.0042, 0.0018, 7, true, 0.0, 1, Color(0.36, 0.34, 0.32))
+		var flip := 1.0 if i % 3 != 0 else -1.0
+		var fb := Basis(Vector3.RIGHT, 0.0 if flip > 0.0 else PI)
+		k.cylinder("im:metal@0.7", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5, 0)), 0.0022, 0.0005, l, 4, false, 0.0, 1, rust)
+		k.cylinder("im:metal@0.6", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5 - 0.0018, 0)), 0.0045, 0.0042, 0.0018, 7, true, 0.0, 1, Color(0.36, 0.34, 0.32))
 
 static func _gear(k: MeshKit, xf: Transform3D, rad: float, th: float, teeth: int, col: Color) -> void:
 	k.cylinder("im:metal@0.35", xf, rad, rad, th, 32, true, 0.0, 1, col)
@@ -1369,30 +1381,39 @@ static func _cuirass(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color, 
 		_torus(k, "im:metal@0.4", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), s0 + Vector3(side * 0.004, 0, 0)), 0.007, 0.0015, 10, 4, Color(0.6, 0.5, 0.3))
 
 static func _hauberk(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color) -> void:
-	# A mail shirt hangs: no plate silhouette, just a heavy drape of rings over the
-	# shoulders, folds running down the body, short wide sleeves, a ragged hem.
-	var W := 0.2
-	var H := 0.46
-	var folds := func(u: float, v: float) -> float:
-		return 0.01 * sin(u * PI * 7.0 + v * 1.5) * (1.0 - v * 0.7) + 0.005 * sin(u * PI * 13.0 + 1.0)
-	for side: float in [1.0, -1.0]:
+	# A mail shirt as it is carried: folded into a heavy, sagging bundle about the size
+	# of a loaf (a real hauberk is 8-10 kg of rings), the rows of rings showing at the
+	# folds, a sleeve end and the hem hanging loose from the bottom.
+	var W := 0.12
+	var H := 0.16
+	var D := 0.035
+	for layer in 4:
+		var z := D - layer * D * 0.6
 		var f := func(u: float, v: float) -> Vector3:
-			var x := (u - 0.5) * 2.0 * W * (1.0 + 0.08 * (1.0 - v))
-			var dn := clampf(absf(u - 0.5) / 0.16, 0.0, 1.0)
-			var neck := sqrt(1.0 - dn * dn) * (0.05 if side > 0.0 else 0.02)
-			var sh := pow(absf(u - 0.5) * 2.0, 2.0) * 0.05 * v
-			var y := -0.06 + v * (H - neck) - sh - 0.012 * sin(u * PI * 9.0) * (1.0 - v)
-			var z: float = (0.065 * sqrt(sin(u * PI)) + folds.call(u, v)) * side
-			return Vector3(x, y, z)
-		_sheet(k, m, Transform3D.IDENTITY, f, 24, 12, 0.005, c, c.darkened(0.4), m)
-	for side: float in [-1.0, 1.0]:
+			var x := (u - 0.5) * 2.0 * W * (1.0 - 0.05 * layer)
+			var y := v * H * (1.0 - 0.03 * layer)
+			# Folds bulge out between the creases and sag in the middle.
+			var bulge := 0.012 * sin(v * PI) * sin(u * PI) + 0.004 * sin(u * PI * 5.0 + layer)
+			return Vector3(x, y - 0.01 * sin(u * PI) * v, z + bulge * (1.0 if layer == 0 else 0.4))
+		_sheet(k, m, Transform3D.IDENTITY, f, 12, 8, 0.006, c.darkened(0.05 * layer), c.darkened(0.4), m)
+	# Rounded folded edges along the top and sides, where the mail turns over.
+	for e in 3:
 		var path := PackedVector3Array()
 		var radii := PackedFloat32Array()
-		for i in 6:
-			var t := i / 5.0
-			path.append(Vector3(side * (W - 0.03 + t * 0.06), H - 0.13 - t * 0.2, 0.0))
-			radii.append(lerpf(0.055, 0.05, t))
-		_tube(k, m, Transform3D.IDENTITY, path, radii, 10, c, false)
+		for i in 9:
+			var t := i / 8.0
+			match e:
+				0: path.append(Vector3(lerpf(-W, W, t), H - 0.01 * sin(t * PI) + 0.004, -D * 0.4))
+				1: path.append(Vector3(-W - 0.004, t * H, -D * 0.4))
+				2: path.append(Vector3(W + 0.004, t * H, -D * 0.4))
+			radii.append(D * 0.85)
+		_tube(k, m, Transform3D.IDENTITY, path, radii, 8, c.darkened(0.1), true)
+	# A sleeve end hanging out of the bottom, and a fold of the hem.
+	var sleeve := PackedVector3Array([Vector3(W * 0.5, 0.02, 0.0), Vector3(W * 0.62, -0.03, 0.012), Vector3(W * 0.7, -0.07, 0.02)])
+	_tube(k, m, Transform3D.IDENTITY, sleeve, PackedFloat32Array([0.03, 0.028, 0.026]), 10, c, false)
+	var hem := func(u: float, v: float) -> Vector3:
+		return Vector3(lerpf(-W * 0.9, W * 0.1, u), -v * 0.045 + 0.01, D * 0.6 + 0.006 * sin(u * PI * 4.0) + v * 0.01)
+	_sheet(k, m, Transform3D.IDENTITY, hem, 8, 3, 0.005, c, c.darkened(0.4), m)
 
 static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
 	# A gauntlet as a hand just left it: a leather glove underneath, fingers half curled,
