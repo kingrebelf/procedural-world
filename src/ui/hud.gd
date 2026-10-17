@@ -250,7 +250,7 @@ func _ready() -> void:
 	_build_mouse_hint()
 
 	_fps = UITheme.label("", 14, UITheme.ACCENT_2)
-	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 16, 520, 64))
+	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(32, 16, 560, 64))
 	_fps.visible = false
 	add_child(_fps)
 
@@ -824,8 +824,8 @@ class MarkerLayer extends Control:
 			draw_string_outline(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.7 * a))
 			draw_string(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, a))
 
-## FPS plus where the frame time goes: GPU render time vs. CPU (game logic + render
-## submission). If CPU is the larger number, lowering graphics settings will not help much.
+## FPS plus where the frame time goes: GPU render time and CPU render submission. If the
+## GPU time is close to the frame time the GPU is the limit and graphics settings help.
 func _perf_text() -> String:
 	_perf_t -= get_process_delta_time()
 	if _perf_t > 0.0 and _perf_cache != "":
@@ -835,13 +835,15 @@ func _perf_text() -> String:
 	var vp := get_viewport().get_viewport_rid()
 	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(vp)
 	var cpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
-	var logic := (Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0
 	var draws := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var frame := 1000.0 / maxf(1.0, fps)
+	# The GPU works on one frame while the CPU prepares the next, so whichever is close
+	# to the whole frame time is the limit.
 	var tag := ""
 	if gpu > 0.0:
-		tag = "  GPU-bound" if gpu > logic + cpu else "  CPU-bound"
-	_perf_cache = "%d FPS  %.1f ms\nGPU %.1f ms  CPU render %.1f ms  game %.1f ms\n%d draw calls%s" % [
-		fps, 1000.0 / maxf(1.0, fps), gpu, cpu, logic, draws, tag]
+		tag = "  GPU-bound" if gpu >= frame * 0.8 else "  CPU-bound"
+	_perf_cache = "%d FPS  %.1f ms\nGPU %.1f ms  CPU render %.1f ms\n%d draw calls%s   (console: bench)" % [
+		fps, frame, gpu, cpu, draws, tag]
 	return _perf_cache
 
 
