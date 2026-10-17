@@ -971,6 +971,8 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.select(slot)
 	var fwd: Vector3 = -player.camera.global_transform.basis.z
 	fwd.y = 0.0
+	# Held still (as in a trap) so it can't wander off the line of fire on a slow machine.
+	kc.held_for = 3.0
 	kc.global_position = player.global_position + fwd.normalized() * 12.0
 	kc.global_position.y = world.vehicles.ground(kc.global_position.x, kc.global_position.z)
 	await _frames(3)
@@ -990,6 +992,7 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
 	await _frames(30)
 	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
+	kc.held_for = 0.0
 	# Headshots: the upper front of the body box counts as the head and takes double.
 	var cs: CollisionShape3D = kc._body.get_child(0)
 	var bs: Vector3 = (cs.shape as BoxShape3D).size
