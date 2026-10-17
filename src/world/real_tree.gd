@@ -347,7 +347,7 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 	var radii := Vector3(rx, ry, rx)
 	# Trunk: rises through the crown and fades out near its top.
 	var tpts := PackedVector3Array()
-	var bow := _bow(r, h * (0.012 if form == "column" else 0.028))
+	var bow := _bow(r, h * (0.022 if form == "column" else 0.045))
 	var top := ht + ry * 1.2
 	var segs := 3 if far else 9
 	for i in segs + 1:
@@ -456,7 +456,7 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 	var bark_col := Color(1, 1, 1).lerp((p["bark"] as Color) * 2.2, 0.3)
 	var tpts := PackedVector3Array()
 	var trad := PackedFloat32Array()
-	var bow := _bow(r, h * 0.012 + 0.08)
+	var bow := _bow(r, h * 0.03 + 0.15)
 	var steps: Array = [0.0, 0.035, 0.17, 0.33, 0.5, 0.67, 0.83, 1.0]
 	for f in steps:
 		tpts.append(Vector3(0, h * f, 0) + _bow_at(bow, f))
