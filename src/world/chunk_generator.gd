@@ -1178,8 +1178,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if landforms:
 			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
 		var rocks: Array = bp["rocks"]
-		# Dunes bury their stones: no boulders on open sand.
-		if sand_at(chunk, lx, lz) > 0.4:
+		# Dunes bury their stones: no boulders on open sand. Nor one perched on the lip
+		# of a drop, half of it hanging over thin air.
+		if sand_at(chunk, lx, lz) > 0.4 or _on_edge(chunk, lx, lz, sc):
 			continue
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
@@ -1197,7 +1198,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 				var cs := sc * rc.randf_range(0.35, 0.8)
 				var cyaw := rc.randf() * TAU
 				var cv := rc.randi() % Flora.VARIANTS
-				if cp.x < 1.0 or cp.y < 1.0 or cp.x > SIZE - 1.0 or cp.y > SIZE - 1.0 or road_at(chunk, cp.x, cp.y) > 0.15 or by_river(chunk, cp.x, cp.y) or in_cave(chunk, cp.x, cp.y) or sand_at(chunk, cp.x, cp.y) > 0.4 or slope_at(chunk, cp.x, cp.y) > 0.8 or _crowds_tree(chunk, cp.x, cp.y, 1.2 * cs + 0.8) or kept_out(plans, cp.x, cp.y, cs + 0.4) or _near_settlement(x0 + cp.x, z0 + cp.y, sites, 0.0):
+				if _on_edge(chunk, cp.x, cp.y, cs) or cp.x < 1.0 or cp.y < 1.0 or cp.x > SIZE - 1.0 or cp.y > SIZE - 1.0 or road_at(chunk, cp.x, cp.y) > 0.15 or by_river(chunk, cp.x, cp.y) or in_cave(chunk, cp.x, cp.y) or sand_at(chunk, cp.x, cp.y) > 0.4 or slope_at(chunk, cp.x, cp.y) > 0.8 or _crowds_tree(chunk, cp.x, cp.y, 1.2 * cs + 0.8) or kept_out(plans, cp.x, cp.y, cs + 0.4) or _near_settlement(x0 + cp.x, z0 + cp.y, sites, 0.0):
 					continue
 				_add(chunk, "rock", era, cp.x, cp.y, cyaw, cs, {"left": maxi(left - 2, 2), "progress": 0.0}, rocks[(pick + c + 1) % rocks.size()], cv)
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
@@ -1232,6 +1233,16 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if top < 0.72 and r.randf() < 0.05 and not marked and slope_at(chunk, lx, lz) < 0.25 and not kept_out(plans, lx, lz, 0.8):
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
 			marked = true
+
+## True when the ground falls away steeply within a boulder's reach of (lx, lz) (a
+## boulder of scale `sc` set there would overhang the drop).
+static func _on_edge(chunk: Dictionary, lx: float, lz: float, sc: float) -> bool:
+	var h := height_at(chunk, lx, lz)
+	for k in 6:
+		var d := Vector2.from_angle(k * TAU / 6.0) * maxf(sc * 1.2, 1.0)
+		if h - height_at(chunk, lx + d.x, lz + d.y) > 0.6 * sc + 0.4:
+			return true
+	return false
 
 ## Strongholds whose flat ground reaches into this rectangle (v5 worlds).
 func forts_near(x0: float, z0: float, x1: float, z1: float) -> Array:
