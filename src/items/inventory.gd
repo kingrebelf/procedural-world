@@ -114,6 +114,14 @@ func count(type: String) -> int:
 			n += s["qty"]
 	return n
 
+## How many things of this kind ("food", "tool", ...) are carried.
+func count_kind(kind: String) -> int:
+	var n := 0
+	for s in slots:
+		if s != null and ItemDB.def(s["type"]).get("kind", "") == kind:
+			n += s["qty"]
+	return n
+
 ## Everything carried, in kg.
 func weight() -> float:
 	var w := 0.0

@@ -184,7 +184,8 @@ static func _level(g: ChunkGenerator, chunk: Dictionary, c: Vector2, h: float) -
 ## `n` pieces of gear of at least rank `floor`, from everything the era has.
 static func treasure(era: int, r: RandomNumberGenerator, origin: Dictionary, floor_rank: int, n: int) -> Array:
 	var out: Array = []
-	var pool: Array = ItemDB.GEAR_LOOT[era]
+	# Wonders keep only gear worth the trip: no cloth caps or stone axes.
+	var pool: Array = ItemDB.GEAR_LOOT[era].filter(func(t): return int(ItemDB.def(t).get("value", 0)) >= 40)
 	for i in n:
 		var it := ItemDB.make(pool[r.randi() % pool.size()], 1, r.randf_range(1.2, 1.5), origin)
 		var rank := maxi(floor_rank, Rarity.roll(r, 1.0))

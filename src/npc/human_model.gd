@@ -235,6 +235,10 @@ func _shield_mesh(item: Dictionary) -> Node3D:
 			k.cylinder("glow_cyan", I.translated(Vector3(0, 0.012, 0)), 0.22, 0.22, 0.01, 6, true, 0.0, 1, col)
 		Outfit.STYLE_CRYSTAL:
 			k.cylinder("crystal@2", I, 0.28, 0.28, 0.025, 14, true, 0.0, 1, col)
+		Outfit.STYLE_PLATE:
+			# Bronze and steel: a beaten metal disc with a raised boss.
+			k.cylinder("iron", I, 0.31, 0.31, 0.022, 20, true, 0.0, 1, col)
+			k.cylinder("iron", I.translated(Vector3(0, 0.016, 0)), 0.08, 0.06, 0.035, 12, true, 0.0, 1, col.lightened(0.15))
 		_:
 			k.cylinder("planks", I, 0.3, 0.3, 0.03, 16, true, 0.0, 1, col)
 			k.cylinder("iron", I.translated(Vector3(0, 0.018, 0)), 0.07, 0.07, 0.03, 10)

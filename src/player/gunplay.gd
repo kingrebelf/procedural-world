@@ -29,7 +29,17 @@ const HANDLING := {
 	"crossbow": {"mag": 1, "reload": 1.7, "recoil": 1.2, "spread": 0.5, "speed": 75.0, "drop": 1.0, "zoom": 1.4, "auto_reload": true},
 	"crossbow_runic": {"mag": 5, "reload": 0.5, "per_round": true, "recoil": 0.9, "spread": 0.6, "speed": 95.0, "drop": 0.6, "zoom": 1.4, "auto_reload": true},
 	"longbow": {"mag": 1, "reload": 0.7, "recoil": 0.6, "spread": 0.9, "speed": 65.0, "drop": 1.0, "zoom": 1.25, "auto_reload": true},
+	# The medieval age (pack A). Thrown weapons leave your hand: no magazine to load.
+	"sling": {"mag": 1, "reload": 0.6, "recoil": 0.4, "spread": 1.8, "speed": 40.0, "drop": 1.0, "zoom": 1.1, "auto_reload": true},
+	"shortbow": {"mag": 1, "reload": 0.55, "recoil": 0.5, "spread": 1.1, "speed": 55.0, "drop": 1.0, "zoom": 1.2, "auto_reload": true},
+	"composite_bow": {"mag": 1, "reload": 0.65, "recoil": 0.6, "spread": 0.8, "speed": 70.0, "drop": 1.0, "zoom": 1.3, "auto_reload": true},
+	"royal_bow": {"mag": 1, "reload": 0.6, "recoil": 0.6, "spread": 0.6, "speed": 78.0, "drop": 1.0, "zoom": 1.4, "auto_reload": true},
+	"heavy_crossbow": {"mag": 1, "reload": 2.4, "recoil": 1.8, "spread": 0.4, "speed": 85.0, "drop": 0.9, "zoom": 1.5, "auto_reload": true},
+	"throwing_knives": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 32.0, "drop": 1.0, "zoom": 1.1},
+	"javelin": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 30.0, "drop": 1.0, "zoom": 1.15},
 }
+## Better arrows a bow nocks first when you carry them: [ammo, alternative, damage multiplier].
+const BETTER_AMMO := {"arrow": ["broadhead_arrows", 1.3]}
 const DEFAULT := {"mag": 10, "reload": 1.6, "recoil": 1.5, "spread": 1.5, "speed": 150.0, "drop": 0.2, "zoom": 1.3}
 const MAX_SHOTS := 64
 const MAX_STUCK := 24
@@ -60,12 +70,26 @@ func reloading() -> bool:
 	return reload_left > 0.0
 
 func rounds(it) -> int:
+	if it is Dictionary and ItemDB.def(it["type"]).get("thrown", false):
+		return int(it.get("qty", 0)) # the stack in your hand is the magazine
 	return int(it.get("charge", 0)) if it is Dictionary else 0
 
 ## Rounds you could still load: ammo carried times shots per ammo.
 func reserve(it) -> int:
 	var d := ItemDB.def(it["type"])
-	return Game.inventory.count(String(d.get("ammo", ""))) * int(d.get("shots_per_ammo", 1))
+	if d.get("thrown", false):
+		return 0
+	var n := Game.inventory.count(String(d.get("ammo", "")))
+	if BETTER_AMMO.has(d.get("ammo", "")):
+		n += Game.inventory.count(BETTER_AMMO[d["ammo"]][0])
+	return n * int(d.get("shots_per_ammo", 1))
+
+## The ammunition the weapon loads next: better arrows first.
+static func ammo_of(d: Dictionary) -> String:
+	var a := String(d.get("ammo", ""))
+	if BETTER_AMMO.has(a) and Game.inventory.count(BETTER_AMMO[a][0]) > 0:
+		return BETTER_AMMO[a][0]
+	return a
 
 func mag_size(t: String) -> int:
 	return int(handling(t)["mag"])
@@ -127,13 +151,21 @@ func fire(it: Dictionary, d: Dictionary) -> void:
 			_cancel_reload()
 		else:
 			return
-	if rounds(it) <= 0:
+	var thrown: bool = d.get("thrown", false)
+	if thrown:
+		# The knife or javelin itself flies: one fewer in the stack you hold.
+		Game.inventory.remove_at(player.selected, 1)
+	elif rounds(it) <= 0:
 		player._cooldown = 0.35
 		if not start_reload(it):
 			gun_event.emit("dry", t, player.global_position, "")
 			Game.toast.emit("Out of %s" % ItemDB.def(String(d.get("ammo", "")))["name"])
 		return
-	it["charge"] = rounds(it) - 1
+	else:
+		it["charge"] = rounds(it) - 1
+	if String(it.get("loaded", "")) != "" and BETTER_AMMO.has(d.get("ammo", "")) and it["loaded"] == BETTER_AMMO[d["ammo"]][0]:
+		d = d.duplicate()
+		d["damage"] = float(d.get("damage", 0.0)) * float(BETTER_AMMO[d["ammo"]][1])
 	player._cooldown = float(d.get("cooldown", 0.22))
 	var cam := player.camera
 	var fwd := -cam.global_transform.basis.z
@@ -261,7 +293,7 @@ func wants_reload() -> bool:
 
 ## Starts loading the held weapon. False when there is nothing to load (full, or no ammo).
 func start_reload(it) -> bool:
-	if it == null or reloading():
+	if it == null or reloading() or ItemDB.def(it["type"]).get("thrown", false):
 		return false
 	var t: String = it["type"]
 	var h := handling(t)
@@ -283,7 +315,8 @@ func _finish_reload(it: Dictionary) -> void:
 	var t: String = it["type"]
 	var h := handling(t)
 	var d := ItemDB.def(t)
-	var ammo := String(d.get("ammo", ""))
+	var ammo := ammo_of(d)
+	it["loaded"] = ammo
 	var spa := int(d.get("shots_per_ammo", 1))
 	reload_left = 0.0
 	if spa > 1:

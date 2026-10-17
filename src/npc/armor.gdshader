@@ -1,6 +1,6 @@
 shader_type spatial;
 // Armour from Outfit, worn by people and the player. COLOR.rgb is the item's colour,
-// COLOR.a * 8 its style: 0 leather, 1 mail, 2 plate, 3 mythril/crystal, 4 exo-suit.
+// COLOR.a * 8 its style: 0 leather, 1 mail, 2 plate, 3 mythril/crystal, 4 exo-suit, 5 cloth.
 // CUSTOM0: x = slot part (1 chest, 2 legs, 3 feet, 4 hands, 5 head), y = rest height,
 // z = rest depth, w = rest side; CUSTOM1 the rest normal (see fabric.gdshaderinc).
 render_mode diffuse_burley, specular_schlick_ggx;
@@ -61,6 +61,13 @@ void fragment() {
 		rough = 0.18;
 		col *= mix(0.6, 1.05, groove);
 		emit = tint.rgb * (1.0 - groove) * 0.6;
+	} else if (style == 5) {
+		// Quilted cloth and wool: matte, soft stitched rows, no shine.
+		metal = 0.0;
+		rough = 0.9;
+		float det = fabric(leather, rest_pos * 1.8, rest_n, 0.35);
+		col *= mix(0.7, 1.0, det / 0.72) * mix(0.82, 1.0, groove);
+		h = groove * 0.001;
 	} else {
 		metal = 0.55;
 		rough = 0.35;

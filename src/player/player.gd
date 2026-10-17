@@ -347,6 +347,8 @@ func _physics_process(delta: float) -> void:
 	var lmsg := hand_light.tick(delta, Game.inventory)
 	if lmsg != "":
 		Game.toast.emit(lmsg)
+	_tick_fishing(delta)
+	_update_nightsight()
 	if not ui_open:
 		# Controller look: right stick, with a response curve for fine aim near centre.
 		var lv := Input.get_vector("look_left", "look_right", "look_up", "look_down")
@@ -433,7 +435,7 @@ func _physics_process(delta: float) -> void:
 		_tire(13.0 * delta)
 	_rest += delta
 	if _rest > 0.8:
-		Game.set_stamina(Game.stamina + 22.0 * delta)
+		Game.set_stamina(Game.stamina + 22.0 * delta * Game.stats.stamina_regen_mult())
 	if winded and Game.stamina >= Game.max_stamina() * 0.33:
 		winded = false
 	# Breath.
@@ -973,29 +975,113 @@ func use_cache_after_lock(chunk: ChunkNode, o: Dictionary) -> void:
 	if is_instance_valid(chunk):
 		_use_object(chunk, o)
 
+## Eats what is in your hand, else the first food in the pack that would do you good:
+## plain food before medicine, and raw food that could make you sick last of all.
 func eat() -> void:
 	var it = held_item()
-	var idx := selected
-	if it == null or ItemDB.def(it["type"]).get("kind", "") != "food":
-		idx = -1
-		for i in Inventory.SIZE:
-			var s = Game.inventory.get_slot(i)
-			if s != null and ItemDB.def(s["type"]).get("kind", "") == "food":
-				idx = i
-				it = s
-				break
+	if it != null and ItemDB.def(it["type"]).get("kind", "") == "food":
+		consume(selected)
+		return
+	var idx := -1
+	var best := 99
+	for i in Inventory.SIZE:
+		var s = Game.inventory.get_slot(i)
+		if s == null:
+			continue
+		var fd := ItemDB.def(s["type"])
+		if fd.get("kind", "") != "food" or fd.get("keep", false) or fd.has("buff") and not fd.has("heal"):
+			continue
+		if not Effects.useful(fd, Game.health, Game.max_health(), Game.stamina, Game.max_stamina(), Game.buffs):
+			continue
+		var rank := 2 if fd.has("sicken") else (1 if fd.get("cat", "") == "Medicine" else 0)
+		if rank < best:
+			best = rank
+			idx = i
 	if idx < 0:
-		Game.toast.emit("No food.")
+		Game.toast.emit("You're not hungry." if Game.inventory.count_kind("food") > 0 else "No food.")
+		return
+	consume(idx)
+
+## Uses up one of what is in a pack slot: eats or drinks it, reads it, plays it or sleeps
+## on it. Each does what Effects describes.
+func consume(idx: int) -> void:
+	var it = Game.inventory.get_slot(idx)
+	if it == null:
 		return
 	var fd := ItemDB.def(it["type"])
-	if Game.health >= Game.max_health() and not fd.get("stamina", false):
-		Game.toast.emit("You're not hungry.")
-		return
+	var name := ItemDB.display_name(it)
+	match String(fd.get("kind", "")):
+		"food":
+			if fd.get("keep", false):
+				# A waterskin: drink, and it is there again once you are thirsty.
+				if Game.has_buff("quenched"):
+					Game.toast.emit("You're not thirsty.")
+					return
+				Game.set_stamina(Game.stamina + float(fd.get("stamina_add", 0)))
+				Game.add_buff("quenched", 90.0)
+				Game.toast.emit("You drink from your %s" % name.to_lower())
+				return
+			if not Effects.useful(fd, Game.health, Game.max_health(), Game.stamina, Game.max_stamina(), Game.buffs):
+				Game.toast.emit("You're not hungry." if not fd.has("buff") else "That would do nothing for you now.")
+				return
+			Game.inventory.remove_at(idx, 1)
+			Game.set_health(Game.health + float(fd.get("heal", 0)))
+			Game.regen_left += float(fd.get("regen", 0))
+			if fd.get("stamina", false):
+				Game.set_stamina(Game.max_stamina())
+				winded = false
+			Game.set_stamina(Game.stamina + float(fd.get("stamina_add", 0)))
+			if fd.get("cure", false):
+				Game.cure()
+			if fd.has("buff"):
+				Game.add_buff(String(fd["buff"][0]), float(fd["buff"][1]))
+			if randf() < float(fd.get("sicken", 0.0)) and not Game.has_buff("immune"):
+				Game.add_buff("poison", Effects.SICK_SECS)
+				Game.toast.emit("Ate %s. Your stomach turns..." % name)
+				return
+			Game.toast.emit("%s %s" % ["Drank" if fd.get("drink", false) or fd.get("cat", "") == "Medicine" else "Ate", name])
+		"scroll":
+			_read(idx, fd, name)
+		"instrument":
+			Game.add_buff(String(fd["play"]), 180.0)
+			Audio.play("ui/click", -6.0)
+			Game.toast.emit("You play a tune on the %s. You feel inspired." % name.to_lower())
+		"camp":
+			_sleep(fd, name)
+
+func _read(idx: int, fd: Dictionary, name: String) -> void:
+	var what := String(fd.get("read", ""))
+	match what:
+		"courage", "warded":
+			Game.add_buff(what, 300.0)
+			Game.toast.emit("You read the %s. %s" % [name.to_lower(), Effects.BUFFS[what]["desc"]])
+		"return":
+			var home = Game.home_near(global_position)
+			if home is Vector2:
+				teleport_to(home.x, home.y)
+			else:
+				var sp := Planets.spawn_point(Game.seed, Game.store != null and Game.store.has_rivers())
+				teleport_to(sp.x, sp.z)
+			Game.toast.emit("The words fade, and the world folds you home.")
+		"book":
+			var gain := 30.0 + randf() * 50.0
+			Game.add_xp(gain, "Reading")
+			Game.toast.emit("You read the old book cover to cover.")
+		_:
+			return
 	Game.inventory.remove_at(idx, 1)
-	Game.set_health(Game.health + fd.get("heal", 10))
-	if fd.get("stamina", false):
-		Game.set_stamina(Game.max_stamina())
-	Game.toast.emit("Ate %s" % ItemDB.display_name(it))
+
+## Sleeps until morning on a bedroll or in a tent: whole again, and well rested.
+func _sleep(fd: Dictionary, name: String) -> void:
+	var t := fposmod(Game.day, 1.0)
+	if t > 0.24 and t < 0.78:
+		Game.toast.emit("It's too light to sleep. Use the %s at night." % name.to_lower())
+		return
+	Game.day = floor(Game.day) + (1.0 if t >= 0.5 else 0.0) + 0.26
+	Game.set_health(Game.max_health())
+	Game.set_stamina(Game.max_stamina())
+	Game.add_buff("rested", 600.0 * float(fd.get("sleep", 1.0)))
+	Game.toast.emit("You sleep on your %s and wake at dawn, well rested." % name.to_lower())
 
 ## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
 ## How a heavy pack slows you: 1 up to your carry capacity, then down to a crawl. Over
@@ -1016,6 +1102,14 @@ func _tire(n: float) -> bool:
 
 func use_held() -> void:
 	var it = held_item()
+	if it != null and ItemDB.def(it["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
+		_cooldown = 0.5
+		consume(selected)
+		return
+	if it != null and ItemDB.def(it["type"]).has("fish"):
+		_cooldown = 0.6
+		_cast_line()
+		return
 	if it != null and ItemDB.def(it["type"]).get("kind", "") == "armor":
 		_cooldown = 0.4
 		Game.equip(selected)
@@ -1091,9 +1185,13 @@ func use_held() -> void:
 		var p: Vector3 = h["point"]
 		Audio.play_at("hit/dig", p, -2.0)
 		streamer.dig(p, 1.6 + d["dig"] * 0.6, 0.35 * d["dig"] * hq)
+		var ck := ChunkStreamer.chunk_of(p)
 		if randf() < 0.5:
-			var ck := ChunkStreamer.chunk_of(p)
 			Game.give(ItemDB.make("stone", 1, 1.0, Game.origin_here("dug", -1, ck)))
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		for y in Byproducts.of_digging(float(d["dig"]), rng):
+			Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("dug", -1, ck)))
 
 ## Undergrowth has no collision, so a swing that reaches the ground (or nothing) first
 ## looks for a bush, fern or flower along the swing and pulls it up.
@@ -1115,6 +1213,76 @@ func _harvest_under(h: Dictionary, q: float) -> bool:
 	return true
 
 ## Picks a plant by hand (Interact): the same yield as cutting it, at plain quality.
+# --- Fishing and night-eye ---------------------------------------------------------
+
+const CAST_RANGE := 16.0
+var _fish_t := 0.0 ## seconds until a bite, while a line is out
+var _fish_uid := -1 ## the rod the line belongs to
+var _night_light: OmniLight3D
+
+## Casts a line where you look, if that is water within reach.
+func _cast_line() -> void:
+	if _fish_t > 0.0:
+		Game.toast.emit("Your line is already out. Wait for a bite.")
+		return
+	var from := camera.global_position
+	var fwd := -camera.global_transform.basis.z
+	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * CAST_RANGE, 1 | 2, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	var far: float = from.distance_to(hit["position"]) if hit.has("position") else CAST_RANGE
+	var tw := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var wet := false
+	var d := 2.0
+	while d <= far:
+		var p := from + fwd * d
+		if p.y < Water.surface_height(p.x, p.z, tw) - 0.2:
+			wet = true
+			break
+		d += 1.0
+	if not wet:
+		Game.toast.emit("Cast your line into water.")
+		return
+	_fish_t = randf_range(3.0, 8.0) / float(ItemDB.def(held_item()["type"]).get("fish", 1.0))
+	_fish_uid = int(held_item().get("uid", -1))
+	Audio.play("water/splash", -12.0)
+	Game.toast.emit("You cast your line...")
+
+func _tick_fishing(delta: float) -> void:
+	if _fish_t <= 0.0:
+		return
+	var it = held_item()
+	if it == null or int(it.get("uid", -2)) != _fish_uid:
+		_fish_t = 0.0
+		Game.toast.emit("You reel in your line.")
+		return
+	_fish_t -= delta
+	if _fish_t > 0.0:
+		return
+	_fish_t = 0.0
+	if randf() < 0.7:
+		var ck := ChunkStreamer.chunk_of(global_position)
+		var n := 2 if randf() < 0.12 else 1
+		Game.give(ItemDB.make("fish_raw", n, randf_range(0.9, 1.15), Game.origin_here("caught", -1, ck)))
+		Game.add_xp(5.0, "Fishing")
+		Audio.play("water/splash", -8.0)
+		Game.toast.emit("You caught %s!" % ("two fish" if n == 2 else "a fish"))
+	else:
+		Game.toast.emit("Something nibbled, and got away.")
+
+## Night-eye drops: a soft, wide, shadowless light only you see by.
+func _update_nightsight() -> void:
+	var on := Game.has_buff("nightsight")
+	if on and _night_light == null:
+		_night_light = OmniLight3D.new()
+		_night_light.light_color = Color(0.72, 0.8, 0.95)
+		_night_light.omni_range = 30.0
+		_night_light.omni_attenuation = 0.6
+		_night_light.light_energy = 0.55
+		_night_light.shadow_enabled = false
+		camera.add_child(_night_light)
+	if _night_light:
+		_night_light.visible = on
+
 func _pick_plant(found: Dictionary) -> void:
 	if streamer == null or not streamer.pick_under(found):
 		return
@@ -1125,7 +1293,10 @@ func _pick_plant(found: Dictionary) -> void:
 	var era := int(parts[2])
 	var ck := ChunkStreamer.chunk_of(found["pos"])
 	var got: Array = []
+	# A sickle or a hoe takes more from each plant.
+	var reap: float = ItemDB.def(held_item()["type"]).get("reap", 1.0) if held_item() != null else 1.0
 	for y in Flora.under_yield(int(parts[1]), era, randf()):
+		y[1] = int(ceil(int(y[1]) * reap))
 		Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("gathered", era, ck)))
 		got.append("%s x%d" % [ItemDB.def(y[0])["name"], y[1]])
 	Game.toast.emit("Picked: " + ", ".join(got))
@@ -1308,9 +1479,19 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 	var how := "reclaimed" if k0 == "built" else ("salvaged" if k0 in ["structure", "cache", "trader", "marker"] or mat0 == "metal" else ("gathered" if k0 == "tree" else "mined"))
 	var xp := 0.0
 	var twice := Rarity.has_affix(held_item(), "bountiful") and randf() < 0.25
+	var units := 0
 	for y in r["items"]:
 		Game.give(ItemDB.make(y[0], y[1] * (2 if twice else 1), quality * randf_range(0.92, 1.08), Game.origin_here(how, o["e"], chunk.key)))
 		xp += 2.0 * y[1]
+		units += int(y[1])
+	if units > 0 and Byproducts.FROM.has(o["t"]):
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		var wp: Vector3 = chunk.position + o["p"]
+		var zone := Eras.zone_level(wp.x, wp.z) if Eras.themed() else 99
+		for y in Byproducts.of_object(o["t"], units, zone, rng):
+			Game.give(ItemDB.make(y[0], y[1], quality, Game.origin_here(how, o["e"], chunk.key)))
+			Game.toast.emit("Found %s" % ItemDB.def(y[0])["name"].to_lower())
 	if r["destroyed"]:
 		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):
 			Game.markers.remove_object(chunk.key, o["i"])
@@ -1463,7 +1644,7 @@ func _ride(delta: float) -> void:
 		breath = minf(Game.stats.max_breath(), breath + delta * 6.0)
 	_rest += delta
 	if _rest > 0.8:
-		Game.set_stamina(Game.stamina + 22.0 * delta)
+		Game.set_stamina(Game.stamina + 22.0 * delta * Game.stats.stamina_regen_mult())
 	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
 	if v.flies() and v.leaving >= Vehicle.LEAVE_TIME:
 		go_to_orbit()

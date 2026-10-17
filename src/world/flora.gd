@@ -154,6 +154,8 @@ static func under_yield(sp: int, era: int, roll: float) -> Array:
 	var out: Array = [["fiber", 2 if form == "bush" or form == "reeds" or form == "tendrils" else 1]]
 	if (form == "bush" and roll < 0.35) or form == "glowbulbs" and roll < 0.5:
 		out.append(["glowberry" if era != Eras.MEDIEVAL else "wild_berries", 1 + int(roll * 6.0) % 2])
+	if era == Eras.MEDIEVAL:
+		out.append_array(Byproducts.of_plant(form, sp, roll))
 	return out
 
 ## Undergrowth (ferns, bushes, flowers, reeds, glow-bulbs, xeno tendrils). No collision,

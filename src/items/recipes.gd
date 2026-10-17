@@ -1,6 +1,7 @@
 class_name Recipes
 
-## "at" names the crafting station that must be within reach (BuildCatalog.STATION_RANGE).
+## "at" names the crafting station that must be within reach (BuildCatalog.STATION_RANGE);
+## "tools" are items that must be in the pack and are not used up (a saw, a mortar).
 const LIST := [
 	{"out": "planks", "qty": 2, "in": {"wood": 1}},
 	{"out": "planks", "qty": 3, "in": {"glowroot": 1}},
@@ -142,6 +143,159 @@ const LIST := [
 	{"out": "wall_scifi_window", "qty": 1, "in": {"alloy_plate": 3, "aether_crystal": 1}, "at": "fabricator"},
 	{"out": "door_scifi", "qty": 1, "in": {"alloy_plate": 4, "circuitry": 2}, "at": "fabricator"},
 	{"out": "stairs_scifi", "qty": 1, "in": {"alloy_plate": 6}, "at": "fabricator"},
+
+	# --- The medieval age (pack A) ---------------------------------------------------------
+	# Materials: rope and cloth, smelting, fuel and earthenware.
+	{"out": "rope", "qty": 1, "in": {"fiber": 3}},
+	{"out": "rope", "qty": 2, "in": {"flax": 3}},
+	{"out": "cloth", "qty": 1, "in": {"flax": 3}, "at": "workbench"},
+	{"out": "cloth", "qty": 1, "in": {"wool": 2}, "at": "workbench"},
+	{"out": "planks", "qty": 4, "in": {"wood": 1}, "tools": ["saw"]},
+	{"out": "charcoal", "qty": 2, "in": {"wood": 3}, "at": "campfire"},
+	{"out": "lamp_oil", "qty": 1, "in": {"animal_fat": 2}, "at": "campfire"},
+	{"out": "lamp_oil", "qty": 1, "in": {"resin": 2, "beeswax": 1}, "at": "campfire"},
+	{"out": "brick", "qty": 2, "in": {"clay": 2}, "at": "forge"},
+	{"out": "empty_vial", "qty": 2, "in": {"clay": 1}, "at": "forge"},
+	{"out": "empty_bottle", "qty": 1, "in": {"clay": 2}, "at": "forge"},
+	{"out": "copper_ingot", "qty": 1, "in": {"copper_ore": 2}, "at": "forge"},
+	{"out": "bronze_ingot", "qty": 2, "in": {"copper_ore": 3, "tin_ore": 1}, "at": "forge"},
+	{"out": "bronze_ingot", "qty": 1, "in": {"copper_ingot": 1, "tin_ore": 1}, "at": "forge"},
+	{"out": "iron_ingot", "qty": 2, "in": {"iron_ore": 3, "charcoal": 1}, "at": "forge"},
+	{"out": "iron_ingot", "qty": 2, "in": {"iron_ore": 3, "coal": 1}, "at": "forge"},
+	{"out": "steel_ingot", "qty": 1, "in": {"iron_ingot": 2, "coal": 2}, "at": "forge", "tools": ["tongs"]},
+	{"out": "steel_ingot", "qty": 1, "in": {"iron_ingot": 2, "charcoal": 3}, "at": "forge", "tools": ["tongs"]},
+	{"out": "silver_ingot", "qty": 1, "in": {"silver_ore": 2, "charcoal": 1}, "at": "forge"},
+	{"out": "gold_ingot", "qty": 1, "in": {"gold_ore": 2, "charcoal": 1}, "at": "forge"},
+	{"out": "iron_nails", "qty": 12, "in": {"iron_ingot": 1}, "at": "anvil"},
+	{"out": "salt", "qty": 3, "in": {"salt_crystal": 1}, "tools": ["mortar_pestle"]},
+	{"out": "forge", "qty": 1, "in": {"brick": 10, "iron_ore": 2, "wood": 2}, "at": "workbench"},
+	# Tools.
+	{"out": "pickaxe_stone", "qty": 1, "in": {"wood": 1, "flint": 2, "fiber": 2}},
+	{"out": "axe_stone", "qty": 1, "in": {"wood": 1, "flint": 2, "fiber": 2}},
+	{"out": "pickaxe_bronze", "qty": 1, "in": {"bronze_ingot": 2, "planks": 2}, "at": "forge"},
+	{"out": "pickaxe_steel", "qty": 1, "in": {"steel_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "axe_steel", "qty": 1, "in": {"steel_ingot": 2, "planks": 2}, "at": "anvil"},
+	{"out": "shovel", "qty": 1, "in": {"planks": 2, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "hoe", "qty": 1, "in": {"wood": 2, "flint": 1, "fiber": 1}},
+	{"out": "sickle", "qty": 1, "in": {"iron_ingot": 1, "wood": 1}, "at": "workbench"},
+	{"out": "fishing_rod", "qty": 1, "in": {"wood": 2, "fiber": 3, "bone": 1}},
+	{"out": "fishing_rod", "qty": 1, "in": {"wood": 2, "rope": 1}},
+	{"out": "saw", "qty": 1, "in": {"iron_ingot": 1, "planks": 1}, "at": "workbench"},
+	{"out": "tongs", "qty": 1, "in": {"iron_ingot": 2}, "at": "forge"},
+	{"out": "bucket", "qty": 1, "in": {"planks": 3, "rope": 1}, "at": "workbench"},
+	{"out": "waterskin", "qty": 1, "in": {"leather": 1, "fiber": 2}, "at": "workbench"},
+	{"out": "waterskin", "qty": 1, "in": {"hide": 2, "fiber": 2}, "at": "workbench"},
+	{"out": "mortar_pestle", "qty": 1, "in": {"stone": 3}, "at": "workbench"},
+	{"out": "quill_ink", "qty": 1, "in": {"charcoal": 1, "empty_vial": 1, "fiber": 1}, "at": "workbench"},
+	{"out": "cauldron_small", "qty": 1, "in": {"iron_ingot": 3}, "at": "forge"},
+	{"out": "tinderbox", "qty": 1, "in": {"flint": 1, "iron_ingot": 1, "fiber": 2}, "at": "workbench"},
+	{"out": "hand_lantern", "qty": 1, "in": {"iron_ingot": 2, "cloth": 1}, "at": "workbench"},
+	{"out": "candle", "qty": 3, "in": {"beeswax": 1, "fiber": 1}, "tools": ["tinderbox"]},
+	{"out": "candle", "qty": 2, "in": {"animal_fat": 1, "fiber": 1}},
+	{"out": "torch", "qty": 4, "in": {"wood": 1, "resin": 1}, "tools": ["tinderbox"]},
+	{"out": "torch", "qty": 4, "in": {"wood": 2, "lamp_oil": 1}},
+	{"out": "bedroll", "qty": 1, "in": {"cloth": 2, "hide": 1, "rope": 1}, "at": "workbench"},
+	{"out": "tent_kit", "qty": 1, "in": {"cloth": 6, "rope": 2, "wood": 4}, "at": "workbench"},
+	{"out": "scroll_plain", "qty": 2, "in": {"flax": 2}, "at": "workbench"},
+	# Weapons.
+	{"out": "wooden_club", "qty": 1, "in": {"wood": 2}},
+	{"out": "quarterstaff", "qty": 1, "in": {"wood": 2, "fiber": 1}},
+	{"out": "stone_knife", "qty": 1, "in": {"flint": 2, "wood": 1, "fiber": 1}},
+	{"out": "hunting_spear", "qty": 1, "in": {"wood": 2, "flint": 1, "fiber": 1}},
+	{"out": "hand_axe", "qty": 1, "in": {"flint": 2, "wood": 1, "fiber": 2}},
+	{"out": "sling", "qty": 1, "in": {"rope": 1, "hide": 1}},
+	{"out": "javelin", "qty": 3, "in": {"wood": 2, "flint": 1}},
+	{"out": "shortbow", "qty": 1, "in": {"wood": 2, "rope": 1}, "at": "workbench"},
+	{"out": "bronze_sword", "qty": 1, "in": {"bronze_ingot": 3, "planks": 1}, "at": "forge"},
+	{"out": "bronze_spear", "qty": 1, "in": {"bronze_ingot": 1, "wood": 2}, "at": "forge"},
+	{"out": "bronze_axe", "qty": 1, "in": {"bronze_ingot": 2, "planks": 1}, "at": "forge"},
+	{"out": "cudgel", "qty": 1, "in": {"wood": 2, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "throwing_knives", "qty": 6, "in": {"iron_ingot": 1}, "at": "anvil"},
+	{"out": "falchion", "qty": 1, "in": {"iron_ingot": 3, "leather": 1}, "at": "anvil"},
+	{"out": "warpick", "qty": 1, "in": {"iron_ingot": 3, "planks": 1}, "at": "anvil"},
+	{"out": "morning_star", "qty": 1, "in": {"iron_ingot": 4, "planks": 1, "iron_nails": 8}, "at": "anvil"},
+	{"out": "flail", "qty": 1, "in": {"iron_ingot": 4, "planks": 1}, "at": "anvil"},
+	{"out": "glaive", "qty": 1, "in": {"iron_ingot": 3, "wood": 3}, "at": "anvil"},
+	{"out": "composite_bow", "qty": 1, "in": {"wood": 2, "antler": 1, "leather": 1, "rope": 1}, "at": "workbench"},
+	{"out": "steel_sword", "qty": 1, "in": {"steel_ingot": 3, "leather": 1}, "at": "anvil"},
+	{"out": "rapier", "qty": 1, "in": {"steel_ingot": 2, "leather": 1}, "at": "anvil"},
+	{"out": "halberd", "qty": 1, "in": {"steel_ingot": 3, "wood": 3}, "at": "anvil"},
+	{"out": "zweihander", "qty": 1, "in": {"steel_ingot": 5, "leather": 2}, "at": "anvil"},
+	{"out": "heavy_crossbow", "qty": 1, "in": {"steel_ingot": 2, "planks": 3, "rope": 2}, "at": "anvil"},
+	{"out": "knight_sword", "qty": 1, "in": {"steel_ingot": 4, "silver_ingot": 1, "gold_ingot": 1, "leather": 1}, "at": "anvil"},
+	{"out": "executioner_axe", "qty": 1, "in": {"steel_ingot": 6, "planks": 2}, "at": "anvil"},
+	{"out": "royal_bow", "qty": 1, "in": {"wood": 3, "antler": 2, "gold_ingot": 1, "silver_ingot": 1, "rope": 2}, "at": "workbench"},
+	{"out": "broadhead_arrows", "qty": 12, "in": {"wood": 1, "iron_ingot": 1, "fiber": 1}, "at": "workbench"},
+	# Armour.
+	{"out": "cap_cloth", "qty": 1, "in": {"cloth": 1}, "at": "workbench"},
+	{"out": "tunic_padded", "qty": 1, "in": {"cloth": 4, "fiber": 2}, "at": "workbench"},
+	{"out": "wraps_cloth", "qty": 1, "in": {"cloth": 1}, "at": "workbench"},
+	{"out": "trousers_wool", "qty": 1, "in": {"cloth": 2, "wool": 1}, "at": "workbench"},
+	{"out": "shoes_cloth", "qty": 1, "in": {"cloth": 1, "hide": 1}, "at": "workbench"},
+	{"out": "buckler_wood", "qty": 1, "in": {"planks": 3}, "at": "workbench"},
+	{"out": "cap_hide", "qty": 1, "in": {"hide": 2}, "at": "workbench"},
+	{"out": "vest_hide", "qty": 1, "in": {"hide": 4, "fiber": 2}, "at": "workbench"},
+	{"out": "gloves_hide", "qty": 1, "in": {"hide": 1, "fiber": 1}, "at": "workbench"},
+	{"out": "leggings_hide", "qty": 1, "in": {"hide": 3}, "at": "workbench"},
+	{"out": "boots_hide", "qty": 1, "in": {"hide": 2}, "at": "workbench"},
+	{"out": "shield_hide", "qty": 1, "in": {"wood": 2, "hide": 2}, "at": "workbench"},
+	{"out": "helm_studded", "qty": 1, "in": {"leather": 2, "iron_nails": 6}, "at": "workbench"},
+	{"out": "jerkin_studded", "qty": 1, "in": {"leather": 4, "iron_nails": 12}, "at": "workbench"},
+	{"out": "gloves_studded", "qty": 1, "in": {"leather": 1, "iron_nails": 4}, "at": "workbench"},
+	{"out": "pants_studded", "qty": 1, "in": {"leather": 3, "iron_nails": 8}, "at": "workbench"},
+	{"out": "boots_studded", "qty": 1, "in": {"leather": 2, "iron_nails": 4}, "at": "workbench"},
+	{"out": "shield_kite", "qty": 1, "in": {"planks": 4, "iron_ingot": 2, "leather": 1}, "at": "anvil"},
+	{"out": "helm_bronze", "qty": 1, "in": {"bronze_ingot": 2, "hide": 1}, "at": "forge"},
+	{"out": "cuirass_bronze", "qty": 1, "in": {"bronze_ingot": 5, "hide": 1}, "at": "forge"},
+	{"out": "bracers_bronze", "qty": 1, "in": {"bronze_ingot": 1, "leather": 1}, "at": "forge"},
+	{"out": "greaves_bronze", "qty": 1, "in": {"bronze_ingot": 3}, "at": "forge"},
+	{"out": "sandals_bronze", "qty": 1, "in": {"bronze_ingot": 1, "leather": 1}, "at": "forge"},
+	{"out": "shield_bronze", "qty": 1, "in": {"bronze_ingot": 2, "planks": 2}, "at": "forge"},
+	{"out": "helm_steel", "qty": 1, "in": {"steel_ingot": 3, "leather": 1}, "at": "anvil"},
+	{"out": "plate_steel", "qty": 1, "in": {"steel_ingot": 7, "leather": 2}, "at": "anvil"},
+	{"out": "gauntlets_steel", "qty": 1, "in": {"steel_ingot": 2, "leather": 1}, "at": "anvil"},
+	{"out": "cuisses_steel", "qty": 1, "in": {"steel_ingot": 4, "leather": 1}, "at": "anvil"},
+	{"out": "sabatons_steel", "qty": 1, "in": {"steel_ingot": 2, "leather": 1}, "at": "anvil"},
+	{"out": "shield_tower", "qty": 1, "in": {"steel_ingot": 3, "planks": 4}, "at": "anvil"},
+	# Trinkets.
+	{"out": "amulet_bone", "qty": 1, "in": {"bone": 3, "fiber": 2}},
+	{"out": "ring_copper", "qty": 1, "in": {"copper_ingot": 1}, "at": "forge"},
+	{"out": "ring_silver", "qty": 1, "in": {"silver_ingot": 1}, "at": "anvil"},
+	{"out": "amulet_silver", "qty": 1, "in": {"silver_ingot": 1, "rope": 1}, "at": "anvil"},
+	# Food and drink.
+	{"out": "flour", "qty": 1, "in": {"wheat": 2}, "tools": ["mortar_pestle"]},
+	{"out": "bread", "qty": 2, "in": {"flour": 2}, "at": "campfire"},
+	{"out": "fish_cooked", "qty": 1, "in": {"fish_raw": 1, "wood": 1}, "at": "campfire"},
+	{"out": "chicken_roast", "qty": 1, "in": {"raw_meat": 2, "onion": 1}, "at": "campfire"},
+	{"out": "sausage", "qty": 3, "in": {"raw_meat": 2, "salt": 1, "animal_fat": 1}, "at": "campfire"},
+	{"out": "salted_meat", "qty": 1, "in": {"raw_meat": 1, "salt": 1}},
+	{"out": "stew", "qty": 2, "in": {"raw_meat": 1, "potato": 1, "carrot": 1, "onion": 1}, "at": "campfire", "tools": ["bucket"]},
+	{"out": "soup_veg", "qty": 2, "in": {"potato": 1, "carrot": 1, "cabbage": 1, "onion": 1}, "at": "campfire", "tools": ["bucket"]},
+	{"out": "porridge", "qty": 2, "in": {"wheat": 2, "milk": 1}, "at": "campfire"},
+	{"out": "pie_meat", "qty": 2, "in": {"flour": 2, "raw_meat": 2, "egg": 1}, "at": "campfire"},
+	{"out": "pie_berry", "qty": 2, "in": {"flour": 2, "wild_berries": 4, "egg": 1}, "at": "campfire"},
+	{"out": "travel_bread", "qty": 3, "in": {"flour": 2, "honey": 1, "salt": 1}, "at": "campfire"},
+	{"out": "jam", "qty": 2, "in": {"wild_berries": 4, "honey": 1}, "at": "campfire"},
+	{"out": "wine", "qty": 1, "in": {"grapes": 4, "empty_bottle": 1}, "at": "workbench"},
+	{"out": "mead", "qty": 1, "in": {"honey": 2, "empty_bottle": 1}, "at": "workbench"},
+	# Medicine: herbs ground in a mortar, the stronger brews in a pot.
+	{"out": "potion_health_minor", "qty": 1, "in": {"herb_red": 2, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle"]},
+	{"out": "potion_health_greater", "qty": 1, "in": {"herb_red": 3, "herb_root": 1, "honey": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle", "cauldron_small"]},
+	{"out": "potion_stamina_greater", "qty": 1, "in": {"herb_mint": 2, "herb_yellow": 2, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle", "cauldron_small"]},
+	{"out": "antidote", "qty": 1, "in": {"herb_blue": 1, "herb_mint": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle"]},
+	{"out": "tonic_warmth", "qty": 1, "in": {"herb_root": 1, "honey": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle"]},
+	{"out": "tonic_cooling", "qty": 1, "in": {"herb_mint": 2, "herb_blue": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle"]},
+	{"out": "elixir_strength", "qty": 1, "in": {"herb_root": 2, "herb_red": 1, "bone": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle", "cauldron_small"]},
+	{"out": "elixir_swiftness", "qty": 1, "in": {"herb_yellow": 2, "herb_mint": 1, "honey": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle", "cauldron_small"]},
+	{"out": "elixir_nightsight", "qty": 1, "in": {"herb_nightshade": 1, "herb_blue": 1, "empty_vial": 1}, "at": "campfire", "tools": ["mortar_pestle"]},
+	{"out": "salve", "qty": 1, "in": {"herb_red": 1, "animal_fat": 1}, "tools": ["mortar_pestle"]},
+	{"out": "bandage_linen", "qty": 2, "in": {"cloth": 1}},
+	{"out": "herbal_poultice", "qty": 1, "in": {"herb_red": 1, "herb_mint": 1, "cloth": 1}, "tools": ["mortar_pestle"]},
+	{"out": "smelling_salts", "qty": 2, "in": {"salt": 1, "herb_mint": 1}, "tools": ["mortar_pestle"]},
+	# Scrolls.
+	{"out": "scroll_red", "qty": 1, "in": {"scroll_plain": 1, "herb_red": 1}, "tools": ["quill_ink"]},
+	{"out": "scroll_blue", "qty": 1, "in": {"scroll_plain": 1, "herb_blue": 1}, "tools": ["quill_ink"]},
+	{"out": "scroll_green", "qty": 1, "in": {"scroll_plain": 1, "herb_yellow": 2, "silver_ingot": 1}, "tools": ["quill_ink"]},
 ]
 
 const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
@@ -161,12 +315,18 @@ static func level_ok(recipe: Dictionary, level: int) -> bool:
 static func station_ok(recipe: Dictionary, stations: Dictionary) -> bool:
 	return not recipe.has("at") or stations.has(recipe["at"])
 
+## The tools the recipe needs that are not in the pack.
+static func missing_tools(inv: Inventory, recipe: Dictionary) -> Array:
+	return recipe.get("tools", []).filter(func(t): return inv.count(t) <= 0)
+
 
 static func can_craft(inv: Inventory, recipe: Dictionary) -> bool:
 	return max_crafts(inv, recipe) > 0
 
 ## How many times the recipe can be made from what is in the pack (and still fit).
 static func max_crafts(inv: Inventory, recipe: Dictionary) -> int:
+	if not missing_tools(inv, recipe).is_empty():
+		return 0
 	var n := 1 << 30
 	for t in recipe["in"]:
 		n = mini(n, inv.count(t) / int(recipe["in"][t]))

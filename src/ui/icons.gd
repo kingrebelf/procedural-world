@@ -25,6 +25,53 @@ const SHEET2_ORDER := [
 	"battle_axe", "war_hammer", "longbow", "spear", "dagger", "mace",
 	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
 ]
+## Later sheets, each a 6x5 grid in the same layout: the medieval age (pack A, items4-9).
+const MORE_SHEETS := [
+	["res://assets/icons/items4.png", [
+		"bone", "animal_fat", "antler", "fur_pelt", "leather", "lockpick",
+		"skinning_knife", "flint", "clay", "brick", "rope", "cloth",
+		"wool", "flax", "resin", "charcoal", "salt", "beeswax",
+		"copper_ore", "tin_ore", "coal", "silver_ore", "gold_ore", "salt_crystal",
+		"copper_ingot", "bronze_ingot", "steel_ingot", "silver_ingot", "gold_ingot", "iron_nails",
+	]],
+	["res://assets/icons/items5.png", [
+		"wooden_club", "stone_knife", "sling", "shortbow", "hunting_spear", "hand_axe",
+		"bronze_sword", "bronze_spear", "bronze_axe", "cudgel", "throwing_knives", "javelin",
+		"steel_sword", "falchion", "rapier", "zweihander", "halberd", "morning_star",
+		"flail", "warpick", "glaive", "composite_bow", "heavy_crossbow", "quarterstaff",
+		"knight_sword", "executioner_axe", "royal_bow", "dragonbone_dagger", "kings_mace", "broadhead_arrows",
+	]],
+	["res://assets/icons/items6.png", [
+		"cap_cloth", "tunic_padded", "wraps_cloth", "trousers_wool", "shoes_cloth", "buckler_wood",
+		"cap_hide", "vest_hide", "gloves_hide", "leggings_hide", "boots_hide", "shield_hide",
+		"helm_studded", "jerkin_studded", "gloves_studded", "pants_studded", "boots_studded", "shield_kite",
+		"helm_bronze", "cuirass_bronze", "bracers_bronze", "greaves_bronze", "sandals_bronze", "shield_bronze",
+		"helm_steel", "plate_steel", "gauntlets_steel", "cuisses_steel", "sabatons_steel", "shield_tower",
+	]],
+	["res://assets/icons/items7.png", [
+		"pickaxe_stone", "axe_stone", "pickaxe_bronze", "pickaxe_steel", "axe_steel", "shovel",
+		"hoe", "sickle", "fishing_rod", "saw", "tongs", "bucket",
+		"waterskin", "hand_lantern", "candle", "tinderbox", "bedroll", "tent_kit",
+		"ring_copper", "ring_silver", "ring_ruby", "amulet_bone", "amulet_silver", "amulet_saint",
+		"lucky_coin", "dice", "lute", "flute", "book_leather", "treasure_map",
+	]],
+	["res://assets/icons/items8.png", [
+		"apple", "pear", "carrot", "potato", "onion", "cabbage",
+		"wheat", "flour", "egg", "milk", "honey", "mushroom",
+		"fish_raw", "fish_cooked", "chicken_roast", "ham", "sausage", "salted_meat",
+		"stew", "porridge", "pie_meat", "pie_berry", "soup_veg", "travel_bread",
+		"pumpkin", "corn", "grapes", "wine", "mead", "jam",
+	]],
+	["res://assets/icons/items9.png", [
+		"potion_health_minor", "potion_health_greater", "potion_stamina_greater", "antidote", "tonic_warmth", "tonic_cooling",
+		"elixir_strength", "elixir_swiftness", "elixir_nightsight", "salve", "bandage_linen", "herbal_poultice",
+		"herb_red", "herb_blue", "herb_yellow", "herb_root", "herb_mint", "herb_nightshade",
+		"scroll_plain", "scroll_red", "scroll_blue", "scroll_green", "letter_sealed", "quill_ink",
+		"mortar_pestle", "empty_vial", "empty_bottle", "cauldron_small", "holy_water", "smelling_salts",
+	]],
+]
+## type -> [sheet path, its order], built on first use.
+static var _sheet_of: Dictionary = {}
 const BUILD_DIR := "res://assets/icons/build/"
 static var _sheets: Dictionary = {}
 
@@ -38,11 +85,18 @@ static func _sheet_image(path: String) -> Image:
 	return _sheets[path]
 
 static func _from_sheet(type: String) -> Texture2D:
+	if _sheet_of.is_empty():
+		for sh in MORE_SHEETS:
+			for t in sh[1]:
+				_sheet_of[t] = sh
 	var order: Array = SHEET_ORDER
 	var path := SHEET_PATH
 	if SHEET2_ORDER.has(type):
 		order = SHEET2_ORDER
 		path = SHEET2_PATH
+	elif _sheet_of.has(type):
+		order = _sheet_of[type][1]
+		path = _sheet_of[type][0]
 	var idx := order.find(type)
 	var sheet := _sheet_image(path) if idx >= 0 else null
 	if sheet == null:
