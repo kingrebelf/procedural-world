@@ -367,6 +367,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			has_cave = true
 	has_cave = has_cave or chunk.has("hole")
 	var plans := ChunkGenerator.keep_out(chunk)
+	var looks := ChunkGenerator.look_grid(chunk)
 	for n in count:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -380,7 +381,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			continue
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.55:
 			continue
-		if pick > dens * ChunkGenerator.cover_at(chunk, lx, lz):
+		if pick > dens * looks[ChunkGenerator.look_cell(lx, lz)]:
 			continue
 		# Grass gives way to snow, stones and gravel, and thins under the trees.
 		var cv := GroundCover.at(cover, lx, lz)
@@ -516,6 +517,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		thicket.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		thicket.frequency = 0.045
 		thicket.fractal_octaves = 3
+		var looks := ChunkGenerator.look_grid(chunk)
 		var ux0 := float(chunk["cx"]) * SIZE
 		var uz0 := float(chunk["cz"]) * SIZE
 		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
@@ -532,7 +534,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			# Bare sand and dust grow little (the size roll doubles as the chance).
-			if (sc - 0.6) / 0.9 > ChunkGenerator.cover_at(chunk, lx, lz):
+			if (sc - 0.6) / 0.9 > looks[ChunkGenerator.look_cell(lx, lz)]:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
@@ -611,15 +613,30 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 	grit.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	grit.frequency = 0.3
 	grit.fractal_octaves = 1
+	# Both worked out once a metre (thousands of stones ask), with the sand.
+	var bunches := PackedFloat32Array()
+	bunches.resize(RES * RES)
+	var grits := PackedFloat32Array()
+	grits.resize(RES * RES)
+	for j in RES:
+		for i in RES:
+			bunches[j * RES + i] = smoothstep(0.15, 0.65, heap.get_noise_2d(x0 + i, z0 + j))
+			grits[j * RES + i] = grit.get_noise_2d(x0 + i, z0 + j) * 0.5 + 0.5
+	var looks := ChunkGenerator.look_grid(chunk)
 	for n in int(28000 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
-		var cv := GroundCover.at(cover, lx, lz)
-		var stony := maxf(cv.r, cv.g)
-		var bunch := smoothstep(0.15, 0.65, heap.get_noise_2d(x0 + lx, z0 + lz))
-		var odds := 0.003 + 0.04 * bunch * bunch + stony * stony * 0.9 * (0.45 + 0.8 * (grit.get_noise_2d(x0 + lx, z0 + lz) * 0.5 + 0.5))
-		if r.randf() > odds * (1.0 - ChunkGenerator.sand_at(chunk, lx, lz)) or cv.a > 0.6:
+		# Whether a stone lies here, from the nearest metre's cover (cheap: most of
+		# these thousands of tries come to nothing); the stone itself reads it finely.
+		var lk := ChunkGenerator.look_cell(lx, lz)
+		var ck := lk * 2
+		var stony := maxf(cover[ck], cover[ck + 1]) / 255.0 if not cover.is_empty() else 0.0
+		var bunch := bunches[lk / 2]
+		var odds := 0.003 + 0.04 * bunch * bunch + stony * stony * 0.9 * (0.45 + 0.8 * grits[lk / 2])
+		if r.randf() > odds * (1.0 - looks[lk + 1]) or (not cover.is_empty() and cover[ck + 3] > 153):
 			continue
+		var cv := GroundCover.at(cover, lx, lz)
+		stony = maxf(cv.r, cv.g)
 		var slope := ChunkGenerator.slope_at(chunk, lx, lz)
 		if slope > 0.75:
 			continue

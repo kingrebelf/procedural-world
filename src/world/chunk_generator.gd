@@ -935,6 +935,27 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	# bare patches in the grass).
 	return 1.0 - maxf(_look_lerp(lb, lx, lz, 8), _look_lerp(lb, lx, lz, 7) * 0.7)
 
+## cover_at and sand_at at every metre of the chunk, [cover, sand] per terrain vertex:
+## for loops that ask at thousands of points (look one up with look_cell).
+static func look_grid(chunk: Dictionary) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(RES * RES * 2)
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	for j in RES:
+		for i in RES:
+			var k := (j * RES + i) * 2
+			if lb.is_empty():
+				out[k] = 1.0
+				continue
+			var sand := _look_lerp(lb, i, j, 8)
+			out[k] = 1.0 - maxf(sand, _look_lerp(lb, i, j, 7) * 0.7)
+			out[k + 1] = sand
+	return out
+
+## Index into look_grid of the metre nearest (lx, lz): [k] cover, [k + 1] sand.
+static func look_cell(lx: float, lz: float) -> int:
+	return (clampi(int(lz + 0.5), 0, RES - 1) * RES + clampi(int(lx + 0.5), 0, RES - 1)) * 2
+
 ## One byte of the landform look (0..1) at a point, interpolated between look points.
 static func _look_lerp(lb: PackedByteArray, lx: float, lz: float, b: int) -> float:
 	var fx := clampf(lx / LOOK_STEP, 0.0, LOOK_N - 1.001)
