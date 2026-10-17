@@ -255,18 +255,26 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, top: float, out: f
 	var cols := 8
 	var rows := maxi(3, int((top - bottom) / 0.05))
 	var base: int = o["v"].size()
+	var v: PackedVector3Array = s["v"]
+	var reg: PackedInt32Array = s["r"]
+	var front := -INF
 	for ri in rows + 1:
 		var k := float(ri) / rows
 		var y := lerpf(bottom, top, k)
-		var m := _measure(s, y, 0.02)
 		var half := lerpf(0.13, 0.11, k)
+		# In front of the body at this height, and above the bust it only slopes back
+		# gently instead of tucking in under it.
+		var fz := -INF
+		for i in v.size():
+			if (reg[i] == 1 or reg[i] == 5) and absf(v[i].y - y) < 0.025 and absf(v[i].x) < half:
+				fz = maxf(fz, v[i].z)
+		front = fz if ri == 0 else maxf(fz, front - 0.012)
 		var u := clampf((y - float(s["waist"])) / maxf(top - float(s["waist"]), 0.01), 0.0, 1.0)
 		var wb := {"spine_03": u, "spine_01": 1.0 - u} if y > float(s["waist"]) else {"pelvis": 0.6, "spine_01": 0.4}
 		for ci in cols + 1:
 			var c := float(ci) / cols
 			var x := lerpf(-half, half, c)
-			var bulge := 1.0 - pow(x / maxf(float(m["rx"]), 0.05), 2.0)
-			var z := float(m["cz"]) + float(m["rz"]) * sqrt(maxf(bulge, 0.0)) + out
+			var z := front + out - 0.03 * pow(x / half, 2.0)
 			_vert(s, o, Vector3(x, y, z), Vector3(x * 2.0, 0, 1), Vector2(c, k), wb, PART_APRON, Color.WHITE)
 	for ri in rows:
 		for ci in cols:
@@ -346,6 +354,13 @@ const ROLE := {
 	"priest": "cleric", "mystic": "cleric", "scribe": "cleric", "medic": "medic",
 	"weaver": "artisan", "bard": "artisan", "lamplighter": "civil",
 	"trader": "merchant", "data broker": "merchant", "pilot": "pilot", "courier": "pilot",
+	# Shopkeepers and guild masters (TownShops).
+	"armourer": "smith", "weaponsmith": "smith", "bladewright": "smith", "armorer": "smith", "armour tech": "smith", "wardweaver": "artisan",
+	"apothecary": "host", "alchemist": "cleric", "shopkeeper": "host", "provisioner": "host", "quartermaster": "merchant",
+	"meadwarden": "host", "bartender": "host", "steward": "merchant", "grove elder": "cleric", "registry clerk": "civil",
+	"guildmaster": "guard", "archmage": "cleric", "fence": "hunter", "guild factor": "merchant", "ranger captain": "hunter",
+	"archdruid": "cleric", "contract broker": "merchant", "chief engineer": "smith", "flight master": "pilot",
+	"bandit": "hunter", "pirate": "hunter",
 }
 
 ## A stable number for one person, from their saved looks (rounded, so a save and load
@@ -489,11 +504,22 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 		elif role in ["merchant", "artisan"] and not dress and chance.call(0.25):
 			sp["cape"] = 0.45
 			cols[PART_CAPE] = fab.call(pick.call(RICH), FAB_WOOL)
+	# Nobody may look naked: a shirt or dress too near their own skin tone is dyed darker.
+	var skin: Color = b.get("skin", Color(0.8, 0.6, 0.5))
+	for part in [PART_SHIRT, PART_PANTS, PART_SKIRT, PART_TRIM]:
+		if cols.has(part) and _near(cols[part], skin):
+			var c: Color = cols[part]
+			var d: Color = c.darkened(0.45) if skin.v > 0.45 else c.lightened(0.5)
+			cols[part] = Color(d.r, d.g, d.b, c.a)
 	for part in [PART_SKIRT, PART_TRIM, PART_APRON, PART_CAPE]:
 		if not cols.has(part):
 			cols[part] = cols.get(PART_SHIRT, Color(0.5, 0.4, 0.3, 0.0))
 	cols[PART_BOOTS] = fab.call(pick.call(BOOTS) if era != Eras.SCIFI else pick.call([Color(0.14, 0.15, 0.17), Color(0.3, 0.24, 0.17)]), FAB_LEATHER)
 	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim}
+
+## Whether cloth of colour `c` could pass for bare skin of tone `skin`.
+static func _near(c: Color, skin: Color) -> bool:
+	return Vector3(c.r - skin.r, c.g - skin.g, c.b - skin.b).length() < 0.16
 
 ## Human sci-fi folk: jumpsuits and work shirts, padded vests, a long coat for the dealers.
 static func _scifi(sp: Dictionary, cols: Dictionary, role: String, fem: bool, pick: Callable, fab: Callable, chance: Callable) -> void:

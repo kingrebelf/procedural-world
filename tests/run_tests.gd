@@ -1182,6 +1182,8 @@ func test_wardrobes() -> void:
 			men_in_gowns += 1
 		if job == "smith":
 			check(w["spec"]["apron"] > 0.0, "smiths wear a leather apron")
+		for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
+			check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "%s's clothes don't pass for bare skin" % job)
 	check(looks.size() >= 36, "nobody dresses like anyone else (%d looks in 40)" % looks.size())
 	check(men_in_gowns == 0, "men wear tunics and trousers, not gowns")
 	if not HumanModel.available():
