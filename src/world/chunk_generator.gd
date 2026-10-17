@@ -711,9 +711,9 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var rf: Array = _road_field(x0, z0, roads) if not roads.is_empty() else []
 	var road_mask := PackedByteArray()
 	var any_road := false
-	# How far each point of a road is from its middle line, to one side or the other
-	# (128 + 40 per metre; 0 off the road), for the wheel ruts the terrain shader wears
-	# into it.
+	# How far each point near a road is from its middle line, to one side or the other
+	# (128 + 20 per metre; 0 away from roads), for the wheel ruts the terrain shader
+	# wears into it.
 	var road_mid := PackedByteArray()
 	var any_mid := false
 	if towns:
@@ -774,8 +774,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * (1.7 if outposts else 0.9), road_reach - ROAD_HALF - 2.0)
 				h = lerpf(h, lv, (1.0 - smoothstep(ROAD_HALF, verge, d)) * dry)
 				on_road = (1.0 - smoothstep(ROAD_HALF - 0.8, ROAD_HALF + 1.0, d)) * dry
-				if towns and on_road > 0.0:
-					road_mid[k] = 128 + int(round(minf(d, 3.15) * 40.0)) * (1 if rf[3][k] == 1 else -1)
+				if towns:
+					road_mid[k] = 128 + int(round(minf(d, 6.3) * 20.0)) * (1 if rf[3][k] == 1 else -1)
 					any_mid = true
 			if towns:
 				for si in sites.size():

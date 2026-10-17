@@ -87,9 +87,9 @@ varying vec4 soil_v;
 varying vec2 form_v;
 varying vec2 scar_v; // (v16) x: scorched by a crash, y: fresh crater spoil
 varying vec4 cover_v;
-// On a road up close: 128 + 40 per metre from its middle line (less on its other
-// side), over 255; 0 off a road.
-varying float road_d_v;
+// Near a road up close: metres from its middle line (negative on its other side), and
+// 1 where that is known (the terrain's UV).
+varying vec2 road_v;
 #ifdef FAR_LAND
 // The forest seen from afar: crown colour (sRGB) and how densely the trees stand; and
 // the distance from a river's centre (in six half-widths: under 1/6 is water).
@@ -181,9 +181,9 @@ void vertex() {
 	form_v = CUSTOM2.xy;
 	scar_v = CUSTOM2.zw;
 	cover_v = CUSTOM3;
-	road_d_v = CUSTOM2.z;
+	road_v = UV;
 #ifdef FAR_LAND
-	road_d_v = 0.0;
+	road_v = vec2(0.0);
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
 	river_v = CUSTOM2.w;
 	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
@@ -218,10 +218,10 @@ void fragment() {
 	vec2 p = wpos.xz;
 	// A road's middle line: how far this point is from it in metres, to one side or the
 	// other, and which way that distance grows, for the wheel ruts.
-	float rd_known = step(0.5, road_d_v * 255.0);
-	float rd_m = (road_d_v * 255.0 - 128.0) / 40.0;
+	float rd_known = smoothstep(0.9, 1.0, road_v.y);
+	float rd_m = road_v.x;
 	mat2 jm = mat2(vec2(dwx.x, dwy.x), vec2(dwx.z, dwy.z));
-	vec2 rd_dir = abs(determinant(jm)) > 1e-14 ? inverse(jm) * vec2(dFdx(road_d_v), dFdy(road_d_v)) : vec2(0.0);
+	vec2 rd_dir = abs(determinant(jm)) > 1e-14 ? inverse(jm) * vec2(dFdx(road_v.x), dFdy(road_v.x)) : vec2(0.0);
 	rd_dir /= max(length(rd_dir), 1e-9);
 
 	// Multi-scale variation: macro patches, meso clumps, micro grain. On steep faces the

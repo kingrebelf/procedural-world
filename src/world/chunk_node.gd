@@ -71,14 +71,17 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	# Packed arrays held in an Array are copied on access, so the three look streams
 	# are separate locals (passed to helpers by reference).
 	var has_look := not lb.is_empty()
-	# Up close, how far each point of a road is from its middle (the wheel ruts), in the
-	# third look stream's spare byte.
+	# Up close, how far each point near a road is from its middle (for the wheel ruts), as
+	# the vertex UV: (metres to one side or the other, 1), (0, 0) away from roads.
 	var mid: PackedByteArray = chunk.get("road_mid", PackedByteArray()) if step == 1 else PackedByteArray()
+	var uvs := PackedVector2Array()
+	if not mid.is_empty():
+		uvs.resize(n * n)
 	var human := Eras.theme == "human"
 	var l0 := PackedByteArray()
 	var l1 := PackedByteArray()
 	var l2 := PackedByteArray()
-	if has_look or not mid.is_empty():
+	if has_look:
 		l0.resize(n * n * 4)
 		l1.resize(n * n * 4)
 		l2.resize(n * n * 4)
@@ -114,8 +117,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - rd)
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
-			if not mid.is_empty():
-				l2[v * 4 + 2] = mid[k]
+			if not mid.is_empty() and mid[k] > 0:
+				uvs[v] = Vector2((mid[k] - 128) / 20.0, 1.0)
 			for b in 4:
 				cv[v * 4 + b] = cover[k * 4 + b]
 	# Up close, a cave mouth is an opening in the ground (far off the hole is too small to
@@ -149,6 +152,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
+	if not uvs.is_empty():
+		arr[Mesh.ARRAY_TEX_UV] = uvs
 	if not l0.is_empty():
 		arr[Mesh.ARRAY_CUSTOM0] = l0
 		arr[Mesh.ARRAY_CUSTOM1] = l1
