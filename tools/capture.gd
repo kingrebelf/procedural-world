@@ -459,8 +459,13 @@ func _run() -> void:
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
-	var b := _find_border(g)
-	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
+	if not ZoneBorder.rings().is_empty() and WorldField.terrain_v >= 16 and (only.is_empty() or only.has("04") or only.has("73")):
+		await _zone_shots(g)
+	else:
+		var b := _find_border(g)
+		await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
+	if WorldField.terrain_v >= 16 and (only.is_empty() or only.has("74") or only.has("75")):
+		await _crash_and_crater_shots(g)
 	if not fan.is_empty():
 		var c: Vector2 = fan["center"]
 		await _shot("05_fantasy_village_night", c + Vector2(40, -34), c, 0.93)
@@ -518,6 +523,116 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## v16 human worlds, the first zone line (or the next if none of its roads has a checkpoint):
+## 04 the checkpoint on the road from the medieval side, looking out over the toll bar to
+## the watchtower and the land beyond; 70 the line of boundary stones running away across
+## open country.
+func _zone_shots(_g: ChunkGenerator) -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var rs := ZoneBorder.rings()
+	var cp := {}
+	for R in rs:
+		if not cp.is_empty():
+			break
+		for it in ZoneBorder.checkpoints(g, R, ZoneBorder._band(R), Rect2(-R - 100.0, -R - 100.0, 2.0 * R + 200.0, 2.0 * R + 200.0)):
+			if it["t"] == "border_bar" or it["t"] == "border_barrier":
+				cp = it
+				cp["R"] = R
+				break
+	if not cp.is_empty():
+		var x: Vector2 = cp["p"]
+		var f := Vector2(sin(float(cp["yaw"])), cos(float(cp["yaw"])))
+		# Stand back on the old side of the line (the road changes under the camera's
+		# gaze), off to the left of the road so the held tool doesn't hide the bar.
+		var back := 24.0
+		while back < 80.0 and (x - f * back).length() > float(cp["R"]) - 8.0:
+			back += 4.0
+		var cam := x - f * back - f.orthogonal() * 3.0
+		await _shot("04_era_border", cam, x + f * 6.0 - f.orthogonal() * 2.5, 0.4, 1.8, g.field.height(x.x, x.y) + 2.5, Callable(), 6.0)
+	else:
+		print("no zone checkpoint found")
+	# Stones across open ground: on the line, away from roads, looking along it.
+	var R0: float = rs[0]
+	for i in 720:
+		var a := i * TAU / 720.0
+		var p := Vector2(cos(a), sin(a)) * (R0 - 5.0)
+		var h := g.field.height(p.x, p.y)
+		if h < Water.LEVEL + 2.0:
+			continue
+		var open := true
+		for k in 8:
+			var q := Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0
+			open = open and absf(g.field.height(q.x, q.y) - h) < 4.0
+		if not open or not g.roads_near(p.x - 60.0, p.y - 60.0, p.x + 60.0, p.y + 60.0).is_empty():
+			continue
+		for k in 8:
+			open = open and _dry(g, Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0)
+		if not open or not _dry(g, p):
+			continue
+		# Just inside the line, looking along it so the next few stones stand in a row.
+		var along := Vector2(cos(a + 0.035), sin(a + 0.035)) * R0
+		await _shot("73_zone_stones", Vector2(cos(a), sin(a)) * (R0 - 2.5), along, 0.42, 1.8, h + 0.6, Callable(), 3.0)
+		return
+	print("no open stretch of the zone line found")
+
+## 71 the Fallen Dreadnought from above its trench, looking down it to the hull; 72 the
+## crest of a big crater, looking across its bowl to the far rim and the ejecta beyond.
+func _crash_and_crater_shots(_g: ChunkGenerator) -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	if only.is_empty() or only.has("74"):
+		var cr := {}
+		for r in 16:
+			for wz in range(-r, r + 1):
+				for wx in range(-r, r + 1):
+					if not cr.is_empty() or maxi(absi(wx), absi(wz)) != r:
+						continue
+					var pick := WonderSite.cell_pick(g.seed, wx, wz)
+					if not pick.is_empty():
+						cr = WonderSite.crash_of(g, pick[0])
+		if cr.is_empty():
+			print("no crashed dreadnought found")
+		else:
+			var c := Vector2(cr["x"], cr["z"])
+			var back := Vector2(0, -float(cr["len"]) * 0.75).rotated(-float(cr["yaw"]))
+			var cam := c + back + back.orthogonal().normalized() * 26.0
+			print("dreadnought crash at ", c, " trench ", cr["len"], " m")
+			await _shot("74_dreadnought_trench", cam, c + back * 0.15, 0.38, 22.0, float(cr["hb"]) + 2.0)
+	if only.is_empty() or only.has("75"):
+		var best := Vector2.INF
+		for rr in 14:
+			for iz in range(-rr, rr + 1):
+				for ix in range(-rr, rr + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != rr:
+						continue
+					if g.field.site_landform(ix, iz) == WorldField.LF_CRATERS:
+						var sp := g.field.site_pos(ix, iz)
+						if g.field.landform_weights(sp.x, sp.y)[WorldField.LF_CRATERS] > 0.95:
+							best = sp
+		if best == Vector2.INF:
+			print("no crater field found")
+			return
+		# The biggest crater near the heart of the field, from a point on its crest.
+		var top := {}
+		for j in range(-12, 13):
+			for i in range(-12, 13):
+				var p := best + Vector2(i, j) * 12.0
+				var c := g.field._crater_at(p.x, p.y)
+				if c.is_empty() or absf(float(c[5]) - 1.0) > 0.04 or float(c[3]) < 1.0:
+					continue
+				if top.is_empty() or float(c[0]) > float(top["r"]):
+					var d0 := g.field._cell(p.x, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x
+					var gx := g.field._cell(p.x + 0.5, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0
+					var gz := g.field._cell(p.x, p.y + 0.5, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0
+					var out := Vector2(gx, gz).normalized()
+					top = {"r": c[0], "p": p, "mid": p - out * float(c[0])}
+		if top.is_empty():
+			print("no crater crest found")
+			return
+		var p: Vector2 = top["p"]
+		var mid: Vector2 = top["mid"]
+		var cam := p + (p - mid).normalized() * 6.0 + (p - mid).orthogonal().normalized() * 10.0
+		await _shot("75_crater_rim", cam, mid + (mid - p) * 0.6, 0.4, 3.0, g.field.height(mid.x, mid.y) + 4.0)
 
 ## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
 ## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
@@ -808,6 +923,9 @@ func _wonder_types() -> void:
 				var k: Vector2i = pick[0]
 				var c := g.generate(k.x, k.y)
 				if c.has("wonder") and not found.has(c["wonder"]["t"]):
+					found[c["wonder"]["t"]] = c
+				elif c.has("wonder") and c["wonder"].has("crash") and not found[c["wonder"]["t"]]["wonder"].has("crash"):
+					# A dreadnought at the end of its trench over one that lies on its plaza.
 					found[c["wonder"]["t"]] = c
 	for i in WonderSite.TYPES.size():
 		var t: String = WonderSite.TYPES[i]

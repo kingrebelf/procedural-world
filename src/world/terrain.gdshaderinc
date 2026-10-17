@@ -47,6 +47,9 @@ uniform float snow_line = 40.0;
 // Human worlds dress sci-fi land as the wilds; there the blue vertex channel only says
 // where a road is paved (outpost streets and the roads of the tech era).
 uniform bool paved_roads = false;
+// Human worlds (v16 marks them, ZoneBorder.rings): radii from the origin where the road
+// surface changes, Medieval lands to Borderlands (x) and Borderlands to the frontier (y).
+uniform vec2 zone_rings = vec2(-1.0);
 // Linear-space mean colour of each texture (printed by tools/make_textures.py). Detail is
 // the texture's brightness relative to its mean, recoloured by the era palette and mixed
 // with some of the photo's own colour.
@@ -82,6 +85,7 @@ varying vec3 wnorm;
 varying vec4 stone_v;
 varying vec4 soil_v;
 varying vec2 form_v;
+varying vec2 scar_v; // (v16) x: scorched by a crash, y: fresh crater spoil
 varying vec4 cover_v;
 // On a road up close: 128 + 40 per metre from its middle line (less on its other
 // side), over 255; 0 off a road.
@@ -175,6 +179,7 @@ void vertex() {
 	stone_v = CUSTOM0;
 	soil_v = CUSTOM1;
 	form_v = CUSTOM2.xy;
+	scar_v = CUSTOM2.zw;
 	cover_v = CUSTOM3;
 	road_d_v = CUSTOM2.z;
 #ifdef FAR_LAND
@@ -182,6 +187,7 @@ void vertex() {
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
 	river_v = CUSTOM2.w;
 	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
+	scar_v = vec2(0.0);
 #endif
 }
 
@@ -407,6 +413,30 @@ void fragment() {
 	}
 	vec3 col = mix(ground, rock, rock_mask);
 
+	// (v16) Fresh crater spoil: paler broken rock and grit along the crests and the upper
+	// walls, and rays of it out across the blanket round each crater.
+	if (scar_v.y > 0.01) {
+		float a = smoothstep(0.15, 0.7, scar_v.y + (meso - 0.5) * 0.45 + (micro - 0.5) * 0.2);
+		vec3 sp = mix(rock, soil, 0.3) * 1.15 * (0.85 + 0.3 * micro);
+		if (use_textures) {
+			vec3 gt = untiled(gravel_tex, p + 131.0, gp, GRAVEL_TILE * 1.2, meso, far).rgb;
+			sp = recolor(gt, GRAVEL_MEAN, sp, 0.45);
+			tilt = mix(tilt, untiled_n(gravel_nrm, p + 131.0, gp, GRAVEL_TILE * 1.2, meso, far) * 1.2, a);
+		}
+		col = mix(col, sp, a * (1.0 - rock_mask * 0.4));
+	}
+	// (v16) Where a warship came down: sand and earth blackened along its trench and round
+	// the hull, and fused into dark glass in streaks where it burned hottest.
+	float glass = 0.0;
+	if (scar_v.x > 0.01) {
+		float burn = smoothstep(0.1, 0.6, scar_v.x + (meso - 0.5) * 0.5 + (micro - 0.5) * 0.15);
+		col = mix(col, col * vec3(0.2, 0.18, 0.17) + vec3(0.01), burn * 0.92);
+		// Only on the flat trench floor where the melt pooled; banks and walls stay soot.
+		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - smoothstep(0.08, 0.2, slope)) * (1.0 - rock_mask) * (1.0 - far * 0.5);
+		col = mix(col, vec3(0.02, 0.026, 0.024) + vec3(0.025, 0.035, 0.028) * micro, glass);
+		tilt *= 1.0 - glass * 0.35;
+	}
+
 	// Roads and village squares (vertex alpha): packed earth and gravel, pale flagstones
 	// in the fey lands, dark grit in sci-fi ones. Ragged at the edges like a worn track.
 	float road = 1.0 - COLOR.a;
@@ -429,9 +459,42 @@ void fragment() {
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
 		vec3 rc = rm * w.r + rf * w.g + rs * w.b;
+		// Human worlds: the road changes where it crosses into the next zone (ZoneBorder),
+		// packed earth in the medieval lands, laid setts in the Borderlands, tarmac beyond.
+		float zr = length(p) + (meso - 0.5) * 1.5;
+		float b1 = zone_rings.x > 0.0 ? step(zone_rings.x, zr) : 0.0;
+		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
+		vec2 dome = vec2(0.0);
+		if (b1 > 0.0 && b2 < 1.0) {
+			vec2 sq = p * vec2(2.3, 3.1);
+			float row = floor(sq.y);
+			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35;
+			vec2 cid = floor(sq);
+			vec2 f = fract(sq) - 0.5;
+			float joint = smoothstep(0.34, 0.47, max(abs(f.x), abs(f.y))) * (1.0 - far);
+			float hs = hash12(cid);
+			float hs2 = hash12(cid + 1.7);
+			// Old setts: each stone its own shade, some warm, some cool, sunk or tipped.
+			vec3 sett = mix(vec3(0.24, 0.23, 0.21), vec3(0.4, 0.37, 0.33), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
+			sett *= (0.78 + 0.22 * hs2) * (0.85 + 0.25 * micro);
+			// Mud trodden over the stones in drifts, and the joints packed with dirt and moss.
+			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2);
+			sett = mix(sett, rm * 0.8, dirt * 0.55);
+			float moss = smoothstep(0.42, 0.72, fbm(p * 0.21 + 41.0)) * (1.0 - dirt * 0.6);
+			vec3 fill = mix(rm * 0.6, vec3(0.13, 0.17, 0.07) * (0.8 + 0.4 * micro), moss * 0.75);
+			sett = mix(sett, fill, moss * 0.25 * hs2);
+			// Towards the edges stones are missing and the grass has crept in over them.
+			float in_road = smoothstep(0.3, 0.95, road + (meso - 0.5) * 0.35);
+			float keep = step(hash12(cid + 3.1), in_road * 1.35 - 0.1) * step(hash12(cid + 9.7), 0.97);
+			rc = mix(mix(rm * 0.85, fill, moss * 0.5), mix(sett, fill, joint), keep);
+			edge *= 1.0 - (1.0 - keep) * (1.0 - smoothstep(0.35, 0.8, in_road)) * 0.85;
+			vec2 tip = (vec2(hash12(cid + 4.2), hash12(cid + 6.6)) - 0.5) * 0.5;
+			dome = (f * 0.6 + tip) * (1.0 - joint) * keep * (1.0 - far);
+		}
+		paved = max(paved, b2);
 		// Wheel ruts in the earth roads: two tracks a cart's width apart, packed dark and
 		// smooth and sunk a few centimetres, and a strip of grass left between them.
-		float cart = edge * w.r * (1.0 - paved) * (1.0 - far) * rd_known * (1.0 - smoothstep(2.0, 3.0, abs(rd_m)));
+		float cart = edge * w.r * (1.0 - paved) * (1.0 - far) * rd_known * (1.0 - smoothstep(2.0, 3.0, abs(rd_m))) * (1.0 - b1);
 		vec2 rut_tilt = vec2(0.0);
 		if (cart > 0.01) {
 			// The track wanders a little within the road.
@@ -463,7 +526,7 @@ void fragment() {
 		}
 		col = mix(col, rc, edge * (1.0 - rock_mask * 0.6));
 		tilt *= 1.0 - edge * mix(0.4, 0.85, paved);
-		tilt += rut_tilt;
+		tilt += rut_tilt + dome * edge;
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
@@ -593,9 +656,9 @@ void fragment() {
 
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
-	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow);
+	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
 	METALLIC = plates * 0.6;
-	SPECULAR = 0.4;
+	SPECULAR = mix(0.4, 0.5, glass);
 #ifdef FAR_LAND
 	ROUGHNESS = mix(mix(ROUGHNESS, 0.95, canopy), 0.06, river);
 	SPECULAR = mix(mix(0.4, 0.25, canopy), 0.5, river);

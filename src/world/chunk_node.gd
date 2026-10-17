@@ -49,6 +49,7 @@ static func ensure_shared() -> void:
 		terrain_material.set_shader_parameter("use_textures", all)
 		terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
 		terrain_material.set_shader_parameter("paved_roads", Eras.theme == "human")
+		terrain_material.set_shader_parameter("zone_rings", ZoneBorder.road_rings())
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_material.set_shader_parameter("detail", detail_mult)

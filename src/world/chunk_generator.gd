@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 15 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers.
+const GEN_VERSION := 16 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: zone borders marked (ZoneBorder), craters with rims and ejecta, the Fallen Dreadnought's trench.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -818,7 +818,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 		look.resize(CN * CN * LOOK_BYTES)
 		for c in CN * CN:
 			WorldField.look_bytes(coarse_lf[c], look, c * LOOK_BYTES)
-			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0
+			# v16: fresh spoil round the craters (byte 11). On human worlds the craters are
+			# old and grassed over (see crater_spoil), bare only on the inner lip.
+			var lc: float = coarse_lf[c][WorldField.LF_CRATERS]
+			if lc > WorldField.LF_FADE.x and WorldField.terrain_v >= 16:
+				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
+				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
+				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+
+			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
 			look = PackedByteArray()
 	var chunk := {
@@ -839,6 +847,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["road"] = road_mask
 		if any_mid:
 			chunk["road_mid"] = road_mid
+	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
+	for cr in WonderSite.crashes_near(self, cx, cz):
+		WonderSite.scar(self, chunk, cr)
+		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
 		_place_bridges(chunk, roads)
 	if outposts and not roads.is_empty():
@@ -949,7 +961,8 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
 	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
 	var k := (j * LOOK_N + i) * LOOK_BYTES
-	return 1.0 - maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7)
+	# (v16: scorched ground and fresh crater spoil grow little either.)
+	return 1.0 - maxf(maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7), maxf(lb[k + 10] / 255.0 * 0.95, lb[k + 11] / 255.0 * 0.6))
 
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
@@ -1083,6 +1096,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	# v11: a hidden find, very rarely, once the buildings and landmarks have their room.
 	if eggs:
 		EasterEggs.place(self, chunk)
+	# v16: boundary markers and checkpoints where one zone of a human world meets the next.
+	if WorldField.terrain_v >= 16:
+		ZoneBorder.place(self, chunk, sites)
 
 	# Nothing grows or lies inside a building (or a neighbour's reaching in).
 	var plans := keep_out(chunk)
@@ -1160,7 +1176,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
-			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
+			var lf := field.landform_at(x0 + lx, z0 + lz)
+			rd *= WorldField.LANDFORM_ROCKS[lf]
+			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
+				rd *= field.crater_rocks(x0 + lx, z0 + lz)
 		var rocks: Array = bp["rocks"]
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
