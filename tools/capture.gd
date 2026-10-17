@@ -281,7 +281,8 @@ func _ground_shots(g: ChunkGenerator) -> void:
 	if cliff != Vector4.ZERO:
 		var at := Vector2(cliff.x, cliff.y)
 		var to := Vector2(cliff.z, cliff.w)
-		await _shot("51_cliff_scree", at - (to - at).normalized() * 6.0, to, 0.4, 1.7, g.field.height(to.x, to.y) - 2.0)
+		# From further back and a little up, so a bush at the cliff foot doesn't fill the frame.
+		await _shot("51_cliff_scree", at - (to - at).normalized() * 16.0, to, 0.4, 3.0, g.field.height(to.x, to.y) - 4.0)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell
