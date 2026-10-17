@@ -4225,3 +4225,9 @@ func test_camera_feel() -> void:
 	CameraBlur.strength = 0.0
 	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
 	CameraBlur.strength = old
+
+func test_fov_is_horizontal() -> void:
+	var gs = load("res://src/settings/graphics_settings.gd")
+	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
+	check(absf(gs.vertical_fov(121.28) - 90.0) < 0.05, "the old 90 tall is about 121 across")
+	check(is_equal_approx(float(gs.DEFAULTS["fov"]), 90.0), "the default view is 90 degrees across")
