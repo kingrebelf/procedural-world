@@ -257,7 +257,11 @@ void sky() {
 	vec2 gv = vec2(dFdx(v), dFdy(v));
 	if (star_vis > 0.0 && d.y > 0.0) {
 		if (!AT_CUBEMAP_PASS) {
-			col += textureGrad(night_stars, vec2(u, v), vec2(gx, gv.x), vec2(gy, gv.y)).rgb * star_vis * stars_gain;
+			vec3 st = textureGrad(night_stars, vec2(u, v), vec2(gx, gv.x), vec2(gy, gv.y)).rgb;
+			// The dark-adapted eye sees the Milky Way nearly grey, and low down the air
+			// dims it (the core's red dust lanes made a magenta band along the horizon).
+			st = mix(vec3(dot(st, vec3(0.3, 0.55, 0.15))), st, 0.55);
+			col += st * star_vis * stars_gain * mix(0.2, 1.0, smoothstep(0.03, 0.4, d.y));
 		}
 	}
 

@@ -484,15 +484,16 @@ func _run() -> void:
 	var sky_dir := Vector2(2, 1).normalized()
 	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.38))
 	# Moonrise from the same hill: a full moon a third of the way up the east, the land under
-	# it lit cool and casting moon shadows. Then a half moon setting in the west at
-	# midnight, so the phase on the disc and the dimmer light both show.
+	# it lit cool and casting moon shadows. Then a waxing moon, a little over half, low in
+	# the west at midnight (as clear a sky as 39's), so the phase on the disc and the
+	# dimmer light both show.
 	var keep_moon := Atmosphere.moon_phase_override
 	if keep_moon < 0.0:
 		Atmosphere.moon_phase_override = 0.5
 	await _shot("70_moonrise", hill, hill + Vector2(200.0, 60.0), 0.85, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.3))
 	if keep_moon < 0.0:
-		Atmosphere.moon_phase_override = 0.25
-	await _shot("71_half_moon", hill, hill + Vector2(-200.0, 60.0), 0.95, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.25))
+		Atmosphere.moon_phase_override = 0.3
+	await _shot("71_half_moon", hill, hill + Vector2(-200.0, 63.0), 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.27))
 	Atmosphere.moon_phase_override = keep_moon
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:

@@ -334,13 +334,14 @@ func _update_time_of_day() -> void:
 	var cover0: float = cc0 if cc0 != null else 0.0
 	# 0..1: how moonlit the night is (sky glow, clouds and the light itself go by it).
 	var moonlit := sun_down * moon_up * moon_bright
-	moon.light_energy = 0.55 * moonlit * lerpf(1.0, 0.55, smoothstep(0.5, 0.95, cover0))
+	moon.light_energy = 0.45 * moonlit * lerpf(1.0, 0.55, smoothstep(0.5, 0.95, cover0))
 	moon.shadow_opacity = lerpf(1.0, 0.6, cover0)
 	moon.visible = moon.light_energy > 0.002
 	# The eye may only brighten a dark scene so far: a night outdoors reads as night (cool
-	# moonlight, warm windows) instead of dusk, but the land stays readable. Underground it
-	# adapts fully to the torch.
-	_cam_attr.auto_exposure_min_sensitivity = lerpf(82.0, 60.0, maxf(daylight, underground))
+	# moonlight, warm windows) instead of dusk, but the land stays readable. Under a bright
+	# moon it is held back more (a full moon read as dusk), on a moonless night it adapts
+	# further. Underground it adapts fully to the torch.
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(55.0, 105.0, moonlit), 60.0, maxf(daylight, underground))
 	# The eye loses colour in the dark (rod vision): a little less saturation at night.
 	env.adjustment_saturation = lerpf(0.98, 0.8, (1.0 - daylight) * (1.0 - underground))
 
@@ -398,8 +399,12 @@ func _update_time_of_day() -> void:
 	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
 	# At night the sky's light is starlight and airglow (and the moonlit sky's), weak but
 	# enough to see the shapes of the land on the side away from the moon.
-	# (Only in full night: dusk keeps its shaded side.)
+	# (Only in full night: dusk keeps its shaded side.) The night sky is too dark to light
+	# much by itself, so part of the night fill is a flat cool starlight: on a moonless
+	# night the land, the trees and the skyline still stand out as dim shapes.
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
+	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
+	env.ambient_light_color = Color(0.1, 0.12, 0.18)
 	env.ambient_light_energy = (lerpf(0.2, 0.6, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
