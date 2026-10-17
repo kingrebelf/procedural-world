@@ -12,6 +12,8 @@ var _trader_chunk: ChunkNode
 var _store_obj: Dictionary ## the storage chest that is open
 var _store_chunk: ChunkNode
 var _store: Inventory
+var _corpses: Corpses ## the body that is open (mode "corpse")
+var _corpse_key := ""
 var _backdrop: TextureRect ## darkens the world behind an open menu
 var _animate := false ## the next panel built fades and scales in
 
@@ -123,6 +125,18 @@ func open_storage(o: Dictionary, chunk: ChunkNode) -> void:
 	_store = Storage.open(o)
 	open("storage")
 
+## A carcass or a person's body: take what is on it.
+func open_corpse(corpses: Corpses, key: String) -> void:
+	var c := corpses.record(key)
+	if c.is_empty():
+		return
+	_corpses = corpses
+	_corpse_key = key
+	_store = Inventory.new(CorpseLoot.SLOTS)
+	if c.get("items") is Dictionary:
+		_store.from_data(c["items"])
+	open("corpse")
+
 ## An ancient portal: pick a world to step through to.
 func open_portal(o: Dictionary, chunk: ChunkNode) -> void:
 	_store_obj = o
@@ -138,6 +152,9 @@ func open_travel(o: Dictionary, chunk: ChunkNode) -> void:
 	open("travel")
 
 func _store_changed() -> void:
+	if _mode == "corpse":
+		_corpse_changed()
+		return
 	Storage.save(_store_obj, _store)
 	if _store_chunk and is_instance_valid(_store_chunk):
 		Game.mark_chunk_dirty(_store_chunk.data)
@@ -155,6 +172,7 @@ func _refresh() -> void:
 		"craft": _panel = _craft_panel()
 		"trade": _panel = _trade_panel()
 		"storage": _panel = _storage_panel()
+		"corpse": _panel = _corpse_panel()
 		"travel": _panel = _travel_panel()
 		"portal": _panel = _portal_panel()
 		"map": _panel = _map_panel()
@@ -711,6 +729,75 @@ func _storage_panel() -> Control:
 	for i in Inventory.SIZE:
 		pg.add_child(_move_button(Game.inventory, i, _store))
 	v.add_child(pg)
+	return s[0]
+
+# --- Bodies ----------------------------------------------------------------------------
+
+static func _worth(inv: Inventory) -> int:
+	var n := 0
+	for i in inv.capacity:
+		var it = inv.get_slot(i)
+		if it != null:
+			n += int(ItemDB.def(it["type"]).get("value", 1)) * int(it["qty"])
+	return n
+
+## Writes what is left back onto the body and tells Corpses what was taken (theft, in town).
+func _corpse_changed(marks := 0) -> void:
+	var c := _corpses.record(_corpse_key) if is_instance_valid(_corpses) else {}
+	if c.is_empty():
+		close()
+		return
+	var before := 0
+	if c.get("items") is Dictionary:
+		var old := Inventory.new(CorpseLoot.SLOTS)
+		old.from_data(c["items"])
+		before = _worth(old)
+	c["items"] = _store.to_data()
+	_corpses.took_from(_corpse_key, maxi(0, before - _worth(_store)) + marks)
+	if not CorpseLoot.has_any(c) and c["kind"] == "animal":
+		close()
+		return
+	_refresh()
+
+func _take_purse() -> int:
+	var c := _corpses.record(_corpse_key) if is_instance_valid(_corpses) else {}
+	var m := int(c.get("purse", 0))
+	if m > 0:
+		c["purse"] = 0
+		Game.give({"type": "_marks", "qty": m})
+	return m
+
+func _corpse_panel() -> Control:
+	var c := _corpses.record(_corpse_key) if is_instance_valid(_corpses) else {}
+	var person: bool = c.get("kind", "") == "person"
+	var title := ("%s (dead)" % c.get("name", "Someone")) if person else "%s carcass" % c.get("name", "Animal")
+	var kg := Game.inventory.weight()
+	var s := _shell(title, "Click an item to take it. Your pack: %.0f / %d kg." % [kg, int(Game.stats.carry_capacity())])
+	var v: VBoxContainer = s[1]
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 10)
+	bar.add_child(UITheme.label("ON THE BODY" if person else "LEFT ON THE CARCASS", 15, UITheme.ACCENT))
+	var sp := Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(sp)
+	var purse := int(c.get("purse", 0))
+	if purse > 0:
+		bar.add_child(UITheme.button("Take purse (%d Marks)" % purse, func():
+			_corpse_changed(_take_purse())))
+	bar.add_child(UITheme.button("Take all", func():
+		var m := _take_purse()
+		Storage.transfer_all(_store, Game.inventory)
+		_corpse_changed(m)))
+	v.add_child(bar)
+	var g := GridContainer.new()
+	g.columns = 10
+	g.add_theme_constant_override("h_separation", 6)
+	g.add_theme_constant_override("v_separation", 6)
+	for i in _store.capacity:
+		g.add_child(_move_button(_store, i, Game.inventory))
+	v.add_child(g)
+	if person and _store.free_slots() == _store.capacity and purse <= 0:
+		v.add_child(UITheme.label("Nothing left on them.", 15, UITheme.DIM))
 	return s[0]
 
 ## A slot that sends its whole stack to the other side when clicked.

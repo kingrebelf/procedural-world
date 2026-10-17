@@ -302,10 +302,7 @@ func _run() -> void:
 	await _guns(game, world, player, kc, bare)
 	world.fauna._herds.erase(Vector2i(99999, 99999))
 	world.fauna._scan = 0.0
-	kc.hurt(1.0)
-	kc.die()
-	await _frames(2)
-	check(kc._kit._current == "Death" and kc._body == null, "kit animal plays its death and stops being hittable")
+	await _corpses(game, world, player, kc)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	game.inventory.add(ItemDB.make("speeder", 1, 1.0, {}))
@@ -557,6 +554,78 @@ func _audio_checks(world, player) -> void:
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music slider at zero mutes the music bus")
 	s.set_value("music_volume", old)
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
+
+## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
+## butchered for meat, hide and bone; a dead person's body holds their gear and purse.
+func _corpses(game, world, player, kc: Creature) -> void:
+	var label := kc.label()
+	var at := kc.global_position
+	kc.hp = 1.0
+	world.fauna.player_hit(kc, 10.0)
+	await _frames(3)
+	check(not is_instance_valid(kc), "the killed animal stops being a live creature")
+	var found := {}
+	for b in world.corpses.near(at, 4.0):
+		if b["rec"]["kind"] == "animal" and b["rec"]["name"] == label:
+			found = b
+	check(not found.is_empty(), "a carcass lies where the %s fell" % label)
+	if found.is_empty():
+		return
+	var key: String = found["key"]
+	var cr = world.corpses._shown[key]["node"]
+	check(cr is Creature and cr.as_corpse and cr._body == null, "the carcass is drawn, with no hit box")
+	if cr is Creature and cr._kit != null and not cr._kit.procedural():
+		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
+	check(Corpses.use_of(found["rec"])[0] == "carcass", "a fresh carcass is held to butcher")
+	var cn: ChunkNode = world.corpses._shown[key]["cn"]
+	game.flush_chunks()
+	var saved = game.store.load_chunk(int(cn.data["cx"]), int(cn.data["cz"]))
+	check(saved is Dictionary and saved.get("corpses", {}).has(world.corpses._shown[key]["id"]), "the carcass is saved with its chunk")
+	var bone0: int = game.inventory.count("bone")
+	world.corpses.butcher(key, ItemDB.make("skinning_knife", 1, 1.0, {}))
+	check(game.inventory.count("bone") > bone0, "butchering gives bone")
+	check(world.corpses.record(key).get("butchered", false), "the carcass is marked butchered")
+	world.corpses._scan = 0.0
+	await _frames(3)
+	check(world.corpses.record(key).is_empty(), "a picked-clean carcass is gone")
+	# A guard, killed: their body keeps their armour, things and purse.
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	var rec := NPCGen.person(r, Eras.MEDIEVAL, 0, 9999, 9999)
+	rec["job"] = "guard"
+	rec["home"] = Vector2(at.x, at.z)
+	rec["work"] = Vector2(at.x, at.z)
+	rec["pos"] = at
+	var n := NPC.new()
+	n.setup(rec, {"sx": 9999, "sz": 9999, "name": "Testford", "npcs": [rec]}, world.npcs)
+	world.add_child(n)
+	await _frames(2)
+	var purse := int(rec["purse"])
+	var gear_n: int = rec["gear"].size()
+	world.corpses.add_person(n)
+	n.queue_free()
+	world.corpses._scan = 0.0
+	await _frames(3)
+	var body := {}
+	for b in world.corpses.near(at, 4.0):
+		if b["rec"]["kind"] == "person":
+			body = b
+	check(not body.is_empty(), "a dead person leaves a body")
+	if body.is_empty():
+		return
+	check(gear_n > 0 and Corpses.still_worn(body["rec"]).size() == gear_n, "the body still wears its armour (%d pieces)" % gear_n)
+	check(int(body["rec"]["purse"]) == purse and int(rec["purse"]) == 0, "the purse is on the body")
+	var menus = world.menus
+	menus.open_corpse(world.corpses, body["key"])
+	check(menus._mode == "corpse", "searching a body opens it")
+	var money0: int = game.money
+	var m: int = menus._take_purse()
+	Storage.transfer_all(menus._store, game.inventory)
+	menus._corpse_changed(m)
+	check(game.money == money0 + purse, "taking the purse pays its Marks")
+	check(Corpses.still_worn(world.corpses.record(body["key"])).is_empty(), "taken armour comes off the body")
+	if menus._mode != "":
+		menus.close()
 
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.

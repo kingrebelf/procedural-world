@@ -23,6 +23,7 @@ const BREATH := 30.0
 var streamer: ChunkStreamer
 var npcs: NPCManager
 var fauna: FaunaManager
+var corpses: Corpses
 var vehicles: VehicleManager
 ## The vehicle you are riding, or null.
 var vehicle: Vehicle = null
@@ -308,10 +309,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()
-		elif focus.get("kind", "") in ["built", "station", "vehicle"]:
+		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"]:
 			# Your own pieces and vehicles: tap to use (a station) or ride (a vehicle),
-			# hold to take the piece down or pack the vehicle up.
+			# hold to take the piece down or pack the vehicle up. Carcasses: hold to butcher.
 			_decon_on = {"key": _focus_key(focus), "kind": focus["kind"]}
+			if focus["kind"] == "carcass" and corpses:
+				_decon_on["time"] = corpses.butcher_time(focus["body"], held_item())
+				if body:
+					body.play_once("harvest")
 			decon = 0.0
 		else:
 			interact()
@@ -566,6 +571,14 @@ func _find_focus() -> Dictionary:
 				best_s = sc
 				best = {"kind": "vehicle", "vehicle": v, "pos": v.global_position + Vector3(0, v.height + 0.35, 0),
 					"verb": "Ride the %s   (hold: pack up)" % Vehicle.label(v.kind).to_lower()}
+	if corpses:
+		# Carcasses to butcher and bodies to search.
+		for b in corpses.near(global_position, USE_RANGE + 2.5):
+			var sc := _focus_score(eye, fwd, b["pos"] + Vector3(0, 0.4, 0))
+			if sc < best_s:
+				best_s = sc
+				var u := Corpses.use_of(b["rec"])
+				best = {"kind": u[0], "body": b["key"], "pos": b["pos"] + Vector3(0, 1.0, 0), "verb": u[1]}
 	if streamer:
 		var ck := ChunkStreamer.chunk_of(global_position)
 		for dz in range(-1, 2):
@@ -643,10 +656,18 @@ func _update_decon(delta: float) -> void:
 		decon = 0.0
 		return
 	if Input.is_action_pressed("interact"):
-		decon += delta / DECON_TIME
+		decon += delta / float(_decon_on.get("time", DECON_TIME))
 		if decon >= 1.0:
 			_decon_on = {}
 			decon = 0.0
+			if focus["kind"] == "carcass":
+				if corpses:
+					corpses.butcher(focus["body"], held_item())
+					used_tool.emit("hit")
+					if body:
+						body.play_once("interact")
+				_focus_t = 0.0
+				return
 			if focus["kind"] == "vehicle":
 				var v: Vehicle = focus["vehicle"]
 				if is_instance_valid(v):
@@ -661,7 +682,9 @@ func _update_decon(delta: float) -> void:
 				deconstruct(c, c.get_object(focus["i"]))
 		return
 	# Released early: a tap, so use the station or ride the vehicle.
-	if _decon_on["kind"] == "station" and decon < 0.5:
+	if _decon_on["kind"] == "carcass":
+		Game.toast.emit("Keep holding [%s] to %s it" % [_key("interact"), focus.get("verb", "butcher").split(" ")[0].to_lower()])
+	elif _decon_on["kind"] == "station" and decon < 0.5:
 		_use_station()
 	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
 		mount(focus["vehicle"])
@@ -866,6 +889,10 @@ func interact() -> void:
 				return
 			"plant":
 				_pick_plant(focus["found"])
+				_focus_t = 0.0
+				return
+			"corpse":
+				get_tree().call_group("trade_ui", "open_corpse", corpses, focus["body"])
 				_focus_t = 0.0
 				return
 			"lore":
@@ -1297,6 +1324,8 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 static func _focus_key(f: Dictionary) -> String:
 	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
 		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
+	if f.has("body"):
+		return "b" + String(f["body"])
 	if f.has("chunk") and is_instance_valid(f["chunk"]):
 		return "%s:%d%s" % [(f["chunk"] as ChunkNode).key, int(f["i"]), (":%d" % int(f["spot"])) if f.has("spot") else ""]
 	return ""

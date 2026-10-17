@@ -15,6 +15,7 @@ const THINK_RANGE := 45.0
 var streamer: ChunkStreamer
 var player: Node3D
 var gen: ChunkGenerator
+var corpses: Corpses
 var settlements: Dictionary = {} ## id -> {data, nodes: Array, dirty: bool}
 
 var _by_id: Dictionary = {}
@@ -449,6 +450,8 @@ func player_hit(n: NPC, damage: float) -> void:
 		if e.has("nodes"):
 			e["nodes"].erase(n)
 		_by_id.erase(rec["id"])
+		if corpses:
+			corpses.add_person(n)
 		n.queue_free()
 	else:
 		n.say(NPCMind.bark(rec, "hurt"), 3.0)

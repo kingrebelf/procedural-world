@@ -31,6 +31,12 @@ const ITEMS := {
 	"fiber": {"name": "Plant Fiber", "era": ANY, "value": 1, "stack": true, "kind": "resource", "color": Color(0.55, 0.62, 0.3)},
 	"wild_berries": {"name": "Wild Berries", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "food", "heal": 15, "color": Color(0.7, 0.12, 0.25)},
 	"hide": {"name": "Hide", "era": ANY, "value": 5, "stack": true, "kind": "resource", "color": Color(0.6, 0.45, 0.3)},
+	# From butchering (see CorpseLoot).
+	"bone": {"name": "Bone", "era": ANY, "value": 2, "stack": true, "kind": "resource", "color": Color(0.9, 0.87, 0.78)},
+	"animal_fat": {"name": "Animal Fat", "era": ANY, "value": 4, "stack": true, "kind": "resource", "color": Color(0.95, 0.9, 0.7)},
+	"antler": {"name": "Antler", "era": ANY, "value": 18, "stack": true, "kind": "resource", "color": Color(0.78, 0.66, 0.5)},
+	"fur_pelt": {"name": "Fur Pelt", "era": ANY, "value": 14, "stack": true, "kind": "resource", "color": Color(0.5, 0.45, 0.4)},
+	"leather": {"name": "Leather", "era": ANY, "value": 12, "stack": true, "kind": "resource", "color": Color(0.5, 0.33, 0.2)},
 	"ration_pack": {"name": "Ration Pack", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "food", "heal": 50, "color": Color(0.8, 0.8, 0.5)},
 	# Tools
 	"pickaxe_iron": {"name": "Iron Pickaxe", "era": Eras.MEDIEVAL, "value": 45, "stack": false, "kind": "tool", "mine": 1.0, "chop": 0.3, "damage": 8, "range": 3.0, "dig": 0.6},
@@ -83,7 +89,9 @@ const ITEMS := {
 	"war_hammer": {"name": "War Hammer", "era": Eras.MEDIEVAL, "value": 120, "stack": false, "kind": "weapon", "damage": 40, "range": 3.0, "swing": 1.45, "mine": 0.6},
 	"mace": {"name": "Flanged Mace", "era": Eras.MEDIEVAL, "value": 90, "stack": false, "kind": "weapon", "damage": 30, "range": 2.8, "swing": 1.1},
 	"spear": {"name": "Iron Spear", "era": Eras.MEDIEVAL, "value": 60, "stack": false, "kind": "weapon", "damage": 24, "range": 4.4, "swing": 1.0},
-	"dagger": {"name": "Curved Dagger", "era": ANY, "value": 50, "stack": false, "kind": "weapon", "damage": 15, "range": 2.4, "swing": 0.55},
+	"dagger": {"name": "Curved Dagger", "era": ANY, "value": 50, "stack": false, "kind": "weapon", "damage": 15, "range": 2.4, "swing": 0.55, "skin": 1.0},
+	# "skin": how well it butchers a carcass (CorpseLoot.blade_of).
+	"skinning_knife": {"name": "Skinning Knife", "era": ANY, "value": 20, "stack": false, "kind": "tool", "damage": 9, "range": 2.4, "swing": 0.6, "skin": 1.5, "color": Color(0.7, 0.68, 0.62)},
 	"longbow": {"name": "Longbow", "era": Eras.MEDIEVAL, "value": 80, "stack": false, "kind": "weapon", "damage": 30, "range": 95.0, "ranged": true, "ammo": "arrow", "shots_per_ammo": 1, "cooldown": 0.75, "tracer": "bolt"},
 	"arrow": {"name": "Arrows", "era": ANY, "value": 1, "stack": true, "kind": "ammo", "color": Color(0.55, 0.42, 0.28)},
 	# Dungeon treasure and potions.
@@ -150,7 +158,7 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 ## Weight of one item in kg, where it differs from the default for its kind.
 const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,
 	"planks": 1.0, "iron_ingot": 2.0, "mythril_ingot": 1.2, "alloy_plate": 1.5, "power_cell": 0.4, "fiber": 0.1,
-	"hide": 1.0, "silver_chalice": 0.6, "moonpearl": 0.1, "data_core": 0.3, "binoculars": 0.8, "torch": 0.5, "crossbow": 3.0, "crossbow_runic": 3.2, "scrap_pistol": 1.4, "pulse_smg": 2.6, "pulse_rifle": 3.6,
+	"hide": 1.0, "fur_pelt": 1.2, "leather": 0.8, "bone": 0.4, "animal_fat": 0.4, "antler": 1.0, "skinning_knife": 0.3, "silver_chalice": 0.6, "moonpearl": 0.1, "data_core": 0.3, "binoculars": 0.8, "torch": 0.5, "crossbow": 3.0, "crossbow_runic": 3.2, "scrap_pistol": 1.4, "pulse_smg": 2.6, "pulse_rifle": 3.6,
 	"rail_rifle": 5.0, "arc_launcher": 5.5, "bolt": 0.05, "rounds": 0.02, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
