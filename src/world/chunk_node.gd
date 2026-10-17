@@ -123,8 +123,13 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			var d := c + 1
 			if not hole.is_empty() and (hole[a] != 0 or hole[b] != 0 or hole[c] != 0 or hole[d] != 0):
 				continue
-			# Clockwise from above (Godot front faces).
-			idx.append_array([a, b, d, a, d, c])
+			# Clockwise from above (Godot front faces). Each square is split along the
+			# diagonal whose corners are closer in height, so the edges follow terrace
+			# risers, banks and ridges instead of zigzagging across them.
+			if absf(verts[a].y - verts[d].y) <= absf(verts[b].y - verts[c].y):
+				idx.append_array([a, b, d, a, d, c])
+			else:
+				idx.append_array([a, b, c, b, d, c])
 	if step > 1:
 		_add_skirts(n, verts, norms, cols, idx, 3.0 * step)
 		if has_look:
