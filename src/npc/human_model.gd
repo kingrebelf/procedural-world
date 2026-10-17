@@ -164,13 +164,14 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		style = ""
 	_dress_up(b, era, job)
 	if style != "":
-		_add_hair(style, hair_col)
+		_add_hair(style, hair_col, BodyShape.thinning(b, age))
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
 		_add_hair("Hair_Beard", hair_col)
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if not String(mi.name).contains("_shell"):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	if _body and _body.skin:
 		BodyShape.apply_girth(_body.skin, skeleton, shape)
 	animator = HumanAnimator.new()
@@ -341,7 +342,9 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	_body.set_instance_shader_parameter("accent_col", accent)
 	_body.set_instance_shader_parameter("cut", Vector4(sleeves, 0.38 if era != Eras.FANTASY else 0.2, hem, 0.0))
 
-func _add_hair(style: String, col: Color) -> void:
+## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
+## `thin` lets the scalp show through at the crown.
+func _add_hair(style: String, col: Color, thin := 0.0) -> void:
 	var path := DIR + style + ".gltf"
 	if not ResourceLoader.exists(path):
 		return
@@ -355,10 +358,19 @@ func _add_hair(style: String, col: Color) -> void:
 		mi.skin = skin
 		mi.skeleton = NodePath("..")
 		var mat_name := mi.mesh.surface_get_material(0).resource_name if mi.mesh.surface_get_material(0) else ""
-		mi.material_override = _hair_mat(2 if mat_name.ends_with("2") else 1)
+		mi.mesh = HairStrands.mesh(style, mi.mesh)
+		mi.material_override = HairStrands.material(2 if mat_name.ends_with("2") else 1)
 		mi.set_instance_shader_parameter("hair_col", col)
+		mi.set_instance_shader_parameter("strands", 1.0)
+		mi.set_instance_shader_parameter("thin", thin)
+		var layers: Array = HairStrands.shells(mi, style)
+		for sh in layers:
+			sh.set_instance_shader_parameter("hair_col", col)
+			sh.set_instance_shader_parameter("strands", 1.0)
+			sh.set_instance_shader_parameter("thin", thin)
 		if style != "Hair_Beard":
 			_hair.append(mi)
+			_hair.append_array(layers)
 	src.free()
 
 func _bone_attach(bone: String) -> BoneAttachment3D:

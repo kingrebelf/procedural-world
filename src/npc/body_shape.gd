@@ -111,6 +111,13 @@ static func hair_color(b: Dictionary, age := -1) -> Color:
 static func bald(b: Dictionary, age := -1) -> bool:
 	return age >= 0 and not b.get("female", false) and _rnd(b, "bald") < 0.55 * smoothstep(40.0, 70.0, float(age))
 
+## How thin the hair has got at the crown, 0..1 (men more than women).
+static func thinning(b: Dictionary, age := -1) -> float:
+	if age < 0:
+		return 0.0
+	var k := 0.85 if not b.get("female", false) else 0.4
+	return clampf(k * smoothstep(42.0, 78.0, float(age)) * (0.4 + 0.8 * _rnd(b, "thin")), 0.0, 1.0)
+
 ## Reshapes `skin` (a per-person copy) in place for shape `sh`: each body bone's flesh is
 ## scaled in the rest pose, so skinning carries it through every animation.
 static func apply_girth(skin: Skin, sk: Skeleton3D, sh: Dictionary) -> void:

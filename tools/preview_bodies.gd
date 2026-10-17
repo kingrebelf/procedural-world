@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders line-ups of villagers of every age, weight and build (BodyShape), front and
 ## side on, for judging body variety: slim to heavy, young to stooped and grey.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_bodies.gd -- --out=/abs/dir
-## --check runs headless and
+## --heads frames the heads close up (hair and faces). --check runs headless and
 ## prints each body's feet height and head height (feet must stay on the ground).
 
 ## [female, age, build (0.85..1.2), height (0.9..1.08), job]
@@ -21,6 +21,9 @@ const LINEUP := [
 	[true, 30, 1.02, 1.0, "miller"],
 ]
 
+## Who --heads frames: young and old, men and women.
+const HEADS := [0, 1, 4, 7, 8, 9]
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -33,9 +36,12 @@ func _body(i: int) -> Dictionary:
 func _run() -> void:
 	var out := "user://"
 	var check := false
+	var heads := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a == "--heads":
+			heads = true
 		elif a == "--check":
 			check = true
 	var vp := SubViewport.new()
@@ -68,15 +74,19 @@ func _run() -> void:
 	vp.add_child(ground)
 	var flat := func(_x: float, _z: float) -> float: return 0.0
 	var people: Array[HumanModel] = []
-	var n := LINEUP.size()
+	var n := 6 if heads else LINEUP.size()
+	var who: Array = []
 	for i in n:
-		var b := _body(i)
+		who.append(HEADS[i] if heads else i)
+	for i in n:
+		var j: int = who[i]
+		var b := _body(j)
 		var h := HumanModel.new()
 		vp.add_child(h)
-		h.build(b, Eras.MEDIEVAL, String(LINEUP[i][4]), int(LINEUP[i][1]))
-		var s := BodyShape.stature(b, int(LINEUP[i][1]))
+		h.build(b, Eras.MEDIEVAL, String(LINEUP[j][4]), int(LINEUP[j][1]))
+		var s := BodyShape.stature(b, int(LINEUP[j][1]))
 		h.scale = Vector3(s, s, s)
-		h.position = Vector3((i - (n - 1) * 0.5) * 0.9, 0, 0)
+		h.position = Vector3((i - (n - 1) * 0.5) * (0.42 if heads else 0.9), 0, 0)
 		h.set_ground(flat)
 		people.append(h)
 	var cam := Camera3D.new()
@@ -90,6 +100,9 @@ func _run() -> void:
 			people[i].position.z = 0.0
 		cam.position = Vector3(0, 1.0, 7.4)
 		cam.look_at(Vector3(0, 0.9, 0))
+		if heads:
+			cam.position = Vector3(0, 1.62, 1.55)
+			cam.look_at(Vector3(0, 1.5, 0))
 		var t0 := Time.get_ticks_msec()
 		var frames := 0
 		while frames < 12 or (Time.get_ticks_msec() - t0 < 900 and frames < 200):
@@ -105,10 +118,11 @@ func _run() -> void:
 				var fr := gx * sk.get_bone_global_pose(sk.find_bone("foot_r")).origin
 				var hd := gx * sk.get_bone_global_pose(sk.find_bone("Head")).origin
 				var sh: Dictionary = people[i].shape
-				print("%s %-10s %s age %d w %.2f m %.2f stoop %.2f  feet %.3f %.3f head %.2f" % [shot[0], LINEUP[i][4], "F" if LINEUP[i][0] else "M",
-					int(LINEUP[i][1]), sh["weight"], sh["muscle"], sh["stoop"], fl.y, fr.y, hd.y])
+				var row: Array = LINEUP[who[i]]
+				print("%s %-10s %s age %d w %.2f m %.2f stoop %.2f  feet %.3f %.3f head %.2f" % [shot[0], row[4], "F" if row[0] else "M",
+					int(row[1]), sh["weight"], sh["muscle"], sh["stoop"], fl.y, fr.y, hd.y])
 			continue
-		var path := out.path_join("bodies_%s.png" % shot[0])
+		var path := out.path_join("%s_%s.png" % ["heads" if heads else "bodies", shot[0]])
 		vp.get_texture().get_image().save_png(path)
 		print("saved ", path)
 	quit()
