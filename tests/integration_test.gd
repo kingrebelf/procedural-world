@@ -1206,7 +1206,7 @@ func _crowd(game, world, player) -> void:
 	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
 	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
 	for n in e["nodes"]:
-		if is_instance_valid(n) and n._human and n._human._work_tool and NPC.FIELD_TOOL_JOBS.has(n.rec["job"]):
+		if is_instance_valid(n) and n._human and is_instance_valid(n._human._work_tool) and NPC.FIELD_TOOL_JOBS.has(n.rec["job"]):
 			var in_field: bool = n.action == "work" and NPC.FIELD_DUTIES.has(String(n.duty.get("duty", "")))
 			check(n._human._work_tool.visible == in_field, "a farmer's tool is out only in the fields (%s, %s)" % [n.action, n.duty.get("duty", "")])
 			break

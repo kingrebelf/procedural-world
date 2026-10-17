@@ -493,8 +493,11 @@ func _tool(job: String) -> void:
 	for t: String in WORK_TOOLS.get(job, []):
 		var m := Viewmodel.model(t)
 		if m != null and not m.has_meta("placeholder"):
-			hold(Viewmodel.prop_for(t))
+			_work_tool = Viewmodel.prop_for(t)
+			hold(_work_tool)
 			return
+
+var _work_tool: Node3D
 
 ## How far each finger of a hand holding something curls (BodyLanguage finger order).
 const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
@@ -502,11 +505,12 @@ const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
 ## Shows or puts away the tool of their trade (a farmer's hoe has no business in the
 ## market square); the hand opens when it is away.
 func show_tool(on: bool) -> void:
-	if _work_tool == null or _work_tool.visible == on:
+	if not is_instance_valid(_work_tool) or _work_tool.visible == on:
 		return
 	_work_tool.visible = on
 	if gestures:
 		gestures.grip_r = GRIP if on else []
+		gestures.grip_rot = _wrap(_work_tool) if on else {}
 
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
 ## pose: the handle lies across the palm on a diagonal, touching it (HandGrip), and the
