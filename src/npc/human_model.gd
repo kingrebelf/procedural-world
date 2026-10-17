@@ -12,9 +12,6 @@ const ANIMS := "res://assets/models/anim/humans.res"
 const BODY := {false: "Superhero_Male_FullBody", true: "Superhero_Female_FullBody"}
 const HAIR_MALE := ["Hair_SimpleParted", "Hair_Buzzed", "Hair_Long", ""]
 const HAIR_FEMALE := ["Hair_Long", "Hair_Buns", "Hair_SimpleParted", "Hair_BuzzedFemale"]
-## Who wears a knitted wool jumper, and who dresses in velvet with gold-embroidered hems.
-const KNIT_JOBS := ["farmer", "hunter", "miller", "beekeeper", "warden", "lamplighter"]
-const TRIM_JOBS := ["priest", "bard", "mystic", "scribe", "runecarver", "innkeeper"]
 ## Dominant skin bone -> body region used by the clothing shader.
 const REGION_OF := {"Head": 0, "neck_01": 0, "spine_01": 1, "spine_02": 1, "spine_03": 1, "clavicle": 1,
 	"upperarm": 2, "lowerarm": 3, "hand": 4, "pelvis": 5, "root": 5, "thigh": 5, "calf": 6, "foot": 7, "ball": 7}
@@ -39,7 +36,7 @@ var _shield: Node3D
 var _hair: Array = [] ## hair meshes, hidden under a helmet (beards stay)
 var _headgear_node: Node3D
 var _fem := false
-var _spec: Dictionary
+var _wardrobe: Dictionary ## Outfit.wardrobe(): the cut and colours of this person's clothes
 var _current := ""
 var _oneshot := false
 
@@ -162,7 +159,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		style = "Hair_Buzzed" if not fem else "Hair_BuzzedFemale"
 	elif BodyShape.bald(b, age):
 		style = ""
-	_dress_up(b, era, job)
+	_dress_up(era)
 	if style != "":
 		_add_hair(style, hair_col, BodyShape.thinning(b, age))
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
@@ -194,28 +191,30 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	skeleton.add_child(gestures)
 	if _gripping:
 		gestures.grip_r = GRIP
+		gestures.grip_rot = _wrap(_work_tool)
 	_eyelids(b)
 	play("idle")
 	return self
 
 ## Real garments over the painted body (Outfit), in this person's colours.
-func _dress_up(b: Dictionary, era: int, job: String) -> void:
+func _dress_up(era: int) -> void:
 	if _body == null or _body.skin == null:
 		return
-	_spec = Outfit.spec_for(b, era, job)
 	_clothes = MeshInstance3D.new()
 	_clothes.name = "Clothes"
-	_clothes.mesh = Outfit.clothes(_fem, _body.mesh, _body.skin, skeleton, _spec)
+	_clothes.mesh = Outfit.clothes(_fem, _body.mesh, _body.skin, skeleton, _wardrobe["spec"])
 	_clothes.skin = _body.skin
 	skeleton.add_child(_clothes)
 	_clothes.skeleton = NodePath("..")
 	_clothes.material_override = Outfit.cloth_material()
-	for k in ["shirt_col", "pants_col", "boot_col", "accent_col"]:
-		_clothes.set_instance_shader_parameter(k, _body.get_instance_shader_parameter(k))
-	# Working folk in knitted jumpers; robes and capes in velvet with gold-embroidered hems.
+	var cols: Dictionary = _wardrobe["cols"]
+	var slots := {"shirt_col": Outfit.PART_SHIRT, "pants_col": Outfit.PART_PANTS, "boot_col": Outfit.PART_BOOTS, "skirt_col": Outfit.PART_SKIRT,
+		"cape_col": Outfit.PART_CAPE, "vest_col": Outfit.PART_TRIM, "apron_col": Outfit.PART_APRON}
+	for k in slots:
+		_clothes.set_instance_shader_parameter(k, cols[slots[k]])
+	_clothes.set_instance_shader_parameter("accent_col", _body.get_instance_shader_parameter("accent_col"))
 	_clothes.set_instance_shader_parameter("era", float(era))
-	_clothes.set_instance_shader_parameter("knit", 1.0 if job in KNIT_JOBS else 0.0)
-	_clothes.set_instance_shader_parameter("trim", 1.0 if _spec["cape"] or job in TRIM_JOBS else 0.0)
+	_clothes.set_instance_shader_parameter("trim", 1.0 if _wardrobe["trim"] else 0.0)
 
 ## Shows what this body wears: {slot: item} for any of Game.ARMOR_SLOTS. Armour is
 ## drawn on the body (Outfit), a shield on the left forearm, and a helmet hides the hair.
@@ -318,33 +317,28 @@ func gesture(name: String) -> bool:
 	return gestures != null and gestures.play(name)
 
 func _dress(b: Dictionary, era: int, job: String) -> void:
-	var cloth: Color = b["cloth"]
-	var cloth2: Color = b["cloth2"]
-	var boots := Color(0.22, 0.15, 0.1) if era != Eras.SCIFI else Color(0.14, 0.15, 0.17)
-	var fem: bool = b["female"]
-	var sleeves := 2.0
-	var hem := 0.0
+	_wardrobe = Outfit.wardrobe(b, era, job)
+	var sp: Dictionary = _wardrobe["spec"]
+	var cols: Dictionary = _wardrobe["cols"]
 	var accent := Color(0, 0, 0, 0)
-	match era:
-		Eras.MEDIEVAL:
-			sleeves = 1.0 if job in ["farmer", "smith", "miller", "hunter"] else 2.0
-			if fem or job == "priest":
-				hem = 0.12
-		Eras.FANTASY:
-			hem = 0.45 if job in ["mystic", "scribe", "runecarver", "herbalist"] else 0.0
-			if fem:
-				hem = maxf(hem, 0.3)
-			accent = Color(0.4, 1.0, 0.7, 0.0)
-		Eras.SCIFI:
-			# Glowing seams are alien fashion; human outposts wear plain work clothes.
-			accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
-			cloth2 = cloth.darkened(0.25)
+	if era == Eras.SCIFI:
+		# Glowing seams are alien fashion; human outposts wear plain work clothes.
+		accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
+	# The body under the garments is painted in the same colours, and drawn a little
+	# inside them (human.gdshader), so nothing shows through where they bend.
+	var shirt: Color = cols[Outfit.PART_SHIRT]
+	var pants: Color = cols[Outfit.PART_PANTS]
+	var boots: Color = cols[Outfit.PART_BOOTS]
 	_body.set_instance_shader_parameter("skin_col", b["skin"])
-	_body.set_instance_shader_parameter("shirt_col", cloth)
-	_body.set_instance_shader_parameter("pants_col", cloth2)
-	_body.set_instance_shader_parameter("boot_col", boots)
+	_body.set_instance_shader_parameter("shirt_col", Color(shirt.r, shirt.g, shirt.b))
+	# Under a long skirt the thighs take the skirt's colour, so a knee lifted against it
+	# doesn't show through as a different colour.
+	var long_skirt: bool = float(sp["hem"]) > 0.0 and float(sp["hem"]) < 0.45
+	var legs: Color = cols[Outfit.PART_SKIRT] if long_skirt else pants
+	_body.set_instance_shader_parameter("pants_col", Color(legs.r, legs.g, legs.b))
+	_body.set_instance_shader_parameter("boot_col", Color(boots.r, boots.g, boots.b))
 	_body.set_instance_shader_parameter("accent_col", accent)
-	_body.set_instance_shader_parameter("cut", Vector4(sleeves, 0.38 if era != Eras.FANTASY else 0.2, hem, 0.0))
+	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], 0.0, 0.0))
 
 ## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
 ## `thin` lets the scalp show through at the crown.
@@ -391,7 +385,11 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 		k.cylinder("thatch", I.translated(Vector3(0, 0.17, 0)), 0.095, 0.07, 0.09, 10)
 		k.cylinder("thatch", I.translated(Vector3(0, 0.15, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.12, -0.02)), 0.13, 0.0, 0.3, 10, true, 0.0, 1, b["cloth2"])
+		# A soft felt hat whose point flops over, on a narrow brim.
+		var felt: Color = (b["cloth2"] as Color).darkened(0.25)
+		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.115, 0.06, 0.16, 12, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, 0.25, -0.02)), 0.06, 0.0, 0.13, 10, true, 0.0, 1, felt)
 	else:
 		return
 	var mi := MeshInstance3D.new()
@@ -414,49 +412,18 @@ func _tool(era: int, job: String) -> void:
 	_bone_attach("hand_r").add_child(t)
 	t.transform = grip_transform(skeleton, t)
 	_gripping = true
+	_work_tool = t
 
 ## How far each finger of a hand holding something curls (BodyLanguage finger order).
 const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
 var _gripping := false
-
-## Where the curled fingers of a gripping right hand leave room for a handle, in the hand's
-## own space: the middle of the loop the middle finger makes with the palm, worked out by
-## curling it the way BodyLanguage does.
-static func fist_hole(sk: Skeleton3D) -> Vector3:
-	var hb := sk.find_bone("hand_r")
-	var head := sk.find_bone("Head")
-	var pelvis := sk.find_bone("pelvis")
-	if hb < 0 or head < 0 or pelvis < 0 or sk.find_bone("middle_01_r") < 0:
-		return Vector3.INF
-	var toward := (sk.get_bone_global_rest(pelvis).origin - sk.get_bone_global_rest(head).origin).normalized()
-	var g := sk.get_bone_global_rest(hb)
-	var inv := g.affine_inverse()
-	var amounts := [0.55, 0.75, 0.6]
-	var cur := g
-	var pts: Array[Vector3] = []
-	for j in 3:
-		var b := sk.find_bone("middle_%02d_r" % (j + 1))
-		if b < 0:
-			break
-		var rest := sk.get_bone_global_rest(b)
-		var axis := rest.basis.y.normalized().cross(toward)
-		var local_axis := (rest.basis.orthonormalized().inverse() * axis.normalized()).normalized()
-		var lr := sk.get_bone_rest(b)
-		cur = cur * Transform3D(Basis(lr.basis.get_rotation_quaternion() * Quaternion(local_axis, float(GRIP[2]) * amounts[j] * 2.0)), lr.origin)
-		pts.append(inv * cur.origin)
-	var leaf := sk.find_bone("middle_04_leaf_r")
-	if leaf >= 0:
-		pts.append(inv * (cur * sk.get_bone_rest(leaf).origin))
-	var c := Vector3.ZERO
-	for p in pts:
-		c += p
-	return c / float(pts.size())
+var _work_tool: Node3D
 
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
-## pose: the shaft runs along the knuckles through the fist (the fingers curl round it,
-## GRIP), and the prop is held near the low end of its handle.
+## pose: the handle lies across the palm on a diagonal, touching it (HandGrip), and the
+## prop is held near the low end of its handle; the fingers then close round it.
 ## `aim` (hand space, optional) points the prop that way instead, tilted `tilt` of the way
-## from the knuckle line, for a first-person hold that reads well on screen.
+## from its line in the hand (the fingers no longer meet it: prefer aim_handle).
 ## `point` (hand space, optional) instead aims the prop's -Z that way, keeping +Y toward
 ## `aim`: a pistol's barrel follows the view.
 static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO) -> Transform3D:
@@ -464,24 +431,28 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 	var bi := sk.find_bone("index_01_r")
 	var bp := sk.find_bone("pinky_01_r")
 	var bm := sk.find_bone("middle_01_r")
-	if hb < 0 or bi < 0 or bp < 0 or bm < 0:
+	if hb < 0 or bi < 0 or bp < 0 or bm < 0 or sk.find_bone("thumb_01_r") < 0:
 		return Transform3D(Basis.from_euler(Vector3(0, 0, -PI * 0.5)), Vector3(0.08, 0.03, 0.0))
-	var inv := sk.get_bone_global_rest(hb).affine_inverse()
-	var i := inv * sk.get_bone_global_rest(bi).origin
-	var p := inv * sk.get_bone_global_rest(bp).origin
-	var m := inv * sk.get_bone_global_rest(bm).origin
-	var up := (i - p).normalized()
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var line := HandGrip.handle_line(sk, HandGrip.handle_radius(prop, grip) * scale)
+	var fr := HandGrip.frame(sk)
+	var up: Vector3 = line["axis"]
 	if aim != Vector3.ZERO:
 		if up.dot(aim) < 0.0:
 			up = -up
 		up = up.slerp(aim.normalized(), tilt).normalized()
-	var fwd := (m - up * m.dot(up)).normalized()
-	var side := fwd.cross(up).normalized()
-	var center := (i + p) * 0.5 + fwd * 0.035 + side * 0.02
-	var hole := fist_hole(sk)
-	if hole != Vector3.INF:
-		center = hole
-	# The prop's handle: its lowest point plus a hand's width, in the prop's own space.
+	var f: Vector3 = fr["fingers"]
+	var fwd := (f - up * f.dot(up)).normalized()
+	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
+	if point != Vector3.ZERO:
+		var z := -point.normalized()
+		var y := (aim - z * aim.dot(z)).normalized()
+		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
+	return Transform3D(basis, Vector3(line["center"]) - basis * grip)
+
+## Where the fist closes round a prop (prop space): its lowest point plus a hand's width
+## up the handle, or where the model says (a gun's grip).
+static func grip_point(prop: Node3D) -> Vector3:
 	var box := AABB()
 	var first := true
 	for mi in prop.find_children("*", "MeshInstance3D", true, false):
@@ -489,18 +460,12 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 		var b: AABB = xf * (mi as MeshInstance3D).mesh.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
-	var grip := Vector3(0, box.position.y + minf(0.12, box.size.y * 0.25), 0)
-	# A model can say where the fist closes round it (a gun's grip).
+	var grip := Vector3(0, box.position.y + minf(0.12, box.size.y * 0.12), 0)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false):
 		var mesh := (mi as MeshInstance3D).mesh
 		if mesh and mesh.has_meta("grip"):
 			grip = _rel(prop, mi) * (mesh.get_meta("grip") as Vector3)
-	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
-	if point != Vector3.ZERO:
-		var z := -point.normalized()
-		var y := (aim - z * aim.dot(z)).normalized()
-		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
-	return Transform3D(basis, center - basis * grip)
+	return grip
 
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 	var xf := Transform3D.IDENTITY
@@ -521,6 +486,8 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 		_held = null
 	if gestures:
 		gestures.grip_r = []
+		gestures.grip_rot = {}
+		gestures.hand_aim = {}
 	if prop == null or skeleton == null:
 		return
 	var ba := _bone_attach("hand_r")
@@ -529,8 +496,57 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 	_held = ba
 	if gestures:
 		gestures.grip_r = GRIP
+		gestures.grip_rot = _wrap(prop)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+
+## The finger rotations that close the hand round the prop where it now sits: along its
+## handle (+Y) through its grip point, as measured in the hand.
+func _wrap(prop: Node3D) -> Dictionary:
+	if skeleton.find_bone("thumb_01_r") < 0 or skeleton.find_bone("index_01_r") < 0:
+		return {}
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var r := HandGrip.handle_radius(prop, grip_point(prop))
+	var axis := prop.transform.basis.y.normalized()
+	var center := prop.transform * grip
+	# The rest frame and the attachment's frame are the same bone's.
+	var t := _held_type(prop)
+	var pose := "" if not Viewmodel.pointed(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
+
+static func _held_type(prop: Node3D) -> String:
+	return String(prop.get_meta("item", ""))
+
+## Turns the wrist (over its animation) so what the hand holds points along `dir` (world),
+## `amount` of the way from where the animation has it; the grip itself stays closed round
+## the handle. Vector3.ZERO hands it back to the animation.
+func aim_handle(dir: Vector3, amount := 1.0) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if dir == Vector3.ZERO or _held == null or _held.get_child_count() == 0:
+		gestures.hand_aim = {}
+		return
+	var prop := _held.get_child(0) as Node3D
+	gestures.hand_aim = {"axis": prop.transform.basis.y.normalized(), "dir": (skeleton.global_basis.orthonormalized().inverse() * dir).normalized(), "w": amount}
+
+## Turns the right hand (over its animation) so what it holds points along `along` and
+## its palm faces `palm` (world directions, made square to `along`): a first-person hold
+## that shows the back of the hand and the thumb over the fingers.
+func aim_grip(along: Vector3, palm: Vector3, share := 0.5) -> void:
+	if gestures == null or skeleton == null or _held == null or _held.get_child_count() == 0:
+		return
+	var prop := _held.get_child(0) as Node3D
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var a: Vector3 = HandGrip.handle_line(skeleton, HandGrip.handle_radius(prop, grip))["axis"]
+	var n: Vector3 = HandGrip.frame(skeleton)["palm"]
+	n = (n - a * n.dot(a)).normalized()
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	var aw := (to_sk * along).normalized()
+	var nw := to_sk * palm
+	nw = (nw - aw * nw.dot(aw)).normalized()
+	gestures.hand_aim = {}
+	gestures.hand_share = share
+	gestures.hand_r = Basis(aw, nw, aw.cross(nw)) * Basis(a, n, a.cross(n)).inverse()
 
 ## Turns the right hand (over its animation) so its knuckle line, little finger to index,
 ## runs along `knuckles` and the back of the hand points the fingers along `fingers`
@@ -538,6 +554,7 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	if gestures == null or skeleton == null:
 		return
+	gestures.hand_share = 0.0
 	if knuckles == Vector3.ZERO:
 		gestures.hand_r = null
 		return

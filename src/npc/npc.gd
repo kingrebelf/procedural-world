@@ -19,6 +19,16 @@ var talk_here := false ## talking with you while someone else's game runs them (
 var decide_in := 0.0
 var think_at := 0.0
 var attack_cd := 0.0
+## What their trade's routine has them doing (NPCRoles.duty_at), while action is "work".
+var duty: Dictionary = {}
+## Someone they are chatting with stands here: they turn to face them.
+var face_to := Vector2.INF
+## What the body does at their work right now ("" when not at it), and what the arms do
+## on the way there (a load, a torch). Streamed to players who don't run this person.
+var work_anim := ""
+var upper_anim := ""
+## An archer or gunner holds off this far from whoever they attack (0: up close).
+var keep_off := 0.0
 
 var _body: AnimatableBody3D
 var _model: Node3D
@@ -51,6 +61,8 @@ var ambient := false ## the current performance was their own idea (ends when th
 var _jump_y := 0.0
 var _stool: Node3D
 var gear_shown := ""
+var boat: BoatNode = null ## the boat they crew, while aboard (NPCManager sets it)
+var _deck_pose := ""
 ## The last act (gesture or performance) and how many so far, so players who don't run
 ## this person see the same (NPCManager streams them).
 var last_act := ""
@@ -167,6 +179,18 @@ func act(what: String, seconds := 0.0) -> bool:
 		return true
 	return false
 
+## A blow or a shot at whoever they are fighting (the hit itself is the manager's).
+func strike(ranged: bool) -> void:
+	last_act = "strike_r" if ranged else "strike"
+	acts += 1
+	if _human:
+		var held = rec.get("held", null)
+		var t := String(held.get("type", "")) if held is Dictionary else ""
+		if ranged:
+			_human.play_once("throw" if t in ["sling", "javelin", "throwing_knives"] else "pistol")
+		else:
+			_human.play_once(["slash_a", "slash_b", "sword"][randi() % 3] if t != "" else "punch")
+
 func is_performing() -> bool:
 	return perform != ""
 
@@ -282,6 +306,10 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	if target_player:
 		goal = Vector2(player_pos.x, player_pos.z)
 		stop_at = {"greet": 2.2, "follow": 3.0, "confront": 2.8, "attack": 1.3, "trade": 2.0}.get(action, 2.0)
+		if action == "attack" and keep_off > 0.0:
+			stop_at = keep_off
+		elif action == "confront" and rec.has("band"):
+			stop_at = 4.5
 	elif rec.has("room"):
 		# Shopkeepers go in and out by the door.
 		goal = TownShops.route(rec["room"], p2, goal)
@@ -314,7 +342,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		var face := INF
 		if talking or (target_player and action != "flee"):
 			face = atan2(player_pos.x - pos.x, player_pos.z - pos.z)
-		elif action == "work" and p2.distance_to(rec["work"]) < 1.5:
+		elif face_to != Vector2.INF and p2.distance_to(face_to) < 4.0:
+			face = atan2(face_to.x - pos.x, face_to.y - pos.z)
+		elif action == "work" and not duty.is_empty() and at_work():
+			face = float(duty.get("face", INF))
+		elif action == "work" and duty.is_empty() and p2.distance_to(rec["work"]) < 1.5:
 			face = float(rec.get("work_yaw", rotation.y))
 		if face != INF:
 			rotation.y = lerp_angle(rotation.y, face, clampf(delta * 4.0, 0.0, 1.0))
@@ -329,6 +361,16 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 			h = maxf(h, float(rm["y"]))
 	global_position = Vector3(p2.x, h, p2.y)
 	rec["pos"] = global_position
+	work_anim = ""
+	upper_anim = ""
+	if action == "work" and not talking:
+		if moving:
+			upper_anim = String(duty.get("upper", ""))
+		elif not duty.is_empty():
+			if at_work():
+				work_anim = String(duty.get("anim", ""))
+		elif p2.distance_to(rec["work"]) < 1.5:
+			work_anim = WORK_ANIM.get(rec["job"], "interact")
 	rec["yaw"] = rotation.y
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
@@ -337,9 +379,71 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
 	_animate(delta, moving, run, player_pos)
 
+## Whether they have got to where their duty is done.
+func at_work() -> bool:
+	var t: Vector2 = duty.get("target", Vector2.INF)
+	return t != Vector2.INF and Vector2(global_position.x, global_position.z).distance_to(t) < 1.5
+
+## Aboard a boat: stays at their station on deck as the boat moves and rolls, doing
+## that station's job (rowing, fishing, at the helm, mending, keeping a lookout), and
+## turns to face you when you talk. Called every frame instead of step().
+func deck_step(delta: float, player_pos: Vector3) -> void:
+	_speech_t -= delta
+	if _speaking and _speech_t <= 0.0:
+		_speaking = false
+		_label.visible = false
+	attack_cd = maxf(0.0, attack_cd - delta)
+	var i := int(rec.get("station", 0))
+	var xf := boat.deck_xf(i)
+	var st := boat.station(i)
+	var sit := BoatModel.seated(st)
+	global_position = xf.origin
+	var face := xf.basis.get_euler().y
+	if (talking or target_player) and not sit:
+		face = atan2(player_pos.x - global_position.x, player_pos.z - global_position.z)
+	rotation.y = face if _deck_pose == "" else lerp_angle(rotation.y, face, clampf(delta * 4.0, 0.0, 1.0))
+	rec["yaw"] = rotation.y
+	var pose := String(st.get("pose", "stand"))
+	if _human == null:
+		_speed = 0.0
+		_animate(delta, false, false, player_pos)
+		return
+	if _deck_pose != pose:
+		_deck_pose = pose
+		if pose == "fish" and not rec.has("held"):
+			_human.hold(Viewmodel.prop_for("fishing_rod", null), Vector3(0, 0.6, 1).normalized())
+	_human.ik.feet_here = false
+	var near := global_position.distance_to(player_pos)
+	if (talking or target_player) and near < 25.0:
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 1.0)
+	elif pose == "lookout":
+		_human.look_at_target(global_position - xf.basis.z * 60.0 + Vector3.UP * 1.5, 0.6)
+	elif near < 8.0:
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 0.5)
+	else:
+		_human.look_at_target(Vector3.INF)
+	var chat := talking or _speech_t > 0.0
+	if sit:
+		_human.play("sit_talk" if chat and _human.anim.has_animation("sit_talk") else "sit")
+	elif chat:
+		_human.play("talk")
+	else:
+		match pose:
+			"steer":
+				_human.play("interact" if int(rec["era"]) == Eras.SCIFI else "idle")
+			"work":
+				_human.play("fix" if int(rec["era"]) != Eras.SCIFI else "interact")
+			"lookout":
+				_human.play("fold_arms" if _human.anim.has_animation("fold_arms") else "idle")
+			_:
+				_human.play("idle")
+	if _hit_flash > 0.0:
+		_hit_flash -= delta
+	_human.set_flash(clampf(_hit_flash * 4.0, 0.0, 1.0))
+
 ## What players who don't run this person need to draw them (read back by follow).
 func net_state() -> Array:
-	return [rec["id"], global_position, rotation.y, action, perform, _speed, talking, last_act, acts, attack_cd, target_player, is_hidden()]
+	return [rec["id"], global_position, rotation.y, action, perform, _speed, talking, last_act, acts, attack_cd, target_player, is_hidden(), work_anim, upper_anim]
 
 ## Drawn from someone else's game (multiplayer): glides to where they say this person
 ## is and does what they say, instead of thinking for itself.
@@ -359,11 +463,17 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 	talking = bool(st[6]) or talk_here
 	attack_cd = float(st[9])
 	target_player = bool(st[10])
+	if st.size() >= 14:
+		work_anim = String(st[12])
+		upper_anim = String(st[13])
 	if _seen_acts < 0:
 		_seen_acts = int(st[8]) # what they did before you came is over
 	elif int(st[8]) != _seen_acts:
 		_seen_acts = int(st[8])
-		act(String(st[7]), 600.0 if String(st[4]) != "" else 0.0)
+		if String(st[7]).begins_with("strike"):
+			strike(String(st[7]) == "strike_r")
+		else:
+			act(String(st[7]), 600.0 if String(st[4]) != "" else 0.0)
 	if String(st[4]) == "" and perform != "":
 		_end_perform()
 	elif perform != "":
@@ -420,9 +530,12 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	else:
 		_human.look_at_target(Vector3.INF)
 	# Shop floors aren't the ground under them.
-	_human.ik.feet_here = not rec.has("room")
-	_human.set_upper("sword_idle" if moving and NPCGen.GUARD_JOBS.has(rec["job"]) and action in ["confront", "attack"] else "")
-	if action == "attack" and attack_cd > 1.3:
+	_human.ik.feet_here = not rec.has("room") and boat == null
+	var up := upper_anim if moving else ""
+	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
+		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"
+	_human.set_upper(up)
+	if action == "attack" and attack_cd > 1.3 and not rec.has("band"):
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":
 		var p: Array = NPCMind.PERFORM[perform]
@@ -445,10 +558,16 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 			_human.play("walk", clampf(_speed / WALK, 0.5, 1.5))
 	elif talking or _speech_t > 0.0:
 		_human.play("talk")
-	elif action == "work" and Vector2(global_position.x, global_position.z).distance_to(rec["work"]) < 1.5:
-		_human.play(WORK_ANIM.get(rec["job"], "interact"))
+	elif work_anim != "":
+		_human.play(work_anim)
+	elif action == "socialize" and face_to != Vector2.INF and Vector2(global_position.x, global_position.z).distance_to(face_to) < 2.5:
+		# Chatting with a neighbour: they take turns to talk.
+		_human.play("talk" if (int(Time.get_ticks_msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
 	elif action in ["confront", "attack"]:
-		_human.play("sword_idle" if NPCGen.GUARD_JOBS.has(rec["job"]) else "fold_arms")
+		if rec.has("band"):
+			_human.play("pistol_idle" if keep_off > 0.0 else "sword_idle")
+		else:
+			_human.play("sword_idle" if NPCGen.GUARD_JOBS.has(rec["job"]) else "fold_arms")
 	else:
 		_human.play("idle")
 	if _hit_flash > 0.0:
