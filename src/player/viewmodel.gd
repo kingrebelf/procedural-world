@@ -103,6 +103,8 @@ static func prop_for(t: String, it = null) -> Node3D:
 		mi.mesh = ItemModels.model(t)
 		mi.rotation.y = ItemModels.FACE_YAW
 		mi.material_overlay = aura_for(it)
+	elif Provisions.has(t):
+		mi.mesh = Provisions.model(t)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)

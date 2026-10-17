@@ -3772,3 +3772,30 @@ func test_dreadnought_crash() -> void:
 func _ground(g: ChunkGenerator, p: Vector2) -> float:
 	var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
 	return ChunkGenerator.height_at(g.generate(k.x, k.y), p.x - k.x * 64.0, p.y - k.y * 64.0)
+
+# --- Food, drink and containers ------------------------------------------------------
+
+func test_provisions_models() -> void:
+	var n := 0
+	for t in ItemDB.ITEMS:
+		var m := Provisions.model(t)
+		if m == null:
+			continue
+		n += 1
+		check(m.get_surface_count() > 0, "%s has surfaces" % t)
+		check(m.has_meta("grip"), "%s says where it is held" % t)
+		if m.has_meta("grip"):
+			check(m.get_aabb().grow(0.03).has_point(m.get_meta("grip")), "%s is held on itself" % t)
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i)
+			check(not (mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_color == Color(1, 0, 1)), "%s surface %s has a real material" % [t, m.surface_get_name(i)])
+	check(n >= 120, "food and drink models: %d" % n)
+	check(Provisions.model("sword_iron") == null, "a sword is not food")
+	var k := MeshKit.new()
+	Provisions.msg_bottle(k, RandomNumberGenerator.new())
+	check(k.commit(Provisions._mat).get_surface_count() >= 6, "the message in a bottle builds")
+	# Kit props that are containers come from Provisions at about the kit model's size.
+	for e in [["props/Barrel", 0.88], ["props/Chest_Wood", 0.7], ["props/Crate_Wooden", 0.86], ["props/Mug", 0.17], ["props/Bottle_1", 0.36], ["props/Barrel_Apples", 0.88], ["props/FarmCrate_Apple", 0.24], ["props/Bag", 0.78]]:
+		check(not Provisions.kit(e[0]).is_empty(), "%s has a stand-in" % e[0])
+		var km := BuildCatalog.merge_models([[e[0], 0, Vector3.ZERO, 1.0]])
+		check(absf(km.get_aabb().size.y - float(e[1])) < float(e[1]) * 0.2, "%s stands %.2f m tall" % [e[0], km.get_aabb().size.y])

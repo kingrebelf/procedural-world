@@ -385,16 +385,9 @@ static func build(key: String) -> ArrayMesh:
 			k.cylinder("plaster", G * Transform3D(Basis(Vector3.RIGHT, PI - 0.25), Vector3(0, 0.42, 0.055)), 0.075, 0.01, 0.2, 9, true, 0.0, 1, Color(0.97, 0.96, 0.92))
 			k.cylinder("plaster", G * Transform3D(Basis(Vector3.RIGHT, -0.15), Vector3(0, 0.47, 0)), 0.095, 0.006, 0.3, 10, true, 0.0, 1, Color(0.75, 0.12, 0.1))
 		"msg_bottle":
-			# A green glass bottle on its side, half in the sand, corked, a scroll tied with a
-			# red ribbon inside; a bleached stick of driftwood and some shells.
-			var lie := Basis(Vector3.UP, 0.4) * Basis(Vector3.FORWARD, PI * 0.5) ## +y along the bottle
-			var at := func(along: float) -> Vector3: return Vector3(0.0, 0.065, 0.0) + lie * Vector3(0, along, 0)
-			k.cylinder("bottle_glass", Transform3D(lie, at.call(-0.17)), 0.09, 0.09, 0.26, 16)
-			k.cylinder("bottle_glass", Transform3D(lie, at.call(0.09)), 0.09, 0.032, 0.07, 16, false)
-			k.cylinder("bottle_glass", Transform3D(lie, at.call(0.16)), 0.03, 0.03, 0.08, 12)
-			k.cylinder("timber", Transform3D(lie, at.call(0.235)), 0.027, 0.03, 0.04, 10, true, 0.0, 1, Color(0.95, 0.8, 0.6))
-			k.cylinder("plaster", Transform3D(lie, at.call(-0.14)), 0.045, 0.045, 0.2, 12, true, 0.0, 1, Color(1.0, 0.93, 0.74))
-			k.cylinder("cloth", Transform3D(lie, at.call(-0.045)), 0.048, 0.048, 0.015, 12)
+			# A bottle washed up on its side, half in the sand (Provisions.msg_bottle);
+			# a bleached stick of driftwood and some shells.
+			Provisions.msg_bottle(k, r)
 			k.cylinder("bone", Transform3D(Basis(Vector3.UP, 1.9) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.55, 0.05, -0.45)), 0.06, 0.04, 0.8, 7, true, 0.2, 3, Color(0.78, 0.74, 0.66))
 			for i in 6:
 				var a := r.randf() * TAU
@@ -420,7 +413,8 @@ static func build(key: String) -> ArrayMesh:
 			for i in 4:
 				k.sphere("leaf", I.translated(Vector3(0.42 + r.randf_range(-0.05, 0.05), 0.12, 0.28 + r.randf_range(-0.05, 0.05))), 0.05, 4, 6)
 	var out: ArrayMesh = Landmark._merge(names, xfs) if not names.is_empty() else null
-	return k.commit(Materials.get_mat, out)
+	# Provisions's materials for the bottle, the shared ones for the rest.
+	return k.commit(Provisions._mat, out)
 
 ## A ridge tent, a cold fire, a log to sit on with the journal and a pack. The sci-fi
 ## camp keeps survey crates instead of a pack and a cook pot.
