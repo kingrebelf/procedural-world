@@ -923,7 +923,9 @@ func _space() -> void:
 	# Wait on the effect itself, not a frame count: a fast GPU ran 400 frames before the
 	# streaks had begun and the shot came out the same as the orbit.
 	var t0 := Time.get_ticks_msec()
-	while float(orbit._warp_mat.get_shader_parameter("amount")) <= 0.75 and Time.get_ticks_msec() - t0 < 180000:
+	# "amount" reads null until the warp first sets it.
+	while float(orbit._warp_mat.get_shader_parameter("amount") if orbit._warp_mat.get_shader_parameter("amount") != null else 0.0) <= 0.75 \
+			and Time.get_ticks_msec() - t0 < 180000:
 		await tree.process_frame
 	await _snap("14_warp")
 	Engine.time_scale = 1.0

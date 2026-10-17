@@ -85,6 +85,7 @@ func _ready() -> void:
 	cam_attr.auto_exposure_min_sensitivity = 60.0
 	cam_attr.auto_exposure_max_sensitivity = 300.0
 	we.camera_attributes = cam_attr
+	_cam_attr = cam_attr
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
@@ -108,7 +109,12 @@ func _ready() -> void:
 	moon.name = "Moon"
 	moon.light_color = Color(0.55, 0.65, 0.95)
 	moon.light_energy = 0.12
-	moon.shadow_enabled = false
+	# Moonlight casts soft shadows, so a moonlit night has shape (the sun is down then, so
+	# there is still only one shadowed light most of the time).
+	moon.shadow_enabled = true
+	moon.shadow_blur = 2.0
+	moon.shadow_bias = 0.04
+	moon.shadow_normal_bias = 1.4
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(moon)
 
@@ -144,6 +150,8 @@ func apply_settings() -> void:
 	sky_mat.set_shader_parameter("cloud_light_steps", 3 if cq == 1 else 6)
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
+
+var _cam_attr: CameraAttributesPractical
 
 ## Scales the open-air volumetric haze (tools try looks with it; 1 in the game).
 var vfog_boost := 1.0
@@ -227,7 +235,10 @@ func _update_time_of_day() -> void:
 	sun.light_energy = 2.0 * smoothstep(-0.05, 0.08, elev) * (1.0 + 0.2 * golden)
 	sun.visible = elev > -0.1
 	moon.visible = elev < 0.1
-	moon.light_energy = 0.14 * (1.0 - daylight)
+	moon.light_energy = 0.3 * (1.0 - daylight)
+	# The eye may only brighten a dark scene so far: a night outdoors reads as night (blue
+	# moonlight, warm windows) instead of dusk. Underground it adapts fully to the torch.
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(110.0, 60.0, maxf(daylight, underground))
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
