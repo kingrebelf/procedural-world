@@ -591,6 +591,13 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	player.set_state({"pos": stand + Vector3(0, 0.1, 0), "yaw": atan2(f.x, f.z), "pitch": -0.45, "slot": 0})
 	await _frames(20)
 	check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "facing the %s in the %s offers to open it (%s)" % [o["t"], o["st"]["inside"], player.focus.get("verb", "nothing")])
+	# Town chests may be locked: a few tries with the lockpick get it open.
+	for i in 40:
+		if Player.lock_of(o) <= 0:
+			break
+		player._lock_t = 0.0
+		player.interact()
+	check(Player.lock_of(o) <= 0, "the lock gives in the end")
 	player.interact()
 	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
 
