@@ -43,7 +43,7 @@ func _ready() -> void:
 	streamer.seed = SEED
 	streamer.preview = true
 	add_child(streamer)
-	streamer.apply_settings(mini(int(Settings.get_value("view_distance")), 6), 0.0)
+	streamer.apply_settings(mini(int(Settings.get_value("view_distance")), 6), 0.0, float(Settings.get_value("detail_distance")))
 	streamer.set_target(_rig)
 	var water := Water.new()
 	water.target = _rig

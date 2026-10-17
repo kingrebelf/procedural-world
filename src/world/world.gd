@@ -93,7 +93,8 @@ func _ready() -> void:
 		add_child(cap)
 
 func _apply_settings() -> void:
-	streamer.apply_settings(int(Settings.get_value("view_distance")), float(Settings.get_value("grass_density")))
+	streamer.apply_settings(int(Settings.get_value("view_distance")), float(Settings.get_value("grass_density")),
+		float(Settings.get_value("detail_distance")))
 
 ## Death: a few seconds of "You died", then you wake at the world's spawn point with your
 ## pack intact, minus some of the progress toward your next level.

@@ -50,6 +50,13 @@ const LIST := [
 	{"out": "torch", "qty": 1, "in": {"wood": 1, "fiber": 2}},
 	{"out": "flashlight", "qty": 1, "in": {"iron_ingot": 1, "circuitry": 1, "power_cell": 1}, "at": "workbench"},
 	{"out": "flashlight", "qty": 1, "in": {"flashlight_dead": 1, "power_cell": 1}, "at": "workbench"},
+	# Jetpack and its fuel: rendered from wood and plant oil at a forge, or brewed from
+	# aether, or refined from power cells.
+	{"out": "jetpack", "qty": 1, "in": {"iron_ingot": 6, "alloy_plate": 2, "circuitry": 2, "hide": 2}, "at": "fabricator"},
+	{"out": "jetpack", "qty": 1, "in": {"iron_ingot": 8, "mythril_ingot": 2, "aether_crystal": 3, "hide": 2}, "at": "cauldron"},
+	{"out": "jet_fuel", "qty": 1, "in": {"wood": 4, "fiber": 4}, "at": "forge"},
+	{"out": "jet_fuel", "qty": 2, "in": {"aether_crystal": 1, "fiber": 2}, "at": "cauldron"},
+	{"out": "jet_fuel", "qty": 3, "in": {"power_cell": 1, "alloy_scrap": 1}, "at": "fabricator"},
 	{"out": "binoculars", "qty": 1, "in": {"iron_ingot": 2, "stone": 2, "hide": 1}, "at": "workbench"},
 	# Materials.
 	{"out": "cooked_meat", "qty": 1, "in": {"raw_meat": 1, "wood": 1}, "at": "campfire"},

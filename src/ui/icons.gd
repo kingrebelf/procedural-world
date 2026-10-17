@@ -175,9 +175,24 @@ static func get_icon(type: String) -> Texture2D:
 				_rect(img, Rect2(12, 22, 38, 12), Color(0.3, 0.32, 0.36))
 				_rect(img, Rect2(16, 34, 10, 18), Color(0.25, 0.26, 0.3))
 				_rect(img, Rect2(34, 25, 14, 3), Color(0.3, 0.9, 1.0))
+			elif type == "jet_fuel":
+				# A jerry can.
+				_rect(img, Rect2(16, 18, 32, 38), c)
+				_rect(img, Rect2(22, 10, 14, 8), c.darkened(0.25))
+				_rect(img, Rect2(38, 12, 6, 8), Color(0.25, 0.25, 0.27))
+				_line(img, Vector2(20, 24), Vector2(44, 50), 3, c.darkened(0.3))
+				_line(img, Vector2(44, 24), Vector2(20, 50), 3, c.darkened(0.3))
 			elif kind == "armor":
 				var hi := c.lightened(0.3)
 				match String(d.get("slot", "")):
+					"back":
+						# Twin-tank jetpack with nozzles and flames.
+						for x in [22, 42]:
+							_rect(img, Rect2(x - 8, 14, 16, 32), c)
+							_ellipse(img, Vector2(x, 14), Vector2(8, 5), hi)
+							_rect(img, Rect2(x - 5, 46, 10, 5), c.darkened(0.45))
+							_poly(img, [Vector2(x - 5, 51), Vector2(x + 5, 51), Vector2(x, 62)], Color(1.0, 0.6, 0.2))
+						_rect(img, Rect2(28, 22, 8, 16), c.darkened(0.35))
 					"head":
 						_ellipse(img, Vector2(32, 30), Vector2(17, 18), c)
 						_rect(img, Rect2(15, 30, 34, 18), c)

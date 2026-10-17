@@ -32,6 +32,7 @@ var camera: Camera3D
 var viewmodel: Viewmodel
 var _trigger_held := false ## semi-automatic weapons wait for the trigger to come back
 var hand_light: HandLight ## torch or flashlight in the off hand
+var jetpack: Jetpack
 var ray: RayCast3D
 var builder: Builder
 ## Console cheats: fly (with optional noclip) and a movement speed multiplier.
@@ -109,6 +110,8 @@ func _ready() -> void:
 		body.build(LOOK, Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
+	jetpack = Jetpack.new()
+	add_child(jetpack)
 	_apply_view()
 	builder = Builder.new()
 	builder.player = self
@@ -193,6 +196,8 @@ func _apply_view() -> void:
 		hand_light._apply()
 	if body:
 		body.set_shadow_only(not third_person)
+	if jetpack:
+		jetpack.set_shadow_only(not third_person)
 
 ## Body animation from what the controller is doing; swings come from use_held.
 func _animate_body(hspeed: float) -> void:
@@ -387,15 +392,19 @@ func _physics_process(delta: float) -> void:
 		velocity = velocity.lerp(want, clampf(3.0 * delta, 0.0, 1.0))
 		move_and_slide()
 	else:
-		var a := ACCEL if is_on_floor() else AIR_ACCEL
+		var jump_ok := not ui_open and not Input.is_action_pressed("hotbar_pick")
+		var lift := jetpack.thrust(delta, jump_ok and Input.is_action_pressed("jump"), jump_ok and Input.is_action_just_pressed("jump"),
+			is_on_floor(), velocity.y, Game.inventory)
+		# Steering is much better under thrust than in a plain fall.
+		var a := ACCEL if is_on_floor() else (AIR_ACCEL * 2.4 if jetpack.firing else AIR_ACCEL)
 		hv = hv.lerp(dir * speed, clampf(a * delta, 0.0, 1.0))
 		velocity.x = hv.x
 		velocity.z = hv.z
 		if is_on_floor():
-			if not ui_open and Input.is_action_just_pressed("jump") and not Input.is_action_pressed("hotbar_pick") and _tire(8.0):
+			if jump_ok and Input.is_action_just_pressed("jump") and _tire(8.0):
 				velocity.y = JUMP
 		else:
-			velocity.y -= _gravity * delta
+			velocity.y += (lift - _gravity) * delta
 		var was_air := not is_on_floor()
 		var vy := velocity.y
 		move_and_slide()

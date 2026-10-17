@@ -482,7 +482,7 @@ func set_objects(buffers: Dictionary) -> void:
 		elif k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
 		else:
-			mmi.visibility_range_end = 260.0
+			_set_range(mmi, 260.0)
 		add_child(mmi)
 		_mm[t] = mmi
 
@@ -503,7 +503,7 @@ func set_grass(buf: PackedFloat32Array) -> void:
 	_grass.multimesh = mm
 	_grass.material_override = grass_material
 	_grass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_grass.visibility_range_end = 110.0
+	_set_range(_grass, 110.0)
 	_grass.visibility_range_end_margin = 20.0
 	_grass.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	_grass.name = "Grass"
@@ -526,11 +526,25 @@ func set_clutter(buffers: Dictionary) -> void:
 		mmi.multimesh = mm
 		mmi.set_meta("key", t)
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mmi.visibility_range_end = 110.0 if t.begins_with("under") else 70.0
+		_set_range(mmi, 110.0 if t.begins_with("under") else 70.0)
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		mmi.visibility_range_end_margin = 10.0
 		add_child(mmi)
 		_clutter.append(mmi)
+
+## Draw distance of grass, clutter and small props scales with this (graphics setting
+## "detail_distance"); trees and buildings keep their full range.
+static var detail_mult := 1.0
+
+func _set_range(gi: GeometryInstance3D, base: float) -> void:
+	gi.set_meta("range", base)
+	gi.visibility_range_end = base * detail_mult
+
+## Re-applies detail_mult to everything already built in this chunk.
+func apply_detail() -> void:
+	for c in get_children():
+		if c is GeometryInstance3D and c.has_meta("range"):
+			c.visibility_range_end = float(c.get_meta("range")) * detail_mult
 
 func has_grass() -> bool:
 	return _grass != null

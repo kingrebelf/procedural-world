@@ -20,6 +20,8 @@ const PICK_GLYPHS := ["Y", "B", "X", "A", "←", "→", "↑", "↓"]
 var _health_val: Label
 var _stamina: ProgressBar
 var _stamina_val: Label
+var _fuel: ProgressBar ## shown only while a jetpack is worn
+var _fuel_val: Label
 var _xp: ProgressBar
 var _xp_val: Label
 var _level: Label
@@ -39,6 +41,8 @@ var _banner_box: VBoxContainer
 var _toasts: VBoxContainer
 var _info: Label
 var _fps: Label
+var _perf_t := 0.0
+var _perf_cache := ""
 var _look: PanelContainer
 var _look_title: Label
 var _look_sub: Label
@@ -133,6 +137,9 @@ func _ready() -> void:
 	var sb := _bar(vit, "STAMINA", Color(0.36, 0.72, 0.3), 10)
 	_stamina = sb[0]
 	_stamina_val = sb[1]
+	var fb := _bar(vit, "JETPACK FUEL", Color(0.95, 0.55, 0.15), 8)
+	_fuel = fb[0]
+	_fuel_val = fb[1]
 	var xb := _bar(vit, "EXPERIENCE", Color(0.92, 0.72, 0.28), 6)
 	_xp = xb[0]
 	_xp_val = xb[1]
@@ -185,7 +192,8 @@ func _ready() -> void:
 	add_child(_info)
 
 	_fps = UITheme.label("", 14, UITheme.ACCENT_2)
-	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 20, 300, 24))
+	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 20, 520, 64))
+	_fps.visible = false
 	add_child(_fps)
 
 	_under = ColorRect.new()
@@ -544,9 +552,20 @@ func _process(_d: float) -> void:
 	_stamina.max_value = Game.max_stamina()
 	_stamina.value = Game.stamina
 	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]
-	_fps.visible = Settings.get_value("show_fps")
+	var jp = Jetpack.worn()
+	_fuel.visible = jp != null
+	_fuel_val.get_parent().visible = jp != null
+	if jp != null:
+		_fuel.max_value = Jetpack.TANK
+		_fuel.value = float(jp.get("fuel", 0.0))
+		_fuel_val.text = "%d s  +%d canisters" % [int(ceilf(_fuel.value)), Game.inventory.count("jet_fuel")]
+	var show: bool = Settings.get_value("show_fps")
+	if show != _fps.visible:
+		# GPU timing costs a query per frame, so only measure while the counter is shown.
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), show)
+	_fps.visible = show
 	if _fps.visible:
-		_fps.text = "%d FPS  %.1f ms" % [Engine.get_frames_per_second(), 1000.0 / maxf(1.0, Engine.get_frames_per_second())]
+		_fps.text = _perf_text()
 
 
 ## Your map markers and teleporters drawn where they are in the world, with distance.
@@ -576,3 +595,23 @@ class MarkerLayer extends Control:
 			var w := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 			draw_string_outline(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 4, Color(0, 0, 0, 0.7 * a))
 			draw_string(font, p + Vector2(-w * 0.5, -12), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, a))
+
+## FPS plus where the frame time goes: GPU render time vs. CPU (game logic + render
+## submission). If CPU is the larger number, lowering graphics settings will not help much.
+func _perf_text() -> String:
+	_perf_t -= get_process_delta_time()
+	if _perf_t > 0.0 and _perf_cache != "":
+		return _perf_cache
+	_perf_t = 0.25
+	var fps := Engine.get_frames_per_second()
+	var vp := get_viewport().get_viewport_rid()
+	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(vp)
+	var cpu := RenderingServer.viewport_get_measured_render_time_cpu(vp) + RenderingServer.get_frame_setup_time_cpu()
+	var logic := (Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0
+	var draws := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var tag := ""
+	if gpu > 0.0:
+		tag = "  GPU-bound" if gpu > logic + cpu else "  CPU-bound"
+	_perf_cache = "%d FPS  %.1f ms\nGPU %.1f ms  CPU render %.1f ms  game %.1f ms\n%d draw calls%s" % [
+		fps, 1000.0 / maxf(1.0, fps), gpu, cpu, logic, draws, tag]
+	return _perf_cache

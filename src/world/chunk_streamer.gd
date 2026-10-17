@@ -229,7 +229,14 @@ func refresh_grass(k: Vector2i) -> void:
 	if node != null and node.has_grass() and not _jobs.has(k):
 		_submit(k, "grass")
 
-func apply_settings(radius: int, grass: float) -> void:
+func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
+	if not is_equal_approx(detail, ChunkNode.detail_mult):
+		ChunkNode.detail_mult = detail
+		for k in chunks:
+			chunks[k].apply_detail()
+	# Only a real change regrows grass: Settings.changed fires for every setting.
+	if radius == view_radius and is_equal_approx(grass, grass_density) and _center != Vector2i(999999, 999999):
+		return
 	view_radius = radius
 	grass_density = grass
 	_center = Vector2i(999999, 999999)
