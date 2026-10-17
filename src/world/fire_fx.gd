@@ -128,8 +128,12 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		mi.set_instance_shader_parameter("exposed", wind)
 		n.add_child(mi)
 		return n
-	for i in 2:
-		var s := size * (1.0 if i == 0 else 0.7)
+	# A big fire burns all across its bed: more tongues of flame round the middle one,
+	# over glowing coals.
+	var big := size >= 0.6 and not hang and sheet == "fire"
+	var cards := 4 if big else 2
+	for i in cards:
+		var s := size * (1.0 if i == 0 else (0.7 if not big else 0.5 + 0.08 * i))
 		var q := QuadMesh.new()
 		q.size = Vector2(s, s)
 		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
@@ -145,9 +149,34 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		mi.set_instance_shader_parameter("card", float(i))
 		mi.set_instance_shader_parameter("size", s)
 		mi.set_instance_shader_parameter("exposed", wind)
-		mi.position = Vector3(0.04 * size * i, 0, 0)
+		if big and i > 0:
+			var a := TAU * (i / 3.0) + seed * TAU
+			mi.position = Vector3(cos(a), 0, sin(a)) * size * 0.16
+		else:
+			mi.position = Vector3(0.04 * size * i, 0, 0)
 		n.add_child(mi)
+	if big:
+		var bed := MeshInstance3D.new()
+		bed.name = "Coals"
+		var pm := PlaneMesh.new()
+		pm.size = Vector2.ONE * size * 0.62
+		bed.mesh = pm
+		bed.material_override = coal_material()
+		bed.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bed.position = Vector3(0, 0.02, 0)
+		bed.visibility_range_end = 90.0
+		bed.set_instance_shader_parameter("seed", seed)
+		n.add_child(bed)
 	return n
+
+static var _coals: ShaderMaterial
+
+## The glowing ember bed under a big fire.
+static func coal_material() -> ShaderMaterial:
+	if _coals == null:
+		_coals = ShaderMaterial.new()
+		_coals.shader = load("res://src/world/coals.gdshader")
+	return _coals
 
 ## A flame that is carried about (a torch in hand): it trails behind the way it moves,
 ## and burns with the given seed, so the light that goes with it can follow it by
@@ -185,7 +214,7 @@ class Drag extends Node3D:
 		want.y = 0.0
 		_lean = _lean.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
 		for c in get_parent().get_children():
-			if c is MeshInstance3D:
+			if c is MeshInstance3D and c.name != "Coals":
 				(c as MeshInstance3D).set_instance_shader_parameter("drag", _lean)
 
 static var _swirl: ShaderMaterial
@@ -265,6 +294,23 @@ static func _dot() -> GradientTexture2D:
 	t.height = 64
 	return t
 
+## A wisp: a round puff that thins out gently from the middle, with no hard rim (the
+## plain dot made smoke into a dark ball hanging over a fire).
+static func _wisp() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.55))
+	g.add_point(0.35, Color(1, 1, 1, 0.32))
+	g.add_point(0.7, Color(1, 1, 1, 0.08))
+	g.set_color(g.get_point_count() - 1, Color(1, 1, 1, 0))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	t.width = 64
+	t.height = 64
+	return t
+
 ## Sparks that fly up off a flame `size` metres tall and die out, and with `smoke` a thin
 ## grey smoke rising above it. They are left behind in the world as the fire moves, so a
 ## swung torch trails them. Put it where the flame stands.
@@ -282,7 +328,7 @@ static func embers(size: float, smoke := true) -> Node3D:
 		_smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 		_smoke_mat.vertex_color_use_as_albedo = true
-		_smoke_mat.albedo_texture = _dot()
+		_smoke_mat.albedo_texture = _wisp()
 		_smoke_mat.roughness = 1.0
 	var n := Node3D.new()
 	n.name = "Embers"
@@ -322,9 +368,10 @@ static func embers(size: float, smoke := true) -> Node3D:
 	if smoke:
 		var s := CPUParticles3D.new()
 		s.name = "Smoke"
-		s.amount = 10
+		s.amount = 22
 		s.lifetime = 2.8
 		s.randomness = 0.5
+		s.preprocess = 2.8
 		s.local_coords = false
 		var sq := QuadMesh.new()
 		sq.size = Vector2.ONE * size * 0.5
@@ -332,9 +379,9 @@ static func embers(size: float, smoke := true) -> Node3D:
 		s.mesh = sq
 		s.position = Vector3(0, size * 0.85, 0)
 		s.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		s.emission_sphere_radius = size * 0.08
+		s.emission_sphere_radius = size * 0.18
 		s.direction = Vector3.UP
-		s.spread = 12.0
+		s.spread = 20.0
 		s.initial_velocity_min = size * 0.8
 		s.initial_velocity_max = size * 1.4
 		s.gravity = Vector3(0, 0.15, 0)
@@ -349,7 +396,9 @@ static func embers(size: float, smoke := true) -> Node3D:
 		var sg := Gradient.new()
 		sg.set_color(0, Color(0.35, 0.33, 0.31, 0.0))
 		sg.set_color(1, Color(0.42, 0.41, 0.4, 0.0))
-		sg.add_point(0.15, Color(0.33, 0.31, 0.3, 0.22))
+		# Thin: fades in above the flame and is mostly gone before it rises far.
+		sg.add_point(0.2, Color(0.4, 0.38, 0.36, 0.09))
+		sg.add_point(0.55, Color(0.42, 0.41, 0.4, 0.05))
 		s.color_ramp = sg
 		n.add_child(s)
 	for c in n.get_children():

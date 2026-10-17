@@ -51,6 +51,8 @@ static func kit_material(src: Material, indoor := false) -> ShaderMaterial:
 				m.set_shader_parameter("has_orm", true)
 			m.set_shader_parameter("roughness", b.roughness)
 		m.set_shader_parameter("shelter", 1.0 if indoor else 0.0)
+		# Out in the sun and rain it fades and stains; indoors it stays as it was dyed.
+		m.set_shader_parameter("weathering", 0.0 if indoor else 1.0)
 		_mats[key] = m
 	_lock.unlock()
 	return m
@@ -73,14 +75,15 @@ static func flag_material() -> ShaderMaterial:
 	if _flag_mat == null:
 		_flag_mat = ShaderMaterial.new()
 		_flag_mat.shader = load("res://src/world/cloth.gdshader")
-		var wool := Materials.photo("fabric_wool", "detail")
-		if wool != null:
-			_flag_mat.set_shader_parameter("albedo_tex", wool)
+		# Plain-woven bunting: the linen weave, fine and soft (a knit at this scale
+		# shimmers into stripes that read as wood grain).
+		var weave := Materials.photo("fabric_linen", "detail")
+		if weave != null:
+			_flag_mat.set_shader_parameter("albedo_tex", weave)
 			_flag_mat.set_shader_parameter("has_albedo", true)
-			# The weave averages about 0.72: lift it back to the dye's own shade.
-			_flag_mat.set_shader_parameter("albedo", Color(1.35, 1.35, 1.35))
+			_flag_mat.set_shader_parameter("detail_mix", 0.45)
 		_flag_mat.set_shader_parameter("vertex_dye", true)
-		_flag_mat.set_shader_parameter("uv_scale", Vector2(9.0, 5.0))
+		_flag_mat.set_shader_parameter("uv_scale", Vector2(14.0, 8.0))
 		_flag_mat.set_shader_parameter("translucency", 0.45)
 	_lock.unlock()
 	return _flag_mat

@@ -27,6 +27,11 @@ uniform bool has_orm = false;
 uniform vec4 albedo : source_color = vec4(1.0);
 // Dye from vertex colours (flags), else from the texture alone (kit cloth).
 uniform bool vertex_dye = false;
+// A grey detail weave under a dye (it averages about 0.72) instead of a colour texture,
+// showing this much of its contrast.
+uniform float detail_mix = 0.0;
+// Sun-fade, grime toward the hems and water stains, for kit cloth that hangs outdoors.
+uniform float weathering = 0.0;
 uniform vec2 uv_scale = vec2(1.0);
 uniform float roughness = 0.92;
 uniform float normal_depth = 1.0;
@@ -38,6 +43,8 @@ uniform float translucency = 0.35;
 // The wind where this piece stands, in the model's XZ plane, and how strong.
 varying vec3 wl;
 varying float ws;
+varying float hem; // how far down a drape hangs, for its grime
+varying vec3 rest_w; // where it rests in the world, for its stains
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -70,13 +77,16 @@ vec3 drape(vec3 p, vec3 n, float h, float b, float t, float ph) {
 		float k = 3.5 + 3.0 * ws;
 		float rip = sin(along * k - t * (2.2 + 5.0 * ws) + p.y * 2.2 + ph)
 			+ 0.45 * sin(along * k * 2.3 + p.y * 3.1 - t * (3.7 + 8.0 * ws) + ph * 1.7);
-		d += n * rip * hh * (0.008 + 0.03 * ws) * (0.4 + 0.6 * g);
+		// A short swag ripples about as much as the top of a long drape.
+		d += n * rip * max(hh, 0.35) * smoothstep(0.0, 0.12, hh) * (0.01 + 0.035 * ws) * (0.4 + 0.6 * g);
 	}
 	if (b > 0.0) {
 		// A stretched canopy breathes: lifted by the gusts, shivering in a strong wind.
 		float bb = min(b, 1.2);
-		float lift = bb * (0.04 + 0.22 * ws) * (g - 0.35);
-		lift += bb * ws * ws * 0.03 * sin(along * 6.0 + p.y * 4.0 - t * 11.0 + ph);
+		float lift = bb * (0.08 + 0.42 * ws) * (g - 0.3);
+		// Waves of lift run across it with the wind, and it shivers in a strong one.
+		lift += bb * (0.03 + 0.12 * ws) * sin(along * 3.2 - t * (1.8 + 3.5 * ws) + p.y * 2.0 + ph * 1.3);
+		lift += bb * ws * ws * 0.05 * sin(along * 6.0 + p.y * 4.0 - t * 11.0 + ph);
 		d += n * sign(n.y + 1e-4) * lift;
 	}
 	return d;
@@ -127,6 +137,8 @@ void vertex() {
 	ws = mix(clamp(wind_strength * local, 0.0, 1.0), 0.03 + 0.03 * vnoise(TIME * 0.2 + ph), shelter);
 	float t = mix(wind_time, TIME * 0.6, shelter);
 	vec4 c0 = CUSTOM0;
+	hem = c0.x;
+	rest_w = wpos;
 	if (c0.w > 0.5) {
 		vec4 c1 = CUSTOM1;
 		vec3 n;
@@ -162,11 +174,24 @@ void fragment() {
 	vec2 uv = UV * uv_scale;
 	vec3 col = albedo.rgb;
 	if (has_albedo) {
-		col *= texture(albedo_tex, uv).rgb;
+		vec3 tx = texture(albedo_tex, uv).rgb;
+		col *= detail_mix > 0.0 ? mix(vec3(0.72), tx, detail_mix) / 0.72 : tx;
 	}
 	if (vertex_dye) {
 		// Dyes are given as sRGB colours, as the game's other vertex colours are.
 		col *= pow(COLOR.rgb, vec3(2.2));
+	}
+	if (weathering > 0.0) {
+		// Years of sun bleach the dye toward a dusty cream; rain leaves tide marks and
+		// the hems pick up road dirt.
+		float big = hash12(floor(rest_w.xz * 1.7 + rest_w.y * 2.3));
+		float n1 = mix(hash12(floor(UV * 23.0)), hash12(floor(UV * 23.0) + 1.0), 0.5);
+		float fade = weathering * (0.25 + 0.2 * big);
+		col = mix(col, vec3(0.78, 0.72, 0.6) * dot(col, vec3(0.33)) * 1.15, fade);
+		float stain = smoothstep(0.55, 0.9, sin(rest_w.y * 9.0 + n1 * 3.0 + big * 6.0) * 0.5 + 0.5) * 0.12;
+		float grime = smoothstep(0.3, 1.4, hem) * 0.22;
+		col *= 1.0 - weathering * (stain + grime + n1 * 0.06);
+		col = mix(col, col * vec3(1.0, 0.95, 0.85), weathering * 0.4);
 	}
 	ALBEDO = col;
 	float ao = 1.0;
