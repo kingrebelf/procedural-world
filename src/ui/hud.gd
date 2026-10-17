@@ -545,7 +545,8 @@ func show_death(cause: String) -> void:
 	var c := UITheme.label(cause, 22)
 	c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(c)
-	var w := UITheme.label("You keep everything you carry, but lose a quarter of your progress to the next level.", 16, UITheme.DIM)
+	var keep: bool = Game.server_option("death_penalty", "bag") == "keep"
+	var w := UITheme.label(("You keep everything you carry, but" if keep else "Everything you carried is in a bag where you fell, marked on your map. Anyone who finds it can take it.\nYou also") + " lose a quarter of your progress to the next level.", 16, UITheme.DIM)
 	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(w)
 	_death.add_child(v)

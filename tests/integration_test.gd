@@ -504,15 +504,9 @@ func _run() -> void:
 
 	await _menu_checks(world, game, con)
 
-	# Dying: health hits zero, a pause, then you wake at the spawn with your pack.
-	var count_before: int = game.inventory.count("planks")
-	game.set_health(-5.0, "test")
-	check(game.dead and player.ui_open, "zero health kills you")
-	await create_timer(4.6).timeout
-	await _frames(30)
-	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
-	check(game.inventory.count("planks") == count_before, "dying keeps your pack")
-	await _frames(60)
+	# Dying: health hits zero, everything you carry drops in a bag where you fell, a
+	# pause, then you wake at the spawn with an empty pack and the bag on your map.
+	await _death_bag(game, world, player)
 
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
@@ -666,6 +660,59 @@ func _audio_checks(world, player) -> void:
 	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music slider at zero mutes the music bus")
 	s.set_value("music_volume", old)
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
+
+## Death: your pack, armour and purse drop in a bag where you fell, saved with its chunk
+## and marked on your map; taking it all back puts your armour on again and clears the mark.
+func _death_bag(game, world, player) -> void:
+	var count_before: int = game.inventory.count("planks")
+	var items_before := 0
+	for it in game.inventory.slots:
+		if it != null:
+			items_before += 1
+	var money_before: int = game.money
+	var worn_before: Dictionary = game.equipment.duplicate(true)
+	var at: Vector3 = player.global_position
+	game.set_health(-5.0, "test")
+	check(game.dead and player.ui_open, "zero health kills you")
+	check(game.inventory.free_slots() == game.inventory.capacity and game.equipment.is_empty() and game.money == 0, "dying empties your pack, armour and purse")
+	var bag := {}
+	for b in world.corpses.near(at, 6.0):
+		if DeathBag.is_bag(b["rec"]):
+			bag = b
+	check(not bag.is_empty(), "a bag lies where you fell")
+	var marks: Array = game.markers.on_planet(game.planet, "death")
+	check(marks.size() == 1 and Vector2(marks[0]["x"], marks[0]["z"]).distance_to(Vector2(at.x, at.z)) < 6.0, "the map marks where you died")
+	if bag.is_empty():
+		return
+	check(DeathBag.is_mine(bag["rec"], game.my_id()) and Corpses.use_of(bag["rec"])[1] == "Open your bag", "it is your bag")
+	var e: Dictionary = world.corpses._shown[bag["key"]]
+	var saved = game.store.load_chunk(int(e["cn"].data["cx"]), int(e["cn"].data["cz"]))
+	check(saved is Dictionary and saved.get("corpses", {}).has(e["id"]), "the bag is saved with its chunk at once")
+	await create_timer(4.6).timeout
+	await _frames(30)
+	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
+	# Back to the bag: open it and take everything.
+	player.global_position = bag["pos"] + Vector3(1.5, 1.0, 0)
+	await _frames(5)
+	var menus = world.menus
+	menus.open_corpse(world.corpses, bag["key"])
+	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
+	var m: int = menus._take_purse()
+	Storage.transfer_all(menus._store, game.inventory)
+	menus._corpse_changed(m)
+	if menus._mode != "":
+		menus.close()
+	var items_after := 0
+	for it in game.inventory.slots:
+		if it != null:
+			items_after += 1
+	check(game.inventory.count("planks") == count_before and items_after == items_before, "everything comes back out of the bag (%d of %d slots)" % [items_after, items_before])
+	check(game.money == money_before, "the purse comes back")
+	check(game.equipment.keys().size() == worn_before.keys().size(), "your armour goes back on (%d pieces)" % worn_before.size())
+	world.corpses._scan = 0.0
+	await _frames(3)
+	check(world.corpses.record(bag["key"]).is_empty() and game.markers.on_planet(game.planet, "death").is_empty(), "the emptied bag and its marker are gone")
+	await _frames(60)
 
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
 ## butchered for meat, hide and bone; a dead person's body holds their gear and purse.
