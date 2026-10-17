@@ -262,17 +262,17 @@ static func _merlons(k: MeshKit, mat: String, x0: float, x1: float, y: float, zo
 	const WALL := 0.6
 	var len := x1 - x0
 	var mid := (x0 + x1) * 0.5
-	k.box(mat, Transform3D(b, b * Vector3(mid, y + WALL * 0.5, zo)), Vector3(len, WALL, 0.5))
-	k.box(mat, Transform3D(b, b * Vector3(mid, y + WALL + 0.04, zo)), Vector3(len + 0.04, 0.08, 0.6))
+	k.bevel_box(mat, Transform3D(b, b * Vector3(mid, y + WALL * 0.5, zo)), Vector3(len, WALL, 0.5), 0.03)
+	k.bevel_box(mat, Transform3D(b, b * Vector3(mid, y + WALL + 0.04, zo)), Vector3(len + 0.04, 0.08, 0.6), 0.02)
 	var x := x0 + 0.5
 	while x < x1 - 0.2:
 		if not broken or r.randf() > 0.35:
 			var h := r.randf_range(mh - 0.04, mh + 0.04) if not broken else r.randf_range(0.25, 0.8)
 			var mw := r.randf_range(w - 0.04, w + 0.04)
 			var y0 := y + WALL + 0.08
-			k.box(mat, Transform3D(b, b * Vector3(x, y0 + h * 0.5, zo)), Vector3(mw, h, 0.5))
+			k.bevel_box(mat, Transform3D(b, b * Vector3(x, y0 + h * 0.5, zo)), Vector3(mw, h, 0.5), 0.035)
 			if not broken:
-				k.box(mat, Transform3D(b, b * Vector3(x, y0 + h + 0.05, zo)), Vector3(mw + 0.08, 0.1, 0.58))
+				k.bevel_box(mat, Transform3D(b, b * Vector3(x, y0 + h + 0.05, zo)), Vector3(mw + 0.08, 0.1, 0.58), 0.025)
 		x += step
 
 ## Where the kit walls' outer faces lie (local z) on a curtain wall and on a tower.
@@ -334,6 +334,14 @@ static func _weather(k: MeshKit, yaw: float, face: float, w: float, top: float) 
 	var rain := Color(0, 1, 1, 1)
 	k.card("weathering", Transform3D.IDENTITY, b * Vector3(0, 0.6, face + 0.03), b, w + 0.1, 3.6, Vector3.ZERO, foot)
 	k.card("weathering", Transform3D.IDENTITY, b * Vector3(0, top - 2.2, face + 0.035), b, w + 0.1, 4.4, Vector3.ZERO, rain)
+
+## A water table along a curtain wall's face from x0 to x1 (the face turned by `yaw`
+## from +z), on the kit walls' brick.
+static func _water_table(k: MeshKit, mat: String, yaw: float, x0: float, x1: float) -> void:
+	var b := Basis(Vector3.UP, yaw)
+	var path := PackedVector3Array([b * Vector3(x0, 0, 0.8), b * Vector3(x1, 0, 0.8)])
+	var out := b * Vector3(0, 0, 1)
+	k.sweep(mat, Transform3D.IDENTITY, path, PackedVector3Array([out, out]), Vector3.UP, PackedVector2Array(Trim.WATER_TABLE))
 
 ## A tower's crown, one of four builds: plain battlements; a corbelled parapet standing
 ## out on brackets (machicolations); round bartizans hung on the outer corners; or a
@@ -409,6 +417,7 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.2, 4.0, 2.0))
 			for face in [0.0, PI]:
 				_weather(k, face, WALL_FACE, 8.0, 6.2)
+				_water_table(k, face_stone, face, -4.0, 4.0)
 			# Ivy up one face or the other on some sections.
 			if v > 0:
 				var side := 0.0 if v == 1 else PI
@@ -424,6 +433,7 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 					models.append(["village/Corner_Exterior_Brick", 0, c + Vector3(0, row * 3.0, 0), 1.0])
 			models.append(["village/Wall_UnevenBrick_Door_Round", 0, Vector3(3, 0, 4.0), 1.0])
 			models.append(["village/Door_1_Round", 100, Vector3(3 - 0.53, 0, 4.0 - 0.18), 1.0])
+			Trim.room(k, face_stone, Trim.WATER_TABLE, -4.0, 4.0, -4.0, 4.0, 0.0, [["+z", 3.0 - 0.66, 3.0 + 0.66]], false, true)
 			var fl: float = Interiors.BOX["castle_tower"][1]
 			k.box("flagstone", Transform3D.IDENTITY.translated(Vector3(0, fl * 0.5, 0)), Vector3(7.6, fl, 7.6))
 			for bx in Interiors.roof_boxes("castle_tower"):
@@ -472,6 +482,9 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 					k.card("weathering", Transform3D.IDENTITY, b2 * Vector3(0, 5.1, WALL_FACE + 0.035), b2, 4.0, 2.2, Vector3.ZERO, Color(0, 1, 1, 1))
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(-3.0, -2.0, 0)), Vector3(2.2, 4.0, 2.0))
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(3.0, -2.0, 0)), Vector3(2.2, 4.0, 2.0))
+			for face: float in [0.0, PI]:
+				_water_table(k, face_stone, face, -4.0, -2.0)
+				_water_table(k, face_stone, face, 2.0, 4.0)
 			k.box("flagstone", Transform3D.IDENTITY.translated(Vector3(0, -0.45, 0)), Vector3(4.0, 0.9, 2.2))
 			if ruined:
 				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(0, 5.2, 1.02)), Vector3(1.2, 0.25, 0.04))
@@ -496,7 +509,13 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 			# ceiling read as a tree trunk).
 			k.box("wood_floor", Transform3D.IDENTITY.translated(Vector3(0, 2.95, 0)), Vector3(7.6, 0.1, 7.6))
 			for j in 5:
-				k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.79, -3.2 + j * 1.6)), Vector3(7.4, 0.22, 0.22))
+				k.bevel_box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.79, -3.2 + j * 1.6)), Vector3(7.4, 0.22, 0.22), 0.03)
+			# A water table round the foot outside, and a corbel table carrying the
+			# overhang of the roof's edge.
+			Trim.room(k, face_stone, Trim.WATER_TABLE, -4.0, 4.0, -4.0, 4.0, 0.0, [["+z", 1.0 - 0.66, 1.0 + 0.66]], false, true)
+			for side in 4:
+				var cb := Basis(Vector3.UP, side * PI / 2.0)
+				Trim.corbels(k, face_stone, Transform3D(cb, cb * Vector3(0, 9.0, 4.0)), [-3.15, -2.45, -1.75, -1.05, -0.35, 0.35, 1.05, 1.75, 2.45, 3.15], 0.24, 0.5, 0.28)
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
 			if ruined:
 				for n in 2:

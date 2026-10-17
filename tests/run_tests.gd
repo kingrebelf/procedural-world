@@ -519,6 +519,42 @@ func test_room_interiors() -> void:
 			check(clear, "%s: the loot spot is clear" % t)
 			check(_ray_hit(faces, xf * Vector3(0, 0.6, 1.0), xf * Vector3(0, 0.4, 0)) == INF, "%s: the loot can be reached from in front" % t)
 
+## Finishing trim: chamfered boxes and swept mouldings face out on every triangle (Godot
+## culls the back faces, so a wrong winding is a hole), and a skirting leaves the
+## doorway it is told about open.
+func test_trim() -> void:
+	var outward := func(m: ArrayMesh) -> int:
+		var bad := 0
+		for s in m.get_surface_count():
+			var a := m.surface_get_arrays(s)
+			var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var n: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var ii: PackedInt32Array = a[Mesh.ARRAY_INDEX] if a[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
+			for t in range(0, ii.size(), 3):
+				var g := (v[ii[t + 2]] - v[ii[t]]).cross(v[ii[t + 1]] - v[ii[t]])
+				if g.length() > 1e-9 and g.dot(n[ii[t]] + n[ii[t + 1]] + n[ii[t + 2]]) < 0.0:
+					bad += 1
+		return bad
+	var k := MeshKit.new(1)
+	k.bevel_box("stone", Transform3D(Basis(Vector3.UP, 0.4), Vector3(1, 2, 3)), Vector3(1, 0.5, 0.3), 0.05)
+	var m := k.commit(Materials.get_mat)
+	check(m.surface_get_array_len(0) == 44 * 3, "a chamfered box is 44 triangles")
+	check(outward.call(m) == 0, "a chamfered box faces out all round")
+	k = MeshKit.new(1)
+	Trim.room(k, "timber", Trim.SKIRT, -2, 2, -2, 2, 0.0, [["+z", -0.6, 0.6]])
+	Trim.room(k, "timber", Trim.cove(0.06, 0.11), -2, 2, -2, 2, 2.9, [], true)
+	Trim.room(k, "stone", Trim.WATER_TABLE, -2, 2, -2, 2, 0.0, [], false, true)
+	Trim.kit_wall(k, Transform3D.IDENTITY.translated(Vector3(5, 0, 0)), "door")
+	Trim.kit_wall(k, Transform3D.IDENTITY.translated(Vector3(8, 0, 0)), "window")
+	m = k.commit(Materials.get_mat)
+	check(outward.call(m) == 0, "mouldings, casings and sills face out")
+	var in_door := false
+	for s in m.get_surface_count():
+		for p: Vector3 in m.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]:
+			if absf(p.x) < 0.55 and p.z > 1.9 and p.z < 2.0 and p.y < 0.2:
+				in_door = true
+	check(not in_door, "the skirting stops at the doorway")
+
 ## Tower stairs: each flight a walkable slope from one landing to the next, room for
 ## your head all the way up, and the last flight out through the hatch onto the roof.
 func test_tower_stair() -> void:
