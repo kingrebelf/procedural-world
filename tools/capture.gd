@@ -961,14 +961,17 @@ func _space() -> void:
 	await _wait(150)
 	Input.action_release("crouch")
 	p.dismount(true)
+	var at := p.global_position
+	var yaw := p.yaw()
+	# Off the dark of space the eye takes seconds to adapt (auto exposure), and a fast GPU
+	# runs the settle frames in under one: wait it out by the clock, in the day.
+	Game.day = 0.42
+	await _wait_ms(6000)
 	# Look away from the parked ship, over the alien landscape.
-	p.set_state({"pos": p.global_position + Vector3(0, 0, 6), "yaw": p.yaw() + 2.4, "pitch": -0.15, "slot": 0, "view": 3, "riding": -1})
+	p.set_state({"pos": at + Vector3(0, 0, 6), "yaw": yaw + 2.4, "pitch": -0.15, "slot": 0, "view": 3, "riding": -1})
 	await _wait_loaded(p, world.streamer)
 	Game.day = 0.42
 	await _wait(settle_frames)
-	# Off the dark of space the eye takes seconds to adapt (auto exposure), and a fast GPU
-	# runs the settle frames in under one: wait it out by the clock.
-	await _wait_ms(6000)
 	await _snap("15_fey_moon")
 	Game.close_world()
 	get_tree().quit()
