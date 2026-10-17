@@ -23,6 +23,9 @@ const ITEMS := {
 	"silver_chalice": {"name": "Silver Chalice", "era": Eras.MEDIEVAL, "value": 60, "stack": true, "kind": "treasure", "color": Color(0.85, 0.85, 0.9)},
 	"moonpearl": {"name": "Moonpearl", "era": Eras.FANTASY, "value": 85, "stack": true, "kind": "treasure", "color": Color(0.9, 0.9, 1.0)},
 	"data_core": {"name": "Encrypted Data Core", "era": Eras.SCIFI, "value": 110, "stack": true, "kind": "treasure", "color": Color(0.2, 1.0, 0.8)},
+	# Treasure maps: picking one up buries a chest somewhere out there (see Treasure).
+	"treasure_map": {"name": "Treasure Map", "era": Eras.MEDIEVAL, "value": 25, "stack": false, "kind": "map", "color": Color(0.86, 0.76, 0.54)},
+	"treasure_chip": {"name": "Cache Data Chip", "era": Eras.SCIFI, "value": 40, "stack": false, "kind": "map", "color": Color(0.32, 0.36, 0.42)},
 	# Food
 	"bread": {"name": "Bread", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "food", "heal": 25, "color": Color(0.8, 0.6, 0.3)},
 	"glowberry": {"name": "Glowberries", "era": Eras.FANTASY, "value": 6, "stack": true, "kind": "food", "heal": 35, "color": Color(0.6, 0.3, 1.0)},
@@ -163,7 +166,8 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"rail_rifle": 5.0, "arc_launcher": 5.5, "bolt": 0.05, "rounds": 0.02, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
-	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2}
+	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2,
+	"treasure_map": 0.05, "treasure_chip": 0.05}
 const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 

@@ -2172,3 +2172,64 @@ func test_cave_networks() -> void:
 	check(Caves.lights({"t": "cave_crystal", "v": 0}).is_empty(), "plain crystals carry no lamp")
 	Eras.theme = was_theme
 	WorldField.terrain_v = was
+
+func test_treasure_maps() -> void:
+	check(ItemDB.def("treasure_map").get("kind", "") == "map" and not ItemDB.is_stackable("treasure_map"), "a treasure map is its own item")
+	check(Treasure.map_for(Eras.MEDIEVAL) == "treasure_map" and Treasure.map_for(Eras.SCIFI) == "treasure_chip", "parchment in the old lands, a data chip on the frontier")
+	# A buried chest holds five or six ordinary caches' worth.
+	var worth := func(loot: Array) -> int:
+		var w := 0
+		for it in loot:
+			w += int(it["qty"]) if it["type"] == "_marks" else int(ItemDB.def(it["type"]).get("value", 1)) * int(it["qty"])
+		return w
+	var r := RandomNumberGenerator.new()
+	r.seed = 99
+	var one := 0
+	var chest := 0
+	for i in 40:
+		one += worth.call(ItemDB.roll_loot(Eras.MEDIEVAL, r, {"chunk": Vector2i(2, 2)}, Treasure.LUCK))
+		var t := Treasure.roll_loot(Eras.MEDIEVAL, r, Vector2i(2, 2))
+		chest += worth.call(t)
+		var types := {}
+		for it in t:
+			check(not Treasure.is_map(it["type"]), "no maps inside treasure")
+			if ItemDB.is_stackable(it["type"]) or it["type"] == "_marks":
+				check(not types.has(it["type"]), "stacks in a chest are merged")
+				types[it["type"]] = true
+	check(chest > one * 4 and chest < one * 7, "a treasure chest is worth 5-6 caches (%d vs %d)" % [chest, one])
+	# The spot: a few hundred metres to a kilometre off, on open dry land.
+	var g := ChunkGenerator.new(5150)
+	r.seed = 7
+	var h := Treasure.new_hunt(1, g, Vector2(10, 20), 0, r)
+	var d := Vector2(h["x"], h["z"]).distance_to(Vector2(10, 20))
+	check(d >= Treasure.MIN_DIST and d <= Treasure.MAX_DIST, "the X is %d m away" % d)
+	check(Treasure.open_land(g, Vector2(h["x"], h["z"])), "on open dry land")
+	check(not (h["loot"] as Array).is_empty() and not h["found"], "the hunt knows what's in the chest")
+	# Buried in its chunk under a mound of turned soil; dig and it can be opened.
+	var k := Treasure.chunk_of(h)
+	var c := g.generate(k.x, k.y)
+	var ground := ChunkGenerator.height_at(c, float(h["x"]) - k.x * 64.0, float(h["z"]) - k.y * 64.0)
+	var lp := Treasure.burial(c, h)
+	check(lp.x >= Treasure.EDGE and lp.x <= 64.0 - Treasure.EDGE and lp.z >= Treasure.EDGE and lp.z <= 64.0 - Treasure.EDGE, "the chest lies inside its chunk")
+	var before := ChunkGenerator.height_at(c, lp.x, lp.z)
+	check(absf(before - Treasure.DEPTH - lp.y) < 0.01, "%.1f m under the ground" % Treasure.DEPTH)
+	Treasure.dress(c, lp)
+	check(ChunkGenerator.height_at(c, lp.x, lp.z) > before + 0.1 and ChunkGenerator.road_at(c, lp.x, lp.z) > 0.5, "turned soil heaps over it")
+	var o := {"i": c["objects"].size(), "t": "chest", "p": lp, "r": 0.0, "s": 1.0, "e": 0, "st": {"loot": h["loot"], "opened": false, "treasure": 1}}
+	c["objects"].append(o)
+	check(Treasure.covered(c, o) and Treasure.chest_in(c, 1) == o and Treasure.chest_in(c, 2).is_empty(), "the chest starts buried")
+	var hs: PackedFloat32Array = c["heights"]
+	for j in range(int(lp.z) - 2, int(lp.z) + 3):
+		for i in range(int(lp.x) - 2, int(lp.x) + 3):
+			hs[j * ChunkGenerator.RES + i] = minf(hs[j * ChunkGenerator.RES + i], lp.y)
+	c["heights"] = hs
+	check(not Treasure.covered(c, o), "dug down to, it can be opened")
+	check(not Treasure.covered(c, {"p": lp, "st": {}}), "ordinary caches are never buried")
+	# The snapshot keeps chest, mound and hole.
+	var s := _tmp_store("treasure")
+	s.save_chunk(c)
+	var back = s.load_chunk(k.x, k.y)
+	check(back is Dictionary and int(Treasure.chest_in(back, 1).get("st", {}).get("treasure", -1)) == 1 and absf(ChunkGenerator.height_at(back, lp.x, lp.z) - lp.y) < 0.01, "the snapshot keeps the chest and the dig")
+	check(Treasure.compass(Vector2(0, -5)) == "north" and Treasure.compass(Vector2(5, 5)) == "south-east", "compass directions")
+	check(Treasure.hint(h, Vector3(h["x"], 0, h["z"] + 500.0)).contains("north"), "the map says which way to go")
+	check(ground == ground, "ground sampled")
