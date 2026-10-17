@@ -45,6 +45,8 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
   ("Mined in Ashford Vale on day 3"), even inside a stack.
 - **Build your own places.** Foundations, floors, timber, stone and alloy walls, doorways,
   windows, stairs and tiled roofs snap to a grid and to the storeys you've already built.
+  Aim at a piece to carry on from it: the next wall along or on top, the next floor tile,
+  a roof over the room a wall belongs to. A red ghost tells you why it won't fit.
   Everything you build is saved with the world; take a piece down to get it back.
 - **Vehicles.** Build a vehicle bay to put together a hover speeder (skims over land and
   water) or a survey rover, or a stable to saddle a riding horse. Set one down from your
@@ -107,7 +109,7 @@ Controllers use ARK: Survival Ascended's layout.
 | Inventory (drag items onto the hotbar) | Tab | B |
 | Crafting / Character / Atlas | R / K / M | D-pad up / D-pad down / View |
 | Hotbar | 1 to 0, mouse wheel | D-pad left/right; hold LB + Y, B, X, A, D-pad for slots 1 to 8 |
-| Turn a building piece | Q | RB |
+| Turn a building piece (Shift + Q turns it back) | Q | RB |
 | Raise / lower a building piece | X / Z | D-pad up / D-pad down (while holding a piece) |
 | Grid snap on / off (free placement) | G | X (while holding a piece) |
 | Take down a piece you built (returns it) | Hold E | Hold Y |
