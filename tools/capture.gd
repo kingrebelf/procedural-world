@@ -320,7 +320,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		Weather.current.starfall.forced = true
 		Weather.current.starfall.land_now = true
 		# Caught mid-fall, the fireball still high over the land.
-		await _wait_ms(1600)
+		await _wait_ms(2200)
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))

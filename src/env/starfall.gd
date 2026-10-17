@@ -95,7 +95,8 @@ func _sky(delta: float, cam: Vector3, seen: float) -> void:
 		m.set_shader_parameter("pix", _pix)
 		mi.global_position = cam
 
-func _spawn_streak(seen: float) -> void:
+## toward: when set, a streak low in that part of the sky (so a capture catches one).
+func _spawn_streak(seen: float, toward := Vector3.ZERO) -> void:
 	var s: Array = []
 	for e in _streaks:
 		if not (e[0] as MeshInstance3D).visible:
@@ -113,6 +114,10 @@ func _spawn_streak(seen: float) -> void:
 		var a := randf() * TAU
 		var el := randf_range(0.25, 1.3)
 		dir = Vector3(cos(a) * cos(el), sin(el), sin(a) * cos(el))
+		if toward != Vector3.ZERO:
+			var b := atan2(toward.z, toward.x) + randf_range(-0.6, 0.6)
+			el = randf_range(0.12, 0.4)
+			dir = Vector3(cos(b) * cos(el), sin(el), sin(b) * cos(el))
 		if dir.dot(rad) < 0.97:
 			break
 	var travel := (dir - rad * dir.dot(rad)).normalized()
@@ -123,6 +128,11 @@ func _spawn_streak(seen: float) -> void:
 	s[5] = randf_range(0.12, 0.28) # sky radians a second
 	s[6] = randf_range(0.03, 0.09) # train length in sky radians
 	s[7] = randf_range(0.6, 2.2) * (2.5 if randf() < 0.08 else 1.0) # now and then a bright one
+	if toward != Vector3.ZERO:
+		# Slow and long-lived, so a picture taken a couple of seconds on still has it.
+		s[2] = randf_range(3.2, 4.0)
+		s[5] = randf_range(0.04, 0.08)
+		s[7] = randf_range(1.5, 2.5)
 	(s[0] as MeshInstance3D).visible = true
 
 func _streak_mesh() -> MeshInstance3D:
@@ -146,8 +156,12 @@ func _landings(p: Vector3, day: float, on: float) -> void:
 		land_now = false
 		var cam := get_viewport().get_camera_3d()
 		var fwd := -cam.global_basis.z if cam != null else Vector3.FORWARD
-		var a := atan2(fwd.z, fwd.x) + randf_range(-0.3, 0.3)
-		_fall(p + Vector3(cos(a), 0.0, sin(a)) * randf_range(120.0, 260.0), randi(), true)
+		var a := atan2(fwd.z, fwd.x) + randf_range(-0.25, 0.25)
+		var ahead := Vector3(cos(a), 0.0, sin(a))
+		_fall(p + ahead * randf_range(250.0, 400.0), randi(), true, ahead)
+		# And a few of the shower's streaks in the same part of the sky.
+		for i in 3:
+			_spawn_streak(1.0, ahead)
 	# A long jump in time (sleeping, loading) skips what fell meanwhile.
 	if _prev_day < 0.0 or day < _prev_day or day - _prev_day > 0.002 or (on <= 0.0 and not forced):
 		return
@@ -168,7 +182,8 @@ func _landings(p: Vector3, day: float, on: float) -> void:
 			_fall(at, h, false)
 
 ## Starts a fragment's fall toward `at`, nudged off roads, rivers, water and buildings.
-func _fall(at: Vector3, h: int, shown: bool) -> void:
+## from_dir: when set, it comes down out of that part of the sky (in front of the camera).
+func _fall(at: Vector3, h: int, shown: bool, from_dir := Vector3.ZERO) -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = h
 	var spot := _clear_spot(at, r)
@@ -179,7 +194,11 @@ func _fall(at: Vector3, h: int, shown: bool) -> void:
 		spot.y = weather.atmosphere.field.height(at.x, at.z)
 	var rad := Climate.starfall_radiant(Game.seed, Climate.starfall_night_of(Game.day))
 	var flat := Vector3(rad.x, 0.0, rad.z).normalized() if Vector2(rad.x, rad.z).length() > 0.01 else Vector3.RIGHT
-	var from := spot + (flat * cos(0.6) + Vector3.UP * sin(0.6)) * 2600.0
+	var slope := 0.6
+	if from_dir != Vector3.ZERO:
+		flat = from_dir
+		slope = 0.35
+	var from := spot + (flat * cos(slope) + Vector3.UP * sin(slope)) * 2600.0
 	var mi := _streak_mesh()
 	var m := mi.material_override as ShaderMaterial
 	m.set_shader_parameter("tint", Color(1.0, 0.9, 0.75))
