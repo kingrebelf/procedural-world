@@ -1145,6 +1145,21 @@ func _player_house() -> void:
 				id = "wall_window" if k == 1 else ("wall_window_stone" if side == 0 else id)
 			var near_now := BuildCatalog.built_near(streamer, hit, 4.0)
 			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor", "near": near_now}))
+	# Corner posts where the walls meet, stone below and timber above, and a door hung in
+	# the doorway (at its spot and facing, as the builder hangs one).
+	for k in 2:
+		for c in [Vector3(-3, 0, -3), Vector3(3, 0, -3), Vector3(-3, 0, 3), Vector3(3, 0, 3)]:
+			var cid := "corner_stone" if k == 0 else "corner_timber"
+			put.call(cid, BuildCatalog.snap(cid, Vector3(cx + c.x * 0.97, base.y + k * storey + 1.0, cz + c.z * 0.97), 0.0, 0, base, false, {"hit_mode": "wall"}))
+	var dw := Doors.doorway_near(streamer, "door_wood", Vector3(cx, base.y + 1.7, cz + 8.0), Vector3(cx, base.y + 1.2, cz + 3.0))
+	if not dw.is_empty():
+		var dpos: Vector3 = dw["pos"]
+		var dc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(dpos))
+		var dst := {"by": "you", "day": 0.0}
+		Doors.init_state(dst)
+		dc.add_built("door_wood", dpos - dc.position, float(dw["yaw"]), dst)
+	else:
+		print("house: no doorway found for the door")
 	# Stairs from the front left cell, climbing toward the back; the upper floor leaves
 	# their two cells open.
 	put.call("stairs_wood", BuildCatalog.snap("stairs_wood", Vector3(cx - 2.0, base.y + 0.02, cz + 2.0), 0.0, 0, base, false, {"hit_mode": "floor"}))
