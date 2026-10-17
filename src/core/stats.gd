@@ -11,7 +11,7 @@ const POINTS_PER_LEVEL := 3
 const ATTRS := ["str", "end", "agi", "oxy", "int"]
 const NAMES := {"str": "Strength", "end": "Endurance", "agi": "Agility", "oxy": "Oxygen", "int": "Intellect"}
 const BLURBS := {
-	"str": "+6% damage and harvesting, +5 kg carry weight per point",
+	"str": "+6% damage and harvesting, +50 kg carry weight per point",
 	"end": "+10 health and +8 stamina per point",
 	"agi": "+3% move speed and +3% swing speed per point",
 	"oxy": "+5 seconds of breath underwater per point",
@@ -19,7 +19,8 @@ const BLURBS := {
 }
 const BASE_HEALTH := 100.0
 const BASE_STAMINA := 100.0
-const BASE_CARRY := 60.0 ## kg you can carry before you slow down
+const BASE_CARRY := 600.0 ## kg you can carry before you slow down
+const CARRY_PER_STR := 50.0 ## extra kg per point of strength
 const BASE_BREATH := 30.0 ## seconds underwater
 
 ## Skills: points raise them one level each, and doing the thing earns practice that
@@ -29,7 +30,7 @@ const SKILL_NAMES := {"sneak": "Sneaking", "pick": "Pickpocketing", "lock": "Loc
 const SKILL_BLURBS := {
 	"sneak": "Crouch [crouch] to sneak: people notice you 1.5% less per level",
 	"pick": "Crouch behind someone and [interact] to pick their pockets: +1.5% chance per level",
-	"lock": "Pick the locks on chests in town: +2% chance per level",
+	"lock": "Pick the locks on chests in town: the sweet spot is 3% wider and picks last longer per level",
 }
 const SKILL_MAX := 50
 
@@ -104,10 +105,6 @@ func pickpocket_chance(worth: float, behind: bool, aware: float) -> float:
 	var c: float = 0.45 + 0.015 * skills["pick"] + (0.15 if behind else -0.15) - 0.25 * aware - clampf(worth / 160.0, 0.0, 0.4)
 	return clampf(c, 0.05, 0.95)
 
-## Chance to pick a lock of difficulty 1 (simple) to 3 (masterwork).
-func lockpick_chance(difficulty: int) -> float:
-	return clampf(0.75 - 0.22 * float(difficulty - 1) + 0.02 * skills["lock"], 0.05, 0.97)
-
 func max_health() -> float:
 	return BASE_HEALTH + 10.0 * attrs["end"]
 
@@ -125,7 +122,7 @@ func swing_mult() -> float:
 	return 1.0 + 0.03 * attrs["agi"]
 
 func carry_capacity() -> float:
-	return BASE_CARRY + 5.0 * attrs["str"]
+	return BASE_CARRY + CARRY_PER_STR * attrs["str"]
 
 func max_breath() -> float:
 	return BASE_BREATH + 5.0 * attrs["oxy"]

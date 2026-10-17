@@ -55,7 +55,7 @@ const PIECES := {
 	"workbench": {"name": "Workbench", "models": [["props/Workbench", 0, Vector3.ZERO, 1.0], ["props/Workbench_Drawers", 0, Vector3.ZERO, 1.0]],
 		"snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "station": "workbench"},
 	"campfire": {"name": "Campfire", "models": [], "proc": "campfire",
-		"snap": "free", "mat": "stone", "hp": 5.0, "era": -1, "station": "campfire", "light": Color(1.0, 0.55, 0.25)},
+		"snap": "free", "mat": "stone", "hp": 5.0, "era": -1, "station": "campfire", "light": Color(1.0, 0.55, 0.25), "fire": 0.95},
 	"forge": {"name": "Forge", "models": [["props/Bucket_Metal", 0, Vector3(1.15, 0, 0.35), 1.0]], "proc": "forge",
 		"snap": "free", "mat": "stone", "hp": 24.0, "era": -1, "station": "forge", "light": Color(1.0, 0.45, 0.2)},
 	"anvil": {"name": "Anvil", "models": [["props/Anvil_Log", 0, Vector3.ZERO, 1.0]],
@@ -350,13 +350,30 @@ static func _proc(k: MeshKit, what: String) -> void:
 			# Stone block under the floor tile, reaching into the ground on slopes.
 			k.box("stone", I.translated(Vector3(0, -1.0, 0)), Vector3(2.0, 1.98, 2.0))
 		"campfire":
-			for n in 9:
-				var a := TAU * n / 9.0
-				k.sphere("stone", I.translated(Vector3(cos(a) * 0.62, 0.08, sin(a) * 0.62)), 0.17, 5, 7, 0.3)
-			for n in 3:
-				var b := Basis(Vector3.UP, n * TAU / 3.0) * Basis(Vector3.RIGHT, 1.1)
-				k.cylinder("bark", Transform3D(b, Vector3(0, 0.05, 0)) * I.translated(Vector3(0, -0.45, 0)), 0.07, 0.06, 0.9, 6)
-			k.sphere("glow_warm", I.translated(Vector3(0, 0.12, 0)), 0.3, 6, 8, 0.25)
+			# A ring of smooth, flat river stones, sooted a little.
+			for n in 11:
+				var a := TAU * (n + 0.3 * sin(n * 2.3)) / 11.0
+				var r := 0.5 + 0.03 * sin(n * 1.7)
+				var sb := Basis(Vector3.UP, -a + 0.4 * sin(n * 3.1)).scaled(Vector3(1.0 + 0.25 * sin(n * 2.9), 1.0, 0.8))
+				var sc := Color(0.66, 0.64, 0.62).darkened(0.15 * absf(sin(n * 1.3)))
+				k.sphere("river_stone", Transform3D(sb, Vector3(cos(a) * r, 0.035, sin(a) * r)), 0.1, 6, 10, 0.08, 0.5, sc)
+			# Ash, and a bed of embers under the flames ("fire").
+			k.cylinder("ash", I, 0.4, 0.38, 0.015, 16)
+			k.sphere("glow_red", I.translated(Vector3(0, 0.02, 0)), 0.2, 6, 10, 0.2, 0.22)
+			# Two logs laid crosswise, burnt through in the middle.
+			for n in 2:
+				var lb := Basis(Vector3.UP, 0.4 + n * PI * 0.5) * Basis(Vector3(0, 0, 1), PI * 0.5)
+				for seg in [[-0.42, 0.26, "bark"], [-0.16, 0.32, "char"], [0.16, 0.26, "bark"]]:
+					k.cylinder(seg[2], Transform3D(lb, Vector3(0, 0.05 + n * 0.07, 0)) * I.translated(Vector3(0, seg[0], 0)), 0.05, 0.05, seg[1], 8)
+			# A teepee of split logs leaning together, charred where the fire licks them.
+			for n in 6:
+				var a := TAU * n / 6.0 + 0.25
+				var foot := Vector3(cos(a) * 0.3, 0.0, sin(a) * 0.3)
+				var dir := (Vector3(0.02 * sin(n * 2.0), 0.62, 0.02 * cos(n * 2.0)) - foot)
+				var lb := Basis(Vector3.UP.cross(dir.normalized()).normalized(), Vector3.UP.angle_to(dir))
+				var ln := dir.length()
+				k.cylinder("bark", Transform3D(lb, foot), 0.042, 0.036, ln * 0.45, 7)
+				k.cylinder("char", Transform3D(lb, foot) * I.translated(Vector3(0, ln * 0.45, 0)), 0.036, 0.022, ln * 0.55, 7)
 		"forge":
 			k.box("cobble", I.translated(Vector3(0, 0.45, 0)), Vector3(1.6, 0.9, 1.2))
 			k.box("glow_red", I.translated(Vector3(0, 0.91, 0)), Vector3(1.1, 0.04, 0.7))

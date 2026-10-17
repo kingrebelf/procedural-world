@@ -142,7 +142,7 @@ static func snapshot(npc: Dictionary, per: Dictionary) -> Dictionary:
 	return {
 		"id": npc["id"], "name": npc["name"], "job": npc["job"], "era": Eras.NAMES[npc["era"]],
 		"traits": npc["traits"], "rel": npc.get("rel", 0), "mood": npc.get("mood", "calm"),
-		"energy": snappedf(npc.get("energy", 1.0), 0.01), "hp": npc.get("hp", 100.0),
+		"energy": snappedf(npc.get("energy", 1.0), 0.01), "hp": npc.get("hp", 100.0), "level": int(npc.get("level", 1)),
 		"hour": snappedf(per["hour"], 0.1), "player_dist": snappedf(minf(per.get("player_dist", 999.0), 999.0), 0.1),
 		"player_armed": per.get("player_armed", false), "player_wanted": per.get("wanted", 0), "goal": npc.get("goal", ""),
 		"current": npc.get("_action", "idle"),

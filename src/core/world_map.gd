@@ -344,6 +344,7 @@ func process(delta: float, player: Node3D) -> void:
 			var cn: ChunkNode = s.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 			if cn != null:
 				ground = ChunkGenerator.height_at(cn.data, player.global_position.x - cn.position.x, player.global_position.z - cn.position.z)
+				_find_cave(cn.data, pos)
 		reveal(pos, clampf(SIGHT + maxf(0.0, player.global_position.y - ground) * 1.5, SIGHT, SIGHT_MAX))
 		_find_wonders(pos)
 	_save_t -= delta
@@ -351,6 +352,31 @@ func process(delta: float, player: Node3D) -> void:
 		_save_t = 20.0
 		save()
 		_evict()
+
+## A cave mouth (v10) goes on the map only once you have stood by it: they are hidden.
+func _find_cave(chunk: Dictionary, pos: Vector2) -> void:
+	if not chunk.has("hole"):
+		return
+	var key := "%d,%d" % [int(chunk["cx"]), int(chunk["cz"])]
+	var list: Array = pois.get(key, [])
+	for poi in list:
+		if poi["k"] == "cave":
+			return
+	var hb: PackedByteArray = chunk["hole"]
+	var sum := Vector2.ZERO
+	var n := 0
+	for k in hb.size():
+		if hb[k] != 0:
+			sum += Vector2(k % ChunkGenerator.RES, k / ChunkGenerator.RES)
+			n += 1
+	var at := Vector2(float(chunk["cx"]), float(chunk["cz"])) * ChunkGenerator.SIZE + sum / maxi(n, 1)
+	if n == 0 or pos.distance_to(at) > 16.0:
+		return
+	list.append({"k": "cave", "name": "Cave", "x": at.x, "z": at.y, "era": chunk.get("era", 0)})
+	pois[key] = list
+	_index_dirty = true
+	Game.add_xp(60.0, "Found a cave")
+	Game.discovered.emit("Cave", "Cave entrance found", Color(0.62, 0.58, 0.52))
 
 func _find_wonders(pos: Vector2) -> void:
 	for key in wonders:

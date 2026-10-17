@@ -48,6 +48,10 @@ static func prop_for(t: String, it = null) -> Node3D:
 	if d.get("kind", "") in ["tool", "weapon", "light"] and model(t) != null:
 		mi.mesh = model(t)
 		mi.material_overlay = aura_for(it)
+		if t == "torch":
+			mi.add_child(HandLight.torch_fire())
+			# Its light burns at the head, so the torch's own shadow would black out the stick.
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)
@@ -93,6 +97,7 @@ const KIT := {
 	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
 	"dagger": ["props/Sword_Bronze", 0.5, Color(0.88, 0.9, 0.95)],
+	"skinning_knife": ["props/Sword_Bronze", 0.36, Color(0.78, 0.78, 0.74)],
 	"battle_axe": ["props/Axe_Bronze", 1.15, Color(0.7, 0.72, 0.76)],
 }
 

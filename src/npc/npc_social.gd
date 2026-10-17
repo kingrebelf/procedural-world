@@ -10,7 +10,7 @@ class_name NPCSocial
 
 ## What each trade has to sell.
 const JOB_GOODS := {
-	"farmer": ["bread", "wild_berries", "fiber"], "smith": ["iron_ingot", "sword_iron", "pickaxe_iron", "hammer", "helm_iron"],
+	"farmer": ["bread", "wild_berries", "fiber"], "smith": ["iron_ingot", "lockpick", "sword_iron", "pickaxe_iron", "hammer", "helm_iron"],
 	"guard": ["sword_iron", "shield_wood", "crossbow", "bolt"], "innkeeper": ["bread", "cooked_meat", "health_potion"],
 	"hunter": ["hide", "raw_meat", "longbow", "arrow", "dagger"], "priest": ["health_potion", "silver_chalice"],
 	"weaver": ["fiber", "boots_leather", "gloves_leather"], "miller": ["bread", "planks"],
@@ -18,8 +18,8 @@ const JOB_GOODS := {
 	"runecarver": ["rune_tablet", "bracers_rune", "aether_crystal"], "bard": ["glowberry", "moonpearl"],
 	"mystic": ["aether_crystal", "moonpearl", "stamina_potion"], "beekeeper": ["glowberry", "wild_berries"],
 	"lamplighter": ["torch", "glowroot"], "scribe": ["rune_tablet", "binoculars"],
-	"engineer": ["circuitry", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
-	"scavenger": ["alloy_scrap", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
+	"engineer": ["circuitry", "lockpick", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
+	"scavenger": ["alloy_scrap", "lockpick", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
 	"security officer": ["pulse_pistol", "rounds", "helm_visor"], "data broker": ["data_core", "circuitry"],
 	"hydroponics tech": ["ration_pack", "fiber"], "courier": ["ration_pack", "power_cell", "binoculars"],
 }
@@ -55,6 +55,37 @@ static func ensure(rec: Dictionary) -> void:
 			for slot in g:
 				gear[slot] = {"type": g[slot], "qty": 1, "quality": 1.0}
 		rec["gear"] = gear
+	if not rec.has("level") and rec.get("pos", Vector3.ZERO) is Vector3 and rec.get("pos", Vector3.ZERO) != Vector3.ZERO:
+		rec["level"] = level_for(rec)
+		# Health grows with the level; keep how hurt they already were.
+		rec["hp"] = float(rec.get("hp", 100.0)) / 100.0 * max_hp(rec)
+
+# --- Level -------------------------------------------------------------------------------------
+
+## A person's level: the zone level where they live (Eras.zone_level, one more every 150 m
+## out on themed worlds), townsfolk a little under it, guards a few above the townsfolk
+## around them, and tradesfolk who fight for a living (smiths, hunters) a touch above.
+static func level_for(rec: Dictionary) -> int:
+	var p: Vector3 = rec["pos"]
+	var zone := Eras.zone_level(p.x, p.z)
+	var h := absi(hash(String(rec["id"]) + "level"))
+	var lv := zone - 2 + h % 3
+	if NPCGen.GUARD_JOBS.has(rec["job"]):
+		lv = zone + 3 + h % 3
+	elif rec["job"] in ["smith", "hunter", "scavenger", "engineer"]:
+		lv += 1
+	return clampi(lv, 1, 99)
+
+static func level(rec: Dictionary) -> int:
+	return int(rec.get("level", 1))
+
+## Full health at their level: 100 at level 1, +12% a level (as for wild animals).
+static func max_hp(rec: Dictionary) -> float:
+	return 100.0 * (1.0 + 0.12 * (level(rec) - 1))
+
+## How hard they hit compared with a level 1 person: +4% a level (as for wild animals).
+static func hit_mult(rec: Dictionary) -> float:
+	return 1.0 + 0.04 * (level(rec) - 1)
 
 static func _set_purse(rec: Dictionary, v: int) -> void:
 	rec["purse"] = v
@@ -184,9 +215,9 @@ static func gift_for(rec: Dictionary) -> Dictionary:
 # --- Pockets --------------------------------------------------------------------------------
 
 ## Small things anyone might carry, by era, besides the goods of their trade.
-const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion"],
+const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion", "lockpick"],
 	["glowberry", "bread", "moonpearl", "rune_tablet", "health_potion", "aether_crystal"],
-	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion"]]
+	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick"]]
 const POCKETS_EVERY := 3 ## days before their pockets fill again
 
 ## What this person carries that a quick hand could lift (not their purse, not worn gear).

@@ -6,3 +6,4 @@
 tools/_*.gd
 assets/models/anim/*.glb
 assets/models/anim/*.glb.import
+__pycache__/

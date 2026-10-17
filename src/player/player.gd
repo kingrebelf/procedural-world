@@ -23,6 +23,7 @@ const BREATH := 30.0
 var streamer: ChunkStreamer
 var npcs: NPCManager
 var fauna: FaunaManager
+var corpses: Corpses
 var vehicles: VehicleManager
 ## The vehicle you are riding, or null.
 var vehicle: Vehicle = null
@@ -44,6 +45,7 @@ var snap_down := false ## Put the player on the ground once it loads (after a te
 var selected := 0
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
+var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
 
 var _yaw := 0.0
 var _pitch := 0.0
@@ -62,6 +64,7 @@ var underwater := false
 var breath := BREATH
 var _drown_t := 0.0
 var steps := Footsteps.new()
+var swim := Swim.new()
 ## Your character: one body for third person (and your shadow in first person), and the
 ## arms in the viewmodel for first person. V toggles the camera.
 const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
@@ -308,10 +311,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()
-		elif focus.get("kind", "") in ["built", "station", "vehicle"]:
+		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"]:
 			# Your own pieces and vehicles: tap to use (a station) or ride (a vehicle),
-			# hold to take the piece down or pack the vehicle up.
+			# hold to take the piece down or pack the vehicle up. Carcasses: hold to butcher.
 			_decon_on = {"key": _focus_key(focus), "kind": focus["kind"]}
+			if focus["kind"] == "carcass" and corpses:
+				_decon_on["time"] = corpses.butcher_time(focus["body"], held_item())
+				if body:
+					body.play_once("harvest")
 			decon = 0.0
 		else:
 			interact()
@@ -359,7 +366,7 @@ func _physics_process(delta: float) -> void:
 	var input := Vector2.ZERO
 	if not ui_open:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	_crouched = not ui_open and Input.is_action_pressed("crouch")
+	_crouched = Input.is_action_pressed("crouch") if not ui_open else (_crouched and keep_crouch)
 	var cap := _shape.shape as CapsuleShape3D
 	var target_h := CROUCH_H if _crouched else STAND_H
 	cap.height = move_toward(cap.height, target_h, delta * 4.0)
@@ -372,7 +379,7 @@ func _physics_process(delta: float) -> void:
 	var jumped := false
 	var landed_vy := 0.0
 
-	# Water: float with the chest at the surface; dive with crouch, rise with jump.
+	# Water: swim (Swim) once it is chest-deep; wade below that.
 	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	swimming = surface - global_position.y > 1.15
@@ -388,37 +395,20 @@ func _physics_process(delta: float) -> void:
 		_shape.disabled = noclip
 		move_and_slide()
 	elif swimming:
-		# Swim where you look: look down and push forward to dive, Space rises, Ctrl
-		# sinks. Underwater you are close to neutral and drift slowly up; at the surface
-		# you float with your chest at the waterline.
-		var fast := not winded and Input.is_action_pressed("sprint") and input.length() > 0.1
-		if fast:
-			_tire(10.0 * delta)
-		var look3 := camera.global_transform.basis * Vector3(input.x, 0, input.y)
-		if look3.length() > 1.0:
-			look3 = look3.normalized()
-		var want := look3 * SWIM * (1.5 if fast else 1.0) * Game.stats.speed_mult() * pack
-		var float_y := surface - 1.35
-		var up := 0.0
-		if not ui_open:
-			up = (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
-		want.y += up * 2.6
-		var depth := float_y - global_position.y
-		if absf(up) < 0.1 and absf(look3.y) < 0.25:
-			# Not steering up or down: bob at the surface, or drift gently upward below it.
-			want.y += clampf(depth * 2.2, -2.0, 0.45)
-		if global_position.y > float_y and want.y > 0.0:
-			# Can't swim up out of the water; climb out at the shore instead.
-			want.y = minf(want.y, depth * 3.0)
-		velocity = velocity.lerp(want, clampf(3.0 * delta, 0.0, 1.0))
-		move_and_slide()
+		swim.step(self, delta, input, surface)
 	else:
 		var jump_ok := not ui_open and not Input.is_action_pressed("hotbar_pick")
 		var lift := jetpack.thrust(delta, jump_ok and Input.is_action_pressed("jump"), jump_ok and Input.is_action_just_pressed("jump"),
 			is_on_floor(), velocity.y, Game.inventory)
 		# Steering is much better under thrust than in a plain fall.
 		var a := ACCEL if is_on_floor() else (AIR_ACCEL * 2.4 if jetpack.firing else AIR_ACCEL)
-		hv = hv.lerp(dir * speed, clampf(a * delta, 0.0, 1.0))
+		# Wading: deeper water slows you, and a river's current leans on you.
+		var wet := surface - global_position.y
+		var push := Vector3.ZERO
+		if wet > 0.05:
+			var cur := Water.current(global_position.x, global_position.z) * Swim.wade_push(wet)
+			push = Vector3(cur.x, 0.0, cur.y)
+		hv = hv.lerp(dir * speed * Swim.wade(wet) + push, clampf(a * delta, 0.0, 1.0))
 		velocity.x = hv.x
 		velocity.z = hv.z
 		if is_on_floor():
@@ -436,6 +426,8 @@ func _physics_process(delta: float) -> void:
 			Audio.hold_loop("jetpack", 0.7)
 		if was_air and is_on_floor() and vy < -11.0:
 			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0, "You fell to your death")
+	if not fly:
+		swim.effects(self, delta, surface, swimming, underwater)
 	# Stamina: sprinting drains it; it refills after a moment's rest.
 	if sprinting and hv.length() > 1.0 and not swimming:
 		_tire(13.0 * delta)
@@ -566,6 +558,14 @@ func _find_focus() -> Dictionary:
 				best_s = sc
 				best = {"kind": "vehicle", "vehicle": v, "pos": v.global_position + Vector3(0, v.height + 0.35, 0),
 					"verb": "Ride the %s   (hold: pack up)" % Vehicle.label(v.kind).to_lower()}
+	if corpses:
+		# Carcasses to butcher and bodies to search.
+		for b in corpses.near(global_position, USE_RANGE + 2.5):
+			var sc := _focus_score(eye, fwd, b["pos"] + Vector3(0, 0.4, 0))
+			if sc < best_s:
+				best_s = sc
+				var u := Corpses.use_of(b["rec"])
+				best = {"kind": u[0], "body": b["key"], "pos": b["pos"] + Vector3(0, 1.0, 0), "verb": u[1]}
 	if streamer:
 		var ck := ChunkStreamer.chunk_of(global_position)
 		for dz in range(-1, 2):
@@ -643,10 +643,18 @@ func _update_decon(delta: float) -> void:
 		decon = 0.0
 		return
 	if Input.is_action_pressed("interact"):
-		decon += delta / DECON_TIME
+		decon += delta / float(_decon_on.get("time", DECON_TIME))
 		if decon >= 1.0:
 			_decon_on = {}
 			decon = 0.0
+			if focus["kind"] == "carcass":
+				if corpses:
+					corpses.butcher(focus["body"], held_item())
+					used_tool.emit("hit")
+					if body:
+						body.play_once("interact")
+				_focus_t = 0.0
+				return
 			if focus["kind"] == "vehicle":
 				var v: Vehicle = focus["vehicle"]
 				if is_instance_valid(v):
@@ -661,7 +669,9 @@ func _update_decon(delta: float) -> void:
 				deconstruct(c, c.get_object(focus["i"]))
 		return
 	# Released early: a tap, so use the station or ride the vehicle.
-	if _decon_on["kind"] == "station" and decon < 0.5:
+	if _decon_on["kind"] == "carcass":
+		Game.toast.emit("Keep holding [%s] to %s it" % [_key("interact"), focus.get("verb", "butcher").split(" ")[0].to_lower()])
+	elif _decon_on["kind"] == "station" and decon < 0.5:
 		_use_station()
 	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
 		mount(focus["vehicle"])
@@ -780,10 +790,10 @@ func _update_look_target() -> void:
 	elif h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
 		var r := int(n.rec.get("rel", 0))
-		info = {"title": n.rec["name"], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
+		info = {"title": "Lv %d  %s" % [NPCSocial.level(n.rec), n.rec["name"]], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
 			"lines": ["Feels %s toward you (%d)" % ["hostile" if r <= -40 else ("wary" if r < -5 else ("neutral" if r < 15 else "friendly")), r],
 				"Mood: %s" % n.rec.get("mood", "calm"), "Doing: %s" % n.action.replace("_", " ")],
-			"hp": float(n.rec.get("hp", 100.0)) / 100.0}
+			"hp": float(n.rec.get("hp", 100.0)) / NPCSocial.max_hp(n.rec)}
 	elif h.has("obj"):
 		var o: Dictionary = (h["chunk"] as ChunkNode).get_object(h["obj"])
 		var t: String = o["t"]
@@ -810,7 +820,8 @@ func _update_look_target() -> void:
 				"trader":
 					text = ""
 				"built":
-					text = "Hold [%s] to take down (returns the piece)" % _key("interact")
+					# The prompt box already says how to take it down.
+					text = ""
 				_:
 					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
 			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
@@ -866,6 +877,10 @@ func interact() -> void:
 				return
 			"plant":
 				_pick_plant(focus["found"])
+				_focus_t = 0.0
+				return
+			"corpse":
+				get_tree().call_group("trade_ui", "open_corpse", corpses, focus["body"])
 				_focus_t = 0.0
 				return
 			"lore":
@@ -934,7 +949,7 @@ func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
 		return use["verb"]
 	var lock := lock_of(o)
 	if lock > 0:
-		return "Pick the lock  (%d%%, steal)" % int(round(Game.stats.lockpick_chance(lock) * 100.0))
+		return "Pick the %s lock  (%d lockpicks, steal)" % [LockGame.TIERS[lock].to_lower(), Game.inventory.count("lockpick")]
 	return "Steal from the %s" % ObjectLibrary.label(o["t"]).to_lower()
 
 ## How hard a town chest's lock is: 0 for none or picked, 1..3. Chosen once per chest.
@@ -945,30 +960,18 @@ static func lock_of(o: Dictionary) -> int:
 		st["lock"] = 0 if h % 10 < 4 else 1 + (h / 10) % 3
 	return int(st["lock"])
 
-var _lock_t := 0.0
-## Tries the lock on a town chest. True when it is open (or never was locked). A failed
-## try makes noise someone may hear.
+## A locked town chest opens the lockpicking minigame (LockpickUI). True when it is
+## open (or never was locked).
 func _pick_lock(chunk: ChunkNode, o: Dictionary, wp: Vector3) -> bool:
-	var lock := lock_of(o)
-	if lock <= 0:
+	if lock_of(o) <= 0:
 		return true
-	var t := Time.get_ticks_msec() / 1000.0
-	if t < _lock_t:
-		return false
-	_lock_t = t + 0.8
-	used_tool.emit("hit")
-	if body:
-		body.play_once("interact")
-	Game.mark_chunk_dirty(chunk.data)
-	if randf() < Game.stats.lockpick_chance(lock):
-		o["st"]["lock"] = 0
-		Game.practice("lock", 4.0 + 3.0 * lock)
-		Game.toast.emit("The lock clicks open")
-		return true
-	Game.practice("lock", 1.0 + lock)
-	Game.toast.emit("The lock holds. Try again")
-	npcs.report_crime(wp, "lockpick", 0, "")
+	get_tree().call_group("lockpick_ui", "open_lock", chunk, o, wp)
 	return false
+
+## The minigame opened the lock: take what's inside.
+func use_cache_after_lock(chunk: ChunkNode, o: Dictionary) -> void:
+	if is_instance_valid(chunk):
+		_use_object(chunk, o)
 
 func eat() -> void:
 	var it = held_item()
@@ -1375,6 +1378,8 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 static func _focus_key(f: Dictionary) -> String:
 	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
 		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
+	if f.has("body"):
+		return "b" + String(f["body"])
 	if f.has("chunk") and is_instance_valid(f["chunk"]):
 		return "%s:%d%s" % [(f["chunk"] as ChunkNode).key, int(f["i"]), (":%d" % int(f["spot"])) if f.has("spot") else ""]
 	return ""

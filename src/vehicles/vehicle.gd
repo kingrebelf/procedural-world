@@ -28,6 +28,7 @@ var rider: Node3D = null
 var drive := Vector2.ZERO
 var boosting := false
 var aim := Vector3.FORWARD ## flying: the direction the rider looks
+var _wake_t := 0.0
 var lift := 0.0 ## flying: climb (+1) or descend (-1)
 var at_ceiling := false ## flying at the top of the sky
 var leaving := 0.0 ## seconds spent climbing against the top of the sky; past LEAVE_TIME, orbit
@@ -158,11 +159,16 @@ func _physics_process(delta: float) -> void:
 		velocity.y = clampf((target - global_position.y) * 6.0, -14.0, 14.0)
 	elif p.get("swims", false) and depth > 1.2:
 		velocity.y = clampf((surface - 1.15 - global_position.y) * 3.0, -2.0, 2.0)
+		# Swimming, the river carries you along.
+		var cur := Water.current(global_position.x, global_position.z)
+		velocity.x += cur.x
+		velocity.z += cur.y
 	elif is_on_floor():
 		velocity.y = -0.5
 	else:
 		velocity.y -= _gravity * delta
 	move_and_slide()
+	_wake(delta, surface, g)
 	# Bumping into something sheds speed.
 	var real := get_real_velocity()
 	if absf(spd) > 2.0 and Vector2(real.x, real.z).length() < absf(spd) * 0.35:
@@ -172,6 +178,19 @@ func _physics_process(delta: float) -> void:
 	_pose(delta, g)
 	rec["pos"] = global_position
 	rec["yaw"] = rotation.y
+
+## Rings and spray behind you on water: swimming, wading, or skimming low over it.
+func _wake(delta: float, surface: float, g: float) -> void:
+	_wake_t -= delta
+	var above := global_position.y - surface
+	var fast := absf(spd)
+	if _wake_t > 0.0 or surface - g < 0.25 or above > 1.6 or above < -1.8 or fast < 1.0:
+		return
+	_wake_t = clampf(1.2 / fast, 0.08, 0.5)
+	var at := Vector3(global_position.x, surface, global_position.z) + global_transform.basis.z * float(p["length"]) * 0.4
+	Splashes.ring(at, 1.0 + fast * 0.12)
+	if fast > 6.0:
+		Splashes.splash(at, clampf(fast / 30.0, 0.1, 0.6))
 
 ## Flight: turn toward where the rider looks, thrust along the nose, climb and descend.
 ## Without a rider the ship settles to the ground and stays put.

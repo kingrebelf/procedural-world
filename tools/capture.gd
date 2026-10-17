@@ -98,7 +98,7 @@ func _find_river(g: ChunkGenerator) -> Vector4:
 				return Vector4(q.x, q.y, p.x - d.x * 20.0 - d.y * 25.0, p.y - d.y * 20.0 + d.x * 25.0)
 	return Vector4.ZERO
 
-func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN) -> void:
+func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable()) -> void:
 	if not only.is_empty() and not only.has(name.substr(0, 2)):
 		return
 	var p: Player = world.player
@@ -125,6 +125,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
+	if before.is_valid():
+		await before.call()
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
@@ -132,6 +134,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 func _run() -> void:
 	await _wait(5)
 	var g := ChunkGenerator.new(Game.seed)
+	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
+		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
+		await _cave_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	var fan := _find_settlement(g, Eras.FANTASY)
 	var sci := _find_settlement(g, Eras.SCIFI)
@@ -219,6 +224,8 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
+	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
+		await _water_shots(g, shore)
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
 	if only.is_empty() or only.has("11") or only.has("12"):
@@ -456,6 +463,26 @@ func _starship() -> void:
 		print("captured 12_flight")
 	Input.action_release("move_forward")
 
+## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
+func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
+	var out := shore.normalized()
+	var deep := shore
+	for k in 60:
+		deep = shore + out * (k * 3.0)
+		if g.field.height(deep.x, deep.y) < Water.LEVEL - 9.0:
+			break
+	var p: Player = world.player
+	p.underwater = true
+	await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+	p.underwater = false
+	var spot := shore + out * 9.0
+	var burst := func() -> void:
+		for i in 3:
+			Splashes.splash(Vector3(spot.x, Water.surface_height(spot.x, spot.y, 0.0), spot.y), 1.2)
+			Splashes.ring(Vector3(spot.x + 2.0, 0.0, spot.y + 1.0), 1.6)
+			await _wait(4)
+	await _shot("36_splash", shore - out * 2.0, spot, 0.42, 2.2, Water.LEVEL + 0.6, burst)
+
 ## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
 func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
 	for k in streamer.chunks:
@@ -607,3 +634,70 @@ func _vehicles() -> void:
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join("10_riding.png"))
 		print("captured 10_riding")
 	Input.action_release("move_forward")
+
+## The nearest cave network: its mouth from down the hill, the entry passage by torch,
+## and its biggest chamber.
+func _cave_shots(g: ChunkGenerator) -> void:
+	var net := {}
+	for r in 8:
+		for sz in range(-r, r + 1):
+			for sx in range(-r, r + 1):
+				if net.is_empty() and maxi(absi(sx), absi(sz)) == r:
+					net = Caves.network(g, sx, sz)
+	if net.is_empty():
+		print("no cave network found")
+		return
+	var mo: Vector3 = net["mouth"]
+	var up: Vector2 = net["dir"]
+	var m2 := Vector2(mo.x, mo.z)
+	print("cave mouth at ", mo)
+	await _shot("40_cave_mouth", m2 - up * 13.0 + up.orthogonal() * 3.0, m2 + up * 3.0, 0.42, 1.8, mo.y + 1.0)
+	var ps := Caves.prims_near(g, mo.x - 200.0, mo.z - 200.0, mo.x + 200.0, mo.z + 200.0)
+	var e := m2 + up * 9.0
+	var ey := _cave_floor(ps, e, mo.y + 3.0)
+	if not is_nan(ey):
+		var deep := m2 + up * 30.0
+		await _abs_shot("41_cave_entry", Vector3(e.x, ey + 1.7, e.y), Vector3(deep.x, ey - 3.0, deep.y), 0.42, true)
+	var best := {}
+	for ch in net["chambers"]:
+		if best.is_empty() or float(ch["rx"]) > float(best["rx"]):
+			best = ch
+	var cc: Vector3 = best["p"]
+	var at := Vector2(cc.x, cc.z) - up * float(best["rx"]) * 0.55
+	var ay := _cave_floor(ps, at, cc.y)
+	if is_nan(ay):
+		at = Vector2(cc.x, cc.z)
+		ay = _cave_floor(ps, at, cc.y)
+	if not is_nan(ay):
+		await _abs_shot("42_cave_chamber", Vector3(at.x, ay + 1.7, at.y), Vector3(cc.x, cc.y - 1.0, cc.z) + Vector3(up.x, 0, up.y) * 6.0, 0.42, true)
+
+func _cave_floor(ps: PackedFloat32Array, p: Vector2, top: float) -> float:
+	var y := top
+	while y > top - 20.0:
+		if Caves.sdf(ps, Vector3(p.x, y, p.y)) < -0.6:
+			return Caves.floor_below(ps, Vector3(p.x, y, p.y), 20.0)
+		y -= 0.25
+	return NAN
+
+func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool) -> void:
+	if not only.is_empty() and not only.has(name.substr(0, 2)):
+		return
+	var p: Player = world.player
+	Game.day = day
+	p.set_physics_process(false)
+	p.global_position = at
+	await _wait_loaded(p, world.streamer)
+	var d := look - at
+	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 9})
+	if torch:
+		p.hand_light.from_data({"kind": "torch", "torch_left": 300.0})
+	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.z)
+	world.atmosphere._w = world.atmosphere._target_w.duplicate()
+	await _wait(settle_frames)
+	world.atmosphere.underground = world.atmosphere._under_target
+	await _wait(20)
+	var img := get_viewport().get_texture().get_image()
+	img.save_png(out_dir.path_join(name + ".png"))
+	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
+	if torch:
+		p.hand_light.from_data({"kind": "", "torch_left": 0.0})

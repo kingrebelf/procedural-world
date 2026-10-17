@@ -24,7 +24,13 @@ var _flap := 0.7 ## wing beat amplitude, radians
 var _model: Node3D
 var _body: AnimatableBody3D
 var _bite_cd := 0.0
+## Lives in a cave: walks on the cave floor (FaunaManager.cave_floor), stopped by its walls.
+var underground := false
 var _flash := 0.0
+## Drawn as a carcass (see Corpses): no hit box, no mind, lying where it fell. `fresh`
+## plays the fall; otherwise it is already down.
+var as_corpse := false
+var fresh := false
 
 const NAMES := [
 	{"quad": ["Red Deer", "Elk", "Wild Boar", "Grey Wolf", "Hare", "Aurochs", "Red Fox", "Wild Horse", "Wild Donkey"], "bird": ["Crow", "Kestrel", "Swallow"]},
@@ -240,6 +246,9 @@ func _zone_scale(at: Vector3) -> void:
 
 func _ready() -> void:
 	_build()
+	if as_corpse:
+		_lie_dead()
+		return
 	_body = AnimatableBody3D.new()
 	_body.collision_layer = 2
 	_body.collision_mask = 0
@@ -408,8 +417,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		dir = dir.normalized()
 		pos += dir * _speed * delta
 		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), clampf(delta * 5.0, 0.0, 1.0))
-	var h: float = ground.call(pos.x, pos.z)
+	var h: float = manager.call("cave_floor", pos) if underground else ground.call(pos.x, pos.z)
 	if is_nan(h):
+		# A cave wall (or ground not loaded yet): stay put and wander somewhere else.
+		if underground and state == "wander":
+			_pick_wander()
 		return
 	if p["plan"] == "bird":
 		var alt: float = p["alt"] * (0.4 if state == "flee" else 1.0)
@@ -476,21 +488,33 @@ func hurt(dmg: float) -> bool:
 	_think = 2.0
 	return hp <= 0.0
 
-## Killed: kit animals play their death and lie there a moment; others vanish.
+## Killed: the live animal goes and its carcass (Corpses) takes its place, falling.
 func die() -> void:
 	if _body:
 		_body.queue_free()
 		_body = null
-	if _kit == null:
-		queue_free()
+	queue_free()
+
+## A carcass: kit animals hold the last frame of their death; the rest keel over.
+func _lie_dead() -> void:
+	if _kit and not _kit.procedural():
+		_kit.play_once("Death")
+		if not fresh and _kit.anim.current_animation != "":
+			_kit.anim.seek(_kit.anim.current_animation_length, true)
 		return
-	if _kit.procedural():
-		# No death animation: keel over and sink.
+	var who: Node3D = _kit if _kit else _model
+	var down := Vector3(0, 0, PI * 0.5)
+	var lift := 0.0
+	if _kit == null:
+		# Rolled onto its side about the feet, the body would sink half into the ground.
+		lift = float(p["size"]) * (0.1 if p["plan"] == "bird" else 0.25)
+	if fresh:
 		var tw := create_tween().set_parallel()
-		tw.tween_property(_kit, "rotation:z", PI * 0.5, 0.6)
-		tw.tween_property(_kit, "position:y", -0.6, 3.5)
-	_kit.play_once("Death")
-	get_tree().create_timer(4.0, false).timeout.connect(queue_free)
+		tw.tween_property(who, "rotation", down, 0.6)
+		tw.tween_property(who, "position:y", lift, 0.6)
+	else:
+		who.rotation = down
+		who.position.y = lift
 
 # --- Model ----------------------------------------------------------------------------
 

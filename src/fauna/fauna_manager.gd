@@ -10,6 +10,7 @@ const HERD_CHANCE := 0.3
 var streamer: ChunkStreamer
 var player: Node3D
 var npcs: NPCManager
+var corpses: Corpses
 var field: WorldField
 var _herds: Dictionary = {} ## Vector2i chunk -> Array[Creature]
 var _scan := 0.0
@@ -67,7 +68,10 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var cz: int = chunk["cz"]
 	# Stronghold guards (see Stronghold.guards), stored in the chunk.
 	for g in chunk.get("guards", []):
-		out.append({"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]})
+		var h := {"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]}
+		if g.has("ly"):
+			h["ly"] = g["ly"] # a cave dweller, on the cave floor
+		out.append(h)
 	out.append_array(Creature.livestock_for(seed, chunk))
 	var r := WHash.rng(seed, cx, cz, 701)
 	if r.randf() > HERD_CHANCE:
@@ -93,14 +97,25 @@ func _spawn(cn: ChunkNode) -> Array:
 	for h in herds_for(Game.seed, cn.data, field):
 		if dead.has(h["id"]):
 			continue
-		var y := ChunkGenerator.height_at(cn.data, h["lx"], h["lz"])
+		var y: float = h.get("ly", ChunkGenerator.height_at(cn.data, h["lx"], h["lz"]))
 		if y < Water.LEVEL - 0.5:
 			continue
 		var c := Creature.new()
 		c.setup(h["id"], h["sp"], h["era"], cn.position + Vector3(h["lx"], y, h["lz"]), self)
+		if h.has("ly"):
+			c.underground = true
+			c.p["roam"] = 6.0
 		add_child(c)
 		list.append(c)
 	return list
+
+## The cave floor under a creature at world point p, or NAN inside rock or off the map.
+func cave_floor(p: Vector3) -> float:
+	var k := ChunkStreamer.chunk_of(p)
+	var cn := streamer.get_chunk(k)
+	if cn == null or not cn.data.has("cave"):
+		return NAN
+	return Caves.floor_below(cn.data["cave"], p + Vector3(0, 0.8, 0), 2.6)
 
 ## Melee aim help: the nearest live animal within reach and roughly in front of you.
 ## Animals are short and close when they attack, so a swing aimed level would pass over
@@ -138,7 +153,7 @@ func creature_bites(c: Creature) -> void:
 	var took := Game.hurt(dmg, "Killed by a %s" % c.label(), func(back: float): player_hit(c, back))
 	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(ceilf(took))])
 
-## The player hit an animal. Kills are permanent and pay out the species' drops.
+## The player hit an animal. Kills are permanent and leave a carcass to butcher.
 func player_hit(c: Creature, dmg: float) -> void:
 	if not c.hurt(dmg):
 		return
@@ -150,9 +165,13 @@ func player_hit(c: Creature, dmg: float) -> void:
 			cn.data["fauna_dead"] = {}
 		cn.data["fauna_dead"][c.id] = Game.day
 		Game.mark_chunk_dirty(cn.data)
-	for d in c.p["drops"]:
-		Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
-	Game.toast.emit("Killed %s" % c.label())
+	if corpses:
+		corpses.add_animal(c)
+		Game.toast.emit("Killed %s. Hold [%s] on it to %s it" % [c.label(), Bindings.key_name("interact", Game.using_pad), CorpseLoot.verb(c.p).to_lower()])
+	else:
+		for d in c.p["drops"]:
+			Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
+		Game.toast.emit("Killed %s" % c.label())
 	if c.p.has("boss"):
 		# A wonder's keeper: its vault opens, and that is worth a great deal.
 		Game.add_xp(600.0, "Slew " + c.label())
