@@ -266,6 +266,17 @@ func _ready() -> void:
 	_fps.visible = false
 	add_child(_fps)
 
+	# Which build this is, so a screenshot says what it shows.
+	var ver := UITheme.label("v%s" % ProjectSettings.get_setting("application/config/version"), 12, UITheme.DIM)
+	ver.name = "Version"
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ver.modulate.a = 0.7
+	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ver.add_theme_constant_override("outline_size", 3)
+	ver.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	_pin(ver, Control.PRESET_BOTTOM_RIGHT, Rect2(-210, -20, 200, 16))
+	add_child(ver)
+
 	_under = ColorRect.new()
 	_under.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_under.color = Color(0.05, 0.25, 0.3, 0.45)

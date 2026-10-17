@@ -86,6 +86,8 @@ func _run() -> void:
 	check(game.map.revealed(ppos.x + 600.0, ppos.z) == 0.0, "but not far away")
 	check(not game.map.textures(WorldMap.page_of_chunk(here_key)).is_empty(), "the map page under you is painted")
 	check(world.hud._minimap != null and world.hud._minimap.player == player, "the HUD has a minimap")
+	var ver: Label = world.hud.get_node_or_null("Version")
+	check(ver != null and ver.text == "v%s" % ProjectSettings.get_setting("application/config/version"), "the HUD shows the version in a corner (%s)" % (ver.text if ver else "none"))
 	await _map_unit_checks()
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.

@@ -111,6 +111,9 @@ var _frame: Basis ## columns: outward-left, up, forward in skeleton space
 var _bones := {}
 var _rest_dir := {}
 var _palm0: Vector3
+## Right-hand finger curls (thumb..pinky, 0..1) held while the hand grips something
+## (HumanModel.hold), under any gesture; [] for none.
+var grip_r: Array = []
 
 func play(name: String) -> bool:
 	var g := resolve(name)
@@ -149,6 +152,9 @@ func _process_modification() -> void:
 	var now := Time.get_ticks_msec()
 	var dt := clampf((now - _last) / 1000.0, 0.0, 0.1) if _last > 0 else 0.0
 	_last = now
+	if not grip_r.is_empty():
+		for i in 5:
+			_finger(sk, "r", i, float(grip_r[i]), 1.0)
 	_t += dt
 	var active := _t < _len
 	_w = move_toward(_w, 1.0 if active else 0.0, dt * 4.0)

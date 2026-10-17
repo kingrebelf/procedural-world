@@ -1010,6 +1010,35 @@ func test_outfits() -> void:
 		check(h.gesture("fingers_2") and h.gesture("wink") and not h.gesture("teleport"), "gestures play")
 		h.free()
 
+## A hand holding a tool closes round it: the handle goes through the curled fingers,
+## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
+func test_tool_grip() -> void:
+	if not HumanModel.available():
+		return
+	var h := HumanModel.new()
+	root.add_child(h)
+	h.build(Player.LOOK, Eras.MEDIEVAL, "")
+	var sk := h.skeleton
+	var hole := HumanModel.fist_hole(sk)
+	var inv := sk.get_bone_global_rest(sk.find_bone("hand_r")).affine_inverse()
+	var up := (sk.get_bone_global_rest(sk.find_bone("Head")).origin - sk.get_bone_global_rest(sk.find_bone("pelvis")).origin).normalized()
+	var palm := (sk.get_bone_global_rest(sk.find_bone("hand_r")).basis.inverse() * -up).normalized()
+	var knuckle := inv * sk.get_bone_global_rest(sk.find_bone("middle_01_r")).origin
+	check(hole != Vector3.INF and (hole - knuckle).dot(palm) > 0.01, "the fist's hole is on the palm side of the knuckles (%s)" % [hole - knuckle])
+	check(hole.distance_to(knuckle) < 0.07, "and close to the hand (%.3f m)" % hole.distance_to(knuckle))
+	var prop := Viewmodel.prop_for("pickaxe_iron")
+	h.hold(prop)
+	check(h.gestures.grip_r == HumanModel.GRIP, "holding a tool curls the fingers")
+	var xf := HumanModel.grip_transform(sk, prop, 1.0)
+	var axis := xf.basis.y.normalized()
+	var off := hole - xf.origin
+	check((off - axis * off.dot(axis)).length() < 0.005, "the handle runs through the fist")
+	h.hold(null)
+	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
+	h.free()
+	check(Viewmodel._strike_axis("pickaxe_iron") == Vector3.RIGHT and Viewmodel._strike_axis("hammer") == Vector3.RIGHT, "a pick's point and a hammer's face lead")
+	check(Viewmodel._strike_axis("axe_iron") == Vector3.FORWARD and Viewmodel._strike_axis("sword_iron") == Vector3.ZERO, "an axe's edge leads; a sword isn't turned")
+
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
 	var species := {}

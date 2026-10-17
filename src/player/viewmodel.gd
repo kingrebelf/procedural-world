@@ -19,6 +19,8 @@ const ARMS_REST := Vector3(0.08, -0.03, 0.0)
 const ARM_REST := Vector3(0.14, -0.07, -0.02)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
 const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
+## A tool's head faces this far left of straight ahead, so it shows three-quarters on.
+const STRIKE_YAW := 0.6
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()
@@ -149,7 +151,7 @@ static func model(t: String) -> ArrayMesh:
 		if pointed(t):
 			# The kit's guns point along +X with the grip at the origin.
 			xf = Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO) * xf
-		elif t.begins_with("axe_"):
+		elif t.begins_with("axe_") or t == "battle_axe":
 			# The kit axe's edge faces -X; turn it to face -Z, the way it swings.
 			xf = Transform3D(Basis(Vector3.UP, -PI * 0.5), Vector3.ZERO) * xf
 		out = kit_mesh(e[0], xf, e[2])
@@ -306,15 +308,25 @@ func _aim() -> void:
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
 		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
-		# The grip only fixes the handle: turn an axe's or a pick's head about it so its
-		# flat (local -Z) faces ahead and the head shows side-on, blade or picks across.
-		if (_type.begins_with("axe_") or _type.begins_with("pickaxe_")) and arms._held != null and arms._held.get_child_count() > 0:
+		# The grip only fixes the handle: turn the head about it so what strikes faces
+		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
+		var strike := _strike_axis(_type)
+		if strike != Vector3.ZERO and arms._held != null and arms._held.get_child_count() > 0:
 			var prop := arms._held.get_child(0) as Node3D
-			var want := prop.global_basis.inverse() * (b * Vector3.FORWARD)
+			var want := prop.global_basis.inverse() * (b * (Basis(Vector3.UP, STRIKE_YAW) * Vector3.FORWARD))
 			want.y = 0.0
 			if want.length() > 0.01:
-				var turn := Vector2(-want.z, -want.x).angle() # from local -Z towards `want`, about +Y
+				# About +Y, from the striking axis towards `want`.
+				var turn := Vector2(strike.x, -strike.z).angle_to(Vector2(want.x, -want.z))
 				prop.basis = prop.basis * Basis(Vector3.UP, turn)
+
+## Which way the business end of a held tool faces in its model (Vector3.ZERO: no turn).
+static func _strike_axis(t: String) -> Vector3:
+	if t.begins_with("axe_") or t == "battle_axe":
+		return Vector3.FORWARD
+	if t.begins_with("pickaxe_") and t != "pickaxe_plasma" or t == "hammer":
+		return Vector3.RIGHT
+	return Vector3.ZERO
 
 func swing() -> void:
 	_swing_t = 0.0
