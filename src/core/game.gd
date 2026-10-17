@@ -429,6 +429,59 @@ func set_health(h: float, cause: String = "") -> void:
 		dead = true
 		died.emit(cause if cause != "" else "You died")
 
+## Who you are: the owner id on what you leave in the world, such as the bag you drop
+## when you die. Net's (the multiplayer layer) once it is there, "solo" offline.
+func my_id() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.my_id()) if net and net.has_method("my_id") else "solo"
+
+## Your name as other players see it ("" offline).
+func my_name() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.player_name(my_id())) if net and net.has_method("player_name") and net.has_method("online") and net.online() else ""
+
+## A server option (Net.option), or `fallback` offline or before Net exists.
+func server_option(key: String, fallback):
+	var net := get_node_or_null("/root/Net")
+	if net and net.has_method("option"):
+		var v = net.option(key)
+		return fallback if v == null else v
+	return fallback
+
+## Everything you carry, wear and have in your purse, packed into a bag record
+## (DeathBag.make) and taken off you: you have just died.
+func pack_death_bag() -> Dictionary:
+	var bag := DeathBag.make(my_id(), my_name(), inventory, equipment, money, Time.get_unix_time_from_system())
+	for i in inventory.capacity:
+		inventory.slots[i] = null
+	inventory.changed.emit()
+	equipment = {}
+	equipment_changed.emit()
+	money = 0
+	money_changed.emit(money)
+	_player_dirty = true
+	return bag
+
+## Puts armour from your dropped bag back on: `worn` is slot -> the uid of the piece worn
+## there, and entries are dropped once that piece is on again (or the slot is taken).
+func rewear(worn: Dictionary) -> void:
+	var on := 0
+	for slot in worn.keys():
+		if equipment.has(slot):
+			worn.erase(slot)
+			continue
+		for i in inventory.capacity:
+			var it = inventory.get_slot(i)
+			if it is Dictionary and int(it.get("uid", 0)) == int(worn[slot]) and armor_slot_of(it) == slot:
+				equipment[slot] = inventory.remove_at(i, 1)
+				worn.erase(slot)
+				on += 1
+				break
+	if on > 0:
+		_player_dirty = true
+		equipment_changed.emit()
+		toast.emit("You put your armour back on")
+
 ## Back on your feet after dying: full health and stamina. You keep your pack.
 func revive() -> void:
 	dead = false

@@ -2234,6 +2234,48 @@ static func _species_named(name: String, era: int) -> Dictionary:
 			return p
 	return {}
 
+func test_death_bag() -> void:
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("bread", 4, 1.0, {}))
+	inv.add(ItemDB.make("sword_iron", 1, 1.0, {}))
+	var armour := ""
+	for t in ItemDB.ITEMS:
+		if ItemDB.def(t).get("kind", "") == "armor":
+			armour = t
+			break
+	var worn := ItemDB.make(armour, 1, 1.0, {})
+	worn["uid"] = 77
+	var slot: String = ItemDB.def(armour)["slot"]
+	var bag := DeathBag.make("p1", "", inv, {slot: worn}, 120, 1000.0)
+	var held := Inventory.new(DeathBag.SLOTS)
+	held.from_data(bag["items"])
+	check(held.count("bread") == 4 and held.count("sword_iron") == 1 and held.count(armour) == 1, "the bag holds the pack and the armour")
+	check(int(bag["purse"]) == 120 and int(bag["worn"][slot]) == 77, "the bag keeps the purse and what was worn where")
+	check(CorpseLoot.has_any(bag) and not CorpseLoot.has_any(DeathBag.make("p1", "", Inventory.new(), {}, 0, 0.0)), "an empty pack drops nothing worth keeping")
+	check(DeathBag.SLOTS >= Inventory.SIZE + 7, "a full pack and full armour fit in a bag")
+	check(DeathBag.title(bag, "p1") == "Your bag" and DeathBag.title(bag, "p2") == "Someone's bag", "your bag and someone else's")
+	bag["owner_name"] = "Ada Smith"
+	check(DeathBag.title(bag, "p2") == "Ada's bag", "a named player's bag")
+	check(not DeathBag.expired(bag, 1.0e12), "bags never go away by default")
+	DeathBag.lifetime_s = 3.0 * 86400.0
+	check(not DeathBag.expired(bag, 1000.0 + 86400.0) and DeathBag.expired(bag, 1000.0 + 4.0 * 86400.0), "a server can make bags last a few days")
+	DeathBag.lifetime_s = 0.0
+	check(DeathBag.can_take(bag, "p2"), "anyone may open a bag")
+	DeathBag.may_take = func(c: Dictionary, who: String) -> bool: return who == c["owner"]
+	check(DeathBag.can_take(bag, "p1") and not DeathBag.can_take(bag, "p2"), "a server can say who may open it")
+	DeathBag.may_take = Callable()
+	# Where it lands: land rises to the east (x > 20 is dry), the sea is at 0.
+	var ground := func(x: float, _z: float) -> float: return (x - 20.0) * 0.5
+	var water := func(_x: float, _z: float) -> float: return 0.0
+	var dry := DeathBag.rest_spot(Vector3(30, 5, 0), ground, water)
+	check(dry == Vector3(30, 5, 0), "on dry ground the bag stays where you fell")
+	var shore := DeathBag.rest_spot(Vector3(0, -10, 0), ground, water)
+	check(shore.y >= DeathBag.DRY_MARGIN and shore.x > 20.0 and shore.x < 30.0, "drowned: the bag washes up on the nearest shore (%s)" % shore)
+	var cave := DeathBag.rest_spot(Vector3(0, 12, 0), ground, water)
+	check(cave == Vector3(0, 12, 0), "a floor above the water (a cave, a room) keeps the bag")
+	var sea := DeathBag.rest_spot(Vector3(0, -10, 0), func(_x: float, _z: float) -> float: return -30.0, water)
+	check(sea == Vector3(0, 0, 0), "far out at sea it floats where you went down")
+
 func test_corpse_butchering() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
