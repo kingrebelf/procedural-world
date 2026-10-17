@@ -295,7 +295,7 @@ const LANDFORM_LOOK := [
 	[Color(0, 0, 0), 0.0, Color(0, 0, 0), 0.0, 0.0, 0.0], # terraces
 	[Color(0.42, 0.42, 0.4), 0.4, Color(0, 0, 0), 0.0, 0.0, 0.0], # lakes: grey shore stone
 	[Color(0.74, 0.5, 0.32), 0.8, Color(0.78, 0.5, 0.3), 1.0, 1.0, 0.3], # dunes: sand
-	[Color(0.3, 0.29, 0.29), 0.8, Color(0.46, 0.43, 0.4), 0.75, 0.0, 0.0], # craters: grey dust
+	[Color(0.37, 0.355, 0.345), 0.8, Color(0.46, 0.43, 0.4), 0.75, 0.0, 0.0], # craters: grey dust
 	[Color(0.7, 0.44, 0.32), 0.9, Color(0.64, 0.46, 0.34), 0.6, 0.0, 1.0], # badlands: banded clay
 ]
 

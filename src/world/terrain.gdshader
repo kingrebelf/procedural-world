@@ -342,6 +342,16 @@ void fragment() {
 			cov = max(cov, a);
 		}
 	}
+	// A landform's bare ground (crater dust, badland clay; not soft sand) is strewn with
+	// grit and pebbles of its own colour, thicker in drifts.
+	float grit = soil_v.a * (1.0 - form_v.x);
+	if (use_textures && grit > 0.01) {
+		vec3 gt = untiled(gravel_tex, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far).rgb;
+		float a = layer(grit * (0.3 + 0.45 * fbm(p * 0.07 + 5.0)), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro);
+		ground = mix(ground, recolor(gt, GRAVEL_MEAN, pow(soil_v.rgb, vec3(2.2)) * 1.05, 0.6), a);
+		tilt_c = mix(tilt_c, untiled_n(gravel_nrm, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far), a);
+		cov = max(cov, a);
+	}
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
