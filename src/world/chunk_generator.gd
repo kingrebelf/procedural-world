@@ -813,6 +813,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
 	# v7: what the landforms do to the colour of rock and ground, on the 4 m grid.
 	var look := PackedByteArray()
+	var grassed := PackedByteArray() # v16 human worlds: how much of each look cell is old grassed crater
 	if landforms:
 		var any := false
 		look.resize(CN * CN * LOOK_BYTES)
@@ -825,6 +826,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
 				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
 				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+				if Eras.theme == "human":
+					if grassed.is_empty():
+						grassed.resize(CN * CN)
+					grassed[c] = int(round(lf * 255.0))
 
 			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
@@ -843,12 +848,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["river"] = river
 	if not look.is_empty():
 		chunk["look"] = look
+	if not grassed.is_empty():
+		chunk["grassed"] = grassed
 	if any_road:
 		chunk["road"] = road_mask
 		if any_mid:
 			chunk["road_mid"] = road_mid
 	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
-	for cr in WonderSite.crashes_near(self, cx, cz):
+	var near := WonderSite.crashes_near(self, cx, cz)
+	for cr in near:
 		WonderSite.scar(self, chunk, cr)
 		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
@@ -863,6 +871,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 			if not hole.is_empty():
 				chunk["hole"] = hole
 	_place_objects(chunk, sites)
+	# v16: trees a crash's blast reached lie snapped and scorched.
+	if chunk.has("wonder") and chunk["wonder"].has("crash"):
+		near.append(chunk["wonder"]["crash"])
+	WonderSite.fell(self, chunk, near)
 	return chunk
 
 ## Ground plans nothing should grow through or stand in: this chunk's own buildings and
