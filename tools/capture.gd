@@ -668,7 +668,7 @@ func _house_shot(g: ChunkGenerator) -> void:
 	var cam := at + n * span + Vector2(-n.y, n.x) * 0.9
 	var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 	var gh: float = med["target_h"]
-	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 0.7)
+	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 0.2)
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.
