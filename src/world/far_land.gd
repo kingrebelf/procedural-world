@@ -12,24 +12,30 @@ extends MeshInstance3D
 const SPAN := 8192.0
 const FINE := 16.0
 const FINE_REACH := 1440.0
-const COARSE := 128.0
+const COARSE := 48.0
 ## Rebuilt around you once you are this far from where it was last built (so the distant
 ## trees, out to 900 m from you, stay inside the fine grid and its forest data).
 const REBUILD := 512.0
 ## Grid rows built per worker task, so the chunks streaming in round you never wait long.
 const STRIP := 16
+## Strips built at once, each on its own worker with its own generator (their caches
+## aren't shared between threads).
+const LANES := 3
 
 var streamer: ChunkStreamer
 var target: Node3D
 var _mat: ShaderMaterial
 var _center := Vector2(INF, INF)
-var _task := -1
+var _task := -1 ## the finishing task
+var _lanes: Array = [] ## per lane: [task id or -1, first row of its strip]
+var _lane_out: Array = [] ## per lane: the rows it built (under _out_lock)
+var _out_lock := Mutex.new()
+var _done: Dictionary = {} ## first row of a strip -> its rows, built but not yet in order
 ## The build in progress: 0 none, 1 strips of rows, 2 putting the mesh together.
 var _phase := 0
 var _job: Dictionary = {}
 var _rows: Array = []
-var _row := 0
-var _strip: Dictionary = {}
+var _row := 0 ## the next strip to hand out
 var _arrays: Array = []
 var _forest: Array = []
 var _built_at := Vector2.ZERO
@@ -57,6 +63,10 @@ func _ready() -> void:
 	_sync_material()
 
 func _exit_tree() -> void:
+	for l in _lanes:
+		if l[0] >= 0:
+			WorkerThreadPool.wait_for_task_completion(l[0])
+			l[0] = -1
 	if _task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
@@ -64,16 +74,24 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if target == null or streamer == null:
 		return
+	for i in _lanes.size():
+		var l: Array = _lanes[i]
+		if l[0] >= 0 and WorkerThreadPool.is_task_completed(l[0]):
+			WorkerThreadPool.wait_for_task_completion(l[0])
+			l[0] = -1
+			_out_lock.lock()
+			_done[l[1]] = _lane_out[i]
+			_out_lock.unlock()
+	# Strips go into the grid in order, whichever lane finishes first.
+	while _done.has(_rows.size() * STRIP):
+		var j0 := _rows.size() * STRIP
+		_rows.append(_done[j0])
+		_done.erase(j0)
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		if _phase == 1:
-			_rows.append(_strip)
-			_strip = {}
-			_row += STRIP
-		elif _phase == 2:
-			_show()
-			_phase = 0
+		_show()
+		_phase = 0
 	if _task < 0:
 		_step()
 	_update_mask()
@@ -83,7 +101,8 @@ func _process(delta: float) -> void:
 		_sync_material()
 
 ## Starts a build once you have gone far enough (and the ground under you is in), then
-## feeds it to the workers a strip at a time. The strips go in as high-priority tasks:
+## feeds it to the workers a strip at a time, LANES at once. The strips go in as
+## high-priority tasks:
 ## the chunk jobs run as low-priority ones, on threads of their own, so the distant land
 ## never holds up the ground streaming in round you.
 func _step() -> void:
@@ -95,10 +114,22 @@ func _step() -> void:
 		_job = _job_inputs(_center)
 		_rows = []
 		_row = 0
+		_done.clear()
 		_phase = 1
-	if _phase == 1 and _row < int(_job["n"]):
-		_task = WorkerThreadPool.add_task(_build_strip.bind(_row), true, "distant land")
-	elif _phase == 1:
+		if _lanes.is_empty():
+			for i in LANES:
+				_lanes.append([-1, 0])
+				_lane_out.append({})
+	if _phase != 1:
+		return
+	var n := int(_job["n"])
+	for i in LANES:
+		if _row >= n:
+			break
+		if _lanes[i][0] < 0:
+			_lanes[i] = [WorkerThreadPool.add_task(_build_strip.bind(_row, i), true, "distant land"), _row]
+			_row += STRIP
+	if _rows.size() * STRIP >= n:
 		_phase = 2
 		_task = WorkerThreadPool.add_task(_finish, true, "distant land")
 
@@ -145,11 +176,16 @@ func _job_inputs(center: Vector2) -> Dictionary:
 	return {"center": center, "seed": sd, "terrain_v": WorldField.terrain_v,
 		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
 		"rivers": st.has_rivers() if st else true,
-		"gen": ChunkGenerator.new(sd, st.has_rivers() if st else true), "n": grid_n()}
+		"gens": range(LANES).map(func(_i): return ChunkGenerator.new(sd, st.has_rivers() if st else true)),
+		"n": grid_n()}
 
-## On a worker, one at a time: the main thread reads the results once each task is done.
-func _build_strip(j0: int) -> void:
-	_strip = build_rows(_job, j0, mini(j0 + STRIP, int(_job["n"])))
+## On a worker, in its lane (with the lane's own generator): the main thread takes the
+## rows once the task is done.
+func _build_strip(j0: int, lane: int) -> void:
+	var rows := build_rows(_job, j0, mini(j0 + STRIP, int(_job["n"])), _job["gens"][lane])
+	_out_lock.lock()
+	_lane_out[lane] = rows
+	_out_lock.unlock()
 
 func _finish() -> void:
 	_arrays = finish_arrays(_job, _rows)
@@ -201,12 +237,13 @@ static func build_arrays(job: Dictionary) -> Array:
 	return finish_arrays(job, [build_rows(job, 0, grid_n())])
 
 ## Rows j0..j1-1 of the grid: heights, era weights and landform looks.
-static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
+static func build_rows(job: Dictionary, j0: int, j1: int, gen: ChunkGenerator = null) -> Dictionary:
 	var center: Vector2 = job["center"]
 	var ax := axis()
-	if not job.has("gen"):
-		job["gen"] = ChunkGenerator.new(int(job["seed"]), job.get("rivers", false))
-	var gen: ChunkGenerator = job["gen"]
+	if gen == null:
+		if not job.has("gen"):
+			job["gen"] = ChunkGenerator.new(int(job["seed"]), job.get("rivers", false))
+		gen = job["gen"]
 	var field: WorldField = gen.field
 	var human: bool = job["human"]
 	var n := ax.size()
