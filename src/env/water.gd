@@ -209,6 +209,19 @@ func current_at(x: float, z: float) -> Vector2:
 	var speed := clampf(0.6 + g.length() * 30.0, 0.6, MAX_CURRENT) * (1.0 - smoothstep(0.35, 1.05, here.y) * 0.85)
 	return -g.normalized() * speed
 
+## The highest the sea's waves reach right now (surface_height never goes above it,
+## rivers aside).
+static func wave_top() -> float:
+	return LEVEL + amplitude(14.0)
+
+## A river's surface at (x, z) where it runs above the sea, else NAN.
+static func river_surface(x: float, z: float) -> float:
+	if _river_lookup.is_valid():
+		var r: float = _river_lookup.call(x, z)
+		if not is_nan(r) and r > LEVEL:
+			return r
+	return NAN
+
 ## Height of the water surface at (x, z) and time t: a river where there is one, else the
 ## sea (whose waves must match water.gdshader).
 static func surface_height(x: float, z: float, t: float) -> float:

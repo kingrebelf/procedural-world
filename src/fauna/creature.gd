@@ -416,7 +416,16 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 
 func blocked_wet(x: float, z: float) -> bool:
 	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
-	return not is_nan(h) and (h < Water.LEVEL + 0.15 or h < Water.surface_height(x, z, 0.0) + 0.05)
+	if is_nan(h):
+		return false
+	if h < Water.LEVEL + 0.15:
+		return true
+	if h >= Water.wave_top() + 0.05:
+		# Above any wave: only a river can be over it (skips the wave sums, most of the
+		# animals' per-frame cost).
+		var r := Water.river_surface(x, z)
+		return not is_nan(r) and h < r + 0.05
+	return h < Water.surface_height(x, z, 0.0) + 0.05
 
 ## Spawned (or pushed) inside a rock or out in the water: move to the nearest clear
 ## ground within a few metres, and make it the animal's new home.
