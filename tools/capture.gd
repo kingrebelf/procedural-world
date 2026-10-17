@@ -210,6 +210,8 @@ func _run() -> void:
 		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
+	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
+		await _ground_shots(g)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():
@@ -235,6 +237,44 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
+## (scree and the cliff face) and the ground underfoot.
+func _ground_shots(g: ChunkGenerator) -> void:
+	var meadow := Vector2.ZERO
+	var cliff := Vector4.ZERO
+	for i in 8000:
+		var a := i * 0.37
+		var p := Vector2(cos(a), sin(a)) * (50.0 + i * 3.0)
+		if g.field.era_weights(p.x, p.y)[Eras.MEDIEVAL] < 0.9:
+			continue
+		var h := g.field.height(p.x, p.y)
+		if h < 3.0:
+			continue
+		var flat := true
+		var steep := Vector2.ZERO
+		for k in 8:
+			var d := Vector2.from_angle(k * TAU / 8.0)
+			var near := g.field.height(p.x + d.x * 6.0, p.y + d.y * 6.0)
+			flat = flat and absf(near - h) < 0.9
+			var far := g.field.height(p.x + d.x * 18.0, p.y + d.y * 18.0)
+			if far - near > 7.0 and steep == Vector2.ZERO:
+				steep = d
+		if not flat:
+			continue
+		if meadow == Vector2.ZERO and steep == Vector2.ZERO:
+			meadow = p
+		if cliff == Vector4.ZERO and steep != Vector2.ZERO:
+			cliff = Vector4(p.x, p.y, p.x + steep.x * 18.0, p.y + steep.y * 18.0)
+		if meadow != Vector2.ZERO and cliff != Vector4.ZERO:
+			break
+	if meadow != Vector2.ZERO:
+		await _shot("50_meadow", meadow, meadow + Vector2(40, 25), 0.4, 1.7)
+		await _shot("52_ground", meadow, meadow + Vector2(6, 3), 0.42, 1.7, g.field.height(meadow.x, meadow.y) - 2.0)
+	if cliff != Vector4.ZERO:
+		var at := Vector2(cliff.x, cliff.y)
+		var to := Vector2(cliff.z, cliff.w)
+		await _shot("51_cliff_scree", at - (to - at).normalized() * 6.0, to, 0.4, 1.7, g.field.height(to.x, to.y) - 2.0)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell

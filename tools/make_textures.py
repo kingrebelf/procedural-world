@@ -32,7 +32,13 @@ SOURCES = {
     "wood_floor": 4.0, "stone_floor": 5.0, "tapestry": 1.5, "bookshelf": 3.0, "wallpaper": 1.5,
     "hearth_brick": 5.0, "scifi_floor": 4.0, "scifi_panels": 4.0, "scifi_lights": 4.0, "hazard": 3.0,
     "alien_hull": 4.0, "screen": 1.0,
+    # Ground cover (2026-10-17): Ben's gravel, leaf litter and layered cliff rock.
+    "gravel": 4.0, "litter": 3.0, "cliff": 5.0,
 }
+
+# CC0 PBR sets that bring their own normal map (OpenGL convention): name -> (colour, normal)
+# file names inside SRC_DIR. Poly Haven forest_ground_04 is the stony scree ground.
+PBR = {"scree": ("forest_ground_04_diff_2k.jpg", "forest_ground_04_nor_gl_2k.jpg")}
 
 # Sources whose glowing parts get an emission map (<name>_emit.jpg): name -> (hue in
 # degrees or None for any bright pixel, hue tolerance, value threshold).
@@ -110,6 +116,16 @@ def main(src_dir):
             Image.fromarray((emission(a, *EMIT[name]) * 255).astype(np.uint8)).save(OUT / f"{name}_emit.jpg", quality=90)
         lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
         print(name, size, "linear mean", lin.reshape(-1, 3).mean(0).round(4))
+    for name, (col, nor) in PBR.items():
+        if not (Path(src_dir) / col).exists():
+            print("missing", col)
+            continue
+        img = Image.open(Path(src_dir) / col).convert("RGB").resize((1024, 1024), Image.LANCZOS)
+        img.save(OUT / f"{name}_albedo.jpg", quality=92)
+        Image.open(Path(src_dir) / nor).convert("RGB").resize((512, 512), Image.LANCZOS).save(OUT / f"{name}_normal.png", optimize=True)
+        a = np.asarray(img).astype(float) / 255
+        lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+        print(name, 1024, "linear mean", lin.reshape(-1, 3).mean(0).round(4))
 
 
 

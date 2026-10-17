@@ -85,6 +85,8 @@ static func surface(pl: Player) -> String:
 	if hit.is_empty():
 		return "grass"
 	var col: Object = hit["collider"]
+	if col.has_meta("stones"):
+		return "stone"
 	if col.has_meta("obj") and col.has_meta("chunk"):
 		var oc: ChunkNode = col.get_meta("chunk")
 		var o: Dictionary = oc.get_object(col.get_meta("obj"))
@@ -103,11 +105,15 @@ static func surface(pl: Player) -> String:
 	var lx := p.x - c.key.x * ChunkGenerator.SIZE
 	var lz := p.z - c.key.y * ChunkGenerator.SIZE
 	var slope := ChunkGenerator.slope_at(c.data, lx, lz)
-	if p.y > Planets.snow_line - 2.0 and slope < 0.6:
+	var cv := GroundCover.at(c.cover, lx, lz)
+	if cv.a > 0.45 or (c.cover.is_empty() and p.y > Planets.snow_line - 2.0 and slope < 0.6):
 		return "snow"
 	if ChunkGenerator.road_at(c.data, lx, lz) > 0.4:
 		return "gravel"
 	if ChunkGenerator.height_at(c.data, lx, lz) < Water.LEVEL + 1.2 or ChunkGenerator.by_river(c.data, lx, lz):
+		return "gravel"
+	# Scree and gravel beds crunch underfoot (GroundCover).
+	if cv.g > 0.5 or cv.r > 0.5:
 		return "gravel"
 	if ChunkGenerator.cover_at(c.data, lx, lz) < 0.35:
 		return "sand"
