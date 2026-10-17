@@ -21,6 +21,9 @@ func _ready() -> void:
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--seed="):
 				seed_arg = a.substr(7)
+		# The capture tour defaults to one fixed world, so before and after shots compare.
+		if seed_arg == "" and OS.get_cmdline_user_args().has("--capture"):
+			seed_arg = "4242"
 		Game.new_world("Quick World", seed_arg)
 	atmosphere = Atmosphere.new()
 	add_child(atmosphere)

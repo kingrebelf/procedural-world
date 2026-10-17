@@ -1,6 +1,7 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
 ##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N]
+## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
 
@@ -83,11 +84,21 @@ func _find_shore(g: ChunkGenerator) -> Vector2:
 		for k in 80:
 			var q := p + dir * (k * 3.0)
 			if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
-				if _open_water(g, q, -dir):
+				if _open_water(g, q, -dir) and _gentle_beach(g, q, -dir):
 					shore_out = -dir
 					return q
 				break
 	return Vector2.ZERO
+
+## Low land behind and beside the spot (a beach, not the foot of a sea cliff that would
+## fill one side of the frame).
+func _gentle_beach(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
+	var side := Vector2(-out.y, out.x)
+	for o in [side * 12.0, side * -12.0, side * 25.0, side * -25.0, -out * 15.0, -out * 30.0 + side * 15.0, -out * 30.0 - side * 15.0]:
+		var w: Vector2 = q + o
+		if g.field.height(w.x, w.y) > Water.LEVEL + 5.0:
+			return false
+	return true
 
 func _open_water(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
 	var side := Vector2(-out.y, out.x)
@@ -190,7 +201,7 @@ func _run() -> void:
 			await _shot("03_scifi_outpost", bc + Vector2.from_angle(a) * 62.0, bc, 0.55, 14.0)
 		else:
 			await _shot("03_scifi_outpost", c + Vector2(-42, 38), c, 0.55, 2.5)
-	if g.outposts and (only.is_empty() or only.has("11")):
+	if g.outposts and (only.is_empty() or only.has("37")):
 		# The nearest stronghold, from outside its gate.
 		var best := {}
 		for r in 8:
@@ -201,7 +212,7 @@ func _run() -> void:
 		if not best.is_empty():
 			var fc: Vector2 = best["center"]
 			var out := Vector2(0, 46).rotated(-float(best["yaw"]))
-			await _shot("11_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
+			await _shot("37_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
 	if g.outposts and (only.is_empty() or only.has("16")):
 		# The nearest tall viaduct (deck well above the valley under it), from the side.
 		var best_d := INF
@@ -247,7 +258,7 @@ func _run() -> void:
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
-	if only.is_empty() or only.has("35") or only.has("36") or only.has("37") or only.has("38"):
+	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
 		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
@@ -502,8 +513,8 @@ func _wonder_shots() -> void:
 		world.menus.close()
 		await _wait(5)
 
-## The nearest wonder of each kind, close up by day: 35 throne, 36 worldroot,
-## 37 dreadnought, 38 gate.
+## The nearest wonder of each kind, close up by day: 45 throne, 46 worldroot,
+## 47 dreadnought, 48 gate.
 func _wonder_types() -> void:
 	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
 	var found := {}
@@ -534,7 +545,7 @@ func _wonder_types() -> void:
 		var front := Vector2(0, 1).rotated(-yaw)
 		var h := ChunkGenerator.height_at(ch, w["lx"], w["lz"])
 		print("wonder ", t, " at ", wc)
-		await _shot("%d_%s" % [35 + i, t], wc + front * 24.0 + front.orthogonal() * 8.0, wc, 0.4, 3.0, h + 6.0)
+		await _shot("%d_%s" % [45 + i, t], wc + front * 24.0 + front.orthogonal() * 8.0, wc, 0.4, 3.0, h + 6.0)
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:
