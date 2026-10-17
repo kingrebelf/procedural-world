@@ -3,6 +3,11 @@ class_name Biome
 ## own ecology, rolled from its hash: which plant species grow there and how densely,
 ## what its rocks look like, and how its grass and soil are tinted. Two regions of the
 ## same era can look nothing alike, and no two worlds share a species list.
+##
+## From v18 the region's climate (WorldField.region_climate, carried in the hash) decides
+## which kinds of tree it grows: spruce and birch where it is cold, oak and pine in the
+## temperate middle, acacia savanna and date palms where it is hot and dry, palms, bananas
+## and jungle giants where it is hot and wet.
 
 const MAX_CACHE := 512
 
@@ -38,6 +43,10 @@ static func _roll(h: int, era: int) -> Dictionary:
 	elif roll > 0.88:
 		dens = r.randf_range(1.6, 2.6)
 	var families: Array = Eras.TREE_TYPES[era]
+	var clim := WorldField.region_climate(h) if era == Eras.MEDIEVAL else Vector2i(-1, -1)
+	if clim.x >= 0:
+		families = CLIMATE_TREES[clim.x][clim.y]
+		dens *= CLIMATE_DENSITY[clim.x][clim.y]
 	var flora: Array = []
 	var n := r.randi_range(2, 5)
 	for i in n:
@@ -45,6 +54,8 @@ static func _roll(h: int, era: int) -> Dictionary:
 		flora.append({"t": t, "sp": r.randi() & 0x7FFFFFFF, "w": r.randf_range(0.2, 1.0)})
 	# One species usually dominates, as in real forests.
 	flora[0]["w"] = r.randf_range(1.5, 3.0)
+	if clim.x >= 0:
+		_fit_climate(flora, clim, r)
 	# Dead trees and snags are the odd single, never a region's main tree: bare trunks
 	# all over green hills need a fire or a blight to explain them.
 	var total := 0.0
@@ -59,11 +70,19 @@ static func _roll(h: int, era: int) -> Dictionary:
 	var under: Array = []
 	for i in r.randi_range(2, 4):
 		under.append(r.randi() & 0x7FFFFFFF)
+	if clim.x == 3 and clim.y >= 2:
+		for i in under.size():
+			under[i] = int(under[i]) | Flora.TROPIC_UNDER
 	var fauna: Array = []
 	for i in r.randi_range(1, 3):
 		fauna.append(r.randi() & 0x7FFFFFFF)
 	var lush := r.randf_range(-1.0, 1.0)
+	if clim.x >= 0:
+		# Wet climates are lush, dry ones golden (a little of the region's own roll stays).
+		lush = clampf(lerpf(lush, float(clim.y) / 1.5 - 1.0, 0.65), -1.0, 1.0)
 	var grass := _grass_tint(era, r, lush)
+	if clim.x >= 0:
+		grass = _climate_grass(grass, clim)
 	var out := {
 		"tree_density": dens, "flora": flora, "rocks": rocks,
 		"rock_density": r.randf_range(0.4, 2.2),
@@ -78,8 +97,50 @@ static func _roll(h: int, era: int) -> Dictionary:
 		"grass_density": clampf(r.randf_range(0.75, 1.2) + lush * 0.2, 0.7, 1.4),
 		"lumen": _lumen(h, era), ## how much its grass glows at night (0 in most places)
 	}
+	out["climate"] = clim
 	_stand(h, era, out)
 	return out
+
+## Kinds of tree by [warmth][wetness] level (WorldField.region_climate), as a bag to draw
+## from: cold uplands of spruce and birch, the temperate middle as it always was, then
+## savanna, desert palms and rainforest when hot.
+const CLIMATE_TREES := [
+	[["pine", "pine", "pine", "oak"], ["pine", "pine", "oak"], ["pine", "pine", "oak"], ["pine", "pine", "pine", "oak"]],
+	[["pine", "oak", "oak"], ["oak", "pine"], ["oak", "pine"], ["pine", "oak", "pine"]],
+	[["oak", "oak", "pine"], ["oak", "pine"], ["oak", "pine"], ["oak", "oak", "pine"]],
+	[["palm", "tropic"], ["tropic", "tropic", "palm", "oak"], ["palm", "tropic", "tropic", "palm"], ["palm", "palm", "tropic", "tropic"]],
+]
+## Tree density by climate: thin desert and open savanna, close rainforest.
+const CLIMATE_DENSITY := [
+	[0.8, 0.95, 1.0, 1.05], [0.9, 1.0, 1.05, 1.1], [0.8, 1.0, 1.05, 1.15], [0.28, 0.5, 1.1, 1.4],
+]
+## Which forms of palm and tropical tree suit each wetness level (0 desert .. 3 rainforest).
+const PALM_FORMS := [["date"], ["date", "palmetto"], ["coconut", "royal", "banana", "palmetto"], ["coconut", "royal", "banana"]]
+const TROPIC_FORMS := [["umbrella"], ["umbrella", "umbrella", "fig"], ["fig", "emergent", "umbrella"], ["emergent", "fig", "emergent"]]
+
+## Swaps palm and tropical species whose form doesn't suit the climate (date palms in the
+## desert, coconuts and bananas in the wet; acacia on the dry plains, jungle giants in
+## the rainforest) for ones that do.
+static func _fit_climate(flora: Array, clim: Vector2i, r: RandomNumberGenerator) -> void:
+	for f in flora:
+		var want: Array
+		match String(f["t"]):
+			"palm": want = PALM_FORMS[clim.y]
+			"tropic": want = TROPIC_FORMS[clim.y]
+			_: continue
+		for i in 32:
+			if String(Flora.species(f["t"], f["sp"]).get("form", "")) in want:
+				break
+			f["sp"] = r.randi() & 0x7FFFFFFF
+
+## Grass by climate: a deep, saturated green in the wet tropics, sun-bleached gold in the
+## dry heat, a cool grey-green in the cold.
+static func _climate_grass(g: Color, clim: Vector2i) -> Color:
+	if clim.x == 3:
+		return g.lerp(Color(0.24, 0.48, 0.12), 0.45) if clim.y >= 2 else g.lerp(Color(0.62, 0.55, 0.28), 0.45)
+	if clim.x == 0:
+		return g.lerp(Color(0.32, 0.4, 0.26), 0.35)
+	return g
 
 ## Bioluminescence is a feature of a few regions, not of a whole era: about a third of
 ## fantasy regions glow, a few sci-fi ones, no medieval ones. (Its own hash, so the rest
@@ -112,6 +173,9 @@ static func _stand(h: int, era: int, out: Dictionary) -> void:
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.combine(h, era * 31 + 977)
 	var turned := r.randf() < 0.2
+	var clim: Vector2i = out.get("climate", Vector2i(-1, -1))
+	if clim.x == 3:
+		turned = false # no autumn in the tropics
 	out["autumn"] = turned
 	for f in out["flora"]:
 		if f["t"] != "oak":
@@ -147,7 +211,7 @@ static func fit_flora(p: Dictionary, f: Dictionary, y: float) -> Dictionary:
 ## result) for a tree rooted at height h, swapped for the region's own pine (or a pine of
 ## its own) above a ragged line some way under the snow line. `u` jitters the line.
 static func by_altitude(p: Dictionary, f: Dictionary, h: float, u: float) -> Dictionary:
-	if f["t"] != "oak" or h < WorldField.snow_line - 26.0 + 14.0 * fposmod(u * 7.31, 1.0):
+	if not (f["t"] in ["oak", "palm", "tropic"]) or h < WorldField.snow_line - 26.0 + 14.0 * fposmod(u * 7.31, 1.0):
 		return f
 	for g in p["flora"]:
 		if g["t"] == "pine":

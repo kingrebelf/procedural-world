@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 17 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips.
+const GEN_VERSION := 18 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -1191,12 +1191,12 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
-		# No tree takes root in loose dune sand.
-		p *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
+		# No tree takes root in loose dune sand, but for a palm on its beach or oasis.
+		var loose := 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
 		var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
-		if f.is_empty():
+		if f.is_empty() or (roll >= p * loose and f["t"] != "palm"):
 			continue
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 

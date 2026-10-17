@@ -24,6 +24,8 @@ var _mesa: FastNoiseLite
 var _cell_d: FastNoiseLite
 var _cell_v: FastNoiseLite
 var _cell_e: FastNoiseLite
+var _warmth: FastNoiseLite
+var _wetness: FastNoiseLite
 var _wind := Vector2.RIGHT
 
 ## Terrain generation in force. Worlds created before v4 keep the older shapes, so chunks
@@ -51,6 +53,8 @@ func _init(world_seed: int) -> void:
 	_cell_d = _cellular(14, FastNoiseLite.RETURN_DISTANCE)
 	_cell_v = _cellular(14, FastNoiseLite.RETURN_CELL_VALUE)
 	_cell_e = _cellular(14, FastNoiseLite.RETURN_DISTANCE2_SUB)
+	_warmth = _noise(15, 1.0 / 7500.0, 3, FastNoiseLite.FRACTAL_FBM)
+	_wetness = _noise(16, 1.0 / 3200.0, 2, FastNoiseLite.FRACTAL_FBM)
 	_wind = Vector2.RIGHT.rotated(WHash.unit2(seed, 0, 0, 106) * TAU)
 
 func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
@@ -102,7 +106,9 @@ func _site(ix: int, iz: int) -> Array:
 	if s == null:
 		if _site_cache.size() > 4096:
 			_site_cache.clear()
-		s = [site_pos(ix, iz), site_era(ix, iz), site_landform(ix, iz)]
+		var pos := site_pos(ix, iz)
+		var lf := site_landform(ix, iz)
+		s = [pos, site_era(ix, iz), lf, _site_climate(pos, lf)]
 		_site_cache[k] = s
 	return s
 
@@ -175,10 +181,62 @@ func region_site_at(x: float, z: float) -> Vector2i:
 				best = Vector2i(cx + ox, cz + oz)
 	return best
 
-## Stable hash of the region containing (x, z); seeds its biome (see Biome).
+## Stable hash of the region containing (x, z); seeds its biome (see Biome). From v18 its
+## low four bits are the region's climate (CLIMATE_BITS), so everything that has a
+## region's hash (a saved chunk's "biome" too) knows how warm and wet it is.
 func region_hash_at(x: float, z: float) -> int:
 	var s := region_site_at(x, z)
-	return WHash.hash2(seed, s.x, s.y, 104)
+	var h := WHash.hash2(seed, s.x, s.y, 104)
+	if terrain_v >= CLIMATE_V:
+		h = (h & ~0xF) | int(_site(s.x, s.y)[3])
+	return h
+
+# --- Climate (v18) ------------------------------------------------------------
+## How warm and how wet the land is, from two slow noises several kilometres across over
+## the planet's own warmth (a world with a high snow line is a warm one): hot belts where
+## palms and jungle grow, dry ones of savanna and desert, cold uplands of spruce and
+## birch. The land round the spawn is kept temperate, the woods and meadows a medieval
+## start expects; the tropics lie a few kilometres out.
+
+const CLIMATE_V := 18
+## Each region's climate in its hash's low bits: warmth level * 4 + wetness level, each 0..3.
+const CLIMATE_BITS := 0xF
+## Where warmth (0..1) passes from cold to cool, cool to temperate, temperate to hot: most
+## land temperate, a hot belt or two, cold uplands about as common.
+const WARM_LEVELS := [0.2, 0.36, 0.68]
+## How much wetter (or drier) each landform's climate is: dunes and badlands are deserts,
+## lakes are damp.
+const LF_WET := [0.0, 0.05, 0.0, 0.0, -0.05, 0.05, 0.0, 0.15, -0.5, -0.2, -0.3]
+
+## (warmth, wetness), each 0..1, at (x, z): 0.5 is a temperate, middling place.
+## Continuous (the eventual blend of biomes and the weather can both read it).
+func climate_at(x: float, z: float) -> Vector2:
+	if terrain_v < CLIMATE_V:
+		return Vector2(0.5, 0.5)
+	var warm := 0.5 + _warmth.get_noise_2d(x, z) * 1.1 + clampf((snow_line - 50.0) / 80.0, -0.6, 0.2)
+	var wet := 0.5 + _wetness.get_noise_2d(x, z) * 0.9
+	var home := 1.0 - smoothstep(1100.0, 2600.0, Vector2(x, z).length())
+	warm = lerpf(warm, clampf(warm, 0.4, 0.62), home)
+	return Vector2(clampf(warm, 0.0, 1.0), clampf(wet, 0.0, 1.0))
+
+## A region's climate as CLIMATE_BITS: its site's climate, its landform's dryness or damp.
+func _site_climate(pos: Vector2, lf: int) -> int:
+	if terrain_v < CLIMATE_V:
+		return 0
+	var c := climate_at(pos.x, pos.y)
+	c.y = clampf(c.y + LF_WET[lf], 0.0, 1.0)
+	var warm := 0
+	for t in WARM_LEVELS:
+		if c.x >= t:
+			warm += 1
+	return warm * 4 + clampi(int(c.y * 4.0), 0, 3)
+
+## The climate of a region from its hash (region_hash_at): (warmth, wetness) levels 0..3,
+## or (-1, -1) in worlds made before climates (all temperate, as they always were).
+static func region_climate(h: int) -> Vector2i:
+	if terrain_v < CLIMATE_V:
+		return Vector2i(-1, -1)
+	return Vector2i((h & CLIMATE_BITS) >> 2, h & 3)
 
 ## Name of the region containing (x, z): stable per Voronoi site.
 func region_name_at(x: float, z: float) -> String:
