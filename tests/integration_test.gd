@@ -690,9 +690,14 @@ func _climb(player, w: Vector3, t: String) -> void:
 	var yaws := [0.0, -PI / 2.0, PI, PI / 2.0, 0.0]
 	for i in 5:
 		player.set_state({"pos": player.global_position, "yaw": yaws[i], "pitch": 0.0, "slot": 0})
+		# Walk until a wall stops you (a pack full of loot slows you down).
 		Input.action_press("move_forward")
-		for n in 110:
-			await physics_frame
+		var was: Vector3 = player.global_position
+		for n in 60:
+			await _frames(15)
+			if player.global_position.distance_to(was) < 0.02:
+				break
+			was = player.global_position
 		Input.action_release("move_forward")
 		await _frames(5)
 		var l: Vector3 = player.global_position - w
