@@ -900,7 +900,7 @@ func _restand() -> void:
 			continue
 		var at: Vector2 = ch[1]
 		for g in _built.duplicate():
-			if not (g["box"] as Rect2).grow(TREE_CLEAR + 1.0).has_point(at):
+			if not (g["box"] as Rect2).grow(REACH_MAX).has_point(at):
 				continue
 			if g["root"] != null and is_instance_valid(g["root"]):
 				(g["root"] as Node).queue_free()
@@ -908,8 +908,22 @@ func _restand() -> void:
 			_pending.append({"pieces": g["pieces"], "house": g["house"]})
 	_seen = _rev
 
-const TREE_CLEAR := 3.0 ## how far an orchard tree keeps from a player's building
-const PROP_CLEAR := 1.2 ## and a yard or farm prop
+const TREE_CLEAR := 0.8 ## how far an orchard tree's crown keeps from a player's building
+const PROP_CLEAR := 1.2 ## and a yard or farm prop (from a built piece's middle)
+const PIECE_HALF := 1.5 ## a built piece's reach from its middle (a 2 m wall, a 3 m floor)
+const REACH_MAX := 10.0 ## no crown reaches further than this from its trunk
+
+static var _crowns := {} ## tree mesh key -> its crown's reach from the trunk, unscaled
+
+## How far an orchard tree's leaves reach out from its trunk, as built (its mesh's
+## widest point, at its scale).
+static func crown_reach(e: Dictionary) -> float:
+	var key := "oak#%d#%d" % [int(e["sp"]), int(e["v"])]
+	if not _crowns.has(key):
+		var bb := ObjectLibrary.get_mesh(key).get_aabb()
+		_crowns[key] = maxf(maxf(absf(bb.position.x), absf(bb.end.x)), maxf(absf(bb.position.z), absf(bb.end.z)))
+	var p := Flora.species("oak", int(e["sp"]))
+	return float(_crowns[key]) * clampf(4.6 / float(p["height"]), 0.35, 0.85) * float(e["s"])
 
 ## Where a piece stands, for keeping it off the player's buildings.
 static func _points(e: Dictionary) -> Array:
@@ -924,7 +938,7 @@ func _standing(pieces: Array) -> Array:
 	for e in pieces:
 		for q: Vector2 in _points(e):
 			box = box.expand(q)
-	var near := _player_built(box.grow(TREE_CLEAR))
+	var near := _player_built(box.grow(REACH_MAX))
 	if near.is_empty():
 		return pieces
 	var out: Array = []
@@ -932,7 +946,8 @@ func _standing(pieces: Array) -> Array:
 		var k: String = e["k"]
 		var keep := true
 		if k != "smoke" and k != "lantern" and k != "plinth":
-			var r := TREE_CLEAR if k == "tree" else PROP_CLEAR
+			# A tree keeps its whole crown (plus a margin) off the building, not just its trunk.
+			var r := crown_reach(e) + PIECE_HALF + TREE_CLEAR if k == "tree" else PROP_CLEAR
 			for q: Vector2 in _points(e):
 				for b: Vector2 in near:
 					if q.distance_to(b) < r:
