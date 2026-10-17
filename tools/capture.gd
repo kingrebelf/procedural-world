@@ -1325,6 +1325,12 @@ func _boat_shots(g: ChunkGenerator) -> void:
 		# The small boat is caught under way (oars pulling, bow wave and wake); the big ones
 		# lie still.
 		var b: BoatNode = world.boats.put(best[key], key != "small")
+		if key == "small":
+			# Always the same stretch of its loop, whatever the game clock says, so the shot
+			# (and its light) is the same every run.
+			b.route_t = 0.0
+			for i in 3:
+				await get_tree().physics_frame
 		for v in views[key]:
 			if not only.is_empty() and not only.has(String(v[0]).substr(0, 2)):
 				continue
