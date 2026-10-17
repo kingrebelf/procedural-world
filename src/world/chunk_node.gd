@@ -21,6 +21,7 @@ var _height_shape: CollisionShape3D
 var _mm: Dictionary = {} ## type -> MultiMeshInstance3D (or a node of rooms, _add_rooms)
 var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _doors: Dictionary = {} ## object index -> DoorNode (doors move, so they aren't in a MultiMesh)
+var _power: Dictionary = {} ## object index -> PowerNode (a powered piece's moving and lit parts)
 var _grass: Array = [] ## MultiMeshInstance3D per grass species and quarter
 var _clutter: Array = []
 var _stones := PackedFloat32Array() ## stones to stand on (see _scatter_stones)
@@ -1020,6 +1021,7 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 		add_child(mmi)
 		_mm[t] = mmi
 	_sync_doors()
+	_sync_power()
 
 ## A DoorNode for every door still standing, none for those taken down.
 func _sync_doors() -> void:
@@ -1039,6 +1041,28 @@ func _sync_doors() -> void:
 		if not have.has(i):
 			_doors[i].queue_free()
 			_doors.erase(i)
+
+## A PowerNode for every powered piece still standing, none for those taken down.
+func _sync_power() -> void:
+	var have := {}
+	for o in data["objects"]:
+		if o["st"].get("gone", false) or not Power.is_power(o["t"]):
+			continue
+		var i: int = o["i"]
+		have[i] = true
+		if not _power.has(i):
+			var pn := PowerNode.new()
+			pn.setup(self, o)
+			add_child(pn)
+			_power[i] = pn
+	for i in _power.keys():
+		if not have.has(i):
+			_power[i].queue_free()
+			_power.erase(i)
+
+## The PowerNode of object i, or null.
+func power_node(i: int) -> PowerNode:
+	return _power.get(i)
 
 ## A door's state changed (opened, shut, locked): move it and save the chunk.
 func door_changed(i: int) -> void:
@@ -1405,6 +1429,8 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 		_add_obj_body(o)
 	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
+	if Power.is_power(t):
+		PowerGrid.changed(self)
 	return o
 
 ## Regrows the grass after something that keeps it out (a floor, a house) came or went,
@@ -1429,6 +1455,8 @@ func remove_object(i: int) -> void:
 		refresh_far()
 	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
+	if Power.is_power(o["t"]):
+		PowerGrid.changed(self)
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
 
