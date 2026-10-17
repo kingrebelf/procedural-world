@@ -200,7 +200,7 @@ func _warp(n: int) -> void:
 	_warp_rect.visible = true
 	var tw := create_tween()
 	tw.tween_method(_set_warp, 0.0, 1.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(_cam, "fov", 115.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(_cam, "fov", 88.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
 	_arrive(n)
 	_show_planet()
