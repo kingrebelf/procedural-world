@@ -8,8 +8,9 @@ class_name Outfit
 ## thighs so they swing with the legs. Everything is cached per body and style, so a whole
 ## town of people shares a handful of meshes.
 ##
-## CUSTOM0 on every vertex: x = part (see PART_*), y = rest height, z = rest depth, for the
-## shaders. Armour also carries COLOR: rgb = the item's colour, a = style / 8.
+## CUSTOM0 on every vertex: x = part (see PART_*), y = rest height, z = rest depth, w = rest
+## side; CUSTOM1 the rest normal. The shaders map fabric onto the rest pose with them, so
+## the weave stays put on a moving body. Armour also carries COLOR: rgb = the item's colour, a = style / 8.
 
 enum {PART_SHIRT = 1, PART_PANTS, PART_BOOTS, PART_BELT, PART_SKIRT, PART_CAPE, PART_TRIM}
 enum {STYLE_LEATHER, STYLE_MAIL, STYLE_PLATE, STYLE_CRYSTAL, STYLE_EXO, STYLE_CLOTH}
@@ -82,7 +83,7 @@ static func _measure(s: Dictionary, y: float, band := 0.02) -> Dictionary:
 
 static func _new_out() -> Dictionary:
 	return {"v": PackedVector3Array(), "n": PackedVector3Array(), "uv": PackedVector2Array(), "b": PackedInt32Array(),
-		"w": PackedFloat32Array(), "c": PackedFloat32Array(), "col": PackedColorArray(), "i": PackedInt32Array()}
+		"w": PackedFloat32Array(), "c": PackedFloat32Array(), "rn": PackedFloat32Array(), "col": PackedColorArray(), "i": PackedInt32Array()}
 
 ## Copies the body triangles whose three corners `pick` accepts, pushed out along their
 ## normals. pick(i: vertex, p: rest position, region) -> thickness, or < 0 to leave out.
@@ -111,13 +112,15 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 		for k in [a, b, c]:
 			if not remap.has(k):
 				remap[k] = base + remap.size()
-				o["v"].append(v[k] + nr[k] * off[k])
+				var rp := v[k] + nr[k] * off[k]
+				o["v"].append(rp)
 				o["n"].append(nr[k])
 				o["uv"].append(uv[k] if uv.size() > k else Vector2.ZERO)
 				for j in per:
 					o["b"].append(bones[k * per + j])
 					o["w"].append(wts[k * per + j])
-				o["c"].append_array([float(part), v[k].y, v[k].z])
+				o["c"].append_array([float(part), rp.y, rp.z, rp.x])
+				o["rn"].append_array([nr[k].x, nr[k].y, nr[k].z])
 				o["col"].append(col)
 			o["i"].append(remap[k])
 
@@ -138,7 +141,9 @@ static func _vert(s: Dictionary, o: Dictionary, p: Vector3, n: Vector3, uv: Vect
 		else:
 			o["b"].append(0)
 			o["w"].append(0.0)
-	o["c"].append_array([float(part), p.y, p.z])
+	o["c"].append_array([float(part), p.y, p.z, p.x])
+	var rn := n.normalized()
+	o["rn"].append_array([rn.x, rn.y, rn.z])
 	o["col"].append(col)
 
 ## A loose skirt, robe or tunic hem from the waist down to `hem` (rest height), flaring
@@ -236,9 +241,11 @@ static func _commit(s: Dictionary, o: Dictionary) -> ArrayMesh:
 	a[Mesh.ARRAY_BONES] = o["b"]
 	a[Mesh.ARRAY_WEIGHTS] = o["w"]
 	a[Mesh.ARRAY_CUSTOM0] = o["c"]
+	a[Mesh.ARRAY_CUSTOM1] = o["rn"]
 	a[Mesh.ARRAY_COLOR] = o["col"]
 	a[Mesh.ARRAY_INDEX] = o["i"]
-	var flags := Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	var flags := Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+	flags |= Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT
 	if int(s["per"]) == 8:
 		flags |= Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, flags)
@@ -337,6 +344,10 @@ static func cloth_material() -> ShaderMaterial:
 	if not _mats.has("cloth"):
 		var m := ShaderMaterial.new()
 		m.shader = load(CLOTH_SHADER)
+		for k in ["linen", "wool", "velvet"]:
+			m.set_shader_parameter(k, load("res://assets/textures/fabric_%s_detail.jpg" % k))
+		m.set_shader_parameter("leather", load("res://assets/textures/leather_worn_detail.jpg"))
+		m.set_shader_parameter("gold_trim", load("res://assets/textures/embroidered_trim_albedo.jpg"))
 		_mats["cloth"] = m
 	return _mats["cloth"]
 
@@ -344,6 +355,8 @@ static func armor_material() -> ShaderMaterial:
 	if not _mats.has("armor"):
 		var m := ShaderMaterial.new()
 		m.shader = load(ARMOR_SHADER)
+		m.set_shader_parameter("chainmail", load("res://assets/textures/chainmail_detail.jpg"))
+		m.set_shader_parameter("leather", load("res://assets/textures/leather_worn_detail.jpg"))
 		_mats["armor"] = m
 	return _mats["armor"]
 

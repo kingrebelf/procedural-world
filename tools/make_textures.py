@@ -5,6 +5,8 @@ For each source it writes, into assets/textures/:
   <name>_detail.jpg   greyscale detail (mean 0.72, softened contrast) for materials tinted by vertex colour
   <name>_normal.png   tangent-space normal map from a high-passed luminance height
 
+Fabric sheets (FABRICS) only get <name>_detail.jpg; embroidered_trim keeps its colour.
+
 Usage: python3 tools/make_textures.py SRC_DIR   (expects <name>.jpg files in SRC_DIR,
 plus leaves.jpg, a leaf cluster on black, for the foliage card leaves_card.png)
 """
@@ -94,6 +96,30 @@ def main(src_dir):
 
 
 
+# Ben's fabric sheets (2026-10-17) for clothes and armour. Clothes are coloured per person,
+# so these become greyscale detail (name -> contrast; mail keeps its gaps dark); the gold
+# trim keeps its colour. 512 is plenty at character scale.
+FABRICS = {"fabric_linen": 0.8, "fabric_wool": 0.9, "fabric_velvet": 0.7, "leather_worn": 0.8, "chainmail": 1.0}
+
+
+def make_fabrics(src_dir, size=512):
+    for name, contrast in FABRICS.items():
+        p = Path(src_dir) / f"{name}.jpg"
+        if not p.exists():
+            print("missing", p)
+            continue
+        a = np.asarray(Image.open(p).convert("RGB")).astype(float) / 255
+        a = feather_seams(true_period(a))
+        lum = a @ np.array([0.299, 0.587, 0.114])
+        det = (0.72 * (1 + (lum / max(lum.mean(), 1e-3) - 1) * contrast)).clip(0, 1)
+        img = Image.fromarray((det * 255).astype(np.uint8)).resize((size, size), Image.LANCZOS)
+        img.save(OUT / f"{name}_detail.jpg", quality=92)
+        print(name, "detail")
+    p = Path(src_dir) / "embroidered_trim.jpg"
+    if p.exists():
+        Image.open(p).convert("RGB").resize((size, size), Image.LANCZOS).save(OUT / "embroidered_trim_albedo.jpg", quality=92)
+        print("embroidered_trim albedo")
+
 
 def box_blur(a, r):
     """Separable box blur with wrap-around, on float arrays."""
@@ -138,5 +164,6 @@ def make_leaf_card(src, out_name="leaves_card.png", size=512):
 
 if __name__ == "__main__":
     main(sys.argv[1])
+    make_fabrics(sys.argv[1])
     if (Path(sys.argv[1]) / "leaves.jpg").exists():
         make_leaf_card(Path(sys.argv[1]) / "leaves.jpg")
