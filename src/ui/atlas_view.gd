@@ -3,7 +3,8 @@ extends Control
 ## The atlas: the whole painted map under its fog of war. Drag to pan, scroll to zoom
 ## (towards the cursor), click to drop a marker, click a marker to edit it, right-click a
 ## marker to remove it, and hover a place to see what it is and how far. What shows
-## follows the map's filters.
+## follows the map's filters; the map overlay (MapLayers) paints levels, danger, eras,
+## zones or landforms under its rings and a legend, and the hover reads it out.
 
 signal changed
 
@@ -128,6 +129,9 @@ func _things() -> Array:
 
 func _draw_icons() -> void:
 	var font := get_theme_default_font()
+	var layer := MapLayers.current()
+	if layer != MapLayers.OFF:
+		_draw_rings(font, layer)
 	var things := _things()
 	var near: Array = []
 	var nd := 14.0
@@ -170,10 +174,32 @@ func _draw_icons() -> void:
 		_tooltip(font, near[1] + Vector2(14, -14), txt)
 	elif _hover.x >= 0.0 and Rect2(Vector2.ZERO, size).has_point(_hover):
 		var wp := _canvas.to_world(_hover)
-		if Game.map.revealed(wp.x, wp.y) < 0.3:
+		var seen := Game.map.revealed(wp.x, wp.y) >= 0.3
+		if layer != MapLayers.OFF and (seen or MapLayers.over_fog(layer)):
+			_tooltip(font, _hover + Vector2(14, -14), MapLayers.describe(layer, wp.x, wp.y) + ("" if seen else "  ·  unexplored"))
+		elif not seen:
 			_tooltip(font, _hover + Vector2(14, -14), "Unexplored")
+	if layer != MapLayers.OFF:
+		MapLayers.draw_legend(_icons, font, Vector2(12, 12), layer, _canvas.layer_mask, false, 13)
 	_scale_bar(font)
 	_label(font, Vector2(12, size.y - 12), "Drag to pan   ·   scroll to zoom   ·   click to mark   ·   right-click a marker to remove", 13, Color(1, 1, 1, 0.5))
+
+## The overlay's rings of equal level round spawn, each named where it crosses the view.
+func _draw_rings(font: Font, layer: int) -> void:
+	var to_px := func(x: float, z: float) -> Vector2: return _canvas.to_local_px(x, z)
+	var view := Rect2(Vector2.ZERO, size)
+	for ln in MapLayers.ring_lines(layer, _canvas.center, size.length() * 0.5 / _ppm, to_px):
+		_icons.draw_polyline(ln[0], Color(0, 0, 0, 0.45), 3.5, true)
+		_icons.draw_polyline(ln[0], Color(1, 0.95, 0.8, 0.85), 1.5, true)
+		var mid: Vector2 = ln[2]
+		if not view.grow(-40).has_point(mid):
+			# Name it where it crosses the view instead.
+			for q in ln[0]:
+				if view.grow(-40).has_point(q):
+					mid = q
+					break
+		if view.grow(-20).has_point(mid):
+			_label(font, mid + Vector2(6, -6), ln[1], 13, Color(1, 0.96, 0.85))
 
 func _label(font: Font, p: Vector2, s: String, fs: int, c: Color) -> void:
 	_icons.draw_string_outline(font, p, s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 4, Color(0, 0, 0, 0.75))

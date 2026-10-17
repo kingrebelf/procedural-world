@@ -41,7 +41,9 @@ func fetch(rec: Dictionary, text: String) -> void:
 			_cache.erase(_order.pop_front())
 
 func say(rec: Dictionary, text: String, dist: float, interrupt: bool, node: Node3D, after: bool) -> void:
-	var k: String = _key(rec, text)[0]
+	var ko := _key(rec, text)
+	var k: String = ko[0]
+	var pitch := float(ko[1].get("pitch", 1.0))
 	if not interrupt and not after:
 		# A passer-by: only when nobody is talking, and within the budget.
 		if busy():
@@ -57,11 +59,11 @@ func say(rec: Dictionary, text: String, dist: float, interrupt: bool, node: Node
 		if not _cache.has(k):
 			await fetch(rec, text)
 		if g == _gen and _cache.has(k) and not busy():
-			_play(_cache[k], node, dist)
+			_play(_cache[k], node, dist, pitch)
 		return
 	if interrupt and not after:
 		stop_all()
-	var item := {"key": k, "node": node, "dist": dist}
+	var item := {"key": k, "node": node, "dist": dist, "pitch": pitch}
 	_queue.append(item)
 	var g2 := _gen
 	if not _cache.has(k):
@@ -80,12 +82,14 @@ func _pump() -> void:
 		if not _cache.has(it["key"]):
 			return # still being fetched; it plays when it arrives
 		_queue.pop_front()
-		_now = _play(_cache[it["key"]], it["node"], it["dist"])
+		_now = _play(_cache[it["key"]], it["node"], it["dist"], it["pitch"])
 		if _now:
 			_now.finished.connect(_pump)
 			return
 
-func _play(stream: AudioStream, node: Node3D, dist: float) -> Node:
+## `pitch` plays the line back lighter (above 1) or deeper; the voice was made slower or
+## faster to match, so the pace is right (see Voice.builtin_for).
+func _play(stream: AudioStream, node: Node3D, dist: float, pitch := 1.0) -> Node:
 	var vol := float(AI.get_value("voice_volume")) / 100.0
 	if vol <= 0.0:
 		return null
@@ -96,6 +100,7 @@ func _play(stream: AudioStream, node: Node3D, dist: float) -> Node:
 		p3.max_distance = 32.0
 		p3.volume_db = linear_to_db(vol)
 		p3.position = Vector3(0, 1.6, 0)
+		p3.pitch_scale = pitch
 		node.add_child(p3)
 		p3.stream = stream
 		p3.play()
@@ -103,6 +108,7 @@ func _play(stream: AudioStream, node: Node3D, dist: float) -> Node:
 	else:
 		var p2 := AudioStreamPlayer.new()
 		p2.volume_db = linear_to_db(vol * clampf(1.0 - dist / 30.0, 0.15, 1.0))
+		p2.pitch_scale = pitch
 		add_child(p2)
 		p2.stream = stream
 		p2.play()

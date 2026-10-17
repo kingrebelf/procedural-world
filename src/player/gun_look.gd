@@ -4,14 +4,18 @@ class_name GunLook
 ## kit's flat white and orange), and the period weapons (revolver, crossbows) forged from
 ## parts in wood, iron and brass. Guns point along -Z with the grip at the origin.
 
-## Item type -> [kit model, scale, body paint, accent]. The accent names a colour from GLOW
-## (shown as anodised metal on these human guns) or is a paint colour.
+## Item type -> [kit model, scale, body paint, accent]. The scale is a number, or for the
+## long guns Vector2(along the barrel, across): the kit draws them carbine-short, so they
+## are drawn out to a real rifle's length (pulse rifle 0.84 m, rail rifle 1.15 m, arc
+## launcher 0.8 m) while their grips and receivers thicken only a little. The accent
+## names a colour from GLOW (shown as anodised metal on these human guns) or is a paint
+## colour.
 const KIT := {
 	"pulse_pistol": ["scifi/Pistol_1", 0.3, Color(0.78, 0.8, 0.83), "glow_cyan"],
 	"pulse_smg": ["scifi/SMG_2", 0.3, Color(0.2, 0.23, 0.26), "glow_teal"],
-	"pulse_rifle": ["scifi/AR_3", 0.3, Color(0.3, 0.33, 0.25), "glow_cyan"],
-	"rail_rifle": ["scifi/Sniper_2", 0.3, Color(0.14, 0.17, 0.25), "glow_white"],
-	"arc_launcher": ["scifi/Grenade_3", 0.3, Color(0.5, 0.44, 0.33), "glow_violet"],
+	"pulse_rifle": ["scifi/AR_3", Vector2(0.55, 0.36), Color(0.3, 0.33, 0.25), "glow_cyan"],
+	"rail_rifle": ["scifi/Sniper_2", Vector2(0.46, 0.36), Color(0.14, 0.17, 0.25), "glow_white"],
+	"arc_launcher": ["scifi/Grenade_3", Vector2(0.47, 0.38), Color(0.5, 0.44, 0.33), "glow_violet"],
 }
 
 ## Sights from the kit's modular parts, set on top of the gun (model, nudge, scale).
@@ -47,20 +51,21 @@ static func _kit_gun(t: String) -> ArrayMesh:
 		return null
 	# The kit's guns point along +X with the grip at the origin.
 	var turn := Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO)
-	var out := Viewmodel.kit_mesh(e[0], turn * Transform3D.IDENTITY.scaled(Vector3.ONE * e[1]))
+	var sc: Vector2 = e[1] if e[1] is Vector2 else Vector2(e[1], e[1])
+	var out := Viewmodel.kit_mesh(e[0], turn * Transform3D.IDENTITY.scaled(Vector3(sc.x, sc.y, sc.y)))
 	if OPTICS.has(t) and ResourceLoader.exists("res://assets/models/%s.gltf" % OPTICS[t][0]):
 		var o: Array = OPTICS[t]
-		# Seated on the gun's top, over its middle.
+		# Seated on the gun's top, over its middle, as thick as the gun is.
 		var box := out.get_aabb()
-		var at: Vector3 = Vector3(0, box.end.y, box.get_center().z) + o[1]
-		var part := Viewmodel.kit_mesh(o[0], Transform3D(Basis(), at) * turn * Transform3D.IDENTITY.scaled(Vector3.ONE * o[2]))
+		var at: Vector3 = Vector3(0, box.end.y, box.get_center().z) + o[1] * (sc.y / 0.3)
+		var part := Viewmodel.kit_mesh(o[0], Transform3D(Basis(), at) * turn * Transform3D.IDENTITY.scaled(Vector3.ONE * o[2] * (sc.y / 0.3)))
 		for i in part.get_surface_count():
 			out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, part.surface_get_arrays(i))
 			out.surface_set_material(out.get_surface_count() - 1, part.surface_get_material(i))
 	for i in out.get_surface_count():
 		out.surface_set_material(i, _skin(out.surface_get_material(i), e[2], e[3]))
 	# The fist closes round the pistol grip just under the frame.
-	out.set_meta("grip", GRIP_AT)
+	out.set_meta("grip", GRIP_AT * (sc.y / 0.3))
 	return out
 
 ## The kit paints every gun from four flat colours: Black, Grey, White and Main (orange).
