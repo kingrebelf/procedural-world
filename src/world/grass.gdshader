@@ -19,6 +19,17 @@ varying float shade;
 
 void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	// Blades under a pixel wide (GrassKit's CUSTOM0): from the distance where a blade is
+	// one pixel across to twice that, every other one narrows to nothing (its triangles
+	// are then skipped) and the rest widen to twice their width, so the field keeps its
+	// cover and colour for half the blades. A pixel's size per metre of distance follows
+	// the field of view, the resolution and the render scale.
+	if (CUSTOM0.w != 0.0) {
+		float px = 2.0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
+		float bw = abs(CUSTOM0.w) * length(MODEL_MATRIX[0].xyz);
+		float k = clamp(length(wp - CAMERA_POSITION_WORLD) * px / bw - 1.0, 0.0, 1.0);
+		VERTEX += CUSTOM0.xyz * (CUSTOM0.w > 0.0 ? k : -k);
+	}
 	// wind_time is the wind's own clock: it runs faster in a strong wind but never jumps,
 	// so blades never snap when the wind changes.
 	float t = wind_time * 1.3 + dot(wp.xz, wind_dir) * 0.35;
