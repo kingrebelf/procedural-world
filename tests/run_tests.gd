@@ -1499,6 +1499,16 @@ func test_body_variety() -> void:
 	var hs := BodyShape.shape(heavy, 40, "innkeeper")
 	check(float(hs["girth"]["spine_01"][0][2]) > float(BodyShape.shape(b, 40, "innkeeper")["girth"]["spine_01"][0][2]) + 0.15, "heavier people have a belly")
 	check(float(BodyShape.shape(b, 30, "smith")["muscle"]) > float(BodyShape.shape(b, 30, "scribe")["muscle"]), "a smith is more muscled than a scribe")
+	# Facial hair: every style turns up among men, none on women.
+	var styles := {}
+	var womens := 0
+	for k in 300:
+		var m := b.duplicate()
+		m["height"] = 0.9 + 0.0006 * k
+		styles[BodyShape.beard(m, 45)] = true
+		m["female"] = true
+		womens += BodyShape.beard(m, 45)
+	check(styles.size() == 6 and womens == 0, "men wear every facial hair style, from clean-shaven to a full beard; women none")
 	if not HumanModel.available():
 		return
 	var a := HumanModel.new()
