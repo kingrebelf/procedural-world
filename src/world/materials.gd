@@ -370,6 +370,8 @@ static func _get_mat(name: String) -> Material:
 		"gate_metal": m = _surface("gate_ring_metal", 0.22, 0.35, 0.7, 2.5)
 		"void_stone": m = _surface("void_stone", 0.25, 0.6, 0.0, 1.6)
 		# Interiors and sci-fi buildings from Ben's art.
+		"scrap_pile": m = _surface("scrap_machinery", 0.55, 0.6, 0.55, 0.0)
+		"scrap_plate": m = _surface("scrap_burnt", 0.7, 0.5, 0.65, 0.0)
 		"wood_floor": m = _surface("wood_floor", 0.5, 0.72, 0.0, 0.0)
 		"stone_floor": m = _surface("stone_floor", 0.3, 0.85, 0.0, 0.0)
 		"tapestry": m = _surface("tapestry", 1.0 / 1.2, 0.95, 0.0, 0.0) # one picture per hanging (Interiors.tapestry)

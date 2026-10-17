@@ -136,8 +136,9 @@ func apply_settings() -> void:
 		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	var cq := int(Settings.get_value("clouds"))
 	sky_mat.set_shader_parameter("volumetric_clouds", cq > 0)
-	sky_mat.set_shader_parameter("cloud_steps", 16 if cq == 1 else 28)
-	sky_mat.set_shader_parameter("cloud_light_steps", 2 if cq == 1 else 4)
+	# Ben (2026-10-17): quality first, so the high setting marches the clouds finely.
+	sky_mat.set_shader_parameter("cloud_steps", 20 if cq == 1 else 40)
+	sky_mat.set_shader_parameter("cloud_light_steps", 3 if cq == 1 else 6)
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
 
