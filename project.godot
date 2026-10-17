@@ -61,6 +61,14 @@ water_map_rect={
 "type": "vec4",
 "value": Vector4(-800, -800, 1600, 0)
 }
+water_wake_map={
+"type": "sampler2D",
+"value": ""
+}
+water_wake_rect={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
 night_glow_g={
 "type": "float",
 "value": 0.15

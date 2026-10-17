@@ -35,9 +35,6 @@ func _ready() -> void:
 	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
-	for a in OS.get_cmdline_user_args(): # TEMP hull-split diagnosis
-		if a.begins_with("--water-debug="):
-			_mat.set_shader_parameter("debug_view", a.substr(14).to_int())
 	material_override = _mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	position.y = LEVEL
@@ -92,23 +89,29 @@ func _process(delta: float) -> void:
 	if _depth_row >= 0 and streamer != null:
 		_update_depth()
 
-## The water sheet: 8 m squares across the middle SIZE metres, then squares growing
-## outwards to REACH, so the sea runs on to the horizon under the distant land (FarLand)
-## instead of ending in a square edge.
+## The water sheet: 2 m squares round the middle, so the swell's shorter waves are drawn
+## in the surface itself (not just shaded on it), easing out to 8 m squares across the
+## middle SIZE metres, then squares growing outwards to REACH, so the sea runs on to the
+## horizon under the distant land (FarLand) instead of ending in a square edge.
+const FINE := 120.0 ## metres either side of the middle in 2 m squares
 static func _sheet() -> ArrayMesh:
-	var cs := PackedFloat32Array()
-	var step := SIZE / 200.0
-	var x := SIZE * 0.5
-	var outer := PackedFloat32Array()
+	var half := PackedFloat32Array() # 0 and the lines out from the middle, one side
+	var x := 0.0
+	var step := 2.0
+	half.append(0.0)
+	while x < SIZE * 0.5:
+		if x >= FINE:
+			step = minf(step * 1.06, SIZE / 200.0)
+		x = minf(x + step, SIZE * 0.5)
+		half.append(x)
 	while x < REACH:
 		step *= 1.12
 		x = minf(x + step, REACH)
-		outer.append(x)
-	for i in range(outer.size() - 1, -1, -1):
-		cs.append(-outer[i])
-	for i in 201:
-		cs.append(-SIZE * 0.5 + i * SIZE / 200.0)
-	cs.append_array(outer)
+		half.append(x)
+	var cs := PackedFloat32Array()
+	for i in range(half.size() - 1, 0, -1):
+		cs.append(-half[i])
+	cs.append_array(half)
 	var n := cs.size()
 	var verts := PackedVector3Array()
 	verts.resize(n * n)
@@ -229,10 +232,32 @@ func depth_at(x: float, z: float) -> float:
 		return 12.0
 	return _depth_img.get_pixel(int(u), int(v)).r
 
-## Wave amplitude scale: wind cubed-ish (calm water is glassy) times an open-water factor.
+## Wave amplitude scale: a light swell even in a calm, rising with the wind squared, times
+## an open-water factor (ponds and shallows stay low). Must match swell_amp() in
+## water_swell.gdshaderinc.
 static func amplitude(depth: float) -> float:
 	var open := smoothstep(0.5, 14.0, depth)
-	return (0.04 + _wind * _wind * 1.1) * (0.15 + 0.85 * open)
+	return (0.18 + _wind * _wind * 1.2) * (0.15 + 0.85 * open)
+
+## The swell's waves (as water_swell.gdshaderinc): lengths, heights (times amplitude())
+## and how far each turns from the wind.
+const SWELL_LENS: Array[float] = [64.0, 38.0, 21.0, 13.0, 7.0]
+const SWELL_AMPS: Array[float] = [0.5, 0.45, 0.35, 0.25, 0.14]
+const SWELL_TURN: Array[float] = [-0.2, 0.0, 0.6, -0.45, 1.3]
+const SWELL_PEAK := 1.69 ## the sum of SWELL_AMPS: the highest crest, in amplitudes
+## The most a wake may lift the water (what boats write into the wake map stays under it).
+const WAKE_MAX := 0.6
+
+## Wakes boats leave, as height above the swell: `tex` (an RF texture, metres) covers the
+## square from `origin` (x, z), `size` metres across, and `lookup(x, z)` answers the same
+## heights for things that float. The water and the boat foam rise and fall with it.
+## set_wakes(null, ...) clears them.
+static var _wake_lookup: Callable
+
+static func set_wakes(tex: Texture2D, origin: Vector2, size: float, lookup: Callable) -> void:
+	_wake_lookup = lookup if tex != null else Callable()
+	RenderingServer.global_shader_parameter_set("water_wake_map", tex)
+	RenderingServer.global_shader_parameter_set("water_wake_rect", Vector4(origin.x, origin.y, size if tex != null else 0.0, 0.0))
 
 ## A river's water level at (x, z), or NAN where there is no river. Blended between the
 ## 2 m river cells, so swimming down a river doesn't step from cell to cell.
@@ -315,7 +340,7 @@ func current_at(x: float, z: float) -> Vector2:
 ## The highest the sea's waves reach right now (surface_height never goes above it,
 ## rivers aside).
 static func wave_top() -> float:
-	return LEVEL + amplitude(14.0)
+	return LEVEL + amplitude(14.0) * SWELL_PEAK + (WAKE_MAX if _wake_lookup.is_valid() else 0.0)
 
 ## A river's surface at (x, z) where it runs above the sea, else NAN.
 static func river_surface(x: float, z: float) -> float:
@@ -337,12 +362,11 @@ static func surface_height(x: float, z: float, t: float) -> float:
 	var d := _dir.normalized()
 	var p := Vector2(x, z)
 	var h := 0.0
-	var dirs := [d, d.rotated(0.6), d.rotated(-0.45), d.rotated(1.3)]
-	var lens := [38.0, 21.0, 13.0, 7.0]
-	var amps := [0.5, 0.28, 0.15, 0.07]
-	for i in 4:
-		var L: float = lens[i]
-		var k := TAU / L
+	for i in SWELL_LENS.size():
+		var k := TAU / SWELL_LENS[i]
 		var c := sqrt(9.8 / k)
-		h += amps[i] * sin(k * (p.dot(dirs[i]) - c * t))
-	return LEVEL + h * a
+		h += SWELL_AMPS[i] * sin(k * (p.dot(d.rotated(SWELL_TURN[i])) - c * t))
+	var w := 0.0
+	if _wake_lookup.is_valid():
+		w = clampf(float(_wake_lookup.call(x, z)), -WAKE_MAX, WAKE_MAX)
+	return LEVEL + h * a + w

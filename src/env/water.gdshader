@@ -14,7 +14,6 @@ uniform vec3 deep : source_color = vec3(0.02, 0.08, 0.12);
 uniform vec3 glow : source_color = vec3(0.1, 0.9, 0.8);
 uniform float glow_amount = 0.0;
 uniform float clarity = 4.0;
-uniform int debug_view = 0; // TEMP hull-split diagnosis: --water-debug=N
 uniform sampler2D depth_map : filter_linear, repeat_disable;
 uniform sampler2D murk_map : filter_linear, repeat_disable; // Water._murk, over the same square
 uniform vec2 depth_origin = vec2(-800.0);
@@ -78,10 +77,11 @@ void vertex() {
 	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
 	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(murk_map, muv).r;
 	vec3 s = swell(wpos.xz, TIME, amp);
-	VERTEX.y += s.x;
-	wpos.y += s.x;
-	NORMAL = normalize(vec3(-s.y, 1.0, -s.z));
-	crest = s.x / max(amp, 0.001);
+	vec3 wk = wake(wpos.xz);
+	VERTEX.y += s.x + wk.x;
+	wpos.y += s.x + wk.x;
+	NORMAL = normalize(vec3(-s.y - wk.y, 1.0, -s.z - wk.z));
+	crest = s.x / max(amp * 1.69, 0.001); // -1 trough .. 1 the highest crests
 }
 
 void fragment() {
@@ -186,18 +186,5 @@ void fragment() {
 		METALLIC = 0.0;
 		SPECULAR = 0.5 * (1.0 - refl.a * 0.9);
 		EMISSION = seen + refl.rgb * fres * refl.a * (1.0 - foam) + glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
-	}
-	if (debug_view > 0) {
-		vec3 d = vec3(0.0);
-		if (debug_view == 1) d = vec3(water_depth / 20.0, vdepth / 20.0, 0.0);
-		if (debug_view == 2) d = vec3(foam, shore, caps);
-		if (debug_view == 3) d = FRONT_FACING ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
-		if (debug_view == 4) d = under;
-		if (debug_view == 5) d = vec3(murk, exposure, amp);
-		ALBEDO = debug_view == 6 ? vec3(0.5) : vec3(0.0);
-		EMISSION = debug_view == 6 ? vec3(0.0) : d;
-		ALPHA = 1.0;
-		SPECULAR = 0.0;
-		ROUGHNESS = 1.0;
 	}
 }
