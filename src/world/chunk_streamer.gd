@@ -67,6 +67,10 @@ func is_ready_at(p: Vector3) -> bool:
 func get_chunk(k: Vector2i) -> ChunkNode:
 	return chunks.get(k)
 
+## How many chunk jobs are running (the distant land waits for a quiet moment).
+func busy() -> int:
+	return _jobs.size()
+
 func _dist(k: Vector2i) -> int:
 	return maxi(absi(k.x - _center.x), absi(k.y - _center.y))
 

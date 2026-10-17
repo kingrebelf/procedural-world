@@ -286,7 +286,8 @@ func _update_time_of_day() -> void:
 	# Light shafts: strongest under a low sun, gone under heavy cloud, at night and below
 	# ground (and under water, below).
 	var sm := _shafts.material_override as ShaderMaterial
-	var cover := float(sky_mat.get_shader_parameter("cloud_cover"))
+	var cc = sky_mat.get_shader_parameter("cloud_cover")
+	var cover: float = cc if cc != null else 0.0
 	sm.set_shader_parameter("strength", 2.4 * shaft_boost * smoothstep(-0.02, 0.1, elev) * (1.0 + 0.8 * golden)
 		* (1.0 - smoothstep(0.55, 0.9, cover)) * (1.0 - underground))
 	sm.set_shader_parameter("tint", sun.light_color)

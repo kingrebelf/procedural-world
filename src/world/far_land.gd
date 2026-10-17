@@ -11,15 +11,23 @@ const CELL := 32.0
 const SPAN := 8192.0
 ## Rebuilt around you once you are this far from where it was last built.
 const REBUILD := 1024.0
+## Grid rows built per worker task, so the chunks streaming in round you never wait long.
+const STRIP := 16
 
 var streamer: ChunkStreamer
 var target: Node3D
 var _mat: ShaderMaterial
 var _center := Vector2(INF, INF)
 var _task := -1
+## The build in progress: 0 none, 1 strips of rows, 2 putting the mesh together.
+var _phase := 0
+var _job: Dictionary = {}
+var _rows: Array = []
+var _row := 0
+var _strip: Dictionary = {}
+var _held := 0.0
 var _arrays: Array = []
 var _built_at := Vector2.ZERO
-var _next_at := Vector2.ZERO
 var _mask_img: Image
 var _mask_tex: ImageTexture
 var _mask_sum := -1
@@ -47,21 +55,46 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if target == null or streamer == null:
 		return
-	var p := Vector2(target.global_position.x, target.global_position.z)
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
-		_show()
-	if _task < 0 and p.distance_to(_center) > REBUILD:
-		_center = p.snapped(Vector2.ONE * ChunkGenerator.SIZE)
-		var origin := _center - Vector2.ONE * SPAN * 0.5
-		var job := _job_inputs(origin)
-		_task = WorkerThreadPool.add_task(_build.bind(job))
+		if _phase == 1:
+			_rows.append(_strip)
+			_strip = {}
+			_row += STRIP
+		elif _phase == 2:
+			_show()
+			_phase = 0
+	if _task < 0:
+		_step(delta)
 	_update_mask()
 	_sync_t -= delta
 	if _sync_t <= 0.0:
 		_sync_t = 0.5
 		_sync_material()
+
+## Starts a build once you have gone far enough (and the ground under you is in), then
+## feeds it to the workers a strip at a time, between the chunk jobs.
+func _step(delta: float) -> void:
+	if _phase == 0:
+		var p := Vector2(target.global_position.x, target.global_position.z)
+		if p.distance_to(_center) <= REBUILD or not streamer.is_ready_at(target.global_position):
+			return
+		_center = p.snapped(Vector2.ONE * ChunkGenerator.SIZE)
+		_job = _job_inputs(_center - Vector2.ONE * SPAN * 0.5)
+		_rows = []
+		_row = 0
+		_held = 0.0
+		_phase = 1
+	if _phase == 1 and _row < grid_n():
+		if streamer.busy() >= 2 and _held < 2.0:
+			_held += delta
+			return
+		_held = 0.0
+		_task = WorkerThreadPool.add_task(_build_strip.bind(_row), false, "distant land")
+	elif _phase == 1:
+		_phase = 2
+		_task = WorkerThreadPool.add_task(_finish, false, "distant land")
 
 ## The streamed terrain's settings (textures, snow line, paved roads) on the far look too.
 func _sync_material() -> void:
@@ -93,20 +126,25 @@ func _update_mask() -> void:
 			_mask_img.set_pixel(i, j, Color(1, 0, 0))
 	_mask_tex.update(_mask_img)
 
-## What the worker needs, read on the main thread (the world's seed and its settings).
+## What the workers need, read on the main thread (the world's seed and its settings).
 func _job_inputs(origin: Vector2) -> Dictionary:
 	return {"origin": origin, "seed": Game.seed, "terrain_v": WorldField.terrain_v,
-		"human": Eras.theme == "human", "snow_line": Planets.snow_line}
+		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
+		"field": WorldField.new(Game.seed)}
 
-## On the worker: the main thread reads these once the task is done.
-func _build(job: Dictionary) -> void:
-	_arrays = build_arrays(job)
-	_next_at = job["origin"]
+## On a worker, one at a time: the main thread reads the results once each task is done.
+func _build_strip(j0: int) -> void:
+	_strip = build_rows(_job, j0, mini(j0 + STRIP, grid_n()))
+
+func _finish() -> void:
+	_arrays = finish_arrays(_job, _rows)
 
 func _show() -> void:
 	if _arrays.is_empty():
 		return
-	_built_at = _next_at
+	_built_at = _job["origin"]
+	_job = {}
+	_rows = []
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _arrays, [], {}, ChunkNode.LOOK_FORMAT | ChunkNode.COVER_FORMAT)
 	mesh = am
@@ -115,42 +153,41 @@ func _show() -> void:
 	_mat.set_shader_parameter("near_rect", Vector4(_built_at.x, _built_at.y, 1.0 / (m * ChunkGenerator.SIZE), 1.0 / (m * ChunkGenerator.SIZE)))
 	_mask_sum = -1
 
+static func grid_n() -> int:
+	return int(SPAN / CELL) + 1
+
 ## The distant land's mesh arrays: heights, normals, era weights and landform looks like
 ## a chunk's terrain (ChunkNode.build_terrain_arrays), and snow on the high ground.
 static func build_arrays(job: Dictionary) -> Array:
+	return finish_arrays(job, [build_rows(job, 0, grid_n())])
+
+## Rows j0..j1-1 of the grid: heights, era weights and landform looks.
+static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 	var origin: Vector2 = job["origin"]
-	var field := WorldField.new(int(job["seed"]))
+	var field: WorldField = job["field"] if job.has("field") else WorldField.new(int(job["seed"]))
 	var human: bool = job["human"]
-	var snow_line: float = job["snow_line"]
-	var n := int(SPAN / CELL) + 1
+	var n := grid_n()
+	var c := (j1 - j0) * n
 	var hs := PackedFloat32Array()
-	hs.resize(n * n)
-	var verts := PackedVector3Array()
-	verts.resize(n * n)
-	var norms := PackedVector3Array()
-	norms.resize(n * n)
+	hs.resize(c)
 	var cols := PackedColorArray()
-	cols.resize(n * n)
+	cols.resize(c)
 	var l0 := PackedByteArray()
-	l0.resize(n * n * 4)
+	l0.resize(c * 4)
 	var l1 := PackedByteArray()
-	l1.resize(n * n * 4)
+	l1.resize(c * 4)
 	var l2 := PackedByteArray()
-	l2.resize(n * n * 4)
-	var cv := PackedByteArray()
-	cv.resize(n * n * 4)
+	l2.resize(c * 4)
 	var look := PackedByteArray()
 	look.resize(12)
-	for j in n:
+	for j in range(j0, j1):
 		for i in n:
 			var x := origin.x + i * CELL
 			var z := origin.y + j * CELL
-			var v := j * n + i
+			var v := (j - j0) * n + i
 			var w := field.era_weights(x, z)
 			var lw := field.landform_weights(x, z)
-			var h := field.height(x, z, w, lw)
-			hs[v] = h
-			verts[v] = Vector3(x, h, z)
+			hs[v] = field.height(x, z, w, lw)
 			# As a chunk paints them: human worlds dress their sci-fi land as the wilds.
 			cols[v] = Color(w[Eras.MEDIEVAL] + (w[Eras.SCIFI] if human else 0.0), w[Eras.FANTASY], 0.0 if human else w[Eras.SCIFI], 1.0)
 			if int(job["terrain_v"]) >= 7:
@@ -159,9 +196,34 @@ static func build_arrays(job: Dictionary) -> Array:
 					l0[v * 4 + b] = look[b]
 					l1[v * 4 + b] = look[4 + b]
 					l2[v * 4 + b] = look[8 + b]
+	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2}
+
+## The whole grid from its strips of rows (in order): normals, snow and triangles.
+static func finish_arrays(job: Dictionary, rows: Array) -> Array:
+	var origin: Vector2 = job["origin"]
+	var snow_line: float = job["snow_line"]
+	var n := grid_n()
+	var hs := PackedFloat32Array()
+	var cols := PackedColorArray()
+	var l0 := PackedByteArray()
+	var l1 := PackedByteArray()
+	var l2 := PackedByteArray()
+	for r in rows:
+		hs.append_array(r["hs"])
+		cols.append_array(r["cols"])
+		l0.append_array(r["l0"])
+		l1.append_array(r["l1"])
+		l2.append_array(r["l2"])
+	var verts := PackedVector3Array()
+	verts.resize(n * n)
+	var norms := PackedVector3Array()
+	norms.resize(n * n)
+	var cv := PackedByteArray()
+	cv.resize(n * n * 4)
 	for j in n:
 		for i in n:
 			var v := j * n + i
+			verts[v] = Vector3(origin.x + i * CELL, hs[v], origin.y + j * CELL)
 			var hl := hs[j * n + maxi(i - 1, 0)]
 			var hr := hs[j * n + mini(i + 1, n - 1)]
 			var hd := hs[maxi(j - 1, 0) * n + i]
