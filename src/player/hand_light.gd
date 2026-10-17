@@ -2,15 +2,22 @@ class_name HandLight
 extends Node3D
 ## A light carried in the off hand, so it works while you hold any tool: a torch that
 ## burns down and is used up, or a flashlight whose battery runs for hours and then dies
-## until it is repaired with a power cell. Lives under the camera. Holding a torch or a
-## flashlight in your main hand (selected on the hotbar) lights it too.
+## until it is repaired with a power cell, a lantern that burns lamp oil (or candles), or a
+## lone candle. Lives under the camera. Holding any of them in your main hand (selected on
+## the hotbar) lights it too.
 
 const TORCH_BURN := 360.0 ## seconds one torch burns
 const FLASH_CHARGE := 10800.0 ## seconds a flashlight runs before its battery fails
 
-var kind := "" ## "", "torch" or "flashlight": the light in the off hand (T)
-var held := "" ## "torch" or "flashlight" when one is selected in the main hand
+const CANDLE_BURN := 600.0 ## seconds one candle burns on its own
+## What a lantern burns, best first: [item, seconds one lasts].
+const LANTERN_FUEL := [["lamp_oil", 1800.0], ["candle", 900.0]]
+
+var kind := "" ## "", "torch", "flashlight", "lantern" or "candle": the light in the off hand (T)
+var held := "" ## the same, when one is selected in the main hand
 var torch_left := 0.0 ## seconds left on the burning torch
+var lantern_left := 0.0 ## seconds left on the lantern's oil
+var candle_left := 0.0 ## seconds left on the burning candle
 var _omni: OmniLight3D
 var _spot: SpotLight3D
 var _torch_mesh: MeshInstance3D
@@ -92,6 +99,12 @@ func set_held(t: String, inv: Inventory) -> void:
 			torch_left = TORCH_BURN
 	elif t == "flashlight" and flashlight_slot(inv) >= 0:
 		held = "flashlight"
+	elif t == "hand_lantern" and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
+		held = "lantern"
+	elif t == "candle" and inv.count("candle") > 0:
+		held = "candle"
+		if candle_left <= 0.0:
+			candle_left = CANDLE_BURN
 	_apply()
 
 ## Turns the light off, or on with the best light you carry. Returns a line to show.
@@ -107,15 +120,34 @@ func toggle(inv: Inventory) -> String:
 		kind = "flashlight"
 		_apply()
 		return "Flashlight on (%s left)" % _hours(float(inv.get_slot(fi).get("charge", FLASH_CHARGE)))
+	if inv.count("hand_lantern") > 0 and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
+		kind = "lantern"
+		_apply()
+		return "Lantern lit"
 	if inv.count("torch") > 0:
 		kind = "torch"
 		if torch_left <= 0.0:
 			torch_left = TORCH_BURN
 		_apply()
 		return "Torch lit (%d left)" % inv.count("torch")
+	if inv.count("candle") > 0:
+		kind = "candle"
+		if candle_left <= 0.0:
+			candle_left = CANDLE_BURN
+		_apply()
+		return "Candle lit (%d left)" % inv.count("candle")
+	if inv.count("hand_lantern") > 0:
+		return "Your lantern needs lamp oil or a candle"
 	if inv.count("flashlight_dead") > 0:
 		return "Your flashlight's battery is dead: repair it with a power cell at a workbench"
 	return "No light: craft a torch from 1 wood and 2 plant fiber"
+
+## The fuel a lantern would burn next, or "" if there is none.
+static func _lantern_fuel(inv: Inventory) -> String:
+	for f in LANTERN_FUEL:
+		if inv.count(f[0]) > 0:
+			return f[0]
+	return ""
 
 static func flashlight_slot(inv: Inventory) -> int:
 	for i in Inventory.SIZE:
@@ -143,6 +175,38 @@ func tick(delta: float, inv: Inventory) -> String:
 				held = ""
 				torch_left = 0.0
 				msg = "Your torch burned out"
+	elif was == "lantern":
+		lantern_left -= delta
+		if inv.count("hand_lantern") <= 0:
+			kind = ""
+			held = ""
+		elif lantern_left <= 0.0:
+			var f := _lantern_fuel(inv)
+			if f != "":
+				inv.remove_type(f, 1)
+				for e in LANTERN_FUEL:
+					if e[0] == f:
+						lantern_left = e[1]
+			else:
+				lantern_left = 0.0
+				kind = ""
+				held = ""
+				msg = "Your lantern burned dry. Fill it with lamp oil or a candle"
+	elif was == "candle":
+		candle_left -= delta
+		if inv.count("candle") <= 0:
+			kind = ""
+			held = ""
+		elif candle_left <= 0.0:
+			inv.remove_type("candle", 1)
+			if inv.count("candle") > 0:
+				candle_left = CANDLE_BURN
+				msg = "Your candle burned down; you light another (%d left)" % inv.count("candle")
+			else:
+				kind = ""
+				held = ""
+				candle_left = 0.0
+				msg = "Your candle burned down"
 	elif was == "flashlight":
 		var fi := flashlight_slot(inv)
 		if fi < 0:
@@ -174,7 +238,10 @@ func _apply() -> void:
 	if _omni == null:
 		return
 	var k := lit()
-	_omni.visible = k == "torch"
+	_omni.visible = k == "torch" or k == "lantern" or k == "candle"
+	# A lantern's glass keeps its flame steady and bright; a candle lights only nearby.
+	_omni.omni_range = {"lantern": 18.0, "candle": 7.0}.get(k, 16.0)
+	_omni.light_energy = {"lantern": 2.6, "candle": 1.1}.get(k, _omni.light_energy)
 	_spot.visible = k == "flashlight"
 	# The off-hand torch shows only when nothing lit is held in the main hand.
 	_torch_mesh.visible = k == "torch" and held == "" and show_model
@@ -182,7 +249,7 @@ func _apply() -> void:
 	# A held torch's flame stands about (0.25, 0.03, -0.51) from the eye, the far end of a
 	# stick that leans away from you; the light sits a little nearer you than the flame
 	# so it falls on the stick and hand you see, not only on their far side.
-	_omni_at = Vector3(0.17, 0.02, -0.36) if held == "torch" else Vector3(-0.35, -0.05, -0.4)
+	_omni_at = Vector3(0.17, 0.02, -0.36) if held != "" else Vector3(-0.35, -0.05, -0.4)
 	_omni.position = _omni_at
 	_spot.position = Vector3(0.22, -0.15, -0.2) if held == "flashlight" else Vector3(-0.15, -0.12, -0.1)
 
@@ -192,10 +259,12 @@ static func _hours(s: float) -> String:
 	return "%d min" % int(ceil(s / 60.0))
 
 func to_data() -> Dictionary:
-	return {"kind": kind, "torch_left": torch_left}
+	return {"kind": kind, "torch_left": torch_left, "lantern_left": lantern_left, "candle_left": candle_left}
 
 func from_data(d) -> void:
 	if d is Dictionary:
 		kind = String(d.get("kind", ""))
 		torch_left = float(d.get("torch_left", 0.0))
+		lantern_left = float(d.get("lantern_left", 0.0))
+		candle_left = float(d.get("candle_left", 0.0))
 	_apply()

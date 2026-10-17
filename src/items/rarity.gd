@@ -25,10 +25,11 @@ const AFFIXES := {
 	"mending": {"name": "Mending", "desc": "Slowly restores health", "kinds": ["armor"], "color": Color(0.95, 0.4, 0.6)},
 }
 
-## Gear can roll a rank; resources and food cannot.
+## Gear can roll a rank; resources, food and stacks of throwing weapons cannot.
 static func is_gear(type: String) -> bool:
-	var k: String = ItemDB.def(type).get("kind", "")
-	return k == "tool" or k == "weapon" or k == "armor"
+	var d := ItemDB.def(type)
+	var k: String = d.get("kind", "")
+	return (k == "tool" or k == "weapon" or k == "armor") and not d.get("stack", false)
 
 ## What abilities this type of gear can carry.
 static func gear_kind(type: String) -> String:

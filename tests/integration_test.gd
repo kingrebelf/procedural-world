@@ -484,6 +484,16 @@ func _run() -> void:
 	check(player.global_position.y > y0 + 1.0, "fly mode rises (%.1f -> %.1f)" % [y0, player.global_position.y])
 	con.run("fly")
 	check(not player.fly and not player._shape.disabled, "fly off restores collision")
+	# Looting so far fills the pack with medieval odds and ends; set them aside so the
+	# items the rest of the test gives have room.
+	var medieval := {}
+	for sh in Icons.MORE_SHEETS.slice(1):
+		for t in sh[1]:
+			medieval[t] = true
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null and medieval.has(it["type"]):
+			game.inventory.set_slot(i, null)
 	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
 	await _frames(60)
 
@@ -1292,6 +1302,31 @@ func _menu_checks(world, game, con) -> void:
 			dolls += 1
 	check(dolls == 1, "inventory shows the body")
 	menus.close()
+	# Pack A items: a ring raises stamina, an elixir and a scroll last a while, a salve
+	# heals over time.
+	var find := func(t: String) -> int:
+		for i in Inventory.SIZE:
+			var it = game.inventory.get_slot(i)
+			if it != null and it["type"] == t:
+				return i
+		return -1
+	var st0: float = game.stats.max_stamina()
+	con.run("give ring_silver 1")
+	check(game.equip(find.call("ring_silver")) and game.equipment.has("ring") and game.stats.max_stamina() > st0, "a silver ring on a finger raises stamina")
+	var dm0: float = game.stats.damage_mult()
+	con.run("give elixir_strength 1")
+	world.player.consume(find.call("elixir_strength"))
+	check(game.has_buff("strength") and game.stats.damage_mult() > dm0 and find.call("elixir_strength") < 0, "an elixir of strength is drunk and makes you stronger")
+	var ar0: float = game.armor()
+	con.run("give scroll_blue 1")
+	world.player.consume(find.call("scroll_blue"))
+	check(game.has_buff("warded") and game.armor() > ar0, "a scroll of warding adds armour")
+	game.set_health(40.0)
+	con.run("give salve 1")
+	world.player.consume(find.call("salve"))
+	check(game.health > 40.0 and game.regen_left > 0.0, "a salve heals now and over time")
+	game.save_player()
+	check(game.store.load_player().get("buffs", {}).has("strength"), "timed effects are saved")
 	# Mouse lock: the toggle frees the pointer, a menu keeps it free, closing restores it.
 	Cursor.free = true
 	Cursor.restore()

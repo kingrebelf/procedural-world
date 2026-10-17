@@ -1639,10 +1639,10 @@ func test_armor_items() -> void:
 	for t in ItemDB.ITEMS:
 		var d: Dictionary = ItemDB.ITEMS[t]
 		if d.get("kind", "") == "armor":
-			check(d.get("slot", "") in ["head", "chest", "hands", "legs", "feet", "shield", "back"], "%s has a slot" % t)
-			check(float(d.get("armor", 0)) > 0.0, "%s protects" % t)
+			check(d.get("slot", "") in ["head", "chest", "hands", "legs", "feet", "shield", "back", "ring", "neck"], "%s has a slot" % t)
+			check(float(d.get("armor", 0)) > 0.0 or d.has("bonus"), "%s protects or helps" % t)
 			slots[d["slot"]] = true
-	check(slots.size() == 7, "armour for every slot")
+	check(slots.size() == 9, "armour for every slot")
 	var helm := ItemDB.make("helm_iron", 1, 1.0, {})
 	Rarity.apply(helm, Rarity.LEGENDARY, rng)
 	check(float(ItemDB.stats(helm)["armor"]) > 8.0, "ranked armour protects more")
@@ -1652,6 +1652,112 @@ func test_armor_items() -> void:
 	for r in Recipes.LIST:
 		craftable[r["out"]] = true
 	check(craftable.has("mail_iron") and craftable.has("plate_mythril") and craftable.has("exo_chest"), "armour can be crafted in every era")
+
+## The medieval age (pack A): every painted icon is a real item, every recipe makes and
+## uses real things, and every item can be had somewhere (made, found, bought or looted).
+func test_pack_a_items() -> void:
+	var known := {}
+	for sh in Icons.MORE_SHEETS:
+		check((sh[1] as Array).size() == 30, "%s has 30 cells" % sh[0])
+		for t in sh[1]:
+			if t == "":
+				continue
+			# treasure_map is the buried treasure maps change's item; its icon waits here for it.
+			check(ItemDB.has(t) or t == "treasure_map", "icon %s is an item" % t)
+			known[t] = true
+	var made := {}
+	for r in Recipes.LIST:
+		check(ItemDB.has(r["out"]), "recipe makes a real item: %s" % r["out"])
+		for t in r["in"]:
+			check(ItemDB.has(t), "recipe for %s uses a real item: %s" % [r["out"], t])
+		for t in r.get("tools", []):
+			check(ItemDB.has(t) and not ItemDB.is_stackable(t), "recipe for %s needs a real tool: %s" % [r["out"], t])
+		if r.has("at"):
+			check(Recipes.STATION_NAMES.has(r["at"]), "recipe for %s needs a known station" % r["out"])
+		made[r["out"]] = true
+	# Everything else turns up in loot, shops, pockets, plants or rocks.
+	var found := {}
+	for era in 3:
+		for t in ItemDB.GEAR_LOOT[era] + ItemDB.DUNGEON_LOOT[era]:
+			found[t] = true
+	for k in TownShops.KINDS:
+		for g in TownShops.KINDS[k]["goods"]:
+			for t in g:
+				found[t] = true
+	for k in TownShops.GUILDS:
+		for t in TownShops.GUILDS[k]["goods"]:
+			found[t] = true
+	for j in NPCSocial.JOB_GOODS:
+		for t in NPCSocial.JOB_GOODS[j]:
+			found[t] = true
+	for k in Byproducts.FROM:
+		for e in Byproducts.FROM[k]:
+			found[e[0]] = true
+	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
+		found[t] = true
+	for t in known:
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead"]:
+			continue # butchered, from treasure maps, caught, or a spent flashlight
+		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
+	# Level gates rise with the age: stone first, steel later, the finest last.
+	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
+	check(ItemDB.UNLOCK["bronze_sword"] < ItemDB.UNLOCK["steel_sword"], "bronze before steel")
+	check(ItemDB.UNLOCK["kings_mace"] <= 10, "medieval gear stays within the first ten levels")
+	# Thrown weapons stack and never roll a rank; rings are gear.
+	check(not Rarity.is_gear("throwing_knives") and ItemDB.is_stackable("javelin"), "thrown weapons are plain stacks")
+	check(Rarity.is_gear("ring_ruby"), "trinkets are gear")
+
+func test_recipe_tools() -> void:
+	var inv := Inventory.new()
+	var r: Dictionary = Recipes.LIST.filter(func(x): return x["out"] == "salt")[0]
+	inv.add(ItemDB.make("salt_crystal", 2, 1.0, {}))
+	check(Recipes.max_crafts(inv, r) == 0 and Recipes.missing_tools(inv, r) == ["mortar_pestle"], "no mortar, no salt")
+	inv.add(ItemDB.make("mortar_pestle", 1, 1.0, {}))
+	check(Recipes.max_crafts(inv, r) == 2, "with a mortar, salt from each crystal")
+	check(Recipes.craft(inv, r, {}) and inv.count("mortar_pestle") == 1 and inv.count("salt") == 3, "the mortar is not used up")
+
+func test_effects() -> void:
+	var eq := {"ring": ItemDB.make("ring_silver", 1, 1.0, {}), "neck": ItemDB.make("amulet_bone", 1, 1.0, {})}
+	var buffs := {"strength": 30.0, "courage": 5.0}
+	var b := Effects.bonus(eq, buffs)
+	check(is_equal_approx(float(b["damage"]), 0.4), "strength and courage add up (%s)" % b.get("damage"))
+	check(is_equal_approx(float(b["carry"]), 160.0), "charm and strength add carry")
+	check(is_equal_approx(float(b["stamina"]), 20.0), "a silver ring adds stamina")
+	var st := Stats.new()
+	var base := st.carry_capacity()
+	st.bonus = b
+	check(is_equal_approx(st.carry_capacity(), base + 160.0) and st.damage_mult() > 1.39, "stats take the bonus")
+	var gone := Effects.tick(buffs, 10.0)
+	check(gone == ["courage"] and buffs.has("strength") and is_equal_approx(float(buffs["strength"]), 20.0), "effects run out")
+	check(Effects.damage_per_sec({"poison": 3.0}) > 0.0 and Effects.damage_per_sec(buffs) == 0.0, "poison hurts, strength does not")
+	var stew := ItemDB.def("stew")
+	check(not Effects.useful(stew, 100.0, 100.0, 50.0, 100.0, {}), "no stew when whole")
+	check(Effects.useful(stew, 40.0, 100.0, 50.0, 100.0, {}), "stew when hurt")
+	check(Effects.useful(ItemDB.def("antidote"), 100.0, 100.0, 100.0, 100.0, {"poison": 3.0}), "antidote when poisoned")
+	for t in ItemDB.ITEMS:
+		var d: Dictionary = ItemDB.ITEMS[t]
+		if d.has("buff"):
+			check(Effects.BUFFS.has(d["buff"][0]), "%s gives a known effect" % t)
+		if d.has("play"):
+			check(Effects.BUFFS.has(d["play"]), "%s plays a known effect" % t)
+	check(Effects.describe(ItemDB.def("elixir_strength")).size() > 0, "elixirs say what they do")
+
+func test_byproducts() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var got := {}
+	for i in 400:
+		for y in Byproducts.of_object("iron_vein", 3, 1, rng):
+			got[y[0]] = got.get(y[0], 0) + int(y[1])
+	check(got.has("copper_ore") and got.has("tin_ore") and got.has("coal"), "iron veins give copper, tin and coal")
+	check(not got.has("silver_ore") and not got.has("gold_ore"), "no silver or gold near spawn")
+	check(Byproducts.of_object("pine", 0, 1, rng).is_empty(), "nothing from nothing")
+	var herbs := 0
+	for sp in 40:
+		for y in Flora.under_yield(sp, Eras.MEDIEVAL, 0.1):
+			if ItemDB.def(y[0]).get("kind", "") == "herb" or y[0] in ["mushroom", "flax"]:
+				herbs += 1
+	check(herbs > 0, "medieval undergrowth gives herbs, mushrooms or flax")
 
 func test_road_profiles() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION

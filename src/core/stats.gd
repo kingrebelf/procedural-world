@@ -105,30 +105,40 @@ func pickpocket_chance(worth: float, behind: bool, aware: float) -> float:
 	var c: float = 0.45 + 0.015 * skills["pick"] + (0.15 if behind else -0.15) - 0.25 * aware - clampf(worth / 160.0, 0.0, 0.4)
 	return clampf(c, 0.05, 0.95)
 
+## What worn trinkets and timed effects add (Effects.bonus); set by Game, not saved.
+var bonus := {}
+
+func _b(k: String) -> float:
+	return float(bonus.get(k, 0.0))
+
 func max_health() -> float:
-	return BASE_HEALTH + 10.0 * attrs["end"]
+	return BASE_HEALTH + 10.0 * attrs["end"] + _b("health")
 
 func max_stamina() -> float:
-	return BASE_STAMINA + 8.0 * attrs["end"]
+	return BASE_STAMINA + 8.0 * attrs["end"] + _b("stamina")
 
 func damage_mult() -> float:
-	return 1.0 + 0.06 * attrs["str"]
+	return 1.0 + 0.06 * attrs["str"] + _b("damage")
 
 func speed_mult() -> float:
-	return 1.0 + 0.03 * attrs["agi"]
+	return 1.0 + 0.03 * attrs["agi"] + _b("speed")
 
 ## Swings come round faster: the cooldown between them is divided by this.
 func swing_mult() -> float:
-	return 1.0 + 0.03 * attrs["agi"]
+	return 1.0 + 0.03 * attrs["agi"] + _b("swing")
 
 func carry_capacity() -> float:
-	return BASE_CARRY + CARRY_PER_STR * attrs["str"]
+	return BASE_CARRY + CARRY_PER_STR * attrs["str"] + _b("carry")
+
+## How fast stamina refills (1 = normal).
+func stamina_regen_mult() -> float:
+	return 1.0 + _b("stamina_regen")
 
 func max_breath() -> float:
 	return BASE_BREATH + 5.0 * attrs["oxy"]
 
 func xp_mult() -> float:
-	return 1.0 + 0.05 * attrs["int"]
+	return 1.0 + 0.05 * attrs["int"] + _b("xp")
 
 func craft_quality_mult() -> float:
 	return 1.0 + 0.01 * attrs["int"]

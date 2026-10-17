@@ -452,12 +452,17 @@ func _slot_button(i: int) -> Button:
 		else:
 			Game.inventory.swap(_swap_from, i)
 			_swap_from = -1)
-	# Right-click armour to put it on.
+	# Right-click armour to put it on, and food, potions, scrolls and the like to use them.
 	b.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT:
-			if Game.armor_slot_of(Game.inventory.get_slot(i)) != "":
+			var there = Game.inventory.get_slot(i)
+			if Game.armor_slot_of(there) != "":
 				_swap_from = -1
-				Game.equip(i))
+				Game.equip(i)
+			elif there != null and player and ItemDB.def(there["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
+				_swap_from = -1
+				player.consume(i)
+				_refresh())
 	# Drag and drop: drag any item onto another slot (or onto the hotbar row) to move,
 	# swap or merge it, or armour onto your body to wear it.
 	b.set_drag_forwarding(func(_at):
@@ -715,7 +720,10 @@ func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 			status = "Unlocks at level %d" % Recipes.unlock_level(r["out"])
 		elif not at_ok:
 			status = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
-		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked else UITheme.DIM)))
+		var no_tools := Recipes.missing_tools(Game.inventory, r)
+		if unlocked and at_ok and not no_tools.is_empty():
+			status = "Needs %s in your pack" % ", ".join(no_tools.map(func(t): return ItemDB.def(t)["name"]))
+		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked or not no_tools.is_empty() else UITheme.DIM)))
 		row.add_child(name_box)
 		var ins := HBoxContainer.new()
 		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -728,6 +736,14 @@ func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 			chip.add_child(_icon_rect(t, 30))
 			chip.add_child(UITheme.label("%d/%d" % [have, need], 15, UITheme.TEXT if have >= need else Color(0.9, 0.45, 0.4)))
 			chip.tooltip_text = ItemDB.def(t)["name"]
+			ins.add_child(chip)
+		# Tools the recipe needs but does not use up.
+		for t in r.get("tools", []):
+			var chip := HBoxContainer.new()
+			chip.add_theme_constant_override("separation", 4)
+			chip.add_child(_icon_rect(t, 30))
+			chip.add_child(UITheme.label("tool", 13, UITheme.DIM if Game.inventory.count(t) > 0 else Color(0.9, 0.45, 0.4)))
+			chip.tooltip_text = "%s (not used up)" % ItemDB.def(t)["name"]
 			ins.add_child(chip)
 		row.add_child(ins)
 		for n in CRAFT_AMOUNTS:
@@ -1253,7 +1269,7 @@ func _map_finder(side: VBoxContainer, me: Vector2) -> void:
 ## out (or click / right-click it) to take it off. While armour is being dragged, the slot
 ## it fits lights up.
 class EquipSlot extends Button:
-	const NAMES := {"head": "Head", "chest": "Chest", "hands": "Hands", "legs": "Legs", "feet": "Feet", "shield": "Off hand", "back": "Back"}
+	const NAMES := {"head": "Head", "chest": "Chest", "hands": "Hands", "legs": "Legs", "feet": "Feet", "shield": "Off hand", "back": "Back", "ring": "Ring", "neck": "Neck"}
 	var where: String
 	var _glow := false
 
@@ -1312,8 +1328,8 @@ class Mannequin extends Control:
 	const W := 300.0
 	const H := 460.0
 	## Slot centres. With the slate figure they sit on its head, chest, hands, legs and feet.
-	const SLOT_AT := {"head": Vector2(150, 50), "chest": Vector2(150, 140), "hands": Vector2(78, 232), "shield": Vector2(222, 232), "legs": Vector2(150, 298), "feet": Vector2(150, 388), "back": Vector2(236, 96)}
-	const SLOT_AT_DRAWN := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122)}
+	const SLOT_AT := {"head": Vector2(150, 50), "chest": Vector2(150, 140), "hands": Vector2(78, 232), "shield": Vector2(222, 232), "legs": Vector2(150, 298), "feet": Vector2(150, 388), "back": Vector2(236, 96), "neck": Vector2(64, 96), "ring": Vector2(64, 162)}
+	const SLOT_AT_DRAWN := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122), "neck": Vector2(44, 110), "ring": Vector2(44, 180)}
 	var _doll: Texture2D
 
 	func _init() -> void:
