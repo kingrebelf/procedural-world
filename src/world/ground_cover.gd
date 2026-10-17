@@ -127,7 +127,11 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			if not rv.is_empty():
 				var rk := (clampi(int(round(j * 0.5)), 0, rn - 1) * rn + clampi(int(round(i * 0.5)), 0, rn - 1)) * 3
 				if rv[rk + 2] > 0.2:
-					gravel = (1.0 - smoothstep(1.2, 2.6, rv[rk + 1])) * rv[rk + 2]
+					# Gravel bars here and there along the bank, of varying width, with grass,
+					# mud and reeds coming down to the water between them (an even grey strip
+					# both sides read as a concrete channel).
+					var reach := 1.15 + 1.6 * (nb * 0.5 + 0.5) + 0.4 * ns
+					gravel = (1.0 - smoothstep(1.05, reach, rv[rk + 1])) * rv[rk + 2] * smoothstep(-0.25, 0.2, nb * 0.8 + ns * 0.6)
 			var shore := 1.0 - smoothstep(0.5, 1.6, h - ChunkGenerator.WATER_LEVEL)
 			gravel = maxf(gravel, shore * smoothstep(-0.15, 0.2, nb + ns * 0.3))
 			gravel = maxf(gravel, smoothstep(0.5, 0.62, -nb + ns * 0.1) * 0.9 * (1.0 - settled[k]))
