@@ -140,10 +140,14 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 	if rec != null and _bans["pids"].has(rec["pid"]):
 		_refuse(peer, "You are banned from this server.")
 		return
-	for o in online.values():
-		if rec != null and o["pid"] == rec["pid"]:
-			_refuse(peer, "You are already playing on this server.")
-			return
+	# Back before the server noticed you left (a dropped connection): the old
+	# session gives way to the new one. Only the token's owner can get here.
+	var old := pid_online(rec["pid"]) if rec != null else 0
+	if old != 0:
+		say_log("%s reconnected; closing their old connection" % rec["name"])
+		_on_peer_disconnected(old)
+		_alive.erase(old)
+		mp.disconnect_peer(old)
 	if online.size() >= cfg.max_players:
 		_refuse(peer, "The server is full (%d players)." % cfg.max_players)
 		return
