@@ -597,6 +597,19 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	await create_timer(player.gunplay.reload_total + 0.5).timeout
 	check(not player.gunplay.reloading() and int(gun.get("charge", 0)) == player.gunplay.mag_size("pulse_pistol"), "the reload fills the magazine (%d)" % int(gun.get("charge", 0)))
 	check(game.inventory.count("power_cell") == cells0 + 1, "the reload uses one power cell")
+	# The plasma drill: held steady (no swing), a beam that burns the animal tick by tick.
+	game.inventory.set_slot(slot, ItemDB.make("pickaxe_plasma", 1, 1.0, {}))
+	player.select(slot)
+	await _frames(2)
+	var hp_b := kc.hp
+	for n in 3:
+		player._cooldown = 0.0
+		player.use_held()
+		await _frames(1)
+	check(player.viewmodel._swing_t >= 1.0, "the plasma drill does not swing")
+	var burnt: float = hp_b - kc.hp
+	check(burnt > 5.0 and burnt < 60.0, "the plasma drill's beam burns the animal a little each tick (%.1f hp over 3 ticks)" % burnt)
+	check(player.gunplay._beam_node != null and player.gunplay._beam_node.visible, "the beam shows while the drill fires")
 	kc.hp = hp_was
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,

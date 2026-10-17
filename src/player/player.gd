@@ -1033,6 +1033,13 @@ func use_held() -> void:
 	if d.get("ranged", false):
 		_fire(it, d)
 		return
+	if d.get("beam", false):
+		# Held steady, burning for as long as Use is held: no swing.
+		_cooldown = Gunplay.BEAM_TICK
+		gunplay.beam(it, d)
+		if body:
+			body.play_once("pistol", 0.3)
+		return
 	# A tired swing is slow and weak.
 	var fresh := _tire(5.0)
 	var force: float = Game.stats.damage_mult() * (1.0 if fresh else 0.5)
@@ -1141,6 +1148,8 @@ func _gun_sound(kind: String, t: String, at: Vector3, what: String) -> void:
 				Audio.play("weapon/laser_big" if d.has("splash") else "weapon/laser", -6.0, 0.06)
 		"dry":
 			Audio.ui("ui/error")
+		"beam":
+			Audio.play("weapon/laser", -16.0, 0.15, 0.6)
 		"reload_start", "reload_round":
 			Audio.play("weapon/draw", -12.0)
 		"impact":
@@ -1152,6 +1161,44 @@ func _gun_sound(kind: String, t: String, at: Vector3, what: String) -> void:
 				Audio.play_at("hit/dig", at, -8.0)
 			else:
 				Audio.play_at(Audio.hit_bank(what), at, -6.0)
+
+var _beam_dig := 0.0
+
+## One tick of a beam on what it touches: `tick` seconds of its damage per second on
+## animals and people, of fast mining on objects, and on bare ground a crater burnt in
+## every so often. Returns what was hit, like ranged_hit.
+func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
+	var col = hit.get("collider")
+	var q: float = it.get("quality", 1.0) if it is Dictionary else 1.0
+	if not (col is Object) or not is_instance_valid(col):
+		return "ground"
+	var dmg := float(d.get("beam_dps", 40.0)) * q * Game.stats.damage_mult() * tick
+	if col.has_meta("creature") and fauna:
+		var c = col.get_meta("creature")
+		if is_instance_valid(c):
+			fauna.player_hit(c, dmg)
+		return "creature"
+	if col.has_meta("npc") and npcs:
+		var n = col.get_meta("npc")
+		if is_instance_valid(n):
+			npcs.player_hit(n, dmg)
+		return "npc"
+	if col.has_meta("obj"):
+		var chunk: ChunkNode = col.get_meta("chunk")
+		var o: Dictionary = chunk.get_object(col.get_meta("obj"))
+		var mat := Durability.material(o["t"])
+		damage_object(chunk, o, Durability.power(d, mat) * float(d.get("beam_mine", 4.0)) * q * tick, q)
+		return "wood" if mat in ["wood", "planks", "fungus"] else ("metal" if mat in ["metal", "circuitry"] else "stone")
+	if col.has_meta("chunk") and d.has("dig") and streamer:
+		_beam_dig += tick
+		if _beam_dig >= 0.6:
+			_beam_dig = 0.0
+			var p: Vector3 = hit["position"]
+			streamer.dig(p, 1.2 + float(d["dig"]) * 0.4, 0.25 * float(d["dig"]) * q)
+			if randf() < 0.5:
+				var ck := ChunkStreamer.chunk_of(p)
+				Game.give(ItemDB.make("stone", 1, 1.0, Game.origin_here("dug", -1, ck)))
+	return "ground"
 
 ## A shot from a ranged weapon landed: hurt what it hit (or blast everything around, for
 ## splash weapons). Returns what was hit, for the impact effect and sound: "creature",
