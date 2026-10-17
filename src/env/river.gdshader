@@ -17,7 +17,18 @@ varying vec3 wpos;
 varying vec2 flow;
 varying float edge;
 
-vec2 h2(vec2 p) { return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453); }
+// Integer hash of a lattice point (PCG2D). Exact on every GPU: the old sin() hash gave a
+// shared cell corner two different values on some GPUs (NVIDIA: light and dark rectangles
+// across the view), and lost all precision far from the world's origin.
+uvec2 pcg2d(uvec2 v) {
+	v = v * 1664525u + 1013904223u;
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	v.x += v.y * 1664525u; v.y += v.x * 1664525u;
+	v = v ^ (v >> 16u);
+	return v;
+}
+vec2 h2(vec2 p) { return vec2(pcg2d(uvec2(ivec2(floor(p))))) * (1.0 / 4294967296.0); }
 float n2(vec2 p) {
 	vec2 i = floor(p); vec2 f = fract(p); vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(dot(h2(i) - 0.5, f), dot(h2(i + vec2(1, 0)) - 0.5, f - vec2(1, 0)), u.x),
