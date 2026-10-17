@@ -53,6 +53,10 @@ night_glow_g={
 "type": "float",
 "value": 0.15
 }
+snow_line_g={
+"type": "float",
+"value": 50.0
+}
 wind_dir={
 "type": "vec2",
 "value": Vector2(0.8, 0.6)

@@ -389,21 +389,29 @@ void fragment() {
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
-	// Sand: wind ripples, long near-parallel ridges straight across the wind (only bending
-	// slowly over a whole dune field), each with a long gentle windward side and a short
-	// steep lee; finer ripples on them close up. The slip faces (steep lee slopes of the
-	// dunes themselves) are smooth, paler, freshly slipped sand.
+	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
+	// forking and dying out (sharp and close in some stretches, faint in others), with a
+	// long gentle windward side and a short steep lee; finer ones still close up, and
+	// here and there a low, wide swell of coarser sand. All of it fades out over the first
+	// forty metres or so, as real ripples do: a sand plain far off reads smooth. The slip
+	// faces (steep lee slopes of the dunes themselves) are smooth, paler, freshly slipped sand.
 	vec2 ripple = vec2(0.0);
 	if (form_v.x > 0.01) {
 		vec2 rd = normalize(vec2(0.8, 0.6) + (vec2(fbm(p * 0.004), fbm(p * 0.004 + 9.0)) - 0.5) * 0.7);
+		rd = rot2(rd, (fbm(p * 0.035 + 2.0) - 0.5) * 1.1);
 		float fp = max(length(gp.xy), length(gp.zw));
-		float ph = dot(p, rd) * 5.0 + fbm(p * 0.05) * 2.2;
-		float big = (cos(ph) + 0.5 * cos(2.0 * ph)) * (1.0 - smoothstep(0.12, 0.3, fp));
-		vec2 rd2 = rot2(rd, 0.2);
-		float ph2 = dot(p, rd2) * 21.0 + fbm(p * 0.25 + 3.0) * 3.0;
-		float fine = (cos(ph2) + 0.5 * cos(2.0 * ph2)) * (1.0 - smoothstep(0.025, 0.06, fp));
+		float near_f = 1.0 - smoothstep(10.0, 45.0, dist);
+		float strong = smoothstep(0.25, 0.75, fbm(p * 0.05 + 7.0));
+		float ph = dot(p, rd) * 22.0 + fbm(p * 0.13) * 7.0 + fbm(p * 0.5 + 4.0) * 1.5;
+		float mid = (cos(ph) + 0.4 * cos(2.0 * ph)) * (1.0 - smoothstep(0.025, 0.07, fp));
+		vec2 rd2 = rot2(rd, 0.35);
+		float ph2 = dot(p, rd2) * 70.0 + fbm(p * 0.45 + 3.0) * 6.0;
+		float fine = (cos(ph2) + 0.4 * cos(2.0 * ph2)) * (1.0 - smoothstep(0.008, 0.022, fp));
+		float swell = cos(dot(p, rd) * 3.4 + fbm(p * 0.03) * 4.0) * smoothstep(0.55, 0.8, fbm(p * 0.012 + 4.0)) * (1.0 - smoothstep(0.12, 0.35, fp));
 		float lee = smoothstep(0.3, 0.5, dot(wnorm.xz, rd));
-		ripple = (rd * big * 0.45 + rd2 * fine * 0.18) * form_v.x * (1.0 - far) * (1.0 - 0.85 * lee);
+		ripple = (rd * (mid * (0.05 + 0.17 * strong) + swell * 0.12) + rd2 * fine * 0.07) * form_v.x * near_f * (1.0 - 0.85 * lee);
+		// Coarser, darker grains gather in the troughs: a faint banding where they show.
+		ground *= 1.0 - 0.035 * max(-mid, 0.0) * strong * form_v.x * near_f;
 		ground *= 1.0 + 0.08 * lee * form_v.x;
 	}
 	vec2 tilt = vec2(0.0);
@@ -539,7 +547,10 @@ void fragment() {
 		// hollows inside it, never one clean line.
 		float frayed = (fbm(p * 0.13 + 3.0) - 0.5) * 0.32 + (meso - 0.5) * 0.38;
 		snow = smoothstep(0.17, 0.7, cover_v.a + frayed + (micro - 0.5) * 0.14 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
-		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.55, 0.85, slope));
+		// Where the ground steepens the snow breaks up into streaks and ledges of white
+		// over the bare face, not one ruled line along the foot of the slope.
+		float crag = slope + (fbm(p * 0.3 + 8.0) - 0.5) * 0.4 + (micro - 0.5) * 0.12;
+		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.48, 0.82, crag));
 		// The map is per metre, so on a tall wall one triangle spans its snowy top and its
 		// foot: never let snow run down below the snow line's reach.
 		snow *= smoothstep(snow_line - 16.0, snow_line - 8.0, wpos.y + (macro - 0.5) * 8.0);
@@ -558,6 +569,8 @@ void fragment() {
 		float de = 0.7;
 		float d0 = fbm(p * 0.21 + 7.0);
 		vec2 drift = -vec2(fbm((p + vec2(de, 0.0)) * 0.21 + 7.0) - d0, fbm((p + vec2(0.0, de)) * 0.21 + 7.0) - d0) / de * 1.4;
+		// The hollows between the drifts hold a little blue shade even in full sun.
+		col *= mix(vec3(1.0), mix(vec3(0.86, 0.9, 0.97), vec3(1.0), smoothstep(0.3, 0.65, d0)), smoothstep(0.5, 0.9, snow) * (1.0 - far));
 		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip + drift * (1.0 - far * 0.5), snow);
 		rock_n *= 1.0 - snow;
 		// Glints: here and there a crystal faces just right and flashes the sun back, a

@@ -425,6 +425,7 @@ func _update_time_of_day() -> void:
 	RenderingServer.global_shader_parameter_set("night_glow_g", night_glow)
 	ChunkNode.terrain_material.set_shader_parameter("night_glow", night_glow)
 	ChunkNode.terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
+	RenderingServer.global_shader_parameter_set("snow_line_g", Planets.snow_line)
 	ChunkNode.terrain_material.set_shader_parameter("paved_roads", Eras.theme == "human")
 	ChunkNode.terrain_material.set_shader_parameter("zone_rings", ZoneBorder.road_rings())
 	ChunkNode.grass_material.set_shader_parameter("night_glow", night_glow)
