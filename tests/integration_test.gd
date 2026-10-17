@@ -932,6 +932,7 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var stone: Dictionary = rc.add_object("standing_stone", at.call(-10.0, -12.0), 0.0, Eras.MEDIEVAL, {})
 	msg = WonderEffects.apply(stone, rc, player)
 	check(stone["st"].get("read", false) and Wonders.use_of(stone, game.day).is_empty(), "runes are read once (%s)" % msg)
+	_make_room(game)
 	game.give(ItemDB.make("flashlight_dead", 1, 1.0, {}))
 	var crystal: Dictionary = rc.add_object("crystal_shard", at.call(-10.0, 0.0), 0.0, Eras.FANTASY, {})
 	msg = WonderEffects.apply(crystal, rc, player)
