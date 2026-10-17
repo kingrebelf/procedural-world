@@ -6,6 +6,7 @@
 
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
+global uniform vec3 sun_light_g; // the sun's light reaching the ground (Atmosphere)
 #include "res://src/world/noise2d.gdshaderinc"
 
 uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
@@ -425,9 +426,22 @@ void fragment() {
 		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb;
 		// Thin snow lets the ground show as a grey-blue dusting before it closes over.
 		vec3 dust = mix(col, st * vec3(0.86, 0.9, 0.96), 0.6);
-		col = mix(col, mix(dust, st * 0.95, smoothstep(0.4, 0.9, snow)), snow);
-		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.6, snow);
+		// (A little under real snow's brightness, so its relief still shows in full sun.)
+		col = mix(col, mix(dust, st * 0.8, smoothstep(0.4, 0.9, snow)), snow);
+		// Wind ripples: long low ridges across the drifts, wandering with the ground.
+		vec2 wd = vec2(0.83, 0.55);
+		vec2 rip = wd * cos(dot(p, wd) * 2.1 + meso * 9.0) * 0.09 * (1.0 - far);
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip, snow);
 		rock_n *= 1.0 - snow;
+		// Glints: here and there a crystal faces just right and flashes the sun back.
+		if (snow > 0.5 && dist < 30.0 && sun_dir_g.y > 0.0) {
+			vec3 cell = floor(wpos * 24.0);
+			float hs = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+			vec3 facet = normalize(wnorm + (vec3(fract(hs * 13.1), fract(hs * 7.7), fract(hs * 3.3)) - 0.5) * 0.9);
+			vec3 hv = normalize(normalize(CAMERA_POSITION_WORLD - wpos) + sun_dir_g);
+			float glint = step(0.985, hs) * pow(max(dot(facet, hv), 0.0), 60.0);
+			EMISSION += sun_light_g * glint * 2.5 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
+		}
 	}
 
 	// Sci-fi: weathered dust and ash; no panel grid, no glitter.
