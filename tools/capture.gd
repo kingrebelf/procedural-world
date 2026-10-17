@@ -468,7 +468,7 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "99"].any(func(n): return only.has(n))):
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
@@ -1014,7 +1014,7 @@ func _climate_shots(g: ChunkGenerator) -> void:
 		print("climate shot ", shot, " at ", best, " ", g.field.region_name_at(best.x, best.y))
 		var cam := best + Vector2(-60, -35)
 		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
-	if only.is_empty() or only.has("99"):
+	if only.is_empty() or only.has("96"):
 		await _border_shot(g)
 
 ## Where two regions of different climate meet near the spawn, looking across the band
@@ -1037,7 +1037,7 @@ func _border_shot(g: ChunkGenerator) -> void:
 				if h0 != h1 and _low_ground(g, p - d) and _low_ground(g, p + d):
 					var side: Vector2 = d.orthogonal().normalized() * 70.0
 					print("border shot at ", p, " climates ", c0, " ", c1)
-					await _shot("99_biome_border", p + side, p - side, 0.42, 6.0)
+					await _shot("96_biome_border", p + side, p - side, 0.42, 6.0)
 					return
 	print("no climate border found")
 
