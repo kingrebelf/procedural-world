@@ -38,10 +38,11 @@ void vertex() {
 		fade = (s / w) * (s / w);
 		world = c + (INV_VIEW_MATRIX[0].xyz * VERTEX.x + INV_VIEW_MATRIX[1].xyz * VERTEX.y) * w;
 	}
-	// Not right in your face, and gone softly before the far side of the box.
-	fade *= smoothstep(1.0, 3.0, d) * (1.0 - smoothstep(reach * 0.7, reach * 0.98, length(to.xz)));
+	// Not right in your face (a drop at arm's length would be a big smear across the
+	// screen, and costs the most to draw), and gone softly before the far side of the box.
+	fade *= smoothstep(1.5, 4.0, d) * (1.0 - smoothstep(reach * 0.7, reach * 0.98, length(to.xz)));
 	VERTEX = (VIEW_MATRIX * vec4(world, 1.0)).xyz;
-	if (INSTANCE_CUSTOM.z < 0.5) {
+	if (INSTANCE_CUSTOM.z < 0.5 || d < 1.5) {
 		VERTEX = vec3(0.0, 0.0, 1.0); // behind the camera: dropped
 	}
 }
@@ -49,8 +50,10 @@ void vertex() {
 void fragment() {
 	float a;
 	if (streak > 0.0) {
+		// A thin bright core in a faint edge, fading in and out along its length: a drop
+		// glinting as it falls rather than a painted line.
 		float across = 1.0 - abs(UV.x * 2.0 - 1.0);
-		a = across * smoothstep(0.0, 0.35, UV.y) * smoothstep(1.0, 0.75, UV.y);
+		a = across * across * smoothstep(0.0, 0.45, UV.y) * smoothstep(1.0, 0.6, UV.y);
 	} else {
 		float r = length(UV * 2.0 - 1.0);
 		a = smoothstep(1.0, 0.15, r);

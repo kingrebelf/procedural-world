@@ -89,10 +89,11 @@ var _enabled := true
 ## Rain: box half size round the camera and how many drops fill it at full pour, by
 ## quality (weather_fx 0-2).
 const RAIN_BOX := Vector3(22.0, 13.0, 22.0)
-const RAIN_COUNT := [6000, 14000, 24000]
+const RAIN_COUNT := [8000, 18000, 30000]
 const SNOW_BOX := Vector3(26.0, 12.0, 26.0)
 const SNOW_COUNT := [3000, 7000, 12000]
 const SPLASH_COUNT := [0, 1024, 2048]
+const FIELD_STEP := 12.0 ## metres the rain catch moves at a time
 
 func _ready() -> void:
 	current = self
@@ -344,7 +345,7 @@ func _build_precip() -> void:
 	_rain_proc.set_shader_parameter("box_half", RAIN_BOX)
 	_rain_mat = ShaderMaterial.new()
 	_rain_mat.shader = dshader
-	_rain_mat.set_shader_parameter("streak", 0.75)
+	_rain_mat.set_shader_parameter("streak", 0.5)
 	_rain_mat.set_shader_parameter("thick", 0.01)
 	_rain_mat.set_shader_parameter("reach", RAIN_BOX.x)
 	_rain = _particles("Rain", _rain_proc, _rain_mat, RAIN_BOX)
@@ -394,9 +395,12 @@ func _build_precip() -> void:
 	# Over the camera: the height of the first thing a drop would hit.
 	_field = GPUParticlesCollisionHeightField3D.new()
 	_field.name = "RainCatch"
-	_field.size = Vector3(SNOW_BOX.x * 2.0 + 4.0, 120.0, SNOW_BOX.z * 2.0 + 4.0)
+	# Wider than the particle boxes and moved in steps of FIELD_STEP rather than every
+	# frame: each move re-renders it (a top-down pass over everything near), so walking
+	# along it redraws every few seconds instead of every frame.
+	_field.size = Vector3(SNOW_BOX.x * 2.0 + FIELD_STEP * 2.0 + 4.0, 120.0, SNOW_BOX.z * 2.0 + FIELD_STEP * 2.0 + 4.0)
 	_field.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_WHEN_MOVED
-	_field.follow_camera_enabled = true
+	_field.follow_camera_enabled = false
 	_field.visible = false
 	add_child(_field)
 
@@ -456,8 +460,9 @@ func _precipitation(p: Vector3) -> void:
 	_rain_proc.set_shader_parameter("fall", rfall)
 	_rain_proc.set_shader_parameter("density", clampf(rain * 1.1, 0.0, 1.0))
 	_rain_mat.set_shader_parameter("fall_dir", rfall.normalized())
-	_rain_mat.set_shader_parameter("tint", Color(lum * 1.15, lum * 1.2, lum * 1.25))
-	_rain_mat.set_shader_parameter("opacity", 0.35 + 0.2 * rain)
+	# Faint: rain reads from the many drops together, not from any one bright streak.
+	_rain_mat.set_shader_parameter("tint", Color(lum * 0.85, lum * 0.9, lum * 0.97))
+	_rain_mat.set_shader_parameter("opacity", 0.12 + 0.08 * rain)
 	_show(_rain, rain > 0.01, at, rfall)
 	# Snow drifts down at about a metre a second and goes where the wind takes it; dust
 	# streams along it, barely falling.
@@ -477,6 +482,10 @@ func _precipitation(p: Vector3) -> void:
 	_flake_mat.set_shader_parameter("opacity", 0.95 if hailing else 0.85 if snowing else 0.45)
 	_show(_flakes, snowing or hailing or specks > 0.02, at, fl)
 	_field.visible = _rain.visible or _flakes.visible
+	if _field.visible:
+		var snap := Vector3(snappedf(at.x, FIELD_STEP), snappedf(at.y, FIELD_STEP), snappedf(at.z, FIELD_STEP))
+		if not _field.global_position.is_equal_approx(snap):
+			_field.global_position = snap
 
 func _show(gp: GPUParticles3D, on: bool, at: Vector3, fall: Vector3) -> void:
 	if on and not gp.visible:
