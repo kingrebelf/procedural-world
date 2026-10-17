@@ -84,6 +84,10 @@ varying vec4 stone_v;
 varying vec4 soil_v;
 varying vec2 form_v;
 varying vec4 cover_v;
+#ifdef FAR_LAND
+// The forest seen from afar: crown colour (sRGB) and how densely the trees stand.
+varying vec4 canopy_v;
+#endif
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -193,6 +197,10 @@ void vertex() {
 	soil_v = CUSTOM1;
 	form_v = CUSTOM2.xy;
 	cover_v = CUSTOM3;
+#ifdef FAR_LAND
+	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
+	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
+#endif
 }
 
 // Height-blended layer amount: the layer shows first where its texture is bright (stones
@@ -462,11 +470,60 @@ void fragment() {
 		col *= 1.0 + caus * under * exp(wpos.y * 0.12) * lit * 1.4 * (1.0 - far);
 	}
 
+#ifdef FAR_LAND
+	// Forest seen from afar: crowns a few metres across, in clumps, as dense as the
+	// chunks grow their trees. Side on, the trees behind close the gaps; far off the
+	// crowns blend into their mean.
+	float canopy = 0.0;
+	vec3 crown_n = vec3(0.0);
+	if (canopy_v.a > 0.004) {
+		vec3 vd = (CAMERA_POSITION_WORLD - wpos) / max(dist, 0.001);
+		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
+		float d = 1.0 - pow(1.0 - canopy_v.a, 1.0 + 4.0 * graze);
+		d = clamp(d + (fbm(p * 0.025 + 7.0) - 0.5) * 0.7 * canopy_v.a, 0.0, 1.0);
+		// The nearest crown, on a jittered 6 m grid.
+		vec2 g = p / 6.0;
+		vec2 gi = floor(g);
+		float f1 = 9.0;
+		vec2 off = vec2(0.0);
+		float r = 0.0;
+		vec2 ci = gi;
+		for (int y = -1; y <= 1; y++) {
+			for (int x = -1; x <= 1; x++) {
+				vec2 c = gi + vec2(float(x), float(y));
+				float h = hash12(c);
+				vec2 o = c + 0.5 + (vec2(h, hash12(c + 17.3)) - 0.5) * 0.8 - g;
+				float dd = dot(o, o);
+				if (dd < f1) {
+					f1 = dd;
+					off = o;
+					r = h;
+					ci = c;
+				}
+			}
+		}
+		float rad = sqrt(f1);
+		float detail = 1.0 - smoothstep(700.0, 2000.0, dist);
+		float here = step(r, d) * (1.0 - smoothstep(0.45, 0.75, rad));
+		canopy = mix(d, here, detail);
+		float dome = clamp(1.0 - rad / 0.75, 0.0, 1.0);
+		vec3 cc = pow(canopy_v.rgb, vec3(2.2)) * mix(0.55, 0.3 + 0.55 * dome, detail) * (0.85 + 0.3 * hash12(ci + 3.1));
+		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);
+		col = mix(col, cc, canopy);
+		snow *= 1.0 - canopy;
+		crown_n = -vec3(off.x, 0.0, off.y) * 0.9 * here * detail;
+	}
+#endif
+
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
 	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow);
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
+#ifdef FAR_LAND
+	ROUGHNESS = mix(ROUGHNESS, 0.95, canopy);
+	SPECULAR = mix(0.4, 0.25, canopy);
+#endif
 
 	// Procedural detail normal from the noise gradient (world space -> view space).
 	float e = 0.15;
@@ -490,5 +547,8 @@ void fragment() {
 		bump -= gr * detail_strength * 0.5 * steep * proc;
 	}
 	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.9 + vec3(ripple.x, 0.0, ripple.y));
+#ifdef FAR_LAND
+	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
+#endif
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

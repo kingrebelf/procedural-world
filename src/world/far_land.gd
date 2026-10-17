@@ -178,8 +178,12 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 	l1.resize(c * 4)
 	var l2 := PackedByteArray()
 	l2.resize(c * 4)
+	var cc := PackedByteArray()
+	cc.resize(c * 4)
 	var look := PackedByteArray()
 	look.resize(12)
+	var tv := int(job["terrain_v"])
+	var regions := {}
 	for j in range(j0, j1):
 		for i in n:
 			var x := origin.x + i * CELL
@@ -190,13 +194,71 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			hs[v] = field.height(x, z, w, lw)
 			# As a chunk paints them: human worlds dress their sci-fi land as the wilds.
 			cols[v] = Color(w[Eras.MEDIEVAL] + (w[Eras.SCIFI] if human else 0.0), w[Eras.FANTASY], 0.0 if human else w[Eras.SCIFI], 1.0)
-			if int(job["terrain_v"]) >= 7:
+			if tv >= 7:
 				WorldField.look_bytes(lw, look, 0)
 				for b in 4:
 					l0[v * 4 + b] = look[b]
 					l1[v * 4 + b] = look[4 + b]
 					l2[v * 4 + b] = look[8 + b]
-	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2}
+			# The forest as the chunks grow it (ChunkGenerator's trees), as a canopy: how
+			# many trees stand here and the colour of their crowns.
+			var forest := clampf((field._moss.get_noise_2d(x * 0.15, z * 0.15) + 0.35) * 1.5, 0.0, 1.0)
+			var lt := 1.0
+			if tv >= 7:
+				lt = 0.0
+				for f in WorldField.LF_COUNT:
+					lt += lw[f] * WorldField.LANDFORM_TREES[f]
+			var rh := field.region_hash_at(x, z)
+			var trees := 0.0
+			var tint := Color(0, 0, 0)
+			for e in 3:
+				if w[e] < 0.05:
+					continue
+				var key := (rh & 0xFFFFFFF) * 4 + e
+				if not regions.has(key):
+					var bp := Biome.params(rh, e)
+					regions[key] = [float(bp["tree_density"]), canopy_colour(bp)]
+				var dens: float = regions[key][0]
+				var t := minf(Eras.TREE_DENSITY[e] * (0.25 + forest * 1.6) * dens * lt, 64.0)
+				if tv >= 4:
+					t += 40.0 * smoothstep(1.3, 2.2, dens) * (1.0 if e != Eras.SCIFI else 0.3) * minf(1.0, lt)
+				trees += t * w[e]
+				tint += (regions[key][1] as Color) * t * w[e]
+			if trees > 0.01:
+				tint /= trees
+			l2[v * 4 + 2] = int(clampf(1.0 - exp(-trees * 0.011), 0.0, 1.0) * 255.0)
+			cc[v * 4] = int(clampf(tint.r, 0.0, 1.0) * 255.0)
+			cc[v * 4 + 1] = int(clampf(tint.g, 0.0, 1.0) * 255.0)
+			cc[v * 4 + 2] = int(clampf(tint.b, 0.0, 1.0) * 255.0)
+	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc}
+
+## The colour a region's trees give the canopy seen from afar (sRGB), each species by
+## how common it is there.
+static func canopy_colour(bp: Dictionary) -> Color:
+	var sum := Color(0, 0, 0)
+	var wt := 0.0
+	for f in bp["flora"]:
+		var p := Flora.species(f["t"], f["sp"])
+		var c := Color(0.3, 0.32, 0.25)
+		if p.has("leaf"):
+			var leaf: Color = p["leaf"]
+			if f["t"] == "pine":
+				c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.85, 0.3, 0.65), clampf(leaf.v * 1.9, 0.38, 0.62) * 0.7)
+			elif leaf.h < 0.13 or leaf.h > 0.92:
+				c = Color(0.62, 0.3, 0.12)
+			else:
+				c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.75, 0.25, 0.7), clampf(leaf.v, 0.35, 0.6))
+			if p.get("form", "") in ["dead", "snag"]:
+				c = Color(0.35, 0.3, 0.26)
+		elif p.has("cap_col"):
+			c = p["cap_col"]
+		elif p.has("paint"):
+			c = p["paint"]
+		elif p.has("bark"):
+			c = p["bark"]
+		sum += c * float(f["w"])
+		wt += float(f["w"])
+	return sum / wt if wt > 0.0 else Color(0.3, 0.35, 0.2)
 
 ## The whole grid from its strips of rows (in order): normals, snow and triangles.
 static func finish_arrays(job: Dictionary, rows: Array) -> Array:
@@ -208,12 +270,14 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	var l0 := PackedByteArray()
 	var l1 := PackedByteArray()
 	var l2 := PackedByteArray()
+	var cc := PackedByteArray()
 	for r in rows:
 		hs.append_array(r["hs"])
 		cols.append_array(r["cols"])
 		l0.append_array(r["l0"])
 		l1.append_array(r["l1"])
 		l2.append_array(r["l2"])
+		cc.append_array(r["cc"])
 	var verts := PackedVector3Array()
 	verts.resize(n * n)
 	var norms := PackedVector3Array()
@@ -235,6 +299,12 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 			var steep := smoothstep(0.7, 1.25, Vector2(dx, dz).length())
 			var snow := smoothstep(snow_line - 6.0, snow_line + 8.0, hs[v]) * (1.0 - smoothstep(0.55, 0.9, steep * 0.9))
 			cv[v * 4 + 3] = int(clampf(snow, 0.0, 1.0) * 255.0)
+			# The canopy (CUSTOM3.rgb its colour, CUSTOM2.z how dense): no trees in the
+			# water or on cliffs.
+			for b in 3:
+				cv[v * 4 + b] = cc[v * 4 + b]
+			var dry := smoothstep(ChunkGenerator.WATER_LEVEL + 0.2, ChunkGenerator.WATER_LEVEL + 1.5, hs[v])
+			l2[v * 4 + 2] = int(float(l2[v * 4 + 2]) * dry * (1.0 - smoothstep(0.6, 0.9, Vector2(dx, dz).length())))
 	var idx := PackedInt32Array()
 	idx.resize((n - 1) * (n - 1) * 6)
 	var q := 0
