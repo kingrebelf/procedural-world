@@ -391,6 +391,19 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			var tall := 20.0 + 44.0 * t
 			var tower := tall * (1.0 - pow(minf(q, 1.0), 5.0)) + 3.0 * maxf(0.0, 1.0 - q * q)
 			tower += 4.0 * t * (1.0 - smoothstep(0.85, 1.6, q))
+			if terrain_v >= 15:
+				# v15: weathered limestone, not smooth bullets. Vertical joints flute the
+				# walls (sharp creases where a noise crosses zero), bedding planes step them
+				# in ledges every few metres (each tower its own spacing), the crown is
+				# broken and uneven, and no tower stands quite straight.
+				var lean := _moss.get_noise_2d(x * 0.7 + 300.0, z * 0.7) * 2.5
+				var joints := (absf(_detail.get_noise_2d(x * 1.3 + 70.0, z * 1.3)) - 0.25) * 3.0
+				var qf := clampf((cl.x + _detail.get_noise_2d(x * 0.5, z * 0.5) * 3.0 + lean + joints) / r, 0.0, 2.0)
+				var body := tall * (1.0 - pow(minf(qf, 1.0), 3.2))
+				var tier := 6.0 + 5.0 * fposmod(cl.y * 53.0, 1.0)
+				var crown := _detail.get_noise_2d(x * 0.35 + 11.0, z * 0.35) * 4.0 * t
+				var stepped := _steps(body + crown + _detail.get_noise_2d(x * 0.8 + 5.0, z * 0.8) * 1.5, tier, 0.35)
+				tower = lerpf(body, stepped, 0.8) + 1.5 * maxf(0.0, 1.0 - qf * qf) + 4.0 * t * (1.0 - smoothstep(0.85, 1.6, qf))
 			return Vector3(base, 0.0, tower * smoothstep(0.0, 4.0, cl.z))
 		LF_NEEDLES:
 			# Thin pointed rock needles.

@@ -17,6 +17,8 @@ var hud_mode := ""
 ## looks (tonemapper, exposure, contrast) without touching the game.
 var env_sets: Array = []
 ## --cam=property=value does the same for the camera attributes (auto exposure limits).
+## --mend=show paints the frame's bad pixels (NaN, infinite, negative) magenta instead of
+## mending them; --mend=off leaves them (FrameMend).
 var cam_sets: Array = []
 ## --shafts=N scales the screen-space light shafts for this run (0 turns them off).
 var shafts := 1.0
@@ -47,6 +49,8 @@ func _ready() -> void:
 			vfog = a.substr(7).to_float()
 		if a.begins_with("--beams="):
 			beams = a.substr(8).to_float()
+		if a.begins_with("--mend="):
+			FrameMend.mode = {"show": 1, "off": 2}.get(a.substr(7), 0)
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
@@ -547,7 +551,8 @@ func _ground_shots(g: ChunkGenerator) -> void:
 		var at := Vector2(cliff.x, cliff.y)
 		var d := Vector2(cliff.z, cliff.w)
 		var h := g.field.height(at.x, at.y)
-		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
+		# (Clear of the trees on the way: two autumn crowns filled half the view.)
+		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0, Callable(), 7.0)
 		# Standing at the cliff foot, looking down at the stones ahead.
 		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
 
@@ -963,10 +968,14 @@ func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 		p.underwater = false
 	var spot := shore + out * 9.0
 	var burst := func() -> void:
+		# The view before the spray, to tell whether the burst itself throws the exposure.
+		_snap("36_splash_pre")
+		var t0 := Time.get_ticks_msec()
 		for i in 3:
 			Splashes.splash(Vector3(spot.x, Water.surface_height(spot.x, spot.y, 0.0), spot.y), 1.2)
-			Splashes.ring(Vector3(spot.x + 2.0, 0.0, spot.y + 1.0), 1.6)
+			Splashes.ring(Vector3(spot.x + 2.0, Water.LEVEL, spot.y + 1.0), 1.6)
 			await _wait(4)
+		print("  splash burst took %d ms" % (Time.get_ticks_msec() - t0))
 	await _shot("36_splash", shore - out * 2.0, spot, 0.42, 2.2, Water.LEVEL + 0.6, burst)
 
 ## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
@@ -1200,7 +1209,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:
 	var names := {"sword_stone": "53_egg_sword", "gnome_ring": "54_egg_gnome", "msg_bottle": "55_egg_bottle", "lost_camp": "56_egg_camp", "tiny_door": "57_egg_door"}
-	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [1.4, -0.72, -1.58], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
+	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [0.55, -1.0, -1.63], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
 	var best := {}
 	for r in 12:
 		for wz in range(-r, r + 1):
@@ -1224,8 +1233,19 @@ func _egg_shots(g: ChunkGenerator) -> void:
 			# (The sword is seen from low down, against the sky rather than the trees behind.
 			# Heights are the player's feet; the eye is 1.63 m above them, so the bottle's
 			# negative height crouches the eye to under a metre over the sand. The aim is
-			# taken from the feet too, hence its low target: 30 degrees down onto the bottle.)
+			# taken from the feet too, hence its target 1.63 m low: straight at the bottle.)
 			var front := Vector2(sin(o["r"] + 0.35), cos(o["r"] + 0.35))
+			# On rough ground (limestone towers above all) the spot in front can be up a
+			# cliff, looking down through the crowns: turn round the find to the nearest
+			# side standing level with it.
+			var eh := g.field.height(at.x, at.y)
+			for j in 13:
+				var tr := int((j + 1) / 2.0) * 0.5 * (1.0 if j % 2 == 1 else -1.0)
+				var fq := Vector2(sin(o["r"] + 0.35 + tr), cos(o["r"] + 0.35 + tr))
+				var q := at + fq * float(v[0])
+				if absf(g.field.height(q.x, q.y) - eh) < 1.0:
+					front = fq
+					break
 			await _shot(names[t], at + front * float(v[0]), at, 0.4, float(v[1]), float(o["p"].y) + float(v[2]))
 			print("egg ", t, " at ", at)
 
