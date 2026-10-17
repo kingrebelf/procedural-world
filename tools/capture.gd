@@ -466,6 +466,38 @@ func _run() -> void:
 		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
 		# across the houses and their shadows reach toward you.
 		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
+	# Village life up close (TownLife): a house's yard at eye height, and a field's edge.
+	var lt := _find_settlement(g, Eras.MEDIEVAL, 1) if g.towns else {}
+	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91")):
+		var pl := TownLife.plan(g, lt)
+		var yard := {}
+		var best := -1
+		for h in pl["houses"]:
+			var score := 0
+			for e in pl["pieces"]:
+				if int(e["house"]) == int(h["i"]):
+					score += {"woodpile": 2, "washing": 3, "garden": 2, "bench": 1, "barrels": 1, "haystack": 2, "cart": 2}.get(e["k"], 0)
+			if score > best:
+				best = score
+				yard = h
+		if not yard.is_empty():
+			var hp: Vector2 = yard["p"]
+			var hy: float = yard["yaw"]
+			var hw: float = yard["w"]
+			var hd: float = yard["d"]
+			await _shot("90_village_yard", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.5 + 7.0, hd * 0.5 + 6.0)),
+				TownLife.frame_to_world(hp, hy, Vector2(-1.0, -1.0)), 0.42)
+		var fields: Array = pl["fields"]
+		if not fields.is_empty():
+			var fd: Dictionary = fields[0]
+			for f2 in fields:
+				if f2["crop"] == "wheat" and (f2["tint"] as Color).r > 0.65:
+					fd = f2
+					break
+			var fp: Vector2 = fd["p"]
+			var fy: float = fd["yaw"]
+			await _shot("91_village_fields", TownLife.frame_to_world(fp, fy, Vector2(-float(fd["hx"]) - 3.0, -float(fd["hz"]) - 3.0)),
+				TownLife.frame_to_world(fp, fy, Vector2(float(fd["hx"]) * 0.5, float(fd["hz"]))), 0.6, 2.0)
 	# Midnight on the highest ground near spawn, looking well up: the stars and the Milky
 	# Way over a strip of skyline (from low ground a hill and a boulder filled half of it).
 	var hill := Vector2(8, 8)
