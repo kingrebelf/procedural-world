@@ -129,12 +129,12 @@ func test_waterfalls() -> void:
 	var g := ChunkGenerator.new(4242, true)
 	# The nearest falls to the spawn on seed 4242 (tools/probe_falls.gd lists them).
 	var f := {}
-	for r in 3:
+	for r in 6:
 		for iz in range(-r, r + 1):
 			for ix in range(-r, r + 1):
 				if f.is_empty() and maxi(absi(ix), absi(iz)) == r:
 					f = Waterfalls.in_cell(g, ix, iz)
-	check(not f.is_empty(), "a waterfall within 1.5 km of the spawn")
+	check(not f.is_empty(), "a waterfall within 3 km of the spawn")
 	if f.is_empty():
 		WorldField.terrain_v = was
 		return

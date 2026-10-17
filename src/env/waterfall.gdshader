@@ -65,7 +65,9 @@ void fragment() {
 	a *= 1.0 - smoothstep(0.93, 1.0, down) * 0.85;
 	a *= smoothstep(-1.0, -0.4, u);
 	vec3 glass = vec3(0.08, 0.13, 0.11);
-	vec3 white = vec3(0.86, 0.89, 0.9) * (0.82 + streak * 0.25);
+	// Never flat white: the streaks run lighter and darker, the shadowed hollows between
+	// them greyer.
+	vec3 white = vec3(0.8, 0.83, 0.84) * (0.62 + streak * 0.5);
 	vec3 col = mix(glass, white, air * (0.75 + s2 * 0.35));
 	float alpha = a * mix(0.82, 0.95, air);
 	if (layer > 0.5) {
