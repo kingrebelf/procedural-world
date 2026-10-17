@@ -5,7 +5,8 @@ class_name Effects
 
 ## Timed effects. "bonus" keys: health, stamina (max), damage, speed, swing, xp (added to
 ## the multiplier), carry (kg), armor, regen (health per second), stamina_regen (added to
-## the refill multiplier). "dot": health lost per second. "bad": a harm, not a blessing.
+## the refill multiplier), reload (added to the reload speed multiplier), breath (seconds). "dot": health
+## lost per second. "bad": a harm, not a blessing.
 const BUFFS := {
 	"courage": {"name": "Courage", "desc": "+15% damage", "bonus": {"damage": 0.15}},
 	"strength": {"name": "Strength", "desc": "+25% damage, +100 kg carry", "bonus": {"damage": 0.25, "carry": 100.0}},
@@ -18,6 +19,7 @@ const BUFFS := {
 	"immune": {"name": "Purged", "desc": "Immune to poison", "bonus": {}},
 	"inspired": {"name": "Inspired", "desc": "+15% experience", "bonus": {"xp": 0.15}},
 	"rested": {"name": "Well rested", "desc": "+10% experience, stamina refills faster", "bonus": {"xp": 0.1, "stamina_regen": 0.25}},
+	"oiled": {"name": "Oiled guns", "desc": "Reload 20% faster", "bonus": {"reload": 0.2}},
 	"quenched": {"name": "Quenched", "desc": "Not thirsty", "bonus": {}, "hidden": true},
 	"poison": {"name": "Poisoned", "desc": "Losing health", "bonus": {}, "dot": 1.0, "bad": true},
 }
@@ -87,7 +89,7 @@ static func describe(d: Dictionary) -> Array:
 		out.append("Restores %d stamina" % int(d["stamina_add"]))
 	if d.get("cure", false):
 		out.append("Cures poison")
-	if d.has("buff"):
+	if d.has("buff") and String(d.get("kind", "")) != "kit":
 		var b: Dictionary = BUFFS.get(d["buff"][0], {})
 		out.append("%s for %s: %s" % [b.get("name", ""), clock(float(d["buff"][1])), b.get("desc", "")])
 	if float(d.get("sicken", 0.0)) > 0.0:
@@ -112,6 +114,19 @@ static func describe(d: Dictionary) -> Array:
 		out.append("Picks %d%% more from plants" % int((float(d["reap"]) - 1.0) * 100.0))
 	if d.has("fuel"):
 		out.append("Fuel: burns %s" % clock(float(d["fuel"])))
+	if d.has("pellets"):
+		out.append("Fires %d pellets" % int(d["pellets"]))
+	if d.has("splash"):
+		out.append("Blast: %d m across" % int(float(d["splash"]) * 2.0))
+	if d.has("flare"):
+		out.append("Its flare burns where it lands for %s" % clock(float(d["flare"])))
+	if d.has("trap"):
+		out.append("Use it to set it at your feet; it springs on the next animal that steps in")
+	if d.get("lamp", false):
+		out.append("Worn: a lamp lights the way in the dark")
+	if String(d.get("kind", "")) == "kit" and d.has("buff"):
+		var kb: Dictionary = BUFFS.get(d["buff"][0], {})
+		out.append("Use it: %s for %s (%s)" % [kb.get("name", ""), clock(float(d["buff"][1])), kb.get("desc", "")])
 	var bon: Dictionary = d.get("bonus", {})
 	for k in bon:
 		out.append(_bonus_line(k, float(bon[k])))
@@ -125,4 +140,6 @@ static func _bonus_line(k: String, v: float) -> String:
 		"armor": return "+%d armour" % int(v)
 		"regen": return "Restores %.1f health a second" % v
 		"stamina_regen": return "Stamina refills %d%% faster" % int(v * 100.0)
+		"reload": return "Reload %d%% faster" % int(v * 100.0)
+		"breath": return "Hold your breath %ds longer" % int(v)
 	return "+%d%% %s" % [int(v * 100.0), k]

@@ -1018,6 +1018,31 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	var burnt: float = hp_b - kc.hp
 	check(burnt > 5.0 and burnt < 60.0, "the plasma drill's beam burns the animal a little each tick (%.1f hp over 3 ticks)" % burnt)
 	check(player.gunplay._beam_node != null and player.gunplay._beam_node.visible, "the beam shows while the drill fires")
+	# The frontier (pack B): a shotgun throws a cloud of pellets; a bear trap catches.
+	await _frames(40)
+	var sg := ItemDB.make("double_shotgun", 1, 1.0, {})
+	sg["charge"] = 2
+	game.inventory.set_slot(slot, sg)
+	player.select(slot)
+	await _frames(2)
+	player._cooldown = 0.0
+	player._trigger_held = false
+	var before_shots: int = player.gunplay._shots.size()
+	player.use_held()
+	check(player.gunplay._shots.size() - before_shots == int(ItemDB.def("double_shotgun")["pellets"]) and int(sg["charge"]) == 1, "a shotgun blast is %d pellets for one shell" % (player.gunplay._shots.size() - before_shots))
+	await _frames(30)
+	game.inventory.set_slot(slot, ItemDB.make("bear_trap", 2, 1.0, {}))
+	player.select(slot)
+	await _frames(2)
+	player._cooldown = 0.0
+	player.use_held()
+	check(player.traps.count() == 1 and game.inventory.count("bear_trap") == 1, "a bear trap is set at your feet")
+	var hp_t := kc.hp
+	player.traps.add("bear_trap", kc.global_position)
+	await create_timer(0.8).timeout
+	check(kc.hp < hp_t and kc.held_for > 0.0 and player.traps.count() == 1, "the trap snaps shut on the animal and holds it (%.0f -> %.0f hp)" % [hp_t, kc.hp])
+	player.traps.from_data([])
+	kc.held_for = 0.0
 	kc.hp = hp_was
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,

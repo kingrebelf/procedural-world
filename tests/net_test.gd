@@ -20,6 +20,14 @@ func check(c: bool, m: String) -> void:
 
 func _initialize() -> void:
 	_run.call_deferred()
+	# A script error inside the awaits would otherwise leave the test hanging.
+	create_timer(600.0, true).timeout.connect(func():
+		printerr("net test: timed out")
+		if _server > 0:
+			OS.kill(_server)
+		if _peer > 0 and OS.is_process_running(_peer):
+			OS.kill(_peer)
+		quit(1))
 
 func _frames(n: int) -> void:
 	for i in n:
@@ -132,13 +140,13 @@ func _run() -> void:
 	game.add_money(727)
 	var pos: Vector3 = player.global_position
 	net.leave("")
-	await _frames(30)
-	check(not net.online() and game.store == null, "leaving closes the world")
+	await _until(func(): return net._draining.is_empty(), 600)
+	check(not net.online() and game.store == null and net._draining.is_empty(), "leaving closes the world and says goodbye")
 	r = await _join(net, "Alice", "sesame")
 	check(r == "ok", "rejoin (%s)" % r)
 	check(game.money == 777, "money kept on the server (%d)" % game.money)
 	var back = game.store.load_player()
-	check(back is Dictionary and (back["pos"] as Vector3).distance_to(pos) < 1.0, "position kept on the server")
+	check(back is Dictionary and back.get("pos") is Vector3 and (back["pos"] as Vector3).distance_to(pos) < 1.0, "position kept on the server")
 	net.leave("")
 	await _frames(10)
 

@@ -12,12 +12,14 @@ const FLASH_CHARGE := 10800.0 ## seconds a flashlight runs before its battery fa
 const CANDLE_BURN := 600.0 ## seconds one candle burns on its own
 ## What a lantern burns, best first: [item, seconds one lasts].
 const LANTERN_FUEL := [["lamp_oil", 1800.0], ["candle", 900.0]]
+const KEROSENE_BURN := 1.5 ## a kerosene lamp's wick makes its fuel last this much longer
 
 var kind := "" ## "", "torch", "flashlight", "lantern" or "candle": the light in the off hand (T)
 var held := "" ## the same, when one is selected in the main hand
 var torch_left := 0.0 ## seconds left on the burning torch
 var lantern_left := 0.0 ## seconds left on the lantern's oil
 var candle_left := 0.0 ## seconds left on the burning candle
+var kerosene := false ## the lantern alight is a kerosene lamp: brighter, thriftier
 var _omni: OmniLight3D
 var _spot: SpotLight3D
 var _torch_mesh: MeshInstance3D
@@ -99,8 +101,9 @@ func set_held(t: String, inv: Inventory) -> void:
 			torch_left = TORCH_BURN
 	elif t == "flashlight" and flashlight_slot(inv) >= 0:
 		held = "flashlight"
-	elif t == "hand_lantern" and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
+	elif (t == "hand_lantern" or t == "lamp_kerosene") and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
 		held = "lantern"
+		kerosene = t == "lamp_kerosene"
 	elif t == "candle" and inv.count("candle") > 0:
 		held = "candle"
 		if candle_left <= 0.0:
@@ -120,8 +123,9 @@ func toggle(inv: Inventory) -> String:
 		kind = "flashlight"
 		_apply()
 		return "Flashlight on (%s left)" % _hours(float(inv.get_slot(fi).get("charge", FLASH_CHARGE)))
-	if inv.count("hand_lantern") > 0 and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
+	if lanterns(inv) > 0 and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
 		kind = "lantern"
+		kerosene = inv.count("lamp_kerosene") > 0
 		_apply()
 		return "Lantern lit"
 	if inv.count("torch") > 0:
@@ -136,7 +140,7 @@ func toggle(inv: Inventory) -> String:
 			candle_left = CANDLE_BURN
 		_apply()
 		return "Candle lit (%d left)" % inv.count("candle")
-	if inv.count("hand_lantern") > 0:
+	if lanterns(inv) > 0:
 		return "Your lantern needs lamp oil or a candle"
 	if inv.count("flashlight_dead") > 0:
 		return "Your flashlight's battery is dead: repair it with a power cell at a workbench"
@@ -148,6 +152,10 @@ static func _lantern_fuel(inv: Inventory) -> String:
 		if inv.count(f[0]) > 0:
 			return f[0]
 	return ""
+
+## Lanterns carried: the medieval kind and the frontier's kerosene lamp.
+static func lanterns(inv: Inventory) -> int:
+	return inv.count("hand_lantern") + inv.count("lamp_kerosene")
 
 static func flashlight_slot(inv: Inventory) -> int:
 	for i in Inventory.SIZE:
@@ -177,7 +185,7 @@ func tick(delta: float, inv: Inventory) -> String:
 				msg = "Your torch burned out"
 	elif was == "lantern":
 		lantern_left -= delta
-		if inv.count("hand_lantern") <= 0:
+		if lanterns(inv) <= 0:
 			kind = ""
 			held = ""
 		elif lantern_left <= 0.0:
@@ -186,7 +194,7 @@ func tick(delta: float, inv: Inventory) -> String:
 				inv.remove_type(f, 1)
 				for e in LANTERN_FUEL:
 					if e[0] == f:
-						lantern_left = e[1]
+						lantern_left = e[1] * (KEROSENE_BURN if kerosene else 1.0)
 			else:
 				lantern_left = 0.0
 				kind = ""
@@ -240,8 +248,8 @@ func _apply() -> void:
 	var k := lit()
 	_omni.visible = k == "torch" or k == "lantern" or k == "candle"
 	# A lantern's glass keeps its flame steady and bright; a candle lights only nearby.
-	_omni.omni_range = {"lantern": 18.0, "candle": 7.0}.get(k, 16.0)
-	_omni.light_energy = {"lantern": 2.6, "candle": 1.1}.get(k, _omni.light_energy)
+	_omni.omni_range = {"lantern": 24.0 if kerosene else 18.0, "candle": 7.0}.get(k, 16.0)
+	_omni.light_energy = {"lantern": 3.0 if kerosene else 2.6, "candle": 1.1}.get(k, _omni.light_energy)
 	_spot.visible = k == "flashlight"
 	# The off-hand torch shows only when nothing lit is held in the main hand.
 	_torch_mesh.visible = k == "torch" and held == "" and show_model

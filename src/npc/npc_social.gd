@@ -22,8 +22,10 @@ const JOB_GOODS := {
 	"mystic": ["aether_crystal", "moonpearl", "stamina_potion"], "beekeeper": ["glowberry", "wild_berries", "honey", "beeswax", "candle", "mead"],
 	"lamplighter": ["torch", "glowroot", "lamp_oil", "candle", "hand_lantern", "tinderbox"],
 	"scribe": ["rune_tablet", "binoculars", "scroll_plain", "quill_ink", "book_leather", "letter_sealed"],
-	"engineer": ["circuitry", "lockpick", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
-	"scavenger": ["alloy_scrap", "lockpick", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
+	"engineer": ["circuitry", "lockpick", "power_cell", "alloy_plate", "wrench", "gears", "springs", "copper_wire", "valve"],
+	"medic": ["health_potion", "ration_pack", "stamina_potion", "bandage_roll", "iodine", "splint", "tonic_bottle"],
+	"scavenger": ["alloy_scrap", "lockpick", "scrap_pistol", "data_core", "crowbar", "gold_nugget", "photo_frame", "rubber"],
+	"pilot": ["power_cell", "flashlight", "ration_pack", "compass", "coffee_pot", "jerky"],
 	"security officer": ["pulse_pistol", "rounds", "helm_visor"], "data broker": ["data_core", "circuitry"],
 	"hydroponics tech": ["ration_pack", "fiber"], "courier": ["ration_pack", "power_cell", "binoculars"],
 }
@@ -222,7 +224,8 @@ static func gift_for(rec: Dictionary) -> Dictionary:
 const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion", "lockpick", "apple",
 		"candle", "dice", "bandage_linen", "letter_sealed", "sausage"],
 	["glowberry", "bread", "moonpearl", "rune_tablet", "health_potion", "aether_crystal"],
-	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick"]]
+	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick", "jerky",
+		"rounds", "cards_deck", "harmonica", "photo_frame", "telegraph_key", "gramophone_record", "cigar_box", "biscuit_hard"]]
 const POCKETS_EVERY := 3 ## days before their pockets fill again
 
 ## What this person carries that a quick hand could lift (not their purse, not worn gear).
