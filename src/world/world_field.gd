@@ -26,6 +26,7 @@ var _cell_v: FastNoiseLite
 var _cell_e: FastNoiseLite
 var _warmth: FastNoiseLite
 var _wetness: FastNoiseLite
+var _tcell: FastNoiseLite
 var _wind := Vector2.RIGHT
 
 ## Terrain generation in force. Worlds created before v4 keep the older shapes, so chunks
@@ -55,6 +56,9 @@ func _init(world_seed: int) -> void:
 	_cell_e = _cellular(14, FastNoiseLite.RETURN_DISTANCE2_SUB)
 	_warmth = _noise(15, 1.0 / 7500.0, 3, FastNoiseLite.FRACTAL_FBM)
 	_wetness = _noise(16, 1.0 / 3200.0, 2, FastNoiseLite.FRACTAL_FBM)
+	# Where rock towers stand (v19): the distance to the nearest, its points kept
+	# further apart than the pattern above's.
+	_tcell = _cellular(17, FastNoiseLite.RETURN_DISTANCE, TOWER_JITTER)
 	_wind = Vector2.RIGHT.rotated(WHash.unit2(seed, 0, 0, 106) * TAU)
 
 func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
@@ -66,13 +70,13 @@ func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite
 	n.fractal_octaves = octaves
 	return n
 
-func _cellular(salt: int, ret: int) -> FastNoiseLite:
+func _cellular(salt: int, ret: int, jitter := 0.85) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_CELLULAR
 	n.seed = WHash.hash2(seed, salt, 0, 1) & 0x7FFFFFFF
 	n.frequency = 1.0 / CELL
 	n.fractal_type = FastNoiseLite.FRACTAL_NONE
-	n.cellular_jitter = 0.85
+	n.cellular_jitter = jitter
 	n.cellular_return_type = ret
 	return n
 
@@ -485,6 +489,101 @@ static func _steps(h: float, step: float, riser := 0.25) -> float:
 	var f := floorf(t)
 	return (f + smoothstep(1.0 - riser, 1.0, t - f)) * step
 
+# --- Rock towers (v19) ----------------------------------------------------------
+## From v19 karst towers and rock needles stand the way real ones do. Before it each
+## tower took its size from its Voronoi cell and was cut off where the cell ended, so
+## a tall tower crowded by a neighbour became a thin sheer fin as tall as a thirty-
+## storey block, and lone needles rose three times as tall as they were wide straight
+## out of flat grass. Now:
+##  - a tower's height and width come from smooth fields, not from its cell, and each
+##    point of land takes the highest of the towers round it, so two that crowd each
+##    other merge into one massif with a saddle between their tops, never a cut;
+##  - no tower is taller than TOWER_ASPECT (karst) or NEEDLE_ASPECT times its width at
+##    the foot, and none rises more than about 50 m over the valley floor;
+##  - towers grow in clusters, tallest in the heart of one and dwindling to knolls at
+##    its edges, with open valleys between clusters; never one needle alone on a plain;
+##  - each stands in an apron of fallen rock (talus at about the angle of repose), its
+##    walls jointed and ledged, its top broken.
+const TOWERS_V := 19
+const TOWER_JITTER := 0.6
+const TOWER_ASPECT := 1.4
+const NEEDLE_ASPECT := 2.0
+
+## Distance in metres to the nearest tower on a pattern of towers `size` metres apart
+## (v19). Its points stand at least two fifths of `size` apart.
+func _tower_d(x: float, z: float, size: float, off: float) -> float:
+	var k := CELL / size
+	return (_tcell.get_noise_2d(x * k + off, z * k - off * 0.61) + 1.0) * size
+
+## How much a cluster of towers grows at (x, z), 0..1: patches a couple of hundred
+## metres across, so a tower's top barely tilts with it.
+func _tower_mass(x: float, z: float, off: float) -> float:
+	return smoothstep(-0.35, 0.3, _hills.get_noise_2d(x * 0.7 + off, z * 0.7 - off * 0.37))
+
+## How big the towers round (x, z) are, 0..1: neighbours differ, but one tower is all
+## of a piece (features about 140 m across).
+func _tower_size(x: float, z: float, off: float) -> float:
+	return clampf((_mesa.get_noise_2d(x * 1.3 + off, z * 1.3 + off * 0.5) + 0.6) / 1.2, 0.0, 1.0)
+
+## A tower's apron of fallen rock out to `reach` times its radius: a concave skirt a
+## fifth of its height at the foot of the wall.
+static func _talus(tall: float, q: float, reach: float) -> float:
+	return 0.22 * tall * pow(clampf((reach - q) / (reach - 0.75), 0.0, 1.0), 1.6)
+
+func _karst_v19(x: float, z: float) -> float:
+	var d := _tower_d(x, z, 50.0, 0.0)
+	var s := _tower_size(x, z, 0.0)
+	var m := _tower_mass(x, z, 0.0)
+	var r := 10.0 + 8.0 * s
+	var tall := minf(24.0 + 30.0 * s, TOWER_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.55 + 0.45 * m)
+	if tall < 0.5 or d > r * 2.0:
+		return 0.0
+	# Weathered limestone: vertical joints flute the walls, bedding planes step them in
+	# ledges, the crown is broken and none stands quite straight. The warps scale with
+	# the tower, so a small one isn't eaten away.
+	var w := r / 18.0
+	var lean := _moss.get_noise_2d(x * 0.7 + 300.0, z * 0.7) * 2.0 * w
+	var joints := (absf(_detail.get_noise_2d(x * 1.3 + 70.0, z * 1.3)) - 0.25) * 2.4 * w
+	var q := (d + _detail.get_noise_2d(x * 0.5, z * 0.5) * 2.0 * w) / r
+	var qf := maxf(q + (lean + joints) / r, 0.0)
+	var body := tall * (1.0 - pow(minf(qf, 1.0), 2.6))
+	var crown := _detail.get_noise_2d(x * 0.35 + 11.0, z * 0.35) * 0.08 * tall
+	var tier := 5.0 + 4.0 * (_mesa.get_noise_2d(x * 0.9 - 70.0, z * 0.9) + 1.0) * 0.5
+	var stepped := _steps(body + crown + _detail.get_noise_2d(x * 0.8 + 5.0, z * 0.8) * 1.2, tier, 0.35)
+	var tower := maxf(lerpf(body, stepped, 0.75), 0.0)
+	return maxf(tower, _talus(tall, q, 2.0) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 1.7 - 40.0, z * 1.7) + 1.0) * 0.5))
+
+func _needles_v19(x: float, z: float) -> float:
+	var d := _tower_d(x, z, 40.0, 517.0)
+	var s := _tower_size(x, z, 517.0)
+	var m := _tower_mass(x, z, 517.0)
+	var r := 7.0 + 5.0 * s
+	var tall := minf(20.0 + 30.0 * s, NEEDLE_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.5 + 0.5 * m)
+	if tall < 0.5:
+		return 0.0
+	var w := r / 12.0
+	var bumps := _detail.get_noise_2d(x, z) * 1.0 + _moss.get_noise_2d(x * 0.7, z * 0.7) * 2.0
+	var spike := 0.0
+	if d < r * 2.1:
+		# Fluted sides, a body narrowing in tilted, ledged tiers and a broken tip.
+		var q := maxf((d + bumps * w) / r, 0.0)
+		var qf := maxf(q + (absf(_detail.get_noise_2d(x * 1.6 + 40.0, z * 1.6)) - 0.3) * 3.0 * w / r, 0.0)
+		var body := tall * pow(maxf(0.0, 1.0 - qf), 1.15)
+		var tier := 4.0 + 4.0 * (_mesa.get_noise_2d(x * 0.9 + 333.0, z * 0.9) + 1.0) * 0.5
+		var warped := body + _detail.get_noise_2d(x * 0.9 + 17.0, z * 0.9) * 2.0
+		spike = lerpf(body, _steps(warped, tier, 0.4), 0.8)
+		spike = minf(spike, tall * (0.84 + 0.1 * _detail.get_noise_2d(x * 0.2 - 60.0, z * 0.2)))
+		spike = maxf(spike, _talus(tall, q, 2.1) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 1.7 + 90.0, z * 1.7) + 1.0) * 0.5))
+	# Lesser spires crowd round the feet of the big ones.
+	var near := 1.0 - smoothstep(r * 1.2, r * 2.6, d)
+	if near > 0.0:
+		var d2 := _tower_d(x, z, 17.0, 2203.0)
+		var r2 := 3.5 + 2.5 * _tower_size(x, z, 2203.0)
+		var q2 := maxf((d2 + bumps * 0.4) / r2, 0.0)
+		var tall2 := minf(0.45 * tall, NEEDLE_ASPECT * 2.0 * r2) * near
+		spike = maxf(spike, maxf(tall2 * pow(maxf(0.0, 1.0 - q2), 1.3), _talus(tall2, q2, 1.8)))
+	return spike
+
 ## (base, holes, rough) of one landform; c is the continental height, h the land the
 ## era alone would have.
 func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
@@ -493,6 +592,8 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			# Limestone towers with sheer sides and rounded, wooded tops over flat green
 			# valley floors (Guilin, Zhangjiajie).
 			var base := c * 0.55 + 3.0 + _moss.get_noise_2d(x, z) * 2.5
+			if terrain_v >= TOWERS_V:
+				return Vector3(base, 0.0, _karst_v19(x, z))
 			var cl := _cell(x, z, 42.0, 0.0)
 			if cl.y < 0.42:
 				return Vector3(base, 0.0, 0.0)
@@ -519,6 +620,8 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_NEEDLES:
 			# Thin pointed rock needles.
 			var base := c * 0.7 + _moss.get_noise_2d(x, z) * 3.0 - 3.0
+			if terrain_v >= TOWERS_V:
+				return Vector3(base, 0.0, _needles_v19(x, z))
 			var cl := _cell(x, z, 34.0, 517.0)
 			if cl.y < 0.5:
 				return Vector3(base, 0.0, 0.0)
