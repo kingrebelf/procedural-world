@@ -256,7 +256,7 @@ func _bark(n: NPC, line: String, dist: float) -> void:
 		return
 	n.say(line)
 	if AI.get_value("voice_barks"):
-		Voice.speak(n.rec, line, dist, false)
+		Voice.speak(n.rec, line, dist, false, n)
 
 ## Someone fond of you hands over a little present.
 func _give_gift(n: NPC) -> void:

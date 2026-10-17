@@ -950,6 +950,50 @@ func test_speech_to_text_request() -> void:
 	check(svc.parse_transcription(200, "{\"text\": \" hello there \"}")["text"] == "hello there", "transcription parsed")
 	check(not svc.parse_transcription(401, "{\"error\": {\"message\": \"bad key\"}}")["ok"], "errors reported")
 
+func test_voice_and_quick_replies() -> void:
+	var rec := {"id": "q1", "name": "Edda Thorne", "job": "farmer", "era": 0, "rel": 30, "mood": "calm", "age": 40,
+		"body": {"female": true}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
+	check(Interject.pick_local(rec, "Can you dance for me?") == "yes", "a request they'd do gets a quick yes")
+	var cross := rec.duplicate(true)
+	cross["mood"] = "angry"
+	check(Interject.pick_local(cross, "Can you dance for me?") == "no", "an angry person refuses at once")
+	check(Interject.pick_local(rec, "What do you think about the old ruins up on the hill?") == "think", "a real question gets a thinking pause")
+	check(Interject.pick_local(rec, "hello") == "greet", "greeting")
+	check(Interject.pick_local(rec, "thank you") == "thanks", "thanks")
+	check(Interject.pick_local(rec, "you are an idiot") == "offended", "rudeness")
+	var shy := rec.duplicate(true)
+	shy["traits"] = {"friendly": 0.1, "brave": 0.5, "curious": 0.1, "diligent": 0.5, "greedy": 0.5}
+	check(Interject.pick_local(shy, "nice weather") == "none", "quiet people just wait")
+	check(Interject.line(rec, "think") == Interject.line(rec, "think"), "each person keeps their phrasing")
+	check(Interject.line(rec, "none") == "", "silence says nothing")
+	check(Interject.parse_pick("{\"pick\": \"no\"}") == "no", "service pick parsed")
+	check(Interject.parse_pick("{\"pick\": \"sing a song\"}") == "", "only pre-approved kinds are accepted")
+	check(Interject.request_body(rec, "hi", "greet")["lines"]["think"] == Interject.line(rec, "think"), "service sees the actual lines")
+	var svc = load("res://src/ai/ai_service.gd")
+	var req: Dictionary = svc.build_speech({"url": "https://api.openai.com/v1/audio/speech", "key": "k", "model": "gpt-4o-mini-tts"}, "Hello.", {"voice": "coral", "instructions": "Scottish", "speed": 1.1})
+	var body = JSON.parse_string(req["body"])
+	check(body["voice"] == "coral" and body["instructions"] == "Scottish" and body["response_format"] == "pcm", "speech request for gpt-4o-mini-tts")
+	check(not body.has("speed"), "no speed with directions")
+	check(req["headers"].has("Authorization: Bearer k"), "voice key sent")
+	body = JSON.parse_string(svc.build_speech({"url": "http://127.0.0.1:8880/v1/audio/speech", "key": "", "model": "kokoro"}, "Hi", {"voice": "bf_emma", "instructions": "x", "speed": 1.1})["body"])
+	check(not body.has("instructions") and is_equal_approx(float(body["speed"]), 1.1), "kokoro gets speed, not directions")
+	var pcm := PackedByteArray()
+	pcm.resize(4800)
+	var a: AudioStream = svc.audio_from_bytes(pcm)
+	check(a is AudioStreamWAV and (a as AudioStreamWAV).mix_rate == 24000, "raw PCM plays at 24 kHz")
+	var wav := Microphone.wav_bytes(pcm, 16000)
+	wav.encode_u32(40, 0xFFFFFFFF) # streamed WAVs carry bogus sizes
+	a = svc.audio_from_bytes(wav)
+	check(a is AudioStreamWAV and (a as AudioStreamWAV).mix_rate == 16000 and (a as AudioStreamWAV).data.size() == 4800, "WAV with a bogus size")
+	check(svc.parse_windows_stt("junk\nOK: hello there\n")["text"] == "hello there", "Windows recogniser output")
+	check(not svc.parse_windows_stt("ERR:no recogniser")["ok"], "Windows recogniser error")
+	check(not svc.parse_windows_stt("OK:")["ok"], "Windows recogniser heard nothing")
+	var loud := PackedByteArray()
+	loud.resize(800)
+	check(Microphone.peak(loud) == 0.0, "silence has no peak")
+	loud.encode_s16(400, -16384)
+	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
+
 func test_outfits() -> void:
 	if not HumanModel.available():
 		return
