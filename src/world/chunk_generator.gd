@@ -844,6 +844,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		"biome": field.region_hash_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 		"keep_out": PackedFloat32Array(),
 	}
+	if WorldField.terrain_v >= WorldField.CLIMATE_V:
+		_biome_mix(chunk, x0, z0)
 	if has_river:
 		chunk["river"] = river
 	if not look.is_empty():
@@ -1009,6 +1011,86 @@ static func _look_lerp(lb: PackedByteArray, lx: float, lz: float, b: int) -> flo
 	return lerpf(lerpf(lb[k], lb[k + LOOK_BYTES], fx), lerpf(lb[k2], lb[k2 + LOOK_BYTES], fx), fz) / 255.0
 
 ## How much of the ground here is loose wind-blown sand (1 deep in dunes, 0 elsewhere).
+## v18: how the regions meet over a chunk, so its grass and undergrowth blend from one
+## region's into the next as its trees do: "biomes" the hashes of the regions present,
+## "biome_mix" a MIX_N x MIX_N grid (every 8 m, both edges included so neighbouring
+## chunks agree) of [the nearest region's index, the next's, the next's share * 510].
+const MIX_N := 9
+
+func _biome_mix(chunk: Dictionary, x0: float, z0: float) -> void:
+	var hashes: Array = []
+	var mix := PackedByteArray()
+	mix.resize(MIX_N * MIX_N * 3)
+	var step := SIZE / (MIX_N - 1)
+	for j in MIX_N:
+		for i in MIX_N:
+			var b := field.region_blend(x0 + i * step, z0 + j * step)
+			var k := (j * MIX_N + i) * 3
+			for n in 2:
+				var at := hashes.find(b[n])
+				if at < 0:
+					at = hashes.size()
+					hashes.append(b[n])
+				mix[k + n] = at
+			mix[k + 2] = int(round(float(b[2]) * 510.0))
+	chunk["biomes"] = hashes
+	chunk["biome_mix"] = mix
+
+## The region whose plants grow at (lx, lz) in a chunk: chunk["biome"] in chunks made
+## before v18; after, near a region's edge now and then the neighbour's (u: a uniform
+## roll), the more often the nearer the edge.
+static func biome_pick(chunk: Dictionary, lx: float, lz: float, u: float) -> int:
+	var mix: PackedByteArray = chunk.get("biome_mix", PackedByteArray())
+	if mix.is_empty():
+		return chunk["biome"]
+	var step := SIZE / (MIX_N - 1)
+	var k := (clampi(int(round(lz / step)), 0, MIX_N - 1) * MIX_N + clampi(int(round(lx / step)), 0, MIX_N - 1)) * 3
+	var hs: Array = chunk["biomes"]
+	return hs[mix[k + 1]] if u < mix[k + 2] / 510.0 else hs[mix[k]]
+
+## A chunk's regions' Biome.params `keys` blended at each point of its biome_mix grid:
+## MIX_N * MIX_N rows of floats (a colour takes three, r g b), for sampling with
+## mix_sample. Empty for chunks made before v18.
+static func biome_mix_grid(chunk: Dictionary, era: int, keys: Array) -> Array:
+	var mix: PackedByteArray = chunk.get("biome_mix", PackedByteArray())
+	if mix.is_empty():
+		return []
+	var hs: Array = chunk["biomes"]
+	var per: Array = []
+	for h in hs:
+		var bp := Biome.params(h, era)
+		var vals: Array = []
+		for key in keys:
+			var v = bp[key]
+			if v is Color:
+				vals.append_array([v.r, v.g, v.b])
+			else:
+				vals.append(float(v))
+		per.append(vals)
+	var out: Array = []
+	for c in MIX_N * MIX_N:
+		var a: Array = per[mix[c * 3]]
+		var b: Array = per[mix[c * 3 + 1]]
+		var t := mix[c * 3 + 2] / 510.0
+		var row: Array = []
+		for n in a.size():
+			row.append(lerpf(a[n], b[n], t))
+		out.append(row)
+	return out
+
+## Value n of a biome_mix_grid at (lx, lz), bilinear between its points.
+static func mix_sample(grid: Array, lx: float, lz: float, n: int) -> float:
+	var step := SIZE / (MIX_N - 1)
+	var fx := clampf(lx / step, 0.0, MIX_N - 1.001)
+	var fz := clampf(lz / step, 0.0, MIX_N - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	var tx := fx - i
+	var tz := fz - j
+	var a := lerpf(grid[j * MIX_N + i][n], grid[j * MIX_N + i + 1][n], tx)
+	var b := lerpf(grid[(j + 1) * MIX_N + i][n], grid[(j + 1) * MIX_N + i + 1][n], tx)
+	return lerpf(a, b, tz)
+
 static func sand_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
@@ -1187,7 +1269,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var yield_ := r.randi_range(3, 6)
 		var variant := r.randi() % Flora.VARIANTS
 		var pick := r.randf()
-		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+		var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
@@ -1215,7 +1297,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var yield_ := r.randi_range(4, 7)
 			var variant := r.randi() % Flora.VARIANTS
 			var pick := r.randf()
-			var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+			var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
 			if landforms:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
@@ -1243,7 +1325,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var pick := r.randi()
 		if _near_settlement(x0 + lx, z0 + lz, sites, 0.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5 or by_river(chunk, lx, lz):
 			continue
-		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+		var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
 			var lf := field.landform_at(x0 + lx, z0 + lz)

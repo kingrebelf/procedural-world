@@ -2256,6 +2256,27 @@ func test_climates() -> void:
 		break
 	check(ObjectLibrary.kind("palm") == "tree" and ObjectLibrary.kind("tropic") == "tree" and Durability.TABLE.has("palm"), "palms can be felled")
 	check(FarLand.FORMS["palm"] == FarLand.FORM_PALM, "distant palms stand as palms")
+	# Regions meet in a band of mixed plants, not on a line: walking from one site to the
+	# next, the neighbour's share rises from none to half at the line.
+	var s0 := g.field.site_pos(3, 2)
+	var s1 := g.field.site_pos(4, 2)
+	var shares := []
+	for k in 81:
+		var p := s0.lerp(s1, k / 80.0)
+		var bl := g.field.region_blend(p.x, p.y)
+		shares.append(float(bl[2]))
+	var steady := true
+	for k in range(1, 81):
+		steady = steady and absf(float(shares[k]) - float(shares[k - 1])) < 0.2
+	check(float(shares[0]) == 0.0 and shares.max() > 0.4 and steady, "regions blend gradually (%s)" % [shares])
+	var ca := g.generate(20, 7)
+	var cb := g.generate(21, 7)
+	var agree := ca.has("biome_mix") and cb.has("biome_mix")
+	for j in ChunkGenerator.MIX_N:
+		agree = agree and ChunkGenerator.biome_pick(ca, 64.0, j * 8.0, 0.3) == ChunkGenerator.biome_pick(cb, 0.0, j * 8.0, 0.3)
+	check(agree, "neighbouring chunks agree on how their regions blend")
+	var grid := ChunkGenerator.biome_mix_grid(ca, Eras.MEDIEVAL, ["grass_tint", "lush", "grass_density"])
+	check(grid.size() == ChunkGenerator.MIX_N * ChunkGenerator.MIX_N and grid[0].size() == 5, "grass blends tint, lushness and thickness")
 	WorldField.terrain_v = was
 
 func test_kit_flora() -> void:

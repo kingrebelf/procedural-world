@@ -186,10 +186,56 @@ func region_site_at(x: float, z: float) -> Vector2i:
 ## region's hash (a saved chunk's "biome" too) knows how warm and wet it is.
 func region_hash_at(x: float, z: float) -> int:
 	var s := region_site_at(x, z)
-	var h := WHash.hash2(seed, s.x, s.y, 104)
+	return _site_hash(s.x, s.y)
+
+func _site_hash(ix: int, iz: int) -> int:
+	var h := WHash.hash2(seed, ix, iz, 104)
 	if terrain_v >= CLIMATE_V:
-		h = (h & ~0xF) | int(_site(s.x, s.y)[3])
+		h = (h & ~0xF) | int(_site(ix, iz)[3])
 	return h
+
+## How far either side of the line where two regions meet their plants mix (v18): tens of
+## metres of mixed woods and grass between one region and the next, never a hard line.
+const BLEND := 80.0
+
+## The two regions nearest (x, z) and how far into the band between them it is: [the
+## nearest's hash, the next's hash, the next's share (0 deep in the nearest, 0.5 right
+## on the line between them)].
+func region_blend(x: float, z: float) -> Array:
+	var px := x + _warp.get_noise_2d(x, z) * WARP_AMP
+	var pz := z + _warp.get_noise_2d(z + 913.0, x - 377.0) * WARP_AMP
+	var cx := int(floor(px / ERA_CELL))
+	var cz := int(floor(pz / ERA_CELL))
+	var p := Vector2(px, pz)
+	var best := Vector2i.ZERO
+	var next := Vector2i.ZERO
+	var d1 := INF
+	var d2 := INF
+	for oz in range(-1, 2):
+		for ox in range(-1, 2):
+			var d := p.distance_squared_to(_site(cx + ox, cz + oz)[0])
+			if d < d1:
+				d2 = d1
+				next = best
+				d1 = d
+				best = Vector2i(cx + ox, cz + oz)
+			elif d < d2:
+				d2 = d
+				next = Vector2i(cx + ox, cz + oz)
+	# Distance to the bisector between the two sites.
+	var gap := (_site(best.x, best.y)[0] as Vector2).distance_to(_site(next.x, next.y)[0])
+	var edge := (d2 - d1) / maxf(2.0 * gap, 0.001)
+	return [_site_hash(best.x, best.y), _site_hash(next.x, next.y), 0.5 * (1.0 - smoothstep(0.0, BLEND, edge))]
+
+## The region whose plants grow at (x, z): the nearest, but near an edge now and then the
+## neighbour's, the more often the nearer the edge (v18; before, always the nearest).
+func region_hash_mixed(x: float, z: float) -> int:
+	if terrain_v < CLIMATE_V:
+		return region_hash_at(x, z)
+	var b := region_blend(x, z)
+	if float(b[2]) <= 0.0:
+		return b[0]
+	return b[1] if WHash.unit2(seed, int(floor(x * 2.0)), int(floor(z * 2.0)), 109) < float(b[2]) else b[0]
 
 # --- Climate (v18) ------------------------------------------------------------
 ## How warm and how wet the land is, from two slow noises several kilometres across over

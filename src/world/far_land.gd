@@ -304,7 +304,7 @@ static func build_rows(job: Dictionary, j0: int, j1: int, gen: ChunkGenerator = 
 				lt = 0.0
 				for f in WorldField.LF_COUNT:
 					lt += lw[f] * WorldField.LANDFORM_TREES[f]
-			var rh := field.region_hash_at(x, z)
+			var rh := field.region_hash_mixed(x, z)
 			var trees := 0.0
 			var tint := Color(0, 0, 0)
 			var era_t := [0.0, 0.0, 0.0]
