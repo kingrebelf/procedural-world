@@ -106,6 +106,13 @@ func _ready() -> void:
 	console = DevConsole.new()
 	console.player = player
 	ui.add_child(console)
+	if Net.is_client():
+		var others := RemotePlayers.new()
+		others.name = "OtherPlayers"
+		add_child(others)
+		var chat := ChatUI.new()
+		chat.player = player
+		ui.add_child(chat)
 
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()

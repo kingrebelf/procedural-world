@@ -222,6 +222,11 @@ func load_settlement(sx: int, sz: int):
 func save_settlement(s: Dictionary) -> bool:
 	return write_var(settlement_path(s["sx"], s["sz"]), s, true)
 
+## Whether a settlement's people can be loaded now (always, on disk; a server's
+## RemoteStore says false until they have arrived).
+func prefetch_settlement(_site: Dictionary) -> bool:
+	return true
+
 ## Same rule as chunks: people are created the first time their settlement is seen,
 ## saved at once, and from then on only ever loaded.
 func get_or_create_settlement(gen: ChunkGenerator, site: Dictionary) -> Dictionary:

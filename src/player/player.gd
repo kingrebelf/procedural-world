@@ -106,7 +106,7 @@ func _ready() -> void:
 	ray.add_exception(self)
 	camera.add_child(ray)
 	viewmodel = Viewmodel.new()
-	viewmodel.look = LOOK
+	viewmodel.look = Net.my_look()
 	camera.add_child(viewmodel)
 	hand_light = HandLight.new()
 	camera.add_child(hand_light)
@@ -116,7 +116,7 @@ func _ready() -> void:
 	gunplay.gun_event.connect(_gun_sound)
 	if HumanModel.available():
 		body = HumanModel.new()
-		body.build(LOOK, Eras.MEDIEVAL, "")
+		body.build(Net.my_look(), Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
 		body.set_ground(Callable(), [get_rid()])
