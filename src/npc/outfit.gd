@@ -926,7 +926,8 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 		if not cols.has(part):
 			cols[part] = cols.get(PART_SHIRT, Color(0.5, 0.4, 0.3, 0.0))
 	cols[PART_BOOTS] = fab.call(pick.call(BOOTS) if era != Eras.SCIFI else pick.call([Color(0.14, 0.15, 0.17), Color(0.3, 0.24, 0.17)]), FAB_LEATHER)
-	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim}
+	# "child" tells HumanModel these clothes were cut for a child, so it keeps them.
+	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim, "child": is_child(b, job)}
 
 ## Whether this person is a child or a teenager (they dress as one, never in adult gear).
 static func is_child(b: Dictionary, job: String) -> bool:

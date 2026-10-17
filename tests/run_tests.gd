@@ -1570,6 +1570,7 @@ func test_wardrobes() -> void:
 		for era in [Eras.MEDIEVAL, Eras.FANTASY, Eras.SCIFI]:
 			var w := Outfit.wardrobe(p["body"], era, "child")
 			var sp: Dictionary = w["spec"]
+			check(w["child"], "a child's wardrobe says it was cut for a child")
 			check(sp["vest"] == 0 and sp["apron"] == 0.0 and not sp["bib"] and sp["cape"] == 0.0 and not sp.has("pouch") and not sp.get("open", false),
 				"a child wears no bodice, apron, cape, pouch or coat (%s)" % str(sp))
 			for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
