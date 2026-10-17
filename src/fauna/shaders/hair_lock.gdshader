@@ -21,14 +21,30 @@ void vertex() {
 }
 
 void fragment() {
-	// Strands across the strip, each ending at its own length.
-	float x = UV.x * 5.0;
+	// Strands across the strip, each ending at its own length. Where a strand is finer
+	// than a pixel the strip shows as one tapered lock instead (no comb of aliased
+	// slivers), and its edges are antialiased through alpha to coverage.
+	// Strands wander a little side to side down their length, so their edges don't
+	// line up into a comb.
+	float x = UV.x * 3.0 + sin(UV.y * 9.0 + lid * 40.0) * 0.18 * UV.y;
 	float si = floor(x);
 	float fx = fract(x);
-	float len = 0.5 + 0.5 * h1(si * 3.1 + lid * 17.0);
+	float fw = max(fwidth(x), 1e-4);
+	// The lock stays whole down most of its length and only parts into strands
+	// toward the tip.
+	float split = (1.0 - smoothstep(0.3, 0.8, fw)) * smoothstep(0.5, 0.8, UV.y);
+	float len = mix(0.88, 0.75 + 0.25 * h1(si * 3.1 + lid * 17.0), 1.0 - smoothstep(0.3, 0.8, fw));
 	float along = UV.y / len;
-	float half_w = 0.5 * mix(1.0, 0.15, smoothstep(0.25, 1.0, along));
-	if (along > 1.0 || abs(fx - 0.5) > half_w) discard;
+	float taper = mix(1.0, 0.55, smoothstep(0.45, 1.0, along));
+	float strand = clamp((0.5 * taper - abs(fx - 0.5)) / fw + 0.5, 0.0, 1.0);
+	// Soft edges: coverage thins out over the outer part of the lock instead of a cut.
+	float ld = 0.5 * mix(1.0, 0.45, smoothstep(0.4, 1.0, along)) - abs(UV.x - 0.5);
+	float lock = smoothstep(-max(fwidth(UV.x), 1e-4), 0.16, ld);
+	float tip = clamp((len - UV.y) / max(fwidth(UV.y), 1e-4) + 0.5, 0.0, 1.0);
+	ALPHA = mix(lock, strand, split) * tip;
+	ALPHA_SCISSOR_THRESHOLD = 0.5;
+	ALPHA_ANTIALIASING_EDGE = 0.3;
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(3.0, 1.0) * 32.0;
 	// The same shade of its kind as the rest of this animal's coat (fur.gdshader).
 	float s = seed * 0.000173;
 	vec3 c = base;
@@ -42,16 +58,16 @@ void fragment() {
 	float ph = h1(s + 6.9);
 	if (phases > 0.0 && ph < phases) c *= ph < phases * 0.5 ? phase_dark : phase_warm;
 	// Fibres down each strand, each strand its own shade, sun-bleached toward the tips.
-	float fib = sin((UV.x * 5.0 + h1(si + lid) * 0.3) * 6.2832 * 7.0) * 0.5 + 0.5;
-	float ff = 1.0 - smoothstep(0.2, 0.6, fwidth(UV.x) * 35.0);
-	c *= (0.85 + 0.3 * h1(si * 7.7 + lid * 3.0)) * (1.0 + (fib - 0.5) * 0.25 * ff);
-	c *= 1.0 + 0.15 * along;
+	float fib = sin((UV.x * 3.0 + h1(si + lid) * 0.3) * 6.2832 * 7.0) * 0.5 + 0.5;
+	float ff = 1.0 - smoothstep(0.1, 0.4, fw * 7.0);
+	c *= (1.0 + (h1(si * 7.7 + lid * 3.0) - 0.5) * 0.14 * split) * (1.0 + (fib - 0.5) * 0.06 * ff);
+	c *= 1.0 + 0.06 * along;
 	ALBEDO = clamp(c, vec3(0.0), vec3(1.0));
 	// Lit like the hair it grows from on both faces.
 	if (!FRONT_FACING) NORMAL = -NORMAL;
-	ROUGHNESS = 0.6;
+	ROUGHNESS = 0.68;
 	SPECULAR = 0.5;
-	RIM = 0.3;
+	RIM = 0.15;
 	RIM_TINT = 0.7;
 	BACKLIGHT = c * 0.25;
 }

@@ -235,12 +235,14 @@ func _unload(id: String) -> void:
 			e["decor"].queue_free()
 		settlements.erase(id)
 		return
-	if (runs(e) or e["dirty"]) and not e.get("transient", false):
+	# (At quit the store can go before the towns do: then there's nothing to save into.)
+	if (runs(e) or e["dirty"]) and not e.get("transient", false) and Game.store != null:
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
 		Game.store.save_settlement(e["data"])
 	Net.watch("t", [], [k])
-	Game.store.forget_settlement(k.x, k.y)
+	if Game.store != null:
+		Game.store.forget_settlement(k.x, k.y)
 	_arriving = _arriving.filter(func(a: Array) -> bool: return a[0] != id)
 	for n in e["nodes"]:
 		_by_id.erase(n.rec["id"])

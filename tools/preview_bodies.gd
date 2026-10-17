@@ -2,7 +2,8 @@ extends SceneTree
 ## Renders line-ups of villagers of every age, weight and build (BodyShape), front and
 ## side on, for judging body variety: slim to heavy, young to stooped and grey.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_bodies.gd -- --out=/abs/dir
-## --heads frames the heads close up (hair and faces). --walk films them walking at their
+## --heads frames the heads close up (hair and faces); --beards does the same for six men,
+## one per facial hair style (clean-shaven, stubble, moustache, goatee, short, full). --walk films them walking at their
 ## own pace, three-quarter on (sway, limp, stoop). --check runs headless and
 ## prints each body's feet height and head height (feet must stay on the ground).
 
@@ -39,12 +40,16 @@ func _run() -> void:
 	var check := false
 	var heads := false
 	var walk := false
+	var beards := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
 		elif a == "--walk":
 			walk = true
 		elif a == "--heads":
+			heads = true
+		elif a == "--beards":
+			beards = true
 			heads = true
 		elif a == "--check":
 			check = true
@@ -83,13 +88,29 @@ func _run() -> void:
 	var who: Array = []
 	for i in n:
 		who.append(HEADS[i] if heads else i)
+	# --beards: the first body of each facial hair style, among men of forty.
+	var shaved: Array = []
+	var tries := 0
+	while beards and shaved.size() < 6 and tries < 5000:
+		var b := _body(tries % LINEUP.size())
+		b["female"] = false
+		b["height"] = 0.95 + 0.00002 * tries
+		if BodyShape.beard(b, 40) == shaved.size():
+			shaved.append(b)
+		tries += 1
 	for i in n:
 		var j: int = who[i]
 		var b := _body(j)
+		var job := String(LINEUP[j][4])
+		var age := int(LINEUP[j][1])
+		if beards:
+			b = shaved[i]
+			job = "scribe"
+			age = 40
 		var h := HumanModel.new()
 		vp.add_child(h)
-		h.build(b, Eras.MEDIEVAL, String(LINEUP[j][4]), int(LINEUP[j][1]))
-		var s := BodyShape.stature(b, int(LINEUP[j][1]))
+		h.build(b, Eras.MEDIEVAL, job, age)
+		var s := BodyShape.stature(b, age)
 		h.scale = Vector3(s, s, s)
 		h.position = Vector3((i - (n - 1) * 0.5) * (0.42 if heads else 0.9), 0, 0)
 		h.set_ground(flat)
@@ -141,7 +162,7 @@ func _run() -> void:
 				print("%s %-10s %s age %d w %.2f m %.2f stoop %.2f  feet %.3f %.3f head %.2f" % [shot[0], row[4], "F" if row[0] else "M",
 					int(row[1]), sh["weight"], sh["muscle"], sh["stoop"], fl.y, fr.y, hd.y])
 			continue
-		var path := out.path_join("%s_%s.png" % ["heads" if heads else "bodies", shot[0]])
+		var path := out.path_join("%s_%s.png" % ["beards" if beards else ("heads" if heads else "bodies"), shot[0]])
 		vp.get_texture().get_image().save_png(path)
 		print("saved ", path)
 	quit()

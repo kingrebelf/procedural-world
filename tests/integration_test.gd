@@ -509,6 +509,7 @@ func _run() -> void:
 	check(far["level_lo"] <= flv and flv <= far["level_hi"] and far["level_hi"] % 10 == 9, "the band holds the zone's level (%d in %d-%d)" % [flv, far["level_lo"], far["level_hi"]])
 	check(far["level_lo"] >= zone["level_lo"], "zones further out are no lower level")
 	await _map_unit_checks()
+	await _layer_checks(world, game)
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
 	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
@@ -1997,6 +1998,29 @@ func _map_unit_checks() -> void:
 	mk.edit(pin["id"], {"name": "", "icon": "nonsense"})
 	check(pin["name"] == "Iron here" and pin["icon"] == "mine", "blank names and unknown icons are ignored")
 	check(Markers.from_data(mk.to_data()).get_by_id(pin["id"])["icon"] == "mine", "marker edits are saved")
+
+## Map overlays: each paints tiles under the minimap and lists what is in view.
+func _layer_checks(world, game) -> void:
+	var mm: Minimap = world.hud._minimap
+	for l in range(1, MapLayers.COUNT):
+		game.map.set_layer(l)
+		mm._canvas.layer_mask = 0
+		await process_frame
+		var n := 0
+		while mm._canvas.layer_mask == 0 and n < 240:
+			await process_frame
+			n += 1
+		check(mm._canvas.layer_mask != 0, "the %s overlay paints the minimap (%d frames)" % [MapLayers.NAMES[l], n])
+	check(MapLayers.sample(MapLayers.LEVELS, 3000.0, 0.0) == Eras.zone_level(3000.0, 0.0) / 10, "the level overlay follows zone levels")
+	var lv := Eras.zone_level(3000.0, 0.0)
+	var far_danger: int = MapLayers.sample(MapLayers.DANGER, 3000.0, 0.0)
+	check(lv - game.stats.level < 8 or MapLayers.category(MapLayers.DANGER, far_danger)[1] == "Deadly", "land far above your level reads as deadly (Lv %d, you %d)" % [lv, game.stats.level])
+	var rs := MapLayers.rings(MapLayers.LEVELS)
+	check(not Eras.themed() or (rs.size() >= 4 and is_equal_approx(rs[0][0], (10 - Eras.base_level) * Eras.LEVEL_STEP)), "level rings sit where the levels change (%s)" % [rs])
+	check(MapLayers.category(MapLayers.ERA, Eras.SCIFI)[1] != "", "eras have names")
+	game.map.set_layer(MapLayers.OFF)
+	await process_frame
+	check(mm._canvas.layer_mask == 0, "the overlay can be turned off")
 
 ## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
 func _menu_checks(world, game, con) -> void:

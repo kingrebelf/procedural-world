@@ -1096,9 +1096,18 @@ func _pick_era(w: PackedFloat32Array, r: float) -> int:
 
 func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: float, scale: float, st: Dictionary = {}, sp: int = 0, v: int = 0) -> void:
 	var objs: Array = chunk["objects"]
+	var y := height_at(chunk, lx, lz)
+	if type == "rock" or type in Eras.ORE_TYPES:
+		# A boulder on a slope settles to its low side. Set by the ground under its middle,
+		# its downhill edge stood clear of the ground (on a lake bed, water showed under it).
+		var lo := y
+		for k in 8:
+			var a := TAU * k / 8.0
+			lo = minf(lo, height_at(chunk, clampf(lx + cos(a) * 0.8 * scale, 0.0, SIZE - 0.01), clampf(lz + sin(a) * 0.8 * scale, 0.0, SIZE - 0.01)))
+		y = minf(y, lo + 0.05 * scale)
 	var o := {
 		"i": objs.size(), "t": type, "e": era,
-		"p": Vector3(lx, height_at(chunk, lx, lz), lz),
+		"p": Vector3(lx, y, lz),
 		"r": yaw, "s": scale, "st": st,
 	}
 	if sp != 0:
