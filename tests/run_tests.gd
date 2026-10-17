@@ -689,6 +689,21 @@ func test_batch_crafting() -> void:
 	var pick: Dictionary = Recipes.LIST.filter(func(r): return r["out"] == "pickaxe_iron")[0]
 	check(Recipes.craft_many(inv, pick, o, -1) == 10 and inv.count("pickaxe_iron") == 10, "craft all tools, one slot each")
 
+func test_craft_tabs() -> void:
+	for r in Recipes.LIST:
+		var tabs := ItemDB.craft_tabs(r["out"])
+		check(not tabs.is_empty() and tabs.all(func(t): return ItemDB.CRAFT_TABS.has(t)), "%s sorts into known tabs (%s)" % [r["out"], tabs])
+	for t in ItemDB.ITEMS:
+		if ItemDB.ITEMS[t].has("cat"):
+			check(ItemDB.CRAFT_TABS.has(ItemDB.ITEMS[t]["cat"]), "%s has a known cat" % t)
+	for pair in [["bolt", "Ammo"], ["arrow", "Ammo"], ["rounds", "Ammo"], ["helm_iron", "Armour"], ["shield_wood", "Armour"],
+			["sword_iron", "Weapons"], ["crossbow", "Weapons"], ["jet_fuel", "Fuel"], ["cooked_meat", "Food"],
+			["health_potion", "Medicine"], ["torch", "Lights"], ["speeder", "Vehicles"], ["lockpick", "Tools"],
+			["iron_ingot", "Materials"], ["forge", "Stations"], ["wall_stone", "Building"], ["chair", "Furniture"]]:
+		check(ItemDB.craft_tab(pair[0]) == pair[1], "%s is under %s (got %s)" % [pair[0], pair[1], ItemDB.craft_tab(pair[0])])
+	check(ItemDB.craft_tabs("power_cell") == ["Materials", "Ammo"], "power cells also show under Ammo")
+	check(ItemDB.craft_tabs("lantern") == ["Furniture", "Lights"], "lanterns also show under Lights")
+
 func test_build_pieces() -> void:
 	for id in BuildCatalog.PIECES:
 		var m := BuildCatalog.mesh(id)
