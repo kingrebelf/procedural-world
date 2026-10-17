@@ -150,6 +150,10 @@ func _load(site: Dictionary, id: String) -> void:
 	decor.setup(gen, streamer, site, data, Game.estates)
 	add_child(decor)
 	e["decor"] = decor
+	var life := TownLife.new()
+	life.setup(gen, streamer, site)
+	add_child(life)
+	e["life"] = life
 	# Where the town's work is done, and the anvils and crates people work at.
 	e["places"] = NPCRoles.places(gen, site, data)
 	var props := WorkProps.new()
@@ -235,6 +239,8 @@ func _unload(id: String) -> void:
 		n.queue_free()
 	if is_instance_valid(e.get("decor")):
 		e["decor"].queue_free()
+	if is_instance_valid(e.get("life")):
+		e["life"].queue_free()
 	if is_instance_valid(e.get("props")):
 		e["props"].queue_free()
 	settlements.erase(id)

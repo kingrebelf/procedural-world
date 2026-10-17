@@ -66,6 +66,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	var hs: PackedFloat32Array = chunk["heights"]
 	var wb: PackedByteArray = chunk["weights"]
 	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
+	var worn: PackedByteArray = chunk.get("worn", PackedByteArray())
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	var n := SIZE / step + 1
 	# Packed arrays held in an Array are copied on access, so the three look streams
@@ -114,6 +115,9 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			# There blue is only how paved the road is (the tech era's streets and roads).
 			var rd := rb[k] / 255.0 if not rb.is_empty() else 0.0
 			var ws := wb[wk + 2] / 255.0 * (1.0 if rd > 0.0 else 0.0) if human else wb[wk + 2] / 255.0
+			# Village paths, gardens and fields wear the ground bare too (never paved).
+			if not worn.is_empty():
+				rd = maxf(rd, worn[k] / 255.0)
 			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - rd)
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
@@ -291,8 +295,9 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key[key] = buf
 		# A room you can walk into brings its furniture (drawn up close) and any lamplit
 		# windows (from further off) as their own meshes.
-		if KitHouse.has(key) or Interiors.has(key):
-			for extra in [key + "~in", key + "~glow"] if KitHouse.has(key) or Interiors.glows(key) else [key + "~in"]:
+		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
+		if KitHouse.has(rk) or Interiors.has(rk):
+			for extra in [rk + "~in", rk + "~glow"] if KitHouse.has(rk) or Interiors.glows(rk) else [rk + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
 				eb.append_array(row)
 				by_key[extra] = eb
@@ -441,8 +446,10 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
 		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
-		# A verge of uncut grass right up to the wheel-worn edge, not a mown strip.
-		if on_road > 0.5 or (on_road > 0.3 and r.randf() < (on_road - 0.3) * 5.0):
+		var worn := TownLife.wear_at(chunk, lx, lz)
+		# A verge of uncut grass right up to the wheel-worn edge of a road, not a mown
+		# strip; trodden yards and paths thin it out gradually.
+		if on_road > 0.5 or (on_road > 0.3 and r.randf() < (on_road - 0.3) * 5.0) or worn > 0.5 or (worn > 0.0 and r.randf() < worn * 1.6):
 			continue
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
@@ -477,6 +484,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[biome_era] * lumen])
 		out[key] = buf
+	# Crops in rows in the fields and gardens of villages (TownLife).
+	TownLife.crops(chunk, out, density, plans)
 	# Waterweed on lake and sea beds, in beds of its own, thickest a couple of metres
 	# down and thinning out where the light fades. (Its own draws, so the grass above
 	# stays as it was.)

@@ -319,6 +319,8 @@ func _update_time_of_day() -> void:
 	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
 	sun_dir = dir
 	var daylight := smoothstep(-0.12, 0.25, elev)
+	# Lamps are lit in the windows as the sun goes down, and put out after sunrise.
+	Materials.set_window_light(1.0 - smoothstep(-0.02, 0.16, elev))
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)

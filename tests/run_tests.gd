@@ -3567,6 +3567,83 @@ func test_server_alliances() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
 
+# --- Lived-in villages ------------------------------------------------------------
+
+func _medieval_town(gen: ChunkGenerator) -> Dictionary:
+	var best := {}
+	for sz in range(-4, 5):
+		for sx in range(-4, 5):
+			var s := gen.settlement_at(sx, sz)
+			if not s.is_empty() and int(s["era"]) == Eras.MEDIEVAL and int(s["size"]) >= 1:
+				if best.is_empty() or (s["center"] as Vector2).length() < (best["center"] as Vector2).length():
+					best = s
+	return best
+
+func test_town_life() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var gen := ChunkGenerator.new(4242)
+	var s := _medieval_town(gen)
+	check(not s.is_empty(), "a medieval town near spawn")
+	if s.is_empty():
+		return
+	var pl := TownLife.plan(gen, s)
+	check(pl["houses"].size() >= 5, "the town's houses are known (%d)" % pl["houses"].size())
+	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
+	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
+	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	var kinds := {}
+	for e in pl["pieces"]:
+		kinds[e["k"]] = true
+	for k in ["woodpile", "garden", "fence"]:
+		check(kinds.has(k), "a town has a %s" % k)
+	# Nothing in a yard stands inside another house.
+	var inside := 0
+	for e in pl["pieces"]:
+		if not e.has("p"):
+			continue
+		for h in pl["houses"]:
+			if int(h["i"]) == int(e["house"]):
+				continue
+			var q := TownLife.world_to_frame(h["p"], h["yaw"], e["p"])
+			if absf(q.x) < float(h["w"]) * 0.5 and absf(q.y) < float(h["d"]) * 0.5:
+				inside += 1
+	check(inside == 0, "yard pieces stay out of other houses (%d inside)" % inside)
+	# The same every time (it is never saved).
+	TownLife._plans.clear()
+	var again := TownLife.plan(gen, s)
+	check(str(again["pieces"]) == str(pl["pieces"]) and str(again["fields"]) == str(pl["fields"]), "the plan follows from the seed")
+	# A field's chunk has worn ground and crops in rows among the grass.
+	var f: Dictionary = pl["fields"].filter(func(x): return x["crop"] != "fallow")[0]
+	var k := TownLife._chunk_of(Vector3(f["p"].x, 0, f["p"].y))
+	var chunk := gen.generate(k.x, k.y)
+	TownLife.annotate(gen, chunk)
+	check(chunk.has("worn") and chunk.has("crops"), "the field's chunk is worn and planted")
+	var lp: Vector2 = (f["p"] as Vector2) - Vector2(k.x, k.y) * ChunkGenerator.SIZE
+	check(TownLife.wear_at(chunk, lp.x, lp.y) > 0.3, "the field's ground is worn (%f)" % TownLife.wear_at(chunk, lp.x, lp.y))
+	var g := {}
+	TownLife.crops(chunk, g, 1.0, ChunkGenerator.keep_out(chunk))
+	var crops := 0
+	for key in g:
+		crops += (g[key] as PackedFloat32Array).size() / 16
+	check(crops > 200, "crops grow in the field (%d)" % crops)
+	# No wild tree is left standing in the field.
+	var standing := 0
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree" and not o["st"].get("gone", false):
+			var q := TownLife.world_to_frame(f["p"], f["yaw"], Vector2(o["p"].x, o["p"].z) + Vector2(k.x, k.y) * ChunkGenerator.SIZE)
+			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
+				standing += 1
+	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
+	# their own, and every build shares the plain wall's ground plan.
+	var fw := ObjectLibrary.footprint({"t": "castle_wall"})
+	check(fw.size.x > 7.0 and fw.size.y > 1.5, "a castle wall has a footprint by type alone (%s)" % fw)
+	check(ObjectLibrary.mesh_key({"t": "castle_tower", "p": Vector3(3, 0, 5), "st": {}}).begins_with("castle_tower" + Stronghold.VAR), "a placed tower picks a build")
+	# Far from any town, nothing changes.
+	var wild := gen.generate(400, 400)
+	TownLife.annotate(gen, wild)
+	check(not wild.has("worn") and not wild.has("crops"), "the wilds stay as they were")
+
 # --- Boats ---------------------------------------------------------------------------------
 
 func test_boats_on_the_water() -> void:

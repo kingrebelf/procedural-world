@@ -266,7 +266,7 @@ static func sun_windows(t: String) -> Array:
 static func glow(t: String) -> ArrayMesh:
 	var k := MeshKit.new(WHash.str_hash(t + "~glow") & 0xFFFF)
 	for xf in _plan(t)["glows"]:
-		k.box("glow_warm", xf, Vector3(1.3, 1.6, 0.04))
+		k.box("window_warm", xf, Vector3(1.3, 1.6, 0.04))
 	return k.commit(Materials.get_mat)
 
 ## Collision you can walk into: floor, four walls with the doorway left open, the roof
