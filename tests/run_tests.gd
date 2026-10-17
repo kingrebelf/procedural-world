@@ -277,6 +277,45 @@ func test_landforms() -> void:
 		check(String(ch["region"]).ends_with("Pillars"), "the region is named for its landform (%s)" % ch["region"])
 		# (The terrain mesh built from it is checked in the integration test: ChunkNode
 		# needs the Game autoload.)
+	# v14 needles are broken rock: more points (lesser spires and split crowns) than the
+	# smooth cones of v13, still as tall; v13 worlds keep theirs.
+	if deep.has(WorldField.LF_NEEDLES):
+		var c: Vector2 = deep[WorldField.LF_NEEDLES]
+		var peaks := {}
+		var tops := {}
+		var at13 := 0.0
+		for tv in [13, 14]:
+			WorldField.terrain_v = tv
+			var fv := WorldField.new(2024)
+			var n := 120
+			var hs := PackedFloat32Array()
+			hs.resize(n * n)
+			var lo := INF
+			for j in n:
+				for i in n:
+					hs[j * n + i] = fv.height(c.x + i - n / 2, c.y + j - n / 2)
+					lo = minf(lo, hs[j * n + i])
+			var count := 0
+			var top := -INF
+			for j in range(1, n - 1):
+				for i in range(1, n - 1):
+					var h := hs[j * n + i]
+					top = maxf(top, h - lo)
+					if h - lo < 6.0:
+						continue
+					var peak := true
+					for d in [-n - 1, -n, -n + 1, -1, 1, n - 1, n, n + 1]:
+						peak = peak and h > hs[j * n + i + d]
+					count += 1 if peak else 0
+			peaks[tv] = count
+			tops[tv] = top
+			if tv == 13:
+				at13 = fv.height(c.x, c.y)
+		print("  needles: v13 %d points, %.1f m; v14 %d points, %.1f m" % [peaks[13], tops[13], peaks[14], tops[14]])
+		check(peaks[14] > peaks[13] * 1.3, "v14 needles are broken rock, not cones (%d points vs %d)" % [peaks[14], peaks[13]])
+		check(tops[14] > tops[13] * 0.8, "v14 needles still tower (%.1f vs %.1f m)" % [tops[14], tops[13]])
+		WorldField.terrain_v = 13
+		check(WorldField.new(2024).height(c.x, c.y) == at13, "v13 worlds keep their needles")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
 func test_house_interiors() -> void:

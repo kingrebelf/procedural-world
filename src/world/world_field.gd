@@ -288,7 +288,7 @@ const LANDFORM_ODDS := [
 const LANDFORM_LOOK := [
 	[Color(0, 0, 0), 0.0, Color(0, 0, 0), 0.0, 0.0, 0.0],
 	[Color(0.66, 0.64, 0.58), 0.85, Color(0, 0, 0), 0.0, 0.0, 0.45], # karst: pale limestone
-	[Color(0.24, 0.23, 0.27), 0.9, Color(0, 0, 0), 0.0, 0.0, 0.35], # needles: dark basalt, faintly banded
+	[Color(0.33, 0.32, 0.34), 0.9, Color(0, 0, 0), 0.0, 0.0, 0.45], # needles: basalt (real basalt is about 0.1 albedo, so it still shows in shade), faintly banded
 	[Color(0.6, 0.58, 0.52), 0.8, Color(0, 0, 0), 0.0, 0.0, 0.6], # sinkholes: limestone
 	[Color(0.55, 0.5, 0.48), 0.75, Color(0, 0, 0), 0.0, 0.0, 0.0], # crags: granite
 	[Color(0.68, 0.4, 0.25), 0.9, Color(0.62, 0.45, 0.3), 0.35, 0.0, 1.0], # gorges: red sandstone
@@ -403,6 +403,22 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 				bumps += _moss.get_noise_2d(x * 0.7, z * 0.7) * 3.0 + _detail.get_noise_2d(x * 3.2 + 91.0, z * 3.2) * 0.8
 			var q := clampf((cl.x + bumps) / r, 0.0, 2.0)
 			var spike := (26.0 + 50.0 * t) * pow(maxf(0.0, 1.0 - q), 1.7) + 3.0 * (1.0 - smoothstep(0.7, 1.6, q))
+			if terrain_v >= 14:
+				# v14: broken rock, not cones. Fluted sides (sharp creases where a noise
+				# crosses zero), a fuller body that narrows in tilted, ledged tiers (each
+				# needle its own tier height), and lesser spires crowding round the feet
+				# of the big ones.
+				var qf := clampf(q + (absf(_detail.get_noise_2d(x * 1.6 + 40.0, z * 1.6)) - 0.3) * 4.0 / r, 0.0, 2.0)
+				var body := (26.0 + 50.0 * t) * pow(maxf(0.0, 1.0 - qf), 1.3)
+				var tier := 5.0 + 4.0 * fposmod(cl.y * 37.0, 1.0)
+				var warped := body + _detail.get_noise_2d(x * 0.9 + 17.0, z * 0.9) * 2.5
+				spike = lerpf(body, _steps(warped, tier, 0.4), 0.85) + 3.0 * (1.0 - smoothstep(0.7, 1.6, q))
+				var c2 := _cell(x, z, 15.0, 2203.0)
+				if c2.y > 0.45:
+					var t2 := (c2.y - 0.45) / 0.55
+					var q2 := clampf((c2.x + bumps * 0.6) / (3.5 + 2.5 * t2), 0.0, 1.0)
+					var near := 1.0 - smoothstep(r * 1.2, r * 2.6, cl.x)
+					spike = maxf(spike, (8.0 + 20.0 * t2) * near * pow(1.0 - q2, 1.5) * smoothstep(0.0, 2.0, c2.z))
 			return Vector3(base, 0.0, spike * smoothstep(0.0, 3.0, cl.z))
 		LF_SINKHOLES:
 			# A raised plain pocked with round, sheer-sided sinkholes; the deepest hold water.
