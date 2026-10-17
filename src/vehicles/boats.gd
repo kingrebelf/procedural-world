@@ -15,17 +15,18 @@ const KEY_BASE := 1 << 24
 const SPAWNED_BASE := 1 << 26 ## boats put in the water at runtime (Boats.spawn), not saved
 
 ## len: hull length (m). open: open water needed around the anchor (m radius).
-## moves: m/s along its loop (0 = lies at anchor). crew: [min, max] people.
+## moves: m/s along its loop (0 = lies at anchor). rest: share of the time she lies at
+## anchor between passages (rafts just drift). crew: [min, max] people.
 ## jobs: the crew's jobs, first is the skipper. walk_in: has decks and a cabin to go into.
 const KINDS := {
 	"raft": {"name": "Raft", "era": Eras.MEDIEVAL, "len": 3.4, "open": 40.0, "moves": 0.25, "crew": [1, 1], "jobs": ["castaway"]},
-	"rowboat": {"name": "Rowboat", "era": Eras.MEDIEVAL, "len": 4.4, "open": 40.0, "moves": 1.1, "crew": [1, 2], "jobs": ["fisher", "fisher"]},
-	"fishing_boat": {"name": "Fishing Boat", "era": Eras.MEDIEVAL, "len": 8.0, "open": 80.0, "moves": 2.2, "crew": [2, 3], "jobs": ["fisher", "fisher", "deckhand"]},
-	"cog": {"name": "Cog", "era": Eras.MEDIEVAL, "len": 20.0, "open": 130.0, "moves": 0.0, "crew": [4, 6], "walk_in": true,
+	"rowboat": {"name": "Rowboat", "era": Eras.MEDIEVAL, "len": 4.4, "open": 40.0, "moves": 1.3, "rest": 0.35, "crew": [1, 2], "jobs": ["fisher", "fisher"]},
+	"fishing_boat": {"name": "Fishing Boat", "era": Eras.MEDIEVAL, "len": 8.0, "open": 80.0, "moves": 2.6, "rest": 0.4, "crew": [2, 3], "jobs": ["fisher", "fisher", "deckhand"]},
+	"cog": {"name": "Cog", "era": Eras.MEDIEVAL, "len": 20.0, "open": 130.0, "moves": 2.6, "rest": 0.3, "crew": [4, 6], "walk_in": true,
 		"jobs": ["captain", "sailor", "sailor", "ship's cook", "deckhand", "lookout"]},
 	"life_raft": {"name": "Life Raft", "era": Eras.SCIFI, "len": 3.0, "open": 60.0, "moves": 0.2, "crew": [1, 2], "jobs": ["castaway", "castaway"]},
-	"launch": {"name": "Motor Launch", "era": Eras.SCIFI, "len": 7.5, "open": 80.0, "moves": 4.5, "crew": [1, 2], "jobs": ["boat pilot", "fisher"]},
-	"research_vessel": {"name": "Research Vessel", "era": Eras.SCIFI, "len": 26.0, "open": 150.0, "moves": 0.0, "crew": [4, 6], "walk_in": true,
+	"launch": {"name": "Motor Launch", "era": Eras.SCIFI, "len": 7.5, "open": 80.0, "moves": 5.0, "rest": 0.3, "crew": [1, 2], "jobs": ["boat pilot", "fisher"]},
+	"research_vessel": {"name": "Research Vessel", "era": Eras.SCIFI, "len": 26.0, "open": 150.0, "moves": 3.2, "rest": 0.45, "crew": [4, 6], "walk_in": true,
 		"jobs": ["captain", "marine biologist", "ship engineer", "deckhand", "medic", "deckhand"]},
 }
 const SHIP_NAMES := [
@@ -84,10 +85,10 @@ static func plan(field: WorldField, cx: int, cz: int) -> Dictionary:
 	var d: Dictionary = KINDS[kind]
 	var ne: int = clampi(int(d["era"]), 0, 2)
 	var names: Array = SHIP_NAMES[1 if era == Eras.FANTASY and ne == Eras.MEDIEVAL else ne]
-	# Loops stay well clear of the shore.
+	# Loops stay well clear of the shore (pose_at's wobble widens them by up to a tenth).
 	var loop := 0.0
 	if float(d["moves"]) > 0.0:
-		loop = clampf(clear * 0.6 - float(d["len"]) * 0.5, 0.0, 120.0)
+		loop = clampf(clear * 0.68 - float(d["len"]) * 0.5, 0.0, 200.0)
 	return {"boat": kind, "sx": KEY_BASE + cx, "sz": KEY_BASE + cz, "cx": cx, "cz": cz, "center": anchor, "era": int(d["era"]),
 		"land_era": era, "area": area, "clear": clear, "loop": loop, "phase": r.randf() * TAU, "dir": 1.0 if r.randf() < 0.5 else -1.0,
 		"yaw": r.randf() * TAU, "name": names[r.randi() % names.size()], "faction": "folk", "seed": r.randi(),
@@ -191,23 +192,47 @@ static func open_radius(field: WorldField, x: float, z: float) -> float:
 	return 280.0
 
 ## Where the boat is at world time `t` (seconds) along its loop: [Vector2 position, yaw].
-## Anchored boats swing gently on their cable.
+## Boats sail a passage round their loop, slowing to a stop, lie at anchor a while
+## (swinging on the cable), then get under way again. Anchored boats only swing.
 static func pose_at(site: Dictionary, t: float) -> Array:
 	var d: Dictionary = KINDS[site["boat"]]
 	var c: Vector2 = site["center"]
 	var v := float(d["moves"])
 	var loop := float(site.get("loop", 0.0))
+	var ph := float(site["phase"])
 	if v <= 0.0 or loop <= 0.0:
-		var sw := sin(t * 0.021 + float(site["phase"])) * 0.18
+		var sw := sin(t * 0.021 + ph) * 0.18
 		return [c, float(site["yaw"]) + sw]
-	# An ellipse (wider one way), sailed at about v m/s.
+	var dist := v * t
+	var swing := 0.0
+	var rf := float(d.get("rest", 0.0))
+	if rf > 0.0:
+		# Each cycle: S seconds sailing (speeding up and slowing down over T), R at anchor.
+		var S := 180.0 + 120.0 * fposmod(ph * 7.3, 1.0)
+		var R := S * rf / (1.0 - rf)
+		var T := minf(clampf(float(d["len"]) * 1.2, 6.0, 30.0), S / 3.0)
+		var n := floorf(t / (S + R))
+		var r := t - n * (S + R)
+		dist = n * v * (S - T)
+		if r < T:
+			dist += v * r * r / (2.0 * T)
+		elif r < S - T:
+			dist += v * (r - T * 0.5)
+		elif r < S:
+			dist += v * (S - T) - v * (S - r) * (S - r) / (2.0 * T)
+		else:
+			dist += v * (S - T)
+			swing = sin(PI * (r - S) / R) * 0.2
+	# An ellipse (wider one way) with a slow wobble, so the course isn't a perfect ring.
 	var dir := float(site.get("dir", 1.0))
-	var a := float(site["phase"]) + dir * t * v / loop
 	var e := 0.65
-	var p := c + Vector2(cos(a) * loop, sin(a) * loop * e).rotated(float(site["yaw"]))
-	var tan := Vector2(-sin(a) * loop, cos(a) * loop * e).rotated(float(site["yaw"])) * dir
+	var a := ph + dir * dist / (loop * 0.83) # 0.83: the ellipse's mean radius
+	var w := 1.0 + 0.1 * sin(2.0 * a + ph * 3.0)
+	var dw := 0.2 * cos(2.0 * a + ph * 3.0)
+	var p := c + Vector2(cos(a) * w, sin(a) * w * e).rotated(float(site["yaw"])) * loop
+	var tan := Vector2(-sin(a) * w + cos(a) * dw, e * (cos(a) * w + sin(a) * dw)).rotated(float(site["yaw"])) * dir
 	# Boats face -z: yaw is the heading's angle from -z.
-	return [p, atan2(-tan.x, -tan.y)]
+	return [p, atan2(-tan.x, -tan.y) + swing]
 
 ## World seconds the boats run on: the in-game clock, so everyone online agrees.
 static func world_time(day: float, day_seconds: float) -> float:

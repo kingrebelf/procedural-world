@@ -11,7 +11,7 @@ const SHOTS := {
 	"rowboat": [[Vector3(5, 2.6, 4), Vector3(0, 0.3, 0)], [Vector3(-1.6, 2.2, 3.6), Vector3(0, 0.2, -0.5)], [Vector3(4.5, 1.4, -1.5), Vector3(0, 0.5, 0.4)]],
 	"fishing_boat": [[Vector3(9, 4, 8), Vector3(0, 2.0, 0)], [Vector3(-1.2, 2.3, 4.2), Vector3(0, 1.0, -2)]],
 	"cog": [[Vector3(22, 9, 18), Vector3(0, 4, 0)], [Vector3(-14, 5, -16), Vector3(0, 3, 0)], [Vector3(1.8, 3.4, -4.5), Vector3(0, 3.0, 6)],
-		[Vector3(-1.5, 3.3, 5.2), Vector3(1.2, 2.0, 8.5)], [Vector3(14, 1.2, 1), Vector3(0, 1.5, -1)], [Vector3(9, 2.5, 19), Vector3(0, 1.0, 9)]],
+		[Vector3(-1.5, 3.3, 5.2), Vector3(1.2, 2.0, 8.5)], [Vector3(14, 1.2, 1), Vector3(0, 1.5, -1)], [Vector3(9, 2.5, 19), Vector3(0, 1.0, 9)], [Vector3(4, 1.8, 20), Vector3(0, 1.4, 10.5)]],
 	"life_raft": [[Vector3(4, 2.6, 4), Vector3(0, 0.6, 0)]],
 	"launch": [[Vector3(8, 4, 7), Vector3(0, 1.2, 0)], [Vector3(-1.0, 2.4, 4.6), Vector3(0.4, 1.2, -1)]],
 	"research_vessel": [[Vector3(26, 10, 22), Vector3(0, 4, 0)], [Vector3(-20, 6, -20), Vector3(0, 4, 0)], [Vector3(1.2, 6.3, 0.9), Vector3(0, 5.6, -2.2)],
@@ -39,9 +39,12 @@ func _shot(name: String) -> void:
 
 func _run() -> void:
 	var only := ""
+	var lake := false # --water: the real lake shader on a fine sheet, with the boat's wake waves
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--kind="):
 			only = a.substr(7)
+		if a == "--water":
+			lake = true
 	var bm = load("res://src/vehicles/boat_model.gd")
 	var hm = load("res://src/npc/human_model.gd")
 	var gen = load("res://src/npc/npc_gen.gd")
@@ -71,6 +74,28 @@ func _run() -> void:
 	sm.roughness = 0.08
 	sm.metallic = 0.2
 	sea.material_override = sm
+	var lm: ShaderMaterial
+	if lake:
+		pm.subdivide_width = 500
+		pm.subdivide_depth = 500
+		pm.size = Vector2(250, 250)
+		# The lake shader needs the world (its depth and screen textures): here a plain
+		# glossy sheet carries just the wake waves, to judge their shape and light.
+		lm = ShaderMaterial.new()
+		lm.shader = Shader.new()
+		lm.shader.code = """shader_type spatial;
+global uniform vec2 wind_dir;
+global uniform float wind_strength;
+#include "res://src/env/water_swell.gdshaderinc"
+varying vec3 wp;
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; VERTEX.y += wake(wp.xz).x; }
+void fragment() {
+	vec2 g = wake(wp.xz).yz;
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-g.x, 1.0, -g.y)), 0.0)).xyz);
+	ALBEDO = vec3(0.03, 0.12, 0.18); ROUGHNESS = 0.12; SPECULAR = 0.7;
+}"""
+		sea.material_override = lm
+		RenderingServer.global_shader_parameter_set("wind_strength", 0.25)
 	root.add_child(sea)
 	var cam := Camera3D.new()
 	cam.fov = 70
@@ -85,7 +110,28 @@ func _run() -> void:
 		scene.add_child(bm.build(kind, 11, body))
 		var bw = load("res://src/vehicles/boat_water.gd").build(kind)
 		scene.add_child(bw)
-		bw.follow(Vector2.ZERO, 0.0, 0.7 if kind in ["rowboat", "fishing_boat", "launch"] else 0.0)
+		var under_way: bool = kind in ["rowboat", "fishing_boat", "launch", "cog", "research_vessel"]
+		bw.follow(Vector2.ZERO, 0.0, 0.7 if under_way else 0.0)
+		var extra: Array = []
+		if under_way:
+			# Her wake as if she'd come round a long gentle turn at her sailing pace.
+			var wk = load("res://src/vehicles/boat_wake.gd").make(kind)
+			scene.add_child(wk)
+			var L := float(Boats.KINDS[kind]["len"])
+			var v := float(Boats.KINDS[kind]["moves"])
+			var R := 160.0
+			var dd := 110.0
+			while dd >= 0.0:
+				var th := dd / R
+				wk.feed(Vector2(R * (1.0 - cos(th)), L * 0.45 + R * sin(th)), Vector2(-sin(th), -cos(th)), v, clampf(pow(v / 4.0, 0.7), 0.0, 1.0) * clampf(0.45 + L / 16.0, 0.45, 1.0), 0.06)
+				dd -= 0.5
+			if lm:
+				var hh: Dictionary = bm.HULLS[kind]
+				var img := Image.create_empty(8, 2, false, Image.FORMAT_RGBAF)
+				img.set_pixel(0, 0, Color(0, -L * 0.47, 0, -1))
+				img.set_pixel(0, 1, Color(v, L, bm._width_at(hh, 0.45, 0.0), 1.0))
+				RenderingServer.global_shader_parameter_set("water_wake_boats", ImageTexture.create_from_image(img))
+			extra = [[Vector3(L * 1.6 + 8.0, L * 0.9 + 6.0, -L * 0.6), Vector3(4.0, 0.0, L * 2.0)], [Vector3(-6.0, 2.2, L * 0.5 + 6.0), Vector3(3.0, 0.0, L * 2.5 + 20.0)]]
 		var r := RandomNumberGenerator.new()
 		r.seed = 5
 		var era := 2 if kind in ["life_raft", "launch", "research_vessel"] else 0
@@ -109,7 +155,7 @@ func _run() -> void:
 				h.hold(vm.prop_for("fishing_rod", null), Vector3(0, 0.6, 1).normalized())
 		for i in 30:
 			await process_frame
-		var shots: Array = SHOTS[kind]
+		var shots: Array = SHOTS[kind] + extra
 		for i in shots.size():
 			cam.position = shots[i][0]
 			cam.look_at(shots[i][1])

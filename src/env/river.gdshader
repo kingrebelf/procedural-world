@@ -17,6 +17,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 #include "res://src/env/water_ssr.gdshaderinc"
 #include "res://src/env/water_rings.gdshaderinc"
+#include "res://src/env/water_rain.gdshaderinc"
 
 varying vec3 wpos;
 varying vec2 flow;
@@ -98,7 +99,7 @@ void fragment() {
 	float h1 = rip(q1) + streaks(q1, fd) * sk;
 	vec2 g0 = vec2(rip(q0 + vec2(e, 0)) + streaks(q0 + vec2(e, 0), fd) * sk - h0, rip(q0 + vec2(0, e)) + streaks(q0 + vec2(0, e), fd) * sk - h0) / e;
 	vec2 g1 = vec2(rip(q1 + vec2(e, 0)) + streaks(q1 + vec2(e, 0), fd) * sk - h1, rip(q1 + vec2(0, e)) + streaks(q1 + vec2(0, e), fd) * sk - h1) / e;
-	vec2 g = mix(g0, g1, w) * (0.35 + spd * 0.4 + rapids * 0.8) + ring_slope(wpos.xz);
+	vec2 g = mix(g0, g1, w) * (0.35 + spd * 0.4 + rapids * 0.8) + ring_slope(wpos.xz) + rain_slope(wpos.xz, TIME) * (1.0 - smoothstep(25.0, 60.0, -VERTEX.z));
 	// Never tilted so far that a facet mirrors the ground under the horizon (black flecks).
 	g /= max(1.0, length(g) / 0.55);
 	vec3 nw = normalize(vec3(-g.x, 1.0, -g.y));

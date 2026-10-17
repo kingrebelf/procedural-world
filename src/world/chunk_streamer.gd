@@ -31,6 +31,8 @@ func _ready() -> void:
 		StoneKit.mesh(k)
 	for sp in GrassKit.SPECIES:
 		GrassKit.mesh(sp)
+	for sp in AquaKit.SPECIES:
+		AquaKit.mesh(sp)
 
 func set_target(t: Node3D) -> void:
 	_target = t
@@ -182,7 +184,11 @@ func _run_job(job: Dictionary) -> void:
 		res["grass"] = ChunkNode.build_grass_buffers(chunk, job["density"], cover)
 		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0), cover)
 		for mk in res["grass"]:
-			GrassKit.mesh(String(mk).get_slice("@", 0))
+			var sp := String(mk).get_slice("@", 0)
+			if AquaKit.is_aqua(sp):
+				AquaKit.mesh(sp)
+			else:
+				GrassKit.mesh(sp)
 		for mk in res["clutter"]:
 			if String(mk).begins_with("stone:"):
 				StoneKit.mesh(String(mk).substr(6).get_slice("@", 0))
@@ -365,6 +371,7 @@ func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 		ChunkNode.detail_mult = detail
 		if ChunkNode.grass_material != null:
 			ChunkNode.grass_material.set_shader_parameter("detail", detail)
+			AquaKit.get_material().set_shader_parameter("detail", detail)
 		for k in chunks:
 			chunks[k].apply_detail()
 	# Only a real change regrows grass: Settings.changed fires for every setting.

@@ -25,6 +25,7 @@ var npcs: NPCManager
 var fauna: FaunaManager
 var corpses: Corpses
 var vehicles: VehicleManager
+var dungeons: Dungeons
 ## The vehicle you are riding, or null.
 var vehicle: Vehicle = null
 var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
@@ -38,6 +39,7 @@ var hand_light: HandLight ## torch or flashlight in the off hand
 var jetpack: Jetpack
 var ray: RayCast3D
 var builder: Builder
+var wiring: Wiring
 ## Console cheats: fly (with optional noclip) and a movement speed multiplier.
 var fly := false
 var noclip := false
@@ -137,6 +139,9 @@ func _ready() -> void:
 	builder = Builder.new()
 	builder.player = self
 	add_child(builder)
+	wiring = Wiring.new()
+	wiring.player = self
+	add_child(wiring)
 	Settings.changed.connect(_apply_settings)
 	Game.inventory.changed.connect(_refresh_held)
 	_apply_settings()
@@ -325,7 +330,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()
-		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"] or (focus.get("kind", "") == "door" and focus.get("own", false) and not sneaking()):
+		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"] or (focus.get("kind", "") in ["door", "power"] and focus.get("own", false) and not sneaking()):
 			# Your own pieces and vehicles: tap to use (a station) or ride (a vehicle),
 			# hold to take the piece down or pack the vehicle up. Carcasses: hold to butcher.
 			_decon_on = {"key": _focus_key(focus), "kind": focus["kind"]}
@@ -494,6 +499,7 @@ func _physics_process(delta: float) -> void:
 	if looking and _cooldown <= 0.0 and not _holding_binoculars():
 		use_held()
 	builder.update()
+	wiring.update()
 	_update_look_target()
 	_update_focus(delta)
 	_update_decon(delta)
@@ -619,7 +625,14 @@ func _find_focus() -> Dictionary:
 					if sc < best_s:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use),
-							"own": use["kind"] == "door" and is_own_piece(o)}
+							"own": use["kind"] in ["door", "power"] and is_own_piece(o)}
+	if dungeons:
+		# Levers, keys, plates, braziers, seals and notices down in a dungeon.
+		for u in dungeons.usables(global_position):
+			var sc := _focus_score(eye, fwd, u["at"])
+			if sc < best_s and _can_see(eye, u["at"]):
+				best_s = sc
+				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
 	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
 	if streamer and best.is_empty():
 		var got := streamer.find_under(eye, eye + fwd * (USE_RANGE - 1.0), 0.45)
@@ -635,6 +648,8 @@ func _find_focus() -> Dictionary:
 			var o: Dictionary = c.get_object(h["obj"])
 			if Doors.is_door(o["t"]) and not o["st"].get("gone", false):
 				best = {"kind": "door", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0), "verb": _door_verb(o), "own": is_own_piece(o)}
+			elif Power.is_power(o["t"]) and not o["st"].get("gone", false) and PowerGrid.verb(o, sneaking()) != "":
+				best = {"kind": "power", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0), "verb": _power_verb(o), "own": is_own_piece(o)}
 			elif is_own_piece(o):
 				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
 				var station := d.has("station") or d.has("storage") or d.has("teleporter")
@@ -720,6 +735,8 @@ func _update_decon(delta: float) -> void:
 		_use_station()
 	elif _decon_on["kind"] == "door" and decon < 0.5:
 		_use_door()
+	elif _decon_on["kind"] == "power" and decon < 0.5:
+		_use_power()
 	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
 		mount(focus["vehicle"])
 	_decon_on = {}
@@ -735,6 +752,11 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 	if not Doors.fits(BuildCatalog.id_of(o["t"])).is_empty() and not Doors.door_at(streamer, chunk.position + o["p"]).is_empty():
 		Game.toast.emit("Take the door down before its doorway")
 		return false
+	if Power.is_power(o["t"]) and PowerGrid.current != null:
+		# Its cables come down with it, back into your pack as wire.
+		var back := PowerGrid.current.unhook(chunk, o)
+		if back > 0:
+			Game.give(ItemDB.make(Power.WIRE, back, 1.0, Game.origin_here("salvaged", -1, chunk.key)))
 	used_tool.emit("hit")
 	if body:
 		body.play_once("interact")
@@ -762,6 +784,12 @@ static func _use_of(o: Dictionary) -> Dictionary:
 			var d := BuildCatalog.def(BuildCatalog.id_of(t))
 			if d.has("door"):
 				return {"kind": "door", "verb": Doors.verb(o, false), "h": 1.4}
+			if d.has("power"):
+				var pv := PowerGrid.verb(o, false)
+				if pv == "":
+					return {}
+				var box := BuildCatalog.mesh(BuildCatalog.id_of(t)).get_aabb()
+				return {"kind": "power", "verb": pv, "h": clampf(box.get_center().y * 2.0, -1.6, 2.2)}
 			if d.has("station") or d.has("storage") or d.has("teleporter"):
 				return {"kind": "station", "verb": _station_verb(d), "h": 1.2}
 	return {}
@@ -786,6 +814,26 @@ func _use_station() -> void:
 			get_tree().call_group("trade_ui", "open_travel", o, c)
 			return
 	get_tree().call_group("trade_ui", "open", "craft")
+
+## The prompt on a powered piece: switch it, fuel it; your own can also be taken down.
+func _power_verb(o: Dictionary) -> String:
+	return PowerGrid.verb(o, sneaking()) + ("   (hold: take down)" if is_own_piece(o) and not sneaking() else "")
+
+## Interact on a powered piece: lamps and switches flip, generators take fuel from your
+## pack (crouched: start or stop them). Only yours, or your alliance's.
+func _use_power() -> void:
+	var c = focus.get("chunk")
+	if not (c is ChunkNode and is_instance_valid(c)) or PowerGrid.current == null:
+		return
+	var o: Dictionary = c.get_object(focus["i"])
+	if o["st"].get("gone", false) or not Power.is_power(o["t"]):
+		return
+	_focus_t = 0.0
+	if not Doors.may_access(String(o["st"].get("owner", ""))):
+		Game.toast.emit("That isn't yours")
+		return
+	PowerGrid.current.use_piece(c, o, sneaking())
+	used_tool.emit("interact")
 
 ## The prompt on a door: open, shut, lock or pick it; your own can also be taken down.
 func _door_verb(o: Dictionary) -> String:
@@ -889,6 +937,8 @@ func _update_look_target() -> void:
 	if builder.active():
 		text = "[%s] Place %s   [%s] Rotate" % [_key("use"), BuildCatalog.def(builder.piece_id())["name"], _key("rotate_build")]
 		info = builder.info()
+	elif wiring.active():
+		info = wiring.info()
 	elif h.has("creature") and is_instance_valid(h["creature"]):
 		info = _creature_info(h["creature"])
 	elif h.has("npc") and is_instance_valid(h["npc"]):
@@ -934,6 +984,9 @@ func _update_look_target() -> void:
 			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else [built_by(o)]
 			if Doors.is_door(t):
 				lines = Doors.describe(o) if not is_own_piece(o) else [built_by(o)] + Doors.describe(o)
+			elif Power.is_power(t) and PowerGrid.current != null:
+				var held_m = held_item()
+				lines = PowerGrid.current.describe(h["chunk"], o, held_m != null and held_m["type"] == Power.METER) + lines
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
 			if k == "cache" and not o["st"].get("opened", false):
@@ -982,6 +1035,9 @@ func interact() -> void:
 			"door":
 				_use_door()
 				return
+			"power":
+				_use_power()
+				return
 			"portal":
 				if is_instance_valid(focus["chunk"]):
 					get_tree().call_group("trade_ui", "open_portal", focus["chunk"].get_object(focus["i"]), focus["chunk"])
@@ -995,6 +1051,12 @@ func interact() -> void:
 			"cache", "trader":
 				if is_instance_valid(focus["chunk"]):
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
+				_focus_t = 0.0
+				return
+			"dungeon":
+				if is_instance_valid(focus["node"]):
+					focus["node"].use(focus["n"], self)
+					used_tool.emit("interact")
 				_focus_t = 0.0
 				return
 			"plant":
@@ -1339,6 +1401,12 @@ func use_held() -> void:
 		_cooldown = 0.5
 		var h := Game.hunt(int(it.get("hunt", -1))) if it.has("hunt") else Game.start_treasure(it)
 		Game.toast.emit(Treasure.hint(h, global_position))
+		return
+	if wiring.active():
+		_cooldown = 0.2
+		if not _trigger_held:
+			_trigger_held = true
+			wiring.use()
 		return
 	if it != null and BuildCatalog.is_piece_item(it["type"]):
 		_cooldown = 0.25

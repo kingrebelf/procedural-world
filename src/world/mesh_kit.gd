@@ -230,14 +230,21 @@ func crystal(mat: String, xf: Transform3D, radius: float, h: float, sides: int =
 		tri(mat, xf, t0, apex, t1, n, n, n, color)
 
 ## Commits every bucket as a surface of `into` (or of a new mesh).
-func commit(materials: Callable, into: ArrayMesh = null) -> ArrayMesh:
+## `tint`, if given, is called as tint(material name, arrays) on each surface before it is
+## added, to colour its vertices.
+func commit(materials: Callable, into: ArrayMesh = null, tint := Callable()) -> ArrayMesh:
 	var mesh := into if into != null else ArrayMesh.new()
 	var names := _st.keys()
 	names.sort()
 	for name in names:
 		var st: SurfaceTool = _st[name]
 		st.generate_tangents()
-		st.commit(mesh)
+		if tint.is_valid():
+			var arrays := st.commit_to_arrays()
+			tint.call(name, arrays)
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		else:
+			st.commit(mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, materials.call(name))
 		mesh.surface_set_name(mesh.get_surface_count() - 1, name)
 	return mesh

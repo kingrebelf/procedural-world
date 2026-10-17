@@ -123,6 +123,9 @@ func _scan() -> void:
 	for b in Bandits.near(gen, Vector2(p.x, p.z), LOAD_R, Game.day):
 		if not settlements.has(String(b["id"])):
 			_load_band(b)
+	for e in settlements.values():
+		if e.has("places") and not e["data"].has("band"):
+			_crowd(e, p)
 	for id in settlements.keys():
 		var e: Dictionary = settlements[id]
 		if e.has("boat"):
@@ -488,6 +491,18 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	n.face_to = Vector2.INF
 	if n.action == "socialize":
 		_find_company(n, e, pp)
+	# Sitting down: on a bench by someone's door if one is free nearby.
+	var sits: bool = n.action == "sit" or n.action == "work" and String(n.duty.get("perform", "")) == "sit"
+	if sits and not n.is_performing():
+		var spot := _bench_spot(n, e, n.duty.get("target", n.target) if n.action == "work" else Vector2(n.global_position.x, n.global_position.z))
+		if not spot.is_empty():
+			n.target = spot[0]
+			n.face_to = spot[1]
+			if n.action == "work":
+				n.duty["target"] = spot[0]
+				n.duty["face"] = INF
+	elif not sits and not n.is_performing():
+		_free_bench(n, e)
 	var dist: float = per["player_dist"]
 	if n.action != prev:
 		# Ambient performances end when the person moves on to something else.
@@ -525,14 +540,15 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		if n.action == "dance" and here:
 			n.act("dance", randf_range(15.0, 30.0))
 			n.ambient = true
-		elif n.action == "sit":
-			n.act("sit", randf_range(20.0, 45.0))
-			n.ambient = true
+		elif n.action == "sit" and (not n.has_meta("bench_i") or Vector2(n.global_position.x, n.global_position.z).distance_to(n.target) < 0.9):
+			_sit(n, randf_range(20.0, 45.0))
 	# At work: a meal sat down, a tune in the square, a prayer now and then, and a word
 	# about it for anyone passing.
 	if n.action == "work" and not n.duty.is_empty() and n.at_work():
 		var perf := String(n.duty.get("perform", ""))
-		if perf != "" and not n.is_performing():
+		if perf == "sit" and not n.is_performing():
+			_sit(n, randf_range(25.0, 50.0))
+		elif perf != "" and not n.is_performing():
 			n.act(perf, randf_range(25.0, 50.0))
 			n.ambient = true
 		elif String(n.duty.get("gesture", "")) != "" and not n.is_performing() and randf() < 0.12:
@@ -678,7 +694,7 @@ func _background_think(pp: Vector3) -> void:
 		if not runs(e) or e["data"].has("band"):
 			continue
 		for n in e["nodes"]:
-			if n.talking or n.is_hidden() or n.think_at > t:
+			if n.talking or n.is_hidden() or n.think_at > t or n.rec.has("visit"):
 				continue
 			if n.global_position.distance_to(pp) < THINK_RANGE:
 				pick = n
@@ -721,7 +737,8 @@ func begin_talk(n: NPC) -> void:
 		if not be.is_empty() and float(be["demand_until"]) > 0.0:
 			be["demand_until"] = now() + 3600.0
 		return
-	Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
+	if not n.rec.has("visit"): # day visitors aren't anyone you'd find here again
+		Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
 	mark_dirty(n.settlement)
 
 func end_talk(n: NPC) -> void:
@@ -1068,6 +1085,103 @@ func _on_town_pushed(sx: int, sz: int) -> void:
 			_add_node(e, rec)
 
 # --- Outlaws -----------------------------------------------------------------------------------
+
+# --- Benches ---------------------------------------------------------------------------
+
+## Where someone about to sit down sits: [spot, a point they face] on a free bench by a
+## door within 25 m of `near` (held for them while they use it), or [] (they sit on the
+## stool they carry).
+func _bench_spot(n: NPC, e: Dictionary, near: Vector2) -> Array:
+	var benches: Array = e.get("places", {}).get("benches", [])
+	if benches.is_empty():
+		return []
+	var taken: Dictionary = e.get_or_add("benches_taken", {})
+	var bi := int(n.get_meta("bench_i", -1))
+	if bi < 0:
+		var bd := 25.0
+		for i in benches.size():
+			var o = taken.get(i)
+			if o != null and is_instance_valid(o) and o != n and int(o.get_meta("bench_i", -1)) == i:
+				continue
+			var d := near.distance_to(benches[i][0])
+			if d < bd:
+				bd = d
+				bi = i
+		if bi < 0:
+			return []
+		taken[bi] = n
+		n.set_meta("bench_i", bi)
+	var b: Array = benches[bi]
+	var front := Vector2(sin(float(b[1])), cos(float(b[1])))
+	# Feet a little out from the bench, so the hips land on the seat.
+	return [(b[0] as Vector2) + front * 0.32, (b[0] as Vector2) + front * 4.0]
+
+func _free_bench(n: NPC, e: Dictionary) -> void:
+	if not n.has_meta("bench_i"):
+		return
+	var taken: Dictionary = e.get("benches_taken", {})
+	if taken.get(int(n.get_meta("bench_i"))) == n:
+		taken.erase(int(n.get_meta("bench_i")))
+	n.remove_meta("bench_i")
+
+## Whether someone sitting here is on a bench (so they don't bring out a stool too).
+func bench_under(n: NPC) -> bool:
+	var e := _entry_of(n.settlement)
+	var p := Vector2(n.global_position.x, n.global_position.z)
+	for b in e.get("places", {}).get("benches", []):
+		if p.distance_to(b[0]) < 0.7:
+			return true
+	return false
+
+## Sit down: on the bench they went to, else on their own stool.
+func _sit(n: NPC, secs: float) -> void:
+	if n.has_meta("bench_i"):
+		var at: Vector2 = n.duty.get("target", n.target) if n.action == "work" else n.target
+		n.global_position = Vector3(at.x, n.global_position.y, at.y)
+		n.rotation.y = atan2(n.face_to.x - n.global_position.x, n.face_to.y - n.global_position.z)
+	n.act("sit", secs)
+	n.ambient = true
+
+# --- Market crowd -------------------------------------------------------------------------
+
+var _crowd_dead: Dictionary = {} ## day visitors killed this session (so they don't come back)
+
+## Day visitors (MarketCrowd) come into a town and go home again by the clock, while
+## someone is near enough to see them.
+func _crowd(e: Dictionary, p: Vector3) -> void:
+	var places: Dictionary = e["places"]
+	var day := NPCMind.day_num()
+	if int(e.get("crowd_day", -1)) != day:
+		for n in e["nodes"].duplicate():
+			if is_instance_valid(n) and n.rec.has("visit"):
+				_drop_node(n)
+		e["crowd_day"] = day
+		e["crowd"] = MarketCrowd.roster(e["site"], int(e["data"]["era"]), day, places["gates"])
+	var hour := NPCMind.hour_now()
+	var c: Vector2 = e["data"]["center"]
+	var c3 := Vector3(c.x, p.y, c.y)
+	var near: bool = c3.distance_to(Net.nearest_player(c3, p)[1]) < MarketCrowd.NEAR
+	for rec in e["crowd"]:
+		var id: String = rec["id"]
+		if rec.get("dead", false):
+			_crowd_dead[id] = true
+		var n = _by_id.get(id)
+		var want: bool = near and MarketCrowd.here(rec, hour) and not _crowd_dead.has(id)
+		if want and n == null:
+			# Just come in by the road, or (arriving to find them already here) about
+			# their business.
+			var at: Vector2 = rec["home"]
+			if hour - float(rec["visit"][0]) > 0.15:
+				var d := NPCRoles.duty_at(rec, places, hour, now())
+				if not d.is_empty():
+					at = d["target"]
+			rec["pos"] = Vector3(at.x, gen.field.height(at.x, at.y), at.y)
+			_add_node(e, rec)
+		elif n != null and is_instance_valid(n) and not n.talking:
+			# Gone home: out of the road at the end of their day, or out of everyone's sight.
+			var leaving := hour >= float(rec["visit"][1]) - MarketCrowd.LEAVE
+			if not want or leaving and Vector2(n.global_position.x, n.global_position.z).distance_to(rec["home"]) < 2.0:
+				_drop_node(n)
 
 var _band_kills: Dictionary = {} ## outlaws killed this session (also kept in their camp's chunk)
 
