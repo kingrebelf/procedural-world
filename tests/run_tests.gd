@@ -993,6 +993,17 @@ func test_scenery_meshes() -> void:
 		var m := HiFlora.build("alien_ruin", sp, 0)
 		check(m != null and m.get_surface_count() >= 2 and m.get_aabb().size.y > 2.0, "alien ruin '%s' builds (%s)" % [f, m.get_aabb().size if m else "null"])
 	check(forms.size() == 5, "all five ruin forms seen (%s)" % [forms.keys()])
+	# Ground clutter: kit pebbles (plus flowers, fungi or scrap) in a metre-square patch.
+	for era in Eras.COUNT:
+		var m := ObjectLibrary.get_mesh("clutter_%d" % era)
+		var bb := m.get_aabb()
+		var tris := 0
+		for si in m.get_surface_count():
+			tris += m.surface_get_array_index_len(si) / 3
+		check(m.get_surface_count() >= 2 and bb.size.x < 1.3 and bb.size.z < 1.3 and bb.size.y < 0.6 and bb.size.y > 0.05, "era %d clutter is small kit pieces (%d surfaces, %s)" % [era, m.get_surface_count(), bb.size])
+		check(tris < 700, "era %d clutter stays light (%d triangles)" % [era, tris])
+		var stone: Material = m.surface_get_material(0)
+		check(stone == Materials.get_mat("stone_w"), "era %d clutter pebbles use the photo stone" % era)
 	for t in ["crystal_shard", "standing_stone", "beacon"]:
 		var m := ObjectLibrary.get_mesh(t)
 		check(m != null and m.get_surface_count() > 0 and m.get_aabb().size.y > 2.5, "%s builds (%s)" % [t, m.get_aabb().size if m else "null"])

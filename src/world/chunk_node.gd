@@ -314,7 +314,8 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 	if density <= 0.0:
 		return out
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 902)
-	for n in int(900 * density):
+	# Kit patches are heavier than the old procedural ones, so fewer of them.
+	for n in int(600 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var pick := r.randf()

@@ -194,9 +194,20 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		"comms_spire": _comms_spire(k)
 		"cargo_stack": _cargo_stack(k)
 		"trader": _trader(k)
-		"clutter_0": _clutter_medieval(k)
-		"clutter_1": _clutter_fantasy(k)
-		"clutter_2": _clutter_scifi(k)
+		"clutter_0", "clutter_1", "clutter_2":
+			# Kit pebbles, flowers and fungi; the procedural patch only if the kit is missing.
+			var era := int(key.substr(8))
+			var km := KitFlora.build_clutter(era)
+			if km.get_surface_count() > 0:
+				if era == Eras.SCIFI:
+					var b := Basis.from_euler(Vector3(0.15, 2.1, -0.1))
+					k.box("rust", Transform3D(b, Vector3(0.25, 0.015, -0.2)), Vector3(0.22, 0.02, 0.12))
+					return k.commit(Materials.get_mat, km)
+				if era == Eras.FANTASY:
+					k.crystal("crystal", I.translated(Vector3(0.3, -0.02, -0.25)), 0.025, 0.16, 5)
+					return k.commit(Materials.get_mat, km)
+				return km
+			[_clutter_medieval, _clutter_fantasy, _clutter_scifi][era].call(k)
 		_:
 			k.box("stone", I.translated(Vector3(0, 0.5, 0)), Vector3.ONE)
 	return k.commit(Materials.get_mat)

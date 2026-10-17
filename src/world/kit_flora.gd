@@ -17,7 +17,9 @@ const ALL := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "C
 	"DeadTree_4", "DeadTree_5", "TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_4",
 	"TwistedTree_5", "Bush_Common", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
 	"Bush_Common_Flowers", "Fern_1", "Flower_3_Group", "Flower_4_Group", "Grass_Wispy_Tall", "Grass_Common_Tall",
-	"Plant_1_Big", "Plant_7_Big", "Mushroom_Common", "Mushroom_Laetiporus"]
+	"Plant_1_Big", "Plant_7_Big", "Mushroom_Common", "Mushroom_Laetiporus",
+	"Pebble_Round_1", "Pebble_Round_2", "Pebble_Round_3", "Pebble_Round_4", "Pebble_Round_5",
+	"Pebble_Square_1", "Pebble_Square_2", "Pebble_Square_3", "Flower_3_Single"]
 
 ## Undergrowth forms drawn from kit models: [model names, height range in metres].
 const UNDER := {
@@ -79,6 +81,88 @@ static func build_under(sp: int, era: int) -> ArrayMesh:
 	var leaf := Color.from_hsv(hue, 0.5 + shift * 0.2, 0.62) if era != Eras.FANTASY else Color.from_hsv(hue, 0.36, 0.5)
 	return _assemble(src, xf, leaf, Color.WHITE, coloured)
 
+## A metre-square patch of ground clutter from kit models (instanced many times around
+## the player, so kept to a few hundred triangles): pebbles of the photo stone and a wild
+## flower (rusted scrap is added in sci-fi lands by ObjectLibrary).
+static func build_clutter(era: int) -> ArrayMesh:
+	var r := RandomNumberGenerator.new()
+	r.seed = 21 + era
+	var stones: Array = []
+	var tint: Color = [Color(0.92, 0.9, 0.86), Color(0.62, 0.64, 0.7), Color(0.5, 0.45, 0.42)][clampi(era, 0, 2)]
+	for n in [2, 2, 3][clampi(era, 0, 2)]:
+		var m := ("Pebble_Round_%d" % (1 + (n * 2 + era) % 5)) if n != 1 else ("Pebble_Square_%d" % (1 + era % 3))
+		var src := _model(m)
+		if src.is_empty():
+			continue
+		# Pebbles a few centimetres high, the first of each patch a little bigger.
+		var sz := (r.randf_range(0.03, 0.06) if n > 0 else r.randf_range(0.06, 0.1)) / maxf(float(src["height"]), 0.01)
+		var b := Basis.from_euler(Vector3(r.randf_range(-0.3, 0.3), r.randf() * TAU, r.randf_range(-0.3, 0.3))).scaled(Vector3(sz, sz * r.randf_range(0.6, 1.0), sz))
+		stones.append([m, Transform3D(b, Vector3(r.randf_range(-0.42, 0.42), -0.015, r.randf_range(-0.42, 0.42))), Flora._jit(tint, r, 0.08)])
+	var out := ArrayMesh.new()
+	var arr := _merge_pieces(stones)
+	if not arr.is_empty():
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		out.surface_set_material(0, Materials.get_mat("stone_w"))
+	if era != Eras.SCIFI:
+		# One wild flower: meadow colours, or a teal stem in the fey lands.
+		var src := _model("Flower_3_Single")
+		if not src.is_empty():
+			var s := r.randf_range(0.24, 0.36) / maxf(float(src["height"]), 0.05)
+			var xf := Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(r.randf_range(-0.4, 0.4), 0, r.randf_range(-0.4, 0.4)))
+			var stem := Color.from_hsv(0.27, 0.5, 0.55) if era == Eras.MEDIEVAL else Color.from_hsv(0.45, 0.36, 0.5)
+			_assemble(src, xf, stem, Color.WHITE, Color.WHITE, out)
+	return out
+
+## Kit models ([name, transform, colour] each) merged into one surface for the photo
+## stone material, with vertex colours. Empty if none of them loaded.
+static func _merge_pieces(pieces: Array) -> Array:
+	var vs := PackedVector3Array()
+	var ns := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var cs := PackedColorArray()
+	var ix := PackedInt32Array()
+	for pc in pieces:
+		var src := _model(pc[0])
+		if src.is_empty():
+			continue
+		var xf: Transform3D = pc[1]
+		var nb := xf.basis.inverse().transposed()
+		var c: Color = pc[2]
+		for part in src["parts"]:
+			var a: Array = part[0]
+			var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var base_i := vs.size()
+			for j in pv.size():
+				vs.append(xf * pv[j])
+				ns.append((nb * pn[j]).normalized())
+				cs.append(c)
+			if a[Mesh.ARRAY_TEX_UV] != null:
+				uvs.append_array(a[Mesh.ARRAY_TEX_UV])
+			else:
+				var zero := PackedVector2Array()
+				zero.resize(pv.size())
+				uvs.append_array(zero)
+			if a[Mesh.ARRAY_INDEX] != null:
+				for k in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
+					ix.append(base_i + k)
+			else:
+				for k in pv.size():
+					ix.append(base_i + k)
+	if vs.is_empty():
+		return []
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = vs
+	arr[Mesh.ARRAY_NORMAL] = ns
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cs
+	arr[Mesh.ARRAY_INDEX] = ix
+	var st := SurfaceTool.new()
+	st.create_from_arrays(arr)
+	st.generate_tangents()
+	return st.commit_to_arrays()
+
 ## The species' mesh from its kit model, or null when it has none.
 static func build(t: String, sp: int, v: int) -> ArrayMesh:
 	var p := Flora.species(t, sp)
@@ -113,8 +197,8 @@ static func build(t: String, sp: int, v: int) -> ArrayMesh:
 ## Kit textures that are already coloured (not white masks): tinted only lightly.
 const COLOURED := ["Leaves", "Grass", "Flowers"]
 
-static func _assemble(src: Dictionary, xf: Transform3D, leaf: Color, bark_tint: Color, coloured := Color.WHITE) -> ArrayMesh:
-	var out := ArrayMesh.new()
+static func _assemble(src: Dictionary, xf: Transform3D, leaf: Color, bark_tint: Color, coloured := Color.WHITE, into: ArrayMesh = null) -> ArrayMesh:
+	var out := into if into != null else ArrayMesh.new()
 	var nb := xf.basis.inverse().transposed()
 	for part in src["parts"]:
 		var a: Array = (part[0] as Array).duplicate(true)
@@ -291,52 +375,13 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 	# Merge the pieces as raw arrays. Never round-trip through a temporary ArrayMesh here:
 	# reading a mesh's arrays back asks the RenderingServer, which waits on the main thread,
 	# and this runs in chunk jobs the main thread may itself be waiting on (scene change).
-	var vs := PackedVector3Array()
-	var ns := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	var cs := PackedColorArray()
-	var ix := PackedInt32Array()
 	for pc in pieces:
-		var src := _model(pc[0])
-		if src.is_empty():
-			continue
-		var xf: Transform3D = pc[1]
-		var nb := xf.basis.inverse().transposed()
-		var c := Flora._jit(col, r, 0.06)
-		for part in src["parts"]:
-			var a: Array = part[0]
-			var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
-			var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
-			var base_i := vs.size()
-			for j in pv.size():
-				vs.append(xf * pv[j])
-				ns.append((nb * pn[j]).normalized())
-				cs.append(c)
-			if a[Mesh.ARRAY_TEX_UV] != null:
-				uvs.append_array(a[Mesh.ARRAY_TEX_UV])
-			else:
-				var zero := PackedVector2Array()
-				zero.resize(pv.size())
-				uvs.append_array(zero)
-			if a[Mesh.ARRAY_INDEX] != null:
-				for k in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
-					ix.append(base_i + k)
-			else:
-				for k in pv.size():
-					ix.append(base_i + k)
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = vs
-	arr[Mesh.ARRAY_NORMAL] = ns
-	arr[Mesh.ARRAY_TEX_UV] = uvs
-	arr[Mesh.ARRAY_COLOR] = cs
-	arr[Mesh.ARRAY_INDEX] = ix
-	var st := SurfaceTool.new()
-	st.create_from_arrays(arr)
-	st.generate_tangents()
+		pc.append(Flora._jit(col, r, 0.06))
+	var merged := _merge_pieces(pieces)
 	var out := ArrayMesh.new()
-	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit_to_arrays())
-	out.surface_set_material(0, mat)
+	if not merged.is_empty():
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, merged)
+		out.surface_set_material(0, mat)
 	if t == "aether_crystal":
 		# The crystals themselves stay procedural (they glow and are the point of the node).
 		var k := MeshKit.new(sp & 0xFFFF)
