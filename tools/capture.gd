@@ -1041,14 +1041,26 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 	var near: AquaticLife.School = null
 	for k in life._groups:
 		for grp in life._groups[k]:
-			if grp is AquaticLife.School and grp.pos.size() >= 3 and (near == null or grp.center.distance_to(eye) < near.center.distance_to(eye)):
+			# The biggest school within reach.
+			if grp is AquaticLife.School and grp.center.distance_to(eye) < 60.0 and (near == null or grp.pos.size() > near.pos.size()):
 				near = grp
 	if near != null:
 		var cpos: Vector3 = near.center
 		var from := _under_water_spot(g, Vector2(cpos.x, cpos.z), 3.5)
 		var eye_y := minf(cpos.y, Water.LEVEL - 0.6)
 		p.underwater = true
-		await _shot("83_fish_school", from, Vector2(near.center.x, near.center.z), 0.45, eye_y - g.field.height(from.x, from.y), near.center.y)
+		# The school moves on while the view settles: step in close to where it is now and
+		# look straight at it just before the picture is taken.
+		var close_in := func() -> void:
+			var c: Vector3 = near.center
+			var side := Vector3(c.x - p.camera.global_position.x, 0.0, c.z - p.camera.global_position.z).normalized()
+			var cam_at := c - side * (2.2 + near.f[5] as float)
+			cam_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
+			var d := c - cam_at
+			var eye_off: Vector3 = p.camera.global_position - p.global_position
+			p.set_state({"pos": cam_at - eye_off, "yaw": atan2(-d.x, -d.z), "pitch": atan2(d.y, Vector2(d.x, d.z).length()), "slot": 0})
+			await _wait(3)
+		await _shot("83_fish_school", from, Vector2(near.center.x, near.center.z), 0.45, eye_y - g.field.height(from.x, from.y), near.center.y, close_in)
 		p.underwater = false
 	life.calm = false
 

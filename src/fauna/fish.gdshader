@@ -153,7 +153,8 @@ void fragment() {
 		col *= 1.0 - 0.25 * (1.0 - smoothstep(0.0, 0.012, abs(u - 0.78 + v * v * 0.04))) * step(abs(v), 0.85);
 	}
 	ALBEDO = pow(col, vec3(2.2));
-	METALLIC = is_fin ? 0.0 : silver * smoothstep(0.6, -0.4, v) * 0.7;
+	// Silver flanks, but not mirrors: in murky water a full mirror shows only the murk.
+	METALLIC = is_fin ? 0.0 : silver * smoothstep(0.6, -0.4, v) * 0.35;
 	ROUGHNESS = is_fin ? 0.6 : mix(0.45, 0.22, silver);
 	SPECULAR = 0.6;
 	BACKLIGHT = is_fin ? ALBEDO * 0.6 : vec3(0.0);

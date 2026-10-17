@@ -16,14 +16,14 @@ const FLEE := 4.5 ## metres: closer than this and a school bolts
 ## cruising speed (m/s), school spread (m), where they swim (bottom, mid, reef, hold: on
 ## station in a current), least depth (m), tail beats a second at a cruise.
 const FISH := {
-	"minnow": ["slim", 5, Vector2(0.05, 0.08), Vector2i(12, 30), 0.5, 0.7, "mid", 0.4, 4.0],
-	"perch": ["deep", 2, Vector2(0.15, 0.3), Vector2i(5, 12), 0.45, 1.3, "mid", 1.2, 2.5],
+	"minnow": ["slim", 5, Vector2(0.05, 0.08), Vector2i(15, 40), 0.5, 0.8, "mid", 0.4, 4.0],
+	"perch": ["deep", 2, Vector2(0.15, 0.3), Vector2i(6, 16), 0.45, 1.4, "mid", 1.2, 2.5],
 	"trout": ["slim", 3, Vector2(0.25, 0.5), Vector2i(1, 3), 0.6, 2.5, "mid", 1.0, 2.0],
 	"carp": ["deep", 4, Vector2(0.4, 0.75), Vector2i(1, 3), 0.3, 2.5, "bottom", 1.5, 1.3],
 	"pike": ["long", 12, Vector2(0.5, 0.9), Vector2i(1, 1), 0.25, 0.0, "mid", 1.5, 1.2],
 	"river_trout": ["slim", 3, Vector2(0.22, 0.45), Vector2i(1, 4), 0.0, 1.5, "hold", 0.6, 2.2],
-	"sardine": ["slim", 0, Vector2(0.14, 0.22), Vector2i(35, 70), 1.0, 2.2, "mid", 3.0, 4.0],
-	"mackerel": ["slim", 1, Vector2(0.25, 0.4), Vector2i(10, 22), 1.3, 2.6, "mid", 3.0, 3.2],
+	"sardine": ["slim", 0, Vector2(0.14, 0.22), Vector2i(40, 90), 1.0, 2.4, "mid", 3.0, 4.0],
+	"mackerel": ["slim", 1, Vector2(0.25, 0.4), Vector2i(12, 30), 1.3, 2.6, "mid", 3.0, 3.2],
 	"bream": ["deep", 6, Vector2(0.25, 0.4), Vector2i(4, 9), 0.55, 2.0, "bottom", 2.0, 2.2],
 	"tang": ["disc", 7, Vector2(0.12, 0.22), Vector2i(3, 8), 0.45, 1.5, "reef", 1.0, 2.6],
 	"damsel": ["deep", 8, Vector2(0.06, 0.1), Vector2i(6, 14), 0.35, 1.0, "reef", 0.8, 3.5],
@@ -113,14 +113,14 @@ func _spawn(k: Vector2i, d: Dictionary) -> Array:
 	var x0 := float(k.x) * ChunkGenerator.SIZE
 	var z0 := float(k.y) * ChunkGenerator.SIZE
 	var alien := Eras.theme == "alien"
-	for attempt in 4:
+	for attempt in 6:
 		var lx := r.randf() * ChunkGenerator.SIZE
 		var lz := r.randf() * ChunkGenerator.SIZE
 		var roll := r.randf()
 		var y := ChunkGenerator.height_at(d, lx, lz)
 		var river := ChunkGenerator.under_river(d, lx, lz)
 		var top := ChunkGenerator.river_surface(d, lx, lz) if river else Water.LEVEL
-		if is_nan(top) or top - y < 0.45 or roll > 0.7:
+		if is_nan(top) or top - y < 0.45 or roll > 0.8:
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
