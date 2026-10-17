@@ -118,6 +118,32 @@ float vnoise3(vec3 p) {
 		mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x), mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
 
+// Value noise with its gradient: (value, d/dx, d/dy, d/dz), from the same lattice as
+// vnoise3, so a relief can tilt the normal without sampling around the point.
+vec4 vnoise3d(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	vec3 u = f * f * (3.0 - 2.0 * f);
+	vec3 du = 6.0 * f * (1.0 - f);
+	float a = hash13(i);
+	float b = hash13(i + vec3(1, 0, 0));
+	float c = hash13(i + vec3(0, 1, 0));
+	float d = hash13(i + vec3(1, 1, 0));
+	float e = hash13(i + vec3(0, 0, 1));
+	float f1 = hash13(i + vec3(1, 0, 1));
+	float g = hash13(i + vec3(0, 1, 1));
+	float h = hash13(i + vec3(1, 1, 1));
+	float k1 = b - a;
+	float k2 = c - a;
+	float k3 = e - a;
+	float k4 = a - b - c + d;
+	float k5 = a - c - e + g;
+	float k6 = a - b - e + f1;
+	float k7 = -a + b + c - d + e - f1 - g + h;
+	return vec4(a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z,
+		du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z, k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x, k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y));
+}
+
 // Cracked rock: ridged 3D noise gives crevices on cliffs from any direction.
 float rock3(vec3 p) {
 	float s = 0.0;
@@ -260,6 +286,10 @@ void fragment() {
 	float rock_hi = 0.5; // how proud the rock's surface stands here (its photo's light and dark)
 	vec3 mud_d = vec3(1.0);
 	float moss_glow = 0.0;
+	// The rock's bedding wanders and dips across a face instead of running dead level,
+	// like courses of masonry; the photo's layers and the ledges below both follow it.
+	float dip = (fbm(vec2(wpos.x + wpos.z, wpos.x - wpos.z) * 0.012 + 3.0) - 0.5) * 14.0
+		+ (wpos.x * 0.6 - wpos.z * 0.4) * 0.12;
 	if (use_textures) {
 		// Ground: planar world mapping, one texture pair per era, skipped where absent.
 		vec3 gm = vec3(0.0), gs = vec3(0.0);
@@ -293,10 +323,6 @@ void fragment() {
 		vec3 bw = pow(abs(wnorm), vec3(4.0));
 		bw /= bw.x + bw.y + bw.z;
 		vec3 rp = wpos / ROCK_TILE;
-		// The layers wander and dip across a face instead of running dead level, like
-		// courses of masonry.
-		float dip = (fbm(vec2(wpos.x + wpos.z, wpos.x - wpos.z) * 0.012 + 3.0) - 0.5) * 14.0
-			+ (wpos.x * 0.6 - wpos.z * 0.4) * 0.12;
 		vec2 cx = vec2(wpos.z, -wpos.y + dip) / CLIFF_TILE;
 		vec2 cz = vec2(wpos.x, -wpos.y + dip) / CLIFF_TILE;
 		float cm = smoothstep(0.3, 0.7, vnoise3(wpos * 0.06));
@@ -812,18 +838,30 @@ void fragment() {
 	float proc = use_textures ? 0.35 : 1.0;
 	vec3 bump = vec3(dn.x, 0.0, dn.z) * proc * (1.0 - steep) * (1.0 - snow * 0.7);
 	if (steep > 0.01) {
-		// Faces: the gradient of 3D noise, kept in the plane of the face.
-		float e3 = 0.2;
-		vec3 q = wpos * 0.9;
-		float g0 = vnoise3(q) + vnoise3(q * 2.3) * 0.5;
-		vec3 gr = vec3(vnoise3(q + vec3(e3, 0, 0)) + vnoise3((q + vec3(e3, 0, 0)) * 2.3) * 0.5,
-			vnoise3(q + vec3(0, e3, 0)) + vnoise3((q + vec3(0, e3, 0)) * 2.3) * 0.5,
-			vnoise3(q + vec3(0, 0, e3)) + vnoise3((q + vec3(0, 0, e3)) * 2.3) * 0.5) - g0;
-		gr /= e3;
+		// Faces: relief at the size of the rock itself, in metres, rather than a skin of
+		// little blobs (which, with the photo's own bump, read as wrinkled hide). Rain cuts
+		// rills down any steep face, earth or stone; rock also has fracture lines and
+		// bedding ledges, each bed jutting at its foot and leaning back above.
+		vec4 rl = vnoise3d(wpos * vec3(0.55, 0.045, 0.55) + 13.0);
+		vec3 gr = sign(rl.x - 0.5) * 0.5 * rl.yzw * vec3(0.55, 0.045, 0.55);
+		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
+		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
+		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask;
+		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
+		float bf = fract(bed);
+		float foot = smoothstep(0.0, 0.2, bf);
+		float dfoot = bf < 0.2 ? 30.0 * bf * (1.0 - bf * 5.0) : 0.0;
+		// Some beds stand proud along a stretch and fade back into the face elsewhere, and
+		// the ledges ease off once a pixel spans a good part of a bed.
+		float proud = smoothstep(0.3, 0.7, vnoise(vec2((wpos.x - wpos.z) * 0.07, floor(bed) * 1.7)));
+		proud *= 0.3 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.1, 0.4, fwidth(bed)));
+		gr.y += proud * (dfoot * (1.0 - bf) - foot) / 2.3;
 		gr -= dot(gr, wnorm) * wnorm;
-		bump -= gr * detail_strength * 0.3 * steep * proc;
+		bump -= gr * steep * (1.0 - snow * 0.8);
 	}
-	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.55 + vec3(ripple.x, 0.0, ripple.y));
+	// The photo's fine bump fades with distance, where it only adds crawling grain.
+	float rock_bump = mix(0.42, 0.14, smoothstep(6.0, 45.0, dist));
+	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * rock_bump + vec3(ripple.x, 0.0, ripple.y));
 #ifdef FAR_LAND
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
 	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), river));
