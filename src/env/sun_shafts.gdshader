@@ -41,15 +41,18 @@ void fragment() {
 		}
 		// Reverse-Z: the sky (nothing drawn) sits at depth 0.
 		float sky = 1.0 - step(1e-6, texture(depth_tex, s).r);
-		// Sky near the sun shines hardest.
-		float near = exp(-length((s - sun_uv) * aspect) * 5.0);
+		// Sky close round the sun shines hardest.
+		float near = exp(-length((s - sun_uv) * aspect) * 9.0);
 		acc += sky * near * decay;
 		decay *= 0.965;
 	}
 	acc /= float(STEPS);
-	// Rays fade with distance from the sun on screen, and over open sky they are only a
-	// faint halo: they show in the air in front of trees, walls and hills.
+	// Rays fade with distance from the sun on screen. They are light scattered by the air
+	// in front of what you see, so there is little of it before the things close to you
+	// (none on the tool in your hand), and over open sky they are only a faint halo.
 	float fall = 1.0 - smoothstep(0.2, 1.1, length((uv - sun_uv) * aspect));
-	float sky_here = 1.0 - step(1e-6, texture(depth_tex, uv).r);
-	ALBEDO = tint * acc * strength * fall * mix(1.0, 0.3, sky_here);
+	float d = texture(depth_tex, uv).r;
+	vec4 vp = INV_PROJECTION_MATRIX * vec4(uv * 2.0 - 1.0, d, 1.0);
+	float air = d < 1e-6 ? 0.3 : 1.0 - exp(vp.z / vp.w / 14.0);
+	ALBEDO = tint * acc * strength * fall * air;
 }
