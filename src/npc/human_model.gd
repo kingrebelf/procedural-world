@@ -548,6 +548,29 @@ func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	# (fwd, up) are in the bone's own space: the bone's basis maps them onto (f, u).
 	gestures.hand_r = Basis(f, u, f.cross(u)) * Basis(fwd, up, fwd.cross(up)).inverse()
 
+## Puts the left hand on `at` (world), fingers along `fingers`, palm facing `palm`: a
+## support hand under a long gun's fore-end. Vector3.ZERO for `at` lets the arm go.
+func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if at == Vector3.ZERO:
+		gestures.reach_l = {}
+		return
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	gestures.reach_l = {"at": skeleton.global_transform.affine_inverse() * at,
+		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
+
+## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
+func pull_in(at: Vector3) -> void:
+	if gestures == null or skeleton == null:
+		return
+	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+
+## The right shoulder in world space.
+func shoulder_r() -> Vector3:
+	var b := skeleton.find_bone("upperarm_r")
+	return skeleton.global_transform * skeleton.get_bone_global_pose(b).origin if b >= 0 else global_position
+
 ## Re-aims what the hand holds (first person: called every frame so the item keeps
 ## facing the view whatever the arms' animation does).
 func reaim(aim: Vector3, tilt := 0.0, point := Vector3.ZERO) -> void:

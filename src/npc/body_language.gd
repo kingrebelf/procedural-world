@@ -123,6 +123,15 @@ var hand_aim: Dictionary = {}
 ## Empty hands hang relaxed: each finger a little more curled than the one before, the
 ## thumb resting alongside, as a hand does when nothing is in it (first-person arms).
 var relaxed := false
+## The left hand reaching to hold something (a long gun's fore-end) in skeleton space:
+## {"at": where the wrist goes, "fingers": the way the fingers point, "palm": the way the
+## palm faces}; {} leaves the arm to its animation.
+var reach_l: Dictionary = {}
+## The right arm's elbow and shoulder bent so its wrist sits at {"at": skeleton-space
+## point} (a long gun pulled in to the shoulder); the hand's own turn and grip still come
+## from hand_r and grip_rot. {} for none.
+var reach_r: Dictionary = {}
+const SUPPORT_CURL := [0.45, 0.62, 0.68, 0.72, 0.76]
 const IDLE_HAND := [0.3, 0.45, 0.55, 0.63, 0.7]
 ## How much of hand_r's turn the forearm takes instead of the wrist (0..1).
 var hand_share := 0.0
@@ -167,6 +176,8 @@ func _process_modification() -> void:
 	var now := Time.get_ticks_msec()
 	var dt := clampf((now - _last) / 1000.0, 0.0, 0.1) if _last > 0 else 0.0
 	_last = now
+	if not reach_r.is_empty():
+		_reach(sk, "r", reach_r, false)
 	if hand_r != null and _bone("hand_r") >= 0:
 		var hb := _bone("hand_r")
 		var parent := sk.get_bone_parent(hb)
@@ -208,6 +219,8 @@ func _process_modification() -> void:
 	if relaxed:
 		for i in 5:
 			_finger(sk, "l", i, IDLE_HAND[i], 1.0)
+	if not reach_l.is_empty():
+		_reach(sk, "l", reach_l)
 	_t += dt
 	var active := _t < _len
 	_w = move_toward(_w, 1.0 if active else 0.0, dt * 4.0)
@@ -272,6 +285,36 @@ func _arm(sk: Skeleton3D, side: String, p: Dictionary, w: float, t: float) -> vo
 	if _g.get("cross", false) and side == "r":
 		# Middle finger crossed over the index.
 		_turn(sk, _bone("middle_01_r"), _frame.y, -0.35 * w)
+
+## Two-bone reach: the shoulder stays, the elbow bends down and out in the plane that
+## puts the wrist on `r["at"]`, the hand turns to `r["fingers"]`/`r["palm"]` and the
+## fingers close round what it holds.
+func _reach(sk: Skeleton3D, side: String, r: Dictionary, hand := true) -> void:
+	var bu := _bone("upperarm_" + side)
+	var bl := _bone("lowerarm_" + side)
+	var bh := _bone("hand_" + side)
+	if bu < 0 or bl < 0 or bh < 0:
+		return
+	var l1 := sk.get_bone_global_rest(bu).origin.distance_to(sk.get_bone_global_rest(bl).origin)
+	var l2 := sk.get_bone_global_rest(bl).origin.distance_to(sk.get_bone_global_rest(bh).origin)
+	var s := sk.get_bone_global_pose(bu).origin
+	var at: Vector3 = r["at"]
+	var to := at - s
+	var d := clampf(to.length(), absf(l1 - l2) + 0.01, l1 + l2 - 0.002)
+	var u := to.normalized()
+	var out := _frame.x if side == "l" else -_frame.x
+	var pole := -_frame.y + out * 0.7
+	var pp := (pole - u * pole.dot(u)).normalized()
+	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
+	var elbow := s + (u * cos(a) + pp * sin(a)) * l1
+	var palm: Vector3 = r.get("palm", -_frame.y)
+	_aim(sk, bu, (elbow - s).normalized(), palm, 1.0)
+	_aim(sk, bl, (s + u * d - elbow).normalized(), palm, 1.0)
+	if not hand:
+		return
+	_aim(sk, bh, r["fingers"], palm, 1.0)
+	for i in 5:
+		_finger(sk, side, i, SUPPORT_CURL[i], 1.0)
 
 ## Turns a bone so it points along `dir` (skeleton space) with its palm side facing
 ## `palm`, blended by w over the animated pose.
