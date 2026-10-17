@@ -937,9 +937,13 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 		"@holo":
 			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.75, 0.6, 0.9, 16)
 			k.cylinder("metal", at.call(Vector3(0, 0.9, 0)), 0.8, 0.8, 0.05, 16)
-			k.cylinder("glow_cyan", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
-			k.sphere("glow_cyan", at.call(Vector3(0, 1.4, 0)), 0.22, 6, 10)
-			k.cylinder("glow_cyan", at.call(Vector3(0, 1.38, 0)), 0.45, 0.45, 0.01, 16, false)
+			if Eras.theme == "human":
+				# Human worlds: a map table, its top a lit display; nothing floats or glows.
+				k.cylinder("screen", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
+			else:
+				k.cylinder("glow_cyan", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
+				k.sphere("glow_cyan", at.call(Vector3(0, 1.4, 0)), 0.22, 6, 10)
+				k.cylinder("glow_cyan", at.call(Vector3(0, 1.38, 0)), 0.45, 0.45, 0.01, 16, false)
 		"@rack":
 			k.box("metal_dark", at.call(Vector3(0, 1.0, -0.14)), Vector3(2.0, 2.0, 0.06))
 			for y in [0.55, 1.05, 1.55]:
@@ -957,7 +961,8 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 				k.box("glow_violet", at.call(Vector3(x, 0.45, 0)), Vector3(0.01, 0.05, 1.8))
 		"@screen":
 			k.box("metal_dark", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
-			k.box("glow_cyan", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
+			# A lit display, not a white slab of light.
+			k.box("screen", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
 		"@planter":
 			k.box("metal_dark", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6))
 			k.box("moss", at.call(Vector3(0, 0.62, 0)), Vector3(1.1, 0.05, 0.5))
