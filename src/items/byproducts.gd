@@ -5,9 +5,13 @@ class_name Byproducts
 
 ## Per item mined or chopped from these objects: [[item, chance, least zone level]].
 const FROM := {
-	"rock": [["flint", 0.12, 1], ["coal", 0.08, 1], ["copper_ore", 0.06, 1], ["tin_ore", 0.04, 1], ["clay", 0.05, 1], ["salt_crystal", 0.03, 1]],
-	"iron_vein": [["coal", 0.12, 1], ["copper_ore", 0.1, 1], ["tin_ore", 0.08, 1], ["silver_ore", 0.05, 3], ["gold_ore", 0.025, 5]],
-	"cave_crystal": [["silver_ore", 0.15, 1], ["gold_ore", 0.08, 1], ["coal", 0.1, 1]],
+	"rock": [["flint", 0.12, 1], ["coal", 0.08, 1], ["copper_ore", 0.06, 1], ["tin_ore", 0.04, 1], ["clay", 0.05, 1], ["salt_crystal", 0.03, 1],
+		# Out in the sci-fi zones (level 25 on) plain rock holds silicon and rare earths.
+		["silicon_crystal", 0.06, 25], ["rare_earth", 0.025, 30]],
+	"iron_vein": [["coal", 0.12, 1], ["copper_ore", 0.1, 1], ["tin_ore", 0.08, 1], ["silver_ore", 0.05, 3], ["gold_ore", 0.025, 5],
+		["titanium_ore", 0.12, 25], ["cobalt_ore", 0.06, 28], ["lithium_ore", 0.05, 30], ["uranium_ore", 0.02, 38]],
+	"cave_crystal": [["silver_ore", 0.15, 1], ["gold_ore", 0.08, 1], ["coal", 0.1, 1], ["silicon_crystal", 0.15, 25]],
+	"alloy_scrap": [["polymer", 0.1, 25], ["wiring_loom", 0.04, 25], ["circuit_board", 0.03, 25]],
 	"standing_stone": [["flint", 0.1, 1]],
 	"pine": [["resin", 0.15, 1]],
 	"oak": [["honey", 0.025, 1], ["beeswax", 0.025, 1], ["egg", 0.02, 1]],

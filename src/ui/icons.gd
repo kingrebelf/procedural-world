@@ -106,6 +106,41 @@ const MORE_SHEETS := [
 		"medkit_frontier", "bandage_roll", "splint", "tonic_bottle", "iodine", "syringe_glass",
 		"cards_deck", "harmonica", "banjo", "cigar_box", "spectacles", "photo_frame",
 	]],
+	["res://assets/icons/items14.png", [
+		"laser_pistol", "plasma_rifle", "gauss_rifle", "smart_pistol", "auto_shotgun", "sniper_rail",
+		"minigun", "flamethrower", "rocket_launcher", "grenade_launcher", "needle_gun", "carbine_combat",
+		"vibro_knife", "stun_baton", "mono_katana", "power_hammer", "chain_axe", "combat_machete",
+		"frag_grenade_mk2", "emp_grenade", "smoke_grenade", "proximity_mine", "breach_charge", "rocket",
+		"energy_cell", "plasma_canister", "gauss_slugs", "smart_rounds", "fuel_canister", "shells_12g",
+	]],
+	["res://assets/icons/items15.png", [
+		"helm_recon", "suit_recon", "gloves_tactical", "pants_recon", "boots_tactical", "pack_recon",
+		"helm_combat", "armor_combat", "gloves_combat", "legs_combat", "boots_combat", "shield_ballistic",
+		"helm_eva", "suit_eva", "gloves_eva", "legs_eva", "boots_eva", "oxygen_pack",
+		"helm_stealth", "suit_stealth", "gloves_stealth", "legs_stealth", "boots_stealth", "cloak_optic",
+		"helm_power", "chest_power", "fists_power", "legs_power", "boots_power", "jetpack_military",
+	]],
+	["res://assets/icons/items16.png", [
+		"multitool", "scanner", "hack_tablet", "laser_cutter", "welder", "mining_laser",
+		"drone_scout", "turret_deploy", "shield_gen", "beacon_nav", "grapple", "motion_tracker",
+		"repair_kit", "battery_small", "fusion_core", "keycard_red", "keycard_blue", "keycard_gold",
+		"datapad", "holo_projector", "credit_chip", "dog_tags", "headset", "binoculars_digital",
+		"toolbox_tech", "magboots_kit", "o2_canister", "flare_chem", "rope_synth", "survival_knife",
+	]],
+	["res://assets/icons/items17.png", [
+		"titanium_ore", "uranium_ore", "lithium_ore", "cobalt_ore", "silicon_crystal", "rare_earth",
+		"titanium_ingot", "carbon_fiber", "polymer", "graphene", "ceramic_plate", "nanotube_spool",
+		"microchip", "servo", "optic_lens", "wiring_loom", "coolant", "superconductor",
+		"fuel_rod", "circuit_board", "processor", "hull_patch", "sensor_module", "gyroscope",
+		"thruster_part", "antenna", "solar_panel", "magnet", "nanopaste", "quantum_chip",
+	]],
+	["res://assets/icons/items18.png", [
+		"ration_bar", "protein_pack", "nutri_paste", "freeze_meal", "hydro_greens", "space_coffee",
+		"energy_drink", "water_pouch", "synth_steak", "noodles", "fruit_cube", "algae_bar",
+		"medkit_mil", "stimpack", "trauma_kit", "antirad", "cryo_vial", "nanite_injector",
+		"painkillers", "bio_gel", "splint_mech", "eye_drops", "oxygen_mask", "defibrillator",
+		"family_photo", "medal", "toy_robot", "music_player", "lucky_charm_dice", "chess_set",
+	]],
 ]
 ## type -> [sheet path, its order], built on first use.
 static var _sheet_of: Dictionary = {}

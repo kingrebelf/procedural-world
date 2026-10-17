@@ -2717,3 +2717,62 @@ func test_remote_store() -> void:
 	check(net.sent[-1][0] == "player" and s.load_player()["money"] == 3, "your save goes to the server")
 	s.save_meta()
 	check(not FileAccess.file_exists(s.root.path_join("world.dat")), "clients never write the world's meta")
+
+func test_pack_c_items() -> void:
+	for t in ["laser_pistol", "plasma_rifle", "gauss_rifle", "smart_pistol", "auto_shotgun", "sniper_rail", "minigun",
+			"flamethrower", "rocket_launcher", "grenade_launcher", "needle_gun", "carbine_combat"]:
+		var d := ItemDB.def(t)
+		check(ItemDB.has(String(d.get("ammo", ""))), "%s fires a real item (%s)" % [t, d.get("ammo", "")])
+		check(int(d["era"]) == Eras.SCIFI and ItemDB.UNLOCK.get(t, 0) >= 25 and ItemDB.UNLOCK.get(t, 0) <= 50, "%s is a level 25-50 gun" % t)
+		check(String(d.get("tracer", "glow_cyan")) in ["bolt", "glow_cyan", "glow_teal", "glow_violet", "glow_white", "glow_warm", "glow_red"], "%s has a tracer the guns can draw" % t)
+	for t in ["laser_cutter", "welder", "mining_laser"]:
+		check(ItemDB.def(t).get("beam", false) and ItemDB.def(t).has("beam_dps"), "%s cuts with a beam" % t)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 10:
+		check(Rarity.of(ItemDB.make("chest_power", 1, 1.0, {}, rng)) >= Rarity.EPIC, "power armour is never plain")
+	# Stealth gear makes you harder to notice; a hacking tablet picks locks better.
+	var st := Stats.new()
+	var n0 := st.notice_mult(false)
+	st.bonus = Effects.bonus({"chest": {"type": "suit_stealth"}, "back": {"type": "cloak_optic"}}, {})
+	check(st.notice_mult(false) < n0 * 0.8, "stealth gear hides you (%.2f)" % st.notice_mult(false))
+	st.bonus = Effects.bonus({}, {"hidden": 10.0})
+	check(st.notice_mult(false) <= n0 * 0.5, "standing in smoke hides you")
+	st.bonus = Effects.bonus({"neck": {"type": "hack_tablet"}}, {})
+	check(st._b("lock") > 0.0, "a hacking tablet helps with locks")
+	st.bonus = Effects.bonus({}, {"shielded": 10.0})
+	check(float(st.bonus.get("armor", 0.0)) >= 30.0, "a shield generator adds armour")
+	check(ItemDB.def("jetpack_military").get("slot", "") == "back" and float(ItemDB.def("jetpack_military")["jet"]) > 1.0, "the military jump pack is worn and lifts harder")
+	# Turrets keep their shots left through a save.
+	var tr := Traps.new()
+	tr.add("turret_deploy", Vector3(1, 2, 3), 12)
+	var back := Traps.new()
+	back.from_data(JSON.parse_string(JSON.stringify(tr.to_data())))
+	check(back.count() == 1 and int(back.to_data()[0]["shots"]) == 12, "a turret keeps its shots left")
+	tr.free()
+	back.free()
+	for t in ["scanner", "drone_scout", "shield_gen", "beacon_nav", "o2_canister", "defibrillator", "grapple", "turret_deploy"]:
+		check(Effects.describe(ItemDB.def(t)).size() > 0, "%s says what it does" % t)
+	# The sci-fi ores turn up only out in the sci-fi zones.
+	rng.seed = 11
+	var near := Byproducts.of_object("iron_vein", 400, 5, rng).map(func(e): return e[0])
+	var far := Byproducts.of_object("iron_vein", 400, 30, rng).map(func(e): return e[0])
+	check(not near.has("titanium_ore") and far.has("titanium_ore"), "titanium is found out past level 25")
+	# Caches in the frontier zones hold nothing from the sci-fi age; far out they do.
+	var was := Eras.theme
+	Eras.theme = "human"
+	var early_ok := true
+	var late := 0
+	for i in 200:
+		rng.seed = 1900 + i
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(33, 0)}, 0.6):
+			if ItemDB.UNLOCK.get(it["type"], 1) >= 25:
+				early_ok = false
+		rng.seed = 2900 + i
+		# Zone level 40: about 5.9 km out.
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(92, 0)}, 0.4):
+			if ItemDB.UNLOCK.get(it["type"], 1) >= 25:
+				late += 1
+	Eras.theme = was
+	check(early_ok, "frontier caches hold no sci-fi gear")
+	check(late > 30, "far-out caches hold the sci-fi age (%d)" % late)

@@ -95,7 +95,7 @@ static func _slot(m: Material) -> String:
 
 ## Energy strips: lit from within, but held close to the eye, so far softer than the
 ## world's glow materials (those bloom across half the screen at this distance).
-const GLOW := {"glow_cyan": Color(0.2, 0.85, 1.0), "glow_teal": Color(0.2, 1.0, 0.8),
+const GLOW := {"glow_cyan": Color(0.2, 0.85, 1.0), "glow_teal": Color(0.2, 1.0, 0.8), "glow_red": Color(1.0, 0.25, 0.2),
 	"glow_violet": Color(0.7, 0.4, 1.0), "glow_white": Color(0.8, 0.9, 1.0), "glow_warm": Color(1.0, 0.65, 0.3)}
 
 static func _glow(name: String) -> Material:
