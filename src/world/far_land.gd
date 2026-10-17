@@ -140,7 +140,7 @@ func _job_inputs(center: Vector2) -> Dictionary:
 	return {"center": center, "seed": sd, "terrain_v": WorldField.terrain_v,
 		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
 		"rivers": st.has_rivers() if st else true,
-		"field": WorldField.new(sd), "n": grid_n()}
+		"gen": ChunkGenerator.new(sd, st.has_rivers() if st else true), "n": grid_n()}
 
 ## On a worker, one at a time: the main thread reads the results once each task is done.
 func _build_strip(j0: int) -> void:
@@ -199,7 +199,10 @@ static func build_arrays(job: Dictionary) -> Array:
 static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 	var center: Vector2 = job["center"]
 	var ax := axis()
-	var field: WorldField = job["field"] if job.has("field") else WorldField.new(int(job["seed"]))
+	if not job.has("gen"):
+		job["gen"] = ChunkGenerator.new(int(job["seed"]), job.get("rivers", false))
+	var gen: ChunkGenerator = job["gen"]
+	var field: WorldField = gen.field
 	var human: bool = job["human"]
 	var n := ax.size()
 	var c := (j1 - j0) * n
@@ -278,8 +281,10 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			if trees > 0.01:
 				tint /= trees
 				conifers /= trees
-			# No trees in the river or on its edge.
+			# No trees in the river or on its edge, nor in a settlement.
 			trees *= smoothstep(1.2 / WorldField.RIVER_REACH, 2.5 / WorldField.RIVER_REACH, wet)
+			if trees > 0.0:
+				trees *= 1.0 - in_settlement(gen, x, z)
 			l2[v * 4 + 2] = int(clampf(1.0 - exp(-trees * 0.011), 0.0, 1.0) * 255.0)
 			l2[v * 4 + 3] = int(clampf(wet, 0.0, 1.0) * 255.0)
 			cc[v * 4] = int(clampf(tint.r, 0.0, 1.0) * 255.0)
@@ -287,6 +292,21 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			cc[v * 4 + 2] = int(clampf(tint.b, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 3] = int(clampf(conifers, 0.0, 1.0) * 255.0)
 	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc}
+
+## How far (x, z) is inside a settlement (1 in its streets, 0 out in the wilds), where
+## the chunks grow no trees.
+static func in_settlement(gen: ChunkGenerator, x: float, z: float) -> float:
+	var sx := int(floor(x / ChunkGenerator.SETTLEMENT_CELL))
+	var sz := int(floor(z / ChunkGenerator.SETTLEMENT_CELL))
+	var out := 0.0
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var s := gen.settlement_at(sx + dx, sz + dz)
+			if s.is_empty():
+				continue
+			var r := float(s["inner"]) + 6.0 + (8.0 if s.get("walled", false) else 0.0)
+			out = maxf(out, 1.0 - smoothstep(r, r + 16.0, Vector2(x, z).distance_to(s["center"])))
+	return out
 
 ## A river's water level near (x, z): just below the lowest ground round about, as
 ## WorldField.river_level finds it on its grid (more coarsely: this is seen from afar).
