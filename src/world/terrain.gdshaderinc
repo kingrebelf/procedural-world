@@ -484,7 +484,10 @@ void fragment() {
 		tufts = mix(tufts, vnoise3(wpos * 0.9 + 7.7) * 0.6 + vnoise3(wpos * 2.1 + 3.3) * 0.4, steep);
 	}
 	float rock_at = (slope + (meso - 0.5) * 0.18 - 0.32) / 0.2;
-	float rock_mask = mix(smoothstep(0.44, 0.56, rock_at + (rock_hi - 0.5) * 0.5 + (tufts - 0.5) * 0.6 + (micro - 0.5) * 0.06),
+	// The photo's own light and dark sets the edge only close by: a few metres off, its
+	// little bright knobs read as white specks sprinkled through the grass.
+	float proud_k = mix(0.5, 0.12, smoothstep(6.0, 25.0, dist));
+	float rock_mask = mix(smoothstep(0.44, 0.56, rock_at + (rock_hi - 0.5) * proud_k + (tufts - 0.5) * 0.6 + (micro - 0.5) * 0.06),
 		smoothstep(0.0, 1.0, rock_at), far) * (1.0 - form_v.x);
 	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
 	// forking and dying out (sharp and close in some stretches, faint in others), with a
