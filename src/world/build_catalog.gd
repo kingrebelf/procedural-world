@@ -340,6 +340,10 @@ static var _tamed_mats := {}
 ## Kit trims are authored fully metallic; with this game's lighting, fully metallic
 ## surfaces go black or foil-like away from a bright reflection, so cap them.
 static func _tamed(m: Material) -> Material:
+	# The sci-fi kit's window panes are flat light grey, which lit up reads as a blank
+	# white sheet: give them the tinted, reflective glass the rest of the game uses.
+	if m is BaseMaterial3D and m.resource_name == "M_Glass":
+		return Materials.get_mat("glass")
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
