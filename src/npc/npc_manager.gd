@@ -106,6 +106,8 @@ func _scan() -> void:
 		_load(site, id)
 	for id in settlements.keys():
 		var e: Dictionary = settlements[id]
+		if e.has("boat"):
+			continue # BoatManager brings crews aboard and takes them off
 		var c: Vector2 = e["data"]["center"]
 		if c.distance_to(Vector2(p.x, p.z)) < UNLOAD_R:
 			continue
@@ -144,6 +146,11 @@ func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 	var n := NPC.new()
 	n.setup(rec, e["data"], self)
 	n.think_at = now() + randf() * float(AI.get_value("think_interval"))
+	var b = e.get("boat")
+	if b is BoatNode and is_instance_valid(b):
+		n.boat = b
+		b.crew_nodes.append(n)
+		rec["pos"] = b.deck_xf(int(rec.get("station", 0))).origin
 	add_child(n)
 	e["nodes"].append(n)
 	_by_id[rec["id"]] = n
@@ -170,7 +177,7 @@ func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
 func _unload(id: String) -> void:
 	var e: Dictionary = settlements[id]
 	var k := Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"]))
-	if runs(e) or e["dirty"]:
+	if (runs(e) or e["dirty"]) and not e.get("transient", false):
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
 		Game.store.save_settlement(e["data"])
@@ -187,12 +194,98 @@ func save_all() -> void:
 	if Game.store == null:
 		return
 	for e in settlements.values():
-		if not runs(e) and not e["dirty"]:
+		if not runs(e) and not e["dirty"] or e.get("transient", false):
 			continue
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
 		Game.store.save_settlement(e["data"])
 		e["dirty"] = false
+
+# --- Boats -----------------------------------------------------------------------------------
+
+## A boat came near enough to meet its crew: loads them like a town's people (saved and
+## shared the same way) and puts them aboard. Spawned boats' crews are made fresh and
+## never saved. Returns false while a server is still sending the crew (try again).
+func board(b: BoatNode) -> bool:
+	if Game.store == null or not is_instance_valid(b):
+		return false
+	var site := b.site
+	var id := NPCGen.settlement_id(int(site["sx"]), int(site["sz"]))
+	if settlements.has(id):
+		return true
+	var transient := bool(site.get("spawned", false))
+	var data: Dictionary
+	if transient:
+		data = Boats.crew(gen.seed, site)
+		if site.get("crew") is Array:
+			var given: Array = site["crew"]
+			for i in given.size():
+				var rec: Dictionary = given[i]
+				rec["boat"] = b.kind
+				rec["station"] = i
+				rec["faction"] = b.faction
+				rec["home"] = site["center"]
+				rec["work"] = site["center"]
+				if not rec.get("pos") is Vector3:
+					rec["pos"] = Vector3(site["center"].x, 0.0, site["center"].y)
+			data["npcs"] = given
+	else:
+		if not Game.store.prefetch_settlement(site):
+			return false
+		data = Game.store.get_or_create_settlement(gen, site)
+	var e := {"data": data, "nodes": [], "dirty": false, "site": site, "outer": float(site.get("outer", 10.0)),
+		"sid": "%d:%s" % [Game.planet, id], "boat": b, "transient": transient}
+	settlements[id] = e
+	for rec in data["npcs"]:
+		if not rec.get("dead", false):
+			_add_node(e, rec)
+	if not transient:
+		Net.watch("t", [[Vector2i(int(site["sx"]), int(site["sz"])), b.pos2()]], [])
+	return true
+
+## The boat sailed away from you: its crew are saved and taken off.
+func disembark(b: BoatNode) -> void:
+	if not is_instance_valid(b):
+		return
+	var id := NPCGen.settlement_id(int(b.site["sx"]), int(b.site["sz"]))
+	if settlements.has(id):
+		_unload(id)
+	b.crew_nodes.clear()
+
+## The crew's entry ({data, nodes, boat...}) for a boat, or {}.
+func crew_of(b: BoatNode) -> Dictionary:
+	return settlements.get(NPCGen.settlement_id(int(b.site["sx"]), int(b.site["sz"])), {})
+
+## What someone aboard does: hails you as you come alongside, chats while you're near,
+## and otherwise keeps to their station. (Hostile crews: "pirate" faction, handled by
+## whoever launched them; here they only shout.)
+func _decide_aboard(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
+	if n.talking:
+		return
+	var rec := n.rec
+	var dist := n.global_position.distance_to(pp)
+	var ov = _overrides.get(rec["id"])
+	if ov is Dictionary and float(ov["until"]) > t:
+		n.action = String(ov["action"])
+		n.target_player = n.action in ["greet", "follow", "attack", "confront", "trade"]
+	else:
+		n.action = "work"
+		n.target_player = false
+	if dist > 40.0:
+		rec["greeted"] = false
+		return
+	if not rec.get("greeted", false) and dist < 22.0:
+		rec["greeted"] = true
+		if String(rec.get("faction", "folk")) == "pirate":
+			_bark(n, ["Heave to, landlubber!", "That one's ours, lads!", "Your purse or your life!"][randi() % 3], dist)
+			n.act("fist")
+		elif String(rec["job"]) == "castaway":
+			_bark(n, ["Over here! Please, help!", "Thank the stars, a living soul!", "Hey! Hey! Over here!"][randi() % 3], dist)
+			n.act("wave")
+		else:
+			_bark(n, NPCMind.bark(rec, "greet") if randf() < 0.5 else ["Ahoy there!", "Fair winds to you!", "Mind the lines, friend."][randi() % 3], dist)
+			n.act(["wave", "nod", "salute"][randi() % 3])
+		e["dirty"] = true
 
 # --- Minds ---------------------------------------------------------------------------------
 
@@ -212,11 +305,24 @@ func _process(delta: float) -> void:
 	var out: Array = []
 	for e in settlements.values():
 		var held := runs(e)
+		if e.has("boat") and is_instance_valid(e["boat"]):
+			e["data"]["center"] = e["boat"].pos2() # the crew's "town" goes where the boat goes
 		var shared := send and held and Net.shared("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
 			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
+			if n.boat != null:
+				# Aboard: everyone draws the crew at their stations; the game that runs
+				# them decides what they do.
+				var bt: Array = Net.nearest_player(n.global_position, pp)
+				if held:
+					n.decide_in -= delta
+					if n.decide_in <= 0.0:
+						n.decide_in = randf_range(1.5, 3.0)
+						_decide_aboard(n, e, bt[1], t)
+				n.deck_step(delta, bt[1])
+				continue
 			if not held:
 				n.follow(delta, Net.mob_state("n", String(n.rec["id"])), pp)
 				continue
@@ -258,7 +364,7 @@ func _process(delta: float) -> void:
 	if _save_t >= SAVE_EVERY:
 		_save_t = 0.0
 		for e in settlements.values():
-			if e["dirty"]:
+			if e["dirty"] and not e.get("transient", false):
 				if runs(e):
 					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
@@ -487,7 +593,7 @@ func player_hit(n: NPC, damage: float) -> void:
 	NPCMind.change_rel(rec, -35)
 	rec["mood"] = "angry" if float(rec["traits"]["brave"]) > 0.5 else "afraid"
 	var e0 := _entry_of(s)
-	if not e0.is_empty():
+	if not e0.is_empty() and String(rec.get("faction", "")) != "pirate": # cutting down pirates is no crime
 		# They saw who hit them. Assault is fined once a minute per person, so one fight
 		# isn't a fortune; a killing always is.
 		if rec["hp"] <= 0.0:

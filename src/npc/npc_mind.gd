@@ -89,7 +89,10 @@ static func world_line() -> String:
 static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictionary) -> String:
 	var t: Dictionary = npc["traits"]
 	var lines := PackedStringArray()
-	lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
+	if settlement.has("boat"):
+		lines.append("You are %s. You are aboard %s, out on open water. %s" % [NPCGen.describe(npc), settlement["name"], BOAT_LIFE.get(npc["job"], "You work this boat with the others aboard.")])
+	else:
+		lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
 	lines.append(world_line())
 	lines.append("Your personality (0 to 1): friendliness %.1f, bravery %.1f, curiosity %.1f, diligence %.1f, greed %.1f. You like %s. You worry about %s." % [t["friendly"], t["brave"], t["curious"], t["diligent"], t["greedy"], npc["likes"], npc["worry"]])
 	lines.append("You speak in a way that is %s." % npc["speech"])
@@ -174,6 +177,23 @@ const GREET := [
 	["The grove whispered you'd come.", "Light on your path, wanderer.", "Ah, a new face beneath the old trees.", "Welcome, if you come in peace."],
 	["Hey. Keep your weapon holstered and we'll get along.", "New arrival? Welcome to the frontier.", "Signal's good today. What do you need?", "Copy that, stranger. Go ahead."],
 ]
+## Life aboard, by job, for the language model and the built-in replies.
+const BOAT_LIFE := {
+	"castaway": "Your ship went down and you have drifted for days with little water. You are desperate to reach land.",
+	"fisher": "You fish these waters for a living and know where the shoals run.",
+	"deckhand": "You haul lines, scrub decks and do whatever the skipper says.",
+	"captain": "You command this vessel and her crew, and you are responsible for every soul aboard.",
+	"sailor": "You are a sailor who has crossed these waters many times.",
+	"ship's cook": "You keep the crew fed from a small galley, and you guard the stores.",
+	"lookout": "You keep watch for shoals, weather and other sails.",
+	"boat pilot": "You run a motor launch on these waters, ferrying, fishing and towing.",
+	"marine biologist": "You study the life in these waters: fish, reefs and what lives in the deep.",
+	"ship engineer": "You keep the engines, winches and pumps running.",
+	"medic": "You are the ship's medic.",
+	"pirate": "You are a pirate. You take what you want from anyone foolish enough to sail near.",
+}
+const BOAT_PLACE := "Welcome aboard %s. Mind your footing, the deck moves."
+
 const PLACE := [
 	"This is %s. Honest folk, hard work, and the ale's not bad.",
 	"You stand in %s. The glow-moss keeps the old paths lit.",
@@ -320,7 +340,7 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["say"] = "I'm %s. I work as a %s here, have done for years. I'm partial to %s." % [npc["name"], npc["job"], npc["likes"]]
 		out["remember"] = "Told the traveller about myself."
 	elif q.contains("place") or q.contains("where") or q.contains("town") or q.contains("village"):
-		out["say"] = PLACE[e] % settlement["name"]
+		out["say"] = (BOAT_PLACE if settlement.has("boat") else PLACE[e]) % settlement["name"]
 	elif q.contains("news") or q.contains("rumo") or q.contains("happen"):
 		var rum: Array = settlement["rumors"]
 		if not rum.is_empty():

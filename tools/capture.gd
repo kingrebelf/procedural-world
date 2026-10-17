@@ -445,6 +445,8 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
+	if only.is_empty() or ["59", "60", "61", "62", "63"].any(func(n): return only.has(n)):
+		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
 	var b := _find_border(g)
@@ -1196,6 +1198,42 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## Boats (59-63): a cog at anchor and a research vessel seen from the water, the cog's
+## deck and the vessel's bridge from aboard, and a small working boat with its crew.
+func _boat_shots(g: ChunkGenerator) -> void:
+	var best := {}
+	for r in 12:
+		for cz in range(-r, r + 1):
+			for cx in range(-r, r + 1):
+				if maxi(absi(cx), absi(cz)) != r:
+					continue
+				var s := Boats.plan(g.field, cx, cz)
+				if s.is_empty():
+					continue
+				var key: String = "small" if s["boat"] in ["fishing_boat", "launch", "rowboat"] else s["boat"]
+				if not best.has(key):
+					best[key] = s
+	# [name, eye (boat-local; y is above the water), look at (boat-local)].
+	var views := {
+		"cog": [["59_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["60_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 3.0, 6.0)]],
+		"research_vessel": [["61_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["62_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 5.6, -2.2)]],
+		"small": [["63_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
+	}
+	for key in views:
+		if not best.has(key):
+			print("no %s near spawn for the boat shots" % key)
+			continue
+		var bc: Vector2 = best[key]["center"]
+		world.player.set_physics_process(false)
+		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
+		var b: BoatNode = world.boats.put(best[key], true)
+		for v in views[key]:
+			if not only.is_empty() and not only.has(String(v[0]).substr(0, 2)):
+				continue
+			var eye: Vector3 = b.to_global(v[1])
+			eye.y = maxf(eye.y, (v[1] as Vector3).y)
+			await _abs_shot(v[0], eye, b.to_global(v[2]), 0.42, false)
 
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:
