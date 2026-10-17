@@ -600,6 +600,8 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	check(Player.lock_of(o) <= 0, "the lock gives in the end")
 	player.interact()
 	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
+	# Looting in town may have been seen; let the law forget so guards don't crowd later checks.
+	Game.crime = Crime.new()
 
 ## Walk-in rooms beyond village houses: set each down near the player, walk in through
 ## its door, stand on its floor, see it lit, and open the loot inside.
