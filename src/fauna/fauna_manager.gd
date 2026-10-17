@@ -10,6 +10,7 @@ const HERD_CHANCE := 0.3
 var streamer: ChunkStreamer
 var player: Node3D
 var npcs: NPCManager
+var corpses: Corpses
 var field: WorldField
 var _herds: Dictionary = {} ## Vector2i chunk -> Array[Creature]
 var _scan := 0.0
@@ -138,7 +139,7 @@ func creature_bites(c: Creature) -> void:
 	var took := Game.hurt(dmg, "Killed by a %s" % c.label(), func(back: float): player_hit(c, back))
 	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(ceilf(took))])
 
-## The player hit an animal. Kills are permanent and pay out the species' drops.
+## The player hit an animal. Kills are permanent and leave a carcass to butcher.
 func player_hit(c: Creature, dmg: float) -> void:
 	if not c.hurt(dmg):
 		return
@@ -150,9 +151,13 @@ func player_hit(c: Creature, dmg: float) -> void:
 			cn.data["fauna_dead"] = {}
 		cn.data["fauna_dead"][c.id] = Game.day
 		Game.mark_chunk_dirty(cn.data)
-	for d in c.p["drops"]:
-		Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
-	Game.toast.emit("Killed %s" % c.label())
+	if corpses:
+		corpses.add_animal(c)
+		Game.toast.emit("Killed %s. Hold [%s] on it to %s it" % [c.label(), Bindings.key_name("interact", Game.using_pad), CorpseLoot.verb(c.p).to_lower()])
+	else:
+		for d in c.p["drops"]:
+			Game.give(ItemDB.make(d[0], d[1], randf_range(0.85, 1.15), Game.origin_here("hunted", c.era, k)))
+		Game.toast.emit("Killed %s" % c.label())
 	if c.p.has("boss"):
 		# A wonder's keeper: its vault opens, and that is worth a great deal.
 		Game.add_xp(600.0, "Slew " + c.label())

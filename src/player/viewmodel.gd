@@ -97,6 +97,7 @@ const KIT := {
 	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
 	"dagger": ["props/Sword_Bronze", 0.5, Color(0.88, 0.9, 0.95)],
+	"skinning_knife": ["props/Sword_Bronze", 0.36, Color(0.78, 0.78, 0.74)],
 	"battle_axe": ["props/Axe_Bronze", 1.15, Color(0.7, 0.72, 0.76)],
 }
 

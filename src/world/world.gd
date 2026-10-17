@@ -9,6 +9,7 @@ var console: DevConsole
 var menus: GameMenus
 var npcs: NPCManager
 var fauna: FaunaManager
+var corpses: Corpses
 var vehicles: VehicleManager
 var dialogue: DialogueUI
 var lore: LoreUI
@@ -60,6 +61,15 @@ func _ready() -> void:
 	fauna.npcs = npcs
 	add_child(fauna)
 	player.fauna = fauna
+	corpses = Corpses.new()
+	corpses.name = "Corpses"
+	corpses.streamer = streamer
+	corpses.player = player
+	corpses.npcs = npcs
+	add_child(corpses)
+	npcs.corpses = corpses
+	fauna.corpses = corpses
+	player.corpses = corpses
 	vehicles = VehicleManager.new()
 	vehicles.name = "Vehicles"
 	vehicles.streamer = streamer

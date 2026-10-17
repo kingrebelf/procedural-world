@@ -1927,3 +1927,75 @@ func test_no_double_floors() -> void:
 	for t in KitHouse.FURNISH.keys() + Interiors.FURNISH.keys():
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
+
+static func _species_named(name: String, era: int) -> Dictionary:
+	for sp in range(1, 4000):
+		var p := Creature.species(sp, era)
+		if p["name"] == name:
+			return p
+	return {}
+
+func test_corpse_butchering() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var wolf := _species_named("Grey Wolf", Eras.MEDIEVAL)
+	check(not wolf.is_empty(), "a grey wolf species exists")
+	var ys := CorpseLoot.animal_yields(wolf, 0.7, 0.0, rng)
+	var got := {}
+	for y in ys:
+		got[y[0]] = y[1]
+	check(got.get("raw_meat", 0) >= 1, "a fresh wolf gives meat")
+	check(got.get("fur_pelt", 0) >= 1 and not got.has("hide"), "a wolf is skinned for a fur pelt")
+	check(got.get("bone", 0) >= 1, "carcasses give bone")
+	for t in got:
+		check(ItemDB.has(t), "yield %s is a real item" % t)
+	# A skinning knife gets more than bare hands; a rotten carcass gives no meat.
+	var knife := {}
+	for y in CorpseLoot.animal_yields(wolf, 1.5, 0.0, rng):
+		knife[y[0]] = y[1]
+	var bare := {}
+	for y in CorpseLoot.animal_yields(wolf, 0.0, 0.0, rng):
+		bare[y[0]] = y[1]
+	check(knife.get("raw_meat", 0) > bare.get("raw_meat", 0) and knife.get("fur_pelt", 0) > bare.get("fur_pelt", 0), "a knife yields more than bare hands")
+	var rot := {}
+	for y in CorpseLoot.animal_yields(wolf, 0.7, CorpseLoot.ROT_DAYS + 0.1, rng):
+		rot[y[0]] = y[1]
+	check(not rot.has("raw_meat") and not rot.has("animal_fat") and rot.get("bone", 0) >= 1, "spoiled carcass: no meat or fat, bones remain")
+	var elk := _species_named("Elk", Eras.MEDIEVAL)
+	if not elk.is_empty():
+		var e := {}
+		for y in CorpseLoot.animal_yields(elk, 0.7, 0.0, rng):
+			e[y[0]] = y[1]
+		check(e.get("antler", 0) == 2 and e.has("hide") and e.has("animal_fat"), "an elk gives antlers, hide and fat")
+	check(CorpseLoot.blade_of({"type": "skinning_knife"}) > CorpseLoot.blade_of({"type": "sword_iron"}), "knife beats sword at skinning")
+	check(CorpseLoot.blade_of({"type": "crossbow"}) == 0.0 and CorpseLoot.blade_of(null) == 0.0, "no blade, no skinning bonus")
+	check(CorpseLoot.butcher_time(wolf, 1.5) < CorpseLoot.butcher_time(wolf, 0.0), "a knife butchers faster")
+	check(CorpseLoot.is_machine(Creature.guard_species(Eras.SCIFI, 1)) == (Eras.theme != "human"), "sci-fi crawlers are salvaged, not butchered")
+	# People's bodies: what they wore, held and carried.
+	var rec := {"gear": {"head": {"type": "helm_iron", "qty": 1, "quality": 1.0}}, "held": {"type": "dagger", "qty": 1, "quality": 1.1}}
+	var items := CorpseLoot.person_items(rec, [ItemDB.make("bread", 2, 1.0, {})], {"how": "looted"})
+	check(items.size() == 3, "body holds gear, held item and pockets")
+	var inv := Inventory.new(CorpseLoot.SLOTS)
+	for it in items:
+		check(inv.add(it) == 0, "body item fits")
+	var body := {"kind": "person", "day": 1.0, "items": inv.to_data(), "purse": 0}
+	check(CorpseLoot.has_any(body), "a body with items has something to take")
+	check(not CorpseLoot.expired(body, 1.0 + CorpseLoot.PERSON_GONE_DAYS - 0.1) and CorpseLoot.expired(body, 1.0 + CorpseLoot.PERSON_GONE_DAYS), "bodies decay on time")
+	check(CorpseLoot.has_any({"kind": "animal", "butchered": false}), "an unbutchered carcass can be used")
+	check(not CorpseLoot.has_any({"kind": "animal", "butchered": true, "items": Inventory.new(4).to_data()}), "a picked-clean carcass is done")
+
+func test_corpses_persist_in_chunk() -> void:
+	var s := _tmp_store("corpses")
+	var g := ChunkGenerator.new(4321)
+	var c := s.get_or_create_chunk(g, 1, 1)
+	var inv := Inventory.new(CorpseLoot.SLOTS)
+	inv.add(ItemDB.make("raw_meat", 3, 1.0, {}))
+	c["corpses"] = {"a1_1_0": {"kind": "animal", "sp": 5, "era": 0, "p": Vector3(10, 4, 12), "yaw": 1.0, "day": 2.5, "name": "Elk", "butchered": true, "items": inv.to_data()}}
+	s.save_chunk(c)
+	var again := s.get_or_create_chunk(ChunkGenerator.new(1), 1, 1)
+	var k: Dictionary = again.get("corpses", {}).get("a1_1_0", {})
+	check(not k.is_empty(), "carcass survives a reload")
+	check(k.get("p") == Vector3(10, 4, 12) and k.get("butchered", false), "carcass keeps its place and butchered state")
+	var back := Inventory.new(CorpseLoot.SLOTS)
+	back.from_data(k["items"])
+	check(back.count("raw_meat") == 3, "what was left on the carcass stays on it")
