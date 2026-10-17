@@ -3637,6 +3637,20 @@ func _medieval_town(gen: ChunkGenerator) -> Dictionary:
 					best = s
 	return best
 
+## A streamer of flat, empty chunks for TownLife, with objects placed by hand.
+class FakeTownStreamer extends Node:
+	class Chunk:
+		var data := {}
+	var chunks := {}
+	func get_chunk(k: Vector2i):
+		if not chunks.has(k):
+			var c := Chunk.new()
+			var hs := PackedFloat32Array()
+			hs.resize(ChunkGenerator.RES * ChunkGenerator.RES)
+			c.data = {"heights": hs, "objects": []}
+			chunks[k] = c
+		return chunks[k]
+
 func test_town_life() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var gen := ChunkGenerator.new(4242)
@@ -3649,6 +3663,34 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# An orchard tree (or a yard prop) where the player has built doesn't grow through it,
+	# and comes back when the building is dismantled.
+	var orch: Array = pl["orchards"]
+	check(not orch.is_empty(), "the town has an orchard")
+	if not orch.is_empty():
+		var t0: Dictionary = orch[0]["trees"][0]
+		var tp: Vector2 = t0["p"]
+		var tree := {"k": "tree", "p": tp, "yaw": t0["yaw"], "sp": orch[0]["sp"], "v": t0["v"], "s": t0["s"]}
+		var pile := {"k": "barrels", "p": tp + Vector2(5.0, 0.0), "seed": 1}
+		var fs := FakeTownStreamer.new()
+		var tl0 := TownLife.new()
+		tl0.gen = gen
+		tl0.site = s
+		tl0.streamer = fs
+		check(tl0._standing([tree, pile]).size() == 2, "with nothing built, the orchard tree and the prop stand")
+		var k := TownLife._chunk_of(Vector3(tp.x, 0, tp.y))
+		var lp := Vector3(tp.x - k.x * ChunkGenerator.SIZE + 1.5, 0, tp.y - k.y * ChunkGenerator.SIZE)
+		var fo := {"t": BuildCatalog.PREFIX + "foundation", "p": lp, "r": 0.0, "s": 1.0, "st": {}}
+		fs.get_chunk(k).data["objects"].append(fo)
+		var left := tl0._standing([tree, pile])
+		check(left.size() == 1 and left[0]["k"] == "barrels", "a foundation built 1.5 m from an orchard tree keeps it from being built")
+		var rev := TownLife._rev
+		TownLife.note_built(tp)
+		check(TownLife._rev == rev + 1 and tl0._seen != TownLife._rev, "a build is noted for the towns to stand aside")
+		fo["st"]["gone"] = true
+		check(tl0._standing([tree, pile]).size() == 2, "once it's dismantled the tree stands again")
+		tl0.free()
+		fs.free()
 	var kinds := {}
 	for e in pl["pieces"]:
 		kinds[e["k"]] = true
