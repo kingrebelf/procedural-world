@@ -209,9 +209,11 @@ static func fit_flora(p: Dictionary, f: Dictionary, y: float) -> Dictionary:
 
 ## Broadleaf trees give way to conifers on the way up to the snow: `f` (a pick_flora
 ## result) for a tree rooted at height h, swapped for the region's own pine (or a pine of
-## its own) above a ragged line some way under the snow line. `u` jitters the line.
+## its own) above a ragged line some way under the snow line. `u` jitters the line. In
+## the hottest climates (v18) the line sits higher, so tropical hills keep their palms.
 static func by_altitude(p: Dictionary, f: Dictionary, h: float, u: float) -> Dictionary:
-	if not (f["t"] in ["oak", "palm", "tropic"]) or h < WorldField.snow_line - 26.0 + 14.0 * fposmod(u * 7.31, 1.0):
+	var lift := 10.0 if (p.get("climate", Vector2i(-1, -1)) as Vector2i).x == 3 else 0.0
+	if not (f["t"] in ["oak", "palm", "tropic"]) or h < WorldField.snow_line - 26.0 + lift + 14.0 * fposmod(u * 7.31, 1.0):
 		return f
 	for g in p["flora"]:
 		if g["t"] == "pine":
