@@ -85,7 +85,10 @@ func _ready() -> void:
 	cam_attr.auto_exposure_enabled = true
 	cam_attr.auto_exposure_scale = 0.2
 	cam_attr.auto_exposure_min_sensitivity = 60.0
-	cam_attr.auto_exposure_max_sensitivity = 300.0
+	# How far the eye may stop down in bright light: far enough that a snowfield or a white
+	# beach in full sun keeps its shading instead of washing out (an ordinary sunny day never
+	# reaches this limit).
+	cam_attr.auto_exposure_max_sensitivity = 800.0
 	we.camera_attributes = cam_attr
 	_cam_attr = cam_attr
 	add_child(we)

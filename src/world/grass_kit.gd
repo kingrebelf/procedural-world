@@ -44,11 +44,11 @@ static func _build(species: String) -> ArrayMesh:
 	var rg := range_of(species)
 	match species:
 		"turf":
-			for b in 18:
-				var off := _spot(r, 0.24)
-				_blade(st, r, rg, off, r.randf_range(0.09, 0.26), r.randf_range(0.011, 0.018), r.randf_range(0.02, 0.1), 2)
+			for b in 24:
+				var off := _spot(r, 0.26)
+				_blade(st, r, rg, off, r.randf_range(0.12, 0.32), r.randf_range(0.011, 0.018), r.randf_range(0.02, 0.12), 2)
 		"meadow":
-			for b in 12:
+			for b in 16:
 				var off := _spot(r, 0.3)
 				_blade(st, r, rg, off, r.randf_range(0.26, 0.62), r.randf_range(0.016, 0.028), r.randf_range(0.06, 0.24), 3)
 		"tall":

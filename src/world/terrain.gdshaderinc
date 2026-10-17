@@ -438,14 +438,18 @@ void fragment() {
 		vec2 drift = -vec2(fbm((p + vec2(de, 0.0)) * 0.21 + 7.0) - d0, fbm((p + vec2(0.0, de)) * 0.21 + 7.0) - d0) / de * 1.4;
 		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip + drift * (1.0 - far * 0.5), snow);
 		rock_n *= 1.0 - snow;
-		// Glints: here and there a crystal faces just right and flashes the sun back.
+		// Glints: here and there a crystal faces just right and flashes the sun back, a
+		// point of light somewhere in its cell rather than the whole cell lit.
 		if (snow > 0.5 && dist < 30.0 && sun_dir_g.y > 0.0) {
-			vec3 cell = floor(wpos * 20.0);
+			vec3 cg = wpos * 20.0;
+			vec3 cell = floor(cg);
 			float hs = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 			vec3 facet = normalize(wnorm + (vec3(fract(hs * 13.1), fract(hs * 7.7), fract(hs * 3.3)) - 0.5) * 0.9);
 			vec3 hv = normalize(normalize(CAMERA_POSITION_WORLD - wpos) + sun_dir_g);
-			float glint = step(0.95, hs) * pow(max(dot(facet, hv), 0.0), 24.0);
-			EMISSION += sun_light_g * glint * 4.0 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
+			vec3 spot = vec3(fract(hs * 31.7), fract(hs * 57.3), fract(hs * 91.1)) * 0.6 + 0.2;
+			float pt = 1.0 - smoothstep(0.04, 0.16, length(cg - cell - spot));
+			float glint = step(0.95, hs) * pow(max(dot(facet, hv), 0.0), 24.0) * pt;
+			EMISSION += sun_light_g * glint * 3.0 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
 		}
 	}
 
