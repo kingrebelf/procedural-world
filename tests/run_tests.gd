@@ -1763,12 +1763,55 @@ func test_fires() -> void:
 	var fll := FlickerLight.new()
 	check(fll is OmniLight3D, "firelight is an omni light that wavers")
 	fll.free()
-	var fl := FireFx.flame(1.0)
+	var fl := FireFx.flame(0.42)
 	var cards := fl.find_children("*", "MeshInstance3D", true, false)
-	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a flame is two cards sharing the fire material")
+	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a torch's flame is two cards sharing the fire material")
 	fl.free()
+	var bon := FireFx.flame(1.0)
+	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return (c as MeshInstance3D).material_override == FireFx.material())
+	check(bcards.size() >= 3 and bon.find_child("Coals", true, false) != null, "a big fire burns across its bed, over glowing coals")
+	var spread := 0.0
+	for c in bcards:
+		spread = maxf(spread, Vector2((c as Node3D).position.x, (c as Node3D).position.z).length())
+	check(spread > 0.1, "a big fire's tongues stand apart (%.2f m)" % spread)
+	bon.free()
+	var wick := FireFx.flame(0.07)
+	var wc := wick.find_children("*", "MeshInstance3D", true, false)
+	check(wc.size() == 1 and (wc[0] as MeshInstance3D).material_override == FireFx.wick_material(), "a candle's flame is drawn, not a flipbook blob")
+	var lit := Node3D.new()
+	var lfl := FireFx.flame(0.42)
+	lit.add_child(lfl)
+	var ll := FlickerLight.new()
+	ll.light_energy = 2.0
+	lit.add_child(ll)
+	ll._ready()
+	check(is_equal_approx(ll.seed, float(lfl.get_meta("fire_seed"))), "firelight follows the flame beside it")
+	FireFx.time = 12.3
+	ll.distance_fade_enabled = false
+	ll._process(0.0)
+	var want := 2.0 * (1.0 + ll.depth * (FireFx.life(12.3, ll.seed) - 0.5) * 2.0)
+	check(is_equal_approx(ll.light_energy, want), "firelight leaps and sinks with its flame's life (%.3f, %.3f)" % [ll.light_energy, want])
+	lit.free()
+	wick.free()
+	var lsum := 0.0
+	var lmin := 1.0
+	var lmax := 0.0
+	for i in 2000:
+		var lv := FireFx.life(i * 0.037, 0.41)
+		lsum += lv
+		lmin = minf(lmin, lv)
+		lmax = maxf(lmax, lv)
+	check(lmin >= 0.0 and lmax <= 1.0 and absf(lsum / 2000.0 - 0.5) < 0.12 and lmax - lmin > 0.4, "a flame's life wavers about the middle (%.2f..%.2f, mean %.2f)" % [lmin, lmax, lsum / 2000.0])
+	check(not is_equal_approx(FireFx.life(5.0, 0.1), FireFx.life(5.0, 0.6)), "no two fires flicker in step")
+	var lf := FireFx.prop_flames(BuildCatalog.def("lantern")["models"])
+	check(lf.size() == 1, "a lantern you hang burns")
+	if lf.size() == 1:
+		var ln := FireFx.prop_flame(lf[0])
+		check(ln.find_child("Glass", true, false) != null, "a lit lantern's glass glows with its flame, seen from any side")
+		ln.free()
 	var torch := Viewmodel.prop_for("torch")
 	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
+	check(torch.find_child("Drag", true, false) != null, "a carried torch's flame trails as it moves")
 	check(torch.find_child("Sparks", true, false) is CPUParticles3D and torch.find_child("Smoke", true, false) is CPUParticles3D, "a torch throws sparks and smoke")
 	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
 	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")
@@ -1784,6 +1827,60 @@ func test_fires() -> void:
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
 	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+
+## Stall awnings and drapes, banners and flags move in the wind.
+func test_cloth() -> void:
+	var stall := ObjectLibrary.get_mesh("market_stall")
+	var cs := -1
+	for i in stall.get_surface_count():
+		if stall.surface_get_material(i) is ShaderMaterial and (stall.surface_get_material(i) as ShaderMaterial).shader.resource_path.ends_with("cloth.gdshader"):
+			cs = i
+	check(cs >= 0, "a market stall's canvas is cloth that moves")
+	if cs < 0:
+		return
+	check(stall.surface_get_format(cs) & Mesh.ARRAY_FORMAT_CUSTOM0 != 0, "the canvas knows how it hangs")
+	var a := stall.surface_get_arrays(cs)
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var c0: PackedFloat32Array = a[Mesh.ARRAY_CUSTOM0]
+	var hang := 0.0
+	var billow := 0.0
+	for i in v.size():
+		hang = maxf(hang, c0[i * 4])
+		billow = maxf(billow, c0[i * 4 + 1])
+	check(hang > 0.8 and billow > 0.2, "a stall's back drape hangs free and its roof canvas billows (hang %.2f m, billow %.2f m)" % [hang, billow])
+	var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+	var longest := 0.0
+	for t in range(0, idx.size(), 3):
+		for k in 3:
+			longest = maxf(longest, v[idx[t + k]].distance_to(v[idx[t + (k + 1) % 3]]))
+	# The stall stands 1.2 times its kit size.
+	check(longest <= ClothFx.MAX_EDGE * 1.2 + 0.01 and idx.size() / 3 > 2000, "the canvas is cut fine enough to bend smoothly (%d triangles, longest edge %.2f m)" % [idx.size() / 3, longest])
+	var sub := ClothFx._subdivide(BuildCatalog.model_parts("props/Banner_1")[2][1], 0.1)
+	var sv: PackedVector3Array = sub[Mesh.ARRAY_VERTEX]
+	var area := 0.0
+	var si: PackedInt32Array = sub[Mesh.ARRAY_INDEX]
+	for t in range(0, si.size(), 3):
+		area += (sv[si[t + 1]] - sv[si[t]]).cross(sv[si[t + 2]] - sv[si[t]]).length() * 0.5
+	var oa: Array = BuildCatalog.model_parts("props/Banner_1")[2][1]
+	var ov: PackedVector3Array = oa[Mesh.ARRAY_VERTEX]
+	var oi: PackedInt32Array = oa[Mesh.ARRAY_INDEX]
+	var oarea := 0.0
+	for t in range(0, oi.size(), 3):
+		oarea += (ov[oi[t + 1]] - ov[oi[t]]).cross(ov[oi[t + 2]] - ov[oi[t]]).length() * 0.5
+	check(absf(area - oarea) < 0.001 * maxf(oarea, 1.0), "cutting cloth finer keeps it the same cloth (%.3f vs %.3f m2)" % [area, oarea])
+	var room := Interiors.interior("castle_keep")
+	var sheltered := false
+	for i in room.get_surface_count():
+		var m := room.surface_get_material(i)
+		if m is ShaderMaterial and (m as ShaderMaterial).get_shader_parameter("shelter") == 1.0:
+			sheltered = true
+	check(sheltered, "a keep's banners stir only in a draught indoors")
+	var tower := Interiors.build("watchtower")
+	var fi := -1
+	for i in tower.get_surface_count():
+		if tower.surface_get_material(i) == ClothFx.flag_material():
+			fi = i
+	check(fi >= 0 and tower.surface_get_format(fi) & Mesh.ARRAY_FORMAT_CUSTOM1 != 0, "a watchtower flies a real flag from its pole")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)

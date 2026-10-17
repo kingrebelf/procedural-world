@@ -1317,7 +1317,8 @@ func _add_obj_body(o: Dictionary) -> void:
 	if beams != null:
 		b.add_child(beams)
 	for f in Interiors.fires(o["t"]):
-		var fl := FireFx.flame(f[1])
+		# Indoors only a draught stirs them.
+		var fl := FireFx.flame(f[1], Color(1, 1, 1, 1), "fire", false, 0.12)
 		fl.position = f[0]
 		if f[1] >= 0.3:
 			# Sparks fly from a hearth or a wall torch; the smoke goes up the chimney.
@@ -1335,17 +1336,16 @@ func _add_obj_body(o: Dictionary) -> void:
 			var cf := FireFx.flame(float(bd["fire"]))
 			cf.add_child(FireFx.embers(float(bd["fire"])))
 			b.add_child(cf)
-		# A candle stand you build burns at its wicks.
+		# A candle stand you build burns at its wicks, a lantern behind its glass.
 		var flames := FireFx.prop_flames(bd.get("models", []))
 		var wicks := Vector3.ZERO
 		for f in flames:
-			var pf := FireFx.flame(f[1])
-			pf.position = f[0]
-			b.add_child(pf)
+			b.add_child(FireFx.prop_flame(f))
 			wicks += (f[0] as Vector3) + Vector3(0, float(f[1]) * 0.6, 0)
 		var lc = bd.get("light")
 		if lc != null:
-			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
+			# Firelight wavers with its flame and shines from it.
+			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") or not flames.is_empty() else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0

@@ -1,20 +1,24 @@
 class_name FireFx
 extends RefCounted
-## Living flames from Ben's fire flipbook (assets/textures/fx/fire_flipbook.png): upright
+## Living flames: Ben's fire flipbook (assets/textures/fx/fire_flipbook.png) on upright
 ## cards that turn to face you about the vertical only and cross-fade through the sheet's
-## 16 frames; the sheet's black is see-through (premultiplied blending). A flame's node
-## sits at its base. For hearths, campfires and torches.
+## 16 frames, with turbulence licking up through them (flame.gdshader); candle and lamp
+## flames drawn (wick_flame.gdshader). Each flickers with its own life (life(), shared with
+## the FlickerLight beside it), leans downwind and trails behind when carried. The sheet's
+## black is see-through (premultiplied blending). A flame's node sits at its base.
 
 const SHEET := "res://assets/textures/fx/fire_flipbook.png"
 ## Each frame's flame stands this share of the frame above its bottom edge (a jet hangs
 ## this share below its top edge), per sheet.
 const FOOT := {"fire": 0.12, "jet": 0.02}
-const FPS := 12.0
+const FPS := 8.0
 
 ## Where kit props burn, in the prop's own space: model -> [[foot of the flame, height]].
 ## Wall torches burn in their iron cups; candles at their wicks.
 const PROP_FLAMES := {
 	"props/Torch_Metal": [[Vector3(0, 0.34, 0.27), 0.42]],
+	# The wick in the hanging lantern, behind its glass (the third entry: the panes' box).
+	"props/Lantern_Wall": [[Vector3(0, 0.2, 0.8), 0.11, Vector3(0.2, 0.24, 0.2)]],
 	"props/Candle_1": [[Vector3(0, 0.128, 0), 0.07]],
 	"props/CandleStick_Triple": [[Vector3(0, 0.457, 0), 0.07], [Vector3(-0.17, 0.335, 0), 0.07], [Vector3(0.18, 0.335, 0), 0.07]],
 	"props/CandleStick_Stand": [[Vector3(-0.31, 1.3, 0), 0.07], [Vector3(0.31, 1.297, 0), 0.07], [Vector3(-0.21, 1.297, 0.21), 0.07],
@@ -37,68 +41,119 @@ static func prop_flames(models: Array) -> Array:
 		var s: float = float(m[3]) if m.size() > 3 and m[3] is float else 1.0
 		var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * s), m[2])
 		for f in at:
-			out.append([xf * (f[0] as Vector3), float(f[1]) * s])
+			out.append([xf * (f[0] as Vector3), float(f[1]) * s] + ([(f[2] as Vector3) * s] if f.size() > 2 else []))
 	return out
+
+## Flames smaller than this (candles, lamp wicks) are drawn (wick_flame.gdshader) rather
+## than taken from the flipbook.
+const SMALL := 0.2
+
+## The fires' clock, in seconds: FireClock advances it every frame and hands it to the
+## shaders as `fire_time`, so a flame and its light read the same moment. Wraps round.
+static var time := 0.0
+const WRAP := 4096.0
+
+static func tick(delta: float) -> void:
+	time = fmod(time + delta, WRAP)
+	RenderingServer.global_shader_parameter_set("fire_time", time)
+
+## fire.gdshaderinc's fx_perm/fx_hash/fx_noise/fire_life, line for line: the life of a
+## flame at time t, 0 (sinking low) .. 1 (leaping), about 0.5 on average.
+static func _perm(x: float) -> float:
+	return fposmod((34.0 * x + 1.0) * x, 289.0)
+
+static func _hash(i: float) -> float:
+	return _perm(_perm(fposmod(i, 289.0)) + 17.0) / 289.0
+
+static func _noise(x: float) -> float:
+	var i := floorf(x)
+	var f := x - i
+	return lerpf(_hash(i), _hash(i + 1.0), f * f * (3.0 - 2.0 * f))
+
+static func life(t: float, seed: float) -> float:
+	var s := seed * 97.0
+	return 0.5 * _noise(t * 1.9 + s) + 0.3 * _noise(t * 5.3 + s * 1.7 + 11.0) + 0.2 * _noise(t * 12.7 + s * 2.3 + 23.0)
+
+## The flame for one entry of prop_flames(), stood where it burns (with its lantern
+## glass, if it has one).
+static func prop_flame(f: Array) -> Node3D:
+	var n := flame(float(f[1]), Color(1, 1, 1, 1), "fire", false, -1.0, f[2] if f.size() > 2 else Vector3.ZERO)
+	n.position = f[0]
+	return n
 
 ## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
 static func material(sheet := "fire") -> ShaderMaterial:
 	if _mats.has(sheet):
 		return _mats[sheet]
-	var sh := Shader.new()
-	sh.code = """shader_type spatial;
-render_mode unshaded, blend_premul_alpha, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled, world_vertex_coords;
-uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform float fps = 12.0;
-instance uniform vec4 tint : source_color = vec4(1.0);
-instance uniform float phase = 0.0;
-varying vec2 uv_a;
-varying vec2 uv_b;
-varying float mixf;
-void vertex() {
-	// Upright: turn about the vertical through the node to face the camera.
-	vec3 c = NODE_POSITION_WORLD;
-	vec3 to_cam = INV_VIEW_MATRIX[3].xyz - c;
-	to_cam.y = 0.0;
-	vec3 f = length(to_cam) > 1e-4 ? normalize(to_cam) : vec3(0.0, 0.0, 1.0);
-	vec3 r = normalize(cross(vec3(0.0, 1.0, 0.0), f));
-	vec3 lv = (inverse(MODEL_MATRIX) * vec4(VERTEX, 1.0)).xyz;
-	float sx = length(MODEL_MATRIX[0].xyz);
-	float sy = length(MODEL_MATRIX[1].xyz);
-	vec3 base = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-	VERTEX = base + r * lv.x * sx + vec3(0.0, 1.0, 0.0) * lv.y * sy;
-	NORMAL = f;
-	// Each fire runs out of step with the others, from where it stands.
-	float t = TIME * fps + phase * 16.0 + fract(sin(dot(c.xz, vec2(12.9898, 78.233))) * 43758.5453) * 16.0;
-	float f0 = mod(floor(t), 16.0);
-	float f1 = mod(f0 + 1.0, 16.0);
-	mixf = fract(t);
-	uv_a = (UV + vec2(mod(f0, 4.0), floor(f0 / 4.0))) / 4.0;
-	uv_b = (UV + vec2(mod(f1, 4.0), floor(f1 / 4.0))) / 4.0;
-}
-void fragment() {
-	vec3 col = mix(texture(tex, uv_a).rgb, texture(tex, uv_b).rgb, mixf) * tint.rgb * tint.a;
-	// Premultiplied: bright flame hides what is behind it in proportion, so it keeps its
-	// colour against a bright sky instead of washing out as plain adding would.
-	ALBEDO = col;
-	ALPHA = clamp(max(col.r, max(col.g, col.b)) * 1.3, 0.0, 1.0);
-}
-"""
 	var m := ShaderMaterial.new()
-	m.shader = sh
-	m.set_shader_parameter("fps", FPS * (1.6 if sheet == "jet" else 1.0))
+	m.shader = load("res://src/world/flame.gdshader")
+	m.set_shader_parameter("fps", FPS * (2.0 if sheet == "jet" else 1.0))
+	m.set_shader_parameter("foot", FOOT.get(sheet, 0.0))
+	m.set_shader_parameter("hang", sheet == "jet")
 	var path := SHEET.replace("fire_", sheet + "_")
 	if ResourceLoader.exists(path):
 		m.set_shader_parameter("tex", load(path))
 	_mats[sheet] = m
 	return m
 
+static var _wick: ShaderMaterial
+
+## The drawn flame of a candle or a lamp's wick.
+static func wick_material() -> ShaderMaterial:
+	if _wick == null:
+		_wick = ShaderMaterial.new()
+		_wick.shader = load("res://src/world/wick_flame.gdshader")
+	return _wick
+
 ## A flame `size` metres tall, its base at the returned node's origin (or, with `hang`,
-## hanging from it, as a jet from a nozzle): two cards out of step give it body.
-static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false) -> Node3D:
+## hanging from it, as a jet from a nozzle). A big one is two flipbook cards out of step,
+## a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
+## 1 in the open, about 0.15 indoors or behind a lantern's glass; below 0 picks by size.
+## Its seed (meta "fire_seed") is what a FlickerLight beside it follows.
+static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false, wind := -1.0, glass := Vector3.ZERO) -> Node3D:
 	var n := Node3D.new()
 	n.name = "Flame"
-	for i in 2:
-		var s := size * (1.0 if i == 0 else 0.7)
+	var seed := randf()
+	var small := size < SMALL and sheet == "fire"
+	if wind < 0.0:
+		wind = 0.15 if small else 1.0
+	n.set_meta("fire_seed", seed)
+	n.set_meta("fire_size", size)
+	if small:
+		var q := QuadMesh.new()
+		q.size = Vector2(size * 0.84, size * 1.5)
+		q.center_offset = Vector3(0, size * (1.32 - 0.18) * 0.5, 0)
+		var mi := MeshInstance3D.new()
+		mi.mesh = q
+		mi.material_override = wick_material()
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.extra_cull_margin = size
+		mi.visibility_range_end = 45.0
+		mi.set_instance_shader_parameter("tint", tint)
+		mi.set_instance_shader_parameter("seed", seed)
+		mi.set_instance_shader_parameter("size", size)
+		mi.set_instance_shader_parameter("exposed", wind)
+		n.add_child(mi)
+		if glass != Vector3.ZERO:
+			# A lantern's panes, lit by it: centred on the wick, its bottom a little below.
+			var g := MeshInstance3D.new()
+			g.name = "Glass"
+			var bm := BoxMesh.new()
+			bm.size = glass
+			g.mesh = bm
+			g.material_override = glass_material()
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			g.position = Vector3(0, glass.y * 0.5 - 0.03, 0)
+			g.visibility_range_end = 120.0
+			g.set_instance_shader_parameter("seed", seed)
+			n.add_child(g)
+		return n
+	# A big fire burns all across its bed: more tongues of flame round the middle one,
+	# over glowing coals.
+	var big := size >= 0.6 and not hang and sheet == "fire"
+	var cards := 4 if big else 2
+	for i in cards:
+		var s := size * (1.0 if i == 0 else (0.7 if not big else 0.5 + 0.08 * i))
 		var q := QuadMesh.new()
 		q.size = Vector2(s, s)
 		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
@@ -106,14 +161,90 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		mi.mesh = q
 		mi.material_override = material(sheet)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# The cards turn in the shader, so their box must hold them at any angle.
-		mi.extra_cull_margin = s
+		# The cards turn and lean in the shader, so their box must hold them at any angle.
+		mi.extra_cull_margin = s * 1.5
 		mi.visibility_range_end = 90.0
 		mi.set_instance_shader_parameter("tint", tint)
-		mi.set_instance_shader_parameter("phase", 0.45 * i)
-		mi.position = Vector3(0.04 * size * i, 0, 0)
+		mi.set_instance_shader_parameter("seed", seed)
+		mi.set_instance_shader_parameter("card", float(i))
+		mi.set_instance_shader_parameter("size", s)
+		mi.set_instance_shader_parameter("exposed", wind)
+		if big and i > 0:
+			var a := TAU * (i / 3.0) + seed * TAU
+			mi.position = Vector3(cos(a), 0, sin(a)) * size * 0.16
+		else:
+			mi.position = Vector3(0.04 * size * i, 0, 0)
 		n.add_child(mi)
+	if big:
+		var bed := MeshInstance3D.new()
+		bed.name = "Coals"
+		var pm := PlaneMesh.new()
+		pm.size = Vector2.ONE * size * 0.62
+		bed.mesh = pm
+		bed.material_override = coal_material()
+		bed.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bed.position = Vector3(0, 0.02, 0)
+		bed.visibility_range_end = 90.0
+		bed.set_instance_shader_parameter("seed", seed)
+		n.add_child(bed)
 	return n
+
+static var _glass: ShaderMaterial
+
+## A lit lantern's glass.
+static func glass_material() -> ShaderMaterial:
+	if _glass == null:
+		_glass = ShaderMaterial.new()
+		_glass.shader = load("res://src/world/lamp_glass.gdshader")
+	return _glass
+
+static var _coals: ShaderMaterial
+
+## The glowing ember bed under a big fire.
+static func coal_material() -> ShaderMaterial:
+	if _coals == null:
+		_coals = ShaderMaterial.new()
+		_coals.shader = load("res://src/world/coals.gdshader")
+	return _coals
+
+## A flame that is carried about (a torch in hand): it trails behind the way it moves,
+## and burns with the given seed, so the light that goes with it can follow it by
+## FireFx.life(FireFx.time, seed) without finding it.
+static func carried(size: float, seed: float) -> Node3D:
+	var n := flame(size)
+	n.set_meta("fire_seed", seed)
+	for c in n.get_children():
+		(c as MeshInstance3D).set_instance_shader_parameter("seed", seed)
+	n.add_child(Drag.new())
+	return n
+
+## Watches how fast its flame moves through the world and leans the flame's cards back
+## against it, easing, so a swung torch streams and settles.
+class Drag extends Node3D:
+	var _last := Vector3.ZERO
+	var _lean := Vector3.ZERO
+	var _have := false
+
+	func _init() -> void:
+		name = "Drag"
+
+	func _process(delta: float) -> void:
+		var p := global_position
+		if not _have or delta <= 0.0:
+			_last = p
+			_have = true
+			return
+		var v := (p - _last) / delta
+		_last = p
+		# Teleports and respawns would fling it: ignore anything faster than a sprint swing.
+		if v.length() > 25.0:
+			v = Vector3.ZERO
+		var want := -v * 0.22
+		want.y = 0.0
+		_lean = _lean.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
+		for c in get_parent().get_children():
+			if c is MeshInstance3D and c.name != "Coals" and c.name != "Glass":
+				(c as MeshInstance3D).set_instance_shader_parameter("drag", _lean)
 
 static var _swirl: ShaderMaterial
 
@@ -192,6 +323,23 @@ static func _dot() -> GradientTexture2D:
 	t.height = 64
 	return t
 
+## A wisp: a round puff that thins out gently from the middle, with no hard rim (the
+## plain dot made smoke into a dark ball hanging over a fire).
+static func _wisp() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.55))
+	g.add_point(0.35, Color(1, 1, 1, 0.32))
+	g.add_point(0.7, Color(1, 1, 1, 0.08))
+	g.set_color(g.get_point_count() - 1, Color(1, 1, 1, 0))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(1.0, 0.5)
+	t.width = 64
+	t.height = 64
+	return t
+
 ## Sparks that fly up off a flame `size` metres tall and die out, and with `smoke` a thin
 ## grey smoke rising above it. They are left behind in the world as the fire moves, so a
 ## swung torch trails them. Put it where the flame stands.
@@ -209,7 +357,7 @@ static func embers(size: float, smoke := true) -> Node3D:
 		_smoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		_smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 		_smoke_mat.vertex_color_use_as_albedo = true
-		_smoke_mat.albedo_texture = _dot()
+		_smoke_mat.albedo_texture = _wisp()
 		_smoke_mat.roughness = 1.0
 	var n := Node3D.new()
 	n.name = "Embers"
@@ -249,9 +397,10 @@ static func embers(size: float, smoke := true) -> Node3D:
 	if smoke:
 		var s := CPUParticles3D.new()
 		s.name = "Smoke"
-		s.amount = 10
+		s.amount = 22
 		s.lifetime = 2.8
 		s.randomness = 0.5
+		s.preprocess = 2.8
 		s.local_coords = false
 		var sq := QuadMesh.new()
 		sq.size = Vector2.ONE * size * 0.5
@@ -259,9 +408,9 @@ static func embers(size: float, smoke := true) -> Node3D:
 		s.mesh = sq
 		s.position = Vector3(0, size * 0.85, 0)
 		s.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-		s.emission_sphere_radius = size * 0.08
+		s.emission_sphere_radius = size * 0.18
 		s.direction = Vector3.UP
-		s.spread = 12.0
+		s.spread = 20.0
 		s.initial_velocity_min = size * 0.8
 		s.initial_velocity_max = size * 1.4
 		s.gravity = Vector3(0, 0.15, 0)
@@ -276,7 +425,9 @@ static func embers(size: float, smoke := true) -> Node3D:
 		var sg := Gradient.new()
 		sg.set_color(0, Color(0.35, 0.33, 0.31, 0.0))
 		sg.set_color(1, Color(0.42, 0.41, 0.4, 0.0))
-		sg.add_point(0.15, Color(0.33, 0.31, 0.3, 0.22))
+		# Thin: fades in above the flame and is mostly gone before it rises far.
+		sg.add_point(0.2, Color(0.4, 0.38, 0.36, 0.09))
+		sg.add_point(0.55, Color(0.42, 0.41, 0.4, 0.05))
 		s.color_ramp = sg
 		n.add_child(s)
 	for c in n.get_children():
