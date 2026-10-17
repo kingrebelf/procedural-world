@@ -577,8 +577,62 @@ func _wonder_types() -> void:
 				yaw = o["r"]
 		var front := Vector2(0, 1).rotated(-yaw)
 		var h := ChunkGenerator.height_at(ch, w["lx"], w["lz"])
+		var name := "%d_%s" % [45 + i, t]
+		if not only.is_empty() and not only.has(name.substr(0, 2)):
+			continue
 		print("wonder ", t, " at ", wc)
-		await _shot("%d_%s" % [45 + i, t], wc + front * 24.0 + front.orthogonal() * 8.0, wc, 0.4, 3.0, h + 6.0)
+		var cam := await _wonder_view(wc, front, h + 6.0)
+		var at := Vector3(wc.x, h, wc.y)
+		_shoo_creatures(at, 70.0)
+		await _shot(name, cam, wc, 0.4, 3.0, h + 6.0, func():
+			_shoo_creatures(at, 70.0)
+			await _wait(3))
+
+## Where to stand to see a wonder whole: out in front at a slight angle, not inside its
+## rocks or a hill (the throne shot stood in the stone king's knees), with nothing solid
+## between the eye and the middle of the wonder. Tries wider and further spots in turn.
+func _wonder_view(wc: Vector2, front: Vector2, look_y: float) -> Vector2:
+	var p: Player = world.player
+	var streamer: ChunkStreamer = world.streamer
+	p.set_physics_process(false)
+	p.global_position = Vector3(wc.x, look_y + 20.0, wc.y)
+	await _wait_loaded(p, streamer)
+	await _wait(5) # colliders of the new chunks
+	var space := p.get_world_3d().direct_space_state
+	var target := Vector3(wc.x, look_y, wc.y)
+	for d in [30.0, 38.0, 46.0, 56.0]:
+		for a in [0.3, -0.3, 0.6, -0.6, 0.0, 0.9, -0.9, 1.25, -1.25]:
+			var q: Vector2 = wc + front.rotated(a) * d
+			var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(q.x, 0, q.y)))
+			if c == null:
+				continue
+			var eye := Vector3(q.x, ChunkGenerator.height_at(c.data, q.x - c.key.x * 64.0, q.y - c.key.y * 64.0) + 3.0, q.y)
+			var ball := PhysicsShapeQueryParameters3D.new()
+			ball.shape = SphereShape3D.new()
+			(ball.shape as SphereShape3D).radius = 1.2
+			ball.transform = Transform3D(Basis(), eye)
+			ball.exclude = [p.get_rid()]
+			if not space.intersect_shape(ball, 1).is_empty():
+				continue
+			var ray := PhysicsRayQueryParameters3D.create(eye, target)
+			ray.exclude = [p.get_rid()]
+			var hit := space.intersect_ray(ray)
+			# Seeing the wonder itself is fine: it is what the ray runs into near the middle.
+			if hit.is_empty() or (hit["position"] as Vector3).distance_to(target) < 14.0:
+				print("wonder view at ", d, " m, ", rad_to_deg(a), " deg")
+				return q
+	print("wonder view: no clear spot, standing in front")
+	return wc + front * 30.0
+
+## Guards and the boss would run at the camera and fill the photo with their name tags:
+## the photo is of the place, so they go.
+func _shoo_creatures(at: Vector3, r: float) -> void:
+	for k in world.fauna._herds:
+		var herd: Array = world.fauna._herds[k]
+		for cr in herd.duplicate():
+			if is_instance_valid(cr) and cr.global_position.distance_to(at) < r:
+				herd.erase(cr)
+				cr.queue_free()
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:
