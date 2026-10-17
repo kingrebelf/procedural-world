@@ -135,11 +135,12 @@ func join(address: String, port: int, player_name_: String, password: String) ->
 	var mp := SceneMultiplayer.new()
 	mp.auth_callback = _client_auth
 	mp.auth_timeout = 15.0
-	mp.peer_authenticating.connect(_on_authenticating)
-	mp.peer_authentication_failed.connect(func(_id): _fail("The server didn't let you in."))
-	mp.connection_failed.connect(func(): _fail("Couldn't connect to %s:%d. Is the server running and the port open?" % [address, port]))
-	mp.server_disconnected.connect(_on_server_gone)
-	mp.connected_to_server.connect(_on_connected)
+	# Signals from an older connection still saying goodbye (_drain) must not touch this one.
+	mp.peer_authenticating.connect(func(id): if multiplayer == mp: _on_authenticating(id))
+	mp.peer_authentication_failed.connect(func(_id): if multiplayer == mp: _fail("The server didn't let you in."))
+	mp.connection_failed.connect(func(): if multiplayer == mp: _fail("Couldn't connect to %s:%d. Is the server running and the port open?" % [address, port]))
+	mp.server_disconnected.connect(func(): if multiplayer == mp: _on_server_gone())
+	mp.connected_to_server.connect(func(): if multiplayer == mp: _on_connected())
 	get_tree().set_multiplayer(mp)
 	mp.multiplayer_peer = peer
 	_joining = {"name": nm, "token": id["token"], "password": password, "address": address, "port": port}
@@ -225,13 +226,31 @@ const MENU := "res://src/ui/main_menu.tscn"
 ## since this may run inside its own signal.
 func _close_peer() -> void:
 	var mp := multiplayer
-	if mp.multiplayer_peer != null and not (mp.multiplayer_peer is OfflineMultiplayerPeer):
-		_flush() # your last save goes out before the line drops
-		mp.multiplayer_peer.close()
+	var p := mp.multiplayer_peer
 	mode = Mode.OFFLINE
+	if p is ENetMultiplayerPeer and p.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED and p.get_peer(1) != null:
+		# A polite goodbye: ENet sends what is still queued (your last save) and then
+		# disconnects. The old peer is polled here until it has (_process).
+		p.get_peer(1).peer_disconnect_later()
+		p.host.flush()
+		_draining.append([p, Time.get_ticks_msec() + 3000])
+	elif p != null and not (p is OfflineMultiplayerPeer):
+		p.close()
 	(func():
 		if multiplayer == mp and mode == Mode.OFFLINE:
 			get_tree().set_multiplayer(SceneMultiplayer.new())).call_deferred()
+
+## Peers saying goodbye: [peer, give-up msec].
+var _draining: Array = []
+
+func _drain() -> void:
+	for d in _draining.duplicate():
+		var p: ENetMultiplayerPeer = d[0]
+		if p.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED:
+			p.poll()
+		if p.get_connection_status() == MultiplayerPeer.CONNECTION_DISCONNECTED or Time.get_ticks_msec() > int(d[1]):
+			p.close()
+			_draining.erase(d)
 
 func _flush() -> void:
 	var p := multiplayer.multiplayer_peer
@@ -250,6 +269,8 @@ func _notification(what: int) -> void:
 # --- Client per frame ------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if not _draining.is_empty():
+		_drain()
 	if mode != Mode.CLIENT or store == null:
 		return
 	if Game.store != store:
