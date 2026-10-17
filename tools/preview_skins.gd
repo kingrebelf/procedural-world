@@ -76,7 +76,7 @@ func _initialize() -> void:
 				wmi.rotation.z = side * 0.35
 				holder.add_child(wmi)
 			bx += 1.3
-		cam.look_at_from_position(Vector3(bx * 0.5 - 0.8, 1.9, 2.6), Vector3(bx * 0.5 - 0.8, 1.0, 0))
+		cam.look_at_from_position(Vector3(bx * 0.5 - 0.8, 3.4, 2.2), Vector3(bx * 0.5 - 0.8, 1.0, 0))
 		for f in 12:
 			await process_frame
 		vp.get_texture().get_image().save_png(out + "/birds.png")

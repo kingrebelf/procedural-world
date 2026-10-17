@@ -141,17 +141,25 @@ static var _hidden_mat: StandardMaterial3D
 ## shader in the kit's colours (or the species' tint), with this animal's own markings.
 func _skin(m: MeshInstance3D, kind: String, kit: String, tint, glow, box: AABB, unit: float, v: Dictionary, sk: Skeleton3D, seed: int) -> void:
 	m.mesh = AnimalSkin.mesh_for(kit, m.mesh as ArrayMesh, sk)
+	var cols := []
+	for s in m.mesh.get_surface_count():
+		var src := m.mesh.surface_get_material(s)
+		var mn := String(src.resource_name) if src else ""
+		var c: Color = (src as BaseMaterial3D).albedo_color if src is BaseMaterial3D else Color(0.4, 0.3, 0.2)
+		if tint != null and mn in COAT:
+			c = (tint as Color) * clampf(c.get_luminance() / 0.3, 0.2, 1.3)
+		cols.append(c)
+	# Coats that meet blend into each other instead of changing along a polygon edge.
+	var with: PackedInt32Array = m.mesh.get_meta("blend_with", PackedInt32Array())
 	for s in m.mesh.get_surface_count():
 		var src := m.mesh.surface_get_material(s)
 		var mn := String(src.resource_name) if src else ""
 		if mn in v.get("hide", []):
 			m.set_surface_override_material(s, _hidden())
 			continue
-		var c: Color = (src as BaseMaterial3D).albedo_color if src is BaseMaterial3D else Color(0.4, 0.3, 0.2)
-		if tint != null and mn in COAT:
-			c = (tint as Color) * clampf(c.get_luminance() / 0.3, 0.2, 1.3)
 		var g = glow if glow != null and mn.contains("Light") else null
-		m.set_surface_override_material(s, AnimalSkin.material(kind, mn, c, g, box, unit))
+		var other = cols[with[s]] if s < with.size() and with[s] >= 0 else null
+		m.set_surface_override_material(s, AnimalSkin.material(kind, mn, cols[s], g, box, unit, other))
 	m.set_instance_shader_parameter("seed", float(absi(seed) % 65521))
 
 ## A material that draws nothing (horns a variant doesn't have).

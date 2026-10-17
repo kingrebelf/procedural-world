@@ -41,6 +41,26 @@ static func _feather(a: Color, b: Color, glow := 0.0, gcol := Color.WHITE, mode 
 	m.set_shader_parameter("bars", 0.45 if name == "Kestrel" and mode == 1 else 0.0)
 	return m
 
+## The profile through its points on a Catmull-Rom curve, `k` steps a span, so the
+## lathed body is smooth rather than ringed with facets.
+static func _smooth_profile(p: PackedVector2Array, k: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := p.size()
+	for i in n - 1:
+		var p0 := p[maxi(i - 1, 0)]
+		var p1 := p[i]
+		var p2 := p[i + 1]
+		var p3 := p[mini(i + 2, n - 1)]
+		for j in k:
+			var t := float(j) / k
+			var t2 := t * t
+			var t3 := t2 * t
+			var q := 0.5 * ((2.0 * p1) + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3)
+			q.x = maxf(q.x, 0.0)
+			out.append(q)
+	out.append(p[n - 1])
+	return out
+
 ## Natural colours for the real birds; the rest take the species' own.
 static func _palette(p: Dictionary) -> Array:
 	match String(p["name"]):
@@ -70,8 +90,9 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var prof := PackedVector2Array([Vector2(0.0, 0.25), Vector2(0.035, 0.245), Vector2(0.058, 0.225), Vector2(0.064, 0.2),
 		Vector2(0.057, 0.172), Vector2(0.074 * fat, 0.13), Vector2(0.095 * fat, 0.06), Vector2(0.097 * fat, -0.01),
 		Vector2(0.082 * fat, -0.08), Vector2(0.052, -0.14), Vector2(0.026, -0.18), Vector2(0.0, -0.195)])
+	prof = _smooth_profile(prof, 4)
 	var axis := Transform3D(Basis(Vector3.RIGHT, PI * 0.5) * Basis().scaled(Vector3(0.9, 1.0, 1.0)), Vector3.ZERO)
-	g.lathe("body", prof, 22, axis, Vector2(0.0, -0.035))
+	g.lathe("body", prof, 24, axis, Vector2(0.0, -0.035))
 	# Beak, eyes.
 	var bl := 0.045 if finch else (0.075 if name == "Crow" else 0.055)
 	g.prism("beak", Vector3(0, 0.034, 0.238), Vector3(0, -0.22 if name == "Kestrel" else -0.1, 1.0), 0.02 if not finch else 0.024, bl, 5, 0.75)

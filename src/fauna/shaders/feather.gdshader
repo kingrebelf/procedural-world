@@ -40,6 +40,10 @@ void fragment() {
 	if (mode == 1) {
 		float x = UV.x - 0.5;
 		float ax = abs(x);
+		// Rounded tips and a slightly ragged vane instead of a square-cut plank.
+		float tip_t = clamp((UV.y - 0.78) / 0.22, 0.0, 1.0);
+		float half_w = 0.5 * sqrt(max(1.0 - tip_t * tip_t, 0.0)) - 0.03 * h2(vec2(floor(UV.y * 40.0), sign(x)));
+		if (ax > half_w) discard;
 		c = mix(col_a, col_b, smoothstep(0.0, 1.0, UV.y));
 		float barbs = sin((ax * 6.0 + UV.y * 1.0) * 70.0) * 0.5 + 0.5;
 		float bf = 1.0 - smoothstep(0.01, 0.04, px);

@@ -17,10 +17,10 @@ const LEVELS := 2
 ## where the legs meet the body and the back's top (0..1 of the height), and the chances
 ## and colours of each marking. Missing keys take the defaults in fur.gdshader.
 const LOOKS := {
-	"Deer": {"strand": 0.003, "clump": 0.016, "fur": 0.8, "muscle": 1.0, "legs_y": 0.42, "back_y": 0.62,
+	"Deer": {"vary": 0.2, "strand": 0.003, "clump": 0.016, "fur": 0.8, "muscle": 1.0, "legs_y": 0.42, "back_y": 0.62,
 		"belly": 0.4, "dorsal": 0.2, "spots": 0.25, "spot_col": Color(0.82, 0.74, 0.62), "spot_size": 0.035},
-	"Stag": {"strand": 0.0035, "clump": 0.02, "fur": 0.85, "muscle": 1.2, "legs_y": 0.42, "back_y": 0.6,
-		"belly": 0.4, "dorsal": 0.25, "spots": 0.1, "spot_col": Color(0.8, 0.72, 0.6), "spot_size": 0.05},
+	"Stag": {"vary": 0.2, "strand": 0.0035, "clump": 0.02, "fur": 0.85, "muscle": 1.2, "legs_y": 0.42, "back_y": 0.6,
+		"belly": 0.4, "dorsal": 0.25},
 	"Cow": {"strand": 0.003, "clump": 0.024, "fur": 0.55, "muscle": 0.6, "legs_y": 0.36, "back_y": 0.66,
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
 	"Bull": {"strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
@@ -31,11 +31,11 @@ const LOOKS := {
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},
 	"Donkey": {"strand": 0.003, "clump": 0.02, "fur": 0.75, "muscle": 0.8, "legs_y": 0.4, "back_y": 0.66,
 		"belly": 0.5, "dorsal": 0.1, "stripe": 0.7, "socks": 0.15, "sock_col": Color(0.12, 0.1, 0.09)},
-	"Alpaca": {"strand": 0.006, "clump": 0.045, "fur": 1.4, "coarse": 0.3, "muscle": 0.15, "legs_y": 0.32, "back_y": 0.52,
+	"Alpaca": {"vary": 0.2, "strand": 0.006, "clump": 0.045, "fur": 1.4, "coarse": 0.3, "muscle": 0.15, "legs_y": 0.32, "back_y": 0.52,
 		"belly": 0.15, "dorsal": 0.0, "patches": 0.35, "patch_col": Color(0.86, 0.82, 0.74)},
-	"Wolf": {"strand": 0.004, "clump": 0.022, "fur": 1.15, "muscle": 0.6, "legs_y": 0.4, "back_y": 0.68,
+	"Wolf": {"vary": 0.2, "strand": 0.004, "clump": 0.022, "fur": 1.15, "muscle": 0.6, "legs_y": 0.4, "back_y": 0.68,
 		"belly": 0.35, "dorsal": 0.35, "stripe": 0.25, "grizzle": 0.7},
-	"Fox": {"strand": 0.003, "clump": 0.016, "fur": 1.0, "muscle": 0.4, "legs_y": 0.34, "back_y": 0.62,
+	"Fox": {"vary": 0.2, "strand": 0.003, "clump": 0.016, "fur": 1.0, "muscle": 0.4, "legs_y": 0.34, "back_y": 0.62,
 		"belly": 0.25, "dorsal": 0.15, "grizzle": 0.25},
 	"Husky": {"strand": 0.004, "clump": 0.022, "fur": 1.15, "muscle": 0.4, "legs_y": 0.38, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.15, "grizzle": 0.3, "socks": 0.2},
@@ -150,10 +150,10 @@ static func mesh_for(kit: String, src: ArrayMesh, sk: Skeleton3D) -> ArrayMesh:
 
 ## The skin for one of the kit's surfaces. `col` is its colour (the kit's or the
 ## species' tint), `glow` an emission colour or null.
-static func material(kind: String, mat_name: String, col: Color, glow, box: AABB, unit: float) -> ShaderMaterial:
+static func material(kind: String, mat_name: String, col: Color, glow, box: AABB, unit: float, other = null) -> ShaderMaterial:
 	var kit := String(AnimalModel.VARIANTS[kind]["base"]) if AnimalModel.VARIANTS.has(kind) else kind
 	var role := role_of(kit, mat_name)
-	var key := "%s|%s|%s|%s|%s" % [kind, mat_name, col.to_html(), glow, snappedf(unit, 0.001)]
+	var key := "%s|%s|%s|%s|%s|%s" % [kind, mat_name, col.to_html(), glow, snappedf(unit, 0.001), other]
 	_mat_lock.lock()
 	if _shader == null:
 		_shader = load(SHADER)
@@ -170,6 +170,9 @@ static func material(kind: String, mat_name: String, col: Color, glow, box: AABB
 		for k in look:
 			if k != "muscle":
 				m.set_shader_parameter(k, look[k])
+		if other != null:
+			m.set_shader_parameter("other", other)
+			m.set_shader_parameter("blend", 1.0)
 		if glow != null:
 			m.set_shader_parameter("emit", glow)
 			m.set_shader_parameter("emit_e", 1.6)
@@ -281,8 +284,10 @@ static func refine(data: Dictionary) -> ArrayMesh:
 	for l in range(levels - 1, -1, -1):
 		acc += errs[l]
 		lod_err[l] = acc
+	var blend := _seams(pos, tris, tsurf, roles, aabb.size.y * 0.06)
 	var out := ArrayMesh.new()
 	out.resource_name = data["name"]
+	out.set_meta("blend_with", blend["with"])
 	for s in sc:
 		var local := {}
 		var lv := PackedVector3Array()
@@ -313,7 +318,7 @@ static func refine(data: Dictionary) -> ArrayMesh:
 							lw.append(wei[g * 4 + j])
 						lc.append(col[g])
 						uv.append(Vector2(pos[g].x, pos[g].y))
-						uv2.append(Vector2(pos[g].z, 0.0))
+						uv2.append(Vector2(pos[g].z, (blend["dist"] as PackedFloat32Array)[g]))
 					ix.append(li)
 			lidx.append(ix)
 		var arr := []
@@ -555,3 +560,81 @@ static func _muscles(pos: PackedVector3Array, nrm: PackedVector3Array, tris: Pac
 			if q < 9.0:
 				d += exp(-q) * float(c[2])
 		pos[i] += nrm[i] * amp * minf(d, 1.6)
+
+## Where two coats meet (a pale rump on a brown body, a mane on a neck) the kit's colour
+## changes along a polygon edge. For each vertex: how far it is from such a seam, 0..1
+## of `reach` (1 beyond), so the shader can blend the two colours across it; and for
+## each surface, the coat it borders most (-1 for none).
+static func _seams(pos: PackedVector3Array, tris: PackedInt32Array, tsurf: PackedInt32Array, roles: PackedInt32Array, reach: float) -> Dictionary:
+	var n := pos.size()
+	var sc := roles.size()
+	var owner := PackedInt32Array()
+	owner.resize(n)
+	owner.fill(-1)
+	var seam := PackedByteArray()
+	seam.resize(n)
+	var coat := func(sf: int) -> bool: return roles[sf] == FUR or roles[sf] == HAIR
+	for t in tsurf.size():
+		var sf := tsurf[t]
+		if not coat.call(sf):
+			continue
+		for k in 3:
+			var v := tris[t * 3 + k]
+			if owner[v] < 0:
+				owner[v] = sf
+			elif owner[v] != sf:
+				seam[v] = 1
+	# Which coat each surface borders most.
+	var count := {}
+	for t in tsurf.size():
+		var sf := tsurf[t]
+		if not coat.call(sf):
+			continue
+		for k in 3:
+			var v := tris[t * 3 + k]
+			if seam[v] == 1 and owner[v] != sf:
+				var key := sf * 1024 + owner[v]
+				count[key] = int(count.get(key, 0)) + 1
+	var with := PackedInt32Array()
+	with.resize(sc)
+	with.fill(-1)
+	var best := PackedInt32Array()
+	best.resize(sc)
+	for key in count:
+		var a: int = key / 1024
+		var b: int = key % 1024
+		if count[key] > best[a]:
+			best[a] = count[key]
+			with[a] = b
+			if with[b] < 0:
+				with[b] = a
+	# Distance from the nearest seam along the surface, by relaxing over edges.
+	var dist := PackedFloat32Array()
+	dist.resize(n)
+	dist.fill(reach)
+	var queue: Array[int] = []
+	for v in n:
+		if seam[v] == 1:
+			dist[v] = 0.0
+			queue.append(v)
+	var nb := []
+	nb.resize(n)
+	for i in n:
+		nb[i] = []
+	for t in range(0, tris.size(), 3):
+		for k in 3:
+			var a := tris[t + k]
+			var b := tris[t + (k + 1) % 3]
+			(nb[a] as Array).append(b)
+	var head := 0
+	while head < queue.size():
+		var v := queue[head]
+		head += 1
+		for w in nb[v]:
+			var d := dist[v] + pos[v].distance_to(pos[w])
+			if d < dist[w]:
+				dist[w] = d
+				queue.append(w)
+	for v in n:
+		dist[v] = clampf(dist[v] / reach, 0.0, 1.0)
+	return {"dist": dist, "with": with}

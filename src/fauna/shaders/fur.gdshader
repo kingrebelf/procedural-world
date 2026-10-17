@@ -30,12 +30,15 @@ uniform vec3 patch_col : source_color = vec3(0.9, 0.88, 0.84);
 uniform float socks = 0.0; // chance of pale (or dark) lower legs
 uniform vec3 sock_col : source_color = vec3(0.66, 0.63, 0.58);
 uniform float blaze = 0.0; // chance of a pale streak down the face
-uniform float vary = 0.12; // how much one animal's coat differs from the next
+uniform float vary = 0.12;
+uniform vec3 other : source_color = vec3(0.5); // the coat this one meets
+uniform float blend = 0.0; // 1: blend into `other` near the seam // how much one animal's coat differs from the next
 uniform vec3 emit : source_color = vec3(0.0);
 uniform float emit_e = 0.0;
 instance uniform float seed = 0.0;
 
 varying vec3 rest;
+varying float seam; // 0 on a seam with another coat, 1 well away from it
 
 float h1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
 float h3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -57,6 +60,7 @@ float cells(vec3 p) {
 
 void vertex() {
 	rest = vec3(UV, UV2.x);
+	seam = UV2.y;
 }
 
 // Which way the hair lies at rest: back along the body and down its flanks, straight
@@ -89,6 +93,11 @@ void fragment() {
 	float s = seed * 0.000173;
 	vec3 so = vec3(h1(s), h1(s + 1.3), h1(s + 2.7)) * 61.0;
 	vec3 c = base;
+	// Soft, ragged edges where two coats meet: both sides fade to the same mix.
+	if (blend > 0.0 && role <= 1) {
+		float n = fbm(pm * 9.0 + so) - 0.5;
+		c = mix(base, other, 0.5 * (1.0 - smoothstep(0.0, 1.0, seam + n * 0.7)));
+	}
 	// This animal's own shade of its species' coat.
 	c *= 1.0 + vary * (h1(s + 4.1) - 0.5) * 2.0;
 	c.r *= 1.0 + vary * 0.5 * (h1(s + 5.3) - 0.5);
@@ -104,9 +113,17 @@ void fragment() {
 		float mid = abs(p.x) / max((hi.x - lo.x) * 0.5, 0.001);
 		// Counter-shading: a darker back, a paler belly, with some ragged edge.
 		float edge = fbm(pm * 6.0 + so) - 0.5;
-		c *= 1.0 - dorsal * smoothstep(0.55, 1.0, t + edge * 0.15) * torso * (1.0 - 0.5 * mid);
+		// Every animal has its own coat: how dark its back, how pale its belly, broad
+		// cloudy shading, and maybe a darker or paler face.
+		float dor = dorsal * (0.4 + 1.2 * h1(s + 21.0));
+		float bel = belly * (0.5 + h1(s + 22.0));
+		c *= 1.0 + (fbm(pm * 0.8 + so * 0.5) - 0.5) * vary * 2.2;
+		float face = smoothstep(0.84, 0.9, q.z) * smoothstep(back_y - 0.05, back_y + 0.05, q.y);
+		float fpick = h1(s + 23.0);
+		c *= mix(1.0, fpick < 0.25 ? 0.75 : (fpick > 0.8 ? 1.15 : 1.0), face);
+		c *= 1.0 - dor * smoothstep(0.55, 1.0, t + edge * 0.15) * torso * (1.0 - 0.5 * mid);
 		vec3 pale = mix(c, vec3(dot(c, vec3(0.33))) * 1.35 + 0.08, 0.6);
-		c = mix(c, pale, belly * (1.0 - smoothstep(0.1, 0.4, t + edge * 0.2)) * torso);
+		c = mix(c, pale, bel * (1.0 - smoothstep(0.1, 0.4, t + edge * 0.2)) * torso);
 		c *= 1.0 - stripe * (1.0 - smoothstep(0.04, 0.12, mid + edge * 0.04)) * smoothstep(0.7, 0.9, t) * 0.55;
 		// Pied patches: big, ragged, different on every animal.
 		float pick = h1(s + 7.7);
@@ -141,19 +158,23 @@ void fragment() {
 		}
 		// The hair itself: locks and single hairs, stretched the way they lie.
 		vec3 f = flow(q, p);
+		// Hair doesn't lie perfectly straight: whorls and partings.
+		f = normalize(f + (vec3(fbm(pm * 3.0 + so), fbm(pm * 3.0 + so + 9.1), fbm(pm * 3.0 + so + 4.7)) - 0.5) * 0.8);
+		// Shorter hair on the legs and face.
+		float short_hair = mix(0.6, 1.0, torso) * mix(1.0, 0.65, smoothstep(0.86, 0.92, q.z));
 		vec3 a = normalize(cross(f, abs(f.y) > 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0)));
 		vec3 b = cross(f, a);
 		vec3 sc = vec3(dot(pm, a), dot(pm, b), dot(pm, f));
 		// Manes and tails hang in long, thick locks.
-		float stretch = role == 1 ? 0.05 : 0.22;
-		float ck = role == 1 ? clump * 2.5 : clump;
-		float sk = role == 1 ? strand * 3.0 : strand;
+		float stretch = role == 1 ? 0.05 : 0.35;
+		float ck = role == 1 ? clump * 2.5 : clump * short_hair;
+		float sk = role == 1 ? strand * 3.0 : strand * 0.75 * short_hair;
 		float cl = n3(sc * vec3(1.0, 1.0, stretch * 1.5) / ck + so);
 		float fi = n3(sc * vec3(1.0, 1.0, stretch) / sk + so * 2.0);
 		float fc = 1.0 - smoothstep(ck * 0.4, ck * 1.6, px);
 		float ff = 1.0 - smoothstep(sk * 0.4, sk * 1.6, px);
 		fi = mix(fi, smoothstep(0.35, 0.75, fi), coarse);
-		float hv = (cl - 0.5) * fc * 0.4 + (fi - 0.5) * ff * (0.55 + coarse * 0.4);
+		float hv = (cl - 0.5) * fc * 0.25 + (fi - 0.5) * ff * (0.6 + coarse * 0.4);
 		c *= 1.0 + hv * fur * (0.75 + coarse * 0.5);
 		// Dark hair still catches the light along each strand.
 		c += vec3(0.035) * max(hv, 0.0) * fur * (role == 1 ? 2.5 : 0.6);
