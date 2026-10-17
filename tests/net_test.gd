@@ -45,11 +45,17 @@ func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
 
+## Waits until `cond` holds: for `max_frames` frames, and never less than that many
+## frames take at 60 fps (a headless frame can take a millisecond, and frames alone ran
+## out before the server had sent the land).
 func _until(cond: Callable, max_frames: int) -> bool:
-	for i in max_frames:
+	var end := Time.get_ticks_msec() + max_frames * 1000 / 60
+	var i := 0
+	while i < max_frames or Time.get_ticks_msec() < end:
 		if cond.call():
 			return true
 		await process_frame
+		i += 1
 	return cond.call()
 
 func _godot_args(extra: Array) -> PackedStringArray:
@@ -169,7 +175,9 @@ func _run() -> void:
 	var lh: PackedFloat32Array = local["heights"]
 	check(hs.size() == lh.size() and absf(hs[hs.size() / 2] - lh[lh.size() / 2]) < 0.001, "server land matches the seed")
 
-	# A second player joins from another process and stands near this chunk.
+	# A second player joins from another process and stands near this chunk. (Listen to
+	# him from the start: he can say he's ready before he is drawn here.)
+	net.chat.connect(func(from, text, _k): if from == "Bob": _heard.append(text))
 	_peer = OS.create_process(OS.get_executable_path(), _godot_args(["--script", "res://tests/net_peer.gd", "--",
 		"--port=%d" % PORT, "--cx=%d" % k0.x, "--cz=%d" % k0.y, "--identity=netpeer"]))
 	check(await _until(func(): return net.peers.size() == 1, 2400), "the second player shows up in the roster")
@@ -177,7 +185,6 @@ func _run() -> void:
 	check(String(other.get("name", "")) == "Bob", "named Bob (%s)" % other.get("name", ""))
 	check(await _until(func(): return world.get_node("OtherPlayers").get_child_count() == 1, 1200), "and is drawn in the world")
 	# Bob says he's ready once he has this chunk; then we edit it.
-	net.chat.connect(func(from, text, _k): if from == "Bob": _heard.append(text))
 	check(await _until(func(): return _heard.has("ready"), 2400), "Bob chats (%s)" % str(_heard))
 	here.data["net_test"] = 4242
 	game.mark_chunk_dirty(here.data)

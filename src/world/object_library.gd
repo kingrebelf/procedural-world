@@ -65,7 +65,7 @@ const LABEL := {
 static func kind(t: String) -> String:
 	if BuildCatalog.is_built(t):
 		return "built"
-	if EasterEggs.has(t):
+	if EasterEggs.has(t) or ZoneBorder.has(t) or t == WonderSite.DEBRIS:
 		return "structure"
 	return KIND.get(t, "marker")
 
@@ -82,6 +82,10 @@ static func label(t: String) -> String:
 		return WonderSite.label(t)
 	if ShipPad.has(t):
 		return ShipPad.label(t)
+	if ZoneBorder.has(t):
+		return ZoneBorder.LABELS[t]
+	if t == WonderSite.DEBRIS:
+		return "Dreadnought Wreckage"
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -94,9 +98,11 @@ static func mesh_key(o: Dictionary) -> String:
 	if EasterEggs.has(o["t"]):
 		return EasterEggs.mesh_key(o)
 	if sp == 0:
-		# On human worlds a wonder wears carved and inlaid stone, nothing that glows.
-		if Eras.theme == "human" and WonderSite.has(o["t"]):
-			return o["t"] + WonderSite.CALM
+		if WonderSite.has(o["t"]):
+			return WonderSite.mesh_key(o)
+		# Castle walls and towers come in a few builds, picked by where they stand.
+		if Stronghold.VARIANTS.has(o["t"]):
+			return Stronghold.variant_key(o)
 		return o["t"]
 	return "%s#%d#%d" % [o["t"], sp, int(o.get("v", 0))]
 
@@ -141,20 +147,18 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Interiors.build(key)
 	if KitBase.has(key):
 		return KitBase.build(key)
-	if Stronghold.has(key):
+	if Stronghold.has(key.get_slice(Stronghold.VAR, 0)):
 		return Stronghold.build(key)
 	if Landmark.has(key):
 		return Landmark.build(key)
-	if WonderSite.has(key):
-		return WonderSite.build(key)
-	if key.ends_with(WonderSite.CALM) and WonderSite.has(key.trim_suffix(WonderSite.CALM)):
-		return WonderSite.build(key.trim_suffix(WonderSite.CALM), false, true)
+	if ZoneBorder.has(key):
+		return ZoneBorder.build(key)
+	if WonderSite.owns_key(key):
+		return WonderSite.build_key(key)
 	if ShipPad.has(key):
 		return ShipPad.build(key)
 	if key == WorldPortal.TYPE:
 		return WorldPortal.build()
-	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
-		return WonderSite.build(key.trim_suffix("~solid"), true)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
@@ -165,6 +169,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			return Cave.build(int(parts[1]))
 		if parts[0] == "cave_glow" or parts[0] == "cave_crystal":
 			return Caves.build_glow(int(parts[1]), int(parts[2]), parts[0] == "cave_glow")
+		if parts[0] == WonderSite.DEBRIS:
+			return WonderSite.debris(int(parts[1]), int(parts[2]))
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
@@ -280,16 +286,17 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = rs
 			_lock.unlock()
 		return rs
-	if Stronghold.has(t) or WonderSite.has(t):
+	if Stronghold.has(t) or WonderSite.has(t) or ZoneBorder.open(t):
 		# Walk through gates and doorways: collide with the real geometry (a wonder's
-		# without its beam of light).
+		# without its beam of light, a crashed dreadnought's as it lies).
+		var sk := WonderSite.solid_key(o) if WonderSite.has(t) else t
 		_lock.lock()
-		var fs = _shapes.get(t)
+		var fs = _shapes.get(sk)
 		_lock.unlock()
 		if fs == null:
-			fs = [get_mesh(t + "~solid" if WonderSite.has(t) else t).create_trimesh_shape(), Vector3.ZERO]
+			fs = [get_mesh(sk).create_trimesh_shape(), Vector3.ZERO]
 			_lock.lock()
-			_shapes[t] = fs
+			_shapes[sk] = fs
 			_lock.unlock()
 		return fs
 	if t == WorldPortal.TYPE:
@@ -302,7 +309,7 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = ps
 			_lock.unlock()
 		return ps
-	if t == "alien_ruin" and sp != 0:
+	if (t == "alien_ruin" or t == WonderSite.DEBRIS) and sp != 0:
 		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
 		# core, instead of into a box around the whole thing.
 		var rk := mesh_key(o)
@@ -350,7 +357,9 @@ static func shape_of(o: Dictionary) -> Array:
 		out = [c, Vector3(0, c.height * 0.5, 0)]
 	else:
 		var m := get_mesh(key)
-		var hull: Shape3D = m.create_convex_shape(true, true) if m else null
+		# The exact hull: "simplify" took 40-70 ms per rock on the main thread (a freeze
+		# each time a rocky chunk came near) for a looser fit.
+		var hull: Shape3D = m.create_convex_shape(true, false) if m else null
 		out = [hull, Vector3.ZERO] if hull else get_shape(t)
 	_lock.lock()
 	_shapes[key] = out
@@ -419,7 +428,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else EasterEggs.SIZE[t] if EasterEggs.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else ZoneBorder.SIZE[t] if ZoneBorder.SIZE.has(t) else EasterEggs.SIZE[t] if EasterEggs.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
 				"spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)

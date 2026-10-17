@@ -3,8 +3,8 @@ class_name RiverMesh
 ## runs on worker threads and in tests.
 
 ## River water surface for this chunk (worker thread): the cells of the 2 m river grid
-## that hold water, at the river's level, coloured with the downhill flow direction and
-## an edge fade. Empty when the chunk has no river.
+## that hold water, at the river's level, coloured with the downhill flow direction, its
+## steepness and an edge fade. Empty when the chunk has no river.
 static func build_river_arrays(chunk: Dictionary) -> Array:
 	if not chunk.has("river"):
 		return []
@@ -34,10 +34,14 @@ static func build_river_arrays(chunk: Dictionary) -> Array:
 					var bz := maxi(c.y - 1, 0)
 					var g := Vector2(rv[(c.y * N + ax) * 3] - rv[(c.y * N + bx) * 3], rv[(az * N + c.x) * 3] - rv[(bz * N + c.x) * 3])
 					var f := -g.normalized() * clampf(g.length() * 6.0, 0.15, 1.0) if g.length() > 0.0001 else Vector2(0.0, 0.15)
+					# How steeply the water itself falls, from wet neighbours only: the grid's
+					# level climbs the banks, which is no rapid.
+					var fall := Vector2(_fall(rv, N, c.x, c.y, Vector2i(1, 0), wet), _fall(rv, N, c.x, c.y, Vector2i(0, 1), wet))
 					var a := (1.0 - smoothstep(0.85, 1.15, rv[k + 1])) * clampf(rv[k + 2] * 1.5, 0.0, 1.0)
 					vid[c] = verts.size()
 					verts.append(Vector3(c.x * 2.0, lv, c.y * 2.0))
-					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, 0.0, a))
+					# b: how steeply the river falls here, per 4 m (rapids where it is high).
+					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, clampf(fall.length() * 4.0, 0.0, 1.0), a))
 				ids.append(vid[c])
 			idx.append_array([ids[0], ids[1], ids[2], ids[1], ids[3], ids[2]])
 	if idx.is_empty():
@@ -52,3 +56,21 @@ static func build_river_arrays(chunk: Dictionary) -> Array:
 	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
 	return arr
+
+## The fall of the river's level per 2 m cell at (i, j) along axis d, from the wet cells
+## either side (0 where neither side holds water).
+static func _fall(rv: PackedFloat32Array, n: int, i: int, j: int, d: Vector2i, wet: Callable) -> float:
+	var ai := mini(i + d.x, n - 1)
+	var aj := mini(j + d.y, n - 1)
+	var bi := maxi(i - d.x, 0)
+	var bj := maxi(j - d.y, 0)
+	var a_wet: bool = wet.call(ai, aj)
+	var b_wet: bool = wet.call(bi, bj)
+	var here := rv[(j * n + i) * 3]
+	if a_wet and b_wet:
+		return (rv[(aj * n + ai) * 3] - rv[(bj * n + bi) * 3]) * 0.5
+	if a_wet:
+		return rv[(aj * n + ai) * 3] - here
+	if b_wet:
+		return here - rv[(bj * n + bi) * 3]
+	return 0.0

@@ -4,8 +4,8 @@ class_name GunLook
 ## kit's flat white and orange), and the period weapons (revolver, crossbows) forged from
 ## parts in wood, iron and brass. Guns point along -Z with the grip at the origin.
 
-## Item type -> [kit model, scale, body paint, accent]. The accent is a glow material
-## name (energy weapons) or a paint colour.
+## Item type -> [kit model, scale, body paint, accent]. The accent names a colour from GLOW
+## (shown as anodised metal on these human guns) or is a paint colour.
 const KIT := {
 	"pulse_pistol": ["scifi/Pistol_1", 0.3, Color(0.78, 0.8, 0.83), "glow_cyan"],
 	"pulse_smg": ["scifi/SMG_2", 0.3, Color(0.2, 0.23, 0.26), "glow_teal"],
@@ -23,7 +23,7 @@ const OPTICS := {
 const GRIP_AT := Vector3(0, -0.03, 0.0)
 
 static func has(t: String) -> bool:
-	return KIT.has(t) or t in ["scrap_pistol", "crossbow", "crossbow_runic"]
+	return KIT.has(t) or t in ["scrap_pistol", "crossbow", "crossbow_runic"] or Firearms.has(t)
 
 static var _mats: Dictionary = {}
 static var _grain: NoiseTexture2D
@@ -39,7 +39,7 @@ static func model(t: String) -> ArrayMesh:
 			return _crossbow(false)
 		"crossbow_runic":
 			return _crossbow(true)
-	return null
+	return Firearms.model(t)
 
 static func _kit_gun(t: String) -> ArrayMesh:
 	var e: Array = KIT[t]
@@ -76,7 +76,9 @@ static func _skin(m: Material, body: Color, accent) -> Material:
 		"White":
 			return _paint(body)
 		"Main":
-			return _glow(accent) if accent is String else _paint(accent)
+			# Human sci-fi: the energy strips are anodised metal, not lit (nothing made by
+			# people glows).
+			return _anodised(accent) if accent is String else _paint(accent)
 	return m
 
 static func _slot(m: Material) -> String:
@@ -109,6 +111,13 @@ static func _glow(name: String) -> Material:
 		_mats[key] = m
 	return _mats[key]
 
+static func _anodised(name: String) -> Material:
+	var key := "gun_anod_" + name
+	if not _mats.has(key):
+		var c: Color = GLOW.get(name, Color.WHITE)
+		_mats[key] = _base(c * 0.42, 0.3, 0.75)
+	return _mats[key]
+
 static func _paint(c: Color) -> StandardMaterial3D:
 	var key := "gun_paint_" + c.to_html()
 	if not _mats.has(key):
@@ -126,9 +135,12 @@ static func mat(name: String) -> Material:
 		return _mats[name]
 	var m: StandardMaterial3D
 	match name:
-		"gun_metal": m = _base(Color(0.2, 0.21, 0.23), 0.34, 0.85)
-		"gun_blued": m = _base(Color(0.11, 0.12, 0.15), 0.3, 0.9)
-		"gun_polymer": m = _base(Color(0.045, 0.047, 0.05), 0.68, 0.0)
+		"gun_metal": m = finish(Color(0.24, 0.25, 0.27), 0.32, 0.85, Color(0.55, 0.55, 0.56), 0.1, 0.18)
+		# Blued steel: deep blue-black with a sheen, handling wear rubbed through to
+		# the bright steel in places.
+		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
+		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
+		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.11, 0.11, 0.115), 0.25, 0.45)
 		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
@@ -195,6 +207,39 @@ static func _wood(key: String, spec: Array, axis: String) -> StandardMaterial3D:
 	m.uv1_scale = Vector3(along if axis == "_x" else across, along if axis == "_y" else across, across if axis in ["_x", "_y"] else along)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	_mats[key] = m
+	return m
+
+static var _wear_noise: FastNoiseLite
+
+## A worn finish: colour `c`, with patches of `wear_c` (bare metal showing through,
+## polished spots) over `wear` of the surface, roughness drifting a good deal more than
+## _base's, and a grain of strength `bump` in the normals.
+static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: float, bump: float) -> StandardMaterial3D:
+	var m := _base(Color.WHITE, rough, metal)
+	if _wear_noise == null:
+		_wear_noise = FastNoiseLite.new()
+		_wear_noise.frequency = 0.02
+		_wear_noise.fractal_octaves = 5
+		_wear_noise.fractal_gain = 0.6
+	var g := Gradient.new()
+	var edge := clampf(1.0 - wear, 0.05, 0.98)
+	g.offsets = PackedFloat32Array([0.0, 0.45, edge - 0.03, edge, 1.0])
+	g.colors = PackedColorArray([c * 0.8, c, c * 1.12, wear_c, wear_c])
+	var t := NoiseTexture2D.new()
+	t.seamless = true
+	t.noise = _wear_noise
+	t.color_ramp = g
+	m.albedo_texture = t
+	var r := NoiseTexture2D.new()
+	r.seamless = true
+	r.noise = _wear_noise
+	var rg := Gradient.new()
+	rg.set_color(0, Color(1, 1, 1))
+	rg.set_color(1, Color(0.5, 0.5, 0.5))
+	r.color_ramp = rg
+	m.roughness_texture = r
+	m.roughness = minf(rough * 1.3, 1.0)
+	m.normal_scale = bump
 	return m
 
 static func _base(c: Color, rough: float, metal: float) -> StandardMaterial3D:

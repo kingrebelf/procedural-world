@@ -6,7 +6,7 @@ const MAX_MEMORIES := 16
 const MAX_RUMORS := 8
 const MOODS := ["calm", "happy", "wary", "angry", "afraid", "sad", "curious"]
 const TALK_ACTIONS := ["none", "follow", "stop_following", "trade", "go_home", "flee", "attack", "leave",
-	"give_money", "lend_money", "gift", "ask_repay", "join_guild", "buy_house"]
+	"give_money", "lend_money", "gift", "ask_repay", "join_guild", "buy_house", "pay_toll"]
 
 ## Full-body things a person can be asked to do (or does on a whim). Gestures
 ## (BodyLanguage.names()) are played over these. name -> [animation, seconds, mode]
@@ -89,7 +89,15 @@ static func world_line() -> String:
 static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictionary) -> String:
 	var t: Dictionary = npc["traits"]
 	var lines := PackedStringArray()
-	lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
+	if settlement.has("boat"):
+		lines.append("You are %s. You are aboard %s, out on open water. %s" % [NPCGen.describe(npc), settlement["name"], BOAT_LIFE.get(npc["job"], "You work this boat with the others aboard.")])
+		if String(npc.get("faction", "")) == "pirate":
+			lines.append("You have hailed this traveller and want their money. If they agree to pay, take it with action \"pay_toll\" and sail off. If they refuse, insult or threaten you, use \"attack\". You can be bargained with, bluffed or frightened, in character.")
+	elif npc.has("band"):
+		lines.append("You are %s, an outlaw in a %s of %d camped out in the wilds, far from any town. You live by robbing travellers on the roads." % [NPCGen.describe(npc), String(settlement["name"]).to_lower(), (settlement["npcs"] as Array).size()])
+		lines.append("You have stopped this traveller and want their money. If they agree to pay, take it with action \"pay_toll\" and let them go. If they refuse, insult you or threaten you, use \"attack\" (unless you are scared of them: then \"flee\"). You can be bargained with, bluffed or frightened, in character.")
+	else:
+		lines.append("You are %s. You live in %s, a %s settlement." % [NPCGen.describe(npc), settlement["name"], Eras.NAMES[npc["era"]].to_lower()])
 	lines.append(world_line())
 	lines.append("Your personality (0 to 1): friendliness %.1f, bravery %.1f, curiosity %.1f, diligence %.1f, greed %.1f. You like %s. You worry about %s." % [t["friendly"], t["brave"], t["curious"], t["diligent"], t["greedy"], npc["likes"], npc["worry"]])
 	lines.append("You speak in a way that is %s." % npc["speech"])
@@ -97,6 +105,11 @@ static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictiona
 		lines.append("You run the market stall here and will happily trade.")
 	elif npc.has("shop_kind"):
 		lines.append(TownShops.prompt_line(npc))
+	var days := NPCRoles.day_words(npc)
+	if days != "":
+		lines.append("Your working day: %s." % days)
+	if String(npc.get("_duty", "")) != "":
+		lines.append("Right now you are %s." % npc["_duty"])
 	lines.append("It is %s on day %d. You are currently feeling %s, and your goal is: %s." % [time_words(hour_now()), day_num(), npc.get("mood", "calm"), npc.get("goal", "") if npc.get("goal", "") != "" else "going about your day"])
 	lines.append("You are talking to a traveller. You have met them %d times before; %s." % [npc.get("met", 0), feeling(int(npc.get("rel", 0)))])
 	if ctx.get("held", "") != "":
@@ -174,6 +187,24 @@ const GREET := [
 	["The grove whispered you'd come.", "Light on your path, wanderer.", "Ah, a new face beneath the old trees.", "Welcome, if you come in peace."],
 	["Hey. Keep your weapon holstered and we'll get along.", "New arrival? Welcome to the frontier.", "Signal's good today. What do you need?", "Copy that, stranger. Go ahead."],
 ]
+## Life aboard, by job, for the language model and the built-in replies.
+const BOAT_LIFE := {
+	"castaway": "Your ship went down and you have drifted for days with little water. You are desperate to reach land.",
+	"fisher": "You fish these waters for a living and know where the shoals run.",
+	"deckhand": "You haul lines, scrub decks and do whatever the skipper says.",
+	"captain": "You command this vessel and her crew, and you are responsible for every soul aboard.",
+	"sailor": "You are a sailor who has crossed these waters many times.",
+	"ship's cook": "You keep the crew fed from a small galley, and you guard the stores.",
+	"lookout": "You keep watch for shoals, weather and other sails.",
+	"boat pilot": "You run a motor launch on these waters, ferrying, fishing and towing.",
+	"marine biologist": "You study the life in these waters: fish, reefs and what lives in the deep.",
+	"ship engineer": "You keep the engines, winches and pumps running.",
+	"medic": "You are the ship's medic.",
+	"pirate": "You are a pirate. You take what you want from anyone foolish enough to sail near.",
+	"pirate captain": "You captain a pirate crew. You take what you want from anyone foolish enough to sail near.",
+}
+const BOAT_PLACE := "Welcome aboard %s. Mind your footing, the deck moves."
+
 const PLACE := [
 	"This is %s. Honest folk, hard work, and the ale's not bad.",
 	"You stand in %s. The glow-moss keeps the old paths lit.",
@@ -183,6 +214,8 @@ const FAREWELL := [["Safe roads.", "Off with you, then.", "Gods keep you."], ["M
 
 ## Default suggestions for the player.
 static func default_options(npc: Dictionary) -> Array:
+	if npc.has("band") or String(npc.get("faction", "")) == "pirate":
+		return ["Fine, take it. (pay the toll)", "I'm not paying you anything.", "Who are you people?"]
 	var o := ["Who are you?", "What is this place?", "Any news?"]
 	if npc.has("shop_kind"):
 		o[2] = "What do you sell?"
@@ -250,6 +283,8 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 	var r := int(npc.get("rel", 0))
 	var h := absi(hash(text + str(game_day())))
 	var out := {"say": "", "action": "none", "rel_change": 0, "remember": "", "options": default_options(npc)}
+	if npc.has("band") or String(npc.get("faction", "")) == "pirate":
+		return _outlaw_reply(npc, q, h)
 	if r <= -40:
 		out["say"] = ["Keep away from me.", "I've nothing to say to you.", "Leave, before I call the guard."][h % 3]
 		out["mood"] = "afraid" if float(npc["traits"]["brave"]) < 0.5 else "angry"
@@ -320,7 +355,7 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["say"] = "I'm %s. I work as a %s here, have done for years. I'm partial to %s." % [npc["name"], npc["job"], npc["likes"]]
 		out["remember"] = "Told the traveller about myself."
 	elif q.contains("place") or q.contains("where") or q.contains("town") or q.contains("village"):
-		out["say"] = PLACE[e] % settlement["name"]
+		out["say"] = (BOAT_PLACE if settlement.has("boat") else PLACE[e]) % settlement["name"]
 	elif q.contains("news") or q.contains("rumo") or q.contains("happen"):
 		var rum: Array = settlement["rumors"]
 		if not rum.is_empty():
@@ -347,7 +382,8 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["say"] = "Very well, I'll head back."
 		out["action"] = "stop_following"
 	elif q.contains("job") or q.contains("work") or q.contains("do here"):
-		out["say"] = "I'm the %s. It keeps me busy." % npc["job"]
+		var doing := String(npc.get("_duty", "")).replace("your ", "my ").replace("you ", "I ")
+		out["say"] = ("I'm the %s. Right now I'm %s." % [npc["job"], doing]) if doing != "" else "I'm the %s. It keeps me busy." % npc["job"]
 	elif q.contains("thank") or q.contains("friend") or q.contains("help"):
 		out["say"] = "Kind of you to say."
 		out["rel_change"] = 2
@@ -356,6 +392,29 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["rel_change"] = 1
 	else:
 		out["say"] = ["Hm. Can't say I follow.", "Is that so?", "Interesting. Tell me more another time.", "If you say so."][h % 4]
+	return out
+
+## An outlaw who has stopped you: pay, and you go; refuse or threaten, and they fight.
+static func _outlaw_reply(npc: Dictionary, q: String, h: int) -> Dictionary:
+	var out := {"say": "", "action": "none", "rel_change": 0, "remember": "", "options": ["Fine, take it. (pay the toll)", "I'm not paying you anything.", "Who are you people?"]}
+	var brave := float(npc["traits"]["brave"])
+	if q.contains("pay") or q.contains("take it") or q.contains("toll") or q.contains("here") or (q.contains("money") and not q.contains("no")):
+		out["say"] = ["Wise. Very wise.", "There, that didn't hurt, did it?", "Pleasure doing business."][h % 3]
+		out["action"] = "pay_toll"
+		out["do"] = "nod"
+	elif q.contains("not pay") or q.contains("no") or q.contains("never") or q.contains("kill") or q.contains("die") or q.contains("fight") or q.contains("leave me"):
+		if brave < 0.3:
+			out["say"] = ["Alright, alright! No need for that!", "Not worth it. Go on, then."][h % 2]
+			out["action"] = "flee"
+		else:
+			out["say"] = ["Wrong answer.", "Then we'll take it off your corpse.", "Have it your way!"][h % 3]
+			out["action"] = "attack"
+			out["do"] = "fist"
+	elif q.contains("who") or q.contains("name"):
+		out["say"] = "%s. Folk on this road know the name. Now, your purse." % npc["name"]
+	else:
+		out["say"] = ["Stop stalling. Coin, now.", "I'm not here to chat.", "Purse. Now. Or else."][h % 3]
+		out["do"] = "point"
 	return out
 
 static func _asked_amount(q: String) -> int:

@@ -45,6 +45,14 @@ static func _roll(h: int, era: int) -> Dictionary:
 		flora.append({"t": t, "sp": r.randi() & 0x7FFFFFFF, "w": r.randf_range(0.2, 1.0)})
 	# One species usually dominates, as in real forests.
 	flora[0]["w"] = r.randf_range(1.5, 3.0)
+	# Dead trees and snags are the odd single, never a region's main tree: bare trunks
+	# all over green hills need a fire or a blight to explain them.
+	var total := 0.0
+	for f in flora:
+		total += float(f["w"])
+	for f in flora:
+		if Flora.species(f["t"], f["sp"]).get("form", "") in ["dead", "snag"]:
+			f["w"] = minf(float(f["w"]), total * 0.04)
 	var rocks: Array = []
 	for i in r.randi_range(1, 3):
 		rocks.append(r.randi() & 0x7FFFFFFF)
@@ -56,7 +64,7 @@ static func _roll(h: int, era: int) -> Dictionary:
 		fauna.append(r.randi() & 0x7FFFFFFF)
 	var lush := r.randf_range(-1.0, 1.0)
 	var grass := _grass_tint(era, r, lush)
-	return {
+	var out := {
 		"tree_density": dens, "flora": flora, "rocks": rocks,
 		"rock_density": r.randf_range(0.4, 2.2),
 		"ore_species": r.randi() & 0x7FFFFFFF,
@@ -65,9 +73,13 @@ static func _roll(h: int, era: int) -> Dictionary:
 		"under_density": r.randf_range(0.3, 1.6),
 		"lush": lush, ## -1 dry and golden ... +1 lush and deep green
 		"grass_tint": grass,
-		"grass_density": clampf(r.randf_range(0.5, 1.4) + lush * 0.3, 0.2, 1.6),
+		# Dry regions grow golden grass, not bare earth: dryness shows in the colour and
+		# the mix of species, and thins the sward only a little.
+		"grass_density": clampf(r.randf_range(0.75, 1.2) + lush * 0.2, 0.7, 1.4),
 		"lumen": _lumen(h, era), ## how much its grass glows at night (0 in most places)
 	}
+	_stand(h, era, out)
+	return out
 
 ## Bioluminescence is a feature of a few regions, not of a whole era: about a third of
 ## fantasy regions glow, a few sci-fi ones, no medieval ones. (Its own hash, so the rest
@@ -91,6 +103,56 @@ static func _grass_tint(era: int, r: RandomNumberGenerator, lush: float) -> Colo
 			var hues := [0.42, 0.48, 0.53, 0.72, 0.8, 0.9, 0.13, 0.33]
 			return Color.from_hsv(fposmod(hues[r.randi() % hues.size()] + r.randf_range(-0.03, 0.03), 1.0), r.randf_range(0.35, 0.65), r.randf_range(0.35, 0.55))
 	return Color.from_hsv(r.randf_range(0.0, 0.15), r.randf_range(0.1, 0.35), r.randf_range(0.28, 0.42))
+
+## Autumn comes by the stand, not tree by tree: about one region in five has turned (most
+## of its broadleaf species in autumn colour, reds, golds and browns together, a few still
+## green), the rest are green. Swaps species that don't fit for ones that do (its own hash, so the rest of the
+## region's roll is unchanged).
+static func _stand(h: int, era: int, out: Dictionary) -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = WHash.combine(h, era * 31 + 977)
+	var turned := r.randf() < 0.2
+	out["autumn"] = turned
+	for f in out["flora"]:
+		if f["t"] != "oak":
+			continue
+		# In a turned stand, a minor species may still be green (never the dominant one).
+		var want: bool = turned and (f == out["flora"][0] or r.randf() < 0.7)
+		for i in 24:
+			if bool(Flora.species("oak", f["sp"]).get("autumn", false)) == want:
+				break
+			f["sp"] = r.randi() & 0x7FFFFFFF
+
+## A species for a tree high up toward the snow, where leaves have long fallen or never
+## turned: the region's first conifer, else its first green broadleaf, else {} (no tree).
+static func hardy_flora(p: Dictionary) -> Dictionary:
+	for t in ["pine", "oak"]:
+		for f in p["flora"]:
+			if f["t"] == t and not bool(Flora.species(t, f["sp"]).get("autumn", false)):
+				return f
+	return {}
+
+## The world's snow line (Planets sets it on landing; read here, not from Planets, which
+## the world generator must not load).
+static var snow_line := 50.0
+
+## No autumn leaves up toward the snow: a turned broadleaf picked at height `y` near the
+## snow line becomes the region's hardier tree (hardy_flora), or none ({}).
+static func fit_flora(p: Dictionary, f: Dictionary, y: float) -> Dictionary:
+	if f["t"] != "oak" or not bool(p.get("autumn", false)) or y < snow_line - 30.0:
+		return f
+	return hardy_flora(p)
+
+## Broadleaf trees give way to conifers on the way up to the snow: `f` (a pick_flora
+## result) for a tree rooted at height h, swapped for the region's own pine (or a pine of
+## its own) above a ragged line some way under the snow line. `u` jitters the line.
+static func by_altitude(p: Dictionary, f: Dictionary, h: float, u: float) -> Dictionary:
+	if f["t"] != "oak" or h < WorldField.snow_line - 26.0 + 14.0 * fposmod(u * 7.31, 1.0):
+		return f
+	for g in p["flora"]:
+		if g["t"] == "pine":
+			return g
+	return {"t": "pine", "sp": f["sp"], "w": f["w"]}
 
 ## Picks a species from a biome's flora list using a uniform random number.
 static func pick_flora(p: Dictionary, u: float) -> Dictionary:

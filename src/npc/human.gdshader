@@ -23,11 +23,22 @@ instance uniform vec4 accent_col : source_color = vec4(0.0);
 instance uniform vec4 cut = vec4(2.0, 0.35, 0.0, 0.0);
 // First-person arms: everything but the arms and hands is cut away.
 instance uniform float arms_only = 0.0;
+// How muscled (BodyShape): the kit hero's carved muscle in the normal map softens below 1.
+instance uniform float tone = 1.0;
 
 varying vec3 rest;
 
 void vertex() {
 	rest = CUSTOM0.xyz;
+	// Under real garments (Outfit) the body is drawn a little inside itself, so the skin
+	// can't push through a sleeve, shirt or trouser leg where a joint bends. The hands,
+	// head and bare forearms stay true.
+	int region = int(CUSTOM0.x + 0.5);
+	bool covered = region == 1 || region == 5 || region == 6 || region == 7
+		|| (region == 2 && cut.x >= 1.0) || (region == 3 && cut.x >= 2.0);
+	if (covered && arms_only < 0.5) {
+		VERTEX -= NORMAL * 0.007;
+	}
 }
 
 float hash(vec2 p) {
@@ -78,6 +89,9 @@ void fragment() {
 		if (region == 4) {
 			// Hands run warmer and a little darker than the arm.
 			col *= vec3(1.02, 0.98, 0.97);
+		}
+		if (region != 0 && region != 4 && region != 7) {
+			nm.xy = mix(vec2(0.5), nm.xy, 0.3 + 0.7 * tone);
 		}
 		float pore = vnoise(UV * 2600.0) - 0.5;
 		float pore2 = vnoise(UV * 2600.0 + vec2(0.37, 0.0)) - 0.5;

@@ -617,36 +617,51 @@ static func _stair_faces(f: PackedVector3Array, t: String) -> void:
 		_box_faces(f, top - up * th * 0.5, Vector3(STAIR_W, th, STAIR_W))
 
 ## The stair as drawn: stone steps on the same slopes, landings, and a rail of posts and
-## a handrail along the shaft side.
+## a handrail along the shaft side. Each step is a block under a separate tread stone
+## that overhangs its riser a little, no two stones quite the same shade or quite level;
+## the flights that hang in the shaft rest on a stringer along their open side.
 static func _stair(k: MeshKit, t: String) -> void:
 	var mat: String = TOWER[t]
 	var rail := "timber" if t == "castle_tower" else "iron"
 	var fl: float = BOX[t][1]
 	var n := 15
 	var I := Transform3D.IDENTITY
+	var r := WHash.rng(WHash.str_hash(t + "~stair"), 0, 0, 7)
 	var fs := flights(t)
 	for i in fs.size():
 		var fo: Vector3 = fs[i][0]
 		var hd: Vector3 = fs[i][1]
 		var hw: Vector3 = fs[i][2]
 		var run := Vector3(hd.x - fo.x, 0, hd.z - fo.z)
+		var fwd := run.normalized()
 		var rise := hd.y - fo.y
 		var tread := run.length() / n
+		var along_z := absf(run.z) > absf(run.x)
+		var wide := hw.length() * 2.0
 		for j in n:
 			# Treads straddle the slope you walk, half a step either side.
 			var y := fo.y + rise * (j + 0.5) / n
 			var low := fl if i == 0 else y - rise / n - 0.25
 			var c := fo + run * (j + 0.5) / n
-			var sz := Vector3(hw.length() * 2.0, y - low, tread) if absf(run.z) > absf(run.x) else Vector3(tread, y - low, hw.length() * 2.0)
-			k.box(mat, I.translated(Vector3(c.x, (y + low) * 0.5, c.z)), sz)
+			var sz := Vector3(wide, y - low - 0.05, tread) if along_z else Vector3(tread, y - low - 0.05, wide)
+			k.box(mat, I.translated(Vector3(c.x, (low + y - 0.05) * 0.5, c.z)), sz)
+			var tone := r.randf_range(0.86, 1.06)
+			var stone := Color(tone, tone * r.randf_range(0.97, 1.0), tone * r.randf_range(0.93, 0.99))
+			var ts := Vector3(wide - 0.02, 0.06, tread + 0.04) if along_z else Vector3(tread + 0.04, 0.06, wide - 0.02)
+			var tilt := Basis(fwd.cross(Vector3.UP).normalized(), r.randf_range(-0.012, 0.012)).rotated(fwd, r.randf_range(-0.012, 0.012))
+			k.box(mat, Transform3D(tilt, Vector3(c.x, y - 0.03, c.z) - fwd * 0.03), ts, stone)
 		var p0 := fo + hw * 0.92 + Vector3(0, 0.95, 0)
 		var p1 := hd + hw * 0.92 + Vector3(0, 0.95, 0)
 		var ax := (p1 - p0).normalized()
 		var ay := (Vector3.UP - ax * ax.dot(Vector3.UP)).normalized()
-		k.box(rail, Transform3D(Basis(ax, ay, ax.cross(ay)), (p0 + p1) * 0.5), Vector3(p0.distance_to(p1), 0.06, 0.06))
-		for s in [0.0, 0.5, 1.0]:
+		k.box(rail, Transform3D(Basis(ax, ay, ax.cross(ay)), (p0 + p1) * 0.5 + ay * 0.02), Vector3(p0.distance_to(p1), 0.07, 0.08))
+		for s in [0.0, 0.25, 0.5, 0.75, 1.0]:
 			var pp: Vector3 = fo.lerp(hd, s) + hw * 0.92
-			k.box(rail, I.translated(pp + Vector3(0, 0.5, 0)), Vector3(0.07, 1.0, 0.07))
+			k.box(rail, I.translated(pp + Vector3(0, 0.48, 0)), Vector3(0.08, 0.96, 0.08))
+		if i > 0:
+			var q0 := fo + hw * 0.96 - Vector3(0, 0.22, 0)
+			var q1 := hd + hw * 0.96 - Vector3(0, 0.22, 0)
+			k.box(mat, Transform3D(Basis(ax, ay, ax.cross(ay)), (q0 + q1) * 0.5), Vector3(q0.distance_to(q1), 0.42, 0.14))
 	for l in landings(t):
 		var top: Vector3 = l[0]
 		var th: float = l[1]

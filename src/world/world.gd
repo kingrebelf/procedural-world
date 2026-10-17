@@ -11,6 +11,7 @@ var npcs: NPCManager
 var fauna: FaunaManager
 var corpses: Corpses
 var vehicles: VehicleManager
+var boats: BoatManager
 var dialogue: DialogueUI
 var lore: LoreUI
 
@@ -88,6 +89,11 @@ func _ready() -> void:
 	npcs.corpses = corpses
 	fauna.corpses = corpses
 	player.corpses = corpses
+	boats = BoatManager.new()
+	boats.name = "Boats"
+	boats.player = player
+	boats.npcs = npcs
+	add_child(boats)
 	vehicles = VehicleManager.new()
 	vehicles.name = "Vehicles"
 	vehicles.streamer = streamer
@@ -131,7 +137,9 @@ func _ready() -> void:
 	_apply_settings()
 	Cursor.restore()
 	if OS.get_cmdline_user_args().has("--capture") and ResourceLoader.exists("res://tools/capture.gd") and not get_tree().root.has_node("CaptureTour"):
-		var cap: Node = load("res://tools/capture.gd").new()
+		# --perf runs the performance probe (tools/perf_probe.gd) instead of the screenshots.
+		var tour := "res://tools/perf_probe.gd" if OS.get_cmdline_user_args().has("--perf") else "res://tools/capture.gd"
+		var cap: Node = load(tour).new()
 		cap.name = "CaptureTour"
 		cap.world = self
 		add_child(cap)

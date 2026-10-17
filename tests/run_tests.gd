@@ -316,6 +316,45 @@ func test_landforms() -> void:
 		check(tops[14] > tops[13] * 0.8, "v14 needles still tower (%.1f vs %.1f m)" % [tops[14], tops[13]])
 		WorldField.terrain_v = 13
 		check(WorldField.new(2024).height(c.x, c.y) == at13, "v13 worlds keep their needles")
+	# v15 karst towers are fluted and ledged: their walls are far rougher (bigger height
+	# changes from one metre to the next than a smooth bullet's) and they stand as tall;
+	# v14 worlds keep theirs.
+	if deep.has(WorldField.LF_KARST):
+		var c: Vector2 = deep[WorldField.LF_KARST]
+		var rough := {}
+		var tops := {}
+		var at14 := 0.0
+		for tv in [14, 15]:
+			WorldField.terrain_v = tv
+			var fv := WorldField.new(2024)
+			var n := 120
+			var hs := PackedFloat32Array()
+			hs.resize(n * n)
+			var lo := INF
+			for j in n:
+				for i in n:
+					hs[j * n + i] = fv.height(c.x + i - n / 2, c.y + j - n / 2)
+					lo = minf(lo, hs[j * n + i])
+			var sum := 0.0
+			var count := 0
+			var top := -INF
+			for j in range(1, n - 1):
+				for i in range(1, n - 1):
+					var h := hs[j * n + i]
+					top = maxf(top, h - lo)
+					if h - lo < 8.0:
+						continue
+					sum += absf(4.0 * h - hs[j * n + i - 1] - hs[j * n + i + 1] - hs[j * n + i - n] - hs[j * n + i + n])
+					count += 1
+			rough[tv] = sum / maxi(count, 1)
+			tops[tv] = top
+			if tv == 14:
+				at14 = fv.height(c.x, c.y)
+		print("  karst: v14 roughness %.2f, %.1f m; v15 roughness %.2f, %.1f m" % [rough[14], tops[14], rough[15], tops[15]])
+		check(rough[15] > rough[14] * 1.3, "v15 karst towers are fluted and ledged, not smooth (%.2f vs %.2f)" % [rough[15], rough[14]])
+		check(tops[15] > tops[14] * 0.8, "v15 karst towers still stand tall (%.1f vs %.1f m)" % [tops[15], tops[14]])
+		WorldField.terrain_v = 14
+		check(WorldField.new(2024).height(c.x, c.y) == at14, "v14 worlds keep their towers")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
 func test_house_interiors() -> void:
@@ -552,6 +591,43 @@ static func _ray_hit(faces: PackedVector3Array, a: Vector3, b: Vector3) -> float
 		if hit != null:
 			best = minf(best, a.distance_to(hit))
 	return best
+
+func test_biome_coherence() -> void:
+	# Broadleaf trees give way to conifers up by the snow line.
+	var bp := Biome.params(12345, Eras.MEDIEVAL)
+	var oak := {"t": "oak", "sp": 77, "w": 1.0}
+	check(Biome.by_altitude(bp, oak, WorldField.snow_line - 40.0, 0.5)["t"] == "oak", "oaks in the lowlands")
+	check(Biome.by_altitude(bp, oak, WorldField.snow_line + 2.0, 0.5)["t"] == "pine", "pines up by the snow")
+	# Nothing takes root or lies about on open dune sand, and only dune animals live there.
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(2024)
+	var dunes := 0
+	var on_sand := []
+	var animals_ok := true
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			if dunes >= 3 or g.field.site_landform(ix, iz) != WorldField.LF_DUNES:
+				continue
+			var p := g.field.site_pos(ix, iz)
+			if g.field.landform_weights(p.x, p.y)[WorldField.LF_DUNES] < 0.9:
+				continue
+			dunes += 1
+			var ch := g.generate(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+			for o in ch["objects"]:
+				var k := ObjectLibrary.kind(o["t"])
+				var at: Vector3 = o["p"]
+				if (k == "tree" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
+					on_sand.append(o["t"])
+			var fauna: Array = Biome.params(g.field.region_hash_at(p.x, p.y), Eras.MEDIEVAL)["fauna"]
+			for lx in [10.0, 32.0, 54.0]:
+				for pick in 6:
+					if ChunkGenerator.sand_at(ch, lx, 32.0) < 0.5:
+						continue
+					var sp := Creature.fits_habitat(fauna, pick, Eras.MEDIEVAL, ch, lx, 32.0)
+					animals_ok = animals_ok and (sp == 0 or Creature.species(sp, Eras.MEDIEVAL)["name"] in Creature.DUNE_ANIMALS)
+	check(dunes > 0, "dunes to look at")
+	check(on_sand.is_empty(), "no trees or boulders on dune sand (%s)" % [on_sand])
+	check(animals_ok, "only dune animals on the dunes")
 
 func test_landmarks() -> void:
 	# Each landmark mesh builds, about the size of its collision box.
@@ -791,25 +867,27 @@ func test_build_pieces() -> void:
 	var w := BuildCatalog.snap("wall_plaster", Vector3(4.3, 0.2, 7.1), 0.0, 0, Vector3(5, 0, 7), false)
 	check(w["pos"].is_equal_approx(Vector3(4, 0, 7)) and is_equal_approx(w["yaw"], PI * 0.5), "wall snaps to the x edge (%s)" % w["pos"])
 	var w2 := BuildCatalog.snap("wall_plaster", Vector3(5.1, 3.3, 7.9), 0.0, 0, Vector3(5, 0, 7), false)
-	check(w2["pos"].is_equal_approx(Vector3(5, 3, 8)) and is_equal_approx(w2["yaw"], 0.0), "aiming at a wall top builds the next storey (%s)" % w2["pos"])
+	check(w2["pos"].is_equal_approx(Vector3(5, 3.12, 8)) and is_equal_approx(w2["yaw"], 0.0), "aiming at a wall top builds the next storey (%s)" % w2["pos"])
 	var f := BuildCatalog.snap("platform", Vector3(-1.0, 2.0, 9.5), 0.0, 0)
 	check(f["pos"].is_equal_approx(Vector3(-2, 2, 10)), "sci-fi platforms use 4 m cells (%s)" % f["pos"])
-	var rv := BuildCatalog.snap("roof_small", Vector3(3.2, 3.0, 4.9), 0.0, 0, Vector3(3, 0, 5), false)
-	check(rv["pos"].is_equal_approx(Vector3(4, 3, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
+	var rv := BuildCatalog.snap("roof_small", Vector3(3.2, 3.2, 4.9), 0.0, 0, Vector3(3, 0, 5), false)
+	check(rv["pos"].is_equal_approx(Vector3(4, 3.12, 4)), "small roof centres on a grid corner (%s)" % rv["pos"])
 	var g := BuildCatalog.snap("floor_wood", Vector3(1.0, -0.8, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
 	check(is_equal_approx(g["pos"].y, 0.0), "ground below a house keeps the floor level")
 	# A floor aimed at the side of a wall goes on top of it, in the cell on your side.
 	var fw := BuildCatalog.snap("floor_wood", Vector3(4.05, 1.5, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
-	check(fw["pos"].is_equal_approx(Vector3(5, 3, 7)), "floor aimed at a wall sits on its top (%s)" % fw["pos"])
+	check(fw["pos"].is_equal_approx(Vector3(5, 3.12, 7)), "floor aimed at a wall sits on its top (%s)" % fw["pos"])
 	var rw := BuildCatalog.snap("roof_small", Vector3(4.05, 2.9, 7.3), 0.0, 0, Vector3(4, 0, 7), false, {"hit_mode": "wall"})
-	check(is_equal_approx(rw["pos"].y, 3.0), "roof aimed at a wall sits on its top (%s)" % rw["pos"])
+	check(is_equal_approx(rw["pos"].y, 3.12), "roof aimed at a wall sits on its top (%s)" % rw["pos"])
 	# Raise / lower by storeys, and free placement off the grid.
 	var up := BuildCatalog.snap("floor_wood", Vector3(1.0, 0.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": 2})
-	check(is_equal_approx(up["pos"].y, 6.0), "raise lifts a piece two storeys (%s)" % up["pos"])
+	check(is_equal_approx(up["pos"].y, 6.24), "raise lifts a piece two storeys (%s)" % up["pos"])
 	var dn := BuildCatalog.snap("floor_wood", Vector3(1.0, 3.2, 1.0), 0.0, 0, Vector3(1, 0, 1), true, {"lift": -1})
 	check(is_equal_approx(dn["pos"].y, 0.0), "lower drops a piece a storey (%s)" % dn["pos"])
 	var fr := BuildCatalog.snap("wall_plaster", Vector3(1.37, 0.6, 2.11), 0.0, 1, null, true, {"free": true, "lift": 1})
 	check(fr["pos"].is_equal_approx(Vector3(1.25, 0.75, 2.0)) and is_equal_approx(fr["yaw"], PI + PI / 12.0), "grid off places freely (%s, %.2f)" % [fr["pos"], fr["yaw"]])
+	_build_snapping()
+	_grass_under_floors()
 	# Taking a piece down refunds it.
 	var o := {"t": "b:wall_stone", "s": 1.0, "st": {}}
 	var res := Durability.hit(o, 1000.0)
@@ -929,6 +1007,128 @@ func test_decision_engine() -> void:
 	check(r["action"] == "follow" and r.get("target_player", false), "instructions override the schedule")
 	for a in DecisionEngine.ACTIONS:
 		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront", "dance", "sit"] , "action known: " + a)
+
+func test_npc_roles() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var site: Dictionary = fx[1]
+	var s := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	var pl := NPCRoles.places(gen, site, s)
+	check(not (pl["gates"] as Array).is_empty() and not (pl["rounds"] as Array).is_empty(), "a town has gates and a guard's round")
+	for job in NPCRoles.ROUTINES:
+		for b in NPCRoles.ROUTINES[job]:
+			check(b[2] == "sleep" or NPCRoles.DUTIES.has(b[2]), "routine duty exists: %s %s" % [job, b[2]])
+	var f: Dictionary = s["npcs"][2].duplicate(true)
+	f["job"] = "farmer"
+	f["traits"]["diligent"] = 0.5
+	var d := NPCRoles.duty_at(f, pl, 9.0, 100.0)
+	check(d.get("duty", "") == "till", "a farmer is in the fields mid-morning (%s)" % d.get("duty", ""))
+	check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
+	check(NPCRoles.duty_at(f, pl, 9.0, 100.0)["target"] == d["target"], "the same stop at the same moment")
+	check(NPCRoles.duty_at(f, pl, 23.0, 100.0).is_empty(), "evenings are their own")
+	var per := {"hour": 9.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0, "duty": d}
+	var r := DecisionEngine.decide(f, per)
+	check(r["action"] == "work" and r["target"] == d["target"], "the routine drives their work (%s)" % r["action"])
+	var g: Dictionary = s["npcs"][1].duplicate(true)
+	g["job"] = "guard"
+	g["era"] = 0
+	g["id"] = "x_y_7"
+	var watch := false
+	for i in 30:
+		g["id"] = "x_y_%d" % (i + 2)
+		if NPCRoles.night_watch(g):
+			watch = true
+			break
+	check(watch, "some guards keep the night watch")
+	var nd := NPCRoles.duty_at(g, pl, 2.0, 0.0)
+	check(nd.get("duty", "") == "night_watch", "the night watch is out at 2am")
+	per["hour"] = 2.0
+	per["duty"] = nd
+	check(DecisionEngine.decide(g, per)["action"] == "work", "and awake")
+	per["hour"] = 11.0
+	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
+	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
+	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	# A weaponsmith keeps a forge outside the shop door for part of the day.
+	var shop := {}
+	for h in TownShops.shops_of(gen, site):
+		shop = h
+	if not shop.is_empty():
+		var ws: Dictionary = f.duplicate(true)
+		ws["shop_kind"] = "weaponsmith"
+		ws["shop_i"] = int(shop["i"])
+		var wd := NPCRoles.duty_at(ws, pl, 10.0, 0.0)
+		check(wd.get("duty", "") == "smithy" and (wd["target"] as Vector2).distance_to(TownShops.door_point(shop)) < 4.0, "a weaponsmith works a forge by the shop door (%s)" % wd.get("duty", ""))
+		check(NPCRoles.duty_at(ws, pl, 12.5, 0.0).is_empty(), "and keeps the counter the rest of the day")
+		var forge := false
+		for pr in NPCRoles.props(pl, {"npcs": [ws]}):
+			forge = forge or pr[0] == NPCRoles.PROPS["forge"]
+		check(forge, "with an anvil set out there")
+	# A shop too small for a counter still gets its stand and wares, clear of the keeper,
+	# the doorway and the round wall.
+	var small := TownShops.fit("mushroom_house")
+	var sm_ok: bool = not small.has("counter") and (small.get("props", []) as Array).size() >= 2
+	for sp: Vector2 in small.get("props", []):
+		sm_ok = sm_ok and sp.distance_to(small["keeper"]) > 0.7 and sp.length() < 1.9 \
+			and not (absf(sp.x - float(TownShops.room("mushroom_house")["door_x"])) < 0.9 and sp.y > 0.5)
+	check(sm_ok, "a shop too small for a counter still has its stand and wares (%s)" % [small.get("props", [])])
+	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
+
+func test_bandits() -> void:
+	var gen := ChunkGenerator.new(777)
+	var was := Eras.theme
+	Eras.theme = "human"
+	var bands: Array = []
+	for day in 6:
+		bands.append_array(Bandits.near(gen, Vector2.ZERO, 3000.0, float(day)))
+	check(not bands.is_empty(), "bands roam the land (%d over six days)" % bands.size())
+	var cells := 0
+	for cz in range(-5, 5):
+		for cx in range(-5, 5):
+			cells += 1
+	check(bands.size() < cells * 6 / 2, "but only now and then (%d)" % bands.size())
+	var ok_spawn := true
+	var ok_towns := true
+	for b in bands:
+		var camp: Vector2 = b["camp"]
+		if camp.length() < Bandits.SAFE_R:
+			ok_spawn = false
+		for st in gen.settlements_near(camp.x - 200.0, camp.y - 200.0, camp.x + 200.0, camp.y + 200.0):
+			if (st["center"] as Vector2).distance_to(camp) < float(st["outer"]) + Bandits.TOWN_CLEAR:
+				ok_towns = false
+	check(ok_spawn, "no band camps near where you arrive")
+	check(ok_towns, "no band camps by a town")
+	var b: Dictionary = bands[0]
+	var again := Bandits.band_at(gen, b["cell"].x, b["cell"].y, int(String(b["id"]).get_slice("_", 2)))
+	check(var_to_bytes(again["members"]) == var_to_bytes(b["members"]), "the same band for everyone")
+	var m: Dictionary = b["members"][0]
+	check(m.has("band") and m["held"] is Dictionary and ItemDB.has(String(m["held"]["type"])), "outlaws are armed (%s)" % m["held"]["type"])
+	check(int(m["level"]) >= 1 and float(m["hp"]) >= 100.0, "and levelled by zone")
+	var near_spawn := Bandits.tier(Eras.MEDIEVAL, 3)
+	check(near_spawn == "low" and Bandits.tier(Eras.SCIFI, 30) == "raider", "poor cutthroats near spawn, raiders out on the frontier")
+	var state := {"camp": b["camp"], "route": b["route"], "cell": b["cell"], "id": b["id"], "alert": false, "demand_until": 0.0}
+	var per := {"hour": 12.0, "pos": b["camp"], "player_dist": 100.0, "player_pos": Vector2.ZERO, "now": 10.0, "band": state}
+	check(Bandits.decide(m, per)["action"] == "wander", "by day the band walks its loop")
+	per["hour"] = 23.0
+	var m2: Dictionary = b["members"][b["members"].size() - 1]
+	var na: String = Bandits.decide(m2, per)["action"]
+	check(na in ["sit", "idle"], "by night they sit round the fire or keep watch (%s)" % na)
+	per["hour"] = 12.0
+	state["demand_until"] = 20.0
+	per["player_dist"] = 6.0
+	check(Bandits.decide(m, per)["action"] == "confront", "they stop you and demand a toll")
+	state["alert"] = true
+	check(Bandits.decide(m, per)["action"] == "attack", "and fight if you won't pay")
+	var coward: Dictionary = m.duplicate(true)
+	coward["traits"]["brave"] = 0.2
+	coward["hp"] = 10.0
+	check(Bandits.decide(coward, per)["action"] == "flee", "badly hurt, a coward runs")
+	check(Bandits.toll(100, 1) >= 13 and Bandits.toll(5, 1) == 5, "the toll is a share of your purse")
+	var r := NPCMind.builtin_reply(m, {"name": "Bandit band", "npcs": b["members"], "rumors": []}, "Fine, I'll pay")
+	check(r["action"] == "pay_toll", "you can pay them off")
+	Eras.theme = "alien"
+	check(Bandits.near(gen, Vector2.ZERO, 3000.0, 0.0).is_empty(), "no bandits on alien worlds")
+	Eras.theme = was
 
 func test_npc_memory_and_replies() -> void:
 	var fx := _npc_fixture()
@@ -1125,6 +1325,96 @@ func test_outfits() -> void:
 		check(h.gesture("fingers_2") and h.gesture("wink") and not h.gesture("teleport"), "gestures play")
 		h.free()
 
+## Nobody is a clone: age, weight, muscle and height shape each body (BodyShape), the
+## same person always comes out the same, and clothes share the reshaped skin.
+func test_body_variety() -> void:
+	var b := {"height": 1.0, "build": 0.9, "female": false, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.25, 0.15, 0.08), "hair_style": 2, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}
+	var heavy := b.duplicate()
+	heavy["build"] = 1.2
+	var fem := b.duplicate()
+	fem["female"] = true
+	check(str(BodyShape.shape(b, 30, "farmer")) == str(BodyShape.shape(b.duplicate(), 30, "farmer")), "a body's shape is the same every time")
+	var young := BodyShape.shape(b, 22, "scribe")
+	var old := BodyShape.shape(b, 76, "scribe")
+	check(float(old["stoop"]) > 0.4 and float(young["stoop"]) < 0.2, "the old stoop (%.2f vs %.2f)" % [old["stoop"], young["stoop"]])
+	check(float(old["pace"]) < 0.8 and is_equal_approx(float(young["pace"]), BodyShape.pace(b, 22)), "the old walk slower")
+	check(BodyShape.hair_color(b, 74).get_luminance() > BodyShape.hair_color(b, 20).get_luminance() + 0.25, "hair greys with age")
+	check(BodyShape.stature(fem, 30) < BodyShape.stature(b, 30) * 0.97, "women are shorter than men of the same height roll")
+	check(BodyShape.stature(b, 78) < BodyShape.stature(b, 40), "the old lose a little height")
+	var hs := BodyShape.shape(heavy, 40, "innkeeper")
+	check(float(hs["girth"]["spine_01"][0][2]) > float(BodyShape.shape(b, 40, "innkeeper")["girth"]["spine_01"][0][2]) + 0.15, "heavier people have a belly")
+	check(float(BodyShape.shape(b, 30, "smith")["muscle"]) > float(BodyShape.shape(b, 30, "scribe")["muscle"]), "a smith is more muscled than a scribe")
+	if not HumanModel.available():
+		return
+	var a := HumanModel.new()
+	root.add_child(a)
+	a.build(heavy, Eras.MEDIEVAL, "innkeeper", 40)
+	var c := HumanModel.new()
+	root.add_child(c)
+	c.build(b, Eras.MEDIEVAL, "innkeeper", 40)
+	var cl: MeshInstance3D = a.skeleton.get_node_or_null("Clothes")
+	check(a._body.skin != c._body.skin and cl != null and cl.skin == a._body.skin, "each body has its own skin, and its clothes share it")
+	var i := 0
+	while i < a._body.skin.get_bind_count() and String(a._body.skin.get_bind_name(i)) != "spine_01":
+		i += 1
+	if i < a._body.skin.get_bind_count():
+		check(a._body.skin.get_bind_pose(i).basis.z.length() > c._body.skin.get_bind_pose(i).basis.z.length() + 0.1, "the heavy body's belly is deeper")
+	check(a.posture != null and a.ik != null and a.posture.get_index() < a.ik.get_index(), "posture runs before the feet are planted")
+	a.free()
+	c.free()
+
+## Townsfolk dress for their job and sex, each in their own colours, the same every time
+## they load; loose cloth below the waist rides on the legs so strides don't pass through it.
+func test_wardrobes() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 42
+	var looks := {}
+	var men_in_gowns := 0
+	for i in 40:
+		var p := NPCGen.person(r, Eras.MEDIEVAL, i, 0, 0)
+		var job: String = NPCGen.JOBS[Eras.MEDIEVAL][i % 8]
+		var w := Outfit.wardrobe(p["body"], Eras.MEDIEVAL, job)
+		check(str(w) == str(Outfit.wardrobe(p["body"].duplicate(true), Eras.MEDIEVAL, job)), "a wardrobe is the same every time")
+		looks[str(w["cols"][Outfit.PART_SHIRT]) + str(w["cols"][Outfit.PART_SKIRT])] = true
+		var hem: float = w["spec"]["hem"]
+		if not p["body"]["female"] and job != "priest" and hem > 0.0 and hem < 0.45:
+			men_in_gowns += 1
+		if job == "smith":
+			check(w["spec"]["apron"] > 0.0, "smiths wear a leather apron")
+		for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
+			check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "%s's clothes don't pass for bare skin" % job)
+	check(looks.size() >= 36, "nobody dresses like anyone else (%d looks in 40)" % looks.size())
+	check(men_in_gowns == 0, "men wear tunics and trousers, not gowns")
+	if not HumanModel.available():
+		return
+	var h := HumanModel.new()
+	root.add_child(h)
+	h.build({"height": 1.0, "build": 1.0, "female": true, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.MEDIEVAL, "priest")
+	var cl: MeshInstance3D = h.get_node(NodePath(String(h.get_path_to(h.skeleton)) + "/Clothes"))
+	var a := cl.mesh.surface_get_arrays(0)
+	var custom: PackedFloat32Array = a[Mesh.ARRAY_CUSTOM0]
+	var bones: PackedInt32Array = a[Mesh.ARRAY_BONES]
+	var wts: PackedFloat32Array = a[Mesh.ARRAY_WEIGHTS]
+	var per := bones.size() / (custom.size() / 4)
+	var on_legs := 0
+	var hem_verts := 0
+	for v in custom.size() / 4:
+		if int(custom[v * 4]) != Outfit.PART_SKIRT or custom[v * 4 + 1] > 0.3:
+			continue
+		hem_verts += 1
+		var leg := 0.0
+		for j in per:
+			var bi := bones[v * per + j]
+			var bn := String(cl.skin.get_bind_name(bi))
+			if bn == "":
+				bn = h.skeleton.get_bone_name(cl.skin.get_bind_bone(bi))
+			if bn.begins_with("thigh") or bn.begins_with("calf"):
+				leg += wts[v * per + j]
+		if leg > 0.95:
+			on_legs += 1
+	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
+	h.free()
+
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
 ## Walk, jog and sprint are blended so the blended stride over the blended cycle is the
@@ -1170,20 +1460,28 @@ func test_tool_grip() -> void:
 	root.add_child(h)
 	h.build(Player.LOOK, Eras.MEDIEVAL, "")
 	var sk := h.skeleton
-	var hole := HumanModel.fist_hole(sk)
-	var inv := sk.get_bone_global_rest(sk.find_bone("hand_r")).affine_inverse()
-	var up := (sk.get_bone_global_rest(sk.find_bone("Head")).origin - sk.get_bone_global_rest(sk.find_bone("pelvis")).origin).normalized()
-	var palm := (sk.get_bone_global_rest(sk.find_bone("hand_r")).basis.inverse() * -up).normalized()
-	var knuckle := inv * sk.get_bone_global_rest(sk.find_bone("middle_01_r")).origin
-	check(hole != Vector3.INF and (hole - knuckle).dot(palm) > 0.01, "the fist's hole is on the palm side of the knuckles (%s)" % [hole - knuckle])
-	check(hole.distance_to(knuckle) < 0.07, "and close to the hand (%.3f m)" % hole.distance_to(knuckle))
 	var prop := Viewmodel.prop_for("pickaxe_iron")
 	h.hold(prop)
-	check(h.gestures.grip_r == HumanModel.GRIP, "holding a tool curls the fingers")
-	var xf := HumanModel.grip_transform(sk, prop, 1.0)
-	var axis := xf.basis.y.normalized()
-	var off := hole - xf.origin
-	check((off - axis * off.dot(axis)).length() < 0.005, "the handle runs through the fist")
+	check(h.gestures.grip_r == HumanModel.GRIP and not h.gestures.grip_rot.is_empty(), "holding a tool closes the fingers")
+	# The handle lies on the palm side, and every finger ends wrapped round it.
+	var fr := HandGrip.frame(sk)
+	var axis := prop.transform.basis.y.normalized()
+	var c := prop.transform * HandGrip.handle_center(prop, HumanModel.grip_point(prop))
+	var r := HandGrip.handle_radius(prop, HumanModel.grip_point(prop))
+	check((c - Vector3(fr["mcp"])).dot(fr["palm"]) > 0.02, "the handle lies in the palm (%.3f m)" % (c - Vector3(fr["mcp"])).dot(fr["palm"]))
+	check(r > 0.01 and r < 0.03, "the handle is a hand's width round (r %.3f m)" % r)
+	var inv := sk.get_bone_global_rest(sk.find_bone("hand_r")).affine_inverse()
+	for f in HandGrip.FINGERS:
+		var ch := HandGrip._chain(sk, f)
+		var ax := HandGrip._flex_axes(sk, ch, inv, fr["palm"])
+		var ang := []
+		for j in 3:
+			ang.append((sk.get_bone_rest(ch[j]).basis.get_rotation_quaternion().inverse() * h.gestures.grip_rot[ch[j]]).get_angle())
+		var pts := HandGrip._fk(sk, ch, inv, ax, ang)
+		var d := INF
+		for j in 3:
+			d = minf(d, HandGrip._seg_line(pts[j], pts[j + 1], c, axis))
+		check(d > r and d < r + HandGrip.FINGER_R + 0.012, "the %s finger closes on the handle without passing into it (%.3f m from its middle)" % [f, d])
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()
@@ -1361,6 +1659,117 @@ func test_storage() -> void:
 	var spilled := Storage.spill(o)
 	check(spilled.size() == 1 and spilled[0]["qty"] == 5 and Storage.is_empty(o), "a broken chest spills what it held")
 	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
+
+## Placement polish: what can share a spot, stairs, and carrying on from a piece you aim at.
+## No grass grows up through a floor the player laid, even one at the chunk's edge.
+func _grass_under_floors() -> void:
+	var g := ChunkGenerator.new(4242)
+	var floors := Rect2(56, 20, 8, 6) # four by three cells, the last one on the chunk's edge
+	var chunk := {}
+	var bare := {}
+	for i in 60:
+		chunk = g.generate(i, 3)
+		bare = ChunkNode.build_grass_buffers(chunk, 1.0)
+		if _grass_in(bare, floors) > 100:
+			break
+	check(_grass_in(bare, floors) > 50, "the test ground is grassy (%d blades)" % _grass_in(bare, floors))
+	for x in [57.0, 59.0, 61.0, 63.0]:
+		for z in [21.0, 23.0, 25.0]:
+			var id := "foundation" if z < 25.0 else "floor_wood"
+			chunk["objects"].append({"i": chunk["objects"].size(), "t": BuildCatalog.PREFIX + id, "p": Vector3(x, 0, z), "r": 0.0, "s": 1.0, "e": 0, "st": {}})
+	var n := _grass_in(ChunkNode.build_grass_buffers(chunk, 1.0), floors.grow(-0.05))
+	check(n == 0, "no grass grows through the floors (%d blades)" % n)
+
+func _grass_in(bufs: Dictionary, r: Rect2) -> int:
+	var n := 0
+	for k in bufs:
+		var b: PackedFloat32Array = bufs[k]
+		for i in range(0, b.size(), 16):
+			if r.has_point(Vector2(b[i + 3], b[i + 11])):
+				n += 1
+	return n
+
+func _build_snapping() -> void:
+	# Walls are as tall as the storey, so stacked walls meet edge to edge.
+	var wa := BuildCatalog.mesh("wall_plaster").get_aabb()
+	check(absf(wa.end.y - float(BuildCatalog.def("wall_plaster")["storey"])) < 0.02, "village walls fill one storey (%.3f)" % wa.end.y)
+	# The plinth reaches a storey down; the stairs rise exactly one storey over two cells.
+	check(BuildCatalog.mesh("foundation").get_aabb().position.y < -3.0, "a foundation's plinth reaches a storey down")
+	var sa := BuildCatalog.mesh("stairs_wood").get_aabb()
+	check(absf(sa.end.y - 3.12) < 0.05 and absf(sa.position.z + 3.0) < 0.05 and absf(sa.end.z - 1.0) < 0.05, "wooden stairs fill two cells, one storey up (%s)" % sa)
+	# Furniture minds only furniture; stairs can stand on a floor.
+	var near := [{"id": "foundation", "pos": Vector3(1, 0, 1), "yaw": 0.0}, {"id": "wall_plaster", "pos": Vector3(1, 0, 2), "yaw": 0.0},
+		{"id": "chair", "pos": Vector3(3, 0, 3), "yaw": 0.0}]
+	check(not BuildCatalog.occupied_in(near, "table", Vector3(1, 0.01, 1), 0.0), "furniture fits in the middle of a floor")
+	check(not BuildCatalog.occupied_in(near, "bench", Vector3(1, 0.01, 1.9), 0.0), "and against a wall")
+	check(BuildCatalog.occupied_in(near, "stool", Vector3(3.2, 0, 3.1), 0.0), "but not on top of other furniture")
+	check(not BuildCatalog.occupied_in(near, "stairs_wood", Vector3(1, 0, 1), 0.0), "stairs stand on a floor")
+	check(BuildCatalog.occupied_in(near, "floor_wood", Vector3(1, 0, 1), 0.0), "one floor per cell")
+	# Stairs climb away from you, foot in the aimed cell, for both kits.
+	for id in ["stairs_wood", "stairs_scifi"]:
+		var st := BuildCatalog.snap(id, Vector3(1.0, 0.0, 1.0), 0.0, 0, Vector3(1, 0, 1), true)
+		var box := BuildCatalog.world_aabb(id, st["pos"], st["yaw"])
+		var g: float = BuildCatalog.def(id)["grid"]
+		var cell := Vector3(floorf(1.0 / g) * g + g * 0.5, 0, floorf(1.0 / g) * g + g * 0.5)
+		check(absf(box.end.z - (cell.z + g * 0.5)) < 0.1 and box.position.z < cell.z - g, "%s: foot in the aimed cell, climbing away (%s)" % [id, box])
+		var hi := BuildCatalog.mesh(id)
+		var top_z := 0.0
+		var top_y := -1.0
+		for s in hi.get_surface_count():
+			for v in (hi.surface_get_arrays(s)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				var w: Vector3 = Transform3D(Basis(Vector3.UP, st["yaw"]), st["pos"]) * v
+				if w.y > top_y:
+					top_y = w.y
+					top_z = w.z
+		check(top_z < cell.z - g * 0.5, "%s: the high end is the far one" % id)
+	# A foundation on the ground beside a house keeps to its floor level even when the
+	# nearest piece is its roof.
+	var gr := BuildCatalog.snap("foundation", Vector3(7.0, 0.3, 1.0), 0.0, 0, Vector3(4, 6.24, 2), true)
+	check(is_equal_approx(gr["pos"].y, 0.0), "ground placement finds the storey nearest the ground (%s)" % gr["pos"])
+	# Aiming at a foundation's side is still its storey.
+	var sf := BuildCatalog.snap("wall_stone", Vector3(2.05, -0.8, 1.2), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "floor"})
+	check(is_equal_approx(sf["pos"].y, 0.0), "a wall aimed at a plinth's side stands on that floor (%s)" % sf["pos"])
+	# Aiming at a floor's top carries on to the next cell on that side.
+	var ctx := {"hit_mode": "floor", "hit_pos": Vector3(1, 0, 1), "hit_yaw": 0.0, "hit_id": "foundation", "normal": Vector3.UP}
+	var fc := BuildCatalog.candidates("foundation", Vector3(1.8, 0.01, 1.1), 0.0, 0, Vector3(1, 0, 1), false, ctx)
+	var pick = fc.filter(func(e): return not BuildCatalog.occupied_in(near, "foundation", e["pos"], e["yaw"]))
+	check(not pick.is_empty() and (pick[0]["pos"] as Vector3).is_equal_approx(Vector3(3, 0, 1)), "the next floor goes on the side you aim at (%s)" % [pick])
+	# A wall aimed at a wall: near its end the next along, in the middle on top.
+	var wctx := {"hit_mode": "wall", "hit_pos": Vector3(1, 0, 2), "hit_yaw": 0.0, "hit_id": "wall_plaster", "normal": Vector3.BACK}
+	var wend := BuildCatalog.candidates("wall_plaster", Vector3(1.85, 1.5, 2.05), 0.0, 0, Vector3(1, 0, 2), false, wctx)
+	check((wend[0]["pos"] as Vector3).is_equal_approx(Vector3(3, 0, 2)), "a wall aimed at another's end continues the line (%s)" % wend[0]["pos"])
+	var wmid := BuildCatalog.candidates("wall_plaster", Vector3(1.1, 1.0, 2.05), 0.0, 0, Vector3(1, 0, 2), false, wctx)
+	check((wmid[0]["pos"] as Vector3).is_equal_approx(Vector3(1, 3.12, 2)), "aimed at its middle it stacks on top (%s)" % wmid[0]["pos"])
+	# A wall's dressed face (local +z) turns away from the room it closes, aimed from inside
+	# or out, on the ground floor or the storey above; with no floor either side, toward you.
+	var fnear := [{"id": "foundation", "pos": Vector3(1, 0, 1), "yaw": 0.0}]
+	var out_in := BuildCatalog.snap("wall_stone", Vector3(1.9, 0.5, 1.2), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "floor", "near": fnear})
+	var out_out := BuildCatalog.snap("wall_stone", Vector3(2.1, 0.5, 1.2), 0.0, 0, Vector3(1, 0, 1), true, {"near": fnear})
+	var out_up := BuildCatalog.snap("wall_stone", Vector3(1.0, 3.6, -0.1), 0.0, 0, Vector3(1, 0, 1), false, {"hit_mode": "wall", "near": fnear})
+	var dressed := func(s: Dictionary) -> Vector3: return Basis(Vector3.UP, float(s["yaw"])) * Vector3.BACK
+	check(dressed.call(out_in).is_equal_approx(Vector3(1, 0, 0)) and dressed.call(out_out).is_equal_approx(Vector3(1, 0, 0)), "walls face out of the room (%s, %s)" % [dressed.call(out_in), dressed.call(out_out)])
+	check(dressed.call(out_up).is_equal_approx(Vector3(0, 0, -1)), "upstairs too, before its floor is down (%s)" % dressed.call(out_up))
+	var bare := BuildCatalog.snap("fence", Vector3(10.9, 0.0, 10.2), 0.0, 0, null, true, {"near": [], "eye": Vector3(10, 1.6, 14)})
+	check(dressed.call(bare).is_equal_approx(Vector3(0, 0, 1)), "a lone fence shows you its good side (%s)" % dressed.call(bare))
+	# Corner posts stand on the grid corner nearest the aim, on the storey of the wall aimed at.
+	var post := BuildCatalog.snap("corner_stone", Vector3(2.8, 4.0, 0.3), 0.0, 0, Vector3(1, 3.12, 0), false, {"hit_mode": "wall"})
+	check((post["pos"] as Vector3).is_equal_approx(Vector3(2, 3.12, 0)), "a corner post stands where walls meet (%s)" % post["pos"])
+	check(not BuildCatalog.occupied_in(near, "corner_stone", Vector3(0, 0, 0), 0.0), "a corner post fits beside the walls it joins")
+	# Window walls are glazed.
+	check(BuildCatalog.def("wall_window")["models"].any(func(e): return String(e[0]).begins_with("village/Window_")), "window walls have a glazed frame")
+	# A roof aimed at a wall covers the room that wall belongs to.
+	var room := []
+	for e in [[Vector3(1, 0, 0), 0.0], [Vector3(3, 0, 0), 0.0], [Vector3(1, 0, 4), 0.0], [Vector3(3, 0, 4), 0.0],
+			[Vector3(0, 0, 1), PI * 0.5], [Vector3(0, 0, 3), PI * 0.5], [Vector3(4, 0, 1), PI * 0.5], [Vector3(4, 0, 3), PI * 0.5]]:
+		room.append({"id": "wall_plaster", "pos": e[0], "yaw": e[1]})
+	var rctx := {"hit_mode": "wall", "hit_pos": Vector3(1, 0, 4), "hit_yaw": 0.0, "hit_id": "wall_plaster", "normal": Vector3.UP,
+		"eye": Vector3(1, 1.6, 2), "near": room}
+	var rc := BuildCatalog.candidates("roof_small", Vector3(1.2, 3.12, 4.0), 0.0, 0, Vector3(1, 0, 4), false, rctx)
+	check((rc[0]["pos"] as Vector3).is_equal_approx(Vector3(2, 3.12, 2)), "a roof on a wall top covers its room, even seen from inside (%s)" % rc[0]["pos"])
+	# A roof aimed at the same roof goes edge to edge.
+	var rrc := BuildCatalog.candidates("roof_small", Vector3(3.5, 4.0, 2.2), 0.0, 0, Vector3(2, 3.12, 2), false,
+		{"hit_mode": "roof_v", "hit_pos": Vector3(2, 3.12, 2), "hit_yaw": 0.0, "hit_id": "roof_small", "normal": Vector3.UP})
+	check((rrc[0]["pos"] as Vector3).is_equal_approx(Vector3(6, 3.12, 2)), "roofs line up edge to edge (%s)" % rrc[0]["pos"])
 
 class DoorStreamerShim:
 	var chunks := {}
@@ -1781,6 +2190,51 @@ func test_world_themes() -> void:
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_kit_flora() -> void:
+	# Autumn by the stand: a region's broadleaves have all turned or none have; reds, golds
+	# and browns; never up by the snow.
+	var turned := 0
+	var mixed := 0
+	var hues := {}
+	var browns := 0
+	for i in 300:
+		var bp := Biome.params(WHash.h32(i * 7 + 3), Eras.MEDIEVAL)
+		var stand: bool = bp.get("autumn", false)
+		if stand:
+			turned += 1
+		for f in bp["flora"]:
+			if f["t"] != "oak":
+				continue
+			var p := Flora.species("oak", f["sp"])
+			if bool(p.get("autumn", false)) and not stand:
+				mixed += 1
+			elif stand:
+				var leaf: Color = p["leaf"]
+				hues[int(leaf.h / 0.05)] = true
+				if leaf.s < 0.42:
+					browns += 1
+		if stand:
+			var high := Biome.fit_flora(bp, {"t": "oak", "sp": 0}, Biome.snow_line)
+			check(high.is_empty() or not bool(Flora.species(high["t"], high["sp"]).get("autumn", false)), "no turned leaves by the snow (region %d)" % i)
+	check(mixed <= 3, "no lone autumn trees in a green region (%d odd ones)" % mixed)
+	check(turned > 25 and turned < 100, "about one region in five is in autumn colour (%d of 300)" % turned)
+	check(hues.size() >= 3 and browns > 0, "autumn runs red, orange and gold, with some browns (%d hue bands, %d brown)" % [hues.size(), browns])
+	# Each plant its own look, from where it stands: stable, varied, mostly healthy.
+	var shades := {}
+	var tired := 0
+	for i in 400:
+		var lk := RealTree.plant_look(i * 3.7 - 600.0, i * -5.3 + 211.0)
+		check(lk == RealTree.plant_look(i * 3.7 - 600.0, i * -5.3 + 211.0), "a plant's look depends only on where it stands")
+		check(absf(lk.x) <= 1.0 and lk.y >= 0.0 and lk.y <= 0.39 and lk.z >= 0.0 and lk.z <= 0.33, "plant look %d within its ranges" % i)
+		shades[int((lk.x + 1.0) * 4.0)] = true
+		if lk.y > 0.15 or lk.z > 0.15:
+			tired += 1
+	check(shades.size() >= 7, "plants come in many leaf shades (%d)" % shades.size())
+	check(tired > 40 and tired < 240, "a few plants look tired, most healthy (%d of 400)" % tired)
+	var green := Color(0.4, 0.6, 0.3, 0.5)
+	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)) != RealTree.plant_leaf(green, Vector4(-0.8, 0, 0, 2.0)), "two looks give two leaf colours")
+	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)).b < green.b, "a warm look yellows the leaves")
+	check(not RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0, 0), 0.01), "a full crown has no gaps")
+	check(RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2) and not RealTree.plant_gap(Vector3(-1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2), "a thinned crown is thinnest on its own side")
 	var forms := {}
 	for t in ["oak", "pine"]:
 		for sp in range(1, 60):
@@ -3150,6 +3604,421 @@ func test_server_alliances() -> void:
 	check(not al.list.has(id), "an alliance ends with its last member")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
+
+# --- Lived-in villages ------------------------------------------------------------
+
+func _medieval_town(gen: ChunkGenerator) -> Dictionary:
+	var best := {}
+	for sz in range(-4, 5):
+		for sx in range(-4, 5):
+			var s := gen.settlement_at(sx, sz)
+			if not s.is_empty() and int(s["era"]) == Eras.MEDIEVAL and int(s["size"]) >= 1:
+				if best.is_empty() or (s["center"] as Vector2).length() < (best["center"] as Vector2).length():
+					best = s
+	return best
+
+func test_town_life() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var gen := ChunkGenerator.new(4242)
+	var s := _medieval_town(gen)
+	check(not s.is_empty(), "a medieval town near spawn")
+	if s.is_empty():
+		return
+	var pl := TownLife.plan(gen, s)
+	check(pl["houses"].size() >= 5, "the town's houses are known (%d)" % pl["houses"].size())
+	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
+	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
+	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	var kinds := {}
+	for e in pl["pieces"]:
+		kinds[e["k"]] = true
+	for k in ["woodpile", "garden", "fence"]:
+		check(kinds.has(k), "a town has a %s" % k)
+	# Nothing in a yard stands inside another house.
+	var inside := 0
+	for e in pl["pieces"]:
+		if not e.has("p"):
+			continue
+		for h in pl["houses"]:
+			if int(h["i"]) == int(e["house"]):
+				continue
+			var q := TownLife.world_to_frame(h["p"], h["yaw"], e["p"])
+			if absf(q.x) < float(h["w"]) * 0.5 and absf(q.y) < float(h["d"]) * 0.5:
+				inside += 1
+	check(inside == 0, "yard pieces stay out of other houses (%d inside)" % inside)
+	# The same every time (it is never saved).
+	TownLife._plans.clear()
+	var again := TownLife.plan(gen, s)
+	check(str(again["pieces"]) == str(pl["pieces"]) and str(again["fields"]) == str(pl["fields"]), "the plan follows from the seed")
+	# A field's chunk has worn ground and crops in rows among the grass.
+	var f: Dictionary = pl["fields"].filter(func(x): return x["crop"] != "fallow")[0]
+	var k := TownLife._chunk_of(Vector3(f["p"].x, 0, f["p"].y))
+	var chunk := gen.generate(k.x, k.y)
+	TownLife.annotate(gen, chunk)
+	check(chunk.has("worn") and chunk.has("crops"), "the field's chunk is worn and planted")
+	var lp: Vector2 = (f["p"] as Vector2) - Vector2(k.x, k.y) * ChunkGenerator.SIZE
+	check(TownLife.wear_at(chunk, lp.x, lp.y) > 0.3, "the field's ground is worn (%f)" % TownLife.wear_at(chunk, lp.x, lp.y))
+	var g := {}
+	TownLife.crops(chunk, g, 1.0, ChunkGenerator.keep_out(chunk))
+	var crops := 0
+	for key in g:
+		crops += (g[key] as PackedFloat32Array).size() / 16
+	check(crops > 200, "crops grow in the field (%d)" % crops)
+	# No wild tree is left standing in the field.
+	var standing := 0
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree" and not o["st"].get("gone", false):
+			var q := TownLife.world_to_frame(f["p"], f["yaw"], Vector2(o["p"].x, o["p"].z) + Vector2(k.x, k.y) * ChunkGenerator.SIZE)
+			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
+				standing += 1
+	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
+	# their own, and every build shares the plain wall's ground plan.
+	var fw := ObjectLibrary.footprint({"t": "castle_wall"})
+	check(fw.size.x > 7.0 and fw.size.y > 1.5, "a castle wall has a footprint by type alone (%s)" % fw)
+	check(ObjectLibrary.mesh_key({"t": "castle_tower", "p": Vector3(3, 0, 5), "st": {}}).begins_with("castle_tower" + Stronghold.VAR), "a placed tower picks a build")
+	# Far from any town, nothing changes.
+	var wild := gen.generate(400, 400)
+	TownLife.annotate(gen, wild)
+	check(not wild.has("worn") and not wild.has("crops"), "the wilds stay as they were")
+
+# --- Boats ---------------------------------------------------------------------------------
+
+func test_boats_on_the_water() -> void:
+	var old_theme := Eras.theme
+	var old_eras := WorldField.allowed_eras
+	var old_v := WorldField.terrain_v
+	Eras.theme = "human"
+	WorldField.allowed_eras = [Eras.MEDIEVAL, Eras.SCIFI]
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var gen := ChunkGenerator.new(424242)
+	var found: Array = []
+	for cz in range(-6, 6):
+		for cx in range(-6, 6):
+			var s := Boats.plan(gen.field, cx, cz)
+			if not s.is_empty():
+				found.append(s)
+	check(found.size() >= 3 and found.size() <= 60, "boats are out on some lakes, not all (%d in 144 cells)" % found.size())
+	for s in found:
+		var c: Vector2 = s["center"]
+		check(gen.field.height(c.x, c.y) < Boats.WET, "%s lies on water" % s["boat"])
+		check(Boats.cell_of(c.x, c.y) == Vector2i(int(s["cx"]), int(s["cz"])), "a boat belongs to the cell its lake's middle is in")
+		check(s == Boats.plan(gen.field, int(s["cx"]), int(s["cz"])), "planning is repeatable")
+		var d: Dictionary = Boats.KINDS[s["boat"]]
+		check(float(s["clear"]) >= float(d["len"]) * 0.5 + 10.0, "%s fits its lake (clear %d m)" % [s["boat"], s["clear"]])
+		# Its loop stays on deep water.
+		for i in 12:
+			var p: Vector2 = Boats.pose_at(s, float(i) * 97.0)[0]
+			check(gen.field.height(p.x, p.y) < 0.0, "%s sails on water at %s" % [s["boat"], p])
+		var era := int(d["era"])
+		var tech := WorldField.dominant(gen.field.era_weights(c.x, c.y)) == Eras.SCIFI
+		check((era == Eras.SCIFI) == tech, "%s matches the land's era" % s["boat"])
+		var crew := Boats.crew(424242, s)
+		var cr: Array = d["crew"]
+		check(crew["npcs"].size() >= int(cr[0]) and crew["npcs"].size() <= BoatModel.stations(s["boat"]).size(), "%s has a crew" % s["boat"])
+		check(crew == NPCGen.create(gen, s), "crews are made through the settlement store path")
+		for p in crew["npcs"]:
+			check(p["boat"] == s["boat"] and p.has("station") and p["faction"] == "folk", "crew records know their boat and station")
+			check(String(p["id"]).begins_with("%d_%d_" % [s["sx"], s["sz"]]), "crew ids are unique to the boat")
+	var alien := ChunkGenerator.new(424242)
+	Eras.theme = "alien"
+	var any := false
+	for cx in range(-3, 3):
+		any = any or not Boats.plan(alien.field, cx, 0).is_empty()
+	check(not any, "no human boats on alien worlds")
+	Eras.theme = old_theme
+	WorldField.allowed_eras = old_eras
+	WorldField.terrain_v = old_v
+
+func test_boat_models() -> void:
+	for k in Boats.KINDS:
+		var body := StaticBody3D.new()
+		var m := BoatModel.build(k, 3, body)
+		var mi: MeshInstance3D = m.find_children("*", "MeshInstance3D", false, false)[0]
+		check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s has a model" % k)
+		check(body.get_child_count() > 0, "%s has collision" % k)
+		check(not BoatModel.stations(k).is_empty() and BoatModel.stations(k).size() >= int(Boats.KINDS[k]["crew"][1]), "%s has a station per crew member" % k)
+		m.free()
+		body.free()
+	# Pirates: a spawned site makes a hostile crew.
+	var site := {"boat": "cog", "sx": Boats.SPAWNED_BASE + 1, "sz": Boats.SPAWNED_BASE, "center": Vector2(10, 20), "faction": "pirate",
+		"name": "Black Gull", "phase": 0.0, "yaw": 0.0, "loop": 0.0}
+	var crew := Boats.crew(1, site)
+	check(not crew["npcs"].is_empty() and crew["npcs"].all(func(p): return p["job"] == "pirate" and p["faction"] == "pirate" and int(p["rel"]) < 0), "pirate crews are hostile")
+
+## Every held ranged weapon (bar thrown ones) has a real model with a grip, and nothing
+## people made glows: only alien (Fantasy era) weapons have emissive parts.
+func test_firearm_models() -> void:
+	for t in ItemDB.ITEMS:
+		var d: Dictionary = ItemDB.def(t)
+		if not d.get("ranged", false) or d.get("thrown", false):
+			continue
+		check(GunLook.has(t), "%s has a ranged-weapon model" % t)
+		var m: ArrayMesh = Viewmodel.model(t)
+		if m == null:
+			check(false, "%s has a mesh" % t)
+			continue
+		var verts := 0
+		for i in m.get_surface_count():
+			verts += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(verts > 300, "%s is built from parts, not a box" % t)
+		check(m.has_meta("grip"), "%s says where the hand grips it" % t)
+		if Firearms.has(t):
+			check(float(m.get_meta("grip_r", 0.0)) > 0.005, "%s says how thick its grip is" % t)
+		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY:
+			var lit := false
+			for i in m.get_surface_count():
+				var mat := m.surface_get_material(i) as BaseMaterial3D
+				lit = lit or (mat != null and mat.emission_enabled)
+			check(not lit, "%s (human work) has no glowing part" % t)
+
+# --- v16: zone lines, craters, the Fallen Dreadnought's crash ---------------------------
+
+func _human_world() -> Array:
+	var was := [Eras.theme, Eras.base_level, WorldField.allowed_eras, WorldField.terrain_v]
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	Planets.apply(Planets.get_planet(4242, 0, "human"))
+	return was
+
+func _restore_world(was: Array) -> void:
+	Eras.theme = was[0]
+	Eras.base_level = was[1]
+	WorldField.allowed_eras = was[2]
+	WorldField.terrain_v = was[3]
+
+func test_zone_borders() -> void:
+	var was := _human_world()
+	var rs := ZoneBorder.rings()
+	check(rs.size() == 3 and is_equal_approx(rs[0], 1350.0) and is_equal_approx(rs[1], 2850.0), "a human world marks its zone lines at levels 10, 20 and 40: %s" % rs)
+	check(ZoneBorder.road_rings() == Vector2(1350.0, 2850.0), "and the road surface changes at the first two")
+	check(ZoneInfo.band_range(12) == Vector2i(10, 19) and ZoneInfo.band_range(3) == Vector2i(1, 9) and ZoneInfo.band_range(44) == Vector2i(40, 55), "zone bands: %s %s %s" % [ZoneInfo.band_range(12), ZoneInfo.band_range(3), ZoneInfo.band_range(44)])
+	check(ZoneInfo.entering({"kind": "Borderlands", "band_lo": 10, "band_hi": 19}) == "Entering the Borderlands  ·  Lv 10-19", "the toast names the zone and its levels")
+	var g := ChunkGenerator.new(4242, true)
+	# Boundary stones all round the first line, in every chunk it crosses that has room.
+	var stones := 0
+	var chunks := 0
+	var seen := {}
+	for i in 60:
+		var a := i * TAU / 60.0
+		var p := Vector2(cos(a), sin(a)) * rs[0]
+		var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
+		if seen.has(k):
+			continue
+		seen[k] = true
+		chunks += 1
+		for o in g.generate(k.x, k.y)["objects"]:
+			if o["t"] == "border_stone":
+				stones += 1
+				var w := Vector2(k.x * 64.0 + o["p"].x, k.y * 64.0 + o["p"].z)
+				check(absf(w.length() - rs[0]) < 1.5, "a boundary stone stands on the line (%.1f m off)" % (w.length() - rs[0]))
+	check(stones > chunks / 2, "boundary stones along the line: %d in %d chunks" % [stones, chunks])
+	# Where a road crosses the second line: a barrier on the road, a sign and a booth by it.
+	var cps := ZoneBorder.checkpoints(g, rs[1], 1, Rect2(-3000, -3000, 6000, 6000))
+	var bars := cps.filter(func(c): return c["t"] == "border_barrier")
+	check(not bars.is_empty() and cps.size() == bars.size() * 3, "checkpoints where roads cross the line: %d" % bars.size())
+	if not bars.is_empty():
+		var x: Vector2 = bars[0]["p"]
+		var k := Vector2i(floori(x.x / 64.0), floori(x.y / 64.0))
+		var ch := g.generate(k.x, k.y)
+		var has := false
+		for o in ch["objects"]:
+			has = has or o["t"] == "border_barrier"
+		check(has, "the barrier is placed in its chunk")
+		check(ChunkGenerator.road_at(ch, x.x - k.x * 64.0, x.y - k.y * 64.0) > 0.5, "on the road")
+	for t in ZoneBorder.LABELS:
+		var m := ZoneBorder.build(t)
+		var lit := 0
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i) as StandardMaterial3D
+			if mat != null and mat.emission_enabled:
+				lit += 1
+		check(m.get_surface_count() > 0 and lit == 0, "%s has a mesh and nothing on it glows" % t)
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t) == ZoneBorder.LABELS[t], "%s is a labelled structure" % t)
+	_restore_world(was)
+	check(ZoneBorder.rings().is_empty() or Eras.theme == "human", "only human worlds have zone lines")
+
+func test_crater_rims() -> void:
+	var was := _human_world()
+	var f := WorldField.new(4242)
+	var tested := 0
+	for j in range(-40, 41):
+		for i in range(-40, 41):
+			if tested >= 6:
+				break
+			var p := Vector2(i, j) * 37.0 + Vector2(5000, -3000)
+			var c := f._crater_at(p.x, p.y)
+			if c.is_empty() or float(c[0]) < 30.0 or absf(float(c[5]) - 1.0) > 0.03 or float(c[3]) < 1.0 or float(c[4]) < 0.9:
+				continue
+			# Out from the middle of the crater, from the crest.
+			var d0 := f._cell(p.x, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x
+			var out := Vector2(f._cell(p.x + 0.5, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0, f._cell(p.x, p.y + 0.5, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0).normalized()
+			var r: float = c[0]
+			var crest := f._craters_v16(p.x, p.y)
+			var inside := f._craters_v16(p.x - out.x * r * 0.5, p.y - out.y * r * 0.5)
+			var blanket := f._craters_v16(p.x + out.x * r * 0.4, p.y + out.y * r * 0.4)
+			check(crest.y > 0.07 * r, "a crater's crest stands up (%.1f m on a %.0f m crater)" % [crest.y, r])
+			check(inside.x + inside.y < crest.y - 0.15 * r, "its bowl is well below the crest")
+			check(blanket.y > 0.05 and blanket.y < crest.y, "ejecta lies outside the rim, lower than it (%.2f m)" % blanket.y)
+			check(f.crater_spoil(p.x, p.y) > 0.6, "fresh spoil shows on the crest")
+			tested += 1
+	check(tested > 0, "found big craters to check")
+	WorldField.terrain_v = 15
+	check(f.crater_spoil(5000, -3000) == 0.0, "older worlds keep their craters")
+	_restore_world(was)
+
+func test_dreadnought_crash() -> void:
+	BuildCatalog.warm_kits()
+	var was := _human_world()
+	var g := ChunkGenerator.new(4242, true)
+	var cr := {}
+	var k := Vector2i.ZERO
+	for r in 6:
+		for wz in range(-r, r + 1):
+			for wx in range(-r, r + 1):
+				if not cr.is_empty() or maxi(absi(wx), absi(wz)) != r:
+					continue
+				var pick := WonderSite.cell_pick(g.seed, wx, wz)
+				if not pick.is_empty():
+					cr = WonderSite.crash_of(g, pick[0])
+					k = pick[0]
+	check(not cr.is_empty(), "a crashed dreadnought near the origin")
+	if cr.is_empty():
+		_restore_world(was)
+		return
+	check(float(cr["len"]) >= WonderSite.CRASH_MIN, "its trench runs %.0f m" % cr["len"])
+	var ch := g.generate(k.x, k.y)
+	var hull := {}
+	for o in ch["objects"]:
+		if o["t"] == "w_dreadnought":
+			hull = o
+	check(not hull.is_empty() and hull["st"].get("crash", false), "the hull lies at the end of it")
+	check(ObjectLibrary.mesh_key(hull) == "w_dreadnought" + WonderSite.CRASH + WonderSite.CALM, "a human world's crashed hull wears the calm mesh")
+	var m := ObjectLibrary.get_mesh(ObjectLibrary.mesh_key(hull))
+	var lit := 0
+	for i in m.get_surface_count():
+		var mat := m.surface_get_material(i) as StandardMaterial3D
+		if mat != null and mat.emission_enabled:
+			lit += 1
+	check(lit == 0 and m.get_aabb().size.z > 55.0, "it is capital-ship size (%.0f m) and nothing on it glows" % m.get_aabb().size.z)
+	# The trench: cut well into the land along its length, in the chunks it crosses.
+	var c := Vector2(cr["x"], cr["z"])
+	var deep := 0
+	var n := 0
+	for v in [-30.0, -60.0, -90.0]:
+		if v < -float(cr["len"]) + 20.0:
+			continue
+		var mid := c + Vector2(0, v).rotated(-float(cr["yaw"]))
+		var hm := _ground(g, mid)
+		var raw := g.field.height(mid.x, mid.y)
+		n += 1
+		if hm < raw - 1.5:
+			deep += 1
+	check(n > 0 and deep == n, "the trench is cut into the ground (%d of %d)" % [deep, n])
+	# Seams: neighbours meet the wonder's chunk, and the wreckage lies out round it.
+	var bad := 0
+	var bits := 0
+	var burnt := 0
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var nb := g.generate(k.x + d.x, k.y + d.y)
+		for o in nb["objects"]:
+			if o["t"] == WonderSite.DEBRIS:
+				bits += 1
+		var lb: PackedByteArray = nb.get("look", PackedByteArray())
+		for i in range(10, lb.size(), ChunkGenerator.LOOK_BYTES):
+			burnt += int(lb[i] > 40)
+		for t in ChunkGenerator.RES:
+			var a: float
+			var b: float
+			match d:
+				Vector2i(1, 0):
+					a = ch["heights"][t * ChunkGenerator.RES + ChunkGenerator.SIZE]
+					b = nb["heights"][t * ChunkGenerator.RES]
+				Vector2i(-1, 0):
+					a = ch["heights"][t * ChunkGenerator.RES]
+					b = nb["heights"][t * ChunkGenerator.RES + ChunkGenerator.SIZE]
+				Vector2i(0, 1):
+					a = ch["heights"][ChunkGenerator.SIZE * ChunkGenerator.RES + t]
+					b = nb["heights"][t]
+				_:
+					a = ch["heights"][t]
+					b = nb["heights"][ChunkGenerator.SIZE * ChunkGenerator.RES + t]
+			if absf(a - b) > 0.01:
+				bad += 1
+	check(bad == 0, "the trench's chunks meet the wonder's (%d bad edge points)" % bad)
+	check(bits > 0 and burnt > 0, "wreckage (%d) and scorched ground (%d) reach the chunks round it" % [bits, burnt])
+	for sp in range(1, 7):
+		check(WonderSite.debris(sp, 1).get_surface_count() > 0, "wreckage kind %d has a mesh" % sp)
+	_restore_world(was)
+
+func _ground(g: ChunkGenerator, p: Vector2) -> float:
+	var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
+	return ChunkGenerator.height_at(g.generate(k.x, k.y), p.x - k.x * 64.0, p.y - k.y * 64.0)
+
+# --- Food, drink and containers ------------------------------------------------------
+
+func test_provisions_models() -> void:
+	var n := 0
+	for t in ItemDB.ITEMS:
+		var m := Provisions.model(t)
+		if m == null:
+			continue
+		n += 1
+		check(m.get_surface_count() > 0, "%s has surfaces" % t)
+		check(m.has_meta("grip"), "%s says where it is held" % t)
+		if m.has_meta("grip"):
+			check(m.get_aabb().grow(0.03).has_point(m.get_meta("grip")), "%s is held on itself" % t)
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i)
+			check(not (mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_color == Color(1, 0, 1)), "%s surface %s has a real material" % [t, m.surface_get_name(i)])
+	check(n >= 120, "food and drink models: %d" % n)
+	check(Provisions.model("sword_iron") == null, "a sword is not food")
+	var k := MeshKit.new()
+	Provisions.msg_bottle(k, RandomNumberGenerator.new())
+	check(k.commit(Provisions._mat).get_surface_count() >= 6, "the message in a bottle builds")
+	# Kit props that are containers come from Provisions at about the kit model's size.
+	for e in [["props/Barrel", 0.88], ["props/Chest_Wood", 0.7], ["props/Crate_Wooden", 0.86], ["props/Mug", 0.17], ["props/Bottle_1", 0.36], ["props/Barrel_Apples", 0.88], ["props/FarmCrate_Apple", 0.24], ["props/Bag", 0.78]]:
+		check(not Provisions.kit(e[0]).is_empty(), "%s has a stand-in" % e[0])
+		var km := BuildCatalog.merge_models([[e[0], 0, Vector3.ZERO, 1.0]])
+		check(absf(km.get_aabb().size.y - float(e[1])) < float(e[1]) * 0.2, "%s stands %.2f m tall" % [e[0], km.get_aabb().size.y])
+## No two of a herd alike: kit animals each get their own size (from the id, so it is
+## the same for everyone), and manes and tails grow hanging locks bound to the skeleton.
+func test_animal_individuals() -> void:
+	var sp := -1
+	for i in 400:
+		var p := Creature.species(i, Eras.MEDIEVAL)
+		if AnimalModel.available(p.get("kit", "")) and p["plan"] == "quad":
+			sp = i
+			break
+	check(sp >= 0, "a medieval kit species exists")
+	var scales := {}
+	for i in 12:
+		var c := Creature.new()
+		c.id = "herd_%d" % i
+		c.sp = sp
+		c.p = Creature.species(sp, Eras.MEDIEVAL)
+		c._individual()
+		scales[snappedf(float(c.p["kit_scale"]), 0.001)] = true
+		var again := Creature.new()
+		again.id = c.id
+		again.sp = sp
+		again.p = Creature.species(sp, Eras.MEDIEVAL)
+		again._individual()
+		check(is_equal_approx(float(again.p["kit_scale"]), float(c.p["kit_scale"])), "%s is the same size every time" % c.id)
+		c.free()
+		again.free()
+	check(scales.size() >= 8, "a herd of 12 comes in many sizes (%d)" % scales.size())
+	var m := AnimalModel.new().build("Horse", 1.0, null, null, 7)
+	var locks := 0
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			if mesh.surface_get_name(s) == AnimalSkin.LOCKS:
+				locks += 1
+				var a := mesh.surface_get_arrays(s)
+				check(a[Mesh.ARRAY_BONES] != null and (a[Mesh.ARRAY_INDEX] as PackedInt32Array).size() > 600, "horse locks are skinned and plentiful")
+				check((mi as MeshInstance3D).get_surface_override_material(s).shader.resource_path == AnimalSkin.LOCK_SHADER, "horse locks use the lock shader")
+	check(locks >= 1, "a horse's mane and tail grow locks (%d)" % locks)
+	m.free()
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

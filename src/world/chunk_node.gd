@@ -25,6 +25,8 @@ var _grass: Array = [] ## MultiMeshInstance3D per grass species and quarter
 var _clutter: Array = []
 var _stones := PackedFloat32Array() ## stones to stand on (see _scatter_stones)
 var _stone_body: StaticBody3D
+var _crags: Array = []
+var _crag_solid := PackedFloat32Array() ## crags' colliders (see build_crag_buffers)
 ## The chunk's GroundCover grid (for footsteps), from its last terrain build.
 var cover := PackedByteArray()
 var _cave: MeshInstance3D
@@ -47,6 +49,7 @@ static func ensure_shared() -> void:
 		terrain_material.set_shader_parameter("use_textures", all)
 		terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
 		terrain_material.set_shader_parameter("paved_roads", Eras.theme == "human")
+		terrain_material.set_shader_parameter("zone_rings", ZoneBorder.road_rings())
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_material.set_shader_parameter("detail", detail_mult)
@@ -64,11 +67,18 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	var hs: PackedFloat32Array = chunk["heights"]
 	var wb: PackedByteArray = chunk["weights"]
 	var rb: PackedByteArray = chunk.get("road", PackedByteArray())
+	var worn: PackedByteArray = chunk.get("worn", PackedByteArray())
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	var n := SIZE / step + 1
 	# Packed arrays held in an Array are copied on access, so the three look streams
 	# are separate locals (passed to helpers by reference).
 	var has_look := not lb.is_empty()
+	# Up close, how far each point near a road is from its middle (for the wheel ruts), as
+	# the vertex UV: (metres to one side or the other, 1), (0, 0) away from roads.
+	var mid: PackedByteArray = chunk.get("road_mid", PackedByteArray()) if step == 1 else PackedByteArray()
+	var uvs := PackedVector2Array()
+	if not mid.is_empty():
+		uvs.resize(n * n)
 	var human := Eras.theme == "human"
 	var l0 := PackedByteArray()
 	var l1 := PackedByteArray()
@@ -106,9 +116,14 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			# There blue is only how paved the road is (the tech era's streets and roads).
 			var rd := rb[k] / 255.0 if not rb.is_empty() else 0.0
 			var ws := wb[wk + 2] / 255.0 * (1.0 if rd > 0.0 else 0.0) if human else wb[wk + 2] / 255.0
+			# Village paths, gardens and fields wear the ground bare too (never paved).
+			if not worn.is_empty():
+				rd = maxf(rd, worn[k] / 255.0)
 			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - rd)
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
+			if not mid.is_empty() and mid[k] > 0:
+				uvs[v] = Vector2((mid[k] - 128) / 20.0, 1.0)
 			for b in 4:
 				cv[v * 4 + b] = cover[k * 4 + b]
 	# Up close, a cave mouth is an opening in the ground (far off the hole is too small to
@@ -142,7 +157,9 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	arr[Mesh.ARRAY_NORMAL] = norms
 	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
-	if has_look:
+	if not uvs.is_empty():
+		arr[Mesh.ARRAY_TEX_UV] = uvs
+	if not l0.is_empty():
 		arr[Mesh.ARRAY_CUSTOM0] = l0
 		arr[Mesh.ARRAY_CUSTOM1] = l1
 		arr[Mesh.ARRAY_CUSTOM2] = l2
@@ -244,6 +261,14 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		var built := k == "built"
 		var sy := s * (lerpf(0.88, 1.15, u1) if organic else 1.0)
 		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, sy, s))
+		if real:
+			# No two trees alike: a crown a little broader one way than the other, and a
+			# lean (most trees stand nearly straight, a few lean well over; spires less).
+			var u3 := WHash.to_unit(WHash.h32(h ^ 0x5bd1e995))
+			var u4 := WHash.to_unit(WHash.h32(h ^ 0x27d4eb2f))
+			b = Basis(Vector3.UP, o["r"]).scaled(Vector3(s * lerpf(0.9, 1.12, u3), sy, s * lerpf(0.9, 1.12, u4)))
+			var tilt := u3 * u3 * u3 * deg_to_rad(3.0 if o["t"] == "pine" else 7.0)
+			b = Basis(Vector3(cos(u4 * TAU), 0.0, sin(u4 * TAU)), tilt) * b
 		var p: Vector3 = o["p"]
 		# Sink slightly so bases never float on slopes.
 		if not built and not EasterEggs.floats(o["t"]):
@@ -264,14 +289,16 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			tint.a = w[Eras.MEDIEVAL] * lerpf(0.2, 0.9, u2) * ChunkGenerator.cover_at(chunk, p.x, p.z)
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a]
 		if far and real:
-			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), int(o.get("v", 0))), Transform3D(b, p), tint)
+			var look := RealTree.plant_look(float(chunk["cx"]) * SIZE + p.x, float(chunk["cz"]) * SIZE + p.z)
+			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), int(o.get("v", 0))), Transform3D(b, p), tint, look)
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array(row)
 		by_key[key] = buf
 		# A room you can walk into brings its furniture (drawn up close) and any lamplit
 		# windows (from further off) as their own meshes.
-		if KitHouse.has(key) or Interiors.has(key):
-			for extra in [key + "~in", key + "~glow"] if KitHouse.has(key) or Interiors.glows(key) else [key + "~in"]:
+		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
+		if KitHouse.has(rk) or Interiors.has(rk):
+			for extra in [rk + "~in", rk + "~glow"] if KitHouse.has(rk) or Interiors.glows(rk) else [rk + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
 				eb.append_array(row)
 				by_key[extra] = eb
@@ -290,8 +317,10 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key["~far"] = surfs
 	return by_key
 
-## Appends one tree's far parts, moved by `xf` and tinted, to the chunk's far buffers.
-static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint: Color) -> void:
+## Appends one tree's far parts, moved by `xf` and tinted, to the chunk's far buffers,
+## with its own look (RealTree.plant_look) baked into the leaves: the shade and dry sprays
+## it has up close, and the same thin side.
+static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint: Color, plant := Vector4.ZERO) -> void:
 	if parts.is_empty():
 		return
 	var look: Array = parts["look"]
@@ -313,13 +342,31 @@ static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint:
 		var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
 		var pc: PackedColorArray = a[Mesh.ARRAY_COLOR]
 		var nb := xf.basis.orthonormalized()
-		for j in pv.size():
-			vs.append(xf * pv[j])
-			ns.append(nb * pn[j])
-			cs.append(pc[j] * tint)
-		uvs.append_array(a[Mesh.ARRAY_TEX_UV])
-		for q in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
-			ix.append(base + q)
+		var pu: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
+		var pix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		if part == "leaf":
+			# Leaves are cards: four vertices and six indices each, in order.
+			for q in pv.size() / 4:
+				var v0 := q * 4
+				var card := pc[v0].a
+				if RealTree.plant_gap((pv[v0] + pv[v0 + 1] + pv[v0 + 2] + pv[v0 + 3]) * 0.25, plant, card):
+					continue
+				var vb := vs.size()
+				for j in range(v0, v0 + 4):
+					vs.append(xf * pv[j])
+					ns.append(nb * pn[j])
+					cs.append(RealTree.plant_leaf(pc[j], plant) * tint)
+					uvs.append(pu[j])
+				for k in range(q * 6, q * 6 + 6):
+					ix.append(vb + pix[k] - v0)
+		else:
+			for j in pv.size():
+				vs.append(xf * pv[j])
+				ns.append(nb * pn[j])
+				cs.append(pc[j] * tint)
+			uvs.append_array(pu)
+			for q in pix:
+				ix.append(base + q)
 		# Packed arrays inside an Array are copies: store them back.
 		bufs[sk] = [vs, ns, uvs, cs, ix]
 
@@ -369,6 +416,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			has_cave = true
 	has_cave = has_cave or chunk.has("hole")
 	var plans := ChunkGenerator.keep_out(chunk)
+	var looks := ChunkGenerator.look_grid(chunk)
 	for n in count:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -382,7 +430,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			continue
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.55:
 			continue
-		if pick > dens * ChunkGenerator.cover_at(chunk, lx, lz):
+		if pick > dens * looks[ChunkGenerator.look_cell(lx, lz)]:
 			continue
 		# Grass gives way to snow, stones and gravel, and thins under the trees.
 		var cv := GroundCover.at(cover, lx, lz)
@@ -390,8 +438,9 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
-		# Clumps with gaps of bare ground between them.
-		if roll > smoothstep(-0.6, 0.15, clump.get_noise_2d(wx, wz)):
+		# Clumps with gaps of shorter ground between them (narrow ones: wide bare gaps made
+		# a meadow look like a lawn with tufts on it).
+		if roll > smoothstep(-0.9, -0.1, clump.get_noise_2d(wx, wz)):
 			continue
 		if ChunkGenerator.kept_out(plans, lx, lz, 0.2):
 			continue
@@ -399,7 +448,10 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
 		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
-		if on_road > 0.5 or (on_road > 0.0 and r.randf() < on_road * 1.6):
+		var worn := TownLife.wear_at(chunk, lx, lz)
+		# A verge of uncut grass right up to the wheel-worn edge of a road, not a mown
+		# strip; trodden yards and paths thin it out gradually.
+		if on_road > 0.5 or (on_road > 0.3 and r.randf() < (on_road - 0.3) * 5.0) or worn > 0.5 or (worn > 0.0 and r.randf() < worn * 1.6):
 			continue
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
@@ -416,6 +468,9 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		elif green > 0.3 and u < 0.06 + 0.3 * smoothstep(0.5, 0.85, wl):
 			sp = "tall"
 			sc = lerpf(0.75, 1.25, size)
+		elif on_road > 0.0 and u < 0.65:
+			sp = "tall"
+			sc = lerpf(0.7, 1.15, size)
 		elif u < 0.62 - 0.4 * wl:
 			sp = "turf"
 			sc = lerpf(0.8, 1.35, size)
@@ -431,6 +486,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[biome_era] * lumen])
 		out[key] = buf
+	# Crops in rows in the fields and gardens of villages (TownLife).
+	TownLife.crops(chunk, out, density, plans)
 	# Waterweed on lake and sea beds, in beds of its own, thickest a couple of metres
 	# down and thinning out where the light fades. (Its own draws, so the grass above
 	# stays as it was.)
@@ -518,33 +575,83 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var era: int = Eras.nature(chunk.get("era", 0))
 		var bp := Biome.params(chunk["biome"], era)
 		var unders: Array = bp["under"]
-		for n in int(420 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
+		# Clumps and thickets where a slow noise of the land is high, scattered singles
+		# between (world space, so clumps run on across chunk edges).
+		var thicket := FastNoiseLite.new()
+		thicket.seed = int(chunk.get("seed", 0)) ^ 0x7B15
+		thicket.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		thicket.frequency = 0.045
+		thicket.fractal_octaves = 3
+		var looks := ChunkGenerator.look_grid(chunk)
+		var ux0 := float(chunk["cx"]) * SIZE
+		var uz0 := float(chunk["cz"]) * SIZE
+		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
 			var lx := r.randf() * SIZE
 			var lz := r.randf() * SIZE
 			var pick := r.randi()
 			var yaw := r.randf() * TAU
 			var sc := r.randf_range(0.6, 1.5)
 			# Clumps: undergrowth gathers where a low-frequency mask is high.
-			var mask := sin(lx * 0.11 + float(chunk["cx"]) * 7.0) * cos(lz * 0.09 + float(chunk["cz"]) * 5.0)
-			if mask < -0.2 + r.randf() * 0.4:
+			var mask := thicket.get_noise_2d(ux0 + lx, uz0 + lz)
+			if r.randf() > 0.06 + 0.94 * smoothstep(0.0, 0.45, mask):
 				continue
 			var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			# Bare sand and dust grow little (the size roll doubles as the chance).
-			if (sc - 0.6) / 0.9 > ChunkGenerator.cover_at(chunk, lx, lz):
+			if (sc - 0.6) / 0.9 > looks[ChunkGenerator.look_cell(lx, lz)]:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
-			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
+			# Each plant where its kind grows: the region's first species (from the roll)
+			# that suits this spot, or none.
+			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9)
+			if sp < 0:
+				continue
+			var key := "under#%d#%d" % [sp, era]
 			if not out.has(key):
 				out[key] = PackedFloat32Array()
-			var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
+			# No two alike: each stretched, squat or tall, and leaning a little.
+			var b := Basis.from_euler(Vector3(r.randf_range(-0.12, 0.12), 0, r.randf_range(-0.12, 0.12))) * Basis(Vector3.UP, yaw)
+			b = b.scaled_local(Vector3(sc * r.randf_range(0.8, 1.25), sc * r.randf_range(0.75, 1.3), sc * r.randf_range(0.8, 1.25)))
 			var buf: PackedFloat32Array = out[key]
 			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 			out[key] = buf
 	return out
+
+## Which of a region's undergrowth species `unders` grows at (lx, lz), starting from the
+## one `pick` chose, or -1 for none. Nothing grows through snow or on the bare heights
+## near the snow line; reeds and rushes only at the water's edge; ferns in the shade and
+## litter of woods, not out on open meadow. (Fantasy and alien forms grow where they
+## like.) `u` is a spare uniform roll.
+static func _under_for(chunk: Dictionary, cover: PackedByteArray, unders: Array, pick: int, era: int, lx: float, lz: float, y: float, u: float) -> int:
+	var cv := GroundCover.at(cover, lx, lz)
+	if cv.a > 0.12 or y > WorldField.snow_line - 4.0 - 8.0 * u:
+		return -1
+	var wet := -1.0
+	for n in unders.size():
+		# Half the time a plant that doesn't suit the spot leaves it bare rather than
+		# giving way to the next kind (or one kind would carpet the place).
+		if n == 1 and (pick >> 9) & 1 == 0:
+			return -1
+		var sp: int = unders[(pick + n) % unders.size()]
+		match Flora.under_form(sp, era):
+			"reeds":
+				if era == Eras.MEDIEVAL:
+					if wet < 0.0:
+						wet = ChunkGenerator.wet_at(chunk, lx, lz)
+					if u > wet:
+						continue
+			"fern":
+				if era == Eras.MEDIEVAL and u > cv.b * 2.5:
+					continue
+			"flowers":
+				# Wild flowers want light: few under the trees.
+				if u < cv.b * 0.8:
+					continue
+		return sp
+	return -1
 
 ## Loose stones (StoneKit) into `out`: a few in the grass, thick on scree and gravel so
 ## the ground there is more stone than soil. Keys "stone:<kind>" (pebbles per quarter of
@@ -556,13 +663,45 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 	var has_cave := chunk.has("hole")
 	var solid := PackedFloat32Array()
 	var greys := [Color(0.56, 0.54, 0.5), Color(0.5, 0.47, 0.42), Color(0.62, 0.6, 0.57), Color(0.47, 0.46, 0.45)]
+	# Stones lie in bunches (where frost heaved them up, a bank slumped, someone cleared a
+	# field into a heap) with bare stretches between, not one every few strides: a slow
+	# noise gathers the field stones, a quicker one breaks up the scree.
+	var x0 := float(chunk["cx"]) * SIZE
+	var z0 := float(chunk["cz"]) * SIZE
+	var heap := FastNoiseLite.new()
+	heap.seed = int(chunk.get("seed", 0)) ^ 0x57A9
+	heap.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	heap.frequency = 0.09
+	heap.fractal_octaves = 2
+	var grit := FastNoiseLite.new()
+	grit.seed = int(chunk.get("seed", 0)) ^ 0x6217
+	grit.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	grit.frequency = 0.3
+	grit.fractal_octaves = 1
+	# Both worked out once a metre (thousands of stones ask), with the sand.
+	var bunches := PackedFloat32Array()
+	bunches.resize(RES * RES)
+	var grits := PackedFloat32Array()
+	grits.resize(RES * RES)
+	for j in RES:
+		for i in RES:
+			bunches[j * RES + i] = smoothstep(0.15, 0.65, heap.get_noise_2d(x0 + i, z0 + j))
+			grits[j * RES + i] = grit.get_noise_2d(x0 + i, z0 + j) * 0.5 + 0.5
+	var looks := ChunkGenerator.look_grid(chunk)
 	for n in int(28000 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
-		var cv := GroundCover.at(cover, lx, lz)
-		var stony := maxf(cv.r, cv.g)
-		if r.randf() > 0.012 + stony * stony * 0.9 or cv.a > 0.6:
+		# Whether a stone lies here, from the nearest metre's cover (cheap: most of
+		# these thousands of tries come to nothing); the stone itself reads it finely.
+		var lk := ChunkGenerator.look_cell(lx, lz)
+		var ck := lk * 2
+		var stony := maxf(cover[ck], cover[ck + 1]) / 255.0 if not cover.is_empty() else 0.0
+		var bunch := bunches[lk / 2]
+		var odds := 0.003 + 0.04 * bunch * bunch + stony * stony * 0.9 * (0.45 + 0.8 * grits[lk / 2])
+		if r.randf() > odds * (1.0 - looks[lk + 1]) or (not cover.is_empty() and cover[ck + 3] > 153):
 			continue
+		var cv := GroundCover.at(cover, lx, lz)
+		stony = maxf(cv.r, cv.g)
 		var slope := ChunkGenerator.slope_at(chunk, lx, lz)
 		if slope > 0.75:
 			continue
@@ -579,18 +718,21 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		elif stony > 0.3:
 			size = 0.05 + 0.85 * pow(a, 7.0)
 		else:
-			size = 0.05 + 0.4 * pow(a, 4.0)
+			# Mostly small, a few big ones at the heart of a bunch.
+			size = 0.04 + (0.16 + 0.5 * bunch) * pow(a, 3.0)
 		var kind := "pebble"
 		if size >= 0.5:
 			kind = "rock_a" if r.randf() < 0.5 else "rock_b"
 		elif size >= 0.16:
-			kind = "stone_b" if gravelly or r.randf() < 0.3 else "stone_a"
-		var flat := r.randf_range(0.5, 0.95) if not gravelly else r.randf_range(0.6, 1.0)
+			# Water rounds stones; field and scree stones stay angular.
+			kind = "stone_b" if gravelly or r.randf() < 0.12 else "stone_a"
+		var flat := r.randf_range(0.35, 0.95) if not gravelly else r.randf_range(0.5, 1.0)
+		var long := r.randf_range(0.65, 1.45)
 		# Lying on the slope, turned and tipped a little, partly sunk.
 		var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 0.5, lz) - ChunkGenerator.height_at(chunk, lx + 0.5, lz), 1.0,
 			ChunkGenerator.height_at(chunk, lx, lz - 0.5) - ChunkGenerator.height_at(chunk, lx, lz + 0.5)).normalized()
 		var b := Basis(Quaternion(Vector3.UP, nrm)) * Basis(Vector3.UP, r.randf() * TAU) * Basis.from_euler(Vector3(r.randf_range(-0.2, 0.2), 0, r.randf_range(-0.2, 0.2)))
-		b = b.scaled_local(Vector3(size, size * flat, size))
+		b = b.scaled_local(Vector3(size * long, size * flat, size / long))
 		var p := Vector3(lx, y - size * flat * 0.12, lz)
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var tint: Color = greys[r.randi() % greys.size()]
@@ -656,6 +798,72 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 	AquaFlora.reef_rocks(chunk, out, solid)
 	if not solid.is_empty():
 		out["~stones"] = solid
+
+## Crags: big rocks set into steep faces, standing out of them and up past their rims,
+## so a cliff reads as broken rock with a ragged skyline instead of one smooth draped
+## sheet. Keys "stone:rock_a" and "stone:rock_b" hold transform + colour as the stones
+## do; "~crags" their colliders. Built with the terrain at any distance (cliffs are seen
+## from far off), from the chunk's own heights, so the same every time.
+static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
+	var out := {}
+	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 907)
+	var plans := ChunkGenerator.keep_out(chunk)
+	var has_cave := chunk.has("hole")
+	var solid := PackedFloat32Array()
+	var greys := [Color(0.56, 0.54, 0.5), Color(0.5, 0.47, 0.42), Color(0.62, 0.6, 0.57), Color(0.47, 0.46, 0.45)]
+	for n in 1200:
+		var lx := r.randf() * SIZE
+		var lz := r.randf() * SIZE
+		var roll := r.randf()
+		var a := r.randf()
+		var flat := r.randf_range(0.45, 0.8)
+		var turn := r.randf() * TAU
+		var tip := Vector2(r.randf_range(-0.2, 0.2), r.randf_range(-0.2, 0.2))
+		var grey: Color = greys[r.randi() % greys.size()]
+		var v := r.randf_range(0.82, 1.1)
+		var moss := r.randf()
+		var kind := "rock_a" if r.randf() < 0.5 else "rock_b"
+		var slope := ChunkGenerator.slope_at(chunk, lx, lz)
+		if slope < 0.9:
+			continue
+		var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 1.0, lz) - ChunkGenerator.height_at(chunk, lx + 1.0, lz), 2.0,
+			ChunkGenerator.height_at(chunk, lx, lz - 1.0) - ChunkGenerator.height_at(chunk, lx, lz + 1.0)).normalized()
+		# At a rim (the ground a few metres up the face levels off) they stand up past
+		# it and break the skyline; down the face they come in bands, like bedding.
+		var upx := Vector2(-nrm.x, -nrm.z).normalized() * 4.0
+		var rim := 1.0 - smoothstep(0.3, 0.8, ChunkGenerator.slope_at(chunk, clampf(lx + upx.x, 0.0, SIZE), clampf(lz + upx.y, 0.0, SIZE)))
+		var wy := ChunkGenerator.height_at(chunk, lx, lz)
+		var band := smoothstep(0.2, 0.8, sin(wy * 0.9 + sin(float(chunk["cx"]) * 64.0 + lx) * 0.08) * 0.5 + 0.5)
+		if roll > smoothstep(0.9, 1.8, slope) * (0.035 + 0.06 * band + 0.25 * rim):
+			continue
+		var y := wy
+		if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.0 \
+				or ChunkGenerator.kept_out(plans, lx, lz, 2.0):
+			continue
+		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
+			continue
+		var size := lerpf(2.5, 7.0, a * a) * (1.0 + 0.3 * rim)
+		# Ledges: flattish slabs lying level out of the face, a fifth sunk into it; at
+		# a rim, upright blocks.
+		var up := nrm.lerp(Vector3.UP, 0.65 - 0.4 * rim).normalized()
+		var b := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, turn) * Basis.from_euler(Vector3(tip.x, 0, tip.y))
+		b = b.scaled_local(Vector3(size, size * lerpf(flat, 1.0, rim), size * 0.8))
+		var p := Vector3(lx, y, lz) - nrm * size * lerpf(0.2, 0.12, rim)
+		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
+		var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
+		# The landform's own rock (red sandstone, pale limestone...), as the face shows it.
+		var st := ChunkGenerator.stone_at(chunk, lx, lz)
+		if st.a > 0.0:
+			tint = tint.lerp(Color(st.r, st.g, st.b), st.a * 0.85)
+		tint = Color(tint.r * v, tint.g * v, tint.b * v, w[Eras.MEDIEVAL] * moss * 0.3)
+		var key := "stone:" + kind
+		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
+		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a])
+		out[key] = buf
+		solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
+	if not solid.is_empty():
+		out["~crags"] = solid
+	return out
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
@@ -814,6 +1022,11 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 			mmi.visibility_range_end_margin = 12.0
 		elif k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
+			# A small lamp or candle stand casts no shadow of its own (its own light sits
+			# inside it, and would throw its arms across the room).
+			var bd := BuildCatalog.def(BuildCatalog.id_of(t.get_slice("#", 0))) if k == "built" else {}
+			if bd.get("decor", false) and bd.has("light"):
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
 			_set_range(mmi, 260.0)
 		add_child(mmi)
@@ -857,7 +1070,7 @@ func _add_far_mesh(surfs: Dictionary) -> void:
 	for sk in surfs:
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surfs[sk])
 		var kind := String(sk).get_slice(":", 1)
-		m.surface_set_material(m.get_surface_count() - 1, RealTree.bark_material(kind) if String(sk).begins_with("bark") else RealTree.leaf_material(kind))
+		m.surface_set_material(m.get_surface_count() - 1, RealTree.bark_material(kind, true) if String(sk).begins_with("bark") else RealTree.leaf_material(kind, true))
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
 	mi.name = "TreesFar"
@@ -934,7 +1147,7 @@ func set_clutter(buffers: Dictionary) -> void:
 		if buf.is_empty() or t.begins_with("~"):
 			continue
 		if t.begins_with("stone:"):
-			_add_stones(t, buf)
+			_clutter.append(_add_stones(t, buf))
 			continue
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -957,7 +1170,7 @@ func set_clutter(buffers: Dictionary) -> void:
 ## Draw distances of stones by size.
 const STONE_RANGE := {"pebble": 60.0, "stone_a": 95.0, "stone_b": 95.0, "rock_a": 170.0, "rock_b": 170.0}
 
-func _add_stones(t: String, buf: PackedFloat32Array) -> void:
+func _add_stones(t: String, buf: PackedFloat32Array, reach := 0.0, label := "Stones_") -> MultiMeshInstance3D:
 	var kind := t.substr(6).get_slice("@", 0)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -967,42 +1180,52 @@ func _add_stones(t: String, buf: PackedFloat32Array) -> void:
 	mm.buffer = buf
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
-	mmi.name = "Stones_" + t.substr(6).replace("@", "_")
+	mmi.name = label + t.substr(6).replace("@", "_")
 	mmi.set_meta("key", t)
 	# Only the big ones are worth their shadow.
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("rock") else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_set_range(mmi, STONE_RANGE.get(kind, 90.0))
+	_set_range(mmi, reach if reach > 0.0 else STONE_RANGE.get(kind, 90.0))
 	mmi.visibility_range_end_margin = 10.0
 	mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	add_child(mmi)
-	_clutter.append(mmi)
+	return mmi
+
+## Crags from build_crag_buffers ({} clears them), drawn well out: a cliff is seen from
+## far off.
+func set_crags(bufs: Dictionary) -> void:
+	for c in _crags:
+		c.queue_free()
+	_crags.clear()
+	_crag_solid = bufs.get("~crags", PackedFloat32Array())
+	for t in bufs:
+		if not t.begins_with("~"):
+			_crags.append(_add_stones(t, bufs[t], CRAG_RANGE, "Crags_"))
+	_add_stone_shapes()
+
+const CRAG_RANGE := 420.0
 
 ## Colliders for the stones big enough to stand on, while the chunk is near.
 func _add_stone_shapes() -> void:
 	if _stone_body != null:
 		_stone_body.queue_free()
 		_stone_body = null
-	if not near or _stones.is_empty():
+	if not near or (_stones.is_empty() and _crag_solid.is_empty()):
 		return
 	_stone_body = StaticBody3D.new()
 	_stone_body.name = "Stones"
 	_stone_body.collision_layer = 1
 	_stone_body.set_meta("stones", true)
-	for i in range(0, _stones.size(), 13):
-		var kind: String = StoneKit.KINDS[int(_stones[i])]
-		var b := Basis(Vector3(_stones[i + 1], _stones[i + 5], _stones[i + 9]), Vector3(_stones[i + 2], _stones[i + 6], _stones[i + 10]),
-			Vector3(_stones[i + 3], _stones[i + 7], _stones[i + 11]))
-		# Hull points baked with the stone's own (squashed) scale: scaled collision shapes
-		# are best kept uniform.
-		var pts := PackedVector3Array()
-		for v in StoneKit.hull(kind):
-			pts.append(b * v)
-		var shape := ConvexPolygonShape3D.new()
-		shape.points = pts
-		var cs := CollisionShape3D.new()
-		cs.shape = shape
-		cs.position = Vector3(_stones[i + 4], _stones[i + 8], _stones[i + 12])
-		_stone_body.add_child(cs)
+	for st: PackedFloat32Array in [_stones, _crag_solid]:
+		for i in range(0, st.size(), 13):
+			var kind: String = StoneKit.KINDS[int(st[i])]
+			var b := Basis(Vector3(st[i + 1], st[i + 5], st[i + 9]), Vector3(st[i + 2], st[i + 6], st[i + 10]),
+				Vector3(st[i + 3], st[i + 7], st[i + 11]))
+			# The kind's shared hull, turned and squashed (scaled_local: no shear, which Jolt
+			# can scale exactly).
+			var cs := CollisionShape3D.new()
+			cs.shape = StoneKit.shape(kind)
+			cs.transform = Transform3D(b, Vector3(st[i + 4], st[i + 8], st[i + 12]))
+			_stone_body.add_child(cs)
 	add_child(_stone_body)
 
 ## Draw distance of grass, clutter and small props scales with this (graphics setting
@@ -1021,6 +1244,9 @@ func apply_detail() -> void:
 
 func has_grass() -> bool:
 	return not _grass.is_empty()
+
+## The streamer has grown this chunk's grass (which may be none at all, on rock or water).
+var grass_built := false
 
 ## Collision and interactive bodies only exist near the player.
 func set_near(on: bool) -> void:
@@ -1124,22 +1350,41 @@ func _add_obj_body(o: Dictionary) -> void:
 			cf.add_child(FireFx.embers(float(bd["fire"])))
 			b.add_child(cf)
 		# A candle stand you build burns at its wicks.
-		for f in FireFx.prop_flames(bd.get("models", [])):
+		var flames := FireFx.prop_flames(bd.get("models", []))
+		var wicks := Vector3.ZERO
+		for f in flames:
 			var pf := FireFx.flame(f[1])
 			pf.position = f[0]
 			b.add_child(pf)
+			wicks += (f[0] as Vector3) + Vector3(0, float(f[1]) * 0.6, 0)
 		var lc = bd.get("light")
 		if lc != null:
 			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0
-			l.position = Vector3(0, 1.0, 0)
+			# The light is where the flames are: from lower down the stand's own arms threw
+			# black blots over the ceiling.
+			l.position = wicks / flames.size() if not flames.is_empty() else Vector3(0, 1.0, 0)
 			_cast_shadows(l)
 			l.distance_fade_enabled = true
 			l.distance_fade_begin = 40.0
 			l.distance_fade_length = 15.0
 			b.add_child(l)
+			# Light thrown back off the walls and ceiling, so the side of a room away from
+			# the lamp is dim rather than black.
+			var fill := OmniLight3D.new()
+			fill.light_color = (lc as Color).lerp(Color(1.0, 0.9, 0.8), 0.4)
+			fill.light_energy = 0.22
+			fill.omni_range = 6.0
+			fill.omni_attenuation = 0.8
+			fill.light_specular = 0.0
+			fill.shadow_enabled = false
+			fill.distance_fade_enabled = true
+			fill.distance_fade_begin = 30.0
+			fill.distance_fade_length = 10.0
+			fill.position = l.position
+			b.add_child(fill)
 	b.position = o["p"]
 	b.rotation.y = o["r"]
 	var s: float = o["s"]
@@ -1154,6 +1399,9 @@ static func _cast_shadows(l: OmniLight3D) -> void:
 	l.shadow_bias = 0.04
 	l.shadow_normal_bias = 1.2
 	l.shadow_blur = 1.5
+	# A flame or a lamp is not a point: its shadows soften with distance from what casts
+	# them, instead of hard black shapes.
+	l.light_size = 0.12
 	l.distance_fade_shadow = 24.0
 
 ## Adds something the player built. It becomes an ordinary object of this chunk, saved
@@ -1170,8 +1418,16 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 	refresh_far()
 	if near:
 		_add_obj_body(o)
+	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
 	return o
+
+## Regrows the grass after something that keeps it out (a floor, a house) came or went,
+## so none grows through a floor and the ground under a dismantled one greens again.
+func _regrow_if_kept_out(t: String) -> void:
+	var s := get_parent() as ChunkStreamer
+	if s != null and ObjectLibrary.keeps_out(t):
+		s.refresh_grass(key)
 
 func get_object(i: int) -> Dictionary:
 	return data["objects"][i]
@@ -1186,6 +1442,7 @@ func remove_object(i: int) -> void:
 	set_objects(build_object_buffers(data, false), true)
 	if ObjectLibrary.kind(o["t"]) == "tree":
 		refresh_far()
+	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein

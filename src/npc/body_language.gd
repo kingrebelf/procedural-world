@@ -114,6 +114,14 @@ var _palm0: Vector3
 ## Right-hand finger curls (thumb..pinky, 0..1) held while the hand grips something
 ## (HumanModel.hold), under any gesture; [] for none.
 var grip_r: Array = []
+## Finger bone -> local rotation for a hand closed round a handle (HandGrip); wins over
+## grip_r.
+var grip_rot: Dictionary = {}
+## {"axis": hand-space direction of what is held, "dir": skeleton-space direction to turn
+## it to, "w": how far}: the wrist turns over its animation; {} for none.
+var hand_aim: Dictionary = {}
+## How much of hand_r's turn the forearm takes instead of the wrist (0..1).
+var hand_share := 0.0
 ## The right hand's orientation in skeleton space, overriding the animation's (a gun
 ## held square to the view); null leaves the hand as animated.
 var hand_r = null
@@ -130,6 +138,34 @@ func play(name: String) -> bool:
 
 func stop() -> void:
 	_len = minf(_len, _t + 0.3)
+
+## Rowing (a rower at the oars of a boat, BoatNode): arms and back follow the stroke
+## until stopped. `offset` shifts the stroke so the boat's oars (BoatNode) keep time.
+const ROW_PERIOD := 2.6
+const ROWING := {"seconds": 1.0e9, "row": true, "fingers": [0.6, 0.95, 0.95, 0.95, 0.95],
+	"r": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)},
+	"l": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)}}
+var row_offset := 0.0
+
+func row(on: bool, offset := 0.0) -> void:
+	row_offset = offset
+	if on and current() != "row":
+		_g = ROWING
+		_name = "row"
+		_t = 0.0
+		_len = ROWING["seconds"]
+	elif not on and _name == "row":
+		stop()
+
+## Where in the stroke a rower is (0..1): 0..0.4 the drive (blades in, pulling), the
+## rest the recovery.
+static func row_phase(offset: float) -> float:
+	return fmod(Time.get_ticks_msec() / 1000.0 / ROW_PERIOD + offset, 1.0)
+
+## How far through the pull the hands are: 0 reaching forward at the catch, 1 drawn in
+## at the finish.
+static func row_pull(ph: float) -> float:
+	return smoothstep(0.0, 0.4, ph) if ph < 0.4 else 1.0 - smoothstep(0.4, 1.0, ph)
 
 func current() -> String:
 	return _name if _t < _len else ""
@@ -158,9 +194,36 @@ func _process_modification() -> void:
 	if hand_r != null and _bone("hand_r") >= 0:
 		var hb := _bone("hand_r")
 		var parent := sk.get_bone_parent(hb)
+		if hand_share > 0.0 and parent >= 0:
+			# The forearm rolls with part of the turn (only about its own length, so the
+			# hand stays where it is), and the wrist doesn't kink.
+			var g := sk.get_bone_global_pose(hb).basis.orthonormalized()
+			var turn := (Basis(hand_r) * g.inverse()).get_rotation_quaternion()
+			var along := (sk.get_bone_global_pose(hb).origin - sk.get_bone_global_pose(parent).origin).normalized()
+			var v := Vector3(turn.x, turn.y, turn.z)
+			var p := along * v.dot(along)
+			var twist := Quaternion(p.x, p.y, p.z, turn.w)
+			twist = twist.normalized() if twist.length_squared() > 1e-8 else Quaternion.IDENTITY
+			var part := Quaternion.IDENTITY.slerp(twist, hand_share)
+			var fb := sk.get_bone_global_pose(parent).basis.orthonormalized()
+			var fp := sk.get_bone_parent(parent)
+			var fpb := sk.get_bone_global_pose(fp).basis.orthonormalized() if fp >= 0 else Basis()
+			sk.set_bone_pose_rotation(parent, (fpb.inverse() * (Basis(part) * fb)).get_rotation_quaternion())
 		var pb := sk.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
 		sk.set_bone_pose_rotation(hb, (pb.inverse() * (hand_r as Basis)).get_rotation_quaternion())
-	if not grip_r.is_empty():
+	elif not hand_aim.is_empty() and _bone("hand_r") >= 0:
+		var hb := _bone("hand_r")
+		var g := sk.get_bone_global_pose(hb).basis.orthonormalized()
+		var cur: Vector3 = (g * Vector3(hand_aim["axis"])).normalized()
+		var turn := Quaternion(cur, Vector3(hand_aim["dir"])).slerp(Quaternion.IDENTITY, 1.0 - float(hand_aim["w"])) \
+			if cur.dot(hand_aim["dir"]) > -0.999 else Quaternion.IDENTITY
+		var parent := sk.get_bone_parent(hb)
+		var pb := sk.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
+		sk.set_bone_pose_rotation(hb, (pb.inverse() * (Basis(turn) * g)).get_rotation_quaternion())
+	if not grip_rot.is_empty():
+		for b in grip_rot:
+			sk.set_bone_pose_rotation(b, grip_rot[b])
+	elif not grip_r.is_empty():
 		for i in 5:
 			_finger(sk, "r", i, float(grip_r[i]), 1.0)
 	_t += dt
@@ -171,6 +234,11 @@ func _process_modification() -> void:
 		return
 	var w := smoothstep(0.0, 1.0, _w)
 	var t := _t
+	if _g.has("row"):
+		# Leaning into the catch, back past upright at the finish.
+		var lean := lerpf(0.32, -0.2, row_pull(row_phase(row_offset))) * w
+		for n in ["spine_01", "spine_02", "spine_03"]:
+			_turn(sk, _bone(n), _frame.x, lean / 3.0)
 	if _g.has("bow"):
 		var b: float = _g["bow"] * w * minf(1.0, t * 2.0)
 		for n in ["spine_01", "spine_02", "spine_03"]:
@@ -202,6 +270,11 @@ func _arm(sk: Skeleton3D, side: String, p: Dictionary, w: float, t: float) -> vo
 		return (out * v.x + _frame.y * v.y + _frame.z * v.z).normalized()
 	var upper: Vector3 = p["upper"]
 	var fore: Vector3 = p["fore"]
+	if _g.has("row"):
+		# Arms long and low at the catch, elbows drawn back past the ribs at the finish.
+		var k := row_pull(row_phase(row_offset))
+		upper = Vector3(0.12, -0.3, 0.95).lerp(Vector3(0.45, -0.75, -0.45), k)
+		fore = Vector3(0.05, -0.1, 1.0).lerp(Vector3(-0.25, 0.0, 1.0), k)
 	if p.has("wave"):
 		fore = Vector3(fore.x + sin(t * 9.0) * float(p["wave"]), fore.y, fore.z)
 	if p.has("pump"):

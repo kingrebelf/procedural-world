@@ -349,7 +349,8 @@ static func room(t: String) -> Dictionary:
 	if t == "mushroom_house":
 		var rd: Array = Interiors.ROUND[t]
 		return {"half": Vector2(1.75, 1.75), "door_x": 0.0, "door_z": float(rd[0]), "floor": float(rd[5]),
-			"sign": [Vector3(0, 2.72, 2.55), Vector2(1.4, 0.48), "wall"]}
+			"sign": [Vector3(0, 2.72, 2.55), Vector2(1.4, 0.48), "wall"],
+			"round": float(rd[0]) - float(rd[2]) - 0.15}
 	if t == "hab_dome":
 		return {"half": Vector2(2.7, 2.7), "door_x": 0.0, "door_z": Interiors.RAMP[2], "floor": float(Interiors.DOME[3]),
 			"sign": [Vector3(2.1, 2.3, 5.2), Vector2(1.7, 0.6), "post"]}
@@ -473,6 +474,8 @@ static func fit(t: String) -> Dictionary:
 						out = {"keeper": kp, "face": Vector2(0, 1)}
 				z += 0.1
 			x += 0.1
+		if not out.is_empty():
+			out["props"] = _prop_spots(out["keeper"], obs, half, rm)
 		_fits[t] = out
 		return out
 	if not out.is_empty():
@@ -491,6 +494,39 @@ static func fit(t: String) -> Dictionary:
 			if out["display"] != Vector2.INF:
 				break
 	_fits[t] = out
+	return out
+
+## A room too small for a counter still looks like a shop: up to three clear spots for
+## the trade's stand and a crate or two of wares, against the walls, not on the keeper and
+## not in the way in from the door.
+static func _prop_spots(keeper: Vector2, obs: Array, half: Vector2, rm: Dictionary) -> Array:
+	var out: Array = []
+	var taken := obs.duplicate()
+	taken.append(Rect2(keeper - Vector2(0.45, 0.45), Vector2(0.9, 0.9)))
+	var door_x: float = rm["door_x"]
+	taken.append(Rect2(Vector2(door_x - 0.6, half.y - 1.5), Vector2(1.2, 1.6)))
+	for n in 3:
+		var best := INF
+		var at := Vector2.INF
+		var x := -half.x
+		while x <= half.x:
+			var z := -half.y
+			while z <= half.y:
+				var sp := Vector2(x, z)
+				var wall := minf(half.x - absf(x), half.y - absf(z)) - 0.33
+				if rm.has("round"):
+					wall = float(rm["round"]) - sp.length() - 0.47
+				if wall >= 0.0 and _clear(Rect2(sp - Vector2(0.33, 0.33), Vector2(0.66, 0.66)), taken, half):
+					var sc := wall + sp.distance_to(keeper) * 0.25
+					if sc < best:
+						best = sc
+						at = sp
+				z += 0.1
+			x += 0.1
+		if at == Vector2.INF:
+			break
+		out.append(at)
+		taken.append(Rect2(at - Vector2(0.4, 0.4), Vector2(0.8, 0.8)))
 	return out
 
 ## Door-aware walking for someone whose work is inside a room: the waypoint to head for
