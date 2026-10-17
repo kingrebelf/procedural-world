@@ -314,6 +314,21 @@ static func _get_mat(name: String) -> Material:
 			m.clearcoat = 0.8
 		"cloth": m = _pbr(Color(0.62, 0.20, 0.16), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"cloth_blue": m = _pbr(Color(0.2, 0.3, 0.6), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
+		# A torch's stick: noise squeezed across it and stretched along it reads as grain.
+		"torch_wood":
+			m = _pbr(Color(0.4, 0.28, 0.17), 0.8, 0.0, "grain", 0.06, 1.0, 0.8)
+			m.uv1_scale = Vector3(18.0, 1.5, 18.0)
+		"leather":
+			m = _pbr(Color(0.32, 0.2, 0.11), 0.65, 0.0, "cloth", 0.15, 1.0, 0.6)
+			if photo("leather_worn", "detail") != null:
+				m.albedo_texture = photo("leather_worn", "detail")
+				m.uv1_scale = Vector3.ONE * 7.0
+		# Rags soaked in pitch, wound round a torch's head.
+		"pitch_cloth":
+			m = _pbr(Color(0.24, 0.17, 0.11), 0.9, 0.0, "cloth", 0.15, 1.0, 0.6)
+			if photo("fabric_linen", "detail") != null:
+				m.albedo_texture = photo("fabric_linen", "detail")
+				m.uv1_scale = Vector3.ONE * 16.0
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)
 		"moss": m = _pbr(Color(0.16, 0.42, 0.38), 0.95, 0.0, "leaf", 0.1, 0.6, 1.2)
 		"stem": m = _pbr(Color(0.86, 0.84, 0.76), 0.8, 0.0, "cap", 0.06, 0.6, 1.0)

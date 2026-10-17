@@ -1052,7 +1052,18 @@ func test_fires() -> void:
 	fl.free()
 	var torch := Viewmodel.prop_for("torch")
 	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
+	check(torch.find_child("Sparks", true, false) is CPUParticles3D and torch.find_child("Smoke", true, false) is CPUParticles3D, "a torch throws sparks and smoke")
+	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
+	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")
 	torch.free()
+	var em := FireFx.embers(1.0, false)
+	check(em.find_child("Smoke", true, false) == null, "a hearth's smoke goes up the chimney")
+	em.free()
+	var tm := HandLight.torch_model()
+	var mats := []
+	for i in tm.get_surface_count():
+		mats.append(tm.surface_get_material(i))
+	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)

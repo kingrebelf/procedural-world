@@ -645,11 +645,21 @@ func _add_obj_body(o: Dictionary) -> void:
 	for f in Interiors.fires(o["t"]):
 		var fl := FireFx.flame(f[1])
 		fl.position = f[0]
+		# Sparks fly from a hearth; its smoke goes up the chimney.
+		fl.add_child(FireFx.embers(f[1], false))
 		b.add_child(fl)
+	if o["t"] == WorldPortal.TYPE:
+		# The door of light, just proud of the glowing disc on both faces.
+		for z in [-0.05, 0.05]:
+			var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
+			sw.position = Vector3(0, WorldPortal.DOOR_Y, z)
+			b.add_child(sw)
 	if built:
 		var bd := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
 		if bd.has("fire"):
-			b.add_child(FireFx.flame(float(bd["fire"])))
+			var cf := FireFx.flame(float(bd["fire"]))
+			cf.add_child(FireFx.embers(float(bd["fire"])))
+			b.add_child(cf)
 		var lc = bd.get("light")
 		if lc != null:
 			var l := OmniLight3D.new()

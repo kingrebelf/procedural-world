@@ -49,9 +49,9 @@ static func prop_for(t: String, it = null) -> Node3D:
 		mi.mesh = model(t)
 		mi.material_overlay = aura_for(it)
 		if t == "torch":
-			var fl := FireFx.flame(HandLight.TORCH_FLAME[1])
-			fl.position = HandLight.TORCH_FLAME[0]
-			mi.add_child(fl)
+			mi.add_child(HandLight.torch_fire())
+			# Its light burns at the head, so the torch's own shadow would black out the stick.
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)

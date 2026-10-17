@@ -15,6 +15,7 @@ var _omni: OmniLight3D
 var _spot: SpotLight3D
 var _torch_mesh: MeshInstance3D
 var _t := 0.0
+var _omni_at := Vector3.ZERO ## where the torch light rests before it sways
 var show_model := true ## the torch in your hand (first person only)
 
 func _ready() -> void:
@@ -44,19 +45,35 @@ func _ready() -> void:
 	_torch_mesh.rotation = Vector3(-0.25, 0.0, 0.18)
 	_torch_mesh.visible = false
 	add_child(_torch_mesh)
-	var fl := FireFx.flame(TORCH_FLAME[1])
-	fl.position = TORCH_FLAME[0]
-	_torch_mesh.add_child(fl)
+	_torch_mesh.add_child(torch_fire())
 
 ## Where a torch's flame stands on its model, and how tall it is.
-const TORCH_FLAME := [Vector3(0, 0.41, 0), 0.3]
+const TORCH_FLAME := [Vector3(0, 0.4, 0), 0.32]
+
+## A torch's living fire, to sit on its model: the flame, with sparks and smoke.
+static func torch_fire() -> Node3D:
+	var n := FireFx.flame(TORCH_FLAME[1])
+	n.position = TORCH_FLAME[0]
+	n.add_child(FireFx.embers(TORCH_FLAME[1]))
+	return n
 
 static func torch_model() -> ArrayMesh:
 	var k := MeshKit.new(5)
-	k.cylinder("bark", Transform3D.IDENTITY, 0.024, 0.03, 0.42, 8)
-	k.cylinder("cloth", Transform3D.IDENTITY.translated(Vector3(0, 0.36, 0)), 0.038, 0.036, 0.09, 8, true, 0.0, 1, Color(0.35, 0.28, 0.2))
-	# Embers in the wrapping; the flame is FireFx (TORCH_FLAME).
-	k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 0.44, 0)), 0.036, 6, 8, 0.2, 0.8)
+	# A stick of rough wood with the grain along it.
+	k.cylinder("torch_wood", Transform3D.IDENTITY, 0.021, 0.025, 0.34, 10)
+	# A leather strip bound round and round the grip.
+	for i in 6:
+		var b := Basis(Vector3(0, 0, 1), 0.16).rotated(Vector3.UP, i * 2.1)
+		k.cylinder("leather", Transform3D(b, Vector3(0, 0.09 + i * 0.019, 0)), 0.0255, 0.0255, 0.018, 10)
+	# The head: rags soaked in pitch wound round it, each turn a little askew.
+	for i in 4:
+		var b := Basis(Vector3(1, 0, 0), 0.2 * (1.0 if i % 2 == 0 else -1.0)).rotated(Vector3.UP, i * 1.1)
+		var r := 0.035 + 0.004 * sin(i * 2.0)
+		k.cylinder("pitch_cloth", Transform3D(b, Vector3(0, 0.3 + i * 0.024, 0)), r, r * 0.95, 0.034, 10, true, 0.12)
+	# Coals glowing in the charred top; the flame is FireFx (torch_fire).
+	for i in 5:
+		var a := i * TAU / 5.0
+		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(cos(a) * 0.017, 0.4, sin(a) * 0.017)), 0.011, 4, 6, 0.3, 0.6)
 	return k.commit(Materials.get_mat)
 
 func is_on() -> bool:
@@ -150,6 +167,8 @@ func _process(delta: float) -> void:
 	if lit() == "torch":
 		# Flicker: two slow waves and a fast one.
 		_omni.light_energy = 2.3 + 0.25 * sin(_t * 7.3) + 0.16 * sin(_t * 13.1 + 1.7) + 0.1 * sin(_t * 23.0)
+		# The light sways with the flame, so the shadows it casts move a little.
+		_omni.position = _omni_at + Vector3(sin(_t * 5.1) * 0.012, sin(_t * 8.7 + 0.6) * 0.01, cos(_t * 6.3) * 0.012)
 
 func _apply() -> void:
 	if _omni == null:
@@ -160,7 +179,11 @@ func _apply() -> void:
 	# The off-hand torch shows only when nothing lit is held in the main hand.
 	_torch_mesh.visible = k == "torch" and held == "" and show_model
 	# The light sits where the burning end is: left hand, or the held item on the right.
-	_omni.position = Vector3(0.3, -0.02, -0.5) if held == "torch" else Vector3(-0.35, -0.05, -0.4)
+	# A held torch's flame stands about (0.25, 0.03, -0.51) from the eye, the far end of a
+	# stick that leans away from you; the light sits a little nearer you than the flame
+	# so it falls on the stick and hand you see, not only on their far side.
+	_omni_at = Vector3(0.17, 0.02, -0.36) if held == "torch" else Vector3(-0.35, -0.05, -0.4)
+	_omni.position = _omni_at
 	_spot.position = Vector3(0.22, -0.15, -0.2) if held == "flashlight" else Vector3(-0.15, -0.12, -0.1)
 
 static func _hours(s: float) -> String:

@@ -14,6 +14,8 @@ const CELL := 20 ## chunks per side of a portal cell (about 1.3 km)
 const CHANCE := 0.75
 const MIN_LEVEL := 40 ## zone level a portal needs (Eras.zone_level)
 const CLEAR := 9.0 ## nothing else grows or stands this close
+const DOOR_Y := 3.6 ## height of the middle of the ring
+const DOOR := 2.6 ## radius of the light in the ring
 const KEEP_OFF := 70.0 ## from settlements and strongholds
 
 ## Where the portal of cell (wx, wz) stands, or Vector2.INF if that cell has none.
@@ -107,7 +109,7 @@ static func build() -> ArrayMesh:
 	k.cylinder("rune_stone", I.translated(Vector3(0, 0.4, 0)), 3.8, 3.6, 0.35, 16)
 	# The ring: rune blocks stood on edge round a door of light.
 	const R := 2.9
-	const Y := 3.6
+	const Y := DOOR_Y
 	for n in 28:
 		var a := TAU * n / 28.0
 		k.box("rune_stone", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * R, Y + sin(a) * R, 0)), Vector3(0.62, 0.9, 0.8))
