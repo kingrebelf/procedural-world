@@ -25,8 +25,16 @@ const SHEET2_ORDER := [
 	"battle_axe", "war_hammer", "longbow", "spear", "dagger", "mace",
 	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
 ]
-## Later sheets, each a 6x5 grid in the same layout: the medieval age (pack A, items4-9).
+## Later sheets, each a 6x5 grid in the same layout: tools and ammo (items3; "" marks a
+## painted cell with no item yet), then the medieval age (pack A, items4-9).
 const MORE_SHEETS := [
+	["res://assets/icons/items3.png", [
+		"fiber", "wild_berries", "torch", "flashlight", "flashlight_dead", "binoculars",
+		"hammer", "jetpack", "jet_fuel", "arrow", "bolt", "rounds",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+	]],
 	["res://assets/icons/items4.png", [
 		"bone", "animal_fat", "antler", "fur_pelt", "leather", "lockpick",
 		"skinning_knife", "flint", "clay", "brick", "rope", "cloth",
@@ -88,7 +96,8 @@ static func _from_sheet(type: String) -> Texture2D:
 	if _sheet_of.is_empty():
 		for sh in MORE_SHEETS:
 			for t in sh[1]:
-				_sheet_of[t] = sh
+				if t != "":
+					_sheet_of[t] = sh
 	var order: Array = SHEET_ORDER
 	var path := SHEET_PATH
 	if SHEET2_ORDER.has(type):

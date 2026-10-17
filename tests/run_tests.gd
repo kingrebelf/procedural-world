@@ -1638,7 +1638,10 @@ func test_pack_a_items() -> void:
 	for sh in Icons.MORE_SHEETS:
 		check((sh[1] as Array).size() == 30, "%s has 30 cells" % sh[0])
 		for t in sh[1]:
-			check(ItemDB.has(t), "icon %s is an item" % t)
+			if t == "":
+				continue
+			# treasure_map is the buried treasure maps change's item; its icon waits here for it.
+			check(ItemDB.has(t) or t == "treasure_map", "icon %s is an item" % t)
 			known[t] = true
 	var made := {}
 	for r in Recipes.LIST:
@@ -1671,8 +1674,8 @@ func test_pack_a_items() -> void:
 	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
 		found[t] = true
 	for t in known:
-		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw"]:
-			continue # butchered, from treasure maps, or caught
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead"]:
+			continue # butchered, from treasure maps, caught, or a spent flashlight
 		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
 	# Level gates rise with the age: stone first, steel later, the finest last.
 	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
