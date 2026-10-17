@@ -468,6 +468,8 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
+		await _climate_shots(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -946,6 +948,32 @@ func _landform_shots(g: ChunkGenerator) -> void:
 				cam = c
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
+
+## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
+## cold spruce uplands; standing on its edge looking in.
+const CLIMATE_SHOTS := {"93_rainforest": [3, 2], "94_savanna": [3, 1], "95_boreal": [0, 1]}
+
+func _climate_shots(g: ChunkGenerator) -> void:
+	for shot in CLIMATE_SHOTS:
+		if not only.is_empty() and not only.has(String(shot).substr(0, 2)):
+			continue
+		var want: Array = CLIMATE_SHOTS[shot]
+		var best := Vector2.INF
+		for r in 14:
+			for iz in range(-r, r + 1):
+				for ix in range(-r, r + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != r:
+						continue
+					var p := g.field.site_pos(ix, iz)
+					var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
+					var lf := g.field.site_landform(ix, iz)
+					if c.x == int(want[0]) and c.y >= int(want[1]) and (int(want[1]) >= 2 or c.y < 2) and lf in [WorldField.LF_NONE, WorldField.LF_TERRACES, WorldField.LF_CRAGS] and g.field.height(p.x, p.y) > WATER_SAFE:
+						best = p
+		if best == Vector2.INF:
+			print("no region with climate ", want)
+			continue
+		var cam := best + Vector2(-60, -35)
+		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
 
 const WATER_SAFE := 1.0
 
