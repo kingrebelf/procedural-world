@@ -141,6 +141,9 @@ func _update_depth() -> void:
 	_depth_tex.update(_depth_img)
 	_mat.set_shader_parameter("depth_origin", _depth_origin)
 	_mat.set_shader_parameter("depth_size", SIZE)
+	# The terrain reads it too, so beaches on sheltered ponds barely get a wash.
+	RenderingServer.global_shader_parameter_set("water_map", _depth_tex)
+	RenderingServer.global_shader_parameter_set("water_map_rect", Vector4(_depth_origin.x, _depth_origin.y, SIZE, 0.0))
 
 ## How murky the water is across the depth map: 0 for open sea (clear and blue), 1 for
 ## ponds and small lakes (green-brown with silt). Judged by how much of the 400 m round
@@ -170,7 +173,8 @@ static func _murk(depths: PackedFloat32Array) -> PackedFloat32Array:
 			var w := wet[z1 * n + x1] - wet[z0 * n + x1] - wet[z1 * n + x0] + wet[z0 * n + x0]
 			var dsum := deep[z1 * n + x1] - deep[z0 * n + x1] - deep[z1 * n + x0] + deep[z0 * n + x0]
 			var mean_depth := dsum / maxf(w, 1.0)
-			out[j * DEPTH_RES + i] = 1.0 - smoothstep(0.55, 0.9, w / area) * smoothstep(4.0, 14.0, mean_depth)
+			# A straight sea shore is still half water; a pond is a few hundredths of the window.
+			out[j * DEPTH_RES + i] = 1.0 - smoothstep(0.15, 0.45, w / area) * smoothstep(2.5, 9.0, mean_depth)
 	return out
 
 ## How murky the lake or sea at (x, z) is: 0 clear open sea, 1 a silty pond.

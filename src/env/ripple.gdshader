@@ -37,7 +37,7 @@ void fragment() {
 	float n = vn(vec2(a * 5.0, r * 6.0 + t * 2.0)) * 0.6 + vn(q * 9.0) * 0.4;
 	float foam = band * smoothstep(0.45, 0.8, n) * (1.0 - t) * (1.0 - smoothstep(0.9, 1.0, r));
 	ALBEDO = vec3(0.86, 0.9, 0.93);
-	ALPHA = foam * 0.5;
+	ALPHA = foam * 0.25;
 	ROUGHNESS = 0.6;
 	SPECULAR = 0.3;
 }

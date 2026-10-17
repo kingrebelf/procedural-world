@@ -69,7 +69,7 @@ func _ready() -> void:
 	for i in BURSTS:
 		# The crown: droplets thrown up and outward from a ring round the spot, falling back
 		# under gravity, each a short streak along its flight as a fast drop looks.
-		var drops := _emitter(72, 1.1, drop, Vector2(0.045, 0.16), true)
+		var drops := _emitter(96, 1.1, drop, Vector2(0.07, 0.24), true)
 		var pm := drops.process_material as ParticleProcessMaterial
 		pm.direction = Vector3.UP
 		pm.spread = 22.0
@@ -88,7 +88,7 @@ func _ready() -> void:
 		pm.color_ramp = fade_tex
 		_bursts.append(drops)
 		# The jet: after a hard landing a column of water shoots up from the middle.
-		var jet := _emitter(28, 1.2, drop, Vector2(0.05, 0.2), true)
+		var jet := _emitter(36, 1.2, drop, Vector2(0.08, 0.28), true)
 		pm = jet.process_material as ParticleProcessMaterial
 		pm.direction = Vector3.UP
 		pm.spread = 7.0

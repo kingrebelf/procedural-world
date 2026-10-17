@@ -38,7 +38,7 @@ static func build_river_arrays(chunk: Dictionary) -> Array:
 					vid[c] = verts.size()
 					verts.append(Vector3(c.x * 2.0, lv, c.y * 2.0))
 					# b: how steeply the river falls here (rapids where it is high).
-					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, clampf(g.length() * 2.5, 0.0, 1.0), a))
+					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, clampf(g.length() * 1.25, 0.0, 1.0), a))
 				ids.append(vid[c])
 			idx.append_array([ids[0], ids[1], ids[2], ids[1], ids[3], ids[2]])
 	if idx.is_empty():

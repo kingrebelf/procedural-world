@@ -73,7 +73,7 @@ void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	flow = COLOR.rg * 2.0 - 1.0;
 	edge = COLOR.a;
-	rapids = smoothstep(0.35, 0.9, COLOR.b) * edge;
+	rapids = smoothstep(0.4, 0.9, COLOR.b) * edge; // falling more than about 1 in 12
 	// Standing waves in the rapids: they hold their place while the water runs through.
 	vec2 d = normalize(flow + vec2(0.0001));
 	float sw = sin(dot(wpos.xz, d) * 1.9 + n2(wpos.xz * 0.4) * 5.0) * (0.5 + n2(wpos.xz * 0.9 + 4.0));
@@ -137,7 +137,7 @@ void fragment() {
 			+ obstacle(wpos - f3 * 2.8, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX) * 0.35;
 		rocks *= 0.4 + spd;
 	}
-	float foam = clamp((flecks + white + bank * 0.8 + rocks) * lace + white * white * 0.3, 0.0, 0.85);
+	float foam = clamp((flecks + white + bank * 0.5 + rocks * 0.8) * lace + white * white * 0.3, 0.0, 0.85);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
 	vec3 vdir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz); // back toward the eye
 	float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(nw, vdir), 0.0, 1.0), 5.0);

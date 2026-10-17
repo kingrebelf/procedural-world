@@ -141,8 +141,12 @@ void fragment() {
 	float lap = 0.5 + 0.5 * sin(t * 0.9 + n2(wpos.xz * 0.08) * 9.0);
 	float edge_f = (1.0 - smoothstep(0.0, 0.06 + amp * 0.3 + lap * 0.05, vdepth)) * smoothstep(0.0, 0.015, vdepth);
 	float roll = sin(vdepth * 7.0 + t * 1.3 + n2(wpos.xz * 0.25) * 4.0);
-	float rollers = smoothstep(0.7, 1.0, roll) * (1.0 - smoothstep(0.2, 0.8 + amp * 2.0, vdepth)) * smoothstep(0.03, 0.12, vdepth);
-	float shore = clamp(edge_f * 0.9 + rollers * (0.35 + wind_strength), 0.0, 1.0) * lace;
+	float rollers = smoothstep(0.8, 1.0, roll) * (1.0 - smoothstep(0.2, 0.8 + amp * 2.0, vdepth)) * smoothstep(0.03, 0.12, vdepth);
+	// Broken into stretches, as real breakers are, never a ring round the whole shore.
+	rollers *= smoothstep(-0.05, 0.25, n2(wpos.xz * 0.05 + vec2(t * 0.03, 0.0)));
+	// Surf needs fetch: a sheltered pond barely laps, a big lake or the sea breaks.
+	float surf = 1.0 - 0.85 * murk;
+	float shore = clamp(edge_f * (0.3 + 0.6 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace;
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n * (0.5 + 0.5 * lace);
 	float foam = max(shore * 0.85, caps);
@@ -186,7 +190,7 @@ void fragment() {
 		METALLIC = 0.0;
 	} else {
 		ALBEDO = col;
-		ALPHA = smoothstep(0.0, 0.04, vdepth);
+		ALPHA = smoothstep(0.0, 0.012, vdepth);
 		ROUGHNESS = 0.03 + wind_strength * 0.08 + foam * 0.6;
 		METALLIC = 0.0;
 		SPECULAR = 0.5 * (1.0 - refl.a * 0.9);
