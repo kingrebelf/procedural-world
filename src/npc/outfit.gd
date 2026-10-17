@@ -181,10 +181,16 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 	# The cut edges (hems, cuffs, necklines) stay snug on the body, as if hemmed or tucked.
 	var pinned := PackedByteArray()
 	pinned.resize(g)
+	var along: Array = [] # each cut-edge vertex's neighbours along the cut
+	along.resize(g)
 	for ek in edges:
 		if int(edges[ek]) == 1:
 			pinned[ek.x] = 1
 			pinned[ek.y] = 1
+			for e in [[ek.x, ek.y], [ek.y, ek.x]]:
+				if along[e[0]] == null:
+					along[e[0]] = []
+				along[e[0]].append(e[1])
 	var pos := PackedVector3Array()
 	pos.resize(g)
 	var rest := PackedVector3Array()
@@ -203,12 +209,20 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 		var nxt := pos.duplicate()
 		for i in g:
 			var ns: Dictionary = nbrs[i]
-			if pinned[i] == 1 or ns.size() < 3:
-				continue
 			var avg := Vector3.ZERO
-			for j in ns:
-				avg += pos[j]
-			avg /= ns.size()
+			if pinned[i] == 1:
+				# A cut edge is smoothed only along itself (a few passes), so the sawtooth of
+				# whole triangles becomes a clean hem line without the hem riding up.
+				var al = along[i]
+				if it >= 12 or al == null or al.size() != 2:
+					continue
+				avg = (pos[al[0]] + pos[al[1]]) * 0.5
+			elif ns.size() < 3:
+				continue
+			else:
+				for j in ns:
+					avg += pos[j]
+				avg /= ns.size()
 			var p := pos[i].lerp(avg, 0.55)
 			var d := (p - rest[i]).dot(nrm[i])
 			if d < dmin[i]:
@@ -233,7 +247,7 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 		fn[i] = fn[i].normalized() if fn[i].dot(nrm[i]) > 0.0 else (fn[i] * -1.0).normalized()
 		if fn[i] == Vector3.ZERO:
 			fn[i] = nrm[i]
-	for it in 3:
+	for it in 10:
 		var nxt := fn.duplicate()
 		for i in g:
 			var sum := fn[i]
@@ -747,7 +761,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	# Work clothes (sci-fi) are cut roomier than linen and wool, with pockets.
 	var fit: float = sp.get("fit", 1.0)
 	var vest_kind: int = sp["vest"]
-	var t_shirt := 0.009 * fit
+	var t_shirt := 0.012 * fit
 	var t_pants := 0.007 * fit * fit # work trousers hang loose round the legs
 	# Shirt: the torso down to the hips, sleeves to the elbow or the wrist with a cuff.
 	_shell(s, o, PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
@@ -835,7 +849,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 			_shell(s, o, PART_APRON, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 				if (r == 1 or r == 5) and p.y > waist - 0.05 and p.y < bib_top and p.z > -0.02 and absf(p.x) < 0.13:
 					return 0.03 if vest > 0 else 0.02
-				return -1.0)
+				return -1.0, 20, 0.008)
 	if sp["belt"]:
 		var loose := hem > 0.0 or apron > 0.0 or vest == 3
 		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.034 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
@@ -843,6 +857,14 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 			_pouch(s, o, waist - 0.035, float(sp["pouch"]))
 	if sp["cape"] > 0.0:
 		_cape(s, o, sp["cape"], Color.WHITE)
+		# A mantle over the shoulders that the cape hangs from, so it wraps the shoulder
+		# line instead of starting at a straight edge behind them.
+		var sy: float = s["shoulder_y"]
+		var neck_y: float = s["neck"]
+		_shell(s, o, PART_CAPE, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+			if (r == 1 and p.y > sy - 0.1 and p.y < neck_y + 0.01) or (r == 2 and p.y > sy - 0.05 and absf(p.x) < shoulder_x + 0.09):
+				return 0.03 if vest_kind > 0 else 0.024
+			return -1.0, 30, 0.01)
 	var m := _commit(s, o)
 	_cache[key] = m
 	return m
