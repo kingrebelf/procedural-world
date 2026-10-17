@@ -117,6 +117,8 @@ func _run() -> void:
 		looted = {"key": c.key, "i": o["i"]}
 	check(not looted.is_empty(), "found a chest to loot")
 
+	await _walk_into_house(game, world, streamer, player)
+
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
@@ -135,10 +137,6 @@ func _run() -> void:
 		player.global_position = site
 	player.set_state({"pos": player.global_position, "yaw": 0.3, "pitch": -0.75, "slot": 5})
 	await _frames(4)
-	var built_before := 0
-	for o in here.data["objects"]:
-		if BuildCatalog.is_built(o["t"]):
-			built_before += 1
 	check(player.builder.active(), "holding a foundation starts building")
 	check(player.builder.place(), "foundation placed where the player looks (%s)" % player.builder._target)
 	check(game.inventory.count("foundation") == 2, "placing uses one piece")
@@ -410,6 +408,74 @@ func _run() -> void:
 	_check_landform_mesh()
 	print("integration: %s" % ("PASSED" if _fail == 0 else "%d FAILED" % _fail))
 	quit(1 if _fail > 0 else 0)
+
+## Village houses are open: walking at a house's door takes you inside onto its floor,
+## and its walls keep you in.
+func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
+	var gen := ChunkGenerator.new(game.seed, game.store.has_rivers())
+	var here: Vector3 = player.global_position
+	var best := {}
+	var bd := INF
+	var cell := int(floor(here.x / ChunkGenerator.SETTLEMENT_CELL))
+	var cellz := int(floor(here.z / ChunkGenerator.SETTLEMENT_CELL))
+	for sz in range(cellz - 4, cellz + 5):
+		for sx in range(cell - 4, cell + 5):
+			var s := gen.settlement_at(sx, sz)
+			if s.is_empty():
+				continue
+			for it in gen.settlement_layout(s):
+				if KitHouse.has(it["t"]):
+					var d := Vector2(here.x, here.z).distance_to(it["p"])
+					if d < bd:
+						bd = d
+						best = it
+	check(not best.is_empty(), "found a village house")
+	if best.is_empty():
+		return
+	var t: String = best["t"]
+	var yaw: float = best["yaw"]
+	var out := Vector3(sin(yaw), 0, cos(yaw))
+	var dims := KitHouse.size_of(t)
+	var hp := Vector3(best["p"].x, 0, best["p"].y)
+	var stand := hp + out * (dims.z * 0.5 + 1.0)
+	for i in 600:
+		player.global_position = Vector3(stand.x, 400, stand.z)
+		await _frames(1)
+		if streamer.is_ready_at(stand):
+			break
+	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(stand))
+	stand.y = ChunkGenerator.height_at(c.data, stand.x - c.position.x, stand.z - c.position.z) + 0.1
+	player.set_state({"pos": stand, "yaw": atan2(out.x, out.z), "pitch": 0.0, "slot": 0})
+	# The body turns to the new heading over a few frames; let it settle on the spot.
+	for i in 3:
+		await _frames(20)
+		player.global_position = stand
+		player.velocity = Vector3.ZERO
+	var hc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(hp))
+	var floor_y := ChunkGenerator.height_at(hc.data, hp.x - hc.position.x, hp.z - hc.position.z) - KitHouse.SINK + KitHouse.FLOOR
+	Input.action_press("move_forward")
+	for i in 240:
+		await physics_frame
+	var lp: Vector3 = (player.global_position - hp).rotated(Vector3.UP, -yaw)
+	var inside := absf(lp.x) < dims.x * 0.5 - 0.5 and absf(lp.z) < dims.z * 0.5 - 0.5
+	check(inside, "walking at the door of a %s takes you inside (%.1f, %.1f)" % [t, lp.x, lp.z])
+	check(absf(player.global_position.y - floor_y) < 0.4, "you stand on the house floor (%.2f m off)" % (player.global_position.y - floor_y))
+	# Keep walking: the back wall or the furniture stops you.
+	for i in 180:
+		await physics_frame
+	Input.action_release("move_forward")
+	lp = (player.global_position - hp).rotated(Vector3.UP, -yaw)
+	check(absf(lp.x) < dims.x * 0.5 and lp.z > -dims.z * 0.5 + 0.2, "the walls keep you in (%.1f, %.1f)" % [lp.x, lp.z])
+	var lit := false
+	for b in hc.get_children():
+		if b is StaticBody3D:
+			for l in b.get_children():
+				lit = lit or l is OmniLight3D
+	check(lit, "the hearth lights the room")
+	var room := false
+	for mmi in hc.get_children():
+		room = room or (mmi is MultiMeshInstance3D and String(mmi.name).ends_with("~in"))
+	check(room, "the room is furnished")
 
 ## v7 landforms colour the terrain through vertex data: a karst chunk's mesh carries
 ## pale limestone for every vertex, at every LOD.

@@ -240,9 +240,17 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 			if st.a > 0.0:
 				var to := Color(clampf(st.r / 0.5, 0.45, 1.5), clampf(st.g / 0.5, 0.45, 1.5), clampf(st.b / 0.5, 0.45, 1.5))
 				tint = tint * Color(1, 1, 1).lerp(to, st.a * 0.85)
+		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0]
 		var buf: PackedFloat32Array = by_key[key]
-		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0])
+		buf.append_array(row)
 		by_key[key] = buf
+		# A house brings its furnished room (drawn up close) and its lamplit windows (from
+		# further off) as their own meshes.
+		if KitHouse.has(key):
+			for extra in [key + "~in", key + "~glow"]:
+				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
+				eb.append_array(row)
+				by_key[extra] = eb
 	return by_key
 
 static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat32Array:
@@ -460,7 +468,18 @@ func set_objects(buffers: Dictionary) -> void:
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
 		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if k == "structure" or k == "tree" or k == "built":
+		if t.ends_with("~in"):
+			# Furniture inside houses: only when you could see in.
+			mmi.visibility_range_end = 60.0
+			mmi.visibility_range_end_margin = 8.0
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif t.ends_with("~glow"):
+			mmi.visibility_range_begin = 52.0
+			mmi.visibility_range_begin_margin = 8.0
+			mmi.visibility_range_end = 900.0
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
 		else:
 			mmi.visibility_range_end = 260.0
@@ -563,6 +582,19 @@ func _add_obj_body(o: Dictionary) -> void:
 	if sh.size() > 2:
 		cs.basis = sh[2]
 	b.add_child(cs)
+	if KitHouse.has(o["t"]):
+		# The hearth fire lights the room.
+		var hl := OmniLight3D.new()
+		hl.light_color = Color(1.0, 0.62, 0.32)
+		hl.light_energy = 1.5
+		hl.omni_range = 6.5
+		hl.omni_attenuation = 1.4
+		hl.shadow_enabled = false
+		hl.distance_fade_enabled = true
+		hl.distance_fade_begin = 40.0
+		hl.distance_fade_length = 15.0
+		hl.position = KitHouse.light_at(o["t"])
+		b.add_child(hl)
 	if built:
 		var lc = BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("light")
 		if lc != null:

@@ -121,27 +121,34 @@ vec2 rot2(vec2 p, float a) {
 
 // Two scales of the same texture, rotated against each other and blended by a noise mask
 // with distance, so the repeat never lines up into a visible grid.
-vec4 untiled(sampler2D t, vec2 p, float tile, float mask, float far) {
-	vec4 a = texture(t, p / tile);
-	vec4 b = texture(t, rot2(p, 1.13) / (tile * 3.7) + 0.37);
+// Sampling takes explicit gradients (g = dp/dx, dp/dy) worked out once at the top of the
+// fragment: implicit ones are undefined inside branches that neighbouring pixels skip
+// (era, snow, slope), and some GPUs then pick garbage mips and draw black specks along
+// the branch edge.
+vec4 untiled(sampler2D t, vec2 p, vec4 g, float tile, float mask, float far) {
+	vec4 a = textureGrad(t, p / tile, g.xy / tile, g.zw / tile);
+	float s2 = 1.0 / (tile * 3.7);
+	vec4 b = textureGrad(t, rot2(p, 1.13) * s2 + 0.37, rot2(g.xy, 1.13) * s2, rot2(g.zw, 1.13) * s2);
 	return mix(a, b, clamp(mask * 0.6 + far, 0.0, 1.0));
 }
 
 // Ground sampling that switches from top-down to a side projection on slopes, so
-// textures don't smear down hillsides.
-vec4 ground(sampler2D t, vec3 wp, vec3 n, vec2 off, float tile, float mask, float far) {
-	vec4 top = untiled(t, wp.xz + off, tile, mask, far);
+// textures don't smear down hillsides. dx, dy: screen derivatives of the world position.
+vec4 ground(sampler2D t, vec3 wp, vec3 n, vec2 off, vec3 dx, vec3 dy, float tile, float mask, float far) {
+	vec4 top = untiled(t, wp.xz + off, vec4(dx.xz, dy.xz), tile, mask, far);
 	float ws = smoothstep(0.22, 0.55, 1.0 - n.y);
 	if (ws < 0.01) {
 		return top;
 	}
-	vec2 side_uv = abs(n.x) > abs(n.z) ? wp.zy : wp.xy;
-	return mix(top, untiled(t, side_uv + off, tile, mask, far), ws);
+	bool zside = abs(n.x) > abs(n.z);
+	vec2 side_uv = zside ? wp.zy : wp.xy;
+	vec4 sg = zside ? vec4(dx.zy, dy.zy) : vec4(dx.xy, dy.xy);
+	return mix(top, untiled(t, side_uv + off, sg, tile, mask, far), ws);
 }
 
 // Planar normal sample turned into a world-space tilt (x, z) for ground facing up.
-vec2 untiled_n(sampler2D t, vec2 p, float tile, float mask, float far) {
-	vec3 n = untiled(t, p, tile, mask, far).xyz * 2.0 - 1.0;
+vec2 untiled_n(sampler2D t, vec2 p, vec4 g, float tile, float mask, float far) {
+	vec3 n = untiled(t, p, g, tile, mask, far).xyz * 2.0 - 1.0;
 	return vec2(n.x, -n.y);
 }
 
@@ -165,6 +172,9 @@ void vertex() {
 }
 
 void fragment() {
+	vec3 dwx = dFdx(wpos);
+	vec3 dwy = dFdy(wpos);
+	vec4 gp = vec4(dwx.xz, dwy.xz);
 	vec3 w = COLOR.rgb;
 	w /= max(w.r + w.g + w.b, 0.001);
 	float slope = 1.0 - clamp(wnorm.y, 0.0, 1.0);
@@ -191,30 +201,30 @@ void fragment() {
 		// Ground: planar world mapping, one texture pair per era, skipped where absent.
 		vec3 gm = vec3(0.0), gs = vec3(0.0);
 		if (w.r > 0.01) {
-			gm += w.r * recolor(ground(grass_tex, wpos, wnorm, vec2(0.0), GRASS_TILE, meso, far).rgb, GRASS_MEAN, grass_m, 0.6);
-			gs += w.r * recolor(ground(dirt_tex, wpos, wnorm, vec2(11.0), DIRT_TILE, meso, far).rgb, DIRT_MEAN, soil_m, 0.6);
-			tilt_g += w.r * untiled_n(grass_nrm, p, GRASS_TILE, meso, far);
-			tilt_s += w.r * untiled_n(dirt_nrm, p + 11.0, DIRT_TILE, meso, far);
+			gm += w.r * recolor(ground(grass_tex, wpos, wnorm, vec2(0.0), dwx, dwy, GRASS_TILE, meso, far).rgb, GRASS_MEAN, grass_m, 0.6);
+			gs += w.r * recolor(ground(dirt_tex, wpos, wnorm, vec2(11.0), dwx, dwy, DIRT_TILE, meso, far).rgb, DIRT_MEAN, soil_m, 0.6);
+			tilt_g += w.r * untiled_n(grass_nrm, p, gp, GRASS_TILE, meso, far);
+			tilt_s += w.r * untiled_n(dirt_nrm, p + 11.0, gp, DIRT_TILE, meso, far);
 		}
 		if (w.g > 0.01) {
-			vec3 mt = ground(glowmoss_tex, wpos, wnorm, vec2(5.0), MOSS_TILE, meso, far).rgb;
+			vec3 mt = ground(glowmoss_tex, wpos, wnorm, vec2(5.0), dwx, dwy, MOSS_TILE, meso, far).rgb;
 			moss_glow = w.g * smoothstep(0.2, 0.5, dot(mt, LUM));
 			gm += w.g * recolor(mt, GLOWMOSS_MEAN, grass_f, 0.2);
-			gs += w.g * recolor(ground(darksoil_tex, wpos, wnorm, vec2(17.0), DIRT_TILE, meso, far).rgb, DARKSOIL_MEAN, soil_f, 0.4);
-			tilt_g += w.g * untiled_n(glowmoss_nrm, p + 5.0, MOSS_TILE, meso, far);
-			tilt_s += w.g * untiled_n(darksoil_nrm, p + 17.0, DIRT_TILE, meso, far);
+			gs += w.g * recolor(ground(darksoil_tex, wpos, wnorm, vec2(17.0), dwx, dwy, DIRT_TILE, meso, far).rgb, DARKSOIL_MEAN, soil_f, 0.4);
+			tilt_g += w.g * untiled_n(glowmoss_nrm, p + 5.0, gp, MOSS_TILE, meso, far);
+			tilt_s += w.g * untiled_n(darksoil_nrm, p + 17.0, gp, DIRT_TILE, meso, far);
 		}
 		if (w.b > 0.01) {
-			vec3 dt = ground(regolith_tex, wpos, wnorm, vec2(29.0), DUST_TILE, meso, far).rgb;
+			vec3 dt = ground(regolith_tex, wpos, wnorm, vec2(29.0), dwx, dwy, DUST_TILE, meso, far).rgb;
 			gm += w.b * recolor(dt, REGOLITH_MEAN, grass_s, 0.45);
 			gs += w.b * recolor(dt, REGOLITH_MEAN, soil_s, 0.45);
-			vec2 dn2 = untiled_n(regolith_nrm, p + 29.0, DUST_TILE, meso, far);
+			vec2 dn2 = untiled_n(regolith_nrm, p + 29.0, gp, DUST_TILE, meso, far);
 			tilt_g += w.b * dn2;
 			tilt_s += w.b * dn2;
 		}
 		grass = gm;
 		soil = gs;
-		mud_d = untiled(mud_tex, p + 23.0, MUD_TILE, meso, far).rgb / MUD_MEAN;
+		mud_d = untiled(mud_tex, p + 23.0, gp, MUD_TILE, meso, far).rgb / MUD_MEAN;
 		// Rock: triplanar so cliffs are textured from every side.
 		vec3 bw = pow(abs(wnorm), vec3(4.0));
 		bw /= bw.x + bw.y + bw.z;
@@ -266,7 +276,7 @@ void fragment() {
 	}
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
-		vec2 tm = untiled_n(mud_nrm, p + 23.0, MUD_TILE, meso, far);
+		vec2 tm = untiled_n(mud_nrm, p + 23.0, gp, MUD_TILE, meso, far);
 		tilt = mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
 	}
 	vec3 col = mix(ground, rock, rock_mask);
@@ -292,9 +302,9 @@ void fragment() {
 	if (use_textures && wpos.y > snow_line - 12.0) {
 		snow = smoothstep(snow_line - 6.0, snow_line + 8.0, wpos.y + (macro - 0.5) * 14.0 + (meso - 0.5) * 4.0);
 		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.45, 0.75, slope));
-		vec3 st = untiled(snow_tex, p + 41.0, SNOW_TILE, meso, far).rgb;
+		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb;
 		col = mix(col, st * 0.92, snow);
-		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, SNOW_TILE, meso, far), snow);
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far), snow);
 	}
 
 	// Sci-fi: weathered dust and ash; no panel grid, no glitter.

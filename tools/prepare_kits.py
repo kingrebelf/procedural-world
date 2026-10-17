@@ -111,7 +111,13 @@ PROPS = ["Workbench", "Workbench_Drawers", "Anvil_Log", "Cauldron", "Whetstone",
     "Bed_Twin1", "Bench", "Bookcase_2", "Cabinet", "Chair_1", "Table_Large", "Stool", "Nightstand_Shelf", "Shelf_Simple",
     "Shelf_Arch", "CandleStick_Stand", "Lantern_Wall", "Banner_1", "Banner_2", "WeaponStand", "Dummy",
     "Stall_Empty", "Stall_Cart_Empty", "FarmCrate_Apple", "Barrel_Apples", "Crate_Metal", "Vase_2", "Pot_1", "BookStand",
-    "Peg_Rack", "Cage_Small"]
+    "Peg_Rack", "Cage_Small",
+    # Furnishing village house interiors.
+    "Bed_Twin2", "Table_Plate", "Table_Fork", "Table_Knife", "Mug", "Chalice", "CandleStick", "CandleStick_Triple",
+    "Candle_1", "Candle_2", "Chandelier", "BookGroup_Medium_1", "BookGroup_Small_1", "Book_Stack_1", "Scroll_1",
+    "Shelf_Small_Bottles", "Potion_1", "Potion_2", "Bottle_1", "Bag", "Pouch_Large", "Coin_Pile", "Bucket_Wooden_1",
+    "FarmCrate_Carrot", "FarmCrate_Empty", "Barrel_Holder", "Anvil", "Chain_Coil", "Rope_1", "Pot_1_Lid", "Vase_4",
+    "Vase_Rubble_Medium", "Book_5"]
 
 
 def build_kits(kits: Path) -> None:

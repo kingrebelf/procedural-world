@@ -9,9 +9,21 @@ func _initialize() -> void:
 func _run() -> void:
 	var out := "user://preview.png"
 	var names: Array = []
+	# --at0 stacks every model at the origin (a house with its interior); --cam=px,py,pz,
+	# tx,ty,tz places the camera; --omni=x,y,z adds a warm lamp (to see inside rooms).
+	var at0 := false
+	var cam_at := PackedFloat64Array()
+	var omnis: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a == "--at0":
+			at0 = true
+		elif a.begins_with("--cam="):
+			cam_at = a.substr(6).split_floats(",")
+		elif a.begins_with("--omni="):
+			var v := a.substr(7).split_floats(",")
+			omnis.append(Vector3(v[0], v[1], v[2]))
 		elif not a.begins_with("--"):
 			names.append(a)
 	var vp := SubViewport.new()
@@ -90,16 +102,31 @@ func _run() -> void:
 			var b: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
 			aabb = b if first else aabb.merge(b)
 			first = false
+		if at0:
+			continue
 		x += aabb.size.x * 0.5 + 0.5
 		node.position = Vector3(x - aabb.get_center().x, -aabb.position.y, 0)
 		x += aabb.size.x * 0.5 + 0.5
 		top = maxf(top, aabb.size.y)
+	for o in omnis:
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.62, 0.32)
+		l.light_energy = 1.5
+		l.omni_range = 6.5
+		l.omni_attenuation = 1.4
+		l.position = o
+		vp.add_child(l)
 	var cam := Camera3D.new()
 	cam.fov = 40
 	vp.add_child(cam)
-	var w := maxf(x, top * 2.3)
-	cam.position = Vector3(x * 0.5, top * 0.55 + w * 0.08, w * 1.05)
-	cam.look_at(Vector3(x * 0.5, top * 0.4, 0))
+	if cam_at.size() == 6:
+		cam.fov = 70
+		cam.position = Vector3(cam_at[0], cam_at[1], cam_at[2])
+		cam.look_at(Vector3(cam_at[3], cam_at[4], cam_at[5]))
+	else:
+		var w := maxf(x, top * 2.3)
+		cam.position = Vector3(x * 0.5, top * 0.55 + w * 0.08, w * 1.05)
+		cam.look_at(Vector3(x * 0.5, top * 0.4, 0))
 	for i in 12:
 		await process_frame
 	vp.get_texture().get_image().save_png(out)

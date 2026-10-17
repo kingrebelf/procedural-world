@@ -34,7 +34,9 @@ void vertex() {
 	vec3 wl = (inverse(MODEL_MATRIX) * vec4(wind_dir.x, 0.0, wind_dir.y, 0.0)).xyz;
 	vec2 wd = normalize(wl.xz + vec2(0.0001));
 	VERTEX.xz += wd * k * lean * 1.2;
-	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * sway;
+	// Flutter is a leaf's own trembling: it doesn't grow with a small plant's extra bend
+	// (multiplying it by that made bushes thrash as if in a gale).
+	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * min(sway, 1.0);
 	// Vertex and instance colours are authored as sRGB; shading happens in linear space.
 	inst_col = pow(COLOR.rgb, vec3(2.2));
 }

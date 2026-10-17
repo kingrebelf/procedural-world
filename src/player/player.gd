@@ -167,6 +167,8 @@ func _refresh_held() -> void:
 	var it = held_item()
 	var t: String = it["type"] if it != null else ""
 	viewmodel.show_item(t, it)
+	if hand_light:
+		hand_light.set_held(t, Game.inventory)
 	if body:
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)

@@ -2,12 +2,14 @@ class_name HandLight
 extends Node3D
 ## A light carried in the off hand, so it works while you hold any tool: a torch that
 ## burns down and is used up, or a flashlight whose battery runs for hours and then dies
-## until it is repaired with a power cell. Lives under the camera.
+## until it is repaired with a power cell. Lives under the camera. Holding a torch or a
+## flashlight in your main hand (selected on the hotbar) lights it too.
 
 const TORCH_BURN := 360.0 ## seconds one torch burns
 const FLASH_CHARGE := 10800.0 ## seconds a flashlight runs before its battery fails
 
-var kind := "" ## "", "torch" or "flashlight"
+var kind := "" ## "", "torch" or "flashlight": the light in the off hand (T)
+var held := "" ## "torch" or "flashlight" when one is selected in the main hand
 var torch_left := 0.0 ## seconds left on the burning torch
 var _omni: OmniLight3D
 var _spot: SpotLight3D
@@ -18,9 +20,9 @@ var show_model := true ## the torch in your hand (first person only)
 func _ready() -> void:
 	_omni = OmniLight3D.new()
 	_omni.light_color = Color(1.0, 0.62, 0.3)
-	_omni.omni_range = 13.0
-	_omni.omni_attenuation = 1.2
-	_omni.light_energy = 1.6
+	_omni.omni_range = 16.0
+	_omni.omni_attenuation = 0.9
+	_omni.light_energy = 2.4
 	_omni.shadow_enabled = true
 	_omni.position = Vector3(-0.35, -0.05, -0.4)
 	_omni.visible = false
@@ -52,10 +54,27 @@ static func torch_model() -> ArrayMesh:
 	return k.commit(Materials.get_mat)
 
 func is_on() -> bool:
-	return kind != ""
+	return lit() != ""
+
+## The light actually burning: the one in your hand wins over the off-hand one.
+func lit() -> String:
+	return held if held != "" else kind
+
+## Called when the hotbar selection changes: a torch or flashlight in hand lights itself.
+func set_held(t: String, inv: Inventory) -> void:
+	held = ""
+	if t == "torch" and inv.count("torch") > 0:
+		held = "torch"
+		if torch_left <= 0.0:
+			torch_left = TORCH_BURN
+	elif t == "flashlight" and flashlight_slot(inv) >= 0:
+		held = "flashlight"
+	_apply()
 
 ## Turns the light off, or on with the best light you carry. Returns a line to show.
 func toggle(inv: Inventory) -> String:
+	if held != "":
+		return "Put the %s away to put it out" % held
 	if is_on():
 		kind = ""
 		_apply()
@@ -85,10 +104,12 @@ static func flashlight_slot(inv: Inventory) -> int:
 ## Burns fuel. Returns a message when something runs out, else "".
 func tick(delta: float, inv: Inventory) -> String:
 	var msg := ""
-	if kind == "torch":
+	var was := lit()
+	if was == "torch":
 		torch_left -= delta
 		if inv.count("torch") <= 0:
 			kind = ""
+			held = ""
 		elif torch_left <= 0.0:
 			inv.remove_type("torch", 1)
 			if inv.count("torch") > 0:
@@ -96,38 +117,45 @@ func tick(delta: float, inv: Inventory) -> String:
 				msg = "Your torch burned out; you light another (%d left)" % inv.count("torch")
 			else:
 				kind = ""
+				held = ""
 				torch_left = 0.0
 				msg = "Your torch burned out"
-	elif kind == "flashlight":
+	elif was == "flashlight":
 		var fi := flashlight_slot(inv)
 		if fi < 0:
 			kind = ""
+			held = ""
 		else:
 			var it: Dictionary = inv.get_slot(fi)
 			it["charge"] = float(it.get("charge", FLASH_CHARGE)) - delta
 			if it["charge"] <= 0.0:
 				it["type"] = "flashlight_dead"
 				it.erase("charge")
-				inv.changed.emit()
 				kind = ""
+				held = ""
+				inv.changed.emit()
 				msg = "Your flashlight's battery failed. Repair it with a power cell at a workbench"
-	if msg != "" or kind == "":
+	if msg != "" or lit() != was:
 		_apply()
 	return msg
 
 func _process(delta: float) -> void:
 	_t += delta
-	if kind == "torch":
+	if lit() == "torch":
 		# Flicker: two slow waves and a fast one.
-		_omni.light_energy = 1.5 + 0.18 * sin(_t * 7.3) + 0.12 * sin(_t * 13.1 + 1.7) + 0.08 * sin(_t * 23.0)
-		_torch_mesh.visible = show_model
+		_omni.light_energy = 2.3 + 0.25 * sin(_t * 7.3) + 0.16 * sin(_t * 13.1 + 1.7) + 0.1 * sin(_t * 23.0)
 
 func _apply() -> void:
 	if _omni == null:
 		return
-	_omni.visible = kind == "torch"
-	_torch_mesh.visible = kind == "torch" and show_model
-	_spot.visible = kind == "flashlight"
+	var k := lit()
+	_omni.visible = k == "torch"
+	_spot.visible = k == "flashlight"
+	# The off-hand torch shows only when nothing lit is held in the main hand.
+	_torch_mesh.visible = k == "torch" and held == "" and show_model
+	# The light sits where the burning end is: left hand, or the held item on the right.
+	_omni.position = Vector3(0.3, -0.02, -0.5) if held == "torch" else Vector3(-0.35, -0.05, -0.4)
+	_spot.position = Vector3(0.22, -0.15, -0.2) if held == "flashlight" else Vector3(-0.15, -0.12, -0.1)
 
 static func _hours(s: float) -> String:
 	if s >= 3600.0:

@@ -8,7 +8,7 @@ const COUNT := 5 ## the home world and four others
 ## Planet kinds. eras: allowed eras (empty = all). snow: height of the snow line in metres.
 ## sea / land / land2 / ice / air: colours from orbit.
 const KINDS := {
-	"home": {"label": "Homeworld", "eras": [], "snow": 40.0,
+	"home": {"label": "Homeworld", "eras": [], "snow": 50.0,
 		"sea": Color(0.08, 0.22, 0.38), "land": Color(0.28, 0.42, 0.2), "land2": Color(0.45, 0.38, 0.28), "ice": 0.12, "air": Color(0.45, 0.65, 1.0)},
 	"verdant": {"label": "Verdant world", "eras": [Eras.MEDIEVAL], "snow": 46.0,
 		"sea": Color(0.07, 0.25, 0.35), "land": Color(0.22, 0.45, 0.16), "land2": Color(0.34, 0.5, 0.22), "ice": 0.08, "air": Color(0.5, 0.75, 1.0)},
@@ -23,7 +23,7 @@ const OTHERS := ["verdant", "fey", "rust", "frozen"]
 const SYLLABLES := ["Ae", "Bel", "Cor", "Dra", "Eri", "Fal", "Gal", "Hes", "Ion", "Kel", "Lum", "Mar", "Ny", "Or", "Pyr", "Qua", "Rho", "Syl", "Tor", "Ul", "Vex", "Zan"]
 
 ## The current planet's snow line, for the terrain material (Atmosphere applies it).
-static var snow_line := 40.0
+static var snow_line := 50.0
 
 static func seed_of(home_seed: int, n: int) -> int:
 	return home_seed if n == 0 else WHash.hash2(home_seed, n, 77, 5) & WHash.MASK

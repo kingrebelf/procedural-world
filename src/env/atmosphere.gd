@@ -22,6 +22,7 @@ var _gust_noise := FastNoiseLite.new() ## one smooth octave: gusts build and fad
 var _wind_time := 0.0 ## wind phase; speeds up with the wind but never jumps
 var _gust := 0.0
 var _cloud_drift := Vector2.ZERO
+var _ground := 0.0 ## land height under the target, sampled with the era weights
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -46,12 +47,12 @@ func _ready() -> void:
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
-	env.fog_sun_scatter = 0.25
+	env.fog_sun_scatter = 0.12
 	env.fog_aerial_perspective = 0.35
 	env.fog_sky_affect = 0.2
 	env.volumetric_fog_length = 96.0
 	env.volumetric_fog_detail_spread = 2.0
-	env.volumetric_fog_anisotropy = 0.6
+	env.volumetric_fog_anisotropy = 0.35
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.98
 	env.adjustment_contrast = 1.06
@@ -133,6 +134,7 @@ func _process(delta: float) -> void:
 			_sample_timer = 0.25
 			var p := target.global_position
 			_target_w = field.era_weights(p.x, p.z)
+			_ground = maxf(field.height(p.x, p.z, _target_w), 0.0)
 		for e in Eras.COUNT:
 			_w[e] = lerpf(_w[e], _target_w[e], clampf(delta * 0.8, 0.0, 1.0))
 	_update_time_of_day()
@@ -197,15 +199,19 @@ func _update_time_of_day() -> void:
 	var night_fog := Color(0.03, 0.04, 0.07)
 	env.fog_light_color = fog_c.lerp(night_fog, 1.0 - daylight).lerp(Color(0.9, 0.55, 0.35), golden * 0.3 * daylight)
 	var dens: float = _blend(Eras.FOG_DENSITY)
-	# High up (flying), thicker distance fog hides the edge of the streamed world.
-	var alt := clampf((target.global_position.y - 40.0) / 160.0, 0.0, 1.0) if target else 0.0
+	# High up (flying), thicker distance fog hides the edge of the streamed world. Height is
+	# above the land below, so standing on a tall hill is not flying.
+	var alt := clampf((target.global_position.y - _ground - 40.0) / 160.0, 0.0, 1.0) if target else 0.0
 	env.fog_density = dens * 0.22 + alt * 0.0025
 	env.fog_sky_affect = 0.2 + alt * 0.8
-	env.volumetric_fog_density = dens * 1.4
+	# Light haze near you: thick volumetric fog washed the whole view out to white when
+	# looking towards the sun.
+	env.volumetric_fog_density = dens * 0.5
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
 	env.ambient_light_energy = lerpf(0.2, 0.6, daylight)
-	var night_glow := 0.15 + 1.25 * (1.0 - daylight)
+	# Glowing plants and moss: a hint in the dark, not a lamp; you still want a torch.
+	var night_glow := 0.08 + 0.4 * (1.0 - daylight)
 	ChunkNode.ensure_shared()
 	RenderingServer.global_shader_parameter_set("night_glow_g", night_glow)
 	ChunkNode.terrain_material.set_shader_parameter("night_glow", night_glow)

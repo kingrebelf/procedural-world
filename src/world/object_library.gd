@@ -107,6 +107,10 @@ static func get_mesh(key: String) -> ArrayMesh:
 static func _build_mesh(key: String) -> ArrayMesh:
 	if BuildCatalog.is_built(key):
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
+	if key.ends_with("~in"):
+		return KitHouse.interior(key.trim_suffix("~in"))
+	if key.ends_with("~glow"):
+		return KitHouse.glow(key.trim_suffix("~glow"))
 	if KitHouse.has(key):
 		return KitHouse.build(key)
 	if KitBase.has(key):
@@ -239,6 +243,19 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = fs
 			_lock.unlock()
 		return fs
+	if t == "alien_ruin" and sp != 0:
+		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
+		# core, instead of into a box around the whole thing.
+		var rk := mesh_key(o)
+		_lock.lock()
+		var rs = _shapes.get(rk)
+		_lock.unlock()
+		if rs == null:
+			rs = [get_mesh(rk).create_trimesh_shape(), Vector3.ZERO]
+			_lock.lock()
+			_shapes[rk] = rs
+			_lock.unlock()
+		return rs
 	if t == "cave" and sp != 0:
 		var key := mesh_key(o)
 		_lock.lock()
@@ -284,6 +301,9 @@ static func shape_of(o: Dictionary) -> Array:
 ## Collision: [shape, local offset].
 static func get_shape(t: String) -> Array:
 	if _shapes.has(t):
+		return _shapes[t]
+	if KitHouse.has(t):
+		_shapes[t] = KitHouse.shape(t)
 		return _shapes[t]
 	var s: Shape3D
 	var off := Vector3.ZERO

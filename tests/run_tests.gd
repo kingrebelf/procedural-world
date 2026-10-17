@@ -279,6 +279,47 @@ func test_landforms() -> void:
 		# needs the Game autoload.)
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
+func test_house_interiors() -> void:
+	for t in KitHouse.PLANS:
+		var dm := KitHouse._dims(t)
+		var room := ObjectLibrary.get_mesh(t + "~in")
+		check(room.get_surface_count() >= 4, "%s has a furnished room (%d surfaces)" % [t, room.get_surface_count()])
+		var glow := ObjectLibrary.get_mesh(t + "~glow")
+		check(glow.get_surface_count() == 1 and glow.get_aabb().size.x > 2.0, "%s has lamplit windows" % t)
+		# Every piece of furniture loads and stands inside the walls, clear of the way in.
+		var hx := dm.x / 2 - KitHouse.WALL_IN + 0.05
+		var hz := dm.z / 2 - KitHouse.WALL_IN + 0.05
+		var lane := AABB(Vector3(-0.6, KitHouse.FLOOR + 0.05, dm.z / 2 - 1.8), Vector3(1.2, 1.8, 1.8))
+		for e in KitHouse.FURNISH[t]:
+			var bx := KitHouse._model_box(e[0], Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2]))
+			var fits: bool = bx.size.length() > 0.01 and bx.position.x > -hx and bx.end.x < hx and bx.position.z > -hz and bx.end.z < hz and bx.end.y < dm.y
+			check(fits, "%s: %s stands inside the walls (%s)" % [t, e[0], bx])
+			check(not bx.intersects(lane), "%s: %s leaves the doorway clear" % [t, e[0]])
+		# Collision: the doorway is open to a capsule's width at every height a player has;
+		# the walls, floor and roof are closed.
+		var faces: PackedVector3Array = (KitHouse.shape(t)[0] as ConcavePolygonShape3D).get_faces()
+		var open := true
+		for y in [0.3, 1.0, 1.9]:
+			for x in [-0.36, 0.0, 0.36]:
+				open = open and _ray_hit(faces, Vector3(x, KitHouse.FLOOR + y, dm.z / 2 + 2.0), Vector3(x, KitHouse.FLOOR + y, dm.z / 2 - 1.2)) == INF
+		check(open, "%s: the doorway is open" % t)
+		var c := Vector3(0, KitHouse.FLOOR + 1.2, 0.8)
+		var shut: bool = _ray_hit(faces, Vector3(1.6, 1.2, dm.z / 2 + 2.0), Vector3(1.6, 1.2, 0)) < INF
+		for to in [Vector3(dm.x, 1.2, 0.8), Vector3(-dm.x, 1.2, 0.8), Vector3(-0.2, 2.6, -dm.z), Vector3(0, dm.y + 9.0, 0.8), Vector3(0, -2.0, 0.8)]:
+			shut = shut and _ray_hit(faces, c, to) < INF
+		check(shut, "%s: walls, roof and floor are closed" % t)
+		var inside := Vector3(0, KitHouse.FLOOR + 1.2, dm.z / 2 - 1.0)
+		var floor_at := inside.y - _ray_hit(faces, inside, Vector3(0, -2.0, inside.z))
+		check(absf(floor_at - KitHouse.FLOOR) < 0.01, "%s: the floor collides where it is drawn (%.2f)" % [t, floor_at])
+
+static func _ray_hit(faces: PackedVector3Array, a: Vector3, b: Vector3) -> float:
+	var best := INF
+	for i in range(0, faces.size(), 3):
+		var hit = Geometry3D.segment_intersects_triangle(a, b, faces[i], faces[i + 1], faces[i + 2])
+		if hit != null:
+			best = minf(best, a.distance_to(hit))
+	return best
+
 func test_landmarks() -> void:
 	# Each landmark mesh builds, about the size of its collision box.
 	for t in Landmark.LABELS:
@@ -807,6 +848,15 @@ func test_hand_light() -> void:
 	check(fix, "a dead flashlight can be repaired")
 	hl.toggle(inv)
 	check(not hl.is_on(), "a dead flashlight gives no light")
+	# Holding a torch on the hotbar lights it, with no key press.
+	inv.add(ItemDB.make("torch", 1, 1.0, {}))
+	hl.set_held("torch", inv)
+	check(hl.is_on() and hl.lit() == "torch", "a torch held in hand burns")
+	check(hl.toggle(inv) != "Light off" and hl.is_on(), "the off-hand key does not put out a held torch")
+	hl.tick(HandLight.TORCH_BURN + 1.0, inv)
+	check(inv.count("torch") == 0 and not hl.is_on(), "a held torch burns down too")
+	hl.set_held("", inv)
+	check(not hl.is_on(), "putting it away puts it out")
 	hl.free()
 
 func test_levelling_and_attributes() -> void:
@@ -1020,6 +1070,15 @@ func test_road_profiles() -> void:
 	var m := Bridge.build(Bridge.pack_viaduct(24.0, 9.0, 2.0))
 	check(m.get_surface_count() > 0 and absf(m.get_aabb().end.y - (9.0 + 1.0 + 0.92)) < 0.6, "a viaduct span climbs from end to end")
 
+func test_bridges_meet_the_road() -> void:
+	# Every bridge and viaduct near the origin comes down onto the road at its ends, in a
+	# new world and an older one (towns and rivers reshape the land after roads are laid).
+	var survey = load("res://tools/probe_bridges.gd")
+	for tv in [ChunkGenerator.GEN_VERSION, 7]:
+		var res: Dictionary = survey.survey(7, tv, 1)
+		check(res["total"] >= 3 and res["bad"] == 0, "bridge ends meet the ground in v%d worlds (%d bridges, %d bad: %s)" % [tv, res["total"], res["bad"], str(res["lines"].filter(func(l): return l.ends_with("BAD")))])
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+
 func test_scenery_meshes() -> void:
 	# Alien ruins in every form, the wayside markers and the fliers all build.
 	var forms := {}
@@ -1031,6 +1090,19 @@ func test_scenery_meshes() -> void:
 		var m := HiFlora.build("alien_ruin", sp, 0)
 		check(m != null and m.get_surface_count() >= 2 and m.get_aabb().size.y > 2.0, "alien ruin '%s' builds (%s)" % [f, m.get_aabb().size if m else "null"])
 	check(forms.size() == 5, "all five ruin forms seen (%s)" % [forms.keys()])
+	# A xenolith circle collides with its blades, not a box: you can walk in to the core.
+	var msp := 1
+	while Flora.species("alien_ruin", msp)["form"] != "monoliths":
+		msp += 1
+	var mp := Flora.species("alien_ruin", msp)
+	var rsh: Shape3D = ObjectLibrary.shape_of({"t": "alien_ruin", "sp": msp, "v": 0, "st": {}})[0]
+	check(rsh is ConcavePolygonShape3D, "a ruin collides with its own shape")
+	if rsh is ConcavePolygonShape3D:
+		var faces: PackedVector3Array = rsh.get_faces()
+		var sz: float = mp["size"]
+		var gap := Vector3(cos(PI / float(mp["count"])), 0, sin(PI / float(mp["count"])))
+		check(_ray_hit(faces, gap * 4.2 * sz + Vector3(0, 1.2, 0), gap * sz + Vector3(0, 1.2, 0)) == INF, "you can walk between the blades toward the core")
+		check(_ray_hit(faces, Vector3(7.0 * sz, 1.0, 0), Vector3(3.0 * sz, 1.0, 0)) < INF, "the blades themselves are solid")
 	# Ground clutter: kit pebbles (plus flowers, fungi or scrap) in a metre-square patch.
 	for era in Eras.COUNT:
 		var m := ObjectLibrary.get_mesh("clutter_%d" % era)

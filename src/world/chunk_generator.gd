@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 7 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms.
+const GEN_VERSION := 7 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -34,6 +34,7 @@ var landforms := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
+var _chunk_sites := {} ## chunk key -> [settlements, settlements + forts] its terrain uses
 
 ## Flat radii [inner, outer] for hamlets, villages and towns (v4 worlds).
 const SITE_RADII := [[30.0, 54.0], [42.0, 66.0], [56.0, 80.0]]
@@ -193,8 +194,15 @@ func road_profile(a: Dictionary, b: Dictionary) -> Dictionary:
 		var full := PackedFloat32Array()
 		for p in pts:
 			var sh := field.shape(p.x, p.y)
-			raw.append(sh.x + sh.y)
-			full.append(sh.x + sh.y + sh.z)
+			if WorldField.terrain_v >= 8:
+				# v8: the towns at either end flatten their ground after the road is laid,
+				# so plan on that ground; otherwise the road rides a viaduct over a dip the
+				# town then fills, and its deck stands on the town's ground.
+				raw.append(_flatten(p.x, p.y, sh.x + sh.y, [a, b]))
+				full.append(_flatten(p.x, p.y, sh.x + sh.y + sh.z, [a, b]))
+			else:
+				raw.append(sh.x + sh.y)
+				full.append(sh.x + sh.y + sh.z)
 		# Climbing costs, climbing steeper than the road may costs far more, and so do
 		# lakes; a longer way round costs its length.
 		var cost := 0.0
@@ -205,9 +213,10 @@ func road_profile(a: Dictionary, b: Dictionary) -> Dictionary:
 				cost += 25.0
 		if cost < best_cost:
 			best_cost = cost
-			best = {"pts": pts, "raw": raw}
+			best = {"pts": pts, "raw": raw, "full": full}
 	var pts: PackedVector2Array = best["pts"]
 	var raw: PackedFloat32Array = best["raw"]
+	var full: PackedFloat32Array = best["full"]
 	var n := pts.size()
 	var level := PackedFloat32Array()
 	level.resize(n)
@@ -234,12 +243,22 @@ func road_profile(a: Dictionary, b: Dictionary) -> Dictionary:
 		level[i] = maxf(level[i], level[i + 1] - g)
 	var air := PackedByteArray()
 	air.resize(n)
+	var v8 := WorldField.terrain_v >= 8
 	for i in n:
-		air[i] = 1 if level[i] - raw[i] > ROAD_FILL and i > 2 and i < n - 3 else 0
+		# v8: tors and towers left standing under a viaduct would bury its deck, so the
+		# road only takes to the air above the land with its relief.
+		var land := maxf(raw[i], full[i]) if v8 else raw[i]
+		air[i] = 1 if level[i] - land > ROAD_FILL and i > 2 and i < n - 3 else 0
 	# Fill single-point gaps so a viaduct is not broken by one high spot.
 	for i in range(1, n - 1):
 		if air[i] == 0 and air[i - 1] == 1 and air[i + 1] == 1:
 			air[i] = 1
+	# v8: a lone point in the air is a dip the embankment either side fills; a viaduct
+	# that short would be buried in it.
+	if v8:
+		for i in range(1, n - 1):
+			if air[i] == 1 and air[i - 1] == 0 and air[i + 1] == 0:
+				air[i] = 0
 	var out := {"pts": pts, "level": level, "air": air}
 	_profile_lock.lock()
 	if _profiles.size() > 4000:
@@ -337,9 +356,14 @@ func _place_bridges(chunk: Dictionary, roads: Array) -> void:
 	var z0 := float(int(chunk["cz"]) * SIZE)
 	for rd in roads:
 		var pts: PackedVector2Array = rd["pts"]
-		var ar: PackedByteArray = rd.get("air", PackedByteArray())
+		var carried := PackedByteArray()
+		carried.resize(pts.size())
+		if rd.has("air"):
+			for run in _viaduct_runs(rd):
+				for q in range(run.x, run.y + 1):
+					carried[q] = 1
 		for i in range(1, pts.size() - 1):
-			if not ar.is_empty() and ar[i] == 1:
+			if carried[i] == 1:
 				continue # a viaduct already carries the road over
 			var p: Vector2 = pts[i]
 			if p.x < x0 - ROAD_STEP or p.x > x0 + SIZE + ROAD_STEP or p.y < z0 - ROAD_STEP or p.y > z0 + SIZE + ROAD_STEP:
@@ -366,52 +390,214 @@ func _place_bridges(chunk: Dictionary, roads: Array) -> void:
 			if is_nan(level):
 				continue
 			var dir := (b - a).normalized()
-			var wet := 0.0
-			for sgn in [-1.0, 1.0]:
-				var d := 0.0
-				while d < 40.0 and field.river_t(best.x + dir.x * d * sgn, best.y + dir.y * d * sgn) < 1.5:
-					d += 1.0
-				wet += d
+			var back := 0.0
+			while back < 40.0 and field.river_t(best.x - dir.x * back, best.y - dir.y * back) < 1.5:
+				back += 1.0
+			var ahead := 0.0
+			while ahead < 40.0 and field.river_t(best.x + dir.x * ahead, best.y + dir.y * ahead) < 1.5:
+				ahead += 1.0
+			var wet := back + ahead
 			if wet > 50.0:
 				continue # the road runs along the river here, not across it
-			var deck := level + 1.7 - height_at(chunk, lx, lz)
-			_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack(wet + 2.0, deck), 0)
+			# Centre the bridge on the water, not on its deepest point.
+			var c := best + dir * (ahead - back) * 0.5
+			if c.x >= x0 and c.x < x0 + SIZE and c.y >= z0 and c.y < z0 + SIZE:
+				lx = c.x - x0
+				lz = c.y - z0
+			else:
+				c = best
+			var span := wet + 2.0
+			# The banks just beyond the span's ends.
+			var ga := _road_ground(rd, c - dir * (span * 0.5 + 1.5))
+			var gb := _road_ground(rd, c + dir * (span * 0.5 + 1.5))
+			var yaw := atan2(dir.x, dir.y)
+			var era := WorldField.dominant(weights_at(chunk, lx, lz))
+			var base := height_at(chunk, lx, lz)
+			if absf(ga - gb) > 2.0:
+				# Banks at different heights: a sloping span from one to the other, its ends
+				# on the ground where it meets them.
+				var ea := _road_ground(rd, c - dir * (span * 0.5 + 0.5))
+				var eb := _road_ground(rd, c + dir * (span * 0.5 + 0.5))
+				var clear := INF
+				for q in [0.25, 0.5, 0.75]:
+					clear = minf(clear, lerpf(ea, eb, q) - _land_at(c + dir * span * (q - 0.5)))
+				if clear > 0.3:
+					_add(chunk, "bridge", era, lx, lz, yaw, 1.0, {}, Bridge.pack_viaduct(span, (ea + eb) * 0.5 + 0.05 - base, eb - ea), 0)
+					continue
+				continue # no span fits both banks: the road fords the river here
+			# The deck clears the water and stands a little above the higher bank, so its
+			# approaches run down into both (it used to sit a step below the banks).
+			var top := maxf(level + 1.7, maxf(ga, gb) + 0.3)
+			_add(chunk, "bridge", era, lx, lz, yaw, 1.0, {}, Bridge.pack(span, top - base), 0)
+
+## The ground on a road's centreline at p once rivers have cut their vales through it
+## and towns have flattened theirs: what a bridge's ends have to meet. Follows the
+## terrain pass in generate(), on the road itself (where the land is the road's level).
+func _road_ground(rd: Dictionary, p: Vector2) -> float:
+	return _road_cut(p, _road_height(rd, p))
+
+## The ground under a road at p: laid at the road's level (then cut by rivers), or the
+## bare land where the road is up on a viaduct and nothing was laid.
+func _under_road(rd: Dictionary, p: Vector2) -> float:
+	var ar: PackedByteArray = rd.get("air", PackedByteArray())
+	var q := int(_road_seg(rd["pts"], p).x)
+	if not ar.is_empty() and ar[q] == 1 and ar[q + 1] == 1:
+		return _land_at(p)
+	return _road_ground(rd, p)
+
+## The road stretch nearest p: [index of its first point, how far along it (0..1)].
+static func _road_seg(pts: PackedVector2Array, p: Vector2) -> Vector2:
+	var bi := 0
+	var bt := 0.0
+	var bd := INF
+	for q in pts.size() - 1:
+		var ab := pts[q + 1] - pts[q]
+		var t := clampf((p - pts[q]).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+		var d := p.distance_squared_to(pts[q] + ab * t)
+		if d < bd:
+			bd = d
+			bi = q
+			bt = t
+	return Vector2(bi, bt)
+
+## The road's own level at p, along its nearest stretch.
+func _road_height(rd: Dictionary, p: Vector2) -> float:
+	var pts: PackedVector2Array = rd["pts"]
+	var lv: PackedFloat32Array = rd.get("level", PackedFloat32Array())
+	var seg := _road_seg(pts, p)
+	var bi := int(seg.x)
+	var bt := seg.y
+	var raw := {}
+	var ha := lv[bi] if not lv.is_empty() else _road_level(pts, bi, raw)
+	var hb := lv[bi + 1] if not lv.is_empty() else _road_level(pts, bi + 1, raw)
+	return lerpf(ha, hb, bt)
+
+## Height h on the road at p after a river's vale and the towns' flattening, with the
+## same towns the terrain of p's own chunk sees (so every chunk gets the same answer).
+func _road_cut(p: Vector2, h: float, towns_too := true, rough := 0.0) -> float:
+	var near := _sites_for(p)
+	if rivers:
+		var t := field.river_t(p.x, p.y)
+		if t < WorldField.RIVER_REACH:
+			var rl := field.river_level(p.x, p.y, {})
+			var m := WorldField.river_strength(h - rough, rl)
+			for st in near[0]:
+				m *= smoothstep(st["outer"], st["outer"] + 30.0, p.distance_to(st["center"]))
+			h = WorldField.carve_river(h, t, rl, m)
+	return _flatten(p.x, p.y, h, near[1]) if towns_too else h
+
+## [settlements, settlements + forts] that the terrain of p's chunk is shaped by.
+func _sites_for(p: Vector2) -> Array:
+	var key := Vector2i(int(floor(p.x / SIZE)), int(floor(p.y / SIZE)))
+	if not _chunk_sites.has(key):
+		if _chunk_sites.size() > 256:
+			_chunk_sites.clear()
+		var x0 := float(key.x * SIZE)
+		var z0 := float(key.y * SIZE)
+		var near := settlements_near(x0, z0, x0 + SIZE, z0 + SIZE)
+		_chunk_sites[key] = [near, near + forts_near(x0, z0, x0 + SIZE, z0 + SIZE)]
+	return _chunk_sites[key]
+
+## The stretches of a road a viaduct carries, as point ranges [a, b] that start and end
+## on the ground. A river's vale right at either end is taken in too: it would cut the
+## bank out from under the end of the deck.
+func _viaduct_runs(rd: Dictionary) -> Array:
+	var pts: PackedVector2Array = rd["pts"]
+	var ar: PackedByteArray = rd["air"]
+	var out: Array = []
+	var i := 0
+	while i < pts.size():
+		if ar[i] == 0:
+			i += 1
+			continue
+		var j := i
+		while j + 1 < pts.size() and ar[j + 1] == 1:
+			j += 1
+		var a := maxi(i - 1, 0)
+		var b := mini(j + 1, pts.size() - 1)
+		if rivers:
+			var lv: PackedFloat32Array = rd["level"]
+			var n := 0
+			while a > 1 and n < 12 and lv[a] - _road_cut(pts[a], lv[a], false) > 0.5:
+				a -= 1
+				n += 1
+			n = 0
+			while b < pts.size() - 2 and n < 12 and lv[b] - _road_cut(pts[b], lv[b], false) > 0.5:
+				b += 1
+				n += 1
+		# A vale between two viaducts joins them into one.
+		if not out.is_empty() and a <= out[-1].y + 1:
+			out[-1] = Vector2i(out[-1].x, maxi(out[-1].y, b))
+		else:
+			out.append(Vector2i(a, b))
+		i = maxi(j, b - 1) + 1
+	return out
 
 ## v5: viaducts where a road runs high above the ground, in spans of at most 40 m. Each
-## span belongs to the chunk holding its middle.
+## span belongs to the chunk holding its middle. A span is left out where the land
+## already carries the road (a town's flattened ground fills the dip, or the embankments
+## either side do), and its neighbours come down to the ground there instead. Every
+## chunk works this out the same way, so the spans meet.
 func _place_viaducts(chunk: Dictionary, roads: Array) -> void:
 	var x0 := float(int(chunk["cx"]) * SIZE)
 	var z0 := float(int(chunk["cz"]) * SIZE)
 	for rd in roads:
 		var pts: PackedVector2Array = rd["pts"]
-		var ar: PackedByteArray = rd["air"]
 		var lv: PackedFloat32Array = rd["level"]
-		var i := 0
-		while i < pts.size():
-			if ar[i] == 0:
-				i += 1
-				continue
-			var j := i
-			while j + 1 < pts.size() and ar[j + 1] == 1:
-				j += 1
-			# Points i..j are in the air; the deck runs from i-1 to j+1, cut into spans.
-			var a := maxi(i - 1, 0)
-			var b := mini(j + 1, pts.size() - 1)
+		for run in _viaduct_runs(rd):
+			# The deck runs from a to b, cut into spans.
+			var a: int = run.x
+			var b: int = run.y
 			var pieces := maxi(1, int(ceil((b - a) * ROAD_STEP / 40.0)))
+			var cut: Array = []
+			for s in pieces + 1:
+				cut.append(a + int(round(float(b - a) * s / pieces)))
+			# Where the viaduct comes down: the run's ends, on the ground beyond any river.
+			var end_h := func(q: int) -> float: return _road_ground(rd, pts[q])
+			var keep: Array = []
 			for s in pieces:
-				var pa := a + int(round(float(b - a) * s / pieces))
-				var pb := a + int(round(float(b - a) * (s + 1) / pieces))
+				var mid := (pts[cut[s]] + pts[cut[s + 1]]) * 0.5
+				var ha: float = end_h.call(cut[s]) if s == 0 else lv[cut[s]]
+				var hb: float = end_h.call(cut[s + 1]) if s == pieces - 1 else lv[cut[s + 1]]
+				keep.append(_town_hold(mid) <= 0.5 and (ha + hb) * 0.5 - _under_road(rd, mid) >= 1.5)
+			for s in pieces:
+				if not keep[s]:
+					continue
+				var pa: int = cut[s]
+				var pb: int = cut[s + 1]
 				var mid := (pts[pa] + pts[pb]) * 0.5
 				if mid.x < x0 or mid.x >= x0 + SIZE or mid.y < z0 or mid.y >= z0 + SIZE:
 					continue
 				var lx := mid.x - x0
 				var lz := mid.y - z0
 				var dir := (pts[pb] - pts[pa]).normalized()
-				# The deck's top sits on the road's level at both ends.
-				var deck := (lv[pa] + lv[pb]) * 0.5 + 0.05 - height_at(chunk, lx, lz)
+				# The deck's top sits on the road's level where spans join, and on the
+				# ground where the viaduct comes down.
+				var ha: float = end_h.call(pa) if s == 0 else (_under_road(rd, pts[pa]) if not keep[s - 1] else lv[pa])
+				var hb: float = end_h.call(pb) if s == pieces - 1 else (_under_road(rd, pts[pb]) if not keep[s + 1] else lv[pb])
+				var deck := (ha + hb) * 0.5 + 0.05 - height_at(chunk, lx, lz)
 				var span := pts[pa].distance_to(pts[pb])
-				_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack_viaduct(span, deck, lv[pb] - lv[pa]), 0)
-			i = j + 1
+				_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack_viaduct(span, deck, hb - ha), 0)
+
+## How much a town's flattening has replaced the land at p (0 none, 1 all of it).
+func _town_hold(p: Vector2) -> float:
+	var w := 0.0
+	for st in _sites_for(p)[0]:
+		w = maxf(w, 1.0 - smoothstep(st["inner"], st["outer"], p.distance_to(st["center"])))
+	return w
+
+## The land at p as generate() leaves it away from roads: rivers, towns and all.
+func _land_at(p: Vector2) -> float:
+	var h: float
+	var rough := 0.0
+	var rt := field.river_t(p.x, p.y) if rivers else INF
+	if landforms:
+		var sh := field.shape(p.x, p.y)
+		rough = sh.z
+		h = sh.x + sh.y * smoothstep(WorldField.RIVER_REACH, WorldField.RIVER_REACH + 4.0, rt) + rough
+	else:
+		h = field.height(p.x, p.y)
+	return _road_cut(p, h, true, rough)
 
 ## A cave in rocky hillsides now and then: its mouth faces downhill, with ore seams
 ## inside and sometimes a cache at the back.

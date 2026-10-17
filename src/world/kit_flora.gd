@@ -326,7 +326,7 @@ static func _material(kind: String, base: String) -> Material:
 			sm.shader = load("res://src/world/foliage.gdshader")
 			sm.set_shader_parameter("albedo_tex", load(DIR + base + ".png"))
 			sm.set_shader_parameter("back", Color(0.3, 0.35, 0.12))
-			sm.set_shader_parameter("sway", 0.6 if base == "Leaf_Pine" else (30.0 if base in ["Leaves", "Grass", "Flowers"] else 1.0))
+			sm.set_shader_parameter("sway", 0.6 if base == "Leaf_Pine" else (8.0 if base in ["Leaves", "Grass", "Flowers"] else 1.0))
 			m = sm
 		else:
 			var bm := StandardMaterial3D.new()
