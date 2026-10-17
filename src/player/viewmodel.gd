@@ -35,6 +35,11 @@ func _ready() -> void:
 		arms.position = Vector3(0, -1.55, 0.12)
 		add_child(arms)
 		arms.set_arms_only()
+		# Armour you wear shows on your arms and hands too.
+		var g := get_node_or_null("/root/Game")
+		if g != null:
+			arms.wear(g.equipment)
+			g.equipment_changed.connect(func(): arms.wear(g.equipment))
 		arms.play("pistol_idle")
 		# Settle the pose now (skip the cross-fade) so the grip is computed on it.
 		arms.anim.advance(0.5)

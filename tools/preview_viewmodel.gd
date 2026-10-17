@@ -2,7 +2,8 @@ extends SceneTree
 ## Renders the first-person view of held items against a plain sky, for tuning how big
 ## and where tools sit on screen. Run windowed:
 ##   godot --path . --script res://tools/preview_viewmodel.gd -- --out=DIR [--items=a,b]
-##   [--raise=0.5] (binoculars part way up to the eyes)
+##   [--raise=0.5] (binoculars part way up to the eyes) [--wear=mail_iron,gloves_leather]
+##   ("none" as an item shows the empty hands)
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -10,11 +11,15 @@ func _run() -> void:
 	var out := "user://viewmodel"
 	var items := ["pickaxe_iron", "axe_iron", "sword_iron", "torch", "pulse_rifle"]
 	var raise := 0.0
+	var wear := {}
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
 		elif a.begins_with("--items="):
 			items = Array(a.substr(8).split(","))
+		elif a.begins_with("--wear="):
+			for w in a.substr(7).split(","):
+				wear[ItemDB.def(w)["slot"]] = ItemDB.make(w, 1, 1.0, {})
 		elif a.begins_with("--raise="):
 			raise = a.substr(8).to_float()
 	DirAccess.make_dir_recursive_absolute(out)
@@ -43,8 +48,10 @@ func _run() -> void:
 	var vm := Viewmodel.new()
 	vm.look = Player.LOOK
 	cam.add_child(vm)
+	if vm.arms and not wear.is_empty():
+		vm.arms.wear(wear)
 	for t in items:
-		vm.show_item(t)
+		vm.show_item("" if t == "none" else t)
 		vm.raise = raise
 		for i in 30:
 			vm.sway(1.0 / 60.0, 0.0)
