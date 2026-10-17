@@ -335,6 +335,9 @@ const ROLE := {
 	"guildmaster": "guard", "archmage": "cleric", "fence": "hunter", "guild factor": "merchant", "ranger captain": "hunter",
 	"archdruid": "cleric", "contract broker": "merchant", "chief engineer": "smith", "flight master": "pilot",
 	"bandit": "hunter", "pirate": "hunter",
+	# Boat crews.
+	"captain": "merchant", "skipper": "merchant", "sailor": "worker", "deckhand": "worker", "fisher": "worker",
+	"fisherman": "worker", "castaway": "hunter", "researcher": "civil", "scientist": "civil", "crew": "worker",
 }
 
 ## A stable number for one person, from their saved looks (rounded, so a save and load
