@@ -19,7 +19,8 @@ var _rotor: Node3D
 var _spin := 0.0 ## rad/s the sails turn at, as drawn
 var _blade: Node3D
 var _closed := true
-var _blade_a := 0.0
+var _blade_a := 0.0 ## 0 open / off .. 1 closed / on, as drawn
+var _blade_spec := {}
 var _smoke: Node3D
 var _running := false
 
@@ -49,14 +50,19 @@ func setup(c: ChunkNode, o: Dictionary) -> void:
 		var g := PowerGrid.current
 		if g != null:
 			_head.global_rotation.y = _wind_yaw(g.wind_dir)
-	if _spec.get("role", "") == "switch":
+	var bl: Dictionary = _spec.get("blade", {})
+	if bl.is_empty() and _spec.get("role", "") == "switch" and not _spec.has("logic"):
+		bl = {"part": "switch_blade", "pos": Vector3(0, -0.1, 0.07), "on": 0.0, "off": OPEN_ANGLE}
+	if not bl.is_empty():
+		# A part that swings (knife blade, lever) or is pushed in (button, plate).
+		_blade_spec = bl
 		_blade = Node3D.new()
-		_blade.position = Vector3(0, -0.1, 0.07)
-		_blade.add_child(_mesh("switch_blade"))
+		_blade.position = bl["pos"]
+		_blade.add_child(_mesh(String(bl["part"])))
 		add_child(_blade)
-		_closed = Power.is_on(o)
-		_blade_a = 0.0 if _closed else OPEN_ANGLE
-		_blade.rotation.x = _blade_a
+		_closed = Power.is_on(o) if Signals.kind(o) in ["", "lever"] else bool(o["st"].get("sg", false))
+		_blade_a = 1.0 if _closed else 0.0
+		_pose_blade()
 	if _spec.has("smoke"):
 		_smoke = FireFx.embers(0.9, true)
 		var sparks := _smoke.get_node_or_null("Sparks")
@@ -124,7 +130,8 @@ static func _spot_shadows(l: Light3D) -> void:
 	l.distance_fade_shadow = 40.0
 
 ## What the piece is doing this tick: lit (a lamp with power and switched on), running
-## (an engine burning or a windmill's dynamo turning), closed (a switch).
+## (an engine burning or a windmill's dynamo turning), closed (a switch closed, a lever
+## on, a button or plate pressed).
 func apply(lit: bool, running: bool, closed: bool) -> void:
 	_lit = lit
 	if _closed != closed:
@@ -134,6 +141,12 @@ func apply(lit: bool, running: bool, closed: bool) -> void:
 		_set_smoke(running and _smoke != null)
 	if not is_processing() and (_light != null or _blade != null or _head != null):
 		set_process(true)
+
+func _pose_blade() -> void:
+	if _blade_spec.has("push"):
+		_blade.position = (_blade_spec["pos"] as Vector3) + (_blade_spec["push"] as Vector3) * _blade_a
+	else:
+		_blade.rotation.x = lerpf(float(_blade_spec.get("off", OPEN_ANGLE)), float(_blade_spec.get("on", 0.0)), _blade_a)
 
 func _set_smoke(on: bool) -> void:
 	if _smoke == null:
@@ -161,9 +174,9 @@ func _process(delta: float) -> void:
 		_bulb_mat.emission_energy_multiplier = BULB_ENERGY * g
 		busy = busy or not is_equal_approx(_glow, want)
 	if _blade != null:
-		var a := 0.0 if _closed else OPEN_ANGLE
-		_blade_a = move_toward(_blade_a, a, delta * 9.0)
-		_blade.rotation.x = _blade_a
+		var a := 1.0 if _closed else 0.0
+		_blade_a = move_toward(_blade_a, a, delta * (12.0 if _blade_spec.has("push") else 5.0))
+		_pose_blade()
 		busy = busy or not is_equal_approx(_blade_a, a)
 	if _head != null:
 		var g := PowerGrid.current

@@ -57,6 +57,43 @@ static func insulator(k: MeshKit, at: Vector3) -> void:
 	for n in 3:
 		k.cylinder("bone", I.translated(at + Vector3(0, 0.05 + n * 0.03, 0)), 0.045 - n * 0.006, 0.03 - n * 0.004, 0.026, 10, true, 0.0, 1, CERAMIC)
 
+## A small painted steel box on the wall, its face toward +z, for the logic pieces.
+static func _logic_box(k: MeshKit, color: Color) -> void:
+	var I := Transform3D.IDENTITY
+	k.box("painted", I.translated(Vector3(0, 0, 0.04)), Vector3(0.22, 0.3, 0.08), color)
+	k.box("painted", I.translated(Vector3(0, 0, 0.081)), Vector3(0.2, 0.28, 0.003), color.lightened(0.06))
+	for c in [Vector2(-0.09, -0.13), Vector2(0.09, -0.13), Vector2(-0.09, 0.13), Vector2(0.09, 0.13)]:
+		k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(c.x, c.y, 0.083)), 0.008, 0.008, 0.006, 6)
+	_box_terminal(k, Vector3(0, -0.15, 0.04))
+
+## An open box on the wall (back and four sides, no front) for a glass front to close.
+static func _case(k: MeshKit, mat: String, size: Vector3, color: Color) -> void:
+	var I := Transform3D.IDENTITY
+	var t := 0.012
+	k.box(mat, I.translated(Vector3(0, 0, t * 0.5)), Vector3(size.x, size.y, t), color.darkened(0.25))
+	for sy in [-1.0, 1.0]:
+		k.box(mat, I.translated(Vector3(0, sy * (size.y - t) * 0.5, size.z * 0.5)), Vector3(size.x, t, size.z), color)
+	for sx in [-1.0, 1.0]:
+		k.box(mat, I.translated(Vector3(sx * (size.x - t) * 0.5, 0, size.z * 0.5)), Vector3(t, size.y, size.z), color)
+
+## A thin cast-iron plate the small pieces are screwed to the wall on.
+static func _wall_plate(k: MeshKit, size: Vector2) -> void:
+	k.box("cast_iron", Transform3D.IDENTITY.translated(Vector3(0, -0.02, 0.006)), Vector3(size.x, size.y, 0.012), GASIFIER.darkened(0.1))
+	rivets(k, Vector3(0, size.y * 0.5 - 0.035, 0.013), Vector3(0, size.y * 0.5 - 0.035, 0.013), 1, Vector3(0, 0, 1))
+	rivets(k, Vector3(0, -size.y * 0.5 - 0.005, 0.013), Vector3(0, -size.y * 0.5 - 0.005, 0.013), 1, Vector3(0, 0, 1))
+
+## The brass binding post a signal wire is screwed to.
+static func _box_terminal(k: MeshKit, at: Vector3) -> void:
+	k.cylinder("gold", Transform3D.IDENTITY.translated(at + Vector3(0, -0.02, 0)), 0.012, 0.014, 0.025, 8, true, 0.0, 1, BRASS)
+
+## An enamel dial facing +z with tick marks and a pointer at angle `needle` (radians).
+static func _dial(k: MeshKit, at: Vector3, r: float, ticks: int, needle: float) -> void:
+	k.cylinder("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), at), r, r, 0.004, 20, true, 0.0, 1, ENAMEL)
+	for n in ticks:
+		var a := TAU * n / ticks
+		k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), -a), at + Vector3(sin(a), cos(a), 0) * r * 0.82 + Vector3(0, 0, 0.004)), Vector3(r * 0.06, r * 0.18, 0.002), Color(0.1, 0.1, 0.1))
+	k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), -needle), at + Vector3(sin(needle), cos(needle), 0) * r * 0.35 + Vector3(0, 0, 0.007)), Vector3(r * 0.07, r * 0.75, 0.002), Color(0.55, 0.1, 0.08))
+
 static func proc(k: MeshKit, what: String) -> void:
 	var I := Transform3D.IDENTITY
 	match what:
@@ -234,6 +271,124 @@ static func proc(k: MeshKit, what: String) -> void:
 			for x in [-0.04, 0.04]:
 				k.box("painted", I.translated(Vector3(x, 0.1, 0.07)), Vector3(0.012, 0.06, 0.06), COPPER)
 				k.box("painted", I.translated(Vector3(x, -0.1, 0.07)), Vector3(0.012, 0.05, 0.06), COPPER)
+		"pw_lever":
+			# A cast-iron backplate with a pivot boss; the arm is a part (PowerNode swings it).
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.015)), Vector3(0.14, 0.34, 0.03), GASIFIER)
+			rivets(k, Vector3(-0.05, 0.15, 0.032), Vector3(0.05, 0.15, 0.032), 2, Vector3(0, 0, 1))
+			rivets(k, Vector3(-0.05, -0.15, 0.032), Vector3(0.05, -0.15, 0.032), 2, Vector3(0, 0, 1))
+			# A quadrant guide the arm runs in.
+			for x in [-0.035, 0.035]:
+				k.box("cast_iron", I.translated(Vector3(x, 0.02, 0.05)), Vector3(0.012, 0.22, 0.04), GASIFIER.darkened(0.15))
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.02, 0.06)), 0.022, 0.022, 0.1, 10, true, 0.0, 1, GASIFIER)
+			_box_terminal(k, Vector3(0, -0.16, 0.03))
+		"pw_button":
+			# A round cast housing with a brass bezel; the cap is a part, pushed in.
+			_wall_plate(k, Vector2(0.16, 0.26))
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0)), 0.06, 0.055, 0.045, 16, true, 0.0, 1, GASIFIER)
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0.045)), 0.04, 0.038, 0.012, 16, true, 0.0, 1, BRASS)
+			_box_terminal(k, Vector3(0, -0.08, 0.03))
+		"pw_plate":
+			# A riveted iron frame flush on the ground; the chequer-plate top is a part.
+			for side in [-1.0, 1.0]:
+				k.box("cast_iron", I.translated(Vector3(side * 0.43, 0.025, 0)), Vector3(0.06, 0.05, 0.92), GASIFIER.darkened(0.1))
+				k.box("cast_iron", I.translated(Vector3(0, 0.025, side * 0.43)), Vector3(0.8, 0.05, 0.06), GASIFIER.darkened(0.1))
+			for c in [Vector3(-0.43, 0.052, -0.43), Vector3(0.43, 0.052, -0.43), Vector3(-0.43, 0.052, 0.43), Vector3(0.43, 0.052, 0.43)]:
+				k.sphere("cast_iron", I.translated(c), 0.016, 3, 6, 0.0, 0.6, Color.WHITE, true)
+			k.box("cast_iron", I.translated(Vector3(0, 0.03, -0.47)), Vector3(0.06, 0.04, 0.03), GASIFIER)
+		"pw_motion":
+			# A little enamelled hood with a dark lens that looks out ahead and down.
+			_wall_plate(k, Vector2(0.16, 0.26))
+			k.box("painted", I.translated(Vector3(0, 0, 0.035)), Vector3(0.12, 0.14, 0.07), ENAMEL)
+			k.box("painted", Transform3D(Basis(Vector3(1, 0, 0), 0.35), Vector3(0, 0.07, 0.07)), Vector3(0.14, 0.012, 0.09), ENAMEL.darkened(0.08))
+			k.sphere("glass", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, -0.005, 0.07)), 0.04, 6, 12, 0.0, 1.0, Color(0.12, 0.1, 0.1), true)
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, -0.005, 0.068)), 0.046, 0.046, 0.008, 14, true, 0.0, 1, BRASS)
+			_box_terminal(k, Vector3(0, -0.08, 0.03))
+		"pw_daylight":
+			# A selenium cell under a glass dome, on a small box.
+			_wall_plate(k, Vector2(0.16, 0.26))
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.04)), Vector3(0.12, 0.12, 0.08), GASIFIER)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.06, 0.045)), 0.045, 0.045, 0.012, 12, true, 0.0, 1, GASIFIER.darkened(0.1))
+			k.cylinder("painted", I.translated(Vector3(0, 0.072, 0.045)), 0.034, 0.034, 0.004, 12, true, 0.0, 1, Color(0.36, 0.16, 0.12))
+			k.sphere("clear_glass", I.translated(Vector3(0, 0.072, 0.045)), 0.042, 6, 12, 0.0, 1.0, Color.WHITE, true)
+			_box_terminal(k, Vector3(0, -0.08, 0.03))
+		"pw_timer":
+			_logic_box(k, Color(0.24, 0.32, 0.26))
+			# A dial with a pointer and a ring of pins.
+			_dial(k, Vector3(0, 0.03, 0.082), 0.075, 12, 0.9)
+		"pw_clock":
+			# A round brass-cased time switch: a clock face with two hands.
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0)), 0.15, 0.15, 0.07, 24, true, 0.0, 1, BRASS)
+			k.cylinder("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0.07)), 0.13, 0.13, 0.004, 24, true, 0.0, 1, ENAMEL)
+			for n in 12:
+				var a := TAU * n / 12.0
+				var tl := 0.022 if n % 3 == 0 else 0.012
+				k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), -a), Vector3(sin(a), cos(a), 0) * (0.112 - tl * 0.5) + Vector3(0, 0, 0.075)), Vector3(0.006, tl, 0.003), Color(0.1, 0.1, 0.1))
+			k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), -2.1), Vector3(sin(2.1), cos(2.1), 0) * 0.035 + Vector3(0, 0, 0.078)), Vector3(0.008, 0.07, 0.003), Color(0.08, 0.08, 0.08))
+			k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), -5.3), Vector3(sin(5.3), cos(5.3), 0) * 0.05 + Vector3(0, 0, 0.08)), Vector3(0.005, 0.1, 0.003), Color(0.08, 0.08, 0.08))
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0.074)), 0.009, 0.009, 0.01, 8, true, 0.0, 1, BRASS)
+			_box_terminal(k, Vector3(0, -0.17, 0.04))
+		"pw_gate":
+			# An open steel case with a glass front: the relay coils inside, four input
+			# terminals across the top.
+			_case(k, "painted", Vector3(0.22, 0.3, 0.08), Color(0.27, 0.31, 0.38))
+			k.box("clear_glass", I.translated(Vector3(0, 0, 0.078)), Vector3(0.2, 0.28, 0.004))
+			_box_terminal(k, Vector3(0, -0.15, 0.04))
+			for x in [-0.045, 0.0, 0.045]:
+				k.cylinder("painted", I.translated(Vector3(x, -0.02, 0.05)), 0.016, 0.016, 0.08, 10, true, 0.0, 1, COPPER)
+			for x in [-0.075, -0.025, 0.025, 0.075]:
+				k.cylinder("gold", I.translated(Vector3(x, 0.15, 0.05)), 0.01, 0.012, 0.03, 8, true, 0.0, 1, BRASS)
+		"pw_latch":
+			_logic_box(k, Color(0.4, 0.2, 0.15))
+			# A drop flag in a window shows it set; a reset knob below.
+			k.box("painted", I.translated(Vector3(0, 0.04, 0.082)), Vector3(0.1, 0.07, 0.004), ENAMEL)
+			k.box("painted", I.translated(Vector3(0, 0.04, 0.086)), Vector3(0.06, 0.03, 0.004), Color(0.1, 0.1, 0.1))
+			k.cylinder("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, -0.06, 0.08)), 0.02, 0.018, 0.025, 12, true, 0.0, 1, Color(0.1, 0.1, 0.1))
+		"pw_counter":
+			_logic_box(k, Color(0.15, 0.15, 0.16))
+			# Three number wheels behind a slot (blank faces: no writing).
+			k.box("painted", I.translated(Vector3(0, 0.03, 0.082)), Vector3(0.15, 0.06, 0.004), Color(0.05, 0.05, 0.05))
+			for x in [-0.045, 0.0, 0.045]:
+				k.cylinder("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x, 0.03, 0.07)), 0.03, 0.03, 0.035, 14, true, 0.0, 1, ENAMEL)
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0.05, -0.06, 0.08)), 0.014, 0.014, 0.02, 10, true, 0.0, 1, BRASS)
+		"pw_delay":
+			_logic_box(k, Color(0.2, 0.26, 0.2))
+			# A brass dashpot (an oil damper that slows the contact) on the front.
+			k.cylinder("gold", I.translated(Vector3(0, -0.07, 0.11)), 0.03, 0.03, 0.14, 14, true, 0.0, 1, BRASS)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.07, 0.11)), 0.006, 0.006, 0.05, 6)
+			k.box("cast_iron", I.translated(Vector3(0, -0.075, 0.09)), Vector3(0.08, 0.02, 0.04), GASIFIER)
+			_dial(k, Vector3(0, 0.1, 0.082), 0.03, 6, 2.2)
+		"pw_relay":
+			# An iron box with a glass front: the coil and the contact arm inside.
+			_case(k, "cast_iron", Vector3(0.22, 0.34, 0.11), GASIFIER)
+			k.box("clear_glass", I.translated(Vector3(0, 0, 0.108)), Vector3(0.2, 0.32, 0.004))
+			k.cylinder("painted", I.translated(Vector3(-0.04, -0.05, 0.06)), 0.035, 0.035, 0.12, 14, true, 0.0, 1, COPPER)
+			k.box("cast_iron", I.translated(Vector3(0.03, 0.09, 0.06)), Vector3(0.1, 0.012, 0.03), GASIFIER.darkened(0.2))
+			k.box("painted", I.translated(Vector3(0.06, 0.0, 0.06)), Vector3(0.012, 0.1, 0.02), COPPER)
+			for x in [-0.05, 0.05]:
+				k.cylinder("gold", I.translated(Vector3(x, -0.2, 0.06)), 0.018, 0.02, 0.05, 8, true, 0.0, 1, BRASS)
+			_box_terminal(k, Vector3(0, 0.19, 0.06))
+		"pw_charge":
+			# A meter on a small iron box: an enamel scale and a needle.
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.04)), Vector3(0.18, 0.2, 0.08), GASIFIER)
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.02, 0.08)), 0.065, 0.065, 0.012, 18, true, 0.0, 1, BRASS)
+			_dial(k, Vector3(0, 0.02, 0.093), 0.055, 7, 0.4)
+			for x in [-0.0, 0.07]:
+				k.cylinder("gold", I.translated(Vector3(x, -0.13, 0.05)), 0.014, 0.016, 0.04, 8, true, 0.0, 1, BRASS)
+		"pw_door_motor":
+			# A geared motor on a wall plate: the motor drum, a reduction box and the chain
+			# sprocket that winds the door.
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.012)), Vector3(0.42, 0.34, 0.024), GASIFIER.darkened(0.1))
+			rivets(k, Vector3(-0.18, 0.15, 0.026), Vector3(0.18, 0.15, 0.026), 4, Vector3(0, 0, 1))
+			rivets(k, Vector3(-0.18, -0.15, 0.026), Vector3(0.18, -0.15, 0.026), 4, Vector3(0, 0, 1))
+			k.cylinder("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.06, 0.02, 0.1)), 0.075, 0.075, 0.22, 16, true, 0.0, 1, ENGINE_GREEN)
+			for n in 6:
+				k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.15 + n * 0.035, 0.02, 0.1)), Vector3(0.16, 0.006, 0.16), ENGINE_GREEN.darkened(0.15))
+			k.box("cast_iron", I.translated(Vector3(0.12, 0.02, 0.09)), Vector3(0.12, 0.18, 0.13), GASIFIER)
+			var sp := Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0.12, 0.02, 0.16))
+			k.cylinder("cast_iron", sp, 0.06, 0.06, 0.02, 14, true, 0.0, 1, GASIFIER.darkened(0.25))
+			k.cylinder("cast_iron", sp.translated_local(Vector3(0, 0.02, 0)), 0.015, 0.015, 0.03, 8)
+			for x in [-0.12, 0.12]:
+				k.cylinder("gold", I.translated(Vector3(x, -0.18, 0.08)), 0.016, 0.018, 0.04, 8, true, 0.0, 1, BRASS)
 		"pw_lamp_ceiling":
 			# A ceiling rose, a cloth flex, and a white enamel shade; the bulb is a part.
 			k.cylinder("painted", I.translated(Vector3(0, -0.03, 0)), 0.06, 0.06, 0.03, 12, true, 0.0, 1, ENAMEL)
@@ -327,6 +482,22 @@ static func part(name: String) -> ArrayMesh:
 				k.box("painted", I.translated(Vector3(x, 0.1, 0)), Vector3(0.008, 0.22, 0.022), COPPER)
 			k.box("planks", I.translated(Vector3(0, 0.22, 0)), Vector3(0.12, 0.02, 0.02))
 			k.cylinder("planks", I.translated(Vector3(0, 0.22, 0)), 0.018, 0.016, 0.1, 8, true, 0.0, 1, Color(0.3, 0.18, 0.1))
+		"lever_arm":
+			# An iron arm with a turned wooden grip; it turns about its local x at the boss.
+			beam(k, "cast_iron", Vector3.ZERO, Vector3(0, 0.2, 0), 0.011, 8, GASIFIER)
+			k.cylinder("planks", I.translated(Vector3(0, 0.19, 0)), 0.02, 0.016, 0.09, 10, true, 0.0, 1, Color(0.24, 0.13, 0.07))
+			k.sphere("planks", I.translated(Vector3(0, 0.285, 0)), 0.022, 5, 10, 0.0, 1.0, Color(0.24, 0.13, 0.07))
+		"button_cap":
+			# A red enamel mushroom cap (paint, not a light).
+			k.cylinder("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, -0.01)), 0.022, 0.022, 0.02, 12, true, 0.0, 1, Color(0.6, 0.1, 0.08))
+			k.sphere("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0, 0.01)), 0.032, 4, 14, 0.0, 0.5, Color(0.62, 0.1, 0.08), true)
+		"plate_top":
+			# The chequer plate: an iron sheet with raised diamond treads.
+			k.box("cast_iron", I, Vector3(0.8, 0.02, 0.8), GASIFIER.lightened(0.05))
+			for x in 8:
+				for z in 8:
+					var p := Vector3(-0.35 + x * 0.1, 0.012, -0.35 + z * 0.1)
+					k.box("cast_iron", Transform3D(Basis(Vector3.UP, PI * 0.25 if (x + z) % 2 == 0 else -PI * 0.25), p), Vector3(0.05, 0.005, 0.012), GASIFIER.lightened(0.1))
 		"bulb":
 			# A pear-shaped glass bulb, its neck up.
 			k.sphere("glass", I.translated(Vector3(0, -0.035, 0)), 0.035, 8, 12, 0.0, 1.15)

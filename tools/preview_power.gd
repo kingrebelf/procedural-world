@@ -97,10 +97,14 @@ func _run() -> void:
 			rotor.rotation.z = 0.3
 			head.add_child(rotor)
 			box = box.merge(AABB(Vector3(-3.3, 4.8, -2.5), Vector3(6.6, 6.6, 4.0)))
-		if s.get("role", "") == "switch":
+		var bl: Dictionary = s.get("blade", {})
+		if bl.is_empty() and s.get("role", "") == "switch" and not s.has("logic"):
+			bl = {"part": "switch_blade", "pos": Vector3(0, -0.1, 0.07), "on": 0.0}
+		if not bl.is_empty():
 			var blade := MeshInstance3D.new()
-			blade.mesh = PowerKit.part("switch_blade")
-			blade.position = Vector3(0, -0.1, 0.07)
+			blade.mesh = PowerKit.part(String(bl["part"]))
+			blade.position = bl["pos"]
+			blade.rotation.x = float(bl.get("on", 0.0))
 			root.add_child(blade)
 		var light: Light3D = null
 		var bulb_mat: StandardMaterial3D = null

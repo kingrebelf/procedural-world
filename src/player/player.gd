@@ -749,6 +749,9 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 		var back := PowerGrid.current.unhook(chunk, o)
 		if back > 0:
 			Game.give(ItemDB.make(Power.WIRE, back, 1.0, Game.origin_here("salvaged", -1, chunk.key)))
+		var sback := PowerGrid.current.unhook_signals(chunk, o)
+		if sback > 0:
+			Game.give(ItemDB.make(Signals.WIRE, sback, 1.0, Game.origin_here("salvaged", -1, chunk.key)))
 	used_tool.emit("hit")
 	if body:
 		body.play_once("interact")

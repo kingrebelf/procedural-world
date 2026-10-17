@@ -385,6 +385,7 @@ const ITEMS := {
 	"electric_motor": {"name": "Electric Motor", "era": ANY, "value": 45, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.3, 0.33, 0.3)},
 	"insulator": {"name": "Ceramic Insulator", "era": ANY, "value": 3, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.92, 0.9, 0.86)},
 	"battery_cell": {"name": "Lead-acid Cell", "era": ANY, "value": 14, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.4, 0.5, 0.42)},
+	"signal_wire": {"name": "Signal Wire", "era": ANY, "value": 3, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.62, 0.18, 0.12)},
 	"multimeter": {"name": "Multimeter", "era": ANY, "value": 40, "stack": false, "kind": "tool", "cat": "Power", "damage": 2, "range": 2.0, "color": Color(0.75, 0.6, 0.3)},
 	"glass_pane": {"name": "Glass Pane", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.75, 0.85, 0.88)},
 	"pocket_watch": {"name": "Pocket Watch", "era": Eras.SCIFI, "value": 150, "stack": false, "kind": "armor", "slot": "neck", "armor": 1, "bonus": {"xp": 0.05, "stamina_regen": 0.1}, "color": Color(0.85, 0.7, 0.35)},
@@ -792,6 +793,9 @@ const UNLOCK := {
 	"gen_woodgas": 10, "windmill": 10, "battery_bank": 10, "power_pole": 10, "junction_box": 10, "knife_switch": 10,
 	"lamp_ceiling": 10, "lamp_wall": 10, "multimeter": 10, "light_bulb": 10, "electric_motor": 10, "insulator": 10,
 	"battery_cell": 10, "gen_diesel": 12, "floodlight": 12, "street_lamp": 12, "solar_array": 14,
+	"signal_wire": 10, "lever": 10, "push_button": 10, "pressure_plate": 10, "relay": 10, "logic_gate": 11,
+	"daylight_sensor": 11, "logic_timer": 11, "logic_clock": 11, "logic_latch": 12, "logic_counter": 12,
+	"logic_delay": 12, "charge_sensor": 12, "motion_sensor": 13, "door_motor": 13,
 	# The medieval age, step by step: stone and hide, then bronze (forge), iron and
 	# studded leather (anvil), then steel, and the finest work last.
 	"shortbow": 2, "javelin": 2, "sickle": 2, "saw": 2, "shovel": 2, "lamp_oil": 2, "quill_ink": 2, "antidote": 2,
@@ -1037,7 +1041,10 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
 	"vehicle_bay": 260, "stable": 90, "launch_pad": 420,
 	"gen_woodgas": 240, "gen_diesel": 420, "windmill": 200, "solar_array": 260, "battery_bank": 150, "power_pole": 20, "junction_box": 18,
-	"knife_switch": 14, "lamp_ceiling": 20, "lamp_wall": 18, "floodlight": 60, "street_lamp": 55}
+	"knife_switch": 14, "lamp_ceiling": 20, "lamp_wall": 18, "floodlight": 60, "street_lamp": 55,
+	"lever": 10, "push_button": 8, "pressure_plate": 22, "motion_sensor": 40, "daylight_sensor": 24, "logic_timer": 26,
+	"logic_clock": 34, "logic_gate": 24, "logic_latch": 22, "logic_counter": 26, "logic_delay": 24, "relay": 20,
+	"charge_sensor": 30, "door_motor": 70}
 
 ## Weight of one item in kg, where it differs from the default for its kind.
 const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,

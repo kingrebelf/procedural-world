@@ -358,6 +358,11 @@ static func _get_mat(name: String) -> Material:
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)
+		"clear_glass":
+			# The thin clear glass over a gauge or a relay's works.
+			m = _pbr(Color(0.85, 0.9, 0.92), 0.03, 0.0, "", 0, 1)
+			m.albedo_color.a = 0.18
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 		"bottle_glass":
 			# Clear green bottle glass you can see a letter through.
 			m = _pbr(Color(0.22, 0.58, 0.3), 0.04, 0.0, "", 0, 1)

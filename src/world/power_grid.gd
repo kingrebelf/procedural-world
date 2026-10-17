@@ -35,11 +35,18 @@ var _cables := {} ## "a|b" -> MeshInstance3D
 var _t := 0.0
 var _save_t := 0.0
 var _cable_mat: StandardMaterial3D
+var _signal_mat: StandardMaterial3D
+var _sig := {} ## piece id -> its output last tick (Signals)
+var _mem := {} ## piece id -> its logic scratch (Signals.step)
+var _en := {} ## piece id -> whether the signal wired into it is on (only pieces with one)
 
 func _ready() -> void:
 	current = self
 	top_level = true
 	_cable_mat = Materials.get_mat("rubber") as StandardMaterial3D
+	_signal_mat = StandardMaterial3D.new()
+	_signal_mat.albedo_color = Color(0.62, 0.16, 0.1)
+	_signal_mat.roughness = 0.55
 	if streamer != null:
 		streamer.chunk_ready.connect(func(n: ChunkNode): _scan(n))
 
@@ -138,6 +145,12 @@ func _rebuild() -> void:
 			var ok := Power.parse_id(String(other))[0] as Vector2i
 			if _index.has(ok) and not pieces.has(other):
 				Power.unlink(o, String(other))
+		for src in Signals.inputs(o).duplicate():
+			if _index.has(Power.parse_id(String(src))[0]) and not pieces.has(src):
+				Signals.unlink_in(o, String(src))
+		for dst in Signals.outputs(o).duplicate():
+			if _index.has(Power.parse_id(String(dst))[0]) and not pieces.has(dst):
+				Signals.unlink_out(o, String(dst))
 	_nets = Power.networks(pieces)
 	_net_of.clear()
 	for n in _nets.size():
@@ -183,7 +196,7 @@ func _entries(net: Array, sun: Vector3) -> Array:
 		match String(Power.spec(o).get("source", "")):
 			"wind": f = float(_site.get(id, 1.0))
 			"sun": f = Power.solar_factor(float(o["r"]), sun)
-		out.append({"id": id, "o": o, "f": f})
+		out.append({"id": id, "o": o, "f": f, "en": bool(_en.get(id, true))})
 	return out
 
 func _env() -> Dictionary:
@@ -196,13 +209,184 @@ func _env() -> Dictionary:
 
 func _tick(dt: float) -> void:
 	var env := _env()
+	_logic(env)
+	if _dirty:
+		_rebuild() # a relay closed or opened
 	for n in _nets.size():
 		var es := _entries(_nets[n], env["sun"])
 		var r := Power.solve(es, env, dt)
 		_results[n] = r
 		for e in es:
 			e["o"]["st"]["pt"] = Game.day
-			_pose(e["id"], e["o"], r["pieces"].get(e["id"], {}))
+			var me: Dictionary = r["pieces"].get(e["id"], {})
+			_pose(e["id"], e["o"], me)
+			if Signals.kind(e["o"]) == "motor":
+				_drive_door(e["id"], e["o"], bool(me.get("powered", false)) and bool(e["en"]))
+
+# --- Signals --------------------------------------------------------------------------
+
+## One tick of the logic layer: every logic piece works out its output from its inputs as
+## they were last tick; then what each signal-wired piece is told (relays close, consumers
+## and generators run, door motors move).
+func _logic(env: Dictionary) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	var clock := Game.day * Game.day_seconds
+	var ctx := {"now": now, "day": Game.day, "clock": clock, "hour": fposmod(Game.day, 1.0) * 24.0, "night": (env["sun"] as Vector3).y < 0.05}
+	var next := {}
+	for k in _index:
+		var e: Array = _index[k]
+		var c: ChunkNode = e[0]
+		for i in e[1]:
+			var o: Dictionary = c.data["objects"][i]
+			if o["st"].get("gone", false) or not Signals.has_out(o):
+				continue
+			var id := Power.id_for(k, i)
+			var ins: Array = []
+			for src in Signals.inputs(o):
+				ins.append(_signal(String(src)))
+			var mem: Dictionary = _mem.get(id, {})
+			_mem[id] = mem
+			var kind := Signals.kind(o)
+			if kind == "plate" or kind == "motion":
+				var at: Vector3 = c.position + o["p"]
+				var fwd := Basis(Vector3.UP, float(o["r"])) * Vector3(0, 0, 1)
+				ctx["near"] = func(r: float, who: String, cone: bool) -> bool: return _senses(at, fwd, r, who, cone)
+			elif kind == "charge":
+				var r := network_of(id)
+				ctx["charge"] = -1.0 if r.is_empty() or float(r["capacity"]) <= 0.0 else 100.0 * float(r["stored"]) / float(r["capacity"])
+			var res := Signals.step(o, ins, mem, ctx)
+			next[id] = bool(res[0])
+			if bool(res[1]):
+				Game.mark_chunk_dirty(c.data)
+	for id in next:
+		_sig[id] = next[id]
+		var o := piece(id)
+		if not o.is_empty():
+			o["st"]["sg"] = next[id]
+	_en.clear()
+	for k in _index:
+		var e: Array = _index[k]
+		var c: ChunkNode = e[0]
+		for i in e[1]:
+			var o: Dictionary = c.data["objects"][i]
+			var si := Signals.inputs(o)
+			if si.is_empty() or o["st"].get("gone", false) or Signals.has_out(o):
+				continue
+			var on := false
+			for src in si:
+				if _signal(String(src)):
+					on = true
+					break
+			var id := Power.id_for(k, i)
+			if Power.role(o) == "switch":
+				# A relay: closed while its signal is on.
+				if Power.is_on(o) != on:
+					o["st"]["on"] = on
+					_dirty = true
+			else:
+				_en[id] = on
+
+## A piece's output as of last tick (its saved one until it has run here).
+func _signal(id: String) -> bool:
+	if _sig.has(id):
+		return bool(_sig[id])
+	var o := piece(id)
+	return false if o.is_empty() else bool(o["st"].get("sg", false))
+
+## Whether someone (or some animal) is there for a plate or motion sensor: within `r` of
+## `at` (across, for a plate; in front, in the cone, for a sensor).
+func _senses(at: Vector3, fwd: Vector3, r: float, who: String, cone: bool) -> bool:
+	for p in _beings(at, r + 1.0, who):
+		var to: Vector3 = p - at
+		if cone:
+			if to.length() > r or to.length() < 0.05:
+				continue
+			if to.normalized().dot(fwd) < Signals.MOTION_CONE:
+				continue
+			return true
+		if Vector2(to.x, to.z).length() <= r and to.y > -0.4 and to.y < 1.6:
+			return true
+	return false
+
+## Where the people (you, other players, villagers) and animals near `at` are.
+func _beings(at: Vector3, r: float, who: String) -> Array:
+	var out: Array = []
+	var w := get_parent()
+	if w == null:
+		return out
+	if who != "animals":
+		var pl = w.get("player")
+		if pl is Node3D and (pl as Node3D).global_position.distance_to(at) <= r:
+			out.append((pl as Node3D).global_position)
+		var others = w.get_node_or_null("OtherPlayers")
+		if others != null:
+			for b in others.near(at, r):
+				out.append((b as Node3D).global_position)
+		var npcs = w.get("npcs")
+		if npcs != null:
+			out.append_array(npcs.people_near(at, r))
+	if who != "people":
+		var fauna = w.get("fauna")
+		if fauna != null:
+			for c in fauna.creatures_near(at, r):
+				out.append((c as Node3D).global_position)
+	return out
+
+## A door motor moves its door when what it is told changes: open while powered and its
+## signal is on, shut when that stops (in between, the door can be worked by hand). On a
+## server only the player running the chunk's animals moves it, so it moves once.
+func _drive_door(id: String, o: Dictionary, want: bool) -> void:
+	var was = o["st"].get("mw")
+	if was != null and bool(was) == want:
+		return
+	o["st"]["mw"] = want
+	if was == null:
+		return # just built or loaded: leave the door as it is
+	var c := chunk_of_id(id)
+	if c == null or not _authority(c.key):
+		return
+	var d := door_by(c.position + o["p"])
+	if d.is_empty():
+		return
+	var dc: ChunkNode = d["chunk"]
+	var door: Dictionary = d["obj"]
+	if Doors.is_open(door) == want:
+		return
+	door["st"]["open"] = want
+	if want:
+		door["st"]["side"] = 1.0
+	dc.door_changed(door["i"])
+	var slide := bool(Doors.spec(door).get("slide", false))
+	var wp: Vector3 = dc.position + door["p"] + Vector3(0, 1.2, 0)
+	Audio.play_at(("door/slide_open" if slide else "door/open") if want else ("door/slide_close" if slide else "door/close"), wp, -4.0)
+
+## The door nearest a world point, within Signals.MOTOR_REACH, as {chunk, obj}, or {}.
+func door_by(at: Vector3) -> Dictionary:
+	if streamer == null:
+		return {}
+	var ck := ChunkStreamer.chunk_of(at)
+	var best := {}
+	var best_d := Signals.MOTOR_REACH
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var c := streamer.get_chunk(ck + Vector2i(dx, dz))
+			if c == null:
+				continue
+			for o in c.data["objects"]:
+				if not Doors.is_door(o["t"]) or o["st"].get("gone", false):
+					continue
+				var d: float = (c.position + o["p"] + Vector3(0, 1.0, 0)).distance_to(at)
+				if d < best_d:
+					best_d = d
+					best = {"chunk": c, "obj": o}
+	return best
+
+## This game moves things in chunk `k` for everyone (offline, or it runs the animals there).
+func _authority(k: Vector2i) -> bool:
+	var net = get_tree().root.get_node_or_null("Net")
+	if net == null or not net.is_client():
+		return true
+	return net.holds("f", k) or not net.shared("f", k)
 
 ## Runs a network over the time it was away (none of its pieces loaded), in steps, with
 ## the day's sun and an average wind.
@@ -236,9 +420,10 @@ func _pose(id: String, o: Dictionary, r: Dictionary) -> void:
 	var s := Power.spec(o)
 	var running := false
 	match String(s.get("source", "")):
-		"fuel": running = float(r.get("out", 0.0)) > 0.0 or (Power.is_on(o) and float(o["st"].get("fuel", 0.0)) > 0.0)
+		"fuel": running = float(r.get("out", 0.0)) > 0.0 or (Power.is_on(o) and bool(_en.get(id, true)) and float(o["st"].get("fuel", 0.0)) > 0.0)
 		"wind", "sun": running = float(r.get("out", 0.0)) > 1.0
-	pn.apply(Power.is_on(o) and bool(r.get("powered", false)), running, Power.is_on(o))
+	var closed := Power.is_on(o) if Signals.kind(o) in ["", "lever", "relay", "motor"] else _signal(id)
+	pn.apply(Power.is_on(o) and bool(r.get("powered", false)), running, closed)
 
 ## Fuel and charge change all the time; they go into the save (and to other players)
 ## every so often, not every tick. On a server only the player who runs a chunk's animals
@@ -285,23 +470,27 @@ func _draw_cables(pieces: Dictionary) -> void:
 				continue
 			var key: String = (id + "|" + String(other)) if id < String(other) else (String(other) + "|" + id)
 			want[key] = [id, String(other)]
+		for dst in Signals.outputs(pieces[id]):
+			if pieces.has(dst):
+				want["s:" + id + ">" + String(dst)] = [id, String(dst)]
 	for key in _cables.keys():
 		if not want.has(key):
 			_cables[key].queue_free()
 			_cables.erase(key)
 	for key in want:
-		var a := terminal_of(want[key][0])
-		var b := terminal_of(want[key][1])
+		var sig := (key as String).begins_with("s:")
+		var a := signal_terminal_of(want[key][0]) if sig else terminal_of(want[key][0])
+		var b := signal_terminal_of(want[key][1]) if sig else terminal_of(want[key][1])
 		var mi: MeshInstance3D = _cables.get(key)
 		if mi != null and mi.get_meta("ends", []) == [a, b]:
 			continue
 		if mi == null:
 			mi = MeshInstance3D.new()
-			mi.material_override = _cable_mat
-			mi.visibility_range_end = 220.0
+			mi.material_override = _signal_mat if sig else _cable_mat
+			mi.visibility_range_end = 120.0 if sig else 220.0
 			add_child(mi)
 			_cables[key] = mi
-		mi.mesh = cable_mesh(a, b)
+		mi.mesh = cable_mesh(a, b, 0.006) if sig else cable_mesh(a, b)
 		mi.set_meta("ends", [a, b])
 
 func terminal_of(id: String) -> Vector3:
@@ -310,6 +499,14 @@ func terminal_of(id: String) -> Vector3:
 	if c == null or o.is_empty():
 		return Vector3.ZERO
 	return Power.terminal(o, c.position)
+
+## Where signal wires meet the piece, in world space.
+func signal_terminal_of(id: String) -> Vector3:
+	var c := chunk_of_id(id)
+	var o := piece(id)
+	if c == null or o.is_empty():
+		return Vector3.ZERO
+	return Power.signal_terminal(o, c.position)
 
 ## A sagging cable from a to b (world space): a thin tube along a catenary-like curve.
 static func cable_mesh(a: Vector3, b: Vector3, radius := 0.012) -> ArrayMesh:
@@ -353,6 +550,11 @@ static func cable_mesh(a: Vector3, b: Vector3, radius := 0.012) -> ArrayMesh:
 static func verb(o: Dictionary, sneaking: bool) -> String:
 	var s := Power.spec(o)
 	var nm := String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("name", "piece")).to_lower()
+	var lv := Signals.verb(o, sneaking)
+	if lv != "":
+		return lv
+	if Power.role(o) == "switch" and not Signals.inputs(o).is_empty():
+		return "Check the %s" % nm
 	match String(s.get("role", "")):
 		"gen":
 			if s.get("source", "") == "fuel":
@@ -385,6 +587,8 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 	var s := Power.spec(o)
 	var nm := String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("name", "piece")).to_lower()
 	var id := id_of(chunk, o)
+	if _use_logic(chunk, o, sneaking, nm):
+		return
 	match String(s.get("role", "")):
 		"gen":
 			if s.get("source", "") == "fuel" and not sneaking and not _fuel_in_pack(o).is_empty():
@@ -408,6 +612,9 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 			o["st"]["on"] = not Power.is_on(o)
 			Audio.play_at("door/lock", chunk.position + o["p"], -14.0)
 		"switch":
+			if not Signals.inputs(o).is_empty():
+				Game.toast.emit("The %s is %s: it follows the signal wired into it" % [nm, "closed" if Power.is_on(o) else "open"])
+				return
 			o["st"]["on"] = not Power.is_on(o)
 			_dirty = true
 			Audio.play_at("door/lock", chunk.position + o["p"], -6.0)
@@ -426,6 +633,31 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 	var n = _net_of.get(id)
 	if n != null and not _dirty:
 		_tick(0.0)
+
+## Interact on a logic piece: pull a lever, press a button, or turn a setting on a step.
+## False when the piece has nothing of the kind (and the power use goes ahead).
+func _use_logic(chunk: ChunkNode, o: Dictionary, sneaking: bool, nm: String) -> bool:
+	var at: Vector3 = chunk.position + o["p"]
+	match Signals.kind(o):
+		"lever":
+			o["st"]["on"] = not Power.is_on(o)
+			Audio.play_at("door/lock", at, -4.0)
+		"button":
+			if sneaking:
+				Game.toast.emit("%s: %s" % [nm.capitalize(), Signals.cycle(o, true)])
+			else:
+				Signals.press(o, Game.day, Game.day_seconds)
+				Audio.play_at("door/lock", at, -10.0)
+		"", "relay", "motor":
+			return false
+		_:
+			var now := Signals.cycle(o, sneaking)
+			if now == "":
+				return false
+			Audio.play_at("door/lock", at, -12.0)
+			Game.toast.emit("%s: %s" % [nm.capitalize(), now])
+	Game.mark_chunk_dirty(chunk.data)
+	return true
 
 ## Tops up a generator's tank from your pack, best fuel first. Returns what went in, in
 ## words ("4 oak wood"), or "" when the tank is full.
@@ -451,7 +683,9 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 	var id := id_of(chunk, o)
 	var r := network_of(id)
 	var me: Dictionary = r.get("pieces", {}).get(id, {})
-	var lines: Array = []
+	var lines := signal_lines(id, o)
+	if Power.role(o) == "logic":
+		return lines
 	match String(s.get("role", "")):
 		"gen":
 			var out := float(me.get("out", 0.0))
@@ -508,6 +742,97 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 			parts.append("%d %s" % [count[nm], nm])
 		lines.append("On it: " + ", ".join(parts))
 	return lines
+
+## The logic side of a piece for the look-at panel: its setting, its output and its
+## signal wires.
+func signal_lines(id: String, o: Dictionary) -> Array:
+	var lines: Array = []
+	var set := Signals.describe_setting(o)
+	if set != "":
+		lines.append(set)
+	if Signals.has_out(o):
+		lines.append("Signal out: %s" % ("ON" if _signal(id) else "off"))
+	var ins := Signals.inputs(o)
+	if not ins.is_empty():
+		var on := 0
+		for src in ins:
+			if _signal(String(src)):
+				on += 1
+		lines.append("Signal in: %d wire%s, %d on" % [ins.size(), "" if ins.size() == 1 else "s", on])
+	if Power.role(o) == "logic" or Signals.max_in(o) > 0:
+		var parts: Array = []
+		if Signals.has_out(o):
+			parts.append("%d out" % Signals.outputs(o).size())
+		if Signals.max_in(o) > 0:
+			parts.append("%d of %d in" % [ins.size(), Signals.max_in(o)])
+		lines.append("Signal wires: " + ", ".join(parts))
+	if Power.role(o) == "logic" and ins.is_empty() and Signals.outputs(o).is_empty():
+		lines.append("Run Signal Wire from it to what it should work")
+	return lines
+
+## Wires one piece's signal output into another's input. Returns "" or why not, in words.
+func connect_signal(ca: ChunkNode, a: Dictionary, cb: ChunkNode, b: Dictionary) -> String:
+	var ia := id_of(ca, a)
+	var ib := id_of(cb, b)
+	if ia == ib:
+		return "That's the same piece"
+	if not Signals.has_out(a):
+		return "It makes no signal: start at a lever, button, sensor, timer or gate"
+	if Signals.max_in(b) == 0:
+		return "That takes no signal"
+	if Signals.inputs(b).has(ia):
+		return "They're already wired"
+	if Signals.inputs(b).size() >= Signals.max_in(b):
+		return "Every signal input on it is taken (%d)" % Signals.max_in(b)
+	var length := Power.signal_terminal(a, ca.position).distance_to(Power.signal_terminal(b, cb.position))
+	if length > Signals.MAX_SPAN:
+		return "Too far: a signal wire spans at most %d m (that's %d m)" % [int(Signals.MAX_SPAN), int(length)]
+	var need := Signals.wire_for(length)
+	if Game.inventory.count(Signals.WIRE) < need:
+		return "Needs %d Signal Wire for %d m" % [need, int(length)]
+	if not Signals.link(a, ia, b, ib):
+		return "Can't wire those"
+	Game.inventory.remove_type(Signals.WIRE, need)
+	var spent: Dictionary = a["st"].get("sg_wire", {})
+	spent[ib] = need
+	a["st"]["sg_wire"] = spent
+	Game.mark_chunk_dirty(ca.data)
+	if cb != ca:
+		Game.mark_chunk_dirty(cb.data)
+	_dirty = true
+	return ""
+
+## Takes down every signal wire on a piece, in and out; returns the Signal Wire back.
+func unhook_signals(chunk: ChunkNode, o: Dictionary) -> int:
+	var id := id_of(chunk, o)
+	var back := 0
+	for dst in Signals.outputs(o).duplicate():
+		var w := int((o["st"].get("sg_wire", {}) as Dictionary).get(dst, 1))
+		var oo := piece(String(dst))
+		if not oo.is_empty():
+			Signals.unlink_in(oo, id)
+			_dirty_chunk(String(dst), chunk)
+		back += maxi(w, 1)
+	for src in Signals.inputs(o).duplicate():
+		var so := piece(String(src))
+		var w := 1
+		if not so.is_empty():
+			w = int((so["st"].get("sg_wire", {}) as Dictionary).get(id, 1))
+			Signals.unlink_out(so, id)
+			(so["st"].get("sg_wire", {}) as Dictionary).erase(id)
+			_dirty_chunk(String(src), chunk)
+		back += maxi(w, 1)
+	o["st"]["si"] = []
+	o["st"]["so"] = []
+	o["st"]["sg_wire"] = {}
+	Game.mark_chunk_dirty(chunk.data)
+	_dirty = true
+	return back
+
+func _dirty_chunk(id: String, other_than: ChunkNode) -> void:
+	var c := chunk_of_id(id)
+	if c != null and c != other_than:
+		Game.mark_chunk_dirty(c.data)
 
 ## Strings a cable between two pieces. Returns "" or why not, in words.
 func connect_pieces(ca: ChunkNode, a: Dictionary, cb: ChunkNode, b: Dictionary) -> String:
