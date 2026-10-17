@@ -3189,3 +3189,25 @@ func test_server_alliances() -> void:
 	check(not al.list.has(id), "an alliance ends with its last member")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
+
+# --- Food, drink and containers ------------------------------------------------------
+
+func test_provisions_models() -> void:
+	var n := 0
+	for t in ItemDB.ITEMS:
+		var m := Provisions.model(t)
+		if m == null:
+			continue
+		n += 1
+		check(m.get_surface_count() > 0, "%s has surfaces" % t)
+		check(m.has_meta("grip"), "%s says where it is held" % t)
+		if m.has_meta("grip"):
+			check(m.get_aabb().grow(0.03).has_point(m.get_meta("grip")), "%s is held on itself" % t)
+		for i in m.get_surface_count():
+			var mat := m.surface_get_material(i)
+			check(not (mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_color == Color(1, 0, 1)), "%s surface %s has a real material" % [t, m.surface_get_name(i)])
+	check(n >= 60, "food and drink models: %d" % n)
+	check(Provisions.model("sword_iron") == null, "a sword is not food")
+	var k := MeshKit.new()
+	Provisions.msg_bottle(k, RandomNumberGenerator.new())
+	check(k.commit(Provisions._mat).get_surface_count() >= 6, "the message in a bottle builds")

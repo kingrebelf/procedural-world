@@ -93,6 +93,8 @@ static func prop_for(t: String, it = null) -> Node3D:
 			mi.add_child(HandLight.torch_fire())
 			# Its light burns at the head, so the torch's own shadow would black out the stick.
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	elif Provisions.has(t):
+		mi.mesh = Provisions.model(t)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)
