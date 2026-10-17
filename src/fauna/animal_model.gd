@@ -111,6 +111,8 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null, seed := -1)
 				if mat is BaseMaterial3D and (String(mat.resource_name) in COAT or glows):
 					m.set_surface_override_material(s, _recolour(mat, tint, glow))
 	scene.scale = Vector3.ONE * k * (v["shape"] as Vector3 if v.has("shape") else Vector3.ONE)
+	# Some kits (the cow, the bull) model their hooves a little below the ground line.
+	scene.position.y = maxf(-box.position.y, 0.0) * scene.scale.y
 	_scene = scene
 	_box = box
 	_kind = kind

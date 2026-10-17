@@ -31,6 +31,9 @@ uniform float socks = 0.0; // chance of pale (or dark) lower legs
 uniform vec3 sock_col : source_color = vec3(0.66, 0.63, 0.58);
 uniform float blaze = 0.0; // chance of a pale streak down the face
 uniform float vary = 0.12;
+uniform float phases = 0.0; // chance of a colour phase: darker or tawnier than most
+uniform vec3 phase_dark = vec3(0.55, 0.52, 0.5);
+uniform vec3 phase_warm = vec3(1.12, 0.98, 0.78);
 uniform vec3 other : source_color = vec3(0.5); // the coat this one meets
 uniform float blend = 0.0; // 1: blend into `other` near the seam // how much one animal's coat differs from the next
 uniform vec3 emit : source_color = vec3(0.0);
@@ -107,6 +110,8 @@ void fragment() {
 	c.r *= 1.0 + vary * 0.6 * warm;
 	c.b *= 1.0 - vary * 0.6 * warm;
 	c = mix(c, vec3(dot(c, vec3(0.3, 0.5, 0.2))), vary * 1.6 * h1(s + 6.1));
+	float ph = h1(s + 6.9);
+	if (role <= 1 && phases > 0.0 && ph < phases) c *= ph < phases * 0.5 ? phase_dark : phase_warm;
 	float h = 0.0;
 	float rough = 0.88;
 	float spec = 0.35;
