@@ -60,6 +60,8 @@ var ambient := false ## the current performance was their own idea (ends when th
 var _jump_y := 0.0
 var _stool: Node3D
 var gear_shown := ""
+var boat: BoatNode = null ## the boat they crew, while aboard (NPCManager sets it)
+var _deck_pose := ""
 ## The last act (gesture or performance) and how many so far, so players who don't run
 ## this person see the same (NPCManager streams them).
 var last_act := ""
@@ -379,6 +381,63 @@ func at_work() -> bool:
 	var t: Vector2 = duty.get("target", Vector2.INF)
 	return t != Vector2.INF and Vector2(global_position.x, global_position.z).distance_to(t) < 1.5
 
+## Aboard a boat: stays at their station on deck as the boat moves and rolls, doing
+## that station's job (rowing, fishing, at the helm, mending, keeping a lookout), and
+## turns to face you when you talk. Called every frame instead of step().
+func deck_step(delta: float, player_pos: Vector3) -> void:
+	_speech_t -= delta
+	if _speaking and _speech_t <= 0.0:
+		_speaking = false
+		_label.visible = false
+	attack_cd = maxf(0.0, attack_cd - delta)
+	var i := int(rec.get("station", 0))
+	var xf := boat.deck_xf(i)
+	var st := boat.station(i)
+	var sit := BoatModel.seated(st)
+	global_position = xf.origin
+	var face := xf.basis.get_euler().y
+	if (talking or target_player) and not sit:
+		face = atan2(player_pos.x - global_position.x, player_pos.z - global_position.z)
+	rotation.y = face if _deck_pose == "" else lerp_angle(rotation.y, face, clampf(delta * 4.0, 0.0, 1.0))
+	rec["yaw"] = rotation.y
+	var pose := String(st.get("pose", "stand"))
+	if _human == null:
+		_speed = 0.0
+		_animate(delta, false, false, player_pos)
+		return
+	if _deck_pose != pose:
+		_deck_pose = pose
+		if pose == "fish" and not rec.has("held"):
+			_human.hold(Viewmodel.prop_for("fishing_rod", null), Vector3(0, 0.6, 1).normalized())
+	_human.ik.feet_here = false
+	var near := global_position.distance_to(player_pos)
+	if (talking or target_player) and near < 25.0:
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 1.0)
+	elif pose == "lookout":
+		_human.look_at_target(global_position - xf.basis.z * 60.0 + Vector3.UP * 1.5, 0.6)
+	elif near < 8.0:
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 0.5)
+	else:
+		_human.look_at_target(Vector3.INF)
+	var chat := talking or _speech_t > 0.0
+	if sit:
+		_human.play("sit_talk" if chat and _human.anim.has_animation("sit_talk") else "sit")
+	elif chat:
+		_human.play("talk")
+	else:
+		match pose:
+			"steer":
+				_human.play("interact" if int(rec["era"]) == Eras.SCIFI else "idle")
+			"work":
+				_human.play("fix" if int(rec["era"]) != Eras.SCIFI else "interact")
+			"lookout":
+				_human.play("fold_arms" if _human.anim.has_animation("fold_arms") else "idle")
+			_:
+				_human.play("idle")
+	if _hit_flash > 0.0:
+		_hit_flash -= delta
+	_human.set_flash(clampf(_hit_flash * 4.0, 0.0, 1.0))
+
 ## What players who don't run this person need to draw them (read back by follow).
 func net_state() -> Array:
 	return [rec["id"], global_position, rotation.y, action, perform, _speed, talking, last_act, acts, attack_cd, target_player, is_hidden(), work_anim, upper_anim]
@@ -468,7 +527,7 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	else:
 		_human.look_at_target(Vector3.INF)
 	# Shop floors aren't the ground under them.
-	_human.ik.feet_here = not rec.has("room")
+	_human.ik.feet_here = not rec.has("room") and boat == null
 	var up := upper_anim if moving else ""
 	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
 		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"

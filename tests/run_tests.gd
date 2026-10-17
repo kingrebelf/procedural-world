@@ -3395,3 +3395,67 @@ func test_server_alliances() -> void:
 	check(not al.list.has(id), "an alliance ends with its last member")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
+
+# --- Boats ---------------------------------------------------------------------------------
+
+func test_boats_on_the_water() -> void:
+	var old_theme := Eras.theme
+	var old_eras := WorldField.allowed_eras
+	var old_v := WorldField.terrain_v
+	Eras.theme = "human"
+	WorldField.allowed_eras = [Eras.MEDIEVAL, Eras.SCIFI]
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var gen := ChunkGenerator.new(424242)
+	var found: Array = []
+	for cz in range(-6, 6):
+		for cx in range(-6, 6):
+			var s := Boats.plan(gen.field, cx, cz)
+			if not s.is_empty():
+				found.append(s)
+	check(found.size() >= 3 and found.size() <= 60, "boats are out on some lakes, not all (%d in 144 cells)" % found.size())
+	for s in found:
+		var c: Vector2 = s["center"]
+		check(gen.field.height(c.x, c.y) < Boats.WET, "%s lies on water" % s["boat"])
+		check(Boats.cell_of(c.x, c.y) == Vector2i(int(s["cx"]), int(s["cz"])), "a boat belongs to the cell its lake's middle is in")
+		check(s == Boats.plan(gen.field, int(s["cx"]), int(s["cz"])), "planning is repeatable")
+		var d: Dictionary = Boats.KINDS[s["boat"]]
+		check(float(s["clear"]) >= float(d["len"]) * 0.5 + 10.0, "%s fits its lake (clear %d m)" % [s["boat"], s["clear"]])
+		# Its loop stays on deep water.
+		for i in 12:
+			var p: Vector2 = Boats.pose_at(s, float(i) * 97.0)[0]
+			check(gen.field.height(p.x, p.y) < 0.0, "%s sails on water at %s" % [s["boat"], p])
+		var era := int(d["era"])
+		var tech := WorldField.dominant(gen.field.era_weights(c.x, c.y)) == Eras.SCIFI
+		check((era == Eras.SCIFI) == tech, "%s matches the land's era" % s["boat"])
+		var crew := Boats.crew(424242, s)
+		var cr: Array = d["crew"]
+		check(crew["npcs"].size() >= int(cr[0]) and crew["npcs"].size() <= BoatModel.stations(s["boat"]).size(), "%s has a crew" % s["boat"])
+		check(crew == NPCGen.create(gen, s), "crews are made through the settlement store path")
+		for p in crew["npcs"]:
+			check(p["boat"] == s["boat"] and p.has("station") and p["faction"] == "folk", "crew records know their boat and station")
+			check(String(p["id"]).begins_with("%d_%d_" % [s["sx"], s["sz"]]), "crew ids are unique to the boat")
+	var alien := ChunkGenerator.new(424242)
+	Eras.theme = "alien"
+	var any := false
+	for cx in range(-3, 3):
+		any = any or not Boats.plan(alien.field, cx, 0).is_empty()
+	check(not any, "no human boats on alien worlds")
+	Eras.theme = old_theme
+	WorldField.allowed_eras = old_eras
+	WorldField.terrain_v = old_v
+
+func test_boat_models() -> void:
+	for k in Boats.KINDS:
+		var body := StaticBody3D.new()
+		var m := BoatModel.build(k, 3, body)
+		var mi: MeshInstance3D = m.find_children("*", "MeshInstance3D", false, false)[0]
+		check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s has a model" % k)
+		check(body.get_child_count() > 0, "%s has collision" % k)
+		check(not BoatModel.stations(k).is_empty() and BoatModel.stations(k).size() >= int(Boats.KINDS[k]["crew"][1]), "%s has a station per crew member" % k)
+		m.free()
+		body.free()
+	# Pirates: a spawned site makes a hostile crew.
+	var site := {"boat": "cog", "sx": Boats.SPAWNED_BASE + 1, "sz": Boats.SPAWNED_BASE, "center": Vector2(10, 20), "faction": "pirate",
+		"name": "Black Gull", "phase": 0.0, "yaw": 0.0, "loop": 0.0}
+	var crew := Boats.crew(1, site)
+	check(not crew["npcs"].is_empty() and crew["npcs"].all(func(p): return p["job"] == "pirate" and p["faction"] == "pirate" and int(p["rel"]) < 0), "pirate crews are hostile")

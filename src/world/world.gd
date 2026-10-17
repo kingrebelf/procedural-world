@@ -11,6 +11,7 @@ var npcs: NPCManager
 var fauna: FaunaManager
 var corpses: Corpses
 var vehicles: VehicleManager
+var boats: BoatManager
 var dialogue: DialogueUI
 var lore: LoreUI
 
@@ -83,6 +84,11 @@ func _ready() -> void:
 	npcs.corpses = corpses
 	fauna.corpses = corpses
 	player.corpses = corpses
+	boats = BoatManager.new()
+	boats.name = "Boats"
+	boats.player = player
+	boats.npcs = npcs
+	add_child(boats)
 	vehicles = VehicleManager.new()
 	vehicles.name = "Vehicles"
 	vehicles.streamer = streamer
