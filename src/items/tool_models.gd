@@ -554,12 +554,14 @@ static func plate(k: MeshKit, m: String, nu: int, nv: int, f: Callable, t: float
 				var nn := []
 				for c in 4:
 					nn.append(n[c] * side)
+				# Each face wound to face its own way (MeshKit.tri: counter-clockwise seen
+				# from where its normal points), or the far face shows through, lit from behind.
 				if side > 0:
-					k.tri(m, I, q[0], q[2], q[1], nn[0], nn[2], nn[1], col)
-					k.tri(m, I, q[0], q[3], q[2], nn[0], nn[3], nn[2], col)
-				else:
 					k.tri(m, I, q[0], q[1], q[2], nn[0], nn[1], nn[2], col)
 					k.tri(m, I, q[0], q[2], q[3], nn[0], nn[2], nn[3], col)
+				else:
+					k.tri(m, I, q[0], q[2], q[1], nn[0], nn[2], nn[1], col)
+					k.tri(m, I, q[0], q[3], q[2], nn[0], nn[3], nn[2], col)
 	# The rim.
 	var edge := []
 	for i in nu:
@@ -843,18 +845,18 @@ static func _hammer(k: MeshKit):
 	# A claw hammer: a hickory handle with a swelling at the butt, a round steel face to +X
 	# and a split claw curving down to -X.
 	haft(k, -0.02, 0.33, 0.016, 0.013, HICKORY)
-	hammer_head(k, "it_iron", 0.315, 0.035, 0.015)
-	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.035, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.016, 0.0), Vector2(0.015, 0.012), Vector2(0.0, 0.013)], 12)
+	hammer_head(k, "it_iron", 0.315, 0.05, 0.023)
+	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.05, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.021, 0.0), Vector2(0.02, 0.014), Vector2(0.0, 0.015)], 12)
 	for z in [-1.0, 1.0]:
 		var st := []
 		for i in 7:
 			var f := float(i) / 6.0
 			var a := f * 0.9
-			var w := lerpf(0.011, 0.004, f)
-			st.append(_at(Vector3(-0.035 - sin(a) * 0.07, 0.315 - (1.0 - cos(a)) * 0.07, z * 0.0055), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0045, w, 0.3)))
+			var w := lerpf(0.014, 0.005, f)
+			st.append(_at(Vector3(-0.05 - sin(a) * 0.085, 0.315 - (1.0 - cos(a)) * 0.085, z * 0.0065), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0055, w, 0.3)))
 		sweep(k, "it_iron", Transform3D.IDENTITY, st, true)
 	_wedge(k, 0.315, 0.013)
-	return Vector3(0, 0.07, 0)
+	return Vector3(0, 0.18, 0) # choked up toward the head, for light, aimed blows
 
 static func _sword_iron(k: MeshKit):
 	sword(k, {"len": 0.72, "w": 0.024, "t": 0.006, "cross": 0.1, "grip": 0.12, "guard": "it_iron", "pommel": 0.024})
@@ -1018,12 +1020,17 @@ static func _shovel(k: MeshKit):
 		st.append(_at(Vector3(cos(a) * 0.055, 0.88 + sin(a) * 0.07, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.011, 0.011, 8)))
 	sweep(k, "it_wood", Transform3D.IDENTITY, st, false, ASH)
 	k.cylinder("it_wood", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.06, 0.885, 0)), 0.013, 0.013, 0.12, 8, true, 0.0, 1, ASH)
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.02, -0.08), Vector2(0.019, -0.15), Vector2(0.03, -0.2)], 10)
-	plate(k, "it_iron", 6, 8, func(u, v):
-		var x: float = (u - 0.5) * 0.22 * (1.0 - 0.25 * v * v)
-		var y: float = -0.2 - v * 0.27 - 0.03 * (1.0 - pow(2.0 * u - 1.0, 2.0)) * v
-		var z := 0.02 * pow(2.0 * u - 1.0, 2.0) - 0.01
-		return Vector3(x, y, z), 0.003)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.02, -0.08), Vector2(0.019, -0.15), Vector2(0.026, -0.2), Vector2(0.03, -0.215)], 12)
+	# A pressed steel spade: dished across, a rounded point, worn to a dull grey.
+	plate(k, "it_iron", 12, 14, func(u, v):
+		var w: float = 2.0 * u - 1.0
+		var x: float = w * 0.11 * (1.0 - 0.4 * pow(v, 3.0))
+		var y: float = -0.205 - v * 0.27 - 0.045 * (1.0 - w * w) * v * v
+		var z: float = 0.028 * w * w - 0.012
+		return Vector3(x, y, z), 0.0025, Color(1.0, 0.98, 0.95))
+	# The treads: the top edge rolled over each side of the socket for a boot.
+	for sx in [-1.0, 1.0]:
+		k.box("it_iron", Transform3D(Basis.IDENTITY, Vector3(sx * 0.07, -0.207, 0.004)), Vector3(0.075, 0.006, 0.016), Color(0.85, 0.83, 0.8))
 	# Held by the shaft a hand's width above the socket; Viewmodel holds it blade up.
 	return Vector3(0, 0.12, 0)
 

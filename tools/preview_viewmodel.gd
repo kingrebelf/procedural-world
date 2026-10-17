@@ -16,6 +16,7 @@ func _run() -> void:
 	var wear := {}
 	var night := false
 	var hand := false
+	var hfov := 0.0 ## --hfov=90: the camera as the game sets it (horizontal FOV), not the fixed 80° vertical
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -30,6 +31,8 @@ func _run() -> void:
 			night = true
 		elif a == "--hand":
 			hand = true
+		elif a.begins_with("--hfov="):
+			hfov = a.substr(7).to_float()
 	DirAccess.make_dir_recursive_absolute(out)
 	get_root().size = Vector2i(1600, 900)
 	var env := WorldEnvironment.new()
@@ -55,6 +58,9 @@ func _run() -> void:
 	get_root().add_child(ground)
 	var cam := Camera3D.new()
 	cam.fov = 80.0
+	if hfov > 0.0:
+		cam.keep_aspect = Camera3D.KEEP_WIDTH
+		cam.fov = hfov
 	get_root().add_child(cam)
 	cam.make_current()
 	var vm := Viewmodel.new()

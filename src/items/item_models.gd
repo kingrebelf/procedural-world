@@ -138,9 +138,14 @@ static func _build(t: String) -> ArrayMesh:
 			am.set_meta("grip", Vector3(0, 0.11, 0))
 			am.set_meta("grip_r", 0.03)
 		if String(ItemDB.def(t).get("slot", "")) == "head":
-			# A helm is carried crown forward, the way a hand holds one by the back of its
-			# rim, so the skull and nasal show and not the lining.
-			am = _transformed(am, Transform3D(Basis(Vector3.RIGHT, 0.75), Vector3.ZERO))
+			# A helm is carried the way a hand holds one: fingers inside the back of the
+			# rim, the back toward you, the crown tipped a little your way, so the skull shows and not
+			# the lining.
+			var tilt := Transform3D(Basis(Vector3.RIGHT, 0.3) * Basis(Vector3.UP, PI), Vector3.ZERO)
+			var box := am.get_aabb()
+			am = _transformed(am, tilt)
+			am.set_meta("grip", tilt * Vector3(0, box.position.y + 0.05, box.position.z + 0.012))
+			am.set_meta("grip_r", 0.008)
 		return am
 	var s: Array = SHAPES[t]
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
