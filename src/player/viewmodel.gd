@@ -25,7 +25,9 @@ var _sway_t := 0.0
 var _type := ""
 var arms: HumanModel
 var look: Dictionary = {} ## the player's appearance (set before adding to the tree)
-const ARMS_REST := Vector3(0.08, -0.03, 0.0)
+## Empty hands hang below the view (raised with nothing in them they read as claws);
+## they come up into it for a punch or a gesture.
+const ARMS_REST := Vector3(0.08, -0.24, 0.04)
 ## One-handed tools: only the right arm, the fist low and right of the middle, held out a
 ## little so the whole hand and the handle below it show.
 const ARM_REST := Vector3(-0.02, -0.05, -0.1)
