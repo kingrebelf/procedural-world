@@ -1163,9 +1163,14 @@ static func _carbine(k: MeshKit) -> Vector3:
 	_trigger(k, "gun_parker", Vector3(0, y - 0.028, 0.016), 0.016)
 	var g := _grip(k, "gun_polymer_stip", Vector3(0, y - 0.028, 0.06), 0.4, 0.1, 0.0145, 0.02)
 	_tube(k, "gun_alloy", Vector3(0, y + 0.004, 0.27), 0.19, 0.015, 0.015, 16)
-	_block(k, "gun_polymer", Vector3(0, y - 0.012, 0.25), Vector3(0.026, 0.05, 0.12))
-	_block(k, "gun_polymer", Vector3(0, y - 0.03, 0.29), Vector3(0.028, 0.11, 0.04))
-	_butt(k, "gun_rubber", 0.31, y + 0.024, y - 0.084, 0.0142, 0.01)
+	# The sliding stock: a sleeve over the buffer tube, its belly sloping down to a
+	# rubber pad, the adjustment lever and a sling slot in the toe.
+	_stock(k, "gun_polymer_stip", [0.175, 0.2, 0.25, 0.29, 0.3],
+		[y + 0.021, y + 0.023, y + 0.024, y + 0.024, y + 0.023], [y - 0.012, y - 0.02, y - 0.05, y - 0.078, y - 0.082],
+		[0.0165, 0.016, 0.0148, 0.0142, 0.0142], 18)
+	_block(k, "gun_polymer", Vector3(0, y - 0.021, 0.215), Vector3(0.007, 0.006, 0.03), 10)
+	_box(k, "gun_bore", Vector3(0, y - 0.07, 0.288), Vector3(0.03, 0.006, 0.016))
+	_butt(k, "gun_rubber", 0.3, y + 0.023, y - 0.084, 0.0146, 0.012)
 	_fore = Vector3(0, y - 0.01, -0.22)
 	return g
 
