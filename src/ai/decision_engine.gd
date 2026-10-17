@@ -32,12 +32,24 @@ static func decide(npc: Dictionary, per: Dictionary) -> Dictionary:
 	var workday := hour >= 8.0 and hour < 18.0
 	s["sleep"] = (0.9 if night else 0.0) + (1.0 - energy) * 0.4
 	s["go_home"] = 0.55 if evening else 0.05
-	s["work"] = (0.45 + float(t["diligent"]) * 0.45 + (0.4 if trader else 0.0)) if workday or (trader and hour >= 7.0 and hour < 20.0) else 0.0
+	# Their trade's routine (NPCRoles) says what work means now; without one, the old
+	# working day at their spot.
+	var duty: Dictionary = per.get("duty", {})
+	if duty.get("action", "") == "sleep":
+		s["sleep"] = 1.15
+		night = true
+	elif not duty.is_empty():
+		s["work"] = 0.75 + float(t["diligent"]) * 0.45
+		if duty.get("shift", false):
+			s["sleep"] = 0.0 # the night watch is awake while others sleep
+			night = false
+	elif not per.has("duty") or trader:
+		s["work"] = (0.45 + float(t["diligent"]) * 0.45 + (0.4 if trader else 0.0)) if workday or (trader and hour >= 7.0 and hour < 20.0) else 0.0
 	s["socialize"] = (1.0 - social) * 0.45 + (0.25 if hour >= 17.0 and hour < 21.0 else 0.0)
 	s["wander"] = 0.15 + float(t["curious"]) * 0.25 + noise * 0.1
 	s["idle"] = 0.15 + noise * 0.05
 	# Guards walk their rounds rather than standing at one spot all day.
-	if guard and workday:
+	if guard and workday and duty.is_empty():
 		s["wander"] += 0.25
 	# Evenings: the sociable dance in the square (every seventh day is a festival), the
 	# weary and the old sit down for a while.
@@ -113,7 +125,8 @@ static func _resolve(npc: Dictionary, per: Dictionary, a: String, score: float, 
 		"sleep", "go_home":
 			out["target"] = npc["home"]
 		"work":
-			out["target"] = npc["work"]
+			var duty: Dictionary = per.get("duty", {})
+			out["target"] = duty.get("target", npc["work"]) if duty.get("action", "") == "work" else npc["work"]
 		"socialize":
 			var ang := noise * TAU
 			out["target"] = c + Vector2(cos(ang), sin(ang)) * 4.0
@@ -145,5 +158,5 @@ static func snapshot(npc: Dictionary, per: Dictionary) -> Dictionary:
 		"energy": snappedf(npc.get("energy", 1.0), 0.01), "hp": npc.get("hp", 100.0), "level": int(npc.get("level", 1)),
 		"hour": snappedf(per["hour"], 0.1), "player_dist": snappedf(minf(per.get("player_dist", 999.0), 999.0), 0.1),
 		"player_armed": per.get("player_armed", false), "player_wanted": per.get("wanted", 0), "goal": npc.get("goal", ""),
-		"current": npc.get("_action", "idle"),
+		"current": npc.get("_action", "idle"), "duty": String((per.get("duty", {}) as Dictionary).get("duty", "")),
 	}

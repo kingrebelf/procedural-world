@@ -97,6 +97,11 @@ static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictiona
 		lines.append("You run the market stall here and will happily trade.")
 	elif npc.has("shop_kind"):
 		lines.append(TownShops.prompt_line(npc))
+	var days := NPCRoles.day_words(npc)
+	if days != "":
+		lines.append("Your working day: %s." % days)
+	if String(npc.get("_duty", "")) != "":
+		lines.append("Right now you are %s." % npc["_duty"])
 	lines.append("It is %s on day %d. You are currently feeling %s, and your goal is: %s." % [time_words(hour_now()), day_num(), npc.get("mood", "calm"), npc.get("goal", "") if npc.get("goal", "") != "" else "going about your day"])
 	lines.append("You are talking to a traveller. You have met them %d times before; %s." % [npc.get("met", 0), feeling(int(npc.get("rel", 0)))])
 	if ctx.get("held", "") != "":
@@ -347,7 +352,8 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 		out["say"] = "Very well, I'll head back."
 		out["action"] = "stop_following"
 	elif q.contains("job") or q.contains("work") or q.contains("do here"):
-		out["say"] = "I'm the %s. It keeps me busy." % npc["job"]
+		var doing := String(npc.get("_duty", "")).replace("your ", "my ").replace("you ", "I ")
+		out["say"] = ("I'm the %s. Right now I'm %s." % [npc["job"], doing]) if doing != "" else "I'm the %s. It keeps me busy." % npc["job"]
 	elif q.contains("thank") or q.contains("friend") or q.contains("help"):
 		out["say"] = "Kind of you to say."
 		out["rel_change"] = 2

@@ -129,13 +129,19 @@ func _load(site: Dictionary, id: String) -> void:
 	decor.setup(gen, streamer, site, data, Game.estates)
 	add_child(decor)
 	e["decor"] = decor
+	# Where the town's work is done, and the anvils and crates people work at.
+	e["places"] = NPCRoles.places(gen, site, data)
+	var props := WorkProps.new()
+	props.setup(NPCRoles.props(e["places"], data), _ground)
+	add_child(props)
+	e["props"] = props
 	var stale: bool = float(data.get("sim_day", -1.0)) < 0.0 or Game.day - float(data["sim_day"]) > 0.03
 	var hour := NPCMind.hour_now()
 	for rec in data["npcs"]:
 		if rec.get("dead", false):
 			continue
 		if stale:
-			_catch_up(rec, data, hour)
+			_catch_up(rec, data, hour, e["places"])
 		_add_node(e, rec)
 	# On a server: one player runs these people, the others see them (Net.holds).
 	Net.watch("t", [[Vector2i(int(site["sx"]), int(site["sz"])), site["center"]]], [])
@@ -154,9 +160,12 @@ func runs(e: Dictionary) -> bool:
 	return Net.holds("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
 
 ## Where someone would be at this hour if they had been living their day unobserved.
-func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
+func _catch_up(rec: Dictionary, data: Dictionary, hour: float, places := {}) -> void:
 	var at: Vector2
-	if hour >= 21.5 or hour < 6.0:
+	var duty := NPCRoles.duty_at(rec, places, hour, now())
+	if not duty.is_empty():
+		at = duty["target"]
+	elif hour >= 21.5 or hour < 6.0:
 		at = rec["home"]
 	elif hour >= 8.0 and hour < 18.0 or (rec["job"] == "trader" or rec.has("shop_kind")) and hour >= 7.0 and hour < 20.0:
 		at = rec["work"]
@@ -181,6 +190,8 @@ func _unload(id: String) -> void:
 		n.queue_free()
 	if is_instance_valid(e.get("decor")):
 		e["decor"].queue_free()
+	if is_instance_valid(e.get("props")):
+		e["props"].queue_free()
 	settlements.erase(id)
 
 func save_all() -> void:
@@ -280,7 +291,7 @@ func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dict
 		"noise": float(absi(hash(n.rec["id"] + str(int(t / 20.0)))) % 1000) / 1000.0,
 		"player_dist": n.global_position.distance_to(pp), "player_pos": Vector2(pp.x, pp.z),
 		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t, "day": NPCMind.day_num(),
-		"wanted": wanted,
+		"wanted": wanted, "duty": NPCRoles.duty_at(n.rec, e.get("places", {}), NPCMind.hour_now(), t),
 	}
 
 func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
@@ -296,6 +307,12 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	n.target = d.get("target", Vector2.INF)
 	n.target_player = d.has("target_player")
 	rec["_action"] = n.action
+	var duty: Dictionary = per["duty"]
+	n.duty = duty if n.action == "work" else {}
+	rec["_duty"] = String(duty.get("label", "")) if n.action in ["work", "sleep"] else ""
+	n.face_to = Vector2.INF
+	if n.action == "socialize":
+		_find_company(n, e, pp)
 	var dist: float = per["player_dist"]
 	if n.action != prev:
 		# Ambient performances end when the person moves on to something else.
@@ -336,6 +353,18 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		elif n.action == "sit":
 			n.act("sit", randf_range(20.0, 45.0))
 			n.ambient = true
+	# At work: a meal sat down, a tune in the square, a prayer now and then, and a word
+	# about it for anyone passing.
+	if n.action == "work" and not n.duty.is_empty() and n.at_work():
+		var perf := String(n.duty.get("perform", ""))
+		if perf != "" and not n.is_performing():
+			n.act(perf, randf_range(25.0, 50.0))
+			n.ambient = true
+		elif String(n.duty.get("gesture", "")) != "" and not n.is_performing() and randf() < 0.12:
+			n.act(String(n.duty["gesture"]))
+		if dist < 9.0 and now() > float(n.get_meta("bark_t", 0.0)) and randf() < 0.2:
+			n.set_meta("bark_t", now() + randf_range(50.0, 110.0))
+			_bark(n, NPCRoles.line(n.duty, absi(hash(String(rec["id"]) + str(int(t))))), dist)
 	# Chatting with neighbours comes with hands.
 	if n.action == "socialize" and not n.is_performing() and randf() < 0.18:
 		n.act(["nod", "shrug", "think", "point", "tilt", "shake_head", "clap", "hips"][randi() % 8])
@@ -346,6 +375,38 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	rec["energy"] = clampf(float(rec.get("energy", 1.0)) + (0.02 if sleeping else -0.002), 0.0, 1.0)
 	rec["social"] = clampf(float(rec.get("social", 0.5)) + (0.03 if n.action == "socialize" else -0.003), 0.0, 1.0)
 	e["dirty"] = true
+
+## Someone to chat with: another person of the town out socialising, met halfway and
+## faced. Now and then (when you are near enough to hear) one of them says something and
+## the other answers: town news, or the small talk of their trades.
+func _find_company(n: NPC, e: Dictionary, pp: Vector3) -> void:
+	var best: NPC = null
+	var bd := 30.0
+	for o in e["nodes"]:
+		if o == n or not is_instance_valid(o) or o.action != "socialize" or o.talking:
+			continue
+		var d: float = o.global_position.distance_to(n.global_position)
+		if d < bd:
+			bd = d
+			best = o
+	if best == null:
+		return
+	var me := Vector2(n.global_position.x, n.global_position.z)
+	var them := Vector2(best.global_position.x, best.global_position.z)
+	var away := (me - them).normalized() if me.distance_to(them) > 0.1 else Vector2(1, 0)
+	n.target = them + away * 1.3
+	n.face_to = them
+	if bd > 2.2 or n.global_position.distance_to(pp) > 16.0 or now() < float(n.get_meta("chat_t", 0.0)) or randf() > 0.25:
+		return
+	n.set_meta("chat_t", now() + randf_range(25.0, 60.0))
+	best.set_meta("chat_t", n.get_meta("chat_t"))
+	var pair := NPCRoles.chatter(n.rec, best.rec, e["data"], absi(hash(String(n.rec["id"]) + str(int(now())))))
+	n.say(pair[0], 4.0)
+	n.act(["nod", "shrug", "point", "think", "hips"][randi() % 5])
+	get_tree().create_timer(3.2, false).timeout.connect(func():
+		if is_instance_valid(best) and best.action == "socialize":
+			best.say(pair[1], 4.0)
+			best.act(["nod", "shake_head", "shrug", "clap"][randi() % 4]))
 
 ## A line said out loud: shown above their head, and spoken if passers-by have voices.
 func _bark(n: NPC, line: String, dist: float) -> void:

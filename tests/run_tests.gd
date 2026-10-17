@@ -930,6 +930,49 @@ func test_decision_engine() -> void:
 	for a in DecisionEngine.ACTIONS:
 		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront", "dance", "sit"] , "action known: " + a)
 
+func test_npc_roles() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var site: Dictionary = fx[1]
+	var s := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	var pl := NPCRoles.places(gen, site, s)
+	check(not (pl["gates"] as Array).is_empty() and not (pl["rounds"] as Array).is_empty(), "a town has gates and a guard's round")
+	for job in NPCRoles.ROUTINES:
+		for b in NPCRoles.ROUTINES[job]:
+			check(b[2] == "sleep" or NPCRoles.DUTIES.has(b[2]), "routine duty exists: %s %s" % [job, b[2]])
+	var f: Dictionary = s["npcs"][2].duplicate(true)
+	f["job"] = "farmer"
+	f["traits"]["diligent"] = 0.5
+	var d := NPCRoles.duty_at(f, pl, 9.0, 100.0)
+	check(d.get("duty", "") == "till", "a farmer is in the fields mid-morning (%s)" % d.get("duty", ""))
+	check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
+	check(NPCRoles.duty_at(f, pl, 9.0, 100.0)["target"] == d["target"], "the same stop at the same moment")
+	check(NPCRoles.duty_at(f, pl, 23.0, 100.0).is_empty(), "evenings are their own")
+	var per := {"hour": 9.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0, "duty": d}
+	var r := DecisionEngine.decide(f, per)
+	check(r["action"] == "work" and r["target"] == d["target"], "the routine drives their work (%s)" % r["action"])
+	var g: Dictionary = s["npcs"][1].duplicate(true)
+	g["job"] = "guard"
+	g["era"] = 0
+	g["id"] = "x_y_7"
+	var watch := false
+	for i in 30:
+		g["id"] = "x_y_%d" % (i + 2)
+		if NPCRoles.night_watch(g):
+			watch = true
+			break
+	check(watch, "some guards keep the night watch")
+	var nd := NPCRoles.duty_at(g, pl, 2.0, 0.0)
+	check(nd.get("duty", "") == "night_watch", "the night watch is out at 2am")
+	per["hour"] = 2.0
+	per["duty"] = nd
+	check(DecisionEngine.decide(g, per)["action"] == "work", "and awake")
+	per["hour"] = 11.0
+	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
+	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
+	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
+
 func test_npc_memory_and_replies() -> void:
 	var fx := _npc_fixture()
 	var gen: ChunkGenerator = fx[0]
