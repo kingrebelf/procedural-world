@@ -1226,6 +1226,7 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 	if size >= 1:
 		outer.append("solar_farm")
 		outer.append("depot")
+		outer.append(ShipPad.pick(r))
 	if size >= 2:
 		outer.append("solar_farm")
 	for n in lots.size():

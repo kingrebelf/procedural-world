@@ -1409,6 +1409,33 @@ func test_scenery_meshes() -> void:
 	for kind in ["dome", "flat", "cone", "bell", "funnel", "shelf"]:
 		check(HiFlora._cap_profile(kind, 0.1)[0].size() > 3, "mushroom cap '%s' has a profile" % kind)
 
+## Landing pads: each ship stands on its struts within its pad, collides as a box you
+## walk round, and can be salvaged; outposts beyond hamlets get one.
+func test_ship_pads() -> void:
+	for t in ShipPad.SHIPS:
+		var m := ObjectLibrary.get_mesh(t)
+		check(m != null and m.get_surface_count() >= 2, "%s builds" % t)
+		var box := m.get_aabb()
+		check(box.size.x <= ShipPad.PAD + 0.6 and box.size.z <= ShipPad.PAD + 0.6, "%s fits its pad (%s)" % [t, box.size])
+		check(box.end.y > ShipPad.STRUTS + 1.5, "%s stands up off the pad (%.1f m)" % [t, box.end.y])
+		check(ObjectLibrary.shape_of({"t": t, "st": {}})[0] is BoxShape3D, "%s collides" % t)
+		check(Durability.total_items({"t": t, "s": 1.0, "e": Eras.SCIFI, "st": {}}) > 0, "%s can be salvaged" % t)
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t).begins_with("Landed "), "%s is a structure (%s)" % [t, ObjectLibrary.label(t)])
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var pads := 0
+	var outposts := 0
+	for sz in range(-14, 15):
+		for sx in range(-14, 15):
+			var st := g.settlement_at(sx, sz)
+			if st.is_empty() or st["era"] != Eras.SCIFI or int(st["size"]) < 1:
+				continue
+			outposts += 1
+			for it in g.settlement_layout(st):
+				if ShipPad.has(it["t"]):
+					pads += 1
+	check(outposts > 0 and pads == outposts, "each outpost beyond a hamlet has a landing pad (%d of %d)" % [pads, outposts])
+
 func test_town_walls() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)

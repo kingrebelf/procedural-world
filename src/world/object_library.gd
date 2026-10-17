@@ -26,6 +26,9 @@ const KIND := {
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
 	"w_column": "structure", "w_crystal": "structure", "w_pylon": "structure", "w_obelisk": "structure",
+	"pad_bob": "structure", "pad_challenger": "structure", "pad_dispatcher": "structure", "pad_executioner": "structure",
+	"pad_imperial": "structure", "pad_insurgent": "structure", "pad_omen": "structure", "pad_pancake": "structure",
+	"pad_spitfire": "structure", "pad_zenith": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -71,6 +74,8 @@ static func label(t: String) -> String:
 		return Landmark.LABELS[t]
 	if WonderSite.has(t):
 		return WonderSite.label(t)
+	if ShipPad.has(t):
+		return ShipPad.label(t)
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -129,6 +134,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Landmark.build(key)
 	if WonderSite.has(key):
 		return WonderSite.build(key)
+	if ShipPad.has(key):
+		return ShipPad.build(key)
 	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
 		return WonderSite.build(key.trim_suffix("~solid"), true)
 	if TOWN_PROPS.has(key):
@@ -327,6 +334,9 @@ static func get_shape(t: String) -> Array:
 		return _shapes[t]
 	if Interiors.has(t):
 		_shapes[t] = Interiors.shape(t)
+		return _shapes[t]
+	if ShipPad.has(t):
+		_shapes[t] = ShipPad.shape(t)
 		return _shapes[t]
 	var s: Shape3D
 	var off := Vector3.ZERO
