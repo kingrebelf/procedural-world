@@ -59,7 +59,7 @@ const REAL := {
 	"bio_rifle": [0.7, 1.2], "rocket_launcher": [0.9, 1.5], "arc_launcher": [0.6, 1.0],
 	"grenade_launcher": [0.6, 1.0], "hive_cannon": [0.6, 1.2], "spore_launcher": [0.55, 1.1],
 	"dynamite": [0.15, 0.3], "frag_grenade": [0.07, 0.15], "frag_grenade_mk2": [0.07, 0.15],
-	"emp_grenade": [0.1, 0.2], "smoke_grenade": [0.1, 0.2], "void_grenade": [0.05, 0.2],
+	"emp_grenade": [0.1, 0.2], "smoke_grenade": [0.1, 0.2], "incendiary_grenade": [0.1, 0.2], "void_grenade": [0.05, 0.2],
 	"acid_pod": [0.05, 0.2], "swarm_hive": [0.05, 0.2], "star_charge": [0.05, 0.2],
 	"gravity_well": [0.05, 0.2], "singularity_orb": [0.05, 0.3], "powder_keg": [0.2, 0.45],
 	"fire_bottle": [0.2, 0.32], "fire_pot": [0.14, 0.26], "breach_charge": [0.08, 0.3], "flare_chem": [0.12, 0.3],

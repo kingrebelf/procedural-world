@@ -51,7 +51,7 @@ const KINDS := {
 				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil", "laser_pistol", "smart_pistol", "needle_gun",
 				"carbine_combat", "auto_shotgun", "plasma_rifle", "gauss_rifle", "grenade_launcher", "vibro_knife", "stun_baton",
 				"combat_machete", "chain_axe", "smart_rounds", "energy_cell", "shells_12g", "plasma_canister", "gauss_slugs",
-				"frag_grenade_mk2", "smoke_grenade"], "rounds_hollow", "rounds_ap", "slug_shells", "speed_loader", "rifle_clip", "rounds_box", "bolt_explosive"],
+				"frag_grenade_mk2", "smoke_grenade", "incendiary_grenade"], "rounds_hollow", "rounds_ap", "slug_shells", "speed_loader", "rifle_clip", "rounds_box", "bolt_explosive"],
 		"icon": ["sword_iron", "sword_runic", "pulse_rifle"],
 	},
 	"apothecary": {

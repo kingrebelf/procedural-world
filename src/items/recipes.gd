@@ -457,6 +457,7 @@ const LIST := [
 	{"out": "rocket", "qty": 2, "in": {"steel_sheet": 2, "black_powder": 4, "microchip": 1}, "at": "fabricator"},
 	{"out": "frag_grenade_mk2", "qty": 3, "in": {"steel_sheet": 1, "black_powder": 3, "springs": 1}, "at": "fabricator"},
 	{"out": "emp_grenade", "qty": 2, "in": {"magnet": 1, "battery_small": 2, "polymer": 1}, "at": "fabricator"},
+	{"out": "incendiary_grenade", "qty": 3, "in": {"steel_sheet": 1, "kerosene_can": 1, "black_powder": 1}, "at": "fabricator"},
 	{"out": "smoke_grenade", "qty": 3, "in": {"steel_sheet": 1, "coal": 2, "salt": 1}, "at": "fabricator"},
 	{"out": "breach_charge", "qty": 2, "in": {"black_powder": 6, "microchip": 1, "polymer": 1}, "at": "fabricator"},
 	{"out": "proximity_mine", "qty": 2, "in": {"black_powder": 6, "sensor_module": 1, "steel_sheet": 1}, "at": "fabricator"},

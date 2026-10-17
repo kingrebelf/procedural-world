@@ -4658,8 +4658,9 @@ func test_fire_ruins() -> void:
 	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
 
 func test_fire_items() -> void:
-	for t in ["fire_pot", "fire_bottle", "flamethrower"]:
+	for t in ["fire_pot", "fire_bottle", "incendiary_grenade", "flamethrower"]:
 		check(float(ItemDB.def(t).get("incendiary", 0.0)) > 0.0, "%s sets things alight" % t)
 	check(ItemDB.def("fire_pot")["era"] == Eras.MEDIEVAL and int(ItemDB.UNLOCK.get("fire_pot", 99)) < int(ItemDB.UNLOCK.get("fire_bottle", 0)), "the fire pot comes before the fire bottle")
+	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
 	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
 	check(Crime.FINES.has("arson"), "arson is a crime")

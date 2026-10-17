@@ -72,6 +72,7 @@ const HANDLING := {
 	"carbine_combat": {"mag": 30, "reload": 2.0, "recoil": 1.8, "spread": 1.2, "speed": 500.0, "drop": 0.6, "zoom": 1.8, "powder": true, "ads_spread": 0.15},
 	"frag_grenade_mk2": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"emp_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"incendiary_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"smoke_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"breach_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
 	"flare_chem": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 20.0, "drop": 1.0, "zoom": 1.1},

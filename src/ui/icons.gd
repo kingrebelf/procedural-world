@@ -184,6 +184,15 @@ const MORE_SHEETS := [
 		"firewood", "coal_briquettes", "peat", "lamp_oil", "kerosene_can", "diesel_jerrycan",
 		"hydrogen_cell", "fusion_pellets", "rocket_fuel", "plasma_fuel", "void_fuel", "star_fuel",
 	]],
+	# Fire (tools/place_icon.py, one item per cell): the fire pot, and the incendiary
+	# grenade ahead of its item.
+	["res://assets/icons/items25.png", [
+		"fire_pot", "incendiary_grenade", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+	]],
 ]
 ## type -> [sheet path, its order], built on first use.
 static var _sheet_of: Dictionary = {}

@@ -711,7 +711,7 @@ const BUILD := {
 	"powder_keg": "_powder_keg", "fire_bottle": "_fire_bottle", "fire_pot": "_fire_pot", "survival_knife": "_survival_knife",
 	"vibro_knife": "_vibro_knife", "combat_machete": "_combat_machete", "stun_baton": "_stun_baton",
 	"mono_katana": "_mono_katana", "power_hammer": "_power_hammer", "chain_axe": "_chain_axe",
-	"frag_grenade_mk2": "_frag_mk2", "emp_grenade": "_emp_grenade", "smoke_grenade": "_smoke_grenade",
+	"frag_grenade_mk2": "_frag_mk2", "emp_grenade": "_emp_grenade", "smoke_grenade": "_smoke_grenade", "incendiary_grenade": "_incendiary_grenade",
 	"breach_charge": "_breach_charge", "multitool": "_multitool", "laser_cutter": "_laser_cutter",
 	"welder": "_welder", "mining_laser": "_mining_laser", "grapple": "_grapple", "repair_kit": "_repair_kit",
 	"binoculars_digital": "_binoculars_digital", "toolbox_tech": "_toolbox_tech", "flare_chem": "_flare_chem",
@@ -1413,6 +1413,9 @@ static func _emp_grenade(k: MeshKit):
 
 static func _smoke_grenade(k: MeshKit):
 	_canister(k, Color(0.35, 0.37, 0.3), Color(0.85, 0.85, 0.82))
+
+static func _incendiary_grenade(k: MeshKit):
+	_canister(k, Color(0.42, 0.43, 0.44), Color(0.72, 0.1, 0.08))
 
 static func _breach_charge(k: MeshKit):
 	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.04, 0)), Vector3(0.12, 0.08, 0.03), Color(0.3, 0.32, 0.25))
