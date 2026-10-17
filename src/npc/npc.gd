@@ -41,6 +41,7 @@ var _speech_t := 0.0
 var _phase := 0.0
 var _speed := 0.0
 var _scale := 1.0
+var _pace := 1.0 ## walking pace for their age and weight (BodyShape.pace)
 var _hit_flash := 0.0
 var _speaking := false
 
@@ -67,10 +68,12 @@ func setup(r: Dictionary, s: Dictionary, m: Node) -> void:
 
 func _ready() -> void:
 	var b: Dictionary = rec["body"]
-	_scale = float(b["height"])
+	var age := int(rec.get("age", -1))
+	_scale = BodyShape.stature(b, age) if HumanModel.available() else float(b["height"])
+	_pace = BodyShape.pace(b, age)
 	if HumanModel.available():
 		_human = HumanModel.new()
-		_human.build(b, int(rec["era"]), String(rec["job"]))
+		_human.build(b, int(rec["era"]), String(rec["job"]), age)
 		_human.scale = Vector3(_scale, _scale, _scale)
 		add_child(_human)
 		_model = _human
@@ -300,7 +303,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 			if dd < 1.1 and dd > 0.001:
 				dir += (p2 - op).normalized() * (1.1 - dd) * 1.5
 		dir = dir.normalized()
-		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2)
+		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2) * _pace
 		_speed = move_toward(_speed, want, delta * 4.0)
 		p2 += dir * _speed * delta
 		var yaw := atan2(dir.x, dir.y)

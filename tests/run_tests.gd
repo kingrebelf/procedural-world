@@ -1164,6 +1164,44 @@ func test_outfits() -> void:
 		check(h.gesture("fingers_2") and h.gesture("wink") and not h.gesture("teleport"), "gestures play")
 		h.free()
 
+## Nobody is a clone: age, weight, muscle and height shape each body (BodyShape), the
+## same person always comes out the same, and clothes share the reshaped skin.
+func test_body_variety() -> void:
+	var b := {"height": 1.0, "build": 0.9, "female": false, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.25, 0.15, 0.08), "hair_style": 2, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}
+	var heavy := b.duplicate()
+	heavy["build"] = 1.2
+	var fem := b.duplicate()
+	fem["female"] = true
+	check(str(BodyShape.shape(b, 30, "farmer")) == str(BodyShape.shape(b.duplicate(), 30, "farmer")), "a body's shape is the same every time")
+	var young := BodyShape.shape(b, 22, "scribe")
+	var old := BodyShape.shape(b, 76, "scribe")
+	check(float(old["stoop"]) > 0.4 and float(young["stoop"]) < 0.2, "the old stoop (%.2f vs %.2f)" % [old["stoop"], young["stoop"]])
+	check(float(old["pace"]) < 0.8 and is_equal_approx(float(young["pace"]), BodyShape.pace(b, 22)), "the old walk slower")
+	check(BodyShape.hair_color(b, 74).get_luminance() > BodyShape.hair_color(b, 20).get_luminance() + 0.25, "hair greys with age")
+	check(BodyShape.stature(fem, 30) < BodyShape.stature(b, 30) * 0.97, "women are shorter than men of the same height roll")
+	check(BodyShape.stature(b, 78) < BodyShape.stature(b, 40), "the old lose a little height")
+	var hs := BodyShape.shape(heavy, 40, "innkeeper")
+	check(float(hs["girth"]["spine_01"][0][2]) > float(BodyShape.shape(b, 40, "innkeeper")["girth"]["spine_01"][0][2]) + 0.15, "heavier people have a belly")
+	check(float(BodyShape.shape(b, 30, "smith")["muscle"]) > float(BodyShape.shape(b, 30, "scribe")["muscle"]), "a smith is more muscled than a scribe")
+	if not HumanModel.available():
+		return
+	var a := HumanModel.new()
+	root.add_child(a)
+	a.build(heavy, Eras.MEDIEVAL, "innkeeper", 40)
+	var c := HumanModel.new()
+	root.add_child(c)
+	c.build(b, Eras.MEDIEVAL, "innkeeper", 40)
+	var cl: MeshInstance3D = a.skeleton.get_node_or_null("Clothes")
+	check(a._body.skin != c._body.skin and cl != null and cl.skin == a._body.skin, "each body has its own skin, and its clothes share it")
+	var i := 0
+	while i < a._body.skin.get_bind_count() and String(a._body.skin.get_bind_name(i)) != "spine_01":
+		i += 1
+	if i < a._body.skin.get_bind_count():
+		check(a._body.skin.get_bind_pose(i).basis.z.length() > c._body.skin.get_bind_pose(i).basis.z.length() + 0.1, "the heavy body's belly is deeper")
+	check(a.posture != null and a.ik != null and a.posture.get_index() < a.ik.get_index(), "posture runs before the feet are planted")
+	a.free()
+	c.free()
+
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
 ## Walk, jog and sprint are blended so the blended stride over the blended cycle is the

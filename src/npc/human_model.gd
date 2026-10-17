@@ -28,6 +28,10 @@ var anim: AnimationTree
 var animator: HumanAnimator
 var ik: HumanIK
 var gestures: BodyLanguage
+var posture: BodyPosture
+## This person's BodyShape.shape(): age, weight, muscle, stoop and the girth of each body
+## bone, for anything that has to fit the body (garments, armour).
+var shape: Dictionary
 var _body: MeshInstance3D
 var _clothes: MeshInstance3D
 var _armour: MeshInstance3D
@@ -124,14 +128,16 @@ static func library() -> AnimationLibrary:
 		_lib = load(ANIMS)
 	return _lib
 
-## b: the persisted body record (NPCGen). Returns self for chaining.
-func build(b: Dictionary, era: int, job: String) -> HumanModel:
+## b: the persisted body record (NPCGen); `age` in years (-1 unknown: a young adult).
+## Returns self for chaining.
+func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	var fem: bool = b["female"]
 	_fem = fem
 	var scene: Node3D = (load(DIR + BODY[fem] + ".gltf") as PackedScene).instantiate()
 	add_child(scene)
 	skeleton = scene.find_children("*", "Skeleton3D", true, false)[0]
-	var hair_col: Color = b["hair"]
+	shape = BodyShape.shape(b, age, job)
+	var hair_col := BodyShape.hair_color(b, age)
 	for c in skeleton.get_children():
 		if not (c is MeshInstance3D):
 			continue
@@ -139,6 +145,8 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 		if String(mi.name).to_lower().begins_with("superhero"):
 			mi.mesh = _body_mesh(fem, mi)
 			mi.material_override = _body_mat(fem)
+			# This person's own copy: BodyShape reshapes its binds (clothes share it).
+			mi.skin = mi.skin.duplicate()
 			_body = mi
 		elif mi.name == "Eyes":
 			mi.material_override = _eye_mat()
@@ -152,6 +160,8 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	var style: String = styles[int(b["hair_style"]) % styles.size()]
 	if NPCGen.GUARD_JOBS.has(job):
 		style = "Hair_Buzzed" if not fem else "Hair_BuzzedFemale"
+	elif BodyShape.bald(b, age):
+		style = ""
 	_dress_up(b, era, job)
 	if style != "":
 		_add_hair(style, hair_col)
@@ -161,10 +171,17 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if _body and _body.skin:
+		BodyShape.apply_girth(_body.skin, skeleton, shape)
 	animator = HumanAnimator.new()
 	add_child(animator)
 	animator.setup(library(), scene, skeleton, self)
 	anim = animator.tree
+	# Posture before the feet are planted and the head turned (HumanIK).
+	posture = BodyPosture.new()
+	posture.stoop = float(shape["stoop"])
+	posture.shoulder_in = float(shape["shoulder_in"])
+	skeleton.add_child(posture)
 	ik = HumanIK.new()
 	skeleton.add_child(ik)
 	animator.ik = ik
@@ -659,6 +676,8 @@ func freeze_for_ragdoll() -> void:
 		ik.active = false
 	if gestures:
 		gestures.active = false
+	if posture:
+		posture.active = false
 	_holding = true
 	_oneshot = true
 
@@ -712,6 +731,8 @@ func set_riding_camera() -> void:
 		ik.feet_on = false
 		ik.look_on = false
 		ik.breathe = false
+	if posture:
+		posture.active = false
 
 # --- Idle variety --------------------------------------------------------------------
 
