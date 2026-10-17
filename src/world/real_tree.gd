@@ -359,7 +359,7 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var side := _orth(axis).rotated(axis, r.randf_range(-0.9, 0.9))
 		# Stem end sits a little inside the shell so the spray grows outward.
 		at -= axis * len * 0.3
-		var shade := lerpf(0.55, 1.0, clampf((depth - 0.3) / 0.7, 0.0, 1.0)) * lerpf(0.82, 1.06, clampf((at.y - ht) / (2.0 * ry), 0.0, 1.0))
+		var shade := lerpf(0.68, 1.0, clampf((depth - 0.3) / 0.7, 0.0, 1.0)) * lerpf(0.9, 1.08, clampf((at.y - ht) / (2.0 * ry), 0.0, 1.0)) * 1.12
 		_card(leaves, at, axis, side, len, wid, _jit(tint, r, 0.1) * shade, centre, radii, false)
 
 ## Distance from `rel` (relative to the crown centre) along `dir` to the crown ellipsoid.
@@ -418,7 +418,7 @@ static func _conifer(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark:
 			var axis := (out - Vector3(0, dr, 0)).normalized()
 			var len := rad * r.randf_range(0.9, 1.12) * (1.15 if far else 1.0)
 			var wid := clampf(len * 0.62, 0.45, 1.6) * (1.5 if far else 1.0)
-			var shade := lerpf(0.72, 1.05, t) * r.randf_range(0.92, 1.05)
+			var shade := lerpf(0.8, 1.08, t) * r.randf_range(0.92, 1.05)
 			var col := _jit(tint, r, 0.07) * shade
 			var at := Vector3(0, y, 0) + out * 0.05
 			# The bough droops: flat card plus a steeper one across it, for depth.
@@ -487,7 +487,7 @@ static func _bush(r: RandomNumberGenerator, height: float, tint: Color, bark: Bu
 		var side := _orth(axis).rotated(axis, r.randf_range(-1.0, 1.0))
 		at -= axis * len * 0.35
 		at.y = maxf(at.y, 0.02)
-		var shade := lerpf(0.6, 1.0, depth) * lerpf(0.8, 1.05, clampf(at.y / height, 0.0, 1.0))
+		var shade := lerpf(0.7, 1.0, depth) * lerpf(0.88, 1.06, clampf(at.y / height, 0.0, 1.0)) * 1.1
 		_card(leaves, at, axis, side, len, len, _jit(tint, r, 0.1) * shade, centre, radii, false)
 
 # --- Mesh assembly ---------------------------------------------------------------------

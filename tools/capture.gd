@@ -798,4 +798,19 @@ func _draw_stats() -> void:
 	var without: float = await count.call()
 	for ch in hidden:
 		ch.visible = true
+	# Let the restored trees draw again before the shot is saved (the frame grabbed right
+	# after this returns was still rendered without them).
+	for i in 8:
+		await get_tree().process_frame
 	print("DRAWS total %d  trees+bushes %d  (%d nodes)" % [int(base), int(base - without), hidden.size()])
+	var here: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(world.player.global_position))
+	if here:
+		var trees := 0
+		for o in here.data["objects"]:
+			if ObjectLibrary.kind(o["t"]) == "tree" and not o["st"].get("gone", false):
+				trees += 1
+		var mms := []
+		for ch in here.get_children():
+			if ch is MultiMeshInstance3D:
+				mms.append("%s x%d vis_end %.0f" % [ch.name, (ch as MultiMeshInstance3D).multimesh.instance_count, ch.visibility_range_end])
+		print("chunk ", here.key, " standing trees ", trees, " pos ", world.player.global_position, " ", mms)
