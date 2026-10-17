@@ -279,6 +279,44 @@ func test_landforms() -> void:
 		# needs the Game autoload.)
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
+func test_landmarks() -> void:
+	# Each landmark mesh builds, about the size of its collision box.
+	for t in Landmark.LABELS:
+		var m := ObjectLibrary.get_mesh(t)
+		var bb := m.get_aabb()
+		var sz: Vector3 = Landmark.SIZE[t]
+		check(m.get_surface_count() >= 2 and bb.size.x < sz.x * 2.0 + 1.0 and bb.size.z < sz.z * 2.0 + 1.0 and bb.size.y > 0.5,
+			"%s builds (%d surfaces, %s)" % [t, m.get_surface_count(), bb.size])
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t) == Landmark.LABELS[t], "%s is a labelled structure" % t)
+	# The heart of a landform region holds its landmark and a rich cache.
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(2024)
+	var found := {}
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			var lf := g.field.site_landform(ix, iz)
+			if not Landmark.BY_LANDFORM.has(lf) or found.has(lf):
+				continue
+			var p := g.field.site_pos(ix, iz)
+			if g.field.landform_weights(p.x, p.y)[lf] < 0.9 or not g.settlements_near(p.x - 40, p.y - 40, p.x + 40, p.y + 40).is_empty():
+				continue
+			var ch := g.generate(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+			var want: String = Landmark.BY_LANDFORM[lf][0]
+			var mark := {}
+			var cache := {}
+			for o in ch["objects"]:
+				if o["t"] == want or (want == "caravan" and o["t"] == "wagon"):
+					mark = o
+				if o["st"].has("landmark"):
+					cache = o
+			found[lf] = true
+			check(not mark.is_empty(), "%s region holds its %s" % [WorldField.LANDFORM_NAMES[lf], want])
+			check(not cache.is_empty() and (cache["st"]["loot"] as Array).size() >= 4, "%s's cache is rich (%s)" % [want, cache.get("st", {}).get("loot", []).size()])
+			if not mark.is_empty() and Landmark.BY_LANDFORM[lf][1] == "high":
+				var h: float = mark["p"].y
+				check(h >= ChunkGenerator.height_at(ch, 32.0, 32.0) - 0.5 or h > g.field.shape(p.x, p.y).x + 5.0, "%s stands up high (%.1f)" % [want, h])
+	check(found.size() >= 8, "landmarks found in %d landforms" % found.size())
+
 func test_all_eras_appear_with_transitions() -> void:
 	var f := WorldField.new(99)
 	var seen := [0, 0, 0]

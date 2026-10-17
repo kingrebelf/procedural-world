@@ -872,6 +872,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var loot := ItemDB.roll_loot(era, r, o)
 		_add(chunk, Eras.CACHE_TYPES[era], era, lx, lz, r.randf() * TAU, 1.0, {"loot": loot, "opened": false})
 
+	if landforms:
+		_place_landmark(chunk, sites, origin)
+
 	# Threshold markers inside transition bands make crossings read as intentional.
 	r = WHash.rng(seed, cx, cz, 304)
 	for n in 10:
@@ -1133,6 +1136,76 @@ func road_angles(s: Dictionary) -> Array:
 				var e := pts.size() - 1
 				out.append((pts[maxi(e - 4, 0)] - pts[e]).angle())
 	return out
+
+## v7: the hidden landmark at the heart of a landform region (see Landmark), placed by
+## the chunk that holds the region's site: on the highest point near it for towers and
+## isles, the lowest for craters, sinkholes and gorges, else the flattest, with a cache
+## of rich loot beside it.
+func _place_landmark(chunk: Dictionary, sites: Array, origin: Dictionary) -> void:
+	var x0 := float(chunk["cx"] * SIZE)
+	var z0 := float(chunk["cz"] * SIZE)
+	var ix := int(floor(x0 / WorldField.ERA_CELL))
+	var iz := int(floor(z0 / WorldField.ERA_CELL))
+	var site := field.site_pos(ix, iz)
+	if site.x < x0 or site.x >= x0 + SIZE or site.y < z0 or site.y >= z0 + SIZE:
+		return
+	var lf := field.site_landform(ix, iz)
+	if not Landmark.BY_LANDFORM.has(lf) or field.landform_weights(site.x, site.y)[lf] < 0.9:
+		return
+	var what: Array = Landmark.BY_LANDFORM[lf]
+	var t: String = what[0]
+	var mode: String = what[1]
+	var margin := 12.0 if t == "dolmen" or t == "star_wreck" or t == "titan_bones" or t == "caravan" else 5.0
+	var best := Vector2.INF
+	var score := INF
+	var sl := site - Vector2(x0, z0)
+	for j in range(int(margin), int(SIZE - margin) + 1, 2):
+		for i in range(int(margin), int(SIZE - margin) + 1, 2):
+			var p := Vector2(i, j)
+			# (A lake isle can be anywhere in the chunk; the rest stay near the heart.)
+			if p.distance_to(sl) > (90.0 if t == "watchtower" else 30.0):
+				continue
+			var h := height_at(chunk, i, j)
+			if h < WATER_LEVEL + 0.4 or road_at(chunk, i, j) > 0.0 or by_river(chunk, i, j) or _near_settlement(x0 + i, z0 + j, sites, 30.0):
+				continue
+			var sc: float
+			match mode:
+				"high": sc = -h + slope_at(chunk, i, j) * 4.0
+				"low": sc = h + slope_at(chunk, i, j) * 4.0
+				_: sc = slope_at(chunk, i, j) * 20.0 + p.distance_to(sl) * 0.05
+			if sc < score:
+				score = sc
+				best = p
+	if best == Vector2.INF:
+		return
+	var r := WHash.rng(seed, chunk["cx"], chunk["cz"], 307)
+	var yaw := r.randf() * TAU
+	var era := WorldField.dominant(weights_at(chunk, best.x, best.y))
+	match t:
+		"caravan":
+			_add(chunk, "wagon", era, best.x, best.y, yaw, 1.0)
+			var bp := best + Vector2(3.2, 0).rotated(-yaw)
+			_add(chunk, "barrels", era, bp.x, bp.y, yaw + 0.6, 1.0)
+		"dolmen":
+			_add(chunk, t, era, best.x, best.y, yaw, 1.0)
+			for n in 7:
+				var sp := best + Vector2(7.0, 0).rotated(yaw + n * TAU / 7.0)
+				_add(chunk, "standing_stone", era, sp.x, sp.y, r.randf() * TAU, r.randf_range(0.8, 1.1), {}, r.randi() & 0x7FFFFFFF, 0)
+		"fallen_star":
+			_add(chunk, t, era, best.x, best.y, yaw, 1.0)
+			var op := best + Vector2(3.6, 0).rotated(-yaw + 2.0)
+			_add(chunk, "aether_crystal", Eras.FANTASY, op.x, op.y, r.randf() * TAU, 1.6, {"left": 14, "progress": 0.0}, r.randi() & 0x7FFFFFFF, 0)
+		_:
+			_add(chunk, t, era, best.x, best.y, yaw, 1.0)
+	# The prize: deep-dungeon odds, waiting beside (or on) the landmark.
+	var off: Vector2 = {"summit_shrine": Vector2(0, 0.9), "eyrie": Vector2(0.6, 0), "sunken_altar": Vector2(0, 1.4),
+		"star_wreck": Vector2(4.8, 0), "titan_bones": Vector2(2.6, 1.0), "watchtower": Vector2(3.6, 0)}.get(t, Vector2(0, 2.6))
+	var cp := best + off.rotated(-yaw)
+	cp = cp.clamp(Vector2(1, 1), Vector2(SIZE - 1, SIZE - 1))
+	var o := origin.duplicate()
+	o["era"] = era
+	o["how"] = "found"
+	_add(chunk, Eras.CACHE_TYPES[era], era, cp.x, cp.y, yaw, 1.0, {"loot": ItemDB.roll_loot(era, r, o, 0.75), "opened": false, "landmark": t})
 
 func _place_settlement(chunk: Dictionary, s: Dictionary, x0: float, z0: float) -> void:
 	var era: int = s["era"]

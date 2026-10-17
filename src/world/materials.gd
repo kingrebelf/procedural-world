@@ -262,6 +262,7 @@ static func _get_mat(name: String) -> Material:
 			m.backlight = Color(0.1, 0.2, 0.05)
 		"stone": m = _pbr(Color(0.56, 0.54, 0.50), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"stone_dark": m = _pbr(Color(0.30, 0.29, 0.30), 0.85, 0.0, "stone", 0.02, 0.35, 1.4)
+		"bone": m = _pbr(Color(0.84, 0.8, 0.68), 0.8, 0.0, "stone", 0.02, 0.35, 0.9)
 		"cobble": m = _pbr(Color(0.5, 0.48, 0.45), 0.9, 0.0, "cobble", 0.05, 0.5, 2.0)
 		"castle_stone": m = _pbr(Color(0.78, 0.74, 0.66), 0.9, 0.0, "castle_stone", 0.02, 0.35, 1.4)
 		"crypt_stone": m = _pbr(Color(0.4, 0.41, 0.4), 0.9, 0.0, "crypt_stone", 0.02, 0.35, 1.4)

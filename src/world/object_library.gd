@@ -22,6 +22,8 @@ const KIND := {
 	"bunker_wall": "structure", "bunker_tower": "structure", "bunker_gate": "structure", "bunker_keep": "structure",
 	"trader": "trader", "alien_ruin": "structure",
 	"signpost": "marker", "bridge": "structure", "cave": "structure",
+	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure",
+	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -63,6 +65,8 @@ static func label(t: String) -> String:
 		return BuildCatalog.label(t)
 	if Stronghold.has(t):
 		return Stronghold.LABELS[t]
+	if Landmark.has(t):
+		return Landmark.LABELS[t]
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -109,6 +113,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return KitBase.build(key)
 	if Stronghold.has(key):
 		return Stronghold.build(key)
+	if Landmark.has(key):
+		return Landmark.build(key)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
@@ -305,7 +311,7 @@ static func get_shape(t: String) -> Array:
 			off = Vector3(0, 1.3, 0)
 		"structure":
 			var b := BoxShape3D.new()
-			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
+			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
 				"watchtower", "spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)
