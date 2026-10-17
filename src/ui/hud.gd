@@ -604,6 +604,9 @@ var _cross_mode := 0
 func _draw_cross(cross: Control) -> void:
 	if not Cursor.locked() and not Game.using_pad:
 		return
+	if player and player.gunplay and player.gunplay.held() != null:
+		_draw_gun_cross(cross)
+		return
 	var tex := UITheme.crosshair(_cross_mode)
 	if tex:
 		var px := 30.0 if _cross_mode == 0 else 34.0
@@ -616,6 +619,39 @@ func _draw_cross(cross: Control) -> void:
 		var d := Vector2.from_angle(a * PI * 0.5 + PI * 0.25)
 		cross.draw_line(d * 7.0, d * 11.0, Color(0, 0, 0, 0.4), 3.0, true)
 		cross.draw_line(d * 7.0, d * 11.0, Color(1, 1, 1, 0.55), 1.5, true)
+
+## With a gun or bow: four ticks spaced to the real spread of the next shot (they open
+## up as you move or fire and close as you aim), a ring filling through a reload, and
+## the rounds loaded and carried under it. Looking down the sights leaves only a dot.
+func _draw_gun_cross(cross: Control) -> void:
+	var g: Gunplay = player.gunplay
+	var it = g.held()
+	var cam := get_viewport().get_camera_3d()
+	var half_h := get_viewport_rect().size.y * 0.5
+	var fov := deg_to_rad(cam.fov if cam else 75.0)
+	var gap := clampf(tan(deg_to_rad(g.spread_deg())) / tan(fov * 0.5) * half_h, 3.0, 160.0)
+	var a := clampf(1.0 - g.ads * 1.4, 0.0, 1.0)
+	var dim := Color(0, 0, 0, 0.45 * a)
+	var lit := Color(1, 1, 1, 0.9 * a)
+	if a > 0.0:
+		for d in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+			cross.draw_line(d * gap, d * (gap + 9.0), dim, 3.5, true)
+			cross.draw_line(d * gap, d * (gap + 9.0), lit, 1.6, true)
+	cross.draw_circle(Vector2.ZERO, 2.2, Color(0, 0, 0, 0.4))
+	cross.draw_circle(Vector2.ZERO, 1.3, Color(1, 1, 1, 0.85))
+	if g.reloading():
+		cross.draw_arc(Vector2.ZERO, 22.0, 0, TAU, 40, Color(0, 0, 0, 0.35), 4.0, true)
+		cross.draw_arc(Vector2.ZERO, 22.0, -PI * 0.5, -PI * 0.5 + TAU * g.reload_progress(), 40, UITheme.ACCENT, 2.5, true)
+	var font := UITheme.font("title") if UITheme.font("title") else cross.get_theme_default_font()
+	var loaded := g.rounds(it)
+	var txt := "%d / %d" % [loaded, g.reserve(it)]
+	var col := Color(1.0, 0.45, 0.35) if loaded == 0 else (UITheme.ACCENT if loaded * 4 <= g.mag_size(it["type"]) else Color(1, 1, 1, 0.85))
+	var pos := Vector2(38, 46)
+	cross.draw_string(font, pos + Vector2(1, 1), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0, 0, 0, 0.7))
+	cross.draw_string(font, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, col)
+	if loaded == 0 and not g.reloading():
+		var hint := "[%s] Reload" % Player._key("reload") if g.reserve(it) > 0 else "No ammo"
+		cross.draw_string(font, pos + Vector2(0, 20), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.7))
 
 ## Which crosshair fits what you are looking at.
 func _update_cross() -> void:
@@ -760,6 +796,8 @@ func _process(_d: float) -> void:
 	_compass.queue_redraw()
 	_update_mouse_hint()
 	_update_cross()
+	if player.gunplay and player.gunplay.held() != null:
+		_cross.queue_redraw()
 	_under.visible = player.underwater
 	_breath.max_value = Game.stats.max_breath()
 	_marks.player = player

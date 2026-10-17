@@ -81,6 +81,7 @@ static func pointed(t: String) -> bool:
 
 ## Kit model, scale, and the colour the bronze metal is re-tinted to (the kit's wood,
 ## leather and paint stay as they are). Handles run along +Y; guns point along -Z.
+## Ranged weapons are built by GunLook.
 const KIT := {
 	"pickaxe_iron": ["props/Pickaxe_Bronze", 0.58, Color(0.86, 0.88, 0.92)],
 	"pickaxe_mythril": ["props/Pickaxe_Bronze", 0.58, Color(0.45, 0.85, 1.0)],
@@ -88,14 +89,6 @@ const KIT := {
 	"axe_mythril": ["props/Axe_Bronze", 0.95, Color(0.45, 0.85, 1.0)],
 	"sword_iron": ["props/Sword_Bronze", 0.85, Color(0.9, 0.92, 0.96)],
 	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
-	"pulse_pistol": ["scifi/Pistol_1", 0.3, null],
-	"crossbow": ["scifi/Crossbow_1", 0.3, null],
-	"crossbow_runic": ["scifi/Crossbow_2", 0.3, null],
-	"scrap_pistol": ["scifi/Pistol_3", 0.3, null],
-	"pulse_smg": ["scifi/SMG_1", 0.3, null],
-	"pulse_rifle": ["scifi/AR_1", 0.3, null],
-	"rail_rifle": ["scifi/Sniper_1", 0.3, null],
-	"arc_launcher": ["scifi/Grenade_1", 0.3, null],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
 	"dagger": ["props/Sword_Bronze", 0.5, Color(0.88, 0.9, 0.95)],
 	"battle_axe": ["props/Axe_Bronze", 1.15, Color(0.7, 0.72, 0.76)],
@@ -146,7 +139,10 @@ static func _forged(t: String) -> ArrayMesh:
 static func model(t: String) -> ArrayMesh:
 	if _models.has(t):
 		return _models[t]
-	var out: ArrayMesh = null
+	var out: ArrayMesh = GunLook.model(t) if GunLook.has(t) else null
+	if out != null:
+		_models[t] = out
+		return out
 	if KIT.has(t) and ResourceLoader.exists("res://assets/models/%s.gltf" % KIT[t][0]):
 		var e: Array = KIT[t]
 		var xf := Transform3D.IDENTITY.scaled(Vector3.ONE * e[1])
@@ -271,6 +267,8 @@ static func _metal_mask(a: Array, mat: Material) -> PackedByteArray:
 var _item = null
 
 func show_item(t: String, it = null) -> void:
+	if t == _type and is_same(it, _item) and t != "":
+		return # same thing still in hand (an inventory change elsewhere)
 	_type = t
 	_item = it
 	if arms:
@@ -321,23 +319,69 @@ func _aim() -> void:
 func swing() -> void:
 	_swing_t = 0.0
 
-func recoil() -> void:
-	_recoil = 1.0
+## A shot's kick: the gun jumps back and its muzzle climbs, more for heavy weapons.
+func recoil(strength := 1.0) -> void:
+	_recoil = clampf(strength, 0.3, 2.0)
+
+## Lowers the gun out of view and brings it back up, for a reload.
+func reload_dip() -> void:
+	_dip_t = 0.0
+
+var ads := 0.0 ## set by Gunplay: 0 hip, 1 looking down the sights
+var _dip_t := 1.0
+var _ads_off := Vector3.ZERO
+
+## The held item's mesh, wherever it is (the arms' hand, or floating alone).
+func _held_mesh() -> MeshInstance3D:
+	if arms == null:
+		return _mesh if _mesh.mesh != null else null
+	if arms._held == null or arms._held.get_child_count() == 0:
+		return null
+	var prop := arms._held.get_child(0)
+	return prop.get_child(0) as MeshInstance3D if prop.get_child_count() > 0 else null
+
+## Where shots leave the barrel: the front of the gun (guns point along -Z), a little
+## below the top.
+func muzzle() -> Vector3:
+	var mi := _held_mesh()
+	if mi == null or mi.mesh == null:
+		return global_position + global_transform.basis * Vector3(0, -0.05, -0.6)
+	var b := mi.mesh.get_aabb()
+	return mi.global_transform * Vector3(b.get_center().x, b.position.y + b.size.y * 0.75, b.position.z)
+
+## The point on the gun's top that lines up with the eye when aiming, in the rig's
+## own space.
+func _sight_local() -> Vector3:
+	var mi := _held_mesh()
+	if mi == null or mi.mesh == null:
+		return Vector3.ZERO
+	var b := mi.mesh.get_aabb()
+	var top := mi.global_transform * Vector3(b.get_center().x, b.end.y, b.get_center().z)
+	return global_transform.affine_inverse() * top
 
 func sway(delta: float, speed: float) -> void:
+	var steady := 1.0 - 0.85 * ads
 	_sway_t += delta * (1.0 + speed * 6.0)
 	_swing_t = minf(1.0, _swing_t + delta * 2.4)
 	_recoil = maxf(0.0, _recoil - delta * 8.0)
+	_dip_t = minf(1.0, _dip_t + delta * 1.4)
 	var s := sin(_swing_t * PI)
-	var off := Vector3(sin(_sway_t) * 0.006 * (1.0 + speed * 3.0), absf(cos(_sway_t)) * 0.006 * (1.0 + speed * 3.0), _recoil * 0.06)
+	var dip := sin(_dip_t * PI) # down and back up over a reload
+	var off := Vector3(sin(_sway_t) * 0.006 * (1.0 + speed * 3.0), absf(cos(_sway_t)) * 0.006 * (1.0 + speed * 3.0), _recoil * 0.06) * Vector3(steady, steady, 1.0)
+	# Aiming: slide the rig so the gun's top sits on the line of sight.
+	if ads > 0.001 and pointed(_type):
+		var sl := _sight_local()
+		var want := Vector3(-sl.x - _rest.x, -sl.y - _rest.y - 0.012, 0.06)
+		_ads_off = _ads_off.lerp(want, clampf(delta * 20.0, 0.0, 1.0))
+	var aim_off := _ads_off * smoothstep(0.0, 1.0, ads)
 	if arms:
 		# The whole rig swings down and across from just in front of the eyes.
-		position = _rest + off + Vector3(-0.05 * s, -0.06 * s, -0.12 * s) + Vector3(0, 0, _recoil * 0.04)
-		rotation = Vector3(-0.9 * s + _recoil * 0.12, 0.25 * s, 0.35 * s)
+		position = _rest + aim_off + off + Vector3(-0.05 * s, -0.06 * s, -0.12 * s) + Vector3(0, -0.18 * dip, _recoil * 0.04 + 0.05 * dip)
+		rotation = Vector3(-0.9 * s + _recoil * (0.12 * steady + 0.03) - 0.5 * dip, 0.25 * s, 0.35 * s + 0.4 * dip)
 		_aim()
 		return
-	position = _rest + off + Vector3(-0.12 * s, 0.05 * s, -0.1 * s)
-	rotation = Vector3(-1.1 * s + _recoil * 0.25, 0.3 * s, 0.3 * s)
+	position = _rest + aim_off + off + Vector3(-0.12 * s, 0.05 * s, -0.1 * s) + Vector3(0, -0.18 * dip, 0.05 * dip)
+	rotation = Vector3(-1.1 * s + _recoil * 0.25 * steady - 0.5 * dip, 0.3 * s, 0.3 * s + 0.4 * dip)
 
 func tracer(world_end: Vector3, mat := "glow_cyan") -> void:
 	var from := _mesh.global_position if arms == null else global_position + global_transform.basis * Vector3(0, -0.12, -0.5)

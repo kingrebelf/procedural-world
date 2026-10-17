@@ -30,6 +30,7 @@ var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
 var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
+var gunplay: Gunplay ## magazines, aiming, recoil and flying shots for ranged weapons
 var _trigger_held := false ## semi-automatic weapons wait for the trigger to come back
 var hand_light: HandLight ## torch or flashlight in the off hand
 var jetpack: Jetpack
@@ -106,6 +107,10 @@ func _ready() -> void:
 	camera.add_child(viewmodel)
 	hand_light = HandLight.new()
 	camera.add_child(hand_light)
+	gunplay = Gunplay.new()
+	gunplay.player = self
+	add_child(gunplay)
+	gunplay.gun_event.connect(_gun_sound)
 	if HumanModel.available():
 		body = HumanModel.new()
 		body.build(LOOK, Eras.MEDIEVAL, "")
@@ -277,10 +282,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if ui_open:
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var s := float(Settings.get_value("mouse_sensitivity")) * 0.01
+		# Slower when looking through sights or binoculars, so aim stays steady.
+		var s := float(Settings.get_value("mouse_sensitivity")) * 0.01 / (gunplay.zoom() if gunplay else 1.0)
 		_yaw -= event.relative.x * s
 		var dy: float = event.relative.y * s * (-1.0 if Settings.get_value("invert_y") else 1.0)
 		_pitch = clampf(_pitch - dy, -1.5, 1.5)
+		if gunplay:
+			gunplay.on_look(-dy)
 		_apply_look()
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -455,6 +463,7 @@ func _physics_process(delta: float) -> void:
 		_bob_t += delta * hv.length() * 1.6
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
+	viewmodel.ads = gunplay.ads
 	viewmodel.sway(delta, hv.length() / SPRINT)
 	if not fly:
 		steps.tick(self, delta, Vector2(velocity.x, velocity.z).length(), is_on_floor(), _crouched, landed_vy, jumped)
@@ -720,7 +729,10 @@ func _holding_binoculars() -> bool:
 
 func _binoculars(delta: float, on: bool) -> void:
 	_zoom = move_toward(_zoom, 1.0 if on else 0.0, delta * 4.0)
+	# Aiming down a gun's sights narrows the view too (fov is a full angle, so divide the
+	# tangent, not the angle, to magnify).
 	var base := float(Settings.get_value("fov"))
+	base = rad_to_deg(2.0 * atan(tan(deg_to_rad(base) * 0.5) / gunplay.zoom()))
 	camera.fov = lerpf(base, ZOOM_FOV, smoothstep(0.0, 1.0, _zoom))
 	spotted = null
 	if _zoom < 0.5:
@@ -1032,49 +1044,72 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 		if _trigger_held:
 			return
 		_trigger_held = true
-	_cooldown = float(d.get("cooldown", 0.22))
-	var ammo_t: String = d.get("ammo", "")
-	var shots: int = it.get("charge", 0)
-	if shots <= 0:
-		if Game.inventory.remove_type(ammo_t, 1) == 0:
-			Game.toast.emit("Needs a %s" % ItemDB.def(ammo_t)["name"])
+	gunplay.fire(it, d)
+
+## Gun sounds, from Gunplay's hooks: energy guns zap, bows and crossbows whoosh.
+func _gun_sound(kind: String, t: String, at: Vector3, what: String) -> void:
+	var d := ItemDB.def(t)
+	match kind:
+		"fire":
+			if Gunplay.handling(t).get("auto_reload", false):
+				Audio.play("swing/whoosh", -8.0, 0.1)
+			elif Gunplay.handling(t).get("powder", false):
+				Audio.play("weapon/explosion", -14.0, 0.1, 1.6)
+			else:
+				Audio.play("weapon/laser_big" if d.has("splash") else "weapon/laser", -6.0, 0.06)
+		"dry":
 			Audio.ui("ui/error")
-			_cooldown = 0.6
-			return
-		shots = d.get("shots_per_ammo", 10)
-	it["charge"] = shots - 1
-	viewmodel.recoil()
-	if body:
-		body.play_once("pistol", 0.4)
-	used_tool.emit("fire")
-	Audio.play("weapon/laser_big" if d.has("splash") else "weapon/laser", -6.0, 0.06)
-	var space := get_world_3d().direct_space_state
-	var from := camera.global_position
-	var to := from - camera.global_transform.basis.z * float(d.get("range", 60.0))
-	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2, [get_rid()])
-	var hit := space.intersect_ray(q)
-	var end: Vector3 = hit.get("position", to)
-	viewmodel.tracer(end, String(d.get("tracer", "glow_cyan")))
+		"reload_start", "reload_round":
+			Audio.play("weapon/draw", -12.0)
+		"impact":
+			if d.has("splash"):
+				Audio.play_at("weapon/explosion", at, 4.0)
+			elif what == "creature" or what == "npc":
+				Audio.play_at("hit/flesh", at, -4.0)
+			elif what == "ground":
+				Audio.play_at("hit/dig", at, -8.0)
+			else:
+				Audio.play_at(Audio.hit_bank(what), at, -6.0)
+
+## A shot from a ranged weapon landed: hurt what it hit (or blast everything around, for
+## splash weapons). Returns what was hit, for the impact effect and sound: "creature",
+## "npc", "stone", "wood", "metal" or "ground".
+func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
+	var col = hit.get("collider")
+	var q: float = it.get("quality", 1.0) if it is Dictionary else 1.0
 	if d.has("splash"):
-		Audio.play_at("weapon/explosion", end, 4.0)
-		_blast(end, float(d["splash"]), float(d.get("damage", 10)))
-		if hit.has("collider") and hit["collider"].has_meta("obj"):
-			var bc: ChunkNode = hit["collider"].get_meta("chunk")
-			damage_object(bc, bc.get_object(hit["collider"].get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
-		return
-	if hit.has("collider") and hit["collider"].has_meta("creature") and fauna:
-		Audio.play_at("hit/flesh", end, -4.0)
-		_strike(it, hit["collider"].get_meta("creature"), null, float(d.get("damage", 10)) * it.get("quality", 1.0))
-		return
-	if hit.has("collider") and hit["collider"].has_meta("npc") and npcs:
-		Audio.play_at("hit/flesh", end, -4.0)
-		_strike(it, null, hit["collider"].get_meta("npc"), float(d.get("damage", 10)) * it.get("quality", 1.0))
-		return
-	if hit.has("collider") and hit["collider"].has_meta("obj"):
-		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
-		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))
-		Audio.play_at(Audio.hit_bank(Durability.material(o["t"])), end, -6.0)
-		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, Durability.material(o["t"])), 0.8)
+		_blast(at, float(d["splash"]), float(d.get("damage", 10)))
+		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
+			var bc: ChunkNode = col.get_meta("chunk")
+			damage_object(bc, bc.get_object(col.get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
+		return "ground"
+	if not (col is Object) or not is_instance_valid(col):
+		return "ground"
+	if col.has_meta("creature") and fauna:
+		var c = col.get_meta("creature")
+		if is_instance_valid(c):
+			_strike(it, c, null, float(d.get("damage", 10)) * q)
+		return "creature"
+	if col.has_meta("npc") and npcs:
+		var n = col.get_meta("npc")
+		if is_instance_valid(n):
+			_strike(it, null, n, float(d.get("damage", 10)) * q)
+		return "npc"
+	if col.has_meta("obj"):
+		var chunk: ChunkNode = col.get_meta("chunk")
+		var o: Dictionary = chunk.get_object(col.get_meta("obj"))
+		if o.is_empty():
+			return "ground"
+		var mat := Durability.material(o["t"])
+		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, mat), 0.8)
+		match mat:
+			"wood", "planks", "fungus":
+				return "wood"
+			"metal", "circuitry":
+				return "metal"
+			"stone", "ore", "crystal":
+				return "stone"
+	return "ground"
 
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
