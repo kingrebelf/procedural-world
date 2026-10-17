@@ -11,7 +11,7 @@ uniform float vein_freq = 1.6;
 uniform float ore_metal = 0.7;
 uniform float tri_scale = 0.35;
 // Ben's ore photos already carry their veins: then the photo is the rock, in its own
-// colours, and its saturated parts (rust, gold, mineral) are the ore that shines.
+// colours, and its bright pale flecks are the ore that shines.
 uniform bool photo_ore = false;
 // Close-up pieces (held ore): the mineral as small disseminated grains clustered in
 // patches with a rusty stain round them, instead of seams (which read as paint up close).
@@ -20,6 +20,10 @@ uniform float grain_freq = 0.0;
 varying vec3 obj_pos;
 varying vec3 obj_nrm;
 varying vec3 tint;
+// The object's axes in view space, to turn a normal worked out in object space.
+varying vec3 ax_x;
+varying vec3 ax_y;
+varying vec3 ax_z;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + vec3(0.1, 0.2, 0.3));
@@ -39,12 +43,30 @@ void vertex() {
 	obj_pos = VERTEX;
 	obj_nrm = NORMAL;
 	tint = pow(COLOR.rgb, vec3(2.2));
+	ax_x = (MODELVIEW_MATRIX * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+	ax_y = (MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+	ax_z = (MODELVIEW_MATRIX * vec4(0.0, 0.0, 1.0, 0.0)).xyz;
 }
 
 vec4 tri(sampler2D t, vec3 p, vec3 n) {
 	vec3 w = pow(abs(n), vec3(4.0));
 	w /= (w.x + w.y + w.z);
 	return texture(t, p.yz) * w.x + texture(t, p.xz) * w.y + texture(t, p.xy) * w.z;
+}
+
+// The surface normal with the photo's relief on it, mapped the same three ways as the
+// colour and bent along each projection's own axes (a NORMAL_MAP would bend it along
+// the mesh's UV tangents, which have nothing to do with these projections: it came out
+// as a wormy crawl of light and dark over the whole stone).
+vec3 tri_normal(vec3 p, vec3 n, float strength) {
+	vec3 w = pow(abs(n), vec3(4.0));
+	w /= (w.x + w.y + w.z);
+	vec2 tx = texture(stone_nrm, p.yz).xy * 2.0 - 1.0;
+	vec2 ty = texture(stone_nrm, p.xz).xy * 2.0 - 1.0;
+	vec2 tz = texture(stone_nrm, p.xy).xy * 2.0 - 1.0;
+	vec3 b = vec3(0.0, tx.x, tx.y) * w.x + vec3(ty.x, 0.0, ty.y) * w.y + vec3(tz.x, tz.y, 0.0) * w.z;
+	vec3 o = normalize(n + b * strength);
+	return normalize(ax_x * o.x + ax_y * o.y + ax_z * o.z);
 }
 
 void fragment() {
@@ -55,11 +77,14 @@ void fragment() {
 		vec3 rock = c * mix(vec3(1.0), tint / lt, 0.25) * (0.75 + 0.5 * clamp(lt * 3.0, 0.0, 1.0));
 		float mx = max(c.r, max(c.g, c.b));
 		float sat = (mx - min(c.r, min(c.g, c.b))) / max(mx, 0.02);
-		float ore = smoothstep(0.35, 0.6, sat) * smoothstep(0.03, 0.12, mx);
+		// Rust is dull: what glints is the bright, pale flecks of the metal itself (all
+		// of the rusty stone shining made it look like a copper casting).
+		float rust = smoothstep(0.35, 0.6, sat) * smoothstep(0.03, 0.12, mx);
+		float fleck = smoothstep(0.42, 0.6, mx) * (1.0 - smoothstep(0.2, 0.4, sat));
 		ALBEDO = rock;
-		METALLIC = ore * ore_metal;
-		ROUGHNESS = mix(0.88, 0.45, ore);
-		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
+		METALLIC = fleck * ore_metal;
+		ROUGHNESS = mix(mix(0.85, 0.93, rust), 0.38, fleck);
+		NORMAL = tri_normal(p, obj_nrm, 0.7);
 	} else if (grain_freq > 0.0) {
 		vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
 		float patch = smoothstep(0.32, 0.55, noise(obj_pos * vein_freq * 0.35 + 7.3));
@@ -72,7 +97,7 @@ void fragment() {
 		ALBEDO = mix(mix(stone, rust, stain * 0.45), ore, grain);
 		METALLIC = grain * ore_metal;
 		ROUGHNESS = mix(0.9, mix(0.75, 0.3, ore_metal), grain);
-		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
+		NORMAL = tri_normal(p, obj_nrm, 0.7);
 	} else {
 		vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
 		// Veins: where a warped noise field crosses 0.5, in thin seams that branch.
@@ -86,6 +111,6 @@ void fragment() {
 		ALBEDO = mix(stone, ore, vein);
 		METALLIC = vein * ore_metal;
 		ROUGHNESS = mix(0.9, 0.35, vein);
-		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
+		NORMAL = tri_normal(p, obj_nrm, 0.7);
 	}
 }

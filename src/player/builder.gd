@@ -31,6 +31,8 @@ var _mat_bad: StandardMaterial3D
 var _near: Array = []
 var _near_t := 0.0
 var _near_at := Vector3.INF
+var _trees: Array = []
+var _trees_t := -2.0
 
 func _ready() -> void:
 	_mat_ok = _ghost_mat(Color(0.35, 1.0, 0.45, 0.38))
@@ -117,6 +119,14 @@ func near_pieces() -> Array:
 		_near_at = here
 	return _near
 
+## Wild trees near you (BuildCatalog.trees_near), refreshed with near_pieces().
+func near_trees() -> Array:
+	near_pieces()
+	if _trees_t != _near_t:
+		_trees = BuildCatalog.trees_near(player.streamer, _near_at, NEAR_RADIUS)
+		_trees_t = _near_t
+	return _trees
+
 func _forget_near() -> void:
 	_near_t = -1.0
 
@@ -169,6 +179,8 @@ func _find_target() -> Dictionary:
 		why = "unloaded"
 	if why == "" and _in_the_way(pos, s["yaw"]):
 		why = "player"
+	if why == "" and BuildCatalog.tree_in_way(near_trees(), BuildCatalog.world_aabb(_id, pos, s["yaw"]).grow(-0.05)):
+		why = "tree"
 	if why == "" and Game.stats.level < Recipes.unlock_level(_id):
 		why = "level"
 	return {"pos": pos, "yaw": s["yaw"], "ok": why == "", "why": why}
@@ -293,5 +305,6 @@ func why_text(why: String) -> String:
 		"reach": return "Too far away: move closer"
 		"unloaded": return "Can't build out there yet"
 		"player": return "You're standing where it would go"
+		"tree": return "A tree is in the way: fell it first"
 		"level": return "You can build a %s from level %d" % [nm, Recipes.unlock_level(_id)]
 	return "Can't build there"

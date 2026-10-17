@@ -11,6 +11,8 @@ var _swim_t := 0.0
 var _was_swimming := false
 var _surface := "grass"
 var _surface_t := 0.0
+var _stride := 2.2
+var _foot := 0 ## which foot came down last (0 or 1)
 
 ## Each physics frame on foot. hspeed: horizontal speed; landed_vy: the downward speed
 ## of a landing this frame (0 if none).
@@ -43,10 +45,17 @@ func tick(pl: Player, delta: float, hspeed: float, on_floor: bool, crouched: boo
 		return
 	_dist += hspeed * delta
 	var stride := 1.7 + hspeed * 0.12
+	_stride = stride
 	if _dist >= stride:
 		_dist -= stride
+		_foot = 1 - _foot
 		var vol := -9.0 if crouched else (-6.0 if hspeed < Player.SPRINT * 0.8 else -3.0)
 		_step(vol)
+
+## Where you are in your gait, 0-1 over two steps (left then right): a footstep sounds
+## at 0 and 0.5. The head bob (Player) follows it so the view dips as each foot lands.
+func gait() -> float:
+	return (float(_foot) + clampf(_dist / _stride, 0.0, 1.0)) * 0.5
 
 func _step(vol: float) -> void:
 	match _surface:

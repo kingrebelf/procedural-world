@@ -50,7 +50,8 @@ var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
 
 var _yaw := 0.0
 var _pitch := 0.0
-var _bob_t := 0.0
+var _eye := STAND_H - 0.12 ## eye height, eased as you crouch and stand
+var bob := HeadBob.new()
 var _cooldown := 0.0
 var _rest := 0.0 ## seconds since stamina was last used; it refills after a short pause
 var winded := false ## ran dry: no sprinting until stamina is back to a third
@@ -142,7 +143,7 @@ func _ready() -> void:
 	_refresh_held()
 
 func _apply_settings() -> void:
-	camera.fov = float(Settings.get_value("fov"))
+	camera.fov = Settings.vertical_fov(float(Settings.get_value("fov")))
 
 func get_state() -> Dictionary:
 	# The world saves from its own _exit_tree, after the player has already left the
@@ -345,7 +346,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _apply_look() -> void:
 	rotation = Vector3(0, _yaw, 0)
 	if head:
-		head.rotation = Vector3(_pitch, 0, 0)
+		head.rotation = Vector3(_pitch + bob.tilt.x, 0, bob.tilt.z)
 
 func _physics_process(delta: float) -> void:
 	if frozen:
@@ -466,13 +467,15 @@ func _physics_process(delta: float) -> void:
 	if global_position.y < -200.0:
 		_snap_to_ground()
 
-	# Head bob and camera height.
-	var eye := cap.height - 0.12
-	var bob := Vector3.ZERO
-	if is_on_floor() and not swimming and hv.length() > 0.5 and Settings.get_value("head_bob"):
-		_bob_t += delta * hv.length() * 1.6
-		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
-	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
+	# Camera height, and how the eye moves as you walk, land and strafe (HeadBob).
+	_eye = lerpf(_eye, cap.height - 0.12, clampf(delta * 12.0, 0.0, 1.0))
+	if third_person or fly:
+		bob.reset()
+	else:
+		var k := float(Settings.get_value("head_bob_strength")) if Settings.get_value("head_bob") else 0.0
+		bob.step(delta, k, steps.gait(), hv.length() / WALK, is_on_floor() and not swimming, _crouched, input.x, landed_vy, gunplay.ads)
+	head.position = Vector3(0, _eye, 0) + bob.offset
+	_apply_look()
 	viewmodel.ads = gunplay.ads
 	viewmodel.raise = _zoom
 	# What the crosshair is on, when it is within arm's length: the held item rests
@@ -848,7 +851,7 @@ func _binoculars(delta: float, on: bool) -> void:
 	_zoom = move_toward(_zoom, 1.0 if on else 0.0, delta * 4.0)
 	# Aiming down a gun's sights narrows the view too (fov is a full angle, so divide the
 	# tangent, not the angle, to magnify).
-	var base := float(Settings.get_value("fov"))
+	var base := Settings.vertical_fov(float(Settings.get_value("fov")))
 	base = rad_to_deg(2.0 * atan(tan(deg_to_rad(base) * 0.5) / gunplay.zoom()))
 	camera.fov = lerpf(base, ZOOM_FOV, smoothstep(0.0, 1.0, _zoom))
 	spotted = null
@@ -1923,6 +1926,8 @@ func mount(v: Vehicle) -> void:
 	vehicle = v
 	v.rider = self
 	_ride_yaw = v.rotation.y
+	bob.reset()
+	_apply_look()
 	ray.add_exception(v)
 	_shape.disabled = true
 	velocity = Vector3.ZERO
@@ -1961,6 +1966,8 @@ func dismount(force := false) -> void:
 	_shape.disabled = noclip and fly
 	velocity = Vector3.ZERO
 	head.position = Vector3(0, STAND_H - 0.12, 0)
+	bob.reset()
+	_apply_look()
 	if body:
 		body.position = Vector3.ZERO
 		body.rotation = Vector3(0, PI, 0)

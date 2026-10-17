@@ -14,7 +14,13 @@ People work at three levels, and each one falls back to the one below it:
    attack, open trade, give or lend you Marks, hand you a gift, and do things with their
    body: wave, nod, wink, dance, sit, jump, point, hold up any fingers, and dozens more.
    Without a model they use built-in, keyword-driven dialogue that understands the same
-   requests ("can you hold up three fingers?", "could you spare some Marks?").
+   requests ("can you hold up three fingers?", "could you spare some Marks?"). Its lines
+   (NPCTalk) are composed per person: each has their own way of addressing you, a pet
+   phrase and a temper (gruff, warm, timid, greedy, curious; children talk like children),
+   speaks in their culture's voice (medieval folk, frontier spacers, Sylvari or Vex; human
+   worlds never hear of glowing or magic things), reacts to dozens of topics, to insults
+   and compliments, turns the talk to their own worries, neighbours and the town's news,
+   remembers what you last talked about, and avoids repeating what they said lately.
 2. **Background thinking.** Now and then a person near you asks the model what they want
    to do next ("go to the market", "avoid the stranger"). This is optional and rate-limited.
 3. **Fast decisions.** Every couple of seconds each person picks an action: work, wander,
@@ -43,15 +49,16 @@ own: guards start in their era's armour. In a conversation:
 ## Voices
 
 People speak their lines aloud (Settings > AI > Spoken voices), each with a voice of their
-own. There are two engines:
+own. There are three engines:
 
 | Engine | How it sounds | What to set |
 |---|---|---|
+| **Built-in natural voices** (the default) | Human-sounding neural voices ([Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), Apache-2.0) that come with the game and run offline. 128 voices, each a mix of Kokoro's own, handed out so neighbours sound different; children, teens and old folk sound their age; regional accents in the old lands (southern English, Northern, Midlands, Scottish, and received pronunciation for clergy and gentry) and on the frontier (American, New York, Caribbean, British). | Nothing. The game starts its voice program (`voices/` beside the game, source in `tools/voice_server`) in the background. |
 | **Natural voices** | Like real people, with an accent and manner per person (West Country, Scottish, Irish, Welsh in the old worlds; Australian, Californian, London... in the sci-fi one), heard from where they stand. | **Voice server**: OpenAI (`gpt-4o-mini-tts`, uses your OpenAI key automatically when OpenAI is the provider) or a free local [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) / [speaches](https://github.com/speaches-ai/speaches) server, e.g. `http://127.0.0.1:8880/v1`. Kokoro gives British voices in the old worlds and a mix in the sci-fi one. |
 | **This PC's voices** | The operating system's speech voices. Works offline, but sounds robotic unless you have "Natural", "Neural", "Enhanced" or "Premium" voices installed (they are preferred automatically). | Nothing. |
 
-With **Voice engine** on the first option, natural voices are used whenever a voice server
-is set and answering, and this PC's voices otherwise. **Test voice** plays a sample.
+With **Voice engine** on Automatic, a voice server is used whenever one is set and answering,
+the built-in voices otherwise, and this PC's voices only if neither works. **Test voice** plays a sample.
 
 ### Talking with your own voice
 

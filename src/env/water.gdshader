@@ -22,6 +22,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 #include "res://src/env/water_ssr.gdshaderinc"
 #include "res://src/env/water_rings.gdshaderinc"
+#include "res://src/env/water_swell.gdshaderinc"
 
 varying vec3 wpos;
 varying float crest;
@@ -57,24 +58,6 @@ float foam_lace(vec2 p, float t) {
 	float web = clamp(1.0 - abs(a * 2.0 + b) * 2.6, 0.0, 1.0);
 	return web * smoothstep(-0.25, 0.15, n2(p * 0.7 + t * 0.05) + 0.1);
 }
-vec2 rot(vec2 v, float a) { return vec2(v.x * cos(a) - v.y * sin(a), v.x * sin(a) + v.y * cos(a)); }
-
-// Must match Water.surface_height(). Returns height and its xz gradient.
-vec3 swell(vec2 p, float t, float a) {
-	vec2 d = normalize(wind_dir + vec2(0.0001));
-	vec2 dirs[4] = vec2[](d, rot(d, 0.6), rot(d, -0.45), rot(d, 1.3));
-	float lens[4] = float[](38.0, 21.0, 13.0, 7.0);
-	float amps[4] = float[](0.5, 0.28, 0.15, 0.07);
-	vec3 r = vec3(0.0);
-	for (int i = 0; i < 4; i++) {
-		float k = 6.2831853 / lens[i];
-		float c = sqrt(9.8 / k);
-		float ph = k * (dot(p, dirs[i]) - c * t);
-		r.x += amps[i] * sin(ph);
-		r.yz += amps[i] * k * cos(ph) * dirs[i];
-	}
-	return r * a;
-}
 
 float depth_here(vec2 p) {
 	vec2 uv = (p - depth_origin) / depth_size;
@@ -85,8 +68,7 @@ float depth_here(vec2 p) {
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float depth = depth_here(wpos.xz);
-	float open = smoothstep(0.5, 14.0, depth);
-	amp = (0.04 + wind_strength * wind_strength * 1.1) * (0.15 + 0.85 * open);
+	amp = swell_amp(depth);
 	vec2 muv = (wpos.xz - depth_origin) / depth_size;
 	// How squarely the wind drives waves onto the nearest shore: surf breaks on the lee
 	// shore the wind blows toward, and the shore it blows off stays nearly still.

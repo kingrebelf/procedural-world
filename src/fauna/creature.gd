@@ -385,6 +385,16 @@ static var _bar_mat: ShaderMaterial
 ## Transparent draw order of name tags: above the water surface (0) and splash rings (1), outline included.
 const TAG_PRIORITY := 3
 
+## Name tags are drawn solid (cut out of the font's alpha) rather than blended: a blended
+## label writes no motion, so temporal anti-aliasing smeared a walking villager's or
+## animal's name into a ghosted double. Solid, it moves with its owner, and a lake behind
+## it still can't cover it (the water is depth-tested against it).
+static func crisp_tag(l: Label3D) -> void:
+	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	l.alpha_scissor_threshold = 0.4
+	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	l.alpha_antialiasing_edge = 0.25
+
 func _build_tag() -> void:
 	_tag = Node3D.new()
 	var top := _model_bounds().end.y
@@ -404,6 +414,7 @@ func _build_tag() -> void:
 	# rings), so a lake behind or under the animal never covers its name.
 	_tag_label.render_priority = TAG_PRIORITY
 	_tag_label.outline_render_priority = TAG_PRIORITY - 1
+	crisp_tag(_tag_label)
 	_tag.add_child(_tag_label)
 	if _bar_mat == null:
 		_bar_mat = ShaderMaterial.new()
@@ -441,6 +452,8 @@ func blocked(x: float, z: float) -> bool:
 
 ## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
 ## goal has swung round: same path, a tenth of the ground probes and rays.
+var lod_dt := 0.0 ## time saved up while FaunaManager skips frames for this animal
+var lod_tick := 0
 var _steer_at := Vector3.INF
 var _steer_from := Vector3.ZERO
 var _steer_turn := 0.0
