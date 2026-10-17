@@ -110,6 +110,10 @@ func _physics_process(delta: float) -> void:
 				_finish_reload(it)
 	if it != null and not player.ui_open and Input.is_action_just_pressed("reload"):
 		start_reload(it)
+	_beam_idle += delta
+	if _beam_idle > BEAM_TICK * 1.5 and _beam_node != null and _beam_node.visible:
+		_beam_node.visible = false
+		_beam_light.visible = false
 
 # --- Firing ---------------------------------------------------------------------------
 
@@ -170,6 +174,83 @@ static func _scatter(fwd: Vector3, cone: float) -> Vector3:
 	var r := cone * sqrt(randf()) * (0.6 + 0.4 * randf())
 	var a := randf() * TAU
 	return (fwd + side * tan(r) * cos(a) + up * tan(r) * sin(a)).normalized()
+
+# --- Beams ----------------------------------------------------------------------------
+## Beam tools (the plasma drill) are held steady and burn whatever the beam touches
+## while Use is held: damage per second on animals and people, fast mining on rock,
+## ore and wood, and a crater burnt into bare ground.
+
+const BEAM_TICK := 0.1
+var _beam_node: MeshInstance3D
+var _beam_light: OmniLight3D
+var _beam_idle := 1.0
+var _beam_ticks := 0
+
+## One tick of the beam (Use held); the player calls this every BEAM_TICK seconds.
+func beam(it: Dictionary, d: Dictionary) -> void:
+	var cam := player.camera
+	var fwd := -cam.global_transform.basis.z
+	var from := cam.global_position
+	var reach := float(d.get("beam_range", 10.0))
+	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * reach, 1 | 2, [player.get_rid()])
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
+	var end: Vector3 = hit.get("position", from + fwd * reach)
+	var muzzle := player.viewmodel.muzzle() if not player.third_person else from + fwd * 0.6
+	_beam_idle = 0.0
+	_beam_ticks += 1
+	_show_beam(muzzle, end, not hit.is_empty())
+	var what := ""
+	if not hit.is_empty():
+		what = player.beam_hit(it, d, hit, BEAM_TICK)
+		var n: Vector3 = hit.get("normal", -fwd)
+		_flipbook("sparks", true, end + n * 0.04, 0.3, 0.12, Color(0.6, 0.95, 1.0, 1.0), Vector2(1, 6))
+		if _beam_ticks % 4 == 0:
+			_flipbook("smoke", false, end + n * 0.1, 0.3, 0.9, Color(0.45, 0.45, 0.48, 0.45), Vector2(0, 12), n * 0.2 + Vector3(0, 0.4, 0), 2.0)
+	if _beam_ticks % 3 == 1:
+		gun_event.emit("beam", String(it["type"]), end, what)
+
+func _show_beam(from: Vector3, to: Vector3, landed: bool) -> void:
+	if _beam_node == null:
+		var cm := CylinderMesh.new()
+		cm.top_radius = 1.0
+		cm.bottom_radius = 1.0
+		cm.height = 1.0
+		cm.radial_segments = 10
+		cm.rings = 1
+		var sh := Shader.new()
+		sh.code = """shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+uniform vec4 col : source_color = vec4(0.35, 0.9, 1.0, 1.0);
+void fragment() {
+	// Bright white core fading to cyan at the edges, flickering along its length.
+	float edge = pow(abs(dot(NORMAL, VIEW)), 1.5);
+	float flick = 0.8 + 0.2 * sin(TIME * 90.0 + UV.y * 60.0);
+	ALBEDO = mix(col.rgb, vec3(1.0), pow(edge, 4.0)) * edge * flick * 2.5;
+}
+"""
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		cm.material = m
+		_beam_node = MeshInstance3D.new()
+		_beam_node.mesh = cm
+		_beam_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		player.get_tree().current_scene.add_child(_beam_node)
+		_beam_light = OmniLight3D.new()
+		_beam_light.light_color = Color(0.4, 0.9, 1.0)
+		_beam_light.omni_range = 4.0
+		player.get_tree().current_scene.add_child(_beam_light)
+	var len := from.distance_to(to)
+	if len < 0.05:
+		_beam_node.visible = false
+		return
+	var dir := (to - from) / len
+	var w := 0.012 * randf_range(0.8, 1.25)
+	# The cylinder runs along +Y: turn it onto the beam, centred between the ends.
+	_beam_node.global_transform = Transform3D(GunLook._along(dir).scaled_local(Vector3(w, len, w)), (from + to) * 0.5)
+	_beam_node.visible = true
+	_beam_light.visible = landed
+	_beam_light.global_position = to - dir * 0.3
+	_beam_light.light_energy = randf_range(1.6, 2.4)
 
 # --- Reloading ------------------------------------------------------------------------
 

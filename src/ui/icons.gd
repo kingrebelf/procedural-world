@@ -110,6 +110,12 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:
 				_rect(img, Rect2(x, 28, 3, 8), c.darkened(0.3))
+		"lockpick":
+			_line(img, Vector2(14, 52), Vector2(44, 16), 3.0, c)
+			_line(img, Vector2(44, 16), Vector2(50, 18), 2.5, c)
+			_line(img, Vector2(20, 54), Vector2(50, 40), 3.0, c.darkened(0.15))
+			_line(img, Vector2(50, 40), Vector2(50, 32), 3.0, c.darkened(0.15))
+			_rect(img, Rect2(10, 48, 10, 10), Color(0.4, 0.28, 0.16))
 		"torch":
 			_poly(img, [Vector2(29, 58), Vector2(35, 58), Vector2(37, 26), Vector2(27, 26)], Color(0.5, 0.33, 0.18))
 			_rect(img, Rect2(25, 22, 14, 8), Color(0.35, 0.28, 0.2))
@@ -150,6 +156,30 @@ static func get_icon(type: String) -> Texture2D:
 		"hide":
 			_poly(img, [Vector2(12, 16), Vector2(52, 14), Vector2(56, 34), Vector2(48, 52), Vector2(16, 50), Vector2(8, 32)], c)
 			_poly(img, [Vector2(18, 22), Vector2(46, 20), Vector2(48, 30), Vector2(20, 32)], c.lightened(0.15))
+		"bone":
+			_line(img, Vector2(18, 46), Vector2(46, 18), 7, c)
+			for e in [Vector2(16, 48), Vector2(48, 16)]:
+				_circle(img, e + Vector2(-4, -2), 5.0, c)
+				_circle(img, e + Vector2(2, 4), 5.0, c)
+		"animal_fat":
+			_ellipse(img, Vector2(32, 38), Vector2(20, 13), c)
+			_ellipse(img, Vector2(28, 33), Vector2(10, 6), c.lightened(0.2))
+		"antler":
+			_line(img, Vector2(20, 56), Vector2(30, 14), 5, c)
+			_line(img, Vector2(26, 34), Vector2(46, 22), 4, c)
+			_line(img, Vector2(28, 24), Vector2(44, 10), 4, c)
+			_line(img, Vector2(24, 44), Vector2(12, 30), 4, c)
+		"fur_pelt", "leather":
+			_poly(img, [Vector2(12, 16), Vector2(52, 14), Vector2(56, 34), Vector2(48, 52), Vector2(16, 50), Vector2(8, 32)], c)
+			if type == "fur_pelt":
+				for i in 7:
+					_line(img, Vector2(16 + i * 5, 22), Vector2(14 + i * 5, 44), 2, c.lightened(0.18))
+			else:
+				_rect(img, Rect2(14, 22, 36, 4), c.lightened(0.2))
+				_rect(img, Rect2(14, 38, 36, 4), c.darkened(0.2))
+		"skinning_knife":
+			_line(img, Vector2(14, 52), Vector2(26, 40), 6, Color(0.5, 0.34, 0.2))
+			_poly(img, [Vector2(26, 40), Vector2(52, 12), Vector2(46, 30), Vector2(30, 44)], c)
 		"hammer":
 			_line(img, Vector2(18, 54), Vector2(40, 22), 6, Color(0.55, 0.38, 0.22))
 			_line(img, Vector2(18, 54), Vector2(40, 22), 2, Color(0.66, 0.48, 0.3))

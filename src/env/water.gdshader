@@ -98,9 +98,24 @@ void fragment() {
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n;
 	float foam = max(shore * 0.5 * (0.5 + 0.5 * sin(t * 1.5 + wpos.x * 0.8 + wpos.z * 0.5)), caps);
 	col = mix(col, vec3(0.88, 0.92, 0.95), foam);
-	ALBEDO = col;
-	ROUGHNESS = 0.03 + wind_strength * 0.08 + foam * 0.6;
-	METALLIC = 0.0;
-	SPECULAR = 0.6;
-	EMISSION = glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
+	if (!FRONT_FACING) {
+		// Seen from below: Snell's window. Looking up steeply you see the bright, rippling
+		// sky through the surface; at shallower angles it mirrors the dim water below.
+		float up = clamp(-vdir.y, 0.0, 1.0);
+		float window = smoothstep(0.62, 0.74, up + (nw.x + nw.z) * 0.08);
+		vec3 sky = textureLod(screen_tex, SCREEN_UV + nw.xz * 0.05, 0.0).rgb;
+		float day = smoothstep(-0.1, 0.25, sun_dir_g.y);
+		vec3 mirror = deep * (0.6 + 1.2 * day) + shallow * 0.12 * day;
+		ALBEDO = vec3(0.0);
+		EMISSION = mix(mirror, sky * vec3(0.75, 0.95, 1.0) * 1.1, window) + vec3(0.9, 0.95, 1.0) * caps * 0.15 * day;
+		ROUGHNESS = 1.0;
+		SPECULAR = 0.0;
+		METALLIC = 0.0;
+	} else {
+		ALBEDO = col;
+		ROUGHNESS = 0.03 + wind_strength * 0.08 + foam * 0.6;
+		METALLIC = 0.0;
+		SPECULAR = 0.6;
+		EMISSION = glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
+	}
 }

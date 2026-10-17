@@ -193,6 +193,11 @@ static func light_at(t: String) -> Vector3:
 	var dm := _dims(t)
 	return Vector3(hearth_x(t), FLOOR + 1.0 - SINK, -dm.z / 2 + WALL_IN + 1.0)
 
+## The foot of the hearth fire, in the house's own space (sunk like the house).
+static func fire_at(t: String) -> Vector3:
+	var dm := _dims(t)
+	return Vector3(hearth_x(t), FLOOR + 0.2 - SINK, -dm.z / 2 + WALL_IN + 0.42)
+
 ## The furnished room: kit furniture, a stone hearth with a fire, and a rug.
 static func interior(t: String) -> ArrayMesh:
 	var dm := _dims(t)
@@ -216,7 +221,8 @@ static func interior(t: String) -> ArrayMesh:
 	for n in 3:
 		var b := Basis(Vector3.UP, n * 1.1 + 0.3) * Basis(Vector3.RIGHT, PI / 2)
 		k.cylinder("bark", Transform3D(b, Vector3(hx, FLOOR + 0.28, back + 0.4)) * I.translated(Vector3(0, -0.32, 0)), 0.06, 0.05, 0.64, 6)
-	k.sphere("glow_warm", I.translated(Vector3(hx, FLOOR + 0.3, back + 0.38)), 0.24, 5, 8, 0.3, 0.55)
+	# Embers under the flames (FireFx, Interiors.fires).
+	k.sphere("glow_red", I.translated(Vector3(hx, FLOOR + 0.22, back + 0.4)), 0.2, 5, 8, 0.3, 0.25)
 	if t != "townhouse":
 		# A hanging on the plain stretch of back wall away from the hearth.
 		Interiors.tapestry(k, I.translated(Vector3(-1.8, 1.8, back + 0.02)))

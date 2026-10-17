@@ -133,6 +133,9 @@ func _run_job(job: Dictionary) -> void:
 		chunk = job["data"]
 	if job["mode"] != "grass":
 		res["terrain"] = ChunkNode.build_terrain_arrays(chunk, job["lod"])
+		# Cave walls only up close, where the ground has its openings.
+		if chunk.has("cave"):
+			res["cave"] = Caves.build(chunk) if job["lod"] == 1 else {}
 	if job["grass"] and job["mode"] != "lod":
 		res["grass"] = ChunkNode.build_grass_buffer(chunk, job["density"])
 		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0))
@@ -159,6 +162,7 @@ func _collect() -> void:
 			var node := ChunkNode.new()
 			node.setup(res["data"], res["terrain"], res["lod"], res["objects"])
 			node.set_river(res["river"])
+			node.set_cave(res.get("cave", {}))
 			add_child(node)
 			chunks[k] = node
 			node.set_near(d <= near_radius)
@@ -172,6 +176,8 @@ func _collect() -> void:
 			var node: ChunkNode = chunks[k]
 			if res.has("terrain"):
 				node.set_terrain(res["terrain"], res["lod"])
+			if res.has("cave"):
+				node.set_cave(res["cave"])
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])

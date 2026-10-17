@@ -14,6 +14,8 @@ const CELL := 20 ## chunks per side of a portal cell (about 1.3 km)
 const CHANCE := 0.75
 const MIN_LEVEL := 40 ## zone level a portal needs (Eras.zone_level)
 const CLEAR := 9.0 ## nothing else grows or stands this close
+const DOOR_Y := 3.6 ## height of the middle of the ring
+const DOOR := 2.6 ## radius of the light in the ring
 const KEEP_OFF := 70.0 ## from settlements and strongholds
 
 ## Where the portal of cell (wx, wz) stands, or Vector2.INF if that cell has none.
@@ -107,13 +109,14 @@ static func build() -> ArrayMesh:
 	k.cylinder("rune_stone", I.translated(Vector3(0, 0.4, 0)), 3.8, 3.6, 0.35, 16)
 	# The ring: rune blocks stood on edge round a door of light.
 	const R := 2.9
-	const Y := 3.6
+	const Y := DOOR_Y
 	for n in 28:
 		var a := TAU * n / 28.0
 		k.box("rune_stone", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * R, Y + sin(a) * R, 0)), Vector3(0.62, 0.9, 0.8))
 		if n % 4 == 0:
 			k.box("glow_violet", Transform3D(Basis(Vector3(0, 0, 1), a), Vector3(cos(a) * (R - 0.32), Y + sin(a) * (R - 0.32), 0)), Vector3(0.16, 0.36, 0.84))
-	k.cylinder("glow_violet", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, Y, 0)), R - 0.35, R - 0.35, 0.06, 32)
+	# A dim violet behind the turning light (FireFx.swirl), and all you see of it from afar.
+	k.cylinder("portal_door", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, Y, -0.03)), R - 0.35, R - 0.35, 0.06, 32)
 	# Feet of the ring and two leaning guardian stones with crystal caps.
 	for sx in [-1.0, 1.0]:
 		k.box("rune_stone", I.translated(Vector3(sx * 1.9, 0.9, 0)), Vector3(1.0, 1.1, 1.0))

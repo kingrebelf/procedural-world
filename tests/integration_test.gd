@@ -55,6 +55,51 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 	await _frames(15)
 	check(player.focus.get("found", {}).get("pos", Vector3.INF) != plant, "a picked plant is gone")
 
+## Swimming: dropped into deep water you float up and ride with your chest at the
+## surface; a river carries you downstream; splashes are pooled and ready.
+func _water_checks(streamer: ChunkStreamer, player) -> void:
+	var back: Vector3 = player.global_position
+	var sea := Vector3.INF
+	var river := Vector3.INF
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for j in range(4, ChunkGenerator.SIZE - 4, 4):
+			for i in range(4, ChunkGenerator.SIZE - 4, 4):
+				var at := c.position + Vector3(i, 0, j)
+				if sea == Vector3.INF and ChunkGenerator.height_at(c.data, i, j) < Water.LEVEL - 6.0:
+					sea = at
+				if river == Vector3.INF and Water.current(at.x, at.z).length() > 0.8:
+					river = at
+	check(Splashes._fx != null and Splashes._fx._rings.size() == Splashes.RINGS, "splashes and ripples are pooled")
+	if sea == Vector3.INF:
+		print("  skip no deep water near spawn")
+	else:
+		player.global_position = Vector3(sea.x, Water.LEVEL - 4.0, sea.z)
+		player.velocity = Vector3.ZERO
+		for i in 3:
+			await physics_frame
+		check(player.swimming and player.underwater, "deep in the water you swim, eyes under")
+		for i in 360:
+			await physics_frame
+		var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
+		var off: float = player.global_position.y - (s - Swim.FLOAT_CHEST)
+		check(player.swimming and absf(off) < 0.6, "you float up and bob at the surface (%.2f m off)" % off)
+	if river == Vector3.INF:
+		print("  skip no river near spawn")
+	else:
+		var lv: float = Water.surface_height(river.x, river.z, 0.0)
+		player.global_position = Vector3(river.x, lv - 1.4, river.z)
+		player.velocity = Vector3.ZERO
+		var flow := Water.current(river.x, river.z)
+		for i in 90:
+			await physics_frame
+		var d := Vector2(player.global_position.x - river.x, player.global_position.z - river.z)
+		check(d.dot(flow.normalized()) > 0.5, "the river carries you downstream (%.1f m)" % d.dot(flow.normalized()))
+	player.global_position = back
+	player.velocity = Vector3.ZERO
+	for i in 30:
+		await physics_frame
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -204,6 +249,7 @@ func _run() -> void:
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
 	await _audio_checks(world, player)
+	await _water_checks(streamer, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
@@ -302,10 +348,7 @@ func _run() -> void:
 	await _guns(game, world, player, kc, bare)
 	world.fauna._herds.erase(Vector2i(99999, 99999))
 	world.fauna._scan = 0.0
-	kc.hurt(1.0)
-	kc.die()
-	await _frames(2)
-	check(kc._kit._current == "Death" and kc._body == null, "kit animal plays its death and stops being hittable")
+	await _corpses(game, world, player, kc)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	game.inventory.add(ItemDB.make("speeder", 1, 1.0, {}))
@@ -558,6 +601,78 @@ func _audio_checks(world, player) -> void:
 	s.set_value("music_volume", old)
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
 
+## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
+## butchered for meat, hide and bone; a dead person's body holds their gear and purse.
+func _corpses(game, world, player, kc: Creature) -> void:
+	var label := kc.label()
+	var at := kc.global_position
+	kc.hp = 1.0
+	world.fauna.player_hit(kc, 10.0)
+	await _frames(3)
+	check(not is_instance_valid(kc), "the killed animal stops being a live creature")
+	var found := {}
+	for b in world.corpses.near(at, 4.0):
+		if b["rec"]["kind"] == "animal" and b["rec"]["name"] == label:
+			found = b
+	check(not found.is_empty(), "a carcass lies where the %s fell" % label)
+	if found.is_empty():
+		return
+	var key: String = found["key"]
+	var cr = world.corpses._shown[key]["node"]
+	check(cr is Creature and cr.as_corpse and cr._body == null, "the carcass is drawn, with no hit box")
+	if cr is Creature and cr._kit != null and not cr._kit.procedural():
+		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
+	check(Corpses.use_of(found["rec"])[0] == "carcass", "a fresh carcass is held to butcher")
+	var cn: ChunkNode = world.corpses._shown[key]["cn"]
+	game.flush_chunks()
+	var saved = game.store.load_chunk(int(cn.data["cx"]), int(cn.data["cz"]))
+	check(saved is Dictionary and saved.get("corpses", {}).has(world.corpses._shown[key]["id"]), "the carcass is saved with its chunk")
+	var bone0: int = game.inventory.count("bone")
+	world.corpses.butcher(key, ItemDB.make("skinning_knife", 1, 1.0, {}))
+	check(game.inventory.count("bone") > bone0, "butchering gives bone")
+	check(world.corpses.record(key).get("butchered", false), "the carcass is marked butchered")
+	world.corpses._scan = 0.0
+	await _frames(3)
+	check(world.corpses.record(key).is_empty(), "a picked-clean carcass is gone")
+	# A guard, killed: their body keeps their armour, things and purse.
+	var r := RandomNumberGenerator.new()
+	r.seed = 5
+	var rec := NPCGen.person(r, Eras.MEDIEVAL, 0, 9999, 9999)
+	rec["job"] = "guard"
+	rec["home"] = Vector2(at.x, at.z)
+	rec["work"] = Vector2(at.x, at.z)
+	rec["pos"] = at
+	var n := NPC.new()
+	n.setup(rec, {"sx": 9999, "sz": 9999, "name": "Testford", "npcs": [rec]}, world.npcs)
+	world.add_child(n)
+	await _frames(2)
+	var purse := int(rec["purse"])
+	var gear_n: int = rec["gear"].size()
+	world.corpses.add_person(n)
+	n.queue_free()
+	world.corpses._scan = 0.0
+	await _frames(3)
+	var body := {}
+	for b in world.corpses.near(at, 4.0):
+		if b["rec"]["kind"] == "person":
+			body = b
+	check(not body.is_empty(), "a dead person leaves a body")
+	if body.is_empty():
+		return
+	check(gear_n > 0 and Corpses.still_worn(body["rec"]).size() == gear_n, "the body still wears its armour (%d pieces)" % gear_n)
+	check(int(body["rec"]["purse"]) == purse and int(rec["purse"]) == 0, "the purse is on the body")
+	var menus = world.menus
+	menus.open_corpse(world.corpses, body["key"])
+	check(menus._mode == "corpse", "searching a body opens it")
+	var money0: int = game.money
+	var m: int = menus._take_purse()
+	Storage.transfer_all(menus._store, game.inventory)
+	menus._corpse_changed(m)
+	check(game.money == money0 + purse, "taking the purse pays its Marks")
+	check(Corpses.still_worn(world.corpses.record(body["key"])).is_empty(), "taken armour comes off the body")
+	if menus._mode != "":
+		menus.close()
+
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.
 func _guns(game, world, player, kc: Creature, slot: int) -> void:
@@ -597,6 +712,19 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	await create_timer(player.gunplay.reload_total + 0.5).timeout
 	check(not player.gunplay.reloading() and int(gun.get("charge", 0)) == player.gunplay.mag_size("pulse_pistol"), "the reload fills the magazine (%d)" % int(gun.get("charge", 0)))
 	check(game.inventory.count("power_cell") == cells0 + 1, "the reload uses one power cell")
+	# The plasma drill: held steady (no swing), a beam that burns the animal tick by tick.
+	game.inventory.set_slot(slot, ItemDB.make("pickaxe_plasma", 1, 1.0, {}))
+	player.select(slot)
+	await _frames(2)
+	var hp_b := kc.hp
+	for n in 3:
+		player._cooldown = 0.0
+		player.use_held()
+		await _frames(1)
+	check(player.viewmodel._swing_t >= 1.0, "the plasma drill does not swing")
+	var burnt: float = hp_b - kc.hp
+	check(burnt > 5.0 and burnt < 60.0, "the plasma drill's beam burns the animal a little each tick (%.1f hp over 3 ticks)" % burnt)
+	check(player.gunplay._beam_node != null and player.gunplay._beam_node.visible, "the beam shows while the drill fires")
 	kc.hp = hp_was
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,
@@ -746,14 +874,27 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	player.set_state({"pos": stand + Vector3(0, 0.1, 0), "yaw": atan2(f.x, f.z), "pitch": -0.45, "slot": 0})
 	await _frames(20)
 	check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "facing the %s in the %s offers to open it (%s)" % [o["t"], o["st"]["inside"], player.focus.get("verb", "nothing")])
-	# Town chests may be locked: a few tries with the lockpick get it open.
-	for i in 40:
-		if Player.lock_of(o) <= 0:
-			break
-		player._lock_t = 0.0
+	# Town chests may be locked: the lockpicking minigame opens; on the sweet spot it gives
+	# and the chest is looted straight away.
+	if Player.lock_of(o) > 0:
+		var game = root.get_node("/root/Game")
+		if game.inventory.count("lockpick") <= 0:
+			game.inventory.add(ItemDB.make("lockpick", 3, 1.0, {}))
 		player.interact()
-	check(Player.lock_of(o) <= 0, "the lock gives in the end")
-	player.interact()
+		var ui: LockpickUI = player.get_tree().get_first_node_in_group("lockpick_ui")
+		check(ui != null and ui.is_open() and player.ui_open, "a locked chest opens the lockpicking minigame")
+		if ui and ui.is_open():
+			ui._game.set_pick(ui._game.sweet)
+			var r := ""
+			for i in 200:
+				r = ui._game.step(1.0 / 60.0, true)
+				if r != "":
+					break
+			check(r == "open", "on the sweet spot the lock turns all the way")
+			ui._opened()
+			check(Player.lock_of(o) <= 0 and not ui.is_open() and not player.ui_open, "the lock is open and the minigame closes")
+	else:
+		player.interact()
 	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
 	# Looting in town may have been seen; let the law forget so guards don't crowd later checks.
 	root.get_node("/root/Game").crime = Crime.new()

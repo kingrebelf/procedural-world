@@ -950,6 +950,34 @@ func test_speech_to_text_request() -> void:
 	check(svc.parse_transcription(200, "{\"text\": \" hello there \"}")["text"] == "hello there", "transcription parsed")
 	check(not svc.parse_transcription(401, "{\"error\": {\"message\": \"bad key\"}}")["ok"], "errors reported")
 
+func test_npc_levels() -> void:
+	var old := Eras.theme
+	var base := Eras.base_level
+	Eras.theme = "human"
+	Eras.base_level = 1
+	var mk := func(job: String, x: float, id: String) -> Dictionary:
+		var r := {"id": id, "name": "A B", "job": job, "era": 0, "rel": 0, "hp": 100.0, "pos": Vector3(x, 0, 0),
+			"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+		NPCSocial.ensure(r)
+		return r
+	var far: Dictionary = mk.call("farmer", 3000.0, "f1") # zone 21
+	var guard: Dictionary = mk.call("guard", 3000.0, "g1")
+	var near: Dictionary = mk.call("farmer", 10.0, "f2")
+	check(NPCSocial.level(far) >= 19 and NPCSocial.level(far) <= 21, "townsfolk sit at their zone's level (%d)" % NPCSocial.level(far))
+	check(NPCSocial.level(guard) > NPCSocial.level(far), "guards outrank the townsfolk around them")
+	check(NPCSocial.level(near) == 1, "near the start people are level 1")
+	check(is_equal_approx(float(far["hp"]), NPCSocial.max_hp(far)) and NPCSocial.max_hp(far) > 300.0, "health grows with level")
+	check(NPCSocial.hit_mult(guard) > 1.8, "high level guards hit harder")
+	var hurt := {"id": "h1", "name": "A B", "job": "farmer", "era": 0, "hp": 50.0, "pos": Vector3(3000, 0, 0),
+		"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+	NPCSocial.ensure(hurt)
+	check(is_equal_approx(float(hurt["hp"]) / NPCSocial.max_hp(hurt), 0.5), "an old save keeps how hurt they were")
+	var lv := NPCSocial.level(far)
+	NPCSocial.ensure(far)
+	check(NPCSocial.level(far) == lv and is_equal_approx(float(far["hp"]), NPCSocial.max_hp(far)), "the level is set once")
+	Eras.theme = old
+	Eras.base_level = base
+
 func test_voice_and_quick_replies() -> void:
 	var rec := {"id": "q1", "name": "Edda Thorne", "job": "farmer", "era": 0, "rel": 30, "mood": "calm", "age": 40,
 		"body": {"female": true}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
@@ -1038,6 +1066,55 @@ func test_tool_grip() -> void:
 	h.free()
 	check(Viewmodel._strike_axis("pickaxe_iron") == Vector3.RIGHT and Viewmodel._strike_axis("hammer") == Vector3.RIGHT, "a pick's point and a hammer's face lead")
 	check(Viewmodel._strike_axis("axe_iron") == Vector3.FORWARD and Viewmodel._strike_axis("sword_iron") == Vector3.ZERO, "an axe's edge leads; a sword isn't turned")
+
+## Hearths, campfires and torches burn with Ben's fire flipbook.
+func test_fires() -> void:
+	check(ResourceLoader.exists(FireFx.SHEET), "the fire flipbook is in the game")
+	var f := Interiors.fires("cottage")
+	check(f.size() >= 1 and absf((f[0][0] as Vector3).x - KitHouse.hearth_x("cottage")) < 0.01, "a cottage's fire burns in its hearth")
+	var tower := Interiors.fires("castle_tower")
+	check(tower.size() == 10 and tower.all(func(e): return float(e[1]) < 0.5), "a tower has no hearth, but its wall torches and chandelier burn")
+	var keep := Interiors.fires("castle_keep")
+	var torches := keep.filter(func(e): return float(e[1]) > 0.3)
+	var candles := keep.filter(func(e): return float(e[1]) < 0.1)
+	check(torches.size() == 3 and candles.size() == 11, "a keep's wall torches, chandelier and candlestick burn (%d torches, %d candles)" % [torches.size(), candles.size()])
+	check(Interiors.fires("crypt_keep").size() == 17, "a crypt's candle stands and candles burn")
+	var tf := FireFx.prop_flames([["props/Torch_Metal", 90, Vector3(1, 2, 3), 1.0]])
+	check(tf.size() == 1 and (tf[0][0] as Vector3).is_equal_approx(Vector3(1.27, 2.34, 3.0)), "a wall torch's flame turns with it to stand in its cup")
+	check(f.size() > 1 and f.slice(1).all(func(e): return float(e[1]) < 0.1), "a cottage's candles burn besides its hearth")
+	check(float(BuildCatalog.def("campfire").get("fire", 0.0)) > 0.5, "a campfire you build has flames")
+	var ck := MeshKit.new(1)
+	BuildCatalog._proc(ck, "campfire")
+	var cmesh := ck.commit(Materials.get_mat)
+	var cmats := []
+	for i in cmesh.get_surface_count():
+		cmats.append(cmesh.surface_get_material(i))
+	check(Materials.get_mat("river_stone") in cmats and Materials.get_mat("char") in cmats and Materials.get_mat("glow_warm") not in cmats, "a campfire is river stones round charred logs, with no glowing ball")
+	check(cmesh.get_aabb().size.x < 1.3 and cmesh.get_aabb().size.y < 0.75, "a campfire's stones are small and its logs lean together low (%s)" % cmesh.get_aabb().size)
+	var fll := FlickerLight.new()
+	check(fll is OmniLight3D, "firelight is an omni light that wavers")
+	fll.free()
+	var fl := FireFx.flame(1.0)
+	var cards := fl.find_children("*", "MeshInstance3D", true, false)
+	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a flame is two cards sharing the fire material")
+	fl.free()
+	var torch := Viewmodel.prop_for("torch")
+	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
+	check(torch.find_child("Sparks", true, false) is CPUParticles3D and torch.find_child("Smoke", true, false) is CPUParticles3D, "a torch throws sparks and smoke")
+	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
+	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")
+	torch.free()
+	var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
+	check(ResourceLoader.exists("res://assets/textures/fx/portal_swirl.png") and (sw.material_override as ShaderMaterial).get_shader_parameter("tex") != null, "a portal's door turns Ben's magic swirl")
+	sw.free()
+	var em := FireFx.embers(1.0, false)
+	check(em.find_child("Smoke", true, false) == null, "a hearth's smoke goes up the chimney")
+	em.free()
+	var tm := HandLight.torch_model()
+	var mats := []
+	for i in tm.get_surface_count():
+		mats.append(tm.surface_get_material(i))
+	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -1225,6 +1302,7 @@ func test_levelling_and_attributes() -> void:
 	check(s.spend("oxy") and s.max_breath() > Stats.BASE_BREATH, "oxygen holds your breath longer")
 	var cap0 := s.carry_capacity()
 	check(s.spend("str") and s.carry_capacity() > cap0, "strength carries more")
+	check(is_equal_approx(s.carry_capacity() - cap0, Stats.CARRY_PER_STR), "each strength point adds %d kg" % int(Stats.CARRY_PER_STR))
 	check(s.spend("int") and s.xp_mult() > 1.0, "intellect learns faster")
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("stone", 10, 1.0, {}))
@@ -1246,10 +1324,10 @@ func test_thief_skills() -> void:
 	check(s.notice_mult(true) < s.notice_mult(false), "crouching hides you")
 	var seen0 := s.notice_mult(true)
 	var pick0 := s.pickpocket_chance(10.0, true, 0.2)
-	var lock0 := s.lockpick_chance(2)
+	var lock0 := LockGame.sweet_half(2, s.skills["lock"])
 	check(s.pickpocket_chance(10.0, true, 0.2) > s.pickpocket_chance(10.0, false, 0.2), "picking from behind is easier")
 	check(s.pickpocket_chance(5.0, true, 0.2) > s.pickpocket_chance(120.0, true, 0.2), "dear things are harder to lift")
-	check(s.lockpick_chance(1) > s.lockpick_chance(3), "masterwork locks are harder")
+	check(LockGame.sweet_half(1, 0) > LockGame.sweet_half(3, 0), "master locks have a narrower sweet spot")
 	check(not s.spend_skill("sneak"), "skills cost points")
 	s.points = 2
 	check(s.spend_skill("sneak") and s.skills["sneak"] == 1 and s.points == 1, "a point buys a skill level")
@@ -1257,11 +1335,50 @@ func test_thief_skills() -> void:
 	check(s.practice("pick", Stats.practice_to_next(0) + 0.5) == 1 and s.skills["pick"] == 1, "practice raises a skill")
 	s.practice("lock", 100000.0)
 	check(s.skills["lock"] == Stats.SKILL_MAX, "skills top out")
-	check(s.notice_mult(true) < seen0 and s.pickpocket_chance(10.0, true, 0.2) > pick0 and s.lockpick_chance(2) > lock0, "skills help")
+	check(s.notice_mult(true) < seen0 and s.pickpocket_chance(10.0, true, 0.2) > pick0 and LockGame.sweet_half(2, s.skills["lock"]) > lock0, "skills help")
 	var back := Stats.from_data(JSON.parse_string(JSON.stringify(s.to_data())))
 	check(back.skills == s.skills and is_equal_approx(float(back.skill_xp["pick"]), float(s.skill_xp["pick"])), "skills survive a save")
 	var old := Stats.from_data({"level": 4, "attrs": {"str": 2}})
 	check(old.skills["sneak"] == 0 and old.level == 4, "old saves get skills at zero")
+
+func test_lock_game() -> void:
+	var g := LockGame.new(2, 0, 1234)
+	check(g.sweet >= -PI * 0.5 and g.sweet <= PI * 0.5, "the sweet spot is on the lock")
+	check(LockGame.new(2, 0, 1234).sweet == g.sweet, "the same chest keeps its sweet spot")
+	# Right on the sweet spot: the lock turns all the way and opens.
+	g.set_pick(g.sweet)
+	var r := ""
+	for i in 120:
+		r = g.step(1.0 / 60.0, true)
+		if r != "":
+			break
+	check(r == "open", "on the sweet spot the lock opens (%s)" % r)
+	# Way off: the lock jams and forcing it snaps the pick.
+	var h := LockGame.new(3, 0, 99)
+	h.set_pick(h.sweet + (1.2 if h.sweet < 0.0 else -1.2))
+	check(h.max_turn() < 0.2, "far off the sweet spot the lock barely turns")
+	r = ""
+	for i in 600:
+		r = h.step(1.0 / 60.0, true)
+		if r != "":
+			break
+	check(r == "broke" and h.turn == 0.0 and is_equal_approx(h.pick_hp, 1.0), "forcing a jammed lock snaps the pick, and the next starts fresh (%s)" % r)
+	# Near it: turns part way, more the closer you are.
+	var k := LockGame.new(1, 0, 7)
+	k.set_pick(k.sweet + k.half + 0.1)
+	var near := k.max_turn()
+	k.set_pick(k.sweet + k.half + 0.3 if k.sweet + k.half + 0.3 <= PI * 0.5 else k.sweet - k.half - 0.3)
+	check(near > k.max_turn() and near < 1.0, "the closer to the sweet spot, the further it turns")
+	# The pick can't move while the lock is turned.
+	k.set_pick(k.sweet + k.half + 0.1)
+	k.step(0.2, true)
+	var at := k.pick
+	k.set_pick(at + 0.5)
+	check(k.pick == at, "the pick holds still while you turn")
+	k.step(1.0, false)
+	check(k.turn == 0.0, "letting go springs the lock back")
+	check(LockGame.sweet_half(2, 50) > LockGame.sweet_half(2, 0) * 2.0, "Lockpicking widens the sweet spot")
+	check(ItemDB.has("lockpick") and Recipes.LIST.any(func(rr): return rr["out"] == "lockpick"), "lockpicks are an item you can make")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
@@ -1901,3 +2018,150 @@ func test_no_double_floors() -> void:
 	for t in KitHouse.FURNISH.keys() + Interiors.FURNISH.keys():
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
+
+static func _species_named(name: String, era: int) -> Dictionary:
+	for sp in range(1, 4000):
+		var p := Creature.species(sp, era)
+		if p["name"] == name:
+			return p
+	return {}
+
+func test_corpse_butchering() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var wolf := _species_named("Grey Wolf", Eras.MEDIEVAL)
+	check(not wolf.is_empty(), "a grey wolf species exists")
+	var ys := CorpseLoot.animal_yields(wolf, 0.7, 0.0, rng)
+	var got := {}
+	for y in ys:
+		got[y[0]] = y[1]
+	check(got.get("raw_meat", 0) >= 1, "a fresh wolf gives meat")
+	check(got.get("fur_pelt", 0) >= 1 and not got.has("hide"), "a wolf is skinned for a fur pelt")
+	check(got.get("bone", 0) >= 1, "carcasses give bone")
+	for t in got:
+		check(ItemDB.has(t), "yield %s is a real item" % t)
+	# A skinning knife gets more than bare hands; a rotten carcass gives no meat.
+	var knife := {}
+	for y in CorpseLoot.animal_yields(wolf, 1.5, 0.0, rng):
+		knife[y[0]] = y[1]
+	var bare := {}
+	for y in CorpseLoot.animal_yields(wolf, 0.0, 0.0, rng):
+		bare[y[0]] = y[1]
+	check(knife.get("raw_meat", 0) > bare.get("raw_meat", 0) and knife.get("fur_pelt", 0) > bare.get("fur_pelt", 0), "a knife yields more than bare hands")
+	var rot := {}
+	for y in CorpseLoot.animal_yields(wolf, 0.7, CorpseLoot.ROT_DAYS + 0.1, rng):
+		rot[y[0]] = y[1]
+	check(not rot.has("raw_meat") and not rot.has("animal_fat") and rot.get("bone", 0) >= 1, "spoiled carcass: no meat or fat, bones remain")
+	var elk := _species_named("Elk", Eras.MEDIEVAL)
+	if not elk.is_empty():
+		var e := {}
+		for y in CorpseLoot.animal_yields(elk, 0.7, 0.0, rng):
+			e[y[0]] = y[1]
+		check(e.get("antler", 0) == 2 and e.has("hide") and e.has("animal_fat"), "an elk gives antlers, hide and fat")
+	check(CorpseLoot.blade_of({"type": "skinning_knife"}) > CorpseLoot.blade_of({"type": "sword_iron"}), "knife beats sword at skinning")
+	check(CorpseLoot.blade_of({"type": "crossbow"}) == 0.0 and CorpseLoot.blade_of(null) == 0.0, "no blade, no skinning bonus")
+	check(CorpseLoot.butcher_time(wolf, 1.5) < CorpseLoot.butcher_time(wolf, 0.0), "a knife butchers faster")
+	check(CorpseLoot.is_machine(Creature.guard_species(Eras.SCIFI, 1)) == (Eras.theme != "human"), "sci-fi crawlers are salvaged, not butchered")
+	# People's bodies: what they wore, held and carried.
+	var rec := {"gear": {"head": {"type": "helm_iron", "qty": 1, "quality": 1.0}}, "held": {"type": "dagger", "qty": 1, "quality": 1.1}}
+	var items := CorpseLoot.person_items(rec, [ItemDB.make("bread", 2, 1.0, {})], {"how": "looted"})
+	check(items.size() == 3, "body holds gear, held item and pockets")
+	var inv := Inventory.new(CorpseLoot.SLOTS)
+	for it in items:
+		check(inv.add(it) == 0, "body item fits")
+	var body := {"kind": "person", "day": 1.0, "items": inv.to_data(), "purse": 0}
+	check(CorpseLoot.has_any(body), "a body with items has something to take")
+	check(not CorpseLoot.expired(body, 1.0 + CorpseLoot.PERSON_GONE_DAYS - 0.1) and CorpseLoot.expired(body, 1.0 + CorpseLoot.PERSON_GONE_DAYS), "bodies decay on time")
+	check(CorpseLoot.has_any({"kind": "animal", "butchered": false}), "an unbutchered carcass can be used")
+	check(not CorpseLoot.has_any({"kind": "animal", "butchered": true, "items": Inventory.new(4).to_data()}), "a picked-clean carcass is done")
+
+func test_corpses_persist_in_chunk() -> void:
+	var s := _tmp_store("corpses")
+	var g := ChunkGenerator.new(4321)
+	var c := s.get_or_create_chunk(g, 1, 1)
+	var inv := Inventory.new(CorpseLoot.SLOTS)
+	inv.add(ItemDB.make("raw_meat", 3, 1.0, {}))
+	c["corpses"] = {"a1_1_0": {"kind": "animal", "sp": 5, "era": 0, "p": Vector3(10, 4, 12), "yaw": 1.0, "day": 2.5, "name": "Elk", "butchered": true, "items": inv.to_data()}}
+	s.save_chunk(c)
+	var again := s.get_or_create_chunk(ChunkGenerator.new(1), 1, 1)
+	var k: Dictionary = again.get("corpses", {}).get("a1_1_0", {})
+	check(not k.is_empty(), "carcass survives a reload")
+	check(k.get("p") == Vector3(10, 4, 12) and k.get("butchered", false), "carcass keeps its place and butchered state")
+	var back := Inventory.new(CorpseLoot.SLOTS)
+	back.from_data(k["items"])
+	check(back.count("raw_meat") == 3, "what was left on the carcass stays on it")
+
+func test_cave_networks() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = 8
+	var old := ChunkGenerator.new(4242, true)
+	var oc := old.generate(3, 1)
+	check(not oc.has("cave") and not oc.has("hole"), "worlds before v10 keep their old caves")
+	WorldField.terrain_v = 10
+	var g := ChunkGenerator.new(4242, true)
+	var nets: Array = []
+	for sz in range(-2, 2):
+		for sx in range(-2, 2):
+			var n := Caves.network(g, sx, sz)
+			if not n.is_empty():
+				nets.append(n)
+	check(nets.size() >= 3, "cave networks are common in hilly worlds (%d of 16 cells)" % nets.size())
+	if nets.is_empty():
+		WorldField.terrain_v = was
+		return
+	var net: Dictionary = nets[0]
+	var mo: Vector3 = net["mouth"]
+	var ps: PackedFloat32Array = net["prims"]
+	var lowest := INF
+	var reach := 0.0
+	for i in ps.size() / Caves.STRIDE:
+		var o := i * Caves.STRIDE
+		if int(ps[o]) == Caves.TUNNEL:
+			lowest = minf(lowest, minf(ps[o + 9], ps[o + 10]))
+			reach = maxf(reach, Vector2(ps[o + 4] - mo.x, ps[o + 6] - mo.z).length())
+	check(lowest >= Caves.MIN_FLOOR - 0.01, "cave floors stay above the water table (%f)" % lowest)
+	check(reach > 50.0, "a network reaches far from its mouth (%.0f m)" % reach)
+	var big := 0.0
+	for ch in net["chambers"]:
+		big = maxf(big, float(ch["rx"]))
+		var cc: Vector3 = ch["p"]
+		check(Caves.sdf(ps, cc) < 0.0, "chamber centres are open")
+	check(big > 8.0, "chambers are roomy (widest %.1f m)" % big)
+	# The mouth's chunk opens the ground, and the cave is meshed with collision.
+	var mc := Vector2i(int(floor(mo.x / ChunkGenerator.SIZE)), int(floor(mo.z / ChunkGenerator.SIZE)))
+	var ch := g.generate(mc.x, mc.y)
+	check(ch.has("cave") and ch.has("hole"), "the mouth's chunk keeps its cave and opening")
+	var again := ChunkGenerator.new(4242, true).generate(mc.x, mc.y)
+	check(again.get("cave") == ch.get("cave") and again.get("hole") == ch.get("hole"), "caves are deterministic")
+	check(ChunkGenerator.in_cave(ch, mo.x - mc.x * ChunkGenerator.SIZE, mo.z - mc.y * ChunkGenerator.SIZE), "nothing grows in the mouth")
+	var res := Caves.build(ch)
+	check(not res.is_empty() and (res["faces"] as PackedVector3Array).size() > 300, "cave walls are meshed (%d)" % (0 if res.is_empty() else (res["faces"] as PackedVector3Array).size()))
+	# Everything placed underground sits in open cave air, on its floor.
+	var under := 0
+	for sz in range(mc.y - 3, mc.y + 4):
+		for sx in range(mc.x - 3, mc.x + 4):
+			var c := g.generate(sx, sz)
+			if not c.has("cave"):
+				continue
+			for o in c["objects"]:
+				var p: Vector3 = o["p"]
+				if p.y < ChunkGenerator.height_at(c, p.x, p.z) - 3.0:
+					under += 1
+					var wp := p + Vector3(sx * ChunkGenerator.SIZE, 0.5, sz * ChunkGenerator.SIZE)
+					check(Caves.sdf(c["cave"], wp) < 0.0, "%s underground is in the open" % o["t"])
+	check(under > 3, "caves hold ore, crystals or loot (%d)" % under)
+	# Nothing glows on human worlds.
+	var was_theme := Eras.theme
+	Eras.theme = "human"
+	var hg := ChunkGenerator.new(4243, true)
+	var glows := 0
+	var crystals := 0
+	for sz in range(-6, 6):
+		for sx in range(-6, 6):
+			for o in hg.generate(sx, sz)["objects"]:
+				glows += int(o["t"] == "cave_glow")
+				crystals += int(o["t"] == "cave_crystal")
+	check(glows == 0 and crystals > 0, "human worlds' cave crystals give no light (%d glowing, %d plain)" % [glows, crystals])
+	check(Caves.lights({"t": "cave_crystal", "v": 0}).is_empty(), "plain crystals carry no lamp")
+	Eras.theme = was_theme
+	WorldField.terrain_v = was

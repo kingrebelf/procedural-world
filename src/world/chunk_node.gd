@@ -23,6 +23,9 @@ var _mm: Dictionary = {} ## type -> MultiMeshInstance3D (or a node of rooms, _ad
 var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _grass: MultiMeshInstance3D
 var _clutter: Array = []
+var _cave: MeshInstance3D
+var _cave_faces := PackedVector3Array()
+var _cave_shape: CollisionShape3D
 
 const TERRAIN_TEXTURES := ["grass", "dirt", "glowmoss", "darksoil", "regolith", "rock", "mud", "snow"]
 
@@ -121,12 +124,19 @@ static func build_terrain_arrays(chunk: Dictionary, step: int) -> Array:
 			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
+	# Up close, a cave mouth is an opening in the ground (far off the hole is too small to
+	# see, and the cave walls are not drawn).
+	var hole := PackedByteArray()
+	if step == 1 and chunk.has("hole"):
+		hole = chunk["hole"]
 	for j in n - 1:
 		for i in n - 1:
 			var a := j * n + i
 			var b := a + 1
 			var c := a + n
 			var d := c + 1
+			if not hole.is_empty() and (hole[a] != 0 or hole[b] != 0 or hole[c] != 0 or hole[d] != 0):
+				continue
 			# Clockwise from above (Godot front faces).
 			idx.append_array([a, b, d, a, d, c])
 	if step > 1:
@@ -275,6 +285,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 	for o in chunk["objects"]:
 		if o["t"] == "cave":
 			has_cave = true
+	has_cave = has_cave or chunk.has("hole")
 	var plans := ChunkGenerator.keep_out(chunk)
 	for n in count:
 		var lx := r.randf() * SIZE
@@ -464,6 +475,38 @@ func set_terrain(arrays: Array, step: int) -> void:
 	if _height_shape != null:
 		_update_height_shape()
 
+## The cave walls under this chunk (Caves.build), or {} to drop them.
+func set_cave(res: Dictionary) -> void:
+	if _cave != null:
+		_cave.queue_free()
+		_cave = null
+	if _cave_shape != null:
+		_cave_shape.queue_free()
+		_cave_shape = null
+	_cave_faces = PackedVector3Array()
+	if res.is_empty():
+		return
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, res["arrays"])
+	mesh.surface_set_material(0, Caves.material())
+	_cave = MeshInstance3D.new()
+	_cave.name = "Cave"
+	_cave.mesh = mesh
+	add_child(_cave)
+	_cave_faces = res["faces"]
+	if _body != null:
+		_add_cave_shape()
+
+func _add_cave_shape() -> void:
+	if _cave_faces.is_empty():
+		return
+	var cs := ConcavePolygonShape3D.new()
+	cs.backface_collision = true
+	cs.set_faces(_cave_faces)
+	_cave_shape = CollisionShape3D.new()
+	_cave_shape.shape = cs
+	_body.add_child(_cave_shape)
+
 func set_objects(buffers: Dictionary) -> void:
 	for t in _mm:
 		_mm[t].queue_free()
@@ -596,6 +639,7 @@ func set_near(on: bool) -> void:
 		_body.add_child(_height_shape)
 		add_child(_body)
 		_update_height_shape()
+		_add_cave_shape()
 		for o in data["objects"]:
 			if not o["st"].get("gone", false):
 				_add_obj_body(o)
@@ -604,6 +648,7 @@ func set_near(on: bool) -> void:
 			_body.queue_free()
 		_body = null
 		_height_shape = null
+		_cave_shape = null
 		for i in _obj_bodies:
 			_obj_bodies[i].queue_free()
 		_obj_bodies.clear()
@@ -612,7 +657,15 @@ func _update_height_shape() -> void:
 	var hm := HeightMapShape3D.new()
 	hm.map_width = RES
 	hm.map_depth = RES
-	hm.map_data = data["heights"]
+	var hs: PackedFloat32Array = data["heights"]
+	if data.has("hole"):
+		# Jolt leaves out every cell touching a NaN height: the mouth is open to walk in.
+		hs = hs.duplicate()
+		var hb: PackedByteArray = data["hole"]
+		for k in hb.size():
+			if hb[k] != 0:
+				hs[k] = NAN
+	hm.map_data = hs
 	_height_shape.shape = hm
 	_height_shape.position = Vector3(SIZE * 0.5, 0, SIZE * 0.5)
 
@@ -629,9 +682,10 @@ func _add_obj_body(o: Dictionary) -> void:
 	if sh.size() > 2:
 		cs.basis = sh[2]
 	b.add_child(cs)
-	# A hearth, lamps or screens light the room inside.
-	for l in Interiors.lights(o["t"]):
-		var hl := OmniLight3D.new()
+	# A hearth, lamps or screens light the room inside; crystals light a cave.
+	for l in Interiors.lights(o["t"]) + Caves.lights(o):
+		# A hearth's light wavers with its fire.
+		var hl: OmniLight3D = FlickerLight.new() if KitHouse.has(o["t"]) else OmniLight3D.new()
 		hl.light_color = l[1]
 		hl.light_energy = l[2]
 		hl.omni_range = l[3]
@@ -642,10 +696,33 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.distance_fade_length = 15.0
 		hl.position = l[0]
 		b.add_child(hl)
+	for f in Interiors.fires(o["t"]):
+		var fl := FireFx.flame(f[1])
+		fl.position = f[0]
+		if f[1] >= 0.3:
+			# Sparks fly from a hearth or a wall torch; the smoke goes up the chimney.
+			fl.add_child(FireFx.embers(f[1], false))
+		b.add_child(fl)
+	if o["t"] == WorldPortal.TYPE:
+		# The door of light, just proud of the glowing disc on both faces.
+		for z in [-0.05, 0.05]:
+			var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
+			sw.position = Vector3(0, WorldPortal.DOOR_Y, z)
+			b.add_child(sw)
 	if built:
-		var lc = BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("light")
+		var bd := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
+		if bd.has("fire"):
+			var cf := FireFx.flame(float(bd["fire"]))
+			cf.add_child(FireFx.embers(float(bd["fire"])))
+			b.add_child(cf)
+		# A candle stand you build burns at its wicks.
+		for f in FireFx.prop_flames(bd.get("models", [])):
+			var pf := FireFx.flame(f[1])
+			pf.position = f[0]
+			b.add_child(pf)
+		var lc = bd.get("light")
 		if lc != null:
-			var l := OmniLight3D.new()
+			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0

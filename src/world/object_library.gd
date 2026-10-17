@@ -21,7 +21,7 @@ const KIND := {
 	"crypt_wall": "structure", "crypt_tower": "structure", "crypt_gate": "structure", "crypt_keep": "structure",
 	"bunker_wall": "structure", "bunker_tower": "structure", "bunker_gate": "structure", "bunker_keep": "structure",
 	"trader": "trader", "alien_ruin": "structure",
-	"signpost": "marker", "bridge": "structure", "cave": "structure",
+	"signpost": "marker", "bridge": "structure", "cave": "structure", "cave_glow": "marker", "cave_crystal": "marker",
 	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure",
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
@@ -58,7 +58,7 @@ const LABEL := {
 	"depot": "Cargo Depot", "outpost_light": "Floodlight",
 	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
-	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
+	"cave_glow": "Glowing Crystals", "cave_crystal": "Crystals", "chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 	"world_portal": "Ancient Portal",
 }
 
@@ -150,6 +150,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			return Bridge.build(int(parts[1]))
 		if parts[0] == "cave":
 			return Cave.build(int(parts[1]))
+		if parts[0] == "cave_glow" or parts[0] == "cave_crystal":
+			return Caves.build_glow(int(parts[1]), int(parts[2]), parts[0] == "cave_glow")
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
