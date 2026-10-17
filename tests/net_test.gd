@@ -3,13 +3,25 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/net_test.gd
 ## Starts a real server process, joins it, plays in the world scene through the network,
 ## edits a chunk, checks that the server saved it and pushed it to a second player (a
-## separate process, tests/net_peer.gd), and that your save comes back when you rejoin.
+## separate process, tests/net_peer.gd), that his edit from an older copy is merged with
+## yours instead of undoing it, that one of you runs the animals and the other sees them,
+## PvP (on, then off), the server lending its villager AI, and that your save comes back
+## when you rejoin.
 
 const PORT := 24731
+const AI_PORT := 24732
 var _fail := 0
 var _data := ""
 var _server := -1
 var _peer := -1
+var _heard: Array = [] ## what Bob said, in order
+
+## The last thing Bob said starting with `prefix`, or "".
+func _said(prefix: String) -> String:
+	for i in range(_heard.size() - 1, -1, -1):
+		if String(_heard[i]).begins_with(prefix):
+			return _heard[i]
+	return ""
 
 func check(c: bool, m: String) -> void:
 	if c:
@@ -62,6 +74,17 @@ func _run() -> void:
 	var game = root.get_node("/root/Game")
 	_data = OS.get_user_data_dir().path_join("net_test_%d" % Time.get_ticks_usec())
 	DirAccess.make_dir_recursive_absolute(_data)
+	# The server's villagers think with a model on this machine (a stand-in).
+	var fake_ai = load("res://tests/fake_ai_server.gd").new()
+	root.add_child(fake_ai)
+	check(fake_ai.start(AI_PORT), "stand-in model listening")
+	var cf := ConfigFile.new()
+	cf.set_value("ai", "provider", "custom")
+	cf.set_value("ai", "base_url", "http://127.0.0.1:%d/v1" % AI_PORT)
+	cf.set_value("ai", "model", "test")
+	cf.save(_data.path_join("server.cfg"))
+	var ai_node = root.get_node("/root/AI")
+	ai_node.cfg["provider"] = "off" # this game has no model of its own
 	_server = OS.create_process(OS.get_executable_path(), _godot_args(["--", "--server", "--port=%d" % PORT,
 		"--data=%s" % _data, "--config=%s" % _data.path_join("server.cfg"), "--world=nt", "--seed=1234",
 		"--password=sesame", "--admin-password=boss", "--name=Test Server", "--no-console", "--set", "time=day"]))
@@ -88,6 +111,11 @@ func _run() -> void:
 	check(String(net.option("time")) == "day" and is_equal_approx(game.time_lock, 0.5), "always-day locks the clock")
 	check(game.money == 50 and game.inventory.count("pickaxe_iron") == 1, "a new player gets the starter pack")
 
+	# The server's model, for a player with none.
+	check(bool(net.info.get("ai", false)) and ai_node.enabled(), "the server offers its villagers' model")
+	var said_ai: Dictionary = await ai_node.chat_json("You are a test.", [{"role": "user", "content": "Hello?"}])
+	check(said_ai["ok"] and String(said_ai["data"].get("say", "")) == "hello from the server" and fake_ai.hits == 1, "and dialogue goes through it (%s)" % said_ai)
+
 	# Play through the network in the real world scene.
 	change_scene_to_file("res://src/world/world.tscn")
 	await _frames(5)
@@ -113,16 +141,47 @@ func _run() -> void:
 	check(String(other.get("name", "")) == "Bob", "named Bob (%s)" % other.get("name", ""))
 	check(await _until(func(): return world.get_node("OtherPlayers").get_child_count() == 1, 1200), "and is drawn in the world")
 	# Bob says he's ready once he has this chunk; then we edit it.
-	var said := [""]
-	net.chat.connect(func(from, text, _k): if from == "Bob": said[0] = text)
-	check(await _until(func(): return said[0] == "ready", 2400), "Bob chats (%s)" % said[0])
+	net.chat.connect(func(from, text, _k): if from == "Bob": _heard.append(text))
+	check(await _until(func(): return _heard.has("ready"), 2400), "Bob chats (%s)" % str(_heard))
 	here.data["net_test"] = 4242
 	game.mark_chunk_dirty(here.data)
 	game.flush_chunks()
-	check(await _until(func(): return said[0] == "got 4242", 1800), "Bob saw the edit pushed to him (%s)" % said[0])
+	check(await _until(func(): return _heard.has("got 4242"), 1800), "Bob saw the edit pushed to him (%s)" % str(_heard))
 	var path := _data.path_join("worlds/nt/chunks/%d_%d.chunk" % [k0.x, k0.y])
 	await _until(func(): return _saved_marker(path), 600)
 	check(_saved_marker(path), "the server saved the edit to its world")
+	# Bob then saves an edit made from the copy he had before yours: merged, not lost.
+	await _until(func(): return _saved_key(path, "bob_mark") == 7, 900)
+	check(_saved_marker(path) and _saved_key(path, "bob_mark") == 7, "two players' edits to one chunk both stay")
+	check(await _until(func(): return int(streamer.get_chunk(k0).data.get("bob_mark", 0)) == 7 and int(streamer.get_chunk(k0).data.get("net_test", 0)) == 4242, 900),
+		"and the merged chunk reaches you")
+
+	# Animals: you loaded them first, so you run them; Bob sees them move.
+	check(net.holds("f", k0), "the first player near runs the animals")
+	check(await _until(func(): return net.shared("f", k0), 900), "and knows someone else sees them")
+	var fauna = world.fauna
+	var mine := 0
+	for k in fauna._herds:
+		if absi(k.x - k0.x) <= 2 and absi(k.y - k0.y) <= 2:
+			mine += fauna._herds[k].size()
+	if mine > 0:
+		check(await _until(func(): return _said("mobs") != "", 1200), "Bob sees the animals you run (%s, %d here)" % [str(_heard), mine])
+		check(await _until(func(): return _said("hit ") != "", 600), "Bob hits one (%s)" % str(_heard))
+		var hid := _said("hit ").substr(4)
+		var hurt_one := func():
+			for k in fauna._herds:
+				for c in fauna._herds[k]:
+					if is_instance_valid(c) and c.id == hid:
+						return c.hp < float(c.p["hp"])
+			return false
+		check(await _until(hurt_one, 600), "and the animal you run feels his blow")
+	else:
+		print("  (no animals near this spot; skipped the animal checks)")
+
+	# PvP: on by default.
+	var bob_peer: int = net.peers.keys()[0] if net.peers.size() > 0 else 0
+	net.hurt_player(bob_peer, 10.0, "", true)
+	check(await _until(func(): return _said("hurt") != "", 600), "with PvP on, your blow hurts Bob (%s)" % str(_heard))
 
 	# Chat commands and admin.
 	var replies: Array = []
@@ -135,6 +194,29 @@ func _run() -> void:
 	check(net.is_admin, "the admin password works")
 	net.admin("set pvp off")
 	check(await _until(func(): return net.option("pvp") == false, 600), "an admin's option change reaches players")
+	var before := _heard.size()
+	net.hurt_player(bob_peer, 10.0, "", true)
+	await _frames(90)
+	check(_heard.size() == before, "with PvP off, it doesn't (%s)" % str(_heard))
+
+	# A town's people saved from an older copy are merged too.
+	var site := _nearest_site(world.npcs.gen, player.global_position)
+	check(await _until(func(): return game.store.prefetch_settlement(site), 1800), "a town's people arrive")
+	var sx: int = site["sx"]
+	var sz: int = site["sz"]
+	var old: Dictionary = game.store.load_settlement(sx, sz).duplicate(true)
+	var live: Dictionary = game.store.load_settlement(sx, sz)
+	live["test_a"] = 1
+	game.store.save_settlement(live)
+	await _until(func(): return int(live.get("_rev", 0)) != int(old.get("_rev", 0)), 600)
+	old["test_b"] = 2 # as if someone else saved from the copy before yours
+	net.rs_send_town(0, old)
+	check(await _until(func(): return int(game.store.load_settlement(sx, sz).get("test_b", 0)) == 2, 900) and int(game.store.load_settlement(sx, sz).get("test_a", 0)) == 1,
+		"a town saved by two players keeps both")
+	var town_file := _data.path_join("worlds/nt/people/%d_%d.dat" % [sx, sz])
+	var tf = WorldStore.read_var(town_file, true)
+	check(tf is Dictionary and int(tf.get("test_a", 0)) == 1 and int(tf.get("test_b", 0)) == 2, "on the server too")
+	net.say("bye")
 
 	# Your save lives on the server.
 	game.add_money(727)
@@ -165,5 +247,18 @@ func _identity(who: String) -> void:
 	Identity.override = "user://test_identity_%s.cfg" % who
 
 func _saved_marker(path: String) -> bool:
+	return _saved_key(path, "net_test") == 4242
+
+func _saved_key(path: String, k: String) -> int:
 	var c = WorldStore.read_var(path, true)
-	return c is Dictionary and int(c.get("net_test", 0)) == 4242
+	return int(c.get(k, 0)) if c is Dictionary else 0
+
+func _nearest_site(gen: ChunkGenerator, at: Vector3) -> Dictionary:
+	for r in [400.0, 1200.0, 3000.0, 8000.0]:
+		var best := {}
+		for site in gen.settlements_near(at.x - r, at.z - r, at.x + r, at.z + r):
+			if best.is_empty() or (site["center"] as Vector2).distance_to(Vector2(at.x, at.z)) < (best["center"] as Vector2).distance_to(Vector2(at.x, at.z)):
+				best = site
+		if not best.is_empty():
+			return best
+	return {}

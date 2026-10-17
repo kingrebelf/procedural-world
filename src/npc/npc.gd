@@ -15,6 +15,7 @@ var action := "idle"
 var target := Vector2.INF
 var target_player := false
 var talking := false ## True while the player is in a conversation with this NPC.
+var talk_here := false ## talking with you while someone else's game runs them (multiplayer)
 var decide_in := 0.0
 var think_at := 0.0
 var attack_cd := 0.0
@@ -49,6 +50,11 @@ var ambient := false ## the current performance was their own idea (ends when th
 var _jump_y := 0.0
 var _stool: Node3D
 var gear_shown := ""
+## The last act (gesture or performance) and how many so far, so players who don't run
+## this person see the same (NPCManager streams them).
+var last_act := ""
+var acts := 0
+var _seen_acts := -1
 
 static var _mats: Dictionary = {}
 static var _meshes: Dictionary = {}
@@ -129,6 +135,8 @@ func act(what: String, seconds := 0.0) -> bool:
 	what = what.strip_edges().to_lower().replace(" ", "_")
 	if what == "" or what == "none":
 		return false
+	last_act = what
+	acts += 1
 	if NPCMind.PERFORM.has(what):
 		var p: Array = NPCMind.PERFORM[what]
 		if what == "stand":
@@ -232,6 +240,8 @@ func say(text: String, seconds: float = 5.0) -> void:
 	_label.visible = true
 	_speech_t = seconds
 	_speaking = true
+	if manager and manager.has_method("said"):
+		manager.said(self, text, seconds)
 
 func show_name(on: bool) -> void:
 	if _speaking:
@@ -321,6 +331,42 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_model.visible = not indoors
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
 	_animate(delta, moving, run, player_pos)
+
+## What players who don't run this person need to draw them (read back by follow).
+func net_state() -> Array:
+	return [rec["id"], global_position, rotation.y, action, perform, _speed, talking, last_act, acts, attack_cd, target_player, is_hidden()]
+
+## Drawn from someone else's game (multiplayer): glides to where they say this person
+## is and does what they say, instead of thinking for itself.
+func follow(delta: float, st: Array, player_pos: Vector3) -> void:
+	_speech_t -= delta
+	if _speaking and _speech_t <= 0.0:
+		_speaking = false
+		_label.visible = false
+	if st.size() < 12:
+		_animate(delta, false, false, player_pos)
+		return
+	var to: Vector3 = st[1]
+	global_position = to if global_position.distance_to(to) > 8.0 else global_position.lerp(to, clampf(delta * 10.0, 0.0, 1.0))
+	rotation.y = lerp_angle(rotation.y, float(st[2]), clampf(delta * 10.0, 0.0, 1.0))
+	action = String(st[3])
+	_speed = float(st[5])
+	talking = bool(st[6]) or talk_here
+	attack_cd = float(st[9])
+	target_player = bool(st[10])
+	if _seen_acts < 0:
+		_seen_acts = int(st[8]) # what they did before you came is over
+	elif int(st[8]) != _seen_acts:
+		_seen_acts = int(st[8])
+		act(String(st[7]), 600.0 if String(st[4]) != "" else 0.0)
+	if String(st[4]) == "" and perform != "":
+		_end_perform()
+	elif perform != "":
+		perform_t = maxf(perform_t, 1.0) # it ends when they say so
+	_update_perform(delta)
+	_model.visible = not bool(st[11])
+	_body.process_mode = Node.PROCESS_MODE_DISABLED if bool(st[11]) else Node.PROCESS_MODE_INHERIT
+	_animate(delta, _speed > 0.05, _speed > WALK * 1.5, player_pos)
 
 func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> void:
 	if _human:

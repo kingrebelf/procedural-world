@@ -39,6 +39,7 @@ var _lock := Mutex.new()
 var _save_t := 0.0
 var _clock_t := 0.0
 var mp: SceneMultiplayer
+var sync: ServerSync
 
 func start(c: ServerConfig) -> Error:
 	cfg = c
@@ -46,6 +47,8 @@ func start(c: ServerConfig) -> Error:
 	if not _open_world():
 		return ERR_CANT_OPEN
 	_load_index()
+	sync = ServerSync.new(self)
+	use_ai()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(cfg.port, cfg.max_players + 4, 3)
 	if err != OK:
@@ -215,7 +218,8 @@ func _on_peer_connected(peer: int) -> void:
 
 func _card(peer: int) -> Dictionary:
 	var o: Dictionary = online[peer]
-	return {"peer": peer, "pid": o["pid"], "name": o["name"], "planet": o["planet"], "pos": o["pos"], "equip": o["equip"], "held": o["held"]}
+	return {"peer": peer, "pid": o["pid"], "name": o["name"], "planet": o["planet"], "pos": o["pos"], "equip": o["equip"], "held": o["held"],
+		"wanted": o.get("wanted", {}), "veh": o.get("veh", [])}
 
 func _on_peer_disconnected(peer: int) -> void:
 	_alive.erase(peer)
@@ -225,6 +229,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	online.erase(peer)
 	if o.has("pending"):
 		return
+	sync.drop_peer(peer)
 	say_log("%s left. %d/%d online" % [o["name"], online.size(), cfg.max_players])
 	for p in online:
 		Net.c_left.rpc_id(p, peer)
@@ -248,6 +253,8 @@ func player_save(peer: int, data: PackedByteArray) -> void:
 		return
 	var o: Dictionary = online[peer]
 	WorldStore.write_var(_player_path(o["pid"]), d, true)
+	if int(d.get("planet", o["planet"])) != int(o["planet"]):
+		sync.drop_peer(peer, int(o["planet"]))
 	o["planet"] = int(d.get("planet", o["planet"]))
 	if d.get("pos") is Vector3:
 		o["pos"] = d["pos"]
@@ -273,6 +280,8 @@ func player_state(peer: int, p: int, pos: Vector3, yaw: float, pitch: float, ani
 	if not online.has(peer) or not pos.is_finite():
 		return
 	var o: Dictionary = online[peer]
+	if int(o["planet"]) != p:
+		sync.drop_peer(peer, int(o["planet"])) # what they had loaded there is someone else's now
 	o["planet"] = p
 	o["pos"] = pos
 	o["chunk"] = ChunkStreamer.chunk_of(pos)
@@ -290,9 +299,11 @@ func player_look(peer: int, look: Dictionary) -> void:
 	var o: Dictionary = online[peer]
 	o["equip"] = look.get("equip", {})
 	o["held"] = look.get("held", {})
+	o["wanted"] = look.get("wanted", {}) if look.get("wanted") is Dictionary else {}
+	o["veh"] = (look.get("veh", []) as Array).slice(0, 32) if look.get("veh") is Array else []
 	for q in online:
 		if q != peer and not online[q].has("pending"):
-			Net.c_look.rpc_id(q, peer, {"equip": o["equip"], "held": o["held"]})
+			Net.c_look.rpc_id(q, peer, {"equip": o["equip"], "held": o["held"], "wanted": o["wanted"], "veh": o["veh"]})
 
 # --- Chunks ------------------------------------------------------------------------------------
 
@@ -316,7 +327,7 @@ func town_request(peer: int, p: int, site: Dictionary) -> void:
 	var hot = _towns.get(k)
 	_lock.unlock()
 	if hot != null:
-		Net.c_town.rpc_id(peer, p, hot)
+		Net.c_town.rpc_id(peer, p, hot, false)
 		return
 	_want("t:%d:%d:%d" % [p, k.y, k.z], peer, {"kind": "town", "key": k, "site": site})
 
@@ -365,13 +376,15 @@ func _use_planet(p: int) -> void:
 func _run(job: Dictionary) -> void:
 	var k: Vector3i = job["key"]
 	var s: WorldStore = job["store"]
-	var out
+	var d: Dictionary
 	if job["kind"] == "chunk":
-		out = NetPack.pack(s.get_or_create_chunk(job["gen"], k.y, k.z))
+		d = s.get_or_create_chunk(job["gen"], k.y, k.z)
 	else:
-		out = NetPack.pack(s.get_or_create_settlement(job["gen"], job["site"]))
+		d = s.get_or_create_settlement(job["gen"], job["site"])
+	d["_rev"] = sync.next_rev()
+	var out := NetPack.pack(d)
 	_lock.lock()
-	_done.append([job, out])
+	_done.append([job, out, int(d["_rev"])])
 	_lock.unlock()
 
 func _collect() -> void:
@@ -392,17 +405,19 @@ func _collect() -> void:
 				bytes = _hot[k]
 			else:
 				_remember(k, bytes)
+				sync.remember("c", k, int(d[2]), bytes)
 		elif _towns.has(k):
 			bytes = _towns[k]
 		else:
 			_towns[k] = bytes
+			sync.remember("t", k, int(d[2]), bytes)
 		_lock.unlock()
 		for peer in job["waiters"]:
 			if online.has(peer):
 				if job["kind"] == "chunk":
 					Net.c_chunk.rpc_id(peer, k.x, bytes, false)
 				else:
-					Net.c_town.rpc_id(peer, k.x, bytes)
+					Net.c_town.rpc_id(peer, k.x, bytes, false)
 	if not done.is_empty():
 		_launch()
 
@@ -412,9 +427,13 @@ func _remember(k: Vector3i, bytes: PackedByteArray) -> void:
 		_hot_order.append(k)
 	_hot[k] = bytes
 	while _hot_order.size() > HOT_LIMIT:
-		_hot.erase(_hot_order.pop_front())
+		var old: Vector3i = _hot_order.pop_front()
+		_hot.erase(old)
+		sync.forget("c", old)
 
-## A player's edit: saved at once and shown to everyone else near it.
+## A player's edit: merged with what others saved since the copy it was made from,
+## saved at once and shown to everyone near it (the saver too, when it was merged, so
+## everyone has the same).
 func chunk_save(peer: int, p: int, data: PackedByteArray) -> void:
 	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
 		return
@@ -423,12 +442,30 @@ func chunk_save(peer: int, p: int, data: PackedByteArray) -> void:
 		say_log("Ignored a damaged chunk from %s" % online[peer]["name"])
 		return
 	var k := Vector3i(p, int(c["cx"]), int(c["cz"]))
+	var base_rev := int(c.get("_rev", -1))
+	_lock.lock()
+	var hot = _hot.get(k)
+	_lock.unlock()
+	var cur = NetPack.unpack(hot) if hot != null else store_for(p).load_chunk(k.y, k.z)
+	var m: Array = sync.merge_save("c", k, c, cur)
+	if not _valid_chunk(m[0]):
+		m = [c, true]
+	c = m[0]
+	c["_rev"] = sync.next_rev()
+	data = NetPack.pack(c)
 	store_for(p).save_chunk(c)
 	_lock.lock()
 	_remember(k, data)
 	_lock.unlock()
+	sync.remember("c", k, int(c["_rev"]), data)
 	for q in online:
-		if q == peer or online[q].has("pending"):
+		if online[q].has("pending"):
+			continue
+		if q == peer:
+			if m[1]:
+				Net.c_chunk.rpc_id(q, p, data, true)
+			else:
+				Net.c_rev.rpc_id(q, "c", p, Vector2i(k.y, k.z), base_rev, int(c["_rev"]))
 			continue
 		var r: Dictionary = online[q]
 		var rc: Vector2i = r["chunk"]
@@ -441,16 +478,138 @@ static func _valid_chunk(c) -> bool:
 	var h = c.get("heights")
 	return h is PackedFloat32Array and h.size() == ChunkGenerator.RES * ChunkGenerator.RES and c.get("objects") is Array
 
+## A town's people saved by a player: merged like chunks, and sent to everyone else who
+## has the town loaded (the holder runs them; the others' talks, trades and blows count).
 func town_save(peer: int, p: int, data: PackedByteArray) -> void:
 	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
 		return
 	var s = NetPack.unpack(data)
-	if not (s is Dictionary and s.get("sx") is int and s.get("sz") is int and s.get("npcs") is Array):
+	if not _valid_town(s):
 		return
+	var k := Vector3i(p, s["sx"], s["sz"])
+	var base_rev := int(s.get("_rev", -1))
+	_lock.lock()
+	var hot = _towns.get(k)
+	_lock.unlock()
+	var cur = NetPack.unpack(hot) if hot != null else store_for(p).load_settlement(k.y, k.z)
+	var m: Array = sync.merge_save("t", k, s, cur)
+	if not _valid_town(m[0]):
+		m = [s, true]
+	s = m[0]
+	s["_rev"] = sync.next_rev()
+	data = NetPack.pack(s)
 	store_for(p).save_settlement(s)
 	_lock.lock()
-	_towns[Vector3i(p, s["sx"], s["sz"])] = data
+	_towns[k] = data
 	_lock.unlock()
+	sync.remember("t", k, int(s["_rev"]), data)
+	if m[1]:
+		Net.c_town.rpc_id(peer, p, data, true)
+	else:
+		Net.c_rev.rpc_id(peer, "t", p, Vector2i(k.y, k.z), base_rev, int(s["_rev"]))
+	for q in sync.watchers("t", k):
+		if q != peer and online.has(q):
+			Net.c_town.rpc_id(q, p, data, true)
+
+static func _valid_town(s) -> bool:
+	return s is Dictionary and s.get("sx") is int and s.get("sz") is int and s.get("npcs") is Array
+
+# --- Towns' people and animals ----------------------------------------------------------------
+
+const MOB_RANGE := 500.0 ## metres: puppets are drawn for players this close to the holder
+const HIT_RANGE := 120.0 ## metres: furthest a player can hurt another from (guns)
+
+func watch(peer: int, kind: String, p: int, adds: Array, removes: Array) -> void:
+	if online.has(peer) and kind in ["t", "f"] and p >= 0 and p < Planets.COUNT:
+		sync.watch(peer, kind, p, adds, removes)
+
+## Tells a player who runs a town or chunk they have loaded, and how many have it.
+func tell_hold(q: int, kind: String, p: int, k: Vector2i, holder: int, count: int) -> void:
+	Net.c_hold.rpc_id(q, kind, p, k, holder, count)
+
+## A holder's 10 Hz update of the people or animals it runs: passed on to players near.
+func mobs(peer: int, p: int, kind: String, data: Array) -> void:
+	if not online.has(peer):
+		return
+	var from: Vector3 = online[peer]["pos"]
+	for q in online:
+		if q == peer or online[q].has("pending"):
+			continue
+		var r: Dictionary = online[q]
+		if r["planet"] == p and (r["pos"] as Vector3).distance_to(from) < MOB_RANGE:
+			Net.c_mobs.rpc_id(q, peer, p, kind, data)
+
+## Something a holder's person said, for players near.
+func mob_say(peer: int, p: int, id: String, text: String, secs: float) -> void:
+	if not online.has(peer):
+		return
+	var from: Vector3 = online[peer]["pos"]
+	for q in online:
+		if q != peer and not online[q].has("pending") and online[q]["planet"] == p and (online[q]["pos"] as Vector3).distance_to(from) < MOB_RANGE:
+			Net.c_mob_say.rpc_id(q, p, id, text.substr(0, 200), secs)
+
+## A player hit someone else's puppet: the blow goes to whoever runs it.
+func mob_hit(peer: int, kind: String, p: int, k: Vector2i, id: String, dmg: float, killed: bool) -> void:
+	if not online.has(peer) or not is_finite(dmg) or dmg < 0.0:
+		return
+	var h := sync.holder_of(kind, Vector3i(p, k.x, k.y))
+	if h != 0 and h != peer and online.has(h):
+		Net.c_mob_hit.rpc_id(h, kind, p, id, minf(dmg, 100000.0), killed, peer)
+
+func mob_talk(peer: int, p: int, k: Vector2i, id: String, on: bool) -> void:
+	if not online.has(peer):
+		return
+	var h := sync.holder_of("t", Vector3i(p, k.x, k.y))
+	if h != 0 and h != peer and online.has(h):
+		Net.c_mob_talk.rpc_id(h, p, id, on)
+
+## Hurting another player: an animal or person you run biting them (pvp false), or your
+## own blow (pvp true: only with PvP on, and never an ally once alliances come).
+func hurt_player(peer: int, target: int, dmg: float, cause: String, pvp: bool) -> void:
+	if not online.has(peer) or not online.has(target) or target == peer or not is_finite(dmg) or dmg <= 0.0:
+		return
+	var a: Dictionary = online[peer]
+	var b: Dictionary = online[target]
+	if a["planet"] != b["planet"]:
+		return
+	if pvp:
+		if not bool(cfg.options.get("pvp", true)):
+			return
+		if (a["pos"] as Vector3).distance_to(b["pos"]) > HIT_RANGE:
+			return
+		cause = "Killed by %s" % a["name"]
+	elif (a["pos"] as Vector3).distance_to(b["pos"]) > MOB_RANGE:
+		return
+	Net.c_hurt.rpc_id(target, minf(dmg, 100000.0), cause.substr(0, 80), a["name"] if pvp else "", peer)
+
+# --- Villagers' AI ---------------------------------------------------------------------------------
+
+const AI_PER_PLAYER := 12 ## requests a minute one player may make of the server's model
+
+## Points the AI autoload at server.cfg's [ai] (in memory; nothing is saved).
+func use_ai() -> void:
+	if cfg.ai_on():
+		var ai_node := get_node("/root/AI")
+		var st: Dictionary = cfg.ai_settings()
+		for k in st:
+			ai_node.cfg[k] = st[k]
+		say_log("Villagers think with %s (%s)" % [st["model"], st["base_url"]])
+
+## A player's dialogue or villager thought, asked of the server's model.
+func ai_chat(peer: int, id: int, system: String, messages: Array, background: bool) -> void:
+	if not online.has(peer):
+		return
+	var o: Dictionary = online[peer]
+	var now := Time.get_ticks_msec()
+	var recent: Array = (o.get("ai_t", []) as Array).filter(func(t): return now - int(t) < 60000)
+	if not cfg.ai_on() or recent.size() >= AI_PER_PLAYER or system.length() > 30000 or messages.size() > 60:
+		Net.c_ai.rpc_id(peer, id, {"ok": false, "text": "", "error": "The server's AI is busy" if cfg.ai_on() else "The server has no AI"})
+		return
+	recent.append(now)
+	o["ai_t"] = recent
+	var r: Dictionary = await get_node("/root/AI").chat(system, messages, background)
+	if online.has(peer):
+		Net.c_ai.rpc_id(peer, id, {"ok": bool(r.get("ok", false)), "text": String(r.get("text", "")).substr(0, 8000), "error": String(r.get("error", ""))})
 
 # --- Clock and saving ---------------------------------------------------------------------------
 

@@ -2733,6 +2733,92 @@ func test_remote_store() -> void:
 	s.save_meta()
 	check(not FileAccess.file_exists(s.root.path_join("world.dat")), "clients never write the world's meta")
 
+func test_net_merge() -> void:
+	# Two players edit the same chunk from the same copy: both edits stay.
+	var base := {"cx": 1, "objects": [{"t": "door", "st": {"open": false}}, {"t": "tree", "st": {}}],
+		"corpses": {"bag1": {"kind": "bag", "items": [1]}, "deer": {"kind": "animal"}}, "fauna_dead": {}}
+	var alice := base.duplicate(true)
+	alice["objects"][0]["st"]["open"] = true # opened the door
+	alice["corpses"].erase("bag1") # emptied the bag
+	var bob := base.duplicate(true)
+	bob["fauna_dead"]["7_7_0"] = 3.0 # killed a deer
+	bob["objects"][1]["st"]["gone"] = true # felled the tree
+	bob["objects"].append({"t": "wall", "st": {}}) # built a wall
+	var m: Dictionary = NetMerge.merge3(base, bob, alice) # Bob's save lands after Alice's
+	check(m["objects"][0]["st"]["open"] == true and m["objects"][1]["st"].get("gone", false), "both players' object edits are kept")
+	check(not m["corpses"].has("bag1") and m["corpses"].has("deer"), "a bag taken stays taken")
+	check(m["fauna_dead"].has("7_7_0") and m["objects"].size() == 3, "a kill and a new piece are kept")
+	# Both built at once: both pieces stay.
+	var a2 := base.duplicate(true)
+	a2["objects"].append({"t": "chest", "st": {}})
+	var m2: Dictionary = NetMerge.merge3(base, bob, a2)
+	check(m2["objects"].size() == 4, "two players building at once keep both pieces")
+	# The same thing changed on both sides: the newer save wins.
+	var c1 := base.duplicate(true)
+	c1["objects"][0]["st"]["open"] = true
+	var c2 := base.duplicate(true)
+	c2["objects"][0]["st"]["open"] = 1
+	check(NetMerge.merge3(base, c2, c1)["objects"][0]["st"]["open"] == 1, "a real clash takes the newer save")
+	# Towns: people merge by id; records changed on one side keep the other's changes.
+	var town := {"sx": 1, "sz": 2, "npcs": [{"id": "a", "hp": 100.0, "rel": 0, "mem": []}, {"id": "b", "hp": 100.0, "rel": 0, "mem": []}]}
+	var holder := town.duplicate(true)
+	holder["npcs"][0]["pos"] = Vector3(5, 0, 5)
+	holder["npcs"][1]["mem"] = ["Day 2: sold bread"]
+	var hitter := town.duplicate(true)
+	hitter["npcs"][0]["hp"] = 40.0
+	hitter["npcs"][0]["rel"] = -35
+	hitter["npcs"].append({"id": "c", "hp": 100.0})
+	var t: Dictionary = NetMerge.merge3(town, hitter, holder)
+	check(t["npcs"].size() == 3 and t["npcs"][0]["hp"] == 40.0 and t["npcs"][0]["pos"] == Vector3(5, 0, 5), "a blow and a walk on the same person both count")
+	check(t["npcs"][1]["mem"].size() == 1 and t["npcs"][2]["id"] == "c", "and other people's records and new hires stay")
+	# Merging a pushed town into the live one keeps the same record objects.
+	var live := town.duplicate(true)
+	var rec_a: Dictionary = live["npcs"][0]
+	rec_a["mood"] = "happy" # an unsaved change here
+	NetMerge.merge_into(live, town, hitter)
+	check(live["npcs"][0] == rec_a and is_same(live["npcs"][0], rec_a), "people keep their records when a town is merged in")
+	check(rec_a["hp"] == 40.0 and rec_a["mood"] == "happy" and live["npcs"].size() == 3, "with their changes and yours")
+	var gone := hitter.duplicate(true)
+	gone["npcs"].remove_at(1)
+	NetMerge.merge_into(live, hitter, gone)
+	check(live["npcs"].size() == 2 and is_same(live["npcs"][0], rec_a), "someone removed over there goes here too")
+
+func test_server_sync() -> void:
+	var host := Node.new()
+	host.set_script(load("res://tests/fake_host.gd"))
+	var sync := ServerSync.new(host)
+	var r1 := sync.next_rev()
+	check(sync.next_rev() > r1, "revisions rise")
+	var k := Vector3i(0, 4, 5)
+	var v1 := {"cx": 4, "cz": 5, "a": 1, "b": 1, "_rev": r1}
+	sync.remember("c", k, r1, NetPack.pack(v1))
+	var cur := v1.duplicate()
+	cur["a"] = 2
+	cur["_rev"] = sync.next_rev()
+	var mine := v1.duplicate()
+	mine["b"] = 3
+	var m: Array = sync.merge_save("c", k, mine, cur)
+	check(m[1] and m[0]["a"] == 2 and m[0]["b"] == 3, "a save from an older copy is merged with the newer one")
+	var same := cur.duplicate()
+	same["b"] = 9
+	m = sync.merge_save("c", k, same, cur)
+	check(not m[1] and m[0]["b"] == 9, "a save from the current copy is kept as it is")
+	for i in ServerSync.HISTORY + 1:
+		sync.remember("c", k, sync.next_rev(), NetPack.pack(v1))
+	check(sync.version("c", k, r1) == null, "only the last few versions are kept")
+	host.online = {10: {"pos": Vector3(0, 0, 0)}, 11: {"pos": Vector3(500, 0, 0)}, 12: {"pos": Vector3(100, 0, 0)}}
+	sync.watch(10, "t", 0, [[Vector2i(1, 1), Vector2(0, 0)]], [])
+	sync.watch(11, "t", 0, [[Vector2i(1, 1), Vector2(0, 0)]], [])
+	sync.watch(12, "t", 0, [[Vector2i(1, 1), Vector2(0, 0)]], [])
+	check(sync.holder_of("t", Vector3i(0, 1, 1)) == 10, "the first player to load a town runs it")
+	sync.watch(10, "t", 0, [], [Vector2i(1, 1)])
+	check(sync.holder_of("t", Vector3i(0, 1, 1)) == 12, "then the nearest of the others")
+	sync.drop_peer(12)
+	check(sync.holder_of("t", Vector3i(0, 1, 1)) == 11 and sync.watchers("t", Vector3i(0, 1, 1)) == [11], "and whoever is left when they go")
+	sync.drop_peer(11)
+	check(sync.holder_of("t", Vector3i(0, 1, 1)) == 0, "nobody runs a town nobody has loaded")
+	host.free()
+
 func test_pack_c_items() -> void:
 	for t in ["laser_pistol", "plasma_rifle", "gauss_rifle", "smart_pistol", "auto_shotgun", "sniper_rail", "minigun",
 			"flamethrower", "rocket_launcher", "grenade_launcher", "needle_gun", "carbine_combat"]:

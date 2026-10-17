@@ -18,6 +18,8 @@ var _order: Array = []
 var _asked: Dictionary = {} ## Vector3i -> msec asked
 var _towns: Dictionary = {} ## Vector3i(planet, sx, sz) -> settlement
 var _towns_asked: Dictionary = {}
+var _town_base: Dictionary = {} ## Vector3i -> the server's last copy, for merging pushes into yours
+var _town_sent: Dictionary = {} ## Vector3i -> a copy of your last save, until the server keeps it
 var _lock := Mutex.new()
 var _outbox: Array = [] ## requests from worker threads, sent by Net on the main thread
 
@@ -103,6 +105,14 @@ func _keep(k: Vector3i, chunk: Dictionary) -> void:
 		_chunks.erase(_order.pop_front())
 	_lock.unlock()
 
+## Main thread (Net): the server kept your save as it was, now revision `rev`.
+func chunk_acked(p: int, k: Vector2i, base_rev: int, rev: int) -> void:
+	_lock.lock()
+	var c = _chunks.get(Vector3i(p, k.x, k.y))
+	if c is Dictionary and int(c.get("_rev", -1)) == base_rev:
+		c["_rev"] = rev
+	_lock.unlock()
+
 ## Main thread (Net): the requests waiting to go out.
 func take_outbox() -> Array:
 	_lock.lock()
@@ -126,8 +136,42 @@ func prefetch_settlement(site: Dictionary) -> bool:
 			net.rs_request_town(planet, site)
 	return false
 
-func deliver_town(p: int, s: Dictionary) -> void:
-	_towns[Vector3i(p, int(s["sx"]), int(s["sz"]))] = s
+## A town from the server: asked for, or (pushed) someone else's save of it, which is
+## merged into the copy you have so the people walking about keep their records.
+## Returns true when it was merged into a copy in use.
+func deliver_town(p: int, s: Dictionary, pushed := false) -> bool:
+	var k := Vector3i(p, int(s["sx"]), int(s["sz"]))
+	var live = _towns.get(k)
+	if pushed and live is Dictionary and _town_base.has(k):
+		NetMerge.merge_into(live, _town_base[k], s)
+		live["_rev"] = s.get("_rev", -1)
+		_town_base[k] = s.duplicate(true)
+		_town_sent.erase(k)
+		return true
+	_towns[k] = s
+	_town_base[k] = s.duplicate(true)
+	return false
+
+## The server kept your save of a town as it was: it is now revision `rev`.
+func town_acked(p: int, k2: Vector2i, base_rev: int, rev: int) -> void:
+	var k := Vector3i(p, k2.x, k2.y)
+	var live = _towns.get(k)
+	if live is Dictionary and int(live.get("_rev", -1)) == base_rev:
+		live["_rev"] = rev
+	var sent = _town_sent.get(k)
+	if sent is Dictionary and int(sent.get("_rev", -1)) == base_rev:
+		sent["_rev"] = rev
+		_town_base[k] = sent
+	_town_sent.erase(k)
+
+## Lets go of a town you walked away from: nobody sends you its changes any more, so
+## it is asked for again when you come back.
+func forget_settlement(sx: int, sz: int) -> void:
+	var k := Vector3i(planet, sx, sz)
+	_towns.erase(k)
+	_towns_asked.erase(k)
+	_town_base.erase(k)
+	_town_sent.erase(k)
 
 func has_settlement(sx: int, sz: int) -> bool:
 	return _towns.has(Vector3i(planet, sx, sz))
@@ -136,7 +180,9 @@ func load_settlement(sx: int, sz: int):
 	return _towns.get(Vector3i(planet, sx, sz))
 
 func save_settlement(s: Dictionary) -> bool:
-	_towns[Vector3i(planet, int(s["sx"]), int(s["sz"]))] = s
+	var k := Vector3i(planet, int(s["sx"]), int(s["sz"]))
+	_towns[k] = s
+	_town_sent[k] = s.duplicate(true)
 	if net != null and not closed:
 		net.rs_send_town(planet, s)
 	return true

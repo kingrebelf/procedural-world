@@ -26,6 +26,9 @@ var _body: AnimatableBody3D
 var _bite_cd := 0.0
 ## Lives in a cave: walks on the cave floor (FaunaManager.cave_floor), stopped by its walls.
 var underground := false
+var chunk := Vector2i.ZERO ## the chunk whose herd it belongs to (FaunaManager)
+var bites := 0 ## bites so far, so players who don't run it see each one
+var _seen_bites := -1
 var _flash := 0.0
 var _alert_t := 0.0 ## how long a wary animal has been watching you
 var _graze_clip := "Eating"
@@ -513,8 +516,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 				want = 0.0
 				if _bite_cd <= 0.0:
 					_bite_cd = 1.3
-					if _kit:
-						_kit.play_once("Attack" if _kit.anim.has_animation("Attack") else "Attack_Headbutt")
+					bites += 1
+					_bite_anim()
 					manager.creature_bites(self)
 	_speed = move_toward(_speed, want, delta * 6.0)
 	var pos := global_position
@@ -551,6 +554,34 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	else:
 		pos.y = maxf(h, Water.LEVEL - 0.6)
 	global_position = pos
+	_animate(delta)
+
+func _bite_anim() -> void:
+	if _kit:
+		_kit.play_once("Attack" if _kit.anim.has_animation("Attack") else "Attack_Headbutt")
+
+## What players who don't run this animal need to draw it.
+func net_state() -> Array:
+	return [id, global_position, rotation.y, state, hp, _speed, bites, _graze_clip]
+
+## Drawn from someone else's game (multiplayer): glides to where they say it is.
+func follow(delta: float, ground: Callable, st: Array) -> void:
+	_ground = ground
+	if _kit:
+		_kit.ground = ground
+	if st.size() < 8:
+		_animate(delta)
+		return
+	var to: Vector3 = st[1]
+	global_position = to if global_position.distance_to(to) > 10.0 else global_position.lerp(to, clampf(delta * 10.0, 0.0, 1.0))
+	rotation.y = lerp_angle(rotation.y, float(st[2]), clampf(delta * 10.0, 0.0, 1.0))
+	state = String(st[3])
+	hp = float(st[4])
+	_speed = float(st[5])
+	_graze_clip = String(st[7])
+	if _seen_bites >= 0 and int(st[6]) != _seen_bites:
+		_bite_anim()
+	_seen_bites = int(st[6])
 	_animate(delta)
 
 func _animate(delta: float) -> void:

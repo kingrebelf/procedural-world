@@ -46,7 +46,17 @@ death_penalty="bag"   ; bag (your pack drops where you fall) or keep
 building=true
 alliances=true
 max_alliance=8
+
+[ai]
+provider="off"        ; off, ollama, lmstudio, strata, anthropic, openai, openrouter or custom
+base_url=""           ; empty = the provider's usual address
+model=""              ; empty = the provider's usual model
+api_key=""
+max_rpm=30            ; model requests a minute across all players
 ```
+
+With `[ai]` set, the server's villagers think and talk with that model for every player
+whose own game has no AI set up (players with their own keep using theirs).
 
 Flags override the file for one run: `--name= --description= --port= --max-players=
 --password= --admin-password= --world= --seed= --data= --config=path --set option=value`.
@@ -70,6 +80,16 @@ once they have signed in with `/admin <admin_password>`.
 | `name <text>` / `description <text>` | rename the server, change its description |
 | `maxplayers <n>` / `password [text or none]` | player limit and join password |
 | `stop` | save and shut down |
+
+## Playing together
+
+Each town's people and each patch of wildlife is run by one player's game (whoever got
+there first, then the nearest of the others), and everyone else sees them move, talk
+and fight as that game says. Animals and townsfolk go after whichever player is
+nearest. Edits to the world (building, doors, bags, kills, finds) and to towns (trades,
+debts, what people remember) are merged on the server, so two players changing the
+same place at once both keep their changes. With `pvp=false` players can't hurt each
+other.
 
 ## What is saved where
 

@@ -28,6 +28,7 @@ var _deciding := false
 var _thinking := false
 var _ground := Callable(self, "ground")
 var _stealth_t := 0.0
+var _mob_t := 0.0
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
@@ -37,6 +38,10 @@ func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
 	Game.saving.connect(save_all)
 	add_to_group("npc_manager")
+	Net.mob_hit.connect(_on_mob_hit)
+	Net.mob_said.connect(_on_mob_said)
+	Net.town_pushed.connect(_on_town_pushed)
+	Net.mob_talk.connect(_on_mob_talk)
 
 func _exit_tree() -> void:
 	save_all()
@@ -131,12 +136,22 @@ func _load(site: Dictionary, id: String) -> void:
 			continue
 		if stale:
 			_catch_up(rec, data, hour)
-		var n := NPC.new()
-		n.setup(rec, data, self)
-		n.think_at = now() + randf() * float(AI.get_value("think_interval"))
-		add_child(n)
-		e["nodes"].append(n)
-		_by_id[rec["id"]] = n
+		_add_node(e, rec)
+	# On a server: one player runs these people, the others see them (Net.holds).
+	Net.watch("t", [[Vector2i(int(site["sx"]), int(site["sz"])), site["center"]]], [])
+
+func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
+	var n := NPC.new()
+	n.setup(rec, e["data"], self)
+	n.think_at = now() + randf() * float(AI.get_value("think_interval"))
+	add_child(n)
+	e["nodes"].append(n)
+	_by_id[rec["id"]] = n
+	return n
+
+## Whether this game runs the town's people (always, offline).
+func runs(e: Dictionary) -> bool:
+	return Net.holds("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
 
 ## Where someone would be at this hour if they had been living their day unobserved.
 func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
@@ -154,8 +169,13 @@ func _catch_up(rec: Dictionary, data: Dictionary, hour: float) -> void:
 
 func _unload(id: String) -> void:
 	var e: Dictionary = settlements[id]
-	e["data"]["sim_day"] = Game.day
-	Game.store.save_settlement(e["data"])
+	var k := Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"]))
+	if runs(e) or e["dirty"]:
+		if runs(e):
+			e["data"]["sim_day"] = Game.day
+		Game.store.save_settlement(e["data"])
+	Net.watch("t", [], [k])
+	Game.store.forget_settlement(k.x, k.y)
 	for n in e["nodes"]:
 		_by_id.erase(n.rec["id"])
 		n.queue_free()
@@ -167,7 +187,10 @@ func save_all() -> void:
 	if Game.store == null:
 		return
 	for e in settlements.values():
-		e["data"]["sim_day"] = Game.day
+		if not runs(e) and not e["dirty"]:
+			continue
+		if runs(e):
+			e["data"]["sim_day"] = Game.day
 		Game.store.save_settlement(e["data"])
 		e["dirty"] = false
 
@@ -182,21 +205,41 @@ func _process(delta: float) -> void:
 		_scan()
 	var pp := player.global_position
 	var t := now()
+	_mob_t -= delta
+	var send := _mob_t <= 0.0
+	if send:
+		_mob_t = 1.0 / Net.MOB_HZ
+	var out: Array = []
 	for e in settlements.values():
+		var held := runs(e)
+		var shared := send and held and Net.shared("t", Vector2i(int(e["data"]["sx"]), int(e["data"]["sz"])))
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
+			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
+			if not held:
+				n.follow(delta, Net.mob_state("n", String(n.rec["id"])), pp)
+				continue
+			# Online, people react to whichever player is nearest them.
+			var tg: Array = Net.nearest_player(n.global_position, pp)
+			var tp: Vector3 = tg[1]
 			n.decide_in -= delta
 			if n.decide_in <= 0.0:
 				n.decide_in = randf_range(1.2, 2.4)
-				_decide(n, e, pp, t)
-			n.step(delta, _ground, pp, e["nodes"])
-			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
-			if n.action == "attack" and n.attack_cd <= 0.0 and pp.distance_to(n.global_position) < 1.7:
+				_decide(n, e, tp, t, int(tg[0]))
+			n.step(delta, _ground, tp, e["nodes"])
+			if shared:
+				out.append(n.net_state())
+			if n.action == "attack" and n.attack_cd <= 0.0 and tp.distance_to(n.global_position) < 1.7:
 				n.attack_cd = 1.4
 				var dmg := (6.0 + float(n.rec["traits"]["brave"]) * 6.0) * NPCSocial.hit_mult(n.rec)
+				if int(tg[0]) != 0:
+					Net.hurt_player(int(tg[0]), dmg, "Killed by %s" % n.rec["name"], false)
+					continue
 				var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
 				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(ceilf(took))])
+	if not out.is_empty():
+		Net.send_mobs("n", out)
 	_stealth_t -= delta
 	if _stealth_t <= 0.0:
 		_stealth_t = 0.2
@@ -216,12 +259,20 @@ func _process(delta: float) -> void:
 		_save_t = 0.0
 		for e in settlements.values():
 			if e["dirty"]:
-				e["data"]["sim_day"] = Game.day
+				if runs(e):
+					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
 				e["dirty"] = false
 
-func perception(n: NPC, e: Dictionary, pp: Vector3, t: float) -> Dictionary:
+## What a person makes of the player at `pp`: you (peer 0), or online another player.
+func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dictionary:
 	var held = Game.inventory.get_slot(player.selected) if player.has_method("held_item") else null
+	var wanted: int = Game.crime.stars(String(e.get("sid", "")), Game.day)
+	if peer != 0:
+		var r: Dictionary = Net.peers.get(peer, {})
+		held = r.get("held", {})
+		held = held if held is Dictionary and held.has("type") else null
+		wanted = int((r.get("wanted", {}) as Dictionary).get(String(e.get("sid", "")), 0))
 	var armed: bool = held != null and ItemDB.def(held["type"]).get("kind", "") == "weapon"
 	var pos := Vector2(n.global_position.x, n.global_position.z)
 	return {
@@ -229,14 +280,14 @@ func perception(n: NPC, e: Dictionary, pp: Vector3, t: float) -> Dictionary:
 		"noise": float(absi(hash(n.rec["id"] + str(int(t / 20.0)))) % 1000) / 1000.0,
 		"player_dist": n.global_position.distance_to(pp), "player_pos": Vector2(pp.x, pp.z),
 		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t, "day": NPCMind.day_num(),
-		"wanted": Game.crime.stars(String(e.get("sid", "")), Game.day),
+		"wanted": wanted,
 	}
 
-func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
+func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	if n.talking:
 		return
 	var rec := n.rec
-	var per := perception(n, e, pp, t)
+	var per := perception(n, e, pp, t, peer)
 	if per["player_dist"] > 30.0:
 		rec["greeted"] = false
 	var d := DecisionEngine.decide(rec, per)
@@ -349,6 +400,8 @@ func _external_decide(pp: Vector3) -> void:
 	var batch: Array = []
 	var t := now()
 	for e in settlements.values():
+		if not runs(e):
+			continue
 		for n in e["nodes"]:
 			if n.global_position.distance_to(pp) < 90.0 and not n.talking:
 				batch.append(DecisionEngine.snapshot(n.rec, perception(n, e, pp, t)))
@@ -372,6 +425,8 @@ func _background_think(pp: Vector3) -> void:
 	var t := now()
 	var pick: NPC = null
 	for e in settlements.values():
+		if not runs(e):
+			continue
 		for n in e["nodes"]:
 			if n.talking or n.is_hidden() or n.think_at > t:
 				continue
@@ -406,6 +461,7 @@ func _background_think(pp: Vector3) -> void:
 
 func begin_talk(n: NPC) -> void:
 	n.talking = true
+	_tell_talk(n, true)
 	n.rec["met"] = int(n.rec.get("met", 0)) + 1
 	if int(n.rec["met"]) == 1:
 		NPCMind.remember(n.rec, "Met a traveller for the first time.")
@@ -415,6 +471,7 @@ func begin_talk(n: NPC) -> void:
 func end_talk(n: NPC) -> void:
 	if is_instance_valid(n):
 		n.talking = false
+		_tell_talk(n, false)
 		n.decide_in = 0.0
 		mark_dirty(n.settlement)
 
@@ -424,6 +481,9 @@ func player_hit(n: NPC, damage: float) -> void:
 	var s := n.settlement
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
+	var tk := Vector2i(int(s["sx"]), int(s["sz"]))
+	if not Net.holds("t", tk):
+		Net.hit_mob("n", tk, String(rec["id"]), damage, rec["hp"] <= 0.0) # whoever runs them feels it too
 	NPCMind.change_rel(rec, -35)
 	rec["mood"] = "angry" if float(rec["traits"]["brave"]) > 0.5 else "afraid"
 	var e0 := _entry_of(s)
@@ -662,3 +722,68 @@ func pay_bounty(n: NPC) -> int:
 func bounty_for(n: NPC) -> int:
 	var e := _entry_of(n.settlement)
 	return 0 if e.is_empty() else Game.crime.owed(String(e["sid"]), Game.day)
+
+# --- Multiplayer ---------------------------------------------------------------------------
+
+## Something one of the people you run said: players near see it too.
+func said(n: NPC, text: String, seconds: float) -> void:
+	if Net.is_client() and n.settlement.has("sx") and Net.holds("t", Vector2i(int(n.settlement["sx"]), int(n.settlement["sz"]))):
+		Net.send_mob_say(String(n.rec["id"]), text, seconds)
+
+func _on_mob_said(id: String, text: String, secs: float) -> void:
+	var n = _by_id.get(id)
+	if n != null and is_instance_valid(n):
+		n.say(text, secs)
+
+## Another player hit one of the people you run. Their game counts the crime and, if the
+## blow killed, the death and the body; here the person feels it at once.
+func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int) -> void:
+	if kind != "n":
+		return
+	var n = _by_id.get(id)
+	if n == null or not is_instance_valid(n):
+		return
+	var rec: Dictionary = n.rec
+	if killed:
+		rec["dead"] = true
+		rec["hp"] = 0.0
+		_drop_node(n)
+		return
+	rec["hp"] = maxf(1.0, float(rec.get("hp", 100.0)) - dmg)
+	n.flash_hit()
+	n.say(NPCMind.bark(rec, "hurt"), 3.0)
+	n.decide_in = 0.0
+	mark_dirty(n.settlement)
+
+## Talking with someone another player's game runs: they hold still for you there too.
+func _tell_talk(n: NPC, on: bool) -> void:
+	var k := Vector2i(int(n.settlement["sx"]), int(n.settlement["sz"]))
+	if not Net.holds("t", k):
+		n.talk_here = on
+		Net.talk_mob(k, String(n.rec["id"]), on)
+
+func _on_mob_talk(id: String, on: bool) -> void:
+	var n = _by_id.get(id)
+	if n != null and is_instance_valid(n):
+		n.talking = on
+		n.decide_in = 0.0
+
+func _drop_node(n: NPC) -> void:
+	var e: Dictionary = _entry_of(n.settlement)
+	if e.has("nodes"):
+		e["nodes"].erase(n)
+	_by_id.erase(n.rec["id"])
+	n.queue_free()
+
+## Someone else's save of a town was merged into yours: people who died there go, and
+## anyone newly hired comes.
+func _on_town_pushed(sx: int, sz: int) -> void:
+	var e = settlements.get(NPCGen.settlement_id(sx, sz))
+	if e == null:
+		return
+	for n in e["nodes"].duplicate():
+		if is_instance_valid(n) and n.rec.get("dead", false):
+			_drop_node(n)
+	for rec in e["data"]["npcs"]:
+		if not rec.get("dead", false) and not _by_id.has(rec["id"]):
+			_add_node(e, rec)
