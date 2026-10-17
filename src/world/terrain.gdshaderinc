@@ -254,6 +254,7 @@ void fragment() {
 	vec2 tilt_s = vec2(0.0);
 	vec2 tilt_r = vec2(0.0);
 	vec3 rock_n = vec3(0.0); // world-space tilt of rock faces
+	float rock_hi = 0.5; // how proud the rock's surface stands here (its photo's light and dark)
 	vec3 mud_d = vec3(1.0);
 	float moss_glow = 0.0;
 	if (use_textures) {
@@ -300,6 +301,7 @@ void fragment() {
 			+ texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y
 			+ mix(texture(cliff_tex, cz).rgb, texture(cliff_tex, cz * 0.43 + 0.31).rgb, cm) * bw.z;
 		vec3 rmean = mix(CLIFF_MEAN, ROCK_MEAN, bw.y);
+		rock_hi = clamp(dot(rt, LUM) / dot(rmean, LUM) * 0.5, 0.0, 1.0);
 		rock = recolor(rt, rmean, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
 		// Rain streaks down the faces, dark stains and paler washed ones, and broad
 		// tones over a whole crag, so a tall face isn't one repeat stacked on another.
@@ -414,7 +416,13 @@ void fragment() {
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
-	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
+	// Where the slope turns to rock: up close by the rock's own relief, so its proud faces
+	// come through first and grass and soil fill the low places between them in a crisp,
+	// ragged edge (a straight slope blend smeared a soft green fog over the cliff foot);
+	// far off, the plain blend.
+	float rock_at = (slope + (meso - 0.5) * 0.18 - 0.32) / 0.2;
+	float rock_mask = mix(smoothstep(0.38, 0.62, rock_at + (rock_hi - 0.5) * 0.7 + (micro - 0.5) * 0.35),
+		smoothstep(0.0, 1.0, rock_at), far) * (1.0 - form_v.x);
 	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
 	// forking and dying out (sharp and close in some stretches, faint in others), with a
 	// long gentle windward side and a short steep lee; finer ones still close up, and
