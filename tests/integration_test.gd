@@ -1141,6 +1141,8 @@ func _easter_eggs(game, streamer: ChunkStreamer, player) -> void:
 	_make_room(game)
 	var day0: float = game.day
 	var str0: int = game.stats.attrs["str"]
+	# Finds pay experience; put the levels back after so later checks start where they expect.
+	var stats0: Dictionary = game.stats.to_data()
 	var sword: Dictionary = rc.add_object("sword_stone", at.call(0.0, 12.0), 0.0, Eras.MEDIEVAL, {})
 	game.stats.attrs["str"] = 0
 	game.buffs.erase("strength")
@@ -1182,6 +1184,9 @@ func _easter_eggs(game, streamer: ChunkStreamer, player) -> void:
 	check(camp["st"].get("used", false) and msg.contains("journal"), "the explorer's journal reads (%s)" % msg)
 	check(game.discovery.get("secrets", {}).size() >= 5, "the secrets you found are counted")
 	game.day = day0
+	game.stats.level = int(stats0["level"])
+	game.stats.xp = stats0["xp"]
+	game.stats.points = int(stats0["points"])
 	for o in [sword, ring, door, camp]:
 		rc.remove_object(o["i"])
 	await _frames(2)

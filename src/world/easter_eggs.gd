@@ -37,11 +37,11 @@ const WHERE := {
 }
 ## Collision boxes (the meshes stand on y = 0).
 const SIZE := {
-	"sword_stone": Vector3(2.0, 1.3, 1.7), "gnome_ring": Vector3(0.6, 0.8, 0.6), "msg_bottle": Vector3(0.7, 0.3, 0.5),
+	"sword_stone": Vector3(2.0, 1.3, 1.7), "gnome_ring": Vector3(0.8, 1.2, 0.8), "msg_bottle": Vector3(0.7, 0.3, 0.5),
 	"lost_camp": Vector3(1.7, 1.3, 2.3), "tiny_door": Vector3(1.3, 1.0, 0.7),
 }
 ## How high the prompt floats.
-const PROMPT_H := {"sword_stone": 2.3, "gnome_ring": 1.0, "msg_bottle": 0.6, "lost_camp": 1.6, "tiny_door": 1.1}
+const PROMPT_H := {"sword_stone": 2.3, "gnome_ring": 1.4, "msg_bottle": 0.6, "lost_camp": 1.6, "tiny_door": 1.1}
 ## The icon in the look panel.
 const ICON := {"sword_stone": "sword_iron", "gnome_ring": "mushroom", "msg_bottle": "scroll_plain", "lost_camp": "book_leather", "tiny_door": "door_wood"}
 const XP := {"sword_stone": 150.0, "gnome_ring": 90.0, "msg_bottle": 50.0, "lost_camp": 70.0, "tiny_door": 60.0}
@@ -109,6 +109,10 @@ static func mesh_key(o: Dictionary) -> String:
 	if t == "lost_camp" and int(o["e"]) == Eras.SCIFI:
 		return t + "~s"
 	return t
+
+## Small things that would vanish if sunk into the ground like a boulder is.
+static func floats(t: String) -> bool:
+	return t == "gnome_ring" or t == "msg_bottle" or t == "lost_camp"
 
 static func owns_key(key: String) -> bool:
 	return has(key.get_slice("~", 0))
@@ -363,29 +367,38 @@ static func build(key: String) -> ArrayMesh:
 			for i in count:
 				var a := i * TAU / count + r.randf_range(-0.12, 0.12)
 				var d := 2.3 + r.randf_range(-0.2, 0.2)
-				var s := r.randf_range(0.55, 1.0)
+				var s := r.randf_range(0.8, 1.4)
 				names.append("nature/Mushroom_Common")
 				xfs.append(Transform3D(Basis(Vector3.UP, r.randf() * TAU) * Basis.from_scale(Vector3.ONE * s), Vector3(cos(a) * d, 0.0, sin(a) * d)))
-			k.cylinder("stone", I, 0.24, 0.22, 0.08, 10)
+			# Half again life size: a garden gnome that reads from across the clearing.
+			var G := Transform3D(Basis.from_scale(Vector3.ONE * 1.5), Vector3.ZERO)
+			k.cylinder("stone", G, 0.24, 0.22, 0.08, 10)
 			for x in [-0.07, 0.07]:
-				k.sphere("leather", Transform3D(Basis.from_scale(Vector3(0.8, 0.6, 1.2)), Vector3(x, 0.12, 0.03)), 0.06, 5, 7)
-			k.cylinder("plaster", I.translated(Vector3(0, 0.1, 0)), 0.13, 0.09, 0.26, 10, true, 0.0, 1, Color(0.25, 0.4, 0.75))
-			k.cylinder("leather", I.translated(Vector3(0, 0.22, 0)), 0.115, 0.112, 0.03, 10)
-			k.sphere("gold", I.translated(Vector3(0, 0.235, 0.112)), 0.018, 3, 5)
+				k.sphere("leather", G * Transform3D(Basis.from_scale(Vector3(0.8, 0.6, 1.2)), Vector3(x, 0.12, 0.03)), 0.06, 5, 7)
+			k.cylinder("plaster", G * I.translated(Vector3(0, 0.1, 0)), 0.13, 0.09, 0.26, 10, true, 0.0, 1, Color(0.25, 0.4, 0.75))
+			k.cylinder("leather", G * I.translated(Vector3(0, 0.22, 0)), 0.115, 0.112, 0.03, 10)
+			k.sphere("gold", G * I.translated(Vector3(0, 0.235, 0.112)), 0.018, 3, 5)
 			for x in [-1.0, 1.0]:
-				k.cylinder("plaster", Transform3D(Basis(Vector3.FORWARD, x * (PI - 0.35)), Vector3(x * 0.11, 0.33, 0)), 0.035, 0.03, 0.14, 6, true, 0.0, 1, Color(0.25, 0.4, 0.75))
-			k.sphere("plaster", I.translated(Vector3(0, 0.42, 0)), 0.085, 7, 10, 0.0, 1.0, Color(0.95, 0.75, 0.62))
-			k.sphere("plaster", I.translated(Vector3(0, 0.42, 0.08)), 0.025, 4, 6, 0.0, 1.0, Color(0.95, 0.6, 0.5))
-			k.cylinder("plaster", Transform3D(Basis(Vector3.RIGHT, PI - 0.25), Vector3(0, 0.42, 0.055)), 0.075, 0.01, 0.2, 9, true, 0.0, 1, Color(0.97, 0.96, 0.92))
-			k.cylinder("plaster", Transform3D(Basis(Vector3.RIGHT, -0.15), Vector3(0, 0.47, 0)), 0.095, 0.006, 0.3, 10, true, 0.0, 1, Color(0.75, 0.12, 0.1))
+				k.cylinder("plaster", G * Transform3D(Basis(Vector3.FORWARD, x * (PI - 0.35)), Vector3(x * 0.11, 0.33, 0)), 0.035, 0.03, 0.14, 6, true, 0.0, 1, Color(0.25, 0.4, 0.75))
+			k.sphere("plaster", G * I.translated(Vector3(0, 0.42, 0)), 0.085, 7, 10, 0.0, 1.0, Color(0.95, 0.75, 0.62))
+			k.sphere("plaster", G * I.translated(Vector3(0, 0.42, 0.08)), 0.025, 4, 6, 0.0, 1.0, Color(0.95, 0.6, 0.5))
+			k.cylinder("plaster", G * Transform3D(Basis(Vector3.RIGHT, PI - 0.25), Vector3(0, 0.42, 0.055)), 0.075, 0.01, 0.2, 9, true, 0.0, 1, Color(0.97, 0.96, 0.92))
+			k.cylinder("plaster", G * Transform3D(Basis(Vector3.RIGHT, -0.15), Vector3(0, 0.47, 0)), 0.095, 0.006, 0.3, 10, true, 0.0, 1, Color(0.75, 0.12, 0.1))
 		"msg_bottle":
-			# A corked bottle half sunk in the sand, a strand of driftwood and some shells.
-			names.append("props/Bottle_1")
-			xfs.append(Transform3D(Basis(Vector3.UP, 0.4) * Basis(Vector3.FORWARD, PI * 0.5 - 0.12) * Basis.from_scale(Vector3.ONE * 1.3), Vector3(0.24, 0.02, 0.0)))
-			k.cylinder("timber", Transform3D(Basis(Vector3.UP, 1.9) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.7, 0.05, -0.55)), 0.06, 0.035, 1.4, 7, true, 0.25, 3, Color(0.8, 0.78, 0.72))
-			for i in 5:
+			# A green glass bottle on its side, half in the sand, corked, a scroll tied with a
+			# red ribbon inside; a bleached stick of driftwood and some shells.
+			var lie := Basis(Vector3.UP, 0.4) * Basis(Vector3.FORWARD, PI * 0.5) ## +y along the bottle
+			var at := func(along: float) -> Vector3: return Vector3(0.0, 0.065, 0.0) + lie * Vector3(0, along, 0)
+			k.cylinder("bottle_glass", Transform3D(lie, at.call(-0.17)), 0.09, 0.09, 0.26, 16)
+			k.cylinder("bottle_glass", Transform3D(lie, at.call(0.09)), 0.09, 0.032, 0.07, 16, false)
+			k.cylinder("bottle_glass", Transform3D(lie, at.call(0.16)), 0.03, 0.03, 0.08, 12)
+			k.cylinder("timber", Transform3D(lie, at.call(0.235)), 0.027, 0.03, 0.04, 10, true, 0.0, 1, Color(0.95, 0.8, 0.6))
+			k.cylinder("plaster", Transform3D(lie, at.call(-0.14)), 0.045, 0.045, 0.2, 12, true, 0.0, 1, Color(1.0, 0.93, 0.74))
+			k.cylinder("cloth", Transform3D(lie, at.call(-0.045)), 0.048, 0.048, 0.015, 12)
+			k.cylinder("bone", Transform3D(Basis(Vector3.UP, 1.9) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.75, 0.04, -0.5)), 0.05, 0.03, 1.2, 7, true, 0.15, 3, Color(0.78, 0.74, 0.66))
+			for i in 6:
 				var a := r.randf() * TAU
-				k.sphere("bone", I.translated(Vector3(cos(a), 0.0, sin(a)) * r.randf_range(0.4, 0.9)), r.randf_range(0.025, 0.045), 4, 6, 0.0, 0.45, Color(1.0, 0.9, 0.85))
+				k.sphere("bone", I.translated(Vector3(cos(a), 0.0, sin(a)) * r.randf_range(0.35, 0.8)), r.randf_range(0.03, 0.05), 4, 7, 0.0, 0.45, Color(1.0, 0.88, 0.82))
 		"lost_camp":
 			_camp(k, r, key.ends_with("~s"), names, xfs)
 		"tiny_door":

@@ -999,7 +999,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:
 	var names := {"sword_stone": "53_egg_sword", "gnome_ring": "54_egg_gnome", "msg_bottle": "55_egg_bottle", "lost_camp": "56_egg_camp", "tiny_door": "57_egg_door"}
-	var view := {"sword_stone": [5.0, 1.6, 1.0], "gnome_ring": [4.2, 1.4, 0.3], "msg_bottle": [2.2, 1.2, 0.0], "lost_camp": [6.5, 1.8, 0.6], "tiny_door": [2.6, 0.9, 0.4]}
+	var view := {"sword_stone": [3.4, 1.7, 1.2], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [1.5, 1.1, -0.4], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
 	var best := {}
 	for r in 12:
 		for wz in range(-r, r + 1):
