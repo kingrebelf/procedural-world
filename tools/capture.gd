@@ -214,9 +214,9 @@ func _run() -> void:
 					var eye := maxf(deck + 2.0, g.field.height(c.x, c.y) + 2.0)
 					var clear := true
 					for k in range(1, 10):
-						var f := k / 10.0
-						var q := c.lerp(vm, f)
-						if g.field.height(q.x, q.y) > lerpf(eye, deck - 4.0, f) - 0.5:
+						var fr := k / 10.0
+						var q := c.lerp(vm, fr)
+						if g.field.height(q.x, q.y) > lerpf(eye, deck - 4.0, fr) - 0.5:
 							clear = false
 							break
 					if clear and not found:

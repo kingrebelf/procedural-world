@@ -30,6 +30,9 @@ jobs:
       - name: Import project
         run: godot --headless --path . --import || true
 
+      - name: Parse-check the tool scripts (capture tour, previews)
+        run: timeout 300 godot --headless --path . --script res://tools/parse_check.gd -- $(ls tools/*.gd | sed 's|^|res://|')
+
       - name: Run unit tests
         run: timeout 900 godot --headless --path . --script res://tests/run_tests.gd
 
