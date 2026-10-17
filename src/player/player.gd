@@ -804,10 +804,10 @@ func _update_look_target() -> void:
 	elif h.has("npc") and is_instance_valid(h["npc"]):
 		var n: NPC = h["npc"]
 		var r := int(n.rec.get("rel", 0))
-		info = {"title": n.rec["name"], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
+		info = {"title": "Lv %d  %s" % [NPCSocial.level(n.rec), n.rec["name"]], "sub": "%s of %s" % [String(n.rec["job"]).capitalize(), n.settlement["name"]],
 			"lines": ["Feels %s toward you (%d)" % ["hostile" if r <= -40 else ("wary" if r < -5 else ("neutral" if r < 15 else "friendly")), r],
 				"Mood: %s" % n.rec.get("mood", "calm"), "Doing: %s" % n.action.replace("_", " ")],
-			"hp": float(n.rec.get("hp", 100.0)) / 100.0}
+			"hp": float(n.rec.get("hp", 100.0)) / NPCSocial.max_hp(n.rec)}
 	elif h.has("obj"):
 		var o: Dictionary = (h["chunk"] as ChunkNode).get_object(h["obj"])
 		var t: String = o["t"]

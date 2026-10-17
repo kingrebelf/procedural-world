@@ -192,7 +192,7 @@ func _process(delta: float) -> void:
 			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
 			if n.action == "attack" and n.attack_cd <= 0.0 and pp.distance_to(n.global_position) < 1.7:
 				n.attack_cd = 1.4
-				var dmg := 6.0 + float(n.rec["traits"]["brave"]) * 6.0
+				var dmg := (6.0 + float(n.rec["traits"]["brave"]) * 6.0) * NPCSocial.hit_mult(n.rec)
 				var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
 				Game.toast.emit("%s hits you (-%d)" % [n.rec["name"].split(" ")[0], int(ceilf(took))])
 	_stealth_t -= delta

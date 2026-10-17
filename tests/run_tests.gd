@@ -950,6 +950,34 @@ func test_speech_to_text_request() -> void:
 	check(svc.parse_transcription(200, "{\"text\": \" hello there \"}")["text"] == "hello there", "transcription parsed")
 	check(not svc.parse_transcription(401, "{\"error\": {\"message\": \"bad key\"}}")["ok"], "errors reported")
 
+func test_npc_levels() -> void:
+	var old := Eras.theme
+	var base := Eras.base_level
+	Eras.theme = "human"
+	Eras.base_level = 1
+	var mk := func(job: String, x: float, id: String) -> Dictionary:
+		var r := {"id": id, "name": "A B", "job": job, "era": 0, "rel": 0, "hp": 100.0, "pos": Vector3(x, 0, 0),
+			"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+		NPCSocial.ensure(r)
+		return r
+	var far: Dictionary = mk.call("farmer", 3000.0, "f1") # zone 21
+	var guard: Dictionary = mk.call("guard", 3000.0, "g1")
+	var near: Dictionary = mk.call("farmer", 10.0, "f2")
+	check(NPCSocial.level(far) >= 19 and NPCSocial.level(far) <= 21, "townsfolk sit at their zone's level (%d)" % NPCSocial.level(far))
+	check(NPCSocial.level(guard) > NPCSocial.level(far), "guards outrank the townsfolk around them")
+	check(NPCSocial.level(near) == 1, "near the start people are level 1")
+	check(is_equal_approx(float(far["hp"]), NPCSocial.max_hp(far)) and NPCSocial.max_hp(far) > 300.0, "health grows with level")
+	check(NPCSocial.hit_mult(guard) > 1.8, "high level guards hit harder")
+	var hurt := {"id": "h1", "name": "A B", "job": "farmer", "era": 0, "hp": 50.0, "pos": Vector3(3000, 0, 0),
+		"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+	NPCSocial.ensure(hurt)
+	check(is_equal_approx(float(hurt["hp"]) / NPCSocial.max_hp(hurt), 0.5), "an old save keeps how hurt they were")
+	var lv := NPCSocial.level(far)
+	NPCSocial.ensure(far)
+	check(NPCSocial.level(far) == lv and is_equal_approx(float(far["hp"]), NPCSocial.max_hp(far)), "the level is set once")
+	Eras.theme = old
+	Eras.base_level = base
+
 func test_voice_and_quick_replies() -> void:
 	var rec := {"id": "q1", "name": "Edda Thorne", "job": "farmer", "era": 0, "rel": 30, "mood": "calm", "age": 40,
 		"body": {"female": true}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
