@@ -3649,6 +3649,19 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
+	var tl := TownLife.new()
+	tl.setup(gen, null, s)
+	var smokes := 0
+	var keyed := 0
+	for g in tl._pending:
+		for e in g["pieces"]:
+			if e["k"] == "smoke":
+				smokes += 1
+				if e.has("house") and int(e["house"]) == int(g["house"]):
+					keyed += 1
+	check(smokes > 0 and keyed == smokes, "every smoke piece knows its house (%d of %d)" % [keyed, smokes])
+	tl.free()
 	var kinds := {}
 	for e in pl["pieces"]:
 		kinds[e["k"]] = true
