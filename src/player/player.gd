@@ -1205,11 +1205,15 @@ func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
 			fauna.player_hit(c, dmg)
+			if c.hp <= 0.0 or gunplay._beam_ticks % 3 == 1:
+				_mark(c, null, false)
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
 			npcs.player_hit(n, dmg)
+			if float(n.rec.get("hp", 1.0)) <= 0.0 or gunplay._beam_ticks % 3 == 1:
+				_mark(null, n, false)
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1245,12 +1249,12 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	if col.has_meta("creature") and fauna:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
-			_strike(it, c, null, float(d.get("damage", 10)) * q)
+			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at))
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
-			_strike(it, null, n, float(d.get("damage", 10)) * q)
+			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at))
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1270,16 +1274,20 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
-func _strike(it, creature, npc, dmg: float) -> void:
+## `head`: a shot to the head (guns and bows), for HEADSHOT times the damage.
+func _strike(it, creature, npc, dmg: float, head := false) -> void:
 	Audio.combat()
 	if Rarity.has_affix(it, "keen") and randf() < 0.2:
 		dmg *= 2.0
 		Game.toast.emit("Critical hit!")
+	if head:
+		dmg *= HEADSHOT
 	var at: Vector3 = creature.global_position if creature != null else npc.global_position
 	if creature != null:
 		fauna.player_hit(creature, dmg)
 	else:
 		npcs.player_hit(npc, dmg)
+	_mark(creature, npc, head)
 	if Rarity.has_affix(it, "vampiric"):
 		Game.set_health(minf(Game.max_health(), Game.health + dmg * 0.08))
 	if Rarity.has_affix(it, "shock") and fauna:
@@ -1287,6 +1295,29 @@ func _strike(it, creature, npc, dmg: float) -> void:
 		for c in fauna.creatures_near(at, 3.0):
 			if c != creature:
 				fauna.player_hit(c, dmg * 0.4)
+
+const HEADSHOT := 2.0
+
+## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
+## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
+## for a kill.
+signal hit_marker(kind: String)
+
+func _mark(creature, npc, head: bool) -> void:
+	var dead := false
+	if creature != null:
+		dead = not is_instance_valid(creature) or creature.hp <= 0.0
+	elif npc != null:
+		dead = not is_instance_valid(npc) or float(npc.rec.get("hp", 1.0)) <= 0.0
+	var kind := "kill" if dead else ("head" if head else "hit")
+	hit_marker.emit(kind)
+	match kind:
+		"kill":
+			Audio.play("hit/marker", -4.0, 0.03, 0.8)
+		"head":
+			Audio.play("hit/marker", -3.0, 0.03, 1.8)
+		_:
+			Audio.play("hit/marker", -13.0, 0.05, 1.3)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float) -> void:

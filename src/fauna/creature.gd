@@ -269,6 +269,16 @@ func _ready() -> void:
 	global_position = home
 	_pick_wander()
 
+## Whether a hit at world point `p` lands on the head: the upper front of the body
+## box (animals face +Z as they walk).
+func is_head(p: Vector3) -> bool:
+	if _body == null or _body.get_child_count() == 0:
+		return false
+	var cs := _body.get_child(0) as CollisionShape3D
+	var size: Vector3 = (cs.shape as BoxShape3D).size
+	var l := _body.to_local(p) - cs.position
+	return l.z > size.z * 0.18 and l.y > -size.y * 0.05
+
 func label() -> String:
 	return p["name"]
 

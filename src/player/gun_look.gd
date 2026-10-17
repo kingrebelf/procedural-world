@@ -20,6 +20,8 @@ const OPTICS := {
 	"pulse_rifle": ["scifi/Sight_1", Vector3(0, -0.003, 0.02), 0.3],
 }
 
+const GRIP_AT := Vector3(0, -0.03, 0.0)
+
 static func has(t: String) -> bool:
 	return KIT.has(t) or t in ["scrap_pistol", "crossbow", "crossbow_runic"]
 
@@ -57,6 +59,8 @@ static func _kit_gun(t: String) -> ArrayMesh:
 			out.surface_set_material(out.get_surface_count() - 1, part.surface_get_material(i))
 	for i in out.get_surface_count():
 		out.surface_set_material(i, _skin(out.surface_get_material(i), e[2], e[3]))
+	# The fist closes round the pistol grip just under the frame.
+	out.set_meta("grip", GRIP_AT)
 	return out
 
 ## The kit paints every gun from four flat colours: Black, Grey, White and Main (orange).
@@ -127,22 +131,70 @@ static func mat(name: String) -> Material:
 		"gun_polymer": m = _base(Color(0.045, 0.047, 0.05), 0.68, 0.0)
 		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
-		"gun_walnut":
-			m = Materials._pbr(Color(0.36, 0.2, 0.11), 0.5, 0.0, "planks", 0.03, 0.5, 0.6)
-			m.clearcoat_enabled = true
-			m.clearcoat = 0.4
-			m.uv1_scale *= 4.0
-		"gun_ash":
-			m = Materials._pbr(Color(0.58, 0.45, 0.3), 0.6, 0.0, "planks", 0.03, 0.5, 0.6)
-			m.uv1_scale *= 4.0
-		"gun_ebony":
-			m = Materials._pbr(Color(0.12, 0.09, 0.1), 0.45, 0.0, "planks", 0.03, 0.5, 0.6)
-			m.uv1_scale *= 4.0
+		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
+		"gun_fletch": m = _base(Color(0.82, 0.8, 0.76), 0.85, 0.0)
 		"gun_string": m = _base(Color(0.78, 0.72, 0.58), 0.9, 0.0)
 		"gun_leather": m = Materials._pbr(Color(0.3, 0.18, 0.1), 0.75, 0.0, "cloth", 0.15, 1.0, 0.6)
 		_:
+			var wood := name.trim_suffix("_x").trim_suffix("_y")
+			if WOOD.has(wood):
+				return _wood(name, WOOD[wood], name.right(2))
 			return _glow(name) if GLOW.has(name) else Materials.get_mat(name)
 	_mats[name] = m
+	return m
+
+## Wood: [dark grain, light grain, roughness]. "gun_walnut" runs its grain along Z (a
+## stock); "gun_walnut_y" and "_x" along those axes (a grip, a bow limb).
+const WOOD := {"gun_walnut": [Color(0.2, 0.1, 0.05), Color(0.46, 0.27, 0.14), 0.42],
+	"gun_ash": [Color(0.44, 0.32, 0.2), Color(0.7, 0.57, 0.4), 0.55],
+	"gun_ebony": [Color(0.05, 0.04, 0.045), Color(0.17, 0.13, 0.13), 0.35]}
+static var _wood_noise: FastNoiseLite
+static var _wood_normal: NoiseTexture2D
+static var _wood_albedo: Dictionary = {}
+
+## Fine wood grain: noise stretched many times along the grain, so it reads as long
+## streaks and flecks across it, never as boards. Varnished, a soft clearcoat.
+static func _wood(key: String, spec: Array, axis: String) -> StandardMaterial3D:
+	if _wood_noise == null:
+		_wood_noise = FastNoiseLite.new()
+		_wood_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_wood_noise.frequency = 0.03
+		_wood_noise.fractal_octaves = 4
+		_wood_noise.fractal_lacunarity = 2.6
+		_wood_normal = NoiseTexture2D.new()
+		_wood_normal.seamless = true
+		_wood_normal.noise = _wood_noise
+		_wood_normal.as_normal_map = true
+		_wood_normal.bump_strength = 1.5
+	var dark: Color = spec[0]
+	var light: Color = spec[1]
+	if not _wood_albedo.has(dark):
+		# Mostly mid-tone wood with darker grain lines and lighter flecks.
+		var g := Gradient.new()
+		g.offsets = PackedFloat32Array([0.0, 0.3, 0.5, 0.7, 1.0])
+		g.colors = PackedColorArray([dark, dark.lerp(light, 0.55), light.lerp(dark, 0.2), dark.lerp(light, 0.45), light])
+		var alb := NoiseTexture2D.new()
+		alb.seamless = true
+		alb.noise = _wood_noise
+		alb.color_ramp = g
+		_wood_albedo[dark] = alb
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = _wood_albedo[dark]
+	m.roughness = spec[2]
+	m.normal_enabled = true
+	m.normal_texture = _wood_normal
+	m.normal_scale = 0.35
+	m.clearcoat_enabled = true
+	m.clearcoat = 0.3
+	m.clearcoat_roughness = 0.35
+	m.uv1_triplanar = true
+	m.uv1_triplanar_sharpness = 6.0
+	# Grain lines a few millimetres apart across, stretched some 15x along.
+	var across := 14.0
+	var along := 0.9
+	m.uv1_scale = Vector3(along if axis == "_x" else across, along if axis == "_y" else across, across if axis in ["_x", "_y"] else along)
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	_mats[key] = m
 	return m
 
 static func _base(c: Color, rough: float, metal: float) -> StandardMaterial3D:
@@ -204,7 +256,7 @@ static func _revolver() -> ArrayMesh:
 		var p := Vector3(0, -0.085 * f, 0.018 + 0.026 * f + 0.02 * f * f)
 		var d := p - prev
 		var b := _along(d) * Basis.from_scale(Vector3(0.75, 1, 1))
-		k.cylinder("gun_walnut", Transform3D(b, prev), 0.017 + 0.003 * sin(f * PI), 0.017 + 0.003 * sin(f * PI), d.length() * 1.2, 12)
+		k.cylinder("gun_walnut_y", Transform3D(b, prev), 0.017 + 0.003 * sin(f * PI), 0.017 + 0.003 * sin(f * PI), d.length() * 1.2, 12)
 		prev = p
 	k.cylinder("gun_brass", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.0145, -0.05, 0.032)), 0.004, 0.004, 0.029, 8)
 	k.box("gun_blued", Transform3D(Basis(Vector3(1, 0, 0), 0.45), Vector3(0, -0.102, 0.06)), Vector3(0.03, 0.008, 0.04))
@@ -235,63 +287,159 @@ static func _revolver() -> ArrayMesh:
 	k.box("gun_metal", Transform3D(Basis(Vector3(1, 0, 0), 0.35), Vector3(0, -0.012, -0.014)), Vector3(0.005, 0.022, 0.006))
 	k.box("gun_blued", I.translated(Vector3(0, -0.028, -0.02)), Vector3(0.008, 0.004, 0.04))
 	k.box("gun_blued", Transform3D(Basis(Vector3(1, 0, 0), 0.4), Vector3(0, -0.016, -0.04)), Vector3(0.008, 0.026, 0.004))
-	return _commit(k)
+	var out := _commit(k)
+	out.set_meta("grip", Vector3(0, -0.04, 0.034))
+	return out
 
-## A crossbow: a wooden tiller with the bolt groove, a steel (or rune-carved) prod with
-## its string drawn back to the nut, a stirrup at the nose and an iron trigger lever. The
-## runic repeater adds a bolt magazine on top and glowing runes along the stock.
+## A smooth, rounded-rectangle tube through `pts`: half-widths `ws` and half-heights `hs`
+## at each point (heights measured toward `up`). Ends capped. Stocks, grips and limbs.
+static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up := Vector3.UP, segs := 16) -> void:
+	var I := Transform3D.IDENTITY
+	var rings: Array = []
+	var norms: Array = []
+	for i in pts.size():
+		var p: Vector3 = pts[i]
+		var t: Vector3 = (pts[mini(i + 1, pts.size() - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		var x := up.cross(t).normalized()
+		var y := t.cross(x).normalized()
+		var ring: Array = []
+		var nr: Array = []
+		var w: float = ws[i]
+		var h: float = hs[i]
+		for j in segs:
+			var a := TAU * j / segs
+			var c := cos(a)
+			var sn := sin(a)
+			# Superellipse (power 4): flat sides, rounded corners.
+			var px := w * signf(c) * pow(absf(c), 0.5)
+			var py := h * signf(sn) * pow(absf(sn), 0.5)
+			ring.append(p + x * px + y * py)
+			var nx := signf(px) * pow(absf(px / w), 3.0) / w
+			var ny := signf(py) * pow(absf(py / h), 3.0) / h
+			nr.append((x * nx + y * ny).normalized())
+		rings.append(ring)
+		norms.append(nr)
+	for i in pts.size() - 1:
+		for j in segs:
+			var j2 := (j + 1) % segs
+			var a: Vector3 = rings[i][j]
+			var b: Vector3 = rings[i][j2]
+			var c: Vector3 = rings[i + 1][j2]
+			var d: Vector3 = rings[i + 1][j]
+			var na: Vector3 = norms[i][j]
+			var nb: Vector3 = norms[i][j2]
+			var nc: Vector3 = norms[i + 1][j2]
+			var nd: Vector3 = norms[i + 1][j]
+			if (b - a).cross(c - a).dot(na + nc) > 0.0:
+				k.tri(m, I, a, b, c, na, nb, nc)
+				k.tri(m, I, a, c, d, na, nc, nd)
+			else:
+				k.tri(m, I, a, c, b, na, nc, nb)
+				k.tri(m, I, a, d, c, na, nd, nc)
+	for e in [0, pts.size() - 1]:
+		var n: Vector3 = ((pts[e] - pts[1]) if e == 0 else (pts[e] - pts[e - 1])).normalized()
+		for j in segs:
+			var a: Vector3 = pts[e]
+			var b: Vector3 = rings[e][j]
+			var c: Vector3 = rings[e][(j + 1) % segs]
+			if (b - a).cross(c - a).dot(n) > 0.0:
+				k.tri(m, I, a, b, c, n, n, n)
+			else:
+				k.tri(m, I, a, c, b, n, n, n)
+
+## A straight loft along -Z from z0 to z1 (a band, a strip): a short tube.
+static func _sleeve(k: MeshKit, m: String, at: Vector3, len: float, w: float, h: float) -> void:
+	_loft(k, m, [at + Vector3(0, 0, len * 0.5), at - Vector3(0, 0, len * 0.5)], [w, w], [h, h])
+
+## A thin rod through `pts` (a stirrup, a string, a lever).
+static func _rod(k: MeshKit, m: String, pts: Array, r: float, segs := 6) -> void:
+	for i in pts.size() - 1:
+		var a: Vector3 = pts[i]
+		var d: Vector3 = pts[i + 1] - a
+		k.cylinder(m, Transform3D(_along(d), a), r, r, d.length(), segs, i == 0 or i == pts.size() - 2)
+
+## A medieval crossbow held like a pistol: a shaped walnut tiller with bone inlays and a
+## short butt, a raked grip, a laminated recurve prod lashed to the nose with cord, the
+## string spanned back to a horn nut, a bolt in the groove, an iron trigger and a stirrup.
+## The runic repeater is ebony and blued steel with a bolt magazine and glowing runes.
 static func _crossbow(runic: bool) -> ArrayMesh:
 	var k := MeshKit.new(11)
 	var I := Transform3D.IDENTITY
 	var wood := "gun_ebony" if runic else "gun_walnut"
 	var metal := "gun_blued" if runic else "gun_iron"
-	# Stock: the butt under the cheek, the grip, and the long tiller ahead of it.
-	k.box(wood, Transform3D(Basis(Vector3(1, 0, 0), 0.18), Vector3(0, -0.01, 0.13)), Vector3(0.04, 0.07, 0.16))
-	k.box(wood, Transform3D(Basis(Vector3(1, 0, 0), 0.3), Vector3(0, -0.035, 0.02)), Vector3(0.032, 0.07, 0.04))
-	k.box(wood, I.translated(Vector3(0, 0.012, -0.17)), Vector3(0.04, 0.034, 0.42))
-	k.box(metal, I.translated(Vector3(0, 0.03, -0.17)), Vector3(0.012, 0.003, 0.4))
-	# Iron bands round the tiller.
-	for z in [-0.05, -0.27, -0.36]:
-		k.box(metal, I.translated(Vector3(0, 0.012, z)), Vector3(0.044, 0.038, 0.012))
-	# Trigger lever along the underside, and the nut that holds the string.
-	k.box(metal, Transform3D(Basis(Vector3(1, 0, 0), -0.12), Vector3(0, -0.012, -0.03)), Vector3(0.008, 0.008, 0.12))
-	k.cylinder(metal, Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.022, 0.03, -0.06)), 0.012, 0.012, 0.044, 10)
-	# Prod: a recurve bent forward from the nose, tips swept back.
-	var nose := Vector3(0, 0.022, -0.37)
-	var tip_half := 0.3
-	var prev := Vector3.ZERO
-	var prod := "gun_iron" if not runic else "gun_ebony"
+	var trim := "glow_violet" if runic else "gun_bone"
+	# Tiller: a short butt behind the grip, the wrist, and the long fore-end to the nose.
+	var tz := [0.15, 0.12, 0.08, 0.03, -0.04, -0.16, -0.3, -0.36, -0.4, -0.42]
+	var ty := [-0.022, -0.016, -0.004, 0.004, 0.008, 0.01, 0.011, 0.011, 0.011, 0.011]
+	var tw := [0.017, 0.019, 0.016, 0.017, 0.019, 0.018, 0.017, 0.02, 0.02, 0.016]
+	var th := [0.034, 0.036, 0.024, 0.02, 0.019, 0.017, 0.016, 0.019, 0.019, 0.015]
+	var pts: Array = []
+	for i in tz.size():
+		pts.append(Vector3(0, ty[i], tz[i]))
+	_loft(k, wood, pts, tw, th)
+	# Inlaid strips along both sides of the butt and fore-end.
 	for side in [-1.0, 1.0]:
-		prev = nose
-		for n in range(1, 9):
-			var f := n / 8.0
-			var p := nose + Vector3(side * f * tip_half, 0, 0.06 * f * f - 0.02 * sin(f * PI))
-			var d := p - prev
-			var b := _along(d)
-			var r := lerpf(0.011, 0.006, f)
-			k.cylinder(prod, Transform3D(b, prev), r, r * 0.9, d.length(), 8)
-			prev = p
-		# The string, from the tip back to the nut.
-		var tip: Vector3 = prev
-		var nut := Vector3(0, 0.03, -0.065)
-		var sd := nut - tip
-		k.cylinder("gun_string", Transform3D(_along(sd), tip), 0.0018, 0.0018, sd.length(), 4)
-		if runic:
-			k.sphere("glow_violet", I.translated(tip), 0.009, 4, 6)
-	# Stirrup at the nose, to brace it with a foot while spanning.
-	k.box(metal, I.translated(Vector3(0, -0.02, -0.405)), Vector3(0.07, 0.008, 0.01))
-	k.box(metal, I.translated(Vector3(0.033, 0.0, -0.405)), Vector3(0.006, 0.05, 0.01))
-	k.box(metal, I.translated(Vector3(-0.033, 0.0, -0.405)), Vector3(0.006, 0.05, 0.01))
-	# A loaded bolt in the groove.
-	k.cylinder("gun_ash", _z(Vector3(0, 0.038, -0.07)), 0.004, 0.004, 0.27, 6)
-	k.cylinder(metal, _z(Vector3(0, 0.038, -0.34)), 0.006, 0.0, 0.03, 6)
+		k.box(trim, I.translated(Vector3(side * 0.0185, -0.014, 0.12)), Vector3(0.0015, 0.006, 0.05))
+		k.box(trim, I.translated(Vector3(side * 0.0175, 0.012, -0.2)), Vector3(0.0015, 0.004, 0.16 if not runic else 0.2))
+	# Iron bands at the wrist and behind the prod.
+	_sleeve(k, metal, Vector3(0, 0.007, 0.055), 0.012, 0.0185, 0.0235)
+	_sleeve(k, metal, Vector3(0, 0.011, -0.325), 0.012, 0.0185, 0.018)
+	# The bolt groove on top, from the nut to the nose.
+	k.box("gun_polymer", I.translated(Vector3(0, 0.0272, -0.21)), Vector3(0.005, 0.002, 0.36))
+	# Raked grip under the wrist, swelling to a pommel.
+	var gd := Vector3(0, -1, 0.3).normalized()
+	var g0 := Vector3(0, -0.004, 0.035)
+	_loft(k, wood + "_y", [g0, g0 + gd * 0.03, g0 + gd * 0.07, g0 + gd * 0.098, g0 + gd * 0.108],
+		[0.0135, 0.0135, 0.0145, 0.016, 0.012], [0.018, 0.019, 0.02, 0.022, 0.016], Vector3.FORWARD)
+	# Trigger: a curved iron blade ahead of the grip.
+	_rod(k, metal, [Vector3(0, -0.008, 0.0), Vector3(0, -0.02, 0.006), Vector3(0, -0.034, 0.016), Vector3(0, -0.04, 0.03)], 0.0035)
+	# Horn nut that holds the string, set into the tiller.
+	k.cylinder("gun_bone", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.016, 0.027, -0.035)), 0.011, 0.011, 0.032, 14)
+	# Prod: tapering laminated limbs bent back by the spanned string, tips flicked forward.
+	var nose := Vector3(0, 0.011, -0.375)
+	var span := 0.3
+	var nut := Vector3(0, 0.035, -0.036)
+	for side in [-1.0, 1.0]:
+		var lp: Array = []
+		var lw: Array = []
+		var lh: Array = []
+		for n in 11:
+			var f := n / 10.0
+			var bend := 0.085 * pow(f, 1.6)
+			if f > 0.8:
+				bend -= 0.05 * pow((f - 0.8) / 0.2, 2.0)
+			lp.append(nose + Vector3(side * (f * span), 0.0, bend))
+			lw.append(lerpf(0.009, 0.0045, f)) # thickness, front to back
+			lh.append(lerpf(0.022, 0.009, f)) # depth, top to bottom
+		lp[0] = nose + Vector3(-side * 0.012, 0, 0)
+		_loft(k, (wood if runic else "gun_ash") + "_x", lp, lh, lw, Vector3.BACK, 12)
+		var tip: Vector3 = lp[-1]
+		# Horn nocks on the tips.
+		k.sphere(trim, I.translated(tip), 0.007, 5, 8)
+		# The string: from the tip back to the nut.
+		_rod(k, "gun_string", [tip, nut + Vector3(side * 0.004, 0, 0)], 0.0016, 5)
+		# Leather wrapping where the limb leaves the tiller.
+		k.cylinder("gun_leather", Transform3D(Basis(Vector3(0, 0, 1), -side * PI * 0.5), nose + Vector3(side * 0.02, 0, 0.0)), 0.014, 0.012, 0.03, 10)
+	# Cord lashing the prod to the nose, crossing over and under.
+	for n in 4:
+		var z := -0.36 - n * 0.006
+		_sleeve(k, "gun_string", Vector3(0, 0.011, z), 0.004, 0.0215, 0.0205)
+	# Stirrup: an iron loop ahead of the nose, to brace with a foot while spanning.
+	_rod(k, metal, [Vector3(-0.016, 0.011, -0.41), Vector3(-0.032, 0.008, -0.45), Vector3(-0.026, 0.005, -0.485),
+		Vector3(0.026, 0.005, -0.485), Vector3(0.032, 0.008, -0.45), Vector3(0.016, 0.011, -0.41)], 0.0032)
+	# A loaded bolt in the groove: ash shaft, two vanes, an iron bodkin head.
+	k.cylinder("gun_ash", _z(Vector3(0, 0.033, -0.045)), 0.0042, 0.0042, 0.3, 8)
+	k.cylinder(metal, _z(Vector3(0, 0.033, -0.345)), 0.0055, 0.0, 0.035, 8)
+	for side in [-1.0, 1.0]:
+		k.box("gun_leather" if runic else "gun_fletch", Transform3D(Basis(Vector3(0, 0, 1), side * 0.6), Vector3(side * 0.006, 0.037, -0.08)), Vector3(0.0012, 0.011, 0.05))
 	if runic:
 		# Repeater magazine over the groove, and runes glowing along both cheeks.
-		k.box("gun_ebony", I.translated(Vector3(0, 0.07, -0.12)), Vector3(0.03, 0.06, 0.14))
-		k.box(metal, I.translated(Vector3(0, 0.102, -0.12)), Vector3(0.034, 0.006, 0.146))
-		for n in 5:
+		_loft(k, "gun_ebony", [Vector3(0, 0.068, -0.05), Vector3(0, 0.068, -0.19)], [0.015, 0.015], [0.028, 0.028])
+		_sleeve(k, metal, Vector3(0, 0.068, -0.06), 0.006, 0.0165, 0.0295)
+		_sleeve(k, metal, Vector3(0, 0.068, -0.18), 0.006, 0.0165, 0.0295)
+		for n in 6:
 			for side in [-1.0, 1.0]:
-				k.box("glow_violet", I.translated(Vector3(side * 0.0205, 0.012, -0.1 - n * 0.05)), Vector3(0.002, 0.012 if n % 2 == 0 else 0.006, 0.014))
-	else:
-		k.box("gun_leather", Transform3D(Basis(Vector3(1, 0, 0), 0.18), Vector3(0, 0.026, 0.13)), Vector3(0.042, 0.004, 0.12))
-	return _commit(k)
+				k.box("glow_violet", I.translated(Vector3(side * 0.0172, 0.004, -0.1 - n * 0.035)), Vector3(0.0015, 0.01 if n % 2 == 0 else 0.005, 0.01))
+	var out := _commit(k)
+	out.set_meta("grip", g0 + gd * 0.05)
+	return out

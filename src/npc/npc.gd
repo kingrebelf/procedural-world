@@ -104,6 +104,10 @@ func _ready() -> void:
 	NPCSocial.ensure(rec)
 	refresh_gear()
 
+## Whether a hit at world point `p` lands on the head (the top of the body).
+func is_head(p: Vector3) -> bool:
+	return p.y - global_position.y > 1.5 * _scale
+
 ## Puts on whatever the record says this person wears and holds.
 func refresh_gear() -> void:
 	if _human == null:
