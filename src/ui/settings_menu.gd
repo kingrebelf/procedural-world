@@ -148,7 +148,7 @@ func _display_tab() -> Control:
 	_option(g, "resolution", "Window resolution", res.map(func(r): return "Native" if r == "native" else r), "Used in windowed mode.", res)
 	_option(g, "vsync", "V-Sync", ["Off", "On", "Adaptive", "Mailbox"])
 	_option(g, "fps_cap", "Frame rate limit", ["Unlimited", "30", "60", "90", "120", "144", "165", "240"], "", [0, 30, 60, 90, 120, 144, 165, 240])
-	_slider(g, "fov", "Field of view", 60, 110, 1, "%d°")
+	_slider(g, "fov", "Field of view", 70, 120, 1, "%d°", "The horizontal angle you see on a 16:9 screen, as most shooters measure it. 90 is usual; wider screens see more at the sides.")
 	_check(g, "show_fps", "Show FPS counter")
 	return p
 
