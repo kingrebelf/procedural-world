@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -25,6 +25,7 @@ var shafts := 1.0
 ## --vfog=N scales the volumetric haze (light shafts) for this run.
 var vfog := 1.0
 ## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
+## --moon=0.5 sets the moon phase for every view (0 new, 0.25 first quarter, 0.5 full).
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
@@ -53,6 +54,9 @@ func _ready() -> void:
 			FrameMend.mode = {"show": 1, "off": 2}.get(a.substr(7), 0)
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
+		# --moon=0.5 shoots every night at that moon phase (0 new, 0.5 full).
+		if a.begins_with("--moon="):
+			Atmosphere.moon_phase_override = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -483,6 +487,18 @@ func _run() -> void:
 				hill = q
 	var sky_dir := Vector2(2, 1).normalized()
 	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.38))
+	# Moonrise from the same hill: a full moon a third of the way up the east, the land under
+	# it lit cool and casting moon shadows. Then a waxing moon, a little over half, low in
+	# the west at midnight (as clear a sky as 39's), so the phase on the disc and the
+	# dimmer light both show.
+	var keep_moon := Atmosphere.moon_phase_override
+	if keep_moon < 0.0:
+		Atmosphere.moon_phase_override = 0.5
+	await _shot("70_moonrise", hill, hill + Vector2(200.0, 60.0), 0.85, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.3))
+	if keep_moon < 0.0:
+		Atmosphere.moon_phase_override = 0.3
+	await _shot("71_half_moon", hill, hill + Vector2(-200.0, 63.0), 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.27))
+	Atmosphere.moon_phase_override = keep_moon
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)

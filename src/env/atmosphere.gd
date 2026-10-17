@@ -6,6 +6,14 @@ extends Node3D
 var env: Environment
 ## Toward the sun (as the shaders' sun_dir_g), for scripts that need it.
 static var sun_dir := Vector3.UP
+## Toward the moon, which goes round a little behind the sun each day.
+static var moon_dir := Vector3.DOWN
+## Moon phase: 0 new, 0.25 first quarter, 0.5 full, 0.75 last quarter.
+static var moon_phase := 0.5
+## Tools set this (0..1) to shoot a given phase; below 0 the phase follows the calendar.
+static var moon_phase_override := -1.0
+## Game days from one full moon to the next. The first night of a new world is full.
+const LUNAR_DAYS := 8.0
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var sky_mat: ShaderMaterial
@@ -117,14 +125,24 @@ func _ready() -> void:
 
 	moon = DirectionalLight3D.new()
 	moon.name = "Moon"
-	moon.light_color = Color(0.55, 0.65, 0.95)
-	moon.light_energy = 0.12
-	# Moonlight casts soft shadows, so a moonlit night has shape (the sun is down then, so
-	# there is still only one shadowed light most of the time).
+	# Cool, but not the saturated blue that turned steel tools and snow into neon.
+	moon.light_color = Color(0.7, 0.78, 1.0)
+	moon.light_energy = 0.0
+	# Moonlight casts soft shadows, so a moonlit night has shape. The moon only lights the
+	# land once the sun is below the horizon, so there is never more than one shadowed
+	# directional light (the cost of a night is the cost of a day).
 	moon.shadow_enabled = true
 	moon.shadow_blur = 2.0
 	moon.shadow_bias = 0.04
 	moon.shadow_normal_bias = 1.4
+	moon.light_angular_distance = 0.5
+	moon.light_volumetric_fog_energy = 0.8
+	moon.directional_shadow_blend_splits = true
+	moon.directional_shadow_split_1 = 0.06
+	moon.directional_shadow_split_2 = 0.18
+	moon.directional_shadow_split_3 = 0.45
+	moon.directional_shadow_fade_start = 0.85
+	moon.directional_shadow_pancake_size = 30.0
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(moon)
 	_shafts = MeshInstance3D.new()
@@ -166,6 +184,8 @@ func apply_settings() -> void:
 	# Low shadows: two cascades instead of four (half the shadow passes).
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if int(Settings.get_value("shadows")) == 0 \
 		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	moon.directional_shadow_max_distance = sun.directional_shadow_max_distance
+	moon.directional_shadow_mode = sun.directional_shadow_mode
 	var cq := int(Settings.get_value("clouds"))
 	sky_mat.set_shader_parameter("volumetric_clouds", cq > 0)
 	# Ben (2026-10-17): quality first, so the high setting marches the clouds finely.
@@ -282,7 +302,19 @@ func _update_time_of_day() -> void:
 	# Sun path tilted toward the south.
 	var dir := Vector3(cos(ang), sin(ang), 0.35).normalized()
 	sun.look_at_from_position(Vector3.ZERO, -dir, Vector3(0, 0, 1) if absf(dir.y) > 0.99 else Vector3.UP)
-	moon.look_at_from_position(Vector3.ZERO, dir, Vector3.UP)
+	# The moon trails the sun by its phase: new with the sun, full opposite it (up all
+	# night), first quarter six hours behind (high at dusk, down by midnight).
+	moon_phase = moon_phase_override if moon_phase_override >= 0.0 \
+		else fposmod(0.5 + (Game.day - 0.9) / LUNAR_DAYS, 1.0)
+	var mang := ang - moon_phase * TAU
+	var mdir := Vector3(cos(mang), sin(mang), 0.3).normalized()
+	moon_dir = mdir
+	moon.look_at_from_position(Vector3.ZERO, -mdir, Vector3(0, 0, 1) if absf(mdir.y) > 0.99 else Vector3.UP)
+	# Share of the face that is lit, and how bright the moon is: a full moon is far
+	# brighter than a half one (the face's shadows vanish when lit head on), but even a
+	# thin crescent gives a little light.
+	var lit_frac := (1.0 - cos(moon_phase * TAU)) * 0.5
+	var moon_bright := 0.12 + 0.88 * pow(lit_frac, 1.6)
 	var elev := dir.y
 	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
 	sun_dir = dir
@@ -294,15 +326,31 @@ func _update_time_of_day() -> void:
 	# a flat grey wash.
 	sun.light_energy = 2.0 * smoothstep(-0.05, 0.08, elev) * (1.0 + 0.2 * golden)
 	sun.visible = elev > -0.1
-	moon.visible = elev < 0.1
-	moon.light_energy = 0.3 * (1.0 - daylight)
-	# The eye may only brighten a dark scene so far: a night outdoors reads as night (blue
-	# moonlight, warm windows) instead of dusk. Underground it adapts fully to the torch.
-	_cam_attr.auto_exposure_min_sensitivity = lerpf(110.0, 60.0, maxf(daylight, underground))
+	# Moonlight takes over as the sun's light goes (the sun is gone below -0.05), rises
+	# with the moon and thins under cloud.
+	var sun_down := 1.0 - smoothstep(-0.16, -0.05, elev)
+	var moon_up := smoothstep(-0.02, 0.12, mdir.y)
+	var cc0 = sky_mat.get_shader_parameter("cloud_cover")
+	var cover0: float = cc0 if cc0 != null else 0.0
+	# 0..1: how moonlit the night is (sky glow, clouds and the light itself go by it).
+	var moonlit := sun_down * moon_up * moon_bright
+	moon.light_energy = 0.45 * moonlit * lerpf(1.0, 0.55, smoothstep(0.5, 0.95, cover0))
+	moon.shadow_opacity = lerpf(1.0, 0.6, cover0)
+	moon.visible = moon.light_energy > 0.002
+	# The eye may only brighten a dark scene so far: a night outdoors reads as night (cool
+	# moonlight, warm windows) instead of dusk, but the land stays readable. Under a bright
+	# moon it is held back more (a full moon read as dusk), on a moonless night it adapts
+	# further. Underground it adapts fully to the torch.
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(55.0, 105.0, moonlit), 60.0, maxf(daylight, underground))
+	# The eye loses colour in the dark (rod vision): FrameMend greys and blues the dim
+	# moonlit parts of the frame, leaving lamplight warm.
+	FrameMend.night = (1.0 - daylight) * (1.0 - underground)
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
 	sky_mat.set_shader_parameter("stars_turn", t)
+	sky_mat.set_shader_parameter("moon_dir", mdir)
+	sky_mat.set_shader_parameter("moon_lit", moonlit)
 	# In the golden hour the zenith deepens and the whole horizon warms to peach, not only
 	# the sun's side: a low sun should read at a glance whichever way you look.
 	sky_mat.set_shader_parameter("zenith_day", sky_tint.lerp(Color(0.24, 0.3, 0.52), golden * 0.45))
@@ -312,7 +360,9 @@ func _update_time_of_day() -> void:
 	sky_mat.set_shader_parameter("time_s", Time.get_ticks_msec() / 1000.0)
 
 	var fog_c: Color = _blend(Eras.FOG_COLOR)
-	var night_fog := Color(0.03, 0.04, 0.07)
+	# Night haze: moonlit air is a dim blue-grey, so the far land fades instead of
+	# vanishing into black.
+	var night_fog := Color(0.045, 0.055, 0.085).lerp(Color(0.07, 0.09, 0.14), moonlit)
 	env.fog_light_color = fog_c.lerp(night_fog, 1.0 - daylight).lerp(Color(0.9, 0.55, 0.35), golden * 0.3 * daylight)
 	var dens: float = _blend(Eras.FOG_DENSITY)
 	# High up (flying), thicker distance fog hides the edge of the streamed world. Height is
@@ -348,7 +398,15 @@ func _update_time_of_day() -> void:
 	else:
 		env.fog_sun_scatter = 0.12
 	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
-	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+	# At night the sky's light is starlight and airglow (and the moonlit sky's), weak but
+	# enough to see the shapes of the land on the side away from the moon.
+	# (Only in full night: dusk keeps its shaded side.) The night sky is too dark to light
+	# much by itself, so part of the night fill is a flat cool starlight: on a moonless
+	# night the land, the trees and the skyline still stand out as dim shapes.
+	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
+	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
+	env.ambient_light_color = Color(0.14, 0.17, 0.25)
+	env.ambient_light_energy = (lerpf(0.2, 0.6, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
