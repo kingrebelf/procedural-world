@@ -118,6 +118,7 @@ func _ready() -> void:
 	_label.no_depth_test = false
 	_label.render_priority = Creature.TAG_PRIORITY
 	_label.outline_render_priority = Creature.TAG_PRIORITY - 1
+	Creature.crisp_tag(_label)
 	_label.width = 420
 	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_label.position.y = 2.05 * _scale
