@@ -32,6 +32,8 @@ var _under_target := 0.0
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = load("res://src/env/sky.gdshader")
+	if ResourceLoader.exists("res://assets/textures/sky/night_stars.jpg"):
+		sky_mat.set_shader_parameter("night_stars", load("res://assets/textures/sky/night_stars.jpg"))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
@@ -216,6 +218,7 @@ func _update_time_of_day() -> void:
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
+	sky_mat.set_shader_parameter("stars_turn", t)
 	sky_mat.set_shader_parameter("zenith_day", sky_tint)
 	sky_mat.set_shader_parameter("horizon_day", sky_tint.lerp(Color(0.85, 0.88, 0.92), 0.6))
 	sky_mat.set_shader_parameter("era_fantasy", _w[Eras.FANTASY])
