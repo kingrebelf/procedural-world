@@ -257,7 +257,12 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		ca.auto_exposure_enabled = true
 	var speed := ca.auto_exposure_speed
 	ca.auto_exposure_speed = 20.0
-	await _wait(settle_frames)
+	# Herds keep spawning as chunks load: keep the biters away the whole time (castle hounds
+	# turned up mid-settle and their bites were still on screen in the shot).
+	for i in settle_frames:
+		await get_tree().process_frame
+		if i % 10 == 0:
+			_shoo_creatures(p.global_position, 45.0, true)
 	ca.auto_exposure_speed = speed
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
