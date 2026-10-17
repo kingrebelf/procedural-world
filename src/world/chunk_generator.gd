@@ -813,6 +813,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
 	# v7: what the landforms do to the colour of rock and ground, on the 4 m grid.
 	var look := PackedByteArray()
+	var grassed := PackedByteArray() # v16 human worlds: how much of each look cell is old grassed crater
 	if landforms:
 		var any := false
 		look.resize(CN * CN * LOOK_BYTES)
@@ -825,6 +826,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
 				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
 				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+				if Eras.theme == "human":
+					if grassed.is_empty():
+						grassed.resize(CN * CN)
+					grassed[c] = int(round(lf * 255.0))
 
 			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
@@ -843,12 +848,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["river"] = river
 	if not look.is_empty():
 		chunk["look"] = look
+	if not grassed.is_empty():
+		chunk["grassed"] = grassed
 	if any_road:
 		chunk["road"] = road_mask
 		if any_mid:
 			chunk["road_mid"] = road_mid
 	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
-	for cr in WonderSite.crashes_near(self, cx, cz):
+	var near := WonderSite.crashes_near(self, cx, cz)
+	for cr in near:
 		WonderSite.scar(self, chunk, cr)
 		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
@@ -863,6 +871,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 			if not hole.is_empty():
 				chunk["hole"] = hole
 	_place_objects(chunk, sites)
+	# v16: trees a crash's blast reached lie snapped and scorched.
+	if chunk.has("wonder") and chunk["wonder"].has("crash"):
+		near.append(chunk["wonder"]["crash"])
+	WonderSite.fell(self, chunk, near)
 	return chunk
 
 ## Ground plans nothing should grow through or stand in: this chunk's own buildings and
@@ -1265,11 +1277,14 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
-	# Caches: rare, contents rolled now and frozen forever.
+	# Caches: rare, contents rolled now and frozen forever. Out in the wilds only: a
+	# chest left lying in a town street or on the road would have been picked up long
+	# ago (towns keep theirs indoors, Interiors.stock).
 	r = WHash.rng(seed, cx, cz, 303)
 	var cache_x := r.randf_range(4, SIZE - 4) if r.randf() < 0.22 else -1.0
 	var cache_z := r.randf_range(4, SIZE - 4) if cache_x >= 0.0 else -1.0
-	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0):
+	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0) and not _near_settlement(x0 + cache_x, z0 + cache_z, sites, 6.0) \
+			and road_at(chunk, cache_x, cache_z) < 0.05 and not under_river(chunk, cache_x, cache_z):
 		var lx := cache_x
 		var lz := cache_z
 		var era := WorldField.dominant(weights_at(chunk, lx, lz))
@@ -1468,9 +1483,17 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 		elif lots.size() - n <= outer.size():
 			t = outer[lots.size() - n - 1]
 		else:
-			t = "hab_block" if r.randf() < 0.6 else "lab_block"
-		# Face the nearer street.
+			# Now and then a lot stays open (a yard or a patch of ground nobody has built
+			# on yet) or holds a depot, so the blocks don't run on in an unbroken grid.
+			var u := r.randf()
+			if u < 0.12:
+				continue
+			t = "depot" if u < 0.2 else "hab_block" if u < 0.65 else "lab_block"
+		# Face the nearer street, set back from it by however much the lot's builder
+		# chose, and not quite centred on the lot.
 		var face := Vector2(0, -signf(q.y)) if absf(q.y) <= absf(q.x) else Vector2(-signf(q.x), 0)
+		if n >= 2:
+			q += -face * r.randf_range(-0.6, 1.4) + Vector2(face.y, -face.x) * r.randf_range(-1.0, 1.0)
 		var dir := face.rotated(ang)
 		items.append({"t": t, "p": c + q.rotated(ang), "yaw": atan2(dir.x, dir.y), "st": {}})
 	# Floodlights down both sides of each street, alternating.
