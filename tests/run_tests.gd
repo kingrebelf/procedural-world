@@ -1287,6 +1287,58 @@ func test_outfits() -> void:
 		check(h.gesture("fingers_2") and h.gesture("wink") and not h.gesture("teleport"), "gestures play")
 		h.free()
 
+## Townsfolk dress for their job and sex, each in their own colours, the same every time
+## they load; loose cloth below the waist rides on the legs so strides don't pass through it.
+func test_wardrobes() -> void:
+	var r := RandomNumberGenerator.new()
+	r.seed = 42
+	var looks := {}
+	var men_in_gowns := 0
+	for i in 40:
+		var p := NPCGen.person(r, Eras.MEDIEVAL, i, 0, 0)
+		var job: String = NPCGen.JOBS[Eras.MEDIEVAL][i % 8]
+		var w := Outfit.wardrobe(p["body"], Eras.MEDIEVAL, job)
+		check(str(w) == str(Outfit.wardrobe(p["body"].duplicate(true), Eras.MEDIEVAL, job)), "a wardrobe is the same every time")
+		looks[str(w["cols"][Outfit.PART_SHIRT]) + str(w["cols"][Outfit.PART_SKIRT])] = true
+		var hem: float = w["spec"]["hem"]
+		if not p["body"]["female"] and job != "priest" and hem > 0.0 and hem < 0.45:
+			men_in_gowns += 1
+		if job == "smith":
+			check(w["spec"]["apron"] > 0.0, "smiths wear a leather apron")
+		for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
+			check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "%s's clothes don't pass for bare skin" % job)
+	check(looks.size() >= 36, "nobody dresses like anyone else (%d looks in 40)" % looks.size())
+	check(men_in_gowns == 0, "men wear tunics and trousers, not gowns")
+	if not HumanModel.available():
+		return
+	var h := HumanModel.new()
+	root.add_child(h)
+	h.build({"height": 1.0, "build": 1.0, "female": true, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.MEDIEVAL, "priest")
+	var cl: MeshInstance3D = h.get_node(NodePath(String(h.get_path_to(h.skeleton)) + "/Clothes"))
+	var a := cl.mesh.surface_get_arrays(0)
+	var custom: PackedFloat32Array = a[Mesh.ARRAY_CUSTOM0]
+	var bones: PackedInt32Array = a[Mesh.ARRAY_BONES]
+	var wts: PackedFloat32Array = a[Mesh.ARRAY_WEIGHTS]
+	var per := bones.size() / (custom.size() / 4)
+	var on_legs := 0
+	var hem_verts := 0
+	for v in custom.size() / 4:
+		if int(custom[v * 4]) != Outfit.PART_SKIRT or custom[v * 4 + 1] > 0.3:
+			continue
+		hem_verts += 1
+		var leg := 0.0
+		for j in per:
+			var bi := bones[v * per + j]
+			var bn := String(cl.skin.get_bind_name(bi))
+			if bn == "":
+				bn = h.skeleton.get_bone_name(cl.skin.get_bind_bone(bi))
+			if bn.begins_with("thigh") or bn.begins_with("calf"):
+				leg += wts[v * per + j]
+		if leg > 0.95:
+			on_legs += 1
+	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
+	h.free()
+
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
 ## Walk, jog and sprint are blended so the blended stride over the blended cycle is the
