@@ -119,7 +119,9 @@ func build(sk: Skeleton3D, spec: Array) -> Ragdoll:
 		body.linear_damp = 0.15
 		body.angular_damp = 1.5
 		body.collision_layer = LAYER
-		body.collision_mask = 1 | 2
+		# The world, things in it, and its own other limbs (a leg doesn't pass through the
+		# other leg, an arm doesn't sink into the chest).
+		body.collision_mask = 1 | 2 | LAYER
 		body.continuous_cd = true
 		body.can_sleep = true
 		var cs := CollisionShape3D.new()
@@ -146,6 +148,14 @@ func build(sk: Skeleton3D, spec: Array) -> Ragdoll:
 		var a: RigidBody3D = _bones[pi]
 		var c: RigidBody3D = _bones[i]
 		c.add_collision_exception_with(a)
+		# Next to each other at the joint already: the grandparent, and the parent's other
+		# children (the thighs at the hips, the arms and head at the shoulders).
+		var gp := _sim_parent(p)
+		if gp >= 0:
+			c.add_collision_exception_with(_bones[_bone_ids.find(gp)])
+		for o in i:
+			if _sim_parent(_bone_ids[o]) == p:
+				c.add_collision_exception_with(_bones[o])
 		var j := ConeTwistJoint3D.new()
 		# The twist axis (the joint's X) runs along the child bone.
 		var along := (c.global_basis * Vector3.UP).normalized()
@@ -158,6 +168,7 @@ func build(sk: Skeleton3D, spec: Array) -> Ragdoll:
 		j.node_a = j.get_path_to(a)
 		j.node_b = j.get_path_to(c)
 		_joints.append(j)
+	_carried(sk)
 	for i in _bones.size():
 		(_bones[i] as RigidBody3D).freeze = true
 	_writer = RagdollWriter.new()
@@ -165,6 +176,36 @@ func build(sk: Skeleton3D, spec: Array) -> Ragdoll:
 	_writer.active = false
 	sk.add_child(_writer)
 	return self
+
+## What the body carries on its bones (a shield on the forearm, a sword in the hand) is
+## solid too: a box the size of it on the limb it rides, so it lands on the ground
+## instead of swinging through it or through the body.
+func _carried(sk: Skeleton3D) -> void:
+	for ba in sk.get_children():
+		if not ba is BoneAttachment3D:
+			continue
+		var b := sk.find_bone((ba as BoneAttachment3D).bone_name)
+		while b >= 0 and not _bone_ids.has(b):
+			b = sk.get_bone_parent(b)
+		if b < 0:
+			continue
+		var body := _bones[_bone_ids.find(b)] as RigidBody3D
+		for mi in (ba as Node).find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			if m.mesh == null or not m.is_visible_in_tree():
+				continue
+			var xf := body.global_transform.affine_inverse() * m.global_transform
+			var box := m.mesh.get_aabb()
+			var size := box.size * xf.basis.get_scale()
+			if maxf(size.x, maxf(size.y, size.z)) < 0.2:
+				continue # eyelids, small trinkets
+			var cs := CollisionShape3D.new()
+			var sh := BoxShape3D.new()
+			sh.size = size.max(Vector3(0.02, 0.02, 0.02))
+			cs.shape = sh
+			cs.transform = Transform3D(xf.basis.orthonormalized(), xf * box.get_center())
+			body.add_child(cs)
+			body.mass += clampf(size.x * size.y * size.z * 400.0, 0.3, 6.0)
 
 ## A bone's skeleton-space pose as a world transform without the model's scale.
 static func _world_of(gx: Transform3D, rot: Basis, pose: Transform3D) -> Transform3D:
