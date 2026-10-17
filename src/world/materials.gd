@@ -57,7 +57,7 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.3}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.55}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
 	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
 	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}

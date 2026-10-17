@@ -176,10 +176,12 @@ static func build(t: String) -> ArrayMesh:
 		_bunker(part, k, models)
 	else:
 		_stone(part, era == 1, k, models)
-		# Castle masonry is stone through: the village walls' wooden bands and the corner
-		# quoins become the castle's own stone (pale trim stone read as paint), and a tower
-		# is bare dressed stone inside, not plaster.
+		# Castle masonry is stone through: the village walls' rubble faces, wooden bands
+		# and corner quoins become the castle's own stone (pale trim stone read as paint,
+		# and the kit's tan rubble met the parapets' grey coursing on every wall top), and
+		# a tower is bare dressed stone inside, not plaster.
 		var swap := {"MI_WoodTrim": Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")}
+		swap["MI_UnevenBrick"] = swap["MI_WoodTrim"]
 		if part == "tower":
 			# Inside, dressed stone: the kit's rubble brick, lit close by the torches, read
 			# as big cartoon stones.
@@ -260,9 +262,10 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array) -> voi
 			for bx in Interiors.roof_boxes("castle_tower"):
 				k.box(face_stone, Transform3D.IDENTITY.translated(bx[0]), bx[1])
 				# Flagstones underfoot on the roof (the walls' coursed stone, seen from
-				# above, read as tiles with holes in them).
+				# above, read as tiles with holes in them), weathered down to the walls'
+				# own grey so the two read as one stone.
 				var top: Vector3 = bx[0] + Vector3(0, (bx[1] as Vector3).y * 0.5 + 0.01, 0)
-				k.box("flagstone", Transform3D.IDENTITY.translated(top), Vector3((bx[1] as Vector3).x, 0.02, (bx[1] as Vector3).z))
+				k.box("flagstone", Transform3D.IDENTITY.translated(top), Vector3((bx[1] as Vector3).x, 0.02, (bx[1] as Vector3).z), Color(0.8, 0.78, 0.74))
 			for side in 4:
 				_merlons(k, face_stone, -4.2, 4.2, 12.3, 4.05, side * PI / 2.0, ruined, r)
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
