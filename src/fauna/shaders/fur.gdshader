@@ -212,7 +212,7 @@ void fragment() {
 		float fc = 1.0 - smoothstep(ck * 0.4, ck * 1.6, px);
 		float ff = 1.0 - smoothstep(sk * 0.4, sk * 1.6, px);
 		fi = mix(fi, smoothstep(0.35, 0.75, fi), coarse);
-		float hv = (cl - 0.5) * fc * 0.1 + (fi - 0.45) * ff * (0.7 + coarse * 0.4);
+		float hv = (cl - 0.5) * fc * 0.1 + (fi - 0.45) * ff * (0.7 + coarse * 0.4) * (role == 1 ? 0.5 : 1.0);
 		c *= 1.0 + hv * fur * (0.75 + coarse * 0.5);
 		// Dark hair still catches the light along each strand.
 		c += vec3(0.035) * max(hv, 0.0) * fur * (role == 1 ? 1.2 : 0.6);
