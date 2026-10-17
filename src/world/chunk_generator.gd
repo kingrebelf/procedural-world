@@ -1096,7 +1096,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
-		var f := Biome.pick_flora(bp, pick)
+		var f := Biome.fit_flora(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz))
+		if f.is_empty():
+			continue
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1120,7 +1122,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
 			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2) or kept_out(plans, lx, lz, 1.0):
 				continue
-			var f := Biome.pick_flora(bp, pick)
+			var f := Biome.fit_flora(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz))
+			if f.is_empty():
+				continue
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.

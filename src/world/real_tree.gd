@@ -156,9 +156,18 @@ static func _orth(d: Vector3) -> Vector3:
 ## odd purple species to alien worlds), so the tint here is always gentle.
 static func _leaf_look(p: Dictionary) -> Array:
 	var leaf: Color = p.get("leaf", Color(0.3, 0.5, 0.2))
-	var autumn := leaf.h < 0.13 or leaf.h > 0.92
-	if autumn:
-		# The autumn photo has its own reds and golds; nudge brightness only.
+	var autumn: bool = p.get("autumn", leaf.h < 0.13 or leaf.h > 0.92)
+	if autumn and leaf.h >= 0.09 and leaf.h < 0.5:
+		# Gold and yellow: the green spray turned toward the species' yellow (the autumn
+		# photo is red and orange, which no tint can make yellow).
+		var gold := Color.from_hsv(leaf.h, clampf(leaf.s, 0.4, 0.75), 1.0)
+		var g_ref := Color.from_hsv(0.25, 0.55, 1.0)
+		var bright := clampf(leaf.v / 0.5, 0.8, 1.15)
+		return ["oak", Color(clampf(gold.r / g_ref.r * bright, 0.5, 1.6), clampf(gold.g / g_ref.g * bright, 0.5, 1.4), clampf(gold.b / g_ref.b * bright, 0.3, 1.0))]
+	if autumn or leaf.h < 0.06:
+		# The autumn photo has its own reds and oranges; browns are it dulled and darkened.
+		if leaf.s < 0.42:
+			return ["autumn", Color(0.82, 0.68, 0.55)]
 		return ["autumn", Color(1, 1, 1).lerp(Color(1.05, 0.95, 0.85), 0.5)]
 	# The photo is a mid green (hue ~0.25); shift toward the species' hue and value.
 	var want := Color.from_hsv(leaf.h, clampf(leaf.s * 0.75, 0.25, 0.7), 1.0)
@@ -198,7 +207,13 @@ static func build_bush(sp: int, height: float, autumn := false) -> ArrayMesh:
 	var r := Flora._rng(sp, 6100)
 	var bark := Buf.new()
 	var leaves := Buf.new()
-	var p := {"leaf": Color.from_hsv(r.randf_range(0.2, 0.3) if not autumn else 0.06, r.randf_range(0.45, 0.65), r.randf_range(0.42, 0.55)),
+	# Autumn bushes turn red, orange, gold or brown by species, never one bright orange.
+	var hue := r.randf_range(0.2, 0.3)
+	var sat := r.randf_range(0.45, 0.65)
+	if autumn:
+		hue = lerpf(0.02, 0.15, (hue - 0.2) * 10.0)
+		sat *= 0.75
+	var p := {"autumn": autumn, "leaf": Color.from_hsv(hue, sat, r.randf_range(0.42, 0.55)),
 		"bark": Color.from_hsv(0.07, 0.35, 0.3)}
 	var look := _leaf_look(p)
 	_bush(r, height, look[1], bark, leaves, false)

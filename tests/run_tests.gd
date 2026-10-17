@@ -1820,6 +1820,34 @@ func test_world_themes() -> void:
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_kit_flora() -> void:
+	# Autumn by the stand: a region's broadleaves have all turned or none have; reds, golds
+	# and browns; never up by the snow.
+	var turned := 0
+	var mixed := 0
+	var hues := {}
+	var browns := 0
+	for i in 300:
+		var bp := Biome.params(WHash.h32(i * 7 + 3), Eras.MEDIEVAL)
+		var stand: bool = bp.get("autumn", false)
+		if stand:
+			turned += 1
+		for f in bp["flora"]:
+			if f["t"] != "oak":
+				continue
+			var p := Flora.species("oak", f["sp"])
+			if bool(p.get("autumn", false)) != stand:
+				mixed += 1
+			elif stand:
+				var leaf: Color = p["leaf"]
+				hues[int(leaf.h / 0.05)] = true
+				if leaf.s < 0.42:
+					browns += 1
+		if stand:
+			var high := Biome.fit_flora(bp, {"t": "oak", "sp": 0}, Biome.snow_line)
+			check(high.is_empty() or not bool(Flora.species(high["t"], high["sp"]).get("autumn", false)), "no turned leaves by the snow (region %d)" % i)
+	check(mixed <= 3, "a region's broadleaves have all turned or none have (%d odd ones)" % mixed)
+	check(turned > 25 and turned < 100, "about one region in five is in autumn colour (%d of 300)" % turned)
+	check(hues.size() >= 3 and browns > 0, "autumn runs red, orange and gold, with some browns (%d hue bands, %d brown)" % [hues.size(), browns])
 	# Each plant its own look, from where it stands: stable, varied, mostly healthy.
 	var shades := {}
 	var tired := 0
