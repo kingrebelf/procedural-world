@@ -3,6 +3,11 @@ extends SceneTree
 ## assets/models/anim by tools/prepare_kits.py, not kept in the repo) into one
 ## AnimationLibrary resource the game loads: assets/models/anim/humans.res.
 ##   godot --headless --path . --script res://tools/bake_anims.gd
+## Clips come from the root-motion exports: before the root's travel is dropped (the game
+## moves people itself), it is measured and kept on the clip as metadata, "speed" (metres
+## per second the clip covers) and, for cycles, "phase" (where in the cycle the left foot is
+## furthest forward), so HumanAnimator can play gaits at exactly the pace people move, and
+## blend walk into jog into sprint stride for stride.
 
 ## name in game -> [source glb, animation, loop]
 const PICK := {
@@ -28,26 +33,49 @@ const PICK := {
 	"zombie_walk": ["UAL2", "Zombie_Walk_Fwd", true], "scratch": ["UAL2", "Zombie_Scratch", false], "flip": ["UAL2", "NinjaJump_Start", false],
 	"get_up": ["UAL2", "LayToIdle", false], "open_chest": ["UAL2", "Chest_Open", false], "call_out": ["UAL2", "Idle_Rail_Call", false],
 	"lean": ["UAL2", "Idle_Rail", true],
+	# Moving while crouched or treading water, quick sword cuts, reloading, a shield bash.
+	"crouch_walk": ["UAL1", "Crouch_Fwd", true], "swim_idle": ["UAL1", "Swim_Idle", true], "reload": ["UAL1", "Pistol_Reload", false],
+	"slash_a": ["UAL2", "Sword_Regular_A", false], "slash_b": ["UAL2", "Sword_Regular_B", false], "heavy": ["UAL2", "Sword_Heavy_Combo", false],
+	"shield_bash": ["UAL2", "Shield_OneShot", false], "climb": ["UAL2", "ClimbUp_1m", false],
 }
+## Cycles whose foot phase is measured, so they can be blended in step.
+const GAITS := ["walk", "walk_formal", "jog", "sprint", "crouch_walk", "carry", "zombie_walk"]
 
 func _initialize() -> void:
 	var players := {}
+	var skel := {}
 	var roots := []
 	for src in ["UAL1", "UAL2"]:
-		var n: Node = (load("res://assets/models/anim/%s.glb" % src) as PackedScene).instantiate()
+		var path := "res://assets/models/anim/%s_RM.glb" % src
+		if not ResourceLoader.exists(path):
+			path = "res://assets/models/anim/%s.glb" % src
+		var n: Node = (load(path) as PackedScene).instantiate()
 		roots.append(n)
 		players[src] = n.find_children("*", "AnimationPlayer", true, false)[0]
+		skel[src] = n.find_children("*", "Skeleton3D", true, false)[0]
 	var lib := AnimationLibrary.new()
 	for key in PICK:
 		var e: Array = PICK[key]
 		var a: Animation = (players[e[0]] as AnimationPlayer).get_animation(e[1]).duplicate(true)
 		a.loop_mode = Animation.LOOP_LINEAR if e[2] else Animation.LOOP_NONE
-		# Keep people in place: the game moves them, so drop the root bone's travel.
+		var sk: Skeleton3D = skel[e[0]]
+		# Keep people in place: the game moves them, so drop the root bone's travel, after
+		# measuring it.
 		for t in range(a.get_track_count() - 1, -1, -1):
 			var path := String(a.track_get_path(t))
 			if path.ends_with(":root") and a.track_get_type(t) == Animation.TYPE_POSITION_3D:
+				var n := a.track_get_key_count(t)
+				if n > 1:
+					var d: Vector3 = a.track_get_key_value(t, n - 1) - a.track_get_key_value(t, 0)
+					a.set_meta("speed", Vector2(d.x, d.z).length() / maxf(a.length, 0.001))
 				a.remove_track(t)
+		if key in GAITS:
+			if float(a.get_meta("speed", 0.0)) <= 0.0:
+				a.set_meta("speed", AnimMath.planted_speed(a, sk, [sk.find_bone("ball_l"), sk.find_bone("ball_r")]))
+			a.set_meta("phase", AnimMath.foot_forward_phase(a, sk, sk.find_bone("ball_l"), Vector3(0, 0, 1)))
 		lib.add_animation(key, a)
+		if a.has_meta("phase"):
+			print("  %s: %.2f m/s, %.2f s cycle, left foot forward at %.2f" % [key, a.get_meta("speed"), a.length, a.get_meta("phase")])
 	var err := ResourceSaver.save(lib, "res://assets/models/anim/humans.res", ResourceSaver.FLAG_COMPRESS)
 	print("baked %d animations: %s" % [lib.get_animation_list().size(), error_string(err)])
 	for n in roots:

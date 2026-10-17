@@ -119,6 +119,7 @@ func _ready() -> void:
 		body.build(LOOK, Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
+		body.set_ground(Callable(), [get_rid()])
 		# The armour you wear shows on your body (third person, and your shadow).
 		body.wear(Game.equipment)
 		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
@@ -222,18 +223,21 @@ func _apply_view() -> void:
 func _animate_body(hspeed: float) -> void:
 	if body == null:
 		return
+	var t: String = _held_type()
+	var ready := "pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "")
+	# The gait and its pace follow how fast you really move; a weapon stays raised on the run.
 	if swimming:
-		body.play("swim", clampf(hspeed / SWIM, 0.5, 1.5))
+		body.play("swim" if hspeed > 0.5 else "swim_idle")
+		body.set_upper("")
+	elif _crouched:
+		body.play("crouch_walk" if hspeed > 0.3 else "crouch")
+		body.set_upper(ready if hspeed > 0.3 else "")
 	elif hspeed > 0.4:
-		if hspeed > WALK + 1.0:
-			body.play("sprint", clampf(hspeed / SPRINT, 0.6, 1.5))
-		elif hspeed > CROUCH + 0.6:
-			body.play("jog", clampf(hspeed / WALK, 0.6, 1.5))
-		else:
-			body.play("walk", clampf(hspeed / CROUCH, 0.6, 1.5))
+		body.play("sprint" if hspeed > WALK + 1.0 else "jog")
+		body.set_upper(ready)
 	else:
-		var t: String = _held_type()
-		body.play("pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "idle"))
+		body.play(ready if ready != "" else "idle")
+		body.set_upper("")
 	_grip_body()
 
 func _held_type() -> String:
@@ -1186,12 +1190,12 @@ func use_held() -> void:
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
 		Audio.play_at("hit/flesh", h["point"], -2.0)
-		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq)
+		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
 		Audio.play_at("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0)
-		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq)
+		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
@@ -1420,12 +1424,12 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	if col.has_meta("creature") and fauna:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
-			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at))
+			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at), at)
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
-			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at))
+			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at), at)
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1446,7 +1450,8 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
 ## `head`: a shot to the head (guns and bows), for HEADSHOT times the damage.
-func _strike(it, creature, npc, dmg: float, head := false) -> void:
+## `point`: where it struck, so a killing blow knocks the body that way (Ragdoll).
+func _strike(it, creature, npc, dmg: float, head := false, point := Vector3.INF) -> void:
 	Audio.combat()
 	if Rarity.has_affix(it, "keen") and randf() < 0.2:
 		dmg *= 2.0
@@ -1454,6 +1459,7 @@ func _strike(it, creature, npc, dmg: float, head := false) -> void:
 	if head:
 		dmg *= HEADSHOT
 	var at: Vector3 = creature.global_position if creature != null else npc.global_position
+	_mark_blow(creature if creature != null else npc, point if point != Vector3.INF else at + Vector3(0, 1.0, 0), dmg, head)
 	if creature != null:
 		fauna.player_hit(creature, dmg)
 	else:
@@ -1468,6 +1474,13 @@ func _strike(it, creature, npc, dmg: float, head := false) -> void:
 				fauna.player_hit(c, dmg * 0.4)
 
 const HEADSHOT := 2.0
+
+## Remembers a blow on `target` for its ragdoll, should it die of it: from your eyes
+## through the point struck, harder the more it hurt.
+func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> void:
+	var dir := point - camera.global_position if camera else -global_basis.z
+	dir.y = maxf(dir.y, -0.2 * dir.length())
+	Ragdoll.mark_hit(target, point, dir, clampf(10.0 + dmg * 0.8, 10.0, 70.0), "Head" if head else "")
 
 ## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
 ## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
@@ -1508,6 +1521,10 @@ func _blast(at: Vector3, radius: float, dmg: float) -> void:
 		return
 	for c in fauna.creatures_near(at, radius):
 		var f := 1.0 - 0.6 * clampf(c.global_position.distance_to(at) / radius, 0.0, 1.0)
+		# Thrown outward and up from the blast.
+		var mid: Vector3 = c.global_position + Vector3(0, 0.6, 0)
+		var out := (mid - at).normalized() + Vector3(0, 0.6, 0)
+		Ragdoll.mark_hit(c, mid, out, clampf(dmg * f * 1.5, 20.0, 160.0))
 		fauna.player_hit(c, dmg * f)
 
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.

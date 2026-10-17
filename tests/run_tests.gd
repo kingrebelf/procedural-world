@@ -1055,6 +1055,42 @@ func test_outfits() -> void:
 
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
+## Walk, jog and sprint are blended so the blended stride over the blended cycle is the
+## speed the body moves: planted feet don't skate.
+func test_gaits() -> void:
+	if not HumanModel.available():
+		return
+	var lib := HumanModel.library()
+	var gait := {}
+	for g in HumanAnimator.GAITS:
+		var a := lib.get_animation(g)
+		check(float(a.get_meta("speed", 0.0)) > 0.5 and a.has_meta("phase"), "%s knows how fast it travels (%.2f m/s)" % [g, float(a.get_meta("speed", 0.0))])
+		gait[g] = {"speed": float(a.get_meta("speed", 1.0)), "len": a.length, "phase": float(a.get_meta("phase", 0.0))}
+	var worst := 0.0
+	for i in 70:
+		var v := 0.6 + i * 0.15
+		var r := HumanAnimator.solve(v, gait)
+		var stride := 0.0
+		var wsum := 0.0
+		for k in 3:
+			var g: String = HumanAnimator.GAITS[k]
+			stride += float(r["w"][k]) * float(gait[g]["speed"]) * float(gait[g]["len"])
+			wsum += float(r["w"][k])
+		check(is_equal_approx(wsum, 1.0), "gait weights sum to one at %.2f m/s" % v)
+		worst = maxf(worst, absf(stride / float(r["cycle"]) - v) / v)
+	check(worst < 0.01, "blended gaits cover the ground at the body's speed (worst %.1f%%)" % (worst * 100.0))
+	var h := HumanModel.new()
+	root.add_child(h)
+	h.build(Player.LOOK, Eras.MEDIEVAL, "")
+	check(h.anim is AnimationTree and h.ik != null, "people animate through a blend tree with IK")
+	h.play("jog")
+	h.play_once("hit")
+	check(h.busy(), "a one-shot plays")
+	h.pose("death", true)
+	h.advance(0.1)
+	check(h.animator.state() == "death", "posed bodies hold their pose")
+	h.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return

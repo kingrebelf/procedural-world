@@ -553,7 +553,9 @@ func _run() -> void:
 		check(not tch.is_empty() and tch["st"]["opened"] and not Treasure.covered(tc, tch), "the dug-up chest stays dug up and empty")
 		var th: Dictionary = game.hunt(tre["open"])
 		check(not th.is_empty() and not th["found"] and not (th["loot"] as Array).is_empty() and game.hunt(tre["id"])["found"], "hunts are saved, found or not, with what's buried")
-		check(game.markers.count_kind("treasure") == 1, "the open hunt keeps its X")
+		# (Only that hunt's X: a body searched since may have carried a map of its own.)
+		var xs: Array = game.markers.list.filter(func(mk): return mk["kind"] == "treasure" and int(mk.get("hunt", -1)) == int(tre["open"]))
+		check(xs.size() == 1, "the open hunt keeps its X")
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")
@@ -683,6 +685,7 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	var label := kc.label()
 	var at := kc.global_position
 	kc.hp = 1.0
+	Ragdoll.mark_hit(kc, at + Vector3(0, 0.8, 0), Vector3(1, 0.1, 0), 40.0)
 	world.fauna.player_hit(kc, 10.0)
 	await _frames(3)
 	check(not is_instance_valid(kc), "the killed animal stops being a live creature")
@@ -698,6 +701,32 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	check(cr is Creature and cr.as_corpse and cr._body == null, "the carcass is drawn, with no hit box")
 	if cr is Creature and cr._kit != null and not cr._kit.procedural():
 		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
+	if cr is Creature and cr._kit != null and not cr._kit.procedural():
+		# It falls limp, comes to rest, and the pose it lies in is kept with it. (The
+		# rest of the pack can't hurt you while you watch: later checks need your gear.)
+		var god: bool = game.cheats["god"]
+		game.cheats["god"] = true
+		for i in 900:
+			if world.corpses.record(key).has("rag"):
+				break
+			await physics_frame
+		game.cheats["god"] = god
+		var rag = world.corpses.record(key).get("rag")
+		var sk: Skeleton3D = cr._kit.skeleton()
+		check(rag is PackedFloat32Array and rag.size() == sk.get_bone_count() * 7, "the carcass falls as a ragdoll and keeps the pose it settled in")
+		check(world.corpses.record(key).get("c") is Vector3, "the carcass remembers where its body came to rest")
+		if rag is PackedFloat32Array:
+			world.corpses._hide(key)
+			world.corpses._scan = 0.0
+			await _frames(3)
+			var again = world.corpses._shown.get(key, {}).get("node")
+			var sk2: Skeleton3D = again._kit.skeleton() if again is Creature and again._kit else null
+			var back := Ragdoll.snapshot(sk2) if sk2 else PackedFloat32Array()
+			var same: bool = back.size() == rag.size()
+			for i in back.size():
+				same = same and absf(back[i] - rag[i]) < 0.0001
+			check(same, "drawn again, the carcass lies exactly as it fell")
+			cr = again
 	check(Corpses.use_of(found["rec"])[0] == "carcass", "a fresh carcass is held to butcher")
 	var cn: ChunkNode = world.corpses._shown[key]["cn"]
 	game.flush_chunks()
@@ -1276,6 +1305,12 @@ func _menu_checks(world, game, con) -> void:
 	menus.close()
 	game.markers.remove(edit_pin["id"])
 	AtlasView.selected = -1
+	# What the test has looted so far can fill the pack: two helmets and a slot to drag
+	# one into need room.
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= 3:
+			break
+		game.inventory.set_slot(i, null)
 	con.run("give helm_iron 1")
 	con.run("give helm_elven 1")
 	var hi := -1
