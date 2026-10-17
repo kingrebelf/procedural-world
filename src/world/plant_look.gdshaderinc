@@ -32,13 +32,15 @@ vec4 plant_look(vec3 origin) {
 // The leaf colour of a plant with that look: `card` is the spray's own random (its vertex
 // alpha), so the same sprays are dry whatever the light.
 vec3 plant_leaf(vec3 col, vec4 look, float card) {
-	vec3 warm = vec3(1.2, 1.06, 0.62);
-	vec3 cool = vec3(0.8, 0.95, 1.12);
+	vec3 warm = vec3(1.35, 1.1, 0.45);
+	vec3 cool = vec3(0.68, 0.9, 1.2);
 	col *= look.x > 0.0 ? mix(vec3(1.0), warm, look.x) : mix(vec3(1.0), cool, -look.x);
-	// Some crowns deep and dark, some light (from the side angle, which nothing else uses).
-	col *= 0.8 + 0.36 * fract(look.w * 4.7);
-	float dry = step(1.0 - look.y, fract(card * 7.31));
+	// Some crowns deep and dark, some light, some grey-green, some vivid (from the side
+	// angle, which nothing else uses).
+	col *= 0.65 + 0.63 * fract(look.w * 4.7);
 	float lum = dot(col, vec3(0.3, 0.59, 0.11));
+	col = mix(vec3(lum), col, 0.7 + 0.55 * fract(look.w * 2.3));
+	float dry = step(1.0 - look.y, fract(card * 7.31));
 	return mix(col, lum * vec3(1.4, 1.04, 0.48), dry * 0.85);
 }
 

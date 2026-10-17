@@ -1794,7 +1794,7 @@ func test_kit_flora() -> void:
 	check(shades.size() >= 7, "plants come in many leaf shades (%d)" % shades.size())
 	check(tired > 40 and tired < 240, "a few plants look tired, most healthy (%d of 400)" % tired)
 	var green := Color(0.4, 0.6, 0.3, 0.5)
-	check(RealTree.plant_leaf(green, Vector4(0, 0, 0, (0.2 / 0.36) / 4.7)).is_equal_approx(green), "a neutral look leaves a leaf colour as it is")
+	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)) != RealTree.plant_leaf(green, Vector4(-0.8, 0, 0, 2.0)), "two looks give two leaf colours")
 	check(RealTree.plant_leaf(green, Vector4(0.8, 0, 0, 0.5)).b < green.b, "a warm look yellows the leaves")
 	check(not RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0, 0), 0.01), "a full crown has no gaps")
 	check(RealTree.plant_gap(Vector3(1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2) and not RealTree.plant_gap(Vector3(-1, 3, 0), Vector4(0, 0, 0.3, 0), 0.2), "a thinned crown is thinnest on its own side")

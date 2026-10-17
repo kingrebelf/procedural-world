@@ -240,10 +240,12 @@ static func plant_look(wx: float, wz: float) -> Vector4:
 
 ## A leaf vertex colour (sRGB) given that look, as plant_leaf() shades it.
 static func plant_leaf(c: Color, look: Vector4) -> Color:
-	var f := Vector3.ONE.lerp(Vector3(1.2, 1.06, 0.62), look.x) if look.x > 0.0 else Vector3.ONE.lerp(Vector3(0.8, 0.95, 1.12), -look.x)
-	f *= 0.8 + 0.36 * fposmod(look.w * 4.7, 1.0)
+	var f := Vector3.ONE.lerp(Vector3(1.35, 1.1, 0.45), look.x) if look.x > 0.0 else Vector3.ONE.lerp(Vector3(0.68, 0.9, 1.2), -look.x)
+	f *= 0.65 + 0.63 * fposmod(look.w * 4.7, 1.0)
 	# The shader works in linear light; vertex colours are sRGB.
 	var out := Color(c.r * pow(f.x, 1.0 / 2.2), c.g * pow(f.y, 1.0 / 2.2), c.b * pow(f.z, 1.0 / 2.2), c.a)
+	var grey := out.r * 0.3 + out.g * 0.59 + out.b * 0.11
+	out = Color(grey, grey, grey, c.a).lerp(out, 0.7 + 0.55 * fposmod(look.w * 2.3, 1.0))
 	if fposmod(c.a * 7.31, 1.0) >= 1.0 - look.y:
 		var lum := out.r * 0.3 + out.g * 0.59 + out.b * 0.11
 		out = out.lerp(Color(lum * 1.165, lum * 1.018, lum * 0.716, c.a), 0.85)
