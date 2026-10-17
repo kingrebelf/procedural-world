@@ -104,8 +104,35 @@ func _run() -> void:
 			var blade := MeshInstance3D.new()
 			blade.mesh = PowerKit.part(String(bl["part"]))
 			blade.position = bl["pos"]
-			blade.rotation.x = float(bl.get("on", 0.0))
+			if bl.has("push"):
+				blade.position += bl["push"]
+			else:
+				blade.rotation.x = float(bl.get("on", 0.0))
 			root.add_child(blade)
+		var df: Dictionary = s.get("defence", {})
+		var tip: Node3D = null
+		if df.has("head"):
+			var turn := Node3D.new()
+			turn.position = df["head"]
+			turn.rotation.y = 0.5
+			if df.has("head_part"):
+				var hm := MeshInstance3D.new()
+				hm.mesh = PowerKit.part(String(df["head_part"]))
+				turn.add_child(hm)
+			tip = Node3D.new()
+			tip.position = df.get("tip_at", Vector3.ZERO)
+			tip.rotation.x = 0.12
+			var gm := MeshInstance3D.new()
+			gm.mesh = PowerKit.part(String(df["gun_part"]))
+			tip.add_child(gm)
+			turn.add_child(tip)
+			root.add_child(turn)
+			box = box.merge(AABB(Vector3(-0.6, 0.0, -1.5), Vector3(1.2, float((df["head"] as Vector3).y) + 0.8, 2.0)))
+		if df.has("clapper"):
+			var cm := MeshInstance3D.new()
+			cm.mesh = PowerKit.part("bell_clapper")
+			cm.position = df["clapper"]
+			root.add_child(cm)
 		var light: Light3D = null
 		var bulb_mat: StandardMaterial3D = null
 		if s.has("lamp"):
@@ -120,7 +147,7 @@ func _run() -> void:
 			bulb_mat.emission = l.get("color", Color(1, 0.8, 0.6))
 			bulb_mat.emission_energy_multiplier = 0.0
 			bulb.material_override = bulb_mat
-			root.add_child(bulb)
+			(tip if tip != null else root).add_child(bulb)
 			if float(l.get("spot", 0.0)) > 0.0:
 				var sp := SpotLight3D.new()
 				sp.spot_range = float(l["range"])
@@ -137,7 +164,7 @@ func _run() -> void:
 			light.shadow_enabled = true
 			light.position = l.get("light_at", l["pos"])
 			light.visible = false
-			root.add_child(light)
+			(tip if tip != null else root).add_child(light)
 		var c := root.position + box.get_center()
 		var r := box.size.length() * 0.5
 		var dist := r / tan(deg_to_rad(cam.fov * 0.5)) * 1.05

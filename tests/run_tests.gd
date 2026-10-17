@@ -4396,3 +4396,17 @@ func test_power_signal_wiring() -> void:
 	check(r["supply"] == 0.0 and r["demand"] > 0.0, "a windmill told off makes nothing")
 	r = Power.solve([{"id": "a", "o": _pw("windmill", 7), "f": 1.0}, {"id": "b", "o": _pw("lamp_ceiling", 8), "f": 1.0, "en": false}], {"wind": 1.0}, 1.0)
 	check(r["demand"] == 0.0 and not r["pieces"]["b"]["powered"], "a lamp told off draws nothing")
+
+func test_power_defences() -> void:
+	check(absf(Defences.to_segment(Vector3(1, 1, 0), Vector3.ZERO, Vector3(2, 0, 0)) - 1.0) < 0.001, "distance to a fence span")
+	check(Defences.to_segment(Vector3(5, 0, 0), Vector3.ZERO, Vector3(2, 0, 0)) > 2.9, "past the end of a span is measured to its end")
+	check(Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(0.5, 0, -3), 4.0, 0.8), "in the flame's cone")
+	check(not Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(3, 0, -1), 4.0, 0.8), "off to the side is out of it")
+	check(not Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(0, 0, -6), 4.0, 0.8), "and so is too far")
+	for id in ["auto_turret", "heavy_turret", "fence_post", "spike_trap", "flame_trap", "alarm_bell", "searchlight"]:
+		var o := _pw(id, 0)
+		check(Defences.is_defence(o) and int(Power.spec(o).get("prio", 0)) == 2, "%s is a defence, last to brown out" % id)
+		check(Signals.max_in(o) == 1, "%s can be armed by a signal" % id)
+		check(not Defences.lines(o, true).is_empty(), "%s describes itself" % id)
+	check(_pw("flame_trap", 0)["st"].has("fuel"), "a flame trap has a fuel store")
+	check(Defences.hostile_creature(null) == false and Defences.hostile_npc(null) == false, "nothing is no target")

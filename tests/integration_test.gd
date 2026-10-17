@@ -303,6 +303,7 @@ func _power_checks(game, world, player: Player, pc: ChunkNode, lp: Vector3) -> v
 	grid.use_piece(pc, lamp, false)
 	check(await wait.call(false), "the lamp switches off on its own")
 	await _signal_checks(game, grid, player, pc, lp, gen, lamp, mk, lit, wait)
+	await _defence_checks(game, world, grid, player, pc, lp, gen, mk)
 	var before: int = game.inventory.count("copper_wire")
 	check(player.deconstruct(pc, sw) and sw["st"].get("gone", false), "the switch comes down")
 	check(game.inventory.count("copper_wire") > before and Power.links(gen).is_empty(), "its cables come down with it, as wire")
@@ -376,6 +377,74 @@ func _signal_checks(game, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Ve
 	check(game.inventory.count("signal_wire") > sb and Signals.inputs(lamp).is_empty() and Signals.inputs(motor).is_empty(), "its signal wires come down with it, as Signal Wire")
 	for o in [plate, relay, lamp2, motor, door, dway]:
 		player.deconstruct(pc, o)
+
+## A powered turret loads ammo and shoots an attacking animal it can see, and leaves a
+## tame one alone; an alarm bell rings on its signal.
+func _defence_checks(game, world, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Vector3, gen: Dictionary, mk: Callable) -> void:
+	_make_room(game, 4)
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	game.give(ItemDB.make("wood", 6, 1.0, game.origin_here("crafted", -1, pc.key)))
+	grid.use_piece(pc, gen, false) # top the generator up
+	var tur: Dictionary = mk.call("auto_turret", lp + Vector3(-3, 0, -3))
+	var why: String = grid.connect_pieces(pc, gen, pc, tur)
+	check(why == "", "the turret is cabled to the generator (%s)" % why)
+	game.give(ItemDB.make("rifle_cartridges", 20, 1.0, game.origin_here("crafted", -1, pc.key)))
+	check(PowerGrid.verb(tur, false).begins_with("Load"), "with cartridges in the pack, Interact loads the turret")
+	grid.use_piece(pc, tur, false)
+	check(int(tur["st"].get("ammo", 0)) == 20 and game.inventory.count("rifle_cartridges") == 0, "it takes the cartridges (%d)" % int(tur["st"].get("ammo", 0)))
+	check(" ".join(grid.describe(pc, tur, false)).contains("Ammo: 20"), "its look-at shows the ammo")
+	# An animal held still in front of it: tame first, then attacking.
+	var sp := 0
+	while Creature.species(sp, Eras.MEDIEVAL)["kit"] == "":
+		sp += 1
+	var cr := Creature.new()
+	var tw: Vector3 = pc.position + tur["p"]
+	# Somewhere it can see 8 m off (the test's other pieces stand about).
+	var spot := tw + Vector3(0, 0, -8)
+	for a in 16:
+		var p := tw + Vector3(cos(a * TAU / 16.0), 0, sin(a * TAU / 16.0)) * 8.0
+		p.y = tw.y
+		if grid._clear(tw + Vector3(0, 1.3, 0), p + Vector3(0, 0.6, 0), null):
+			spot = p
+			break
+	cr.setup("test_turret_target", sp, Eras.MEDIEVAL, spot, world.fauna)
+	world.fauna.add_child(cr)
+	cr.p = cr.p.duplicate()
+	cr.p["temper"] = "tame"
+	cr.held_for = 1.0e6
+	var scan0: float = world.fauna._scan
+	world.fauna._scan = 1.0e9
+	world.fauna._herds[Vector2i(99998, 99998)] = [cr]
+	await _frames(3)
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 1500:
+		await process_frame
+	check(int(tur["st"]["ammo"]) == 20, "a turret leaves a tame animal alone")
+	cr.p["temper"] = "aggressive"
+	var hp0 := cr.hp
+	t0 = Time.get_ticks_msec()
+	while cr.hp >= hp0 and Time.get_ticks_msec() - t0 < 6000:
+		await process_frame
+	check(int(tur["st"]["ammo"]) < 20 and cr.hp < hp0, "it turns and shoots an attacking animal (ammo %d, hp %.0f -> %.0f)" % [int(tur["st"]["ammo"]), hp0, cr.hp])
+	world.fauna._herds.erase(Vector2i(99998, 99998))
+	world.fauna._scan = scan0
+	if is_instance_valid(cr):
+		cr.queue_free()
+	# The alarm bell rings while the signal wired into it is on.
+	var bell: Dictionary = mk.call("alarm_bell", lp + Vector3(-1, 1.6, -3))
+	var lever: Dictionary = mk.call("lever", lp + Vector3(-1, 1.2, -2))
+	game.give(ItemDB.make("signal_wire", 4, 1.0, game.origin_here("crafted", -1, pc.key)))
+	check(grid.connect_pieces(pc, gen, pc, bell) == "" and grid.connect_signal(pc, lever, pc, bell) == "", "a bell cabled in and wired to a lever")
+	grid.use_piece(pc, lever, false)
+	var bn: PowerNode = pc.power_node(bell["i"])
+	t0 = Time.get_ticks_msec()
+	while (bn == null or bn._ring <= 0.0) and Time.get_ticks_msec() - t0 < 2000:
+		await process_frame
+	check(bn != null and bn._ring > 0.0, "pulling the lever rings the bell")
+	for o in [tur, bell, lever]:
+		player.deconstruct(pc, o)
+	for t in ["auto_turret", "alarm_bell", "lever", "rifle_cartridges", "signal_wire"]:
+		game.inventory.remove_type(t, game.inventory.count(t))
 
 func _frames(n: int) -> void:
 	for i in n:

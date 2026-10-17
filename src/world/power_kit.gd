@@ -389,6 +389,73 @@ static func proc(k: MeshKit, what: String) -> void:
 			k.cylinder("cast_iron", sp.translated_local(Vector3(0, 0.02, 0)), 0.015, 0.015, 0.03, 8)
 			for x in [-0.12, 0.12]:
 				k.cylinder("gold", I.translated(Vector3(x, -0.18, 0.08)), 0.016, 0.018, 0.04, 8, true, 0.0, 1, BRASS)
+		"pw_turret":
+			# A pedestal on a riveted cross base, the drive motor and a junction box on it;
+			# the head (yoke) and the gun are parts PowerNode turns.
+			for a in 4:
+				var b := Basis(Vector3.UP, TAU * a / 4.0 + PI * 0.25)
+				k.box("cast_iron", Transform3D(b, b * Vector3(0, 0.05, 0.32)), Vector3(0.14, 0.1, 0.62), GASIFIER.darkened(0.1))
+				rivets(k, b * Vector3(0, 0.1, 0.5), b * Vector3(0, 0.1, 0.5), 1, Vector3.UP, 0.025)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.08, 0)), 0.2, 0.16, 0.12, 16, true, 0.0, 1, GASIFIER)
+			k.cylinder("painted", I.translated(Vector3(0, 0.2, 0)), 0.11, 0.09, 0.82, 14, true, 0.0, 1, ENGINE_GREEN)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 1.0, 0)), 0.16, 0.16, 0.08, 18, true, 0.0, 1, GASIFIER)
+			k.cylinder("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.55, 0.12)), 0.08, 0.08, 0.2, 14, true, 0.0, 1, ENGINE_GREEN.darkened(0.15))
+			k.box("cast_iron", I.translated(Vector3(0, 0.3, 0.2)), Vector3(0.18, 0.2, 0.1), GASIFIER)
+			for x in [-0.05, 0.05]:
+				k.cylinder("gold", I.translated(Vector3(x, 0.4, 0.22)), 0.014, 0.016, 0.04, 8, true, 0.0, 1, BRASS)
+		"pw_heavy_turret":
+			# A squat armoured drum on a concrete-and-iron plinth.
+			k.box("cobble", I.translated(Vector3(0, 0.12, 0)), Vector3(1.2, 0.24, 1.2))
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.24, 0)), 0.5, 0.44, 0.7, 20, true, 0.0, 1, ENGINE_GREEN.darkened(0.25))
+			for y in [0.36, 0.82]:
+				k.cylinder("cast_iron", I.translated(Vector3(0, y, 0)), 0.515, 0.515, 0.04, 20, true, 0.0, 1, GASIFIER)
+			for a in 10:
+				var p := Basis(Vector3.UP, TAU * a / 10.0) * Vector3(0, 0.6, 0.5)
+				k.sphere("cast_iron", I.translated(p), 0.02, 3, 6, 0.0, 0.6)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 0.94, 0)), 0.36, 0.36, 0.34, 18, true, 0.0, 1, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 0.4, 0.5)), Vector3(0.24, 0.24, 0.12), GASIFIER)
+		"pw_fence_post":
+			# A tarred timber post with three ceramic insulators up its face.
+			k.cylinder("bark", I, 0.07, 0.06, 1.65, 8, true, 0.02, 3, Color(0.45, 0.38, 0.3))
+			for y in [0.6, 1.05, 1.5]:
+				var at := Vector3(0, y, 0)
+				k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), at + Vector3(0, 0, -0.05)), 0.008, 0.008, 0.07, 6)
+				k.cylinder("bone", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), at + Vector3(0, 0, -0.1)), 0.034, 0.026, 0.05, 10, true, 0.0, 1, CERAMIC)
+			# A yellow warning plate (paint, no writing).
+			k.box("painted", I.translated(Vector3(0, 0.9, -0.075)), Vector3(0.16, 0.12, 0.008), Color(0.78, 0.62, 0.12))
+			k.box("painted", Transform3D(Basis(Vector3(0, 0, 1), 0.5), Vector3(0, 0.9, -0.08)), Vector3(0.02, 0.09, 0.004), Color(0.08, 0.08, 0.08))
+		"pw_spike_trap":
+			# A sunken iron box with a grate top; the spikes are a part that punches up.
+			for side in [-1.0, 1.0]:
+				k.box("cast_iron", I.translated(Vector3(side * 0.53, 0.04, 0)), Vector3(0.06, 0.08, 1.12), GASIFIER.darkened(0.15))
+				k.box("cast_iron", I.translated(Vector3(0, 0.04, side * 0.53)), Vector3(1.0, 0.08, 0.06), GASIFIER.darkened(0.15))
+			for n in 6:
+				k.box("cast_iron", I.translated(Vector3(-0.42 + n * 0.168, 0.07, 0)), Vector3(0.02, 0.02, 1.0), GASIFIER.darkened(0.3))
+			k.box("rust", I.translated(Vector3(0, -0.02, 0)), Vector3(1.0, 0.03, 1.0))
+		"pw_flame_trap":
+			# A fuel tank on legs with a pump and the nozzle facing out front (-z).
+			k.cylinder("painted", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(-0.25, 0.3, 0.1)), 0.18, 0.18, 0.5, 16, true, 0.0, 1, Color(0.55, 0.12, 0.08))
+			for x in [-0.4, 0.15]:
+				for z in [-0.05, 0.25]:
+					beam(k, "cast_iron", Vector3(x, 0.0, z), Vector3(x, 0.16, z), 0.02)
+			k.box("cast_iron", I.translated(Vector3(0.18, 0.3, 0.1)), Vector3(0.16, 0.22, 0.2), GASIFIER)
+			beam(k, "rust", Vector3(0.18, 0.4, 0.0), Vector3(0, 0.55, -0.15), 0.025)
+			beam(k, "gold", Vector3(0, 0.55, -0.15), Vector3(0, 0.55, -0.4), 0.03, 10, BRASS)
+			k.cylinder("gold", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.55, -0.4)), 0.04, 0.03, 0.06, 10, true, 0.0, 1, BRASS)
+			beam(k, "cast_iron", Vector3(0, 0.0, -0.3), Vector3(0, 0.53, -0.3), 0.02)
+		"pw_alarm_bell":
+			# A red gong on an iron bracket off the wall, with its striker coil box below.
+			k.box("cast_iron", I.translated(Vector3(0, -0.18, 0.04)), Vector3(0.14, 0.12, 0.08), GASIFIER)
+			beam(k, "cast_iron", Vector3(0, 0.02, 0.0), Vector3(0, 0.02, 0.14), 0.015)
+			k.sphere("painted", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.02, 0.06)), 0.13, 6, 18, 0.0, 0.6, Color(0.62, 0.1, 0.08), true)
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.02, 0.01)), 0.06, 0.06, 0.02, 12, true, 0.0, 1, GASIFIER)
+		"pw_searchlight":
+			# A tripod of steel legs and a turntable; the yoke and the drum are parts.
+			for a in 3:
+				var b := Basis(Vector3.UP, TAU * a / 3.0)
+				beam(k, "cast_iron", b * Vector3(0, 0, 0.65), Vector3(0, 1.15, 0), 0.03, 6, GASIFIER)
+			k.cylinder("cast_iron", I.translated(Vector3(0, 1.15, 0)), 0.16, 0.16, 0.12, 16, true, 0.0, 1, GASIFIER)
+			k.box("cast_iron", I.translated(Vector3(0, 0.45, 0.15)), Vector3(0.2, 0.22, 0.14), GASIFIER)
 		"pw_lamp_ceiling":
 			# A ceiling rose, a cloth flex, and a white enamel shade; the bulb is a part.
 			k.cylinder("painted", I.translated(Vector3(0, -0.03, 0)), 0.06, 0.06, 0.03, 12, true, 0.0, 1, ENAMEL)
@@ -498,6 +565,67 @@ static func part(name: String) -> ArrayMesh:
 				for z in 8:
 					var p := Vector3(-0.35 + x * 0.1, 0.012, -0.35 + z * 0.1)
 					k.box("cast_iron", Transform3D(Basis(Vector3.UP, PI * 0.25 if (x + z) % 2 == 0 else -PI * 0.25), p), Vector3(0.05, 0.005, 0.012), GASIFIER.lightened(0.1))
+		"turret_head":
+			# The yoke: a turntable and two cheeks the gun trunnions sit in.
+			k.cylinder("cast_iron", I, 0.18, 0.18, 0.06, 18, true, 0.0, 1, GASIFIER.darkened(0.1))
+			for x in [-0.17, 0.17]:
+				k.box("cast_iron", I.translated(Vector3(x, 0.15, 0)), Vector3(0.05, 0.26, 0.18), GASIFIER)
+			k.box("painted", I.translated(Vector3(0, 0.05, 0.12)), Vector3(0.2, 0.12, 0.12), ENGINE_GREEN)
+		"turret_gun":
+			# A hand-cranked-look rotary gun, motor driven: a cluster of six barrels in two
+			# guide rings, the breech casing, and a drum magazine on top. Points along -z.
+			var bx := Basis(Vector3(1, 0, 0), PI * 0.5)
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.12)), Vector3(0.26, 0.2, 0.36), GASIFIER)
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0, 0)), 0.035, 0.035, 0.36, 10, true, 0.0, 1, GASIFIER.darkened(0.2))
+			for n in 6:
+				var a := TAU * n / 6.0
+				var off := Vector3(cos(a), sin(a), 0) * 0.05
+				beam(k, "cast_iron", off + Vector3(0, 0, -0.06), off + Vector3(0, 0, -0.96), 0.014, 8, GASIFIER.darkened(0.3))
+			for z in [-0.35, -0.9]:
+				k.cylinder("gold", Transform3D(bx, Vector3(0, 0, z)), 0.075, 0.075, 0.03, 16, true, 0.0, 1, BRASS)
+			k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0, 0.17, 0.1)), 0.12, 0.12, 0.08, 18, true, 0.0, 1, ENGINE_GREEN)
+		"heavy_head":
+			# A low turret ring with an armour shield across the front.
+			k.cylinder("cast_iron", I, 0.38, 0.38, 0.08, 20, true, 0.0, 1, GASIFIER.darkened(0.15))
+			k.box("cast_iron", Transform3D(Basis(Vector3(1, 0, 0), -0.18), Vector3(0, 0.36, -0.36)), Vector3(0.86, 0.62, 0.05), ENGINE_GREEN.darkened(0.2))
+			for x in [-0.3, 0.3]:
+				k.box("cast_iron", I.translated(Vector3(x, 0.22, 0)), Vector3(0.06, 0.32, 0.4), GASIFIER)
+			rivets(k, Vector3(-0.38, 0.62, -0.42), Vector3(0.38, 0.62, -0.42), 7, Vector3(0, 0, -1))
+		"heavy_gun":
+			# Twin heavy barrels with cooling jackets on one cradle. Points along -z.
+			k.box("cast_iron", I.translated(Vector3(0, 0, 0.15)), Vector3(0.44, 0.24, 0.5), GASIFIER)
+			for x in [-0.12, 0.12]:
+				var bx := Basis(Vector3(1, 0, 0), PI * 0.5)
+				k.cylinder("cast_iron", Transform3D(bx, Vector3(x, 0, -0.55)), 0.06, 0.06, 0.8, 14, true, 0.0, 1, GASIFIER.darkened(0.1))
+				for n in 9:
+					k.cylinder("cast_iron", Transform3D(bx, Vector3(x, 0, -0.25 - n * 0.065)), 0.07, 0.07, 0.02, 14, true, 0.0, 1, GASIFIER.darkened(0.3))
+				beam(k, "cast_iron", Vector3(x, 0, -0.9), Vector3(x, 0, -1.34), 0.03, 10, GASIFIER.darkened(0.35))
+		"spikes":
+			# A bed of iron spikes on a plate; it rises through the grate.
+			k.box("cast_iron", I, Vector3(0.96, 0.03, 0.96), GASIFIER.darkened(0.2))
+			for x in 5:
+				for z in 5:
+					var p := Vector3(-0.38 + x * 0.19, 0.0, -0.38 + z * 0.19)
+					k.cylinder("cast_iron", I.translated(p), 0.025, 0.002, 0.3, 6, false, 0.0, 1, GASIFIER.lightened(0.05))
+		"bell_clapper":
+			k.box("cast_iron", I.translated(Vector3(0, -0.05, 0)), Vector3(0.012, 0.1, 0.012))
+			k.sphere("cast_iron", I.translated(Vector3(0, -0.1, 0)), 0.02, 4, 8)
+		"search_yoke":
+			k.cylinder("cast_iron", I, 0.15, 0.15, 0.05, 16, true, 0.0, 1, GASIFIER.darkened(0.1))
+			for x in [-0.3, 0.3]:
+				beam(k, "cast_iron", Vector3(x * 0.4, 0.04, 0), Vector3(x, 0.3, 0), 0.022, 6, GASIFIER)
+		"search_drum":
+			# The lamp drum: a deep steel barrel, cooling fins on its back, the lens a part.
+			var bx := Basis(Vector3(1, 0, 0), PI * 0.5)
+			k.cylinder("painted", Transform3D(bx, Vector3(0, 0, -0.06)), 0.26, 0.26, 0.42, 22, false, 0.0, 1, Color(0.3, 0.32, 0.3))
+			k.cylinder("painted", Transform3D(bx, Vector3(0, 0, 0.15)), 0.26, 0.18, 0.08, 22, true, 0.0, 1, Color(0.3, 0.32, 0.3))
+			for n in 5:
+				k.cylinder("cast_iron", Transform3D(bx, Vector3(0, 0, 0.0 + n * 0.035)), 0.27, 0.27, 0.01, 22, true, 0.0, 1, GASIFIER)
+			k.cylinder("gold", Transform3D(bx, Vector3(0, 0, -0.38)), 0.27, 0.27, 0.03, 22, false, 0.0, 1, BRASS)
+			for x in [-0.27, 0.27]:
+				k.cylinder("cast_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x, 0, 0)), 0.03, 0.03, 0.06, 8)
+		"search_lens":
+			k.cylinder("glass", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3.ZERO), 0.25, 0.25, 0.01, 22)
 		"bulb":
 			# A pear-shaped glass bulb, its neck up.
 			k.sphere("glass", I.translated(Vector3(0, -0.035, 0)), 0.035, 8, 12, 0.0, 1.15)

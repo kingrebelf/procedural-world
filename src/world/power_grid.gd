@@ -222,6 +222,8 @@ func _tick(dt: float) -> void:
 			_pose(e["id"], e["o"], me)
 			if Signals.kind(e["o"]) == "motor":
 				_drive_door(e["id"], e["o"], bool(me.get("powered", false)) and bool(e["en"]))
+			elif Defences.is_defence(e["o"]):
+				_defend(e["id"], e["o"], Power.is_on(e["o"]) and bool(me.get("powered", false)), bool(e["en"]), dt)
 
 # --- Signals --------------------------------------------------------------------------
 
@@ -360,6 +362,177 @@ func _drive_door(id: String, o: Dictionary, want: bool) -> void:
 	var wp: Vector3 = dc.position + door["p"] + Vector3(0, 1.2, 0)
 	Audio.play_at(("door/slide_open" if slide else "door/open") if want else ("door/slide_close" if slide else "door/close"), wp, -4.0)
 
+# --- Defences -------------------------------------------------------------------------
+
+## One tick of a defence (see Defences): `powered` (switched on and getting power),
+## `armed` (its signal, if one is wired in, is on).
+func _defend(id: String, o: Dictionary, powered: bool, armed: bool, dt: float) -> void:
+	var c := chunk_of_id(id)
+	if c == null:
+		return
+	var pn := c.power_node(int(o["i"]))
+	var s := Defences.spec(o)
+	var mem: Dictionary = _mem.get(id, {})
+	_mem[id] = mem
+	var live := powered and armed
+	var at: Vector3 = c.position + o["p"]
+	var yaw := float(o["r"])
+	var fwd := Basis(Vector3.UP, yaw) * Vector3(0, 0, -1) # free pieces face -z
+	var auth := _authority(c.key)
+	match Defences.kind(o):
+		"turret":
+			var eye := at + Vector3(0, float(s.get("eye", 1.2)), 0)
+			var foe: Array = _nearest_foe(eye, float(s.get("range", 24.0))) if live else []
+			if pn != null:
+				pn.aim(foe[1] if not foe.is_empty() else null)
+			mem["t"] = float(mem.get("t", 0.0)) + dt
+			if foe.is_empty() or int(o["st"].get("ammo", 0)) <= 0 or float(mem["t"]) < float(s.get("every", 0.6)):
+				return
+			mem["t"] = 0.0
+			# Only once the barrels are on it (the head turns at its own speed).
+			if pn != null and not pn.on_target(foe[1]):
+				return
+			o["st"]["ammo"] = int(o["st"]["ammo"]) - 1
+			var muzzle: Vector3 = pn.muzzle() if pn != null else eye
+			if pn != null:
+				pn.shot(foe[1])
+			Audio.play_at("weapon/explosion", muzzle, -16.0 if int(s.get("barrels", 1)) == 1 else -12.0)
+			if auth:
+				_strike(foe[0], float(s.get("damage", 15.0)) * randf_range(0.85, 1.15))
+		"fence":
+			if not live:
+				return
+			mem["t"] = float(mem.get("t", 0.0)) + dt
+			if float(mem["t"]) < float(s.get("every", 1.0)):
+				return
+			mem["t"] = 0.0
+			var a := Power.terminal(o, c.position)
+			for other in Power.links(o):
+				var oo := piece(String(other))
+				if oo.is_empty() or Defences.kind(oo) != "fence" or String(other) < id:
+					continue # each span once, from its lower id
+				var b := terminal_of(String(other))
+				var mid := (a + b) * 0.5
+				for f in _foes_near(mid, a.distance_to(b) * 0.5 + 2.0):
+					var p: Vector3 = f[1]
+					var reach := float(s.get("reach", 0.9))
+					# The wire runs at three heights up the post.
+					var touch := false
+					for hy in [-0.9, -0.45, 0.0]:
+						if Defences.to_segment(p, a + Vector3(0, hy, 0), b + Vector3(0, hy, 0)) <= reach:
+							touch = true
+					if not touch:
+						continue
+					ImpactFx.strike(p, Vector3.UP, "metal", 0.6, true)
+					Audio.play_at("weapon/laser", p, -10.0)
+					if auth:
+						_strike(f[0], float(s.get("damage", 8.0)))
+						var cr := f[0] as Creature
+						if cr != null and is_instance_valid(cr) and cr._body != null:
+							cr.state = "flee"
+							cr._think = 3.0
+		"spikes":
+			var plate_foes: Array = []
+			for f in _foes_near(at, 1.4):
+				var d: Vector3 = f[1] - at
+				if absf(d.x) < 0.55 and absf(d.z) < 0.55 and d.y > -0.4 and d.y < 1.6:
+					plate_foes.append(f)
+			var fire := powered and ((not Signals.inputs(o).is_empty() and armed) or (Signals.inputs(o).is_empty() and not plate_foes.is_empty()))
+			var was := bool(mem.get("up", false))
+			mem["up"] = fire
+			if pn != null:
+				pn.apply(false, false, fire)
+			if fire and not was:
+				Audio.play_at("hit/metal", at, -2.0)
+				if auth:
+					for f in plate_foes:
+						_strike(f[0], float(s.get("damage", 30.0)))
+						var cr := f[0] as Creature
+						if cr != null and is_instance_valid(cr):
+							cr.held_for = float(s.get("hold", 2.0))
+		"flame":
+			var burning := live and float(o["st"].get("fuel", 0.0)) > 0.0
+			if pn != null:
+				pn.set_flame(burning)
+			if not burning:
+				return
+			o["st"]["fuel"] = maxf(0.0, float(o["st"]["fuel"]) - dt)
+			var nozzle := at + Vector3(0, float(s.get("eye", 0.5)), 0)
+			if auth:
+				for f in _foes_near(nozzle, float(s.get("range", 4.0))):
+					if Defences.in_cone(nozzle, fwd, f[1] + Vector3(0, 0.5, 0), float(s.get("range", 4.0)), float(s.get("cone", 0.8))):
+						_strike(f[0], float(s.get("dps", 14.0)) * dt)
+		"bell":
+			mem["t"] = float(mem.get("t", 0.0)) + dt
+			if live and float(mem["t"]) >= 0.5:
+				mem["t"] = 0.0
+				Audio.play_at("hit/metal", at + Vector3(0, 0.3, 0), 2.0)
+				if pn != null:
+					pn.ring()
+		"search":
+			if pn != null:
+				var foe: Array = _nearest_foe(at + Vector3(0, 1.7, 0), float(s.get("range", 60.0))) if live else []
+				pn.aim(foe[1] if not foe.is_empty() else null)
+
+## A blow from a defence: animals through FaunaManager (it passes it to whoever runs
+## them, and the kill is yours), outlaws through NPCManager.
+func _strike(target: Object, dmg: float) -> void:
+	var w := get_parent()
+	if w == null or not is_instance_valid(target):
+		return
+	if target is Creature:
+		var fauna = w.get("fauna")
+		if fauna != null and (target as Creature)._body != null:
+			fauna.player_hit(target, dmg)
+	elif Defences.hostile_npc(target):
+		var npcs = w.get("npcs")
+		if npcs != null:
+			npcs.player_hit(target, dmg)
+
+## What a defence goes for near `at`: [[node, where it is (its middle)], ...].
+func _foes_near(at: Vector3, r: float) -> Array:
+	var out: Array = []
+	var w := get_parent()
+	if w == null:
+		return out
+	var fauna = w.get("fauna")
+	if fauna != null:
+		for c in fauna.creatures_near(at, r):
+			if Defences.hostile_creature(c):
+				out.append([c, (c as Node3D).global_position + Vector3(0, float(c.p.get("size", 1.0)) * 0.35, 0)])
+	var npcs = w.get("npcs")
+	if npcs != null:
+		for n in npcs.all_nodes():
+			if is_instance_valid(n) and (n as Node3D).global_position.distance_to(at) <= r and Defences.hostile_npc(n):
+				out.append([n, (n as Node3D).global_position + Vector3(0, 1.1, 0)])
+	return out
+
+## The nearest foe a turret or searchlight at `eye` can see within `r`, or [].
+func _nearest_foe(eye: Vector3, r: float) -> Array:
+	var best: Array = []
+	var best_d := INF
+	for f in _foes_near(eye, r):
+		var d := eye.distance_to(f[1])
+		if d < best_d and _clear(eye, f[1], f[0]):
+			best_d = d
+			best = f
+	return best
+
+## Nothing solid (ground, a wall) between `from` and `to` but the target itself.
+func _clear(from: Vector3, to: Vector3, target: Object) -> bool:
+	var dir := (to - from).normalized()
+	var q := PhysicsRayQueryParameters3D.create(from + dir * 0.7, to, 1 | 2)
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return true
+	var col: Object = hit.get("collider")
+	if col == null:
+		return true
+	for m in ["creature", "npc"]:
+		if col.has_meta(m) and col.get_meta(m) == target:
+			return true
+	return false
+
 ## The door nearest a world point, within Signals.MOTOR_REACH, as {chunk, obj}, or {}.
 func door_by(at: Vector3) -> Dictionary:
 	if streamer == null:
@@ -470,6 +643,10 @@ func _draw_cables(pieces: Dictionary) -> void:
 				continue
 			var key: String = (id + "|" + String(other)) if id < String(other) else (String(other) + "|" + id)
 			want[key] = [id, String(other)]
+			if Defences.kind(pieces[id]) == "fence" and Defences.kind(pieces[other]) == "fence":
+				# An electric fence: two more strands below the top one.
+				want["f1:" + key] = [id, String(other)]
+				want["f2:" + key] = [id, String(other)]
 		for dst in Signals.outputs(pieces[id]):
 			if pieces.has(dst):
 				want["s:" + id + ">" + String(dst)] = [id, String(dst)]
@@ -481,6 +658,10 @@ func _draw_cables(pieces: Dictionary) -> void:
 		var sig := (key as String).begins_with("s:")
 		var a := signal_terminal_of(want[key][0]) if sig else terminal_of(want[key][0])
 		var b := signal_terminal_of(want[key][1]) if sig else terminal_of(want[key][1])
+		if (key as String).begins_with("f"):
+			var drop := Vector3(0, -0.45 if (key as String).begins_with("f1") else -0.9, 0)
+			a += drop
+			b += drop
 		var mi: MeshInstance3D = _cables.get(key)
 		if mi != null and mi.get_meta("ends", []) == [a, b]:
 			continue
@@ -563,6 +744,10 @@ static func verb(o: Dictionary, sneaking: bool) -> String:
 				return "Fuel the %s" % nm
 			return ("Lock the %s" if Power.is_on(o) else "Release the %s") % ("sails" if s.get("source", "") == "wind" else nm)
 		"use":
+			if not sneaking and not Defences.ammo_in_pack(o).is_empty() and int(o["st"].get("ammo", 0)) < Defences.AMMO_CAP:
+				return "Load the %s" % nm
+			if not sneaking and not Defences.fuel_in_pack(o).is_empty() and float(o["st"].get("fuel", 0.0)) < Defences.FUEL_CAP:
+				return "Fuel the %s" % nm
 			return "Switch %s the %s" % ["off" if Power.is_on(o) else "on", nm]
 		"switch":
 			return "%s the %s" % ["Open" if Power.is_on(o) else "Close", nm]
@@ -609,8 +794,17 @@ func use_piece(chunk: ChunkNode, o: Dictionary, sneaking: bool) -> void:
 				else:
 					Game.toast.emit("%s the %s" % ["Started" if Power.is_on(o) else "Stopped", nm])
 		"use":
-			o["st"]["on"] = not Power.is_on(o)
-			Audio.play_at("door/lock", chunk.position + o["p"], -14.0)
+			if not sneaking and not Defences.ammo_in_pack(o).is_empty() and int(o["st"].get("ammo", 0)) < Defences.AMMO_CAP:
+				var n := Defences.load_ammo(o)
+				Audio.play_at("weapon/draw", chunk.position + o["p"], -6.0)
+				Game.toast.emit("Loaded %d rounds into the %s: %d in all" % [n, nm, int(o["st"]["ammo"])])
+			elif not sneaking and not Defences.fuel_in_pack(o).is_empty() and float(o["st"].get("fuel", 0.0)) < Defences.FUEL_CAP:
+				var w := Defences.load_fuel(o)
+				Audio.play_at("hit/plank", chunk.position + o["p"], -8.0)
+				Game.toast.emit("Filled the %s with %s: %d s of burning" % [nm, w, int(o["st"]["fuel"])])
+			else:
+				o["st"]["on"] = not Power.is_on(o)
+				Audio.play_at("door/lock", chunk.position + o["p"], -14.0)
 		"switch":
 			if not Signals.inputs(o).is_empty():
 				Game.toast.emit("The %s is %s: it follows the signal wired into it" % [nm, "closed" if Power.is_on(o) else "open"])
@@ -711,7 +905,10 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 				lines.append("%s at %s" % ["Charging" if flow > 0.0 else "Discharging", Power.watts(absf(flow))])
 		"use":
 			var on := Power.is_on(o)
-			lines.append("%s  ·  draws %s" % ["Off" if not on else ("On" if me.get("powered", false) else "No power"), Power.watts(float(s["watts"]))])
+			var armed := bool(_en.get(id, true))
+			lines.append("%s  ·  draws %s" % ["Off" if not on else ("On" if me.get("powered", false) else ("Waiting for its signal" if not armed else "No power")), Power.watts(float(s["watts"]))])
+			if Defences.is_defence(o):
+				lines.append_array(Defences.lines(o, armed))
 		"switch":
 			lines.append("Closed: power flows through" if Power.is_on(o) else "Open: the line is cut here")
 		"node":
