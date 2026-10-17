@@ -5,7 +5,7 @@ shader_type spatial;
 // to fewer, finer strands, so the outline breaks into fibres instead of a moulded edge.
 // CUSTOM0 = rest position + tip factor, CUSTOM1 = rest combing direction (HairStrands);
 // `strands` is set on meshes that carry them; others (eyebrows) keep the texture alone.
-render_mode diffuse_burley, specular_schlick_ggx, cull_disabled;
+render_mode diffuse_burley, specular_schlick_ggx, cull_disabled, alpha_to_coverage;
 
 uniform sampler2D tex : source_color, filter_linear_mipmap_anisotropic;
 uniform sampler2D nrm : hint_normal, filter_linear_mipmap;
@@ -15,11 +15,19 @@ instance uniform float shell = 0.0;
 instance uniform float shell_depth = 0.006;
 // Thinning with age: 0 full, 1 the crown mostly bare.
 instance uniform float thin = 0.0;
+// The person's skin, for thinning hair seen from too far to resolve single strands.
+instance uniform vec4 scalp_col : source_color = vec4(0.0);
 instance uniform float strands = 0.0;
 // Sparse hair (eyebrows): only the strands above this survive.
 instance uniform float sparse = 0.0;
 // Under a hat: hair above this rest height is hidden (HumanModel.cap_hair).
 instance uniform float cap_y = 99.0;
+// The base layer stands this far off the scalp (m), so the head can't push through it
+// where the kit mesh hugs the skull (a parting, a buzz cut).
+instance uniform float lift = 0.0;
+// Beard style (BodyShape.beard): 1 stubble, 2 moustache, 3 goatee, 4 short, 5 full; the
+// kit beard mesh covers the whole jaw and is cut down to the style.
+instance uniform float beard = 0.0;
 
 varying vec4 rest;
 varying vec3 flow;
@@ -27,6 +35,7 @@ varying vec3 flow;
 void vertex() {
 	rest = CUSTOM0;
 	flow = CUSTOM1.xyz;
+	VERTEX += NORMAL * lift;
 	if (shell > 0.0) {
 		// Ends stand off further than roots.
 		VERTEX += NORMAL * shell * shell_depth * (0.45 + 0.55 * CUSTOM0.w);
@@ -47,13 +56,87 @@ float vnoise3(vec3 p) {
 		mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
 }
 
+// How much of the kit beard mesh a style keeps at rest position `p` (1 keep, 0 cut);
+// `e` shifts the edges so strands break them up.
+float beard_mask(vec3 p, float style, float e) {
+	if (style < 1.5 || style > 3.5) {
+		return 1.0;
+	}
+	float ax = abs(p.x);
+	float lip = step(1.612 + e, p.y) * step(p.y, 1.648 + e) * step(ax, 0.042 + e) * step(0.055, p.z);
+	if (style < 2.5) {
+		return lip;
+	}
+	float chin = step(1.556, p.y) * step(p.y, 1.618 + e) * step(ax, 0.03 + e) * step(0.045, p.z);
+	return max(lip, chin);
+}
+
+// Coverage of a cut at `edge` through the pattern value `x`: 0..1 over about one pixel
+// (`w` = how fast x changes on screen), so cut strand edges are antialiased (alpha to
+// coverage under MSAA) instead of stair-stepped and sparkling.
+float cut(float edge, float x, float w) {
+	return clamp((x - edge) / max(w, 0.002) + 0.5, 0.0, 1.0);
+}
+
 void fragment() {
-	// Screen-space footprint, taken before any branch (derivatives need uniform flow).
-	float px = max(length(dFdx(rest.xyz)), length(dFdy(rest.xyz)));
+	// Position with the run along the strand squeezed out: noise in it streaks along the
+	// combing direction. Its screen-space footprint says how fine a strand can be drawn;
+	// only the size across the strands counts, so hair seen edge-on keeps its strands.
+	// Everything that takes derivatives is worked out here, before any branch that differs
+	// from pixel to pixel.
+	vec3 f = flow / max(length(flow), 1e-4);
+	vec3 q = rest.xyz - f * dot(rest.xyz, f) * 0.985;
+	vec3 dx = dFdx(rest.xyz);
+	vec3 dy = dFdy(rest.xyz);
+	float px = max(length(dx - f * dot(dx, f) * 0.985), length(dy - f * dot(dy, f) * 0.985));
+	// Strands finer than a pixel fade to their average instead of sparkling.
+	float hi = 1.0 - smoothstep(0.5, 1.3, px * 1000.0);
+	float lo = 1.0 - smoothstep(0.5, 1.3, px * 420.0);
+	float fine = mix(0.5, vnoise3(q * 420.0), lo) * 0.55 + mix(0.5, vnoise3(q * 1000.0), hi) * 0.45;
+	fine = smoothstep(0.2, 0.8, fine);
+	float clump = vnoise3(q * 140.0 + vec3(3.1));
+	float wave = vnoise3(rest.xyz * 55.0);
+	float s = fine * 0.75 + clump * 0.25;
+	float tip = rest.w;
+	// 1 while single strands are big enough to see, 0 once they are finer than a pixel.
+	float near = smoothstep(0.35, 0.65, lo);
+	float fs = fwidth(s);
+	float ff = fwidth(fine);
+	float cov = 1.0;
+	if (shell > 0.0) {
+		// Fewer, finer strands further out, and fewer near the roots; as the strands near
+		// pixel size the shells fade into the smooth base layer.
+		float sc = s * (0.85 + 0.3 * clump);
+		cov = cut(0.42 + shell * 0.38 - tip * 0.12, sc, fwidth(sc)) * smoothstep(0.55, 0.8, lo);
+	} else if (sparse > 0.0) {
+		// Gaps between the hairs only where they can be seen; further off the brow is a
+		// soft tint over the skin instead of a ragged stripe.
+		cov = cut((sparse + 0.15 * tip) * near, s, fs);
+	}
+	if (beard > 0.5 && beard < 1.5) {
+		// Stubble: sparse fine dots close up; further off, a shadow on the skin.
+		cov *= cut(0.78 * smoothstep(0.35, 0.65, hi), fine, ff);
+	}
+	// Thinning hair: the scalp shows between single strands, most at the crown. Cut by
+	// the strand pattern alone (cut by the clumps it read as a patchy wig), and only while
+	// strands are big enough to see; further off the scalp tints the hair.
+	float bare = thin * (1.0 - tip) * 0.85;
+	if (shell <= 0.0 && sparse <= 0.0 && bare > 0.0) {
+		cov = cut(bare * near, fine, ff);
+	}
 	vec3 t = texture(tex, UV).rgb;
 	float lum = clamp(dot(t, vec3(0.299, 0.587, 0.114)) / 0.56, 0.4, 1.6);
+	// The cut itself stays where it was (half coverage); under MSAA the inner half of
+	// each strand's edge is feathered by alpha to coverage.
+	ALPHA_SCISSOR_THRESHOLD = 0.5;
 	if (strands < 0.5 || dot(flow, flow) < 0.25) {
+		// Where the combing direction cancels out (a few odd triangles) the plain look,
+		// but still cut to the beard style and the hat.
+		if (beard_mask(rest.xyz, beard, 0.0) < 0.5 || (beard > 0.5 && beard < 1.5) || rest.y > cap_y || shell > 0.0) {
+			discard;
+		}
 		ALBEDO = hair_col.rgb * lum;
+		ALPHA = 1.0;
 		NORMAL_MAP = texture(nrm, UV).rgb;
 		ROUGHNESS = 0.55;
 		SPECULAR = 0.4;
@@ -61,36 +144,26 @@ void fragment() {
 		if (rest.y > cap_y) {
 			discard;
 		}
-		vec3 f = normalize(flow);
-		// Position with the run along the strand squeezed out: noise in it streaks along f.
-		float along = dot(rest.xyz, f);
-		vec3 q = rest.xyz - f * along * 0.985;
-		// Strands finer than a pixel fade to their average instead of sparkling.
-		float hi = 1.0 - smoothstep(0.5, 1.3, px * 1000.0);
-		float lo = 1.0 - smoothstep(0.5, 1.3, px * 420.0);
-		float fine = mix(0.5, vnoise3(q * 420.0), lo) * 0.55 + mix(0.5, vnoise3(q * 1000.0), hi) * 0.45;
-		fine = smoothstep(0.2, 0.8, fine);
-		float clump = vnoise3(q * 140.0 + vec3(3.1));
-		float wave = vnoise3(rest.xyz * 55.0);
-		float s = fine * 0.75 + clump * 0.25;
-		float tip = rest.w;
-		float keep = 1.0;
+		// Regions of the beard mesh (rest metres: mouth about 1.63 up, face forward +z).
+		cov *= beard_mask(rest.xyz, beard, (s - 0.5) * 0.01);
 		if (shell > 0.0) {
-			// Fewer, finer strands further out, and fewer near the roots; once the strands
-			// are too fine to see, the shells give way to the smooth base layer.
-			keep = step(0.42 + shell * 0.38 - tip * 0.12, s * (0.85 + 0.3 * clump)) * step(0.2, lo);
-		} else if (sparse > 0.0) {
-			keep = step(sparse + 0.15 * tip, s);
-		} else if (thin > 0.0) {
-			// Thinning hair: the scalp shows between strands, most at the crown.
-			keep = step(thin * (1.0 - tip) * 0.85, s);
+			// Seen edge-on, a shell is a smear of cut strands over the sky: let the outer
+			// ones thin out at the outline, so it is a few loose fibres, not a fuzz.
+			cov *= mix(1.0, smoothstep(0.05, 0.45, abs(dot(NORMAL, VIEW))), shell);
 		}
-		if (keep < 0.5) {
-			discard;
-		}
+		ALPHA = cov;
 		// Roots and the inner layers in shadow; ends catch the light.
 		float ao = mix(0.55, 1.0, clamp(shell * 0.8 + tip * 0.35 + 0.2, 0.0, 1.0));
 		vec3 col = hair_col.rgb * (0.5 + 0.8 * s) * (0.9 + 0.2 * wave) * mix(1.0, lum, 0.2) * ao;
+		if (scalp_col.a > 0.0) {
+			float skin = bare * 0.6 * (1.0 - near);
+			if (beard > 0.5 && beard < 1.5) {
+				skin = 0.4 + 0.35 * (1.0 - smoothstep(0.35, 0.65, hi));
+			} else if (sparse > 0.0) {
+				skin = (sparse + 0.15 * tip) * (1.0 - near);
+			}
+			col = mix(col, scalp_col.rgb, skin);
+		}
 		ALBEDO = col;
 		// Each strand a little round: the normal tips across it with the strand pattern.
 		NORMAL = normalize(NORMAL + BINORMAL * (fine - 0.5) * 0.6);

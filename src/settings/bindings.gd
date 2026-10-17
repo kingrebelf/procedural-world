@@ -36,6 +36,7 @@ const ACTIONS := {
 	"craft": ["Crafting (R reloads instead while a gun needs it)", KEY_R, "btn:11"],
 	"map": ["Atlas", KEY_M, "btn:4"],
 	"minimap_zoom": ["Minimap zoom", KEY_N, ""],
+	"map_layer": ["Map overlay (levels, danger, era, zones, land)", KEY_J, ""],
 	"character": ["Character and attributes", KEY_K, "btn:12"],
 	"rotate_build": ["Rotate building piece", KEY_Q, "btn:10"],
 	"build_raise": ["Raise building piece (while placing)", KEY_X, "btn:11"],

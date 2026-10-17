@@ -345,6 +345,27 @@ void fragment() {
 	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
 	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
 	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);
+	// Tussocks: the sward grows in clumps a stride or two across, darker between them, so
+	// a meadow or a grassy bank seen from across the valley isn't one smooth baize. (They
+	// average out further off, where they would only shimmer.)
+	float near_g = 1.0 - smoothstep(60.0, 160.0, dist);
+	float tuss = mix(0.5, vnoise(p * 0.7 + 5.0) * 0.6 + vnoise(p * 2.3 + 13.0) * 0.4, near_g);
+	ground *= mix(1.0, 0.84 + 0.32 * tuss, w.r * (1.0 - bare));
+	// Terracettes: on steep pasture, grazing beasts tread level paths along the contours,
+	// lines of short pale turf with little bare-earth risers below them, here and there
+	// across a bank rather than over every hillside.
+	float stg = smoothstep(0.06, 0.14, slope) * (1.0 - smoothstep(0.26, 0.36, slope)) * w.r;
+	if (stg > 0.01) {
+		float tfade = 1.0 - smoothstep(110.0, 240.0, dist);
+		float patch = smoothstep(0.42, 0.62, fbm(p * 0.025 + 31.0));
+		float ph = wpos.y / 0.62 + (fbm(p * 0.07 + 5.0) - 0.5) * 2.6 + (vnoise(p * 0.35) - 0.5) * 0.5;
+		float sp = fract(ph);
+		float riser = smoothstep(0.7, 0.84, sp) * (1.0 - smoothstep(0.92, 1.0, sp));
+		float tread = 1.0 - smoothstep(0.0, 0.5, sp);
+		float k = stg * patch * tfade;
+		ground = mix(ground, mix(soil, ground * 0.7, 0.45), riser * 0.6 * k);
+		ground *= 1.0 + 0.1 * tread * k;
+	}
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
 		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));

@@ -16,6 +16,9 @@ var arms_out := 0.0
 var waddle := 0.0
 ## A limp: + favours the right leg, - the left, by how much (0..1).
 var limp := 0.0
+## Standing weight on one leg: + the left, by how much (0..1). The hips tilt up on that
+## side and shift over it, the back straightens against them.
+var hip := 0.0
 ## Where the stride is: HumanAnimator.stride() (phase, how much on the move).
 var animator: HumanAnimator
 
@@ -32,6 +35,9 @@ var _roll_axis := Vector3.ZERO
 const CHAIN := [["spine_01", 0.15], ["spine_02", 0.22], ["spine_03", 0.3], ["neck_01", 0.12], ["Head", -0.64]]
 const KNEE := 0.2
 const SHOULDER := 0.18
+## Hip tilt (rad) and shift over the standing leg (m) at hip 1.
+const HIP_TILT := 0.1
+const HIP_SHIFT := 0.045
 
 func _setup(sk: Skeleton3D) -> void:
 	_ready_bones = true
@@ -77,6 +83,7 @@ func _process_modification_with_delta(_delta: float) -> void:
 		if arms_out > 0.001:
 			sk.set_bone_pose_rotation(a[0], sk.get_bone_pose_rotation(a[0]) * Quaternion(a[2], arms_out * float(a[3])))
 	_gait(sk)
+	_stand(sk)
 	if absf(stoop) < 0.01:
 		return
 	for e in _bones:
@@ -117,3 +124,20 @@ func _gait(sk: Skeleton3D) -> void:
 		var pg := sk.get_bone_global_pose(_pelvis)
 		pg.origin.y -= dip * st.y
 		sk.set_bone_global_pose(_pelvis, pg)
+
+## Standing at rest: the weight on one leg (contrapposto), faded out as they move off.
+func _stand(sk: Skeleton3D) -> void:
+	if absf(hip) < 0.01 or _pelvis < 0 or _roll < 0:
+		return
+	var still := 1.0
+	if animator != null:
+		still = 1.0 - clampf(animator.stride().y * 3.0, 0.0, 1.0)
+	if still < 0.01:
+		return
+	# Rotating about the body's forward axis lifts the +x (left) hip.
+	var ang := HIP_TILT * hip * still
+	var pg := sk.get_bone_global_pose(_pelvis)
+	pg.basis = Basis(Vector3.BACK, ang) * pg.basis
+	pg.origin.x += HIP_SHIFT * hip * still
+	sk.set_bone_global_pose(_pelvis, pg)
+	sk.set_bone_pose_rotation(_roll, sk.get_bone_pose_rotation(_roll) * Quaternion(_roll_axis, -1.25 * ang))
