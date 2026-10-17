@@ -21,14 +21,24 @@ void vertex() {
 }
 
 void fragment() {
-	// Strands across the strip, each ending at its own length.
+	// Strands across the strip, each ending at its own length. Where a strand is finer
+	// than a pixel the strip shows as one tapered lock instead (no comb of aliased
+	// slivers), and its edges are antialiased through alpha to coverage.
 	float x = UV.x * 5.0;
 	float si = floor(x);
 	float fx = fract(x);
-	float len = 0.5 + 0.5 * h1(si * 3.1 + lid * 17.0);
+	float fw = max(fwidth(x), 1e-4);
+	float split = 1.0 - smoothstep(0.3, 0.8, fw);
+	float len = mix(0.85, 0.5 + 0.5 * h1(si * 3.1 + lid * 17.0), split);
 	float along = UV.y / len;
-	float half_w = 0.5 * mix(1.0, 0.15, smoothstep(0.25, 1.0, along));
-	if (along > 1.0 || abs(fx - 0.5) > half_w) discard;
+	float taper = mix(1.0, 0.15, smoothstep(0.25, 1.0, along));
+	float strand = clamp((0.5 * taper - abs(fx - 0.5)) / fw + 0.5, 0.0, 1.0);
+	float lock = clamp((0.5 * mix(1.0, 0.3, smoothstep(0.3, 1.0, along)) - abs(UV.x - 0.5)) / max(fwidth(UV.x), 1e-4) + 0.5, 0.0, 1.0);
+	float tip = clamp((len - UV.y) / max(fwidth(UV.y), 1e-4) + 0.5, 0.0, 1.0);
+	ALPHA = mix(lock, strand, split) * tip;
+	ALPHA_SCISSOR_THRESHOLD = 0.5;
+	ALPHA_ANTIALIASING_EDGE = 0.3;
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(5.0, 1.0) * 32.0;
 	// The same shade of its kind as the rest of this animal's coat (fur.gdshader).
 	float s = seed * 0.000173;
 	vec3 c = base;
@@ -43,8 +53,8 @@ void fragment() {
 	if (phases > 0.0 && ph < phases) c *= ph < phases * 0.5 ? phase_dark : phase_warm;
 	// Fibres down each strand, each strand its own shade, sun-bleached toward the tips.
 	float fib = sin((UV.x * 5.0 + h1(si + lid) * 0.3) * 6.2832 * 7.0) * 0.5 + 0.5;
-	float ff = 1.0 - smoothstep(0.2, 0.6, fwidth(UV.x) * 35.0);
-	c *= (0.85 + 0.3 * h1(si * 7.7 + lid * 3.0)) * (1.0 + (fib - 0.5) * 0.25 * ff);
+	float ff = 1.0 - smoothstep(0.2, 0.6, fw * 7.0);
+	c *= (1.0 + (h1(si * 7.7 + lid * 3.0) - 0.5) * 0.3 * split) * (1.0 + (fib - 0.5) * 0.25 * ff);
 	c *= 1.0 + 0.15 * along;
 	ALBEDO = clamp(c, vec3(0.0), vec3(1.0));
 	// Lit like the hair it grows from on both faces.
