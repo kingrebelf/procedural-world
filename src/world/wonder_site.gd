@@ -274,7 +274,9 @@ static func build(t: String, solid := false, calm := false) -> ArrayMesh:
 					k.box("glow_violet", Transform3D(b, b * Vector3(0, 1.3 + row * 1.25, 0.58 - row * 0.045)), Vector3(0.3, 0.5, 0.03))
 	if is_centre(t):
 		_vault_floor(k, FRONT[t])
-	if not solid and is_centre(t):
+	# The beam of light marks a wonder from afar on alien worlds; on human worlds nothing
+	# glows, so it is found by its stone and gold (and the map).
+	if not solid and is_centre(t) and not calm:
 		_beam(k, t)
 	return k.commit(_calm_mat if calm else _mat, out)
 
