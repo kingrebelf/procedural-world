@@ -201,6 +201,8 @@ func _tab_strip() -> Control:
 		inner.add_theme_constant_override("separation", 8)
 		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		inner.offset_left = 22 # clear of the painted frame's gem ends
+		inner.offset_right = -22
 		inner.alignment = BoxContainer.ALIGNMENT_CENTER
 		var l := UITheme.label(t[1], 17, UITheme.ACCENT if m == _mode else UITheme.DIM)
 		if UITheme.font("bold"):
@@ -211,7 +213,7 @@ func _tab_strip() -> Control:
 			kc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			inner.add_child(kc)
 		b.add_child(inner)
-		b.custom_minimum_size = Vector2(150, 38)
+		b.custom_minimum_size = Vector2(176, 40)
 		b.add_theme_stylebox_override("normal", UITheme.tex_sb("tab_on" if m == _mode else "tab"))
 		b.add_theme_stylebox_override("hover", UITheme.tex_sb("tab_on" if m == _mode else "hover"))
 		b.add_theme_stylebox_override("pressed", UITheme.tex_sb("tab_on"))
@@ -219,12 +221,18 @@ func _tab_strip() -> Control:
 		row.add_child(b)
 	return row
 
+## Small buttons keep the plain bevelled frame: the painted kit's pointed ends need room.
+static func _small_button(b: Button) -> void:
+	for st in [["normal", "button"], ["hover", "hover"], ["pressed", "pressed"], ["hover_pressed", "pressed"], ["disabled", "disabled"]]:
+		b.add_theme_stylebox_override(st[0], UITheme.tex_sb(st[1], 10, 6, true))
+
 ## A square button with a drawn X.
 func _close_button() -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(40, 40)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.tooltip_text = "Close  [%s]" % Bindings.key_name("pause", Game.using_pad)
+	_small_button(b)
 	b.pressed.connect(close)
 	b.draw.connect(func():
 		var c := b.size * 0.5
@@ -264,6 +272,7 @@ func _character_panel() -> Control:
 		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		g.add_child(val)
 		var b := UITheme.button("+", func(): Game.spend_point(attr))
+		_small_button(b)
 		b.disabled = st.points <= 0
 		b.custom_minimum_size = Vector2(44, 0)
 		g.add_child(b)
@@ -592,10 +601,12 @@ func _craft_panel() -> Control:
 		for n in CRAFT_AMOUNTS:
 			var amount: int = n
 			var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount, stations))
+			_small_button(b)
 			b.custom_minimum_size = Vector2(54, 0)
 			b.disabled = most < amount
 			row.add_child(b)
 		var all := UITheme.button("All", func(): _do_craft(r, -1, stations))
+		_small_button(all)
 		all.custom_minimum_size = Vector2(60, 0)
 		all.disabled = most <= 0
 		row.add_child(all)
@@ -908,21 +919,26 @@ class EquipSlot extends Button:
 			modulate = Color.WHITE
 
 
-## A stylised figure with the armour slots placed on it: head, chest, hands, off hand,
-## legs and feet.
+## The figure you dress: Ben's engraved slate figure (assets/ui/ui_paperdoll.png) when it
+## is there, else a drawn one, with the armour slots placed on it.
 class Mannequin extends Control:
 	const W := 300.0
-	const H := 440.0
-	const SLOT_AT := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122)}
+	const H := 460.0
+	## Slot centres. With the slate figure they sit on its head, chest, hands, legs and feet.
+	const SLOT_AT := {"head": Vector2(150, 50), "chest": Vector2(150, 140), "hands": Vector2(78, 232), "shield": Vector2(222, 232), "legs": Vector2(150, 298), "feet": Vector2(150, 388), "back": Vector2(236, 96)}
+	const SLOT_AT_DRAWN := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122)}
+	var _doll: Texture2D
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(W, H)
 		mouse_filter = Control.MOUSE_FILTER_PASS
-		for w in SLOT_AT:
+		_doll = UITheme.kit_texture("ui_paperdoll")
+		var at: Dictionary = SLOT_AT if _doll else SLOT_AT_DRAWN
+		for w in at:
 			if not Game.ARMOR_SLOTS.has(w):
 				continue
 			var e := EquipSlot.new(w, 64)
-			e.position = SLOT_AT[w] - Vector2(32, 32)
+			e.position = at[w] - Vector2(32, 32)
 			e.size = Vector2(64, 64)
 			add_child(e)
 
@@ -944,6 +960,12 @@ class Mannequin extends Control:
 			_limb(Vector2(x.call(26), 336), Vector2(x.call(28), 392), 14 + grow, c)
 
 	func _draw() -> void:
+		if _doll:
+			# The slate plate, fitted to the height and centred.
+			var h := H
+			var w := _doll.get_width() * h / _doll.get_height()
+			draw_texture_rect(_doll, Rect2((W - w) * 0.5, 0, w, h), false)
+			return
 		# Floor glow, a soft rim of gold, then the body.
 		for i in 6:
 			var k := 1.0 - i / 6.0
@@ -952,6 +974,5 @@ class Mannequin extends Control:
 		draw_set_transform(Vector2.ZERO)
 		_figure(3.0, Color(UITheme.ACCENT.r * 0.35, UITheme.ACCENT.g * 0.3, UITheme.ACCENT.b * 0.22, 1.0))
 		_figure(0.0, Color(0.13, 0.145, 0.17, 1.0))
-		# A faint top light on the shoulders and head.
 		draw_circle(Vector2(142, 48), 14, Color(1, 1, 1, 0.035))
 		draw_colored_polygon(PackedVector2Array([Vector2(100, 106), Vector2(200, 106), Vector2(196, 120), Vector2(104, 120)]), Color(1, 1, 1, 0.03))

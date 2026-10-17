@@ -69,15 +69,7 @@ func _ready() -> void:
 
 	var cross := Control.new()
 	cross.set_anchors_preset(Control.PRESET_CENTER)
-	cross.draw.connect(func():
-		if not Cursor.locked() and not Game.using_pad:
-			return
-		cross.draw_circle(Vector2.ZERO, 3.5, Color(0, 0, 0, 0.35))
-		cross.draw_circle(Vector2.ZERO, 2.2, Color(1, 1, 1, 0.9))
-		for a in 4:
-			var d := Vector2.from_angle(a * PI * 0.5 + PI * 0.25)
-			cross.draw_line(d * 7.0, d * 11.0, Color(0, 0, 0, 0.4), 3.0, true)
-			cross.draw_line(d * 7.0, d * 11.0, Color(1, 1, 1, 0.55), 1.5, true))
+	cross.draw.connect(_draw_cross.bind(cross))
 	cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(cross)
 	_cross = cross
@@ -174,22 +166,24 @@ func _ready() -> void:
 	lv_row.add_child(gap)
 	lv_row.add_child(_xp_pop)
 	vit.add_child(lv_row)
-	var hb := _bar(vit, "HEALTH", Color(0.8, 0.17, 0.15), 18)
+	var hb := _bar(vit, "HEALTH", Color(0.8, 0.17, 0.15), 18, "health")
 	_health = hb[0]
 	_health_val = hb[1]
-	var sb := _bar(vit, "STAMINA", Color(0.33, 0.7, 0.28), 12)
+	var sb := _bar(vit, "STAMINA", Color(0.33, 0.7, 0.28), 12, "stamina")
 	_stamina = sb[0]
 	_stamina_val = sb[1]
-	var fb := _bar(vit, "JETPACK FUEL", Color(0.95, 0.55, 0.15), 12)
+	var fb := _bar(vit, "JETPACK FUEL", Color(0.95, 0.55, 0.15), 12, "burning")
 	_fuel = fb[0]
 	_fuel_val = fb[1]
-	var xb := _bar(vit, "XP", Color(0.92, 0.72, 0.28), 7)
+	var xb := _bar(vit, "XP", Color(0.92, 0.72, 0.28), 7, "xp")
 	_xp = xb[0]
 	_xp_val = xb[1]
 	var bottom := HBoxContainer.new()
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pv.add_child(bottom)
 	var coin := UITheme.icon_rect("gold_coin", 24)
+	if UITheme.status_icon("gold"):
+		coin.texture = UITheme.status_icon("gold")
 	bottom.add_child(coin)
 	_money = UITheme.label("", 19, UITheme.ACCENT)
 	if UITheme.font("bold"):
@@ -533,13 +527,36 @@ func hide_death() -> void:
 		tw.tween_callback(d.queue_free)
 
 ## A bar with its caption on the left and the value on the right, drawn inside the bar
-## when it is tall enough, above it otherwise.
-static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
+## when it is tall enough, above it otherwise. A status icon sits in front of it, and tall
+## bars sit in Ben's painted bar frame. Returns [bar, value label]; the bar's "row" meta
+## is the whole row, to show or hide.
+static func _bar(parent: Control, caption: String, col: Color, h: int, icon := "") -> Array:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tex := UITheme.status_icon(icon) if icon != "" else null
+	if tex:
+		var ic := TextureRect.new()
+		ic.texture = tex
+		ic.custom_minimum_size = Vector2(26, 26) if h >= 12 else Vector2(18, 18)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(ic)
+	var col_box := VBoxContainer.new()
+	col_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col_box.add_theme_constant_override("separation", 1)
+	col_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col_box)
+	parent.add_child(row)
 	var b := ProgressBar.new()
-	b.custom_minimum_size = Vector2(240, h)
+	b.custom_minimum_size = Vector2(150, h)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.show_percentage = false
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_theme_stylebox_override("fill", UITheme.bar_fill(col))
+	b.set_meta("row", row)
 	var cap := UITheme.label(caption, 11 if h >= 12 else 10, Color(1, 1, 1, 0.85) if h >= 12 else UITheme.DIM)
 	var val := UITheme.label("", 11 if h >= 12 else 10, Color(1, 1, 1, 0.9) if h >= 12 else UITheme.DIM)
 	for l in [cap, val]:
@@ -554,18 +571,64 @@ static func _bar(parent: Control, caption: String, col: Color, h: int) -> Array:
 			l.offset_right = -6
 			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			b.add_child(l)
-		parent.add_child(b)
+		var frame := UITheme.kit_sb("bar_frame", 0, 0)
+		if frame:
+			# The painted frame wraps the bar; its gem ends overhang the fill.
+			frame.content_margin_left = 22
+			frame.content_margin_right = 22
+			frame.content_margin_top = 6
+			frame.content_margin_bottom = 6
+			var fp := PanelContainer.new()
+			fp.add_theme_stylebox_override("panel", frame)
+			fp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			b.add_theme_stylebox_override("background", StyleBoxEmpty.new())
+			fp.add_child(b)
+			col_box.add_child(fp)
+		else:
+			col_box.add_child(b)
 	else:
-		var row := HBoxContainer.new()
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(cap)
+		var cap_row := HBoxContainer.new()
+		cap_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cap_row.add_child(cap)
 		var gap := Control.new()
 		gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(gap)
-		row.add_child(val)
-		parent.add_child(b)
-		parent.add_child(row)
+		cap_row.add_child(gap)
+		cap_row.add_child(val)
+		col_box.add_child(b)
+		col_box.add_child(cap_row)
 	return [b, val]
+
+## The crosshair: Ben's painted ones when present (a hand over things you can use, a
+## pickaxe over things you can break, a sword over animals), else a drawn dot and ticks.
+var _cross_mode := 0
+func _draw_cross(cross: Control) -> void:
+	if not Cursor.locked() and not Game.using_pad:
+		return
+	var tex := UITheme.crosshair(_cross_mode)
+	if tex:
+		var px := 30.0 if _cross_mode == 0 else 34.0
+		cross.draw_texture_rect(tex, Rect2(Vector2(-px, -px) * 0.5 + Vector2(1, 1), Vector2(px, px)), false, Color(0, 0, 0, 0.5))
+		cross.draw_texture_rect(tex, Rect2(Vector2(-px, -px) * 0.5, Vector2(px, px)), false, Color(1, 1, 1, 0.9))
+		return
+	cross.draw_circle(Vector2.ZERO, 3.5, Color(0, 0, 0, 0.35))
+	cross.draw_circle(Vector2.ZERO, 2.2, Color(1, 1, 1, 0.9))
+	for a in 4:
+		var d := Vector2.from_angle(a * PI * 0.5 + PI * 0.25)
+		cross.draw_line(d * 7.0, d * 11.0, Color(0, 0, 0, 0.4), 3.0, true)
+		cross.draw_line(d * 7.0, d * 11.0, Color(1, 1, 1, 0.55), 1.5, true)
+
+## Which crosshair fits what you are looking at.
+func _update_cross() -> void:
+	var mode := 0
+	if not player.focus.is_empty():
+		mode = 18
+	elif _look.visible and _look_sub.text.begins_with("Wild animal"):
+		mode = 20
+	elif _look.visible and _look_hp.visible and not _look_sub.text.begins_with("Relic") and not _look_sub.text.begins_with("Wonder"):
+		mode = 19
+	if mode != _cross_mode:
+		_cross_mode = mode
+		_cross.queue_redraw()
 
 ## The round level badge: a gold ring that fills with progress to the next level.
 func _draw_badge() -> void:
@@ -696,6 +759,7 @@ func _process(_d: float) -> void:
 	_compass.heading = float(heading)
 	_compass.queue_redraw()
 	_update_mouse_hint()
+	_update_cross()
 	_under.visible = player.underwater
 	_breath.max_value = Game.stats.max_breath()
 	_marks.player = player
@@ -718,8 +782,7 @@ func _process(_d: float) -> void:
 	_stamina.value = Game.stamina
 	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]
 	var jp = Jetpack.worn()
-	_fuel.visible = jp != null
-	_fuel_val.get_parent().visible = jp != null
+	_fuel.get_meta("row").visible = jp != null
 	if jp != null:
 		_fuel.max_value = Jetpack.TANK
 		_fuel.value = float(jp.get("fuel", 0.0))

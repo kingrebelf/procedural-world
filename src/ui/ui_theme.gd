@@ -145,8 +145,91 @@ static func _paint(look: String, n: int, radius: float) -> Image:
 			img.set_pixel(x, y, c)
 	return img
 
-## A nine-slice style of one of the painted looks, cached.
-static func tex_sb(look: String, pad := 10, pad_v := -1) -> StyleBoxTexture:
+# --- Ben's painted kit (assets/ui, made by tools/prepare_ui_kit.py) ---------------
+
+## look -> [file, nine-slice margins l t r b, minimum content margins l/r and t/b, tint]
+const KIT := {
+	"panel": ["ui_panel", [42, 40, 42, 40], [28, 24], Color.WHITE],
+	"button": ["ui_button", [24, 12, 24, 12], [26, 6], Color.WHITE],
+	"hover": ["ui_button_hover", [26, 12, 26, 12], [26, 6], Color.WHITE],
+	"tab_on": ["ui_button_hover", [26, 12, 26, 12], [26, 6], Color.WHITE],
+	"pressed": ["ui_button_hover", [26, 12, 26, 12], [26, 6], Color(0.8, 0.75, 0.65)],
+	"tab": ["ui_button", [24, 12, 24, 12], [26, 6], Color(0.75, 0.75, 0.75)],
+	"disabled": ["ui_button", [24, 12, 24, 12], [26, 6], Color(0.55, 0.55, 0.55, 0.75)],
+	"slot": ["ui_slot", [11, 11, 11, 11], [6, 6], Color.WHITE],
+	"slot_hover": ["ui_slot", [11, 11, 11, 11], [6, 6], Color(1.45, 1.3, 1.1)],
+	"slot_sel": ["ui_slot_selected", [13, 13, 13, 13], [6, 6], Color.WHITE],
+	"tooltip": ["ui_tooltip", [12, 12, 12, 12], [14, 10], Color.WHITE],
+	"bar_frame": ["ui_bar_frame", [32, 8, 32, 8], [30, 7], Color.WHITE],
+}
+static var _kit_tex: Dictionary = {}
+
+static func kit_texture(file: String) -> Texture2D:
+	if not _kit_tex.has(file):
+		var path := "res://assets/ui/%s.png" % file
+		_kit_tex[file] = load(path) if ResourceLoader.exists(path) else null
+	return _kit_tex[file]
+
+## The painted kit's style for a look, or null when the kit isn't there.
+static func kit_sb(look: String, pad := 10, pad_v := -1) -> StyleBoxTexture:
+	if not KIT.has(look):
+		return null
+	var k: Array = KIT[look]
+	var t := kit_texture(k[0])
+	if t == null:
+		return null
+	var s := StyleBoxTexture.new()
+	s.texture = t
+	s.texture_margin_left = k[1][0]
+	s.texture_margin_top = k[1][1]
+	s.texture_margin_right = k[1][2]
+	s.texture_margin_bottom = k[1][3]
+	s.content_margin_left = maxf(pad, k[2][0])
+	s.content_margin_right = maxf(pad, k[2][0])
+	var pv := pad * 0.6 if pad_v < 0 else float(pad_v)
+	s.content_margin_top = maxf(pv, k[2][1])
+	s.content_margin_bottom = maxf(pv, k[2][1])
+	s.modulate_color = k[3]
+	return s
+
+## One cell of the HUD status icon sheet: health, stamina, hunger, thirst, warmth, cold,
+## poison, bleeding, burning, well_fed, rested, sick, strength, defence, speed, stealth,
+## luck, xp, day, night, rain, storm, snow, fog, gold, reputation, trade, friendship,
+## hostile, quest.
+const STATUS := ["health", "stamina", "hunger", "thirst", "warmth", "cold", "poison", "bleeding", "burning", "well_fed", "rested", "sick",
+	"strength", "defence", "speed", "stealth", "luck", "xp", "day", "night", "rain", "storm", "snow", "fog",
+	"gold", "reputation", "trade", "friendship", "hostile", "quest"]
+
+static func status_icon(name: String) -> Texture2D:
+	return _cell("status_icons", STATUS.find(name))
+
+## One of the 30 crosshairs (6 x 5, row by row). 18 hand, 19 pickaxe, 20 sword.
+static func crosshair(i: int) -> Texture2D:
+	return _cell("crosshairs", i)
+
+static func _cell(sheet: String, i: int) -> Texture2D:
+	var key := "%s_%d" % [sheet, i]
+	if not _tex.has(key):
+		var t := kit_texture(sheet)
+		if t == null or i < 0:
+			_tex[key] = null
+		else:
+			var a := AtlasTexture.new()
+			a.atlas = t
+			var cw := t.get_width() / 6.0
+			var ch := t.get_height() / 5.0
+			a.region = Rect2((i % 6) * cw, (i / 6) * ch, cw, ch)
+			_tex[key] = a
+	return _tex[key]
+
+## A nine-slice style of one of the looks: Ben's painted kit where it has one, else the
+## frame painted here. painted forces the code-drawn frame (for small buttons the kit's
+## pointed ends would crowd).
+static func tex_sb(look: String, pad := 10, pad_v := -1, painted := false) -> StyleBoxTexture:
+	if not painted:
+		var k := kit_sb(look, pad, pad_v)
+		if k:
+			return k
 	var key := look
 	if not _tex.has(key):
 		var n := 48
@@ -238,7 +321,7 @@ static func get_theme() -> Theme:
 	t.set_stylebox("focus", "LineEdit", sb(Color(0, 0, 0, 0), ACCENT, 4, 1))
 	t.set_color("font_color", "LineEdit", TEXT)
 	t.set_color("caret_color", "LineEdit", ACCENT)
-	t.set_stylebox("panel", "PopupMenu", tex_sb("panel", 10, 8))
+	t.set_stylebox("panel", "PopupMenu", tex_sb("panel", 10, 8, true))
 	t.set_color("font_hover_color", "PopupMenu", ACCENT)
 	t.set_stylebox("hover", "PopupMenu", sb(Color(0.3, 0.24, 0.13, 0.9), Color(0, 0, 0, 0), 4, 0))
 	t.set_stylebox("tab_selected", "TabContainer", tex_sb("tab_on", 18, 8))
@@ -258,7 +341,7 @@ static func get_theme() -> Theme:
 		t.set_stylebox("grabber", sbar, sb(ACCENT * Color(0.7, 0.7, 0.7, 0.6), Color(0, 0, 0, 0), 4, 0, 3))
 		t.set_stylebox("grabber_highlight", sbar, sb(ACCENT * Color(1, 1, 1, 0.85), Color(0, 0, 0, 0), 4, 0, 3))
 		t.set_stylebox("grabber_pressed", sbar, sb(ACCENT, Color(0, 0, 0, 0), 4, 0, 3))
-	t.set_stylebox("panel", "TooltipPanel", tex_sb("panel", 14, 10))
+	t.set_stylebox("panel", "TooltipPanel", kit_sb("tooltip") if kit_sb("tooltip") else tex_sb("panel", 14, 10))
 	t.set_color("font_color", "TooltipLabel", TEXT)
 	t.set_font_size("font_size", "TooltipLabel", 16)
 	t.set_color("font_color", "CheckBox", TEXT)
@@ -310,7 +393,7 @@ static func big_button(text: String, cb: Callable) -> Button:
 ## A keyboard key drawn as a little cap: "[Tab]".
 static func keycap(text: String, size := 14) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", tex_sb("keycap", 6, 1))
+	p.add_theme_stylebox_override("panel", tex_sb("keycap", 6, 1, true))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := label(text, size, Color(0.1, 0.09, 0.08))
 	l.add_theme_constant_override("shadow_offset_y", 0)
@@ -357,7 +440,10 @@ static func money_tag(amount: int, size := 22) -> HBoxContainer:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 6)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	h.add_child(icon_rect("gold_coin", size + 6))
+	var coin := icon_rect("gold_coin", size + 6)
+	if status_icon("gold"):
+		coin.texture = status_icon("gold")
+	h.add_child(coin)
 	var l := label("%d" % amount, size, ACCENT)
 	if font("bold"):
 		l.add_theme_font_override("font", font("bold"))
