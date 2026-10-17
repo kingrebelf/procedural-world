@@ -854,6 +854,27 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.traps.from_data([])
 	kc.held_for = 0.0
 	kc.hp = hp_was
+	# The sci-fi age (pack C): a turret shoots the animal; defib paddles catch a fall; a
+	# beacon marks the map.
+	kc.hp = 1000.0
+	player.traps.add("turret_deploy", kc.global_position + Vector3(3, 0, 0))
+	var hp_u := kc.hp
+	await create_timer(0.6).timeout
+	check(kc.hp < hp_u and player.traps.count() == 1 and int(player.traps.to_data()[0]["shots"]) < int(ItemDB.def("turret_deploy")["trap"]["shots"]), "a turret fires at the animal (%.0f -> %.0f hp)" % [hp_u, kc.hp])
+	player.traps.from_data([])
+	kc.hp = hp_was
+	game.inventory.set_slot(slot, ItemDB.make("defibrillator", 1, 1.0, {}))
+	game.set_health(0.0, "test")
+	check(not game.dead and game.health > 1.0 and game.inventory.count("defibrillator") == 0, "defib paddles bring you back (%.0f hp)" % game.health)
+	game.set_health(game.max_health())
+	var marks0: int = game.markers.count_kind("pin")
+	game.inventory.set_slot(slot, ItemDB.make("beacon_nav", 2, 1.0, {}))
+	player.select(slot)
+	await _frames(2)
+	player._cooldown = 0.0
+	player.use_held()
+	check(game.markers.count_kind("pin") == marks0 + 1 and game.inventory.count("beacon_nav") == 1, "a nav beacon marks the map")
+	game.inventory.set_slot(slot, null)
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,
 ## and its walls keep you in.

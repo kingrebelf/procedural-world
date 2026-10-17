@@ -425,9 +425,24 @@ func set_health(h: float, cause: String = "") -> void:
 	health = clampf(h, 0.0, stats.max_health())
 	_player_dirty = true
 	health_changed.emit(health)
+	if health <= 0.0 and not dead and _revive_from_pack():
+		return
 	if health <= 0.0 and not dead:
 		dead = true
 		died.emit(cause if cause != "" else "You died")
+
+## Defib paddles (an item with "revive") in the pack: used up to bring you back at half
+## health instead of falling.
+func _revive_from_pack() -> bool:
+	for i in inventory.slots.size():
+		var it = inventory.get_slot(i)
+		if it != null and ItemDB.def(it["type"]).get("revive", false):
+			inventory.remove_at(i, 1)
+			health = stats.max_health() * 0.5
+			health_changed.emit(health)
+			toast.emit("The %s jolt you back to your feet" % ItemDB.display_name(it).to_lower())
+			return true
+	return false
 
 ## Back on your feet after dying: full health and stamina. You keep your pack.
 func revive() -> void:

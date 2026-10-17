@@ -5,7 +5,8 @@ class_name Effects
 
 ## Timed effects. "bonus" keys: health, stamina (max), damage, speed, swing, xp (added to
 ## the multiplier), carry (kg), armor, regen (health per second), stamina_regen (added to
-## the refill multiplier), reload (added to the reload speed multiplier), breath (seconds). "dot": health
+## the refill multiplier), reload (added to the reload speed multiplier), breath (seconds), stealth (taken off how
+## easily people notice you), lock (lockpicking, as skill levels / 100). "dot": health
 ## lost per second. "bad": a harm, not a blessing.
 const BUFFS := {
 	"courage": {"name": "Courage", "desc": "+15% damage", "bonus": {"damage": 0.15}},
@@ -20,6 +21,9 @@ const BUFFS := {
 	"inspired": {"name": "Inspired", "desc": "+15% experience", "bonus": {"xp": 0.15}},
 	"rested": {"name": "Well rested", "desc": "+10% experience, stamina refills faster", "bonus": {"xp": 0.1, "stamina_regen": 0.25}},
 	"oiled": {"name": "Oiled guns", "desc": "Reload 20% faster", "bonus": {"reload": 0.2}},
+	"spotter": {"name": "Drone overhead", "desc": "+10% damage, +10% speed", "bonus": {"damage": 0.1, "speed": 0.1}},
+	"shielded": {"name": "Shielded", "desc": "+30 armour", "bonus": {"armor": 30.0}},
+	"hidden": {"name": "In the smoke", "desc": "Much harder to notice", "bonus": {"stealth": 0.5}},
 	"quenched": {"name": "Quenched", "desc": "Not thirsty", "bonus": {}, "hidden": true},
 	"poison": {"name": "Poisoned", "desc": "Losing health", "bonus": {}, "dot": 1.0, "bad": true},
 }
@@ -94,7 +98,7 @@ static func describe(d: Dictionary) -> Array:
 		out.append("%s for %s: %s" % [b.get("name", ""), clock(float(d["buff"][1])), b.get("desc", "")])
 	if float(d.get("sicken", 0.0)) > 0.0:
 		out.append("Eaten raw it may make you sick")
-	if d.get("keep", false):
+	if d.get("keep", false) and String(d.get("kind", "")) == "food":
 		out.append("Refill it at any stream; drink again when thirsty")
 	match String(d.get("read", "")):
 		"courage", "warded":
@@ -121,9 +125,26 @@ static func describe(d: Dictionary) -> Array:
 	if d.has("flare"):
 		out.append("Its flare burns where it lands for %s" % clock(float(d["flare"])))
 	if d.has("trap"):
-		out.append("Use it to set it at your feet; it springs on the next animal that steps in")
+		if d["trap"].has("shots"):
+			out.append("Use it to set it at your feet; it fires at animals within %d m (%d shots)" % [int(d["trap"]["radius"]), int(d["trap"]["shots"])])
+		else:
+			out.append("Use it to set it at your feet; it springs on the next animal that steps in")
 	if d.get("lamp", false):
 		out.append("Worn: a lamp lights the way in the dark")
+	if d.has("jet"):
+		out.append("Worn: a jump pack with %d%% more lift (burns Jet Fuel)" % int((float(d["jet"]) - 1.0) * 100.0))
+	if d.has("beam_dps"):
+		out.append("Hold Use: a cutting beam out to %d m" % int(d.get("beam_range", 10.0)))
+	if d.get("beacon", false):
+		out.append("Use it to drop a beacon on your map where you stand")
+	if d.get("air", false):
+		out.append("Use it under water to fill your lungs" + (" (reusable)" if d.get("keep", false) else ""))
+	if d.get("revive", false):
+		out.append("Carried: when you fall, it brings you back once at half health")
+	if d.get("smoke", false):
+		out.append("Its smoke hides you: much harder to notice for a while")
+	if d.has("grapple"):
+		out.append("Use it: pulls you to what you aim at, up to %d m" % int(d["grapple"]))
 	if String(d.get("kind", "")) == "kit" and d.has("buff"):
 		var kb: Dictionary = BUFFS.get(d["buff"][0], {})
 		out.append("Use it: %s for %s (%s)" % [kb.get("name", ""), clock(float(d["buff"][1])), kb.get("desc", "")])
@@ -142,4 +163,6 @@ static func _bonus_line(k: String, v: float) -> String:
 		"stamina_regen": return "Stamina refills %d%% faster" % int(v * 100.0)
 		"reload": return "Reload %d%% faster" % int(v * 100.0)
 		"breath": return "Hold your breath %ds longer" % int(v)
+		"stealth": return "%d%% harder to notice" % int(v * 100.0)
+		"lock": return "Picks locks as if %d levels better" % int(v * 100.0)
 	return "+%d%% %s" % [int(v * 100.0), k]

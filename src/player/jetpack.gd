@@ -53,7 +53,7 @@ static func pack_model() -> ArrayMesh:
 ## The jetpack you are wearing, or null.
 static func worn():
 	var it = Game.equipment.get("back")
-	return it if it != null and it["type"] == "jetpack" else null
+	return it if it != null and (it["type"] == "jetpack" or ItemDB.def(it["type"]).has("jet")) else null
 
 ## Seconds of thrust left: the tank plus every canister in the pack.
 static func fuel_total(inv: Inventory) -> float:
@@ -93,7 +93,8 @@ func thrust(delta: float, held: bool, pressed: bool, on_floor: bool, vy: float, 
 	if not firing:
 		return 0.0
 	# Full lift while climbing slower than MAX_CLIMB, then just hold the climb.
-	return LIFT if vy < MAX_CLIMB else 0.0
+	var jet := float(ItemDB.def(it["type"]).get("jet", 1.0))
+	return LIFT * jet if vy < MAX_CLIMB * jet else 0.0
 
 ## Swimming, flying or riding skip thrust(): put the flames out.
 func _physics_process(delta: float) -> void:

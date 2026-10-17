@@ -1080,12 +1080,54 @@ func consume(idx: int) -> void:
 		"camp":
 			_sleep(fd, name)
 		"kit":
-			# Gun oil and the like: used up for a timed effect.
-			Game.inventory.remove_at(idx, 1)
-			Game.add_buff(String(fd["buff"][0]), float(fd["buff"][1]))
-			Game.toast.emit("You use the %s: %s" % [name.to_lower(), Effects.BUFFS[fd["buff"][0]]["desc"].to_lower()])
+			_use_kit(idx, fd, name)
 		"trap":
 			_set_trap(idx, String(it["type"]), name)
+
+## Fires a grapple line where you look (out to `reach` m) and hauls you toward the spot
+## it catches. Returns whether it caught.
+func grapple(reach: float) -> bool:
+	var from := camera.global_position
+	var q := PhysicsRayQueryParameters3D.create(from, from - camera.global_transform.basis.z * reach, 1, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		Game.toast.emit("The grapple finds nothing to catch on")
+		return false
+	var to: Vector3 = hit["position"] - global_position
+	# Fast enough to cover the gap in about a second, with a little lift to clear the lip.
+	velocity = to.normalized() * clampf(to.length() * 1.1, 8.0, 30.0) + Vector3(0, 4.0, 0)
+	Audio.play("weapon/draw", -6.0)
+	return true
+
+## Gun oil, scanners, beacons, air and the like (an item of kind "kit"). Kept ones
+## ("keep") are not used up.
+func _use_kit(idx: int, fd: Dictionary, name: String) -> void:
+	if fd.get("revive", false):
+		Game.toast.emit("Keep the %s in your pack: it brings you back if you fall" % name.to_lower())
+		return
+	if fd.get("beacon", false):
+		Game.inventory.remove_at(idx, 1)
+		Game.markers.add(name, global_position.x, global_position.z, Game.planet, "pin", {"icon": "beacon"})
+		Game.touch_player()
+		Game.toast.emit("You set down the %s. It's on your map." % name.to_lower())
+		return
+	if fd.get("air", false):
+		if breath >= Game.stats.max_breath() - 0.5:
+			Game.toast.emit("You have all the air you need")
+			return
+		if not fd.get("keep", false):
+			Game.inventory.remove_at(idx, 1)
+		breath = Game.stats.max_breath()
+		Game.toast.emit("You breathe from the %s" % name.to_lower())
+		return
+	var id := String(fd["buff"][0])
+	if fd.get("keep", false) and Game.has_buff(id):
+		Game.toast.emit("The %s is already working" % name.to_lower())
+		return
+	if not fd.get("keep", false):
+		Game.inventory.remove_at(idx, 1)
+	Game.add_buff(id, float(fd["buff"][1]))
+	Game.toast.emit("You use the %s: %s" % [name.to_lower(), Effects.BUFFS[id]["desc"].to_lower()])
 
 ## Sets the trap from pack slot `idx` on the ground at your feet (Traps).
 func _set_trap(idx: int, type: String, name: String) -> void:
@@ -1159,6 +1201,10 @@ func use_held() -> void:
 	if it != null and ItemDB.def(it["type"]).has("fish"):
 		_cooldown = 0.6
 		_cast_line()
+		return
+	if it != null and ItemDB.def(it["type"]).has("grapple"):
+		_cooldown = 0.8
+		grapple(float(ItemDB.def(it["type"])["grapple"]))
 		return
 	if it != null and ItemDB.def(it["type"]).get("kind", "") == "armor":
 		_cooldown = 0.4
@@ -1398,7 +1444,9 @@ func _gun_sound(kind: String, t: String, at: Vector3, what: String) -> void:
 		"reload_start", "reload_round":
 			Audio.play("weapon/draw", -12.0)
 		"impact":
-			if d.has("splash"):
+			if d.get("smoke", false):
+				Audio.play_at("hit/metal", at, -6.0)
+			elif d.has("splash"):
 				Audio.play_at("weapon/explosion", at, 4.0)
 			elif what == "creature" or what == "npc":
 				Audio.play_at("hit/flesh", at, -4.0)

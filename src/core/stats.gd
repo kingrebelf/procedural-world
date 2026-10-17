@@ -95,9 +95,9 @@ func practice(sk: String, amount: float) -> int:
 	return gained
 
 ## How easily people notice you (1 = standing in the open). Crouching more than halves
-## it, and every level of Sneaking takes a little more off.
+## it, every level of Sneaking takes a little more off, and so does stealth gear.
 func notice_mult(crouched: bool) -> float:
-	return (0.45 if crouched else 1.0) * (1.0 - 0.015 * skills["sneak"])
+	return (0.45 if crouched else 1.0) * (1.0 - 0.015 * skills["sneak"]) * clampf(1.0 - _b("stealth"), 0.2, 1.0)
 
 ## Chance to lift something from a pocket. `worth` is its value in Marks; `behind`
 ## when they face away from you; `aware` 0..1 how alert they already are.

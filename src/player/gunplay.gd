@@ -55,6 +55,25 @@ const HANDLING := {
 	"frag_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"powder_keg": {"mag": 1, "reload": 0.0, "recoil": 1.0, "spread": 1.5, "speed": 12.0, "drop": 1.0, "zoom": 1.0},
 	"fire_bottle": {"mag": 1, "reload": 0.0, "recoil": 0.4, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
+	# The human sci-fi age (pack C): cased smart rounds and shells bark like powder guns,
+	# energy and gauss guns zap; rockets and grenades fly slow and arc.
+	"laser_pistol": {"mag": 15, "reload": 1.2, "recoil": 1.2, "spread": 0.9, "speed": 900.0, "drop": 0.0, "zoom": 1.3},
+	"plasma_rifle": {"mag": 30, "reload": 2.0, "recoil": 1.0, "spread": 1.8, "speed": 140.0, "drop": 0.1, "zoom": 1.6},
+	"gauss_rifle": {"mag": 5, "reload": 2.4, "recoil": 7.0, "spread": 0.6, "speed": 1100.0, "drop": 0.0, "zoom": 3.0, "ads_spread": 0.03},
+	"smart_pistol": {"mag": 14, "reload": 1.3, "recoil": 2.5, "spread": 1.2, "speed": 400.0, "drop": 0.5, "zoom": 1.3, "powder": true},
+	"auto_shotgun": {"mag": 8, "reload": 2.2, "recoil": 5.0, "spread": 1.6, "speed": 240.0, "drop": 1.0, "zoom": 1.2, "powder": true, "pellet_cone": 5.0},
+	"sniper_rail": {"mag": 4, "reload": 2.8, "recoil": 8.0, "spread": 0.5, "speed": 1400.0, "drop": 0.0, "zoom": 5.0, "ads_spread": 0.01},
+	"minigun": {"mag": 200, "reload": 5.0, "recoil": 0.8, "spread": 2.8, "speed": 420.0, "drop": 0.6, "zoom": 1.15, "powder": true},
+	"flamethrower": {"mag": 40, "reload": 2.5, "recoil": 0.2, "spread": 4.0, "speed": 22.0, "drop": 0.4, "zoom": 1.0},
+	"rocket_launcher": {"mag": 1, "reload": 3.0, "recoil": 4.0, "spread": 0.8, "speed": 45.0, "drop": 0.1, "zoom": 1.6},
+	"grenade_launcher": {"mag": 6, "reload": 0.7, "per_round": true, "recoil": 3.5, "spread": 1.0, "speed": 38.0, "drop": 1.0, "zoom": 1.3},
+	"needle_gun": {"mag": 40, "reload": 1.6, "recoil": 0.5, "spread": 1.6, "speed": 300.0, "drop": 0.2, "zoom": 1.3},
+	"carbine_combat": {"mag": 30, "reload": 2.0, "recoil": 1.8, "spread": 1.2, "speed": 500.0, "drop": 0.6, "zoom": 1.8, "powder": true, "ads_spread": 0.15},
+	"frag_grenade_mk2": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"emp_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"smoke_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"breach_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
+	"flare_chem": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 20.0, "drop": 1.0, "zoom": 1.1},
 }
 ## Better arrows a bow nocks first when you carry them: [ammo, alternative, damage multiplier].
 const BETTER_AMMO := {"arrow": ["broadhead_arrows", 1.3]}
@@ -599,6 +618,14 @@ func _muzzle_fx(t: String, d: Dictionary, at: Vector3, fwd: Vector3) -> void:
 func _impact_fx(t: String, d: Dictionary, at: Vector3, n: Vector3, what: String) -> void:
 	var tr := String(d.get("tracer", "glow_cyan"))
 	var out := at + n * 0.05
+	if d.get("smoke", false):
+		# A smoke grenade: a thick grey bank that hides you if you stand in it.
+		for i in 5:
+			var off := Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)) * float(d["splash"]) * 0.4
+			_flipbook("smoke", false, out + off, float(d["splash"]) * 0.45, 9.0, Color(0.62, 0.62, 0.6, 0.8), Vector2(0, 14), Vector3(0, 0.25, 0), 1.0)
+		if player.global_position.distance_to(out) < float(d["splash"]) * 1.5:
+			Game.add_buff("hidden", 20.0)
+		return
 	if d.has("splash"):
 		# Energy weapons burst violet; powder (dynamite, grenades, kegs) in fire and smoke.
 		var powder := not tr.begins_with("glow") or tr == "glow_warm"
