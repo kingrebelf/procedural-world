@@ -1269,7 +1269,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var yield_ := r.randi_range(3, 6)
 		var variant := r.randi() % Flora.VARIANTS
 		var pick := r.randf()
-		var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
+		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
@@ -1280,6 +1280,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
 		if f.is_empty() or (roll >= p * loose and f["t"] != "palm"):
 			continue
+		f = _mixed_flora(f, era, x0 + lx, z0 + lz, pick, height_at(chunk, lx, lz))
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1297,7 +1298,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var yield_ := r.randi_range(4, 7)
 			var variant := r.randi() % Flora.VARIANTS
 			var pick := r.randf()
-			var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
+			var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
 			if landforms:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
@@ -1307,6 +1308,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
 			if f.is_empty():
 				continue
+			f = _mixed_flora(f, era, x0 + lx, z0 + lz, pick, height_at(chunk, lx, lz))
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.
@@ -1325,14 +1327,15 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var pick := r.randi()
 		if _near_settlement(x0 + lx, z0 + lz, sites, 0.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5 or by_river(chunk, lx, lz):
 			continue
-		var bp := Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)
+		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
 			var lf := field.landform_at(x0 + lx, z0 + lz)
 			rd *= WorldField.LANDFORM_ROCKS[lf]
 			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
 				rd *= field.crater_rocks(x0 + lx, z0 + lz)
-		var rocks: Array = bp["rocks"]
+		# v18: near a region's edge a boulder is now and then of the neighbour's stone.
+		var rocks: Array = Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)["rocks"] if mix_species else bp["rocks"]
 		# Dunes bury their stones: no boulders on open sand. Nor one perched on the lip
 		# of a drop, half of it hanging over thin air.
 		if sand_at(chunk, lx, lz) > 0.4 or _on_edge(chunk, lx, lz, sc):
@@ -1504,6 +1507,23 @@ func _town_rings(s: Dictionary, r: RandomNumberGenerator, kit: Array, items: Arr
 				continue
 			var p := c + Vector2(cos(ang), sin(ang)) * rad
 			items.append({"t": t, "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
+
+## Near a region's edge, plants and stones of the neighbouring region mix in (v18). Only
+## which species a tree or boulder is changes, never where it stands or whether it does,
+## so a chunk's objects keep their places and indices with this on or off.
+var mix_species := true
+
+## The species a tree picked from its own region's flora as `f` takes: near the edge, now
+## and then the neighbour's pick by the same roll (its own if the neighbour has none).
+func _mixed_flora(f: Dictionary, era: int, x: float, z: float, pick: float, y: float) -> Dictionary:
+	if not mix_species or WorldField.terrain_v < WorldField.CLIMATE_V:
+		return f
+	var h := field.region_hash_mixed(x, z)
+	if h == field.region_hash_at(x, z):
+		return f
+	var nb := Biome.params(h, era)
+	var g := Biome.fit_flora(nb, Biome.by_altitude(nb, Biome.pick_flora(nb, pick), y, pick), y)
+	return f if g.is_empty() else g
 
 ## Sci-fi outposts sit on a street grid: a main street carrying the first road through
 ## town and a cross street, buildings on square lots facing the nearer street, fenced

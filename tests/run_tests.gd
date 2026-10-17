@@ -2275,6 +2275,29 @@ func test_climates() -> void:
 	for j in ChunkGenerator.MIX_N:
 		agree = agree and ChunkGenerator.biome_pick(ca, 64.0, j * 8.0, 0.3) == ChunkGenerator.biome_pick(cb, 0.0, j * 8.0, 0.3)
 	check(agree, "neighbouring chunks agree on how their regions blend")
+	# Mixing species at a border moves nothing: same objects, same places, same order.
+	var changed := 0
+	var same := true
+	var edge_pts := 0
+	for k in 41:
+		var p := s0.lerp(s1, k / 40.0)
+		if float(g.field.region_blend(p.x, p.y)[2]) < 0.3:
+			continue
+		edge_pts += 1
+		var bx := int(floor(p.x / 64.0))
+		var bz := int(floor(p.y / 64.0))
+		g.mix_species = false
+		var plain := g.generate(bx, bz)
+		g.mix_species = true
+		var mixed := g.generate(bx, bz)
+		same = same and plain["objects"].size() == mixed["objects"].size()
+		for i in mini(plain["objects"].size(), mixed["objects"].size()):
+			var o1: Dictionary = plain["objects"][i]
+			var o2: Dictionary = mixed["objects"][i]
+			same = same and o1["p"] == o2["p"] and o1["i"] == o2["i"] and o1["s"] == o2["s"]
+			changed += 1 if o1.get("sp", 0) != o2.get("sp", 0) else 0
+	check(edge_pts > 0 and same, "mixing species at a border keeps every object in its place")
+	check(changed > 0, "the neighbour's species mix in near the border (%d)" % changed)
 	var grid := ChunkGenerator.biome_mix_grid(ca, Eras.MEDIEVAL, ["grass_tint", "lush", "grass_density"])
 	check(grid.size() == ChunkGenerator.MIX_N * ChunkGenerator.MIX_N and grid[0].size() == 5, "grass blends tint, lushness and thickness")
 	WorldField.terrain_v = was

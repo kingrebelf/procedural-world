@@ -392,16 +392,6 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		biome_tint = bp["grass_tint"]
 		biome_tint.a = 1.0
 		density *= float(bp["grass_density"])
-	# v18: the grass's colour, lushness and thickness run smoothly from one region's into
-	# the next across the band where they meet (rows: tint rgb, lush, density).
-	var blend := ChunkGenerator.biome_mix_grid(chunk, biome_era, ["grass_tint", "lush", "grass_density"])
-	var thickest := 1.0
-	if not blend.is_empty():
-		var top := 0.0
-		for row in blend:
-			top = maxf(top, row[4])
-		thickest = top
-		density *= top / float(Biome.params(chunk["biome"], biome_era)["grass_density"])
 	var seed := int(chunk.get("seed", 0))
 	var clump := FastNoiseLite.new()
 	clump.seed = seed ^ 0x6A55
@@ -434,10 +424,6 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var size := r.randf()
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var dens := w[0] * Eras.GRASS_DENSITY[0] + w[1] * Eras.GRASS_DENSITY[1] + w[2] * Eras.GRASS_DENSITY[2]
-		if not blend.is_empty():
-			dens *= ChunkGenerator.mix_sample(blend, lx, lz, 4) / thickest
-			lush = ChunkGenerator.mix_sample(blend, lx, lz, 3)
-			biome_tint = Color(ChunkGenerator.mix_sample(blend, lx, lz, 0), ChunkGenerator.mix_sample(blend, lx, lz, 1), ChunkGenerator.mix_sample(blend, lx, lz, 2), 1.0)
 		if pick > dens:
 			continue
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.55:
@@ -589,13 +575,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var looks := ChunkGenerator.look_grid(chunk)
 		var ux0 := float(chunk["cx"]) * SIZE
 		var uz0 := float(chunk["cz"]) * SIZE
-		# v18: near a region's edge, now and then the neighbour's plants (as its trees).
-		var mixed := chunk.has("biome_mix")
-		var thickest := float(bp["under_density"])
-		if mixed:
-			for h in chunk["biomes"]:
-				thickest = maxf(thickest, float(Biome.params(h, era)["under_density"]))
-		for n in int(580 * density * thickest * (0.6 if era == Eras.SCIFI else 1.0)):
+		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
 			var lx := r.randf() * SIZE
 			var lz := r.randf() * SIZE
 			var pick := r.randi()
@@ -614,15 +594,9 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
-			var own := unders
-			if mixed:
-				var rp := Biome.params(ChunkGenerator.biome_pick(chunk, lx, lz, ((pick >> 20) & 0xFF) / 256.0), era)
-				if ((pick >> 12) & 0xFF) / 256.0 * thickest >= float(rp["under_density"]):
-					continue
-				own = rp["under"]
 			# Each plant where its kind grows: the region's first species (from the roll)
 			# that suits this spot, or none.
-			var sp := _under_for(chunk, cover, own, pick, era, lx, lz, y, (sc - 0.6) / 0.9)
+			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9)
 			if sp < 0:
 				continue
 			var key := "under#%d#%d" % [sp, era]
