@@ -383,6 +383,15 @@ static func _get_mat(name: String) -> Material:
 		"glow_teal": m = _glow(Color(0.2, 1.0, 0.8), 3.0)
 		"glow_violet": m = _glow(Color(0.7, 0.4, 1.0), 3.0)
 		"portal_door": m = _glow(Color(0.42, 0.22, 0.85), 1.1)
+		# Smooth stones in the rock photo's own colours, with its relief.
+		"river_stone": m = _surface("rock", 2.2, 0.72, 0.0, 0.0)
+		# Wood burnt black, hot enough to glow faintly in the dark.
+		"char":
+			m = _pbr(Color(0.05, 0.045, 0.042), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
+			m.emission_enabled = true
+			m.emission = Color(1.0, 0.28, 0.06)
+			m.emission_energy_multiplier = 0.06
+		"ash": m = _pbr(Color(0.3, 0.29, 0.28), 1.0, 0.0, "stone", 0.05, 2.0, 0.6)
 		"glow_red": m = _glow(Color(1.0, 0.15, 0.1), 5.0)
 		"glow_warm": m = _glow(Color(1.0, 0.65, 0.3), 2.5)
 		"glow_white": m = _glow(Color(0.95, 0.97, 1.0), 3.0)

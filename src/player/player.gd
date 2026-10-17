@@ -820,7 +820,8 @@ func _update_look_target() -> void:
 				"trader":
 					text = ""
 				"built":
-					text = "Hold [%s] to take down (returns the piece)" % _key("interact")
+					# The prompt box already says how to take it down.
+					text = ""
 				_:
 					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
 			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]

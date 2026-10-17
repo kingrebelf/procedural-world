@@ -684,7 +684,8 @@ func _add_obj_body(o: Dictionary) -> void:
 	b.add_child(cs)
 	# A hearth, lamps or screens light the room inside; crystals light a cave.
 	for l in Interiors.lights(o["t"]) + Caves.lights(o):
-		var hl := OmniLight3D.new()
+		# A hearth's light wavers with its fire.
+		var hl: OmniLight3D = FlickerLight.new() if KitHouse.has(o["t"]) else OmniLight3D.new()
 		hl.light_color = l[1]
 		hl.light_energy = l[2]
 		hl.omni_range = l[3]
@@ -721,7 +722,7 @@ func _add_obj_body(o: Dictionary) -> void:
 			b.add_child(pf)
 		var lc = bd.get("light")
 		if lc != null:
-			var l := OmniLight3D.new()
+			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0

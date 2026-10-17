@@ -1083,6 +1083,17 @@ func test_fires() -> void:
 	check(tf.size() == 1 and (tf[0][0] as Vector3).is_equal_approx(Vector3(1.27, 2.34, 3.0)), "a wall torch's flame turns with it to stand in its cup")
 	check(f.size() > 1 and f.slice(1).all(func(e): return float(e[1]) < 0.1), "a cottage's candles burn besides its hearth")
 	check(float(BuildCatalog.def("campfire").get("fire", 0.0)) > 0.5, "a campfire you build has flames")
+	var ck := MeshKit.new(1)
+	BuildCatalog._proc(ck, "campfire")
+	var cmesh := ck.commit(Materials.get_mat)
+	var cmats := []
+	for i in cmesh.get_surface_count():
+		cmats.append(cmesh.surface_get_material(i))
+	check(Materials.get_mat("river_stone") in cmats and Materials.get_mat("char") in cmats and Materials.get_mat("glow_warm") not in cmats, "a campfire is river stones round charred logs, with no glowing ball")
+	check(cmesh.get_aabb().size.x < 1.3 and cmesh.get_aabb().size.y < 0.75, "a campfire's stones are small and its logs lean together low (%s)" % cmesh.get_aabb().size)
+	var fll := FlickerLight.new()
+	check(fll is OmniLight3D, "firelight is an omni light that wavers")
+	fll.free()
 	var fl := FireFx.flame(1.0)
 	var cards := fl.find_children("*", "MeshInstance3D", true, false)
 	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a flame is two cards sharing the fire material")

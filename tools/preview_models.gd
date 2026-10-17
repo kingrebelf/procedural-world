@@ -4,6 +4,7 @@ extends SceneTree
 ##     --out=/abs/path.png nature/CommonTree_1 nature/Pine_1 mesh:oak#1234#0 ...
 ## fire:SIZE is a flame with sparks and smoke; fires:TYPE the flames of a room (with --at0
 ## and "mesh:TYPE~in"); swirl:SIZE:Y:Z a portal's swirl at height Y, Z ahead;
+## build:ID is a piece you build, with its fire if it has one;
 ## --frames=N waits N frames before saving (let sparks and smoke build up).
 
 func _initialize() -> void:
@@ -77,6 +78,16 @@ func _run() -> void:
 		elif String(n).begins_with("fire:"):
 			node = FireFx.flame(float(String(n).get_slice(":", 1)))
 			node.add_child(FireFx.embers(float(String(n).get_slice(":", 1))))
+		elif String(n).begins_with("build:"):
+			var id := String(n).substr(6)
+			node = Node3D.new()
+			var bmi := MeshInstance3D.new()
+			bmi.mesh = BuildCatalog.mesh(id)
+			node.add_child(bmi)
+			if BuildCatalog.def(id).has("fire"):
+				var bf := FireFx.flame(float(BuildCatalog.def(id)["fire"]))
+				bf.add_child(FireFx.embers(float(BuildCatalog.def(id)["fire"])))
+				node.add_child(bf)
 		elif String(n).begins_with("fires:"):
 			node = Node3D.new()
 			for f in Interiors.fires(String(n).substr(6)):
