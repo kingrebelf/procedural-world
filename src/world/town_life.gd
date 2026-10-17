@@ -174,16 +174,23 @@ static func _make(gen: ChunkGenerator, s: Dictionary) -> Dictionary:
 const STALLS := {
 	"produce": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/FarmCrate_Carrot", 0, Vector3(-0.5, 0.95, 0.1), 1.2],
 		["props/FarmCrate_Apple", 8, Vector3(0.45, 0.95, 0.05), 1.2], ["props/Bag", 20, Vector3(1.55, 0, 0.35), 1.0],
-		["props/FarmCrate_Empty", -10, Vector3(-1.6, 0, -0.2), 1.0]],
+		["props/FarmCrate_Empty", -10, Vector3(-1.6, 0, -0.2), 1.0], ["props/FarmCrate_Apple", 12, Vector3(0.8, 0, 1.05), 1.1],
+		["props/FarmCrate_Carrot", -6, Vector3(-0.35, 0, 1.1), 1.1], ["props/Barrel_Apples", 0, Vector3(1.6, 0, -0.7), 1.0]],
 	"pots": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/Vase_2", 0, Vector3(-0.6, 0.95, 0.05), 1.0],
 		["props/Pot_1", 30, Vector3(-0.05, 0.95, 0.1), 1.0], ["props/Vase_4", 0, Vector3(0.55, 0.95, 0.0), 1.0],
-		["props/Vase_2", 0, Vector3(1.5, 0, 0.3), 1.2], ["props/Pot_1", 0, Vector3(-1.5, 0, 0.25), 1.2]],
+		["props/Pot_1_Lid", 0, Vector3(0.25, 0.95, -0.15), 1.0], ["props/Vase_2", 0, Vector3(1.5, 0, 0.3), 1.2],
+		["props/Pot_1", 0, Vector3(-1.5, 0, 0.25), 1.2], ["props/Vase_4", 15, Vector3(-0.7, 0, 1.0), 1.2],
+		["props/Bucket_Wooden_1", 0, Vector3(0.75, 0, 1.0), 1.0]],
 	"stores": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/FarmCrate_Carrot", 5, Vector3(-0.55, 0.95, 0.05), 1.0],
 		["props/Pouch_Large", 40, Vector3(0.0, 0.95, 0.12), 1.0], ["props/Bottle_1", 0, Vector3(0.4, 0.95, 0.1), 1.0],
-		["props/Mug", 0, Vector3(0.6, 0.95, -0.05), 1.0], ["props/Barrel", 0, Vector3(1.55, 0, 0.0), 1.0],
-		["props/Bag", -30, Vector3(-1.5, 0, 0.3), 1.0]],
+		["props/Mug", 0, Vector3(0.6, 0.95, -0.05), 1.0], ["props/Rope_1", 20, Vector3(-0.15, 0.95, -0.2), 1.0],
+		["props/Barrel", 0, Vector3(1.55, 0, 0.0), 1.0], ["props/Bag", -30, Vector3(-1.5, 0, 0.3), 1.0],
+		["props/Bucket_Metal", 0, Vector3(-0.75, 0, 1.0), 1.0], ["props/Chain_Coil", 35, Vector3(0.7, 0, 1.0), 1.0]],
+	"smith": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/Whetstone", 0, Vector3(-0.5, 0.95, 0.05), 1.0],
+		["props/Chain_Coil", 0, Vector3(0.35, 0.95, 0.05), 1.0], ["props/Crate_Metal", 10, Vector3(-1.6, 0, -0.1), 1.0],
+		["props/WeaponStand", 90, Vector3(1.75, 0, 0.1), 1.0], ["props/Bucket_Metal", 0, Vector3(0.8, 0, 1.0), 1.0]],
 	"cart": [["props/Stall_Cart_Empty", 0, Vector3(0.6, 0, 0), 1.0], ["props/FarmCrate_Carrot", 0, Vector3(-0.2, 0.8, 0), 1.0],
-		["props/FarmCrate_Apple", -8, Vector3(0.65, 0.8, 0.05), 1.0]],
+		["props/FarmCrate_Apple", -8, Vector3(0.65, 0.8, 0.05), 1.0], ["props/Barrel_Apples", 0, Vector3(-1.3, 0, 0.4), 1.0]],
 }
 
 ## The market square: setts laid over the square and the streets inside the town, a well
@@ -221,10 +228,10 @@ static func _square(ctx: Dictionary, layout: Array, s: Dictionary, r: RandomNumb
 		out["pieces"].append({"k": "cross" if size >= 2 else "well", "p": mid, "yaw": r.randf() * TAU, "house": -1, "seed": r.randi()})
 		_take(ctx, [mid], 2.2)
 	# Stalls round the square, facing in, between the roads.
-	var kinds := ["produce", "pots", "stores", "produce", "cart"]
+	var kinds := ["produce", "pots", "stores", "produce", "smith", "cart"]
 	var want := 3 + size * 2
 	var a0 := r.randf() * TAU
-	var tries := want * 4
+	var tries := want * 8
 	var placed := 0
 	for i in tries:
 		if placed >= want:
@@ -653,6 +660,22 @@ static func annotate(gen: ChunkGenerator, chunk: Dictionary) -> void:
 				# Ragged edges: trodden wider here, grassed over there.
 				var rag := 0.45 * sin(q.x * 1.37 + q.y * 0.61) * sin(q.y * 1.13 - q.x * 0.47) + 0.2 * sin(q.x * 3.1 - q.y * 2.7)
 				return float(e[3]) * (1.0 - smoothstep(hw * 0.35, hw + 1.1, _seg_d(q, a, b) + rag)))
+		# The ground round the square's setts is trodden bare, fading out raggedly into
+		# the grass rather than meeting it on a line.
+		var sqd: Dictionary = pl["square"]
+		if not sqd.is_empty():
+			var sc: Vector2 = sqd["c"]
+			var srad: float = sqd["rad"]
+			var bb := Rect2(sc, Vector2.ZERO).grow(srad + 5.0)
+			if bb.intersects(area):
+				if worn.is_empty():
+					worn.resize(RES * RES)
+				var ph := float(int(sqd["seed"]) % 628) * 0.01
+				_wear(worn, bb, x0, z0, func(q: Vector2) -> float:
+					var a := (q - sc).angle()
+					var rim := srad + 1.1 * sin(a * 3.0 + ph) + 0.6 * sin(a * 7.0 - ph * 2.0)
+					var rag := 0.8 * sin(q.x * 1.37 + q.y * 0.61) * sin(q.y * 1.13 - q.x * 0.47) + 0.4 * sin(q.x * 2.3 - q.y * 1.9)
+					return 0.9 * (1.0 - smoothstep(-0.5, 3.0, q.distance_to(sc) - rim + rag)))
 		for f: Dictionary in pl["soil"]:
 			var p: Vector2 = f["p"]
 			var hx: float = f["hx"]
@@ -1315,38 +1338,42 @@ func _paving(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		if (h["p"] as Vector2).distance_to(c) < streets + 8.0:
 			houses.append(h)
 	var ph := float(seed % 628) * 0.01
-	var paved := func(q: Vector2) -> bool:
+	# How far inside the setts a point is (negative outside): the square's ragged rim, or
+	# the paved street running out from it. Also how near a street's middle, where the
+	# kennel (the open gutter) runs.
+	var margin := func(q: Vector2) -> Vector2:
 		var d := q.distance_to(c)
 		var a := (q - c).angle()
-		if d < rad + 1.1 * sin(a * 3.0 + ph) + 0.6 * sin(a * 7.0 - ph * 2.0):
-			pass
-		elif d < streets:
-			var on := false
+		var m := rad + 1.1 * sin(a * 3.0 + ph) + 0.6 * sin(a * 7.0 - ph * 2.0) - d
+		var mid := INF
+		if d < streets:
 			for pts: PackedVector2Array in roads:
-				if _line_d(q, pts) < ChunkGenerator.ROAD_HALF + 0.15 + 0.35 * sin(q.x * 0.9 + q.y * 1.3):
-					on = true
-					break
-			if not on:
-				return false
+				var ld := _line_d(q, pts)
+				mid = minf(mid, ld)
+				m = maxf(m, ChunkGenerator.ROAD_HALF + 0.15 + 0.35 * sin(q.x * 0.9 + q.y * 1.3) - ld)
 		else:
-			return false
+			m = minf(m, streets - d)
 		for h in houses:
 			if (h["p"] as Vector2).distance_squared_to(q) > 49.0:
 				continue
 			var lq := world_to_frame(h["p"], h["yaw"], q)
 			if absf(lq.x) < float(h["w"]) * 0.5 + 0.3 and absf(lq.y) < float(h["d"]) * 0.5 + 0.3:
-				return false
-		return true
+				return Vector2(-1.0, mid)
+		return Vector2(m, mid)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var grime := SurfaceTool.new()
+	grime.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var cells := [0]
 	var quad := func(q0: Vector2, sz: float, tone: float) -> void:
 		var ys: Array[float] = []
+		var mg: Array[Vector2] = []
 		for cq: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
 			var y := _ground(q0.x + cq.x * sz, q0.y + cq.y * sz)
 			if is_nan(y):
 				return
 			ys.append(y + 0.035 - oy)
+			mg.append(margin.call(q0 + cq * sz))
 		var v: Array[Vector3] = [Vector3(q0.x - o2.x, ys[0], q0.y - o2.y), Vector3(q0.x + sz - o2.x, ys[1], q0.y - o2.y),
 			Vector3(q0.x + sz - o2.x, ys[2], q0.y + sz - o2.y), Vector3(q0.x - o2.x, ys[3], q0.y + sz - o2.y)]
 		var nrm := (v[3] - v[0]).cross(v[1] - v[0]).normalized()
@@ -1355,23 +1382,42 @@ func _paving(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		for idx in [0, 1, 2, 0, 2, 3]:
 			st.set_uv(Vector2(v[idx].x, v[idx].z))
 			st.add_vertex(v[idx])
+		# The dirt, straw and wet over the stones, a hair above them: red is how near the
+		# rim (trodden-in earth), green how near the kennel.
+		grime.set_normal(nrm)
+		for idx in [0, 1, 2, 0, 2, 3]:
+			var g: Vector2 = mg[idx]
+			grime.set_color(Color(1.0 - clampf(g.x / 2.5, 0.0, 1.0), 1.0 - smoothstep(0.15, 0.6, g.y), 0.0, 1.0))
+			grime.add_vertex(v[idx] + Vector3(0, 0.012, 0))
 		cells[0] += 1
-	# Metre cells, split into quarters along the edge so it doesn't step in whole metres.
+	# Metre cells, split into sixteenths along the edge so it doesn't step in whole metres;
+	# at the rim some setts are gone (sunk, robbed, grassed over), so it frays rather than
+	# ending on a hard line.
 	var n := int(ceil(streets))
 	for j in range(-n, n):
 		for i in range(-n, n):
 			var q0 := c + Vector2(i, j)
 			var tone := 0.72 + 0.14 * fposmod(sin(float(i) * 12.9898 + float(j) * 78.233) * 43758.5453, 1.0)
 			var inside := 0
+			var low := INF
 			for cq: Vector2 in [Vector2(0.25, 0.25), Vector2(0.75, 0.25), Vector2(0.25, 0.75), Vector2(0.75, 0.75)]:
-				if paved.call(q0 + cq):
+				var m: float = (margin.call(q0 + cq) as Vector2).x
+				low = minf(low, m)
+				if m > 0.0:
 					inside += 1
-			if inside == 4:
+			if inside == 4 and low > 1.2:
 				quad.call(q0, 1.0, tone)
-			elif inside > 0:
-				for cq: Vector2 in [Vector2(0, 0), Vector2(0.5, 0), Vector2(0, 0.5), Vector2(0.5, 0.5)]:
-					if paved.call(q0 + cq + Vector2(0.25, 0.25)):
-						quad.call(q0 + cq, 0.5, tone)
+			elif low > -1.0:
+				for sj in 4:
+					for si in 4:
+						var qc := q0 + Vector2(si * 0.25 + 0.125, sj * 0.25 + 0.125)
+						var m: float = (margin.call(qc) as Vector2).x
+						if m <= 0.0:
+							continue
+						var hsh := fposmod(sin(qc.x * 91.7 + qc.y * 47.3 + float(seed % 97)) * 43758.5453, 1.0)
+						if m < 1.2 and hsh < 0.55 * (1.0 - m / 1.2):
+							continue
+						quad.call(q0 + Vector2(si, sj) * 0.25, 0.25, tone * (0.9 + 0.1 * minf(m, 1.0)))
 	if cells[0] == 0:
 		return
 	var mi := MeshInstance3D.new()
@@ -1380,6 +1426,12 @@ func _paving(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = 400.0
 	root.add_child(mi)
+	var gi := MeshInstance3D.new()
+	gi.mesh = grime.commit()
+	gi.material_override = Materials.get_mat("sett_grime")
+	gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	gi.visibility_range_end = 150.0
+	root.add_child(gi)
 
 ## A stook: eight sheaves of cut wheat stood up leaning together to dry, ears up.
 static func _stook(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator) -> void:

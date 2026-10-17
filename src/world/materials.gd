@@ -312,6 +312,11 @@ static func _get_mat(name: String) -> Material:
 			wm.shader = load("res://src/world/weathering.gdshader")
 			_cache[name] = wm
 			return wm
+		"sett_grime":
+			var gm := ShaderMaterial.new()
+			gm.shader = load("res://src/world/sett_grime.gdshader")
+			_cache[name] = gm
+			return gm
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)

@@ -99,4 +99,19 @@ func _run() -> void:
 		cam.position = s[1]
 		cam.look_at(s[2])
 		await _shot(s[0])
+	# The capture tour's 92 framing: from behind the well over it to a stall.
+	var mid := c
+	var stalls: Array = []
+	for pe in pl["pieces"]:
+		if pe["k"] == "well" or pe["k"] == "cross":
+			mid = pe["p"]
+		elif pe["k"] == "stall":
+			stalls.append(pe["p"])
+	if not stalls.is_empty():
+		var sp: Vector2 = stalls[0]
+		var away: Vector2 = (mid - sp).normalized()
+		var q: Vector2 = mid + away * 6.0 + away.orthogonal() * 2.2
+		cam.position = Vector3(q.x, 2.4, q.y)
+		cam.look_at(Vector3(sp.x, 1.0, sp.y))
+		await _shot("market")
 	quit()
