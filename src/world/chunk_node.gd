@@ -602,8 +602,9 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
 			if sp < 0:
 				continue
-			# Wild flowers come in drifts, not dotted one by one across the grass.
-			if era == Eras.MEDIEVAL and mask < 0.2 and Flora.under_form(sp, era) == "flowers":
+			# Wild flowers come in drifts, not dotted one by one across the grass, and even
+			# in a drift there is more green than bloom (a solid mat reads as alien).
+			if era == Eras.MEDIEVAL and (mask < 0.2 or (pick >> 12) & 1 == 1) and Flora.under_form(sp, era) == "flowers":
 				continue
 			var key := "under#%d#%d" % [sp, era]
 			if not out.has(key):
