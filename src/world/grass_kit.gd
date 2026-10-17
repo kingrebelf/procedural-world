@@ -10,7 +10,7 @@ class_name GrassKit
 ## the blade (UV.y, which drives the wind), and the distance over which the species
 ## thins out (UV2: start, end), read by grass.gdshader.
 
-const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed"]
+const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed", "weed_1", "weed_2", "weed_3"]
 ## [thinning starts, all gone] in metres from the camera.
 const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0), "weed": Vector2(30.0, 75.0)}
 ## Petal and centre colours (sRGB) of the wildflowers.
@@ -25,7 +25,9 @@ static var _meshes: Dictionary = {}
 static var _lock := Mutex.new()
 
 static func range_of(species: String) -> Vector2:
-	return RANGE["flowers" if species.begins_with("flowers") else species]
+	if species.begins_with("flowers"):
+		return RANGE["flowers"]
+	return RANGE["weed" if species.begins_with("weed") else species]
 
 static func mesh(species: String) -> ArrayMesh:
 	_lock.lock()
@@ -66,6 +68,21 @@ static func _build(species: String) -> ArrayMesh:
 			for b in 11:
 				var off := _spot(r, 0.24)
 				_blade(st, r, rg, off, r.randf_range(0.45, 1.4), r.randf_range(0.03, 0.05), r.randf_range(0.1, 0.45), 6, false)
+		"weed_1":
+			# Pondweed: a few tall, lanky strands reaching for the light.
+			for b in 6:
+				var off := _spot(r, 0.3)
+				_blade(st, r, rg, off, r.randf_range(1.0, 2.2), r.randf_range(0.025, 0.04), r.randf_range(0.3, 0.8), 8, false)
+		"weed_2":
+			# Eelgrass: a dense low tuft of narrow blades, some bent right over.
+			for b in 20:
+				var off := _spot(r, 0.2)
+				_blade(st, r, rg, off, r.randf_range(0.2, 0.75), r.randf_range(0.012, 0.022), r.randf_range(0.05, 0.5), 5, false)
+		"weed_3":
+			# Broad, crinkled fronds in a loose spray.
+			for b in 7:
+				var off := _spot(r, 0.28)
+				_blade(st, r, rg, off, r.randf_range(0.35, 0.9), r.randf_range(0.05, 0.08), r.randf_range(0.2, 0.6), 6, false)
 		_:
 			var pc: Array = PETALS[int(species.substr(8)) % PETALS.size()]
 			for b in 6:

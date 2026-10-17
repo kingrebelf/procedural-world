@@ -454,11 +454,17 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
-		var sc := lerpf(0.7, 1.4, size)
-		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * rw.randf_range(0.8, 1.3), sc))
+		var sc := lerpf(0.55, 1.6, size * size)
+		# Each clump its own kind and its own lean, so a bed never reads as rows of one card.
+		var kind := ["weed", "weed_1", "weed_2", "weed_3"][int(rw.randf() * 3.999)] as String
+		if kind == "weed_1" and y > -2.5:
+			kind = "weed_2" # the tall strands only where they stay under the surface
+		sc = minf(sc, maxf(-y / 1.6, 0.55))
+		var tilt := Basis(Vector3(cos(yaw * 1.7), 0, sin(yaw * 1.7)), rw.randf_range(0.0, 0.3))
+		var b := (tilt * Basis(Vector3.UP, yaw)).scaled(Vector3(sc, sc * rw.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.34, 0.46, 0.15) * w[0] + Color(0.14, 0.46, 0.38) * w[1] + Color(0.4, 0.36, 0.2) * w[2]
 		tint = tint.lerp(Color(0.46, 0.4, 0.17), rw.randf() * 0.35)
-		var key := "weed@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
+		var key := "%s@%d" % [kind, (1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
 		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, -1.0])
