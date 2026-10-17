@@ -112,6 +112,7 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array) -> voi
 			models.append(["scifi/Platform_Squares", 0, Vector3(-w / 2 + 2 + i * 4, top + 0.04, -d / 2 + 2 + j * 4), 1.0])
 	models.append(["scifi/Prop_Fan_Small", 0, Vector3(-w / 2 + 2, top + 0.04, -d / 2 + 2), 1.0])
 	models.append(["scifi/Prop_Vent_Big", 90, Vector3(w / 2 - 1.6, top + 0.1, 0.5), 1.0])
+	_roof_kit(t, k, models, w, d, top)
 	if storeys > 1:
 		var b := Basis(Vector3(1, 0, 0), -0.9)
 		k.cylinder("metal", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top, -d / 2 + 1.2)), 0.08, 0.05, 4.0, 6)
@@ -121,6 +122,56 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array) -> voi
 	k.box("scifi_floor", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.62, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
 	models.append(["scifi/Platform_DarkPlates", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.03, d / 2 + 2.0), Vector3(1, 1, 0.5)])
 	models.append(["scifi/Prop_Light_Floor", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.04, d / 2 + 2.9), 1.0])
+
+## What makes a block read as a working building and not a box: a railing round the
+## roof, plant on it (air handlers, a water tank, panels, masts), and service pipes
+## climbing the back wall to it.
+static func _roof_kit(t: String, k: MeshKit, models: Array, w: float, d: float, top: float) -> void:
+	var I := Transform3D.IDENTITY
+	var y := top + 0.04
+	# Railing a step in from the slab edge, in 4 m sections (a section runs along its -z).
+	var ex := w / 2 + 0.05
+	var ez := d / 2 + 0.05
+	for i in int(w / 4.0):
+		models.append(["scifi/Prop_Rail_4", -90, Vector3(-w / 2 + i * 4, y, -ez), 1.0])
+		models.append(["scifi/Prop_Rail_4", -90, Vector3(-w / 2 + i * 4, y, ez), 1.0])
+	for j in int(d / 4.0):
+		models.append(["scifi/Prop_Rail_4", 180, Vector3(-ex, y, -d / 2 + j * 4), 1.0])
+		models.append(["scifi/Prop_Rail_4", 180, Vector3(ex, y, -d / 2 + j * 4), 1.0])
+	# Air handlers: a housing with a fan on top.
+	var units: Array = [Vector3(-w / 2 + 1.6, 0, d / 2 - 1.4)]
+	if w >= 12.0:
+		units.append(Vector3(0.6, 0, d / 2 - 1.4))
+	for u in units:
+		k.box("metal_dark", I.translated(u + Vector3(0, top + 0.55, 0)), Vector3(1.9, 1.0, 1.4))
+		k.box("metal", I.translated(u + Vector3(0, top + 0.08, 0)), Vector3(2.1, 0.12, 1.6))
+		models.append(["scifi/Prop_Fan_Small", 0, u + Vector3(0, top + 1.05, 0), 0.75])
+	match t:
+		"hab_block":
+			# A water tank on short legs.
+			var tc := Vector3(w / 2 - 1.5, top, -d / 2 + 1.6)
+			for lg in [Vector2(-0.6, -0.6), Vector2(0.6, -0.6), Vector2(-0.6, 0.6), Vector2(0.6, 0.6)]:
+				k.cylinder("metal_dark", I.translated(tc + Vector3(lg.x, 0, lg.y)), 0.06, 0.06, 0.6, 6)
+			k.cylinder("painted", I.translated(tc + Vector3(0, 0.6, 0)), 0.95, 0.95, 1.7, 14, true, 0.0, 1, Color(0.72, 0.74, 0.72))
+			k.cylinder("painted", I.translated(tc + Vector3(0, 2.3, 0)), 0.95, 0.3, 0.35, 14, true, 0.0, 1, Color(0.6, 0.62, 0.6))
+		"lab_block":
+			# A bank of tilted panels and a short mast with a dish.
+			var tilt := Basis(Vector3(1, 0, 0), -0.5)
+			for n in 3:
+				var pc := Vector3(-w / 2 + 2.4 + n * 2.3, top + 0.7, -d / 2 + 1.8)
+				k.box("metal_dark", Transform3D(tilt, pc), Vector3(2.1, 0.06, 1.5))
+				k.box("solar_cell", Transform3D(tilt, pc + Vector3(0, 0.04, 0)), Vector3(2.0, 0.02, 1.4))
+				k.cylinder("metal", I.translated(Vector3(pc.x, top, pc.z + 0.3)), 0.04, 0.04, 0.55, 6)
+				k.cylinder("metal", I.translated(Vector3(pc.x, top, pc.z - 0.35)), 0.04, 0.04, 0.95, 6)
+			var mc := Vector3(w / 2 - 1.3, top, d / 2 - 1.3)
+			k.cylinder("metal", I.translated(mc), 0.07, 0.05, 3.0, 6)
+			k.sphere("panel", Transform3D(Basis(Vector3(1, 0, 0), -0.7), mc + Vector3(0, 2.4, 0.2)), 0.7, 6, 12, 0.0, 0.35, Color.WHITE, true)
+	# Service pipes up the back wall, bent over the parapet onto the roof.
+	for px in [-w / 2 + 1.0, -w / 2 + 1.35]:
+		k.cylinder("metal", I.translated(Vector3(px, 0.0, -d / 2 - 0.95)), 0.09, 0.09, top + 0.4, 8)
+		k.box("metal", I.translated(Vector3(px, top + 0.4, -d / 2 - 0.3)), Vector3(0.18, 0.18, 1.5))
+	for bh in range(1, int(top / 2.0) + 1):
+		k.box("metal_dark", I.translated(Vector3(-w / 2 + 1.18, bh * 2.0, -d / 2 - 0.88)), Vector3(0.7, 0.08, 0.2))
 
 ## A fenced array: three rows of tilted panels facing the same way, an inverter and
 ## battery bank at the gate end, cable runs between them.
