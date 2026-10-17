@@ -244,6 +244,8 @@ func start(velocity: Vector3, hit: Dictionary) -> void:
 		body.freeze = false
 		body.linear_velocity = velocity
 	_follow_free_roots()
+	# Limp bodies are posed every frame, whatever their animation's level of detail did.
+	skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_IDLE
 	_writer.active = true
 	_live = true
 	if not hit.is_empty():

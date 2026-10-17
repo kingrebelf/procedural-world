@@ -171,8 +171,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		if not String(mi.name).contains("_shell"):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, false)
 	if _body and _body.skin:
 		BodyShape.apply_girth(_body.skin, skeleton, shape)
 		_body.set_instance_shader_parameter("tone", float(shape["muscle"]))
@@ -690,7 +689,21 @@ func _is_held(n: Node) -> bool:
 func set_shadow_only(on: bool) -> void:
 	_shadow_only = on
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, on)
+		if _no_shadow(mi):
+			# They cast no shadow, so a body seen only by its shadow hides them outright.
+			(mi as MeshInstance3D).visible = not on
+
+## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
+## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.
+## Hair shells (HairStrands) only fray the outline, which the base hair already shadows.
+static func _shadow_of(mi: Node, shadow_only: bool) -> GeometryInstance3D.ShadowCastingSetting:
+	if _no_shadow(mi):
+		return GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+static func _no_shadow(mi: Node) -> bool:
+	return mi.name == &"Eyes" or mi.name == &"Eyebrows" or String(mi.name).contains("_shell")
 
 ## Plays a looping state, cross-fading. Walk, jog and sprint all mean "on the move": the
 ## gait and its pace follow how fast the body really moves (HumanAnimator), so `speed`

@@ -79,6 +79,9 @@ func setup(lib: AnimationLibrary, root: Node, sk: Skeleton3D, who: Node3D) -> vo
 	tree.root_node = tree.get_path_to(root)
 	tree.add_animation_library("", lib)
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	# The bone fixes after the animation (feet, looking, hands) run when it does, so a
+	# distant person's level of detail spares them too (a ragdoll switches this back).
+	sk.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 	_bt = _graph(lib)
 	tree.tree_root = _bt
 	tree.active = true
@@ -355,6 +358,8 @@ func update(dt: float) -> void:
 		ik.lean = ik.lean.lerp(Vector2(clampf(-bank, -0.3, 0.3), clampf(tip, -0.15, 0.25)), clampf(dt * 6.0, 0.0, 1.0))
 		ik.feet_allowed = feet_free()
 	tree.advance(dt)
+	if skeleton.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL:
+		skeleton.advance(dt)
 
 func _measure(dt: float) -> void:
 	if body == null or not body.is_inside_tree():
