@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders line-ups of villagers of every age, weight and build (BodyShape), front and
 ## side on, for judging body variety: slim to heavy, young to stooped and grey.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_bodies.gd -- --out=/abs/dir
-## --heads frames the heads close up (hair and faces); --beards does the same for six men,
+## --msaa=0|2|4|8 sets the antialiasing (default 4). --heads frames the heads close up (hair and faces); --beards does the same for six men,
 ## one per facial hair style (clean-shaven, stubble, moustache, goatee, short, full). --walk films them walking at their
 ## own pace, three-quarter on (sway, limp, stoop). --check runs headless and
 ## prints each body's feet height and head height (feet must stay on the ground).
@@ -41,6 +41,7 @@ func _run() -> void:
 	var heads := false
 	var walk := false
 	var beards := false
+	var msaa := Viewport.MSAA_4X
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -48,6 +49,8 @@ func _run() -> void:
 			walk = true
 		elif a == "--heads":
 			heads = true
+		elif a.begins_with("--msaa="):
+			msaa = {"0": Viewport.MSAA_DISABLED, "2": Viewport.MSAA_2X, "4": Viewport.MSAA_4X, "8": Viewport.MSAA_8X}.get(a.substr(7), Viewport.MSAA_4X)
 		elif a == "--beards":
 			beards = true
 			heads = true
@@ -57,7 +60,7 @@ func _run() -> void:
 	var vp := SubViewport.new()
 	vp.size = Vector2i(2400, 760)
 	vp.own_world_3d = true
-	vp.msaa_3d = Viewport.MSAA_4X
+	vp.msaa_3d = msaa
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(vp)
 	var env := WorldEnvironment.new()

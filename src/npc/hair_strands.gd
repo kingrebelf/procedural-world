@@ -17,6 +17,7 @@ const LIFT := {"Hair_SimpleParted": 0.004, "Hair_Buzzed": 0.002, "Hair_BuzzedFem
 
 static var _cache := {}
 static var _mats := {}
+static var _brow_mat: ShaderMaterial
 
 ## The kit mesh with combing tangents, CUSTOM0 = rest position + tip factor; cached per style.
 static func mesh(style: String, src: Mesh) -> ArrayMesh:
@@ -67,6 +68,8 @@ static func mesh(style: String, src: Mesh) -> ArrayMesh:
 		custom[i * 4 + 3] = clampf((box.end.y - p.y) / maxf(box.size.y, 0.01), 0.0, 1.0)
 		if brows:
 			custom[i * 4 + 3] = clampf(absf(p.x - box.get_center().x) / maxf(box.size.x * 0.5, 0.01), 0.0, 1.0)
+	if brows:
+		a[Mesh.ARRAY_COLOR] = _inner(verts, a[Mesh.ARRAY_INDEX])
 	a[Mesh.ARRAY_TANGENT] = tangents
 	a[Mesh.ARRAY_CUSTOM0] = custom
 	a[Mesh.ARRAY_CUSTOM1] = combed
@@ -76,6 +79,29 @@ static func mesh(style: String, src: Mesh) -> ArrayMesh:
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, a, [], {}, (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGB_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT))
 	_cache[style] = m
 	return m
+
+## Per vertex, 0 on the mesh's open border and 1 inside (in COLOR.r), so a brow fades
+## out toward its outline instead of ending in a hard edge. Vertices split only for UVs
+## are joined by position, so seams don't count as border.
+static func _inner(verts: PackedVector3Array, idx: PackedInt32Array) -> PackedColorArray:
+	var key := func(v: Vector3) -> Vector3i: return Vector3i(roundi(v.x * 20000.0), roundi(v.y * 20000.0), roundi(v.z * 20000.0))
+	var edges := {}
+	for t in range(0, idx.size(), 3):
+		for k in 3:
+			var a: Vector3i = key.call(verts[idx[t + k]])
+			var b: Vector3i = key.call(verts[idx[t + (k + 1) % 3]])
+			var e := [a, b] if str(a) < str(b) else [b, a]
+			edges[e] = int(edges.get(e, 0)) + 1
+	var border := {}
+	for e in edges:
+		if edges[e] == 1:
+			border[e[0]] = true
+			border[e[1]] = true
+	var out := PackedColorArray()
+	out.resize(verts.size())
+	for i in verts.size():
+		out[i] = Color(0.0 if border.has(key.call(verts[i])) else 1.0, 0.0, 0.0, 1.0)
+	return out
 
 ## The hair material for the kit texture `which` (1 or 2).
 static func material(which: int) -> ShaderMaterial:
@@ -87,6 +113,13 @@ static func material(which: int) -> ShaderMaterial:
 		m.set_shader_parameter("nrm", load(HumanModel.DIR + "hair_%d_normal.png" % which))
 		_mats[key] = m
 	return _mats[key]
+
+## Eyebrows: blended over the skin (cut-out hairs that small read as a stipple of dots).
+static func brow_material() -> ShaderMaterial:
+	if _brow_mat == null:
+		_brow_mat = ShaderMaterial.new()
+		_brow_mat.shader = load("res://src/npc/brow.gdshader")
+	return _brow_mat
 
 ## Adds the shells over hair mesh `mi` (already skinned and recoloured); returns them.
 static func shells(mi: MeshInstance3D, style: String) -> Array:
