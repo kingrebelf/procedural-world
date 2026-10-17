@@ -7,6 +7,11 @@
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
 global uniform vec3 sun_light_g; // the sun's light reaching the ground (Atmosphere)
+global uniform float wind_strength;
+global uniform vec2 wind_dir;
+global uniform sampler2D water_map : filter_linear; // Water's depth map (metres)
+global uniform sampler2D water_murk : filter_linear; // how murky, over the same square (Water._murk)
+global uniform vec4 water_map_rect; // its origin x, z and size
 #include "res://src/world/noise2d.gdshaderinc"
 
 uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
@@ -617,6 +622,42 @@ void fragment() {
 		col *= 1.0 + caus * under * exp(wpos.y * 0.12) * lit * 1.4 * (1.0 - far);
 	}
 
+	// The water's edge on lake and sea shores: each wave runs up the beach in a thin sheet
+	// and slides back, leaving the ground dark and glossy up to the highest reach, with
+	// a lace of foam riding the front of the wash. Runs up fast, drains slowly.
+	float wet = 0.0;
+	float film = 0.0;
+	float swash = 0.0;
+	if (wpos.y > -0.3 && wpos.y < 1.3 && far < 0.99) {
+		// Surf needs fetch: a sheltered (murky) pond barely laps, a big lake or the sea breaks.
+		vec2 wuv = (p - water_map_rect.xy) / water_map_rect.z;
+		float sheltered = 0.5;
+		if (wuv.x > 0.01 && wuv.y > 0.01 && wuv.x < 0.99 && wuv.y < 0.99) {
+			sheltered = textureLod(water_murk, wuv, 0.0).r;
+			// ...and breaks on the shore the wind blows toward (as water.gdshader judges it).
+			vec2 du = vec2(12.0 / water_map_rect.z, 0.0);
+			vec2 dg = vec2(textureLod(water_map, wuv + du, 0.0).r - textureLod(water_map, wuv - du, 0.0).r,
+				textureLod(water_map, wuv + du.yx, 0.0).r - textureLod(water_map, wuv - du.yx, 0.0).r);
+			float exposed = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
+			sheltered = max(sheltered, 1.0 - exposed);
+		}
+		float reach = (0.12 + wind_strength * 0.45) * (1.0 - 0.75 * sheltered);
+		float ph = fract(TIME * 0.1 + vnoise(p * 0.025) * 2.0);
+		float up = ph < 0.3 ? smoothstep(0.0, 0.3, ph) : 1.0 - smoothstep(0.3, 1.0, ph);
+		float run = 0.02 + reach * up * (0.75 + 0.5 * vnoise(p * 0.12 + 3.0));
+		float ragged = (vnoise(p * 1.3) - 0.5) * 0.06;
+		wet = 1.0 - smoothstep(reach * 0.85, reach * 1.25 + 0.3, wpos.y + ragged * 2.0);
+		film = (1.0 - smoothstep(run - 0.03, run + 0.005, wpos.y + ragged)) * step(0.0, wpos.y + 0.1);
+		float lace = clamp(1.0 - abs((vnoise(p * 3.1 + TIME * 0.2) - 0.5) * 2.0 + (vnoise(p * 7.3) - 0.5)) * 2.4, 0.0, 1.0);
+		swash = (1.0 - smoothstep(0.0, 0.035, abs(wpos.y + ragged - run + 0.012))) * lace * (1.0 - smoothstep(0.35, 0.8, ph)) * step(0.01, wpos.y) * (1.0 - 0.8 * sheltered);
+		wet *= 1.0 - far;
+		film *= 1.0 - far;
+		swash *= 1.0 - far;
+		col *= mix(vec3(1.0), vec3(0.55, 0.53, 0.5), wet);
+		col *= mix(vec3(1.0), vec3(0.82, 0.88, 0.9), film);
+		col = mix(col, vec3(0.78, 0.8, 0.82), swash * 0.85);
+	}
+
 #ifdef FAR_LAND
 	// Forest seen from afar (forest.gdshaderinc). Out to TREE_BB_TO the trees stand as
 	// billboards (FarTrees) and only their shadows fall here; beyond, crowns are painted
@@ -676,6 +717,8 @@ void fragment() {
 	ROUGHNESS = mix(mix(ROUGHNESS, 0.95, canopy), 0.06, river);
 	SPECULAR = mix(mix(0.4, 0.25, canopy), 0.5, river);
 #endif
+	ROUGHNESS = mix(mix(mix(ROUGHNESS, 0.3, wet), 0.04, film), 0.7, swash);
+	SPECULAR = mix(SPECULAR, 0.5, max(wet, film) * (1.0 - swash));
 
 	// Procedural detail normal from the noise gradient (world space -> view space).
 	float e = 0.15;

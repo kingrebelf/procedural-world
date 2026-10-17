@@ -510,7 +510,7 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
-	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
+	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
 	if only.is_empty() or only.has("59") or only.has("60"):
 		await _player_house()
@@ -1090,7 +1090,8 @@ func _starship() -> void:
 		print("captured 12_flight")
 	Input.action_release("move_forward")
 
-## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
+## Under the lake looking back up the shelf to the shore and up at the surface, and a
+## splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 	var out := shore_out
 	var deep := Vector2.INF
@@ -1105,6 +1106,9 @@ func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 		var p: Player = world.player
 		p.underwater = true
 		await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+		# The underside of the surface, looking up at about 45 degrees: Snell's window
+		# overhead, the bed mirrored around it.
+		await _shot("86_surface_from_below", deep, deep - out * 8.0, 0.45, 4.0, Water.LEVEL + 3.0)
 		p.underwater = false
 	var spot := shore + out * 9.0
 	var burst := func() -> void:
