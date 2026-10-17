@@ -338,6 +338,7 @@ const ROLE := {
 	# Boat crews.
 	"captain": "merchant", "skipper": "merchant", "sailor": "worker", "deckhand": "worker", "fisher": "worker",
 	"fisherman": "worker", "castaway": "hunter", "researcher": "civil", "scientist": "civil", "crew": "worker",
+	"ship's cook": "host", "lookout": "worker", "boat pilot": "pilot", "marine biologist": "civil", "ship engineer": "smith",
 }
 
 ## A stable number for one person, from their saved looks (rounded, so a save and load
