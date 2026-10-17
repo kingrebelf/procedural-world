@@ -245,25 +245,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		_clear_line(streamer, Vector3(at.x, y, at.y), Vector3(look_at.x, tgt_h, look_at.y), sight)
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
-	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
+	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
-	# The eye adapts in a few frames instead of seconds: after the night-sky shot the lake
-	# came out white, still exposed for the dark.
-	var ca := (world.atmosphere.get_child(0) as WorldEnvironment).camera_attributes as CameraAttributesPractical
-	if ca.auto_exposure_enabled:
-		# Switching it back on makes the renderer take this view's brightness at once.
-		ca.auto_exposure_enabled = false
-		await _wait(1)
-		ca.auto_exposure_enabled = true
-	var speed := ca.auto_exposure_speed
-	ca.auto_exposure_speed = 20.0
-	# Herds keep spawning as chunks load: keep the biters away the whole time (castle hounds
-	# turned up mid-settle and their bites were still on screen in the shot).
-	for i in settle_frames:
-		await get_tree().process_frame
-		if i % 10 == 0:
-			_shoo_creatures(p.global_position, 45.0, true)
-	ca.auto_exposure_speed = speed
+	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
 	await _wait(3)
@@ -275,6 +259,25 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
 	print("  %d ms after arriving, %d fps, cloud cover %.2f, underground %.2f" % [Time.get_ticks_msec() - arrived,
 		Engine.get_frames_per_second(), float(world.atmosphere.sky_mat.get_shader_parameter("cloud_cover")), world.atmosphere.underground])
+
+## Lets the view settle. The eye adapts in a few frames instead of seconds: after the
+## night-sky shot the lake came out white, still exposed for the dark. Herds keep spawning
+## as chunks load, so the biters are kept away the whole time (castle hounds turned up
+## mid-settle and their bites were still on screen in the shot).
+func _settle(p: Player) -> void:
+	var ca := (world.atmosphere.get_child(0) as WorldEnvironment).camera_attributes as CameraAttributesPractical
+	if ca.auto_exposure_enabled:
+		# Switching it back on makes the renderer take this view's brightness at once.
+		ca.auto_exposure_enabled = false
+		await _wait(1)
+		ca.auto_exposure_enabled = true
+	var speed := ca.auto_exposure_speed
+	ca.auto_exposure_speed = 20.0
+	for i in settle_frames:
+		await get_tree().process_frame
+		if i % 10 == 0:
+			_shoo_creatures(p.global_position, 45.0, true)
+	ca.auto_exposure_speed = speed
 
 func _run() -> void:
 	await _wait(5)
@@ -1063,9 +1066,9 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 9})
 	if torch:
 		p.hand_light.from_data({"kind": "torch", "torch_left": 300.0})
-	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.z)
+	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.z))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
-	await _wait(settle_frames)
+	await _settle(p)
 	world.atmosphere.underground = world.atmosphere._under_target
 	await _wait(20)
 	var img := get_viewport().get_texture().get_image()
