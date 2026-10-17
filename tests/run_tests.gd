@@ -1164,10 +1164,12 @@ func test_road_profiles() -> void:
 			if dh > ChunkGenerator.ROAD_STEP * 0.25:
 				steep += 1
 		for i in lv.size():
-			# Roads cut through rough relief (tors, towers) by design; measure the base.
+			# Roads cut through rough relief (tors, towers) by design; measure the base,
+			# levelled where a town flattens it.
 			var sh := g.field.shape(pts[i].x, pts[i].y)
-			cut = maxf(cut, sh.x + sh.y - lv[i])
-			fills.append(lv[i] - sh.x - sh.y)
+			var base := g._flatten(pts[i].x, pts[i].y, sh.x + sh.y, g._sites_for(pts[i])[0])
+			cut = maxf(cut, base - lv[i])
+			fills.append(lv[i] - base)
 			if ar[i] == 1:
 				air += 1
 				held[Vector2i(int(floor(pts[i].x / ChunkGenerator.SIZE)), int(floor(pts[i].y / ChunkGenerator.SIZE)))] = true
