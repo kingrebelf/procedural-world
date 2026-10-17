@@ -169,9 +169,13 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 	var inner := float(site.get("inner", 30.0))
 	var out := {"center": c, "inner": inner, "outer": outer, "gates": [], "market": [], "towers": [], "wells": [],
 		"holy": [], "homes": [], "tavern": [], "stall": [], "lamps": [], "roads": gen.road_angles(site)}
+	# Things nobody should stand in (stalls, carts, wells, chests...): [[p, reach], ...].
+	var obst: Array = []
 	for it in gen.settlement_layout(site):
 		var t: String = it["t"]
 		var p: Vector2 = it["p"]
+		if TownLife.ROUND.has(t):
+			obst.append([p, float(TownLife.ROUND[t])])
 		match t:
 			"signpost":
 				out["gates"].append(p)
@@ -197,6 +201,9 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 		for pc in TownLife.plan(gen, site)["pieces"]:
 			if pc["k"] == "bench":
 				out["benches"].append([pc["p"], float(pc["yaw"])])
+			if pc.has("p") and pc["k"] in ["bench", "barrels", "cart", "haystack", "chopping", "woodpile"]:
+				obst.append([pc["p"], 1.4 if pc["k"] in ["cart", "haystack"] else 0.7])
+	out["obstacles"] = obst
 	# Beside each shop's door, a yard where its keeper works at their trade.
 	out["shop_yards"] = {}
 	for h in TownShops.shops_of(gen, site):
@@ -229,6 +236,21 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 	out["rounds"] = rounds
 	(out["lamps"] as Array).sort_custom(func(a, b): return (a - c).angle() < (b - c).angle())
 	return out
+
+## `p` moved out of anything standing there (places' obstacles), with `gap` to spare.
+static func clear_spot(places: Dictionary, p: Vector2, gap := 0.45) -> Vector2:
+	for _pass in 3:
+		var moved := false
+		for o in places.get("obstacles", []):
+			var q: Vector2 = o[0]
+			var need := float(o[1]) + gap
+			var d := p.distance_to(q)
+			if d < need:
+				p = q + ((p - q) / d if d > 0.01 else Vector2(1, 0)) * need
+				moved = true
+		if not moved:
+			break
+	return p
 
 ## A direction out of town clear of the roads, for a person's own field or hunting
 ## ground (stable per person and kind).
@@ -377,16 +399,17 @@ static func duty_at(rec: Dictionary, places: Dictionary, hour: float, t: float) 
 			var spots := MarketCrowd.browse_spots(places)
 			var at = _pick(spots, rec, stop)
 			if at != Vector2.INF:
-				# Stood before it, looking it over, not on top of it.
-				var off := Vector2.from_angle(float(absi(hash(String(rec["id"]) + str(stop))) % 628) / 100.0)
-				target = (at as Vector2) + off * 1.4
+				# Stood before it (on the side toward the square), looking it over.
+				var fwd := ((c - at) as Vector2).normalized() if (c - at).length() > 0.5 else Vector2(1, 0)
+				var side := float(absi(hash(String(rec["id"]) + str(stop))) % 100) / 100.0 - 0.5
+				target = clear_spot(places, (at as Vector2) + fwd * 1.0 + fwd.orthogonal() * side * 1.6)
 				face = atan2(at.x - target.x, at.y - target.y)
 		"knot":
 			var ks := MarketCrowd.knots(places)
 			var k: Vector2 = ks[absi(hash(String(rec["id"]) + str(stop / 2))) % ks.size()]
 			# Round the knot, facing in.
 			var a3 := float(absi(hash(String(rec["id"]) + "k")) % 628) / 100.0
-			target = k + Vector2.from_angle(a3) * 1.0
+			target = clear_spot(places, k + Vector2.from_angle(a3) * 1.0)
 			face = atan2(k.x - target.x, k.y - target.y)
 		"homes_gates":
 			target = _pick(places["homes"] if stop % 2 == 0 else places["gates"], rec, stop)

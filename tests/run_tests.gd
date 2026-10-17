@@ -1099,6 +1099,16 @@ func test_npc_roles() -> void:
 	check(NPCRoles.duty_at(v0, pl, 3.0, 0.0).is_empty() and not NPCRoles.day_words(v0).is_empty(), "nothing at night; the model knows they're visiting")
 	var ks := MarketCrowd.knots(pl)
 	check(ks.size() == 5 and (ks[0] as Vector2).distance_to(site["center"]) < float(site["inner"]), "idlers gather in knots in the square")
+	var clear := true
+	for v in crowd:
+		for h in [9.0, 11.0, 13.0, 15.0, 19.0]:
+			var dd := NPCRoles.duty_at(v, pl, h, 0.0)
+			if dd.is_empty() or dd["duty"] == "head_home":
+				continue
+			for o in pl["obstacles"]:
+				if (dd["target"] as Vector2).distance_to(o[0]) < float(o[1]):
+					clear = false
+	check(clear and not (pl["obstacles"] as Array).is_empty(), "nobody stands inside a stall, cart, chest or well")
 	# A weaponsmith keeps a forge outside the shop door for part of the day.
 	var shop := {}
 	for h in TownShops.shops_of(gen, site):

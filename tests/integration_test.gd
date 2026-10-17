@@ -1129,6 +1129,8 @@ func _crowd(game, world, player) -> void:
 				out.append(n)
 		return out
 	var residents: int = e["nodes"].size() - visitors.call().size()
+	var was: Vector3 = player.global_position
+	player.global_position = at + Vector3(0, 1, 0) # near enough that they stay
 	game.day = floor(day0) + 12.5 / 24.0
 	world.npcs._crowd(e, at)
 	await _frames(5)
@@ -1153,20 +1155,19 @@ func _crowd(game, world, player) -> void:
 		sitter.global_position = Vector3(spot[0].x, sitter.global_position.y, spot[0].y)
 		sitter.target = spot[0]
 		sitter.face_to = spot[1]
-		world.npcs._sit(sitter, 30.0)
-		await _frames(90)
+		world.npcs.instruct(sitter, "sit", 120.0) # told to sit and stay sat
+		await _frames(120)
 		check(sitter.perform == "sit" and world.npcs.bench_under(sitter) and sitter._stool == null, "someone sitting down by a door sits on its bench, not a stool")
 		var other: NPC = vs[1]
 		check(world.npcs._bench_spot(other, e, benches[0][0]).is_empty() or int(other.get_meta("bench_i", -1)) != int(sitter.get_meta("bench_i", -2)), "one to a bench")
 		sitter.stop_perform()
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
-	await _frames(2)
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0
 	world.npcs._crowd(e, at)
-	await _frames(2)
 	check(visitors.call().is_empty(), "and by night they have gone home")
 	game.day = day0
+	player.global_position = was
 
 func _pirates(game, world, player) -> void:
 	var at: Vector3 = player.global_position + Vector3(14.0, 0.0, 0.0)

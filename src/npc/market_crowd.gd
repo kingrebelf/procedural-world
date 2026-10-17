@@ -91,11 +91,11 @@ static func knots(places: Dictionary) -> Array:
 	for k in 5:
 		var a := a0 + TAU * float(k) / 5.0
 		var p := c + Vector2.from_angle(a) * clampf(inner * (0.18 + 0.07 * float(k % 3)), 4.5, 11.0)
-		# Not in a stall's way.
+		# Not in a stall's way, nor on a chest or a well.
 		for q in avoid:
 			if p.distance_to(q) < 3.0:
 				p += (p - (q as Vector2)).normalized() * (3.0 - p.distance_to(q))
-		out.append(p)
+		out.append(NPCRoles.clear_spot(places, p, 1.6))
 	return out
 
 ## Where market-goers browse: stalls, carts, and the doors of the shops.
