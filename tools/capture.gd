@@ -133,7 +133,8 @@ func _run() -> void:
 	await _wait(5)
 	var g := ChunkGenerator.new(Game.seed)
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
-		await _cave_shots(g)
+		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
+		await _cave_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	var fan := _find_settlement(g, Eras.FANTASY)
 	var sci := _find_settlement(g, Eras.SCIFI)
@@ -663,7 +664,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	p.global_position = at
 	await _wait_loaded(p, world.streamer)
 	var d := look - at
-	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 0})
+	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 9})
 	if torch:
 		p.hand_light.from_data({"kind": "torch", "torch_left": 300.0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.z)
