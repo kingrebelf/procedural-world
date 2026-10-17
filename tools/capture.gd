@@ -261,8 +261,18 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
+	_report_broken(world)
 	print("  %d ms after arriving, %d fps, cloud cover %.2f, underground %.2f" % [Time.get_ticks_msec() - arrived,
 		Engine.get_frames_per_second(), float(world.atmosphere.sky_mat.get_shader_parameter("cloud_cover")), world.atmosphere.underground])
+
+## Prints every 3D node whose transform has gone non-finite (the renderer only says
+## "!v.is_finite()" without naming it).
+func _report_broken(n: Node) -> void:
+	if n is Node3D and not (n as Node3D).global_transform.is_finite():
+		print("  non-finite transform: ", n.get_path(), " (", n.get_class(), ") ", (n as Node3D).transform)
+		return
+	for c in n.get_children():
+		_report_broken(c)
 
 ## Lets the view settle. The eye adapts in a few frames instead of seconds: after the
 ## night-sky shot the lake came out white, still exposed for the dark. Herds keep spawning
