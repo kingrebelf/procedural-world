@@ -1139,13 +1139,14 @@ func _town_gate(game, world, player) -> void:
 	var gn: NPC = npcs._add_node(e, guard)
 	var fn: NPC = npcs._add_node(e, friend)
 	game.crime = Crime.new()
+	game.standing = Standing.new() # earlier checks' crimes nearby would have reached it by word
 	var wait := func(): await create_timer(0.4).timeout
 	# Walk up to the gate: the guard stops you.
 	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
 	await wait.call()
 	check(game.standing.towns.has(sid) and game.standing.towns[sid]["name"] == "Gatehold", "a town you come near is noted")
 	var o: Dictionary = npcs.gates.options(gn)
-	check(not o.is_empty() and not o["admit"]["ok"] and o["sells"], "a stranger isn't let in, but can pay (%s)" % str(o.get("admit")))
+	check(not o.is_empty() and not o["admit"]["ok"] and o["sells"], "a stranger isn't let in, but can pay (%s, standing %s)" % [str(o.get("admit")), str(o.get("score"))])
 	check(gn.action == "confront", "the gate guard comes to stop you (%s)" % gn.action)
 	# Pay the toll: a pass.
 	game.add_money(int(o["toll"]) + 10)
