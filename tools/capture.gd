@@ -468,7 +468,7 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if only.is_empty() or ["65", "66", "67", "68", "69", "88"].any(func(n): return only.has(n)):
+	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
@@ -1778,21 +1778,30 @@ func _boat_shots(g: ChunkGenerator) -> void:
 			["88_cog_stern", Vector3(8.5, 1.5, 15.0), Vector3(0, 1.4, 7.5)]],
 		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
+		# The cog under way from high on her quarter, her wake spreading out behind.
+		"cog_wake": [["89_cog_wake", Vector3(16.0, 15.0, 30.0), Vector3(0, 0, 26.0)],
+			# Low astern, just off her track, looking up the wake to her stern: the
+			# transverse waves and the arms stand up between the camera and her.
+			["89_cog_wake_low", Vector3(4.0, 1.8, 30.0), Vector3(0, 0.0, 14.0)]],
 	}
 	for key in views:
-		if not best.has(key):
-			print("no %s near spawn for the boat shots" % key)
+		var bk: String = "cog" if key == "cog_wake" else key
+		if not best.has(bk):
+			print("no %s near spawn for the boat shots" % bk)
 			continue
-		var bc: Vector2 = best[key]["center"]
+		var bc: Vector2 = best[bk]["center"]
 		world.player.set_physics_process(false)
 		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
 		# The small boat is caught under way (oars pulling, bow wave and wake); the big ones
 		# lie still.
-		var b: BoatNode = world.boats.put(best[key], key != "small")
-		if key == "small":
-			# Always the same stretch of its loop, whatever the game clock says, so the shot
-			# (and its light) is the same every run.
-			b.route_t = 0.0
+		var under_way: bool = key in ["small", "cog_wake"]
+		var b: BoatNode = world.boats.put(best[bk], not under_way)
+		if under_way:
+			# Always the same stretch of its loop (mid-passage), whatever the game clock says,
+			# so the shot (and its light) is the same every run, with the wake she'd have left.
+			b.held = 0.0
+			b.route_t = 120.0
+			b.prime_wake()
 			for i in 3:
 				await get_tree().physics_frame
 		for v in views[key]:

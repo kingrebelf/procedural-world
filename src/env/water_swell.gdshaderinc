@@ -10,6 +10,7 @@
 // (origin x, z, size; size 0 = no wakes). Boats write it (Water.set_wakes()).
 global uniform sampler2D water_wake_map : filter_linear, repeat_disable;
 global uniform vec4 water_wake_rect;
+#include "res://src/env/water_wakes.gdshaderinc"
 
 const int SWELL_N = 5;
 const float SWELL_LENS[SWELL_N] = float[](64.0, 38.0, 21.0, 13.0, 7.0);
@@ -39,14 +40,16 @@ vec3 swell(vec2 p, float t, float a) {
 	return r * a;
 }
 
-// The wakes' height at p and its xz gradient (zero outside the wake square).
+// The wakes' height at p and its xz gradient: what was painted into the wake map (zero
+// outside its square), plus the Kelvin waves of the boats under way (water_wakes).
 vec3 wake(vec2 p) {
+	vec3 r = boat_wakes(p);
 	if (water_wake_rect.z <= 0.0) {
-		return vec3(0.0);
+		return r;
 	}
 	vec2 uv = (p - water_wake_rect.xy) / water_wake_rect.z;
 	if (uv.x <= 0.0 || uv.y <= 0.0 || uv.x >= 1.0 || uv.y >= 1.0) {
-		return vec3(0.0);
+		return r;
 	}
 	float px = 1.0 / float(textureSize(water_wake_map, 0).x);
 	float h = clamp(textureLod(water_wake_map, uv, 0.0).r, -0.6, 0.6); // Water.WAKE_MAX
@@ -56,5 +59,7 @@ vec3 wake(vec2 p) {
 	vec2 rim = smoothstep(vec2(0.0), vec2(0.05), uv) * (1.0 - smoothstep(vec2(0.95), vec2(1.0), uv));
 	float f = rim.x * rim.y;
 	float cell = water_wake_rect.z * px;
-	return vec3(h, (hx - h) / cell, (hz - h) / cell) * f;
+	r += vec3(h, (hx - h) / cell, (hz - h) / cell) * f;
+	r.x = clamp(r.x, -0.6, 0.6); // Water.WAKE_MAX
+	return r;
 }

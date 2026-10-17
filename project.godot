@@ -69,6 +69,10 @@ water_wake_rect={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 0)
 }
+water_wake_boats={
+"type": "sampler2D",
+"value": ""
+}
 night_glow_g={
 "type": "float",
 "value": 0.15

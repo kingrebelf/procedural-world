@@ -32,6 +32,8 @@ static var _current_lookup: Callable
 static var _murk_lookup: Callable
 
 func _ready() -> void:
+	if not _boat_lookup.is_valid():
+		RenderingServer.global_shader_parameter_set("water_wake_boats", _no_boat_wakes())
 	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
@@ -278,6 +280,23 @@ static func set_wakes(tex: Texture2D, origin: Vector2, size: float, lookup: Call
 	RenderingServer.global_shader_parameter_set("water_wake_map", tex)
 	RenderingServer.global_shader_parameter_set("water_wake_rect", Vector4(origin.x, origin.y, size if tex != null else 0.0, 0.0))
 
+## The Kelvin waves of boats under way (water_wakes.gdshaderinc): `tex` the 8x2 float
+## texture of boats the shaders read, `lookup(x, z)` the same heights for things that
+## float (BoatManager.wake_at). set_boat_wakes(null, ...) clears them.
+static var _boat_lookup: Callable
+
+static func set_boat_wakes(tex: Texture2D, lookup: Callable) -> void:
+	_boat_lookup = lookup if tex != null else Callable()
+	RenderingServer.global_shader_parameter_set("water_wake_boats", tex if tex != null else _no_boat_wakes())
+
+## An all-zero wake table. With no texture bound the shader reads Godot's white default,
+## every slot looks live, and a phantom wake rises by the world origin.
+static var _no_boats: ImageTexture
+static func _no_boat_wakes() -> ImageTexture:
+	if _no_boats == null:
+		_no_boats = ImageTexture.create_from_image(Image.create(8, 2, false, Image.FORMAT_RGBAF))
+	return _no_boats
+
 ## A river's water level at (x, z), or NAN where there is no river. Blended between the
 ## 2 m river cells, so swimming down a river doesn't step from cell to cell.
 func river_at(x: float, z: float) -> float:
@@ -359,7 +378,7 @@ func current_at(x: float, z: float) -> Vector2:
 ## The highest the sea's waves reach right now (surface_height never goes above it,
 ## rivers aside).
 static func wave_top() -> float:
-	return LEVEL + amplitude(14.0) * SWELL_PEAK + (WAKE_MAX if _wake_lookup.is_valid() else 0.0)
+	return LEVEL + amplitude(14.0) * SWELL_PEAK + (WAKE_MAX if _wake_lookup.is_valid() or _boat_lookup.is_valid() else 0.0)
 
 ## A river's surface at (x, z) where it runs above the sea, else NAN.
 static func river_surface(x: float, z: float) -> float:
@@ -390,4 +409,6 @@ static func surface_height(x: float, z: float, t: float) -> float:
 	var w := 0.0
 	if _wake_lookup.is_valid():
 		w = clampf(float(_wake_lookup.call(x, z)), -WAKE_MAX, WAKE_MAX)
+	if _boat_lookup.is_valid():
+		w = clampf(w + float(_boat_lookup.call(x, z)), -WAKE_MAX, WAKE_MAX)
 	return LEVEL + h * a + w

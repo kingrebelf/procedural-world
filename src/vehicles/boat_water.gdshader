@@ -1,9 +1,10 @@
 shader_type spatial;
-// Where a boat meets the water (BoatWater): foam lapping round the hull, the bow waves
-// spreading back in a V and the churned wash behind the stern. Lies on the swell (the
-// same waves as water.gdshader, water_swell). COLOR.r says which part a vertex belongs to (0 the
-// lapping foam, 0.5 a bow wave, 1 the stern wash), COLOR.g how strong that part is for
-// this boat; UV.x runs along it (the foam: 1 at the bow), UV.y across.
+// Where a boat meets the water: foam lapping round the hull (BoatWater), and the wake she
+// leaves (BoatWake). Lies on the swell (water_swell, the same waves as water.gdshader). COLOR.r says
+// which part a vertex belongs to: 0 the lapping foam (UV.x 1 at the bow, UV.y out from the
+// hull), 0.5 a Kelvin arm, 0.75 the transverse waves, 1 the wash; for the wake COLOR.g is
+// how strong it still is, UV.y runs across the strip, UV2.x is metres back along the
+// track and UV2.y the transverse waves' phase.
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_schlick_ggx, shadows_disabled;
 
 global uniform vec2 wind_dir;
@@ -62,14 +63,39 @@ void fragment() {
 	} else {
 		// UV can stray a hair outside 0..1 between vertices: never raise a negative to a power
 		// (a NaN here poisons the auto exposure and washes out the whole view).
-		float along = clamp(UV.x, 0.0, 1.0);
-		float across = clamp(1.0 - abs(UV.y * 2.0 - 1.0), 0.0, 1.0);
-		float fade = pow(1.0 - along, kind > 0.75 ? 1.2 : 1.6) * smoothstep(0.0, 0.04, along);
-		float band = smoothstep(0.0, kind > 0.75 ? 0.7 : 0.45, across);
-		float churn = kind > 0.75 ? vn(wpos.xz * 4.0 + TIME * 1.3) * 0.3 : 0.0;
-		// Broken into crests along the arms, not a painted stripe.
-		float crests = smoothstep(0.25, 0.75, vn(vec2(along * 30.0 - TIME * 0.5, UV.y * 3.0)));
-		a = band * smoothstep(0.5, 0.85, n * 0.5 + crests * 0.5 + churn + band * 0.2) * fade * col.g * clamp(speed * 1.3, 0.0, 1.0) * 0.9;
+		float across = clamp(UV.y, 0.0, 1.0);
+		float mid = clamp(1.0 - abs(across * 2.0 - 1.0), 0.0, 1.0);
+		float back = max(UV2.x, 0.0);
+		float f = clamp(col.g, 0.0, 1.0);
+		if (kind < 0.6) {
+			// A Kelvin arm: a row of short crests slanting out from the track (the feathers a
+			// real wake is made of), breaking white close behind her, rippled further back.
+			float band = smoothstep(0.15, 0.75, mid);
+			// Unevenly spaced, each one broken, some stretches stronger than others.
+			float wob = vn(vec2(back * 0.35, 3.7)) * 5.0;
+			float feathers = 0.5 + 0.5 * sin(back * 1.7 + wob + (across - 0.5) * 6.0 - TIME * 1.3);
+			feathers = smoothstep(0.62, 0.98, feathers) * smoothstep(0.25, 0.65, vn(vec2(back * 0.9, across * 4.0 + TIME * 0.2)));
+			float swell_of_it = 0.55 + 0.45 * vn(vec2(back * 0.12, 9.1));
+			// Only the first stretch breaks white; past ~28 m the arms are pure swell (height and normal), no foam.
+			float whiten = 1.0 - smoothstep(3.0, 28.0, back);
+			a = band * smoothstep(0.3, 0.95, n * 0.4 + feathers * 0.5 + band * 0.15) * f * whiten * swell_of_it * 0.75;
+		} else if (kind < 0.85) {
+			// Transverse waves: curved crests across her track (bowed back at the middle),
+			// marked by thin foam lines and slicks rather than painted bands.
+			float bow = (across - 0.5) * (across - 0.5);
+			float crest = 0.5 + 0.5 * cos(6.2831853 * (UV2.y + bow * 1.4));
+			crest = smoothstep(0.82, 1.0, crest);
+			float edges = smoothstep(0.0, 0.2, mid);
+			a = crest * edges * smoothstep(0.35, 0.75, n) * f * 0.35;
+		} else {
+			// The wash: churned white close astern, settling into a smooth slick with drifting
+			// lace of old foam.
+			float churn = vn(wpos.xz * 3.0 + TIME * 1.1) * 0.6 + vn(wpos.xz * 9.0 - TIME * 1.7) * 0.4;
+			float fresh = 1.0 - smoothstep(0.0, 30.0, back);
+			float band = smoothstep(0.0, mix(0.9, 0.5, fresh), mid);
+			float lace = smoothstep(0.62, 0.8, vn(wpos.xz * 1.6 + vec2(back * 0.1, 0.0)) * 0.6 + n * 0.4);
+			a = band * f * (fresh * smoothstep(0.3, 0.7, churn * 0.7 + band * 0.3) * 0.85 + (1.0 - fresh) * lace * 0.45);
+		}
 	}
 	if (isnan(a) || isinf(a)) {
 		a = 0.0;
