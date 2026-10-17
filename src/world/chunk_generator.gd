@@ -249,6 +249,65 @@ func _place_bridges(chunk: Dictionary, roads: Array) -> void:
 			var deck := level + 1.7 - height_at(chunk, lx, lz)
 			_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack(wet + 2.0, deck), 0)
 
+## A cave in rocky hillsides now and then: its mouth faces downhill, with ore seams
+## inside and sometimes a cache at the back.
+func _place_cave(chunk: Dictionary, sites: Array) -> void:
+	var cx: int = chunk["cx"]
+	var cz: int = chunk["cz"]
+	var r := WHash.rng(seed, cx, cz, 307)
+	if r.randf() >= 0.09:
+		return
+	var lx := r.randf_range(16.0, SIZE - 16.0)
+	var lz := r.randf_range(16.0, SIZE - 16.0)
+	var sp := (r.randi() & 0x7FFFFFF) | 1
+	var x0 := float(cx * SIZE)
+	var z0 := float(cz * SIZE)
+	var h := height_at(chunk, lx, lz)
+	var sl := slope_at(chunk, lx, lz)
+	if sl < 0.06 or sl > 0.32 or h < WATER_LEVEL + 2.0 or by_river(chunk, lx, lz) or road_at(chunk, lx, lz) > 0.0 or _near_settlement(x0 + lx, z0 + lz, sites, 30.0):
+		return
+	var d := Cave.dims(sp)
+	# Nothing that would leave the shell floating: the ground under its rim stays within reach.
+	for a in 8:
+		var q := Vector2(lx, lz) + Vector2.from_angle(a * TAU / 8.0) * d.x
+		if height_at(chunk, q.x, q.y) < h - d.y * 0.38 or by_river(chunk, q.x, q.y):
+			return
+	# Dig a level floor inside the shell (the hill behind would otherwise fill it).
+	var hs: PackedFloat32Array = chunk["heights"]
+	for j in range(int(lz - d.x) - 1, int(lz + d.x) + 2):
+		for i in range(int(lx - d.x) - 1, int(lx + d.x) + 2):
+			if i < 1 or j < 1 or i >= RES - 1 or j >= RES - 1:
+				continue
+			var dd := Vector2(i - lx, j - lz).length() / d.x
+			if dd < 0.95:
+				var k := j * RES + i
+				hs[k] = lerpf(hs[k], minf(hs[k], h + 0.15), 1.0 - smoothstep(0.75, 0.95, dd))
+	chunk["heights"] = hs
+	# Face downhill.
+	var down := Vector2(height_at(chunk, lx - 1.0, lz) - height_at(chunk, lx + 1.0, lz), height_at(chunk, lx, lz - 1.0) - height_at(chunk, lx, lz + 1.0))
+	var yaw := atan2(down.x, down.y)
+	var w := weights_at(chunk, lx, lz)
+	var era := WorldField.dominant(w)
+	_add(chunk, "cave", era, lx, lz, yaw, 1.0, {}, sp, 0)
+	var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
+	var basis := Basis(Vector3.UP, yaw)
+	for n in r.randi_range(2, 4):
+		var a := r.randf_range(PI * 0.55, PI * 1.45) # toward the back walls
+		var off := basis * (Vector3(sin(a), 0, cos(a)) * d.x * r.randf_range(0.45, 0.62))
+		_add(chunk, Eras.ORE_TYPES[era], era, lx + off.x, lz + off.z, r.randf() * TAU, r.randf_range(0.7, 1.1), {"left": r.randi_range(5, 9), "progress": 0.0}, bp["ore_species"], r.randi() % Flora.VARIANTS)
+	if r.randf() < 0.6:
+		var back := basis * Vector3(r.randf_range(-1.5, 1.5), 0, -d.x * 0.45)
+		var o := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
+		_add(chunk, Eras.CACHE_TYPES[era], era, lx + back.x, lz + back.z, yaw, 1.0, {"loot": ItemDB.roll_loot(era, r, o), "opened": false})
+
+## Inside a cave of this chunk (nothing grows there).
+static func in_cave(chunk: Dictionary, lx: float, lz: float) -> bool:
+	for o in chunk["objects"]:
+		if o["t"] == "cave" and not o["st"].get("gone", false):
+			if Vector2(o["p"].x - lx, o["p"].z - lz).length() < Cave.dims(int(o["sp"])).x + 1.5:
+				return true
+	return false
+
 ## How much of the road surface shows at this point of the chunk (0..1).
 static func road_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	if not chunk.has("road"):
@@ -459,6 +518,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	for s in sites:
 		_place_settlement(chunk, s, x0, z0)
 
+	if towns:
+		_place_cave(chunk, sites)
+
 	# Vegetation: jittered candidates, era picked by sampling local weights so
 	# transition bands get a natural, dithered mix of both sides. Each region's biome
 	# decides which species grow and how densely.
@@ -479,7 +541,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var pick := r.randf()
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
-		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15:
+		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz):
 			continue
 		var f := Biome.pick_flora(bp, pick)
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
@@ -501,7 +563,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var pick := r.randf()
 			var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
-			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or _crowds_tree(chunk, lx, lz, 2.2):
+			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2):
 				continue
 			var f := Biome.pick_flora(bp, pick)
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
@@ -519,7 +581,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var left := r.randi_range(3, 7)
 		var variant := r.randi() % Flora.VARIANTS
 		var pick := r.randi()
-		if _near_settlement(x0 + lx, z0 + lz, sites, 0.0) or road_at(chunk, lx, lz) > 0.15 or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5 or by_river(chunk, lx, lz):
+		if _near_settlement(x0 + lx, z0 + lz, sites, 0.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or height_at(chunk, lx, lz) < WATER_LEVEL - 1.5 or by_river(chunk, lx, lz):
 			continue
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])

@@ -198,6 +198,10 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 		biome_tint.a = 1.0
 		density *= float(bp["grass_density"])
 	var count := int(9000 * density)
+	var has_cave := false
+	for o in chunk["objects"]:
+		if o["t"] == "cave":
+			has_cave = true
 	var blocked: Array = []
 	for o in chunk["objects"]:
 		var k: String = ObjectLibrary.kind(o["t"])
@@ -227,6 +231,8 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 			continue
 		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
 		if on_road > 0.5 or (on_road > 0.0 and r.randf() < on_road * 1.6):
+			continue
+		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.33, 0.50, 0.16) * w[0] + Color(0.12, 0.55, 0.5) * w[1] + Color(0.35, 0.38, 0.3) * w[2]
@@ -289,7 +295,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			if w[era] < 0.5 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
-			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05:
+			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz):
 				continue
 			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
 			if not out.has(key):

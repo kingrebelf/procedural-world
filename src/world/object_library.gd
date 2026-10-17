@@ -16,7 +16,7 @@ const KIND := {
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
 	"trader": "trader", "alien_ruin": "structure",
-	"signpost": "marker", "bridge": "structure",
+	"signpost": "marker", "bridge": "structure", "cave": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -41,7 +41,7 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
-	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge",
+	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
@@ -102,6 +102,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		var parts := key.split("#")
 		if parts[0] == "bridge":
 			return Bridge.build(int(parts[1]))
+		if parts[0] == "cave":
+			return Cave.build(int(parts[1]))
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
@@ -187,6 +189,17 @@ static func shape_of(o: Dictionary) -> Array:
 	var k := kind(t)
 	if t == "bridge" and sp != 0:
 		return Bridge.shape(sp)
+	if t == "cave" and sp != 0:
+		var key := mesh_key(o)
+		_lock.lock()
+		var have = _shapes.get(key)
+		_lock.unlock()
+		if have == null:
+			have = Cave.shape(sp)
+			_lock.lock()
+			_shapes[key] = have
+			_lock.unlock()
+		return have
 	if sp == 0 or not (k == "tree" or k == "rock" or k == "ore"):
 		return get_shape(t)
 	var key := mesh_key(o)
