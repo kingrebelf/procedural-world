@@ -365,7 +365,9 @@ func test_room_interiors() -> void:
 		# The loot goes on the floor, clear of the furniture you bump into.
 		for spot in Interiors.LOOT[t]:
 			var q: Vector3 = spot[0]
-			check(absf(q.y - fl) < 0.01, "%s: loot sits on the floor" % t)
+			# A tower's loot waits on its roof.
+			var on: float = Interiors.BOX[t][4] if Interiors.TOWER.has(t) else fl
+			check(absf(q.y - on) < 0.01, "%s: loot sits on the floor" % t)
 			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(spot[1]))), q)
 			var cb := xf * AABB(Vector3(-0.6, 0.05, -0.4), Vector3(1.2, 0.8, 0.8))
 			var clear := true
@@ -383,6 +385,54 @@ func test_room_interiors() -> void:
 						printerr("  %s: loot overlaps %s" % [t, e[0]])
 			check(clear, "%s: the loot spot is clear" % t)
 			check(_ray_hit(faces, xf * Vector3(0, 0.6, 1.0), xf * Vector3(0, 0.4, 0)) == INF, "%s: the loot can be reached from in front" % t)
+
+## Tower stairs: each flight a walkable slope from one landing to the next, room for
+## your head all the way up, and the last flight out through the hatch onto the roof.
+func test_tower_stair() -> void:
+	for t in Interiors.TOWER:
+		var faces: PackedVector3Array = (ObjectLibrary.shape_of({"t": t, "st": {}})[0] as ConcavePolygonShape3D).get_faces()
+		var fs := Interiors.flights(t)
+		var ls := Interiors.landings(t)
+		var top: float = Interiors.BOX[t][4]
+		check(fs.size() == 4 and ls.size() == 3, "%s: four flights and three landings" % t)
+		var ok := true
+		var steep := 0.0
+		for i in fs.size():
+			var fo: Vector3 = fs[i][0]
+			var hd: Vector3 = fs[i][1]
+			steep = maxf(steep, rad_to_deg(atan2(hd.y - fo.y, Vector2(hd.x - fo.x, hd.z - fo.z).length())))
+			if i < 3:
+				var l: Vector3 = ls[i][0]
+				var nx: Vector3 = fs[i + 1][0]
+				ok = ok and absf(l.y - hd.y) < 0.001 and absf(nx.y - hd.y) < 0.001
+				ok = ok and Vector2(l.x - hd.x, l.z - hd.z).length() < Interiors.STAIR_W * 0.51
+				ok = ok and Vector2(l.x - nx.x, l.z - nx.z).length() < Interiors.STAIR_W * 0.51
+		check(ok, "%s: each flight leads onto a landing and on up the next" % t)
+		check(steep < 40.0, "%s: flights are walkable (%.0f degrees)" % [t, steep])
+		check(absf((fs[3][1] as Vector3).y - top) < 0.001, "%s: the stair comes out at the roof" % t)
+		# Stand on the stair: there's a tread under you and nothing over your head.
+		var under := true
+		var head := true
+		for i in fs.size():
+			var fo: Vector3 = fs[i][0]
+			var hd: Vector3 = fs[i][1]
+			for n in 12:
+				var p: Vector3 = fo.lerp(hd, (n + 0.5) / 12.0)
+				under = under and absf(0.5 - _ray_hit(faces, p + Vector3(0, 0.5, 0), p + Vector3(0, -0.5, 0))) < 0.05
+				for d in [Vector3.ZERO, fs[i][2] * 0.6, -fs[i][2] * 0.6]:
+					var hit := _ray_hit(faces, p + d + Vector3(0, 0.1, 0), p + d + Vector3(0, 1.9, 0))
+					if hit < INF:
+						head = false
+						printerr("  %s: flight %d hits your head at %s" % [t, i + 1, p + d])
+		check(under, "%s: the treads are where the stair is drawn" % t)
+		check(head, "%s: headroom all the way up" % t)
+		# Past the stair head, in the corner, you turn and walk out onto the roof.
+		var c: float = (Interiors.BOX[t][0] as Vector2).x - Interiors.STAIR_W * 0.5
+		var corner := Vector3(-c, top + 0.5, c)
+		var out := corner + Vector3(0, 0, -2.5)
+		check(absf(0.5 - _ray_hit(faces, out, out - Vector3(0, 1.0, 0))) < 0.02, "%s: the roof is there to step onto" % t)
+		check(_ray_hit(faces, fs[3][1] + Vector3(0, 0.5, 0), corner) == INF and _ray_hit(faces, corner, out) == INF, "%s: nothing between the stair head and the roof" % t)
+		check(_ray_hit(faces, Vector3(0, top + 0.5, 0), Vector3(0, top + 0.5, 6.0)) < INF, "%s: a parapet round the roof" % t)
 
 func test_rooms_get_stocked() -> void:
 	var chunk := {"cx": 3, "cz": -2, "seed": 77, "objects": [

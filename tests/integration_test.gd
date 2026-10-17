@@ -615,7 +615,7 @@ func _rooms(game, streamer: ChunkStreamer, player) -> void:
 				rough = worst
 				lp = Vector3(gx, h0, gz)
 	print("  rooms stand where the ground varies %.2f m" % rough)
-	for t in ["ops_tower", "hab_dome", "mushroom_house", "castle_keep", "watchtower"]:
+	for t in ["ops_tower", "hab_dome", "mushroom_house", "castle_keep", "watchtower", "castle_tower"]:
 		var era := Eras.SCIFI if t in ["ops_tower", "hab_dome"] else (Eras.FANTASY if t == "mushroom_house" else Eras.MEDIEVAL)
 		var n0: int = rc.data["objects"].size()
 		var room: Dictionary = rc.add_object(t, lp, 0.0, era, {})
@@ -667,10 +667,37 @@ func _rooms(game, streamer: ChunkStreamer, player) -> void:
 		check(lit, "the %s is lit inside" % t)
 		var cache: Dictionary = rc.data["objects"][rc.data["objects"].size() - 1]
 		check(cache["st"].get("inside", "") == t, "the %s is stocked" % t)
+		if Interiors.TOWER.has(t):
+			await _climb(player, w, t)
 		await _open_inside(player, rc, cache)
 		rc.remove_object(cache["i"])
 		rc.remove_object(room["i"])
 		await _frames(2)
+
+## Climbs a tower's stair from the corner at its foot, flight by flight, turning on each
+## landing, and walks out through the hatch onto the roof.
+func _climb(player, w: Vector3, t: String) -> void:
+	var fs := Interiors.flights(t)
+	var c: float = (Interiors.BOX[t][0] as Vector2).x - Interiors.STAIR_W * 0.5
+	var top: float = Interiors.BOX[t][4]
+	var foot: Vector3 = fs[0][0]
+	player.set_state({"pos": w + Vector3(-c, foot.y - Interiors.SINK + 0.1, c), "yaw": 0.0, "pitch": 0.0, "slot": 0})
+	player.velocity = Vector3.ZERO
+	await _frames(10)
+	var yaws := [0.0, -PI / 2.0, PI, PI / 2.0, 0.0]
+	for i in 5:
+		player.set_state({"pos": player.global_position, "yaw": yaws[i], "pitch": 0.0, "slot": 0})
+		Input.action_press("move_forward")
+		for n in 110:
+			await physics_frame
+		Input.action_release("move_forward")
+		await _frames(5)
+		var l: Vector3 = player.global_position - w
+		if i < 4:
+			var want: float = (fs[i][1] as Vector3).y - Interiors.SINK
+			check(absf(l.y - want) < 0.3, "climbing flight %d of the %s takes you up a storey (%.2f m up, the landing at %.2f)" % [i + 1, t, l.y, want])
+		else:
+			check(absf(l.y - (top - Interiors.SINK)) < 0.2 and l.z < 0.0, "out through the hatch onto the %s's roof (%.1f, %.2f, %.1f)" % [t, l.x, l.y, l.z])
 
 ## v7 landforms colour the terrain through vertex data: a karst chunk's mesh carries
 ## pale limestone for every vertex, at every LOD.

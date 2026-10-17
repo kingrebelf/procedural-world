@@ -197,7 +197,7 @@ func _run() -> void:
 						low = h
 						cam = c
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
-	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29")):
+	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
@@ -228,7 +228,8 @@ func _run() -> void:
 	get_tree().quit()
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
-## stronghold's keep, and a mushroom house at night.
+## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell
+## and out from its battlements over the courtyard.
 func _room_shots(g: ChunkGenerator) -> void:
 	var picks: Array = [] ## [name, type, centre, yaw, ground height, day]
 	var sci := _find_settlement(g, Eras.SCIFI, 1)
@@ -272,6 +273,18 @@ func _room_shots(g: ChunkGenerator) -> void:
 			look = Vector2(-0.3, -2.0)
 		var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 		await _shot(pk[0], to_w.call(cam), to_w.call(look), pk[5], fl - 0.1, float(pk[4]) + fl + 0.7)
+	if fort.is_empty() or int(fort["era"]) == 2:
+		return
+	for it in Stronghold.layout(g, fort):
+		if String(it["t"]).ends_with("_tower"):
+			var c: Vector2 = it["p"]
+			var yaw: float = it["yaw"]
+			var gh: float = fort["target_h"]
+			var b: Array = Interiors.BOX[it["t"]]
+			var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
+			await _shot("33_tower_stair", to_w.call(Vector2(1.6, 2.2)), to_w.call(Vector2(-3.0, -3.0)), 0.45, float(b[1]) - 0.1, gh + 7.0)
+			await _shot("34_tower_roof", to_w.call(Vector2(-2.2, -0.6)), fort["center"], 0.45, float(b[4]) - 0.1, gh + 2.0)
+			break
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.

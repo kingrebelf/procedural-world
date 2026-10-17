@@ -83,7 +83,9 @@ static func layout(g: ChunkGenerator, f: Dictionary) -> Array:
 		items.append({"t": t, "p": c + q.rotated(-yaw), "yaw": yaw + face, "st": st})
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
-			put.call(pc[1], Vector2(sx, sz) * HALF, 0.0, {"tier": tier})
+			# Turned so the door, near one corner of the tower's front, opens on the courtyard.
+			var turn := (PI / 2.0 if sz > 0.0 else 0.0) if sx < 0.0 else (PI if sz > 0.0 else -PI / 2.0)
+			put.call(pc[1], Vector2(sx, sz) * HALF, turn, {"tier": tier})
 	# Walls: three 8 m sections per side, the gate in the middle of the front (+z).
 	for side in 4:
 		var face := side * PI / 2.0
@@ -124,8 +126,8 @@ static func town_wall(g: ChunkGenerator, s: Dictionary, items: Array) -> void:
 	var mid := rad * cos(half) ## chord midpoints sit slightly inside the circle
 	var put := func(t: String, ang: float, r: float) -> void:
 		var d := Vector2(cos(ang), sin(ang))
-		# Local +z (the outer face) points away from the town.
-		items.append({"t": t, "p": c + d * r, "yaw": atan2(d.x, d.y), "st": {}})
+		# Local +z (the outer face) points away from the town; a tower turns its door in.
+		items.append({"t": t, "p": c + d * r, "yaw": atan2(d.x, d.y) + (PI if t == "castle_tower" else 0.0), "st": {}})
 	for i in gates.size():
 		var g0: float = gates[i]
 		var g1: float = gates[(i + 1) % gates.size()]
@@ -218,15 +220,20 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array) -> voi
 			_merlons(k, face_stone, -4.0, 4.0, 6.2, 0.75, 0.0, ruined, r)
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.2, 4.0, 2.0))
 		"tower":
-			# 8 m square, four storeys, arrow slits, a crenellated top.
+			# 8 m square, four storeys, arrow slits, a crenellated top. A door at the foot of
+			# the front opens on a stair up the walls to a hatch onto the roof (Interiors).
 			for side in 4:
 				var yaw := side * PI / 2.0
-				_face(models, 4, 4, yaw, 4.0, 2, ruined, r)
+				_face(models, 4, 4, yaw, 4.0, 2, ruined, r, 3 if side == 0 else -1)
 			for c in [Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)]:
 				for row in 4:
 					models.append(["village/Corner_Exterior_Brick", 0, c + Vector3(0, row * 3.0, 0), 1.0])
-			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 6.0, 0)), Vector3(7.6, 12.0, 7.6))
-			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 12.15, 0)), Vector3(8.6, 0.3, 8.6))
+			models.append(["village/Wall_UnevenBrick_Door_Round", 0, Vector3(3, 0, 4.0), 1.0])
+			models.append(["village/Door_1_Round", 100, Vector3(3 - 0.53, 0, 4.0 - 0.18), 1.0])
+			var fl: float = Interiors.BOX["castle_tower"][1]
+			k.box("flagstone", Transform3D.IDENTITY.translated(Vector3(0, fl * 0.5, 0)), Vector3(7.6, fl, 7.6))
+			for bx in Interiors.roof_boxes("castle_tower"):
+				k.box(face_stone, Transform3D.IDENTITY.translated(bx[0]), bx[1])
 			for side in 4:
 				_merlons(k, face_stone, -4.2, 4.2, 12.3, 4.05, side * PI / 2.0, ruined, r)
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))

@@ -20,7 +20,17 @@ const BOX := {
 	"ops_tower": [Vector2(3.56, 3.56), 0.2, 4.8, Vector2(4.7, 4.7), 10.0, [2.0, 1.95, 4.0]],
 	"bunker_keep": [Vector2(5.56, 3.56), 0.2, 4.5, Vector2(6.7, 4.7), 5.0, [0.0, 1.95, 4.0]],
 	"bunker_tower": [Vector2(3.56, 3.56), 0.2, 4.8, Vector2(4.7, 4.7), 10.0, [2.0, 1.95, 4.0]],
+	"castle_tower": [Vector2(3.69, 3.69), 0.22, 12.0, Vector2(4.3, 4.3), 12.3, [3.0, 0.62, 2.4]],
+	"crypt_tower": [Vector2(3.69, 3.69), 0.22, 12.0, Vector2(4.3, 4.3), 12.3, [3.0, 0.62, 2.4]],
 }
+
+## Stone towers you climb (box rooms whose "ceiling" is the roof): a flight up each wall
+## in turn, one storey each, to a hatch onto the battlements. The tread material by type.
+const TOWER := {"castle_tower": "flagstone", "crypt_tower": "stone_dark"}
+const STAIR_W := 1.0
+## The hatch over the last flight reaches from the stair head to this x.
+const HATCH_X := 1.5
+const PARAPET := 0.95
 
 ## Round rooms, rebuilt here with a doorway: [wall radius at the base (outside), at the
 ## top, wall thickness, wall from y, to y, floor, ceiling, top of the solid block,
@@ -202,6 +212,28 @@ const FURNISH := {
 		["props/Torch_Metal", 90, Vector3(-1.82, 1.9, 0.0), false],
 		["props/Shield_Wooden", -90, Vector3(1.78, 1.8, -0.1), false],
 	],
+	"castle_tower": [
+		["props/WeaponStand", 0, Vector3(-1.0, _F_KEEP, -3.19), true],
+		["props/Shield_Wooden", 0, Vector3(-2.15, 1.75, -3.69), false],
+		["props/Torch_Metal", 0, Vector3(0.35, 1.9, -3.69), false],
+		["props/Barrel", 0, Vector3(3.1, _F_KEEP, -3.1), true],
+		["props/Barrel", 0, Vector3(3.15, _F_KEEP, -2.2), true],
+		["props/Crate_Wooden", 20, Vector3(-1.8, _F_KEEP, 0.2), true],
+		["props/Torch_Metal", -90, Vector3(3.69, 1.9, 0.4), false],
+		["props/Chandelier", 0, Vector3(0.0, 12.0, 0.0), false],
+		["props/Crate_Wooden", 0, Vector3(2.6, 12.3, -2.6), true],
+		["props/Barrel", 0, Vector3(1.5, 12.3, -3.0), true],
+	],
+	"crypt_tower": [
+		["@tomb", 0, Vector3(0.6, _F_KEEP, -0.4), true],
+		["props/CandleStick_Stand", 0, Vector3(-0.3, _F_KEEP, 1.25), false],
+		["props/CandleStick_Stand", 0, Vector3(1.5, _F_KEEP, 1.25), false],
+		["props/Vase_Rubble_Medium", 0, Vector3(3.1, _F_KEEP, -3.0), false],
+		["props/Cage_Small", 30, Vector3(3.0, _F_KEEP, -1.8), true],
+		["props/Chain_Coil", 0, Vector3(-1.6, _F_KEEP, -2.9), false],
+		["props/Torch_Metal", 0, Vector3(0.35, 1.9, -3.69), false],
+		["props/Vase_2", 0, Vector3(2.7, 12.3, -2.8), false],
+	],
 	"shrine": [
 		["props/CandleStick_Stand", 0, Vector3(-1.2, SHRINE_FLOOR, -0.6), false],
 		["props/CandleStick_Stand", 0, Vector3(1.2, SHRINE_FLOOR, -0.6), false],
@@ -247,12 +279,15 @@ const LOOT := {
 	"hab_dome": [[Vector3(1.4, _F_DOME, -2.7), 0.0]],
 	"watchtower": [[Vector3(1.3, _F_HUT, -0.1), -90.0]],
 	"shrine": [[Vector3(0.0, SHRINE_FLOOR, -1.35), 0.0]],
+	# On the battlements, for whoever climbs up.
+	"castle_tower": [[Vector3(-1.4, 12.3, -1.6), 0.0]],
+	"crypt_tower": [[Vector3(-1.4, 12.3, -1.6), 0.0]],
 }
 
 ## How good the loot is (ItemDB.roll_loot luck). Stronghold keeps and towers go by
 ## their stronghold's tier when they know it.
 const LUCK := {"castle_keep": 0.5, "crypt_keep": 0.5, "bunker_keep": 0.6, "bunker_tower": 0.35, "ops_tower": 0.15,
-	"lab_block": 0.15, "shrine": 0.2, "watchtower": 0.1}
+	"lab_block": 0.15, "shrine": 0.2, "watchtower": 0.1, "castle_tower": 0.15, "crypt_tower": 0.2}
 
 ## Lights: [position, colour, energy, range].
 const LIGHTS := {
@@ -267,6 +302,8 @@ const LIGHTS := {
 	"hab_dome": [[Vector3(0.0, 2.7, 0.0), Color(0.82, 0.95, 1.0), 1.4, 7.5]],
 	"watchtower": [[Vector3(0.0, 2.3, 0.0), Color(1.0, 0.64, 0.35), 1.2, 5.0]],
 	"shrine": [[Vector3(0.0, 1.6, 0.0), Color(0.45, 1.0, 0.9), 1.3, 6.0]],
+	"castle_tower": [[Vector3(0.0, 2.6, 0.0), Color(1.0, 0.66, 0.38), 1.5, 8.0], [Vector3(0.0, 11.2, 0.0), Color(1.0, 0.66, 0.38), 1.4, 8.0]],
+	"crypt_tower": [[Vector3(0.0, 2.4, 0.0), Color(0.72, 0.55, 1.0), 1.3, 7.5], [Vector3(0.0, 10.4, 0.0), Color(0.72, 0.55, 1.0), 1.1, 7.5]],
 }
 
 ## A room to walk into (KitHouse types are walkable too, but build their own).
@@ -378,6 +415,8 @@ static func interior(t: String) -> ArrayMesh:
 		"hab_dome":
 			var top: float = _F_DOME + (DOME[0] - DOME[1]) * DOME[2]
 			k.cylinder("glow_white", I.translated(Vector3(0, top - 0.12, 0)), 0.6, 0.6, 0.03, 16)
+		"castle_tower", "crypt_tower":
+			_stair(k, t)
 		"watchtower":
 			# The hatch the ladder climbs to.
 			k.box("timber", I.translated(Vector3(0, 3.18, -1.25)), Vector3(0.9, 0.04, 0.9))
@@ -434,9 +473,18 @@ static func _box_room(f: PackedVector3Array, t: String) -> void:
 	var oh: Vector2 = b[3]
 	var top: float = b[4]
 	var door: Array = b[5]
-	# The floor, reaching down into slopes, and the solid block over the ceiling.
+	# The floor, reaching down into slopes, and the solid block over the ceiling (a
+	# tower's roof, open over its stair, with a parapet round it and the stair below).
 	_box_faces(f, Vector3(0, fl - 0.5, 0), Vector3(oh.x * 2, 1.0, oh.y * 2))
-	_box_faces(f, Vector3(0, (ce + top) * 0.5, 0), Vector3(oh.x * 2, top - ce, oh.y * 2))
+	if TOWER.has(t):
+		for bx in roof_boxes(t):
+			_box_faces(f, bx[0], bx[1])
+		for side in [-1.0, 1.0]:
+			_box_faces(f, Vector3(0, top + PARAPET * 0.5, side * (oh.y - 0.2)), Vector3(oh.x * 2, PARAPET, 0.4))
+			_box_faces(f, Vector3(side * (oh.x - 0.2), top + PARAPET * 0.5, 0), Vector3(0.4, PARAPET, oh.y * 2))
+		_stair_faces(f, t)
+	else:
+		_box_faces(f, Vector3(0, (ce + top) * 0.5, 0), Vector3(oh.x * 2, top - ce, oh.y * 2))
 	var tx := oh.x - ih.x
 	var tz := oh.y - ih.y
 	_box_faces(f, Vector3(0, ce * 0.5, -(ih.y + tz * 0.5)), Vector3(oh.x * 2, ce, tz))
@@ -455,6 +503,111 @@ static func _box_room(f: PackedVector3Array, t: String) -> void:
 		_box_faces(f, Vector3(dx + hw + right * 0.5, ce * 0.5, zf), Vector3(right, ce, tz))
 	if ce > dh:
 		_box_faces(f, Vector3(dx, (dh + ce) * 0.5, zf), Vector3(hw * 2.0, ce - dh, tz))
+
+## A tower's flights: [foot, head, half the width toward the shaft], foot and head on
+## the stair's centre line. Up the left wall, along the back, down the right side and
+## across the front to the roof, each a storey higher.
+static func flights(t: String) -> Array:
+	var b: Array = BOX[t]
+	var a: float = (b[0] as Vector2).x
+	var fl: float = b[1]
+	var rise: float = (float(b[4]) - fl) / 4.0
+	var c := a - STAIR_W * 0.5
+	var e := a - STAIR_W
+	var w := STAIR_W * 0.5
+	return [
+		[Vector3(-c, fl, e), Vector3(-c, fl + rise, -e), Vector3(w, 0, 0)],
+		[Vector3(-e, fl + rise, -c), Vector3(e, fl + rise * 2.0, -c), Vector3(0, 0, w)],
+		[Vector3(c, fl + rise * 2.0, -e), Vector3(c, fl + rise * 3.0, e), Vector3(-w, 0, 0)],
+		[Vector3(e, fl + rise * 3.0, c), Vector3(-e, fl + rise * 4.0, c), Vector3(0, 0, -w)],
+	]
+
+## The landings in the corners between flights: [centre of the top, thickness]. The
+## first stands on the floor; the last is the roof.
+static func landings(t: String) -> Array:
+	var fs := flights(t)
+	var fl: float = BOX[t][1]
+	var c: float = (BOX[t][0] as Vector2).x - STAIR_W * 0.5
+	var out: Array = []
+	for i in 3:
+		var hd: Vector3 = fs[i][1]
+		out.append([Vector3(signf(hd.x) * c, hd.y, signf(hd.z) * c), hd.y - fl if i == 0 else 0.3])
+	return out
+
+## A tower's roof slab, open over the last flight: [centre, size] boxes.
+static func roof_boxes(t: String) -> Array:
+	var b: Array = BOX[t]
+	var ih: Vector2 = b[0]
+	var ce: float = b[2]
+	var oh: Vector2 = b[3]
+	var top: float = b[4]
+	var e := ih.y - STAIR_W
+	var y := (ce + top) * 0.5
+	var h := top - ce
+	return [
+		[Vector3(0, y, (e - oh.y) * 0.5), Vector3(oh.x * 2.0, h, oh.y + e)],
+		[Vector3((-oh.x - (ih.x - STAIR_W)) * 0.5, y, (e + ih.y) * 0.5), Vector3(oh.x - (ih.x - STAIR_W), h, ih.y - e)],
+		[Vector3((HATCH_X + oh.x) * 0.5, y, (e + ih.y) * 0.5), Vector3(oh.x - HATCH_X, h, ih.y - e)],
+		[Vector3(0, y, (ih.y + oh.y) * 0.5), Vector3(oh.x * 2.0, h, oh.y - ih.y)],
+	]
+
+## The stair as you walk it: each flight one slope (the first solid to the floor, the
+## rest slabs), a rail along the shaft side, and the landings.
+static func _stair_faces(f: PackedVector3Array, t: String) -> void:
+	var fl: float = BOX[t][1]
+	var up := Vector3(0, 1.0, 0)
+	var fs := flights(t)
+	for i in fs.size():
+		var fo: Vector3 = fs[i][0]
+		var hd: Vector3 = fs[i][1]
+		var hw: Vector3 = fs[i][2]
+		_quad_faces(f, [fo - hw, fo + hw, hd - hw, hd + hw])
+		if i == 0:
+			f.append_array([fo + hw, hd + hw, Vector3(hd.x, fl, hd.z) + hw])
+		else:
+			_quad_faces(f, [fo - hw - up * 0.3, fo + hw - up * 0.3, hd - hw - up * 0.3, hd + hw - up * 0.3])
+			_quad_faces(f, [fo + hw, fo + hw - up * 0.3, hd + hw, hd + hw - up * 0.3])
+		_quad_faces(f, [fo + hw, fo + hw + up, hd + hw, hd + hw + up])
+	for l in landings(t):
+		var top: Vector3 = l[0]
+		var th: float = l[1]
+		_box_faces(f, top - up * th * 0.5, Vector3(STAIR_W, th, STAIR_W))
+
+## The stair as drawn: stone steps on the same slopes, landings, and a rail of posts and
+## a handrail along the shaft side.
+static func _stair(k: MeshKit, t: String) -> void:
+	var mat: String = TOWER[t]
+	var rail := "timber" if t == "castle_tower" else "iron"
+	var fl: float = BOX[t][1]
+	var n := 15
+	var I := Transform3D.IDENTITY
+	var fs := flights(t)
+	for i in fs.size():
+		var fo: Vector3 = fs[i][0]
+		var hd: Vector3 = fs[i][1]
+		var hw: Vector3 = fs[i][2]
+		var run := Vector3(hd.x - fo.x, 0, hd.z - fo.z)
+		var rise := hd.y - fo.y
+		var tread := run.length() / n
+		for j in n:
+			# Treads straddle the slope you walk, half a step either side.
+			var y := fo.y + rise * (j + 0.5) / n
+			var low := fl if i == 0 else y - rise / n - 0.25
+			var c := fo + run * (j + 0.5) / n
+			var sz := Vector3(hw.length() * 2.0, y - low, tread) if absf(run.z) > absf(run.x) else Vector3(tread, y - low, hw.length() * 2.0)
+			k.box(mat, I.translated(Vector3(c.x, (y + low) * 0.5, c.z)), sz)
+		var p0 := fo + hw * 0.92 + Vector3(0, 0.95, 0)
+		var p1 := hd + hw * 0.92 + Vector3(0, 0.95, 0)
+		var ax := (p1 - p0).normalized()
+		var ay := (Vector3.UP - ax * ax.dot(Vector3.UP)).normalized()
+		k.box(rail, Transform3D(Basis(ax, ay, ax.cross(ay)), (p0 + p1) * 0.5), Vector3(p0.distance_to(p1), 0.06, 0.06))
+		for s in [0.0, 0.5, 1.0]:
+			var pp: Vector3 = fo.lerp(hd, s) + hw * 0.92
+			k.box(rail, I.translated(pp + Vector3(0, 0.5, 0)), Vector3(0.07, 1.0, 0.07))
+	for l in landings(t):
+		var top: Vector3 = l[0]
+		var th: float = l[1]
+		k.box(mat, I.translated(top - Vector3(0, th * 0.5, 0)), Vector3(STAIR_W, th, STAIR_W))
 
 static func _round_room(f: PackedVector3Array, t: String) -> void:
 	var p: Array = ROUND[t]
