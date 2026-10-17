@@ -39,6 +39,8 @@ var _mob_t := 0.0
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
 var watched := false
+## The watch on walled towns' gates, and towns' standing (GateWatch).
+var gates: GateWatch
 
 func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
@@ -48,6 +50,9 @@ func _ready() -> void:
 	Net.mob_said.connect(_on_mob_said)
 	Net.town_pushed.connect(_on_town_pushed)
 	Net.mob_talk.connect(_on_mob_talk)
+	gates = GateWatch.new()
+	gates.manager = self
+	add_child(gates)
 
 func _exit_tree() -> void:
 	save_all()
@@ -935,7 +940,10 @@ func witnesses(pos: Vector3, extra: Array = []) -> Array:
 ## kind: a Crime.FINES key; worth: Marks taken. Returns true if you were seen.
 ## Other systems (shops, stalls) call this when you take what isn't yours.
 func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_by: NPC = null) -> bool:
-	var e := town_at(pos)
+	# Whoever caught you tells their own town; otherwise it's the town whose ground it is.
+	var e := _entry_of(caught_by.settlement) if caught_by != null and not caught_by.settlement.has("band") else {}
+	if e.is_empty() or not e.has("sid"):
+		e = town_at(pos)
 	if e.is_empty():
 		return false
 	var seen := witnesses(pos, [caught_by] if caught_by != null else [])
@@ -943,19 +951,22 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "vandalism": "Vandalism"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
 		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"],
-		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"]}.get(kind, ["Guards!"])
+		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"],
+		"trespass": ["You've no leave to be here! Guards!", "Intruder! Guards!", "Oi! Who let you in?"],
+		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
 		if not is_instance_valid(n):
 			continue
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
-			"lockpick": "breaking into a chest", "vandalism": "smashing down a door"}.get(kind, "committing a crime"))
+			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave",
+			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch"}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
 			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
@@ -966,7 +977,8 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 	for n in e["nodes"]:
 		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
 			n.decide_in = 0.0
-	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest"}.get(kind, "breaking the law"))
+	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest",
+		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch"}.get(kind, "breaking the law"))
 	e["dirty"] = true
 	return true
 
@@ -1334,6 +1346,7 @@ func _bandit_hit(n: NPC, _damage: float) -> void:
 		e["nodes"].erase(n)
 	_by_id.erase(rec["id"])
 	Game.add_xp(20.0 + 6.0 * NPCSocial.level(rec), "Outlaw slain")
+	gates.outlaw_slain(n.global_position)
 	Game.toast.emit("%s is dead" % rec["name"])
 	if not e.is_empty() and e["nodes"].is_empty():
 		Game.add_xp(40.0 + 10.0 * float(e["band"]["zone"]), "Broke a %s" % String(e["band"]["name"]).to_lower())
