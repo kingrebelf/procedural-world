@@ -94,6 +94,10 @@ const SNOW_BOX := Vector3(26.0, 12.0, 26.0)
 const SNOW_COUNT := [3000, 7000, 12000]
 const SPLASH_COUNT := [0, 1024, 2048]
 const FIELD_STEP := 12.0 ## metres the rain catch moves at a time
+## The render layer of grass, flowers and undergrowth: drawn like everything else, but
+## left out of the rain catch, so redrawing it skips the costliest geometry near the
+## ground (rain stops at roofs and canopies, not at grass blades).
+const LOW_LAYER := 2
 
 func _ready() -> void:
 	current = self
@@ -401,6 +405,7 @@ func _build_precip() -> void:
 	_field.size = Vector3(SNOW_BOX.x * 2.0 + FIELD_STEP * 2.0 + 4.0, 120.0, SNOW_BOX.z * 2.0 + FIELD_STEP * 2.0 + 4.0)
 	_field.update_mode = GPUParticlesCollisionHeightField3D.UPDATE_MODE_WHEN_MOVED
 	_field.follow_camera_enabled = false
+	_field.heightfield_mask = 1
 	_field.visible = false
 	add_child(_field)
 
