@@ -101,6 +101,8 @@ varying vec2 road_v;
 varying vec4 canopy_v;
 varying float river_v;
 #endif
+// (v18) The climate on the ground (UV2): x how dry, y how lush (+) or cold (-).
+varying vec2 clim_v;
 
 float hash13(vec3 p3) {
 	p3 = fract(p3 * 0.1031);
@@ -187,6 +189,7 @@ void vertex() {
 	scar_v = CUSTOM2.zw;
 	cover_v = CUSTOM3;
 	road_v = UV;
+	clim_v = UV2;
 #ifdef FAR_LAND
 	road_v = vec2(0.0);
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
@@ -332,8 +335,19 @@ void fragment() {
 
 	// Grass: lush and dry patches, darker in hollows, and broad swathes of deeper and
 	// paler green so distant meadows are never one flat colour.
+	// The climate (v18, WorldField.ground_look): in the hot dry belts the grass is bleached
+	// to straw with red earth between the tufts; in the wet tropics a deep, lush green; in
+	// the cold uplands a dun olive.
+	float c_dry = clamp(clim_v.x, 0.0, 1.0) * w.r;
+	float c_lush = clamp(clim_v.y, 0.0, 1.0) * w.r;
+	float c_cold = clamp(-clim_v.y, 0.0, 1.0) * w.r;
 	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
+	dry = mix(dry, 0.7 + 0.3 * dry, c_dry);
 	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.7 * w.r);
+	g = mix(g, vec3(dot(g, LUM)) * vec3(1.5, 1.22, 0.6) * 1.1, c_dry * (0.5 + 0.3 * meso));
+	g = mix(g, g * vec3(0.78, 1.06, 0.72), c_lush * 0.55);
+	g = mix(g, vec3(dot(g, LUM)) * vec3(1.1, 1.03, 0.8), c_cold * 0.45);
+	soil = mix(soil, soil * vec3(1.18, 0.9, 0.7), c_dry * 0.6);
 	float swathe = fbm(p * 0.035 + 21.0);
 	g *= mix(vec3(0.82, 0.9, 0.8), vec3(1.12, 1.08, 0.92), smoothstep(0.3, 0.7, swathe));
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
@@ -342,8 +356,9 @@ void fragment() {
 	// (fantasy and sci-fi soil keeps its broad patches).
 	float worn = smoothstep(0.62, 0.85, vnoise(p * 0.9 + 17.0) * 0.55 + micro * 0.45);
 	float bare = soil_mask * 0.7 * mix(1.0, worn, w.r);
-	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso));
-	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro);
+	bare = max(bare, c_dry * 0.6 * smoothstep(0.5, 0.75, vnoise(p * 0.45 + 41.0) * 0.65 + micro * 0.35));
+	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso)) * (1.0 - c_dry);
+	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro) * (1.0 - c_dry * 0.8);
 	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
 	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
 	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);

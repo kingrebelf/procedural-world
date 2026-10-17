@@ -229,10 +229,12 @@ func region_blend(x: float, z: float) -> Array:
 
 ## The region whose plants grow at (x, z): the nearest, but near an edge now and then the
 ## neighbour's, the more often the nearer the edge (v18; before, always the nearest).
-func region_hash_mixed(x: float, z: float) -> int:
+## `b`: region_blend(x, z) when the caller has it already.
+func region_hash_mixed(x: float, z: float, b: Array = []) -> int:
 	if terrain_v < CLIMATE_V:
 		return region_hash_at(x, z)
-	var b := region_blend(x, z)
+	if b.is_empty():
+		b = region_blend(x, z)
 	if float(b[2]) <= 0.0:
 		return b[0]
 	return b[1] if WHash.unit2(seed, int(floor(x * 2.0)), int(floor(z * 2.0)), 109) < float(b[2]) else b[0]
@@ -283,6 +285,33 @@ static func region_climate(h: int) -> Vector2i:
 	if terrain_v < CLIMATE_V:
 		return Vector2i(-1, -1)
 	return Vector2i((h & CLIMATE_BITS) >> 2, h & 3)
+
+## How a region's climate shows on its ground (v18), as the terrain shader reads it
+## (UV2): x how sun-bleached and dry the grass is (the savanna's straw, the dry plains
+## of the desert's edge), y how lush (+, the wet tropics) or cold and dun (-, the uplands
+## of spruce). (0, 0) is the temperate ground every world had before climates.
+static func ground_look(h: int) -> Vector2:
+	var c := region_climate(h)
+	if c.x < 0:
+		return Vector2.ZERO
+	var dry := 0.0
+	var lush := 0.0
+	if c.x == 3:
+		dry = [1.0, 0.8, 0.0, 0.0][c.y]
+		lush = [0.0, 0.0, 0.55, 1.0][c.y]
+	elif c.x == 2 and c.y == 0:
+		dry = 0.3
+	var cold: float = [1.0, 0.4, 0.0, 0.0][c.x]
+	return Vector2(dry, lush - cold)
+
+## The ground's climate look at (x, z): the nearest region's, blended into the next one's
+## across the band where they meet, as their plants are (region_blend).
+func ground_look_at(x: float, z: float, b: Array = []) -> Vector2:
+	if terrain_v < CLIMATE_V:
+		return Vector2.ZERO
+	if b.is_empty():
+		b = region_blend(x, z)
+	return ground_look(b[0]).lerp(ground_look(b[1]), float(b[2]))
 
 ## Name of the region containing (x, z): stable per Voronoi site.
 func region_name_at(x: float, z: float) -> String:
