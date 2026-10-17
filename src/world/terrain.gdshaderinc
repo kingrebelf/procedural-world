@@ -517,7 +517,9 @@ void fragment() {
 		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
 		float d = 1.0 - pow(1.0 - canopy_v.a, 1.0 + 2.5 * graze);
 		d = clamp(d + (fbm(p * 0.012 + 7.0) - 0.5) * 0.45 * canopy_v.a, 0.0, 1.0);
-		float detail = 1.0 - smoothstep(600.0, 1800.0, dist);
+		// Single crowns only where you look down on them: side on, crowns painted on the
+		// ground read as dark puddles, so there the forest is its mean colour.
+		float detail = (1.0 - smoothstep(600.0, 1800.0, dist)) * smoothstep(0.12, 0.35, 1.0 - graze);
 		float id;
 		vec4 cr = crown_at(p, d, id);
 		float id2;
