@@ -1083,6 +1083,12 @@ func consume(idx: int) -> void:
 			_use_kit(idx, fd, name)
 		"trap":
 			_set_trap(idx, String(it["type"]), name)
+		"implant":
+			if Game.fit_implant(idx):
+				Audio.play("ui/click", -6.0)
+				Game.toast.emit("The %s takes. You feel it settle in: %s" % [name.to_lower(), ", ".join(Effects.describe(fd)).to_lower()])
+			else:
+				Game.toast.emit("You already have a %s fitted" % name.to_lower())
 
 ## Fires a grapple line where you look (out to `reach` m) and hauls you toward the spot
 ## it catches. Returns whether it caught.
@@ -1194,7 +1200,7 @@ func _tire(n: float) -> bool:
 
 func use_held() -> void:
 	var it = held_item()
-	if it != null and ItemDB.def(it["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp", "kit", "trap"]:
+	if it != null and ItemDB.def(it["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp", "kit", "trap", "implant"]:
 		_cooldown = 0.5
 		consume(selected)
 		return
