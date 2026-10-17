@@ -14,7 +14,8 @@ static func node(t: String) -> MeshInstance3D:
 	var m := mesh(t)
 	if m == null:
 		return null
-	var mi := MeshInstance3D.new()
+	var mi := Shafts.new()
+	mi.wins = Interiors.sun_windows(t)
 	mi.mesh = m
 	mi.material_override = material()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -26,6 +27,73 @@ static func node(t: String) -> MeshInstance3D:
 	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return mi
 
+## The most windows a room's beams follow the sun at (Shafts, the shader's lit0..lit5).
+const MAX_WINDOWS := 24
+
+## A room's beams. Each window's shines only while the sun reaches it from outside: rays
+## toward the sun from just outside its two ends, past animals, people and carts (anything
+## but the ground and buildings), every half second near you, fading as it changes.
+class Shafts extends MeshInstance3D:
+	var wins: Array = []
+	var _want := PackedFloat32Array()
+	var _shown := PackedFloat32Array()
+	var _t := 0.0
+
+	func _ready() -> void:
+		_want.resize(mini(wins.size(), MAX_WINDOWS))
+		_shown.resize(_want.size())
+		_t = randf() * 0.5
+
+	func _process(delta: float) -> void:
+		var cam := get_viewport().get_camera_3d()
+		if cam == null or cam.global_position.distance_to(global_position) > visibility_range_end + 10.0:
+			return
+		_t -= delta
+		if _t <= 0.0:
+			_t = 0.5
+			_aim()
+		var moved := false
+		for i in _shown.size():
+			var v := move_toward(_shown[i], _want[i], delta * 1.5)
+			if v != _shown[i]:
+				_shown[i] = v
+				moved = true
+		if moved:
+			for j in MAX_WINDOWS / 4:
+				var v := Vector4.ZERO
+				for c in 4:
+					if j * 4 + c < _shown.size():
+						v[c] = _shown[j * 4 + c]
+				set_instance_shader_parameter("lit%d" % j, v)
+
+	func _aim() -> void:
+		var s := Atmosphere.sun_dir
+		var space := get_world_3d().direct_space_state
+		var xf := global_transform
+		for i in _want.size():
+			var w: Array = wins[i]
+			var n := (xf.basis * (w[1] as Vector3)).normalized()
+			_want[i] = 0.0
+			if s.y < 0.03 or s.dot(n) > -0.05:
+				continue
+			# Just outside the wall, at the window's top and bottom.
+			var out := xf * ((w[0] as Vector3) - (w[1] as Vector3) * 0.45)
+			for dy in [-0.6, 0.6]:
+				var from := out + xf.basis * Vector3(0, float(w[3]) * dy, 0)
+				if _clear(space, from, from + s * 120.0):
+					_want[i] += 0.5
+
+	static func _clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
+		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2)
+		for k in 4:
+			var hit := space.intersect_ray(q)
+			if hit.is_empty():
+				return true
+			if hit["collider"] is StaticBody3D:
+				return false
+			q.exclude = q.exclude + [hit["rid"]]
+		return true
+
 ## The beams' material, shared by every room (tools scale its "strength").
 static func material() -> ShaderMaterial:
 	if _mat == null:
@@ -36,7 +104,8 @@ static func material() -> ShaderMaterial:
 ## One box per window, its corners on the window (UV the corner across and up, UV2.x 0
 ## at the window and 1 where the beam ends); CUSTOM0 the window's centre and the floor's
 ## height, CUSTOM1 its inward normal (x, z) and half width and height, CUSTOM2 the room's
-## half size across x and z and its ceiling height (the beam stays inside).
+## half size across x and z and its ceiling height (the beam stays inside) and the
+## window's number (how much sun reaches it: Shafts).
 static func mesh(t: String) -> ArrayMesh:
 	if _meshes.has(t):
 		return _meshes[t]
@@ -62,7 +131,7 @@ static func mesh(t: String) -> ArrayMesh:
 				c0.append_array([c.x, c.y, c.z, float(w[4])])
 				c1.append_array([n.x, n.z, float(w[2]), float(w[3])])
 				var half: Vector2 = w[6]
-				c2.append_array([half.x, half.y, float(w[5]), 0.0])
+				c2.append_array([half.x, half.y, float(w[5]), float(wins.find(w))])
 			# The six faces (both sides are drawn; the shader keeps the far one).
 			for f in [[0, 1, 3, 2], [4, 6, 7, 5], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]:
 				idx.append_array([v0 + f[0], v0 + f[1], v0 + f[2], v0 + f[0], v0 + f[2], v0 + f[3]])

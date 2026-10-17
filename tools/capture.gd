@@ -615,36 +615,50 @@ func _room_shots(g: ChunkGenerator) -> void:
 			await _shot("34_tower_roof", to_w.call(loc), fc, 0.45, float(b[4]) - 0.1, gh + 2.0)
 			break
 
-## Inside a village house in the morning or evening, looking at the windowed front wall
-## with the sun beyond it, so its light falls in through the panes (SunBeams).
+## Inside a village house in the morning or evening, looking at a window with the sun
+## beyond it, so its light falls in through the pane toward you (SunBeams). The window is
+## on a wall facing out of the village, so no neighbour's house shades it.
 func _house_shot(g: ChunkGenerator) -> void:
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	if med.is_empty():
 		return
+	var mid: Vector2 = med["center"]
 	var best := {}
-	var score := 0.3
+	var score := 0.5
 	for it in g.settlement_layout(med):
-		if not KitHouse.has(String(it["t"])):
+		var t := String(it["t"])
+		if not KitHouse.has(t):
 			continue
 		var yaw: float = it["yaw"]
-		var front := Vector2(sin(yaw), cos(yaw))
-		for day in [0.31, 0.33, 0.35, 0.65, 0.67, 0.69]:
-			var ang: float = (day - 0.25) * TAU
-			var sc := Vector2(cos(ang), 0.35).normalized().dot(front)
-			if sc > score:
-				score = sc
-				best = {"it": it, "day": day}
+		var away := ((it["p"] as Vector2) - mid).normalized()
+		for w in Interiors.sun_windows(t):
+			var n: Vector3 = w[1]
+			# The way the window looks out, in the world.
+			var out := -Vector2(n.x * cos(yaw) + n.z * sin(yaw), -n.x * sin(yaw) + n.z * cos(yaw))
+			if out.dot(away) < 0.3:
+				continue
+			for day in [0.31, 0.33, 0.35, 0.65, 0.67, 0.69]:
+				var ang: float = (day - 0.25) * TAU
+				var sc := Vector2(cos(ang), 0.35).normalized().dot(out)
+				if sc > score:
+					score = sc
+					best = {"it": it, "w": w, "day": day}
 	if best.is_empty():
-		print("no house facing the sun")
+		print("no house window facing the sun")
 		return
 	var t: String = best["it"]["t"]
 	var c: Vector2 = best["it"]["p"]
 	var yaw: float = best["it"]["yaw"]
+	var w: Array = best["w"]
 	var dm := KitHouse._dims(t)
+	var n := Vector2((w[1] as Vector3).x, (w[1] as Vector3).z)
+	var at := Vector2((w[0] as Vector3).x, (w[0] as Vector3).z)
+	# Across the room from the window, a little to one side.
+	var span := (dm.z if absf(n.y) > 0.5 else dm.x) - 1.4
+	var cam := at + n * span + Vector2(-n.y, n.x) * 0.9
 	var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 	var gh: float = med["target_h"]
-	await _shot("38_house_sun", to_w.call(Vector2(-dm.x / 2 + 1.3, -dm.z / 2 + 1.1)), to_w.call(Vector2(0.6, dm.z / 2)), best["day"],
-		KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 1.0)
+	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + (w[0] as Vector3).y + 0.2)
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.

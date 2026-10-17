@@ -4,6 +4,8 @@ extends Node3D
 ## the player's position and runs the day/night cycle from Game.day.
 
 var env: Environment
+## Toward the sun (as the shaders' sun_dir_g), for scripts that need it.
+static var sun_dir := Vector3.UP
 var sun: DirectionalLight3D
 var moon: DirectionalLight3D
 var sky_mat: ShaderMaterial
@@ -275,6 +277,7 @@ func _update_time_of_day() -> void:
 	moon.look_at_from_position(Vector3.ZERO, dir, Vector3.UP)
 	var elev := dir.y
 	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
+	sun_dir = dir
 	var daylight := smoothstep(-0.12, 0.25, elev)
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)

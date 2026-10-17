@@ -9,6 +9,13 @@ global uniform vec3 sun_dir_g;
 // The sunlight reaching the ground (colour times energy), nothing under heavy cloud.
 global uniform vec3 sun_light_g;
 uniform float strength = 1.0;
+// How much sun reaches each window from outside (SunBeams.Shafts), four to a vector.
+instance uniform vec4 lit0 = vec4(0.0);
+instance uniform vec4 lit1 = vec4(0.0);
+instance uniform vec4 lit2 = vec4(0.0);
+instance uniform vec4 lit3 = vec4(0.0);
+instance uniform vec4 lit4 = vec4(0.0);
+instance uniform vec4 lit5 = vec4(0.0);
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 
 // The shaft: the window's centre and its half width and height (world), and the way the
@@ -17,6 +24,7 @@ varying flat vec3 bc;
 varying flat vec3 br;
 varying flat vec3 bu;
 varying flat vec3 bd;
+varying flat float bl;
 // The room (centre and half axes, world): the beam is cut where it meets the walls.
 varying flat vec3 rc;
 varying flat vec3 rx;
@@ -50,8 +58,11 @@ void vertex() {
 	bc = c;
 	// Down to the floor from the top of the window, as far as a low sun reaches.
 	bd = -s * min((c.y + bu.y - floor_y) / max(s.y, 0.12), 24.0);
-	// Only while the sun is up on the window's side of the room.
-	bool lit = dot(-s, n) > 0.05 && s.y > 0.03 && dot(sun_light_g, vec3(1.0)) > 0.001;
+	// Only while the sun is up on the window's side of the room and reaches it.
+	int wi = int(CUSTOM2.w + 0.5);
+	vec4 lv = wi < 4 ? lit0 : (wi < 8 ? lit1 : (wi < 12 ? lit2 : (wi < 16 ? lit3 : (wi < 20 ? lit4 : lit5))));
+	bl = wi < 24 ? lv[wi % 4] : 0.0;
+	bool lit = dot(-s, n) > 0.05 && s.y > 0.03 && dot(sun_light_g, vec3(1.0)) > 0.001 && bl > 0.001;
 	float ceil_y = CUSTOM2.z;
 	rc = (MODEL_MATRIX * vec4(0.0, (CUSTOM0.w + ceil_y) * 0.5, 0.0, 1.0)).xyz;
 	rx = mat3(MODEL_MATRIX) * vec3(CUSTOM2.x, 0.0, 0.0);
@@ -103,11 +114,11 @@ void fragment() {
 	vec3 lm = lo + ld * (tn + tf) * 0.5;
 	// Brightest along the middle, falling away softly to the edges, and fading as the
 	// light spreads toward the floor.
-	float soft = exp(-2.2 * dot(lm.xy, lm.xy)) * (1.0 - smoothstep(0.8, 1.0, max(abs(lm.x), abs(lm.y))));
-	float along = mix(1.0, 0.3, clamp(lm.z, 0.0, 1.0)) * smoothstep(0.0, 0.05, lm.z);
+	float soft = exp(-3.0 * dot(lm.xy, lm.xy)) * (1.0 - smoothstep(0.8, 1.0, max(abs(lm.x), abs(lm.y))));
+	float along = mix(1.0, 0.2, sqrt(clamp(lm.z, 0.0, 1.0))) * smoothstep(0.0, 0.05, lm.z);
 	// Streaks down the shaft (light caught by the window's edges and the dust in it), and
 	// drifting dust thick and thin.
-	float streaks = 0.55 + 0.9 * noise3(vec3(lm.xy * vec2(2.6, 1.8), bc.x * 0.37 + bc.z * 0.71));
+	float streaks = 0.3 + 1.4 * noise3(vec3(lm.xy * vec2(3.2, 2.2), bc.x * 0.37 + bc.z * 0.71));
 	vec3 wm = ro + rd * (tn + tf) * 0.5;
 	float motes = 0.75 + 0.5 * noise3(wm * 2.2 + vec3(0.0, TIME * 0.06, TIME * 0.02));
 	// Forward scattering (Henyey-Greenstein).
@@ -115,6 +126,6 @@ void fragment() {
 	float cth = dot(rd, normalize(sun_dir_g));
 	float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cth, 1.5);
 	float dens = 1.0 - exp(-thick * 0.3);
-	ALBEDO = sun_light_g * (dens * soft * along * streaks * motes * phase * strength * 0.25);
+	ALBEDO = sun_light_g * (dens * soft * along * streaks * motes * phase * bl * strength * 0.25);
 	ALPHA = 1.0;
 }
