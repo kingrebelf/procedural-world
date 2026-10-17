@@ -150,9 +150,7 @@ func _dress(key: String, fresh := false) -> void:
 		h.scale = Vector3(s, s, s)
 		node.add_child(h)
 		node.set_meta("human", h)
-		h.pose("death")
-		if not fresh and h.anim.current_animation != "":
-			h.anim.seek(h.anim.current_animation_length, true)
+		h.pose("death", not fresh)
 	h.wear(still_worn(c))
 
 ## The gear a body still wears: what it died in, less whatever has been taken.

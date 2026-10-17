@@ -119,6 +119,7 @@ func _ready() -> void:
 		body.build(LOOK, Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
+		body.set_ground(Callable(), [get_rid()])
 		# The armour you wear shows on your body (third person, and your shadow).
 		body.wear(Game.equipment)
 		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
@@ -222,18 +223,21 @@ func _apply_view() -> void:
 func _animate_body(hspeed: float) -> void:
 	if body == null:
 		return
+	var t: String = _held_type()
+	var ready := "pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "")
+	# The gait and its pace follow how fast you really move; a weapon stays raised on the run.
 	if swimming:
-		body.play("swim", clampf(hspeed / SWIM, 0.5, 1.5))
+		body.play("swim" if hspeed > 0.5 else "swim_idle")
+		body.set_upper("")
+	elif _crouched:
+		body.play("crouch_walk" if hspeed > 0.3 else "crouch")
+		body.set_upper(ready if hspeed > 0.3 else "")
 	elif hspeed > 0.4:
-		if hspeed > WALK + 1.0:
-			body.play("sprint", clampf(hspeed / SPRINT, 0.6, 1.5))
-		elif hspeed > CROUCH + 0.6:
-			body.play("jog", clampf(hspeed / WALK, 0.6, 1.5))
-		else:
-			body.play("walk", clampf(hspeed / CROUCH, 0.6, 1.5))
+		body.play("sprint" if hspeed > WALK + 1.0 else "jog")
+		body.set_upper(ready)
 	else:
-		var t: String = _held_type()
-		body.play("pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "idle"))
+		body.play(ready if ready != "" else "idle")
+		body.set_upper("")
 	_grip_body()
 
 func _held_type() -> String:

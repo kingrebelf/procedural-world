@@ -64,6 +64,9 @@ def people(kits: Path) -> None:
     anim.mkdir(parents=True, exist_ok=True)
     shutil.copy(kits / "anim" / "Universal Animation Library[Standard]" / "Unreal-Godot" / "UAL1_Standard.glb", anim / "UAL1.glb")
     shutil.copy(kits / "anim2" / "Universal Animation Library 2[Standard]" / "Unreal-Godot" / "UAL2_Standard.glb", anim / "UAL2.glb")
+    # The root-motion exports: tools/bake_anims.gd measures how fast each clip travels.
+    shutil.copy(kits / "anim" / "Universal Animation Library[Standard]" / "Unreal-Godot" / "UAL1_Standard_RM.glb", anim / "UAL1_RM.glb")
+    shutil.copy(kits / "anim2" / "Universal Animation Library 2[Standard]" / "Unreal-Godot" / "UAL2_Standard_RM.glb", anim / "UAL2_RM.glb")
 
 
 def kit_models(names, gltf_dirs, tex_dirs, out: Path, size: int = 1024) -> None:
