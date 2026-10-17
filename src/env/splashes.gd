@@ -59,7 +59,7 @@ func _ready() -> void:
 	grow_tex.curve = grow
 	for i in BURSTS:
 		# Droplets: thrown up and out, falling back under gravity.
-		var drops := _emitter(48, 1.1, dot, Vector2(0.09, 0.09))
+		var drops := _emitter(48, 1.1, dot, Vector2(0.14, 0.14))
 		var pm := drops.process_material as ParticleProcessMaterial
 		pm.direction = Vector3.UP
 		pm.spread = 28.0
