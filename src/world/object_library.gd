@@ -350,7 +350,9 @@ static func shape_of(o: Dictionary) -> Array:
 		out = [c, Vector3(0, c.height * 0.5, 0)]
 	else:
 		var m := get_mesh(key)
-		var hull: Shape3D = m.create_convex_shape(true, true) if m else null
+		# The exact hull: "simplify" took 40-70 ms per rock on the main thread (a freeze
+		# each time a rocky chunk came near) for a looser fit.
+		var hull: Shape3D = m.create_convex_shape(true, false) if m else null
 		out = [hull, Vector3.ZERO] if hull else get_shape(t)
 	_lock.lock()
 	_shapes[key] = out
