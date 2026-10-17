@@ -465,6 +465,18 @@ func _run() -> void:
 	world.fauna.add_child(kc)
 	await _frames(3)
 	check(kc._kit != null and kc._kit.anim.is_playing(), "kit animal is animated (%s)" % kc.label())
+	# An animal stuck in the water next to ground that isn't loaded yet stays put instead
+	# of jumping onto the missing ground (it went to NaN and vanished for good).
+	var uc := Creature.new()
+	var u0: Vector3 = player.global_position + Vector3(9, 0, 9)
+	uc.setup("test_unstuck", ksp, Eras.MEDIEVAL, u0, world.fauna)
+	world.fauna.add_child(uc)
+	uc.global_position = Vector3(u0.x, -5.0, u0.z)
+	uc._ground = func(x: float, z: float) -> float:
+		return -5.0 if Vector2(x, z).distance_to(Vector2(u0.x, u0.z)) < 0.5 else NAN
+	uc._get_unstuck()
+	check(uc.global_position.is_finite() and uc.home.is_finite(), "an animal never moves onto unloaded ground (%s)" % uc.global_position)
+	uc.queue_free()
 	# Hunting: an animal in front of you takes damage from a swing, wherever it faces.
 	# Hand the test animal to the fauna manager (so aim help finds it), and hold off its
 	# herd refresh, which would free a herd this far from the player.

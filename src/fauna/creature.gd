@@ -436,6 +436,10 @@ func _get_unstuck() -> void:
 			var q: Vector3 = at + Vector3(cos(a), 0, sin(a)) * r
 			if not blocked(q.x, q.z):
 				var h: float = _ground.call(q.x, q.z)
+				if is_nan(h):
+					# Ground not loaded there (blocked() can't tell): moving onto it put the
+					# animal at NaN, and it vanished for good.
+					continue
 				global_position = Vector3(q.x, h, q.z)
 				home = global_position
 				_pick_wander()
