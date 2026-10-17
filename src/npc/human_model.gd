@@ -387,14 +387,17 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 	var I := Transform3D.IDENTITY
 	# Guards wear real armour instead (NPC.default_gear).
 	# Crowns are sized round the hair above the brim, so no hair pokes through.
+	var brim := 0.13
 	if era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
 		var fit := _hair_fit(0.0, 0.15, 0.095, 0.125, 0.24)
+		brim = fit.z
 		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), fit.x, fit.x * 0.75, fit.y + 0.02 - fit.z, 10)
 		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
 		# A soft felt hat whose point flops over, on a narrow brim.
 		var felt: Color = (b["cloth2"] as Color).darkened(0.25)
 		var fit := _hair_fit(-0.02, 0.1, 0.115, 0.135, 0.25)
+		brim = fit.z
 		var top := fit.y + 0.01
 		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
 		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), fit.x, fit.x * 0.52, top - fit.z, 12, true, 0.0, 1, felt)
@@ -405,10 +408,10 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 	mi.mesh = k.commit(Materials.get_mat)
 	_headgear_node = _bone_attach("Head")
 	_headgear_node.add_child(mi)
-	# No hair through the crown of the hat.
+	# No hair through the crown of the hat: none above its brim.
 	var hb := skeleton.find_bone("Head")
 	if hb >= 0:
-		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + 0.13)
+		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + brim)
 
 ## Hides hair above rest height `y` (model space; 99 for none): a hat or hood's crown.
 ## Hair below it, hanging under a brim, still shows.
