@@ -1026,6 +1026,14 @@ func test_npc_roles() -> void:
 		for pr in NPCRoles.props(pl, {"npcs": [ws]}):
 			forge = forge or pr[0] == NPCRoles.PROPS["forge"]
 		check(forge, "with an anvil set out there")
+	# A shop too small for a counter still gets its stand and wares, clear of the keeper,
+	# the doorway and the round wall.
+	var small := TownShops.fit("mushroom_house")
+	var sm_ok: bool = not small.has("counter") and (small.get("props", []) as Array).size() >= 2
+	for sp: Vector2 in small.get("props", []):
+		sm_ok = sm_ok and sp.distance_to(small["keeper"]) > 0.7 and sp.length() < 1.9 \
+			and not (absf(sp.x - float(TownShops.room("mushroom_house")["door_x"])) < 0.9 and sp.y > 0.5)
+	check(sm_ok, "a shop too small for a counter still has its stand and wares (%s)" % [small.get("props", [])])
 	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
 
 func test_bandits() -> void:
