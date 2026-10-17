@@ -135,12 +135,19 @@ func _run() -> void:
 			smi.mesh = PowerKit.part(String(spn["part"]))
 			smi.position = spn["pos"]
 			root.add_child(smi)
+			box = box.merge(Transform3D(Basis(), smi.position) * smi.mesh.get_aabb())
+			if spn.has("piston"):
+				var pmi := MeshInstance3D.new()
+				pmi.mesh = PowerKit.part(String(spn["piston"]["part"]))
+				pmi.position = spn["piston"]["pos"]
+				root.add_child(pmi)
 		if au.has("arm"):
 			var ami := MeshInstance3D.new()
 			ami.mesh = PowerKit.part("robot_arm")
 			ami.position = au["arm"]
 			ami.rotation.y = 0.8
 			root.add_child(ami)
+			box = box.merge(AABB(ami.position + Vector3(-0.7, 0, -0.7), Vector3(1.4, 0.6, 1.4)))
 		if df.has("clapper"):
 			var cm := MeshInstance3D.new()
 			cm.mesh = PowerKit.part("bell_clapper")
