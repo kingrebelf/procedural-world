@@ -42,11 +42,11 @@ const KIT_OF := {"Red Deer": "Deer", "Elk": "Stag", "Grey Wolf": "Wolf", "Auroch
 ## Stronghold guards (negative species, -tier): hounds, crypt stalkers and sentry
 ## crawlers, tougher and harder-biting with each tier.
 const GUARD_NAMES := ["Castle Hound", "Crypt Stalker", "Sentry Crawler"]
-const GUARD_RANKS := ["", "Veteran ", "Dread "]
+const GUARD_RANKS := ["", "Veteran ", "Dread ", "Elite ", "Mythic "] ## tiers 4 and 5 guard wonders
 
 static func guard_species(era: int, tier: int) -> Dictionary:
 	var p := species(911 + era * 7, era)
-	p["name"] = GUARD_RANKS[clampi(tier - 1, 0, 2)] + GUARD_NAMES[era]
+	p["name"] = GUARD_RANKS[clampi(tier - 1, 0, GUARD_RANKS.size() - 1)] + GUARD_NAMES[era]
 	p["temper"] = "aggressive"
 	p["herd"] = 1
 	if era == Eras.SCIFI:
@@ -70,7 +70,33 @@ static func guard_species(era: int, tier: int) -> Dictionary:
 	p["guard"] = tier
 	return p
 
+## The boss of wonder kind `kind` (an index into WonderSite.TYPES): negative species
+## below -100.
+static func boss_species(kind: int, era: int) -> Dictionary:
+	var t: String = WonderSite.TYPES[clampi(kind, 0, WonderSite.TYPES.size() - 1)]
+	var b: Array = WonderSite.BOSSES[t]
+	var p := species(4243 + kind * 17, era)
+	p["name"] = b[0]
+	p["kit"] = b[1]
+	p["kit_scale"] = b[2]
+	p["size"] = AnimalModel.HEIGHT[b[1]] / 1.2 * float(b[2])
+	p["plan"] = "hexa" if String(b[1]).begins_with("Alien") else "quad"
+	p["col"] = b[3]
+	p["col2"] = (b[3] as Color).lightened(0.3)
+	p["tint"] = b[3]
+	p["has_glow"] = b[4]
+	p["temper"] = "aggressive"
+	p["herd"] = 1
+	p["speed"] = 2.5
+	p["hp"] = WonderSite.BOSS_HP
+	p["bite_mult"] = WonderSite.BOSS_BITE
+	p["drops"] = b[5]
+	p["boss"] = t
+	return p
+
 static func species(sp: int, era: int) -> Dictionary:
+	if sp <= -100:
+		return boss_species(-sp - 100, era)
 	if sp < 0:
 		return guard_species(era, -sp)
 	var r := RandomNumberGenerator.new()
@@ -161,6 +187,8 @@ static func level_of(sp_p: Dictionary) -> int:
 	if sp_p["temper"] == "aggressive":
 		lv += 2.0
 	lv += float(sp_p.get("guard", 0)) * 4.0
+	if sp_p.has("boss"):
+		return 60
 	return clampi(int(round(lv)), 1, 60)
 
 func bite_damage() -> float:
@@ -413,7 +441,7 @@ func _build() -> void:
 	add_child(_model)
 	if AnimalModel.available(p.get("kit", "")):
 		# Medieval animals keep the kit's natural coats; others take the species' colours.
-		var tint = null if era == Eras.MEDIEVAL else p["col"]
+		var tint = p.get("tint", null if era == Eras.MEDIEVAL else p["col"])
 		var glow = Color.from_hsv(float(p["glow"]) / 12.0, 0.7, 1.0) if p["has_glow"] else null
 		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow)
 		_model.add_child(_kit)

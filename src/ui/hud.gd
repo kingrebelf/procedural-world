@@ -35,6 +35,7 @@ var _xp_flash: Label ## "+N XP" that pops up under the crosshair
 var _flash_tw: Tween
 var _pulse := 0.0
 var _marks: MarkerLayer
+var _minimap: Minimap
 var _banner: Label
 var _banner_sub: Label
 var _banner_box: VBoxContainer
@@ -189,7 +190,11 @@ func _ready() -> void:
 	_info = UITheme.label("", 14, UITheme.DIM)
 	_pin(_info, Control.PRESET_TOP_RIGHT, Rect2(-330, 20, 310, 80))
 	_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_info.visible = false # the minimap shows the day, time and where you are
 	add_child(_info)
+	_minimap = Minimap.new()
+	_pin(_minimap, Control.PRESET_TOP_RIGHT, Rect2(-Minimap.DIAM - 22, 18, Minimap.DIAM, Minimap.DIAM + 40))
+	add_child(_minimap)
 
 	_fps = UITheme.label("", 14, UITheme.ACCENT_2)
 	_pin(_fps, Control.PRESET_TOP_LEFT, Rect2(20, 20, 520, 64))
@@ -224,11 +229,13 @@ func _ready() -> void:
 	Game.leveled_up.connect(_on_level)
 	Game.xp_gained.connect(_on_xp)
 	Game.region_entered.connect(_on_region)
+	Game.discovered.connect(_on_discovered)
 	Game.inventory.changed.connect(_refresh)
 	_refresh()
 
 func bind_player(p: Player) -> void:
 	player = p
+	_minimap.player = p
 	p.look_info_changed.connect(_on_look)
 	p.look_target_changed.connect(func(t): _prompt.text = t)
 	p.selected_changed.connect(func(_i): _refresh())
@@ -279,7 +286,7 @@ func _on_toast(text: String) -> void:
 func _build_look_panel() -> void:
 	_look = PanelContainer.new()
 	_look.add_theme_stylebox_override("panel", UITheme.sb(Color(0.05, 0.06, 0.07, 0.72), Color(1, 1, 1, 0.08), 8, 1, 12))
-	_pin(_look, Control.PRESET_TOP_RIGHT, Rect2(-360, 96, 340, 40))
+	_pin(_look, Control.PRESET_TOP_RIGHT, Rect2(-360, Minimap.DIAM + 72, 340, 40)) # under the minimap
 	_look.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_look.custom_minimum_size = Vector2(340, 0)
 	_look.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -512,6 +519,17 @@ func _on_xp(amount: int, why: String) -> void:
 	_flash_tw.chain().tween_property(_xp_flash, "modulate:a", 0.0, 0.6)
 	_xp.modulate = Color(2.2, 2.0, 1.4)
 	_xp.create_tween().tween_property(_xp, "modulate", Color.WHITE, 0.6)
+
+## A wonder found or its keeper slain: the big banner, in the wonder's colour.
+func _on_discovered(title: String, sub: String, col: Color) -> void:
+	_banner.text = title
+	_banner_sub.text = sub.to_upper()
+	_banner_sub.add_theme_color_override("font_color", col)
+	_banner_box.modulate.a = 0.0
+	var tw := _banner_box.create_tween()
+	tw.tween_property(_banner_box, "modulate:a", 1.0, 0.6)
+	tw.tween_interval(5.0)
+	tw.tween_property(_banner_box, "modulate:a", 0.0, 2.0)
 
 func _on_region(region: String, era: int) -> void:
 	_banner.text = region

@@ -735,8 +735,12 @@ func _update_look_target() -> void:
 			# A relic: what it does instead of what it yields.
 			var w := Wonders.use_of(o, Game.day)
 			text = ("[%s] %s" % [_key("interact"), w["verb"]]) if not w.is_empty() else Wonders.describe(o, Game.day)
-			info = {"title": ObjectLibrary.label_of(o), "sub": "Relic  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
-				"lines": [Wonders.describe(o, Game.day), "Can't be broken: use it with [%s]" % _key("interact")], "icon": Durability.yields(o)[0][0]}
+			if WonderSite.has(t):
+				info = {"title": WonderSite.label(t), "sub": "Wonder  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
+					"lines": [WonderSite.lore(t), "Can't be broken"], "icon": Durability.yields(o)[0][0]}
+			else:
+				info = {"title": ObjectLibrary.label_of(o), "sub": "Relic  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
+					"lines": [Wonders.describe(o, Game.day), "Can't be broken: use it with [%s]" % _key("interact")], "icon": Durability.yields(o)[0][0]}
 		else:
 			match k:
 				"cache":
@@ -752,6 +756,8 @@ func _update_look_target() -> void:
 				lines.push_front(Wonders.describe(o, Game.day))
 			if k == "cache" and not o["st"].get("opened", false):
 				lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
+				if WonderSite.sealed((h["chunk"] as ChunkNode).data, o):
+					lines.append("Sealed until %s falls" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 			lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
 			var held = held_item()
 			var d: Dictionary = ItemDB.stats(held) if held != null else Durability.FIST
@@ -808,6 +814,9 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			if o["st"].get("opened", false):
 				Game.toast.emit("It's empty.")
 				return
+			if WonderSite.sealed(chunk.data, o):
+				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
+				return
 			var loot: Array = o["st"]["loot"]
 			var kept: Array = []
 			for it in loot:
@@ -816,6 +825,8 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			o["st"]["loot"] = kept
 			o["st"]["opened"] = kept.is_empty()
 			Game.mark_chunk_dirty(chunk.data)
+			if o["st"].has("wonder"):
+				Game.map.note_chunk(chunk.data)
 		"trader":
 			Economy.tick(o["st"], Game.day)
 			get_tree().call_group("trade_ui", "open_trader", o["st"], chunk)

@@ -45,6 +45,10 @@ func set_planet(n: int) -> void:
 		DirAccess.make_dir_recursive_absolute(_land().path_join("chunks"))
 		DirAccess.make_dir_recursive_absolute(_land().path_join("people"))
 
+## Where the atlas keeps its painted pages and places ("" for a world in memory).
+func map_dir() -> String:
+	return "" if _mem != null else _land().path_join("map")
+
 func _land() -> String:
 	return root if planet == 0 else root.path_join("planets").path_join(str(planet))
 

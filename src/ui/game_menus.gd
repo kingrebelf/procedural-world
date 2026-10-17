@@ -621,17 +621,37 @@ func _sell(idx: int, qty: int) -> void:
 # --- Map ------------------------------------------------------------------------------
 
 func _map_panel() -> Control:
-	var s := _shell("Atlas", "Every chunk you have seen, kept forever. %d chunks, %d regions." % [Game.discovery["visited"].size(), Game.discovery["regions"].size()])
+	var s := _shell("Atlas", "The land you have seen, under the fog of everything you haven't. %d regions discovered." % Game.discovery["regions"].size())
 	var v: VBoxContainer = s[1]
 	var h := HBoxContainer.new()
 	v.add_child(h)
-	var m := MapView.new()
+	var left := VBoxContainer.new()
+	h.add_child(left)
+	var m := AtlasView.new()
 	m.player = player
-	m.custom_minimum_size = Vector2(620, 560)
+	m.custom_minimum_size = Vector2(760, 560)
 	m.changed.connect(_refresh)
-	h.add_child(m)
+	left.add_child(m)
+	var tools := HBoxContainer.new()
+	tools.add_child(UITheme.button("Centre on me", m.recentre))
+	tools.add_child(UITheme.button("Zoom in", func(): m.zoom_by(1.5)))
+	tools.add_child(UITheme.button("Zoom out", func(): m.zoom_by(1.0 / 1.5)))
+	left.add_child(tools)
 	var side := VBoxContainer.new()
 	side.custom_minimum_size = Vector2(300, 0)
+	var me := Vector2(player.global_position.x, player.global_position.z) if player else Vector2.ZERO
+	side.add_child(UITheme.label("Wonders", 18, UITheme.ACCENT))
+	var any := false
+	for key in Game.map.wonders:
+		var w: Dictionary = Game.map.wonders[key]
+		if not w.get("found", false):
+			continue
+		any = true
+		var state := "conquered" if w.get("cleared", false) else "guarded"
+		side.add_child(UITheme.label("%s  ·  %s  ·  %s" % [WonderSite.label(w["t"]), _dist(Vector2(w["x"], w["z"]).distance_to(me)), state], 14, WonderSite.COLORS[w["t"]]))
+	if not any:
+		side.add_child(UITheme.label("None found yet. Look for a beam of light on the horizon.", 13, UITheme.DIM))
+	side.add_child(HSeparator.new())
 	side.add_child(UITheme.label("Markers", 18, UITheme.ACCENT))
 	side.add_child(UITheme.button("Mark where I stand", func():
 		if player:
@@ -639,7 +659,6 @@ func _map_panel() -> Control:
 			Game.markers.add("Marker %d" % n, player.global_position.x, player.global_position.z, Game.planet)
 			Game.touch_player()
 			_refresh()))
-	var me := Vector2(player.global_position.x, player.global_position.z) if player else Vector2.ZERO
 	for mk in Game.markers.on_planet(Game.planet):
 		var row := HBoxContainer.new()
 		var l := UITheme.label("%s  ·  %s" % [mk["name"], _dist(Vector2(mk["x"], mk["z"]).distance_to(me))], 14, Markers.color_of(mk))
@@ -657,82 +676,9 @@ func _map_panel() -> Control:
 	var regions: Dictionary = Game.discovery["regions"]
 	var names := regions.keys()
 	names.sort_custom(func(a, b): return regions[a]["day"] < regions[b]["day"])
-	for n in names.slice(maxi(0, names.size() - 10)):
+	for n in names.slice(maxi(0, names.size() - 8)):
 		side.add_child(UITheme.label("%s  ·  day %d" % [n, int(regions[n]["day"]) + 1], 14, UITheme.ERA_COLORS[regions[n]["era"]]))
 	h.add_child(side)
 	return s[0]
 
 
-class MapView extends Control:
-	signal changed
-	var player: Node3D
-	var zoom := 6.0
-
-	## Map pixel -> world x, z.
-	func _world(p: Vector2) -> Vector2:
-		var pc := Vector2.ZERO
-		if player:
-			pc = Vector2(player.global_position.x, player.global_position.z) / ChunkGenerator.SIZE
-		return (pc + (p - size * 0.5) / zoom) * ChunkGenerator.SIZE
-
-	func _screen(x: float, z: float) -> Vector2:
-		var pc := Vector2.ZERO
-		if player:
-			pc = Vector2(player.global_position.x, player.global_position.z) / ChunkGenerator.SIZE
-		return size * 0.5 + (Vector2(x, z) / ChunkGenerator.SIZE - pc) * zoom
-
-	func _gui_input(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed:
-			if e.button_index == MOUSE_BUTTON_LEFT:
-				# Click to drop a marker there.
-				var w := _world(e.position)
-				Game.markers.add("Marker %d" % (Game.markers.count_kind("pin") + 1), w.x, w.y, Game.planet)
-				Game.touch_player()
-				changed.emit()
-			elif e.button_index == MOUSE_BUTTON_RIGHT:
-				# Right-click a marker to remove it.
-				for mk in Game.markers.on_planet(Game.planet, "pin"):
-					if _screen(mk["x"], mk["z"]).distance_to(e.position) < 10.0:
-						Game.markers.remove(mk["id"])
-						Game.touch_player()
-						changed.emit()
-						break
-			elif e.button_index == MOUSE_BUTTON_WHEEL_UP:
-				zoom = minf(zoom * 1.2, 30.0)
-				queue_redraw()
-			elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-				zoom = maxf(zoom / 1.2, 1.5)
-				queue_redraw()
-
-	func _draw() -> void:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.03, 0.035, 0.04, 0.9))
-		var center := size * 0.5
-		var pc := Vector2.ZERO
-		if player:
-			pc = Vector2(player.global_position.x, player.global_position.z) / ChunkGenerator.SIZE
-		for key in Game.discovery["visited"]:
-			var parts: PackedStringArray = key.split(",")
-			var c := Vector2(parts[0].to_int(), parts[1].to_int())
-			var p := center + (c - pc) * zoom
-			if p.x < -zoom or p.y < -zoom or p.x > size.x or p.y > size.y:
-				continue
-			var era: int = Game.discovery["visited"][key]["era"]
-			draw_rect(Rect2(p, Vector2(zoom, zoom) - Vector2.ONE * 0.5), UITheme.ERA_COLORS[era] * Color(0.8, 0.8, 0.8, 0.85))
-		if player:
-			var fwd := -player.global_transform.basis.z
-			var d := Vector2(fwd.x, fwd.z).normalized()
-			var tip := center + d * 12
-			draw_colored_polygon(PackedVector2Array([tip, center + d.rotated(2.5) * 7, center + d.rotated(-2.5) * 7]), Color.WHITE)
-		var font := get_theme_default_font()
-		for mk in Game.markers.on_planet(Game.planet):
-			var p := _screen(mk["x"], mk["z"])
-			if p.x < 0 or p.y < 0 or p.x > size.x or p.y > size.y:
-				continue
-			var c := Markers.color_of(mk)
-			if mk["kind"] == "teleporter":
-				draw_circle(p, 7.0, Color(0, 0, 0, 0.6))
-				draw_arc(p, 6.0, 0.0, TAU, 16, Color(0.45, 0.9, 1.0), 2.0)
-			else:
-				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -8), p + Vector2(6, 0), p + Vector2(0, 8), p + Vector2(-6, 0)]), c)
-			draw_string(font, p + Vector2(9, 5), mk["name"], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.85))
-		draw_string(get_theme_default_font(), Vector2(10, size.y - 10), "Scroll to zoom   ·   click to mark   ·   right-click a marker to remove   ·   1 square = 64 m", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.5))

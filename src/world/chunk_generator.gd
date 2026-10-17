@@ -948,6 +948,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	for f in forts:
 		_place_fort(chunk, f, x0, z0)
 	sites = sites + forts
+	# A wonder, very rarely; everything after keeps clear of its plaza.
+	var wonder := WonderSite.place(self, chunk, sites)
+	if not wonder.is_empty():
+		sites = sites + [wonder]
 
 	if towns:
 		_place_cave(chunk, sites)
