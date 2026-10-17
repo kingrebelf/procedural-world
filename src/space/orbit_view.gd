@@ -6,12 +6,19 @@ extends Node3D
 
 const R := 60.0 ## the current planet's radius in this scene
 const LAND_ALT := 120.0 ## metres above the ground you arrive at when you land
+## Toward the sun: from the left and a little above, so the terminator crosses the planet
+## and its night side shows.
+const SUN_TO := Vector3(-0.86, 0.26, 0.1)
+## How fast each world's air thins with height, as a share of its radius.
+const AIR_H := 0.006
 
 var _planet: MeshInstance3D
 var _rim: MeshInstance3D
 var _planet_mat: ShaderMaterial
 var _rim_mat: ShaderMaterial
 var _others: Node3D
+var _other_at := {} ## planet number -> its node in the sky
+var _look0 := Quaternion.IDENTITY ## the camera's resting look at the planet
 var _ship: Node3D
 var _cam: Camera3D
 var _sun: DirectionalLight3D
@@ -35,15 +42,16 @@ func _ready() -> void:
 	sky.sky_material = sm
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	# Space is black: only a little starlight on the shadowed side of things.
 	e.ambient_light_color = Color(0.25, 0.28, 0.35)
-	e.ambient_light_energy = 0.35
+	e.ambient_light_energy = 0.06
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.glow_enabled = true
 	e.glow_intensity = 0.6
 	env.environment = e
 	add_child(env)
 	_sun = DirectionalLight3D.new()
-	_sun.rotation = Vector3(-0.35, 0.9, 0)
+	_sun.basis = Basis.looking_at(-SUN_TO.normalized(), Vector3.UP)
 	_sun.light_energy = 1.6
 	add_child(_sun)
 
@@ -69,8 +77,10 @@ func _ready() -> void:
 	_rim_mat.shader = load("res://src/space/atmosphere_rim.gdshader")
 	_rim.material_override = _rim_mat
 	add_child(_rim)
-	_rim_mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
-	_planet_mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
+	_rim_mat.set_shader_parameter("sun_dir", SUN_TO.normalized())
+	_rim_mat.set_shader_parameter("planet_r", R)
+	_rim_mat.set_shader_parameter("scale_h", R * AIR_H)
+	_planet_mat.set_shader_parameter("sun_dir", SUN_TO.normalized())
 	_others = Node3D.new()
 	add_child(_others)
 
@@ -80,6 +90,7 @@ func _ready() -> void:
 	add_child(_cam)
 	_cam.position = Vector3(0, R * 0.55, R * 2.3)
 	_cam.look_at(Vector3(0, R * 0.25, 0))
+	_look0 = _cam.quaternion
 	_ship = Vehicle.make_model("ship")
 	_cam.add_child(_ship)
 	_ship.position = Vector3(0, -3.2, -13.0)
@@ -131,6 +142,7 @@ func _show_planet() -> void:
 	_rim_mat.set_shader_parameter("air", k["air"])
 	for c in _others.get_children():
 		c.queue_free()
+	_other_at.clear()
 	for p in Game.worlds():
 		if p["n"] == Game.planet:
 			continue
@@ -145,11 +157,29 @@ func _show_planet() -> void:
 		var mat := ShaderMaterial.new()
 		mat.shader = _planet_mat.shader
 		_paint(mat, p)
-		mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
+		mat.set_shader_parameter("sun_dir", SUN_TO.normalized())
+		mat.set_shader_parameter("relief", 0.0)
 		m.material_override = mat
 		var a := float(p["orbit"]) * 1.9 + 0.6
 		m.position = Vector3(cos(a) * 520.0, 60.0 + sin(a * 1.7) * 90.0, -300.0 - absf(sin(a)) * 600.0)
 		_others.add_child(m)
+		_other_at[int(p["n"])] = m
+		# Its air, as round the planet below.
+		var rim := MeshInstance3D.new()
+		var rs := SphereMesh.new()
+		rs.radius = r * 1.035
+		rs.height = r * 2.07
+		rs.radial_segments = 48
+		rs.rings = 24
+		rim.mesh = rs
+		var rm := ShaderMaterial.new()
+		rm.shader = _rim_mat.shader
+		rm.set_shader_parameter("air", Planets.kind_of(p)["air"])
+		rm.set_shader_parameter("sun_dir", SUN_TO.normalized())
+		rm.set_shader_parameter("planet_r", r)
+		rm.set_shader_parameter("scale_h", r * AIR_H * 1.5)
+		rim.material_override = rm
+		m.add_child(rim)
 		var l := Label3D.new()
 		l.text = "%s\n%s" % [p["name"], Planets.theme_label(p)]
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -184,6 +214,10 @@ static func _paint(mat: ShaderMaterial, p: Dictionary) -> void:
 	mat.set_shader_parameter("seed_off", Vector3((sd & 1023) * 0.37, ((sd >> 10) & 1023) * 0.29, ((sd >> 20) & 1023) * 0.31))
 	mat.set_shader_parameter("land_level", 0.47 if p["kind"] == "frozen" else 0.5)
 	mat.set_shader_parameter("air", k["air"])
+	# By night: the lamps of towns on human worlds, a faint living glow on alien ones.
+	var alien: bool = String(p.get("theme", "")) == "alien" or (String(p.get("theme", "")) == "" and p["kind"] in ["fey", "xeno"])
+	mat.set_shader_parameter("lights_col", Color(0.35, 1.0, 0.8) if alien else Color(1.0, 0.7, 0.36))
+	mat.set_shader_parameter("lights", 0.5 if alien else (0.5 if p["kind"] == "frozen" else 1.0))
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -201,13 +235,16 @@ func _warp(n: int) -> void:
 	_busy = true
 	_panel.visible = false
 	_warp_rect.visible = true
+	# The ship comes about to face where it is going, then the stars stretch past.
 	var tw := create_tween()
+	tw.tween_method(func(t: float) -> void: _turn_to(n, t), 0.0, 1.0, 1.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tw.tween_method(_set_warp, 0.0, 1.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	tw.parallel().tween_property(_cam, "fov", 88.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
 	_arrive(n)
 	_show_planet()
 	_cam.fov = 60.0
+	_cam.quaternion = _look0
 	var back := create_tween()
 	back.tween_method(_set_warp, 1.0, 0.0, 1.2)
 	await back.finished
@@ -217,6 +254,14 @@ func _warp(n: int) -> void:
 
 func _set_warp(a: float) -> void:
 	_warp_mat.set_shader_parameter("amount", a)
+
+## Turns the view (and the ship with it) from the planet toward world `n`, `t` of the way.
+func _turn_to(n: int, t: float) -> void:
+	var dest: Node3D = _other_at.get(n)
+	if dest == null:
+		return
+	var to := Basis.looking_at(dest.position - _cam.position, Vector3.UP).get_rotation_quaternion()
+	_cam.quaternion = _look0.slerp(to, t)
 
 ## Makes planet `n` current and moves your ship's record there, ready to land.
 static func _arrive(n: int) -> void:

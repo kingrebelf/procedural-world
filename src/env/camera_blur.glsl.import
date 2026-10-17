@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cj38kywourtkf"
+path="res://.godot/imported/camera_blur.glsl-3559b093464d4d239475ea4eed24acf3.res"
+
+[deps]
+
+source_file="res://src/env/camera_blur.glsl"
+dest_files=["res://.godot/imported/camera_blur.glsl-3559b093464d4d239475ea4eed24acf3.res"]
+
+[params]
+

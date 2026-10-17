@@ -159,12 +159,23 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 	for i in 3:
 		var a := PI * 0.5 + (i - 1) * 2.1 + r.randf_range(-0.2, 0.2)
 		var q := Vector2.from_angle(a) * (RING - 3.0)
-		if not crash.is_empty() and q.y < 0.0:
-			# Thrown clear of the hull, out on the plaza's open side.
-			q = Vector2(signf(q.x) * (CRASH_HALF + 4.5), 5.0)
+		var tumble := 0.0
+		if not crash.is_empty():
+			# Thrown out of the hull as it broke up: lying askew by the trench, each half
+			# buried in the wreckage that came with it. (Their own draws, so the rolls after
+			# stay as they were.)
+			var rc := WHash.rng(g.seed, cx, cz, 964 + i)
+			q = Vector2((1.0 if i % 2 == 0 else -1.0) * (CRASH_HALF + rc.randf_range(3.0, 8.0)), rc.randf_range(-18.0, 5.0))
+			tumble = rc.randf_range(-0.9, 0.9)
+			for dn in 3:
+				var dq := q + Vector2.from_angle(rc.randf() * TAU) * rc.randf_range(1.2, 2.6)
+				var dp: Vector2 = c + dq.rotated(-yaw)
+				if dp.x < 0.5 or dp.y < 0.5 or dp.x > S - 0.5 or dp.y > S - 0.5:
+					continue
+				g._add(chunk, DEBRIS, Eras.SCIFI, dp.x, dp.y, rc.randf() * TAU, 1.0, {}, 1 + rc.randi() % 6, rc.randi() % 2)
 		var loot := ItemDB.roll_loot(era, r, origin, 0.9)
 		loot.append_array(treasure(era, r, origin, Rarity.EPIC, 1))
-		put.call(Eras.CACHE_TYPES[era] if r.randf() < 0.7 else Eras.CACHE_TYPES[r.randi() % Eras.COUNT], q, r.randf() * TAU, {"loot": loot, "opened": false, "wonder": t})
+		put.call(Eras.CACHE_TYPES[era] if r.randf() < 0.7 else Eras.CACHE_TYPES[r.randi() % Eras.COUNT], q, r.randf() * TAU + tumble, {"loot": loot, "opened": false, "wonder": t})
 	# Elite guards round the ring and the boss before the vault.
 	if not chunk.has("guards"):
 		chunk["guards"] = []
@@ -256,6 +267,7 @@ const CRASH_NOSE := 4.0 ## where the trench ends, a little past the plaza's midd
 const CRASH_REACH := 3 ## chunks from the wonder's chunk the scar can reach
 const CRASH_HULL := 66.0 ## how far back from the nose the hull lies
 const DEBRIS := "crash_debris"
+const TRUNK := "crash_trunk" ## a tree the crash snapped and scorched, lying where it fell
 
 static var _crash_lock := Mutex.new()
 static var _crashes := {}
@@ -432,6 +444,70 @@ static func strew(g: ChunkGenerator, chunk: Dictionary, cr: Dictionary) -> void:
 		if ChunkGenerator.height_at(chunk, lx, lz) < ChunkGenerator.WATER_LEVEL + 0.3 or ChunkGenerator.road_at(chunk, lx, lz) > 0.0 or ChunkGenerator.by_river(chunk, lx, lz):
 			continue
 		g._add(chunk, DEBRIS, Eras.SCIFI, lx, lz, float(w["yaw"]), 1.0, {}, int(w["sp"]), int(w["v"]))
+
+## How hard the crash hit the land at world (x, z), 0..1: the blast along both sides of
+## the trench and round where the hull came to rest, past the scar itself (trees there
+## were snapped and scorched).
+static func blast(cr: Dictionary, x: float, z: float) -> float:
+	var q := _crash_q(cr, x, z)
+	var L: float = cr["len"]
+	if q.y < -L - 12.0 or q.y > CRASH_NOSE + 50.0 or absf(q.x) > CRASH_HALF + 50.0:
+		return 0.0
+	var t := clampf((q.y + L) / L, 0.0, 1.0)
+	var wob := (sin(x * 0.17 + 1.3 * sin(z * 0.11)) + sin(z * 0.19 + 1.1 * sin(x * 0.13 + 1.0))) * 0.5
+	var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
+	var side := (1.0 - smoothstep(wb + 4.0, wb + 34.0 + 14.0 * t, absf(q.x) + wob * 6.0)) * smoothstep(0.0, 0.2, t)
+	side *= 1.0 - smoothstep(CRASH_NOSE + 10.0, CRASH_NOSE + 40.0, q.y)
+	var rest := 1.0 - smoothstep(24.0, 64.0, Vector2(q.x * 0.8, q.y + 24.0).length() + wob * 8.0)
+	return clampf(maxf(side, rest), 0.0, 1.0)
+
+## Knocks down the trees of this chunk the crash blast reached: near the trench each
+## becomes a scorched trunk lying blown outward and onward from it, its stump beside it;
+## further out the fire killed them where they stand (bare, burnt snags).
+static func fell(g: ChunkGenerator, chunk: Dictionary, crashes: Array) -> void:
+	if crashes.is_empty():
+		return
+	const S := ChunkGenerator.SIZE
+	var x0 := float(int(chunk["cx"]) * S)
+	var z0 := float(int(chunk["cz"]) * S)
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) != "tree":
+			continue
+		var p: Vector3 = o["p"]
+		var wx := x0 + p.x
+		var wz := z0 + p.z
+		for cr in crashes:
+			var b := blast(cr, wx, wz)
+			var roll := WHash.unit2(g.seed, int(floor(wx * 4.0)), int(floor(wz * 4.0)), 963)
+			if b <= 0.0 or roll > b * 1.6:
+				continue
+			if b < 0.55 and (o["t"] == "oak" or o["t"] == "pine"):
+				# Further out: still standing, but burnt bare.
+				o["sp"] = _dead_species(o["t"], int(o.get("sp", 1)))
+				o["st"]["burnt"] = true
+				break
+			if b < 0.55:
+				continue
+			var q := _crash_q(cr, wx, wz)
+			var dq := Vector2(signf(q.x) if absf(q.x) > 0.5 else 1.0, 0.8 + roll).normalized()
+			var d := dq.rotated(-float(cr["yaw"]))
+			o["v"] = 1 if o["t"] == "pine" else 0
+			o["t"] = TRUNK
+			o["e"] = Eras.MEDIEVAL
+			o["r"] = atan2(d.x, d.y) + (roll - 0.5) * 0.6
+			o["st"] = {}
+			o["sp"] = 1 + int(roll * 997.0)
+			break
+
+## A species seed near `sp` whose tree of type t (oak or pine) grows as a bare, dead
+## snag, so a burnt tree keeps the size and bark of its kind.
+static func _dead_species(t: String, sp: int) -> int:
+	var want := "dead" if t == "oak" else "snag"
+	for i in 400:
+		var s := (sp + i * 7919) & 0x7FFFFFFF
+		if s != 0 and String(Flora.species(t, s)["form"]) == want:
+			return s
+	return sp
 
 ## Crashes of nearby chunks whose scar can reach chunk (cx, cz) (not its own).
 static func crashes_near(g: ChunkGenerator, cx: int, cz: int) -> Array:
@@ -811,6 +887,47 @@ static func _crashed(k: MeshKit, r: RandomNumberGenerator, calm: bool) -> ArrayM
 			k.sphere("glow_warm", I.translated(p + Vector3(0, 0.6, 0)), 0.45, 4, 6, 0.4)
 		k.box("glow_red", Transform3D(roll, roll * Vector3(6.5, 5.0, -38.0)), Vector3(0.3, 2.5, 7.0))
 	return out
+
+## A tree the crash knocked down (v 1: a conifer): its splintered stump, and the trunk
+## lying along local +z, bark scorched black on the side that faced the blast, the crown
+## burnt off to a few broken limbs. Nothing glows: the fire is long out.
+static func trunk(sp: int, v: int) -> ArrayMesh:
+	var k := MeshKit.new((sp * 53 + v * 11) & 0xFFFF)
+	var r := RandomNumberGenerator.new()
+	r.seed = sp * 613 + v * 17 + 3
+	var conifer := v == 1
+	var bark := "bark_pine" if conifer else "bark"
+	var char_ := Color(0.16, 0.14, 0.13)
+	var g := r.randf_range(0.22, 0.36) * (0.85 if conifer else 1.0)
+	var stump := r.randf_range(0.5, 1.3)
+	# The stump, snapped off ragged: splinters standing up from the break.
+	k.cylinder(bark, Transform3D(Basis(), Vector3(0, -0.3, 0)), g * 1.25, g * 1.05, stump + 0.3, 9, true, 0.06, 2, Color(0.55, 0.5, 0.46))
+	for n in 6:
+		var a := n * TAU / 6.0 + r.randf_range(-0.3, 0.3)
+		var hgt := r.randf_range(0.15, 0.55)
+		var tip := Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), r.randf_range(-0.25, 0.25))
+		k.box("timber", Transform3D(tip, Vector3(cos(a) * g * 0.6, stump + hgt * 0.5, sin(a) * g * 0.6)), Vector3(g * 0.35, hgt, g * 0.22), Color(0.72, 0.62, 0.5))
+	# The trunk, thrown down beside it, its butt end resting on the ground.
+	var len := r.randf_range(6.0, 10.0) * (1.15 if conifer else 1.0)
+	var lie := Basis(Vector3.RIGHT, PI * 0.5 - r.randf_range(0.02, 0.08)) * Basis(Vector3.UP, r.randf() * TAU)
+	var butt := Vector3(r.randf_range(-0.3, 0.3), g * 0.8, g * 1.4 + 0.2)
+	k.cylinder(bark, Transform3D(lie, butt), g * 1.0, g * 0.45, len, 9, true, 0.05, 4, Color(0.5, 0.45, 0.4))
+	var axis := lie * Vector3.UP
+	# Soot along the blast side, in long scorched strips.
+	for n in 3:
+		var zt := len * (0.15 + n * 0.28)
+		var rad := g * (1.0 - 0.55 * zt / len)
+		var at := butt + axis * zt + Vector3(0, rad * 0.7, 0)
+		k.box(bark, Transform3D(lie * Basis(Vector3.UP, r.randf_range(-0.4, 0.4)), at), Vector3(rad * 1.3, len * 0.22, rad * 0.4), char_)
+	# Broken limbs, burnt short.
+	for n in (5 if conifer else 4):
+		var z := len * r.randf_range(0.35, 0.95)
+		var a := r.randf_range(-PI, PI)
+		var dir := Vector3(cos(a), absf(sin(a)) * 0.6 + 0.2, r.randf_range(-0.3, 0.3)).normalized()
+		var from := butt + axis * z + Vector3(0, g * 0.3, 0)
+		var l2 := r.randf_range(0.6, 1.8)
+		k.cylinder(bark, Transform3D(Basis(Quaternion(Vector3.UP, dir)), from), g * 0.32, g * 0.08, l2, 5, true, 0.0, 1, char_ * 1.6)
+	return k.commit(Materials.get_mat)
 
 ## Wreckage of the Fallen Dreadnought, lying out along its trench. Kind 1-6: a torn hull
 ## plate, a section of bared ribs, an engine pod, a turret thrown off its ring, a heap of

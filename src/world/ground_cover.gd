@@ -96,6 +96,10 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 	if road.size() == n:
 		for k in n:
 			settled[k] = maxf(settled[k], minf(road[k] / 255.0 * 2.0, 1.0))
+	# (v16) Old craters on human worlds are grassed over: bare and stony only along their
+	# crumbling inner lip (look byte 11), and there in clumps.
+	var grassed: PackedByteArray = chunk.get("grassed", PackedByteArray())
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	var rv: PackedFloat32Array = chunk.get("river", PackedFloat32Array())
 	var rn := ChunkGenerator.RIVER_N
 	var snow_line := Planets.snow_line
@@ -127,6 +131,12 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			# cut (a bank green right up to the face read as a carpet laid over it).
 			var bank := smoothstep(0.42, 0.9, grad[k]) * smoothstep(0.05, 0.4, ns * 0.65 + nb * 0.45 + 0.1 + 0.35 * foot[k])
 			scree = maxf(scree, bank * (1.0 - settled[k]) * (0.45 + 0.55 * flat))
+			if not grassed.is_empty() and not lb.is_empty():
+				var gw := _look_cell(grassed, i, j, 1, 0)
+				if gw > 0.0:
+					var lip := clampf(_look_cell(lb, i, j, ChunkGenerator.LOOK_BYTES, 11) * 1.8, 0.0, 1.0)
+					var clump := smoothstep(-0.1, 0.45, nb + ns * 0.35)
+					scree *= lerpf(1.0, lip * clump, gw)
 			# Gravel on river banks and lake shores, in patches; the odd dry gravel bed.
 			var gravel := 0.0
 			if not rv.is_empty():
@@ -200,6 +210,22 @@ static func _low_at(lows: PackedFloat32Array, i: int, j: int) -> float:
 	var fx := (i - I * LOW_STEP) / float(LOW_STEP)
 	var fz := (j - J * LOW_STEP) / float(LOW_STEP)
 	return lerpf(lerpf(lows[J * LOW_N + I], lows[J * LOW_N + I + 1], fx), lerpf(lows[(J + 1) * LOW_N + I], lows[(J + 1) * LOW_N + I + 1], fx), fz)
+
+## A per-look-cell byte (stride bytes a cell, at offset) at vertex (i, j), 0..1, blended
+## between the four cells round it.
+static func _look_cell(b: PackedByteArray, i: int, j: int, stride: int, at: int) -> float:
+	const N := ChunkGenerator.LOOK_N
+	var gx := minf(float(i) / ChunkGenerator.LOOK_STEP, N - 1.001)
+	var gz := minf(float(j) / ChunkGenerator.LOOK_STEP, N - 1.001)
+	var ci := int(gx)
+	var cj := int(gz)
+	var fx := gx - ci
+	var fz := gz - cj
+	var v00 := b[(cj * N + ci) * stride + at]
+	var v10 := b[(cj * N + ci + 1) * stride + at]
+	var v01 := b[((cj + 1) * N + ci) * stride + at]
+	var v11 := b[((cj + 1) * N + ci + 1) * stride + at]
+	return lerpf(lerpf(v00, v10, fx), lerpf(v01, v11, fx), fz) / 255.0
 
 ## The cover at a point of the chunk, interpolated: Color(scree, gravel, litter, snow).
 static func at(cover: PackedByteArray, lx: float, lz: float) -> Color:

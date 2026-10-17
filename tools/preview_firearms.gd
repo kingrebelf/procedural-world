@@ -3,7 +3,8 @@ extends SceneTree
 ## with its real length, for judging the gun models up close. Side view from the right
 ## (muzzle to the right) unless --quarter turns them three-quarters on.
 ##   xvfb-run godot --path . --rendering-driver opengl3 --script res://tools/preview_firearms.gd -- \
-##     --out=/abs/path.png [--cols=3] [--quarter] [--grip] musket revolver_six laser_pistol
+##     --out=/abs/path.png [--cols=3] [--quarter] [--grip] [--px=640] musket revolver_six laser_pistol
+## --px: each cell's width in pixels (16:9), for close looks at fine detail.
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -13,6 +14,7 @@ func _run() -> void:
 	var cols := 3
 	var quarter := false
 	var grip := false
+	var px := 640
 	var names: Array = []
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
@@ -23,11 +25,13 @@ func _run() -> void:
 			quarter = true
 		elif a == "--grip":
 			grip = true
+		elif a.begins_with("--px="):
+			px = int(a.substr(5))
 		elif not a.begins_with("--"):
 			names.append(a)
 	cols = mini(cols, maxi(1, names.size()))
 	var rows := int(ceil(names.size() / float(cols)))
-	var cell := Vector2i(640, 360)
+	var cell := Vector2i(px, px * 9 / 16)
 	var vp := SubViewport.new()
 	vp.size = Vector2i(cell.x * cols, cell.y * rows)
 	vp.own_world_3d = true
