@@ -566,8 +566,9 @@ func _banner(top: Vector3, dv: Vector2, r: RandomNumberGenerator, k: MeshKit) ->
 		var face := Basis(across, Vector3.UP, into)
 		k.box("linen", Transform3D(b * face, top - into * 0.08 + across * x + Vector3(0, -len * 0.5, 0)), Vector3(w / strips + 0.004, len, 0.01), col)
 
-## Gold and silver read black by candlelight underground (nothing for a full metal to
-## reflect down here), so the hoard's metal is part metal, part lit colour.
+## The kit's trim metal is a dark grey (and the coins' vertex tint darker still), black
+## by candlelight with nothing for a full metal to reflect down here. The hoard gets
+## its own gold: warm albedo over the trim's detail, mostly lit colour, a little metal.
 const HOARD := ["props/Coin_Pile", "props/Chalice"]
 static var _swaps := {}
 
@@ -579,8 +580,10 @@ static func _hoard_swap(model: String) -> Dictionary:
 		var m = part[0]
 		if m is BaseMaterial3D and not out.has(m.resource_name):
 			var d: BaseMaterial3D = m.duplicate()
-			d.metallic = 0.45
-			d.roughness = minf(d.roughness, 0.45)
+			d.vertex_color_use_as_albedo = false
+			d.albedo_color = Color(1.0, 0.8, 0.4) if model == "props/Coin_Pile" else Color(1.0, 0.86, 0.52)
+			d.metallic = 0.3
+			d.roughness = minf(d.roughness, 0.38)
 			out[m.resource_name] = d
 	_swaps[model] = out
 	return out
