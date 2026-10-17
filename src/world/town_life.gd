@@ -850,7 +850,7 @@ func setup(g: ChunkGenerator, s: Node, st: Dictionary) -> void:
 		var hi := int(e["house"])
 		if not by_house.has(hi):
 			by_house[hi] = []
-		by_house[hi].append({"k": "smoke", "l": e["l"], "p": e["p"], "yaw": e["yaw"]})
+		by_house[hi].append({"k": "smoke", "l": e["l"], "p": e["p"], "yaw": e["yaw"], "house": hi})
 	for hi in by_house:
 		_pending.append({"pieces": by_house[hi], "house": hi})
 	for k in farm:
