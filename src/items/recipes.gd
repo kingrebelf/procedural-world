@@ -346,6 +346,7 @@ const LIST := [
 	{"out": "frag_grenade", "qty": 2, "in": {"iron_ingot": 2, "black_powder": 4, "springs": 1}, "at": "anvil"},
 	{"out": "powder_keg", "qty": 1, "in": {"planks": 4, "black_powder": 12, "iron_nails": 6}, "at": "workbench"},
 	{"out": "fire_bottle", "qty": 2, "in": {"empty_bottle": 2, "lamp_oil": 2, "cloth": 1}},
+	{"out": "fire_pot", "qty": 2, "in": {"clay": 2, "resin": 2, "cloth": 1}},
 	{"out": "bear_trap", "qty": 1, "in": {"steel_ingot": 3, "springs": 2, "iron_nails": 4}, "at": "anvil"},
 	{"out": "tripwire", "qty": 2, "in": {"copper_wire": 2, "black_powder": 6, "wood": 2}, "at": "workbench"},
 	{"out": "gun_oil", "qty": 2, "in": {"lamp_oil": 1, "animal_fat": 1, "empty_vial": 2}, "at": "campfire"},

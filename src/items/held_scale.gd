@@ -62,7 +62,7 @@ const REAL := {
 	"emp_grenade": [0.1, 0.2], "smoke_grenade": [0.1, 0.2], "void_grenade": [0.05, 0.2],
 	"acid_pod": [0.05, 0.2], "swarm_hive": [0.05, 0.2], "star_charge": [0.05, 0.2],
 	"gravity_well": [0.05, 0.2], "singularity_orb": [0.05, 0.3], "powder_keg": [0.2, 0.45],
-	"fire_bottle": [0.2, 0.32], "breach_charge": [0.08, 0.3], "flare_chem": [0.12, 0.3],
+	"fire_bottle": [0.2, 0.32], "fire_pot": [0.14, 0.26], "breach_charge": [0.08, 0.3], "flare_chem": [0.12, 0.3],
 	"shard_gauntlet": [0.12, 0.4],
 }
 

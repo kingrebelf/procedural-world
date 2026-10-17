@@ -324,7 +324,9 @@ const ITEMS := {
 	"dynamite": {"name": "Dynamite", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "weapon", "damage": 95, "splash": 5.0, "range": 30.0, "ranged": true, "thrown": true, "ammo": "dynamite", "shots_per_ammo": 1, "cooldown": 1.0, "tracer": "bolt", "color": Color(0.75, 0.2, 0.15)},
 	"frag_grenade": {"name": "Pineapple Grenade", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "weapon", "damage": 85, "splash": 4.5, "range": 32.0, "ranged": true, "thrown": true, "ammo": "frag_grenade", "shots_per_ammo": 1, "cooldown": 1.0, "tracer": "bolt", "color": Color(0.35, 0.4, 0.3)},
 	"powder_keg": {"name": "Powder Keg", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "weapon", "damage": 150, "splash": 7.0, "range": 14.0, "ranged": true, "thrown": true, "ammo": "powder_keg", "shots_per_ammo": 1, "cooldown": 1.4, "tracer": "bolt", "color": Color(0.5, 0.35, 0.2)},
-	"fire_bottle": {"name": "Fire Bottle", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "weapon", "damage": 45, "splash": 3.5, "range": 28.0, "ranged": true, "thrown": true, "ammo": "fire_bottle", "shots_per_ammo": 1, "cooldown": 0.9, "tracer": "bolt", "color": Color(0.8, 0.5, 0.2)},
+	"fire_bottle": {"name": "Fire Bottle", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "weapon", "damage": 45, "splash": 3.5, "range": 28.0, "ranged": true, "thrown": true, "ammo": "fire_bottle", "shots_per_ammo": 1, "cooldown": 0.9, "tracer": "bolt", "incendiary": 1.0, "oil": 25.0, "color": Color(0.8, 0.5, 0.2)},
+	# A clay pot of pitch with a burning rag bound over its mouth: the medieval fire bomb.
+	"fire_pot": {"name": "Fire Pot", "era": Eras.MEDIEVAL, "value": 10, "stack": true, "kind": "weapon", "damage": 25, "splash": 3.0, "range": 22.0, "ranged": true, "thrown": true, "ammo": "fire_pot", "shots_per_ammo": 1, "cooldown": 1.0, "tracer": "bolt", "incendiary": 0.85, "oil": 35.0, "color": Color(0.58, 0.36, 0.22)},
 	"bear_trap": {"name": "Bear Trap", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 70.0, "radius": 1.2, "hold": 6.0}, "color": Color(0.4, 0.4, 0.42)},
 	"tripwire": {"name": "Tripwire Kit", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 80.0, "radius": 2.0, "blast": 4.0}, "color": Color(0.55, 0.5, 0.4)},
 	"black_powder": {"name": "Black Powder", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "resource", "color": Color(0.15, 0.15, 0.15)},
@@ -432,7 +434,7 @@ const ITEMS := {
 	"auto_shotgun": {"name": "Auto Shotgun", "era": Eras.SCIFI, "value": 1200, "stack": false, "kind": "weapon", "damage": 14, "pellets": 8, "range": 40.0, "ranged": true, "ammo": "shells_12g", "shots_per_ammo": 1, "cooldown": 0.28, "auto": true, "tracer": "glow_warm", "color": Color(0.25, 0.27, 0.25)},
 	"sniper_rail": {"name": "Rail Sniper", "era": Eras.SCIFI, "value": 3200, "stack": false, "kind": "weapon", "damage": 280, "range": 500.0, "ranged": true, "ammo": "energy_cell", "shots_per_ammo": 4, "cooldown": 1.4, "tracer": "glow_white", "rarity_min": 3, "color": Color(0.2, 0.22, 0.3)},
 	"minigun": {"name": "Minigun", "era": Eras.SCIFI, "value": 3000, "stack": false, "kind": "weapon", "damage": 26, "range": 140.0, "ranged": true, "ammo": "smart_rounds", "shots_per_ammo": 1, "cooldown": 0.05, "auto": true, "tracer": "glow_warm", "rarity_min": 3, "color": Color(0.32, 0.33, 0.34)},
-	"flamethrower": {"name": "Flamethrower", "era": Eras.SCIFI, "value": 1100, "stack": false, "kind": "weapon", "damage": 12, "splash": 1.8, "range": 16.0, "ranged": true, "ammo": "fuel_canister", "shots_per_ammo": 40, "cooldown": 0.08, "auto": true, "tracer": "glow_warm", "color": Color(0.55, 0.3, 0.15)},
+	"flamethrower": {"name": "Flamethrower", "era": Eras.SCIFI, "value": 1100, "stack": false, "kind": "weapon", "damage": 12, "splash": 1.8, "range": 16.0, "ranged": true, "ammo": "fuel_canister", "shots_per_ammo": 40, "cooldown": 0.08, "auto": true, "tracer": "glow_warm", "incendiary": 0.4, "color": Color(0.55, 0.3, 0.15)},
 	"rocket_launcher": {"name": "Rocket Launcher", "era": Eras.SCIFI, "value": 1800, "stack": false, "kind": "weapon", "damage": 240, "splash": 6.5, "range": 180.0, "ranged": true, "ammo": "rocket", "shots_per_ammo": 1, "cooldown": 1.2, "tracer": "bolt", "color": Color(0.35, 0.4, 0.3)},
 	"grenade_launcher": {"name": "Grenade Launcher", "era": Eras.SCIFI, "value": 1500, "stack": false, "kind": "weapon", "damage": 140, "splash": 5.0, "range": 90.0, "ranged": true, "ammo": "frag_grenade_mk2", "shots_per_ammo": 1, "cooldown": 0.7, "tracer": "bolt", "color": Color(0.3, 0.32, 0.28)},
 	"needle_gun": {"name": "Needle Gun", "era": Eras.SCIFI, "value": 800, "stack": false, "kind": "weapon", "damage": 18, "range": 70.0, "ranged": true, "ammo": "energy_cell", "shots_per_ammo": 40, "cooldown": 0.1, "auto": true, "tracer": "glow_white", "color": Color(0.6, 0.62, 0.66)},
@@ -808,7 +810,7 @@ const UNLOCK := {
 	"sarsaparilla": 10, "apple_dried": 10, "pickles": 10, "egg_fried": 10, "pancakes": 11, "steak": 11, "chili": 12,
 	"stew_tin": 12, "whiskey": 11, "water_canteen": 11, "bandage_roll": 10, "iodine": 11, "splint": 11, "harmonica": 10,
 	"cards_deck": 10, "satchel": 11, "tomahawk": 11, "bayonet": 12, "blunderbuss": 12, "revolver_six": 13,
-	"shotgun_shells": 12, "rifle_cartridges": 13, "derringer": 12, "flare_gun": 12, "fire_bottle": 12, "bear_trap": 12,
+	"shotgun_shells": 12, "rifle_cartridges": 13, "derringer": 12, "flare_gun": 12, "fire_bottle": 12, "fire_pot": 4, "bear_trap": 12,
 	"sabre": 13, "lamp_kerosene": 12, "valve": 12, "pressure_gauge": 13, "piston": 13, "steel_sheet": 12,
 	"hardhat_lamp": 12, "overalls": 12, "gloves_work": 12, "trousers_canvas": 12, "boots_steeltoe": 12,
 	"backpack_canvas": 13, "pickaxe_miner": 13, "axe_lumber": 13, "sledgehammer": 13, "gun_oil": 13, "compass": 12,
@@ -887,7 +889,7 @@ const UNLOCK := {
 ## arrows for bows, steel and blasting bolts, hollow-point and steel-core rounds, slugs
 ## for a shotgun, bigger cells for energy guns.
 const AMMO_VARIANTS := {
-	"arrow": [["arrow_fire", {"damage": 1.5}], ["arrow_steel", {"damage": 1.4}], ["arrow_barbed", {"damage": 1.35}],
+	"arrow": [["arrow_fire", {"damage": 1.5, "incendiary": 0.5}], ["arrow_steel", {"damage": 1.4}], ["arrow_barbed", {"damage": 1.35}],
 		["broadhead_arrows", {"damage": 1.3}]],
 	"bolt": [["bolt_explosive", {"damage": 1.2, "splash": 2.5}], ["bolt_steel", {"damage": 1.35}]],
 	"rounds": [["rounds_ap", {"damage": 1.4}], ["rounds_hollow", {"damage": 1.3}]],
@@ -1068,7 +1070,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"flintlock_pistol": 1.3, "musket": 4.5, "blunderbuss": 4.0, "revolver_six": 1.2, "lever_rifle": 3.5,
 	"double_shotgun": 3.4, "bolt_rifle": 4.0, "derringer": 0.4, "flare_gun": 0.9, "harpoon_gun": 5.0, "gatling": 14.0,
 	"elephant_gun": 5.5, "sabre": 1.8, "machete": 1.0, "tomahawk": 0.9, "bowie_knife": 0.6, "bayonet": 0.4,
-	"sledgehammer": 5.0, "dynamite": 0.3, "frag_grenade": 0.6, "powder_keg": 6.0, "fire_bottle": 0.6, "bear_trap": 4.0,
+	"sledgehammer": 5.0, "dynamite": 0.3, "frag_grenade": 0.6, "powder_keg": 6.0, "fire_bottle": 0.6, "fire_pot": 1.2, "bear_trap": 4.0,
 	"tripwire": 0.8, "black_powder": 0.05, "musket_balls": 0.03, "shotgun_shells": 0.05, "rifle_cartridges": 0.03,
 	"ammo_belt": 1.2, "gun_oil": 0.2, "hat_cowboy": 0.3, "duster": 2.5, "gloves_riding": 0.2, "chaps": 1.5,
 	"boots_riding": 1.2, "bandana": 0.05, "hardhat_lamp": 0.9, "overalls": 1.5, "gloves_work": 0.3,

@@ -235,6 +235,17 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 ## Trees drawn by RealTree switch to the merged far mesh beyond this distance (from the
 ## middle of the chunk).
 const TREE_NEAR := 320.0
+## Suffix of the multimesh group for scorched objects (drawn with soot_material()).
+const SOOT := "~soot"
+
+static var _soot: ShaderMaterial
+
+## The overlay that blackens scorched objects (soot.gdshader).
+static func soot_material() -> ShaderMaterial:
+	if _soot == null:
+		_soot = ShaderMaterial.new()
+		_soot.shader = load("res://src/world/soot.gdshader")
+	return _soot
 
 ## Instance buffers per mesh key, plus "~far": the far versions of every RealTree tree in
 ## the chunk merged into one mesh's surface arrays (one surface per material), so a
@@ -286,6 +297,19 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			# Moss on its top (StoneKit's material reads alpha): in green lands, not on sand.
 			var w := Eras.look(ChunkGenerator.weights_at(chunk, p.x, p.z))
 			tint.a = w[Eras.MEDIEVAL] * lerpf(0.2, 0.9, u2) * ChunkGenerator.cover_at(chunk, p.x, p.z)
+		# Scorched by fire (FireSim): a tree's own tint darkens (leaves and bark alike);
+		# anything else goes in its own group drawn with the soot overlay, how burnt in
+		# the row's alpha. Stepped, so a fire rebuilds the chunk's meshes only a few times.
+		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
+		var burnt := FireSim.char_step(o["st"])
+		if burnt > 0.0 and o["t"] != FireSim.RUIN:
+			if k == "tree":
+				tint = Color(tint.r * (1.0 - burnt * 0.82), tint.g * (1.0 - burnt * 0.86), tint.b * (1.0 - burnt * 0.86), tint.a)
+			else:
+				key += SOOT
+				if not by_key.has(key):
+					by_key[key] = PackedFloat32Array()
+				tint.a = 1.0 - burnt
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a]
 		if far and real:
 			var look := RealTree.plant_look(float(chunk["cx"]) * SIZE + p.x, float(chunk["cz"]) * SIZE + p.z)
@@ -295,7 +319,6 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key[key] = buf
 		# A room you can walk into brings its furniture (drawn up close) and any lamplit
 		# windows (from further off) as their own meshes.
-		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
 		if KitHouse.has(rk) or Interiors.has(rk):
 			for extra in [rk + "~in", rk + "~glow"] if KitHouse.has(rk) or Interiors.glows(rk) else [rk + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
@@ -994,17 +1017,21 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 		if t.ends_with("~in") or t.ends_with("~glow"):
 			_add_rooms(t, buf)
 			continue
+		var sooty: bool = String(t).ends_with(SOOT)
+		var mt: String = String(t).trim_suffix(SOOT)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		mm.mesh = ObjectLibrary.get_mesh(t)
+		mm.mesh = ObjectLibrary.get_mesh(mt)
 		mm.instance_count = buf.size() / 16
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
-		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if k == "tree" and RealTree.handles(t.get_slice("#", 0)) and buffers.has("~far"):
+		if sooty:
+			mmi.material_overlay = soot_material()
+		var k := ObjectLibrary.kind(mt.get_slice("#", 0))
+		if k == "tree" and RealTree.handles(mt.get_slice("#", 0)) and buffers.has("~far"):
 			# Up close only; the merged far mesh takes over beyond.
 			mmi.visibility_range_end = TREE_NEAR
 			mmi.visibility_range_end_margin = 12.0
@@ -1012,7 +1039,7 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 			mmi.visibility_range_end = 900.0
 			# A small lamp or candle stand casts no shadow of its own (its own light sits
 			# inside it, and would throw its arms across the room).
-			var bd := BuildCatalog.def(BuildCatalog.id_of(t.get_slice("#", 0))) if k == "built" else {}
+			var bd := BuildCatalog.def(BuildCatalog.id_of(mt.get_slice("#", 0))) if k == "built" else {}
 			if bd.get("decor", false) and bd.has("light"):
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
@@ -1405,8 +1432,10 @@ func add_built(id: String, lp: Vector3, yaw: float, st: Dictionary) -> Dictionar
 
 ## Adds an object at local point lp after generation (a piece you built, a supply pod a
 ## beacon called down) and keeps it in the snapshot.
-func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) -> Dictionary:
+## `more` sets other fields of the record (a species "sp", a variant "v", a scale "s").
+func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary, more := {}) -> Dictionary:
 	var o := {"i": data["objects"].size(), "t": t, "p": lp, "r": yaw, "s": 1.0, "e": era, "st": st}
+	o.merge(more, true)
 	data["objects"].append(o)
 	set_objects(build_object_buffers(data, false), true)
 	refresh_far()

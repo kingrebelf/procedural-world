@@ -70,6 +70,8 @@ const TABLE := {
 	"bunker_keep": ["metal", 2000.0, [["alloy_plate", 12], ["alloy_scrap", 20]]],
 	"alien_ruin": ["metal", 600.0, [["alloy_plate", 8], ["data_core", 2], ["power_cell", 3], ["aether_crystal", 6]]],
 	"trader": ["wood", 50.0, [["planks", 8], ["wood", 4]]],
+	# Picking through what a fire left (FireRuins): charcoal, nails, sound stone.
+	"fire_ruin": ["stone", 40.0, [["charcoal", 4], ["stone", 4], ["iron_nails", 2]]],
 }
 
 const MATERIAL_NAMES := {"wood": "Wood", "fungus": "Fungus", "crystal": "Crystal", "metal": "Metal", "stone": "Stone", "ore": "Ore"}

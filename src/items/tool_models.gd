@@ -708,7 +708,7 @@ const BUILD := {
 	"bayonet": "_bayonet", "sledgehammer": "_sledgehammer", "wrench": "_wrench", "crowbar": "_crowbar",
 	"hand_drill": "_hand_drill", "pickaxe_miner": "_pickaxe_miner", "axe_lumber": "_axe_lumber",
 	"lamp_kerosene": "_lamp_kerosene", "dynamite": "_dynamite", "frag_grenade": "_frag_grenade",
-	"powder_keg": "_powder_keg", "fire_bottle": "_fire_bottle", "survival_knife": "_survival_knife",
+	"powder_keg": "_powder_keg", "fire_bottle": "_fire_bottle", "fire_pot": "_fire_pot", "survival_knife": "_survival_knife",
 	"vibro_knife": "_vibro_knife", "combat_machete": "_combat_machete", "stun_baton": "_stun_baton",
 	"mono_katana": "_mono_katana", "power_hammer": "_power_hammer", "chain_axe": "_chain_axe",
 	"frag_grenade_mk2": "_frag_mk2", "emp_grenade": "_emp_grenade", "smoke_grenade": "_smoke_grenade",
@@ -1347,6 +1347,13 @@ static func _fire_bottle(k: MeshKit):
 	# Lamp oil inside, a rag stuffed in the neck.
 	lathe(k, "it_paint", Transform3D.IDENTITY, [Vector2(0, 0.004), Vector2(0.029, 0.004), Vector2(0.029, 0.08), Vector2(0, 0.08)], 14, Color(0.55, 0.38, 0.12))
 	k.sphere("it_cloth", Transform3D(Basis.from_scale(Vector3(0.8, 2.2, 0.8)), Vector3(0.004, 0.2, 0)), 0.014, 4, 6, 0.4, 1.0, Color(0.75, 0.68, 0.55))
+
+## A round clay pot of pitch, its mouth tied over with a rag to be lit.
+static func _fire_pot(k: MeshKit):
+	lathe(k, "it_stone", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.052, 0.03), Vector2(0.058, 0.065), Vector2(0.05, 0.1), Vector2(0.026, 0.122), Vector2(0.024, 0.132), Vector2(0.03, 0.138), Vector2(0, 0.138)], 16, Color(0.62, 0.38, 0.24))
+	lathe(k, "it_pitch", Transform3D.IDENTITY, [Vector2(0, 0.131), Vector2(0.025, 0.131), Vector2(0, 0.136)], 12)
+	k.sphere("it_cloth", Transform3D(Basis.from_scale(Vector3(1.2, 0.6, 1.2)), Vector3(0, 0.142, 0)), 0.03, 5, 8, 0.4, 1.0, Color(0.72, 0.64, 0.5))
+	k.cylinder("it_cord", Transform3D(Basis(), Vector3(0, 0.124, 0)), 0.027, 0.027, 0.008, 12)
 
 static func _survival_knife(k: MeshKit):
 	sword(k, {"len": 0.17, "w": 0.016, "t": 0.006, "single": true, "tip": 0.3, "cross": 0.028, "grip": 0.11, "guard": "it_steel", "wrap_m": "it_cord", "wrap_col": Color(0.25, 0.27, 0.2), "pommel": 0.014, "wheel": false})

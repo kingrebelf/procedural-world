@@ -42,7 +42,7 @@ const KINDS := {
 		"goods": [["sword_iron", "battle_axe", "war_hammer", "mace", "spear", "dagger", "longbow", "crossbow", "arrow", "bolt",
 				"bronze_sword", "bronze_axe", "falchion", "morning_star", "warpick", "glaive", "shortbow", "composite_bow",
 				"broadhead_arrows", "javelin", "throwing_knives", "hand_axe", "hunting_spear", "arrow_barbed", "arrow_steel",
-				"arrow_fire", "bolt_steel", "quiver"],
+				"arrow_fire", "fire_pot", "bolt_steel", "quiver"],
 			["sword_runic", "crossbow_runic", "longbow", "spear", "dagger", "arrow", "bolt"],
 			["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "arc_launcher", "scrap_pistol", "rounds",
 				"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",

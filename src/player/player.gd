@@ -936,6 +936,13 @@ func _update_look_target() -> void:
 				lines = Doors.describe(o) if not is_own_piece(o) else [built_by(o)] + Doors.describe(o)
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
+			if o["st"].has("fire"):
+				# Burning: how badly, and how to fight it.
+				var fh := FireSim.heat(o["st"])
+				text = "[%s] beat at the flames" % _key("use")
+				lines.push_front("On fire (%s): beat it out while it is small, or throw water" % ("smouldering" if fh < 0.3 else ("burning" if fh < 0.7 else "ablaze")))
+			elif float(o["st"].get("char", 0.0)) > 0.0:
+				lines.append("Scorched by fire")
 			if k == "cache" and not o["st"].get("opened", false):
 				lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
 				if WonderSite.sealed((h["chunk"] as ChunkNode).data, o):
@@ -1349,6 +1356,10 @@ func use_held() -> void:
 		return
 	var d: Dictionary = ItemDB.stats(it) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
+	# At a fire: a torch lights it, a bucket fills or is thrown, oil is poured on, a
+	# swing at something burning beats at the flames (FireSystem).
+	if FireSystem.current != null and FireSystem.current.player_use(self, it, d, _hit_object()):
+		return
 	if d.get("ranged", false):
 		_fire(it, d)
 		return
@@ -1655,8 +1666,19 @@ func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
 func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	var col = hit.get("collider")
 	var q: float = it.get("quality", 1.0) if it is Dictionary else 1.0
+	var fires := FireSystem.current
+	var inc := float(d.get("incendiary", 0.0))
+	if fires != null and inc > 0.0:
+		# A fire bottle, a fire pot, a flamethrower's tongue, a burning arrow: what it hits
+		# goes up first, then what is round it.
+		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
+			fires.ignite(col.get_meta("chunk"), int(col.get_meta("obj")), inc, true, false, float(d.get("oil", 0.0)))
+		fires.ignite_at(at, float(d.get("splash", 0.7)), inc, true, float(d.get("oil", 0.0)))
 	if d.has("splash"):
-		_blast(at, float(d["splash"]), float(d.get("damage", 10)), not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm")
+		var powder: bool = not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm"
+		if fires != null and powder and inc <= 0.0 and not d.get("smoke", false):
+			fires.blast(at, float(d["splash"]))
+		_blast(at, float(d["splash"]), float(d.get("damage", 10)), powder)
 		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
 			var bc: ChunkNode = col.get_meta("chunk")
 			damage_object(bc, bc.get_object(col.get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
@@ -1870,14 +1892,14 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		if spilled > 0 and npcs and not Game.may_use_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
-		if k == "structure" or k == "trader":
+		if (k == "structure" or k == "trader") and o["t"] != FireSim.RUIN:
 			Game.toast.emit("Destroyed %s" % ObjectLibrary.label_of(o))
 			if npcs:
 				npcs.player_vandalised(chunk.position + o["p"], ObjectLibrary.label_of(o))
 		chunk.remove_object(o["i"])
 	else:
 		Game.mark_chunk_dirty(chunk.data)
-		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and randf() < 0.15:
+		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and o["t"] != FireSim.RUIN and randf() < 0.15:
 			npcs.player_vandalised(chunk.position + o["p"], "")
 
 ## A doorway brought down takes the door hanging in it along (back to your pack if it was yours).
