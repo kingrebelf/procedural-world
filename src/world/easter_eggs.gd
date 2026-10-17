@@ -395,7 +395,7 @@ static func build(key: String) -> ArrayMesh:
 			k.cylinder("timber", Transform3D(lie, at.call(0.235)), 0.027, 0.03, 0.04, 10, true, 0.0, 1, Color(0.95, 0.8, 0.6))
 			k.cylinder("plaster", Transform3D(lie, at.call(-0.14)), 0.045, 0.045, 0.2, 12, true, 0.0, 1, Color(1.0, 0.93, 0.74))
 			k.cylinder("cloth", Transform3D(lie, at.call(-0.045)), 0.048, 0.048, 0.015, 12)
-			k.cylinder("bone", Transform3D(Basis(Vector3.UP, 1.9) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.75, 0.04, -0.5)), 0.05, 0.03, 1.2, 7, true, 0.15, 3, Color(0.78, 0.74, 0.66))
+			k.cylinder("bone", Transform3D(Basis(Vector3.UP, 1.9) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.55, 0.05, -0.45)), 0.06, 0.04, 0.8, 7, true, 0.2, 3, Color(0.78, 0.74, 0.66))
 			for i in 6:
 				var a := r.randf() * TAU
 				k.sphere("bone", I.translated(Vector3(cos(a), 0.0, sin(a)) * r.randf_range(0.35, 0.8)), r.randf_range(0.03, 0.05), 4, 7, 0.0, 0.45, Color(1.0, 0.88, 0.82))
