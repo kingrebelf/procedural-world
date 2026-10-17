@@ -853,10 +853,28 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, mast + Vector3(0, 13.4, 0)), 0.8, 0.9, 0.9, 12, true, 0.0, 1, Color(0.65, 0.52, 0.4))
 	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 1.9, false, Color(0.9, 0.84, 0.72))
 	for s in [-1.0, 1.0]:
-		for z in [-2.2, -0.9, 0.4]:
+		# Shrouds to deadeyes on the rail, with ratlines across them to climb to the top.
+		var feet: Array = []
+		for z in [-2.2, -1.3, -0.4, 0.5]:
 			var u: float = 0.5 - z / float(h["L"])
-			_line(k, mast + Vector3(0, 13.2, 0), Vector3(s * (_width_at(h, u, dy + 0.9) + 0.05), dy + 1.0, z), 0.02)
+			var foot := Vector3(s * (_width_at(h, u, dy + 0.9) + 0.05), dy + 1.0, z)
+			feet.append(foot)
+			_line(k, mast + Vector3(0, 13.2, 0), foot, 0.02)
+			k.cylinder("timber", Transform3D(Basis(Vector3.BACK, PI * 0.5), foot + Vector3(0, 0.1, 0)), 0.08, 0.08, 0.06, 8, true)
+		var head := mast + Vector3(0, 13.2, 0)
+		for n in range(1, 24):
+			var t := float(n) / 24.0
+			var a: Vector3 = (feet[0] as Vector3).lerp(head, t)
+			var b: Vector3 = (feet[3] as Vector3).lerp(head, t)
+			_line(k, a, b, 0.008)
+		# Sheets from the sail's lower corners aft to the rail, braces from the yard's ends.
 		_line(k, mast + Vector3(s * 5.0, 4.2, 0.3), Vector3(s * 2.2, dy + 1.0, 3.8), 0.012)
+		_line(k, mast + Vector3(s * 5.4, 12.6, -0.5), Vector3(s * (hx - 0.1), top + 0.9, 8.6), 0.012)
+		_line(k, mast + Vector3(s * 4.8, 4.25, 0.2), Vector3(s * 1.4, dy + 1.0, -6.0), 0.01)
+	# Halyard down the mast to a cleat, and a lift from the masthead to each yardarm.
+	_line(k, mast + Vector3(0.28, 16.0, 0.1), mast + Vector3(0.28, 1.2, 0.1), 0.014)
+	for s in [-1.0, 1.0]:
+		_line(k, mast + Vector3(0, 16.2, 0), mast + Vector3(s * 5.4, 12.6, -0.5), 0.01)
 	_line(k, mast + Vector3(0, 16.2, 0), Vector3(0, float(h["F"]) + 2.5, -13.1), 0.025)
 	_line(k, mast + Vector3(0, 15.8, 0), Vector3(0, top + 0.9, 9.1), 0.02)
 	# Anchor cable running from the bow down into the water.
