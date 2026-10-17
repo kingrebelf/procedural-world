@@ -807,8 +807,76 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		out[key] = buf
 		if size * flat >= 0.25:
 			solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
+	_river_rocks(chunk, density, greys, out, solid)
 	if not solid.is_empty():
 		out["~stones"] = solid
+
+## Boulders and stones in a river's bed, breaking the surface: thick where the water
+## falls steeply (the rapids, whose white water needs something to break on), a few
+## anywhere along the channel and toward its banks, where the current drops what it
+## carries. From the chunk's 2 m river grid, with their own draws (906's stones keep their
+## places).
+static func _river_rocks(chunk: Dictionary, density: float, greys: Array, out: Dictionary, solid: PackedFloat32Array) -> void:
+	if not chunk.has("river"):
+		return
+	var rv: PackedFloat32Array = chunk["river"]
+	var N := ChunkGenerator.RIVER_N
+	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 907)
+	var wet := func(i: int, j: int) -> bool:
+		var k := (j * N + i) * 3
+		return rv[k + 1] < 1.0 and rv[k + 2] > 0.25 and rv[k] > ChunkGenerator.WATER_LEVEL + 0.2
+	for j in N:
+		for i in N:
+			var k := (j * N + i) * 3
+			var roll := r.randf()
+			if not wet.call(i, j):
+				continue
+			# The water's own fall per 4 m, between wet neighbours (its level climbs the
+			# banks, which is no rapid).
+			var fall := 0.0
+			for d in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var a := Vector2i(mini(i + d.x, N - 1), mini(j + d.y, N - 1))
+				var b := Vector2i(maxi(i - d.x, 0), maxi(j - d.y, 0))
+				if wet.call(a.x, a.y) and wet.call(b.x, b.y):
+					fall = maxf(fall, absf(rv[(a.y * N + a.x) * 3] - rv[(b.y * N + b.x) * 3]))
+			var rapid := smoothstep(0.12, 0.35, fall)
+			var bank := smoothstep(0.45, 0.9, rv[k + 1])
+			var count := 0
+			if roll < (0.025 + 0.06 * bank + 0.5 * rapid) * density:
+				count = 1 + int(r.randf() * (1.0 + 2.0 * rapid))
+			for c in count:
+				var lx := clampf(i * 2.0 + r.randf_range(-1.0, 1.0), 0.0, SIZE - 0.01)
+				var lz := clampf(j * 2.0 + r.randf_range(-1.0, 1.0), 0.0, SIZE - 0.01)
+				var bed := ChunkGenerator.height_at(chunk, lx, lz)
+				var depth := rv[k] - bed
+				if depth > 0.9 or depth < 0.05:
+					continue
+				var flat := r.randf_range(0.8, 1.05)
+				var a := r.randf()
+				# Most just break the surface; a few lie under it, a few stand well out.
+				var top := depth + lerpf(-0.15, 0.45, a) * (0.6 + 0.6 * rapid)
+				# (The kit rocks stand about 0.66 of their width, 0.12 of it sunk in the bed.)
+				var size := clampf(top / (flat * 0.54), 0.25, 1.6)
+				var kind := "rock_a" if r.randf() < 0.5 else "rock_b"
+				var long := r.randf_range(0.75, 1.35)
+				var b := Basis(Vector3.UP, r.randf() * TAU) * Basis.from_euler(Vector3(r.randf_range(-0.15, 0.15), 0, r.randf_range(-0.15, 0.15)))
+				b = b.scaled_local(Vector3(size * long, size * flat, size / long))
+				var p := Vector3(lx, bed - size * flat * 0.12, lz)
+				var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
+				var grey: Color = greys[r.randi() % greys.size()]
+				var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
+				var st := ChunkGenerator.stone_at(chunk, lx, lz)
+				if st.a > 0.0:
+					tint = tint.lerp(Color(st.r, st.g, st.b), st.a * 0.8)
+				# Water-dark, with a little green weed low down in slack water.
+				var v := r.randf_range(0.72, 0.95)
+				tint = Color(tint.r * v, tint.g * v, tint.b * v, w[Eras.MEDIEVAL] * r.randf_range(0.05, 0.3) * (1.0 - rapid))
+				var key := "stone:" + kind
+				var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
+				buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a])
+				out[key] = buf
+				if size * flat >= 0.4:
+					solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
