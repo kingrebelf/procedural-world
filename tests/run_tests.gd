@@ -321,7 +321,7 @@ func test_room_interiors() -> void:
 		if Interiors.glows(t):
 			check(ObjectLibrary.get_mesh(t + "~glow").get_surface_count() == 1, "%s has lamplit windows" % t)
 		check(not Interiors.lights(t).is_empty() and Interiors.LOOT.has(t), "%s is lit and has loot" % t)
-		var faces: PackedVector3Array = (Interiors.shape(t)[0] as ConcavePolygonShape3D).get_faces()
+		var faces: PackedVector3Array = (ObjectLibrary.shape_of({"t": t, "st": {}})[0] as ConcavePolygonShape3D).get_faces()
 		# Where the doorway is, how high the floor is, and a point in the middle of the room.
 		var door_x := 0.0
 		var outside := 0.0

@@ -232,6 +232,17 @@ static func shape_of(o: Dictionary) -> Array:
 	var k := kind(t)
 	if t == "bridge" and sp != 0:
 		return Bridge.shape(sp)
+	if Interiors.has(t):
+		# A keep or bunker you walk into: its rooms collide as Interiors builds them.
+		_lock.lock()
+		var rs = _shapes.get(t)
+		_lock.unlock()
+		if rs == null:
+			rs = Interiors.shape(t)
+			_lock.lock()
+			_shapes[t] = rs
+			_lock.unlock()
+		return rs
 	if Stronghold.has(t):
 		# Walk through gates and doorways: collide with the real geometry.
 		_lock.lock()
