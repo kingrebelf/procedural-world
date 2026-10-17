@@ -588,6 +588,25 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
 	await _frames(30)
 	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
+	# Headshots: the upper front of the body box counts as the head and takes double.
+	var cs: CollisionShape3D = kc._body.get_child(0)
+	var bs: Vector3 = (cs.shape as BoxShape3D).size
+	var head_pt: Vector3 = kc._body.to_global(cs.position + Vector3(0, bs.y * 0.35, bs.z * 0.4))
+	var body_pt: Vector3 = kc._body.to_global(cs.position + Vector3(0, -bs.y * 0.2, -bs.z * 0.2))
+	check(kc.is_head(head_pt) and not kc.is_head(body_pt), "an animal's head is the upper front of its body")
+	var marks: Array = []
+	var on_mark := func(k: String): marks.append(k)
+	player.hit_marker.connect(on_mark)
+	var pd: Dictionary = ItemDB.stats(gun)
+	var h0 := kc.hp
+	player.ranged_hit(gun, pd, {"collider": kc._body, "position": body_pt}, body_pt)
+	var body_dmg: float = h0 - kc.hp
+	h0 = kc.hp
+	player.ranged_hit(gun, pd, {"collider": kc._body, "position": head_pt}, head_pt)
+	var head_dmg: float = h0 - kc.hp
+	check(head_dmg > body_dmg * 1.8, "a headshot does double damage (%.0f vs %.0f)" % [head_dmg, body_dmg])
+	check(marks.size() >= 2 and marks[-2] == "hit" and marks[-1] == "head", "hits flash a hit marker, headshots a headshot marker (%s)" % str(marks))
+	player.hit_marker.disconnect(on_mark)
 	gun["charge"] = 0
 	player._cooldown = 0.0
 	player._trigger_held = false
