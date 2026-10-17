@@ -55,6 +55,37 @@ static func ensure(rec: Dictionary) -> void:
 			for slot in g:
 				gear[slot] = {"type": g[slot], "qty": 1, "quality": 1.0}
 		rec["gear"] = gear
+	if not rec.has("level") and rec.get("pos", Vector3.ZERO) is Vector3 and rec.get("pos", Vector3.ZERO) != Vector3.ZERO:
+		rec["level"] = level_for(rec)
+		# Health grows with the level; keep how hurt they already were.
+		rec["hp"] = float(rec.get("hp", 100.0)) / 100.0 * max_hp(rec)
+
+# --- Level -------------------------------------------------------------------------------------
+
+## A person's level: the zone level where they live (Eras.zone_level, one more every 150 m
+## out on themed worlds), townsfolk a little under it, guards a few above the townsfolk
+## around them, and tradesfolk who fight for a living (smiths, hunters) a touch above.
+static func level_for(rec: Dictionary) -> int:
+	var p: Vector3 = rec["pos"]
+	var zone := Eras.zone_level(p.x, p.z)
+	var h := absi(hash(String(rec["id"]) + "level"))
+	var lv := zone - 2 + h % 3
+	if NPCGen.GUARD_JOBS.has(rec["job"]):
+		lv = zone + 3 + h % 3
+	elif rec["job"] in ["smith", "hunter", "scavenger", "engineer"]:
+		lv += 1
+	return clampi(lv, 1, 99)
+
+static func level(rec: Dictionary) -> int:
+	return int(rec.get("level", 1))
+
+## Full health at their level: 100 at level 1, +12% a level (as for wild animals).
+static func max_hp(rec: Dictionary) -> float:
+	return 100.0 * (1.0 + 0.12 * (level(rec) - 1))
+
+## How hard they hit compared with a level 1 person: +4% a level (as for wild animals).
+static func hit_mult(rec: Dictionary) -> float:
+	return 1.0 + 0.04 * (level(rec) - 1)
 
 static func _set_purse(rec: Dictionary, v: int) -> void:
 	rec["purse"] = v
