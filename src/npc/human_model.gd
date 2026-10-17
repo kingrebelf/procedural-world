@@ -200,9 +200,15 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	posture.limp = float(shape["limp"])
 	posture.hip = float(shape["hip"])
 	posture.head_scale = float(shape["head"])
+	posture.head_round = float(shape["child"])
+	posture.leg_len = float(shape["legs"])
+	posture.arm_len = float(shape["arms"])
+	posture.hand_scale = float(shape["hands"])
+	posture.neck_len = float(shape["neck"])
 	posture.animator = animator
 	skeleton.add_child(posture)
 	ik = HumanIK.new()
+	ik.leg_len = posture.leg_len
 	skeleton.add_child(ik)
 	animator.ik = ik
 	gestures = BodyLanguage.new()

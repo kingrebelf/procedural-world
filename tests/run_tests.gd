@@ -1619,6 +1619,9 @@ func test_body_variety() -> void:
 	# Children: small, growing every year, with large heads, no beards and no grey.
 	check(BodyShape.stature(b, 4) < 0.6 and BodyShape.stature(b, 10) < BodyShape.stature(b, 14) and BodyShape.stature(b, 14) < BodyShape.stature(b, 30) * 1.0, "children are small and grow with age")
 	check(float(BodyShape.shape(b, 5)["head"]) > 1.2 and float(BodyShape.shape(b, 30)["head"]) == 1.0, "a small child's head is large for its body")
+	check(BodyShape.head_size(4) > 1.45 and BodyShape.head_size(10) < BodyShape.head_size(6) and BodyShape.head_size(17) < 1.05, "heads grow less than bodies through childhood")
+	var k4 := BodyShape.shape(b, 4)
+	check(float(k4["legs"]) < 0.9 and float(k4["neck"]) < 0.7 and float(k4["hands"]) < 0.95 and float(BodyShape.shape(b, 30)["legs"]) == 1.0, "small children have short legs and necks and small hands")
 	check(BodyShape.beard(b, 10) == 0 and BodyShape.child(30) == 0.0 and BodyShape.child(6) > 0.8, "children have no beards")
 	var grey := b.duplicate()
 	grey["hair"] = Color(0.6, 0.6, 0.6)
