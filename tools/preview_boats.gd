@@ -85,7 +85,22 @@ func _run() -> void:
 		scene.add_child(bm.build(kind, 11, body))
 		var bw = load("res://src/vehicles/boat_water.gd").build(kind)
 		scene.add_child(bw)
-		bw.follow(Vector2.ZERO, 0.0, 0.7 if kind in ["rowboat", "fishing_boat", "launch"] else 0.0)
+		var under_way: bool = kind in ["rowboat", "fishing_boat", "launch", "cog", "research_vessel"]
+		bw.follow(Vector2.ZERO, 0.0, 0.7 if under_way else 0.0)
+		var extra: Array = []
+		if under_way:
+			# Her wake as if she'd come round a long gentle turn at her sailing pace.
+			var wk = load("res://src/vehicles/boat_wake.gd").make(kind)
+			scene.add_child(wk)
+			var L := float(Boats.KINDS[kind]["len"])
+			var v := float(Boats.KINDS[kind]["moves"])
+			var R := 160.0
+			var dd := 110.0
+			while dd >= 0.0:
+				var th := dd / R
+				wk.feed(Vector2(R * (1.0 - cos(th)), L * 0.45 + R * sin(th)), Vector2(-sin(th), -cos(th)), v, clampf(pow(v / 4.0, 0.7), 0.0, 1.0) * clampf(0.45 + L / 16.0, 0.45, 1.0), 0.06)
+				dd -= 0.5
+			extra = [[Vector3(L * 1.6 + 8.0, L * 0.9 + 6.0, -L * 0.6), Vector3(4.0, 0.0, L * 2.0)], [Vector3(-6.0, 2.2, L * 0.5 + 6.0), Vector3(3.0, 0.0, L * 2.5 + 20.0)]]
 		var r := RandomNumberGenerator.new()
 		r.seed = 5
 		var era := 2 if kind in ["life_raft", "launch", "research_vessel"] else 0
@@ -109,7 +124,7 @@ func _run() -> void:
 				h.hold(vm.prop_for("fishing_rod", null), Vector3(0, 0.6, 1).normalized())
 		for i in 30:
 			await process_frame
-		var shots: Array = SHOTS[kind]
+		var shots: Array = SHOTS[kind] + extra
 		for i in shots.size():
 			cam.position = shots[i][0]
 			cam.look_at(shots[i][1])
