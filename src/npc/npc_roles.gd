@@ -257,7 +257,7 @@ static func _pick(list: Array, rec: Dictionary, stop: int) -> Vector2:
 ## The duty block this person is in at `hour`: [from, to, duty] or [] (their own time).
 static func block(rec: Dictionary, hour: float) -> Array:
 	var job: String = rec["job"]
-	if job == "trader":
+	if job == "trader" or rec.get("child", false): # children have no duties
 		return []
 	var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(job, [])
 	if NPCGen.GUARD_JOBS.has(job) and night_watch(rec):

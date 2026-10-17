@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -25,9 +25,14 @@ var shafts := 1.0
 ## --vfog=N scales the volumetric haze (light shafts) for this run.
 var vfog := 1.0
 ## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
+## --moon=0.5 sets the moon phase for every view (0 new, 0.25 first quarter, 0.5 full).
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
+## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
+## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
+var spin := 0.0
+var _spinning := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -53,6 +58,11 @@ func _ready() -> void:
 			FrameMend.mode = {"show": 1, "off": 2}.get(a.substr(7), 0)
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
+		# --moon=0.5 shoots every night at that moon phase (0 new, 0.5 full).
+		if a.begins_with("--moon="):
+			Atmosphere.moon_phase_override = a.substr(7).to_float()
+		if a.begins_with("--spin="):
+			spin = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -285,6 +295,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
+	_spinning = spin != 0.0
 	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
@@ -293,6 +304,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
+	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
 	_report_broken(world)
@@ -301,6 +313,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
+func _process(delta: float) -> void:
+	if _spinning and world and world.player:
+		world.player._yaw += deg_to_rad(spin) * delta
+		world.player._apply_look()
+
 func _report_broken(n: Node) -> void:
 	if n is Node3D and not (n as Node3D).global_transform.is_finite():
 		print("  non-finite transform: ", n.get_path(), " (", n.get_class(), ") ", (n as Node3D).transform)
@@ -451,12 +468,17 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if only.is_empty() or ["65", "66", "67", "68", "69"].any(func(n): return only.has(n)):
+	if only.is_empty() or ["65", "66", "67", "68", "69", "88"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
-	var b := _find_border(g)
-	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
+	if not ZoneBorder.rings().is_empty() and WorldField.terrain_v >= 16 and (only.is_empty() or only.has("04") or only.has("73")):
+		await _zone_shots(g)
+	else:
+		var b := _find_border(g)
+		await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
+	if WorldField.terrain_v >= 16 and (only.is_empty() or only.has("74") or only.has("75")):
+		await _crash_and_crater_shots(g)
 	if not fan.is_empty():
 		var c: Vector2 = fan["center"]
 		await _shot("05_fantasy_village_night", c + Vector2(40, -34), c, 0.93)
@@ -470,6 +492,45 @@ func _run() -> void:
 		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
 		# across the houses and their shadows reach toward you.
 		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
+	# Village life up close (TownLife): a house's yard at eye height, and a field's edge.
+	var lt := _find_settlement(g, Eras.MEDIEVAL, 1) if g.towns else {}
+	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91")):
+		var pl := TownLife.plan(g, lt)
+		var yard := {}
+		var best := -1
+		# An ordinary home, not a shop (a shop's front stays clear for its sign and door).
+		var shops := []
+		for sh in TownShops.plan(g, lt):
+			if sh["kind"] != "":
+				shops.append(sh["p"])
+		for h in pl["houses"]:
+			if shops.any(func(q: Vector2) -> bool: return q.distance_to(h["p"]) < 0.6):
+				continue
+			var score := 0
+			for e in pl["pieces"]:
+				if int(e["house"]) == int(h["i"]):
+					score += {"woodpile": 2, "washing": 3, "garden": 2, "bench": 1, "barrels": 1, "haystack": 2, "cart": 2, "fence": 1}.get(e["k"], 0)
+			if score > best:
+				best = score
+				yard = h
+		if not yard.is_empty():
+			var hp: Vector2 = yard["p"]
+			var hy: float = yard["yaw"]
+			var hw: float = yard["w"]
+			var hd: float = yard["d"]
+			await _shot("90_village_yard", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.5 + 7.0, hd * 0.5 + 6.0)),
+				TownLife.frame_to_world(hp, hy, Vector2(-1.0, -1.0)), 0.42)
+		var fields: Array = pl["fields"]
+		if not fields.is_empty():
+			var fd: Dictionary = fields[0]
+			for f2 in fields:
+				if f2["crop"] == "wheat" and (f2["tint"] as Color).r > 0.65:
+					fd = f2
+					break
+			var fp: Vector2 = fd["p"]
+			var fy: float = fd["yaw"]
+			await _shot("91_village_fields", TownLife.frame_to_world(fp, fy, Vector2(-float(fd["hx"]) - 3.0, -float(fd["hz"]) - 3.0)),
+				TownLife.frame_to_world(fp, fy, Vector2(float(fd["hx"]) * 0.5, float(fd["hz"]))), 0.6, 2.0)
 	# Midnight on the highest ground near spawn, looking well up: the stars and the Milky
 	# Way over a strip of skyline (from low ground a hill and a boulder filled half of it).
 	var hill := Vector2(8, 8)
@@ -483,13 +544,25 @@ func _run() -> void:
 				hill = q
 	var sky_dir := Vector2(2, 1).normalized()
 	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.38))
+	# Moonrise from the same hill: a full moon a third of the way up the east, the land under
+	# it lit cool and casting moon shadows. Then a waxing moon, a little over half, low in
+	# the west at midnight (as clear a sky as 39's), so the phase on the disc and the
+	# dimmer light both show.
+	var keep_moon := Atmosphere.moon_phase_override
+	if keep_moon < 0.0:
+		Atmosphere.moon_phase_override = 0.5
+	await _shot("70_moonrise", hill, hill + Vector2(200.0, 60.0), 0.85, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.3))
+	if keep_moon < 0.0:
+		Atmosphere.moon_phase_override = 0.3
+	await _shot("71_half_moon", hill, hill + Vector2(-200.0, 63.0), 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.27))
+	Atmosphere.moon_phase_override = keep_moon
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
-	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
+	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
 	if only.is_empty() or only.has("59") or only.has("60"):
 		await _player_house()
@@ -502,6 +575,148 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## v16 human worlds, the first zone line (or the next if none of its roads has a checkpoint):
+## 04 the checkpoint on the road from the medieval side, looking out over the toll bar to
+## the watchtower and the land beyond; 70 the line of boundary stones running away across
+## open country.
+func _zone_shots(_g: ChunkGenerator) -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var rs := ZoneBorder.rings()
+	var cp := {}
+	for R in rs:
+		if not cp.is_empty():
+			break
+		for it in ZoneBorder.checkpoints(g, R, ZoneBorder._band(R), Rect2(-R - 100.0, -R - 100.0, 2.0 * R + 200.0, 2.0 * R + 200.0)):
+			if it["t"] == "border_bar" or it["t"] == "border_barrier":
+				cp = it
+				cp["R"] = R
+				break
+	if not cp.is_empty():
+		var x: Vector2 = cp["p"]
+		var f := Vector2(sin(float(cp["yaw"])), cos(float(cp["yaw"])))
+		# Stand back on the old side of the line (the road changes under the camera's
+		# gaze), off to the left of the road so the held tool doesn't hide the bar.
+		var back := 14.0
+		while back < 60.0 and (x - f * back).length() > float(cp["R"]) - 5.0:
+			back += 3.0
+		var cam := x - f * back - f.orthogonal() * 3.0
+		await _shot("04_era_border", cam, x + f * 6.0 - f.orthogonal() * 2.5, 0.4, 1.8, g.field.height(x.x, x.y) + 2.5, Callable(), 6.0)
+	else:
+		print("no zone checkpoint found")
+	# Stones across open ground: on the line, away from roads, looking along it.
+	var R0: float = rs[0]
+	for i in 720:
+		var a := i * TAU / 720.0
+		var p := Vector2(cos(a), sin(a)) * (R0 - 5.0)
+		var h := g.field.height(p.x, p.y)
+		if h < Water.LEVEL + 2.0:
+			continue
+		var open := true
+		for k in 8:
+			var q := Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0
+			open = open and absf(g.field.height(q.x, q.y) - h) < 4.0
+		if not open or not g.roads_near(p.x - 60.0, p.y - 60.0, p.x + 60.0, p.y + 60.0).is_empty():
+			continue
+		for k in 8:
+			open = open and _dry(g, Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0)
+		if not open or not _dry(g, p):
+			continue
+		# The stones actually standing along this stretch, in order along the line.
+		var stones: Array = []
+		var trees: Array = []
+		var seen := {}
+		for k in 8:
+			var q := Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0
+			var ck := Vector2i(floori(q.x / 64.0), floori(q.y / 64.0))
+			if seen.has(ck):
+				continue
+			seen[ck] = true
+			var ch := g.generate(ck.x, ck.y)
+			for o in ch["objects"]:
+				var wp := Vector2(o["p"].x + ck.x * 64.0, o["p"].z + ck.y * 64.0)
+				if o["t"] == "border_stone":
+					var oa := atan2(wp.y, wp.x)
+					if angle_difference(a, oa) > -0.004 and angle_difference(a, oa) < 0.05:
+						stones.append([angle_difference(a, oa), wp])
+				elif ObjectLibrary.kind(o["t"]) == "tree":
+					trees.append(wp)
+		stones.sort_custom(func(x, y): return x[0] < y[0])
+		if stones.size() < 3:
+			continue
+		# From a few metres short of the first, just inside the line, toward the third:
+		# no tree in the way.
+		var s0: Vector2 = stones[0][1]
+		var s2: Vector2 = stones[2][1]
+		var tan := (s2 - s0).normalized()
+		var cam := s0 - tan * 7.0 - s0.normalized() * 1.5
+		var blocked := false
+		for t in trees:
+			var u := clampf((t - cam).dot(tan), 0.0, (s2 - cam).length())
+			blocked = blocked or (cam + tan * u).distance_to(t) < 3.0
+		if blocked:
+			continue
+		await _shot("73_zone_stones", cam, s2, 0.42, 1.7, g.field.height(s2.x, s2.y) + 0.7, Callable(), 3.0)
+		return
+	print("no open stretch of the zone line found")
+
+## 71 the Fallen Dreadnought from above its trench, looking down it to the hull; 72 the
+## crest of a big crater, looking across its bowl to the far rim and the ejecta beyond.
+func _crash_and_crater_shots(_g: ChunkGenerator) -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	if only.is_empty() or only.has("74"):
+		var cr := {}
+		for r in 16:
+			for wz in range(-r, r + 1):
+				for wx in range(-r, r + 1):
+					if not cr.is_empty() or maxi(absi(wx), absi(wz)) != r:
+						continue
+					var pick := WonderSite.cell_pick(g.seed, wx, wz)
+					if not pick.is_empty():
+						cr = WonderSite.crash_of(g, pick[0])
+		if cr.is_empty():
+			print("no crashed dreadnought found")
+		else:
+			var c := Vector2(cr["x"], cr["z"])
+			var back := Vector2(0, -float(cr["len"]) * 0.75).rotated(-float(cr["yaw"]))
+			var cam := c + back + back.orthogonal().normalized() * 26.0
+			print("dreadnought crash at ", c, " trench ", cr["len"], " m")
+			await _shot("74_dreadnought_trench", cam, c + back * 0.15, 0.38, 22.0, float(cr["hb"]) + 2.0)
+	if only.is_empty() or only.has("75"):
+		var best := Vector2.INF
+		for rr in 14:
+			for iz in range(-rr, rr + 1):
+				for ix in range(-rr, rr + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != rr:
+						continue
+					if g.field.site_landform(ix, iz) == WorldField.LF_CRATERS:
+						var sp := g.field.site_pos(ix, iz)
+						if g.field.landform_weights(sp.x, sp.y)[WorldField.LF_CRATERS] > 0.95:
+							best = sp
+		if best == Vector2.INF:
+			print("no crater field found")
+			return
+		# The biggest crater near the heart of the field, from a point on its crest.
+		var top := {}
+		for j in range(-12, 13):
+			for i in range(-12, 13):
+				var p := best + Vector2(i, j) * 12.0
+				var c := g.field._crater_at(p.x, p.y)
+				if c.is_empty() or absf(float(c[5]) - 1.0) > 0.04 or float(c[3]) < 1.0:
+					continue
+				if top.is_empty() or float(c[0]) > float(top["r"]):
+					var d0 := g.field._cell(p.x, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x
+					var gx := g.field._cell(p.x + 0.5, p.y, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0
+					var gz := g.field._cell(p.x, p.y + 0.5, WorldField.CRATER_CELL, WorldField.CRATER_SALT).x - d0
+					var out := Vector2(gx, gz).normalized()
+					top = {"r": c[0], "p": p, "mid": p - out * float(c[0])}
+		if top.is_empty():
+			print("no crater crest found")
+			return
+		var p: Vector2 = top["p"]
+		var mid: Vector2 = top["mid"]
+		var cam := p + (p - mid).normalized() * 6.0 + (p - mid).orthogonal().normalized() * 10.0
+		await _shot("75_crater_rim", cam, mid + (mid - p) * 0.6, 0.4, 3.0, g.field.height(mid.x, mid.y) + 4.0)
 
 ## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
 ## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
@@ -793,6 +1008,9 @@ func _wonder_types() -> void:
 				var c := g.generate(k.x, k.y)
 				if c.has("wonder") and not found.has(c["wonder"]["t"]):
 					found[c["wonder"]["t"]] = c
+				elif c.has("wonder") and c["wonder"].has("crash") and not found[c["wonder"]["t"]]["wonder"].has("crash"):
+					# A dreadnought at the end of its trench over one that lies on its plaza.
+					found[c["wonder"]["t"]] = c
 	for i in WonderSite.TYPES.size():
 		var t: String = WonderSite.TYPES[i]
 		if not found.has(t):
@@ -956,7 +1174,8 @@ func _starship() -> void:
 		print("captured 12_flight")
 	Input.action_release("move_forward")
 
-## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
+## Under the lake looking back up the shelf to the shore and up at the surface, and a
+## splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 	var out := shore_out
 	var deep := Vector2.INF
@@ -971,6 +1190,9 @@ func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 		var p: Player = world.player
 		p.underwater = true
 		await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+		# The underside of the surface, looking up at about 45 degrees: Snell's window
+		# overhead, the bed mirrored around it.
+		await _shot("86_surface_from_below", deep, deep - out * 8.0, 0.45, 4.0, Water.LEVEL + 3.0)
 		p.underwater = false
 	var spot := shore + out * 9.0
 	var burst := func() -> void:
@@ -1145,6 +1367,21 @@ func _player_house() -> void:
 				id = "wall_window" if k == 1 else ("wall_window_stone" if side == 0 else id)
 			var near_now := BuildCatalog.built_near(streamer, hit, 4.0)
 			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor", "near": near_now}))
+	# Corner posts where the walls meet, stone below and timber above, and a door hung in
+	# the doorway (at its spot and facing, as the builder hangs one).
+	for k in 2:
+		for c in [Vector3(-3, 0, -3), Vector3(3, 0, -3), Vector3(-3, 0, 3), Vector3(3, 0, 3)]:
+			var cid := "corner_stone" if k == 0 else "corner_timber"
+			put.call(cid, BuildCatalog.snap(cid, Vector3(cx + c.x * 0.97, base.y + k * storey + 1.0, cz + c.z * 0.97), 0.0, 0, base, false, {"hit_mode": "wall"}))
+	var dw := Doors.doorway_near(streamer, "door_wood", Vector3(cx, base.y + 1.7, cz + 8.0), Vector3(cx, base.y + 1.2, cz + 3.0))
+	if not dw.is_empty():
+		var dpos: Vector3 = dw["pos"]
+		var dc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(dpos))
+		var dst := {"by": "you", "day": 0.0}
+		Doors.init_state(dst)
+		dc.add_built("door_wood", dpos - dc.position, float(dw["yaw"]), dst)
+	else:
+		print("house: no doorway found for the door")
 	# Stairs from the front left cell, climbing toward the back; the upper floor leaves
 	# their two cells open.
 	put.call("stairs_wood", BuildCatalog.snap("stairs_wood", Vector3(cx - 2.0, base.y + 0.02, cz + 2.0), 0.0, 0, base, false, {"hit_mode": "floor"}))
@@ -1294,8 +1531,9 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
 
-## Boats (65-69): a cog at anchor and a research vessel seen from the water, the cog's
-## deck and the vessel's bridge from aboard, and a small working boat with its crew.
+## Boats (65-69, 88): a cog at anchor and a research vessel seen from the water, the cog's
+## deck and the vessel's bridge from aboard, a small working boat with its crew, and the cog's stern
+## quarter up close (clinker planking, rudder, sterncastle).
 func _boat_shots(g: ChunkGenerator) -> void:
 	var best := {}
 	for r in 12:
@@ -1311,7 +1549,8 @@ func _boat_shots(g: ChunkGenerator) -> void:
 					best[key] = s
 	# [name, eye (boat-local; y is above the water), look at (boat-local)].
 	var views := {
-		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 2.2, 6.0)]],
+		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 2.2, 6.0)],
+			["88_cog_stern", Vector3(8.5, 1.5, 15.0), Vector3(0, 1.4, 7.5)]],
 		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
 	}
@@ -1322,7 +1561,15 @@ func _boat_shots(g: ChunkGenerator) -> void:
 		var bc: Vector2 = best[key]["center"]
 		world.player.set_physics_process(false)
 		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
-		var b: BoatNode = world.boats.put(best[key], true)
+		# The small boat is caught under way (oars pulling, bow wave and wake); the big ones
+		# lie still.
+		var b: BoatNode = world.boats.put(best[key], key != "small")
+		if key == "small":
+			# Always the same stretch of its loop, whatever the game clock says, so the shot
+			# (and its light) is the same every run.
+			b.route_t = 0.0
+			for i in 3:
+				await get_tree().physics_frame
 		for v in views[key]:
 			if not only.is_empty() and not only.has(String(v[0]).substr(0, 2)):
 				continue

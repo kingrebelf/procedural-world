@@ -45,11 +45,17 @@ func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
 
+## Waits until `cond` holds: for `max_frames` frames, and never less than that many
+## frames take at 60 fps (a headless frame can take a millisecond, and frames alone ran
+## out before the server had sent the land).
 func _until(cond: Callable, max_frames: int) -> bool:
-	for i in max_frames:
+	var end := Time.get_ticks_msec() + max_frames * 1000 / 60
+	var i := 0
+	while i < max_frames or Time.get_ticks_msec() < end:
 		if cond.call():
 			return true
 		await process_frame
+		i += 1
 	return cond.call()
 
 func _godot_args(extra: Array) -> PackedStringArray:

@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 15 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers.
+const GEN_VERSION := 17 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -318,10 +318,12 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 	var dist := PackedFloat32Array()
 	var level := PackedFloat32Array()
 	var air := PackedByteArray()
+	var side := PackedByteArray() ## 1 on the left of the road (going along its points)
 	dist.resize(RES * RES)
 	dist.fill(INF)
 	level.resize(RES * RES)
 	air.resize(RES * RES)
+	side.resize(RES * RES)
 	var rr := road_reach
 	var area := Rect2(x0 - rr, z0 - rr, SIZE + 2.0 * rr, SIZE + 2.0 * rr)
 	for rd in roads:
@@ -353,7 +355,8 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 						dist[k] = d
 						level[k] = lerpf(ha, hb, t)
 						air[k] = up
-	return [dist, level, air]
+						side[k] = 1 if ab.cross(q - a) > 0.0 else 0
+	return [dist, level, air, side]
 
 ## A stone bridge wherever a road crosses running river water inside this chunk. Each
 ## crossing is found the same way from any chunk, so exactly one chunk owns it.
@@ -708,8 +711,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var rf: Array = _road_field(x0, z0, roads) if not roads.is_empty() else []
 	var road_mask := PackedByteArray()
 	var any_road := false
+	# How far each point near a road is from its middle line, to one side or the other
+	# (128 + 20 per metre; 0 away from roads), for the wheel ruts the terrain shader
+	# wears into it.
+	var road_mid := PackedByteArray()
+	var any_mid := false
 	if towns:
 		road_mask.resize(RES * RES)
+		if not rf.is_empty():
+			road_mid.resize(RES * RES)
 	var forts := forts_near(x0, z0, x0 + SIZE, z0 + SIZE)
 	var flat: Array = sites + forts
 	var street_ang: Array = []
@@ -764,6 +774,9 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * (1.7 if outposts else 0.9), road_reach - ROAD_HALF - 2.0)
 				h = lerpf(h, lv, (1.0 - smoothstep(ROAD_HALF, verge, d)) * dry)
 				on_road = (1.0 - smoothstep(ROAD_HALF - 0.8, ROAD_HALF + 1.0, d)) * dry
+				if towns:
+					road_mid[k] = 128 + int(round(minf(d, 6.3) * 20.0)) * (1 if rf[3][k] == 1 else -1)
+					any_mid = true
 			if towns:
 				for si in sites.size():
 					var st: Dictionary = sites[si]
@@ -800,12 +813,25 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
 	# v7: what the landforms do to the colour of rock and ground, on the 4 m grid.
 	var look := PackedByteArray()
+	var grassed := PackedByteArray() # v16 human worlds: how much of each look cell is old grassed crater
 	if landforms:
 		var any := false
 		look.resize(CN * CN * LOOK_BYTES)
 		for c in CN * CN:
 			WorldField.look_bytes(coarse_lf[c], look, c * LOOK_BYTES)
-			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0
+			# v16: fresh spoil round the craters (byte 11). On human worlds the craters are
+			# old and grassed over (see crater_spoil), bare only on the inner lip.
+			var lc: float = coarse_lf[c][WorldField.LF_CRATERS]
+			if lc > WorldField.LF_FADE.x and WorldField.terrain_v >= 16:
+				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
+				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
+				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+				if Eras.theme == "human":
+					if grassed.is_empty():
+						grassed.resize(CN * CN)
+					grassed[c] = int(round(lf * 255.0))
+
+			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
 			look = PackedByteArray()
 	var chunk := {
@@ -822,8 +848,17 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["river"] = river
 	if not look.is_empty():
 		chunk["look"] = look
+	if not grassed.is_empty():
+		chunk["grassed"] = grassed
 	if any_road:
 		chunk["road"] = road_mask
+		if any_mid:
+			chunk["road_mid"] = road_mid
+	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
+	var near := WonderSite.crashes_near(self, cx, cz)
+	for cr in near:
+		WonderSite.scar(self, chunk, cr)
+		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
 		_place_bridges(chunk, roads)
 	if outposts and not roads.is_empty():
@@ -836,6 +871,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 			if not hole.is_empty():
 				chunk["hole"] = hole
 	_place_objects(chunk, sites)
+	# v16: trees a crash's blast reached lie snapped and scorched.
+	if chunk.has("wonder") and chunk["wonder"].has("crash"):
+		near.append(chunk["wonder"]["crash"])
+	WonderSite.fell(self, chunk, near)
 	return chunk
 
 ## Ground plans nothing should grow through or stand in: this chunk's own buildings and
@@ -931,10 +970,65 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
 		return 1.0
-	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
-	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
-	var k := (j * LOOK_N + i) * LOOK_BYTES
-	return 1.0 - maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7)
+	# Interpolated between the 4 m look points (the nearest point alone left square
+	# bare patches in the grass). (v16: scorched ground and fresh crater spoil grow little
+	# either.)
+	return 1.0 - maxf(maxf(_look_lerp(lb, lx, lz, 8), _look_lerp(lb, lx, lz, 7) * 0.7), _scar(lb, lx, lz))
+
+## cover_at and sand_at at every metre of the chunk, [cover, sand] per terrain vertex:
+## for loops that ask at thousands of points (look one up with look_cell).
+static func look_grid(chunk: Dictionary) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(RES * RES * 2)
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	for j in RES:
+		for i in RES:
+			var k := (j * RES + i) * 2
+			if lb.is_empty():
+				out[k] = 1.0
+				continue
+			var sand := _look_lerp(lb, i, j, 8)
+			out[k] = 1.0 - maxf(maxf(sand, _look_lerp(lb, i, j, 7) * 0.7), _scar(lb, i, j))
+			out[k + 1] = sand
+	return out
+
+## Index into look_grid of the metre nearest (lx, lz): [k] cover, [k + 1] sand.
+static func look_cell(lx: float, lz: float) -> int:
+	return (clampi(int(lz + 0.5), 0, RES - 1) * RES + clampi(int(lx + 0.5), 0, RES - 1)) * 2
+
+## One byte of the landform look (0..1) at a point, interpolated between look points.
+static func _look_lerp(lb: PackedByteArray, lx: float, lz: float, b: int) -> float:
+	var fx := clampf(lx / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var fz := clampf(lz / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	fx -= i
+	fz -= j
+	var k := (j * LOOK_N + i) * LOOK_BYTES + b
+	var k2 := k + LOOK_N * LOOK_BYTES
+	return lerpf(lerpf(lb[k], lb[k + LOOK_BYTES], fx), lerpf(lb[k2], lb[k2 + LOOK_BYTES], fx), fz) / 255.0
+
+## How much of the ground here is loose wind-blown sand (1 deep in dunes, 0 elsewhere).
+static func sand_at(chunk: Dictionary, lx: float, lz: float) -> float:
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	if lb.is_empty():
+		return 0.0
+	return _look_lerp(lb, lx, lz, 8)
+
+## How wet the ground is: 1 at the water's edge (river banks, lake and sea shores),
+## falling to 0 a few metres up and away from it. Reeds and rushes grow only here.
+static func wet_at(chunk: Dictionary, lx: float, lz: float) -> float:
+	var wet := 1.0 - smoothstep(0.6, 2.2, height_at(chunk, lx, lz) - WATER_LEVEL)
+	if chunk.has("river"):
+		var rv: PackedFloat32Array = chunk["river"]
+		var k := (clampi(int(round(lz * 0.5)), 0, RIVER_N - 1) * RIVER_N + clampi(int(round(lx * 0.5)), 0, RIVER_N - 1)) * 3
+		if rv[k + 2] > 0.2:
+			wet = maxf(wet, 1.0 - smoothstep(1.3, 3.0, rv[k + 1]))
+	return wet
+
+## How little grows on scorched ground or fresh crater spoil here (v16), 0..1.
+static func _scar(lb: PackedByteArray, lx: float, lz: float) -> float:
+	return maxf(_look_lerp(lb, lx, lz, 10) * 0.95, _look_lerp(lb, lx, lz, 11) * 0.6)
 
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
@@ -1068,6 +1162,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	# v11: a hidden find, very rarely, once the buildings and landmarks have their room.
 	if eggs:
 		EasterEggs.place(self, chunk)
+	# v16: boundary markers and checkpoints where one zone of a human world meets the next.
+	if WorldField.terrain_v >= 16:
+		ZoneBorder.place(self, chunk, sites)
 
 	# Nothing grows or lies inside a building (or a neighbour's reaching in).
 	var plans := keep_out(chunk)
@@ -1094,9 +1191,13 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
+		# No tree takes root in loose dune sand.
+		p *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
-		var f := Biome.pick_flora(bp, pick)
+		var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
+		if f.is_empty():
+			continue
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1118,13 +1219,17 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
 			if landforms:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
+			dense *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2) or kept_out(plans, lx, lz, 1.0):
 				continue
-			var f := Biome.pick_flora(bp, pick)
+			var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
+			if f.is_empty():
+				continue
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.
 	r = WHash.rng(seed, cx, cz, 302)
+	var rc := WHash.rng(seed, cx, cz, 308)
 	for n in 16:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -1141,21 +1246,45 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
-			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
+			var lf := field.landform_at(x0 + lx, z0 + lz)
+			rd *= WorldField.LANDFORM_ROCKS[lf]
+			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
+				rd *= field.crater_rocks(x0 + lx, z0 + lz)
 		var rocks: Array = bp["rocks"]
+		# Dunes bury their stones: no boulders on open sand. Nor one perched on the lip
+		# of a drop, half of it hanging over thin air.
+		if sand_at(chunk, lx, lz) > 0.4 or _on_edge(chunk, lx, lz, sc):
+			continue
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
 			continue
+		# Boulders gather in fields and spills (a slow noise), with open ground between,
+		# rather than one every few strides.
+		var heap := smoothstep(-0.2, 0.5, field._moss.get_noise_2d((x0 + lx) * 1.2 + 913.0, (z0 + lz) * 1.2 - 377.0))
+		rd *= 0.2 + 1.8 * heap
 		if roll < rd / 16.0:
 			_add(chunk, "rock", era, lx, lz, yaw, sc, {"left": left, "progress": 0.0}, rocks[pick % rocks.size()], variant)
+			# In a boulder field, a few lesser ones lie about the big one (their own draws,
+			# so the rest of the chunk stays as it was).
+			for c in int(heap * 3.0 * rc.randf()):
+				var cp := Vector2(lx, lz) + Vector2(rc.randf_range(1.6, 4.5) * sc, 0).rotated(rc.randf() * TAU)
+				var cs := sc * rc.randf_range(0.35, 0.8)
+				var cyaw := rc.randf() * TAU
+				var cv := rc.randi() % Flora.VARIANTS
+				if _on_edge(chunk, cp.x, cp.y, cs) or cp.x < 1.0 or cp.y < 1.0 or cp.x > SIZE - 1.0 or cp.y > SIZE - 1.0 or road_at(chunk, cp.x, cp.y) > 0.15 or by_river(chunk, cp.x, cp.y) or in_cave(chunk, cp.x, cp.y) or sand_at(chunk, cp.x, cp.y) > 0.4 or slope_at(chunk, cp.x, cp.y) > 0.8 or _crowds_tree(chunk, cp.x, cp.y, 1.2 * cs + 0.8) or kept_out(plans, cp.x, cp.y, cs + 0.4) or _near_settlement(x0 + cp.x, z0 + cp.y, sites, 0.0):
+					continue
+				_add(chunk, "rock", era, cp.x, cp.y, cyaw, cs, {"left": maxi(left - 2, 2), "progress": 0.0}, rocks[(pick + c + 1) % rocks.size()], cv)
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
-	# Caches: rare, contents rolled now and frozen forever.
+	# Caches: rare, contents rolled now and frozen forever. Out in the wilds only: a
+	# chest left lying in a town street or on the road would have been picked up long
+	# ago (towns keep theirs indoors, Interiors.stock).
 	r = WHash.rng(seed, cx, cz, 303)
 	var cache_x := r.randf_range(4, SIZE - 4) if r.randf() < 0.22 else -1.0
 	var cache_z := r.randf_range(4, SIZE - 4) if cache_x >= 0.0 else -1.0
-	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0):
+	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0) and not _near_settlement(x0 + cache_x, z0 + cache_z, sites, 6.0) \
+			and road_at(chunk, cache_x, cache_z) < 0.05 and not under_river(chunk, cache_x, cache_z):
 		var lx := cache_x
 		var lz := cache_z
 		var era := WorldField.dominant(weights_at(chunk, lx, lz))
@@ -1165,8 +1294,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var loot := ItemDB.roll_loot(era, r, o)
 		_add(chunk, Eras.CACHE_TYPES[era], era, lx, lz, r.randf() * TAU, 1.0, {"loot": loot, "opened": false})
 
-	# Threshold markers inside transition bands make crossings read as intentional.
+	# Threshold markers inside transition bands make crossings read as intentional: the
+	# odd one, on fairly level ground, not a stone on every rise.
 	r = WHash.rng(seed, cx, cz, 304)
+	var marked := false
 	for n in 10:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -1175,8 +1306,19 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var era := _pick_era(w, r.randf())
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.8, 1.4)
-		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5 and not kept_out(plans, lx, lz, 0.8):
+		if top < 0.72 and r.randf() < 0.05 and not marked and slope_at(chunk, lx, lz) < 0.25 and not kept_out(plans, lx, lz, 0.8):
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
+			marked = true
+
+## True when the ground falls away steeply within a boulder's reach of (lx, lz) (a
+## boulder of scale `sc` set there would overhang the drop).
+static func _on_edge(chunk: Dictionary, lx: float, lz: float, sc: float) -> bool:
+	var h := height_at(chunk, lx, lz)
+	for k in 6:
+		var d := Vector2.from_angle(k * TAU / 6.0) * maxf(sc * 1.2, 1.0)
+		if h - height_at(chunk, lx + d.x, lz + d.y) > 0.6 * sc + 0.4:
+			return true
+	return false
 
 ## Strongholds whose flat ground reaches into this rectangle (v5 worlds).
 func forts_near(x0: float, z0: float, x1: float, z1: float) -> Array:
@@ -1341,9 +1483,17 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 		elif lots.size() - n <= outer.size():
 			t = outer[lots.size() - n - 1]
 		else:
-			t = "hab_block" if r.randf() < 0.6 else "lab_block"
-		# Face the nearer street.
+			# Now and then a lot stays open (a yard or a patch of ground nobody has built
+			# on yet) or holds a depot, so the blocks don't run on in an unbroken grid.
+			var u := r.randf()
+			if u < 0.12:
+				continue
+			t = "depot" if u < 0.2 else "hab_block" if u < 0.65 else "lab_block"
+		# Face the nearer street, set back from it by however much the lot's builder
+		# chose, and not quite centred on the lot.
 		var face := Vector2(0, -signf(q.y)) if absf(q.y) <= absf(q.x) else Vector2(-signf(q.x), 0)
+		if n >= 2:
+			q += -face * r.randf_range(-0.6, 1.4) + Vector2(face.y, -face.x) * r.randf_range(-1.0, 1.0)
 		var dir := face.rotated(ang)
 		items.append({"t": t, "p": c + q.rotated(ang), "yaw": atan2(dir.x, dir.y), "st": {}})
 	# Floodlights down both sides of each street, alternating.

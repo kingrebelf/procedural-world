@@ -177,6 +177,28 @@ static func boss_species(kind: int, era: int) -> Dictionary:
 	p["boss"] = t
 	return p
 
+## Real animals keep to the ground they live on: only hardy grazers, hares, foxes and
+## birds out on the dunes; deer, elk, wolves, hares, foxes and birds up by the snow.
+const DUNE_ANIMALS := ["Wild Horse", "Wild Donkey", "Hare", "Red Fox", "Crow", "Kestrel", "Swallow"]
+const SNOW_ANIMALS := ["Red Deer", "Elk", "Grey Wolf", "Hare", "Red Fox", "Crow", "Kestrel"]
+
+## The first of a region's animal species `fauna` (from index `pick` on) that lives on the
+## ground at (lx, lz) of the chunk, or 0 for none. Fantasy and alien beasts go anywhere.
+static func fits_habitat(fauna: Array, pick: int, era: int, chunk: Dictionary, lx: float, lz: float) -> int:
+	var first: int = fauna[pick % fauna.size()]
+	if era != Eras.MEDIEVAL:
+		return first
+	var sand := ChunkGenerator.sand_at(chunk, lx, lz) > 0.4
+	var cold := ChunkGenerator.height_at(chunk, lx, lz) > WorldField.snow_line - 6.0
+	if not sand and not cold:
+		return first
+	for n in fauna.size():
+		var sp: int = fauna[(pick + n) % fauna.size()]
+		var name: String = species(sp, era)["name"]
+		if (not sand or name in DUNE_ANIMALS) and (not cold or name in SNOW_ANIMALS):
+			return sp
+	return 0
+
 static func species(sp: int, era: int) -> Dictionary:
 	if sp <= -200:
 		return livestock_species(-sp - 200, era)
@@ -238,10 +260,26 @@ func setup(_id: String, _sp: int, _era: int, at: Vector3, m: Node) -> void:
 	p = species(sp, era)
 	if sp > -200: # wild animals, guards and wonder bosses
 		_zone_scale(at)
+	_individual()
 	home = at
 	manager = m
 	hp = p["hp"]
 	name = "Creature_" + id
+
+## No two of a herd the same size: each kit animal is a little bigger or smaller than
+## its species, and now and then a young one about three quarters grown. From the id, so
+## every player sees the same animal. Bosses keep their set size.
+func _individual() -> void:
+	if not AnimalModel.available(p.get("kit", "")) or p.has("boss"):
+		return
+	var r := RandomNumberGenerator.new()
+	r.seed = id.hash()
+	var f := r.randf_range(0.88, 1.12)
+	if sp >= 0 and r.randf() < 0.12:
+		f = r.randf_range(0.7, 0.8)
+	p = p.duplicate()
+	p["kit_scale"] = float(p["kit_scale"]) * f
+	p["size"] = float(p["size"]) * f
 
 ## Wild animals and guards grow tougher with the zone level of where they live (themed
 ## worlds): about +12% health and +4% bite per level, so a level 40 zone's wolves are
@@ -347,6 +385,16 @@ static var _bar_mat: ShaderMaterial
 ## Transparent draw order of name tags: above the water surface (0) and splash rings (1), outline included.
 const TAG_PRIORITY := 3
 
+## Name tags are drawn solid (cut out of the font's alpha) rather than blended: a blended
+## label writes no motion, so temporal anti-aliasing smeared a walking villager's or
+## animal's name into a ghosted double. Solid, it moves with its owner, and a lake behind
+## it still can't cover it (the water is depth-tested against it).
+static func crisp_tag(l: Label3D) -> void:
+	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
+	l.alpha_scissor_threshold = 0.4
+	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	l.alpha_antialiasing_edge = 0.25
+
 func _build_tag() -> void:
 	_tag = Node3D.new()
 	var top := _model_bounds().end.y
@@ -366,6 +414,7 @@ func _build_tag() -> void:
 	# rings), so a lake behind or under the animal never covers its name.
 	_tag_label.render_priority = TAG_PRIORITY
 	_tag_label.outline_render_priority = TAG_PRIORITY - 1
+	crisp_tag(_tag_label)
 	_tag.add_child(_tag_label)
 	if _bar_mat == null:
 		_bar_mat = ShaderMaterial.new()
@@ -403,6 +452,8 @@ func blocked(x: float, z: float) -> bool:
 
 ## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
 ## goal has swung round: same path, a tenth of the ground probes and rays.
+var lod_dt := 0.0 ## time saved up while FaunaManager skips frames for this animal
+var lod_tick := 0
 var _steer_at := Vector3.INF
 var _steer_from := Vector3.ZERO
 var _steer_turn := 0.0

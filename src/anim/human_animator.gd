@@ -68,6 +68,7 @@ func setup(lib: AnimationLibrary, root: Node, sk: Skeleton3D, who: Node3D) -> vo
 	body = who
 	_idle_rate = randf_range(0.88, 1.12)
 	_tick = randi() % 8
+	_phase = randf() # a crowd never walks in step
 	for g in GAITS:
 		if lib.has_animation(g):
 			var a := lib.get_animation(g)
@@ -78,6 +79,9 @@ func setup(lib: AnimationLibrary, root: Node, sk: Skeleton3D, who: Node3D) -> vo
 	tree.root_node = tree.get_path_to(root)
 	tree.add_animation_library("", lib)
 	tree.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	# The bone fixes after the animation (feet, looking, hands) run when it does, so a
+	# distant person's level of detail spares them too (a ragdoll switches this back).
+	sk.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 	_bt = _graph(lib)
 	tree.tree_root = _bt
 	tree.active = true
@@ -241,6 +245,11 @@ func end_shot() -> void:
 func feet_free() -> bool:
 	return not (_state in NO_FEET)
 
+## Where the stride cycle is, 0..1 (the left foot lands at 0), and how much the body is
+## on the move (0 standing .. 1 walking or running), for BodyPosture's sway and limp.
+func stride() -> Vector2:
+	return Vector2(_phase, _move_w)
+
 ## How fast the body moves over the ground, metres a second.
 func ground_speed() -> float:
 	return _speed * _scale()
@@ -370,6 +379,8 @@ func update(dt: float) -> void:
 		var hard := smoothstep(2.4, 5.5, vw) * _move_w
 		ik.exertion = lerpf(ik.exertion, hard, 1.0 - exp(-dt / (3.0 if hard > ik.exertion else 18.0)))
 	tree.advance(dt)
+	if skeleton.modifier_callback_mode_process == Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL:
+		skeleton.advance(dt)
 
 func _measure(dt: float) -> void:
 	if body == null or not body.is_inside_tree():

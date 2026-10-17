@@ -61,14 +61,20 @@ func _process(delta: float) -> void:
 		for c in _herds[k]:
 			if is_instance_valid(c):
 				if held:
-					# They notice, chase and flee from whichever player is nearest.
-					c.step(delta, g, Net.nearest_player(c.global_position, pp)[1])
+					# Out of sight and calm, an animal thinks and moves a quarter as often
+					# (with the time it skipped): nothing on screen changes.
+					c.lod_dt += delta
+					c.lod_tick += 1
+					if c.lod_tick % _step_every(c, eye, cam) == 0:
+						# They notice, chase and flee from whichever player is nearest.
+						c.step(c.lod_dt, g, Net.nearest_player(c.global_position, pp)[1])
+						c.lod_dt = 0.0
 					if shared:
 						out.append(c.net_state())
 				else:
 					c.follow(delta, g, Net.mob_state("f", c.id))
 				var fighting: bool = c.state == "chase" or c.hp < float(c.p["hp"])
-				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < TAG_RANGE and (fighting or c.p["plan"] != "bird")))
+				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < _tag_range(c, fighting) and (fighting or c.p["plan"] != "bird")))
 				# Only for animals you can actually see: not over a hill or behind a house
 				# (the walls hide the tag itself; this keeps a tag from peeking over them).
 				if near and c != spotted:
@@ -80,6 +86,16 @@ func _process(delta: float) -> void:
 	if not out.is_empty():
 		Net.send_mobs("f", out)
 	_declutter(shown, cam, spotted, lv)
+
+## How many frames apart an animal steps: every frame on screen, near you or when it is
+## chasing or fleeing; every fourth frame otherwise.
+static func _step_every(c: Creature, eye: Vector3, cam: Camera3D) -> int:
+	if cam == null or c.state == "chase" or c.state == "flee":
+		return 1
+	var p := c.global_position
+	if eye.distance_squared_to(p) < 144.0 or cam.is_position_in_frustum(p + Vector3.UP * 0.5):
+		return 1
+	return 4
 
 ## Shows the tags of these animals, nearest (and the one you are spotting) first, but not
 ## one that would land on another's on screen: a flock shows a tag or two, not a pile.
@@ -105,6 +121,11 @@ func _declutter(shown: Array, cam: Camera3D, spotted: Creature, lv: int) -> void
 				placed.append(sp)
 		c.update_tag(free, lv)
 
+## How far off an animal's tag shows: small ones sooner lose theirs, since a hare or a fox
+## out in a meadow is down in the grass well before 25 m. Anything fighting you keeps it.
+func _tag_range(c: Creature, fighting: bool) -> float:
+	return TAG_RANGE if fighting else TAG_RANGE * clampf(float(c.p["size"]) * 1.1, 0.4, 1.0)
+
 var _sight := {} ## creature instance id -> [seconds until checked again, could see it]
 
 func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
@@ -113,7 +134,8 @@ func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
 	e[0] -= delta
 	if e[0] <= 0.0:
 		e[0] = randf_range(0.2, 0.3)
-		var to: Vector3 = c._tag.global_position if c._tag else c.global_position + Vector3(0, 1.0, 0)
+		# To the body, not the tag over it: a tag shouldn't show over a rise that hides the animal.
+		var to: Vector3 = c.global_position + Vector3(0, 0.1 + float(c.p["size"]) * 0.6, 0)
 		var q := PhysicsRayQueryParameters3D.create(eye, to)
 		q.collision_mask = 0xFFFFFFFF & ~2 # other animals don't block the view
 		if player is CollisionObject3D:
@@ -188,10 +210,15 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var fauna: Array = bp.get("fauna", [])
 	if fauna.is_empty():
 		return out
-	var sp: int = fauna[r.randi() % fauna.size()]
-	var p := Creature.species(sp, era)
+	var pick := r.randi()
 	var lx := r.randf_range(8, 56)
 	var lz := r.randf_range(8, 56)
+	# Each herd where its kind lives: the region's first species (from the roll) that
+	# suits the ground here, or none.
+	var sp := Creature.fits_habitat(fauna, pick, era, chunk, lx, lz)
+	if sp == 0:
+		return out
+	var p := Creature.species(sp, era)
 	for i in int(p["herd"]):
 		out.append({"id": "%d_%d_%d" % [cx, cz, i], "sp": sp, "era": era,
 			"lx": clampf(lx + r.randf_range(-5, 5), 0, 63.9), "lz": clampf(lz + r.randf_range(-5, 5), 0, 63.9)})

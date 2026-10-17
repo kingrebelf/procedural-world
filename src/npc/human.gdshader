@@ -23,6 +23,8 @@ instance uniform vec4 accent_col : source_color = vec4(0.0);
 instance uniform vec4 cut = vec4(2.0, 0.35, 0.0, 0.0);
 // First-person arms: everything but the arms and hands is cut away.
 instance uniform float arms_only = 0.0;
+// How muscled (BodyShape): the kit hero's carved muscle in the normal map softens below 1.
+instance uniform float tone = 1.0;
 
 varying vec3 rest;
 
@@ -54,6 +56,11 @@ void fragment() {
 	vec3 tex = texture(skin_tex, UV).rgb;
 	float lum = dot(tex, vec3(0.299, 0.587, 0.114)) / skin_mean;
 	int region = int(rest.x + 0.5);
+	// A triangle between the forearm and the hand is all hand: rounding the blended region
+	// would cut the sleeve's edge in a zigzag across the back of the hand.
+	if (rest.x > 3.01 && rest.x < 4.0) {
+		region = 4;
+	}
 	float h = rest.y;
 	// arms_only: 1 both arms, 2 only the arm on the -x side, 3 only the +x side.
 	bool other_arm = (arms_only > 1.5 && arms_only < 2.5 && rest.z > 0.0) || (arms_only > 2.5 && rest.z < 0.0);
@@ -87,6 +94,9 @@ void fragment() {
 		if (region == 4) {
 			// Hands run warmer and a little darker than the arm.
 			col *= vec3(1.02, 0.98, 0.97);
+		}
+		if (region != 0 && region != 4 && region != 7) {
+			nm.xy = mix(vec2(0.5), nm.xy, 0.3 + 0.7 * tone);
 		}
 		float pore = vnoise(UV * 2600.0) - 0.5;
 		float pore2 = vnoise(UV * 2600.0 + vec2(0.37, 0.0)) - 0.5;

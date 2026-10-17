@@ -38,7 +38,7 @@ static func material() -> Material:
 	return m
 
 ## The rock material for cave shells: their walls hold still (no wobble), since you walk
-## against their collision.
+## against their collision, and no snow lies on them however high the cave.
 static func cave_material() -> Material:
 	_lock.lock()
 	var m := _cave_mat
@@ -49,6 +49,7 @@ static func cave_material() -> Material:
 	m = base.duplicate() if base is ShaderMaterial else base
 	if m is ShaderMaterial:
 		(m as ShaderMaterial).set_shader_parameter("wobble", 0.0)
+		(m as ShaderMaterial).set_shader_parameter("snow_cover", 0.0)
 	_lock.lock()
 	if _cave_mat == null:
 		_cave_mat = m
