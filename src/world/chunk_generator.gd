@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 16 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: terraces of varying height and width with earth lips.
+const GEN_VERSION := 17 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1

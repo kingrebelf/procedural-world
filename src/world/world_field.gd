@@ -472,8 +472,8 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_TERRACES:
 			# Hillsides stepped into flat terraces.
 			var base := h * 1.2 + 3.0
-			if terrain_v >= 16:
-				# v16: terraces as people cut them, not a staircase of even bands: their
+			if terrain_v >= 17:
+				# v17: terraces as people cut them, not a staircase of even bands: their
 				# height and the steepness of the bank between them vary along the hill,
 				# the edges wander off the contour a little, and each tread ends in a low
 				# lip of earth at its outer edge.
