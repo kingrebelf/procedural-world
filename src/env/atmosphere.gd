@@ -117,6 +117,18 @@ func _ready() -> void:
 	moon.shadow_normal_bias = 1.4
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(moon)
+	_shafts = MeshInstance3D.new()
+	_shafts.name = "SunShafts"
+	var q := QuadMesh.new()
+	q.size = Vector2(2, 2)
+	_shafts.mesh = q
+	var sm := ShaderMaterial.new()
+	sm.shader = load("res://src/env/sun_shafts.gdshader")
+	_shafts.material_override = sm
+	# The quad is moved to cover the screen in its shader: never cull it.
+	_shafts.extra_cull_margin = 16384.0
+	_shafts.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_shafts)
 
 	field = WorldField.new(Game.seed)
 	_wind_noise.seed = Game.seed & 0x7FFFFFFF
@@ -137,6 +149,7 @@ func apply_settings() -> void:
 	env.glow_enabled = bool(Settings.get_value("glow"))
 	var vf := int(Settings.get_value("volumetric_fog"))
 	env.volumetric_fog_enabled = vf > 0
+	_shafts.visible = bool(Settings.get_value("sun_shafts"))
 	RenderingServer.environment_set_volumetric_fog_volume_size(64 if vf < 2 else 128, 64 if vf < 2 else 128)
 	RenderingServer.environment_set_volumetric_fog_filter_active(vf >= 2)
 	sun.directional_shadow_max_distance = float(Settings.get_value("shadow_distance"))
@@ -152,6 +165,9 @@ func apply_settings() -> void:
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
 
 var _cam_attr: CameraAttributesPractical
+var _shafts: MeshInstance3D
+## Scales the light shafts (tools try looks with it; 1 in the game).
+var shaft_boost := 1.0
 
 ## Scales the open-air volumetric haze (tools try looks with it; 1 in the game).
 var vfog_boost := 1.0
@@ -267,7 +283,15 @@ func _update_time_of_day() -> void:
 	env.volumetric_fog_density = dens * 0.5 * haze * vfog_boost
 	env.volumetric_fog_albedo = fog_c
 	env.volumetric_fog_emission = Color(0.1, 0.25, 0.3) * _w[Eras.FANTASY] * 0.05
+	# Light shafts: strongest under a low sun, gone under heavy cloud, at night and below
+	# ground (and under water, below).
+	var sm := _shafts.material_override as ShaderMaterial
+	var cover := float(sky_mat.get_shader_parameter("cloud_cover"))
+	sm.set_shader_parameter("strength", 1.6 * shaft_boost * smoothstep(-0.02, 0.1, elev) * (1.0 + 0.8 * golden)
+		* (1.0 - smoothstep(0.55, 0.9, cover)) * (1.0 - underground))
+	sm.set_shader_parameter("tint", sun.light_color)
 	if target and target.get("underwater"):
+		sm.set_shader_parameter("strength", 0.0)
 		# Under water you see a few metres into a lit blue-green murk, darker at night.
 		var murk := Color(0.06, 0.2, 0.24).lerp(Color(0.01, 0.03, 0.05), 1.0 - daylight)
 		env.fog_light_color = murk

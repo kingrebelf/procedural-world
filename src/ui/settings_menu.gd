@@ -121,6 +121,7 @@ func _graphics_tab() -> Control:
 	_check(g, "ssao", "Ambient occlusion (SSAO)")
 	_check(g, "ssr", "Screen-space reflections")
 	_option(g, "volumetric_fog", "Volumetric fog", ["Off", "Normal", "High"])
+	_check(g, "sun_shafts", "Light shafts", "Rays of sunlight through trees, gaps and windows.")
 	_check(g, "glow", "Bloom")
 	_check(g, "auto_exposure", "Auto exposure")
 	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")

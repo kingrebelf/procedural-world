@@ -18,6 +18,8 @@ var hud_mode := ""
 var env_sets: Array = []
 ## --cam=property=value does the same for the camera attributes (auto exposure limits).
 var cam_sets: Array = []
+## --shafts=N scales the screen-space light shafts for this run (0 turns them off).
+var shafts := 1.0
 ## --vfog=N scales the volumetric haze (light shafts) for this run.
 var vfog := 1.0
 ## --day=0.3 shoots every view at that time of day instead of its own (0.25 sunrise).
@@ -37,6 +39,8 @@ func _ready() -> void:
 			env_sets.append(a.substr(6).split("="))
 		if a.begins_with("--cam=") and a.count("=") == 2:
 			cam_sets.append(a.substr(6).split("="))
+		if a.begins_with("--shafts="):
+			shafts = a.substr(9).to_float()
 		if a.begins_with("--vfog="):
 			vfog = a.substr(7).to_float()
 		if a.begins_with("--day="):
@@ -297,6 +301,7 @@ func _run() -> void:
 	await _wait(5)
 	_apply_hud_mode()
 	world.atmosphere.vfog_boost = vfog
+	world.atmosphere.shaft_boost = shafts
 	for kv in env_sets:
 		var env: Environment = world.atmosphere.env
 		var v = str_to_var(kv[1])

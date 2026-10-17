@@ -20,16 +20,16 @@ const PRESET_NAMES := ["Low", "Medium", "High", "Ultra", "Custom"]
 const PRESETS := {
 	"Low": {"render_scale": 0.67, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 0, "shadow_distance": 120.0,
 		"gi": GI.OFF, "ssao": false, "ssr": false, "volumetric_fog": 0, "glow": true, "view_distance": 3, "grass_density": 0.3,
-		"effects": 0, "clouds": 0, "detail_distance": 0.6, "mesh_detail": 0},
+		"effects": 0, "clouds": 0, "detail_distance": 0.6, "mesh_detail": 0, "sun_shafts": false},
 	"Medium": {"render_scale": 0.77, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 1, "shadow_distance": 200.0,
 		"gi": GI.SSIL, "ssao": true, "ssr": false, "volumetric_fog": 1, "glow": true, "view_distance": 4, "grass_density": 0.6,
-		"effects": 1, "clouds": 1, "detail_distance": 0.8, "mesh_detail": 1},
+		"effects": 1, "clouds": 1, "detail_distance": 0.8, "mesh_detail": 1, "sun_shafts": true},
 	"High": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0,
 		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 1, "glow": true, "view_distance": 5, "grass_density": 1.0,
-		"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2},
+		"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "sun_shafts": true},
 	"Ultra": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 3, "shadow_distance": 450.0,
 		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 2, "glow": true, "view_distance": 7, "grass_density": 1.4,
-		"effects": 2, "clouds": 2, "detail_distance": 1.4, "mesh_detail": 3},
+		"effects": 2, "clouds": 2, "detail_distance": 1.4, "mesh_detail": 3, "sun_shafts": true},
 }
 
 ## FSR 2 quality modes (AMD's names) and the render scale each uses.
@@ -42,7 +42,7 @@ const DEFAULTS := {
 	"window_mode": 1, "resolution": "native", "vsync": 1, "fps_cap": 0, "fov": 80.0,
 	"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "sharpness": 0.2,
 	"aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0, "gi": GI.SDFGI, "ssao": true, "ssr": true,
-	"volumetric_fog": 1, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
+	"volumetric_fog": 1, "sun_shafts": true, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
 	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "stick_sensitivity": 3.0,
 	"master_volume": 0.8, "music_volume": 0.5, "sfx_volume": 0.8, "ambience_volume": 0.7,
