@@ -17,6 +17,8 @@ var hud_mode := ""
 ## looks (tonemapper, exposure, contrast) without touching the game.
 var env_sets: Array = []
 ## --cam=property=value does the same for the camera attributes (auto exposure limits).
+## --mend=show paints the frame's bad pixels (NaN, infinite, negative) magenta instead of
+## mending them; --mend=off leaves them (FrameMend).
 var cam_sets: Array = []
 ## --shafts=N scales the screen-space light shafts for this run (0 turns them off).
 var shafts := 1.0
@@ -47,6 +49,8 @@ func _ready() -> void:
 			vfog = a.substr(7).to_float()
 		if a.begins_with("--beams="):
 			beams = a.substr(8).to_float()
+		if a.begins_with("--mend="):
+			FrameMend.mode = {"show": 1, "off": 2}.get(a.substr(7), 0)
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell

@@ -91,6 +91,11 @@ func _ready() -> void:
 	cam_attr.auto_exposure_max_sensitivity = 800.0
 	we.camera_attributes = cam_attr
 	_cam_attr = cam_attr
+	# Mends stray bad pixels before the exposure reads the frame (FrameMend): one of them
+	# washed the whole view out white under MSAA.
+	var comp := Compositor.new()
+	comp.compositor_effects = [FrameMend.new()]
+	we.compositor = comp
 	add_child(we)
 
 	sun = DirectionalLight3D.new()
