@@ -84,7 +84,7 @@ func _ready() -> void:
 	var cam_attr := CameraAttributesPractical.new()
 	cam_attr.auto_exposure_enabled = true
 	cam_attr.auto_exposure_scale = 0.2
-	cam_attr.auto_exposure_min_sensitivity = 40.0
+	cam_attr.auto_exposure_min_sensitivity = 60.0
 	cam_attr.auto_exposure_max_sensitivity = 300.0
 	we.camera_attributes = cam_attr
 	_cam_attr = cam_attr
@@ -289,10 +289,8 @@ func _update_time_of_day() -> void:
 	moon.visible = elev < 0.1
 	moon.light_energy = 0.3 * (1.0 - daylight)
 	# The eye may only brighten a dark scene so far: a night outdoors reads as night (blue
-	# moonlight, warm windows) instead of dusk. Underground it adapts fully to the torch. By
-	# day it can stop down further, so a white beach or a snowfield toward the sun isn't
-	# blown out.
-	_cam_attr.auto_exposure_min_sensitivity = lerpf(110.0, 40.0, maxf(daylight, underground))
+	# moonlight, warm windows) instead of dusk. Underground it adapts fully to the torch.
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(110.0, 60.0, maxf(daylight, underground))
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
