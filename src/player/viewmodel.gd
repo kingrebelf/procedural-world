@@ -45,8 +45,9 @@ const BOW_REST := Vector3(-0.02, -0.1, -0.06)
 ## upright so the lamp hangs in front of you, not below the view.
 const HANGING := ["hand_lantern", "lamp_kerosene"]
 const HANG_REST := Vector3(-0.08, 0.04, -0.3)
-## Where the fist holding a lamp sits, from the eye.
-const HANG_HAND := Vector3(-0.03, -0.05, -0.4)
+## Where the fist holding a lamp sits, in the rig's own space (so the lens scales it with
+## the arm; about a hand below the eye and an arm's length ahead).
+const HANG_HAND := Vector3(0.05, -0.09, -0.1)
 const HANG_AIM := Vector3(0.05, 1.0, 0.0)
 ## Each kind of tool has its own hold. A pick or hammer is held with the handle upright,
 ## so its point or face leads straight down the view; a spear low and nearly level, its
@@ -55,7 +56,7 @@ const PICK_AIM := Vector3(-0.15, 1.0, -1.0)
 const SPEARS := ["hunting_spear", "bronze_spear", "javelin", "glaive", "halberd", "quarterstaff", "void_lance"]
 const SPEAR_AIM := Vector3(-0.08, 0.35, -1.0)
 const SPEAR_REST := Vector3(-0.04, 0.0, -0.04)
-const PICK_REST := Vector3(-0.04, -0.15, -0.14)
+const PICK_REST := Vector3(-0.04, -0.1, -0.14)
 ## Tools whose working end is below the hand (a shovel's blade): held the other way up,
 ## the blade raised ahead, the shaft running down past the wrist.
 const BLADE_UP := ["shovel"]
@@ -96,9 +97,10 @@ const PISTOL_GRIP := Vector3(0.0, -0.15, -0.34)
 const HEAVY_GRIP := Vector3(0.14, -0.32, -0.2)
 const BOW_GRIP := Vector3(0.1, -0.12, -0.38)
 const BOW_CANT := 0.3
-## A tool's head faces this far left of straight ahead: a pick's point and an axe's edge
-## lead the swing, turned just enough to show the head three-quarters on.
-const STRIKE_YAW := 0.1
+## A pick's point or a hammer's face is turned this far left of straight ahead: it leads
+## the swing, but enough of the head's side shows that it reads as a pick (seen exactly
+## end-on it is a thin spike).
+const STRIKE_YAW := 0.8
 ## An axe's edge is turned a little further, so the blade's face shows and it reads as an
 ## axe rather than a thin spike seen edge-on.
 const AXE_YAW := 0.35
@@ -469,14 +471,17 @@ func _aim() -> void:
 		if _type in HANGING:
 			# Elbow bent and out to the side, the fist in front of the chest, so the
 			# lamp hangs clear of the forearm instead of behind it.
-			arms.pull_in((get_parent() as Node3D).global_transform * HANG_HAND)
+			arms.pull_in(global_transform * HANG_HAND)
 		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
 		var strike := _strike_axis(_type)
 		if strike != Vector3.ZERO and arms._held != null and arms._held.get_child_count() > 0:
 			var prop := arms._held.get_child(0) as Node3D
-			var want := prop.global_basis.orthonormalized().inverse() * (b * (Basis(Vector3.UP, AXE_YAW if strike == Vector3.FORWARD else STRIKE_YAW) * Vector3.FORWARD))
+			# In the rig's own space: the lens (_lens) scales the rig unevenly, which skews
+			# any world-space basis under it.
+			var rel := (global_transform.affine_inverse() * prop.global_transform).basis.orthonormalized()
+			var want := rel.inverse() * (Basis(Vector3.UP, AXE_YAW if strike == Vector3.FORWARD else STRIKE_YAW) * Vector3.FORWARD)
 			want.y = 0.0
 			if want.length() > 0.01:
 				# About +Y, from the striking axis towards `want`.
