@@ -13,6 +13,7 @@ uniform vec3 phase_warm = vec3(1.12, 0.98, 0.78);
 instance uniform float seed = 0.0;
 
 varying float lid;
+varying vec3 strand_dir;
 
 float h1(float n) { return fract(sin(n * 12.9898 + 4.1414) * 43758.5453); }
 
@@ -65,14 +66,23 @@ void fragment() {
 	c *= mix(0.78, 1.0, smoothstep(0.0, 0.6, along));
 	c = mix(c, c * 1.15 + vec3(0.012), smoothstep(0.6, 1.0, along));
 	ALBEDO = clamp(c, vec3(0.0), vec3(1.0));
-	// Lit like the hair it grows from on both faces, the normal eased toward the sky so
-	// a lock seen edge-on or turned from the sun doesn't fall to a dark line.
-	if (!FRONT_FACING) NORMAL = -NORMAL;
-	vec3 up = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-	NORMAL = normalize(mix(NORMAL, up, 0.25));
+	// Lit as hair: by the direction the lock runs (its tangent), not the way its root
+	// faces, so locks rooted all round the tail shade alike instead of light and dark
+	// by turns.
+	strand_dir = normalize(TANGENT);
 	ROUGHNESS = 0.68;
 	SPECULAR = 0.5;
-	RIM = 0.15;
-	RIM_TINT = 0.7;
-	BACKLIGHT = c * 0.3;
+}
+
+// Kajiya-Kay hair: a strand is lit by how square the light falls across it, with a
+// little of the root's facing kept for form. The sun's shadow leaves a lock a quarter lit,
+// since thin cards shadowing one another would otherwise stripe it like a row of cards.
+// Other lights fall off as usual.
+void light() {
+	float tl = dot(strand_dir, LIGHT);
+	float across = sqrt(max(1.0 - tl * tl, 0.0));
+	float ndl = dot(NORMAL, LIGHT);
+	float shade = across * mix(0.75, 1.0, clamp(ndl * 0.5 + 0.5, 0.0, 1.0));
+	float att = LIGHT_IS_DIRECTIONAL ? mix(0.25, 1.0, ATTENUATION) : ATTENUATION;
+	DIFFUSE_LIGHT += shade * 0.8 * att * LIGHT_COLOR / PI;
 }
