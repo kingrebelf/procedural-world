@@ -43,6 +43,7 @@ func now_t() -> float:
 	return Boats.world_time(Game.day, Game.day_seconds)
 
 func _process(delta: float) -> void:
+	_feed_wakes()
 	if player == null or field() == null:
 		return
 	_scan_t -= delta
@@ -208,3 +209,40 @@ func despawn(b: BoatNode) -> void:
 		if boats[key] == b:
 			_remove(key)
 			return
+
+## Hands the lake shader (water_wakes) the waves raised by the boats under way nearest the
+## view, at most 8.
+var _wakes_a := PackedVector4Array()
+var _wakes_b := PackedVector4Array()
+var _wakes_live := false
+
+func _feed_wakes() -> void:
+	var lake := Water.lake
+	if not is_instance_valid(lake) or not (lake.material_override is ShaderMaterial):
+		return
+	var cam := get_viewport().get_camera_3d()
+	var found: Array = [] # [distance, info]
+	if cam:
+		var cp := cam.global_position
+		for b in boats.values():
+			if not is_instance_valid(b):
+				continue
+			var info: Array = (b as BoatNode).wake_info()
+			if info.is_empty():
+				continue
+			var a: Vector4 = info[0]
+			var dist := Vector2(a.x, a.y).distance_to(Vector2(cp.x, cp.z))
+			if dist < 500.0:
+				found.append([dist, info])
+	found.sort_custom(func(p, q): return p[0] < q[0])
+	if found.is_empty() and not _wakes_live:
+		return
+	_wakes_live = not found.is_empty()
+	_wakes_a.resize(8)
+	_wakes_b.resize(8)
+	for i in 8:
+		_wakes_a[i] = found[i][1][0] if i < found.size() else Vector4.ZERO
+		_wakes_b[i] = found[i][1][1] if i < found.size() else Vector4.ZERO
+	var m := lake.material_override as ShaderMaterial
+	m.set_shader_parameter("wakes_a", _wakes_a)
+	m.set_shader_parameter("wakes_b", _wakes_b)

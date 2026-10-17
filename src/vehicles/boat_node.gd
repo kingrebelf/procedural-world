@@ -25,6 +25,7 @@ var row_offset := 0.0 ## where this boat's stroke is in the shared rowing clock
 
 var _water: BoatWater
 var _trail: BoatWake
+var _wake_v := 0.0 ## her speed, smoothed, for the waves she raises (water_wakes)
 var _bow_y := NAN ## the bow's height last frame, to catch it slamming down into a wave
 var _slam_t := 0.0
 var _oar_ph := 0.0
@@ -131,6 +132,7 @@ func _physics_process(delta: float) -> void:
 	var fwd := Vector2(-sin(_yaw), -cos(_yaw))
 	var L := float(d["len"])
 	_trail.feed(_pos2 - fwd * L * 0.45, fwd, speed, _wake_strength(speed, L), delta)
+	_wake_v = lerpf(_wake_v, speed, clampf(delta * 0.8, 0.0, 1.0))
 	if not _oars.is_empty():
 		rowing = move_toward(rowing, 1.0 if speed > 0.3 else 0.0, delta * 0.8)
 		_row()
@@ -289,6 +291,17 @@ func deck_xf(i: int) -> Transform3D:
 func station(i: int) -> Dictionary:
 	var st: Array = BoatModel.stations(kind)
 	return {"pose": "stand"} if st.is_empty() else st[i % st.size()]
+
+## The waves she raises, for the water shader (water_wakes): [bow x, z, heading x, z] and
+## [speed, length, half-beam, strength], or [] while she's (nearly) still.
+func wake_info() -> Array:
+	if _wake_v < 0.15:
+		return []
+	var L := float(Boats.KINDS[kind]["len"])
+	var fwd := Vector2(-sin(_yaw), -cos(_yaw))
+	var bow := _pos2 + fwd * L * 0.47
+	var w := clampf((_wake_v - 0.15) / 0.6, 0.0, 1.0)
+	return [Vector4(bow.x, bow.y, fwd.x, fwd.y), Vector4(_wake_v, L, _trail.beam, w)]
 
 ## The boat's place on the water as a 2D point.
 func pos2() -> Vector2:

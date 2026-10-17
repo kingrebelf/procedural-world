@@ -30,12 +30,14 @@ static var _depth_lookup: Callable
 static var _river_lookup: Callable
 static var _current_lookup: Callable
 static var _murk_lookup: Callable
+static var lake: Water ## the lake sheet in play (BoatManager hands it the boats' wakes)
 
 func _ready() -> void:
 	mesh = _sheet()
 	_mat = ShaderMaterial.new()
 	_mat.shader = load("res://src/env/water.gdshader")
 	material_override = _mat
+	lake = self
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	position.y = LEVEL
 	_depth_img = Image.create(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RF)

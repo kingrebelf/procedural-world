@@ -2,7 +2,8 @@ shader_type spatial;
 // Lakes and seas: wind-driven swell (sum of directional deep-water waves, larger over
 // deep water), depth-tinted, refractive, mirroring the shores and sky (water_ssr), with
 // whitecaps when the wind is strong, lacy foam rolling in through the shallows, and ring
-// waves where something broke the surface (water_rings). The open sea is clear and blue;
+// waves where something broke the surface (water_rings), and boats' wakes standing up
+// as real waves (water_wakes). The open sea is clear and blue;
 // ponds and small lakes are green-brown with silt (murk_map, from Water._murk).
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
@@ -23,6 +24,7 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 #include "res://src/env/water_ssr.gdshaderinc"
 #include "res://src/env/water_rings.gdshaderinc"
 #include "res://src/env/water_swell.gdshaderinc"
+#include "res://src/env/water_wakes.gdshaderinc"
 
 varying vec3 wpos;
 varying float crest;
@@ -77,8 +79,9 @@ void vertex() {
 	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
 	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(murk_map, muv).r;
 	vec3 s = swell(wpos.xz, TIME, amp);
-	VERTEX.y += s.x;
-	wpos.y += s.x;
+	float wk = wake_height(wpos.xz);
+	VERTEX.y += s.x + wk;
+	wpos.y += s.x + wk;
 	NORMAL = normalize(vec3(-s.y, 1.0, -s.z));
 	crest = s.x / max(amp, 0.001);
 }
@@ -89,7 +92,7 @@ void fragment() {
 	float h = ripples(wpos.xz, t);
 	float rs = 0.5 + wind_strength * 1.2;
 	vec3 rn = vec3(-(ripples(wpos.xz + vec2(e, 0), t) - h) / e, 0.0, -(ripples(wpos.xz + vec2(0, e), t) - h) / e) * rs;
-	vec2 rg = ring_slope(wpos.xz);
+	vec2 rg = ring_slope(wpos.xz) + wake_slope(wpos.xz);
 	vec3 swell_n = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	vec3 nw = normalize(swell_n + rn * 0.6 + vec3(-rg.x, 0.0, -rg.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);

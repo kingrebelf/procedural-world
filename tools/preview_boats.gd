@@ -39,9 +39,12 @@ func _shot(name: String) -> void:
 
 func _run() -> void:
 	var only := ""
+	var lake := false # --water: the real lake shader on a fine sheet, with the boat's wake waves
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--kind="):
 			only = a.substr(7)
+		if a == "--water":
+			lake = true
 	var bm = load("res://src/vehicles/boat_model.gd")
 	var hm = load("res://src/npc/human_model.gd")
 	var gen = load("res://src/npc/npc_gen.gd")
@@ -71,6 +74,26 @@ func _run() -> void:
 	sm.roughness = 0.08
 	sm.metallic = 0.2
 	sea.material_override = sm
+	var lm: ShaderMaterial
+	if lake:
+		pm.subdivide_width = 500
+		pm.subdivide_depth = 500
+		pm.size = Vector2(250, 250)
+		# The lake shader needs the world (its depth and screen textures): here a plain
+		# glossy sheet carries just the wake waves, to judge their shape and light.
+		lm = ShaderMaterial.new()
+		lm.shader = Shader.new()
+		lm.shader.code = """shader_type spatial;
+#include "res://src/env/water_wakes.gdshaderinc"
+varying vec3 wp;
+void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; VERTEX.y += wake_height(wp.xz); }
+void fragment() {
+	vec2 g = wake_slope(wp.xz);
+	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(vec3(-g.x, 1.0, -g.y)), 0.0)).xyz);
+	ALBEDO = vec3(0.03, 0.12, 0.18); ROUGHNESS = 0.12; SPECULAR = 0.7;
+}"""
+		sea.material_override = lm
+		RenderingServer.global_shader_parameter_set("wind_strength", 0.25)
 	root.add_child(sea)
 	var cam := Camera3D.new()
 	cam.fov = 70
@@ -100,6 +123,14 @@ func _run() -> void:
 				var th := dd / R
 				wk.feed(Vector2(R * (1.0 - cos(th)), L * 0.45 + R * sin(th)), Vector2(-sin(th), -cos(th)), v, clampf(pow(v / 4.0, 0.7), 0.0, 1.0) * clampf(0.45 + L / 16.0, 0.45, 1.0), 0.06)
 				dd -= 0.5
+			if lm:
+				var hh: Dictionary = bm.HULLS[kind]
+				var wa := PackedVector4Array([Vector4(0, -L * 0.47, 0, -1)])
+				var wb := PackedVector4Array([Vector4(v, L, bm._width_at(hh, 0.45, 0.0), 1.0)])
+				wa.resize(8)
+				wb.resize(8)
+				lm.set_shader_parameter("wakes_a", wa)
+				lm.set_shader_parameter("wakes_b", wb)
 			extra = [[Vector3(L * 1.6 + 8.0, L * 0.9 + 6.0, -L * 0.6), Vector3(4.0, 0.0, L * 2.0)], [Vector3(-6.0, 2.2, L * 0.5 + 6.0), Vector3(3.0, 0.0, L * 2.5 + 20.0)]]
 		var r := RandomNumberGenerator.new()
 		r.seed = 5
