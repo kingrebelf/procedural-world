@@ -50,6 +50,17 @@ func _tests() -> Array:
 	var sd := atm.sun.directional_shadow_max_distance
 	t.append(["Shadow distance 150 m", func(off: bool): atm.sun.directional_shadow_max_distance = 150.0 if off else sd])
 	t.append(["Sun shadows", func(off: bool): atm.sun.shadow_enabled = not off])
+	var lamps: Array = []
+	var stack: Array = [world]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is OmniLight3D and (n as OmniLight3D).shadow_enabled:
+			lamps.append(n)
+		stack.append_array(n.get_children())
+	t.append(["Lamp and fire shadows", func(off: bool):
+		for l in lamps:
+			if is_instance_valid(l):
+				(l as OmniLight3D).shadow_enabled = not off])
 	t.append(["Sky lighting updates", func(off: bool):
 		atm.env.sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL if off else Sky.PROCESS_MODE_REALTIME])
 	t.append(["Grass", func(off: bool):

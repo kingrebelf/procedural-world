@@ -157,7 +157,7 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, false)
 	animator = HumanAnimator.new()
 	add_child(animator)
 	animator.setup(library(), scene, skeleton, self)
@@ -596,7 +596,14 @@ func _is_held(n: Node) -> bool:
 func set_shadow_only(on: bool) -> void:
 	_shadow_only = on
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, on)
+
+## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
+## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.
+static func _shadow_of(mi: Node, shadow_only: bool) -> GeometryInstance3D.ShadowCastingSetting:
+	if mi.name == &"Eyes" or mi.name == &"Eyebrows":
+		return GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 ## Plays a looping state, cross-fading. Walk, jog and sprint all mean "on the move": the
 ## gait and its pace follow how fast the body really moves (HumanAnimator), so `speed`
