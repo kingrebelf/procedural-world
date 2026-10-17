@@ -167,8 +167,9 @@ static func boss_species(kind: int, era: int) -> Dictionary:
 	p["temper"] = "aggressive"
 	p["herd"] = 1
 	p["speed"] = 2.5
-	p["hp"] = WonderSite.BOSS_HP
-	p["bite_mult"] = WonderSite.BOSS_BITE
+	# Older worlds have no zones, so their bosses keep the old fixed toughness.
+	p["hp"] = WonderSite.BOSS_HP if Eras.themed() else WonderSite.LEGACY_BOSS_HP
+	p["bite_mult"] = WonderSite.BOSS_BITE if Eras.themed() else WonderSite.LEGACY_BOSS_BITE
 	p["drops"] = b[5]
 	p["boss"] = t
 	return p
@@ -232,7 +233,7 @@ func setup(_id: String, _sp: int, _era: int, at: Vector3, m: Node) -> void:
 	sp = _sp
 	era = _era
 	p = species(sp, era)
-	if sp > -100: # wild animals and guards
+	if sp > -200: # wild animals, guards and wonder bosses
 		_zone_scale(at)
 	home = at
 	manager = m
@@ -241,15 +242,15 @@ func setup(_id: String, _sp: int, _era: int, at: Vector3, m: Node) -> void:
 
 ## Wild animals and guards grow tougher with the zone level of where they live (themed
 ## worlds): about +12% health and +4% bite per level, so a level 40 zone's wolves are
-## level 40-ish beasts. Livestock and wonder bosses stay as they are.
+## level 40-ish beasts. Livestock stay as they are.
 func _zone_scale(at: Vector3) -> void:
 	var zl := Eras.zone_level(at.x, at.z)
+	p = p.duplicate()
+	p["zone"] = zl
 	if zl <= 1:
 		return
-	p = p.duplicate()
 	p["hp"] = float(p["hp"]) * (1.0 + 0.12 * (zl - 1))
 	p["bite_mult"] = float(p.get("bite_mult", 1.0)) * (1.0 + 0.04 * (zl - 1))
-	p["zone"] = zl
 
 func _ready() -> void:
 	_build()
@@ -297,13 +298,21 @@ static func level_of(sp_p: Dictionary) -> int:
 	var lv := 1.0 + (float(sp_p["hp"]) - 18.0) / 8.0
 	if sp_p["temper"] == "aggressive":
 		lv += 2.0
-	lv += float(sp_p.get("guard", 0)) * 4.0
+	if not Eras.themed():
+		# Older worlds have no zones: rate by toughness, as they always were.
+		lv += float(sp_p.get("guard", 0)) * 4.0
+		return 60 if sp_p.has("boss") else clampi(int(round(lv)), 1, 60)
+	var zone := int(sp_p.get("zone", 1))
 	if sp_p.has("boss"):
-		return 60
-	if sp_p.has("zone"):
+		# A few levels above the zone it guards.
+		return clampi(zone + WonderSite.BOSS_ABOVE, 1, Stats.MAX_LEVEL)
+	if sp_p.has("guard"):
+		# Guards rate by where they stand: elites a few levels over the zone, not 50.
+		return clampi(zone + 1 + int(sp_p["guard"]) / 2, 1, Stats.MAX_LEVEL)
+	if sp_p.has("zone") and zone > 1:
 		# Its health was scaled up for the zone; rate it by the zone instead.
-		lv = float(sp_p["zone"]) + (2.0 if sp_p["temper"] == "aggressive" else 0.0) + float(sp_p.get("guard", 0)) * 2.0
-	return clampi(int(round(lv)), 1, 60)
+		lv = float(zone) + (2.0 if sp_p["temper"] == "aggressive" else 0.0)
+	return clampi(int(round(lv)), 1, maxi(60, zone + 2))
 
 func bite_damage() -> float:
 	return (4.0 + float(p["size"]) * 6.0) * float(p.get("bite_mult", 1.0))
