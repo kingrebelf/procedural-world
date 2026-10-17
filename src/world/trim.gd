@@ -37,8 +37,8 @@ static func cove(h: float, d: float, fillet := 0.01, steps := 4) -> PackedVector
 ## walls' faces, at height y (the floor for a skirting, the ceiling for a cornice, with
 ## `down`); `outside` runs it round the outside of a building instead. `gaps` leave doorways open: [side, from, to] with side "+z", "-z", "+x" or
 ## "-x" and from/to along x (on a z wall) or z (on an x wall). Corners are mitred; runs
-## that stop at a gap end in a cap.
-static func room(k: MeshKit, mat: String, profile: Array, x0: float, x1: float, z0: float, z1: float, y: float, gaps: Array = [], down := false, outside := false) -> void:
+## that stop at a gap end in a cap. `color` tints it (vertex colour), for painted trim.
+static func room(k: MeshKit, mat: String, profile: Array, x0: float, x1: float, z0: float, z1: float, y: float, gaps: Array = [], down := false, outside := false, color := Color.WHITE) -> void:
 	var face := Vector3.DOWN if down else Vector3.UP
 	var o := -1.0 if outside else 1.0
 	var prof := PackedVector2Array(profile)
@@ -57,7 +57,7 @@ static func room(k: MeshKit, mat: String, profile: Array, x0: float, x1: float, 
 			var cur: Vector3 = walls[i][3]
 			path.append(walls[i][1])
 			sides.append(prev + cur)
-		k.sweep(mat, Transform3D.IDENTITY, path, sides, face, prof, true)
+		k.sweep(mat, Transform3D.IDENTITY, path, sides, face, prof, true, true, color)
 		return
 	# With doorways, each wall is its own run (or runs): corners still mitred, ends at
 	# a doorway capped.
@@ -93,7 +93,7 @@ static func room(k: MeshKit, mat: String, profile: Array, x0: float, x1: float, 
 		for p in pieces:
 			var path := PackedVector3Array([a + dir * float(p[0]), a + dir * float(p[1])])
 			var sides := PackedVector3Array([sa if p[0] < 0.001 else side, sb if p[1] > full - 0.001 else side])
-			k.sweep(mat, Transform3D.IDENTITY, path, sides, face, prof, false, true)
+			k.sweep(mat, Transform3D.IDENTITY, path, sides, face, prof, false, true, color)
 
 ## A casing round a doorway or window on a wall: `xf` puts the wall's face at z = 0
 ## facing +z, `edge` is the opening's outline on it (x, y), up one jamb, over the head

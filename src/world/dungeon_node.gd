@@ -19,8 +19,21 @@ const PLATE_R := 0.6
 const MATS := [
 	{"wall": "castle_stone", "floor": "flagstone", "ceil": "castle_stone", "trim": "stone_dark", "beam": "timber", "metal": "iron", "roof": "slate", "tint": Color(1, 1, 1)},
 	{"wall": "crypt_stone", "floor": "flagstone", "ceil": "crypt_stone", "trim": "stone_dark", "beam": "stone_dark", "metal": "rust", "roof": "slate", "tint": Color(0.78, 0.76, 0.74)},
-	{"wall": "scifi_panels", "floor": "scifi_floor", "ceil": "panel", "trim": "metal_dark", "beam": "metal_dark", "metal": "metal_dark", "roof": "metal_dark", "tint": Color(1, 1, 1)},
+	{"wall": "paint_wall", "floor": "vinyl_floor", "ceil": "ceiling_tile", "trim": "enamel_grey", "beam": "paint_wall", "metal": "metal_dark", "roof": "metal_dark", "tint": Color(1, 1, 1),
+		"shell": "scifi_panels", "shell_floor": "scifi_floor"},
 ]
+## A bunker's rooms are painted, a space station or a hospital rather than an engine
+## room: off-white walls and bulkheads, sheet vinyl underfoot (tread plate only on the
+## stairs and in the stores), acoustic tiles overhead, a coved skirting, and a stripe
+## (a handrail along the passages) in the colour of what the room is for, so you can
+## tell a lab from the armoury down the passage. Bare steel is kept to the blast doors,
+## frames and fittings. Store rooms' and stairs' floors are tread plate.
+const PAINT_ACCENT := {"control": Color(0.2, 0.4, 0.68), "lab": Color(0.12, 0.52, 0.52), "barracks": Color(0.38, 0.56, 0.36),
+	"armory": Color(0.7, 0.24, 0.2), "store": Color(0.84, 0.58, 0.16), "vault": Color(0.62, 0.5, 0.22)}
+const PAINT_SPARE := [Color(0.42, 0.36, 0.6), Color(0.2, 0.4, 0.68), Color(0.12, 0.52, 0.52), Color(0.76, 0.42, 0.34)]
+const PAINT_WALL := [Color(0.9, 0.9, 0.88), Color(0.88, 0.89, 0.9), Color(0.9, 0.88, 0.84), Color(0.86, 0.88, 0.87)]
+const PAINT_FLOOR := [Color(0.72, 0.73, 0.74), Color(0.56, 0.62, 0.68), Color(0.6, 0.66, 0.6), Color(0.74, 0.69, 0.6)]
+const PASSAGE_PAINT := {"wall": Color(0.86, 0.87, 0.88), "floor": Color(0.46, 0.49, 0.53), "accent": Color(0.2, 0.4, 0.68), "rail": true}
 const FIRE := Color(1.0, 0.62, 0.32)
 const LAMP := Color(0.86, 0.92, 1.0)
 
@@ -218,6 +231,19 @@ static func _box(k: MeshKit, boxes, mat: String, xf: Transform3D, size: Vector3,
 	if boxes != null:
 		boxes.append([xf, size])
 
+## A bunker room's paint (passages when ri < 0): wall and floor tints and the accent
+## stripe's colour, the same every time for the room. Stone eras paint nothing.
+func _paint(ri: int) -> Dictionary:
+	if _era != Eras.SCIFI:
+		return {"wall": _m["tint"], "floor": _m["tint"]}
+	if ri < 0:
+		return PASSAGE_PAINT
+	var rm: Dictionary = pl["rooms"][ri]
+	var h := absi(WHash.str_hash("%s:%d" % [pl["id"], ri]))
+	var kind := String(rm["kind"])
+	return {"wall": PAINT_WALL[h % PAINT_WALL.size()], "floor": PAINT_FLOOR[(h >> 3) % PAINT_FLOOR.size()],
+		"accent": PAINT_ACCENT.get(kind, PAINT_SPARE[(h >> 6) % PAINT_SPARE.size()]), "plate": kind == "store"}
+
 ## The basis that turns a box's z along dv (x across it), plan direction.
 static func _face(dv: Vector2) -> Basis:
 	return Basis(Vector3(dv.y, 0, -dv.x), Vector3.UP, Vector3(dv.x, 0, dv.y))
@@ -302,9 +328,13 @@ func _room_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 	var cc := Dungeon.centre(pl, c)
 	var I := Basis.IDENTITY
 	var cell := Dungeon.CELL
-	var tint: Color = _m["tint"]
-	_box(k, boxes, _m["floor"], Transform3D(I, _v(cc, fy - 0.15)), Vector3(cell, 0.3, cell), tint)
-	_box(k, boxes, _m["ceil"], Transform3D(I, _v(cc, fy + h + 0.15)), Vector3(cell, 0.3, cell), tint)
+	var paint := _paint(ri)
+	var tint: Color = paint["wall"]
+	if paint.get("plate", false):
+		_box(k, boxes, "scifi_floor", Transform3D(I, _v(cc, fy - 0.15)), Vector3(cell, 0.3, cell))
+	else:
+		_box(k, boxes, _m["floor"], Transform3D(I, _v(cc, fy - 0.15)), Vector3(cell, 0.3, cell), paint["floor"])
+	_box(k, boxes, _m["ceil"], Transform3D(I, _v(cc, fy + h + 0.15)), Vector3(cell, 0.3, cell), _m["tint"])
 	var long_x := int(rm["w"]) >= int(rm["d"])
 	for d in 4:
 		var dv := Vector2(Dungeon.DIRS[d])
@@ -319,10 +349,10 @@ func _room_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 		var di := Dungeon.door_at(pl, lv, c, d)
 		if di >= 0:
 			var hw := Dungeon.STAIR_W * 0.5 if pl["doors"][di]["stair"] else Dungeon.DOOR_HALF
-			_doorway(k, boxes, e, dv, fy, top, hw, Dungeon.WALL)
+			_doorway(k, boxes, e, dv, fy, top, hw, Dungeon.WALL, tint)
 		else:
 			_box(k, boxes, _m["wall"], Transform3D(b, _v(e, (fy + top) * 0.5)), Vector3(cell + Dungeon.WALL, top - fy, Dungeon.WALL), tint)
-			_wall_dress(k, e - dv * Dungeon.WALL * 0.5, dv, cell - Dungeon.WALL, fy, h)
+			_wall_dress(k, e - dv * Dungeon.WALL * 0.5, dv, cell - Dungeon.WALL, fy, h, paint)
 	# Pillars where four of a great room's cells meet (only the cell to their -x, -z
 	# side builds each).
 	if rm["w"] >= 3 and rm["d"] >= 3:
@@ -333,36 +363,50 @@ func _room_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 			_box(k, null, _m["trim"], Transform3D(I, _v(at, fy + 0.15)), Vector3(0.82, 0.3, 0.82))
 			_box(k, null, _m["trim"], Transform3D(I, _v(at, fy + h - 0.14)), Vector3(0.8, 0.28, 0.8))
 
-## A wall's foot: a plinth, and damp and moss creeping up stone walls.
-func _wall_dress(k: MeshKit, face: Vector2, dv: Vector2, w: float, fy: float, h: float) -> void:
+## A wall's foot: a plinth, and damp and moss creeping up stone walls. A bunker's walls
+## get a coved skirting in the floor's vinyl, darker, a coved cornice, and the room's
+## stripe (a handrail on brackets in a passage).
+func _wall_dress(k: MeshKit, face: Vector2, dv: Vector2, w: float, fy: float, h: float, paint := {}) -> void:
 	var b := _face(dv)
-	_box(k, null, _m["trim"], Transform3D(b, _v(face - dv * 0.04, fy + 0.09)), Vector3(w, 0.18, 0.08))
 	if _era != Eras.SCIFI:
+		_box(k, null, _m["trim"], Transform3D(b, _v(face - dv * 0.04, fy + 0.09)), Vector3(w, 0.18, 0.08))
 		var inward := Basis(Vector3.UP, atan2(-dv.x, -dv.y))
 		k.card("weathering", Transform3D.IDENTITY, _v(face - dv * 0.02, fy + 0.9), inward, w, 1.8, Vector3.ZERO, Color(1, 1, 1, 1))
+		return
+	var cove := b * Basis(Vector3.RIGHT, PI * 0.25)
+	var skirt: Color = (paint.get("floor", PASSAGE_PAINT["floor"]) as Color).darkened(0.38)
+	_box(k, null, "vinyl_floor", Transform3D(b, _v(face - dv * 0.008, fy + 0.07)), Vector3(w, 0.14, 0.016), skirt)
+	_box(k, null, "vinyl_floor", Transform3D(cove, _v(face - dv * 0.03, fy + 0.025)), Vector3(w, 0.07, 0.02), skirt)
+	_box(k, null, _m["wall"], Transform3D(cove, _v(face - dv * 0.05, fy + h - 0.05)), Vector3(w, 0.15, 0.02), paint.get("wall", PASSAGE_PAINT["wall"]))
+	var accent: Color = paint.get("accent", PASSAGE_PAINT["accent"])
+	if paint.get("rail", false):
+		_box(k, null, "enamel", Transform3D(b, _v(face - dv * 0.075, fy + 0.9)), Vector3(w - 0.1, 0.07, 0.05), accent)
+		var n := maxi(2, int(w / 1.2) + 1)
+		for i in n:
+			var x := -w * 0.5 + 0.25 + (w - 0.5) * i / (n - 1)
+			_box(k, null, "metal", Transform3D(b, _v(face + Vector2(dv.y, -dv.x) * x - dv * 0.035, fy + 0.88)), Vector3(0.03, 0.03, 0.07))
 	else:
-		_box(k, null, "hazard", Transform3D(b, _v(face - dv * 0.03, fy + 0.25)), Vector3(w, 0.1, 0.04))
-		_box(k, null, "metal_dark", Transform3D(b, _v(face - dv * 0.05, fy + h - 0.35)), Vector3(w, 0.12, 0.1))
+		_box(k, null, "enamel", Transform3D(b, _v(face - dv * 0.006, fy + 1.05)), Vector3(w, 0.12, 0.012), accent)
 
 ## A wall with a doorway `hw` half wide through it at edge point e, its face toward -dv
 ## inside: jambs, a lintel, a round head filled in above (stone) or a frame (bunker).
-func _doorway(k: MeshKit, boxes: Array, e: Vector2, dv: Vector2, fy: float, top: float, hw: float, thick: float) -> void:
+func _doorway(k: MeshKit, boxes: Array, e: Vector2, dv: Vector2, fy: float, top: float, hw: float, thick: float, tint: Color) -> void:
 	var b := _face(dv)
 	var across := Vector2(dv.y, -dv.x)
 	var cell := Dungeon.CELL
 	var jl := (cell + Dungeon.WALL) * 0.5 - hw
-	var tint: Color = _m["tint"]
 	for s: float in [-1.0, 1.0]:
 		_box(k, boxes, _m["wall"], Transform3D(b, _v(e + across * s * (hw + jl * 0.5), (fy + top) * 0.5)), Vector3(jl, top - fy, thick), tint)
 	var dh := Dungeon.DOOR_H
 	_box(k, boxes, _m["wall"], Transform3D(b, _v(e, (fy + dh + top) * 0.5)), Vector3(hw * 2.0 + 0.02, top - fy - dh, thick), tint)
 	if _era == Eras.SCIFI:
+		# A painted frame round the opening, steel kick plates at its foot.
 		for s: float in [-1.0, 1.0]:
 			for f: float in [-1.0, 1.0]:
-				_box(k, null, "metal_dark", Transform3D(b, _v(e + across * s * (hw + 0.08) + dv * f * (thick * 0.5 + 0.03), fy + dh * 0.5)), Vector3(0.16, dh, 0.06))
-				_box(k, null, "hazard", Transform3D(b, _v(e + across * s * (hw + 0.08) + dv * f * (thick * 0.5 + 0.065), fy + 0.6)), Vector3(0.16, 1.0, 0.01))
+				_box(k, null, _m["trim"], Transform3D(b, _v(e + across * s * (hw + 0.07) + dv * f * (thick * 0.5 + 0.02), fy + dh * 0.5)), Vector3(0.14, dh, 0.04))
+				_box(k, null, "metal", Transform3D(b, _v(e + across * s * (hw + 0.07) + dv * f * (thick * 0.5 + 0.045), fy + 0.15)), Vector3(0.14, 0.3, 0.01))
 		for f: float in [-1.0, 1.0]:
-			_box(k, null, "metal_dark", Transform3D(b, _v(e + dv * f * (thick * 0.5 + 0.03), fy + dh + 0.06)), Vector3(hw * 2.0 + 0.32, 0.14, 0.06))
+			_box(k, null, _m["trim"], Transform3D(b, _v(e + dv * f * (thick * 0.5 + 0.02), fy + dh + 0.06)), Vector3(hw * 2.0 + 0.28, 0.12, 0.04))
 		return
 	# The round head: the opening's top corners filled in down to a half circle, and a
 	# ring of voussoirs proud of both faces.
@@ -390,9 +434,10 @@ func _corr_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 	var cell := Dungeon.CELL
 	var ch := Dungeon.CORR_H
 	var hw := Dungeon.CORR_HALF
-	var tint: Color = _m["tint"]
-	_box(k, boxes, _m["floor"], Transform3D(Basis.IDENTITY, _v(cc, fy - 0.15)), Vector3(cell, 0.3, cell), tint)
-	_box(k, boxes, _m["ceil"], Transform3D(Basis.IDENTITY, _v(cc, fy + ch + 0.15)), Vector3(cell, 0.3, cell), tint)
+	var paint := _paint(-1)
+	var tint: Color = paint["wall"]
+	_box(k, boxes, _m["floor"], Transform3D(Basis.IDENTITY, _v(cc, fy - 0.15)), Vector3(cell, 0.3, cell), paint["floor"])
+	_box(k, boxes, _m["ceil"], Transform3D(Basis.IDENTITY, _v(cc, fy + ch + 0.15)), Vector3(cell, 0.3, cell), _m["tint"])
 	for d in 4:
 		var dv := Vector2(Dungeon.DIRS[d])
 		var across := Vector2(dv.y, -dv.x)
@@ -402,7 +447,10 @@ func _corr_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 			for s: float in [-1.0, 1.0]:
 				_box(k, boxes, _m["wall"], Transform3D(b, _v(cc + dv * mid + across * s * (hw + 0.15), fy + (ch + 0.3) * 0.5)), Vector3(0.3, ch + 0.3, cell * 0.5 - hw), tint)
 				var inner := cc + dv * mid + across * s * hw
-				_box(k, null, _m["trim"], Transform3D(_face(-across * s), _v(inner, fy + 0.09)), Vector3(cell * 0.5 - hw, 0.18, 0.08))
+				if _era == Eras.SCIFI:
+					_wall_dress(k, inner, across * s, cell * 0.5 - hw, fy, ch, paint)
+				else:
+					_box(k, null, _m["trim"], Transform3D(_face(-across * s), _v(inner, fy + 0.09)), Vector3(cell * 0.5 - hw, 0.18, 0.08))
 			var nk := Dungeon.kind(pl, lv, c + Dungeon.DIRS[d])
 			if nk == Dungeon.CORR and d < 2:
 				var at := cc + dv * cell * 0.5
@@ -411,7 +459,7 @@ func _corr_cell(lv: int, c: Vector2i, k: MeshKit, models: Array, boxes: Array) -
 				_box(k, null, _m["beam"], Transform3D(b, _v(at, fy + ch - 0.14)), Vector3(hw * 2.0, 0.28, 0.32), tint)
 		else:
 			_box(k, boxes, _m["wall"], Transform3D(b, _v(cc + dv * (hw + 0.15), fy + (ch + 0.3) * 0.5)), Vector3(hw * 2.0 + 0.6, ch + 0.3, 0.3), tint)
-			_wall_dress(k, cc + dv * hw, dv, hw * 2.0, fy, ch)
+			_wall_dress(k, cc + dv * hw, dv, hw * 2.0, fy, ch, paint)
 
 # --- Age and payoff -----------------------------------------------------------------
 
@@ -607,7 +655,7 @@ func _flight(c: Vector2i, d: int, hi: float, lo: float, entrance: bool, k: MeshK
 	var tint: Color = _m["tint"]
 	for j in steps:
 		var ty := hi - (j + 0.5) * rise
-		_box(k, null, _m["floor"] if _era == Eras.SCIFI else _m["trim"], Transform3D(b, _v(start + dv * (j + 0.5) * run, ty - 0.2)), Vector3(w, 0.4, run + 0.01), tint)
+		_box(k, null, "scifi_floor" if _era == Eras.SCIFI else _m["trim"], Transform3D(b, _v(start + dv * (j + 0.5) * run, ty - 0.2)), Vector3(w, 0.4, run + 0.01), tint)
 		if _era == Eras.SCIFI:
 			_box(k, null, "hazard", Transform3D(b, _v(start + dv * ((j + 1) * run - 0.04), ty + 0.005)), Vector3(w - 0.1, 0.012, 0.06))
 	# Walk on a ramp along the nosings, not the treads' edges.
@@ -702,8 +750,9 @@ func _furnish_block(lv: int, cells: Rect2i, k: MeshKit, models: Array, boxes: Ar
 		if _era == Eras.SCIFI:
 			var dv := Vector2(-sin(yaw), -cos(yaw)) # back toward the wall
 			var at := Vector2(p.x, p.z) - dv * 0.06
-			k.box("metal_dark", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.55, at.y)), Vector3(0.9, 0.1, 0.12))
-			k.box("glow_white", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.49, at.y)), Vector3(0.8, 0.03, 0.08))
+			# A painted wall light over a frosted diffuser (lit by the lamp _build_parts hangs here).
+			k.box("enamel", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.55, at.y)), Vector3(1.2, 0.1, 0.14), Color(0.92, 0.92, 0.9))
+			k.box("glow_white", Transform3D(Basis(Vector3.UP, yaw), Vector3(at.x, p.y + 2.495, at.y)), Vector3(1.1, 0.012, 0.1))
 		elif _free_standing(l):
 			models.append(["props/CandleStick_Stand", rad_to_deg(yaw), p, 1.0])
 		else:
@@ -791,7 +840,8 @@ func _build_shell() -> void:
 	var H := 3.6
 	var base := y0 - 1.2
 	var I := Basis.IDENTITY
-	var wall: String = _m["wall"]
+	# A bunker's gatehouse stands out in the weather: plated, not painted.
+	var wall: String = _m.get("shell", _m["wall"])
 	var tint: Color = _m["tint"]
 	# Side and back walls.
 	for sx: float in [g.position.x + t * 0.5, g.end.x - t * 0.5]:
@@ -831,7 +881,7 @@ func _build_shell() -> void:
 	var ox0 := m.x - Dungeon.STAIR_W * 0.5 - 0.3
 	var ox1 := m.x + Dungeon.STAIR_W * 0.5 + 0.3
 	var oz0 := m.y - 4.4
-	var floor_mat: String = _m["floor"]
+	var floor_mat: String = _m.get("shell_floor", _m["floor"])
 	for r: Rect2 in [Rect2(ix0, iz0, ox0 - ix0, iz1 - iz0), Rect2(ox1, iz0, ix1 - ox1, iz1 - iz0),
 			Rect2(ox0, m.y, ox1 - ox0, iz1 - m.y), Rect2(ox0, iz0, ox1 - ox0, oz0 - iz0)]:
 		if r.size.x > 0.01 and r.size.y > 0.01:
@@ -945,7 +995,7 @@ func _build_parts() -> void:
 		var k := MeshKit.new(ni + 11)
 		var b := Basis(Vector3.UP, float(nt["yaw"]))
 		if _era == Eras.SCIFI:
-			k.box("metal_dark", Transform3D(b, Vector3(0, 0, 0.03)), Vector3(0.6, 0.44, 0.06))
+			k.box("enamel_grey", Transform3D(b, Vector3(0, 0, 0.03)), Vector3(0.6, 0.44, 0.06))
 			k.box("screen", Transform3D(b, Vector3(0, 0.01, 0.065)), Vector3(0.5, 0.32, 0.01))
 		else:
 			k.box("planks", Transform3D(b, Vector3(0, 0, 0.025)), Vector3(0.62, 0.48, 0.05))
