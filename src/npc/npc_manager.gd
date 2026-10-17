@@ -378,7 +378,9 @@ func _process(delta: float) -> void:
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
-			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
+			# Shown inside 7 m, hidden only past 8: someone at the edge doesn't blink their tag.
+			var tag_d := pp.distance_to(n.global_position)
+			n.show_name(tag_d < (8.0 if n.name_shown() else 7.0) and not n.is_hidden())
 			if n.boat != null:
 				# Aboard: everyone draws the crew at their stations; the game that runs
 				# them decides what they do.

@@ -294,6 +294,10 @@ func show_name(on: bool) -> void:
 func is_hidden() -> bool:
 	return not _model.visible
 
+## Whether the name tag is up (shown, not speech).
+func name_shown() -> bool:
+	return _label.visible and not _speaking
+
 func flash_hit() -> void:
 	_hit_flash = 0.25
 	if _human:
