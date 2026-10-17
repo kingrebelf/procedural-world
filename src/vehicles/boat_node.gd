@@ -20,8 +20,14 @@ var held := 0.0 ## 0 sailing .. 1 hove to
 var goal := Vector2.INF ## sail_to target (spawned boats)
 var speed := 0.0
 var players: Callable ## () -> Array of player positions near enough to matter
+var rowing := 0.0 ## 0 oars at rest .. 1 pulling (rowboats)
+var row_offset := 0.0 ## where this boat's stroke is in the shared rowing clock
+
+var _water: BoatWater
+var _oars: Array = [] ## [node, side]
 
 var _wake_t := 0.0
+var _line := PackedVector2Array() ## the hull's waterline outline (BoatModel.waterline)
 var _bob := Vector3.ZERO
 var _yaw := 0.0
 var _pos2 := Vector2.ZERO
@@ -50,6 +56,13 @@ func _ready() -> void:
 	model = BoatModel.build(kind, int(site.get("seed", 1)), body)
 	add_child(model)
 	deck = BoatModel.deck_y(kind)
+	_water = BoatWater.build(kind)
+	add_child(_water)
+	row_offset = float(int(site.get("seed", 1)) % 97) / 97.0
+	for s in [1.0, -1.0]:
+		var o: Node3D = model.get_node_or_null("Oar_r" if s > 0.0 else "Oar_l")
+		if o:
+			_oars.append([o, s])
 	var pose := Boats.pose_at(site, route_t)
 	_pos2 = pose[0]
 	_yaw = pose[1]
@@ -57,6 +70,7 @@ func _ready() -> void:
 		_pos2 = site["center"]
 		_yaw = float(site.get("yaw", 0.0))
 	_place(0.0)
+	_water.follow(_pos2, _yaw, 0.0)
 
 func _physics_process(delta: float) -> void:
 	var d: Dictionary = Boats.KINDS[kind]
@@ -82,6 +96,16 @@ func _physics_process(delta: float) -> void:
 		speed = 0.0
 	_place(delta)
 	_wake(delta, d)
+	_water.follow(_pos2, _yaw, clampf(pow(speed / 4.0, 0.7), 0.0, 1.0))
+	if not _oars.is_empty():
+		rowing = move_toward(rowing, 1.0 if speed > 0.3 else 0.0, delta * 0.8)
+		_row()
+
+## Swings the oars through the stroke, in time with the rower (BodyLanguage.row).
+func _row() -> void:
+	var ph := BodyLanguage.row_phase(row_offset)
+	for o in _oars:
+		(o[0] as Node3D).basis = BoatModel.oar_stroke(float(o[1]), ph, rowing)
 
 ## Spawned boats: head for `goal` at the kind's pace (a pirate closing in).
 func _steer(delta: float, d: Dictionary) -> void:
@@ -125,7 +149,17 @@ func _place(delta: float) -> void:
 
 func _wake(delta: float, d: Dictionary) -> void:
 	_wake_t -= delta
-	if _wake_t > 0.0 or speed < 0.6:
+	if _wake_t > 0.0:
+		return
+	if speed < 0.6:
+		# At rest the swell still slaps the hull: now and then a soft ring spreads from a
+		# point on the waterline.
+		_wake_t = randf_range(0.8, 2.2)
+		if _line.is_empty():
+			_line = BoatModel.waterline(kind)
+		var q := _line[randi() % _line.size()]
+		var at := global_transform * Vector3(q.x * 1.05, 0.0, q.y * 1.02)
+		Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)), at.z), 0.5 + float(d["len"]) * 0.03)
 		return
 	_wake_t = clampf(1.4 / speed, 0.12, 0.6)
 	var at := global_position + global_transform.basis.z * float(d["len"]) * 0.45

@@ -57,7 +57,7 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.3}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.55}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
 	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
 	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}
@@ -255,6 +255,16 @@ static func _wind_foliage(kind: String, core: bool, back: Color, sway: float) ->
 	m.set_shader_parameter("uv_scale", 2.0 if kind == "leaf" and photo("leaves", "card") != null else 1.0)
 	return m
 
+static var _window_light := 0.0
+
+## How lit the lamplit windows are (0 by day .. 1 at night), set by the sky each frame.
+static func set_window_light(f: float) -> void:
+	if absf(f - _window_light) < 0.01:
+		return
+	_window_light = f
+	var m := get_mat("window_warm") as BaseMaterial3D
+	m.emission_energy_multiplier = 2.5 * f
+
 static func get_mat(name: String) -> Material:
 	_lock.lock()
 	var out := _get_mat(name)
@@ -297,6 +307,11 @@ static func _get_mat(name: String) -> Material:
 		"leaf_core_w":
 			_cache[name] = _wind_foliage("leaf", true, Color(0.25, 0.3, 0.1), 1.0)
 			return _cache[name]
+		"weathering":
+			var wm := ShaderMaterial.new()
+			wm.shader = load("res://src/world/weathering.gdshader")
+			_cache[name] = wm
+			return wm
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
@@ -363,6 +378,15 @@ static func _get_mat(name: String) -> Material:
 			if photo("fabric_linen", "detail") != null:
 				m.albedo_texture = photo("fabric_linen", "detail")
 				m.uv1_scale = Vector3.ONE * 16.0
+		# Homespun cloth (washing on the line, a scarecrow's shirt): colour from vertex
+		# colours, seen from both sides.
+		"linen":
+			m = _pbr(Color(0.9, 0.88, 0.82), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
+			if photo("fabric_linen", "detail") != null:
+				m.albedo_texture = photo("fabric_linen", "detail")
+				m.albedo_color = Color(1.15, 1.12, 1.05) # the weave averages 0.72
+				m.uv1_scale = Vector3.ONE * 6.0
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		"skin": m = _pbr(Color(0.78, 0.6, 0.48), 0.6, 0.0, "", 0, 1)
 		"moss": m = _pbr(Color(0.16, 0.42, 0.38), 0.95, 0.0, "leaf", 0.1, 0.6, 1.2)
 		"stem": m = _pbr(Color(0.86, 0.84, 0.76), 0.8, 0.0, "cap", 0.06, 0.6, 1.0)
@@ -433,6 +457,12 @@ static func _get_mat(name: String) -> Material:
 		"ash": m = _pbr(Color(0.3, 0.29, 0.28), 1.0, 0.0, "stone", 0.05, 2.0, 0.6)
 		"glow_red": m = _glow(Color(1.0, 0.15, 0.1), 5.0)
 		"glow_warm": m = _glow(Color(1.0, 0.65, 0.3), 2.5)
+		"window_warm":
+			# A lamplit window seen from outside: a dark pane by day, warm from dusk to dawn
+			# (set_window_light).
+			m = _glow(Color(1.0, 0.62, 0.3), 0.0)
+			m.albedo_color = Color(0.07, 0.06, 0.05)
+			m.emission_energy_multiplier = 2.5 * _window_light
 		"glow_white": m = _glow(Color(0.95, 0.97, 1.0), 3.0)
 		_:
 			m = _pbr(Color(1, 0, 1), 0.5, 0.0, "", 0, 1)

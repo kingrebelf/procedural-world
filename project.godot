@@ -5,7 +5,7 @@ config_version=5
 
 config/name="Procedural World"
 config/description="An infinite, persistent, first-person world that blends eras as you walk."
-config/version="0.3.42"
+config/version="0.3.43"
 run/main_scene="res://src/ui/main_menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="ProceduralWorld"
@@ -49,9 +49,25 @@ textures/default_filters/anisotropic_filtering_level=4
 
 [shader_globals]
 
+water_map={
+"type": "sampler2D",
+"value": ""
+}
+water_murk={
+"type": "sampler2D",
+"value": ""
+}
+water_map_rect={
+"type": "vec4",
+"value": Vector4(-800, -800, 1600, 0)
+}
 night_glow_g={
 "type": "float",
 "value": 0.15
+}
+snow_line_g={
+"type": "float",
+"value": 50.0
 }
 wind_dir={
 "type": "vec2",

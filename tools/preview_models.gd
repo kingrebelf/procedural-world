@@ -70,9 +70,10 @@ func _run() -> void:
 		var turn := float(String(n0).get_slice("@", 1)) if String(n0).contains("@") else 0.0
 		var node: Node3D
 		if String(n).begins_with("mesh:"):
-			# A world object mesh by key, e.g. mesh:oak#1234#0.
+			# A world object mesh by key, e.g. mesh:oak#1234#0 ("%" for the "@" of a key,
+			# as in mesh:w_dreadnought%crash%calm).
 			var mi := MeshInstance3D.new()
-			mi.mesh = ObjectLibrary.get_mesh(String(n).substr(5))
+			mi.mesh = ObjectLibrary.get_mesh(String(n).substr(5).replace("%", "@"))
 			node = Node3D.new()
 			node.add_child(mi)
 		elif String(n).begins_with("stone:"):

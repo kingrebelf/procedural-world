@@ -12,6 +12,9 @@ class_name AnimalSkin
 const SHADER := "res://src/fauna/shaders/fur.gdshader"
 enum { FUR, HAIR, SKIN, HORN, EYE }
 const LEVELS := 2
+## The name of the hanging-lock surfaces refine() adds to manes and tails.
+const LOCKS := "locks"
+const LOCK_SHADER := "res://src/fauna/shaders/hair_lock.gdshader"
 
 ## Per-kind look: hair spacing and lock size (metres), how much the hair shows, muscle,
 ## where the legs meet the body and the back's top (0..1 of the height), and the chances
@@ -21,15 +24,15 @@ const LOOKS := {
 		"belly": 0.4, "dorsal": 0.2, "spots": 0.25, "spot_col": Color(0.82, 0.74, 0.62), "spot_size": 0.035},
 	"Stag": {"vary": 0.24, "strand": 0.0035, "clump": 0.02, "fur": 0.85, "muscle": 1.2, "legs_y": 0.42, "back_y": 0.6,
 		"belly": 0.4, "dorsal": 0.25},
-	"Cow": {"strand": 0.003, "clump": 0.024, "fur": 0.55, "muscle": 0.6, "legs_y": 0.36, "back_y": 0.66,
+	"Cow": {"vary": 0.18, "strand": 0.003, "clump": 0.024, "fur": 0.55, "muscle": 0.6, "legs_y": 0.36, "back_y": 0.66,
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
 	"Bull": {"vary": 0.22, "strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
 		"belly": 0.08, "dorsal": 0.1, "patches": 0.2, "patch_col": Color(0.3, 0.2, 0.12), "blaze": 0.2},
-	"Horse": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
+	"Horse": {"vary": 0.2, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.1, "socks": 0.45, "sock_col": Color(0.66, 0.63, 0.58), "blaze": 0.5, "spots": 0.15, "spot_col": Color(0.5, 0.36, 0.24), "spot_size": 0.06},
 	"Horse_White": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},
-	"Donkey": {"strand": 0.003, "clump": 0.02, "fur": 0.75, "muscle": 0.8, "legs_y": 0.4, "back_y": 0.66,
+	"Donkey": {"vary": 0.18, "strand": 0.003, "clump": 0.02, "fur": 0.75, "muscle": 0.8, "legs_y": 0.4, "back_y": 0.66,
 		"belly": 0.5, "dorsal": 0.1, "stripe": 0.7, "socks": 0.15, "sock_col": Color(0.12, 0.1, 0.09)},
 	"Alpaca": {"vary": 0.24, "strand": 0.006, "clump": 0.045, "fur": 1.4, "coarse": 0.3, "muscle": 0.15, "legs_y": 0.32, "back_y": 0.52,
 		"belly": 0.15, "dorsal": 0.0, "patches": 0.35, "patch_col": Color(0.86, 0.82, 0.74)},
@@ -41,9 +44,9 @@ const LOOKS := {
 		"belly": 0.1, "dorsal": 0.15, "grizzle": 0.3, "socks": 0.2},
 	"ShibaInu": {"strand": 0.0035, "clump": 0.018, "fur": 1.05, "muscle": 0.3, "legs_y": 0.38, "back_y": 0.66,
 		"belly": 0.2, "dorsal": 0.12, "grizzle": 0.15},
-	"Boar": {"strand": 0.007, "clump": 0.03, "fur": 1.2, "coarse": 1.0, "muscle": 0.7, "legs_y": 0.34, "back_y": 0.74,
+	"Boar": {"vary": 0.24, "strand": 0.007, "clump": 0.03, "fur": 1.2, "coarse": 1.0, "muscle": 0.7, "legs_y": 0.34, "back_y": 0.74,
 		"belly": 0.05, "dorsal": 0.25, "stripe": 0.35, "grizzle": 0.6},
-	"Hare": {"strand": 0.0025, "clump": 0.012, "fur": 1.0, "muscle": 0.3, "legs_y": 0.3, "back_y": 0.62,
+	"Hare": {"vary": 0.2, "strand": 0.0025, "clump": 0.012, "fur": 1.0, "muscle": 0.3, "legs_y": 0.3, "back_y": 0.62,
 		"belly": 0.45, "dorsal": 0.15, "grizzle": 0.8},
 }
 
@@ -176,6 +179,23 @@ static func material(kind: String, mat_name: String, col: Color, glow, box: AABB
 		if glow != null:
 			m.set_shader_parameter("emit", glow)
 			m.set_shader_parameter("emit_e", 1.6)
+		_mats[key] = m
+	_mat_lock.unlock()
+	return m
+
+## The hanging locks of a mane or tail (refine()'s LOCKS surfaces), in colour `col`.
+static func lock_material(kind: String, col: Color) -> ShaderMaterial:
+	var key := "locks|%s|%s" % [kind, col.to_html()]
+	_mat_lock.lock()
+	var m: ShaderMaterial = _mats.get(key)
+	if m == null:
+		m = ShaderMaterial.new()
+		m.shader = load(LOCK_SHADER)
+		m.set_shader_parameter("base", col)
+		var look: Dictionary = LOOKS.get(kind, {})
+		for k in ["vary", "phases"]:
+			if look.has(k):
+				m.set_shader_parameter(k, look[k])
 		_mats[key] = m
 	_mat_lock.unlock()
 	return m
@@ -338,7 +358,126 @@ static func refine(data: Dictionary) -> ArrayMesh:
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], lods)
 		out.surface_set_material(s, data["mats"][s])
 		out.surface_set_name(s, data["names"][s])
+	# Manes and tails get loose locks hanging off them, so they part into strands at the
+	# edges instead of ending in a smooth solid crest.
+	for s in sc:
+		if roles[s] != HAIR:
+			continue
+		var lk := _locks(pos, nrm, bon, wei, tris, tsurf, s, aabb, String(data["name"]).hash())
+		if lk.is_empty():
+			continue
+		var lods := {}
+		for l in levels:
+			lods[lod_err[l]] = lk["lods"][levels - 1 - l]
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, lk["arrays"], [], lods)
+		out.surface_set_material(out.get_surface_count() - 1, data["mats"][s])
+		out.surface_set_name(out.get_surface_count() - 1, LOCKS)
 	return out
+
+## Hanging locks for hair surface `s`: tapered strips rooted on it, each falling to the
+## animal's side and down, bound to the bones of the hair where it grows. UV runs across
+## (x) and root to tip (y); UV2.x is the lock's own random number. "lods" holds every
+## second and every fourth lock, for the coarser LODs.
+static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: PackedInt32Array, wei: PackedFloat32Array,
+		tris: PackedInt32Array, tsurf: PackedInt32Array, s: int, aabb: AABB, seed: int) -> Dictionary:
+	var ht := aabb.size.y
+	var cx := aabb.get_center().x
+	var cz := aabb.get_center().z
+	var ids := PackedInt32Array()
+	var cdf := PackedFloat32Array()
+	var area := 0.0
+	for t in tsurf.size():
+		if tsurf[t] != s:
+			continue
+		var a := pos[tris[t * 3]]
+		area += (pos[tris[t * 3 + 1]] - a).cross(pos[tris[t * 3 + 2]] - a).length() * 0.5
+		ids.append(t)
+		cdf.append(area)
+	if ids.is_empty() or area <= 0.0:
+		return {}
+	var w := ht * 0.011
+	var count := clampi(int(area / (w * w * 6.0)), 40, 360)
+	var r := RandomNumberGenerator.new()
+	r.seed = seed
+	var rows := 6
+	var v := PackedVector3Array()
+	var n := PackedVector3Array()
+	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
+	var lb := PackedInt32Array()
+	var lw := PackedFloat32Array()
+	var i0 := PackedInt32Array()
+	var i1 := PackedInt32Array()
+	var i2 := PackedInt32Array()
+	for i in count:
+		var k := cdf.bsearch(r.randf() * area)
+		var t := ids[mini(k, ids.size() - 1)]
+		var b1 := r.randf()
+		var b2 := r.randf()
+		if b1 + b2 > 1.0:
+			b1 = 1.0 - b1
+			b2 = 1.0 - b2
+		var bc := [1.0 - b1 - b2, b1, b2]
+		var p := Vector3.ZERO
+		var sn := Vector3.ZERO
+		var near := 0
+		for c in 3:
+			var g := tris[t * 3 + c]
+			p += pos[g] * float(bc[c])
+			sn += nrm[g] * float(bc[c])
+			if float(bc[c]) > float(bc[near]):
+				near = c
+		sn = sn.normalized()
+		var g0 := tris[t * 3 + near]
+		# A tail (behind the body's middle) hangs long; a mane falls short to one side.
+		var tail := p.z < cz
+		var length := ht * (r.randf_range(0.09, 0.17) if tail else r.randf_range(0.05, 0.09))
+		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
+		var d0 := (sn * (0.2 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.1 if tail else 0.35), 0, -0.12)).normalized()
+		var hang := Vector3(side * 0.05, -1.0, -0.12).normalized()
+		var wave := r.randf() * TAU
+		var lw0 := w * r.randf_range(0.7, 1.3)
+		var lid := r.randf()
+		var q := p - sn * w * 0.3
+		var base := v.size()
+		var dir := d0
+		for j in rows:
+			var u := float(j) / (rows - 1)
+			if j > 0:
+				dir = d0.slerp(hang, u * u)
+				q += dir * length / (rows - 1)
+			var across := dir.cross(sn)
+			if across.length_squared() < 1e-6:
+				across = Vector3.RIGHT
+			across = across.normalized()
+			var c := q + across * sin(u * 3.0 + wave) * lw0 * 0.25
+			var hw := lw0 * (1.0 - 0.55 * u)
+			for e in 2:
+				v.append(c + across * hw * (1.0 if e == 1 else -1.0))
+				n.append(sn)
+				uv.append(Vector2(float(e), u))
+				uv2.append(Vector2(lid, 0.0))
+				for m in 4:
+					lb.append(bon[g0 * 4 + m])
+					lw.append(wei[g0 * 4 + m])
+		for j in rows - 1:
+			var a := base + j * 2
+			var quad := PackedInt32Array([a, a + 2, a + 1, a + 1, a + 2, a + 3])
+			i0.append_array(quad)
+			if i % 2 == 0:
+				i1.append_array(quad)
+			if i % 4 == 0:
+				i2.append_array(quad)
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_NORMAL] = n
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	arr[Mesh.ARRAY_TEX_UV2] = uv2
+	arr[Mesh.ARRAY_BONES] = lb
+	arr[Mesh.ARRAY_WEIGHTS] = lw
+	arr[Mesh.ARRAY_INDEX] = i0
+	return {"arrays": arr, "lods": [i1, i2]}
 
 ## The surface of each triangle at a coarser level: each subdivision splits a triangle
 ## into four in order, so level l's triangle t is level l+1's 4t..4t+3.

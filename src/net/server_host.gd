@@ -59,7 +59,7 @@ func start(c: ServerConfig) -> Error:
 	mp.auth_callback = _auth
 	mp.auth_timeout = 15.0
 	mp.server_relay = false
-	mp.peer_authenticating.connect(func(id): _alive[id] = true)
+	mp.peer_authenticating.connect(func(id): _alive[id] = true; Net.patient(mp.multiplayer_peer, id))
 	mp.peer_authentication_failed.connect(func(id): _alive.erase(id); online.erase(id))
 	mp.peer_connected.connect(_on_peer_connected)
 	mp.peer_disconnected.connect(_on_peer_disconnected)

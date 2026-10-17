@@ -63,6 +63,9 @@ func _run() -> void:
 	vp.add_child(cam)
 	for era in ([Eras.MEDIEVAL, Eras.SCIFI, Eras.FANTASY] if lineups else []):
 		await _lineup(out + "/lineup_%s.png" % Eras.NAMES[era].to_lower(), era, sd)
+	for era in ([Eras.MEDIEVAL, Eras.SCIFI] if lineups else []):
+		for back in [false, true]:
+			await _lineup(out + "/closeup_%s_%s.png" % [Eras.NAMES[era].to_lower(), "back" if back else "front"], era, sd, 6, back)
 	await _motion(out + "/motion.png", sd)
 	print("saved to ", out)
 	quit()
@@ -75,20 +78,21 @@ func _human(b: Dictionary, era: int, job: String) -> HumanModel:
 	h.animator.lod = false
 	return h
 
-## Twelve people of one town, made the way the game makes them, standing about.
-func _lineup(path: String, era: int, sd: int) -> void:
-	vp.size = Vector2i(2400, 760)
+## Twelve people of one town, made the way the game makes them, standing about (or the
+## first `count` of them close up, from the front or behind, for fabric, fit and capes).
+func _lineup(path: String, era: int, sd: int, count := 12, back := false) -> void:
+	vp.size = Vector2i(2400, 760) if count == 12 else Vector2i(2400, 1100)
 	var r := RandomNumberGenerator.new()
 	r.seed = sd + era * 101
 	var jobs: Array = NPCGen.JOBS[era] + ["trader"]
 	var people: Array = []
-	for i in 12:
+	for i in count:
 		var p := NPCGen.person(r, era, i, 0, 0)
 		var h := _human(p["body"], era, jobs[i % jobs.size()] if i < jobs.size() else jobs[r.randi() % jobs.size()])
-		h.position = Vector3((i - 5.5) * 0.92, 0, (i % 2) * 0.5)
-		h.rotation.y = r.randf_range(-0.5, 0.5)
+		h.position = Vector3((i - (count - 1) * 0.5) * 0.92, 0, (i % 2) * 0.5 if count == 12 else 0.0)
+		h.rotation.y = r.randf_range(-0.5, 0.5) + (PI if back else 0.0)
 		people.append(h)
-	cam.position = Vector3(0, 1.3, 13.0)
+	cam.position = Vector3(0, 1.3, 13.0 if count == 12 else 5.6)
 	cam.look_at(Vector3(0, 0.9, 0))
 	for f in 90:
 		for h in people:

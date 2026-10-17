@@ -402,31 +402,77 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 	var k := MeshKit.new(7)
 	var I := Transform3D.IDENTITY
 	# Guards wear real armour instead (NPC.default_gear).
+	# Crowns are sized round the hair above the brim, so no hair pokes through.
+	var brim := 0.13
 	if era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
-		k.cylinder("thatch", I.translated(Vector3(0, 0.17, 0)), 0.095, 0.07, 0.09, 10)
-		k.cylinder("thatch", I.translated(Vector3(0, 0.15, 0)), 0.22, 0.22, 0.015, 14)
+		var fit := _hair_fit(0.0, 0.15, 0.095, 0.125, 0.24)
+		brim = fit.z
+		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), fit.x, fit.x * 0.75, fit.y + 0.02 - fit.z, 10)
+		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
 		# A soft felt hat whose point flops over, on a narrow brim.
 		var felt: Color = (b["cloth2"] as Color).darkened(0.25)
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.115, 0.06, 0.16, 12, true, 0.0, 1, felt)
-		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, 0.25, -0.02)), 0.06, 0.0, 0.13, 10, true, 0.0, 1, felt)
+		var fit := _hair_fit(-0.02, 0.1, 0.115, 0.135, 0.25)
+		brim = fit.z
+		var top := fit.y + 0.01
+		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), fit.x, fit.x * 0.52, top - fit.z, 12, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, top - 0.01, -0.02)), fit.x * 0.52, 0.0, 0.13, 10, true, 0.0, 1, felt)
 	else:
 		return
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(Materials.get_mat)
 	_headgear_node = _bone_attach("Head")
 	_headgear_node.add_child(mi)
-	# No hair through the crown of the hat.
+	# No hair through the crown of the hat: none above its brim.
 	var hb := skeleton.find_bone("Head")
 	if hb >= 0:
-		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + 0.13)
+		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + brim)
 
 ## Hides hair above rest height `y` (model space; 99 for none): a hat or hood's crown.
 ## Hair below it, hanging under a brim, still shows.
 func cap_hair(y: float) -> void:
 	for h in _hair:
 		(h as GeometryInstance3D).set_instance_shader_parameter("cap_y", y)
+
+static var _hair_profiles: Dictionary = {}
+
+## Where a hat's crown sits on this head's hair: Vector3(radius about (0, cz) in head
+## space, top of the hair, crown base). The base starts at `y0` and rises (over buns
+## and full hair) until the hair above it fits within `r_max`, so no hair pokes through
+## the brim and the hat neither swamps the head nor sinks over the eyes.
+func _hair_fit(cz: float, y0: float, r_min: float, r_max: float, top_min: float) -> Vector3:
+	var prof: Array = []
+	prof.resize(40) # widest hair per centimetre of height, 0..0.4 m above the head bone
+	prof.fill(0.0)
+	var top := top_min
+	var head := skeleton.get_bone_global_rest(skeleton.find_bone("Head")).affine_inverse()
+	for mi: MeshInstance3D in _hair:
+		var key := "%d|%d|%.3f" % [mi.mesh.get_instance_id(), int(_fem), cz]
+		if not _hair_profiles.has(key):
+			var pr: Array = []
+			pr.resize(41)
+			pr.fill(0.0)
+			for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				var p := head * v
+				var i := clampi(int(p.y * 100.0), 0, 39)
+				if p.y > 0.0:
+					pr[i] = maxf(pr[i], Vector2(p.x, p.z - cz).length())
+					pr[40] = maxf(pr[40], p.y)
+			_hair_profiles[key] = pr
+		var pr: Array = _hair_profiles[key]
+		for i in 40:
+			prof[i] = maxf(prof[i], pr[i])
+		top = maxf(top, pr[40] + 0.01)
+	var base := y0
+	while base < top - 0.06:
+		var r := 0.0
+		for i in range(int(base * 100.0), 40):
+			r = maxf(r, prof[i])
+		if r + 0.012 <= r_max:
+			return Vector3(maxf(r_min, r + 0.012), top, base)
+		base += 0.01
+	return Vector3(r_max, top, base)
 
 ## Tools in hand for jobs that work with one.
 func _tool(era: int, job: String) -> void:

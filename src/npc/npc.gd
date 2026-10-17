@@ -423,6 +423,8 @@ func deck_step(delta: float, player_pos: Vector3) -> void:
 	else:
 		_human.look_at_target(Vector3.INF)
 	var chat := talking or _speech_t > 0.0
+	if pose == "row" and _human.gestures:
+		_human.gestures.row(boat.rowing > 0.5 and not chat, boat.row_offset)
 	if sit:
 		_human.play("sit_talk" if chat and _human.anim.has_animation("sit_talk") else "sit")
 	elif chat:
