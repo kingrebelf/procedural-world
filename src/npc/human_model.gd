@@ -482,6 +482,8 @@ func _wrap(prop: Node3D) -> Dictionary:
 	# The rest frame and the attachment's frame are the same bone's.
 	var t := _held_type(prop)
 	var pose := "" if not Viewmodel.pointed(t) or Viewmodel.is_bow(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	if prop.get_child_count() > 0 and prop.get_child(0) is MeshInstance3D and (prop.get_child(0) as MeshInstance3D).mesh is QuadMesh:
+		pose = "fist" # an icon card has no handle to close on: a loose fist under it
 	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
 
 static func _held_type(prop: Node3D) -> String:

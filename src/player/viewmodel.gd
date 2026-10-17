@@ -40,6 +40,12 @@ const TOOL_AIM := Vector3(-0.1, 0.9, -0.85)
 ## so most of the stave is below the frame and the upper limb crosses it.
 const BOW_REST := Vector3(-0.02, -0.1, -0.06)
 const BOW_AIM := Vector3(-0.45, 1.0, -0.3)
+## Anything else you carry (food, a bottle, an ingot, a gauge) is held up nearer the middle
+## of the view to be looked at: upright in a loose fist, the back of the hand turned out a
+## little, and its face (+Z of the model) turned to your eye.
+const CARRY_REST := Vector3(-0.09, 0.06, 0.1)
+const CARRY_AIM := Vector3(-0.15, 1.0, -0.25)
+const CARRY_PALM := Vector3(-1.0, 0.0, 0.2)
 ## Which way the palm of a hand holding a tool faces: ahead and a little out, so you see
 ## the back of the hand and its knuckles, the handle coming out of the top of the fist.
 const TOOL_PALM := Vector3(0.4, -0.2, -1.0)
@@ -136,6 +142,10 @@ const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_de
 ## Every bow model (ToolModels, Firearms, the forged longbow) runs its stave along +Y with
 ## the riser at its "grip" and the string on the +Z side.
 const BOWS := ["shortbow", "longbow", "composite_bow", "royal_bow", "crystal_bow", "eclipse_bow"]
+
+## Held to be looked at rather than used: not a tool, weapon or light.
+static func carried(t: String) -> bool:
+	return t != "" and not ItemDB.def(t).get("kind", "") in ["tool", "weapon", "light"]
 
 static func is_bow(t: String) -> bool:
 	return t in BOWS
@@ -365,7 +375,7 @@ func show_item(t: String, it = null) -> void:
 		arms.set_arms_only(t != "")
 		arms.gestures.relaxed = t == ""
 		_rest = ARMS_REST if t == "" else (BINO_REST if ItemDB.def(t).get("zoom", false) else \
-			(BOW_REST if is_bow(t) else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)))
+			(CARRY_REST if carried(t) else BOW_REST if is_bow(t) else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)))
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -393,7 +403,11 @@ func _aim() -> void:
 		return
 	# The rig's own frame, so the item swings with the arms.
 	var b := global_transform.basis.orthonormalized()
-	if pointed(_type) and not is_bow(_type):
+	if carried(_type):
+		arms.aim_grip(b * CARRY_AIM, b * CARRY_PALM)
+		arms.reaim(Vector3.ZERO)
+		_face_eye()
+	elif pointed(_type) and not is_bow(_type):
 		arms.aim_hand(b * GUN_KNUCKLES, b * GUN_FINGERS)
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
@@ -412,6 +426,21 @@ func _aim() -> void:
 				# About +Y, from the striking axis towards `want`.
 				var turn := Vector2(strike.x, -strike.z).angle_to(Vector2(want.x, -want.z))
 				prop.basis = prop.basis * Basis(Vector3.UP, turn)
+
+## Turns a carried item's model about its upright axis so its face (+Z) looks at the eye:
+## a jar's label, a gauge's dial, an ingot's stamp, a card's icon.
+func _face_eye() -> void:
+	if arms._held == null or arms._held.get_child_count() == 0:
+		return
+	var prop := arms._held.get_child(0) as Node3D
+	if prop.get_child_count() == 0:
+		return
+	var mi := prop.get_child(0) as Node3D
+	var eye := (get_parent() as Node3D).global_position if get_parent() is Node3D else global_position
+	var to := prop.global_basis.inverse() * (eye - mi.global_position)
+	to.y = 0.0
+	if to.length() > 0.001:
+		mi.rotation.y = atan2(to.x, to.z)
 
 ## Which way the business end of a held tool faces in its model (Vector3.ZERO: no turn).
 static func _strike_axis(t: String) -> Vector3:
