@@ -833,9 +833,9 @@ static func _build(k: MeshKit, t: String) -> Variant:
 				# A paper tag tied round the neck.
 				twine(k, I, neck, 0.058, 2)
 				decal(k, "pv_label_parch", I, Vector3(0, 0.02, 0.0242), Vector3.BACK, 0.026, 0.02)
-				return Vector3(0, 0.022, 0)
-			# Held round the bulb, the neck standing up out of the hand.
-			return Vector3(0, r, 0)
+				return Vector3(0, 0.062, 0)
+			# Held by the neck, so the hand hides as little of the glass as it can.
+			return Vector3(0, 2.0 * r + neck_len * 0.45, 0)
 		"stamina_potion", "empty_vial", "antidote", "tonic_cooling", "cryo_vial":
 			# A slim vial or tall bottle, corked.
 			var liquid := LEAF_GREEN
