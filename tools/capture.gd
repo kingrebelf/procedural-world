@@ -451,7 +451,7 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if only.is_empty() or ["65", "66", "67", "68", "69", "80"].any(func(n): return only.has(n)):
+	if only.is_empty() or ["65", "66", "67", "68", "69", "88"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
@@ -1294,7 +1294,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
 
-## Boats (65-69, 80): a cog at anchor and a research vessel seen from the water, the cog's
+## Boats (65-69, 88): a cog at anchor and a research vessel seen from the water, the cog's
 ## deck and the vessel's bridge from aboard, a small working boat with its crew, and the cog's stern
 ## quarter up close (clinker planking, rudder, sterncastle).
 func _boat_shots(g: ChunkGenerator) -> void:
@@ -1313,7 +1313,7 @@ func _boat_shots(g: ChunkGenerator) -> void:
 	# [name, eye (boat-local; y is above the water), look at (boat-local)].
 	var views := {
 		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 2.2, 6.0)],
-			["80_cog_stern", Vector3(8.5, 1.5, 15.0), Vector3(0, 1.4, 7.5)]],
+			["88_cog_stern", Vector3(8.5, 1.5, 15.0), Vector3(0, 1.4, 7.5)]],
 		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
 	}

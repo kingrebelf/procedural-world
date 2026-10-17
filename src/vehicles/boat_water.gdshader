@@ -63,7 +63,7 @@ void fragment() {
 		float e = smoothstep(1.0 - reach, 1.0, edge);
 		// Patchy and see-through: lumps of foam with clear water between.
 		float lumps = vn(wpos.xz * 1.3 - TIME * 0.15);
-		a = e * smoothstep(0.55, 0.85, n * 0.7 + lumps * 0.3 + e * 0.15) * mix(0.35, 0.7, speed * bow);
+		a = e * smoothstep(0.55, 0.85, n * 0.7 + lumps * 0.3 + e * 0.15) * mix(0.22, 0.7, speed * bow);
 	} else {
 		// UV can stray a hair outside 0..1 between vertices: never raise a negative to a power
 		// (a NaN here poisons the auto exposure and washes out the whole view).
