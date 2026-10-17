@@ -906,6 +906,11 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 			mmi.visibility_range_end_margin = 12.0
 		elif k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
+			# A small lamp or candle stand casts no shadow of its own (its own light sits
+			# inside it, and would throw its arms across the room).
+			var bd := BuildCatalog.def(BuildCatalog.id_of(t.get_slice("#", 0))) if k == "built" else {}
+			if bd.get("decor", false) and bd.has("light"):
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
 			_set_range(mmi, 260.0)
 		add_child(mmi)
@@ -1226,22 +1231,41 @@ func _add_obj_body(o: Dictionary) -> void:
 			cf.add_child(FireFx.embers(float(bd["fire"])))
 			b.add_child(cf)
 		# A candle stand you build burns at its wicks.
-		for f in FireFx.prop_flames(bd.get("models", [])):
+		var flames := FireFx.prop_flames(bd.get("models", []))
+		var wicks := Vector3.ZERO
+		for f in flames:
 			var pf := FireFx.flame(f[1])
 			pf.position = f[0]
 			b.add_child(pf)
+			wicks += (f[0] as Vector3) + Vector3(0, float(f[1]) * 0.6, 0)
 		var lc = bd.get("light")
 		if lc != null:
 			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0
-			l.position = Vector3(0, 1.0, 0)
+			# The light is where the flames are: from lower down the stand's own arms threw
+			# black blots over the ceiling.
+			l.position = wicks / flames.size() if not flames.is_empty() else Vector3(0, 1.0, 0)
 			_cast_shadows(l)
 			l.distance_fade_enabled = true
 			l.distance_fade_begin = 40.0
 			l.distance_fade_length = 15.0
 			b.add_child(l)
+			# Light thrown back off the walls and ceiling, so the side of a room away from
+			# the lamp is dim rather than black.
+			var fill := OmniLight3D.new()
+			fill.light_color = (lc as Color).lerp(Color(1.0, 0.9, 0.8), 0.4)
+			fill.light_energy = 0.22
+			fill.omni_range = 6.0
+			fill.omni_attenuation = 0.8
+			fill.light_specular = 0.0
+			fill.shadow_enabled = false
+			fill.distance_fade_enabled = true
+			fill.distance_fade_begin = 30.0
+			fill.distance_fade_length = 10.0
+			fill.position = l.position
+			b.add_child(fill)
 	b.position = o["p"]
 	b.rotation.y = o["r"]
 	var s: float = o["s"]
@@ -1256,6 +1280,9 @@ static func _cast_shadows(l: OmniLight3D) -> void:
 	l.shadow_bias = 0.04
 	l.shadow_normal_bias = 1.2
 	l.shadow_blur = 1.5
+	# A flame or a lamp is not a point: its shadows soften with distance from what casts
+	# them, instead of hard black shapes.
+	l.light_size = 0.12
 	l.distance_fade_shadow = 24.0
 
 ## Adds something the player built. It becomes an ordinary object of this chunk, saved
