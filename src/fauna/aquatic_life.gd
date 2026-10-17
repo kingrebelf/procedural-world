@@ -43,6 +43,8 @@ const CRAYFISH_TINTS := [Color(0.3, 0.26, 0.15), Color(0.36, 0.24, 0.16), Color(
 
 var streamer: ChunkStreamer
 var player: Node3D
+## Nothing takes fright (staged screenshots, where the camera is the player).
+var calm := false
 var _field: AquaFlora.Field
 var _groups: Dictionary = {} ## Vector2i chunk -> Array of School / Crawlers
 var _scan := 0.0
@@ -72,6 +74,8 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	var eye: Vector3 = cam.global_position if cam else player.global_position
 	var threat := player.global_position + Vector3(0, 0.9, 0)
+	if calm:
+		threat = Vector3(0, -10000, 0)
 	for k in _groups:
 		for g in _groups[k]:
 			g.step(self, minf(delta, 0.1), eye, threat)

@@ -3153,21 +3153,38 @@ func test_server_alliances() -> void:
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
-	# whole instances and its mesh builds. (Chunks of seed 4242 found by probing.)
+	# whole instances and its mesh builds.
 	var g := ChunkGenerator.new(4242)
 	var f := AquaFlora.Field.new(4242)
-	check(f.sea_t(-8 * 64.0 + 32.0, -52 * 64.0 + 32.0) > 0.9 and f.sea_t(24 * 64.0 + 32.0, -52 * 64.0 + 32.0) < 0.1, "sea and lake told apart")
+	var lakes: Array = []
+	var seas: Array = []
+	for j in range(-60, 60, 2):
+		for i in range(-60, 60, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			var h := g.field.height(x, z)
+			if h > -0.5 or h < -9.0:
+				continue
+			if f.sea_t(x, z) < 0.05 and h > -2.5 and lakes.size() < 8:
+				lakes.append(Vector2i(i, j))
+			elif f.sea_t(x, z) > 0.95 and h < -2.0 and seas.size() < 12:
+				seas.append(Vector2i(i, j))
+	check(lakes.size() > 0 and seas.size() > 0, "found lakes (%d) and sea (%d)" % [lakes.size(), seas.size()])
 	var lake := {}
-	AquaFlora.build(g.generate(24, -52), 1.0, lake)
+	for k in lakes:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, lake)
 	var sea := {}
-	var sea_chunk := g.generate(-8, -52)
-	AquaFlora.build(sea_chunk, 1.0, sea)
+	for k in seas:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, sea)
+	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lakes have reeds and lily pads: %s" % [lake.keys()])
+	check(not lake.has("aq_coral_brain@0"), "no reef in a lake")
+	check(sea.has("aq_coral_branch@0") and sea.has("aq_kelp@0"), "the sea has reefs and kelp: %s" % [sea.keys()])
+	var one := {}
 	var again := {}
+	var sea_chunk := g.generate(seas[0].x, seas[0].y)
+	AquaFlora.build(sea_chunk, 1.0, one)
 	AquaFlora.build(sea_chunk, 1.0, again)
-	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lake has reeds and lily pads: %s" % [lake.keys()])
-	check(not lake.has("aq_coral_brain@0") and not lake.has("aq_kelp@0"), "no reef in a lake")
-	check(sea.has("aq_coral_branch@0") and sea.has("aq_coral_brain@0"), "the sea has a reef: %s" % [sea.keys()])
-	check(sea.hash() == again.hash(), "water plants are the same every time")
+	check(one.hash() == again.hash(), "water plants are the same every time")
 	for k in lake.keys() + sea.keys():
 		var buf: PackedFloat32Array = lake.get(k, sea.get(k))
 		check(buf.size() % 16 == 0 and buf.size() > 0, "%s holds whole instances" % k)

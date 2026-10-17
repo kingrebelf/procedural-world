@@ -32,7 +32,7 @@ class Field:
 	## 0 for a lake or pond, 1 out in the open sea, in between along a coast.
 	func sea_t(x: float, z: float) -> float:
 		var c := cont.get_noise_2d(x, z) * 38.0 + 12.0
-		return smoothstep(2.0, -6.0, c)
+		return smoothstep(-2.0, -10.0, c)
 
 	## A broad patch pattern (-1..1): where reefs grow, where kelp, which lilies flower.
 	func patch(x: float, z: float) -> float:
@@ -150,7 +150,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
-		var reef := smoothstep(-0.2, 0.15, f.patch(wx, wz)) * smoothstep(0.35, 0.7, f.sea_t(wx, wz))
+		var reef := smoothstep(-0.2, 0.15, f.patch(wx, wz)) * smoothstep(0.55, 0.85, f.sea_t(wx, wz))
 		var depth := smoothstep(-0.6, -2.0, y) * (1.0 - smoothstep(-10.0, -16.0, y))
 		# Reefs grow in clumps (bommies) with sand between them.
 		var clump := smoothstep(-0.5, 0.3, sin(wx * 0.21 + sin(wz * 0.13) * 2.0) * cos(wz * 0.17 + sin(wx * 0.11) * 2.0))
@@ -171,7 +171,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.85, 1.15), sc))
 		_put(out, sp, b, lx, y - 0.03 * sc, lz, _reef_tint(sp, r, alien), AquaKit.sway_of(sp), _glow(sp, alien))
 	# Kelp where there is no reef and the water is deep enough to stand in.
-	for n in int(220 * density):
+	for n in int(380 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var roll := r.randf()
@@ -182,8 +182,10 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
-		var kelp := (1.0 - smoothstep(-0.1, 0.2, f.patch(wx, wz))) * smoothstep(0.4, 0.7, f.sea_t(wx, wz))
-		if roll > kelp * smoothstep(-3.5, -6.0, y) * 0.9:
+		var kelp := (1.0 - smoothstep(-0.1, 0.2, f.patch(wx, wz))) * smoothstep(0.5, 0.8, f.sea_t(wx, wz))
+		# Kelp grows in stands: thick where it grows at all.
+		var stand := smoothstep(-0.3, 0.4, sin(wx * 0.09 + sin(wz * 0.07) * 2.0) * cos(wz * 0.08 + sin(wx * 0.05) * 2.0))
+		if roll > kelp * smoothstep(-3.5, -6.0, y) * (0.25 + 0.75 * stand):
 			continue
 		if not spot.call(lx, lz, 0.6, 0.3):
 			continue
@@ -207,7 +209,8 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		if not spot.call(lx, lz, 0.6, 0.2):
 			continue
 		var sp := "aq_star" if r.randf() < 0.55 else "aq_urchin"
-		var sc := lerpf(0.35, 0.7, size) if sp == "aq_star" else lerpf(0.5, 0.9, size)
+		# (The meshes are a metre across: a starfish is a hand or two wide.)
+		var sc := lerpf(0.14, 0.28, size) if sp == "aq_star" else lerpf(0.25, 0.45, size)
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
 		_put(out, sp, b, lx, y - 0.01, lz, _reef_tint(sp, r, alien), AquaKit.STILL, _glow(sp, alien))
 

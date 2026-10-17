@@ -300,17 +300,18 @@ static func _reeds(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2) -> vo
 ## Kelp: a few stipes rising from one holdfast, long wavy blades along them, all one
 ## unit tall (an instance is scaled to the depth).
 static func _kelp(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2) -> void:
-	for i in 4:
+	for i in 6:
 		var a := r.randf() * TAU
-		var root := Vector3(cos(a) * 0.08, 0.0, sin(a) * 0.08)
+		var root := Vector3(cos(a) * 0.1, 0.0, sin(a) * 0.1)
 		var col := _shade(r.randf_range(0.85, 1.1))
-		var lean := r.randf_range(0.05, 0.18)
-		var top := _ribbon(st, r, rg, root, r.randf_range(0.75, 1.0), 0.012, lean, 12, col, 0.0, 1.0, false)
-		# Blades off the stipe, each on its own lean.
-		for k in 7:
-			var t := r.randf_range(0.2, 0.95)
+		var lean := r.randf_range(0.05, 0.2)
+		var top := _ribbon(st, r, rg, root, r.randf_range(0.7, 1.0), 0.014, lean, 12, col, 0.0, 1.0, false)
+		# Broad wavy blades all the way up the stipe, each on its own lean, and a canopy
+		# of them spreading at the top.
+		for k in 11:
+			var t := r.randf_range(0.15, 1.0)
 			var at := root.lerp(top, t)
-			_ribbon(st, r, rg, at, r.randf_range(0.12, 0.22), r.randf_range(0.03, 0.05), r.randf_range(0.04, 0.1), 5,
+			_ribbon(st, r, rg, at, r.randf_range(0.14, 0.26), r.randf_range(0.05, 0.08), r.randf_range(0.05, 0.14), 5,
 				_shade(r.randf_range(0.8, 1.15), 0.9), 0.25, t + 0.15, false)
 
 ## Staghorn coral: thick antler branches forking up and out, paler at the growing tips.
