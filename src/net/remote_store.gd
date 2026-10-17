@@ -193,5 +193,5 @@ func get_or_create_settlement(gen: ChunkGenerator, site: Dictionary) -> Dictiona
 		return s
 	# Not fetched first: make it the way the server would; the server's copy wins later.
 	prefetch_settlement(site)
-	s = NPCGen.generate(gen.seed, gen, site, gen.settlement_layout(site))
+	s = NPCGen.create(gen, site)
 	return s

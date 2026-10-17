@@ -110,6 +110,24 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+## Hewn and planed timber: old oak boards whose grain runs along each beam, post and
+## rail (MeshKit lays its UVs that way), rather than the bark on the trees.
+static func _timber() -> StandardMaterial3D:
+	if photo("wood_floor", "albedo") == null or photo("wood_floor", "normal") == null:
+		return _pbr(Color(0.36, 0.25, 0.16), 0.8, 0.0, "planks", 0.05, 0.6, 0.8)
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = photo("wood_floor", "albedo")
+	# The photo is dark, oiled floorboards; beams are a little paler and drier.
+	m.albedo_color = Color(1.3, 1.18, 1.05)
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.roughness = 0.78
+	m.normal_enabled = true
+	m.normal_texture = photo("wood_floor", "normal")
+	m.normal_scale = 0.7
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
 ## A photo surface in its own colours, its glowing parts lit by "<photo>_emit" when
 ## `glow` > 0. Falls back to plain stone when the photo is missing.
 static func _surface(ph: String, scale: float, rough: float, metal: float, glow: float) -> StandardMaterial3D:
@@ -299,6 +317,7 @@ static func _get_mat(name: String) -> Material:
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
 		"metal_w": m = _pbr(Color(1, 1, 1), 0.35, 0.9, "metal", 0.03, 0.8, 0.3)
+		"cloth_w": m = _pbr(Color(1, 1, 1), 0.97, 0.0, "cloth", 0.15, 1.0, 0.6) # felt hats and hoods
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"bark_pine": m = _pbr(Color(0.34, 0.24, 0.18), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"leaf":
@@ -317,7 +336,7 @@ static func _get_mat(name: String) -> Material:
 		"crypt_stone": m = _pbr(Color(0.4, 0.41, 0.4), 0.9, 0.0, "crypt_stone", 0.02, 0.35, 1.4)
 		"flagstone": m = _pbr(Color(0.45, 0.43, 0.4), 0.9, 0.0, "flagstone", 0.02, 0.35, 1.4)
 		"plaster": m = _pbr(Color(0.86, 0.82, 0.72), 0.9, 0.0, "plaster", 0.04, 0.3, 0.5)
-		"timber": m = _pbr(Color(0.36, 0.25, 0.16), 0.8, 0.0, "bark", 0.05, 0.6, 0.8)
+		"timber": m = _timber()
 		"planks": m = _pbr(Color(0.55, 0.40, 0.26), 0.8, 0.0, "planks", 0.03, 0.5, 0.8)
 		"thatch": m = _pbr(Color(0.62, 0.52, 0.30), 0.95, 0.0, "thatch", 0.09, 0.8, 1.8)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)

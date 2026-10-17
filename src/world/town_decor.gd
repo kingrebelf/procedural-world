@@ -107,6 +107,8 @@ func _build(h: Dictionary, o: Dictionary) -> void:
 	var ft := TownShops.fit(h["t"])
 	if ft.has("counter"):
 		_counter(root, h, ft, rm)
+	elif not ft.get("props", []).is_empty():
+		_small_shop(root, h, ft, rm)
 	# The keeper stands on the floor, not the ground under it.
 	for rec in data.get("npcs", []):
 		if rec.has("room") and int(rec.get("shop_i", -1)) == int(h["i"]):
@@ -284,6 +286,84 @@ static func _counter_mesh(t: String, kind: String, era: int, ft: Dictionary, rm:
 	k.commit(Materials.get_mat, mesh)
 	if stand == "rack" and ft["display"] != Vector2.INF:
 		_rack_weapons(mesh, Transform3D(b, Vector3((ft["display"] as Vector2).x, floor_y, (ft["display"] as Vector2).y)), kind, era)
+	return mesh
+
+## A shop too small for a counter: the trade's stand, then crates with wares on them,
+## each in a spot by the wall (TownShops.fit "props"), turned to face into the room.
+func _small_shop(root: Node3D, h: Dictionary, ft: Dictionary, rm: Dictionary) -> void:
+	var kind: String = h["kind"]
+	var era := int(h["era"])
+	var key := "%s|%s|%d|small" % [h["t"], kind, era]
+	if not _meshes.has(key):
+		_meshes[key] = _small_shop_mesh(kind, era, ft, rm)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _meshes[key]
+	mi.visibility_range_end = 60.0
+	root.add_child(mi)
+	var floor_y: float = rm["floor"]
+	var body := StaticBody3D.new()
+	root.add_child(body)
+	for sp: Vector2 in ft["props"]:
+		var cs := CollisionShape3D.new()
+		var bs := BoxShape3D.new()
+		bs.size = Vector3(0.62, 1.2, 0.62)
+		cs.shape = bs
+		cs.position = Vector3(sp.x, floor_y + 0.6, sp.y)
+		body.add_child(cs)
+
+## How tall a kit model stands (its highest point above its origin).
+static func _model_top(model: String) -> float:
+	var top := 0.0
+	for part in BuildCatalog.model_parts(model):
+		var v: PackedVector3Array = (part[1] as Array)[Mesh.ARRAY_VERTEX]
+		var xf: Transform3D = part[2]
+		for p in v:
+			top = maxf(top, (xf * p).y)
+	return top
+
+static func _small_shop_mesh(kind: String, era: int, ft: Dictionary, rm: Dictionary) -> ArrayMesh:
+	var floor_y: float = rm["floor"]
+	var k := MeshKit.new(29)
+	var models: Array = []
+	var wk := kind if not TownShops.is_guild(kind) else "guild"
+	var wares: Array = WARES.get(wk + "~s", WARES[wk]) if era == Eras.SCIFI else WARES[wk]
+	var stand: String = wares[1]
+	if TownShops.is_guild(kind):
+		stand = GUILD_STAND.get(kind, stand)
+	var crate := "scifi/Prop_Crate3" if era == Eras.SCIFI else "props/Crate_Wooden"
+	var spots: Array = ft["props"]
+	var rack_at := Transform3D()
+	for i in spots.size():
+		var sp: Vector2 = spots[i]
+		# Faces the middle of the room.
+		var yaw := atan2(-sp.x, -sp.y)
+		var xf := Transform3D(Basis(Vector3.UP, yaw), Vector3(sp.x, floor_y, sp.y))
+		if i == 0:
+			match stand:
+				"rack":
+					_rack(k, xf, kind, era)
+					rack_at = xf
+				"dummy":
+					_mannequin(k, xf, era)
+				_:
+					if ResourceLoader.exists("res://assets/models/%s.gltf" % stand):
+						models.append([stand, rad_to_deg(yaw), xf.origin, 1.0])
+			continue
+		if not ResourceLoader.exists("res://assets/models/%s.gltf" % crate):
+			continue
+		models.append([crate, rad_to_deg(yaw) + 8.0 * i, xf.origin, 1.0])
+		# The counter's wares, shared out over the crates.
+		var top := floor_y + _model_top(crate)
+		var share: Array = wares[0].slice((i - 1) * 2, (i - 1) * 2 + 2)
+		for j in share.size():
+			var e: Array = share[j]
+			var at := xf * Vector3((j - 0.5 * (share.size() - 1)) * 0.28, 0.0, 0.0)
+			if ResourceLoader.exists("res://assets/models/%s.gltf" % e[0]):
+				models.append([e[0], rad_to_deg(yaw) + float(e[2]), Vector3(at.x, top, at.z), 1.0])
+	var mesh := BuildCatalog.merge_models(models) if not models.is_empty() else ArrayMesh.new()
+	k.commit(Materials.get_mat, mesh)
+	if stand == "rack" and not spots.is_empty():
+		_rack_weapons(mesh, rack_at, kind, era)
 	return mesh
 
 ## A weapon rack: two posts, a bar and a base; the shop's weapons stand in it.

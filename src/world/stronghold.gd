@@ -190,19 +190,18 @@ static func build(t: String) -> ArrayMesh:
 		_bunker(part, k, models)
 	else:
 		_stone(part, era == 1, k, models, v)
-		# Castle masonry is stone through: the village walls' wooden bands are coursed
-		# rubble like the rest (pale string courses every storey read as ruled stripes),
-		# and a tower is bare stone inside, not plaster.
-		var swap := {"MI_WoodTrim": BuildCatalog.kit_material(BRICK, "MI_UnevenBrick")}
+		# Castle masonry is stone through: the village walls' wooden bands and the corner
+		# quoins become the castle's own stone (pale trim stone read as paint), and a tower
+		# is bare stone inside, not plaster.
+		var swap := {"MI_WoodTrim": Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")}
 		if part == "tower":
 			swap["MI_Plaster"] = BuildCatalog.kit_material(BRICK, "MI_UnevenBrick")
-		# Corner quoins in the grey dressed stone of the battlements, not bright white.
-		var quoin := {"MI_RockTrim": Materials.get_mat(face_stone_of(era))}
+		var quoins := {"MI_RockTrim": swap["MI_WoodTrim"]}
 		for e in models:
 			if String(e[0]).begins_with("village/Wall_UnevenBrick") and not swap.values().has(null):
 				e.append(swap)
-			elif e[0] == "village/Corner_Exterior_Brick" and e.size() == 4:
-				e.append(quoin)
+			elif String(e[0]) == "village/Corner_Exterior_Brick":
+				e.append(quoins)
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
@@ -213,14 +212,26 @@ static func face_stone_of(era: int) -> String:
 const BRICK := "village/Wall_UnevenBrick_Straight"
 const BRICK_WIN := "village/Wall_UnevenBrick_Window_Thin_Round"
 
-## Merlons along a wall top from x0 to x1 at height y, z offset zo.
-static func _merlons(k: MeshKit, mat: String, x0: float, x1: float, y: float, zo: float, yaw: float, broken: bool, r: RandomNumberGenerator, w := 0.8, step := 1.4, mh := 0.9) -> void:
+## Battlements along a wall top from x0 to x1 at height y, z offset zo: a breast-high
+## parapet with a coping along it, and merlons standing on it, each capped with a coping
+## stone that overhangs a little, no two quite the same height. `w`, `step` and `mh` set
+## the merlons' width, spacing and height (tower crowns vary them).
+static func _merlons(k: MeshKit, mat: String, x0: float, x1: float, y: float, zo: float, yaw: float, broken: bool, r: RandomNumberGenerator, w := 0.8, step := 1.4, mh := 0.86) -> void:
 	var b := Basis(Vector3.UP, yaw)
+	const WALL := 0.6
+	var len := x1 - x0
+	var mid := (x0 + x1) * 0.5
+	k.box(mat, Transform3D(b, b * Vector3(mid, y + WALL * 0.5, zo)), Vector3(len, WALL, 0.5))
+	k.box(mat, Transform3D(b, b * Vector3(mid, y + WALL + 0.04, zo)), Vector3(len + 0.04, 0.08, 0.6))
 	var x := x0 + 0.5
 	while x < x1 - 0.2:
 		if not broken or r.randf() > 0.35:
-			var h := mh if not broken else r.randf_range(0.3, 0.9)
-			k.box(mat, Transform3D(b, b * Vector3(x, y + h * 0.5, zo)), Vector3(w, h, 0.5))
+			var h := r.randf_range(mh - 0.04, mh + 0.04) if not broken else r.randf_range(0.25, 0.8)
+			var mw := r.randf_range(w - 0.04, w + 0.04)
+			var y0 := y + WALL + 0.08
+			k.box(mat, Transform3D(b, b * Vector3(x, y0 + h * 0.5, zo)), Vector3(mw, h, 0.5))
+			if not broken:
+				k.box(mat, Transform3D(b, b * Vector3(x, y0 + h + 0.05, zo)), Vector3(mw + 0.08, 0.1, 0.58))
 		x += step
 
 ## Where the kit walls' outer faces lie (local z) on a curtain wall and on a tower.
@@ -376,6 +387,10 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 			k.box("flagstone", Transform3D.IDENTITY.translated(Vector3(0, fl * 0.5, 0)), Vector3(7.6, fl, 7.6))
 			for bx in Interiors.roof_boxes("castle_tower"):
 				k.box(face_stone, Transform3D.IDENTITY.translated(bx[0]), bx[1])
+				# Flagstones underfoot on the roof (the walls' coursed stone, seen from
+				# above, read as tiles with holes in them).
+				var top: Vector3 = bx[0] + Vector3(0, (bx[1] as Vector3).y * 0.5 + 0.01, 0)
+				k.box("flagstone", Transform3D.IDENTITY.translated(top), Vector3((bx[1] as Vector3).x, 0.02, (bx[1] as Vector3).z))
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
 			if not ruined:
 				_tower_top(k, v, face_stone, r)
