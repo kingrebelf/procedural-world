@@ -456,13 +456,14 @@ static func blast(cr: Dictionary, x: float, z: float) -> float:
 	var t := clampf((q.y + L) / L, 0.0, 1.0)
 	var wob := (sin(x * 0.17 + 1.3 * sin(z * 0.11)) + sin(z * 0.19 + 1.1 * sin(x * 0.13 + 1.0))) * 0.5
 	var wb := lerpf(2.5, CRASH_HALF, sqrt(t))
-	var side := (1.0 - smoothstep(wb + 6.0, wb + 16.0 + 10.0 * t, absf(q.x) + wob * 5.0)) * smoothstep(0.0, 0.2, t)
-	side *= 1.0 - smoothstep(CRASH_NOSE + 6.0, CRASH_NOSE + 24.0, q.y)
-	var rest := 1.0 - smoothstep(28.0, 46.0, Vector2(q.x * 0.8, q.y + 24.0).length() + wob * 8.0)
+	var side := (1.0 - smoothstep(wb + 4.0, wb + 34.0 + 14.0 * t, absf(q.x) + wob * 6.0)) * smoothstep(0.0, 0.2, t)
+	side *= 1.0 - smoothstep(CRASH_NOSE + 10.0, CRASH_NOSE + 40.0, q.y)
+	var rest := 1.0 - smoothstep(24.0, 64.0, Vector2(q.x * 0.8, q.y + 24.0).length() + wob * 8.0)
 	return clampf(maxf(side, rest), 0.0, 1.0)
 
-## Knocks down the trees of this chunk the crash blast reached: each becomes a scorched
-## trunk lying blown outward and onward from the trench, its stump beside it.
+## Knocks down the trees of this chunk the crash blast reached: near the trench each
+## becomes a scorched trunk lying blown outward and onward from it, its stump beside it;
+## further out the fire killed them where they stand (bare, burnt snags).
 static func fell(g: ChunkGenerator, chunk: Dictionary, crashes: Array) -> void:
 	if crashes.is_empty():
 		return
@@ -478,7 +479,14 @@ static func fell(g: ChunkGenerator, chunk: Dictionary, crashes: Array) -> void:
 		for cr in crashes:
 			var b := blast(cr, wx, wz)
 			var roll := WHash.unit2(g.seed, int(floor(wx * 4.0)), int(floor(wz * 4.0)), 963)
-			if b <= 0.0 or roll > b * 1.4:
+			if b <= 0.0 or roll > b * 1.6:
+				continue
+			if b < 0.55 and (o["t"] == "oak" or o["t"] == "pine"):
+				# Further out: still standing, but burnt bare.
+				o["sp"] = _dead_species(o["t"], int(o.get("sp", 1)))
+				o["st"]["burnt"] = true
+				break
+			if b < 0.55:
 				continue
 			var q := _crash_q(cr, wx, wz)
 			var dq := Vector2(signf(q.x) if absf(q.x) > 0.5 else 1.0, 0.8 + roll).normalized()
@@ -490,6 +498,16 @@ static func fell(g: ChunkGenerator, chunk: Dictionary, crashes: Array) -> void:
 			o["st"] = {}
 			o["sp"] = 1 + int(roll * 997.0)
 			break
+
+## A species seed near `sp` whose tree of type t (oak or pine) grows as a bare, dead
+## snag, so a burnt tree keeps the size and bark of its kind.
+static func _dead_species(t: String, sp: int) -> int:
+	var want := "dead" if t == "oak" else "snag"
+	for i in 400:
+		var s := (sp + i * 7919) & 0x7FFFFFFF
+		if s != 0 and String(Flora.species(t, s)["form"]) == want:
+			return s
+	return sp
 
 ## Crashes of nearby chunks whose scar can reach chunk (cx, cz) (not its own).
 static func crashes_near(g: ChunkGenerator, cx: int, cz: int) -> Array:
