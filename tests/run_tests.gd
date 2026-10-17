@@ -3707,9 +3707,21 @@ func test_boats_on_the_water() -> void:
 		var d: Dictionary = Boats.KINDS[s["boat"]]
 		check(float(s["clear"]) >= float(d["len"]) * 0.5 + 10.0, "%s fits its lake (clear %d m)" % [s["boat"], s["clear"]])
 		# Its loop stays on deep water.
-		for i in 12:
-			var p: Vector2 = Boats.pose_at(s, float(i) * 97.0)[0]
+		for i in 48:
+			var p: Vector2 = Boats.pose_at(s, float(i) * 37.0)[0]
 			check(gen.field.height(p.x, p.y) < 0.0, "%s sails on water at %s" % [s["boat"], p])
+		# Under way she keeps to her pace (no jumps), and she stops at anchor now and then.
+		var v := float(d["moves"])
+		if v > 0.0 and float(s["loop"]) > 0.0:
+			var still := 0
+			var prev: Vector2 = Boats.pose_at(s, 0.0)[0]
+			for i in range(1, 1200):
+				var q: Vector2 = Boats.pose_at(s, float(i))[0]
+				check(q.distance_to(prev) < v * 1.6 + 0.01, "%s never jumps along her loop (%.2f m in 1 s)" % [s["boat"], q.distance_to(prev)])
+				if q.distance_to(prev) < 0.001:
+					still += 1
+				prev = q
+			check((still > 30) == (float(d.get("rest", 0.0)) > 0.0), "%s lies at anchor between passages (%d s still)" % [s["boat"], still])
 		var era := int(d["era"])
 		var tech := WorldField.dominant(gen.field.era_weights(c.x, c.y)) == Eras.SCIFI
 		check((era == Eras.SCIFI) == tech, "%s matches the land's era" % s["boat"])

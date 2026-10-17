@@ -29,6 +29,8 @@ var _oars: Array = [] ## [node, side]
 var _wake_t := 0.0
 var _line := PackedVector2Array() ## the hull's waterline outline (BoatModel.waterline)
 var _bob := Vector3.ZERO
+var _heel := 0.0
+var _anchor: Node3D ## the anchor cable, shown only while she lies at anchor
 var _yaw := 0.0
 var _pos2 := Vector2.ZERO
 
@@ -59,6 +61,7 @@ func _ready() -> void:
 	_water = BoatWater.build(kind)
 	add_child(_water)
 	row_offset = float(int(site.get("seed", 1)) % 97) / 97.0
+	_anchor = model.get_node_or_null("Anchor")
 	for s in [1.0, -1.0]:
 		var o: Node3D = model.get_node_or_null("Oar_r" if s > 0.0 else "Oar_l")
 		if o:
@@ -125,13 +128,15 @@ func _steer(delta: float, d: Dictionary) -> void:
 	site["yaw"] = _yaw
 
 ## Rides the swell: heave from the water under the middle, pitch and roll from the
-## difference between bow and stern, port and starboard.
+## difference between bow and stern, port and starboard. On top of that every hull keeps
+## rocking a little (more in a wind, less the bigger she is), a sailing boat heels away
+## from the wind while she's under way, and a launch lifts her bow at speed.
 func _place(delta: float) -> void:
 	var d: Dictionary = Boats.KINDS[kind]
 	var L: float = d["len"]
 	var t := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	var fwd := Vector2(-sin(_yaw), -cos(_yaw))
-	var side := Vector2(fwd.y, -fwd.x)
+	var side := Vector2(fwd.y, -fwd.x) # port (-x when she faces -z)
 	var c := _pos2
 	var half := L * 0.4
 	var beam := maxf(L * 0.14, 0.8)
@@ -143,9 +148,37 @@ func _place(delta: float) -> void:
 	# Big hulls average the small waves out and answer slowly.
 	var mass := clampf(L / 8.0, 0.5, 3.0)
 	var want := Vector3((hb + hs + hp + hq + hc * 2.0) / 6.0, atan2(hb - hs, half * 2.0) / mass, atan2(hp - hq, beam * 2.0) / mass)
+	# The hull's own rocking: two out-of-step swings each way so it never looks like a
+	# metronome, slower and smaller for big hulls, and calmer with someone aboard.
+	var ph := float(int(site.get("seed", 1)) % 1000) * 0.37
+	var wind := Water._wind
+	var sm := sqrt(mass)
+	var calm := 1.0 - 0.4 * held
+	var per := 2.6 * sm
+	var amp := (0.025 + wind * 0.07) / sm * calm
+	var rock := Vector3(
+		(0.02 + wind * 0.1) / sm * calm * sin(t * TAU / (per * 1.3) + ph * 2.0),
+		amp * 0.5 * (sin(t * TAU / (per * 1.17) + ph) + 0.35 * sin(t * TAU / (per * 0.53) + ph * 3.0)),
+		amp * (sin(t * TAU / per + ph * 1.7) + 0.3 * sin(t * TAU / (per * 0.61) + ph * 0.6)))
+	want += rock
+	var v := float(d["moves"])
+	var way := clampf(speed / maxf(v, 0.5), 0.0, 1.0)
+	if kind == "launch":
+		want.y += 0.06 * way # bow up on the plane
+	var heel := 0.0
+	if kind in ["cog", "fishing_boat"]:
+		# The wind's push across her (toward starboard is +) heels her to leeward, lifting
+		# the windward side (a + roll lifts port).
+		var across := Water._dir.normalized().dot(-side)
+		heel = across * (0.04 + wind * 0.16) * way * (1.25 if kind == "fishing_boat" else 1.0)
+	_heel = heel if delta <= 0.0 else lerpf(_heel, heel, clampf(delta * 0.3, 0.0, 1.0))
+	want.z += _heel
 	_bob = want if delta <= 0.0 else _bob.lerp(want, clampf(delta * 3.0 / mass, 0.0, 1.0))
-	var b := Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, -_bob.y * 0.8) * Basis(Vector3.BACK, _bob.z * 0.8)
+	# Pitch: + lifts the bow (-z). Roll: + lifts the port side (-x).
+	var b := Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, _bob.y) * Basis(Vector3.BACK, -_bob.z)
 	global_transform = Transform3D(b, Vector3(c.x, _bob.x, c.y))
+	if _anchor:
+		_anchor.visible = speed < 0.2
 
 func _wake(delta: float, d: Dictionary) -> void:
 	_wake_t -= delta

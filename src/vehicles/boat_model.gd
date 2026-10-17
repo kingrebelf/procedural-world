@@ -839,6 +839,16 @@ static func _oars(root: Node3D, seed: int) -> void:
 		mi.basis = oar_stroke(s, 0.0, 0.0)
 		root.add_child(mi)
 
+## The anchor cable as its own node ("Anchor"), so BoatNode can hide it while she sails.
+static func _anchor_cable(root: Node3D, mat: String, a: Vector3, b: Vector3, r: float) -> void:
+	var k := MeshKit.new(7)
+	_beam(k, mat, a, b, r, 6)
+	var mi := MeshInstance3D.new()
+	mi.name = "Anchor"
+	mi.mesh = k.commit(get_mat)
+	mi.visibility_range_end = 400.0
+	root.add_child(mi)
+
 ## An oar's pose at the rowlock on side s: `sweep` swings the blade toward the bow (+) or
 ## the stern (-), `dip` tips the blade down toward the water, `feather` turns it flat (1)
 ## or square to the stroke (0).
@@ -976,8 +986,8 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 		_line(k, mast + Vector3(0, 16.2, 0), mast + Vector3(s * 5.4, 12.6, -0.5), 0.01)
 	_line(k, mast + Vector3(0, 16.2, 0), Vector3(0, float(h["F"]) + 2.5, -13.1), 0.025)
 	_line(k, mast + Vector3(0, 15.8, 0), Vector3(0, top + 0.9, 9.1), 0.02)
-	# Anchor cable running from the bow down into the water.
-	_beam(k, "rope", Vector3(1.0, float(h["F"]) + 1.2, -9.4), Vector3(2.4, -3.0, -15.5), 0.06, 6)
+	# Anchor cable running from the bow down into the water (only while she lies at anchor).
+	_anchor_cable(root, "rope", Vector3(1.0, float(h["F"]) + 1.2, -9.4), Vector3(2.4, -3.0, -15.5), 0.06)
 	# Cargo in the waist.
 	for i in r.randi_range(3, 6):
 		var p := Vector3(r.randf_range(-2.0, 2.0), dy, r.randf_range(-4.0, 3.5))
@@ -1168,7 +1178,7 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	for z in [-4.5, -3.6]:
 		k.cylinder("hull_paint", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(-2.75, dy + 0.75, z)), 0.3, 0.3, 0.9, 12, true, 0.0, 1, Color(0.95, 0.95, 0.96))
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.6, dy + 0.35, -8.6)), 0.3, 0.3, 1.2, 12)
-	_beam(k, "metal_dark", Vector3(0.9, float(h["F"]) + 1.0, -11.2), Vector3(2.7, -3.2, -18.0), 0.05, 6)
+	_anchor_cable(root, "metal_dark", Vector3(0.9, float(h["F"]) + 1.0, -11.2), Vector3(2.7, -3.2, -18.0), 0.05)
 	_beam(k, "metal", Vector3(0, dy, -9.5), Vector3(0, dy + 6.0, -9.5), 0.08, 8)
 	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(0, dy + 6.05, -9.5)), Vector3(0.1, 0.1, 0.1))
 	k.box("glow_red", Transform3D(Basis.IDENTITY, Vector3(-2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
