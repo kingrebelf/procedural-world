@@ -1186,6 +1186,121 @@ func test_npc_requests_and_gestures() -> void:
 	p["mood"] = "angry"
 	check(NPCMind.builtin_reply(p, s, "Can you dance for me?").get("do", "") != "dance", "an angry person won't")
 
+## A town's worth of people of one era, for the built-in dialogue tests.
+func _talk_town(era: int, count: int) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = 99 + era
+	var people: Array = []
+	for i in count:
+		var p := NPCGen.person(r, era, i, 7, 9)
+		p["job"] = NPCGen.JOBS[era][i % NPCGen.JOBS[era].size()]
+		people.append(p)
+	return {"name": "Testford", "npcs": people, "rumors": ["Day 2: Wolves were seen by the mill."]}
+
+func test_builtin_dialogue_variety() -> void:
+	var was := Eras.theme
+	Eras.theme = "human"
+	var s := _talk_town(Eras.MEDIEVAL, 40)
+	var greets := {}
+	for p in s["npcs"]:
+		greets[NPCMind.bark(p, "greet")] = true
+	check(greets.size() >= 30, "forty villagers greet you forty ways, not four (%d distinct)" % greets.size())
+	var hellos := {}
+	for p in s["npcs"]:
+		hellos[NPCMind.builtin_reply(p, s, "Hello")["say"]] = true
+	check(hellos.size() >= 30, "and answer a hello differently (%d distinct)" % hellos.size())
+	# One person asked the same odd thing over and over doesn't parrot one line.
+	var p: Dictionary = s["npcs"][3]
+	var seen := {}
+	var last := ""
+	var repeats := 0
+	for i in 8:
+		var say: String = NPCMind.builtin_reply(p, s, "I like turtles")["say"]
+		seen[say] = true
+		if say == last:
+			repeats += 1
+		last = say
+	check(seen.size() >= 6 and repeats == 0, "no parroting the same answer (%d distinct of 8)" % seen.size())
+	check((p["_said"] as Array).size() <= NPCTalk.SAID_MAX, "what they said lately stays a short list")
+	Eras.theme = was
+
+func test_builtin_dialogue_fits_the_world() -> void:
+	var was := Eras.theme
+	Eras.theme = "human"
+	var banned := ["glow", "magic", "fey", "fairy", "faerie", "sylvari", "grove", "enchant", "spirit", "rune", "moss", "the light find", "*"]
+	var asks := ["Hello", "Who are you?", "What is this place?", "Any news?", "What do you do here?", "Nice weather today", "Tell me a joke",
+		"Is there magic here?", "Do you believe in the gods?", "What about the king?", "Tell me about the old days", "Any monsters about?",
+		"How are you?", "What do you like?", "What worries you?", "I like turtles", "Goodbye", "Where is the tavern?", "Got any family?"]
+	var bad: Array = []
+	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
+		var s := _talk_town(era, 24)
+		for p in s["npcs"]:
+			var said: Array = [NPCMind.bark(p, "greet"), NPCMind.bark(p, "attack"), NPCMind.bark(p, "flee"), NPCMind.bark(p, "confront")]
+			for q in asks:
+				said.append(NPCMind.builtin_reply(p, s, q)["say"])
+			for line in said:
+				for w in banned:
+					if String(line).to_lower().contains(w):
+						bad.append(line)
+			check(NPCTalk.culture(p) == ("old" if era == Eras.MEDIEVAL else "frontier"), "human folk speak as humans")
+	check(bad.is_empty(), "nothing glows and nobody talks magic on a human world: %s" % str(bad.slice(0, 3)))
+	check(NPCMind.system_prompt(_talk_town(0, 2)["npcs"][1], _talk_town(0, 2), {}).contains("no magic"), "the model is told the world's rules")
+	Eras.theme = "alien"
+	var v: Dictionary = _talk_town(Eras.SCIFI, 2)["npcs"][1]
+	check(NPCTalk.culture(v) == "vex" and not NPCMind.system_prompt(v, _talk_town(Eras.SCIFI, 2), {}).contains("no magic"), "the Vex talk like the Vex")
+	Eras.theme = was
+
+func test_builtin_dialogue_never_dead_ends() -> void:
+	var was := Eras.theme
+	Eras.theme = ""
+	var dead := ["Hm. Can't say I follow.", "Is that so?", "Interesting. Tell me more another time.", "If you say so."]
+	var odd := ["blorp", "The moon is made of cheese", "hmm", "Do you have a dog?", "42", "...", "purple monkey dishwasher", "What would you do with a dragon?",
+		"I'm hungry", "Tell me something", "yes", "Are you happy?", "What's the time?", "I come from far away"]
+	var s := _talk_town(Eras.FANTASY, 6)
+	for e in [Eras.MEDIEVAL, Eras.SCIFI]:
+		s["npcs"].append_array(_talk_town(e, 6)["npcs"])
+	var empty := 0
+	var deadends := 0
+	var staged := 0
+	for p in s["npcs"]:
+		for q in odd:
+			var say := String(NPCMind.builtin_reply(p, s, q)["say"])
+			if say.strip_edges() == "":
+				empty += 1
+			if dead.has(say):
+				deadends += 1
+			if say.contains("*") or say.contains("{") or say != say.strip_edges():
+				staged += 1
+	check(empty == 0, "always says something")
+	check(deadends == 0, "never the old dead-end shrug")
+	check(staged == 0, "no stage directions or unfilled blanks in spoken lines")
+	# Rudeness stings, kind words warm, and both are remembered in how they feel.
+	var p: Dictionary = s["npcs"][14]
+	p["rel"] = 10
+	p["mood"] = "calm"
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "You're a stupid fool"))
+	check(int(p["rel"]) < 10 and p["mood"] in ["angry", "sad"], "an insult lowers their opinion (%d)" % p["rel"])
+	var low := int(p["rel"])
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "You look lovely today"))
+	check(int(p["rel"]) > low, "a compliment raises it")
+	# What you talked about is remembered and brought up again.
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "Lovely weather, isn't it?"))
+	check(NPCTalk.last_topic(p) == "the weather", "they remember what you talked about (%s)" % NPCTalk.last_topic(p))
+	# Requests and favours still take their actions.
+	p["rel"] = 30
+	check(NPCMind.builtin_reply(p, s, "Come with me.")["action"] == "follow", "a friend comes along")
+	check(NPCMind.builtin_reply(p, s, "Stay here.")["action"] == "stop_following", "and stays when told")
+	p["rel"] = 60
+	p["mood"] = "happy"
+	var wink := NPCMind.builtin_reply(p, s, "Could you wink at me?")
+	check(wink.get("do", "") == "wink" and not String(wink["say"]).contains("*"), "a wink is done, not read out")
+	var kid: Dictionary = s["npcs"][2].duplicate(true)
+	kid["child"] = true
+	kid["age"] = 9
+	kid["id"] = "kid"
+	check(NPCTalk.persona(kid)["tone"] == "child" and String(NPCMind.builtin_reply(kid, s, "Who are you?")["say"]).length() > 0, "children talk like children")
+	Eras.theme = was
+
 func test_speech_to_text_request() -> void:
 	var svc = load("res://src/ai/ai_service.gd")
 	var pcm := PackedByteArray()

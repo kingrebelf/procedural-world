@@ -14,7 +14,13 @@ People work at three levels, and each one falls back to the one below it:
    attack, open trade, give or lend you Marks, hand you a gift, and do things with their
    body: wave, nod, wink, dance, sit, jump, point, hold up any fingers, and dozens more.
    Without a model they use built-in, keyword-driven dialogue that understands the same
-   requests ("can you hold up three fingers?", "could you spare some Marks?").
+   requests ("can you hold up three fingers?", "could you spare some Marks?"). Its lines
+   (NPCTalk) are composed per person: each has their own way of addressing you, a pet
+   phrase and a temper (gruff, warm, timid, greedy, curious; children talk like children),
+   speaks in their culture's voice (medieval folk, frontier spacers, Sylvari or Vex; human
+   worlds never hear of glowing or magic things), reacts to dozens of topics, to insults
+   and compliments, turns the talk to their own worries, neighbours and the town's news,
+   remembers what you last talked about, and avoids repeating what they said lately.
 2. **Background thinking.** Now and then a person near you asks the model what they want
    to do next ("go to the market", "avoid the stranger"). This is optional and rate-limited.
 3. **Fast decisions.** Every couple of seconds each person picks an action: work, wander,
