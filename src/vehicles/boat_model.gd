@@ -139,13 +139,13 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"raft":
 			_raft(k, shapes, r)
 		"rowboat":
-			_hull(k, shapes, HULLS[kind], "planks", Color(0.78, 0.64, 0.5))
+			_hull(k, shapes, HULLS[kind], "planks", Color(0.78, 0.64, 0.5), Color(0.78, 0.64, 0.5).darkened(0.38))
 			_rowboat(k, shapes, r)
 		"fishing_boat":
-			_hull(k, shapes, HULLS[kind], "planks", Color(0.62, 0.52, 0.44))
+			_hull(k, shapes, HULLS[kind], "planks", Color(0.62, 0.52, 0.44), Color(0.62, 0.52, 0.44).darkened(0.38))
 			_fishing_boat(k, shapes, r)
 		"cog":
-			_hull(k, shapes, HULLS[kind], "planks", Color(0.5, 0.42, 0.36))
+			_hull(k, shapes, HULLS[kind], "planks", Color(0.5, 0.42, 0.36), Color(0.5, 0.42, 0.36).darkened(0.38))
 			_cog(k, shapes, r, root)
 		"life_raft":
 			_life_raft(k, shapes)
@@ -155,6 +155,8 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"research_vessel":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.94, 0.94, 0.95), Color(0.55, 0.12, 0.1))
 			_research_vessel(k, shapes, r, root)
+	if kind == "rowboat":
+		_oars(root, seed)
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(get_mat)
 	mi.visibility_range_end = 1300.0
@@ -235,7 +237,9 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 				var p01: Vector3 = grid[i][j + 1] * sx
 				var hint := Vector3(side, -0.5 + float(j) / NV, 0)
 				var c := col
-				if below.a > 0.0 and (p00.y + p11.y) * 0.5 < 0.12:
+				# Painted hulls: bottom paint to the waterline; planked ones dark and wet a
+				# hand's breadth above it.
+				if below.a > 0.0 and (p00.y + p11.y) * 0.5 < (0.3 if mat == "planks" else 0.12):
 					c = below
 				var n00 := _hull_n(h, grid, i, j, side)
 				var n10 := _hull_n(h, grid, i + 1, j, side)
@@ -273,7 +277,7 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 			var b: Vector3 = grid[0][j + 1]
 			var am := Vector3(-a.x, a.y, a.z)
 			var bm := Vector3(-b.x, b.y, b.z)
-			var c := col if (a.y + b.y) * 0.5 >= 0.12 or below.a <= 0.0 else below
+			var c := col if (a.y + b.y) * 0.5 >= (0.3 if mat == "planks" else 0.12) or below.a <= 0.0 else below
 			_tri_out(k, mat, am, a, b, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, c)
 			_tri_out(k, mat, am, b, bm, Vector3.BACK, Vector3.BACK, Vector3.BACK, Vector3.BACK, c)
 			faces.append_array([am, a, b, am, b, bm])
@@ -290,6 +294,32 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 	cps.backface_collision = true
 	cps.set_faces(faces)
 	shapes.append([cps, Transform3D.IDENTITY])
+
+## The boat's outline where it meets the water (y = 0), as local (x, z) points going
+## round the hull: where the foam laps and the bow wave starts.
+static func waterline(kind: String) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	match kind:
+		"raft":
+			for i in 20:
+				var a := TAU * i / 20.0
+				# A rounded box round the logs.
+				out.append(Vector2(signf(cos(a)) * pow(absf(cos(a)), 0.35) * 1.12, signf(sin(a)) * pow(absf(sin(a)), 0.35) * 1.66))
+		"life_raft":
+			for i in 20:
+				var a := TAU * i / 20.0
+				out.append(Vector2(cos(a), sin(a)) * 1.42)
+		_:
+			var h: Dictionary = HULLS[kind]
+			var L: float = h["L"]
+			var n := 24
+			for i in n + 1:
+				var u := float(i) / n
+				out.append(Vector2(maxf(_width_at(h, u, 0.0), 0.02), L * (0.5 - u)))
+			for i in range(n - 1, -1, -1):
+				var u := float(i) / n
+				out.append(Vector2(-maxf(_width_at(h, u, 0.0), 0.02), L * (0.5 - u)))
+	return out
 
 ## Smooth normal at a grid point, pointing out of the hull.
 static func _hull_n(h: Dictionary, grid: Array, i: int, j: int, side: float) -> Vector3:
@@ -568,18 +598,62 @@ static func _rowboat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> voi
 		var u: float = 0.5 - z / float(h["L"])
 		var w := _width_at(h, u, 0.32) - 0.03
 		k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, 0.32, z)), Vector3(w * 2.0, 0.05, 0.26), Color(0.8, 0.66, 0.5))
-	# Oars resting in the rowlocks, blades in the water.
+	# Rowlocks (the oars are their own nodes, so they can row: oars()).
 	for s in [-1.0, 1.0]:
-		var lock := Vector3(s * (_width_at(h, 0.45, 0.42) + 0.02), 0.46, 0.0)
-		k.cylinder("iron", Transform3D(Basis.IDENTITY, lock - Vector3(0, 0.05, 0)), 0.02, 0.02, 0.1, 5)
-		var handle := Vector3(s * 0.25, 0.52, 0.35)
-		var blade := lock + (lock - handle).normalized() * 1.7 + Vector3(0, -0.35, 0)
-		_beam(k, "timber", handle, blade, 0.03)
-		var d := (blade - handle).normalized()
-		k.box("planks", Transform3D(Basis(Vector3.UP, atan2(d.x, d.z)), blade), Vector3(0.14, 0.02, 0.5), Color(0.85, 0.72, 0.55))
+		k.cylinder("iron", Transform3D(Basis.IDENTITY, oar_lock(s) - Vector3(0, 0.05, 0)), 0.02, 0.02, 0.1, 5)
 	if r.randf() < 0.7:
 		_coil(k, Vector3(0, 0.05, -1.4), 0.18)
 	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0.3, 0.12, 1.75)), Vector3(0.4, 0.2, 0.3), Color(0.65, 0.5, 0.36))
+
+## The rowboat's rowlock on side s (+1 starboard, -1 port), just aft of the rower, who
+## sits facing the stern.
+static func oar_lock(s: float) -> Vector3:
+	var h: Dictionary = HULLS["rowboat"]
+	return Vector3(s * (_width_at(h, 0.5 - 0.72 / float(h["L"]), 0.42) + 0.02), 0.47, 0.72)
+
+const OAR_IN := 0.62 ## loom inboard of the rowlock (to the handle)
+const OAR_OUT := 1.75 ## outboard, to the blade's tip
+
+## Two oars, "Oar_r" and "Oar_l", each pivoting at its rowlock with the shaft along its
+## local +x (outboard); BoatNode swings them through the stroke.
+static func _oars(root: Node3D, seed: int) -> void:
+	for s in [1.0, -1.0]:
+		var k := MeshKit.new(seed + int(s))
+		_beam(k, "timber", Vector3(-OAR_IN, 0, 0), Vector3(OAR_OUT - 0.45, 0, 0), 0.026)
+		k.cylinder("timber", Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(-OAR_IN + 0.08, 0, 0)), 0.03, 0.03, 0.16, 6)
+		k.box("planks", Transform3D(Basis.IDENTITY, Vector3(OAR_OUT - 0.25, 0, 0)), Vector3(0.5, 0.15, 0.022), Color(0.85, 0.72, 0.55))
+		var mi := MeshInstance3D.new()
+		mi.name = "Oar_r" if s > 0.0 else "Oar_l"
+		mi.mesh = k.commit(get_mat)
+		mi.visibility_range_end = 400.0
+		mi.position = oar_lock(s)
+		mi.basis = oar_stroke(s, 0.0, 0.0)
+		root.add_child(mi)
+
+## An oar's pose at the rowlock on side s: `sweep` swings the blade toward the bow (+) or
+## the stern (-), `dip` tips the blade down toward the water, `feather` turns it flat (1)
+## or square to the stroke (0).
+static func oar_basis(s: float, sweep: float, dip: float, feather: float) -> Basis:
+	var dir := Vector3(s * cos(sweep) * cos(dip), -sin(dip), -sin(sweep) * cos(dip))
+	var y := (Vector3.UP - dir * Vector3.UP.dot(dir)).normalized()
+	var basis := Basis(dir, y, dir.cross(y))
+	return basis * Basis(Vector3.RIGHT, feather * PI * 0.5 * s)
+
+## An oar at stroke phase `ph` (BodyLanguage.row_phase) while rowing with effort `w`
+## (0 at rest): blades squared and buried on the drive, feathered and lifted clear on the
+## way back; at rest they trail flat on the water.
+static func oar_stroke(s: float, ph: float, w: float) -> Basis:
+	var sweep: float
+	var dip := 0.36
+	var feather := 0.0
+	if ph < 0.4:
+		sweep = lerpf(0.6, -0.35, smoothstep(0.0, 0.4, ph))
+	else:
+		sweep = lerpf(-0.35, 0.6, smoothstep(0.4, 1.0, ph))
+		dip -= 0.24 * sin(PI * clampf((ph - 0.4) / 0.56, 0.0, 1.0))
+		feather = smoothstep(0.4, 0.5, ph) * (1.0 - smoothstep(0.88, 0.97, ph))
+	var e := smoothstep(0.0, 1.0, w)
+	return oar_basis(s, lerpf(-0.25, sweep, e), lerpf(0.3, dip, e), lerpf(1.0, feather, e))
 
 static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
 	var h: Dictionary = HULLS["fishing_boat"]
