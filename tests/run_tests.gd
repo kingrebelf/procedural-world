@@ -971,6 +971,21 @@ func test_npc_roles() -> void:
 	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
 	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
 	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	# A weaponsmith keeps a forge outside the shop door for part of the day.
+	var shop := {}
+	for h in TownShops.shops_of(gen, site):
+		shop = h
+	if not shop.is_empty():
+		var ws: Dictionary = f.duplicate(true)
+		ws["shop_kind"] = "weaponsmith"
+		ws["shop_i"] = int(shop["i"])
+		var wd := NPCRoles.duty_at(ws, pl, 10.0, 0.0)
+		check(wd.get("duty", "") == "smithy" and (wd["target"] as Vector2).distance_to(TownShops.door_point(shop)) < 4.0, "a weaponsmith works a forge by the shop door (%s)" % wd.get("duty", ""))
+		check(NPCRoles.duty_at(ws, pl, 12.5, 0.0).is_empty(), "and keeps the counter the rest of the day")
+		var forge := false
+		for pr in NPCRoles.props(pl, {"npcs": [ws]}):
+			forge = forge or pr[0] == NPCRoles.PROPS["forge"]
+		check(forge, "with an anvil set out there")
 	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
 
 func test_bandits() -> void:

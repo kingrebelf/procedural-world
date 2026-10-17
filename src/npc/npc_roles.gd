@@ -29,6 +29,8 @@ const DUTIES := {
 		"lines": ["Easy, girl, easy.", "Feeding time."]},
 	"lunch": {"where": "square", "perform": "sit", "hop": 300.0, "label": "having your midday meal",
 		"lines": ["Bread and cheese, best part of the day.", "Can't work on an empty belly."]},
+	"smithy": {"where": "shopyard", "anims": ["fix", "fix", "interact"], "hop": 45.0, "prop": "forge", "label": "at the forge outside your shop, making the wares you sell",
+		"lines": ["Come in when I'm done, I'll find you something.", "Hot iron waits for no one.", "Stand back from the sparks."]},
 	"forge": {"where": "post", "anims": ["fix", "fix", "interact"], "hop": 45.0, "prop": "anvil", "label": "working at your anvil",
 		"lines": ["Hot iron waits for no one.", "Stand back from the sparks.", "Good steel, this."]},
 	"weave": {"where": "post", "anims": ["interact", "pickup"], "hop": 50.0, "prop": "crates", "label": "working at your craft outside your house",
@@ -126,6 +128,13 @@ const ROUTINES := {
 	"hydroponics tech": [[7.0, 12.0, "grow"], [12.0, 13.0, "lunch"], [13.0, 17.0, "grow"]],
 	"courier": [[8.0, 12.0, "deliver"], [12.0, 13.0, "lunch"], [13.0, 17.0, "deliver"]],
 }
+## Shopkeepers who make what they sell work at it outside their door for part of the
+## day, and keep the counter the rest.
+const SHOP_ROUTINES := {
+	"weaponsmith": [[9.0, 12.0, "smithy"], [13.5, 16.0, "smithy"]],
+	"armourer": [[8.5, 11.5, "smithy"], [14.0, 16.5, "smithy"]],
+	"apothecary": [[7.5, 9.5, "gather"]],
+}
 ## Guards who keep the night watch instead (about one in three; never the only guard,
 ## who is always the first person hired after the trader).
 const NIGHT_WATCH := [[21.0, 24.0, "night_watch"], [0.0, 5.5, "night_watch"], [8.0, 15.0, "sleep"], [15.0, 19.0, "gate"]]
@@ -133,6 +142,7 @@ const NIGHT_WATCH := [[21.0, 24.0, "night_watch"], [0.0, 5.5, "night_watch"], [8
 ## Props set out where a trade is plied: kit models placed in front of the worker.
 const PROPS := {
 	"anvil": [["props/Anvil", 0, Vector3.ZERO, 1.0]],
+	"forge": [["props/Anvil", 0, Vector3.ZERO, 1.0], ["props/Anvil_Log", 30, Vector3(1.1, 0, -0.3), 1.0], ["props/Barrel", 0, Vector3(-1.0, 0, -0.4), 0.9]],
 	"anvil_log": [["props/Anvil_Log", 0, Vector3.ZERO, 1.0]],
 	"crates": [["props/FarmCrate_Empty", 0, Vector3(-0.35, 0, 0), 1.0], ["props/FarmCrate_Carrot", 25, Vector3(0.4, 0, 0.1), 1.0]],
 	"cauldron": [["props/Cauldron", 0, Vector3.ZERO, 0.9]],
@@ -170,9 +180,14 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 				out["lamps"].append(p)
 			"trader":
 				out["stall"].append(p + Vector2(sin(float(it["yaw"])), cos(float(it["yaw"]))) * 1.6)
+	# Beside each shop's door, a yard where its keeper works at their trade.
+	out["shop_yards"] = {}
 	for h in TownShops.shops_of(gen, site):
+		var door := TownShops.door_point(h)
 		if h["kind"] == "tavern":
-			out["tavern"].append(TownShops.door_point(h))
+			out["tavern"].append(door)
+		var outward := (door - (h["p"] as Vector2)).normalized()
+		out["shop_yards"][int(h["i"])] = [door + outward * 0.8 + outward.orthogonal() * 2.8, atan2(outward.x, outward.y)]
 	for rec in data.get("npcs", []):
 		if not rec.get("dead", false):
 			out["homes"].append(rec["home"])
@@ -242,9 +257,9 @@ static func _pick(list: Array, rec: Dictionary, stop: int) -> Vector2:
 ## The duty block this person is in at `hour`: [from, to, duty] or [] (their own time).
 static func block(rec: Dictionary, hour: float) -> Array:
 	var job: String = rec["job"]
-	if job == "trader" or rec.has("shop_kind"):
+	if job == "trader":
 		return []
-	var plan: Array = ROUTINES.get(job, [])
+	var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(job, [])
 	if NPCGen.GUARD_JOBS.has(job) and night_watch(rec):
 		plan = NIGHT_WATCH
 	# Early birds and late starters: up to forty minutes either way, by diligence.
@@ -284,6 +299,11 @@ static func duty_at(rec: Dictionary, places: Dictionary, hour: float, t: float) 
 			var pp := post(rec, places)
 			target = pp[0]
 			face = pp[1]
+		"shopyard":
+			var y = (places.get("shop_yards", {}) as Dictionary).get(int(rec.get("shop_i", -1)))
+			if y != null:
+				target = y[0]
+				face = y[1]
 		"field":
 			target = _field(rec, places, stop)
 			face = atan2(c.x - target.x, c.y - target.y) + PI * 0.5 * float(stop % 2)
@@ -343,7 +363,7 @@ static func props(places: Dictionary, data: Dictionary) -> Array:
 	for rec in data.get("npcs", []):
 		if rec.get("dead", false):
 			continue
-		var plan: Array = ROUTINES.get(String(rec["job"]), [])
+		var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(String(rec["job"]), [])
 		var kinds := {}
 		for b in plan:
 			var d: Dictionary = DUTIES.get(String(b[2]), {})
@@ -352,7 +372,11 @@ static func props(places: Dictionary, data: Dictionary) -> Array:
 			elif String(d.get("where", "")) == "field" and int(rec["era"]) != Eras.SCIFI:
 				kinds["field"] = "field"
 		for k in kinds:
-			if kinds[k] == "post":
+			if kinds[k] == "shopyard":
+				var y = (places.get("shop_yards", {}) as Dictionary).get(int(rec.get("shop_i", -1)))
+				if y != null:
+					out.append([PROPS[k], (y[0] as Vector2) + Vector2(sin(float(y[1])), cos(float(y[1]))) * 0.9, float(y[1])])
+			elif kinds[k] == "post":
 				var pp := post(rec, places)
 				var at: Vector2 = pp[0] + Vector2(sin(float(pp[1])), cos(float(pp[1]))) * 0.9
 				out.append([PROPS[k], at, float(pp[1])])
@@ -387,9 +411,9 @@ static func chatter(a: Dictionary, b: Dictionary, town: Dictionary, h: int) -> A
 
 ## This person's routine in words, for the language model ("" for none).
 static func day_words(rec: Dictionary) -> String:
-	if rec["job"] == "trader" or rec.has("shop_kind"):
+	if rec["job"] == "trader":
 		return ""
-	var plan: Array = ROUTINES.get(String(rec["job"]), [])
+	var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(String(rec["job"]), [])
 	if NPCGen.GUARD_JOBS.has(rec["job"]) and night_watch(rec):
 		plan = NIGHT_WATCH
 	var parts := PackedStringArray()
