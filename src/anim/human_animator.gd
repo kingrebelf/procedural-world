@@ -118,6 +118,8 @@ func _graph(lib: AnimationLibrary) -> AnimationNodeBlendTree:
 	var shot := AnimationNodeOneShot.new()
 	shot.fadein_time = 0.12
 	shot.fadeout_time = 0.22
+	shot.fadein_curve = _ease_curve()
+	shot.fadeout_curve = _ease_curve()
 	for p in upper_paths(lib, skeleton):
 		up.set_filter_path(p, true)
 		shot.set_filter_path(p, true)
@@ -133,6 +135,21 @@ func _graph(lib: AnimationLibrary) -> AnimationNodeBlendTree:
 	bt.connect_node("shot", 1, "st")
 	bt.connect_node("output", 0, "shot")
 	return bt
+
+static var _ease: Curve
+
+## An S-curve for fades: weight eases off the old pose and onto the new one, where a
+## straight ramp jerks into the blend and out of it.
+static func _ease_curve() -> Curve:
+	if _ease == null:
+		_ease = Curve.new()
+		_ease.add_point(Vector2(0, 0), 0.0, 0.0)
+		_ease.add_point(Vector2(1, 1), 0.0, 0.0)
+	return _ease
+
+## Smooth in and out: the cross-fade weights are ramped evenly, then eased by this.
+static func eased(x: float) -> float:
+	return smoothstep(0.0, 1.0, x)
 
 static func _clip(bt: AnimationNodeBlendTree, node: String, anim: String) -> void:
 	var a := AnimationNodeAnimation.new()
@@ -303,7 +320,7 @@ func update(dt: float) -> void:
 	_measure(dt)
 	# The state, cross-faded between its two slots.
 	_mix = move_toward(_mix, 1.0, dt / XFADE)
-	tree.set("parameters/x/blend_amount", _mix if _slot == 1 else 1.0 - _mix)
+	tree.set("parameters/x/blend_amount", eased(_mix if _slot == 1 else 1.0 - _mix))
 	var ts := _state_speed * (_idle_rate if _state == "idle" else 1.0)
 	if _state in OWN_MOTION:
 		var nat := float(tree.get_animation(_state).get_meta("speed", 1.0))
@@ -325,7 +342,7 @@ func update(dt: float) -> void:
 	else:
 		_turn = 0.0
 	_move_w = move_toward(_move_w, want, dt * 5.0)
-	tree.set("parameters/move/blend_amount", _move_w)
+	tree.set("parameters/move/blend_amount", eased(_move_w))
 	if _move_w > 0.001:
 		var g := solve(v, _gait)
 		_phase = fposmod(_phase + dt / maxf(float(g["cycle"]), 0.05), 1.0)
@@ -337,9 +354,9 @@ func update(dt: float) -> void:
 			tree.set("parameters/k_%s/seek_request" % name, fposmod(_phase + float(e["phase"]), 1.0) * float(e["len"]))
 	# The upper-body layer.
 	_umix = move_toward(_umix, 1.0, dt / XFADE)
-	tree.set("parameters/ux/blend_amount", _umix if _uslot == 1 else 1.0 - _umix)
+	tree.set("parameters/ux/blend_amount", eased(_umix if _uslot == 1 else 1.0 - _umix))
 	_upper_w = move_toward(_upper_w, 1.0 if _upper != "" else 0.0, dt / XFADE)
-	tree.set("parameters/up/blend_amount", _upper_w)
+	tree.set("parameters/up/blend_amount", eased(_upper_w))
 	if ik:
 		var s := _scale()
 		var vw := _speed * s
@@ -348,6 +365,10 @@ func update(dt: float) -> void:
 		var tip := atan(_accel * s / 9.8) * 0.45 * _move_w
 		ik.lean = ik.lean.lerp(Vector2(clampf(-bank, -0.3, 0.3), clampf(tip, -0.15, 0.25)), clampf(dt * 6.0, 0.0, 1.0))
 		ik.feet_allowed = feet_free()
+		ik.pin_on = _move_w > 0.3 and _turn < 0.5
+		# Winded by running: quick to come on, slow to ease off (HumanIK breathes harder).
+		var hard := smoothstep(2.4, 5.5, vw) * _move_w
+		ik.exertion = lerpf(ik.exertion, hard, 1.0 - exp(-dt / (3.0 if hard > ik.exertion else 18.0)))
 	tree.advance(dt)
 
 func _measure(dt: float) -> void:

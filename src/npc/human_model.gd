@@ -611,6 +611,8 @@ func play(state: String, speed := 1.0) -> void:
 		_idle_variety()
 	else:
 		_idle_alt = ""
+		if state in HumanAnimator.GAITS:
+			_walk_glances()
 	animator.set_state(_idle_alt if state == "idle" and _idle_alt != "" else state, speed)
 
 ## Plays an action once, then returns to the looping state. `dur` (optional) fits the
@@ -773,6 +775,35 @@ func _idle_variety() -> void:
 		_idle_alt_t = randf_range(5.0, 11.0)
 	elif r < 0.85 and not _gripping and _held == null:
 		gesture("hips")
+
+## On the move, eyes don't stay locked straight ahead: every few seconds a look aside at
+## something passed, or down at the path a few steps on.
+func _walk_glances() -> void:
+	var now := Time.get_ticks_msec()
+	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
+	_last_idle_ms = now
+	if _glance != Vector3.INF:
+		_glance_t -= dt
+		if _glance_t <= 0.0:
+			_glance = Vector3.INF
+			_apply_look()
+		return
+	if _walk_glance_t <= 0.0:
+		_walk_glance_t = randf_range(2.5, 8.0)
+	_walk_glance_t -= dt
+	if _walk_glance_t > 0.0:
+		return
+	var fwd := global_basis.z.normalized()
+	if randf() < 0.6:
+		var side := fwd.rotated(Vector3.UP, randf_range(0.45, 1.1) * (1.0 if randf() < 0.5 else -1.0))
+		_glance = global_position + side * randf_range(5.0, 15.0) + Vector3.UP * randf_range(0.4, 1.9)
+		_glance_t = randf_range(0.7, 1.8)
+	else:
+		_glance = global_position + fwd * randf_range(2.5, 4.0) + Vector3.UP * 0.1
+		_glance_t = randf_range(0.5, 1.1)
+	_apply_look()
+
+var _walk_glance_t := 0.0
 
 func set_flash(v: float) -> void:
 	if _body:

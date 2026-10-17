@@ -1,9 +1,12 @@
 extends SceneTree
 ## Renders people moving, as film strips, for judging the animation: a walk and a run up
 ## a slope (side on, frames a fixed time apart), and people standing about on a hillside,
-## one turning to look at the camera. Works on code from before HumanAnimator too, so the
-## same shots can be taken of the old animation.
-##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_motion.gd -- --out=/abs/dir
+## one turning to look at the camera, and animals walking, galloping and circling (from
+## above: the spine bends into the turn, the tail trails). Works on code from before
+## HumanAnimator too, so the same shots can be taken of the old animation.
+##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_motion.gd -- --out=/abs/dir [--only=animals|people]
+## Each strip is 6 frames a fixed time apart; the grid is 1 m, so a planted foot or hoof
+## should stay on the same spot of it from frame to frame.
 
 const SLOPE := 0.36 ## rise per metre uphill (about 20 degrees)
 const FRAME := Vector2i(480, 560)
@@ -43,9 +46,12 @@ func _step(h: HumanModel, dt: float) -> void:
 
 func _run() -> void:
 	var out := "user://motion"
+	var only := ""
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		if a.begins_with("--only="):
+			only = a.substr(7)
 	DirAccess.make_dir_recursive_absolute(out)
 	vp = SubViewport.new()
 	vp.size = FRAME
@@ -83,10 +89,16 @@ func _run() -> void:
 	cam = Camera3D.new()
 	cam.fov = 34
 	vp.add_child(cam)
-	await _strip(out + "/walk_uphill.png", 1.35, "walk")
-	await _strip(out + "/run_uphill.png", 3.6, "jog")
-	await _standing(out + "/standing_on_slope.png")
-	await _animals(out + "/animals_on_slope.png")
+	if only != "animals":
+		await _strip(out + "/walk_uphill.png", 1.35, "walk")
+		await _strip(out + "/run_uphill.png", 3.6, "jog")
+		await _standing(out + "/standing_on_slope.png")
+	if only != "people":
+		await _animals(out + "/animals_on_slope.png")
+		await _animal_strip(out + "/deer_walk.png", "Deer", 1.2)
+		await _animal_strip(out + "/horse_gallop.png", "Horse", 6.0)
+		await _animal_strip(out + "/wolf_walk.png", "Wolf", 1.2)
+		await _animal_circle(out + "/horse_circling.png", "Horse")
 	print("saved to ", out)
 	quit()
 
@@ -186,4 +198,81 @@ func _animals(path: String) -> void:
 		await process_frame
 	vp.get_texture().get_image().save_png(path)
 	vp.size = FRAME
+	print("saved ", path)
+
+## An animal goes uphill at `v` m/s, side on; COLS frames apart in time.
+func _animal_strip(path: String, kind: String, v: float) -> void:
+	_clear()
+	var a := AnimalModel.new()
+	vp.add_child(a)
+	a.build(kind)
+	people.append(a)
+	if a.get("ground") != null:
+		a.ground = Callable(self, "ground")
+		a.lod = false
+	var z := -4.0
+	var sheet: Image = null
+	var t := 0.0
+	var shot := 0
+	var next := 2.0
+	var far := 5.0 + float(AnimalModel.HEIGHT.get(kind, 1.5)) * 1.6
+	while shot < COLS:
+		z += v * DT
+		a.global_position = Vector3(0, ground(0, z), z)
+		a.rotation.y = 0.0
+		a.play("Walk")
+		await process_frame
+		t += DT
+		if t >= next:
+			cam.global_position = Vector3(far, ground(0, z) + 0.9, z)
+			cam.look_at(Vector3(0, ground(0, z) + 0.6, z))
+			for i in 2:
+				await process_frame
+			var img := vp.get_texture().get_image()
+			if sheet == null:
+				sheet = Image.create(FRAME.x * COLS, FRAME.y, false, img.get_format())
+			sheet.blit_rect(img, Rect2i(Vector2i.ZERO, FRAME), Vector2i(FRAME.x * shot, 0))
+			shot += 1
+			next += 0.12 if v < 3.0 else 0.05
+	sheet.save_png(path)
+	print("saved ", path)
+
+## An animal walks round a tight circle on the hillside, seen from above.
+func _animal_circle(path: String, kind: String) -> void:
+	_clear()
+	var a := AnimalModel.new()
+	vp.add_child(a)
+	a.build(kind)
+	people.append(a)
+	if a.get("ground") != null:
+		a.ground = Callable(self, "ground")
+		a.lod = false
+	var c := Vector3(0, ground(0, 20.0), 20.0)
+	var r := 2.6
+	var w := 1.3 / r
+	var ang := 0.0
+	var sheet: Image = null
+	var t := 0.0
+	var shot := 0
+	var next := 2.0
+	while shot < COLS:
+		ang += w * DT
+		a.global_position = c + Vector3(cos(ang), 0, sin(ang)) * r
+		a.global_position.y = ground(a.global_position.x, a.global_position.z)
+		a.rotation.y = atan2(-sin(ang), cos(ang))
+		a.play("Walk")
+		await process_frame
+		t += DT
+		if t >= next:
+			cam.global_position = c + Vector3(0, 7.5, -4.0)
+			cam.look_at(c)
+			for i in 2:
+				await process_frame
+			var img := vp.get_texture().get_image()
+			if sheet == null:
+				sheet = Image.create(FRAME.x * COLS, FRAME.y, false, img.get_format())
+			sheet.blit_rect(img, Rect2i(Vector2i.ZERO, FRAME), Vector2i(FRAME.x * shot, 0))
+			shot += 1
+			next += 0.4
+	sheet.save_png(path)
 	print("saved ", path)

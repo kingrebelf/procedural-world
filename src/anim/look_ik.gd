@@ -3,7 +3,9 @@ extends SkeletonModifier3D
 ## Turns a chain of neck and head bones toward a world point after the animation: an
 ## animal lifting its head to watch you, a wolf keeping its eyes on you as it circles.
 ## Each bone takes a share of the turn; it eases in and out and gives up when the point
-## is behind. The skeleton faces +Z.
+## is behind. The head leads and the neck's root follows a beat later, each easing in and
+## settling like a muscle (AnimMath.spring), and the ears (which hang off the neck in the
+## kit's rigs) turn with the head instead of being left behind. The skeleton faces +Z.
 
 ## [[bone index, share of the yaw, share of the pitch], ...] from the body to the head.
 var chain: Array = []
@@ -12,9 +14,15 @@ var weight := 0.0
 var max_yaw := 1.3
 var max_pitch := 0.7
 
-var _yaw := 0.0
-var _pitch := 0.0
-var _w := 0.0
+## Bones carried round with the head though not its children: the ears.
+var riders: Array = []
+
+## [value, velocity] springs: the head end of the chain, its root end, the weight.
+var _hy := Vector2.ZERO
+var _hp := Vector2.ZERO
+var _ry := Vector2.ZERO
+var _rp := Vector2.ZERO
+var _w := Vector2.ZERO
 
 ## The neck and head of a skeleton: bones named Neck... then Head, the head taking most.
 static func chain_for(sk: Skeleton3D) -> Array:
@@ -32,6 +40,18 @@ static func chain_for(sk: Skeleton3D) -> Array:
 	for j in names.size():
 		var s := float(j + 1) / shares
 		out.append([names[j], s, s])
+	return out
+
+## Ear roots: bones named Ear... hanging off the head's parent rather than the head.
+static func riders_for(sk: Skeleton3D, chain: Array) -> Array:
+	if chain.is_empty():
+		return []
+	var head: int = chain[-1][0]
+	var up := sk.get_bone_parent(head)
+	var out := []
+	for i in sk.get_bone_count():
+		if i != head and sk.get_bone_parent(i) == up and sk.get_bone_name(i).begins_with("Ear"):
+			out.append(i)
 	return out
 
 func _process_modification_with_delta(delta: float) -> void:
@@ -53,19 +73,38 @@ func _process_modification_with_delta(delta: float) -> void:
 		want = weight if absf(yaw) < max_yaw + 0.6 else 0.0
 		yaw = clampf(yaw, -max_yaw, max_yaw)
 		pitch = clampf(pitch, -max_pitch, max_pitch)
-	_w = lerpf(_w, want, clampf(dt * 3.0, 0.0, 1.0))
+	_w = AnimMath.spring(_w.x, _w.y, want, 4.0, dt)
+	_w.x = clampf(_w.x, 0.0, 1.0)
 	if want > 0.0:
-		var k := clampf(dt * 4.0, 0.0, 1.0)
-		_yaw = lerpf(_yaw, yaw, k)
-		_pitch = lerpf(_pitch, pitch, k)
-	if _w < 0.002:
+		_hy = AnimMath.spring(_hy.x, _hy.y, yaw, 8.0, dt)
+		_hp = AnimMath.spring(_hp.x, _hp.y, pitch, 8.0, dt)
+		_ry = AnimMath.spring(_ry.x, _ry.y, yaw, 3.5, dt)
+		_rp = AnimMath.spring(_rp.x, _rp.y, pitch, 3.5, dt)
+	if _w.x < 0.002:
 		return
+	var w := _w.x
 	var right := up.cross(Vector3(0, 0, 1)).normalized()
 	var turned := 0.0
-	for e in chain:
-		turned += _yaw * float(e[1]) * _w
+	var n := chain.size()
+	var q := Quaternion.IDENTITY
+	for j in n:
+		var e: Array = chain[j]
+		# The last two bones (upper neck and head) lead; the rest follow.
+		var lead := j >= n - 2
+		var y: float = (_hy.x if lead else _ry.x) * float(e[1]) * w
+		var p: float = (_hp.x if lead else _rp.x) * float(e[2]) * w
+		turned += y
 		var axis := (Quaternion(up, turned) * right).normalized()
-		var q := Quaternion(up, _yaw * float(e[1]) * _w) * Quaternion(axis, -_pitch * float(e[2]) * _w)
+		q = Quaternion(up, y) * Quaternion(axis, -p)
 		var g := sk.get_bone_global_pose(e[0])
 		g.basis = Basis(q) * g.basis
 		sk.set_bone_global_pose(e[0], g)
+	if riders.is_empty():
+		return
+	# The head's own turn, about the head, for the ears that hang off its parent.
+	var at := sk.get_bone_global_pose(chain[-1][0]).origin
+	for r in riders:
+		var g := sk.get_bone_global_pose(r)
+		g.basis = Basis(q) * g.basis
+		g.origin = at + q * (g.origin - at)
+		sk.set_bone_global_pose(r, g)
