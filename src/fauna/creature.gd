@@ -338,16 +338,17 @@ func update_tag(show: bool, player_level: int) -> void:
 		c = Color(1.0, 0.45, 0.35) if lv > player_level + 2 else Color(1.0, 0.8, 0.4)
 	_tag_label.modulate = c
 	_tag_label.text = "Lv %d  %s" % [lv, label()]
-	var f := clampf(hp / float(p["hp"]), 0.0, 1.0)
-	_tag_bar.scale = Vector3(maxf(f, 0.001), 1, 1)
-	_tag_bar.position.x = -(1.0 - f) * 0.45
+	_tag_bar.set_instance_shader_parameter("fill", clampf(hp / float(p["hp"]), 0.0, 1.0))
+
+static var _bar_mat: ShaderMaterial
 
 func _build_tag() -> void:
 	_tag = Node3D.new()
 	var top := _model_bounds().end.y
 	_tag.position = Vector3(0, top + 0.45, 0)
 	add_child(_tag)
-	# The tag ignores the animal's turning: it is a billboard child.
+	# The tag ignores the animal's turning: the name and the bar under it face you and
+	# keep their size on screen.
 	_tag_label = Label3D.new()
 	_tag_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_tag_label.fixed_size = true
@@ -355,32 +356,22 @@ func _build_tag() -> void:
 	_tag_label.font_size = 26
 	_tag_label.outline_size = 8
 	_tag_label.no_depth_test = true
-	_tag_label.position = Vector3(0, 0.12, 0)
+	_tag_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	_tag_label.offset = Vector2(0, 2)
 	_tag.add_child(_tag_label)
-	var holder := Node3D.new()
-	_tag.add_child(holder)
-	var back := MeshInstance3D.new()
+	if _bar_mat == null:
+		_bar_mat = ShaderMaterial.new()
+		_bar_mat.shader = load("res://src/fauna/tag_bar.gdshader")
 	var q := QuadMesh.new()
-	q.size = Vector2(0.9, 0.07)
-	back.mesh = q
-	back.material_override = _bar_mat(Color(0, 0, 0, 0.6))
-	holder.add_child(back)
+	q.size = Vector2(0.2, 0.0066)
+	q.center_offset = Vector3(0, -0.0055, 0)
 	_tag_bar = MeshInstance3D.new()
 	_tag_bar.mesh = q
-	_tag_bar.material_override = _bar_mat(Color(0.9, 0.2, 0.15))
-	_tag_bar.position.z = 0.001
-	back.add_child(_tag_bar)
-
-static func _bar_mat(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = c
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if c.a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	m.billboard_keep_scale = true
-	m.no_depth_test = true
-	m.render_priority = 1 if c.a >= 1.0 else 0
-	return m
+	_tag_bar.material_override = _bar_mat
+	_tag_bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# It grows with distance in its shader: keep it from being culled at the edges.
+	_tag_bar.extra_cull_margin = 8.0
+	_tag.add_child(_tag_bar)
 
 func _pick_wander() -> void:
 	var roam: float = p.get("roam", 22.0)
