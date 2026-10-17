@@ -621,6 +621,9 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 ## How an object can be used with Interact, or {} if it can't.
 static func _use_of(o: Dictionary) -> Dictionary:
 	var t: String = o["t"]
+	if Wonders.has(t):
+		var w := Wonders.use_of(o, Game.day)
+		return {} if w.is_empty() else {"kind": "wonder", "verb": w["verb"], "h": w["h"]}
 	match ObjectLibrary.kind(t):
 		"cache":
 			if o["st"].get("opened", false):
@@ -716,25 +719,33 @@ func _update_look_target() -> void:
 		var t: String = o["t"]
 		var k := ObjectLibrary.kind(t)
 		var mat := Durability.material(t)
-		match k:
-			"cache":
-				text = "" if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
-			"trader":
-				text = ""
-			"built":
-				text = "Hold [%s] to take down (returns the piece)" % _key("interact")
-			_:
-				text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
-		var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
-		if k == "cache" and not o["st"].get("opened", false):
-			lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
-		lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
-		var held = held_item()
-		var d: Dictionary = ItemDB.stats(held) if held != null else Durability.FIST
-		var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
-		lines.append("About %d hits with %s" % [hits, ItemDB.display_name(held) if held != null else "bare hands"])
-		info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ("Yours" if k == "built" else "")],
-			"lines": lines, "hp": Durability.health_left(o) / Durability.max_hp(o), "icon": Durability.yields(o)[0][0]}
+		if Wonders.unbreakable(t):
+			# A relic: what it does instead of what it yields.
+			text = "" if not Wonders.use_of(o, Game.day).is_empty() else Wonders.describe(o, Game.day)
+			info = {"title": ObjectLibrary.label_of(o), "sub": "Relic  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
+				"lines": [Wonders.describe(o, Game.day), "Can't be broken: use it with [%s]" % _key("interact")], "icon": Durability.yields(o)[0][0]}
+		else:
+			match k:
+				"cache":
+					text = "" if not o["st"].get("opened", false) else "%s (empty)" % ObjectLibrary.label(t)
+				"trader":
+					text = ""
+				"built":
+					text = "Hold [%s] to take down (returns the piece)" % _key("interact")
+				_:
+					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
+			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
+			if Wonders.has(t):
+				lines.push_front(Wonders.describe(o, Game.day))
+			if k == "cache" and not o["st"].get("opened", false):
+				lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
+			lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
+			var held = held_item()
+			var d: Dictionary = ItemDB.stats(held) if held != null else Durability.FIST
+			var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
+			lines.append("About %d hits with %s" % [hits, ItemDB.display_name(held) if held != null else "bare hands"])
+			info = {"title": ObjectLibrary.label_of(o), "sub": "%s  ·  %s" % [Durability.MATERIAL_NAMES[mat], Eras.NAMES[o["e"]] if o["e"] >= 0 else ("Yours" if k == "built" else "")],
+				"lines": lines, "hp": Durability.health_left(o) / Durability.max_hp(o), "icon": Durability.yields(o)[0][0]}
 	elif h.has("chunk"):
 		var held = held_item()
 		var can_dig: bool = held != null and ItemDB.def(held["type"]).has("dig")
@@ -757,6 +768,11 @@ func interact() -> void:
 			"station":
 				_use_station()
 				return
+			"wonder":
+				if is_instance_valid(focus["chunk"]):
+					_use_wonder(focus["chunk"], focus["chunk"].get_object(focus["i"]))
+				_focus_t = 0.0
+				return
 			"cache", "trader":
 				if is_instance_valid(focus["chunk"]):
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
@@ -771,6 +787,9 @@ func interact() -> void:
 	_use_object(h["chunk"], (h["chunk"] as ChunkNode).get_object(h["obj"]))
 
 func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
+	if Wonders.has(o["t"]):
+		_use_wonder(chunk, o)
+		return
 	match ObjectLibrary.kind(o["t"]):
 		"cache":
 			if o["st"].get("opened", false):
@@ -999,7 +1018,24 @@ func _blast(at: Vector3, radius: float, dmg: float) -> void:
 		fauna.player_hit(c, dmg * f)
 
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
+## Relics and markers answer to Interact, not to your pick.
+func _use_wonder(chunk: ChunkNode, o: Dictionary) -> void:
+	if Wonders.use_of(o, Game.day).is_empty():
+		Game.toast.emit(Wonders.describe(o, Game.day))
+		return
+	Game.toast.emit(WonderEffects.apply(o, chunk, self))
+	used_tool.emit("interact")
+
+var _wonder_hint_t := -10.0
+
 func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: float) -> void:
+	if Wonders.unbreakable(o["t"]):
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - _wonder_hint_t > 3.0:
+			_wonder_hint_t = now
+			var w := Wonders.use_of(o, Game.day)
+			Game.toast.emit("Your blows glance off the %s.%s" % [ObjectLibrary.label_of(o), "" if w.is_empty() else " [%s] %s" % [_key("interact"), w["verb"]]])
+		return
 	var r := Durability.hit(o, amount)
 	var k0 := ObjectLibrary.kind(o["t"])
 	var mat0 := Durability.material(o["t"])

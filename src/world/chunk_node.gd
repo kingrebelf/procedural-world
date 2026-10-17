@@ -615,8 +615,12 @@ func _add_obj_body(o: Dictionary) -> void:
 ## Adds something the player built. It becomes an ordinary object of this chunk, saved
 ## in its snapshot. `lp` is the chunk-local position.
 func add_built(id: String, lp: Vector3, yaw: float, st: Dictionary) -> Dictionary:
-	var o := {"i": data["objects"].size(), "t": BuildCatalog.PREFIX + id, "p": lp, "r": yaw, "s": 1.0,
-		"e": int(BuildCatalog.def(id).get("era", -1)), "st": st}
+	return add_object(BuildCatalog.PREFIX + id, lp, yaw, int(BuildCatalog.def(id).get("era", -1)), st)
+
+## Adds an object at local point lp after generation (a piece you built, a supply pod a
+## beacon called down) and keeps it in the snapshot.
+func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) -> Dictionary:
+	var o := {"i": data["objects"].size(), "t": t, "p": lp, "r": yaw, "s": 1.0, "e": era, "st": st}
 	data["objects"].append(o)
 	set_objects(build_object_buffers(data))
 	if near:

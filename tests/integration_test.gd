@@ -118,6 +118,7 @@ func _run() -> void:
 	check(not looted.is_empty(), "found a chest to loot")
 
 	await _walk_into_house(game, world, streamer, player)
+	await _relics(game, streamer, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
@@ -411,6 +412,61 @@ func _run() -> void:
 
 ## Village houses are open: walking at a house's door takes you inside onto its floor,
 ## and its walls keep you in.
+## Relics and markers are used, not broken: a xenolith circle wakes once with gifts and
+## then restores you once a day, a beacon calls down a supply pod and marks a settlement,
+## runes are read once, a crystal recharges your flashlight.
+func _relics(game, streamer: ChunkStreamer, player) -> void:
+	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
+	var at := func(dx: float, dz: float) -> Vector3:
+		var lx := clampf(player.global_position.x - rc.position.x + dx, 4.0, 60.0)
+		var lz := clampf(player.global_position.z - rc.position.z + dz, 4.0, 60.0)
+		return Vector3(lx, ChunkGenerator.height_at(rc.data, lx, lz), lz)
+	var day0: float = game.day
+	var ruin: Dictionary = rc.add_object("alien_ruin", at.call(0.0, -12.0), 0.0, Eras.SCIFI, {})
+	check(Wonders.use_of(ruin, game.day).get("verb", "").begins_with("Wake"), "a sleeping relic offers to wake")
+	var items_before := 0
+	for i in Inventory.SIZE:
+		if game.inventory.get_slot(i) != null:
+			items_before += int(game.inventory.get_slot(i)["qty"])
+	var xp_before: int = game.stats.xp + game.stats.level * 100000
+	game.set_health(30.0)
+	var msg := WonderEffects.apply(ruin, rc, player)
+	var items_after := 0
+	for i in Inventory.SIZE:
+		if game.inventory.get_slot(i) != null:
+			items_after += int(game.inventory.get_slot(i)["qty"])
+	check(ruin["st"].get("woke", false) and msg.contains("wakes"), "waking the relic (%s)" % msg)
+	check(game.health >= game.stats.max_health() - 0.01, "the relic restores you")
+	check(items_after > items_before and game.stats.xp + game.stats.level * 100000 > xp_before, "it gives gifts and experience (%d -> %d items)" % [items_before, items_after])
+	check(Wonders.use_of(ruin, game.day).is_empty(), "and nothing more until tomorrow")
+	player.damage_object(rc, ruin, 5000.0, 1.0)
+	check(not ruin["st"].get("gone", false) and Durability.health_left(ruin) >= Durability.max_hp(ruin), "a relic can't be broken")
+	game.day = day0 + 1.0
+	check(Wonders.use_of(ruin, game.day).get("verb", "").begins_with("Draw"), "a day later it can restore you again")
+	game.day = day0
+	var beacon: Dictionary = rc.add_object("beacon", at.call(10.0, -12.0), 0.0, Eras.SCIFI, {})
+	var objs_before: int = rc.data["objects"].size()
+	var pins_before: int = game.markers.on_planet(game.planet).size()
+	msg = WonderEffects.apply(beacon, rc, player)
+	var pod := {}
+	for i in range(objs_before, rc.data["objects"].size()):
+		if rc.data["objects"][i]["t"] == "supply_pod":
+			pod = rc.data["objects"][i]
+	check(beacon["st"].get("lit", false) and not pod.is_empty() and not pod["st"].get("loot", []).is_empty(), "lighting a beacon calls down a stocked supply pod (%s)" % msg)
+	check(game.markers.on_planet(game.planet).size() == pins_before + 1, "and marks the nearest settlement on the atlas")
+	var stone: Dictionary = rc.add_object("standing_stone", at.call(-10.0, -12.0), 0.0, Eras.MEDIEVAL, {})
+	msg = WonderEffects.apply(stone, rc, player)
+	check(stone["st"].get("read", false) and Wonders.use_of(stone, game.day).is_empty(), "runes are read once (%s)" % msg)
+	game.give(ItemDB.make("flashlight_dead", 1, 1.0, {}))
+	var crystal: Dictionary = rc.add_object("crystal_shard", at.call(-10.0, 0.0), 0.0, Eras.FANTASY, {})
+	msg = WonderEffects.apply(crystal, rc, player)
+	check(game.inventory.count("flashlight_dead") == 0 and game.inventory.count("flashlight") >= 1, "a crystal recharges a dead flashlight (%s)" % msg)
+	# Out of the way of what comes next.
+	for o in [ruin, beacon, pod, stone, crystal]:
+		if not o.is_empty():
+			rc.remove_object(o["i"])
+	await _frames(2)
+
 func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	var gen := ChunkGenerator.new(game.seed, game.store.has_rivers())
 	var here: Vector3 = player.global_position

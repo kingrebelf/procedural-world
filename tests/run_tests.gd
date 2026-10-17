@@ -859,6 +859,17 @@ func test_hand_light() -> void:
 	check(not hl.is_on(), "putting it away puts it out")
 	hl.free()
 
+func test_wonders() -> void:
+	var ruin := {"t": "alien_ruin", "sp": 5, "st": {}}
+	check(Wonders.use_of(ruin, 2.4)["verb"].begins_with("Wake"), "a sleeping relic offers to wake")
+	ruin["st"] = {"woke": true, "day": 2}
+	check(Wonders.use_of(ruin, 2.9).is_empty(), "a woken relic rests the same day")
+	check(Wonders.use_of(ruin, 3.1)["verb"].begins_with("Draw"), "and restores you the next")
+	check(Wonders.use_of({"t": "standing_stone", "st": {"read": true}}, 9.0).is_empty(), "runes are read once")
+	check(not Wonders.use_of({"t": "well", "st": {"day": 5}}, 5.5).is_empty(), "a well can always be drunk from")
+	check(Wonders.unbreakable("alien_ruin") and Wonders.unbreakable("beacon") and not Wonders.unbreakable("well"), "relics can't be broken; a well can")
+	check(Wonders.compass(Vector2.ZERO, Vector2(0, -10)) == "north" and Wonders.compass(Vector2.ZERO, Vector2(10, 10)) == "southeast", "compass words")
+
 func test_levelling_and_attributes() -> void:
 	var s := Stats.new()
 	check(s.level == 1 and s.points == 0 and s.max_health() == 100.0, "fresh character")
