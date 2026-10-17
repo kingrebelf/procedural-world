@@ -171,10 +171,15 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var fauna: Array = bp.get("fauna", [])
 	if fauna.is_empty():
 		return out
-	var sp: int = fauna[r.randi() % fauna.size()]
-	var p := Creature.species(sp, era)
+	var pick := r.randi()
 	var lx := r.randf_range(8, 56)
 	var lz := r.randf_range(8, 56)
+	# Each herd where its kind lives: the region's first species (from the roll) that
+	# suits the ground here, or none.
+	var sp := Creature.fits_habitat(fauna, pick, era, chunk, lx, lz)
+	if sp == 0:
+		return out
+	var p := Creature.species(sp, era)
 	for i in int(p["herd"]):
 		out.append({"id": "%d_%d_%d" % [cx, cz, i], "sp": sp, "era": era,
 			"lx": clampf(lx + r.randf_range(-5, 5), 0, 63.9), "lz": clampf(lz + r.randf_range(-5, 5), 0, 63.9)})

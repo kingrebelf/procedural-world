@@ -79,6 +79,9 @@ var _site_cache: Dictionary = {}
 ## Eras a planet allows (empty = all three). Set by Planets.apply before any field of
 ## that planet is built; read on worker threads, never changed while a world is open.
 static var allowed_eras: Array = []
+## Height of the planet's snow line in metres (Planets.apply sets it; a copy here so
+## generation code needn't reach for Planets, which needs the running game).
+static var snow_line := 50.0
 
 func site_era(ix: int, iz: int) -> int:
 	var h := WHash.hash2(seed, ix, iz, 101)

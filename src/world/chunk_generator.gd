@@ -936,6 +936,26 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var k := (j * LOOK_N + i) * LOOK_BYTES
 	return 1.0 - maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7)
 
+## How much of the ground here is loose wind-blown sand (1 deep in dunes, 0 elsewhere).
+static func sand_at(chunk: Dictionary, lx: float, lz: float) -> float:
+	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
+	if lb.is_empty():
+		return 0.0
+	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
+	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
+	return lb[(j * LOOK_N + i) * LOOK_BYTES + 8] / 255.0
+
+## How wet the ground is: 1 at the water's edge (river banks, lake and sea shores),
+## falling to 0 a few metres up and away from it. Reeds and rushes grow only here.
+static func wet_at(chunk: Dictionary, lx: float, lz: float) -> float:
+	var wet := 1.0 - smoothstep(0.6, 2.2, height_at(chunk, lx, lz) - WATER_LEVEL)
+	if chunk.has("river"):
+		var rv: PackedFloat32Array = chunk["river"]
+		var k := (clampi(int(round(lz * 0.5)), 0, RIVER_N - 1) * RIVER_N + clampi(int(round(lx * 0.5)), 0, RIVER_N - 1)) * 3
+		if rv[k + 2] > 0.2:
+			wet = maxf(wet, 1.0 - smoothstep(1.3, 3.0, rv[k + 1]))
+	return wet
+
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
 	lx = clampf(lx, 0.0, SIZE - 0.001)
@@ -1094,9 +1114,12 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
+		# No tree takes root in loose dune sand.
+		p *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
 		var f := Biome.pick_flora(bp, pick)
+		f = Biome.by_altitude(bp, f, height_at(chunk, lx, lz), pick)
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1118,9 +1141,11 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
 			if landforms:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
+			dense *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2) or kept_out(plans, lx, lz, 1.0):
 				continue
 			var f := Biome.pick_flora(bp, pick)
+			f = Biome.by_altitude(bp, f, height_at(chunk, lx, lz), pick)
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.
@@ -1143,6 +1168,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if landforms:
 			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
 		var rocks: Array = bp["rocks"]
+		# Dunes bury their stones: no boulders on open sand.
+		if sand_at(chunk, lx, lz) > 0.4:
+			continue
 		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
 			continue
@@ -1165,8 +1193,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var loot := ItemDB.roll_loot(era, r, o)
 		_add(chunk, Eras.CACHE_TYPES[era], era, lx, lz, r.randf() * TAU, 1.0, {"loot": loot, "opened": false})
 
-	# Threshold markers inside transition bands make crossings read as intentional.
+	# Threshold markers inside transition bands make crossings read as intentional: the
+	# odd one, on fairly level ground, not a stone on every rise.
 	r = WHash.rng(seed, cx, cz, 304)
+	var marked := false
 	for n in 10:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -1175,8 +1205,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var era := _pick_era(w, r.randf())
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.8, 1.4)
-		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5 and not kept_out(plans, lx, lz, 0.8):
+		if top < 0.72 and r.randf() < 0.05 and not marked and slope_at(chunk, lx, lz) < 0.25 and not kept_out(plans, lx, lz, 0.8):
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
+			marked = true
 
 ## Strongholds whose flat ground reaches into this rectangle (v5 worlds).
 func forts_near(x0: float, z0: float, x1: float, z1: float) -> Array:

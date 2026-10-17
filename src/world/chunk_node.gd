@@ -390,7 +390,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var wz := z0 + lz
 		# Clumps with gaps of shorter ground between them (narrow ones: wide bare gaps made
 		# a meadow look like a lawn with tufts on it).
-		if roll > smoothstep(-0.8, 0.0, clump.get_noise_2d(wx, wz)):
+		if roll > smoothstep(-0.9, -0.1, clump.get_noise_2d(wx, wz)):
 			continue
 		if ChunkGenerator.kept_out(plans, lx, lz, 0.2):
 			continue
@@ -528,7 +528,12 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
-			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
+			# Each plant where its kind grows: the region's first species (from the roll)
+			# that suits this spot, or none.
+			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9)
+			if sp < 0:
+				continue
+			var key := "under#%d#%d" % [sp, era]
 			if not out.has(key):
 				out[key] = PackedFloat32Array()
 			var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
@@ -536,6 +541,39 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 			out[key] = buf
 	return out
+
+## Which of a region's undergrowth species `unders` grows at (lx, lz), starting from the
+## one `pick` chose, or -1 for none. Nothing grows through snow or on the bare heights
+## near the snow line; reeds and rushes only at the water's edge; ferns in the shade and
+## litter of woods, not out on open meadow. (Fantasy and alien forms grow where they
+## like.) `u` is a spare uniform roll.
+static func _under_for(chunk: Dictionary, cover: PackedByteArray, unders: Array, pick: int, era: int, lx: float, lz: float, y: float, u: float) -> int:
+	var cv := GroundCover.at(cover, lx, lz)
+	if cv.a > 0.12 or y > WorldField.snow_line - 4.0 - 8.0 * u:
+		return -1
+	var wet := -1.0
+	for n in unders.size():
+		# Half the time a plant that doesn't suit the spot leaves it bare rather than
+		# giving way to the next kind (or one kind would carpet the place).
+		if n == 1 and (pick >> 9) & 1 == 0:
+			return -1
+		var sp: int = unders[(pick + n) % unders.size()]
+		match Flora.under_form(sp, era):
+			"reeds":
+				if era == Eras.MEDIEVAL:
+					if wet < 0.0:
+						wet = ChunkGenerator.wet_at(chunk, lx, lz)
+					if u > wet:
+						continue
+			"fern":
+				if era == Eras.MEDIEVAL and u > cv.b * 2.5:
+					continue
+			"flowers":
+				# Wild flowers want light: few under the trees.
+				if u < cv.b * 0.8:
+					continue
+		return sp
+	return -1
 
 ## Loose stones (StoneKit) into `out`: a few in the grass, thick on scree and gravel so
 ## the ground there is more stone than soil. Keys "stone:<kind>" (pebbles per quarter of
@@ -547,12 +585,29 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 	var has_cave := chunk.has("hole")
 	var solid := PackedFloat32Array()
 	var greys := [Color(0.56, 0.54, 0.5), Color(0.5, 0.47, 0.42), Color(0.62, 0.6, 0.57), Color(0.47, 0.46, 0.45)]
+	# Stones lie in bunches (where frost heaved them up, a bank slumped, someone cleared a
+	# field into a heap) with bare stretches between, not one every few strides: a slow
+	# noise gathers the field stones, a quicker one breaks up the scree.
+	var x0 := float(chunk["cx"]) * SIZE
+	var z0 := float(chunk["cz"]) * SIZE
+	var heap := FastNoiseLite.new()
+	heap.seed = int(chunk.get("seed", 0)) ^ 0x57A9
+	heap.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	heap.frequency = 0.09
+	heap.fractal_octaves = 2
+	var grit := FastNoiseLite.new()
+	grit.seed = int(chunk.get("seed", 0)) ^ 0x6217
+	grit.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	grit.frequency = 0.3
+	grit.fractal_octaves = 1
 	for n in int(28000 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var cv := GroundCover.at(cover, lx, lz)
 		var stony := maxf(cv.r, cv.g)
-		if r.randf() > 0.012 + stony * stony * 0.9 or cv.a > 0.6:
+		var bunch := smoothstep(0.15, 0.65, heap.get_noise_2d(x0 + lx, z0 + lz))
+		var odds := 0.003 + 0.04 * bunch * bunch + stony * stony * 0.9 * (0.45 + 0.8 * (grit.get_noise_2d(x0 + lx, z0 + lz) * 0.5 + 0.5))
+		if r.randf() > odds * (1.0 - ChunkGenerator.sand_at(chunk, lx, lz)) or cv.a > 0.6:
 			continue
 		var slope := ChunkGenerator.slope_at(chunk, lx, lz)
 		if slope > 0.75:
@@ -570,18 +625,21 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		elif stony > 0.3:
 			size = 0.05 + 0.85 * pow(a, 7.0)
 		else:
-			size = 0.05 + 0.4 * pow(a, 4.0)
+			# Mostly small, a few big ones at the heart of a bunch.
+			size = 0.04 + (0.16 + 0.5 * bunch) * pow(a, 3.0)
 		var kind := "pebble"
 		if size >= 0.5:
 			kind = "rock_a" if r.randf() < 0.5 else "rock_b"
 		elif size >= 0.16:
-			kind = "stone_b" if gravelly or r.randf() < 0.3 else "stone_a"
-		var flat := r.randf_range(0.5, 0.95) if not gravelly else r.randf_range(0.6, 1.0)
+			# Water rounds stones; field and scree stones stay angular.
+			kind = "stone_b" if gravelly or r.randf() < 0.12 else "stone_a"
+		var flat := r.randf_range(0.35, 0.95) if not gravelly else r.randf_range(0.5, 1.0)
+		var long := r.randf_range(0.65, 1.45)
 		# Lying on the slope, turned and tipped a little, partly sunk.
 		var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 0.5, lz) - ChunkGenerator.height_at(chunk, lx + 0.5, lz), 1.0,
 			ChunkGenerator.height_at(chunk, lx, lz - 0.5) - ChunkGenerator.height_at(chunk, lx, lz + 0.5)).normalized()
 		var b := Basis(Quaternion(Vector3.UP, nrm)) * Basis(Vector3.UP, r.randf() * TAU) * Basis.from_euler(Vector3(r.randf_range(-0.2, 0.2), 0, r.randf_range(-0.2, 0.2)))
-		b = b.scaled_local(Vector3(size, size * flat, size))
+		b = b.scaled_local(Vector3(size * long, size * flat, size / long))
 		var p := Vector3(lx, y - size * flat * 0.12, lz)
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var tint: Color = greys[r.randi() % greys.size()]

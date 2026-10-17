@@ -81,6 +81,11 @@ static func build_under(sp: int, era: int) -> ArrayMesh:
 	var shift: float = [0.15, 0.35, 0.5][clampi(era, 0, 2)]
 	var coloured := Color.WHITE.lerp(Color.from_hsv(hue, 0.5, 0.92), shift)
 	var leaf := Color.from_hsv(hue, 0.5 + shift * 0.2, 0.62) if era != Eras.FANTASY else Color.from_hsv(hue, 0.36, 0.5)
+	if form == "fern" and era == Eras.MEDIEVAL:
+		# Woodland ferns are a deep, slightly blue-green in the shade, not the kit's lime
+		# (which read as a tropical palm on the forest floor).
+		leaf = Color.from_hsv(r.randf_range(0.24, 0.3), 0.45, 0.4)
+		coloured = Color.WHITE.lerp(Color.from_hsv(0.27, 0.45, 0.62), 0.45)
 	return _assemble(src, xf, leaf, Color.WHITE, coloured)
 
 ## A metre-square patch of ground clutter from kit models (instanced many times around

@@ -99,6 +99,7 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 	var rv: PackedFloat32Array = chunk.get("river", PackedFloat32Array())
 	var rn := ChunkGenerator.RIVER_N
 	var snow_line := Planets.snow_line
+	var lows := _lows(hs)
 	var out := PackedByteArray()
 	out.resize(n * 4)
 	var sn := PackedFloat32Array()
@@ -112,6 +113,8 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			var nb := big.get_noise_2d(wx, wz)
 			var ns := small.get_noise_2d(wx, wz)
 			var flat := 1.0 - steep[k]
+			# Loose dune sand buries stones and gravel.
+			var bare := 1.0 - ChunkGenerator.sand_at(chunk, i, j)
 			# Scree below cliffs, broken into tongues and gaps; rocky patches in the open,
 			# on rising and high ground rather than flat meadow, and never in a village or
 			# on a road.
@@ -128,9 +131,14 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			var shore := 1.0 - smoothstep(0.5, 1.6, h - ChunkGenerator.WATER_LEVEL)
 			gravel = maxf(gravel, shore * smoothstep(-0.15, 0.2, nb + ns * 0.3))
 			gravel = maxf(gravel, smoothstep(0.5, 0.62, -nb + ns * 0.1) * 0.9 * (1.0 - settled[k]))
-			gravel *= flat
-			# Snow lies on high ground, in drifts, and slides off steep faces.
-			var snow := smoothstep(snow_line - 6.0, snow_line + 8.0, h + nb * 9.0 + ns * 2.0) * (1.0 - smoothstep(0.55, 0.9, steep[k] * 0.5 + 0.4 * (1.0 - flat)))
+			gravel *= flat * bare
+			scree *= bare
+			# Snow lies on high ground, in drifts, and slides off steep faces. What counts
+			# is how high the land around stands: a tor or crag rising out of a green
+			# valley stays bare, it does not wear a cap of its own.
+			var lo := _low_at(lows, i, j)
+			var hs_ := minf(h, lo + 3.0 + maxf(h - lo - 3.0, 0.0) * 0.25)
+			var snow := smoothstep(snow_line - 6.0, snow_line + 8.0, hs_ + nb * 9.0 + ns * 2.0) * (1.0 - smoothstep(0.55, 0.9, steep[k] * 0.5 + 0.4 * (1.0 - flat)))
 			out[k * 4] = int(scree * 255.0)
 			out[k * 4 + 1] = int(gravel * 255.0)
 			out[k * 4 + 2] = int(litter[k] * (1.0 - scree * 0.7) * 255.0)
@@ -147,6 +155,42 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 					+ (sn[k - RES - 1] + sn[k - RES + 1] + sn[k + RES - 1] + sn[k + RES + 1]) * 0.05
 			out[k * 4 + 3] = int(v * 255.0)
 	return out
+
+const LOW_STEP := 16 ## metres between the points of the low-ground lattice
+const LOW_REACH := 8 ## how far each looks for the lowest ground round it
+const LOW_N := SIZE / LOW_STEP + 1
+
+## The lowest ground near each point of a 16 m lattice over the chunk, so snow can follow
+## the lie of the land rather than every bump. Points on the chunk's edge look only along
+## the edge (heights both chunks share), so neighbours agree where they meet.
+static func _lows(hs: PackedFloat32Array) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(LOW_N * LOW_N)
+	for J in LOW_N:
+		for I in LOW_N:
+			var ci := I * LOW_STEP
+			var cj := J * LOW_STEP
+			var edge_i := I == 0 or I == LOW_N - 1
+			var edge_j := J == 0 or J == LOW_N - 1
+			var m := INF
+			for dj in range(-LOW_REACH, LOW_REACH + 1, 2):
+				var jj := cj + (0 if edge_j else dj)
+				if jj < 0 or jj >= RES:
+					continue
+				for di in range(-LOW_REACH, LOW_REACH + 1, 2):
+					var ii := ci + (0 if edge_i else di)
+					if ii < 0 or ii >= RES:
+						continue
+					m = minf(m, hs[jj * RES + ii])
+			out[J * LOW_N + I] = m
+	return out
+
+static func _low_at(lows: PackedFloat32Array, i: int, j: int) -> float:
+	var I := mini(i / LOW_STEP, LOW_N - 2)
+	var J := mini(j / LOW_STEP, LOW_N - 2)
+	var fx := (i - I * LOW_STEP) / float(LOW_STEP)
+	var fz := (j - J * LOW_STEP) / float(LOW_STEP)
+	return lerpf(lerpf(lows[J * LOW_N + I], lows[J * LOW_N + I + 1], fx), lerpf(lows[(J + 1) * LOW_N + I], lows[(J + 1) * LOW_N + I + 1], fx), fz)
 
 ## The cover at a point of the chunk, interpolated: Color(scree, gravel, litter, snow).
 static func at(cover: PackedByteArray, lx: float, lz: float) -> Color:
