@@ -1963,6 +1963,22 @@ func test_wonder_meshes() -> void:
 		check(ObjectLibrary.kind(t) == "structure" and Wonders.unbreakable(t), "%s is an unbreakable structure" % t)
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
+	# Human worlds: no glowing glyphs, shards or inlays on the wonders they can have.
+	for t in ["w_throne", "w_dreadnought", "w_column", "w_pylon"]:
+		var calm := WonderSite.build(t, false, true)
+		var lit := 0
+		for i in calm.get_surface_count():
+			var mat := calm.surface_get_material(i) as StandardMaterial3D
+			if mat != null and mat.emission_enabled and mat.emission_texture != null:
+				lit += 1
+		check(lit == 0, "a human world's %s has no glowing stone (%d lit surfaces)" % [t, lit])
+	var o := {"t": "w_throne"}
+	var was := Eras.theme
+	Eras.theme = "human"
+	check(ObjectLibrary.mesh_key(o) == "w_throne" + WonderSite.CALM, "human worlds use the calm wonder mesh")
+	Eras.theme = "alien"
+	check(ObjectLibrary.mesh_key(o) == "w_throne", "alien worlds keep the glow")
+	Eras.theme = was
 
 
 ## Nothing grows through a floor: trees, rocks, caches and markers keep out of every

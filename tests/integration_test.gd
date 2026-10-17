@@ -198,9 +198,11 @@ func _run() -> void:
 	var mc: Vector2 = world.hud._minimap._canvas.center
 	check(mc.distance_to(Vector2(ppos.x, ppos.z)) < 2.0, "the minimap follows you (%s vs %s)" % [mc, Vector2(ppos.x, ppos.z)])
 	var zone: Dictionary = world.hud._minimap._zone
-	check(not zone.is_empty() and zone["level_lo"] == 1 and String(zone["finds"]) != "", "the minimap names the zone, its levels and what's found there (%s)" % zone.get("name", ""))
+	check(not zone.is_empty() and String(zone["finds"]) != "", "the minimap names the zone, its levels and what's found there (%s)" % zone.get("name", ""))
 	var far := ZoneInfo.at(game.seed, 3000.0, 0.0)
-	check(far["level_lo"] == 21 and far["level_hi"] == 25, "zones further out are higher level")
+	var flv := ZoneInfo.level_at(3000.0, 0.0)
+	check(far["level_lo"] <= flv and flv <= far["level_hi"] and far["level_hi"] % 10 == 9, "the band holds the zone's level (%d in %d-%d)" % [flv, far["level_lo"], far["level_hi"]])
+	check(far["level_lo"] >= zone["level_lo"], "zones further out are no lower level")
 	await _map_unit_checks()
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.

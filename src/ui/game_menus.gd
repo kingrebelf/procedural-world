@@ -1102,9 +1102,14 @@ func _marker_editor(side: VBoxContainer, mk: Dictionary) -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.icon = MapCanvas.icon_texture(ic)
 		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.tooltip_text = String(ic).capitalize()
-		if String(mk.get("icon", "pin")) == ic:
-			b.add_theme_stylebox_override("normal", UITheme.sb(Color(1, 1, 1, 0.12), UITheme.ACCENT, 6, 2, 4))
+		# Flat tiles: the painted button frame would hide the small icons.
+		var on: bool = String(mk.get("icon", "pin")) == String(ic)
+		var flat := UITheme.sb(Color(1, 1, 1, 0.14) if on else Color(0, 0, 0, 0.35), UITheme.ACCENT if on else Color(1, 1, 1, 0.08), 6, 2 if on else 1, 4)
+		for st in ["normal", "pressed", "focus"]:
+			b.add_theme_stylebox_override(st, flat)
+		b.add_theme_stylebox_override("hover", UITheme.sb(Color(1, 1, 1, 0.18), UITheme.ACCENT, 6, 1, 4))
 		b.pressed.connect(func():
 			commit.call()
 			Game.markers.edit(id, {"icon": ic})
@@ -1139,6 +1144,8 @@ func _map_filters(side: VBoxContainer) -> void:
 		cb.add_theme_font_size_override("font_size", 14)
 		cb.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
 		cb.button_pressed = Game.map.shows(cat)
+		for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			cb.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 		cb.toggled.connect(func(on): Game.map.set_shown(cat, on))
 		grid.add_child(cb)
 	side.add_child(grid)

@@ -121,7 +121,9 @@ static func _surface(ph: String, scale: float, rough: float, metal: float, glow:
 		m.normal_texture = photo(ph, "normal")
 	if glow > 0.0 and photo(ph, "emit") != null:
 		m.emission_enabled = true
+		# Multiply, so only the texture's lit parts glow (Add would light the whole face).
 		m.emission = Color.WHITE
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 		m.emission_texture = photo(ph, "emit")
 		m.emission_energy_multiplier = glow
 	m.uv1_triplanar = true
@@ -380,6 +382,9 @@ static func _get_mat(name: String) -> Material:
 		"hazard": m = _surface("hazard", 0.7, 0.6, 0.2, 0.0)
 		"alien_hull": m = _surface("alien_hull", 0.3, 0.35, 0.25, 3.0)
 		"screen": m = _surface("screen", 0.9, 0.2, 0.0, 1.4)
+		# Unlit versions for human worlds: the shards glint, nothing glows.
+		"starfall_glass_dull": m = _surface("starfall_glass", 0.14, 0.12, 0.6, 0.0)
+		"void_stone_dull": m = _surface("void_stone", 0.25, 0.5, 0.1, 0.0)
 		"glow_cyan": m = _glow(Color(0.2, 0.85, 1.0), 4.0)
 		"glow_teal": m = _glow(Color(0.2, 1.0, 0.8), 3.0)
 		"glow_violet": m = _glow(Color(0.7, 0.4, 1.0), 3.0)
