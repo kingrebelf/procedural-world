@@ -472,11 +472,18 @@ func _run() -> void:
 		var pl := TownLife.plan(g, lt)
 		var yard := {}
 		var best := -1
+		# An ordinary home, not a shop (a shop's front stays clear for its sign and door).
+		var shops := []
+		for sh in TownShops.plan(g, lt):
+			if sh["kind"] != "":
+				shops.append(sh["p"])
 		for h in pl["houses"]:
+			if shops.any(func(q: Vector2) -> bool: return q.distance_to(h["p"]) < 0.6):
+				continue
 			var score := 0
 			for e in pl["pieces"]:
 				if int(e["house"]) == int(h["i"]):
-					score += {"woodpile": 2, "washing": 3, "garden": 2, "bench": 1, "barrels": 1, "haystack": 2, "cart": 2}.get(e["k"], 0)
+					score += {"woodpile": 2, "washing": 3, "garden": 2, "bench": 1, "barrels": 1, "haystack": 2, "cart": 2, "fence": 1}.get(e["k"], 0)
 			if score > best:
 				best = score
 				yard = h

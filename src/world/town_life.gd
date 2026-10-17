@@ -17,8 +17,9 @@ const HOUSE_T := ["cottage", "townhouse", "longhouse"]
 const ROUND := {"watchtower": 3.6, "well": 1.9, "market_stall": 2.0, "fruit_cart": 2.0, "wagon": 2.4,
 	"barrels": 1.5, "signpost": 0.7, "trader": 2.4, "chest": 0.8}
 ## Crop kinds: [grass species list, row spacing, spacing along the row, ground wear].
+## crop: [species, row gap, plant gap, soil wear, rows per strip, furrow between strips]
 const CROPS := {
-	"wheat": [["wheat"], 0.42, 0.34, 0.45],
+	"wheat": [["wheat"], 0.42, 0.34, 0.45, 7, 1.1],
 	"veg": [["cabbage", "leek"], 0.75, 0.42, 0.72],
 	"fallow": [[], 1.0, 1.0, 0.82],
 	"garden": [["cabbage", "leek", "cabbage"], 0.6, 0.38, 0.85],
@@ -249,6 +250,8 @@ static func _yard(ctx: Dictionary, h: Dictionary, r: RandomNumberGenerator, out:
 		var e := {"k": kind, "p": frame_to_world(p, yaw, l), "yaw": yaw + ly, "house": own}
 		e.merge(extra)
 		out["pieces"].append(e)
+	var add_fence := func(a: Vector2, b: Vector2) -> void:
+		out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a), "b": frame_to_world(p, yaw, b), "house": own, "wattle": true})
 	# Smoke from the chimney when the hearth is lit (most homes).
 	if r.randf() < 0.8:
 		var top := float(h["storeys"]) * 3.0 + 0.9 + (3.18 if int(h["storeys"]) > 1 else 3.0)
@@ -299,6 +302,27 @@ static func _yard(ctx: Dictionary, h: Dictionary, r: RandomNumberGenerator, out:
 	# A lantern on the wall by the door.
 	if r.randf() < 0.65:
 		add.call("lantern", Vector2(-bs * 0.98, d * 0.5 + 0.1), 0.0, {"front": true, "y": 2.0})
+	# The ground before the door, trodden bare.
+	out["soil"].append({"p": frame_to_world(p, yaw, Vector2(r.randf_range(-0.3, 0.3), d * 0.5 + 1.1)), "yaw": yaw + r.randf_range(-0.15, 0.15),
+		"hx": w * 0.2 + 0.5, "hz": 0.95, "wear": 0.55})
+	# A wattle fence round the back yard, open at the front; each side only where it fits,
+	# with a gap in the back for a gate.
+	if t != "townhouse" and r.randf() < 0.6:
+		var fx := w * 0.5 + 3.2
+		var fb := -(d * 0.5 + 5.6)
+		var ff := d * 0.5 - 0.6
+		var gx := r.randf_range(-fx * 0.5, fx * 0.5)
+		for seg: Array in [[Vector2(-fx, ff), Vector2(-fx, fb)], [Vector2(-fx, fb), Vector2(gx - 0.7, fb)],
+				[Vector2(gx + 0.7, fb), Vector2(fx, fb)], [Vector2(fx, fb), Vector2(fx, ff)]]:
+			var a: Vector2 = seg[0]
+			var b: Vector2 = seg[1]
+			var n := maxi(2, int(a.distance_to(b) / 1.2))
+			var pts: Array = []
+			for k in n + 1:
+				pts.append(frame_to_world(p, yaw, a.lerp(b, float(k) / n)))
+			if _all_free(ctx, pts, 0.3, own):
+				add_fence.call(a, b)
+				_take(ctx, pts, 0.35)
 	# Longhouses farm: a haystack and a cart beside them.
 	if t == "longhouse":
 		var lc := Vector2(side * (w * 0.5 + 2.4), r.randf_range(-d * 0.3, d * 0.2))
@@ -432,7 +456,8 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 		out["soil"].append(f)
 		# A cart track from the field's near edge back toward town, ending at a road or
 		# outside the wall.
-		var cur := frame_to_world(p, yaw, Vector2(r.randf_range(-hx, hx) * 0.5, -hz - 0.6))
+		var gate_x := r.randf_range(-hx, hx) * 0.5
+		var cur := frame_to_world(p, yaw, Vector2(gate_x, -hz - 0.6))
 		var stop := inner + (5.5 if bool(s.get("walled", false)) else -2.0)
 		for step in 40:
 			var on_road := false
@@ -442,27 +467,23 @@ static func _farms(gen: ChunkGenerator, ctx: Dictionary, s: Dictionary, r: Rando
 			if on_road or cur.distance_to(c) < stop:
 				break
 			var nxt := cur + (c - cur).normalized().rotated(sin(step * 0.5 + yaw) * 0.15) * 2.0
-			out["paths"].append([cur, nxt, 0.75, 0.6])
+			out["paths"].append([cur, nxt, 1.05, 0.85])
 			cur = nxt
-		# Fences along the side facing town, sometimes a second side; a haystack or two by
-		# a ripe field, a scarecrow among the crops, now and then a cart at the edge.
-		var near := -1.0 # the -z edge faces town
-		var fence_sides := [Vector2(0, near)]
-		if r.randf() < 0.45:
-			fence_sides.append(Vector2(1.0 if r.randf() < 0.5 else -1.0, 0))
-		for e: Vector2 in fence_sides:
-			var a: Vector2
-			var b: Vector2
-			if e.x == 0.0:
-				a = Vector2(-hx, e.y * (hz + 0.5))
-				b = Vector2(hx, e.y * (hz + 0.5))
-			else:
-				a = Vector2(e.x * (hx + 0.5), -hz)
-				b = Vector2(e.x * (hx + 0.5), hz)
-			# A gap for the gate.
-			var g := r.randf_range(0.3, 0.7)
-			out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a), "b": frame_to_world(p, yaw, a.lerp(b, g - 0.06)), "house": -1})
-			out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a.lerp(b, g + 0.06)), "b": frame_to_world(p, yaw, b), "house": -1})
+		# A fence right round the field, with a gate where the cart track leaves it (now
+		# and then a field is left open); a haystack or two by a ripe field, a scarecrow
+		# among the crops, now and then a cart at the edge.
+		if r.randf() < 0.8:
+			var ex := hx + 0.5
+			var ez := hz + 0.5
+			var corners := [Vector2(-ex, -ez), Vector2(ex, -ez), Vector2(ex, ez), Vector2(-ex, ez)]
+			for si in 4:
+				var a: Vector2 = corners[si]
+				var b: Vector2 = corners[(si + 1) % 4]
+				if si == 0: # the near side, toward town: the gate
+					out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a), "b": frame_to_world(p, yaw, Vector2(gate_x - 1.3, -ez)), "house": -1})
+					out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, Vector2(gate_x + 1.3, -ez)), "b": frame_to_world(p, yaw, b), "house": -1})
+				else:
+					out["pieces"].append({"k": "fence", "a": frame_to_world(p, yaw, a), "b": frame_to_world(p, yaw, b), "house": -1})
 		if crop == "wheat" and ripe > 0.6:
 			for n in r.randi_range(1, 2):
 				var l := Vector2(r.randf_range(-hx, hx), hz + 2.2)
@@ -516,7 +537,9 @@ static func annotate(gen: ChunkGenerator, chunk: Dictionary) -> void:
 			if worn.is_empty():
 				worn.resize(RES * RES)
 			_wear(worn, bb, x0, z0, func(q: Vector2) -> float:
-				return float(e[3]) * (1.0 - smoothstep(hw * 0.45, hw + 0.75, _seg_d(q, a, b))))
+				# Ragged edges: trodden wider here, grassed over there.
+				var rag := 0.45 * sin(q.x * 1.37 + q.y * 0.61) * sin(q.y * 1.13 - q.x * 0.47) + 0.2 * sin(q.x * 3.1 - q.y * 2.7)
+				return float(e[3]) * (1.0 - smoothstep(hw * 0.35, hw + 1.1, _seg_d(q, a, b) + rag)))
 		for f: Dictionary in pl["soil"]:
 			var p: Vector2 = f["p"]
 			var hx: float = f["hx"]
@@ -535,10 +558,32 @@ static func annotate(gen: ChunkGenerator, chunk: Dictionary) -> void:
 			if f.has("crop") and not (CROPS[f["crop"]][0] as Array).is_empty():
 				crops.append({"p": p - Vector2(x0, z0), "yaw": yaw, "hx": hx, "hz": hz, "crop": f["crop"], "rows": int(f.get("rows", 0)),
 					"tint": f.get("tint", Color(0.36, 0.5, 0.3)), "seed": int(f.get("seed", 0))})
+		_clear_fields(chunk, pl, x0, z0)
 	if not worn.is_empty():
 		chunk["worn"] = worn
 	if not crops.is_empty():
 		chunk["crops"] = crops
+
+## Wild trees and boulders standing in a field or orchard (or on its fence line) were
+## cleared when it was broken: they are marked gone, as if felled long ago.
+static func _clear_fields(chunk: Dictionary, pl: Dictionary, x0: float, z0: float) -> void:
+	var areas: Array = []
+	for f: Dictionary in pl["fields"]:
+		areas.append([f["p"], f["yaw"], float(f["hx"]) + 1.6, float(f["hz"]) + 1.6])
+	for f: Dictionary in pl["orchards"]:
+		areas.append([f["p"], f["yaw"], float(f["hx"]) + 1.2, float(f["hz"]) + 1.2])
+	if areas.is_empty():
+		return
+	for o in chunk["objects"]:
+		var k := ObjectLibrary.kind(o["t"])
+		if (k != "tree" and k != "rock") or o["st"].get("gone", false):
+			continue
+		var q := Vector2(x0 + o["p"].x, z0 + o["p"].z)
+		for ar: Array in areas:
+			var l := world_to_frame(ar[0], ar[1], q)
+			if absf(l.x) < float(ar[2]) and absf(l.y) < float(ar[3]):
+				o["st"]["gone"] = true
+				break
 
 static func _wear(worn: PackedByteArray, bb: Rect2, x0: float, z0: float, f: Callable) -> void:
 	const RES := ChunkGenerator.RES
@@ -586,10 +631,26 @@ static func crops(chunk: Dictionary, out: Dictionary, density: float, plans: Arr
 		var tint: Color = bed["tint"]
 		var a_len := hx if rows_x else hz
 		var b_len := hz if rows_x else hx
-		var nb := int(b_len * 2.0 / row_gap)
+		# Rows sown in strips with a bare furrow between them (strip farming), each strip a
+		# little riper or greener than the next, so a field reads as rows from the road.
+		var strip := int(cp[4]) if cp.size() > 4 else 0
+		var furrow: float = cp[5] if cp.size() > 5 else 0.0
+		var offs: Array[float] = []
+		var shade: Array[float] = []
+		var bo0 := -b_len + 0.25
+		var si := 0
+		var tone := 1.0
+		while bo0 <= b_len - 0.25:
+			offs.append(bo0)
+			shade.append(tone)
+			bo0 += row_gap
+			si += 1
+			if strip > 0 and si % strip == 0:
+				bo0 += furrow
+				tone = r.randf_range(0.86, 1.1)
 		var na := int(a_len * 2.0 / gap)
-		for bi in nb + 1:
-			var bo := -b_len + 0.25 + (b_len * 2.0 - 0.5) * bi / maxf(nb, 1)
+		for bi in offs.size():
+			var bo: float = offs[bi]
 			var sp: String = species[bi % species.size()]
 			for ai in na + 1:
 				var ao := -a_len + 0.2 + (a_len * 2.0 - 0.4) * ai / maxf(na, 1) + r.randf_range(-0.1, 0.1) * gap
@@ -615,7 +676,7 @@ static func crops(chunk: Dictionary, out: Dictionary, density: float, plans: Arr
 				if not clear:
 					continue
 				var b := Basis(Vector3.UP, yr).scaled(Vector3(sc, sc * r.randf_range(0.88, 1.12), sc))
-				var tc := tint * r.randf_range(0.9, 1.08)
+				var tc := tint * (shade[bi] * r.randf_range(0.92, 1.06))
 				var key := "%s@%d" % [sp, (1 if q.x >= S * 0.5 else 0) + (2 if q.y >= S * 0.5 else 0)]
 				var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
 				buf.append_array([b.x.x, b.y.x, b.z.x, q.x, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, q.y,
@@ -794,7 +855,11 @@ func _build(pieces: Array, base: float) -> void:
 			"lantern": _lantern(models, root, e, o2, oy)
 			"haystack": _haystack(k, xf, r, body)
 			"cart": _cart(k, models, xf, bool(e.get("hay", false)), r, body)
-			"fence": _fence(models, e["a"], e["b"], o2, oy, body)
+			"fence":
+				if e.get("wattle", false):
+					_wattle(k, e["a"], e["b"], o2, oy, r, body)
+				else:
+					_fence(models, e["a"], e["b"], o2, oy, body)
 			"scarecrow": _scarecrow(k, xf, r)
 			"tree": _tree(root, e, at)
 			"torch_post": _torch_post(k, models, root, xf, body)
@@ -1031,6 +1096,44 @@ func _fence(models: Array, a: Vector2, b: Vector2, o2: Vector2, oy: float, body:
 		models.append(["village/Prop_WoodenFence_Single", 0.0, Vector3.ZERO, 1.0, {}, xf])
 		_box_shape(body, xf * Transform3D.IDENTITY.translated(Vector3(0, 0.45, 0)), Vector3(2.0, 0.9, 0.12))
 
+## A wattle fence: stakes about a metre apart with hazel rods woven between them, each
+## panel following the ground and leaning a little on its own.
+func _wattle(k: MeshKit, a: Vector2, b: Vector2, o2: Vector2, oy: float, r: RandomNumberGenerator, body: StaticBody3D) -> void:
+	var len := a.distance_to(b)
+	if len < 0.5:
+		return
+	var n := maxi(1, int(round(len / 1.05)))
+	var dir := (b - a) / len
+	var yaw := atan2(dir.y, dir.x)
+	var h := r.randf_range(0.85, 1.05)
+	var rod := Color(0.56, 0.47, 0.36) * r.randf_range(0.85, 1.08)
+	for i in n + 1:
+		var q := a + dir * (len * i / n)
+		var y := _ground(q.x, q.y)
+		if is_nan(y):
+			continue
+		var lean := Basis(Vector3(dir.x, 0, dir.y).cross(Vector3.UP).normalized(), r.randf_range(-0.06, 0.06))
+		k.cylinder("bark_w", Transform3D(lean, Vector3(q.x - o2.x, y - oy - 0.1, q.y - o2.y)), 0.035, 0.03, h + 0.18, 5, true, 0.1, 1, rod * 0.8)
+		if i == n:
+			break
+		var q1 := a + dir * (len * (i + 1) / n)
+		var y1 := _ground(q1.x, q1.y)
+		if is_nan(y1):
+			continue
+		var seg := len / n
+		var tilt := atan2(y1 - y, seg)
+		var mid := (q + q1) * 0.5
+		var pb := Basis(Vector3.UP, -yaw) * Basis(Vector3(0, 0, 1), tilt) * lean
+		var px := Transform3D(pb, Vector3(mid.x - o2.x, (y + y1) * 0.5 - oy, mid.y - o2.y))
+		# Rods over and under the stakes in turn: alternate rows sit to either side.
+		var rows := int((h - 0.06) / 0.068)
+		for j in rows:
+			var off := 0.03 * (1.0 if (i + j) % 2 == 0 else -1.0)
+			var bend := Basis(Vector3.UP, r.randf_range(-0.03, 0.03))
+			k.box("bark_w", px * Transform3D(bend, Vector3(0, 0.08 + j * (h - 0.08) / rows, off)),
+				Vector3(seg + 0.06, 0.062, 0.04), rod * r.randf_range(0.78, 1.12))
+		_box_shape(body, px * Transform3D.IDENTITY.translated(Vector3(0, h * 0.5, 0)), Vector3(seg, h, 0.1))
+
 ## A scarecrow: a post and crossbar in an old shirt, a sack head and a straw hat.
 static func _scarecrow(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator) -> void:
 	var I := Transform3D.IDENTITY
@@ -1095,7 +1198,10 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_mat.vertex_color_use_as_albedo = true
 		_smoke_mat.albedo_texture = load("res://assets/textures/fx/smoke_flipbook.png")
 		_smoke_mat.roughness = 1.0
-		_smoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+		# Smoke scatters light through itself, so the side away from the sun stays pale
+		# rather than going sooty.
+		_smoke_mat.backlight_enabled = true
+		_smoke_mat.backlight = Color(0.55, 0.56, 0.6)
 		_smoke_mat.disable_receive_shadows = true
 		_smoke_pm = ParticleProcessMaterial.new()
 		_smoke_pm.direction = Vector3(0, 1, 0)
@@ -1122,10 +1228,11 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		st.curve = sc
 		_smoke_pm.scale_curve = st
 		var g := Gradient.new()
-		g.set_color(0, Color(0.5, 0.48, 0.46, 0.0))
-		g.add_point(0.1, Color(0.5, 0.48, 0.46, 0.7))
-		g.add_point(0.55, Color(0.6, 0.59, 0.58, 0.4))
-		g.set_color(g.get_point_count() - 1, Color(0.7, 0.7, 0.7, 0.0))
+		# Wood smoke: pale grey-blue from the chimney, thinning to near white.
+		g.set_color(0, Color(0.76, 0.78, 0.82, 0.0))
+		g.add_point(0.1, Color(0.76, 0.78, 0.82, 0.62))
+		g.add_point(0.55, Color(0.84, 0.85, 0.88, 0.36))
+		g.set_color(g.get_point_count() - 1, Color(0.9, 0.9, 0.92, 0.0))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
 		_smoke_pm.color_ramp = gt

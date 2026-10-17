@@ -3249,6 +3249,14 @@ func test_town_life() -> void:
 	for key in g:
 		crops += (g[key] as PackedFloat32Array).size() / 16
 	check(crops > 200, "crops grow in the field (%d)" % crops)
+	# No wild tree is left standing in the field.
+	var standing := 0
+	for o in chunk["objects"]:
+		if ObjectLibrary.kind(o["t"]) == "tree" and not o["st"].get("gone", false):
+			var q := TownLife.world_to_frame(f["p"], f["yaw"], Vector2(o["p"].x, o["p"].z) + Vector2(k.x, k.y) * ChunkGenerator.SIZE)
+			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
+				standing += 1
+	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
 	# Far from any town, nothing changes.
 	var wild := gen.generate(400, 400)
 	TownLife.annotate(gen, wild)
