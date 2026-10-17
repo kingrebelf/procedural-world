@@ -28,7 +28,8 @@ void vertex() {
 		vec3 ax = normalize(fall_dir);
 		vec3 side = normalize(cross(ax, to / d));
 		float w = max(thick, d * pix * 1.2);
-		fade = thick / w;
+		// (Square root: a lit drop still catches the eye when it is thinner than a pixel.)
+		fade = sqrt(thick / w);
 		float len = streak * (0.75 + 0.5 * seed);
 		world = c + side * VERTEX.x * w + ax * VERTEX.y * len;
 	} else {
@@ -49,7 +50,7 @@ void fragment() {
 	float a;
 	if (streak > 0.0) {
 		float across = 1.0 - abs(UV.x * 2.0 - 1.0);
-		a = across * across * smoothstep(0.0, 0.35, UV.y) * smoothstep(1.0, 0.75, UV.y);
+		a = across * smoothstep(0.0, 0.35, UV.y) * smoothstep(1.0, 0.75, UV.y);
 	} else {
 		float r = length(UV * 2.0 - 1.0);
 		a = smoothstep(1.0, 0.15, r);

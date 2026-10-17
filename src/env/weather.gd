@@ -84,7 +84,7 @@ var _enabled := true
 ## Rain: box half size round the camera and how many drops fill it at full pour, by
 ## quality (weather_fx 0-2).
 const RAIN_BOX := Vector3(22.0, 13.0, 22.0)
-const RAIN_COUNT := [4000, 9000, 16000]
+const RAIN_COUNT := [6000, 14000, 24000]
 const SNOW_BOX := Vector3(26.0, 12.0, 26.0)
 const SNOW_COUNT := [3000, 7000, 12000]
 const SPLASH_COUNT := [0, 1024, 2048]
@@ -319,8 +319,8 @@ func _build_precip() -> void:
 	_rain_proc.set_shader_parameter("box_half", RAIN_BOX)
 	_rain_mat = ShaderMaterial.new()
 	_rain_mat.shader = dshader
-	_rain_mat.set_shader_parameter("streak", 0.42)
-	_rain_mat.set_shader_parameter("thick", 0.005)
+	_rain_mat.set_shader_parameter("streak", 0.75)
+	_rain_mat.set_shader_parameter("thick", 0.01)
 	_rain_mat.set_shader_parameter("reach", RAIN_BOX.x)
 	_rain = _particles("Rain", _rain_proc, _rain_mat, RAIN_BOX)
 
@@ -431,8 +431,8 @@ func _precipitation(p: Vector3) -> void:
 	_rain_proc.set_shader_parameter("fall", rfall)
 	_rain_proc.set_shader_parameter("density", clampf(rain * 1.1, 0.0, 1.0))
 	_rain_mat.set_shader_parameter("fall_dir", rfall.normalized())
-	_rain_mat.set_shader_parameter("tint", Color(lum * 0.92, lum * 0.95, lum))
-	_rain_mat.set_shader_parameter("opacity", 0.22 + 0.12 * rain)
+	_rain_mat.set_shader_parameter("tint", Color(lum * 1.15, lum * 1.2, lum * 1.25))
+	_rain_mat.set_shader_parameter("opacity", 0.35 + 0.2 * rain)
 	_show(_rain, rain > 0.01, at, rfall)
 	# Snow drifts down at about a metre a second and goes where the wind takes it; dust
 	# streams along it, barely falling.
@@ -464,7 +464,7 @@ func _show(gp: GPUParticles3D, on: bool, at: Vector3, fall: Vector3) -> void:
 # --- Lightning --------------------------------------------------------------------------
 
 var _flash_now := 0.0
-## Tools set this to make a strike happen at once.
+## Set to make a bolt strike in front of the camera at once (console, captures).
 var strike_now := false
 
 ## Strikes come from a fixed grid of cells 2.5 km across round the player, each second of
@@ -490,8 +490,11 @@ func _lightning(delta: float, p: Vector3) -> void:
 			if WHash.unit2(hh, 3, 0, 404) < st * 0.6:
 				_strike(Vector3(at.x, 0.0, at.y), hh)
 	if strike_now:
+		# Somewhere in front of the camera, so you see it.
 		strike_now = false
-		var a := randf() * TAU
+		var cam := get_viewport().get_camera_3d()
+		var fwd := -cam.global_basis.z if cam != null else Vector3.FORWARD
+		var a := atan2(fwd.z, fwd.x) + randf_range(-0.35, 0.35)
 		_strike(p + Vector3(cos(a), 0.0, sin(a)) * randf_range(500.0, 1500.0), randi())
 	_flash_now = 0.0
 	var dir := Vector3.ZERO

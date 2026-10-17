@@ -66,13 +66,13 @@ void weather_ground(vec3 wp, vec3 wn, vec2 p, vec4 gp, float macro, float meso, 
 	// Wet: soil and grass soak up the water and go dark; rock darkens less but shines.
 	float wet = weather_wet_g * (1.0 - fresh) * mix(0.55, 1.0, smoothstep(-0.2, 0.6, wn.y));
 	col *= mix(1.0, mix(0.6, 0.78, rockiness), wet);
-	rough = mix(rough, mix(0.45, 0.25, rockiness), wet);
+	rough = mix(rough, mix(0.35, 0.2, rockiness), wet);
 	spec = mix(spec, 0.5, wet);
 	// Puddles: the hollows of level ground fill, the big dips first; bare rock and
 	// steep ground shed the water.
-	float flat_g = 1.0 - smoothstep(0.015, 0.07, slope);
+	float flat_g = 1.0 - smoothstep(0.03, 0.1, slope);
 	float hollow = 1.0 - (meso * 0.65 + macro * 0.35);
-	float brim = 1.0 - weather_puddle_g * 0.42;
+	float brim = 1.0 - weather_puddle_g * 0.6;
 	float pud = smoothstep(brim, brim + 0.035, hollow + (micro - 0.5) * 0.03) * flat_g * (1.0 - rockiness) * (1.0 - fresh)
 		* (1.0 - smoothstep(150.0, 400.0, dist)) * step(0.001, weather_puddle_g);
 	if (pud > 0.001) {

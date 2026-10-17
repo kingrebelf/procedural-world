@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3]
+##   godot --path . res://src/world/world.tscn -- --capture [--weather=KIND] [--strike] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -28,6 +28,9 @@ var vfog := 1.0
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
+## --strike: a lightning bolt strikes in front of the camera just before each picture
+## (with --weather=storm; Weather).
+var strike := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -37,6 +40,8 @@ func _ready() -> void:
 			settle_frames = a.substr(9).to_int()
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
+		if a == "--strike":
+			strike = true
 		if a.begins_with("--hud="):
 			hud_mode = a.substr(6)
 		if a.begins_with("--env=") and a.count("=") == 2:
@@ -292,6 +297,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	_shoo_creatures(p.global_position, 45.0, true)
 	if before.is_valid():
 		await before.call()
+	if strike and Weather.current != null:
+		Weather.current.strike_now = true
+		await _wait(3)
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
