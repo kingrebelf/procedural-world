@@ -701,6 +701,19 @@ static func torch(k: MeshKit) -> void:
 		var a := i * TAU / 4.0
 		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(cos(a) * 0.012, 0.404, sin(a) * 0.012)), 0.006, 4, 6, 0.3, 0.6)
 
+## The rag wad burning in a wall torch's iron basket (the kit's props/Torch_Metal, whose
+## flame stands at (0, 0.34, 0.27)): lumpy, tarry below, charred on top.
+static func torch_wad(k: MeshKit, xf: Transform3D) -> void:
+	var c := Vector3(0, 0.285, 0.275)
+	k.sphere("it_pitch", xf * Transform3D(Basis.IDENTITY.scaled(Vector3(1.0, 1.15, 1.0)), c), 0.062, 6, 10, 0.3, 1.0)
+	for i in 5:
+		var a := i * TAU / 5.0 + 0.3
+		k.sphere("it_pitch", xf * Transform3D(Basis(Vector3.UP, a), c + Vector3(cos(a) * 0.045, -0.02 + 0.012 * (i % 2), sin(a) * 0.045)), 0.03, 4, 6, 0.4, 0.7)
+	k.sphere("it_char", xf * Transform3D(Basis.IDENTITY, c + Vector3(0, 0.045, 0)), 0.05, 4, 8, 0.45, 0.5)
+	for i in 4:
+		var a := i * TAU / 4.0
+		k.sphere("glow_red", xf * Transform3D(Basis.IDENTITY, c + Vector3(cos(a) * 0.02, 0.066, sin(a) * 0.02)), 0.009, 4, 6, 0.3, 0.6)
+
 ## Item -> the static function that builds it (returns the grip point, or null for the
 ## default: a hand's width up from the bottom).
 const BUILD := {
