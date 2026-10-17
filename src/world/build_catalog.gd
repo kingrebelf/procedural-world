@@ -81,7 +81,13 @@ const PIECES := {
 	# Furniture and decor (Quaternius Fantasy Props, CC0). Purely for looks; some give light.
 	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"bench": {"name": "Bench", "models": [["props/Bench", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
-	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
+	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0],
+		# A bookcase in use: books, a stack, scrolls and a bottle or two on its shelves.
+		["props/BookGroup_Medium_1", 0, Vector3(0.0, 0.77, 0.02), 1.0], ["props/BookGroup_Small_1", 0, Vector3(-0.38, 1.15, 0.02), 1.0],
+		["props/Book_Stack_1", 20, Vector3(0.15, 1.15, 0.0), 1.0], ["props/Potion_1", 0, Vector3(0.5, 1.15, 0.0), 1.0],
+		["props/BookGroup_Medium_1", 180, Vector3(0.05, 1.53, -0.02), 1.0], ["props/Scroll_1", 10, Vector3(-0.3, 1.92, 0.0), 1.0],
+		["props/Scroll_1", -15, Vector3(-0.28, 1.98, 0.02), 1.0], ["props/BookGroup_Small_1", 180, Vector3(0.38, 1.92, 0.0), 1.0],
+		["props/Potion_2", 0, Vector3(0.02, 1.92, 0.0), 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"cabinet": {"name": "Cabinet", "models": [["props/Cabinet", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"chair": {"name": "Chair", "models": [["props/Chair_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 4.0, "era": -1, "decor": true},
 	"table": {"name": "Long Table", "models": [["props/Table_Large", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
@@ -274,7 +280,7 @@ static func model_parts(name: String) -> Array:
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
-				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)))
+				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name)
 				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
 	_lock.lock()
@@ -383,9 +389,24 @@ static var _aged_mats := {}
 ## painted grey the sci-fi taming above gives every metal), its timber oak darkened and
 ## less orange with age and wax. Only furniture and props in the world; held tools keep
 ## their own look (Viewmodel.kit_mesh tames them itself).
-static func _aged(m: Material) -> Material:
+static func _aged(m: Material, model := "") -> Material:
 	if not (m is BaseMaterial3D) or not m.resource_name.begins_with("MI_Trim_"):
 		return m
+	if model.contains("Candle") and m.resource_name == "MI_Trim_Props_Vertex":
+		# Candles and their drips are wax, cream and a little translucent (the kit tints
+		# the drips purple).
+		_lock.lock()
+		var wax = _aged_mats.get("wax")
+		if wax == null:
+			var w := StandardMaterial3D.new()
+			w.albedo_color = Color(0.93, 0.88, 0.76)
+			w.roughness = 0.5
+			w.subsurf_scatter_enabled = true
+			w.subsurf_scatter_strength = 0.5
+			_aged_mats["wax"] = w
+			wax = w
+		_lock.unlock()
+		return wax
 	var metal: bool = m.resource_name.begins_with("MI_Trim_Metal")
 	var wood: bool = m.resource_name == "MI_Trim_Furniture"
 	if not metal and not wood:
@@ -399,7 +420,7 @@ static func _aged(m: Material) -> Material:
 			c.metallic = 0.65
 			c.roughness = 1.0
 		else:
-			c.albedo_color = Color(0.74, 0.63, 0.55)
+			c.albedo_color = Color(0.68, 0.58, 0.52)
 			c.roughness = 1.0
 		_aged_mats[m] = c
 		out = c

@@ -1161,125 +1161,221 @@ static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 		"neck": _amulet(k, t, c)
 
 static func _helm(k: MeshKit, m: String, c: Color, style: int, trim: String) -> void:
-	# Held by its rim, crown up. Metal helms: a raised skull with a rolled rim and a
-	# nasal; mail adds a hanging coif; soft caps are stitched panels; sci-fi helmets are
-	# closed with a tinted visor. The inside is dark (the lining), seen under the rim.
+	# Held by its rim, crown up. Metal helms are a raised skull (a nasal helm: a ridge over
+	# the crown, a riveted brow band, the nasal hammered out of the band itself), with a
+	# quilted liner inside and leather chin straps hanging. Mail adds a coif; soft caps
+	# are stitched panels; sci-fi helmets are closed with a tinted visor.
 	var y := 0.06
 	var R := 0.105
 	var tall := 1.05 if style != Outfit.STYLE_CLOTH else 0.8
+	var peak := 0.08 if style == Outfit.STYLE_PLATE or style == Outfit.STYLE_CRYSTAL else 0.0
 	var dome := func(u: float, v: float) -> Vector3:
 		var a := u * TAU
 		var ph := v * PI * 0.5
-		return Vector3(cos(a) * sin(ph) * R, y + cos(ph) * R * tall, sin(a) * sin(ph) * R)
-	_sheet(k, m, Transform3D.IDENTITY, dome, 24, 8, 0.004, c, Color(0.12, 0.1, 0.08), "im:linen")
-	_torus(k, trim, Transform3D(Basis.IDENTITY, Vector3(0, y, 0)), R, 0.006, 24, 6, c.darkened(0.15))
-	match style:
-		Outfit.STYLE_PLATE, Outfit.STYLE_CRYSTAL:
-			# A comb along the crown and a nasal down the front.
+		# A slight point at the crown, the way a raised skull is drawn up.
+		var lift := 1.0 + peak * pow(cos(ph), 6.0)
+		return Vector3(cos(a) * sin(ph) * R, y + cos(ph) * R * tall * lift, sin(a) * sin(ph) * R)
+	_sheet(k, m, Transform3D.IDENTITY, dome, 28, 10, 0.004, c, Color(0.2, 0.17, 0.13), "im:linen")
+	var metal := style == Outfit.STYLE_PLATE or style == Outfit.STYLE_CRYSTAL or style == Outfit.STYLE_MAIL
+	if metal:
+		# The brow band: a flat strip round the rim, standing proud, riveted on.
+		k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, y - 0.004, 0)), R + 0.003, R + 0.0035, 0.024, 32, false, 0.0, 1, c.darkened(0.08))
+		_torus(k, m, Transform3D(Basis.IDENTITY, Vector3(0, y - 0.004, 0)), R + 0.002, 0.0025, 32, 5, c.darkened(0.1))
+		for i in 14:
+			var a := TAU * i / 14.0
+			k.sphere(m, Transform3D(Basis.IDENTITY, Vector3(cos(a) * (R + 0.0038), y + 0.008, sin(a) * (R + 0.0038))), 0.0028, 4, 6, 0.0, 1.0, c.lightened(0.12))
+		# The nasal: continuous with the band at the front (+z), tapering down over the nose.
+		var f := func(u: float, v: float) -> Vector3:
+			var w := lerpf(0.022, 0.014, v)
+			var a := (u - 0.5) * w / R
+			var rr := R + 0.0035 + v * 0.004
+			return Vector3(sin(a) * rr, y + 0.008 - v * 0.075, cos(a) * rr)
+		_sheet(k, m, Transform3D.IDENTITY, f, 2, 6, 0.003, c, c.darkened(0.3))
+		# Chin straps: leather, riveted inside the band at each side, hanging down.
+		for side: float in [-1.0, 1.0]:
 			var path := PackedVector3Array()
 			var radii := PackedFloat32Array()
-			for i in 13:
-				var a := lerpf(-PI * 0.45, PI * 0.45, i / 12.0)
-				path.append(Vector3(0, y + cos(a) * (R + 0.003), sin(a) * (R + 0.003)))
-				radii.append(0.004)
-			_tube(k, m, Transform3D.IDENTITY, path, radii, 6, c)
-			_block(k, m, Transform3D(Basis.IDENTITY, Vector3(0, y - 0.035, R + 0.004)), Vector3(0.018, 0.08, 0.005), 0.002, c)
-			for i in 8:
-				var a := TAU * i / 8.0
-				_disc(k, m, Transform3D.IDENTITY, Vector3(cos(a) * (R + 0.0005), y + 0.012, sin(a) * (R + 0.0005)), Vector3(cos(a), 0, sin(a)), 0.003, 6, c.lightened(0.15))
+			for i in 7:
+				var t := i / 6.0
+				path.append(Vector3(side * (R - 0.004 - t * 0.012), y - 0.01 - t * 0.09, -0.01 + t * 0.02))
+				radii.append(0.0035)
+			_tube(k, "leather", Transform3D.IDENTITY, path, radii, 4, Color.WHITE)
+		k.sphere("im:metal@0.4", Transform3D(Basis.IDENTITY, Vector3(-R + 0.006, y - 0.098, 0.01)), 0.006, 4, 8, 0.0, 1.0, Color(0.55, 0.45, 0.28))
+	if peak > 0.0:
+		# The comb: a low ridge raised front to back over the crown.
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for i in 15:
+			var v := lerpf(-1.0, 1.0, i / 14.0)
+			var p: Vector3 = dome.call(0.25 if v > 0.0 else 0.75, absf(v))
+			path.append(p + Vector3(0, 0.0025, 0))
+			radii.append(0.0035)
+		_tube(k, m, Transform3D.IDENTITY, path, radii, 6, c)
+	match style:
 		Outfit.STYLE_MAIL:
 			var f := func(u: float, v: float) -> Vector3:
 				var a := lerpf(-PI * 0.8, PI * 0.8, u) + PI
 				var rr := R * (1.0 + v * 0.25)
-				return Vector3(sin(a) * rr, y - v * 0.13, cos(a) * rr)
+				return Vector3(sin(a) * rr, y - 0.02 - v * 0.13, cos(a) * rr)
 			_sheet(k, "im:mail", Transform3D.IDENTITY, f, 16, 4, 0.004, c.darkened(0.15), c.darkened(0.4))
-			_block(k, m, Transform3D(Basis.IDENTITY, Vector3(0, y - 0.035, R + 0.004)), Vector3(0.018, 0.08, 0.005), 0.002, c)
 		Outfit.STYLE_EXO:
 			var f := func(u: float, v: float) -> Vector3:
 				var a := lerpf(-0.9, 0.9, u)
 				return Vector3(sin(a) * (R + 0.004), y + 0.01 - v * 0.05, cos(a) * (R + 0.004))
 			_sheet(k, "im:visor", Transform3D.IDENTITY, f, 10, 2, 0.003, Color(0.04, 0.05, 0.06), Color(0.04, 0.05, 0.06))
 			k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, y - 0.1, 0)), R * 0.92, R, 0.1, 20, false, 0.0, 1, c)
-		_:
-			# Stitched panels: seams over the crown.
+		Outfit.STYLE_LEATHER, Outfit.STYLE_CLOTH:
+			_torus(k, trim, Transform3D(Basis.IDENTITY, Vector3(0, y, 0)), R, 0.005, 24, 6, c.darkened(0.15))
 			for i in 4:
 				var a := TAU * i / 4.0
 				var path := PackedVector3Array()
 				var radii := PackedFloat32Array()
 				for j in 9:
 					var ph := lerpf(0.0, PI * 0.5, j / 8.0)
-					path.append(Vector3(cos(a) * sin(ph), cos(ph) * 0.8, sin(a) * sin(ph)) * (R + 0.001) + Vector3(0, y, 0))
+					path.append(Vector3(cos(a) * sin(ph), cos(ph) * tall, sin(a) * sin(ph)) * (R + 0.001) + Vector3(0, y, 0))
 					radii.append(0.0018)
 				_tube(k, "im:hide", Transform3D.IDENTITY, path, radii, 4, c.darkened(0.3), false)
 
 static func _cuirass(k: MeshKit, r: RandomNumberGenerator, m: String, c: Color, style: int, soft: bool) -> void:
-	# The front of a body piece, held by its lower edge: shaped over chest and belly with
-	# arm holes and a neck opening. Plate is lames riveted one over the next; mail and
-	# padded cloth hang soft; leather is cut panels with stitched seams.
-	var W := 0.2
-	var H := 0.42
-	var f := func(u: float, v: float) -> Vector3:
-		var a := lerpf(-1.25, 1.25, u)
-		var chest := 0.07 + 0.025 * sin(v * PI * 0.9 + 0.3)
-		var wide := W * (0.82 + 0.18 * smoothstep(0.55, 0.85, v)) * (1.0 - 0.18 * smoothstep(0.9, 1.0, v) * (1.0 - absf(u - 0.5) * 2.0))
-		var p := Vector3(sin(a) * wide, v * H - 0.06, cos(a) * chest)
+	# A body piece held by its lower edge. Plate: a breastplate shaped over chest and
+	# belly with a central ridge, the neck and arm openings cut out with rolled edges,
+	# a fauld of riveted lames below the waist, a flatter backplate behind, shoulder
+	# straps lying over to it and buckled side straps. Mail and padded cloth hang soft;
+	# leather is cut panels with stitched seams.
+	var W := 0.19
+	var H := 0.36
+	var openings := func(u: float) -> float:
+		# How far the top edge is cut down at this point across: the neck in the
+		# middle, an arm hole at each side.
+		var neck := exp(-pow((u - 0.5) / 0.13, 2.0)) * 0.13
+		var arms := (exp(-pow(u / 0.12, 2.0)) + exp(-pow((1.0 - u) / 0.12, 2.0))) * 0.17
+		return neck + arms
+	var front := func(u: float, v: float) -> Vector3:
+		var a := lerpf(-1.3, 1.3, u)
+		var top: float = H - openings.call(u)
+		var y := v * top - 0.04
+		var t := y / H
+		var depth := 0.075 + 0.03 * sin(clampf(t, 0.0, 1.0) * PI * 0.85 + 0.25)
+		var ridge: float = 0.012 * exp(-pow((u - 0.5) / 0.04, 2.0)) * (0.3 + 0.7 * t) if not soft else 0.0
+		var wide := W * (0.85 + 0.15 * smoothstep(0.5, 0.85, t))
+		var p := Vector3(sin(a) * wide, y, cos(a) * depth + ridge)
 		if soft:
-			p.z += 0.004 * sin(u * 30.0) * (1.0 - v)
+			p.z += 0.004 * sin(u * 30.0) * (1.0 - t)
 		return p
-	_sheet(k, m, Transform3D.IDENTITY, f, 14, 12, 0.005 if not soft else 0.008, c, c.darkened(0.45))
-	if style == Outfit.STYLE_PLATE or style == Outfit.STYLE_CRYSTAL or style == Outfit.STYLE_EXO:
-		# Lame edges and their rivets.
-		for i in 5:
-			var v := 0.12 + i * 0.12
-			var path := PackedVector3Array()
-			var radii := PackedFloat32Array()
-			for j in 15:
-				var u := j / 14.0
-				var p: Vector3 = f.call(u, v)
-				var a := lerpf(-1.25, 1.25, u)
-				path.append(p + Vector3(sin(a), 0, cos(a)) * 0.004)
-				radii.append(0.0022)
-			_tube(k, m, Transform3D.IDENTITY, path, radii, 5, c.darkened(0.2), false)
-			if style != Outfit.STYLE_EXO:
-				for side: float in [0.1, 0.9]:
-					var p: Vector3 = f.call(side, v + 0.02)
-					var a := lerpf(-1.25, 1.25, side)
-					_disc(k, m, Transform3D.IDENTITY, p + Vector3(sin(a), 0, cos(a)) * 0.004, Vector3(sin(a), 0, cos(a)), 0.004, 6, c.lightened(0.12))
-	elif style == Outfit.STYLE_LEATHER:
-		for u: float in [0.3, 0.7]:
-			var path := PackedVector3Array()
-			var radii := PackedFloat32Array()
-			for j in 12:
-				var v := j / 11.0
-				var a := lerpf(-1.25, 1.25, u)
-				path.append(f.call(u, v) + Vector3(sin(a), 0, cos(a)) * 0.0045)
-				radii.append(0.0012)
-			_tube(k, "im:hide", Transform3D.IDENTITY, path, radii, 4, c.lightened(0.25), false)
-	# Straps and buckles at the shoulders.
+	var th := 0.004 if not soft else 0.008
+	_sheet(k, m, Transform3D.IDENTITY, front, 18, 12, th, c, c.darkened(0.45))
+	if soft:
+		if style == Outfit.STYLE_LEATHER:
+			for u: float in [0.3, 0.7]:
+				var path := PackedVector3Array()
+				var radii := PackedFloat32Array()
+				for j in 12:
+					var p: Vector3 = front.call(u, j / 11.0)
+					path.append(p + Vector3(0, 0, 0.0045))
+					radii.append(0.0012)
+				_tube(k, "im:hide", Transform3D.IDENTITY, path, radii, 4, c.lightened(0.25), false)
+		return
+	# Rolled edges round the neck and arm openings (a thickened, turned-over rim).
+	var rim := PackedVector3Array()
+	var rr := PackedFloat32Array()
+	for j in 25:
+		var u := j / 24.0
+		var p: Vector3 = front.call(u, 1.0)
+		rim.append(p)
+		rr.append(0.0045)
+	_tube(k, m, Transform3D.IDENTITY, rim, rr, 6, c.lightened(0.05))
+	# The backplate behind it: flatter, with the same openings.
+	var back := func(u: float, v: float) -> Vector3:
+		var p: Vector3 = front.call(u, v)
+		return Vector3(p.x * 0.98, p.y, -absf(p.z) * 0.7 - 0.02)
+	_sheet(k, m, Transform3D.IDENTITY, back, 14, 8, th, c.darkened(0.12), c.darkened(0.45))
+	# Fauld: three lames below the waist, each lapping over the next, riveted at the sides.
+	for i in 3:
+		var y0 := -0.04 - i * 0.032
+		var lame := func(u: float, v: float) -> Vector3:
+			var a := lerpf(-1.25, 1.25, u)
+			var flare := 1.0 + (i + v) * 0.04
+			return Vector3(sin(a) * W * 0.86 * flare, y0 - v * 0.04, cos(a) * 0.08 * flare + 0.004 * (1.0 - v))
+		_sheet(k, m, Transform3D.IDENTITY, lame, 14, 2, th, c.darkened(0.04 * i), c.darkened(0.45))
+		for side: float in [0.08, 0.92]:
+			var p: Vector3 = lame.call(side, 0.4)
+			var a := lerpf(-1.25, 1.25, side)
+			k.sphere(m, Transform3D(Basis.IDENTITY, p + Vector3(sin(a), 0, cos(a)) * 0.003), 0.0035, 4, 6, 0.0, 1.0, c.lightened(0.12))
+	# Shoulder straps: leather, lying over the shoulders from the breast to the back,
+	# buckled on the breastplate.
 	for side: float in [-1.0, 1.0]:
-		_block(k, "leather", Transform3D(Basis.IDENTITY, Vector3(side * W * 0.55, H - 0.04, 0.05)), Vector3(0.025, 0.07, 0.006), 0.002, Color.WHITE)
-		_torus(k, "im:metal@0.4", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(side * W * 0.55, H - 0.07, 0.056)), 0.009, 0.0018, 10, 4, Color(0.6, 0.5, 0.3))
+		var u := 0.5 + side * 0.31
+		var p0: Vector3 = front.call(u, 1.0)
+		var p1: Vector3 = back.call(u, 1.0)
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for i in 9:
+			var t := i / 8.0
+			path.append(p0.lerp(p1, t) + Vector3(0, sin(t * PI) * 0.035 + 0.004, 0))
+			radii.append(0.006)
+		_tube(k, "leather", Transform3D.IDENTITY, path, radii, 4, Color.WHITE)
+		var bp := p0 + Vector3(0, -0.03, 0.006)
+		_torus(k, "im:metal@0.4", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), bp), 0.008, 0.0016, 10, 4, Color(0.6, 0.5, 0.3))
+		k.sphere(m, Transform3D(Basis.IDENTITY, bp + Vector3(0, -0.015, -0.002)), 0.004, 4, 6, 0.0, 1.0, c.lightened(0.1))
+		# Side strap round to the back at the waist.
+		var s0: Vector3 = front.call(0.5 + side * 0.5, 0.35)
+		var s1: Vector3 = back.call(0.5 + side * 0.5, 0.35)
+		_tube(k, "leather", Transform3D.IDENTITY, PackedVector3Array([s0, (s0 + s1) * 0.5 + Vector3(side * 0.01, 0, 0), s1]), PackedFloat32Array([0.006, 0.006, 0.006]), 4, Color.WHITE)
+		_torus(k, "im:metal@0.4", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), s0 + Vector3(side * 0.004, 0, 0)), 0.007, 0.0015, 10, 4, Color(0.6, 0.5, 0.3))
 
 static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
-	# A glove or gauntlet with its fingers half closed as if a hand had just left it:
-	# flared cuff, back-of-hand plate (or leather), jointed fingers, the thumb apart.
-	var cuff_r := 0.045 if not soft else 0.04
-	k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0)), cuff_r * 1.25, cuff_r, 0.09, 16, false, 0.0, 1, c)
-	k.cylinder("im:linen", Transform3D(Basis(Vector3.RIGHT, PI), Vector3(0, 0.05, 0)), cuff_r * 0.95, cuff_r * 1.2, 0.09, 16, false, 0.0, 1, Color(0.12, 0.1, 0.08))
-	_block(k, m, Transform3D(Basis.IDENTITY, Vector3(0, 0.085, 0)), Vector3(0.085, 0.1, 0.035), 0.012, c)
-	var fm := m if soft or style == Outfit.STYLE_EXO else "leather"
+	# A gauntlet as a hand just left it: a leather glove underneath, fingers half curled,
+	# the thumb apart. Plate adds a flared hourglass cuff with a rolled rim, a domed plate
+	# over the back of the hand and small overlapping scales along each finger.
+	var glove := "leather" if not soft else m
+	var gc := Color.WHITE if glove == "leather" else c
+	# Palm and back of the hand: a flattened, slightly cupped body.
+	k.sphere(glove, Transform3D(Basis.from_scale(Vector3(1.05, 1.2, 0.38)), Vector3(0, 0.075, 0.0)), 0.04, 8, 14, 0.04, 1.0, gc)
+	# The cuff.
+	if soft:
+		k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0)), 0.042, 0.036, 0.085, 16, false, 0.05, 3, c)
+	else:
+		var cuff := func(u: float, v: float) -> Vector3:
+			var a := u * TAU
+			var rr := lerpf(0.055, 0.037, pow(v, 0.7))
+			return Vector3(cos(a) * rr, -0.045 + v * 0.085, sin(a) * rr * 0.85)
+		_sheet(k, m, Transform3D.IDENTITY, cuff, 22, 5, 0.003, c, Color(0.12, 0.1, 0.08), "im:linen")
+		_torus(k, m, Transform3D(Basis.from_scale(Vector3(1, 1, 0.85)), Vector3(0, -0.045, 0)), 0.055, 0.003, 24, 5, c.lightened(0.05))
+		# The back-of-hand plate, domed over the knuckles, with a rivet at each corner.
+		var plate := func(u: float, v: float) -> Vector3:
+			var x := (u - 0.5) * 0.085
+			return Vector3(x, 0.045 + v * 0.07, 0.022 + 0.01 * cos((u - 0.5) * PI) + 0.004 * sin(v * PI))
+		_sheet(k, m, Transform3D.IDENTITY, plate, 6, 6, 0.003, c, c.darkened(0.4))
+		for p: Vector3 in [Vector3(-0.035, 0.05, 0.029), Vector3(0.035, 0.05, 0.029), Vector3(-0.035, 0.108, 0.029), Vector3(0.035, 0.108, 0.029)]:
+			k.sphere(m, Transform3D(Basis.IDENTITY, p), 0.003, 4, 6, 0.0, 1.0, c.lightened(0.1))
 	for i in 4:
 		var x := -0.03 + i * 0.02
-		var l: float = [0.07, 0.08, 0.075, 0.06][i]
-		var path := PackedVector3Array([Vector3(x, 0.13, 0.0), Vector3(x, 0.13 + l * 0.5, 0.008), Vector3(x, 0.13 + l * 0.8, 0.03), Vector3(x, 0.13 + l * 0.85, 0.05)])
-		_tube(k, fm, Transform3D.IDENTITY, path, PackedFloat32Array([0.0095, 0.009, 0.0085, 0.008]), 8, c if fm == m else Color.WHITE)
+		var l: float = [0.07, 0.078, 0.074, 0.058][i]
+		var base := Vector3(x, 0.118, 0.0)
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		# Three joints, each bent a little more towards the palm (-z).
+		var dir := Vector3.UP
+		var p := base
+		for j in 4:
+			path.append(p)
+			radii.append(0.0088 - j * 0.0008)
+			dir = dir.rotated(Vector3.RIGHT, -0.35)
+			p += dir * l / 3.0
+		_tube(k, glove, Transform3D.IDENTITY, path, radii, 8, gc)
 		if not soft and style != Outfit.STYLE_EXO:
-			# Overlapping finger scales on the back of each finger.
 			for j in 3:
-				var p: Vector3 = path[j]
-				_block(k, m, Transform3D(Basis.IDENTITY, p + Vector3(0, 0.01, -0.006)), Vector3(0.018, 0.022, 0.006), 0.002, c)
-	var thumb := PackedVector3Array([Vector3(0.045, 0.08, 0.01), Vector3(0.06, 0.11, 0.025), Vector3(0.055, 0.135, 0.04)])
-	_tube(k, fm, Transform3D.IDENTITY, thumb, PackedFloat32Array([0.011, 0.01, 0.009]), 8, c if fm == m else Color.WHITE)
+				var a: Vector3 = path[j]
+				var b: Vector3 = path[j + 1]
+				var mid := (a + b) * 0.5
+				var d := (b - a).normalized()
+				var bb := Basis(Vector3.RIGHT, Vector3.UP.signed_angle_to(d, Vector3.RIGHT))
+				var f := func(u: float, v: float) -> Vector3:
+					var ang := lerpf(-1.1, 1.1, u)
+					return Vector3(sin(ang) * 0.0098, (v - 0.5) * l / 3.0 * 0.85, cos(ang) * 0.0098)
+				_sheet(k, m, Transform3D(bb, mid), f, 5, 1, 0.0015, c.darkened(0.08), c.darkened(0.4))
+	var thumb := PackedVector3Array([Vector3(0.04, 0.06, 0.008), Vector3(0.058, 0.09, 0.018), Vector3(0.062, 0.115, 0.03), Vector3(0.058, 0.135, 0.04)])
+	_tube(k, glove, Transform3D.IDENTITY, thumb, PackedFloat32Array([0.011, 0.01, 0.009, 0.008]), 8, gc)
 
 static func _greave(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
 	# A leg piece: plate greaves are a shaped shell from ankle to knee with a domed knee
@@ -1301,20 +1397,65 @@ static func _greave(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> 
 		_block(k, "leather", Transform3D(Basis.IDENTITY, Vector3(0, v * 0.38 - 0.06, -0.045)), Vector3(0.1, 0.02, 0.006), 0.002, Color.WHITE)
 
 static func _boot(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
-	# A boot stood on its sole, held by the shaft: creased leather (or articulated plate
-	# sabaton), a darker stacked heel and sole, the opening dark inside.
-	var shaft := 0.2 if style != Outfit.STYLE_CLOTH else 0.08
-	k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, -0.035, 0)), 0.045, 0.05, shaft + 0.015, 16, false, 0.04 if soft else 0.0, 4, c)
-	_disc(k, "im:linen", Transform3D.IDENTITY, Vector3(0, -0.02 + shaft - 0.002, 0), Vector3.UP, 0.048, 16, Color(0.08, 0.06, 0.05))
-	# The foot runs forward (+z) from the bottom of the shaft: instep, rounded toe.
-	k.sphere(m, Transform3D(Basis.from_scale(Vector3(0.72, 0.68, 1.5)), Vector3(0, -0.004, 0.04)), 0.062, 10, 16, 0.0, 1.0, c)
-	_block(k, "im:rubber" if style == Outfit.STYLE_EXO else "leather", Transform3D(Basis.IDENTITY, Vector3(0, -0.044, 0.042)), Vector3(0.086, 0.012, 0.19), 0.005, Color(0.35, 0.3, 0.28))
-	_block(k, "leather", Transform3D(Basis.IDENTITY, Vector3(0, -0.048, -0.025)), Vector3(0.08, 0.022, 0.065), 0.003, Color(0.3, 0.24, 0.2))
+	# A boot stood on its sole and held by the shaft: the foot lofted from heel to toe
+	# (a high instep falling to a rounded toe), creases at the ankle, a stitched sole
+	# welt standing just proud of the upper, a stacked heel, the opening dark inside.
+	# Plate sabatons add overlapping lames over the toes.
+	var L := 0.26
+	var heel_y := -0.04
+	var rings: Array = []
+	var sole: Array = []
+	var n := 14
+	for i in n + 1:
+		var t := float(i) / n
+		var w := 0.043 * (0.78 + 0.22 * sin(minf(t * 1.3, 1.0) * PI * 0.5)) * sqrt(maxf(1.0 - pow(maxf(t - 0.8, 0.0) / 0.2, 2.0) * 0.85, 0.05))
+		var h := lerpf(0.085, 0.032, pow(t, 1.1)) * sqrt(maxf(1.0 - pow(maxf(t - 0.86, 0.0) / 0.14, 2.0) * 0.8, 0.05))
+		if t < 0.05:
+			w *= 0.85 + t * 3.0
+		var ring := PackedVector3Array()
+		var sr := PackedVector3Array()
+		for j in 12:
+			var a := PI * j / 11.0
+			ring.append(Vector3(cos(a) * w, t * L, sin(a) * h))
+			sr.append(Vector3(cos(a) * (w + 0.003), t * L, 0.0 if j > 0 and j < 11 else 0.0))
+		# Flat underneath: the ring closes back along the bottom.
+		ring.append(Vector3(-w * 0.5, t * L, 0.0))
+		ring.append(Vector3(0.0, t * L, 0.0))
+		ring.append(Vector3(w * 0.5, t * L, 0.0))
+		rings.append(ring)
+		var flat := PackedVector3Array()
+		for j in 8:
+			var a := TAU * j / 8.0
+			flat.append(Vector3(cos(a) * (w + 0.003), t * L, -0.006 + sin(a) * 0.006))
+		sole.append(flat)
+	# Built along +y (length) with z up; turned so the toe points +z and up is +y.
+	var xf := Transform3D(Basis(Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)), Vector3(0, heel_y, -0.05))
+	_loft(k, m, xf, rings, c)
+	_loft(k, "leather", xf, sole, Color(0.3, 0.24, 0.2))
+	# Stacked heel.
+	_block(k, "leather", Transform3D(Basis.IDENTITY, Vector3(0, heel_y - 0.022, -0.02)), Vector3(0.07, 0.022, 0.065), 0.004, Color(0.26, 0.2, 0.16))
+	# The shaft, rising from the back of the foot, creased at the ankle.
+	var shaft := 0.17 if style != Outfit.STYLE_CLOTH else 0.06
+	k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, heel_y + 0.03, -0.015)), 0.044, 0.048, shaft, 18, false, 0.05 if soft else 0.0, 6, c)
+	_disc(k, "im:linen", Transform3D.IDENTITY, Vector3(0, heel_y + 0.03 + shaft - 0.003, -0.015), Vector3.UP, 0.046, 18, Color(0.08, 0.06, 0.05))
+	_torus(k, m, Transform3D(Basis.IDENTITY, Vector3(0, heel_y + 0.03 + shaft, -0.015)), 0.048, 0.004, 18, 5, c.darkened(0.15))
 	if soft:
-		# Laces up the front.
+		for i in 3:
+			_torus(k, m, Transform3D(Basis(Vector3.RIGHT, 0.25), Vector3(0, heel_y + 0.07 + i * 0.012, -0.012)), 0.0455, 0.0016, 18, 4, c.darkened(0.3))
+		# Laces up the front of the shaft.
 		for i in 5:
-			var y := 0.02 + i * 0.03
-			_block(k, "im:rope", Transform3D(Basis(Vector3.BACK, 0.4 if i % 2 else -0.4), Vector3(0, y, 0.049)), Vector3(0.03, 0.003, 0.003), 0.0, Color(0.25, 0.18, 0.12))
+			var y := heel_y + 0.07 + i * 0.022
+			_block(k, "im:rope", Transform3D(Basis(Vector3.BACK, 0.4 if i % 2 else -0.4), Vector3(0, y, 0.031)), Vector3(0.026, 0.003, 0.003), 0.0, Color(0.25, 0.18, 0.12))
+	elif style != Outfit.STYLE_MAIL:
+		# Sabaton lames over the toes, each lapping the one in front.
+		for i in 4:
+			var t := 0.45 + i * 0.12
+			var lame := func(u: float, v: float) -> Vector3:
+				var a := PI * u
+				var w := 0.046 - i * 0.002
+				var h := lerpf(0.06, 0.036, t) + 0.003
+				return Vector3(cos(a) * w, (t + v * 0.13) * L, sin(a) * (h + 0.002 * (1.0 - v)))
+			_sheet(k, m, xf, lame, 8, 1, 0.002, c.lightened(0.04), c.darkened(0.4))
 
 static func _ring(k: MeshKit, t: String, c: Color) -> void:
 	# A finger ring: a polished band with a bezel; a cut stone if it has one.
