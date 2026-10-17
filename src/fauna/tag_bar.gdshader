@@ -1,7 +1,7 @@
 shader_type spatial;
 // An animal's health bar under its name: faces you and keeps its size on screen like the
 // name above it, so the two never slide into each other with distance.
-render_mode unshaded, blend_mix, depth_draw_never, depth_test_disabled, cull_disabled, shadows_disabled, fog_disabled;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
 instance uniform float fill = 1.0;
 uniform vec4 back_color : source_color = vec4(0.0, 0.0, 0.0, 0.6);

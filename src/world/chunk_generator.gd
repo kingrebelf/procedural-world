@@ -318,10 +318,12 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 	var dist := PackedFloat32Array()
 	var level := PackedFloat32Array()
 	var air := PackedByteArray()
+	var side := PackedByteArray() ## 1 on the left of the road (going along its points)
 	dist.resize(RES * RES)
 	dist.fill(INF)
 	level.resize(RES * RES)
 	air.resize(RES * RES)
+	side.resize(RES * RES)
 	var rr := road_reach
 	var area := Rect2(x0 - rr, z0 - rr, SIZE + 2.0 * rr, SIZE + 2.0 * rr)
 	for rd in roads:
@@ -353,7 +355,8 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 						dist[k] = d
 						level[k] = lerpf(ha, hb, t)
 						air[k] = up
-	return [dist, level, air]
+						side[k] = 1 if ab.cross(q - a) > 0.0 else 0
+	return [dist, level, air, side]
 
 ## A stone bridge wherever a road crosses running river water inside this chunk. Each
 ## crossing is found the same way from any chunk, so exactly one chunk owns it.
@@ -708,8 +711,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var rf: Array = _road_field(x0, z0, roads) if not roads.is_empty() else []
 	var road_mask := PackedByteArray()
 	var any_road := false
+	# How far each point near a road is from its middle line, to one side or the other
+	# (128 + 20 per metre; 0 away from roads), for the wheel ruts the terrain shader
+	# wears into it.
+	var road_mid := PackedByteArray()
+	var any_mid := false
 	if towns:
 		road_mask.resize(RES * RES)
+		if not rf.is_empty():
+			road_mid.resize(RES * RES)
 	var forts := forts_near(x0, z0, x0 + SIZE, z0 + SIZE)
 	var flat: Array = sites + forts
 	var street_ang: Array = []
@@ -764,6 +774,9 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var verge := ROAD_HALF + 2.0 + minf(absf(h - lv) * (1.7 if outposts else 0.9), road_reach - ROAD_HALF - 2.0)
 				h = lerpf(h, lv, (1.0 - smoothstep(ROAD_HALF, verge, d)) * dry)
 				on_road = (1.0 - smoothstep(ROAD_HALF - 0.8, ROAD_HALF + 1.0, d)) * dry
+				if towns:
+					road_mid[k] = 128 + int(round(minf(d, 6.3) * 20.0)) * (1 if rf[3][k] == 1 else -1)
+					any_mid = true
 			if towns:
 				for si in sites.size():
 					var st: Dictionary = sites[si]
@@ -805,7 +818,15 @@ func generate(cx: int, cz: int) -> Dictionary:
 		look.resize(CN * CN * LOOK_BYTES)
 		for c in CN * CN:
 			WorldField.look_bytes(coarse_lf[c], look, c * LOOK_BYTES)
-			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0
+			# v16: fresh spoil round the craters (byte 11). On human worlds the craters are
+			# old and grassed over (see crater_spoil), bare only on the inner lip.
+			var lc: float = coarse_lf[c][WorldField.LF_CRATERS]
+			if lc > WorldField.LF_FADE.x and WorldField.terrain_v >= 16:
+				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
+				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
+				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+
+			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
 			look = PackedByteArray()
 	var chunk := {
@@ -824,6 +845,12 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["look"] = look
 	if any_road:
 		chunk["road"] = road_mask
+		if any_mid:
+			chunk["road_mid"] = road_mid
+	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
+	for cr in WonderSite.crashes_near(self, cx, cz):
+		WonderSite.scar(self, chunk, cr)
+		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
 		_place_bridges(chunk, roads)
 	if outposts and not roads.is_empty():
@@ -932,8 +959,9 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	if lb.is_empty():
 		return 1.0
 	# Interpolated between the 4 m look points (the nearest point alone left square
-	# bare patches in the grass).
-	return 1.0 - maxf(_look_lerp(lb, lx, lz, 8), _look_lerp(lb, lx, lz, 7) * 0.7)
+	# bare patches in the grass). (v16: scorched ground and fresh crater spoil grow little
+	# either.)
+	return 1.0 - maxf(maxf(_look_lerp(lb, lx, lz, 8), _look_lerp(lb, lx, lz, 7) * 0.7), _scar(lb, lx, lz))
 
 ## cover_at and sand_at at every metre of the chunk, [cover, sand] per terrain vertex:
 ## for loops that ask at thousands of points (look one up with look_cell).
@@ -948,7 +976,7 @@ static func look_grid(chunk: Dictionary) -> PackedFloat32Array:
 				out[k] = 1.0
 				continue
 			var sand := _look_lerp(lb, i, j, 8)
-			out[k] = 1.0 - maxf(sand, _look_lerp(lb, i, j, 7) * 0.7)
+			out[k] = 1.0 - maxf(maxf(sand, _look_lerp(lb, i, j, 7) * 0.7), _scar(lb, i, j))
 			out[k + 1] = sand
 	return out
 
@@ -985,6 +1013,10 @@ static func wet_at(chunk: Dictionary, lx: float, lz: float) -> float:
 		if rv[k + 2] > 0.2:
 			wet = maxf(wet, 1.0 - smoothstep(1.3, 3.0, rv[k + 1]))
 	return wet
+
+## How little grows on scorched ground or fresh crater spoil here (v16), 0..1.
+static func _scar(lb: PackedByteArray, lx: float, lz: float) -> float:
+	return maxf(_look_lerp(lb, lx, lz, 10) * 0.95, _look_lerp(lb, lx, lz, 11) * 0.6)
 
 static func height_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var hs: PackedFloat32Array = chunk["heights"]
@@ -1118,6 +1150,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	# v11: a hidden find, very rarely, once the buildings and landmarks have their room.
 	if eggs:
 		EasterEggs.place(self, chunk)
+	# v16: boundary markers and checkpoints where one zone of a human world meets the next.
+	if WorldField.terrain_v >= 16:
+		ZoneBorder.place(self, chunk, sites)
 
 	# Nothing grows or lies inside a building (or a neighbour's reaching in).
 	var plans := keep_out(chunk)
@@ -1148,8 +1183,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		p *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
-		var f := Biome.pick_flora(bp, pick)
-		f = Biome.by_altitude(bp, f, height_at(chunk, lx, lz), pick)
+		var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
+		if f.is_empty():
+			continue
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1174,8 +1210,9 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			dense *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2) or kept_out(plans, lx, lz, 1.0):
 				continue
-			var f := Biome.pick_flora(bp, pick)
-			f = Biome.by_altitude(bp, f, height_at(chunk, lx, lz), pick)
+			var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
+			if f.is_empty():
+				continue
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.
@@ -1197,7 +1234,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var bp := Biome.params(field.region_hash_at(x0 + lx, z0 + lz), era)
 		var rd: float = Eras.ROCK_DENSITY[era] * float(bp["rock_density"])
 		if landforms:
-			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
+			var lf := field.landform_at(x0 + lx, z0 + lz)
+			rd *= WorldField.LANDFORM_ROCKS[lf]
+			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
+				rd *= field.crater_rocks(x0 + lx, z0 + lz)
 		var rocks: Array = bp["rocks"]
 		# Dunes bury their stones: no boulders on open sand. Nor one perched on the lip
 		# of a drop, half of it hanging over thin air.

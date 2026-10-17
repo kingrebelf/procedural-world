@@ -8,6 +8,9 @@ extends CompositorEffect
 ## 0 mends, 1 paints the bad pixels magenta instead (to find what makes them), 2 is off
 ## (capture --mend=show / --mend=off).
 static var mode := 0
+## 0 by day .. 1 in full night: how strongly the dim parts of the frame are graded as the
+## dark-adapted eye sees them (Atmosphere sets it).
+static var night := 0.0
 
 var _rd: RenderingDevice
 var _shader: RID
@@ -41,7 +44,7 @@ func _render_callback(_type: int, render_data: RenderData) -> void:
 	var size := rsb.get_internal_size()
 	if size.x == 0 or size.y == 0:
 		return
-	var push := PackedFloat32Array([size.x, size.y, 1.0 if mode == 1 else 0.0, 0.0]).to_byte_array()
+	var push := PackedFloat32Array([size.x, size.y, 1.0 if mode == 1 else 0.0, night]).to_byte_array()
 	for view in rsb.get_view_count():
 		var u := RDUniform.new()
 		u.uniform_type = RenderingDevice.UNIFORM_TYPE_IMAGE

@@ -70,6 +70,7 @@ func _ready() -> void:
 	_rim.material_override = _rim_mat
 	add_child(_rim)
 	_rim_mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
+	_planet_mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
 	_others = Node3D.new()
 	add_child(_others)
 
@@ -144,6 +145,7 @@ func _show_planet() -> void:
 		var mat := ShaderMaterial.new()
 		mat.shader = _planet_mat.shader
 		_paint(mat, p)
+		mat.set_shader_parameter("sun_dir", -_sun.global_transform.basis.z)
 		m.material_override = mat
 		var a := float(p["orbit"]) * 1.9 + 0.6
 		m.position = Vector3(cos(a) * 520.0, 60.0 + sin(a * 1.7) * 90.0, -300.0 - absf(sin(a)) * 600.0)
@@ -181,6 +183,7 @@ static func _paint(mat: ShaderMaterial, p: Dictionary) -> void:
 	var sd: int = p["seed"]
 	mat.set_shader_parameter("seed_off", Vector3((sd & 1023) * 0.37, ((sd >> 10) & 1023) * 0.29, ((sd >> 20) & 1023) * 0.31))
 	mat.set_shader_parameter("land_level", 0.47 if p["kind"] == "frozen" else 0.5)
+	mat.set_shader_parameter("air", k["air"])
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -200,7 +203,7 @@ func _warp(n: int) -> void:
 	_warp_rect.visible = true
 	var tw := create_tween()
 	tw.tween_method(_set_warp, 0.0, 1.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.parallel().tween_property(_cam, "fov", 115.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(_cam, "fov", 88.0, 2.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	await tw.finished
 	_arrive(n)
 	_show_planet()

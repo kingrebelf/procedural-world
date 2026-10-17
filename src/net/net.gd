@@ -303,9 +303,20 @@ func join(address: String, port: int, player_name_: String, password: String) ->
 	_joining = {"name": nm, "token": id["token"], "password": password, "address": address, "port": port}
 	mode = Mode.CLIENT
 
+## ENet drops a peer that goes about five seconds without answering, and loading the
+## world (kit models, food, the first chunks) holds the main thread longer than that on
+## a slow machine: allow 20 s before giving up on a quiet peer, 60 s for any one packet.
+const PEER_TIMEOUT := [32, 20000, 60000]
+
+static func patient(peer: MultiplayerPeer, id: int) -> void:
+	var p := (peer as ENetMultiplayerPeer).get_peer(id) if peer is ENetMultiplayerPeer else null
+	if p != null:
+		p.set_timeout(PEER_TIMEOUT[0], PEER_TIMEOUT[1], PEER_TIMEOUT[2])
+
 func _on_authenticating(id: int) -> void:
 	if mode != Mode.CLIENT or id != 1:
 		return
+	patient(multiplayer.multiplayer_peer, 1)
 	var hello := {"game": "procedural-world", "protocol": ServerConfig.PROTOCOL,
 		"version": ProjectSettings.get_setting("application/config/version", ""),
 		"name": _joining.get("name", ""), "token": _joining.get("token", ""), "password": _joining.get("password", "")}

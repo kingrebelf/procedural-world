@@ -5,6 +5,8 @@ class_name GrassKit
 ##   tall     wild grass with seed heads on stalks, in rough and lush ground
 ##   flowers_N  wildflowers among a few blades: daisy, buttercup, cornflower, poppy
 ##   weed     long ribbons of waterweed on lake beds, swaying in the current
+##   wheat    a clump of wheat stalks with their ears (TownLife's fields; the tint ripens it)
+##   cabbage  a leafy rosette, and leek  upright strap leaves (fields and garden rows)
 ## Every vertex carries its blade's own shade (COLOR.rgb, a multiplier on the instance's
 ## tint; COLOR.a 0 marks seed heads and petals, which keep their own colour), its height up
 ## the blade (UV.y, which drives the wind), and the distance over which the species
@@ -13,9 +15,10 @@ class_name GrassKit
 ## w the blade's width with its sign alternating blade to blade (+ widens, - fades), 0 on
 ## stalks, seed heads, blooms and waterweed, which keep their own rule.
 
-const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed"]
+const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed", "wheat", "cabbage", "leek"]
 ## [thinning starts, all gone] in metres from the camera.
-const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0), "weed": Vector2(30.0, 75.0)}
+const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0), "weed": Vector2(30.0, 75.0),
+	"wheat": Vector2(70.0, 150.0), "cabbage": Vector2(35.0, 80.0), "leek": Vector2(30.0, 70.0)}
 ## Petal and centre colours (sRGB) of the wildflowers.
 const PETALS := [[Color(0.93, 0.93, 0.88), Color(0.95, 0.75, 0.15)], [Color(0.96, 0.8, 0.16), Color(0.85, 0.62, 0.1)],
 	[Color(0.42, 0.48, 0.86), Color(0.3, 0.28, 0.5)], [Color(0.82, 0.16, 0.1), Color(0.12, 0.1, 0.08)]]
@@ -72,6 +75,26 @@ static func _build(species: String) -> ArrayMesh:
 			for b in 11:
 				var off := _spot(r, 0.24)
 				_blade(st, r, rg, off, r.randf_range(0.45, 1.4), r.randf_range(0.03, 0.05), r.randf_range(0.1, 0.45), 6, false)
+		"wheat":
+			# Stalks standing close and upright, a leaf or two low down, the ear on top
+			# (tinted with the stalk, so a field ripens from green to gold as one).
+			for b in 6:
+				var off := _spot(r, 0.16)
+				var h := r.randf_range(0.8, 1.1)
+				var tip := _blade(st, r, rg, off, h, 0.007, r.randf_range(0.03, 0.1), 3, false)
+				_ear(st, r, rg, tip, r.randf_range(0.08, 0.11))
+			for b in 4:
+				_blade(st, r, rg, _spot(r, 0.14), r.randf_range(0.3, 0.5), r.randf_range(0.012, 0.018), r.randf_range(0.12, 0.25), 2)
+		"cabbage":
+			# Broad outer leaves cupped outward round a tight pale heart.
+			for b in 9:
+				var off := _spot(r, 0.05)
+				_blade(st, r, rg, off, r.randf_range(0.14, 0.22), r.randf_range(0.07, 0.1), r.randf_range(0.14, 0.22), 3)
+			for b in 5:
+				_blade(st, r, rg, _spot(r, 0.03), r.randf_range(0.12, 0.16), r.randf_range(0.05, 0.07), r.randf_range(0.0, 0.05), 2)
+		"leek":
+			for b in 7:
+				_blade(st, r, rg, _spot(r, 0.04), r.randf_range(0.28, 0.45), r.randf_range(0.018, 0.026), r.randf_range(0.04, 0.16), 3)
 		_:
 			var pc: Array = PETALS[int(species.substr(8)) % PETALS.size()]
 			for b in 6:
@@ -158,6 +181,29 @@ static func _seed_head(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, a
 		for tri in [[at, mid - side, mid + side], [mid - side, at + up, mid + side]]:
 			for p in tri:
 				_v(st, p, n, 0.5, 1.0, col, rg)
+
+## An ear of wheat: a slim spindle of grain with a few awns, leaning from the stalk top.
+## Tinted like the stalk (alpha 1), a shade lighter.
+static func _ear(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, at: Vector3, len: float) -> void:
+	var col := Color(1.2 * SHADE_SCALE, 1.12 * SHADE_SCALE, 0.85 * SHADE_SCALE, 1.0)
+	var tilt := Basis(Vector3(1, 0, 0), r.randf_range(0.1, 0.45)).rotated(Vector3.UP, r.randf() * TAU)
+	var up := tilt * Vector3(0, len, 0)
+	for k in 2:
+		var side := tilt * (Vector3(1, 0, 0) if k == 0 else Vector3(0, 0, 1)) * len * 0.13
+		var n := tilt * (Vector3(0, 0, 1) if k == 0 else Vector3(1, 0, 0))
+		var lo := at + up * 0.3
+		var hi := at + up * 0.75
+		for tri in [[at, lo - side, lo + side], [lo - side, hi - side * 0.8, lo + side], [lo + side, hi - side * 0.8, hi + side * 0.8], [hi - side * 0.8, at + up, hi + side * 0.8]]:
+			for p in tri:
+				_v(st, p, n, 0.5, 1.0, col, rg)
+	# Awns: hair-fine bristles off the top.
+	for k in 3:
+		var a := tilt * Basis(Vector3.UP, k * TAU / 3.0) * Vector3(0.15, 1, 0).normalized() * len * 0.6
+		var b0 := at + up
+		var s := tilt * Basis(Vector3.UP, k * TAU / 3.0) * Vector3(0, 0, 0.002)
+		var n2 := tilt * Basis(Vector3.UP, k * TAU / 3.0) * Vector3(0, 0, 1)
+		for p in [b0 - s, b0 + a, b0 + s]:
+			_v(st, p, n2, 0.5, 1.0, col, rg)
 
 ## A small upturned bloom: a ring of petals around a raised centre.
 static func _bloom(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, at: Vector3, rad: float, petal: Color, centre: Color) -> void:

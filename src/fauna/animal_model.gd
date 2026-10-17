@@ -29,7 +29,7 @@ const VARIANTS := {
 ## The sci-fi kit's aliens: rigged, but with an idle loop only, so Creature moves them
 ## procedurally (see procedural()).
 const ALIEN_DIR := "res://assets/models/scifi/"
-const LOOPS := ["Idle", "Idle_2", "Walk", "Gallop", "Eating"]
+const LOOPS := ["Idle", "Idle_2", "Idle_Headlow", "Idle_2_HeadLow", "Walk", "Gallop", "Eating"]
 ## The kit's coat materials; everything else (eyes, hooves, horns) keeps its colour.
 const COAT := ["Main", "Main_Light", "Main_Dark", "Material", "Material.003", "Material.010",
 	"M_Alien_Orange", "M_Alien_Body_Blue"]
@@ -57,6 +57,10 @@ var _accum := 0.0
 var _tick := 0
 var _tilt := Vector2.ZERO
 static var _gait_cache := {}
+## This animal's own habits, so a herd doesn't move in lockstep: the idle it prefers
+## (head up or head low) and how briskly it idles and grazes.
+var _idle := "Idle"
+var _rate := 1.0
 
 static func path_of(kind: String) -> String:
 	if VARIANTS.has(kind):
@@ -71,20 +75,33 @@ func procedural() -> bool:
 	return not anim.has_animation("Walk")
 
 ## tint: null keeps the kit's colours. glow: emission colour for the light coat, or null.
-func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalModel:
+## seed: this animal's own markings (AnimalSkin), stable for the same seed.
+func build(kind: String, size_mult := 1.0, tint = null, glow = null, seed := -1) -> AnimalModel:
 	var scene: Node3D = (load(path_of(kind)) as PackedScene).instantiate()
 	add_child(scene)
 	var v: Dictionary = VARIANTS.get(kind, {})
 	if v.has("coat") and tint == null:
 		tint = v["coat"]
+	var kit := String(v.get("base", kind))
+	var alien := kind.begins_with("Alien_")
+	var sks0 := scene.find_children("*", "Skeleton3D", true, false)
 	var box := AABB()
 	var first := true
-	for mi in scene.find_children("*", "MeshInstance3D", true, false):
+	var meshes := scene.find_children("*", "MeshInstance3D", true, false)
+	for mi in meshes:
 		var m := mi as MeshInstance3D
 		var b: AABB = m.transform * m.mesh.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
+	var k: float = HEIGHT.get(kind, 1.0) / maxf(box.size.y, 0.01) * size_mult
+	if seed < 0:
+		seed = randi()
+	for mi in meshes:
+		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if not alien and AnimalSkin.enabled:
+			_skin(m, kind, kit, tint, glow, box, k / size_mult, v, sks0[0] if not sks0.is_empty() else null, seed)
+			continue
 		for s in m.mesh.get_surface_count():
 			var hm := m.get_active_material(s)
 			if hm and String(hm.resource_name) in v.get("hide", []):
@@ -97,8 +114,9 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 					glows = glows or String(mat.resource_name).contains(g) and kind.begins_with("Alien_")
 				if mat is BaseMaterial3D and (String(mat.resource_name) in COAT or glows):
 					m.set_surface_override_material(s, _recolour(mat, tint, glow))
-	var k: float = HEIGHT.get(kind, 1.0) / maxf(box.size.y, 0.01) * size_mult
 	scene.scale = Vector3.ONE * k * (v["shape"] as Vector3 if v.has("shape") else Vector3.ONE)
+	# Some kits (the cow, the bull) model their hooves a little below the ground line.
+	scene.position.y = maxf(-box.position.y, 0.0) * scene.scale.y
 	_scene = scene
 	_box = box
 	_kind = kind
@@ -119,11 +137,45 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	anim.animation_finished.connect(_on_finished)
+	var r := RandomNumberGenerator.new()
+	r.seed = seed
+	_rate = r.randf_range(0.85, 1.15)
+	for low in ["Idle_Headlow", "Idle_2_HeadLow"]:
+		if anim.has_animation(low) and r.randf() < 0.35:
+			_idle = low
 	play("Idle")
 	return self
 
 static var _mats := {}
 static var _hidden_mat: StandardMaterial3D
+
+## A kit animal's living skin (AnimalSkin): the smoothed, muscled mesh and the fur
+## shader in the kit's colours (or the species' tint), with this animal's own markings.
+func _skin(m: MeshInstance3D, kind: String, kit: String, tint, glow, box: AABB, unit: float, v: Dictionary, sk: Skeleton3D, seed: int) -> void:
+	m.mesh = AnimalSkin.mesh_for(kit, m.mesh as ArrayMesh, sk)
+	var cols := []
+	for s in m.mesh.get_surface_count():
+		var src := m.mesh.surface_get_material(s)
+		var mn := String(src.resource_name) if src else ""
+		var c: Color = (src as BaseMaterial3D).albedo_color if src is BaseMaterial3D else Color(0.4, 0.3, 0.2)
+		if tint != null and mn in COAT:
+			c = (tint as Color) * clampf(c.get_luminance() / 0.3, 0.2, 1.3)
+		cols.append(c)
+	# Coats that meet blend into each other instead of changing along a polygon edge.
+	var with: PackedInt32Array = m.mesh.get_meta("blend_with", PackedInt32Array())
+	for s in m.mesh.get_surface_count():
+		var src := m.mesh.surface_get_material(s)
+		var mn := String(src.resource_name) if src else ""
+		if mn in v.get("hide", []):
+			m.set_surface_override_material(s, _hidden())
+			continue
+		var g = glow if glow != null and mn.contains("Light") else null
+		if m.mesh.surface_get_name(s) == AnimalSkin.LOCKS:
+			m.set_surface_override_material(s, AnimalSkin.lock_material(kind, cols[s]))
+			continue
+		var other = cols[with[s]] if s < with.size() and with[s] >= 0 else null
+		m.set_surface_override_material(s, AnimalSkin.material(kind, mn, cols[s], g, box, unit, other))
+	m.set_instance_shader_parameter("seed", float(absi(seed) % 65521))
 
 ## A material that draws nothing (horns a variant doesn't have).
 static func _hidden() -> StandardMaterial3D:
@@ -245,6 +297,11 @@ func play(state: String, speed := 1.0) -> void:
 			var gallop := not is_nan(g) and _speed > w * (1.45 if _current == "Gallop" else 1.75)
 			state = "Gallop" if gallop else "Walk"
 			speed = clampf(_speed / g, 0.55, 2.4) if gallop else clampf(maxf(_speed, absf(_yaw_rate) * _wid * 0.5) / w, 0.35, 1.9)
+	var resting := state == "Idle" or state == "Eating"
+	if state == "Idle":
+		state = _idle
+	if resting:
+		speed *= _rate
 	if not anim.has_animation(state) and anim.has_animation("Alien_Idle"):
 		state = "Alien_Idle"
 		speed = clampf(speed, 0.8, 2.0)
@@ -253,6 +310,9 @@ func play(state: String, speed := 1.0) -> void:
 		return
 	_current = state
 	anim.play(state, 0.3)
+	# Each one picks up its idle or grazing loop at its own point in the cycle.
+	if resting:
+		anim.seek(randf() * anim.current_animation_length)
 
 ## Attack, hit reaction or death, then back to the loop (death holds its last frame).
 func play_once(state: String) -> void:

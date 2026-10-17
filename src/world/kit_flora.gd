@@ -170,6 +170,95 @@ static func _merge_pieces(pieces: Array) -> Array:
 	st.generate_tangents()
 	return st.commit_to_arrays()
 
+## A kit rock's long flat facets and ruler-straight edges, made weathered: every
+## triangle split in four, the surface pushed in and out by lumps, smaller knobs and
+## sharp-edged chips, so its outline against the sky is ragged and no face is a plane.
+## The push is a function of position alone, so the split corners of neighbouring
+## faces move together (no cracks); the base stays where it was, flat on the ground.
+## Normals are smoothed only across faces less than ~50 degrees apart, so the chips
+## keep crisp edges instead of melting into a blob. `height` is the model's height.
+static func _roughen(a: Array, height: float) -> Array:
+	var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var tv = a[Mesh.ARRAY_TEX_UV]
+	var ix = a[Mesh.ARRAY_INDEX]
+	if ix == null:
+		ix = PackedInt32Array(range(pv.size()))
+	var has_uv := tv != null and (tv as PackedVector2Array).size() == pv.size()
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	for v in pv:
+		lo = lo.min(v)
+		hi = hi.max(v)
+	var mid := (lo + hi) * 0.5
+	var size := maxf(maxf(hi.x - lo.x, hi.z - lo.z), height)
+	var n1 := FastNoiseLite.new()
+	n1.seed = 7101
+	n1.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	n1.frequency = 3.0 / size
+	n1.fractal_type = FastNoiseLite.FRACTAL_FBM
+	n1.fractal_octaves = 4
+	var n2 := FastNoiseLite.new()
+	n2.seed = 7102
+	n2.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n2.frequency = 5.0 / size
+	n2.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	var vs := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var idx: PackedInt32Array = ix
+	for t in range(0, idx.size() - 2, 3):
+		var c := [pv[idx[t]], pv[idx[t + 1]], pv[idx[t + 2]]]
+		var u := [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+		if has_uv:
+			u = [tv[idx[t]], tv[idx[t + 1]], tv[idx[t + 2]]]
+		var m := [(c[0] + c[1]) * 0.5, (c[1] + c[2]) * 0.5, (c[2] + c[0]) * 0.5]
+		var mu := [(u[0] + u[1]) * 0.5, (u[1] + u[2]) * 0.5, (u[2] + u[0]) * 0.5]
+		for tri in [[c[0], m[0], m[2], u[0], mu[0], mu[2]], [m[0], c[1], m[1], mu[0], u[1], mu[1]],
+				[m[2], m[1], c[2], mu[2], mu[1], u[2]], [m[0], m[1], m[2], mu[0], mu[1], mu[2]]]:
+			for k in 3:
+				vs.append(tri[k])
+				uvs.append(tri[k + 3])
+	# Push each corner out from the rock's middle (squashed, so a slab's top moves more
+	# than its ends): lumps a seventh of its size across, chips a twentieth.
+	for i in vs.size():
+		var p := vs[i]
+		var dir := ((p - mid) * Vector3(1.0, 1.6, 1.0)).normalized()
+		var lift := smoothstep(0.0, 0.18 * height, p.y - lo.y)
+		var d := n1.get_noise_3dv(p) * 0.1 + (n2.get_noise_3dv(p) + 0.5) * 0.05
+		var q := p + dir * d * size * lift
+		q.y = maxf(q.y, lo.y)
+		vs[i] = q
+	# Face normals, then each corner smoothed with the faces round it that face nearly
+	# the same way (Godot faces are clockwise from outside).
+	var fn := PackedVector3Array()
+	fn.resize(vs.size() / 3)
+	var at := {}
+	for f in fn.size():
+		var a0 := vs[f * 3]
+		fn[f] = (vs[f * 3 + 2] - a0).cross(vs[f * 3 + 1] - a0).normalized()
+		for k in 3:
+			var key := Vector3i((vs[f * 3 + k] * 2000.0).round())
+			if not at.has(key):
+				at[key] = PackedInt32Array()
+			var l: PackedInt32Array = at[key]
+			l.append(f)
+			at[key] = l
+	var ns := PackedVector3Array()
+	ns.resize(vs.size())
+	for i in vs.size():
+		var own := fn[i / 3]
+		var s := Vector3.ZERO
+		for f in (at[Vector3i((vs[i] * 2000.0).round())] as PackedInt32Array):
+			if fn[f].dot(own) > 0.64:
+				s += fn[f]
+		ns[i] = s.normalized() if s.length_squared() > 0.0 else own
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = vs
+	out[Mesh.ARRAY_NORMAL] = ns
+	if has_uv:
+		out[Mesh.ARRAY_TEX_UV] = uvs
+	return out
+
 ## The species' mesh from its kit model, or null when it has none.
 static func build(t: String, sp: int, v: int) -> ArrayMesh:
 	var p := Flora.species(t, sp)
@@ -288,6 +377,9 @@ static func _model(mname: String) -> Dictionary:
 		for j in pos.size():
 			pos[j].y -= lo
 		part[0][Mesh.ARRAY_VERTEX] = pos
+	if mname.begins_with("Rock_"):
+		for part in parts:
+			part[0] = _roughen(part[0], hi - lo)
 	# Tangents (for the bark normal map) and LODs, once per model. Simplifying a mesh runs
 	# on the worker pool and waits for it, so it must never happen inside a chunk job:
 	# preload_all calls this on the main thread.

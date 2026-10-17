@@ -20,11 +20,16 @@ var _mob_t := 0.0
 func _ready() -> void:
 	field = WorldField.new(Game.seed)
 	Net.mob_hit.connect(_on_mob_hit)
+	# Smooth and muscle the kit animals' meshes before the first herd shows up.
+	AnimalSkin.warm(AnimalModel.HEIGHT.keys())
 
 func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
 
-const TAG_RANGE := 28.0
+const TAG_RANGE := 25.0
+## Off for pictures without a HUD (the capture tool's --hud=none).
+var show_tags := true
+const SPAWN_BUDGET_USEC := 4000
 
 func _process(delta: float) -> void:
 	if player == null or streamer == null or Game.store == null:
@@ -36,9 +41,11 @@ func _process(delta: float) -> void:
 	var pp := player.global_position
 	var g := Callable(self, "_ground")
 	var lv: int = Game.stats.level if Game.stats else 1
-	# Tags show within TAG_RANGE, or far out for the one you are looking at through
-	# binoculars.
+	# Tags show for ground animals within TAG_RANGE, for any animal fighting you or hurt,
+	# and for the one under the crosshair or in the binoculars; birds overhead go untagged.
 	var spotted: Creature = player.spotted if player.get("spotted") != null else null
+	if spotted == null and player.get("looking_at") != null and is_instance_valid(player.looking_at):
+		spotted = player.looking_at
 	var cam := get_viewport().get_camera_3d()
 	var eye: Vector3 = cam.global_position if cam else pp + Vector3(0, 1.6, 0)
 	var shown := []
@@ -60,9 +67,10 @@ func _process(delta: float) -> void:
 						out.append(c.net_state())
 				else:
 					c.follow(delta, g, Net.mob_state("f", c.id))
-				var near: bool = c._body != null and (c.global_position.distance_to(pp) < TAG_RANGE or c == spotted)
-				# Tags draw over everything (so grass doesn't hide them), so they only show
-				# for animals you can actually see: not through a wall or a hill.
+				var fighting: bool = c.state == "chase" or c.hp < float(c.p["hp"])
+				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < _tag_range(c, fighting) and (fighting or c.p["plan"] != "bird")))
+				# Only for animals you can actually see: not over a hill or behind a house
+				# (the walls hide the tag itself; this keeps a tag from peeking over them).
 				if near and c != spotted:
 					near = _in_sight(c, eye, delta)
 				if near:
@@ -97,6 +105,11 @@ func _declutter(shown: Array, cam: Camera3D, spotted: Creature, lv: int) -> void
 				placed.append(sp)
 		c.update_tag(free, lv)
 
+## How far off an animal's tag shows: small ones sooner lose theirs, since a hare or a fox
+## out in a meadow is down in the grass well before 25 m. Anything fighting you keeps it.
+func _tag_range(c: Creature, fighting: bool) -> float:
+	return TAG_RANGE if fighting else TAG_RANGE * clampf(float(c.p["size"]) * 1.1, 0.4, 1.0)
+
 var _sight := {} ## creature instance id -> [seconds until checked again, could see it]
 
 func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
@@ -105,7 +118,8 @@ func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
 	e[0] -= delta
 	if e[0] <= 0.0:
 		e[0] = randf_range(0.2, 0.3)
-		var to: Vector3 = c._tag.global_position if c._tag else c.global_position + Vector3(0, 1.0, 0)
+		# To the body, not the tag over it: a tag shouldn't show over a rise that hides the animal.
+		var to: Vector3 = c.global_position + Vector3(0, 0.1 + float(c.p["size"]) * 0.6, 0)
 		var q := PhysicsRayQueryParameters3D.create(eye, to)
 		q.collision_mask = 0xFFFFFFFF & ~2 # other animals don't block the view
 		if player is CollisionObject3D:
@@ -137,16 +151,25 @@ func _refresh() -> void:
 				if is_instance_valid(c) and dead.has(c.id):
 					_herds[k].erase(c)
 					c.die()
-	for dz in range(-RADIUS, RADIUS + 1):
-		for dx in range(-RADIUS, RADIUS + 1):
-			var k := pc + Vector2i(dx, dz)
-			if _herds.has(k):
-				continue
-			var cn := streamer.get_chunk(k)
-			if cn == null:
-				continue
-			_herds[k] = _spawn(cn)
-			added.append([k, Vector2((k.x + 0.5) * ChunkGenerator.SIZE, (k.y + 0.5) * ChunkGenerator.SIZE)])
+	# A few chunks' herds per call (each animal takes a few ms to dress), nearest first;
+	# the rest come on the next calls, soon after.
+	var t0 := Time.get_ticks_usec()
+	for r in RADIUS + 1:
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dz)) != r:
+					continue
+				var k := pc + Vector2i(dx, dz)
+				if _herds.has(k):
+					continue
+				var cn := streamer.get_chunk(k)
+				if cn == null:
+					continue
+				if Time.get_ticks_usec() - t0 > SPAWN_BUDGET_USEC:
+					_scan = minf(_scan, 0.05)
+					continue
+				_herds[k] = _spawn(cn)
+				added.append([k, Vector2((k.x + 0.5) * ChunkGenerator.SIZE, (k.y + 0.5) * ChunkGenerator.SIZE)])
 	if not gone.is_empty() or not added.is_empty():
 		Net.watch("f", added, gone)
 

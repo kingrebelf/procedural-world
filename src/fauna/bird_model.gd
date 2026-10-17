@@ -1,7 +1,8 @@
 class_name BirdModel
-## Procedural fliers (no free bird models fit the asset rule): smooth lathed bodies with
-## a beak, eyes and a fanned tail, and wings laid up from coverts and long primary and
-## secondary feathers. Fantasy moths get broad patterned wings with glowing eye spots,
+## Procedural fliers (no free bird models fit the asset rule): smooth bodies with a crown,
+## neck and deep breast, a beak, eyes and a fanned tail, and wings laid up like real ones
+## from coverts and overlapping flight feathers, all in plumage (feather.gdshader). Fantasy
+## moths get broad patterned wings with glowing eye spots,
 ## sci-fi skies get drifting jellies and scout drones. Facing +z, about 0.5 m long at
 ## scale 1; build() returns the body, the right wing (mirror it for the left) and the
 ## shoulder the wing hinges on. Meshes are cached per species.
@@ -21,8 +22,25 @@ static func build(p: Dictionary, era: int) -> Dictionary:
 	_cache[key] = out
 	return out
 
-static func _feather(a: Color, b: Color, glow := 0.0, gcol := Color.WHITE) -> ShaderMaterial:
-	return HiFlora.organic(a, b, {"streaks": 0.55, "sss": 0.2, "rough": 0.72, "glow": glow, "glow_col": gcol})
+static var _plumage: Shader
+
+## Plumage (feather.gdshader). mode 0: body contour feathers, 1: flight and tail
+## feathers, 2: wing coverts.
+static func _feather(a: Color, b: Color, glow := 0.0, gcol := Color.WHITE, mode := 0, name := "") -> ShaderMaterial:
+	if _plumage == null:
+		_plumage = load("res://src/fauna/shaders/feather.gdshader")
+	var m := ShaderMaterial.new()
+	m.shader = _plumage
+	m.set_shader_parameter("mode", mode)
+	m.set_shader_parameter("col_a", a)
+	m.set_shader_parameter("col_b", b)
+	m.set_shader_parameter("glow", glow)
+	m.set_shader_parameter("glow_col", gcol)
+	var dark := (a.get_luminance() + b.get_luminance()) * 0.5 < 0.12
+	m.set_shader_parameter("fringe", -0.25 if dark else 0.3)
+	m.set_shader_parameter("sheen", 1.0 if dark else 0.0)
+	m.set_shader_parameter("bars", 0.45 if name == "Kestrel" and mode == 1 else 0.0)
+	return m
 
 ## Natural colours for the real birds; the rest take the species' own.
 static func _palette(p: Dictionary) -> Array:
@@ -34,6 +52,102 @@ static func _palette(p: Dictionary) -> Array:
 	var c2: Color = p["col2"]
 	return [c2, c, c.darkened(0.35), Color(0.85, 0.7, 0.3)]
 
+## Body cross-sections, head to tail: [z, centre height, half width, height above and
+## below the centre]. A rounded crown and a short neck, a deep breast that bulges below
+## the line of the back, a flat back, tapering to the vent under the tail.
+const BODY := [
+	[0.25, 0.034, 0.0, 0.0, 0.0],
+	[0.243, 0.038, 0.026, 0.024, 0.02],
+	[0.228, 0.044, 0.044, 0.04, 0.032],
+	[0.205, 0.048, 0.052, 0.047, 0.038],
+	[0.18, 0.044, 0.049, 0.043, 0.04],
+	[0.155, 0.034, 0.046, 0.04, 0.045],
+	[0.12, 0.02, 0.06, 0.048, 0.062],
+	[0.07, 0.008, 0.077, 0.058, 0.08],
+	[0.02, 0.004, 0.082, 0.062, 0.082],
+	[-0.04, 0.006, 0.075, 0.056, 0.07],
+	[-0.1, 0.01, 0.056, 0.042, 0.046],
+	[-0.15, 0.015, 0.034, 0.026, 0.024],
+	[-0.19, 0.02, 0.0, 0.0, 0.0],
+]
+
+## A Catmull-Rom curve through `v`, `k` steps a span.
+static func _smooth(v: PackedFloat32Array, k: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var n := v.size()
+	for i in n - 1:
+		var p0 := v[maxi(i - 1, 0)]
+		var p1 := v[i]
+		var p2 := v[i + 1]
+		var p3 := v[mini(i + 2, n - 1)]
+		for j in k:
+			var t := float(j) / k
+			out.append(0.5 * ((2.0 * p1) + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t))
+	out.append(v[n - 1])
+	return out
+
+## The body through BODY's sections (smoothed, `segs` round), widths times `fat`,
+## crown and back heights times `head` and `back`. UV: x round the body, y head to tail.
+## Returns the rings, for placing the eyes.
+static func _body(g: HiFlora.Geo, key: String, segs: int, fat: float, head: float) -> Array:
+	var cols: Array = []
+	for c in 5:
+		var v := PackedFloat32Array()
+		for row in BODY:
+			v.append(float(row[c]))
+		cols.append(_smooth(v, 4))
+	var zs: PackedFloat32Array = cols[0]
+	var n := zs.size()
+	var rings: Array = []
+	for i in n:
+		var z := zs[i]
+		var hd := smoothstep(0.15, 0.2, z) # the head's share of this ring
+		var rx := maxf((cols[2] as PackedFloat32Array)[i], 0.0) * lerpf(fat, 1.0, hd)
+		var cy := (cols[1] as PackedFloat32Array)[i]
+		var rt := maxf((cols[3] as PackedFloat32Array)[i], 0.0) * lerpf(1.0, head, hd)
+		var rb := maxf((cols[4] as PackedFloat32Array)[i], 0.0) * lerpf(fat, 1.0, hd)
+		var ring := PackedVector3Array()
+		for j in segs + 1:
+			var a := TAU * j / segs
+			var sa := sin(a)
+			# A flatter back and a fuller breast than a plain ellipse.
+			var y := cy + (rt * pow(absf(sa), 0.85) if sa > 0.0 else -rb * absf(sa))
+			ring.append(Vector3(rx * cos(a), y, z))
+		rings.append(ring)
+	for i in n - 1:
+		for j in segs:
+			var q: Array = []
+			for c in [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]]:
+				var ii: int = c[0]
+				var jj: int = c[1]
+				var pt: Vector3 = rings[ii][jj]
+				var along: Vector3 = (rings[mini(ii + 1, n - 1)] as PackedVector3Array)[jj] - (rings[maxi(ii - 1, 0)] as PackedVector3Array)[jj]
+				var round: Vector3 = (rings[ii] as PackedVector3Array)[(jj + 1) % segs] - (rings[ii] as PackedVector3Array)[(jj + segs - 1) % segs]
+				var nn := round.cross(along)
+				var mid := Vector3(0.0, (cols[1] as PackedFloat32Array)[ii], zs[ii])
+				if nn.length_squared() < 1e-12:
+					nn = Vector3(0, 0, 1) if ii == 0 else Vector3(0, 0, -1)
+				elif nn.dot(pt - mid) < 0.0:
+					nn = -nn
+				q.append([pt, nn.normalized(), Vector2(float(jj) / segs, float(ii) / (n - 1))])
+			g.tri(key, q[0][0], q[1][0], q[2][0], q[0][1], q[1][1], q[2][1], q[0][2], q[1][2], q[2][2])
+			g.tri(key, q[0][0], q[2][0], q[3][0], q[0][1], q[2][1], q[3][1], q[0][2], q[2][2], q[3][2])
+	return rings
+
+## One feather: a tapered strip from `root` toward `dir`, drooping a little at the tip,
+## `hw` its half width at the root and widest, tip rounded off by the plumage shader.
+static func _quill(g: HiFlora.Geo, key: String, root: Vector3, dir: Vector3, length: float, hw: float, tip_w := -1.0, droop := 0.006) -> void:
+	var pts := PackedVector3Array()
+	var ws := PackedFloat32Array()
+	dir = dir.normalized()
+	if tip_w < 0.0:
+		tip_w = hw
+	for j in 5:
+		var t := float(j) / 4.0
+		pts.append(root + dir * length * t + Vector3(0, -droop * t * t, 0))
+		ws.append(lerpf(hw * 0.55, tip_w, smoothstep(0.0, 0.6, t)))
+	g.ribbon(key, pts, ws, Vector3.RIGHT if absf(dir.x) < 0.7 else Vector3(0, 0, 1))
+
 static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var pal := _palette(p)
 	var gcol := Color.from_hsv(float(p["glow"]) / 12.0, 0.7, 1.0)
@@ -42,86 +156,120 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var swallow := name == "Swallow"
 	var finch := name == "Wisp Finch"
 	var g := HiFlora.Geo.new()
-	g.add_mat("body", _feather(pal[0], pal[1], 0.15 if glows else 0.0, gcol))
-	g.add_mat("dark", _feather(pal[2], pal[2].lightened(0.15)))
+	g.add_mat("body", _feather(pal[0], pal[1], 0.15 if glows else 0.0, gcol, 0, name))
+	g.add_mat("dark", _feather(pal[2], pal[2].lightened(0.15), 0.0, Color.WHITE, 1, name))
 	g.add_mat("beak", HiFlora.organic(pal[3].darkened(0.2), pal[3], {"streaks": 0.0, "sss": 0.1, "rough": 0.45}))
-	g.add_mat("eye", HiFlora.organic(Color(0.02, 0.02, 0.02), Color(0.05, 0.04, 0.03), {"streaks": 0.0, "sss": 0.0, "rough": 0.1}))
+	# Eyes: a dark pupil in a coloured iris, wet and glossy.
+	var iris := Color(0.35, 0.2, 0.06) if name == "Kestrel" else (Color(0.28, 0.2, 0.1) if name == "Crow" else Color(0.18, 0.11, 0.06))
+	g.add_mat("eye", HiFlora.organic(Color(0.01, 0.01, 0.01), iris, {"streaks": 0.0, "sss": 0.0, "rough": 0.03}))
 	if glows:
 		g.add_mat("glow", HiFlora.organic(gcol.darkened(0.3), gcol, {"glow": 1.4, "glow_col": gcol, "streaks": 0.2, "sss": 0.9, "rough": 0.4}))
-	var fat := 1.18 if finch else 1.0
-	# Head to tail along +z -> -z, lathed round the body axis.
-	var prof := PackedVector2Array([Vector2(0.0, 0.25), Vector2(0.035, 0.245), Vector2(0.058, 0.225), Vector2(0.064, 0.2),
-		Vector2(0.057, 0.172), Vector2(0.074 * fat, 0.13), Vector2(0.095 * fat, 0.06), Vector2(0.097 * fat, -0.01),
-		Vector2(0.082 * fat, -0.08), Vector2(0.052, -0.14), Vector2(0.026, -0.18), Vector2(0.0, -0.195)])
-	var axis := Transform3D(Basis(Vector3.RIGHT, PI * 0.5) * Basis().scaled(Vector3(0.9, 1.0, 1.0)), Vector3.ZERO)
-	g.lathe("body", prof, 14, axis, Vector2(0.0, -0.035))
-	# Beak, eyes.
-	var bl := 0.045 if finch else (0.075 if name == "Crow" else 0.055)
-	g.prism("beak", Vector3(0, 0.034, 0.238), Vector3(0, -0.22 if name == "Kestrel" else -0.1, 1.0), 0.02 if not finch else 0.024, bl, 5, 0.75)
-	for s in [-1.0, 1.0]:
-		g.lathe("eye", HiFlora._ellipse(0.013, 0.013, 6), 8, Transform3D(Basis(), Vector3(s * 0.05, 0.058, 0.205)))
-	# Tail fan, forked on swallows, with glowing streamers on wisp finches.
-	var n := 7
+	var fat := 1.18 if finch else (0.88 if swallow else 1.0)
+	var head := 0.85 if name == "Kestrel" else (1.06 if name == "Crow" else 1.0)
+	var segs := 24
+	var rings := _body(g, "body", segs, fat, head)
+	# Eyes sit in the side of the head, a little forward and up, mostly sunk in.
+	var er := 0.0085
+	for ring in rings:
+		var rp: PackedVector3Array = ring
+		if absf(rp[0].z - 0.21) < 0.004:
+			var e: Vector3 = rp[segs / 12] # about 30 degrees above the side
+			for sd in [-1.0, 1.0]:
+				g.lathe("eye", HiFlora._ellipse(er, er, 6), 10, Transform3D(Basis(), Vector3(sd * (absf(e.x) - er * 0.45), e.y, e.z)))
+			break
+	# Beak: a tapered horn from the face, hooked on kestrels, heavy on crows.
+	var bl := 0.04 if finch else (0.07 if name == "Crow" else (0.035 if swallow else 0.05))
+	var br := 0.018 if finch else (0.017 if name == "Crow" else 0.014)
+	var hook := 0.5 if name == "Kestrel" else (0.15 if name == "Crow" else 0.06)
+	var bpts := PackedVector3Array()
+	var brs := PackedFloat32Array()
+	for k in 5:
+		var t := float(k) / 4.0
+		bpts.append(Vector3(0, 0.034 - hook * bl * t * t, 0.236 + bl * t))
+		brs.append(lerpf(br, 0.0015, pow(t, 0.8)))
+	g.sweep("beak", bpts, brs, 7)
+	# Tail: overlapping feathers in a fan, the middle pair on top; forked on swallows.
+	var n := 9
 	for i in n:
 		var t := (float(i) / (n - 1)) * 2.0 - 1.0
-		var tl := 0.17 + (absf(t) * 0.16 if swallow else 0.02 * (1.0 - absf(t)))
-		var pts := PackedVector3Array()
-		var ws := PackedFloat32Array()
-		for j in 5:
-			var u := float(j) / 4.0
-			pts.append(Vector3(t * (0.012 + u * (0.07 if not swallow else 0.05)), 0.02 - u * 0.012, -0.16 - u * tl))
-			ws.append(lerpf(0.016, 0.022 if not swallow else 0.008, u))
-		g.ribbon("dark", pts, ws, Vector3.RIGHT)
+		var tl := 0.16 + (absf(t) * 0.17 if swallow else 0.025 * (1.0 - absf(t)))
+		var fan := t * (0.22 if swallow else 0.32)
+		var root := Vector3(t * 0.014, 0.02 + (1.0 - absf(t)) * 0.004, -0.15)
+		_quill(g, "dark", root, Vector3(sin(fan), -0.07, -cos(fan)), tl, 0.017, 0.006 if swallow and absf(t) > 0.7 else 0.019, 0.01)
 	if finch and glows:
-		for s in [-1.0, 1.0]:
+		for sd in [-1.0, 1.0]:
 			var pts := PackedVector3Array()
 			var ws := PackedFloat32Array()
 			for j in 8:
 				var u := float(j) / 7.0
-				pts.append(Vector3(s * (0.02 + u * 0.05), 0.015 - u * 0.04 + sin(u * 5.0) * 0.02, -0.17 - u * 0.4))
+				pts.append(Vector3(sd * (0.02 + u * 0.05), 0.015 - u * 0.04 + sin(u * 5.0) * 0.02, -0.17 - u * 0.4))
 				ws.append(lerpf(0.012, 0.004, u))
 			g.ribbon("glow", pts, ws, Vector3.RIGHT)
 	var body := g.commit()
 	var wing := _wing(pal, glows, gcol, name)
-	return {"body": body, "wing": wing, "wing_at": Vector3(0.055, 0.045, 0.06)}
+	return {"body": body, "wing": wing, "wing_at": Vector3(0.06, 0.04, 0.06)}
 
-## The right wing, from the shoulder at the origin out along +x: coverts over the
-## inner wing, secondaries along its trailing edge, primaries fanned at the hand.
+## Where the wing's leading edge runs (z) at `u` of the way from shoulder to wrist and
+## hand: forward over the arm, swept back toward the tip.
+static func _le(u: float, pointed: bool) -> float:
+	return 0.012 + 0.012 * sin(u * PI) - (0.07 if pointed else 0.035) * pow(maxf(u - 0.5, 0.0) / 0.5, 1.5)
+
+## The right wing, from the shoulder at the origin out along +x, laid up like a real
+## one: a rounded leading edge, small coverts over it, a row of greater coverts, then
+## overlapping secondaries along the arm and primaries fanned from the hand, each row
+## shingled over the next so the trailing edge is closed rather than a comb.
 static func _wing(pal: Array, glows: bool, gcol: Color, name: String) -> ArrayMesh:
 	var g := HiFlora.Geo.new()
 	var pointed := name == "Kestrel" or name == "Swallow"
-	var span := 0.62 if pointed else 0.52
-	g.add_mat("cov", _feather(pal[1], pal[1].lerp(pal[2], 0.4)))
-	g.add_mat("flight", _feather(pal[2].lightened(0.08), pal[2], 0.6 if glows else 0.0, gcol))
-	# Coverts: one broad, gently cambered strip from shoulder to wrist.
+	var crow := name == "Crow"
+	var span := 0.56 if pointed else 0.5
+	g.add_mat("cov", _feather(pal[1], pal[1].lerp(pal[2], 0.4), 0.0, Color.WHITE, 2, name))
+	var covf := _feather(pal[1].lerp(pal[2], 0.1), pal[1].lerp(pal[2], 0.3), 0.0, Color.WHITE, 1, "")
+	covf.set_shader_parameter("tip_dark", 0.06)
+	covf.set_shader_parameter("tip_round", 0.45)
+	g.add_mat("covf", covf)
+	g.add_mat("flight", _feather(pal[2].lightened(0.08), pal[2], 0.6 if glows else 0.0, gcol, 1, name))
+	var sec_len := 0.085 if pointed else 0.1
+	# Secondaries along the arm, inner ones on top.
+	var ns := 10
+	for i in ns:
+		var u := 0.03 + float(i) / (ns - 1) * 0.5
+		var root := Vector3(u * span, -0.001 * i * 0.6, _le(u, pointed) - 0.022)
+		_quill(g, "flight", root, Vector3(0.12, -0.03, -1.0), sec_len * lerpf(0.9, 1.0, float(i) / ns), 0.021)
+	# Primaries from the hand, fanning from back to out toward the tip.
+	var np := 10
+	for i in np:
+		var t := float(i) / (np - 1)
+		var u := 0.56 + 0.2 * t
+		var root := Vector3(u * span, -0.005 - 0.0007 * i, _le(u, pointed) - 0.016)
+		var ang := lerpf(-PI * 0.5 + 0.2, -0.3 if pointed else -0.12, pow(t, 0.85))
+		var length := lerpf(sec_len * 1.1, span * (0.5 if pointed else 0.4), pow(t, 0.6))
+		if not pointed and i == np - 1:
+			length *= 0.9 # the outermost a little short: a rounded tip
+		var tw := 0.011 if crow and t > 0.6 else (0.012 if pointed and t > 0.7 else 0.018)
+		_quill(g, "flight", root, Vector3(cos(ang), -0.04, sin(ang)), length, 0.016, tw, 0.012)
+	# Greater coverts over the secondaries' roots, and primary coverts over the hand.
+	for i in ns:
+		var u := 0.02 + float(i) / (ns - 1) * 0.52
+		_quill(g, "covf", Vector3(u * span, 0.004 - 0.0004 * i, _le(u, pointed) - 0.01), Vector3(0.1, -0.03, -1.0), 0.055, 0.019)
+	for i in 6:
+		var t := float(i) / 5.0
+		var u := 0.56 + 0.18 * t
+		var ang := lerpf(-PI * 0.5 + 0.25, -0.5 if pointed else -0.35, t)
+		_quill(g, "covf", Vector3(u * span, 0.002 - 0.0005 * i, _le(u, pointed) - 0.008), Vector3(cos(ang), -0.03, sin(ang)), 0.05, 0.016)
+	# Small coverts in scalloped rows along the leading edge, and its rounded edge.
 	var cov := PackedVector3Array()
 	var cw := PackedFloat32Array()
-	for i in 7:
-		var u := float(i) / 6.0
-		cov.append(Vector3(u * span * 0.62, 0.008 * sin(u * PI), -0.03 - u * 0.02))
-		cw.append(lerpf(0.075, 0.04, u))
-	g.ribbon("cov", cov, cw, Vector3(0, 0, 1), Color.WHITE, 0.15)
-	# Secondaries: short feathers raked back along the inner trailing edge.
-	for i in 6:
-		var u := (float(i) + 0.5) / 6.0
-		var root := Vector3(u * span * 0.58, 0.0, -0.06 - u * 0.015)
-		var pts := PackedVector3Array([root, root + Vector3(0.008, -0.002, -0.05), root + Vector3(0.016, -0.004, -0.095)])
-		g.ribbon("flight", pts, PackedFloat32Array([0.022, 0.024, 0.015]), Vector3.RIGHT)
-	# Primaries: long feathers from the hand, sweeping out and back to the tip.
-	var np := 7
-	for i in np:
-		var u := float(i) / (np - 1)
-		var root := Vector3(span * (0.5 + 0.12 * u), 0.004, -0.04 - 0.02 * u)
-		var sweep := lerpf(-0.55, 0.15, u) if pointed else lerpf(-0.7, 0.35, u)
-		var length := span * (0.42 + 0.18 * (1.0 - absf(u - 0.75) * 1.4)) * (1.15 if pointed else 1.0)
-		var dir := Vector3(cos(sweep * 0.6), 0, -absf(sin(sweep)) * 0.9 - 0.15).normalized()
-		var pts := PackedVector3Array()
-		var ws := PackedFloat32Array()
-		for j in 5:
-			var t := float(j) / 4.0
-			pts.append(root + dir * length * t + Vector3(0, -0.012 * t * t, 0))
-			ws.append(lerpf(0.02, 0.01 if pointed else 0.016, t))
-		g.ribbon("flight", pts, ws, Vector3(0, 0, 1), Color.WHITE, 0.1)
+	var edge := PackedVector3Array()
+	var er := PackedFloat32Array()
+	for i in 9:
+		var u := float(i) / 8.0 * 0.8
+		cov.append(Vector3(u * span, 0.007, _le(u, pointed) - 0.014))
+		cw.append(lerpf(0.032, 0.014, u / 0.8))
+		edge.append(Vector3(u * span, 0.003, _le(u, pointed) + 0.001))
+		er.append(lerpf(0.007, 0.003, u / 0.8))
+	g.ribbon("cov", cov, cw, Vector3(0, 0, 1), Color.WHITE, 0.25)
+	g.sweep("cov", edge, er, 6)
 	return g.commit()
 
 ## Glowmoth: a furry body, feathered antennae, broad fore and hind wings with

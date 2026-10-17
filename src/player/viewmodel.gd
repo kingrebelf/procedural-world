@@ -26,15 +26,19 @@ var _type := ""
 var arms: HumanModel
 var look: Dictionary = {} ## the player's appearance (set before adding to the tree)
 const ARMS_REST := Vector3(0.08, -0.03, 0.0)
-## One-handed tools: only the right arm, further right and lower, the tool leaning in.
-const ARM_REST := Vector3(0.14, -0.07, -0.02)
+## One-handed tools: only the right arm, the fist low and right of the middle, held out a
+## little so the whole hand and the handle below it show.
+const ARM_REST := Vector3(0.0, -0.02, -0.08)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
 ## Binoculars ride lower and nearer the middle, so they read as facing ahead.
 const BINO_REST := Vector3(0.0, -0.04, 0.02)
 ## A crossbow is long and wide: held further out and lower, so the prod sits under the
 ## sight line and the butt clears the corner of the screen.
 const CROSSBOW_REST := Vector3(0.06, -0.06, -0.12)
-const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
+const TOOL_AIM := Vector3(-0.1, 0.9, -0.85)
+## Which way the palm of a hand holding a tool faces: ahead and a little out, so you see
+## the back of the hand and its knuckles, the handle coming out of the top of the fist.
+const TOOL_PALM := Vector3(0.4, -0.2, -1.0)
 ## A gun's grip in the view: the knuckle line leans forward with a pistol grip's rake,
 ## the back of the hand points the fingers ahead and a little down round the grip.
 const GUN_KNUCKLES := Vector3(0.0, 0.9, -0.44)
@@ -79,10 +83,11 @@ func _ready() -> void:
 		arms.advance(0.5)
 	position = _rest
 
-## The item as something a hand can hold: tools and weapons as models, anything else as
-## its icon on a card.
+## The item as something a hand can hold: tools, weapons and materials as models, anything
+## else as its icon on a card.
 static func prop_for(t: String, it = null) -> Node3D:
 	var n := Node3D.new()
+	n.set_meta("item", t)
 	var mi := MeshInstance3D.new()
 	n.add_child(mi)
 	var d := ItemDB.def(t)
@@ -93,6 +98,13 @@ static func prop_for(t: String, it = null) -> Node3D:
 			mi.add_child(HandLight.torch_fire())
 			# Its light burns at the head, so the torch's own shadow would black out the stick.
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	elif ItemModels.has(t):
+		# Materials, parts and gear modelled at their real size (see ItemModels).
+		mi.mesh = ItemModels.model(t)
+		mi.rotation.y = ItemModels.FACE_YAW
+		mi.material_overlay = aura_for(it)
+	elif Provisions.has(t):
+		mi.mesh = Provisions.model(t)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)
@@ -375,8 +387,10 @@ func _aim() -> void:
 		arms.aim_hand(b * GUN_KNUCKLES, b * GUN_FINGERS)
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
-		arms.aim_hand(Vector3.ZERO, Vector3.ZERO)
-		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
+		# The wrist holds the tool up and away with the back of the hand toward you; the
+		# fingers stay closed round the handle.
+		arms.aim_grip(b * TOOL_AIM, b * TOOL_PALM)
+		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
 		var strike := _strike_axis(_type)

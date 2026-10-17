@@ -10,6 +10,7 @@ const SIZE := 1600.0
 ## How far the water sheet reaches from its middle (past the distant land's edge).
 const REACH := 5400.0
 const DEPTH_RES := 128
+const MURK_RES := 32
 const MAX_CURRENT := 1.9 ## m/s, fast mid-stream; you can still swim against it
 
 var target: Node3D
@@ -17,14 +18,18 @@ var atmosphere: Atmosphere
 var streamer: ChunkStreamer
 var _mat: ShaderMaterial
 var _depth_img: Image
+var _murk_img: Image
+var _murk_tex: ImageTexture
 var _depth_tex: ImageTexture
 var _depth_origin := Vector2.ZERO
 var _depth_timer := 0.0
+var _ssr_steps := 20
 static var _wind := 0.3
 static var _dir := Vector2(0.8, 0.6)
 static var _depth_lookup: Callable
 static var _river_lookup: Callable
 static var _current_lookup: Callable
+static var _murk_lookup: Callable
 
 func _ready() -> void:
 	mesh = _sheet()
@@ -36,11 +41,27 @@ func _ready() -> void:
 	_depth_img = Image.create(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RF)
 	_depth_img.fill(Color(20, 0, 0))
 	_depth_tex = ImageTexture.create_from_image(_depth_img)
+	_murk_img = Image.create(MURK_RES, MURK_RES, false, Image.FORMAT_RF)
+	_murk_tex = ImageTexture.create_from_image(_murk_img)
+	_mat.set_shader_parameter("murk_map", _murk_tex)
 	_mat.set_shader_parameter("depth_map", _depth_tex)
 	_depth_lookup = depth_at
 	_river_lookup = river_at
 	_current_lookup = current_at
+	_murk_lookup = murk_at
 	add_child(Splashes.new())
+	var settings := get_node_or_null("/root/Settings")
+	if settings:
+		settings.changed.connect(_apply_settings)
+		_apply_settings()
+
+## Reflections of shores and banks on the water (water_ssr.gdshaderinc) follow the
+## "Screen-space reflections" setting. (The autoload is looked up rather than named, so
+## Water and everything that asks it about the water still compile without autoloads,
+## as in the unit tests.)
+func _apply_settings() -> void:
+	_ssr_steps = 20 if bool(get_node("/root/Settings").get_value("ssr")) else 0
+	_mat.set_shader_parameter("ssr_steps", _ssr_steps)
 
 func _process(delta: float) -> void:
 	if target:
@@ -51,13 +72,21 @@ func _process(delta: float) -> void:
 		_mat.set_shader_parameter("shallow", Color(0.16, 0.36, 0.38) * w[0] + Color(0.1, 0.45, 0.5) * w[1] + Color(0.12, 0.28, 0.36) * w[2])
 		_mat.set_shader_parameter("glow_amount", w[1] * 0.12)
 		if ChunkNode.river_material:
-			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.2, 0.42, 0.4) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.16, 0.32, 0.38) * w[2])
+			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.26, 0.38, 0.28) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.2, 0.32, 0.3) * w[2])
 			ChunkNode.river_material.set_shader_parameter("glow_amount", w[1] * 0.12)
+			ChunkNode.river_material.set_shader_parameter("ssr_steps", _ssr_steps)
 		_wind = atmosphere.wind_strength
 		_dir = atmosphere.wind_dir
 	_depth_timer -= delta
-	if _depth_timer <= 0.0 and streamer != null:
+	if _depth_timer <= 0.0 and streamer != null and _depth_row < 0:
 		_depth_timer = 1.5
+		# Only when the sheet moved or ground came or went (a dig is caught within 15 s).
+		var sig := "%s %d %d" % [position, streamer.chunks.size(), Time.get_ticks_msec() / 15000]
+		if sig != _depth_sig:
+			_depth_sig = sig
+			_depth_row = 0
+			_depth_next_origin = Vector2(position.x, position.z) - Vector2(SIZE, SIZE) * 0.5
+	if _depth_row >= 0 and streamer != null:
 		_update_depth()
 
 ## The water sheet: 8 m squares across the middle SIZE metres, then squares growing
@@ -101,23 +130,94 @@ static func _sheet() -> ArrayMesh:
 	return am
 
 ## Water depth map around the player (metres below sea level, 0 on land), so the shader
-## can grow waves over deep water and calm them in the shallows.
+## can grow waves over deep water and calm them in the shallows. A coarser map beside it
+## says how murky the water is (see _murk).
+## The depth map is built a few rows a frame into a second buffer and swapped in whole:
+## all 16k samples at once froze the game for 30-40 ms every 1.5 s.
+const DEPTH_ROWS_PER_FRAME := 6
+var _depth_row := -1 ## next row of the map being built, -1 while idle
+var _depth_next := PackedFloat32Array()
+var _depth_next_origin := Vector2.ZERO
+var _depth_sig := ""
+
 func _update_depth() -> void:
-	_depth_origin = Vector2(position.x, position.z) - Vector2(SIZE, SIZE) * 0.5
+	if _depth_next.size() != DEPTH_RES * DEPTH_RES:
+		_depth_next.resize(DEPTH_RES * DEPTH_RES)
 	var step := SIZE / DEPTH_RES
-	for j in DEPTH_RES:
+	var last := Vector2i(1 << 30, 0)
+	var c: ChunkNode = null
+	for j in range(_depth_row, mini(_depth_row + DEPTH_ROWS_PER_FRAME, DEPTH_RES)):
 		for i in DEPTH_RES:
-			var x := _depth_origin.x + (i + 0.5) * step
-			var z := _depth_origin.y + (j + 0.5) * step
+			var x := _depth_next_origin.x + (i + 0.5) * step
+			var z := _depth_next_origin.y + (j + 0.5) * step
 			var k := ChunkStreamer.chunk_of(Vector3(x, 0, z))
-			var c := streamer.get_chunk(k)
+			if k != last:
+				last = k
+				c = streamer.get_chunk(k)
 			var d := 12.0
 			if c != null:
 				d = clampf(LEVEL - ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE), 0.0, 40.0)
-			_depth_img.set_pixel(i, j, Color(d, 0, 0))
+			_depth_next[j * DEPTH_RES + i] = d
+	_depth_row += DEPTH_ROWS_PER_FRAME
+	if _depth_row < DEPTH_RES:
+		return
+	_depth_row = -1
+	_depth_img = Image.create_from_data(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RF, _depth_next.to_byte_array())
+	_depth_origin = _depth_next_origin
 	_depth_tex.update(_depth_img)
+	_murk_img = Image.create_from_data(MURK_RES, MURK_RES, false, Image.FORMAT_RF, _murk(_depth_next).to_byte_array())
+	_murk_tex.update(_murk_img)
 	_mat.set_shader_parameter("depth_origin", _depth_origin)
 	_mat.set_shader_parameter("depth_size", SIZE)
+	# The terrain reads it too, so beaches on sheltered ponds barely get a wash.
+	RenderingServer.global_shader_parameter_set("water_map", _depth_tex)
+	RenderingServer.global_shader_parameter_set("water_murk", _murk_tex)
+	RenderingServer.global_shader_parameter_set("water_map_rect", Vector4(_depth_origin.x, _depth_origin.y, SIZE, 0.0))
+
+## How murky the water is across the depth map (on a coarser 50 m grid): 0 for open sea
+## (clear and blue), 1 for ponds and small lakes (green-brown with silt). Judged by how
+## much of the 400 m round each point is water and how deep that water runs on average,
+## from summed-area tables. About a thousand cells, so it costs nothing next to the map.
+static func _murk(depths: PackedFloat32Array) -> PackedFloat32Array:
+	var n := MURK_RES + 1
+	var f := DEPTH_RES / MURK_RES
+	var wet := PackedFloat32Array()
+	var deep := PackedFloat32Array()
+	wet.resize(n * n)
+	deep.resize(n * n)
+	for j in MURK_RES:
+		for i in MURK_RES:
+			var d := depths[(j * f + f / 2) * DEPTH_RES + i * f + f / 2]
+			var k := (j + 1) * n + i + 1
+			wet[k] = (1.0 if d > 0.3 else 0.0) + wet[k - 1] + wet[k - n] - wet[k - n - 1]
+			deep[k] = d + deep[k - 1] + deep[k - n] - deep[k - n - 1]
+	var r := int(200.0 / (SIZE / MURK_RES))
+	var out := PackedFloat32Array()
+	out.resize(MURK_RES * MURK_RES)
+	for j in MURK_RES:
+		for i in MURK_RES:
+			var x0 := maxi(i - r, 0)
+			var x1 := mini(i + r + 1, MURK_RES)
+			var z0 := maxi(j - r, 0)
+			var z1 := mini(j + r + 1, MURK_RES)
+			var area := float((x1 - x0) * (z1 - z0))
+			var w := wet[z1 * n + x1] - wet[z0 * n + x1] - wet[z1 * n + x0] + wet[z0 * n + x0]
+			var dsum := deep[z1 * n + x1] - deep[z0 * n + x1] - deep[z1 * n + x0] + deep[z0 * n + x0]
+			var mean_depth := dsum / maxf(w, 1.0)
+			# A straight sea shore is still half water; a pond is a few hundredths of the window.
+			out[j * MURK_RES + i] = 1.0 - smoothstep(0.15, 0.45, w / area) * smoothstep(2.5, 9.0, mean_depth)
+	return out
+
+## How murky the lake or sea at (x, z) is: 0 clear open sea, 1 a silty pond.
+static func turbidity(x: float, z: float) -> float:
+	return _murk_lookup.call(x, z) if _murk_lookup.is_valid() else 0.0
+
+func murk_at(x: float, z: float) -> float:
+	var u := (x - _depth_origin.x) / SIZE * DEPTH_RES
+	var v := (z - _depth_origin.y) / SIZE * DEPTH_RES
+	if u < 0 or v < 0 or u >= DEPTH_RES or v >= DEPTH_RES:
+		return 0.0
+	return _murk_img.get_pixel(int(u * MURK_RES / DEPTH_RES), int(v * MURK_RES / DEPTH_RES)).r
 
 func depth_at(x: float, z: float) -> float:
 	var u := (x - _depth_origin.x) / SIZE * DEPTH_RES
@@ -208,6 +308,19 @@ func current_at(x: float, z: float) -> Vector2:
 		return Vector2.ZERO
 	var speed := clampf(0.6 + g.length() * 30.0, 0.6, MAX_CURRENT) * (1.0 - smoothstep(0.35, 1.05, here.y) * 0.85)
 	return -g.normalized() * speed
+
+## The highest the sea's waves reach right now (surface_height never goes above it,
+## rivers aside).
+static func wave_top() -> float:
+	return LEVEL + amplitude(14.0)
+
+## A river's surface at (x, z) where it runs above the sea, else NAN.
+static func river_surface(x: float, z: float) -> float:
+	if _river_lookup.is_valid():
+		var r: float = _river_lookup.call(x, z)
+		if not is_nan(r) and r > LEVEL:
+			return r
+	return NAN
 
 ## Height of the water surface at (x, z) and time t: a river where there is one, else the
 ## sea (whose waves must match water.gdshader).

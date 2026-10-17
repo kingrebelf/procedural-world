@@ -92,14 +92,21 @@ func _retarget() -> void:
 		node.set_near(d <= near_radius)
 		if node.lod != lod_for(d) and not _jobs.has(k):
 			_submit(k, "lod")
-		var want_grass := d <= grass_radius and grass_density > 0.0
-		if want_grass and not node.has_grass() and not _jobs.has(k):
-			_submit(k, "grass")
-		elif not want_grass and node.has_grass():
-			node.set_grass({})
+		_check_grass(k, node, d)
 	var cur := chunks.get(_center) as ChunkNode
 	if cur != null and not preview:
 		Game.visit_chunk(cur.data)
+
+## Grows grass on a chunk that came within grass range and clears it from one that left.
+## Checked on every move and after every job: a chunk loaded without grass (asked for when
+## it was still out of range) that lands after a jump would otherwise stay bare.
+func _check_grass(k: Vector2i, node: ChunkNode, d: int) -> void:
+	var want_grass := d <= grass_radius and grass_density > 0.0
+	if want_grass and not node.grass_built and not _jobs.has(k):
+		_submit(k, "grass")
+	elif not want_grass and node.grass_built:
+		node.set_grass({})
+		node.grass_built = false
 
 func _wanted() -> Array:
 	var out: Array = []
@@ -139,6 +146,7 @@ func _run_job(job: Dictionary) -> void:
 		chunk = job["given"]
 		res["data"] = chunk
 		res["replace"] = true
+		TownLife.annotate(ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers()), chunk)
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)
 		for mk in res["objects"]:
@@ -146,6 +154,8 @@ func _run_job(job: Dictionary) -> void:
 	elif job["mode"] == "load":
 		var gen := ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers())
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
+		# Village paths, gardens and fields: worked out afresh on every load, from the seed.
+		TownLife.annotate(gen, chunk)
 		res["data"] = chunk
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)
@@ -163,6 +173,11 @@ func _run_job(job: Dictionary) -> void:
 		# Cave walls only up close, where the ground has its openings.
 		if chunk.has("cave"):
 			res["cave"] = Caves.build(chunk) if job["lod"] == 1 else {}
+	if job["mode"] == "load":
+		res["crags"] = ChunkNode.build_crag_buffers(chunk)
+		for mk in res["crags"]:
+			if String(mk).begins_with("stone:"):
+				StoneKit.mesh(String(mk).substr(6))
 	if job["grass"] and job["mode"] != "lod":
 		res["grass"] = ChunkNode.build_grass_buffers(chunk, job["density"], cover)
 		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0), cover)
@@ -201,11 +216,13 @@ func _collect() -> void:
 			node.set_cave(res.get("cave", {}))
 			node.cover = res["cover"]
 			add_child(node)
+			node.set_crags(res.get("crags", {}))
 			chunks[k] = node
 			node.set_near(d <= near_radius)
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
+				node.grass_built = true
 			if k == _center and not preview:
 				Game.visit_chunk(node.data)
 			chunk_ready.emit(node)
@@ -219,6 +236,11 @@ func _collect() -> void:
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
+				node.grass_built = true
+		if _regrow.has(k) and not _jobs.has(k):
+			_regrow.erase(k)
+			if chunks.has(k) and not _replacing.has(k):
+				refresh_grass(k)
 		if _replacing.has(k) and not _jobs.has(k):
 			if chunks.has(k):
 				_submit_replace(k)
@@ -231,6 +253,7 @@ func _collect() -> void:
 			node.set_near(d <= near_radius)
 			if node.lod != lod_for(d) and not _jobs.has(k):
 				_submit(k, "lod")
+			_check_grass(k, node, d)
 
 ## Swaps in a newer copy of a chunk (another player's edit, from the server): the
 ## loaded chunk is rebuilt from it in the background and replaced when ready.
@@ -324,11 +347,18 @@ func pick_under(found: Dictionary) -> bool:
 	(node as ChunkNode).clear_under(found)
 	return true
 
-## Regrows a chunk's grass in the background, e.g. after something was built on it.
+## Regrows a chunk's grass in the background, e.g. after something was built on it. A job
+## already running may have read the chunk before the change, so it runs again after.
 func refresh_grass(k: Vector2i) -> void:
 	var node: ChunkNode = chunks.get(k)
-	if node != null and node.has_grass() and not _jobs.has(k):
+	if node == null or not node.grass_built:
+		return
+	if _jobs.has(k):
+		_regrow[k] = true
+	else:
 		_submit(k, "grass")
+
+var _regrow: Dictionary = {} ## Vector2i -> true: grass to grow again once its running job is done
 
 func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	if not is_equal_approx(detail, ChunkNode.detail_mult):
@@ -345,3 +375,4 @@ func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	_center = Vector2i(999999, 999999)
 	for k in chunks:
 		chunks[k].set_grass({})
+		chunks[k].grass_built = false
