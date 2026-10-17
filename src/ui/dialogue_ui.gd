@@ -15,7 +15,7 @@ var npc: NPC
 var _history: Array = [] ## [{role, content}] for this conversation.
 var _panel: PanelContainer
 var _log: RichTextLabel
-var _input: LineEdit
+var _entry: LineEdit
 var _opts: HBoxContainer
 var _status: Label
 var _busy := false
@@ -57,7 +57,7 @@ func open_with(n: NPC) -> void:
 	_history.append({"role": "user", "content": "(The traveller walks up to you.)"})
 	_history.append({"role": "assistant", "content": JSON.stringify({"say": first})})
 	_set_options(NPCMind.default_options(n.rec))
-	_input.grab_focus()
+	_entry.grab_focus()
 
 func close_talk() -> void:
 	if npc == null:
@@ -87,7 +87,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				var f: Dictionary = player.focus if "focus" in player else {}
 				if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")):
 					open_with(f["npc"])
-					_input.release_focus() # so the key isn't typed, and its release reaches us
+					_entry.release_focus() # so the key isn't typed, and its release reaches us
 			if npc != null:
 				_mic_start()
 		get_viewport().set_input_as_handled()
@@ -153,12 +153,12 @@ func _build() -> void:
 	_opts.add_theme_constant_override("separation", 6)
 	v.add_child(_opts)
 	var row := HBoxContainer.new()
-	_input = LineEdit.new()
-	_input.placeholder_text = "Say something..."
-	_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_input.text_submitted.connect(func(t): _send(t))
-	row.add_child(_input)
-	row.add_child(UITheme.button("Say", func(): _send(_input.text)))
+	_entry = LineEdit.new()
+	_entry.placeholder_text = "Say something..."
+	_entry.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_entry.text_submitted.connect(func(t): _send(t))
+	row.add_child(_entry)
+	row.add_child(UITheme.button("Say", func(): _send(_entry.text)))
 	_mic_btn = UITheme.button("Hold to speak", func(): pass)
 	_mic_btn.button_down.connect(_mic_start)
 	_mic_btn.button_up.connect(_mic_stop)
@@ -195,7 +195,7 @@ func _send(text: String) -> void:
 	text = text.strip_edges()
 	if text == "" or _busy or npc == null:
 		return
-	_input.text = ""
+	_entry.text = ""
 	_add_line("You", text, UITheme.ACCENT_2)
 	_history.append({"role": "user", "content": text})
 	var n := npc
