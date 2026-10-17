@@ -96,6 +96,7 @@ static func prop_for(t: String, it = null) -> Node3D:
 	elif ItemModels.has(t):
 		# Materials, parts and gear modelled at their real size (see ItemModels).
 		mi.mesh = ItemModels.model(t)
+		mi.rotation.y = ItemModels.FACE_YAW
 		mi.material_overlay = aura_for(it)
 	else:
 		var q := QuadMesh.new()
