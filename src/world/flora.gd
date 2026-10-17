@@ -43,13 +43,26 @@ static func species(t: String, sp: int) -> Dictionary:
 				r.randf_range(0.75, 0.95)
 				hue = 0.0 if autumn else 0.03
 			var nouns := {"round": "Oak", "oval": "Elm", "spreading": "Chestnut", "weeping": "Willow", "column": "Birch", "shrub": "Thornbush", "dead": "Deadwood"}
+			var height := r.randf_range(5.0, 12.0) * (0.25 if form == "shrub" else 1.0)
+			var girth := r.randf_range(0.22, 0.5) * (0.6 if form == "column" else 1.0)
+			var crown := r.randf_range(1.3, 2.6) * (0.6 if form == "column" else 1.0) * (0.7 if form == "shrub" else 1.0)
+			var blobs := r.randi_range(3, 8)
+			var branches := r.randi_range(2, 6)
+			var sat := r.randf_range(0.45, 0.8)
+			var val := r.randf_range(0.35, 0.65)
+			if autumn and hue > 0.0:
+				# Autumn runs from red through orange to yellow, and some species turn brown
+				# (spread from the same draw, so no other roll moves).
+				var turn := hue / 0.12
+				hue = turn * 0.155
+				if fposmod(turn * 7.0, 1.0) < 0.22:
+					sat *= 0.5
+					val *= 0.75
 			return {
+				"autumn": autumn,
 				"form": form, "noun": nouns[form],
-				"height": r.randf_range(5.0, 12.0) * (0.25 if form == "shrub" else 1.0),
-				"girth": r.randf_range(0.22, 0.5) * (0.6 if form == "column" else 1.0),
-				"crown": r.randf_range(1.3, 2.6) * (0.6 if form == "column" else 1.0) * (0.7 if form == "shrub" else 1.0),
-				"blobs": r.randi_range(3, 8), "branches": r.randi_range(2, 6),
-				"leaf": Color.from_hsv(hue, r.randf_range(0.45, 0.8), r.randf_range(0.35, 0.65)),
+				"height": height, "girth": girth, "crown": crown, "blobs": blobs, "branches": branches,
+				"leaf": Color.from_hsv(hue, sat, val),
 				"bark": Color(0.92, 0.9, 0.86) if form == "column" else Color.from_hsv(r.randf_range(0.05, 0.1), r.randf_range(0.25, 0.5), r.randf_range(0.25, 0.45)),
 				"card": r.randf_range(0.9, 1.5), "lean": r.randf_range(0.0, 0.12),
 			}
