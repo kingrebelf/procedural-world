@@ -8,6 +8,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 #include "res://src/env/clouds.gdshaderinc"
 global uniform vec3 sun_light_g; // the sun's light reaching the ground (Atmosphere)
 global uniform float wind_strength;
+global uniform vec2 wind_dir;
 global uniform sampler2D water_map : filter_linear; // Water's depth map: r depth, g murk
 global uniform vec4 water_map_rect; // its origin x, z and size
 #include "res://src/world/noise2d.gdshaderinc"
@@ -494,8 +495,17 @@ void fragment() {
 	if (wpos.y > -0.3 && wpos.y < 1.3 && far < 0.99) {
 		// Surf needs fetch: a sheltered (murky) pond barely laps, a big lake or the sea breaks.
 		vec2 wuv = (p - water_map_rect.xy) / water_map_rect.z;
-		float sheltered = (wuv.x < 0.0 || wuv.y < 0.0 || wuv.x > 1.0 || wuv.y > 1.0) ? 0.0 : textureLod(water_map, wuv, 0.0).g;
-		float reach = (0.22 + wind_strength * 0.45) * (1.0 - 0.75 * sheltered);
+		float sheltered = 0.5;
+		if (wuv.x > 0.01 && wuv.y > 0.01 && wuv.x < 0.99 && wuv.y < 0.99) {
+			sheltered = textureLod(water_map, wuv, 0.0).g;
+			// ...and breaks on the shore the wind blows toward (as water.gdshader judges it).
+			vec2 du = vec2(12.0 / water_map_rect.z, 0.0);
+			vec2 dg = vec2(textureLod(water_map, wuv + du, 0.0).r - textureLod(water_map, wuv - du, 0.0).r,
+				textureLod(water_map, wuv + du.yx, 0.0).r - textureLod(water_map, wuv - du.yx, 0.0).r);
+			float exposed = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
+			sheltered = max(sheltered, 1.0 - exposed);
+		}
+		float reach = (0.12 + wind_strength * 0.45) * (1.0 - 0.75 * sheltered);
 		float ph = fract(TIME * 0.1 + vnoise(p * 0.025) * 2.0);
 		float up = ph < 0.3 ? smoothstep(0.0, 0.3, ph) : 1.0 - smoothstep(0.3, 1.0, ph);
 		float run = 0.02 + reach * up * (0.75 + 0.5 * vnoise(p * 0.12 + 3.0));

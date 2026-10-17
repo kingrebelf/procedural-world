@@ -66,7 +66,7 @@ func _process(delta: float) -> void:
 		_mat.set_shader_parameter("shallow", Color(0.16, 0.36, 0.38) * w[0] + Color(0.1, 0.45, 0.5) * w[1] + Color(0.12, 0.28, 0.36) * w[2])
 		_mat.set_shader_parameter("glow_amount", w[1] * 0.12)
 		if ChunkNode.river_material:
-			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.2, 0.42, 0.4) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.16, 0.32, 0.38) * w[2])
+			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.26, 0.38, 0.28) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.2, 0.32, 0.3) * w[2])
 			ChunkNode.river_material.set_shader_parameter("glow_amount", w[1] * 0.12)
 			ChunkNode.river_material.set_shader_parameter("ssr_steps", _ssr_steps)
 		_wind = atmosphere.wind_strength

@@ -9,7 +9,7 @@ render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specula
 
 global uniform vec3 sun_dir_g;
 uniform vec3 shallow : source_color = vec3(0.2, 0.4, 0.4);
-uniform vec3 deep : source_color = vec3(0.03, 0.1, 0.12);
+uniform vec3 deep : source_color = vec3(0.04, 0.07, 0.045);
 uniform vec3 glow : source_color = vec3(0.1, 0.9, 0.8);
 uniform float glow_amount = 0.0;
 uniform float speed = 1.3;
@@ -116,9 +116,10 @@ void fragment() {
 	float c1 = abs(n2(cq + n2(cq * 0.7 + TIME * 0.2) * 1.5) * 2.0);
 	float caus = pow(clamp(1.0 - c1 * 2.0, 0.0, 1.0), 4.0);
 	under *= 1.0 + caus * (1.0 - k) * 1.2 * smoothstep(-0.05, 0.3, sun_dir_g.y);
-	// As in the lakes: the riverbed is already lit, so it is seen through (emission), with
-	// red and then green swallowed by depth; the water's own colour shows where it is deep.
-	vec3 trans = exp(-vec3(0.4, 0.14, 0.17) * water_depth * 1.5);
+	// As in the lakes: the riverbed is already lit, so it is seen through (emission). River
+	// water carries peat and silt, so blue goes first and the deep runs green-brown, not
+	// the sea's turquoise; the water's own colour shows where it is deep.
+	vec3 trans = exp(-vec3(0.38, 0.24, 0.45) * water_depth * 1.5);
 	vec3 tint = mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3);
 	vec3 seen = under * trans * tint;
 	vec3 col = deep * (1.0 - trans.g) * 1.6;

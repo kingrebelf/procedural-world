@@ -27,6 +27,7 @@ varying vec3 wpos;
 varying float crest;
 varying float amp;
 varying float murk;
+varying float exposure;
 
 // Integer hash of a lattice point (PCG2D). Exact on every GPU: the old sin() hash gave a
 // shared cell corner two different values on some GPUs (NVIDIA: light and dark rectangles
@@ -87,6 +88,11 @@ void vertex() {
 	float open = smoothstep(0.5, 14.0, depth);
 	amp = (0.04 + wind_strength * wind_strength * 1.1) * (0.15 + 0.85 * open);
 	vec2 muv = (wpos.xz - depth_origin) / depth_size;
+	// How squarely the wind drives waves onto the nearest shore: surf breaks on the lee
+	// shore the wind blows toward, and the shore it blows off stays nearly still.
+	vec2 dg = vec2(depth_here(wpos.xz + vec2(12.0, 0.0)) - depth_here(wpos.xz - vec2(12.0, 0.0)),
+		depth_here(wpos.xz + vec2(0.0, 12.0)) - depth_here(wpos.xz - vec2(0.0, 12.0)));
+	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
 	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(depth_map, muv).g;
 	vec3 s = swell(wpos.xz, TIME, amp);
 	VERTEX.y += s.x;
@@ -145,8 +151,8 @@ void fragment() {
 	// Broken into stretches, as real breakers are, never a ring round the whole shore.
 	rollers *= smoothstep(-0.05, 0.25, n2(wpos.xz * 0.05 + vec2(t * 0.03, 0.0)));
 	// Surf needs fetch: a sheltered pond barely laps, a big lake or the sea breaks.
-	float surf = 1.0 - 0.85 * murk;
-	float shore = clamp(edge_f * (0.3 + 0.6 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace;
+	float surf = (1.0 - 0.85 * murk) * exposure * smoothstep(0.05, 0.6, wind_strength);
+	float shore = clamp(edge_f * (0.12 + 0.75 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace;
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n * (0.5 + 0.5 * lace);
 	float foam = max(shore * 0.85, caps);
