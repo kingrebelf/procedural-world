@@ -586,10 +586,11 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		if r == 6 and p.y > boot_h - 0.03:
 			return 0.007
 		return -1.0)
-	# Boots (or low shoes) with a thicker turned-over top.
+	# Boots (or low shoes) with a thicker turned-over top, and a roomy toe so they read
+	# as boots rather than feet.
 	_shell(s, o, PART_BOOTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if r == 7:
-			return 0.013
+			return 0.014 + 0.012 * clampf(p.z / 0.1, 0.0, 1.0)
 		if r == 6 and p.y < boot_h:
 			return 0.016 if p.y > boot_h - 0.03 else 0.013
 		return -1.0)
