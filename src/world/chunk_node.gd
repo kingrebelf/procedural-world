@@ -1414,6 +1414,8 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 		_add_obj_body(o)
 	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
+	if BuildCatalog.is_built(t):
+		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
 	return o
 
 ## Regrows the grass after something that keeps it out (a floor, a house) came or went,
@@ -1438,6 +1440,9 @@ func remove_object(i: int) -> void:
 		refresh_far()
 	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
+	if BuildCatalog.is_built(o["t"]):
+		var lp: Vector3 = o["p"]
+		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
 
