@@ -265,14 +265,24 @@ void fragment() {
 		vec3 bw = pow(abs(wnorm), vec3(4.0));
 		bw /= bw.x + bw.y + bw.z;
 		vec3 rp = wpos / ROCK_TILE;
-		vec2 cx = vec2(wpos.z, -wpos.y) / CLIFF_TILE;
-		vec2 cz = vec2(wpos.x, -wpos.y) / CLIFF_TILE;
+		// The layers wander and dip across a face instead of running dead level, like
+		// courses of masonry.
+		float dip = (fbm(vec2(wpos.x + wpos.z, wpos.x - wpos.z) * 0.012 + 3.0) - 0.5) * 14.0
+			+ (wpos.x * 0.6 - wpos.z * 0.4) * 0.12;
+		vec2 cx = vec2(wpos.z, -wpos.y + dip) / CLIFF_TILE;
+		vec2 cz = vec2(wpos.x, -wpos.y + dip) / CLIFF_TILE;
 		float cm = smoothstep(0.3, 0.7, vnoise3(wpos * 0.06));
 		vec3 rt = mix(texture(cliff_tex, cx).rgb, texture(cliff_tex, cx * 0.43 + 0.31).rgb, cm) * bw.x
 			+ texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y
 			+ mix(texture(cliff_tex, cz).rgb, texture(cliff_tex, cz * 0.43 + 0.31).rgb, cm) * bw.z;
 		vec3 rmean = mix(CLIFF_MEAN, ROCK_MEAN, bw.y);
 		rock = recolor(rt, rmean, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
+		// Rain streaks down the faces, dark stains and paler washed ones, and broad
+		// tones over a whole crag, so a tall face isn't one repeat stacked on another.
+		float streak = vnoise(vec2(wpos.z * 0.45, wpos.y * 0.035)) * bw.x + vnoise(vec2(wpos.x * 0.45 + 17.0, wpos.y * 0.035)) * bw.z + 0.5 * bw.y;
+		float face = 1.0 - bw.y;
+		rock *= (1.0 - 0.32 * smoothstep(0.58, 0.85, streak) * face) * (1.0 + 0.14 * smoothstep(0.6, 0.88, 1.0 - streak) * face);
+		rock *= mix(vec3(0.88, 0.9, 0.94), vec3(1.1, 1.03, 0.94), smoothstep(0.3, 0.7, fbm(wpos.xz * 0.008 + wpos.y * 0.01 + 11.0)));
 		vec3 nx = mix(texture(cliff_nrm, cx).xyz, texture(cliff_nrm, cx * 0.43 + 0.31).xyz, cm) * 2.0 - 1.0;
 		vec3 nz = mix(texture(cliff_nrm, cz).xyz, texture(cliff_nrm, cz * 0.43 + 0.31).xyz, cm) * 2.0 - 1.0;
 		vec3 ny = texture(rock_nrm, rp.xz * 0.8 + 0.5).xyz * 2.0 - 1.0;
