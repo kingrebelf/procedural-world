@@ -191,6 +191,39 @@ func _process(delta: float) -> void:
 			_w[e] = lerpf(_w[e], _target_w[e], clampf(delta * 0.8, 0.0, 1.0))
 	_update_time_of_day()
 	_update_wind(delta)
+	_refresh_gi(delta)
+
+## The global illumination (SDFGI) takes in the ground and buildings round you as you
+## move. Built where you arrive before they have streamed in (a new game, a respawn, a
+## portal), it leaves rooms lit as if open to the sky until you walk well away: so once
+## they are in, it is built again.
+var _gi_at := Vector3.INF
+var _gi_stale := true
+var _gi_wait := 1.0
+var _gi_off := false
+
+func _refresh_gi(delta: float) -> void:
+	if _gi_off:
+		_gi_off = false
+		env.sdfgi_enabled = int(Settings.get_value("gi")) == Settings.GI.SDFGI
+		return
+	if target == null or streamer == null:
+		return
+	var p := target.global_position
+	if _gi_at != Vector3.INF and p.distance_to(_gi_at) > 48.0:
+		_gi_stale = true
+		_gi_wait = 1.0
+	_gi_at = p
+	if not _gi_stale or not streamer.ready_round(p):
+		return
+	# Give the buildings of the last chunks in a moment to stand up.
+	_gi_wait -= delta
+	if _gi_wait > 0.0:
+		return
+	_gi_stale = false
+	if env.sdfgi_enabled:
+		env.sdfgi_enabled = false
+		_gi_off = true
 
 ## How far under the actual ground (the chunk's own heights, so cave mouths count) p is,
 ## as 0..1: a few metres into a cave mouth is still lit, ten metres down is dark.

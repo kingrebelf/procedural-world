@@ -64,6 +64,16 @@ func is_ready_at(p: Vector3) -> bool:
 	var c: ChunkNode = chunks.get(chunk_of(p))
 	return c != null and c.near
 
+## Whether the chunks round p (it and its eight neighbours) are all in at full detail.
+func ready_round(p: Vector3) -> bool:
+	var c := chunk_of(p)
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var n: ChunkNode = chunks.get(c + Vector2i(dx, dz))
+			if n == null or not n.near:
+				return false
+	return true
+
 func get_chunk(k: Vector2i) -> ChunkNode:
 	return chunks.get(k)
 

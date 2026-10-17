@@ -101,17 +101,20 @@ void fragment() {
 		discard;
 	}
 	vec3 lm = lo + ld * (tn + tf) * 0.5;
-	// Soft edges, fading as the light spreads toward the floor.
-	float soft = 1.0 - smoothstep(0.3, 1.0, max(abs(lm.x), abs(lm.y)));
-	float along = mix(1.0, 0.4, clamp(lm.z, 0.0, 1.0)) * smoothstep(0.0, 0.05, lm.z);
-	// Drifting dust thick and thin.
+	// Brightest along the middle, falling away softly to the edges, and fading as the
+	// light spreads toward the floor.
+	float soft = exp(-2.2 * dot(lm.xy, lm.xy)) * (1.0 - smoothstep(0.8, 1.0, max(abs(lm.x), abs(lm.y))));
+	float along = mix(1.0, 0.3, clamp(lm.z, 0.0, 1.0)) * smoothstep(0.0, 0.05, lm.z);
+	// Streaks down the shaft (light caught by the window's edges and the dust in it), and
+	// drifting dust thick and thin.
+	float streaks = 0.55 + 0.9 * noise3(vec3(lm.xy * vec2(2.6, 1.8), bc.x * 0.37 + bc.z * 0.71));
 	vec3 wm = ro + rd * (tn + tf) * 0.5;
-	float motes = 0.7 + 0.6 * noise3(wm * 2.2 + vec3(0.0, TIME * 0.06, TIME * 0.02));
+	float motes = 0.75 + 0.5 * noise3(wm * 2.2 + vec3(0.0, TIME * 0.06, TIME * 0.02));
 	// Forward scattering (Henyey-Greenstein).
 	float g = 0.35;
 	float cth = dot(rd, normalize(sun_dir_g));
 	float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cth, 1.5);
 	float dens = 1.0 - exp(-thick * 0.3);
-	ALBEDO = sun_light_g * (dens * soft * along * motes * phase * strength * 0.3);
+	ALBEDO = sun_light_g * (dens * soft * along * streaks * motes * phase * strength * 0.25);
 	ALPHA = 1.0;
 }
