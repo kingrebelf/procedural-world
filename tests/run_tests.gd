@@ -1491,6 +1491,38 @@ func test_held_scale() -> void:
 		h.hold(null)
 	h.free()
 
+## Muscle-like easing: turns ease off and settle without overshoot, and a skipped frame
+## lands where even steps would have. Kit animals' gaits are paced from their hooves'
+## IK controllers, and pacing a gallop through its stride keeps the stride's length.
+func test_natural_motion() -> void:
+	var a := Vector2(0.0, 0.0)
+	var peak := 0.0
+	for i in 120:
+		a = AnimMath.spring(a.x, a.y, 1.0, 8.0, 1.0 / 60.0)
+		peak = maxf(peak, a.x)
+	check(absf(a.x - 1.0) < 0.001 and peak <= 1.0 + 1e-5, "a spring settles on its mark without overshoot (%.4f)" % a.x)
+	var one := AnimMath.spring(0.0, 0.0, 1.0, 8.0, 0.2)
+	var two := Vector2.ZERO
+	for i in 4:
+		two = AnimMath.spring(two.x, two.y, 1.0, 8.0, 0.05)
+	check(absf(one.x - two.x) < 1e-4, "one long spring step is four short ones")
+	check(absf(AnimMath.drift(3.0, 1.0)) <= 1.0, "a drift stays in -1..1")
+	if not AnimalModel.available("Horse"):
+		return
+	var sc: Node3D = (load(AnimalModel.path_of("Horse")) as PackedScene).instantiate()
+	var ap: AnimationPlayer = sc.find_children("*", "AnimationPlayer", true, false)[0]
+	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
+	var g := AnimalModel.gaits("Horse", ap, sk)
+	check(g.has("Walk") and g.has("Gallop") and float(g["Gallop"]) > float(g["Walk"]) * 2.0, "a horse's gallop covers ground faster than its walk (%s)" % str(g))
+	var w: PackedFloat32Array = AnimalModel._warp_cache["Horse"].get("Gallop", PackedFloat32Array())
+	var inv := 0.0
+	for x in w:
+		inv += 1.0 / x
+	check(w.size() == 48 and absf(inv / w.size() - 1.0) < 0.01, "pacing a gallop through its stride keeps its length")
+	var st: Array = AnimalModel._stance_cache["Horse"].get("Walk", [])
+	check(st.size() == 4, "each of a horse's feet knows when it is down in a walk")
+	sc.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return
