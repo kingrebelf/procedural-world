@@ -47,6 +47,9 @@ func _run() -> void:
 		var a: float = ways[0] if not ways.is_empty() else 0.6
 		views.append(["town_overview", tc + Vector2.from_angle(a) * 100.0, tc, 18.0])
 		views.append(["town_street", tc + Vector2.from_angle(a) * 12.0, tc - Vector2.from_angle(a) * 30.0, 1.7])
+	var shore := _find_shore(g)
+	if shore != Vector2.ZERO:
+		views.append(["lake", shore, shore + shore_out * 60.0, 2.5])
 	var forest := _forest_spot(g)
 	if forest.size() == 2:
 		views.append(["forest", forest[0], forest[1], 1.7])
@@ -54,6 +57,8 @@ func _run() -> void:
 		if not spots.is_empty() and not spots.has(String(v[0]).get_slice("_", 0)) and not spots.has(v[0]):
 			continue
 		await _probe_view(v[0], v[1], v[2], v[3])
+		if v[0] == "lake":
+			await _splash_test(v[1])
 	if spots.is_empty() or spots.has("fly"):
 		var from: Vector2 = views[1][1] if views.size() > 1 else views[0][1]
 		await _fly("fly_run", from, Vector2(1, 0.3).normalized(), 9.0, 12.0)
@@ -223,6 +228,32 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 	Settings.values = b._saved
 	Settings.apply()
 	b.free()
+
+## Splashes in front of the eye (as capture shot 36): frame times through two bursts,
+## the first one paying for any shader compiles.
+func _splash_test(shore: Vector2) -> void:
+	var spot := shore + shore_out * 9.0
+	await _goto(shore - shore_out * 2.0, spot, 2.2)
+	var vp := get_viewport().get_viewport_rid()
+	for burst in 2:
+		var worst := 0.0
+		var gpu := 0.0
+		var t0 := Time.get_ticks_usec()
+		var last := t0
+		var n := 0
+		for i in 90:
+			if i % 4 == 0 and i < 12:
+				Splashes.splash(Vector3(spot.x, Water.surface_height(spot.x, spot.y, 0.0), spot.y), 1.2)
+				Splashes.ring(Vector3(spot.x + 2.0, 0.0, spot.y + 1.0), 1.6)
+			await get_tree().process_frame
+			var now := Time.get_ticks_usec()
+			worst = maxf(worst, (now - last) / 1000.0)
+			last = now
+			gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp)
+			n += 1
+		var fr := (Time.get_ticks_usec() - t0) / 1000.0 / n
+		_out("== splash burst %d: frame %.1f ms (%d FPS)  GPU %.1f ms  worst frame %.0f ms" % [burst + 1, fr, int(1000.0 / maxf(fr, 0.1)), gpu / n, worst])
+		await _wait(120)
 
 ## Moves the player in a straight line at `speed` m/s for `secs`, 1.7 m over the ground
 ## (well above it for the jetpack), and lists the frames that took far longer than usual.
