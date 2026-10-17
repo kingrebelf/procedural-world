@@ -1310,7 +1310,7 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 		var close_in := func() -> void:
 			var c: Vector3 = near.center
 			var side := Vector3(c.x - p.camera.global_position.x, 0.0, c.z - p.camera.global_position.z).normalized()
-			var back: float = 2.2 + near.f[5] as float
+			var back: float = 1.4 + (near.f[5] as float) * 0.5
 			var cam_at := c - side * back
 			cam_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
 			# From whichever side nothing (a rock, the bank) stands between eye and school.
