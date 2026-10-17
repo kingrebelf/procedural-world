@@ -37,6 +37,24 @@ const HANDLING := {
 	"heavy_crossbow": {"mag": 1, "reload": 2.4, "recoil": 1.8, "spread": 0.4, "speed": 85.0, "drop": 0.9, "zoom": 1.5, "auto_reload": true},
 	"throwing_knives": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 32.0, "drop": 1.0, "zoom": 1.1},
 	"javelin": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 30.0, "drop": 1.0, "zoom": 1.15},
+	# The frontier (pack B): muzzle-loaders ram one ball at a time, revolvers and lever
+	# guns load round by round, shotguns throw pellets (pellet_cone: their extra spread).
+	"flintlock_pistol": {"mag": 1, "reload": 2.4, "recoil": 5.0, "spread": 1.8, "speed": 220.0, "drop": 1.0, "zoom": 1.25, "powder": true},
+	"musket": {"mag": 1, "reload": 3.2, "recoil": 6.0, "spread": 1.4, "speed": 300.0, "drop": 1.0, "zoom": 1.5, "powder": true, "ads_spread": 0.2},
+	"blunderbuss": {"mag": 1, "reload": 3.0, "recoil": 7.0, "spread": 2.0, "speed": 160.0, "drop": 1.0, "zoom": 1.15, "powder": true, "pellet_cone": 7.0},
+	"revolver_six": {"mag": 6, "reload": 0.4, "per_round": true, "recoil": 4.0, "spread": 1.3, "speed": 320.0, "drop": 1.0, "zoom": 1.3, "powder": true},
+	"derringer": {"mag": 2, "reload": 0.5, "per_round": true, "recoil": 3.5, "spread": 2.2, "speed": 250.0, "drop": 1.0, "zoom": 1.15, "powder": true},
+	"lever_rifle": {"mag": 8, "reload": 0.45, "per_round": true, "recoil": 3.5, "spread": 1.0, "speed": 420.0, "drop": 0.8, "zoom": 1.8, "powder": true, "ads_spread": 0.1},
+	"double_shotgun": {"mag": 2, "reload": 0.6, "per_round": true, "recoil": 6.5, "spread": 1.6, "speed": 220.0, "drop": 1.0, "zoom": 1.2, "powder": true, "pellet_cone": 5.0},
+	"bolt_rifle": {"mag": 5, "reload": 0.55, "per_round": true, "recoil": 6.0, "spread": 1.2, "speed": 700.0, "drop": 0.6, "zoom": 3.5, "powder": true, "ads_spread": 0.03},
+	"flare_gun": {"mag": 1, "reload": 1.4, "recoil": 2.0, "spread": 1.0, "speed": 60.0, "drop": 0.8, "zoom": 1.1},
+	"harpoon_gun": {"mag": 1, "reload": 2.6, "recoil": 3.0, "spread": 0.6, "speed": 70.0, "drop": 0.9, "zoom": 1.4, "auto_reload": true},
+	"gatling": {"mag": 40, "reload": 3.5, "recoil": 1.2, "spread": 2.4, "speed": 380.0, "drop": 0.8, "zoom": 1.2, "powder": true},
+	"elephant_gun": {"mag": 2, "reload": 0.9, "per_round": true, "recoil": 10.0, "spread": 1.0, "speed": 600.0, "drop": 0.7, "zoom": 2.5, "powder": true, "ads_spread": 0.05},
+	"dynamite": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
+	"frag_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"powder_keg": {"mag": 1, "reload": 0.0, "recoil": 1.0, "spread": 1.5, "speed": 12.0, "drop": 1.0, "zoom": 1.0},
+	"fire_bottle": {"mag": 1, "reload": 0.0, "recoil": 0.4, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
 }
 ## Better arrows a bow nocks first when you carry them: [ammo, alternative, damage multiplier].
 const BETTER_AMMO := {"arrow": ["broadhead_arrows", 1.3]}
@@ -169,20 +187,23 @@ func fire(it: Dictionary, d: Dictionary) -> void:
 	player._cooldown = float(d.get("cooldown", 0.22))
 	var cam := player.camera
 	var fwd := -cam.global_transform.basis.z
-	var dir := _scatter(fwd, deg_to_rad(spread_deg()))
 	var muzzle := player.viewmodel.muzzle() if not player.third_person else cam.global_position + fwd * 0.6
-	var shot := {
-		"pos": cam.global_position, "vel": dir * float(h["speed"]) + player.velocity * 0.3,
-		"drop": float(h["drop"]), "life": float(d.get("range", 60.0)) / float(h["speed"]) + 0.5,
-		"left": float(d.get("range", 60.0)) * 1.15, "item": it, "d": d, "type": t,
-		# The tracer starts at the muzzle and closes onto the line of sight over 10 m.
-		"vis": muzzle - cam.global_position,
-	}
-	shot["node"] = _shot_visual(t, d)
-	if _shots.size() >= MAX_SHOTS:
-		_drop_shot(0)
-	_shots.append(shot)
-	_place_visual(shot)
+	# A shotgun or blunderbuss throws a cloud of pellets, each its own small shot.
+	var pellets := int(d.get("pellets", 1))
+	for k in pellets:
+		var dir := _scatter(fwd, deg_to_rad(spread_deg() + (float(h.get("pellet_cone", 4.0)) if pellets > 1 else 0.0)))
+		var shot := {
+			"pos": cam.global_position, "vel": dir * float(h["speed"]) + player.velocity * 0.3,
+			"drop": float(h["drop"]), "life": float(d.get("range", 60.0)) / float(h["speed"]) + 0.5,
+			"left": float(d.get("range", 60.0)) * 1.15, "item": it, "d": d, "type": t,
+			# The tracer starts at the muzzle and closes onto the line of sight over 10 m.
+			"vis": muzzle - cam.global_position,
+		}
+		shot["node"] = _shot_visual(t, d)
+		if _shots.size() >= MAX_SHOTS:
+			_drop_shot(0)
+		_shots.append(shot)
+		_place_visual(shot)
 	_recoil_kick(h)
 	bloom = minf(bloom + float(h["recoil"]) * 0.35, float(h["spread"]) * 3.0 + 2.0)
 	player.viewmodel.recoil(clampf(float(h["recoil"]) / 3.0, 0.4, 2.0))
@@ -305,7 +326,7 @@ func start_reload(it) -> bool:
 	if spa > 1 and rounds(it) > 0 and Game.inventory.count(String(ItemDB.def(t)["ammo"])) <= 0:
 		return false
 	_reload_uid = int(it.get("uid", -1))
-	reload_total = float(h["reload"])
+	reload_total = float(h["reload"]) / Game.stats.reload_mult()
 	reload_left = reload_total
 	player.viewmodel.reload_dip()
 	gun_event.emit("reload_start", t, player.global_position, "")
@@ -579,10 +600,17 @@ func _impact_fx(t: String, d: Dictionary, at: Vector3, n: Vector3, what: String)
 	var tr := String(d.get("tracer", "glow_cyan"))
 	var out := at + n * 0.05
 	if d.has("splash"):
-		_flipbook("sparks", true, out, float(d["splash"]) * 0.8, 0.35, Color(0.8, 0.55, 1.0, 1.0), Vector2(2, 13))
-		_flipbook("smoke", false, out, 1.5, 2.0, Color(0.55, 0.5, 0.6, 0.6), Vector2(0, 14), Vector3(0, 1.2, 0), 2.5)
-		_flash_light(out, Color(0.75, 0.5, 1.0), 6.0, float(d["splash"]) * 2.5, 0.25)
+		# Energy weapons burst violet; powder (dynamite, grenades, kegs) in fire and smoke.
+		var powder := not tr.begins_with("glow") or tr == "glow_warm"
+		var fire := Color(1.0, 0.62, 0.25, 1.0) if powder else Color(0.8, 0.55, 1.0, 1.0)
+		_flipbook("sparks", true, out, float(d["splash"]) * 0.8, 0.35, fire, Vector2(2, 13))
+		_flipbook("smoke", false, out, 1.5 if not powder else float(d["splash"]) * 0.5, 2.0, Color(0.55, 0.5, 0.6, 0.6) if not powder else Color(0.3, 0.28, 0.26, 0.7), Vector2(0, 14), Vector3(0, 1.2, 0), 2.5)
+		_flash_light(out, Color(1.0, 0.6, 0.3) if powder else Color(0.75, 0.5, 1.0), 6.0, float(d["splash"]) * 2.5, 0.25)
 		return
+	if d.has("flare"):
+		# A signal flare sputters red where it lands, lighting the ground around it.
+		_flash_light(out, Color(1.0, 0.35, 0.2), 4.0, 22.0, float(d["flare"]))
+		_flipbook("smoke", false, out, 0.6, 3.0, Color(0.85, 0.4, 0.35, 0.5), Vector2(0, 14), Vector3(0, 0.8, 0), 3.0)
 	match what:
 		"creature", "npc":
 			_flipbook("smoke", false, out, 0.35, 0.5, Color(0.45, 0.05, 0.04, 0.85), Vector2(1, 10), Vector3(0, -0.15, 0), 1.6)

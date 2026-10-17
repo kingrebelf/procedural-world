@@ -16,7 +16,8 @@ const STOCK_POOLS := [
 	["bread", "iron_ingot", "planks", "pickaxe_iron", "axe_iron", "sword_iron", "wood", "iron_ore", "rope", "cloth", "salt",
 		"candle", "copper_ingot", "bronze_ingot", "potion_health_minor", "bandage_linen", "travel_bread", "mead", "shortbow", "arrow"],
 	["glowberry", "aether_crystal", "glowroot", "mythril_ingot", "pickaxe_mythril", "sword_runic", "axe_mythril"],
-	["ration_pack", "power_cell", "circuitry", "alloy_plate", "pulse_pistol", "pickaxe_plasma", "alloy_scrap"],
+	["ration_pack", "power_cell", "circuitry", "alloy_plate", "pulse_pistol", "pickaxe_plasma", "alloy_scrap",
+		"revolver_six", "rounds", "beans_can", "jerky", "coffee_beans", "black_powder", "gears", "lamp_kerosene", "bandage_roll"],
 ]
 const TRADER_NAMES := [
 	["Aldric the Fair", "Mother Wenna", "Osric Coalhand", "Bertilde"],

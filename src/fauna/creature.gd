@@ -30,6 +30,7 @@ var _flash := 0.0
 ## Drawn as a carcass (see Corpses): no hit box, no mind, lying where it fell. `fresh`
 ## plays the fall; otherwise it is already down.
 var as_corpse := false
+var held_for := 0.0 ## seconds left caught in a trap (Traps): it cannot move
 var fresh := false
 
 const NAMES := [
@@ -363,6 +364,9 @@ func _pick_wander() -> void:
 
 func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	_bite_cd = maxf(0.0, _bite_cd - delta)
+	if held_for > 0.0:
+		held_for -= delta
+		return
 	_think -= delta
 	var d := global_position.distance_to(player_pos)
 	if _think <= 0.0:

@@ -298,6 +298,128 @@ const ITEMS := {
 	"cauldron_small": {"name": "Brewing Pot", "era": Eras.MEDIEVAL, "value": 30, "stack": false, "kind": "tool", "damage": 4, "range": 2.0, "need": true},
 	"holy_water": {"name": "Holy Water", "era": Eras.MEDIEVAL, "value": 40, "stack": true, "kind": "food", "cat": "Medicine", "drink": true, "heal": 30, "cure": true, "buff": ["warded", 120.0], "color": Color(0.75, 0.85, 0.95)},
 	"smelling_salts": {"name": "Smelling Salts", "era": Eras.MEDIEVAL, "value": 10, "stack": true, "kind": "food", "cat": "Medicine", "stamina": true, "color": Color(0.9, 0.9, 0.85)},
+	# The frontier and industrial age (pack B, levels 10-25): black powder and brass
+	# cartridges, steam and iron, canvas and leather. Nothing here glows.
+	"flintlock_pistol": {"name": "Flintlock Pistol", "era": Eras.SCIFI, "value": 120, "stack": false, "kind": "weapon", "damage": 46, "range": 55.0, "ranged": true, "ammo": "musket_balls", "shots_per_ammo": 1, "cooldown": 0.5, "tracer": "glow_warm", "color": Color(0.45, 0.3, 0.18)},
+	"musket": {"name": "Musket", "era": Eras.SCIFI, "value": 160, "stack": false, "kind": "weapon", "damage": 62, "range": 120.0, "ranged": true, "ammo": "musket_balls", "shots_per_ammo": 1, "cooldown": 0.6, "tracer": "glow_warm", "color": Color(0.42, 0.28, 0.16)},
+	"blunderbuss": {"name": "Blunderbuss", "era": Eras.SCIFI, "value": 150, "stack": false, "kind": "weapon", "damage": 9, "pellets": 9, "range": 28.0, "ranged": true, "ammo": "musket_balls", "shots_per_ammo": 1, "cooldown": 0.6, "tracer": "glow_warm", "color": Color(0.55, 0.42, 0.25)},
+	"revolver_six": {"name": "Six-shooter", "era": Eras.SCIFI, "value": 210, "stack": false, "kind": "weapon", "damage": 32, "range": 70.0, "ranged": true, "ammo": "rounds", "shots_per_ammo": 1, "cooldown": 0.3, "tracer": "glow_warm", "color": Color(0.35, 0.36, 0.38)},
+	"lever_rifle": {"name": "Lever-action Rifle", "era": Eras.SCIFI, "value": 300, "stack": false, "kind": "weapon", "damage": 44, "range": 150.0, "ranged": true, "ammo": "rifle_cartridges", "shots_per_ammo": 1, "cooldown": 0.45, "tracer": "glow_warm", "color": Color(0.6, 0.45, 0.22)},
+	"double_shotgun": {"name": "Double-barrel Shotgun", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "weapon", "damage": 11, "pellets": 8, "range": 35.0, "ranged": true, "ammo": "shotgun_shells", "shots_per_ammo": 1, "cooldown": 0.35, "tracer": "glow_warm", "color": Color(0.3, 0.3, 0.32)},
+	"bolt_rifle": {"name": "Bolt-action Rifle", "era": Eras.SCIFI, "value": 420, "stack": false, "kind": "weapon", "damage": 75, "range": 280.0, "ranged": true, "ammo": "rifle_cartridges", "shots_per_ammo": 1, "cooldown": 0.9, "tracer": "glow_warm", "color": Color(0.4, 0.3, 0.2)},
+	"derringer": {"name": "Derringer", "era": Eras.SCIFI, "value": 90, "stack": false, "kind": "weapon", "damage": 28, "range": 30.0, "ranged": true, "ammo": "rounds", "shots_per_ammo": 1, "cooldown": 0.3, "tracer": "glow_warm", "color": Color(0.7, 0.62, 0.4)},
+	"flare_gun": {"name": "Flare Gun", "era": Eras.SCIFI, "value": 70, "stack": false, "kind": "weapon", "damage": 12, "range": 140.0, "ranged": true, "ammo": "shotgun_shells", "shots_per_ammo": 1, "cooldown": 0.8, "tracer": "glow_warm", "flare": 25.0, "color": Color(0.85, 0.4, 0.15)},
+	"harpoon_gun": {"name": "Harpoon Gun", "era": Eras.SCIFI, "value": 240, "stack": false, "kind": "weapon", "damage": 68, "range": 45.0, "ranged": true, "ammo": "bolt", "shots_per_ammo": 1, "cooldown": 0.8, "tracer": "bolt", "fish": 1.5, "color": Color(0.4, 0.42, 0.45)},
+	"gatling": {"name": "Hand Gatling", "era": Eras.SCIFI, "value": 900, "stack": false, "kind": "weapon", "damage": 19, "range": 110.0, "ranged": true, "ammo": "rounds", "shots_per_ammo": 1, "cooldown": 0.09, "auto": true, "tracer": "glow_warm", "rarity_min": 3, "color": Color(0.6, 0.5, 0.3)},
+	"elephant_gun": {"name": "Big-game Rifle", "era": Eras.SCIFI, "value": 1100, "stack": false, "kind": "weapon", "damage": 150, "range": 220.0, "ranged": true, "ammo": "rifle_cartridges", "shots_per_ammo": 1, "cooldown": 0.7, "tracer": "glow_warm", "rarity_min": 3, "color": Color(0.5, 0.36, 0.2)},
+	"sabre": {"name": "Cavalry Sabre", "era": Eras.SCIFI, "value": 180, "stack": false, "kind": "weapon", "damage": 38, "range": 3.0, "swing": 0.9, "color": Color(0.75, 0.75, 0.78)},
+	"machete": {"name": "Machete", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "weapon", "damage": 30, "range": 2.8, "swing": 0.8, "chop": 0.8, "reap": 1.5, "color": Color(0.6, 0.6, 0.6)},
+	"tomahawk": {"name": "Tomahawk", "era": Eras.SCIFI, "value": 70, "stack": false, "kind": "weapon", "damage": 32, "range": 2.6, "swing": 0.8, "chop": 0.9, "color": Color(0.5, 0.42, 0.32)},
+	"bowie_knife": {"name": "Bowie Knife", "era": Eras.SCIFI, "value": 55, "stack": false, "kind": "weapon", "damage": 27, "range": 2.4, "swing": 0.6, "skin": 1.6, "color": Color(0.7, 0.7, 0.72)},
+	"bayonet": {"name": "Bayonet", "era": Eras.SCIFI, "value": 40, "stack": false, "kind": "weapon", "damage": 25, "range": 2.6, "swing": 0.7, "color": Color(0.62, 0.63, 0.66)},
+	"sledgehammer": {"name": "Sledgehammer", "era": Eras.SCIFI, "value": 90, "stack": false, "kind": "weapon", "damage": 52, "range": 3.0, "swing": 1.5, "mine": 1.2, "color": Color(0.45, 0.45, 0.48)},
+	"dynamite": {"name": "Dynamite", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "weapon", "damage": 95, "splash": 5.0, "range": 30.0, "ranged": true, "thrown": true, "ammo": "dynamite", "shots_per_ammo": 1, "cooldown": 1.0, "tracer": "bolt", "color": Color(0.75, 0.2, 0.15)},
+	"frag_grenade": {"name": "Pineapple Grenade", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "weapon", "damage": 85, "splash": 4.5, "range": 32.0, "ranged": true, "thrown": true, "ammo": "frag_grenade", "shots_per_ammo": 1, "cooldown": 1.0, "tracer": "bolt", "color": Color(0.35, 0.4, 0.3)},
+	"powder_keg": {"name": "Powder Keg", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "weapon", "damage": 150, "splash": 7.0, "range": 14.0, "ranged": true, "thrown": true, "ammo": "powder_keg", "shots_per_ammo": 1, "cooldown": 1.4, "tracer": "bolt", "color": Color(0.5, 0.35, 0.2)},
+	"fire_bottle": {"name": "Fire Bottle", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "weapon", "damage": 45, "splash": 3.5, "range": 28.0, "ranged": true, "thrown": true, "ammo": "fire_bottle", "shots_per_ammo": 1, "cooldown": 0.9, "tracer": "bolt", "color": Color(0.8, 0.5, 0.2)},
+	"bear_trap": {"name": "Bear Trap", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 70.0, "radius": 1.2, "hold": 6.0}, "color": Color(0.4, 0.4, 0.42)},
+	"tripwire": {"name": "Tripwire Kit", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 80.0, "radius": 2.0, "blast": 4.0}, "color": Color(0.55, 0.5, 0.4)},
+	"black_powder": {"name": "Black Powder", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "resource", "color": Color(0.15, 0.15, 0.15)},
+	"musket_balls": {"name": "Musket Balls", "era": Eras.SCIFI, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.45, 0.45, 0.48)},
+	"shotgun_shells": {"name": "Shotgun Shells", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.75, 0.2, 0.15)},
+	"rifle_cartridges": {"name": "Rifle Cartridges", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.8, 0.65, 0.3)},
+	"ammo_belt": {"name": "Ammo Belt", "era": Eras.SCIFI, "value": 80, "stack": false, "kind": "armor", "slot": "back", "armor": 2, "bonus": {"reload": 0.25}, "look": "leather", "color": Color(0.45, 0.32, 0.2)},
+	"gun_oil": {"name": "Gun Oil", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "kit", "cat": "Tools", "buff": ["oiled", 600.0], "color": Color(0.55, 0.5, 0.3)},
+	"hat_cowboy": {"name": "Wide-brim Hat", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "head", "armor": 6, "bonus": {"stamina": 10.0}, "look": "leather", "color": Color(0.5, 0.36, 0.22)},
+	"duster": {"name": "Duster Coat", "era": Eras.SCIFI, "value": 140, "stack": false, "kind": "armor", "slot": "chest", "armor": 16, "bonus": {"speed": 0.04}, "look": "leather", "color": Color(0.45, 0.33, 0.22)},
+	"gloves_riding": {"name": "Riding Gloves", "era": Eras.SCIFI, "value": 45, "stack": false, "kind": "armor", "slot": "hands", "armor": 4, "bonus": {"swing": 0.04}, "look": "leather", "color": Color(0.5, 0.38, 0.25)},
+	"chaps": {"name": "Leather Chaps", "era": Eras.SCIFI, "value": 80, "stack": false, "kind": "armor", "slot": "legs", "armor": 10, "look": "leather", "color": Color(0.48, 0.34, 0.22)},
+	"boots_riding": {"name": "Riding Boots", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "feet", "armor": 5, "bonus": {"speed": 0.04}, "look": "leather", "color": Color(0.35, 0.24, 0.15)},
+	"bandana": {"name": "Bandana", "era": Eras.SCIFI, "value": 15, "stack": false, "kind": "armor", "slot": "neck", "armor": 1, "bonus": {"stamina_regen": 0.1}, "color": Color(0.7, 0.15, 0.12)},
+	"hardhat_lamp": {"name": "Miner's Helmet", "era": Eras.SCIFI, "value": 120, "stack": false, "kind": "armor", "slot": "head", "armor": 8, "lamp": true, "look": "plate", "color": Color(0.85, 0.7, 0.25)},
+	"overalls": {"name": "Work Overalls", "era": Eras.SCIFI, "value": 90, "stack": false, "kind": "armor", "slot": "chest", "armor": 15, "bonus": {"carry": 60.0}, "look": "cloth", "color": Color(0.3, 0.38, 0.55)},
+	"gloves_work": {"name": "Work Gloves", "era": Eras.SCIFI, "value": 35, "stack": false, "kind": "armor", "slot": "hands", "armor": 5, "look": "cloth", "color": Color(0.7, 0.62, 0.45)},
+	"trousers_canvas": {"name": "Canvas Trousers", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "legs", "armor": 10, "bonus": {"carry": 30.0}, "look": "cloth", "color": Color(0.55, 0.5, 0.38)},
+	"boots_steeltoe": {"name": "Steel-toe Boots", "era": Eras.SCIFI, "value": 70, "stack": false, "kind": "armor", "slot": "feet", "armor": 7, "look": "leather", "color": Color(0.3, 0.22, 0.15)},
+	"backpack_canvas": {"name": "Canvas Backpack", "era": Eras.SCIFI, "value": 110, "stack": false, "kind": "armor", "slot": "back", "armor": 1, "bonus": {"carry": 150.0}, "look": "cloth", "color": Color(0.5, 0.45, 0.32)},
+	"welding_mask": {"name": "Welding Mask", "era": Eras.SCIFI, "value": 140, "stack": false, "kind": "armor", "slot": "head", "armor": 13, "look": "plate", "color": Color(0.25, 0.25, 0.27)},
+	"vest_plated": {"name": "Plated Vest", "era": Eras.SCIFI, "value": 300, "stack": false, "kind": "armor", "slot": "chest", "armor": 26, "look": "plate", "color": Color(0.5, 0.42, 0.32)},
+	"gauntlets_heavy": {"name": "Foundry Gauntlets", "era": Eras.SCIFI, "value": 130, "stack": false, "kind": "armor", "slot": "hands", "armor": 8, "look": "leather", "color": Color(0.42, 0.3, 0.2)},
+	"legplates_riveted": {"name": "Riveted Leg Plates", "era": Eras.SCIFI, "value": 200, "stack": false, "kind": "armor", "slot": "legs", "armor": 17, "look": "plate", "color": Color(0.5, 0.5, 0.52)},
+	"boots_iron": {"name": "Iron-shod Boots", "era": Eras.SCIFI, "value": 120, "stack": false, "kind": "armor", "slot": "feet", "armor": 8, "look": "plate", "color": Color(0.42, 0.42, 0.44)},
+	"shield_riot": {"name": "Riveted Shield", "era": Eras.SCIFI, "value": 220, "stack": false, "kind": "armor", "slot": "shield", "armor": 20, "look": "plate", "color": Color(0.55, 0.56, 0.58)},
+	"gasmask": {"name": "Gas Mask", "era": Eras.SCIFI, "value": 160, "stack": false, "kind": "armor", "slot": "head", "armor": 9, "bonus": {"stamina_regen": 0.15}, "look": "leather", "color": Color(0.4, 0.33, 0.22)},
+	"trenchcoat": {"name": "Trench Coat", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "armor", "slot": "chest", "armor": 22, "bonus": {"health": 15.0}, "look": "cloth", "color": Color(0.42, 0.4, 0.28)},
+	"gloves_rubber": {"name": "Rubber Gloves", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "hands", "armor": 6, "bonus": {"swing": 0.03}, "look": "leather", "color": Color(0.12, 0.12, 0.13)},
+	"trousers_wool_heavy": {"name": "Heavy Wool Trousers", "era": Eras.SCIFI, "value": 110, "stack": false, "kind": "armor", "slot": "legs", "armor": 13, "bonus": {"stamina": 15.0}, "look": "cloth", "color": Color(0.38, 0.38, 0.4)},
+	"boots_hobnail": {"name": "Hobnail Boots", "era": Eras.SCIFI, "value": 90, "stack": false, "kind": "armor", "slot": "feet", "armor": 7, "bonus": {"stamina_regen": 0.1}, "look": "leather", "color": Color(0.15, 0.13, 0.12)},
+	"satchel": {"name": "Leather Satchel", "era": Eras.SCIFI, "value": 70, "stack": false, "kind": "armor", "slot": "back", "armor": 1, "bonus": {"carry": 80.0}, "look": "leather", "color": Color(0.45, 0.3, 0.18)},
+	"helm_brass": {"name": "Brass Diving Helm", "era": Eras.SCIFI, "value": 700, "stack": false, "kind": "armor", "slot": "head", "armor": 20, "bonus": {"breath": 60.0}, "rarity_min": 3, "look": "plate", "color": Color(0.8, 0.6, 0.3)},
+	"plate_steam": {"name": "Steam Plate", "era": Eras.SCIFI, "value": 1200, "stack": false, "kind": "armor", "slot": "chest", "armor": 36, "bonus": {"damage": 0.1}, "rarity_min": 3, "look": "plate", "color": Color(0.75, 0.58, 0.32)},
+	"gauntlets_piston": {"name": "Piston Gauntlets", "era": Eras.SCIFI, "value": 650, "stack": false, "kind": "armor", "slot": "hands", "armor": 11, "bonus": {"damage": 0.1, "swing": 0.05}, "rarity_min": 3, "look": "plate", "color": Color(0.78, 0.6, 0.32)},
+	"legs_steam": {"name": "Steam Leg Braces", "era": Eras.SCIFI, "value": 800, "stack": false, "kind": "armor", "slot": "legs", "armor": 22, "bonus": {"speed": 0.05}, "rarity_min": 3, "look": "plate", "color": Color(0.76, 0.58, 0.3)},
+	"boots_steam": {"name": "Steam Boots", "era": Eras.SCIFI, "value": 550, "stack": false, "kind": "armor", "slot": "feet", "armor": 10, "bonus": {"speed": 0.06}, "rarity_min": 3, "look": "plate", "color": Color(0.74, 0.56, 0.3)},
+	"pack_boiler": {"name": "Boiler Pack", "era": Eras.SCIFI, "value": 900, "stack": false, "kind": "armor", "slot": "back", "armor": 4, "bonus": {"carry": 200.0, "stamina_regen": 0.3}, "rarity_min": 3, "look": "plate", "color": Color(0.72, 0.55, 0.3)},
+	"wrench": {"name": "Wrench", "era": Eras.SCIFI, "value": 35, "stack": false, "kind": "tool", "damage": 14, "range": 2.4, "swing": 0.8, "color": Color(0.6, 0.6, 0.62)},
+	"crowbar": {"name": "Crowbar", "era": Eras.SCIFI, "value": 40, "stack": false, "kind": "tool", "damage": 20, "range": 2.6, "swing": 0.9, "pry": true, "color": Color(0.7, 0.15, 0.12)},
+	"hand_drill": {"name": "Hand Drill", "era": Eras.SCIFI, "value": 45, "stack": false, "kind": "tool", "damage": 6, "range": 2.2, "mine": 0.6, "color": Color(0.5, 0.45, 0.4)},
+	"pickaxe_miner": {"name": "Miner's Pickaxe", "era": Eras.SCIFI, "value": 180, "stack": false, "kind": "tool", "mine": 1.8, "chop": 0.4, "damage": 13, "range": 3.0, "dig": 0.9, "color": Color(0.55, 0.55, 0.58)},
+	"axe_lumber": {"name": "Lumber Axe", "era": Eras.SCIFI, "value": 170, "stack": false, "kind": "tool", "chop": 1.9, "mine": 0.3, "damage": 22, "range": 3.0, "color": Color(0.6, 0.15, 0.12)},
+	"lamp_kerosene": {"name": "Kerosene Lamp", "era": Eras.SCIFI, "value": 70, "stack": false, "kind": "light", "color": Color(0.7, 0.6, 0.4)},
+	"gears": {"name": "Gears", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.8, 0.62, 0.3)},
+	"springs": {"name": "Springs", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "resource", "color": Color(0.65, 0.66, 0.7)},
+	"pipe_section": {"name": "Pipe Section", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.4, 0.4, 0.42)},
+	"valve": {"name": "Steam Valve", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "resource", "color": Color(0.75, 0.55, 0.28)},
+	"pressure_gauge": {"name": "Pressure Gauge", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "resource", "color": Color(0.8, 0.65, 0.35)},
+	"piston": {"name": "Piston", "era": Eras.SCIFI, "value": 20, "stack": true, "kind": "resource", "color": Color(0.62, 0.62, 0.65)},
+	"coal_sack": {"name": "Coal Sack", "era": Eras.SCIFI, "value": 14, "stack": true, "kind": "resource", "fuel": 3600.0, "color": Color(0.2, 0.18, 0.15)},
+	"oil_barrel": {"name": "Oil Barrel", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "resource", "fuel": 6000.0, "color": Color(0.15, 0.15, 0.17)},
+	"rubber": {"name": "Rubber", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "resource", "color": Color(0.12, 0.12, 0.12)},
+	"steel_sheet": {"name": "Steel Sheet", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "resource", "color": Color(0.62, 0.64, 0.68)},
+	"copper_wire": {"name": "Copper Wire", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.8, 0.45, 0.25)},
+	"glass_pane": {"name": "Glass Pane", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.75, 0.85, 0.88)},
+	"pocket_watch": {"name": "Pocket Watch", "era": Eras.SCIFI, "value": 150, "stack": false, "kind": "armor", "slot": "neck", "armor": 1, "bonus": {"xp": 0.05, "stamina_regen": 0.1}, "color": Color(0.85, 0.7, 0.35)},
+	"compass": {"name": "Compass", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "neck", "armor": 0, "bonus": {"speed": 0.03}, "color": Color(0.8, 0.62, 0.3)},
+	"sextant": {"name": "Sextant", "era": Eras.SCIFI, "value": 180, "stack": true, "kind": "treasure", "color": Color(0.82, 0.66, 0.34)},
+	"camera_box": {"name": "Box Camera", "era": Eras.SCIFI, "value": 160, "stack": true, "kind": "treasure", "color": Color(0.4, 0.3, 0.2)},
+	"telegraph_key": {"name": "Telegraph Key", "era": Eras.SCIFI, "value": 70, "stack": true, "kind": "treasure", "color": Color(0.75, 0.6, 0.3)},
+	"gramophone_record": {"name": "Shellac Record", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "treasure", "color": Color(0.1, 0.1, 0.1)},
+	"gold_nugget": {"name": "Gold Nugget", "era": Eras.SCIFI, "value": 90, "stack": true, "kind": "treasure", "color": Color(0.95, 0.78, 0.3)},
+	"silver_bar": {"name": "Silver Bar", "era": Eras.SCIFI, "value": 120, "stack": true, "kind": "treasure", "color": Color(0.85, 0.86, 0.9)},
+	"sheriff_star": {"name": "Sheriff's Star", "era": Eras.SCIFI, "value": 200, "stack": false, "kind": "armor", "slot": "neck", "armor": 3, "bonus": {"damage": 0.05, "health": 10.0}, "color": Color(0.9, 0.75, 0.35)},
+	"deed_scroll": {"name": "Land Deed", "era": Eras.SCIFI, "value": 400, "stack": true, "kind": "treasure", "color": Color(0.9, 0.85, 0.7)},
+	"railway_spike": {"name": "Golden Spike", "era": Eras.SCIFI, "value": 900, "stack": true, "kind": "treasure", "rarity_min": 3, "color": Color(0.95, 0.8, 0.3)},
+	"safe_key": {"name": "Safe Key", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "treasure", "color": Color(0.6, 0.6, 0.62)},
+	"beans_can": {"name": "Canned Beans", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "food", "heal": 30, "color": Color(0.6, 0.35, 0.2)},
+	"jerky": {"name": "Jerky", "era": Eras.SCIFI, "value": 5, "stack": true, "kind": "food", "heal": 20, "stamina_add": 15, "color": Color(0.45, 0.22, 0.15)},
+	"biscuit_hard": {"name": "Hardtack", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "food", "heal": 15, "color": Color(0.85, 0.78, 0.6)},
+	"cornbread": {"name": "Cornbread", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "food", "heal": 28, "color": Color(0.9, 0.75, 0.35)},
+	"steak": {"name": "Steak", "era": Eras.SCIFI, "value": 14, "stack": true, "kind": "food", "heal": 55, "regen": 20, "color": Color(0.5, 0.25, 0.18)},
+	"chili": {"name": "Chili", "era": Eras.SCIFI, "value": 14, "stack": true, "kind": "food", "heal": 45, "buff": ["hardy", 240.0], "color": Color(0.65, 0.2, 0.12)},
+	"coffee_pot": {"name": "Coffee", "era": Eras.SCIFI, "value": 10, "stack": true, "kind": "food", "drink": true, "stamina": true, "buff": ["vigor", 240.0], "color": Color(0.3, 0.2, 0.12)},
+	"coffee_beans": {"name": "Coffee Beans", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "ingredient", "color": Color(0.35, 0.2, 0.12)},
+	"whiskey": {"name": "Whiskey", "era": Eras.SCIFI, "value": 20, "stack": true, "kind": "food", "drink": true, "heal": 10, "buff": ["courage", 240.0], "color": Color(0.75, 0.45, 0.15)},
+	"sarsaparilla": {"name": "Sarsaparilla", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "food", "drink": true, "stamina_add": 60, "color": Color(0.4, 0.22, 0.15)},
+	"water_canteen": {"name": "Canteen", "era": Eras.SCIFI, "value": 30, "stack": false, "kind": "food", "cat": "Food", "drink": true, "keep": true, "stamina_add": 50, "color": Color(0.4, 0.42, 0.3)},
+	"tea_tin": {"name": "Tea Tin", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "food", "drink": true, "heal": 10, "buff": ["refreshed", 300.0], "color": Color(0.3, 0.45, 0.35)},
+	"apple_dried": {"name": "Dried Apples", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "food", "heal": 14, "stamina_add": 10, "color": Color(0.75, 0.5, 0.3)},
+	"pickles": {"name": "Pickles", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "food", "heal": 18, "color": Color(0.45, 0.55, 0.25)},
+	"cheese_wheel_small": {"name": "Cheddar", "era": Eras.SCIFI, "value": 10, "stack": true, "kind": "food", "heal": 30, "color": Color(0.95, 0.75, 0.3)},
+	"egg_fried": {"name": "Fried Eggs", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "food", "heal": 25, "color": Color(0.95, 0.9, 0.7)},
+	"pancakes": {"name": "Flapjacks", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "food", "heal": 30, "stamina_add": 25, "color": Color(0.85, 0.65, 0.35)},
+	"stew_tin": {"name": "Tinned Stew", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "food", "heal": 45, "regen": 20, "color": Color(0.55, 0.38, 0.22)},
+	"medkit_frontier": {"name": "Doctor's Bag", "era": Eras.SCIFI, "value": 120, "stack": true, "kind": "food", "cat": "Medicine", "heal": 100, "regen": 60, "cure": true, "color": Color(0.3, 0.2, 0.12)},
+	"bandage_roll": {"name": "Field Bandage", "era": Eras.SCIFI, "value": 14, "stack": true, "kind": "food", "cat": "Medicine", "heal": 25, "regen": 35, "color": Color(0.92, 0.9, 0.85)},
+	"splint": {"name": "Splint", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "food", "cat": "Medicine", "heal": 15, "buff": ["hardy", 300.0], "color": Color(0.7, 0.6, 0.45)},
+	"tonic_bottle": {"name": "Cure-all Tonic", "era": Eras.SCIFI, "value": 35, "stack": true, "kind": "food", "cat": "Medicine", "drink": true, "heal": 35, "cure": true, "buff": ["immune", 240.0], "color": Color(0.5, 0.25, 0.3)},
+	"iodine": {"name": "Iodine", "era": Eras.SCIFI, "value": 20, "stack": true, "kind": "food", "cat": "Medicine", "heal": 10, "cure": true, "color": Color(0.55, 0.25, 0.12)},
+	"syringe_glass": {"name": "Glass Syringe", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "food", "cat": "Medicine", "heal": 70, "stamina": true, "color": Color(0.8, 0.85, 0.88)},
+	"cards_deck": {"name": "Deck of Cards", "era": Eras.SCIFI, "value": 15, "stack": false, "kind": "instrument", "play": "rested", "color": Color(0.85, 0.82, 0.75)},
+	"harmonica": {"name": "Harmonica", "era": Eras.SCIFI, "value": 30, "stack": false, "kind": "instrument", "play": "inspired", "color": Color(0.7, 0.7, 0.72)},
+	"banjo": {"name": "Banjo", "era": Eras.SCIFI, "value": 90, "stack": false, "kind": "instrument", "play": "inspired", "color": Color(0.7, 0.55, 0.32)},
+	"cigar_box": {"name": "Cigar Box", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "treasure", "color": Color(0.5, 0.3, 0.18)},
+	"spectacles": {"name": "Spectacles", "era": Eras.SCIFI, "value": 50, "stack": false, "kind": "armor", "slot": "neck", "armor": 0, "bonus": {"xp": 0.08}, "color": Color(0.8, 0.7, 0.4)},
+	"photo_frame": {"name": "Tintype Photo", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "treasure", "color": Color(0.4, 0.35, 0.3)},
 }
 
 ## Player level that unlocks making (and placing) a thing, on themed worlds: the starting
@@ -336,6 +458,26 @@ const UNLOCK := {
 	"cuisses_steel": 8, "sabatons_steel": 8, "potion_health_greater": 8, "elixir_strength": 8, "elixir_swiftness": 8,
 	"plate_steel": 9, "shield_tower": 9, "knight_sword": 9, "executioner_axe": 9, "royal_bow": 9, "ring_ruby": 9,
 	"amulet_saint": 9, "dragonbone_dagger": 10, "kings_mace": 10,
+	# The frontier and industrial age (pack B): powder and brass from level 10, steam
+	# and riveted iron through the teens, the finest guns and steam gear at 22-25.
+	"black_powder": 10, "musket_balls": 10, "flintlock_pistol": 10, "musket": 11, "machete": 10, "bowie_knife": 10,
+	"hat_cowboy": 10, "gloves_riding": 10, "bandana": 10, "boots_riding": 11, "chaps": 11, "duster": 12, "wrench": 10,
+	"crowbar": 10, "hand_drill": 10, "gears": 10, "springs": 10, "pipe_section": 11, "glass_pane": 10, "rubber": 11,
+	"copper_wire": 11, "beans_can": 10, "jerky": 10, "biscuit_hard": 10, "cornbread": 10, "coffee_pot": 10, "tea_tin": 10,
+	"sarsaparilla": 10, "apple_dried": 10, "pickles": 10, "egg_fried": 10, "pancakes": 11, "steak": 11, "chili": 12,
+	"stew_tin": 12, "whiskey": 11, "water_canteen": 11, "bandage_roll": 10, "iodine": 11, "splint": 11, "harmonica": 10,
+	"cards_deck": 10, "satchel": 11, "tomahawk": 11, "bayonet": 12, "blunderbuss": 12, "revolver_six": 13,
+	"shotgun_shells": 12, "rifle_cartridges": 13, "derringer": 12, "flare_gun": 12, "fire_bottle": 12, "bear_trap": 12,
+	"sabre": 13, "lamp_kerosene": 12, "valve": 12, "pressure_gauge": 13, "piston": 13, "steel_sheet": 12,
+	"hardhat_lamp": 12, "overalls": 12, "gloves_work": 12, "trousers_canvas": 12, "boots_steeltoe": 12,
+	"backpack_canvas": 13, "pickaxe_miner": 13, "axe_lumber": 13, "sledgehammer": 13, "gun_oil": 13, "compass": 12,
+	"double_shotgun": 14, "lever_rifle": 15, "dynamite": 15, "frag_grenade": 16, "tripwire": 16, "tonic_bottle": 14,
+	"syringe_glass": 16, "medkit_frontier": 18, "banjo": 14, "ammo_belt": 15, "pocket_watch": 15, "spectacles": 14,
+	"welding_mask": 16, "vest_plated": 17, "gauntlets_heavy": 16, "legplates_riveted": 17, "boots_iron": 16,
+	"shield_riot": 17, "harpoon_gun": 17, "bolt_rifle": 18, "powder_keg": 18, "gasmask": 19, "trenchcoat": 20,
+	"gloves_rubber": 19, "trousers_wool_heavy": 19, "boots_hobnail": 19, "sheriff_star": 20,
+	"gatling": 22, "elephant_gun": 24, "helm_brass": 23, "plate_steam": 25, "gauntlets_piston": 23, "legs_steam": 24,
+	"boots_steam": 23, "pack_boiler": 25,
 }
 static func unlock_level(out: String) -> int:
 	if not Eras.themed():
@@ -360,13 +502,25 @@ const GEAR_LOOT := [["sword_iron", "axe_iron", "crossbow", "scrap_pistol", "helm
 		"axe_steel", "shovel", "sickle", "fishing_rod", "ring_copper", "ring_silver", "ring_ruby", "amulet_bone",
 		"amulet_silver", "amulet_saint", "lucky_coin"],
 	["sword_runic", "crossbow_runic", "axe_mythril", "helm_elven", "plate_mythril", "guards_mythril", "boots_elven", "bracers_rune", "shield_crystal", "dagger"],
-	["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "helm_visor", "exo_chest", "exo_legs", "mag_boots", "gauntlets_power", "shield_emitter"]]
+	["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "helm_visor", "exo_chest", "exo_legs", "mag_boots", "gauntlets_power", "shield_emitter",
+		# The frontier and industrial age (pack B), levels 10-25.
+		"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
+		"derringer", "flare_gun", "harpoon_gun", "gatling", "elephant_gun", "sabre", "machete", "tomahawk", "bowie_knife",
+		"bayonet", "sledgehammer", "ammo_belt", "hat_cowboy", "duster", "gloves_riding", "chaps", "boots_riding", "bandana",
+		"hardhat_lamp", "overalls", "gloves_work", "trousers_canvas", "boots_steeltoe", "backpack_canvas", "welding_mask",
+		"vest_plated", "gauntlets_heavy", "legplates_riveted", "boots_iron", "shield_riot", "gasmask", "trenchcoat",
+		"gloves_rubber", "trousers_wool_heavy", "boots_hobnail", "satchel", "helm_brass", "plate_steam", "gauntlets_piston",
+		"legs_steam", "boots_steam", "pack_boiler", "wrench", "crowbar", "pickaxe_miner", "axe_lumber", "pocket_watch",
+		"compass", "sheriff_star", "spectacles"]]
 ## Treasure only strongholds and caves give up.
 const DUNGEON_LOOT := [["gold_idol", "dungeon_key", "health_potion", "stamina_potion", "arrow", "potion_health_minor",
 		"potion_health_greater", "potion_stamina_greater", "antidote", "elixir_strength", "elixir_swiftness", "elixir_nightsight",
 		"scroll_red", "scroll_blue", "scroll_green", "holy_water", "broadhead_arrows", "throwing_knives", "javelin", "dice",
 		"letter_sealed", "book_leather", "silver_ingot", "gold_ingot", "gold_ore", "salve", "candle"],
-	["rune_tablet", "dungeon_key", "health_potion", "stamina_potion"], ["void_gem", "dungeon_key", "health_potion", "stamina_potion"]]
+	["rune_tablet", "dungeon_key", "health_potion", "stamina_potion"], ["void_gem", "dungeon_key", "health_potion", "stamina_potion",
+		"safe_key", "gold_nugget", "silver_bar", "sextant", "camera_box", "deed_scroll", "railway_spike", "dynamite",
+		"frag_grenade", "fire_bottle", "musket_balls", "shotgun_shells", "rifle_cartridges", "medkit_frontier", "tonic_bottle",
+		"syringe_glass", "whiskey", "cigar_box", "photo_frame", "gramophone_record", "telegraph_key", "gun_oil"]]
 
 const NAME_PARTS := ["Varn", "Esk", "Thal", "Orrin", "Myr", "Kael", "Sorr", "Ilsa", "Brand", "Quill", "Hale", "Nyx"]
 
@@ -410,7 +564,30 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"quill_ink": 0.2, "mortar_pestle": 1.5, "empty_vial": 0.1, "empty_bottle": 0.3, "cauldron_small": 3.0, "smelling_salts": 0.05,
 	"potion_health_minor": 0.2, "potion_health_greater": 0.2, "potion_stamina_greater": 0.2, "antidote": 0.2,
 	"tonic_warmth": 0.2, "tonic_cooling": 0.2, "elixir_strength": 0.2, "elixir_swiftness": 0.2, "elixir_nightsight": 0.1,
-	"salve": 0.1, "bandage_linen": 0.05, "herbal_poultice": 0.1, "holy_water": 0.3}
+	"salve": 0.1, "bandage_linen": 0.05, "herbal_poultice": 0.1, "holy_water": 0.3,
+	# Pack B: the frontier and industrial age.
+	"flintlock_pistol": 1.3, "musket": 4.5, "blunderbuss": 4.0, "revolver_six": 1.2, "lever_rifle": 3.5,
+	"double_shotgun": 3.4, "bolt_rifle": 4.0, "derringer": 0.4, "flare_gun": 0.9, "harpoon_gun": 5.0, "gatling": 14.0,
+	"elephant_gun": 5.5, "sabre": 1.8, "machete": 1.0, "tomahawk": 0.9, "bowie_knife": 0.6, "bayonet": 0.4,
+	"sledgehammer": 5.0, "dynamite": 0.3, "frag_grenade": 0.6, "powder_keg": 6.0, "fire_bottle": 0.6, "bear_trap": 4.0,
+	"tripwire": 0.8, "black_powder": 0.05, "musket_balls": 0.03, "shotgun_shells": 0.05, "rifle_cartridges": 0.03,
+	"ammo_belt": 1.2, "gun_oil": 0.2, "hat_cowboy": 0.3, "duster": 2.5, "gloves_riding": 0.2, "chaps": 1.5,
+	"boots_riding": 1.2, "bandana": 0.05, "hardhat_lamp": 0.9, "overalls": 1.5, "gloves_work": 0.3,
+	"trousers_canvas": 0.8, "boots_steeltoe": 1.5, "backpack_canvas": 1.2, "welding_mask": 1.2, "vest_plated": 7.0,
+	"gauntlets_heavy": 1.0, "legplates_riveted": 5.0, "boots_iron": 2.5, "shield_riot": 7.0, "gasmask": 0.8,
+	"trenchcoat": 2.2, "gloves_rubber": 0.3, "trousers_wool_heavy": 1.2, "boots_hobnail": 1.4, "satchel": 0.8,
+	"helm_brass": 6.0, "plate_steam": 12.0, "gauntlets_piston": 2.5, "legs_steam": 7.0, "boots_steam": 3.5,
+	"pack_boiler": 9.0, "wrench": 1.2, "crowbar": 2.0, "hand_drill": 1.5, "pickaxe_miner": 3.5, "axe_lumber": 3.0,
+	"lamp_kerosene": 1.4, "gears": 0.2, "springs": 0.1, "pipe_section": 1.2, "valve": 0.5, "pressure_gauge": 0.4,
+	"piston": 1.5, "coal_sack": 12.0, "oil_barrel": 30.0, "rubber": 0.5, "steel_sheet": 2.0, "copper_wire": 0.3,
+	"glass_pane": 1.0, "pocket_watch": 0.1, "compass": 0.2, "sextant": 1.0, "camera_box": 2.5, "telegraph_key": 0.6,
+	"gramophone_record": 0.2, "gold_nugget": 0.1, "silver_bar": 1.0, "sheriff_star": 0.05, "deed_scroll": 0.05,
+	"railway_spike": 0.4, "safe_key": 0.05, "beans_can": 0.4, "jerky": 0.1, "biscuit_hard": 0.1, "cornbread": 0.2,
+	"steak": 0.4, "chili": 0.5, "coffee_pot": 0.5, "coffee_beans": 0.1, "whiskey": 0.8, "sarsaparilla": 0.5,
+	"water_canteen": 0.8, "tea_tin": 0.2, "apple_dried": 0.1, "pickles": 0.6, "cheese_wheel_small": 0.8,
+	"egg_fried": 0.2, "pancakes": 0.3, "stew_tin": 0.5, "medkit_frontier": 2.0, "bandage_roll": 0.1, "splint": 0.4,
+	"tonic_bottle": 0.4, "iodine": 0.1, "syringe_glass": 0.05, "cards_deck": 0.1, "harmonica": 0.2, "banjo": 2.5,
+	"cigar_box": 0.4, "spectacles": 0.05, "photo_frame": 0.3}
 const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 
@@ -457,7 +634,9 @@ static func era_of(type: String) -> int:
 static func make(type: String, qty: int, quality: float, origin: Dictionary, rng: RandomNumberGenerator = null, luck := 0.0) -> Dictionary:
 	var item := {"uid": 0, "type": type, "qty": qty, "quality": snappedf(quality, 0.05), "name": "", "origin": origin}
 	if rng != null and Rarity.is_gear(type):
-		Rarity.apply(item, Rarity.roll(rng, luck + clampf((quality - 1.0) * 1.5, 0.0, 0.5)), rng)
+		# "rarity_min": rare finds (a gatling, steam plate) are never plain.
+		var rank := maxi(Rarity.roll(rng, luck + clampf((quality - 1.0) * 1.5, 0.0, 0.5)), int(def(type).get("rarity_min", 0)))
+		Rarity.apply(item, rank, rng)
 	return item
 
 ## The item's working stats: its definition with rank and abilities applied.
@@ -495,7 +674,10 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			["potato", 1, 4], ["salted_meat", 1, 2], ["iron_nails", 4, 12], ["herb_red", 1, 3], ["bandage_linen", 1, 2],
 			["empty_vial", 1, 2], ["mead", 1, 1], ["silver_chalice", 1, 1]],
 		[["glowroot", 2, 5], ["aether_crystal", 1, 4], ["glowberry", 1, 4], ["mythril_ingot", 1, 2], ["moonpearl", 1, 1]],
-		[["alloy_scrap", 2, 6], ["circuitry", 1, 4], ["power_cell", 1, 2], ["ration_pack", 1, 3], ["data_core", 1, 1]],
+		[["alloy_scrap", 2, 6], ["circuitry", 1, 4], ["power_cell", 1, 2], ["ration_pack", 1, 3], ["gears", 1, 4],
+			["springs", 1, 4], ["copper_wire", 1, 3], ["rubber", 1, 3], ["black_powder", 2, 6], ["rounds", 4, 12],
+			["beans_can", 1, 3], ["jerky", 1, 3], ["biscuit_hard", 1, 4], ["coffee_beans", 1, 3], ["bandage_roll", 1, 2],
+			["data_core", 1, 1]],
 	]
 	var rare_tools := [["sword_iron", "axe_iron"], ["sword_runic", "pickaxe_mythril"], ["pulse_pistol", "pickaxe_plasma"]]
 	# Out in higher zones (themed worlds) the gear is better and the purses fuller.
@@ -513,11 +695,17 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
 	if rng.randf() < 0.12 + (luck + zl) * 0.7:
 		var t: Array = rare_tools[era] + GEAR_LOOT[era]
-		if Eras.themed() and zl * 160.0 + 1.0 < Eras.UNLOCK_LEVEL:
-			# The first zones only hold their own era's blades and bows, and only what a
-			# traveller of about the zone's level could make (a few levels' grace in a dungeon).
-			var lv := zl * 160.0 + 3.0 + luck * 4.0
-			var near: Array = t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL and unlock_level(x) <= lv)
+		if Eras.themed():
+			# Gear near the zone's level: what a traveller of about that level could make (a
+			# few levels' grace in a dungeon), nothing far below it once there is better. The
+			# first zones only hold their own era's blades and bows.
+			var zone := zl * 160.0 + 1.0
+			var lv := zone + 2.0 + luck * 4.0
+			var early := zone < Eras.UNLOCK_LEVEL
+			var fits := func(x): return unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL)
+			var near: Array = t.filter(func(x): return fits.call(x) and unlock_level(x) >= lv - 15.0)
+			if near.is_empty():
+				near = t.filter(fits)
 			t = near if not near.is_empty() else t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
 		if not t.is_empty():
 			loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
@@ -525,7 +713,7 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		var extra: Array = DUNGEON_LOOT[era]
 		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
 			var t: String = extra[rng.randi() % extra.size()]
-			var many: bool = def(t).get("kind", "") == "ammo" or def(t).get("thrown", false)
+			var many: bool = def(t).get("kind", "") == "ammo" or def(t).get("thrown", false) and not def(t).has("splash")
 			loot.append(make(t, rng.randi_range(8, 20) if many else rng.randi_range(1, 3), rng.randf_range(0.9, 1.2), origin))
 	loot.append({"type": "_marks", "qty": int(rng.randi_range(5, 40) * (1.0 + (luck + zl) * 4.0))})
 	return loot
