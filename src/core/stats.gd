@@ -29,7 +29,7 @@ const SKILL_NAMES := {"sneak": "Sneaking", "pick": "Pickpocketing", "lock": "Loc
 const SKILL_BLURBS := {
 	"sneak": "Crouch [crouch] to sneak: people notice you 1.5% less per level",
 	"pick": "Crouch behind someone and [interact] to pick their pockets: +1.5% chance per level",
-	"lock": "Pick the locks on chests in town: +2% chance per level",
+	"lock": "Pick the locks on chests in town: the sweet spot is 3% wider and picks last longer per level",
 }
 const SKILL_MAX := 50
 
@@ -103,10 +103,6 @@ func notice_mult(crouched: bool) -> float:
 func pickpocket_chance(worth: float, behind: bool, aware: float) -> float:
 	var c: float = 0.45 + 0.015 * skills["pick"] + (0.15 if behind else -0.15) - 0.25 * aware - clampf(worth / 160.0, 0.0, 0.4)
 	return clampf(c, 0.05, 0.95)
-
-## Chance to pick a lock of difficulty 1 (simple) to 3 (masterwork).
-func lockpick_chance(difficulty: int) -> float:
-	return clampf(0.75 - 0.22 * float(difficulty - 1) + 0.02 * skills["lock"], 0.05, 0.97)
 
 func max_health() -> float:
 	return BASE_HEALTH + 10.0 * attrs["end"]

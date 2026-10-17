@@ -44,6 +44,7 @@ var snap_down := false ## Put the player on the ground once it loads (after a te
 var selected := 0
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
+var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
 
 var _yaw := 0.0
 var _pitch := 0.0
@@ -359,7 +360,7 @@ func _physics_process(delta: float) -> void:
 	var input := Vector2.ZERO
 	if not ui_open:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
-	_crouched = not ui_open and Input.is_action_pressed("crouch")
+	_crouched = Input.is_action_pressed("crouch") if not ui_open else (_crouched and keep_crouch)
 	var cap := _shape.shape as CapsuleShape3D
 	var target_h := CROUCH_H if _crouched else STAND_H
 	cap.height = move_toward(cap.height, target_h, delta * 4.0)
@@ -934,7 +935,7 @@ func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
 		return use["verb"]
 	var lock := lock_of(o)
 	if lock > 0:
-		return "Pick the lock  (%d%%, steal)" % int(round(Game.stats.lockpick_chance(lock) * 100.0))
+		return "Pick the %s lock  (%d lockpicks, steal)" % [LockGame.TIERS[lock].to_lower(), Game.inventory.count("lockpick")]
 	return "Steal from the %s" % ObjectLibrary.label(o["t"]).to_lower()
 
 ## How hard a town chest's lock is: 0 for none or picked, 1..3. Chosen once per chest.
@@ -945,30 +946,18 @@ static func lock_of(o: Dictionary) -> int:
 		st["lock"] = 0 if h % 10 < 4 else 1 + (h / 10) % 3
 	return int(st["lock"])
 
-var _lock_t := 0.0
-## Tries the lock on a town chest. True when it is open (or never was locked). A failed
-## try makes noise someone may hear.
+## A locked town chest opens the lockpicking minigame (LockpickUI). True when it is
+## open (or never was locked).
 func _pick_lock(chunk: ChunkNode, o: Dictionary, wp: Vector3) -> bool:
-	var lock := lock_of(o)
-	if lock <= 0:
+	if lock_of(o) <= 0:
 		return true
-	var t := Time.get_ticks_msec() / 1000.0
-	if t < _lock_t:
-		return false
-	_lock_t = t + 0.8
-	used_tool.emit("hit")
-	if body:
-		body.play_once("interact")
-	Game.mark_chunk_dirty(chunk.data)
-	if randf() < Game.stats.lockpick_chance(lock):
-		o["st"]["lock"] = 0
-		Game.practice("lock", 4.0 + 3.0 * lock)
-		Game.toast.emit("The lock clicks open")
-		return true
-	Game.practice("lock", 1.0 + lock)
-	Game.toast.emit("The lock holds. Try again")
-	npcs.report_crime(wp, "lockpick", 0, "")
+	get_tree().call_group("lockpick_ui", "open_lock", chunk, o, wp)
 	return false
+
+## The minigame opened the lock: take what's inside.
+func use_cache_after_lock(chunk: ChunkNode, o: Dictionary) -> void:
+	if is_instance_valid(chunk):
+		_use_object(chunk, o)
 
 func eat() -> void:
 	var it = held_item()

@@ -110,6 +110,12 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:
 				_rect(img, Rect2(x, 28, 3, 8), c.darkened(0.3))
+		"lockpick":
+			_line(img, Vector2(14, 52), Vector2(44, 16), 3.0, c)
+			_line(img, Vector2(44, 16), Vector2(50, 18), 2.5, c)
+			_line(img, Vector2(20, 54), Vector2(50, 40), 3.0, c.darkened(0.15))
+			_line(img, Vector2(50, 40), Vector2(50, 32), 3.0, c.darkened(0.15))
+			_rect(img, Rect2(10, 48, 10, 10), Color(0.4, 0.28, 0.16))
 		"torch":
 			_poly(img, [Vector2(29, 58), Vector2(35, 58), Vector2(37, 26), Vector2(27, 26)], Color(0.5, 0.33, 0.18))
 			_rect(img, Rect2(25, 22, 14, 8), Color(0.35, 0.28, 0.2))

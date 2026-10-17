@@ -82,6 +82,9 @@ func _ready() -> void:
 	dialogue.menus = menus
 	dialogue.manager = npcs
 	ui.add_child(dialogue)
+	var picking := LockpickUI.new()
+	picking.player = player
+	ui.add_child(picking)
 	lore = LoreUI.new()
 	lore.player = player
 	ui.add_child(lore)
