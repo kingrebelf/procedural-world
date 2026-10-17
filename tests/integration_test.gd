@@ -244,6 +244,7 @@ func _run() -> void:
 				felled = {"key": k, "i": o["i"], "t": o["t"]}
 				c.remove_object(o["i"])
 				game.give(ItemDB.make(ObjectLibrary.YIELD[o["t"]], 5, 1.0, game.origin_here("gathered", o["e"], k)))
+				check(game.inventory.count(ObjectLibrary.YIELD[o["t"]]) >= 5, "harvested %s goes in the pack" % ObjectLibrary.YIELD[o["t"]])
 				break
 		if not felled.is_empty():
 			break
@@ -324,6 +325,7 @@ func _run() -> void:
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
+	_make_room(game)
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
 	var fi := -1
 	for i in Inventory.SIZE:
@@ -563,7 +565,7 @@ func _run() -> void:
 	check(game.money == money_before, "money identical after reload")
 	check(game.equipment.has("head") and game.equipment["head"]["type"] == "helm_elven", "worn armour restored")
 	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
-	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
+	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested %s is in the pack (%d, pack %s)" % [ObjectLibrary.YIELD[felled["t"]], game.inventory.count(ObjectLibrary.YIELD[felled["t"]]), str(game.inventory.to_data().map(func(x): return "" if x == null else x["type"]))])
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")
 	check(absf(game.map.revealed(pos_before.x, pos_before.z) - map_seen) < 0.01 and map_seen > 0.9, "the atlas remembers where the fog lifted")
