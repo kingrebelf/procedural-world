@@ -551,7 +551,8 @@ func _ground_shots(g: ChunkGenerator) -> void:
 		var at := Vector2(cliff.x, cliff.y)
 		var d := Vector2(cliff.z, cliff.w)
 		var h := g.field.height(at.x, at.y)
-		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
+		# (Clear of the trees on the way: two autumn crowns filled half the view.)
+		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0, Callable(), 7.0)
 		# Standing at the cliff foot, looking down at the stones ahead.
 		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
 
@@ -1234,6 +1235,17 @@ func _egg_shots(g: ChunkGenerator) -> void:
 			# negative height crouches the eye to under a metre over the sand. The aim is
 			# taken from the feet too, hence its target 1.63 m low: straight at the bottle.)
 			var front := Vector2(sin(o["r"] + 0.35), cos(o["r"] + 0.35))
+			# On rough ground (limestone towers above all) the spot in front can be up a
+			# cliff, looking down through the crowns: turn round the find to the nearest
+			# side standing level with it.
+			var eh := g.field.height(at.x, at.y)
+			for j in 13:
+				var tr := int((j + 1) / 2.0) * 0.5 * (1.0 if j % 2 == 1 else -1.0)
+				var fq := Vector2(sin(o["r"] + 0.35 + tr), cos(o["r"] + 0.35 + tr))
+				var q := at + fq * float(v[0])
+				if absf(g.field.height(q.x, q.y) - eh) < 1.0:
+					front = fq
+					break
 			await _shot(names[t], at + front * float(v[0]), at, 0.4, float(v[1]), float(o["p"].y) + float(v[2]))
 			print("egg ", t, " at ", at)
 
