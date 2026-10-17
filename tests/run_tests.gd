@@ -316,6 +316,45 @@ func test_landforms() -> void:
 		check(tops[14] > tops[13] * 0.8, "v14 needles still tower (%.1f vs %.1f m)" % [tops[14], tops[13]])
 		WorldField.terrain_v = 13
 		check(WorldField.new(2024).height(c.x, c.y) == at13, "v13 worlds keep their needles")
+	# v15 karst towers are fluted and ledged: their walls are far rougher (bigger height
+	# changes from one metre to the next than a smooth bullet's) and they stand as tall;
+	# v14 worlds keep theirs.
+	if deep.has(WorldField.LF_KARST):
+		var c: Vector2 = deep[WorldField.LF_KARST]
+		var rough := {}
+		var tops := {}
+		var at14 := 0.0
+		for tv in [14, 15]:
+			WorldField.terrain_v = tv
+			var fv := WorldField.new(2024)
+			var n := 120
+			var hs := PackedFloat32Array()
+			hs.resize(n * n)
+			var lo := INF
+			for j in n:
+				for i in n:
+					hs[j * n + i] = fv.height(c.x + i - n / 2, c.y + j - n / 2)
+					lo = minf(lo, hs[j * n + i])
+			var sum := 0.0
+			var count := 0
+			var top := -INF
+			for j in range(1, n - 1):
+				for i in range(1, n - 1):
+					var h := hs[j * n + i]
+					top = maxf(top, h - lo)
+					if h - lo < 8.0:
+						continue
+					sum += absf(4.0 * h - hs[j * n + i - 1] - hs[j * n + i + 1] - hs[j * n + i - n] - hs[j * n + i + n])
+					count += 1
+			rough[tv] = sum / maxi(count, 1)
+			tops[tv] = top
+			if tv == 14:
+				at14 = fv.height(c.x, c.y)
+		print("  karst: v14 roughness %.2f, %.1f m; v15 roughness %.2f, %.1f m" % [rough[14], tops[14], rough[15], tops[15]])
+		check(rough[15] > rough[14] * 1.3, "v15 karst towers are fluted and ledged, not smooth (%.2f vs %.2f)" % [rough[15], rough[14]])
+		check(tops[15] > tops[14] * 0.8, "v15 karst towers still stand tall (%.1f vs %.1f m)" % [tops[15], tops[14]])
+		WorldField.terrain_v = 14
+		check(WorldField.new(2024).height(c.x, c.y) == at14, "v14 worlds keep their towers")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
 func test_house_interiors() -> void:
