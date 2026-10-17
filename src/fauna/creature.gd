@@ -70,6 +70,61 @@ static func guard_species(era: int, tier: int) -> Dictionary:
 	p["guard"] = tier
 	return p
 
+## Village livestock (species -200 - kind): cows, horses and dogs that keep to the
+## houses they belong to and pay you no mind until you hurt them. [names by era
+## (medieval, fantasy), kit, speed, roam radius, drops]
+const LIVESTOCK := [
+	[["Milk Cow", "Mooncalf"], "Cow", 1.3, 9.0, [["raw_meat", 3], ["hide", 2]]],
+	[["Plough Horse", "Moon Mare"], "Horse_White", 1.8, 11.0, [["raw_meat", 2], ["hide", 2]]],
+	[["Village Dog", "Hearth Hound"], "Husky", 2.4, 8.0, [["raw_meat", 1], ["hide", 1]]],
+	[["Shiba", "Ember Pup"], "ShibaInu", 2.6, 7.0, [["raw_meat", 1], ["hide", 1]]],
+]
+
+static func livestock_species(kind: int, era: int) -> Dictionary:
+	var l: Array = LIVESTOCK[clampi(kind, 0, LIVESTOCK.size() - 1)]
+	var p := species(5101 + kind * 13, era)
+	p["name"] = l[0][1 if era == Eras.FANTASY else 0]
+	p["kit"] = l[1]
+	p["kit_scale"] = 1.0
+	p["size"] = AnimalModel.HEIGHT[l[1]] / 1.2
+	p["plan"] = "quad"
+	p["tint"] = null
+	p["has_glow"] = false
+	p["horns"] = false
+	p["temper"] = "tame"
+	p["herd"] = 1
+	p["speed"] = l[2]
+	p["roam"] = l[3]
+	p["hp"] = 18.0 + float(p["size"]) * 30.0
+	p["drops"] = l[4]
+	p["livestock"] = kind
+	return p
+
+## Livestock about a village's houses in this chunk (two or more): cows, a horse, a
+## dog or two, near the houses. Deterministic per chunk, like the wild herds.
+static func livestock_for(seed: int, chunk: Dictionary) -> Array:
+	var out: Array = []
+	var houses: Array = []
+	for o in chunk.get("objects", []):
+		if (KitHouse.has(o["t"]) or o["t"] == "mushroom_house") and not o["st"].get("gone", false):
+			houses.append(o)
+	if houses.size() < 2:
+		return out
+	var cx: int = chunk["cx"]
+	var cz: int = chunk["cz"]
+	var r := WHash.rng(seed, cx, cz, 702)
+	var kinds: Array = [0, 0, 2] if r.randf() < 0.5 else [0, 1, 3]
+	if r.randf() < 0.4:
+		kinds.append(0)
+	for i in kinds.size():
+		var h: Dictionary = houses[r.randi() % houses.size()]
+		var hp: Vector3 = h["p"]
+		var a := r.randf() * TAU
+		var d := r.randf_range(5.0, 9.0)
+		out.append({"id": "%d_%d_v%d" % [cx, cz, i], "sp": -200 - int(kinds[i]), "era": int(h["e"]),
+			"lx": clampf(hp.x + cos(a) * d, 0, 63.9), "lz": clampf(hp.z + sin(a) * d, 0, 63.9)})
+	return out
+
 ## The boss of wonder kind `kind` (an index into WonderSite.TYPES): negative species
 ## below -100.
 static func boss_species(kind: int, era: int) -> Dictionary:
@@ -95,6 +150,8 @@ static func boss_species(kind: int, era: int) -> Dictionary:
 	return p
 
 static func species(sp: int, era: int) -> Dictionary:
+	if sp <= -200:
+		return livestock_species(-sp - 200, era)
 	if sp <= -100:
 		return boss_species(-sp - 100, era)
 	if sp < 0:
@@ -261,7 +318,8 @@ static func _bar_mat(c: Color) -> StandardMaterial3D:
 
 func _pick_wander() -> void:
 	var a := randf() * TAU
-	_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(3.0, 22.0)
+	var roam: float = p.get("roam", 22.0)
+	_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(minf(3.0, roam * 0.3), roam)
 
 func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	_bite_cd = maxf(0.0, _bite_cd - delta)

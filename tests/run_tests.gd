@@ -1436,6 +1436,33 @@ func test_ship_pads() -> void:
 					pads += 1
 	check(outposts > 0 and pads == outposts, "each outpost beyond a hamlet has a landing pad (%d of %d)" % [pads, outposts])
 
+## Livestock: a village's houses have cows, horses and dogs about them, real kit animals
+## that keep near and don't run from you; open country has none.
+func test_village_livestock() -> void:
+	var houses := []
+	for i in 3:
+		houses.append({"i": i, "t": "cottage", "e": Eras.MEDIEVAL, "p": Vector3(20 + i * 9, 4, 30), "r": 0.0, "s": 1.0, "st": {}})
+	var village := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": houses}
+	var stock := []
+	for h in Creature.livestock_for(9, village):
+		stock.append(h)
+	check(stock.size() >= 3, "a village has livestock (%d)" % stock.size())
+	var near := true
+	var names := []
+	for h in stock:
+		var p := Creature.species(h["sp"], h["era"])
+		names.append(p["name"])
+		check(AnimalModel.available(p["kit"]) and p["temper"] == "tame", "%s is a tame kit animal (%s)" % [p["name"], p["kit"]])
+		var best := INF
+		for o in houses:
+			best = minf(best, Vector2(o["p"].x - h["lx"], o["p"].z - h["lz"]).length())
+		near = near and best < 10.0
+	check(near, "livestock stand by the houses (%s)" % [names])
+	check(var_to_bytes(Creature.livestock_for(9, village)) == var_to_bytes(Creature.livestock_for(9, village)), "the same animals every time")
+	var wild := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": [houses[0]]}
+	check(Creature.livestock_for(9, wild).is_empty(), "a lone house keeps no livestock")
+	check(Creature.species(-201, Eras.FANTASY)["name"] == "Moon Mare", "fantasy villages keep their own breeds")
+
 func test_town_walls() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)
