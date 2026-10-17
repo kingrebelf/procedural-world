@@ -86,7 +86,9 @@ void fragment() {
 		nd = 1.2;
 		SPECULAR = 0.35;
 		SSS_STRENGTH = region == 4 ? 0.35 : 0.25;
-		BACKLIGHT = skin_col.rgb * vec3(0.9, 0.4, 0.3) * (region == 4 ? 0.2 : 0.1);
+		// Light through thin skin shows as a red edge, not a lamp: with the sun behind it,
+		// a stronger glow turned a whole first-person hand flat orange.
+		BACKLIGHT = skin_col.rgb * vec3(0.9, 0.4, 0.3) * (region == 4 ? 0.06 : 0.05);
 	} else {
 		// Woven cloth: a fine thread pattern and a little fold shading from the body texture.
 		vec2 w = UV * 900.0;
