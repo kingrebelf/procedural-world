@@ -2562,3 +2562,63 @@ func test_treasure_maps() -> void:
 	check(Treasure.compass(Vector2(0, -5)) == "north" and Treasure.compass(Vector2(5, 5)) == "south-east", "compass directions")
 	check(Treasure.hint(h, Vector3(h["x"], 0, h["z"] + 500.0)).contains("north"), "the map says which way to go")
 	check(ground == ground, "ground sampled")
+
+## The frontier age (pack B): guns have handling and real ammo, explosives burst, traps
+## keep their place in a save, rare finds are never plain, and gear stays near its zone.
+func test_pack_b_items() -> void:
+	for t in ["flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
+			"derringer", "flare_gun", "harpoon_gun", "gatling", "elephant_gun"]:
+		var d := ItemDB.def(t)
+		check(ItemDB.has(String(d.get("ammo", ""))), "%s fires a real item (%s)" % [t, d.get("ammo", "")])
+		check(int(d["era"]) == Eras.SCIFI and ItemDB.UNLOCK.get(t, 0) >= 10 and ItemDB.UNLOCK.get(t, 0) <= 25, "%s is a level 10-25 frontier gun" % t)
+	check(int(ItemDB.def("double_shotgun").get("pellets", 1)) > 1, "a shotgun throws pellets")
+	for t in ["dynamite", "frag_grenade", "powder_keg", "fire_bottle"]:
+		var d := ItemDB.def(t)
+		check(d.get("thrown", false) and d.has("splash") and d["ammo"] == t, "%s is thrown and bursts" % t)
+	check(not Rarity.is_gear("dynamite"), "a stack of dynamite has no rank")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	for i in 20:
+		check(Rarity.of(ItemDB.make("gatling", 1, 1.0, {}, rng)) >= Rarity.EPIC, "a gatling is never plain")
+	# Traps: saved and restored where they were set.
+	var tr := Traps.new()
+	tr.add("bear_trap", Vector3(1, 2, 3))
+	tr.add("tripwire", Vector3(-4, 0.5, 9))
+	var back := Traps.new()
+	back.from_data(JSON.parse_string(JSON.stringify(tr.to_data())))
+	check(back.count() == 2 and back.to_data()[1]["type"] == "tripwire", "traps come back from a save")
+	back.from_data([{"type": "not_an_item", "pos": [0, 0, 0]}, {"type": "bear_trap"}])
+	check(back.count() == 0, "a broken trap record is dropped")
+	tr.free()
+	back.free()
+	for t in ["bear_trap", "tripwire"]:
+		check(ItemDB.def(t).get("trap", {}).has("radius"), "%s has a trigger radius" % t)
+	# Effects: oiled guns reload faster; an ammo belt too; a diving helm holds breath.
+	var st := Stats.new()
+	var r0 := st.reload_mult()
+	st.bonus = Effects.bonus({"back": {"type": "ammo_belt"}}, {"oiled": 60.0})
+	check(st.reload_mult() > r0 + 0.4, "ammo belt and gun oil speed reloading (%.2f)" % st.reload_mult())
+	var b0 := st.max_breath()
+	st.bonus = Effects.bonus({"head": {"type": "helm_brass"}}, {})
+	check(st.max_breath() >= b0 + 60.0, "a diving helm holds your breath longer")
+	check(ItemDB.def("hardhat_lamp").get("lamp", false), "the miner's helmet has a lamp")
+	check(Effects.describe(ItemDB.def("gun_oil")).size() > 0 and Effects.describe(ItemDB.def("bear_trap")).size() > 0, "kits and traps say what they do")
+	# Loot out in the frontier zones is frontier gear, not stone knives or level-40 kit.
+	var was := Eras.theme
+	Eras.theme = "human"
+	var lv_ok := true
+	var seen := 0
+	for i in 200:
+		rng.seed = 900 + i
+		# Zone level 15: about 2.1 km out.
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(33, 0)}, 0.2):
+			if Rarity.is_gear(it["type"]):
+				seen += 1
+				if ItemDB.unlock_level(it["type"]) > 22:
+					lv_ok = false
+	Eras.theme = was
+	check(seen > 10 and lv_ok, "frontier caches hold gear near their level (%d pieces)" % seen)
+	# A lantern of either kind lights up.
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("lamp_kerosene", 1, 1.0, {}))
+	check(HandLight.lanterns(inv) == 1, "a kerosene lamp counts as a lantern")

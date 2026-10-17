@@ -26,7 +26,8 @@ const SHEET2_ORDER := [
 	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
 ]
 ## Later sheets, each a 6x5 grid in the same layout: tools and ammo (items3; "" marks a
-## painted cell with no item yet), then the medieval age (pack A, items4-9).
+## painted cell with no item yet), then the medieval age (pack A, items4-9) and the
+## frontier (pack B, items10-13).
 const MORE_SHEETS := [
 	["res://assets/icons/items3.png", [
 		"fiber", "wild_berries", "torch", "flashlight", "flashlight_dead", "binoculars",
@@ -76,6 +77,34 @@ const MORE_SHEETS := [
 		"herb_red", "herb_blue", "herb_yellow", "herb_root", "herb_mint", "herb_nightshade",
 		"scroll_plain", "scroll_red", "scroll_blue", "scroll_green", "letter_sealed", "quill_ink",
 		"mortar_pestle", "empty_vial", "empty_bottle", "cauldron_small", "holy_water", "smelling_salts",
+	]],
+	["res://assets/icons/items10.png", [
+		"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun",
+		"bolt_rifle", "derringer", "flare_gun", "harpoon_gun", "gatling", "elephant_gun",
+		"sabre", "machete", "tomahawk", "bowie_knife", "bayonet", "sledgehammer",
+		"dynamite", "frag_grenade", "powder_keg", "fire_bottle", "bear_trap", "tripwire",
+		"black_powder", "musket_balls", "shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil",
+	]],
+	["res://assets/icons/items11.png", [
+		"hat_cowboy", "duster", "gloves_riding", "chaps", "boots_riding", "bandana",
+		"hardhat_lamp", "overalls", "gloves_work", "trousers_canvas", "boots_steeltoe", "backpack_canvas",
+		"welding_mask", "vest_plated", "gauntlets_heavy", "legplates_riveted", "boots_iron", "shield_riot",
+		"gasmask", "trenchcoat", "gloves_rubber", "trousers_wool_heavy", "boots_hobnail", "satchel",
+		"helm_brass", "plate_steam", "gauntlets_piston", "legs_steam", "boots_steam", "pack_boiler",
+	]],
+	["res://assets/icons/items12.png", [
+		"wrench", "crowbar", "hand_drill", "pickaxe_miner", "axe_lumber", "lamp_kerosene",
+		"gears", "springs", "pipe_section", "valve", "pressure_gauge", "piston",
+		"coal_sack", "oil_barrel", "rubber", "steel_sheet", "copper_wire", "glass_pane",
+		"pocket_watch", "compass", "sextant", "camera_box", "telegraph_key", "gramophone_record",
+		"gold_nugget", "silver_bar", "sheriff_star", "deed_scroll", "railway_spike", "safe_key",
+	]],
+	["res://assets/icons/items13.png", [
+		"beans_can", "jerky", "biscuit_hard", "cornbread", "steak", "chili",
+		"coffee_pot", "coffee_beans", "whiskey", "sarsaparilla", "water_canteen", "tea_tin",
+		"apple_dried", "pickles", "cheese_wheel_small", "egg_fried", "pancakes", "stew_tin",
+		"medkit_frontier", "bandage_roll", "splint", "tonic_bottle", "iodine", "syringe_glass",
+		"cards_deck", "harmonica", "banjo", "cigar_box", "spectacles", "photo_frame",
 	]],
 ]
 ## type -> [sheet path, its order], built on first use.

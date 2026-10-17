@@ -134,8 +134,12 @@ func carry_capacity() -> float:
 func stamina_regen_mult() -> float:
 	return 1.0 + _b("stamina_regen")
 
+## How much faster guns reload (an ammo belt, oiled guns).
+func reload_mult() -> float:
+	return 1.0 + _b("reload")
+
 func max_breath() -> float:
-	return BASE_BREATH + 5.0 * attrs["oxy"]
+	return BASE_BREATH + 5.0 * attrs["oxy"] + _b("breath")
 
 func xp_mult() -> float:
 	return 1.0 + 0.05 * attrs["int"] + _b("xp")

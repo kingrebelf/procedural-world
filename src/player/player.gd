@@ -32,6 +32,7 @@ var head: Node3D
 var camera: Camera3D
 var viewmodel: Viewmodel
 var gunplay: Gunplay ## magazines, aiming, recoil and flying shots for ranged weapons
+var traps: Traps ## bear traps and tripwires you have set
 var _trigger_held := false ## semi-automatic weapons wait for the trigger to come back
 var hand_light: HandLight ## torch or flashlight in the off hand
 var jetpack: Jetpack
@@ -114,6 +115,10 @@ func _ready() -> void:
 	gunplay.player = self
 	add_child(gunplay)
 	gunplay.gun_event.connect(_gun_sound)
+	traps = Traps.new()
+	traps.player = self
+	add_child(traps)
+	traps.sprung.connect(func(blast: bool, at: Vector3): Audio.play_at("weapon/explosion" if blast else "hit/metal", at, 2.0))
 	if HumanModel.available():
 		body = HumanModel.new()
 		body.build(LOOK, Eras.MEDIEVAL, "")
@@ -144,7 +149,7 @@ func get_state() -> Dictionary:
 	var pos := global_position if is_inside_tree() else position
 	return {"pos": pos, "yaw": _yaw, "pitch": _pitch, "slot": selected, "view": 3 if third_person else 1,
 		"riding": int(vehicle.rec["id"]) if vehicle != null and is_instance_valid(vehicle) else -1,
-		"light": hand_light.to_data() if hand_light else {}}
+		"light": hand_light.to_data() if hand_light else {}, "traps": traps.to_data() if traps else []}
 
 func set_state(d: Dictionary) -> void:
 	global_position = d.get("pos", global_position)
@@ -156,6 +161,8 @@ func set_state(d: Dictionary) -> void:
 	pending_ride = int(d.get("riding", -1))
 	if hand_light:
 		hand_light.from_data(d.get("light", {}))
+	if traps:
+		traps.from_data(d.get("traps", []))
 	_apply_look()
 	if d.get("drop", false):
 		# Just through a portal: drop onto the ground once it has streamed in.
@@ -1142,9 +1149,32 @@ func consume(idx: int) -> void:
 		"instrument":
 			Game.add_buff(String(fd["play"]), 180.0)
 			Audio.play("ui/click", -6.0)
-			Game.toast.emit("You play a tune on the %s. You feel inspired." % name.to_lower())
+			var b: Dictionary = Effects.BUFFS[fd["play"]]
+			if fd["play"] == "inspired":
+				Game.toast.emit("You play a tune on the %s. You feel inspired." % name.to_lower())
+			else:
+				Game.toast.emit("You while away a little time with the %s. %s." % [name.to_lower(), b["name"]])
 		"camp":
 			_sleep(fd, name)
+		"kit":
+			# Gun oil and the like: used up for a timed effect.
+			Game.inventory.remove_at(idx, 1)
+			Game.add_buff(String(fd["buff"][0]), float(fd["buff"][1]))
+			Game.toast.emit("You use the %s: %s" % [name.to_lower(), Effects.BUFFS[fd["buff"][0]]["desc"].to_lower()])
+		"trap":
+			_set_trap(idx, String(it["type"]), name)
+
+## Sets the trap from pack slot `idx` on the ground at your feet (Traps).
+func _set_trap(idx: int, type: String, name: String) -> void:
+	if traps == null or not is_on_floor():
+		Game.toast.emit("Stand on firm ground to set the %s" % name.to_lower())
+		return
+	if traps.count() >= Traps.MAX:
+		Game.toast.emit("You have %d traps set already" % Traps.MAX)
+		return
+	Game.inventory.remove_at(idx, 1)
+	traps.add(type, global_position)
+	Game.toast.emit("You set the %s. Mind your step." % name.to_lower())
 
 func _read(idx: int, fd: Dictionary, name: String) -> void:
 	var what := String(fd.get("read", ""))
@@ -1199,7 +1229,7 @@ func _tire(n: float) -> bool:
 
 func use_held() -> void:
 	var it = held_item()
-	if it != null and ItemDB.def(it["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
+	if it != null and ItemDB.def(it["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp", "kit", "trap"]:
 		_cooldown = 0.5
 		consume(selected)
 		return
@@ -1321,6 +1351,7 @@ const CAST_RANGE := 16.0
 var _fish_t := 0.0 ## seconds until a bite, while a line is out
 var _fish_uid := -1 ## the rod the line belongs to
 var _night_light: OmniLight3D
+var _head_lamp: SpotLight3D
 
 ## Casts a line where you look, if that is water within reach.
 func _cast_line() -> void:
@@ -1384,6 +1415,21 @@ func _update_nightsight() -> void:
 		camera.add_child(_night_light)
 	if _night_light:
 		_night_light.visible = on
+	# A miner's helmet lamp shines where you look for as long as you wear it.
+	var head = Game.equipment.get("head")
+	var lamp: bool = head is Dictionary and ItemDB.def(String(head.get("type", ""))).get("lamp", false)
+	if lamp and _head_lamp == null:
+		_head_lamp = SpotLight3D.new()
+		_head_lamp.light_color = Color(1.0, 0.86, 0.62)
+		_head_lamp.spot_range = 30.0
+		_head_lamp.spot_angle = 24.0
+		_head_lamp.spot_angle_attenuation = 1.4
+		_head_lamp.light_energy = 2.2
+		_head_lamp.shadow_enabled = false
+		_head_lamp.position = Vector3(0, 0.12, -0.05)
+		camera.add_child(_head_lamp)
+	if _head_lamp:
+		_head_lamp.visible = lamp
 
 func _pick_plant(found: Dictionary) -> void:
 	if streamer == null or not streamer.pick_under(found):
@@ -1416,9 +1462,9 @@ func _gun_sound(kind: String, t: String, at: Vector3, what: String) -> void:
 	var d := ItemDB.def(t)
 	match kind:
 		"fire":
-			if Gunplay.handling(t).get("auto_reload", false):
+			if Gunplay.handling(t).get("auto_reload", false) or d.get("thrown", false):
 				Audio.play("swing/whoosh", -8.0, 0.1)
-			elif Gunplay.handling(t).get("powder", false):
+			elif Gunplay.handling(t).get("powder", false) or d.has("flare"):
 				Audio.play("weapon/explosion", -14.0, 0.1, 1.6)
 			else:
 				Audio.play("weapon/laser_big" if d.has("splash") else "weapon/laser", -6.0, 0.06)
@@ -1487,7 +1533,7 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	var col = hit.get("collider")
 	var q: float = it.get("quality", 1.0) if it is Dictionary else 1.0
 	if d.has("splash"):
-		_blast(at, float(d["splash"]), float(d.get("damage", 10)))
+		_blast(at, float(d["splash"]), float(d.get("damage", 10)), not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm")
 		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
 			var bc: ChunkNode = col.get_meta("chunk")
 			damage_object(bc, bc.get_object(col.get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
@@ -1577,13 +1623,14 @@ func _mark(creature, npc, head: bool) -> void:
 			Audio.play("hit/marker", -13.0, 0.05, 1.3)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
-func _blast(at: Vector3, radius: float, dmg: float) -> void:
+func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:
 	var fx := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 0.5
 	sm.height = 1.0
 	fx.mesh = sm
-	fx.material_override = Materials.get_mat("glow_violet")
+	# Black powder bursts in fire; energy weapons in violet light.
+	fx.material_override = Materials.get_mat("glow_warm" if powder else "glow_violet")
 	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	get_tree().current_scene.add_child(fx)
 	fx.global_position = at
