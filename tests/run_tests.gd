@@ -3663,6 +3663,17 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# The town's chest isn't left out on the square: it stands by a house's front door.
+	var lay := gen.settlement_layout(s)
+	for it in lay:
+		if Eras.CACHE_TYPES.has(it["t"]):
+			var by_door := false
+			for h in lay:
+				if KitHouse.has(h["t"]):
+					var l := TownLife.world_to_frame(h["p"], h["yaw"], it["p"])
+					var hd := KitHouse.size_of(h["t"])
+					by_door = by_door or (absf(l.x) < hd.x * 0.5 and l.y > hd.z * 0.5 and l.y < hd.z * 0.5 + 1.0)
+			check(by_door, "the town's chest stands against a house front, not mid-square")
 	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
 	var tl := TownLife.new()
 	tl.setup(gen, null, s)

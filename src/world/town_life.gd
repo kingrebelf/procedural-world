@@ -1759,9 +1759,9 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_pm.scale_curve = st
 		var g := Gradient.new()
 		# Wood smoke: pale grey-blue from the chimney, thinning to near white.
-		g.set_color(0, Color(0.76, 0.78, 0.82, 0.0))
-		g.add_point(0.1, Color(0.76, 0.78, 0.82, 0.62))
-		g.add_point(0.55, Color(0.84, 0.85, 0.88, 0.36))
+		g.set_color(0, Color(0.6, 0.62, 0.66, 0.0))
+		g.add_point(0.1, Color(0.6, 0.62, 0.66, 0.72))
+		g.add_point(0.55, Color(0.76, 0.77, 0.8, 0.42))
 		g.set_color(g.get_point_count() - 1, Color(0.9, 0.9, 0.92, 0.0))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
@@ -1789,7 +1789,7 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	# the hearth lit (see _fire_share).
 	var hr := RandomNumberGenerator.new()
 	hr.seed = WHash.str_hash("hearth%d:%s" % [int(e["house"]), str(p2)])
-	ps.amount_ratio = hr.randf_range(0.35, 1.0)
+	ps.amount_ratio = hr.randf_range(0.55, 1.0)
 	ps.speed_scale = hr.randf_range(0.8, 1.15)
 	ps.set_meta("keen", hr.randf())
 	ps.emitting = float(ps.get_meta("keen")) < _fire_share(NPCMind.hour_now())

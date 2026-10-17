@@ -1391,8 +1391,20 @@ func settlement_layout(s: Dictionary) -> Array:
 		var cx := int(floor(c.x / SIZE))
 		var cz := int(floor(c.y / SIZE))
 		var o := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
-		items.append({"t": Eras.CACHE_TYPES[era], "p": c + Vector2(r.randf_range(-9, 9), r.randf_range(-9, 9)),
-			"yaw": r.randf() * TAU, "st": {"loot": ItemDB.roll_loot(era, r, o), "opened": false}})
+		var at := c + Vector2(r.randf_range(-9, 9), r.randf_range(-9, 9))
+		var cyaw := r.randf() * TAU
+		var loot := ItemDB.roll_loot(era, r, o)
+		# Not left out in the middle of the square: set by a house's door, against its
+		# front wall beside the doorstep, where someone put it down (reviewer item 160).
+		var homes: Array = items.filter(func(it): return KitHouse.has(it["t"]))
+		if not homes.is_empty():
+			var h: Dictionary = homes[r.randi() % homes.size()]
+			var hd := KitHouse.size_of(h["t"])
+			var side := -1.0 if r.randf() < 0.5 else 1.0
+			var off := Vector2(side * minf(1.6, hd.x * 0.5 - 0.6), hd.z * 0.5 + 0.55)
+			at = (h["p"] as Vector2) + off.rotated(-float(h["yaw"]))
+			cyaw = float(h["yaw"]) + PI * 0.5 + r.randf_range(-0.2, 0.2)
+		items.append({"t": Eras.CACHE_TYPES[era], "p": at, "yaw": cyaw, "st": {"loot": loot, "opened": false}})
 	return items
 
 ## Rings of buildings per size: [min count, max count, min radius, max radius].
