@@ -352,7 +352,7 @@ static func species_mix(bp: Dictionary) -> Array:
 	var acc := 0.0
 	for f in bp["flora"]:
 		acc += float(f["w"]) / maxf(wt, 0.0001)
-		var form := FORM_CONIFER if f["t"] == "pine" else FORM_BROADLEAF
+		var form: int = FORMS.get(f["t"], FORM_BROADLEAF)
 		if Flora.species(f["t"], f["sp"]).get("form", "") in ["dead", "snag"]:
 			form = FORM_BARE
 		out.append([acc, species_colour(f), form])
@@ -410,11 +410,16 @@ static func canopy_colour(bp: Dictionary) -> Color:
 		wt += float(f["w"])
 	return sum / wt if wt > 0.0 else Color(0.3, 0.35, 0.2)
 
-## A distant tree's form, as forest_hgt.g holds it (over 255): a round crown, a conifer's
-## spire, or bare (dead) limbs.
+## A distant tree's form, as forest_hgt.g holds it (over 255; FORM_* in
+## forest.gdshaderinc): a round crown, a mushroom cap, bare (dead) limbs, a crystal spike,
+## a mast or a conifer's spire.
 const FORM_BROADLEAF := 0
+const FORM_CAP := 51
+const FORM_BARE := 102
+const FORM_CRYSTAL := 153
+const FORM_MAST := 204
 const FORM_CONIFER := 255
-const FORM_BARE := 128
+const FORMS := {"oak": FORM_BROADLEAF, "pine": FORM_CONIFER, "glowcap": FORM_CAP, "crystal_tree": FORM_CRYSTAL, "solar_mast": FORM_MAST}
 
 ## The mean colour of RealTree's leaf photos (sRGB, over their opaque texels).
 const LEAF_MEAN := {"oak": Color(0.353, 0.49, 0.224), "autumn": Color(0.812, 0.373, 0.184), "needle": Color(0.627, 0.722, 0.565)}

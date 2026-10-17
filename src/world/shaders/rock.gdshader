@@ -54,9 +54,9 @@ void fragment() {
 	// showing through between them.
 	float up = smoothstep(0.25, 0.9, n.y);
 	vec3 mt = texture(moss_tex, wp.xz / 1.3).rgb;
-	float patches = fbm(wp.xz * 0.9 + wp.y * 0.6 + 5.0);
-	float moss = smoothstep(0.3, 0.75, COLOR.a * up * 1.25 - (lum - 1.0) * 0.45 + (dot(mt, LUM) - 0.12) * 1.5
-		+ (patches - 0.5) * 0.9 - 0.08);
+	float patches = fbm(wp.xz * 0.45 + wp.y * 0.35 + 5.0) * 0.75 + fbm(wp.xz * 1.6 + 2.0) * 0.25;
+	float moss = smoothstep(0.35, 0.7, COLOR.a * up * 1.1 - (lum - 1.0) * 0.45 + (dot(mt, LUM) - 0.12) * 1.5
+		+ (patches - 0.5) * 2.4 - 0.15);
 	// moss_col is already linear (source_color); the grass photo gives it texture, and
 	// cushions in the sun go yellower and paler, those in the crevices deeper.
 	vec3 mc = moss_col * clamp(dot(mt, LUM) / 0.155, 0.4, 1.6);

@@ -476,9 +476,10 @@ void fragment() {
 		vec2 cell;
 		vec4 cr = crown_at(p, dg, cell);
 		// A crown of its own wears its species' colour (as its billboard does nearer);
-		// the forest as a whole, its mix. A dead tree has no crown to paint.
+		// the forest as a whole, its mix. A dead tree or a mast has no crown to paint.
 		vec4 sp = in_forest_rect(fuv) ? tree_species(tree_of(cell).xy, cell) : vec4(fdat.rgb, 0.0);
-		float own = cr.x * (billboarded(cell, dist) ? 0.0 : 1.0) * (abs(sp.a - 0.5) < 0.25 ? 0.0 : 1.0);
+		int form = tree_form(sp.a);
+		float own = cr.x * (billboarded(cell, dist) ? 0.0 : 1.0) * (form == FORM_BARE || form == FORM_MAST ? 0.0 : 1.0);
 		vec2 cell2;
 		vec4 cs = crown_at(p + sun_dir_g.xz / max(sun_dir_g.y, 0.25) * 5.0, dr, cell2);
 		float bb_shadow = cs.x * (billboarded(cell2, dist) ? 1.0 : 0.0);
