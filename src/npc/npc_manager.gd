@@ -19,6 +19,10 @@ var corpses: Corpses
 var settlements: Dictionary = {} ## id -> {data, nodes: Array, dirty: bool}
 
 var _by_id: Dictionary = {}
+## People still to step into the world, as [settlement id, record]: a town's people come
+## in a few per frame (each body takes 5-25 ms to dress), not all in one long freeze.
+var _arriving: Array = []
+const ARRIVE_BUDGET_USEC := 4000
 var _overrides: Dictionary = {} ## npc id -> {action, until}
 var _scan_t := 0.0
 var _save_t := 0.0
@@ -136,9 +140,18 @@ func _load(site: Dictionary, id: String) -> void:
 			continue
 		if stale:
 			_catch_up(rec, data, hour)
-		_add_node(e, rec)
+		_arriving.append([id, rec])
 	# On a server: one player runs these people, the others see them (Net.holds).
 	Net.watch("t", [[Vector2i(int(site["sx"]), int(site["sz"])), site["center"]]], [])
+
+## Brings in queued people until this frame's budget is spent (always at least one).
+func _let_arrive() -> void:
+	var t0 := Time.get_ticks_usec()
+	while not _arriving.is_empty() and (Time.get_ticks_usec() - t0 < ARRIVE_BUDGET_USEC):
+		var a: Array = _arriving.pop_front()
+		var e = settlements.get(a[0])
+		if e != null and not _by_id.has(a[1]["id"]):
+			_add_node(e, a[1])
 
 func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 	var n := NPC.new()
@@ -176,6 +189,7 @@ func _unload(id: String) -> void:
 		Game.store.save_settlement(e["data"])
 	Net.watch("t", [], [k])
 	Game.store.forget_settlement(k.x, k.y)
+	_arriving = _arriving.filter(func(a: Array) -> bool: return a[0] != id)
 	for n in e["nodes"]:
 		_by_id.erase(n.rec["id"])
 		n.queue_free()
@@ -199,6 +213,7 @@ func save_all() -> void:
 func _process(delta: float) -> void:
 	if player == null or Game.store == null:
 		return
+	_let_arrive()
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = 1.0
