@@ -86,6 +86,10 @@ func _ready() -> void:
 	env.sdfgi_cascades = 4
 	env.sdfgi_min_cell_size = 0.4
 	env.sdfgi_bounce_feedback = 0.4
+	# The GI probes nearest a wall's foot sit in the ground, and at the default bias they
+	# black out the bottom metre of every wall, house and rock in shade (a dark skirt
+	# along the foot of the castle walls). A little more bias reads past the ground.
+	env.sdfgi_probe_bias = 2.0
 	env.ssr_max_steps = 48
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -422,6 +426,9 @@ func _update_time_of_day() -> void:
 	env.ambient_light_color = Color(0.14, 0.17, 0.25)
 	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
+	# With GI on, the shade's fill comes from the GI rather than the ambient above, and
+	# by day it fell short of the sky and sunlit ground a wall in shade looks out on.
+	env.sdfgi_energy = 1.0 + 0.25 * daylight * (1.0 - golden) * (1.0 - underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

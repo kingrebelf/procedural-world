@@ -57,17 +57,17 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.55}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.22, "dungeon_wall": 0.3, "flagstone": 0.55}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
 	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
 	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}
 ## Photos used in their own colours rather than as greyscale detail under the material colour.
 const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 ## Own-colour photos shot brighter than the stone really is, toned down to a believable
-## albedo: castle_wall averages 0.65 linear, so 0.6 gives a pale limestone of about 0.39
-## that doesn't glare white in the sun, and (now the castle is that stone through, with no
-## darker rubble beside it) doesn't sink to near-black in the shade either.
-const PHOTO_TONE := {"castle_wall": 0.6}
+## albedo. The tone is an sRGB colour, so castle_wall (0.65 linear on average) at 0.7
+## (0.45 linear) is a weathered limestone of about 0.29: pale in the sun without glaring,
+## a soft grey in shade (0.6 made it 0.21, a dark grey slab whenever the sun was behind).
+const PHOTO_TONE := {"castle_wall": 0.7}
 ## Own-colour photos warmed or cooled to sit with what they're laid beside: the castle's
 ## flagstones take the honey tone of its walls instead of a cold blue-grey.
 const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86)}

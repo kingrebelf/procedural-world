@@ -206,9 +206,40 @@ static func build(t: String) -> ArrayMesh:
 				e.append(swap)
 			elif String(e[0]) == "village/Corner_Exterior_Brick":
 				e.append(quoins)
-	var mesh := BuildCatalog.merge_models(models)
-	k.commit(Materials.get_mat, mesh)
+	if era == 2:
+		var plain := BuildCatalog.merge_models(models)
+		k.commit(Materials.get_mat, plain)
+		return plain
+	var stone := face_stone_of(era)
+	var noise := FastNoiseLite.new()
+	noise.seed = WHash.str_hash(t) + v
+	noise.frequency = 0.25
+	noise.fractal_octaves = 3
+	var stone_mat := Materials.get_mat(stone)
+	var on_kit := func(mat: Material, arrays: Array) -> void:
+		if mat == stone_mat:
+			_patches(arrays, noise)
+	var on_boxes := func(name: String, arrays: Array) -> void:
+		if name == stone:
+			_patches(arrays, noise)
+	var mesh := BuildCatalog.merge_models(models, on_kit)
+	k.commit(Materials.get_mat, mesh, on_boxes)
 	return mesh
+
+## The castle's stone in its vertex colours: broad patches a few metres across where the
+## blocks run a shade lighter or darker, as quarry beds and weather leave them (one even
+## tone end to end read as a flat grey slab). The damp foot and rain streaks are _weather's.
+static func _patches(arrays: Array, noise: FastNoiseLite) -> void:
+	var v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var old = arrays[Mesh.ARRAY_COLOR]
+	var has_old: bool = old != null and (old as PackedColorArray).size() == v.size()
+	var col := PackedColorArray()
+	col.resize(v.size())
+	for i in v.size():
+		var c: Color = old[i] if has_old else Color.WHITE
+		var tone := lerpf(0.84, 1.0, clampf(0.5 + noise.get_noise_3dv(v[i]) * 0.9, 0.0, 1.0))
+		col[i] = Color(c.r * tone, c.g * tone, c.b * tone, c.a)
+	arrays[Mesh.ARRAY_COLOR] = col
 
 static func face_stone_of(era: int) -> String:
 	return "crypt_stone" if era == 1 else "castle_stone"

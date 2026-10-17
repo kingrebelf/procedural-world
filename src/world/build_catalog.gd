@@ -243,7 +243,9 @@ static func _build(id: String) -> ArrayMesh:
 
 ## Merges kit models ([path under assets/models, yaw degrees, offset, scale] each) into
 ## one mesh with a surface per material.
-static func merge_models(models: Array) -> ArrayMesh:
+## `tint`, if given, is called as tint(material, arrays) on each merged surface before it
+## is added, to colour its vertices.
+static func merge_models(models: Array, tint := Callable()) -> ArrayMesh:
 	var groups := {} ## material -> [[arrays, transform], ...]
 	var order: Array = []
 	for e in models:
@@ -260,7 +262,10 @@ static func merge_models(models: Array) -> ArrayMesh:
 			groups[mat].append([part[1], base * (part[2] as Transform3D)])
 	var out := ArrayMesh.new()
 	for mat in order:
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _merge_arrays(groups[mat]))
+		var arrays := _merge_arrays(groups[mat])
+		if tint.is_valid():
+			tint.call(mat, arrays)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
 
