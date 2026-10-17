@@ -1,21 +1,24 @@
 shader_type spatial;
-// Garments from Outfit: linen, knitted wool, velvet and worn leather from Ben's fabric
-// sheets, tinted in the same per-person colours as human.gdshader, with folds on loose
-// skirts and capes and gold embroidery on fine robes.
-// CUSTOM0: x = part (1 shirt, 2 trousers, 3 boots, 4 belt, 5 skirt, 6 cape, 7 trim).
+// Garments from Outfit: linen, knitted wool, velvet, worn leather, quilting and canvas from
+// Ben's fabric sheets, each part in its own per-person colour (Outfit.wardrobe), with folds
+// on loose skirts, aprons and capes and gold embroidery on fine robes.
+// CUSTOM0: x = part (1 shirt, 2 trousers, 3 boots, 4 belt, 5 skirt, 6 cape, 7 bodice or
+// vest, 8 apron). Each part's colour alpha * 8 is its fabric (Outfit.FAB_*).
 render_mode diffuse_burley, specular_schlick_ggx, cull_disabled;
 
 #include "res://src/npc/fabric.gdshaderinc"
 
-instance uniform vec4 shirt_col : source_color = vec4(0.5, 0.4, 0.3, 1.0);
-instance uniform vec4 pants_col : source_color = vec4(0.3, 0.28, 0.25, 1.0);
-instance uniform vec4 boot_col : source_color = vec4(0.2, 0.14, 0.1, 1.0);
+instance uniform vec4 shirt_col : source_color = vec4(0.5, 0.4, 0.3, 0.0);
+instance uniform vec4 pants_col : source_color = vec4(0.3, 0.28, 0.25, 0.125);
+instance uniform vec4 boot_col : source_color = vec4(0.2, 0.14, 0.1, 0.375);
+instance uniform vec4 skirt_col : source_color = vec4(0.5, 0.4, 0.3, 0.0);
+instance uniform vec4 cape_col : source_color = vec4(0.3, 0.28, 0.25, 0.125);
+instance uniform vec4 vest_col : source_color = vec4(0.4, 0.3, 0.2, 0.125);
+instance uniform vec4 apron_col : source_color = vec4(0.75, 0.7, 0.6, 0.0);
 instance uniform vec4 accent_col : source_color = vec4(0.0);
 instance uniform float flash = 0.0;
-// era (0 medieval, 1 fantasy, 2 sci-fi), knit: a wool jumper, trim: velvet robes with
-// embroidered hems.
+// era (0 medieval, 1 fantasy, 2 sci-fi), trim: velvet hems with gold embroidery.
 instance uniform float era = 0.0;
-instance uniform float knit = 0.0;
 instance uniform float trim = 0.0;
 // First-person arms (as human.gdshader): 1 both arms, 2 only the -x arm, 3 only the +x
 // arm; everything nearer the middle than arms_x is cut away.
@@ -34,6 +37,17 @@ void vertex() {
 	rest = CUSTOM0.xyz;
 	rest_pos = vec3(CUSTOM0.w, CUSTOM0.y, CUSTOM0.z);
 	rest_n = CUSTOM1.xyz;
+	// Loose cloth (skirts, capes, aprons) ripples a little toward its hem, out of step from
+	// one person to the next, so it never hangs as a rigid tube.
+	int part = int(CUSTOM0.x + 0.5);
+	if (part == 5 || part == 6 || part == 8) {
+		float hang = part == 6 ? UV.y / 3.0 : UV.y / 2.0;
+		vec3 wp = NODE_POSITION_WORLD;
+		float ph = wp.x * 1.7 + wp.z * 2.3;
+		float around = UV.x * (part == 6 ? 3.0 : 2.1);
+		float wave = sin(TIME * 1.9 + around * 6.2832 + ph) * 0.6 + sin(TIME * 3.3 - around * 12.566 + ph * 1.3) * 0.4;
+		VERTEX += NORMAL * wave * 0.014 * hang * hang;
+	}
 }
 
 float hash(vec2 p) {
@@ -56,58 +70,72 @@ void fragment() {
 	}
 	int part = int(rest.x + 0.5);
 	int age = int(era + 0.5);
-	bool robe = trim > 0.5 && age < 2;
-	vec3 col = shirt_col.rgb;
+	vec4 pc = shirt_col;
+	if (part == 2) pc = pants_col;
+	else if (part == 3 || part == 4) pc = boot_col;
+	else if (part == 5) pc = skirt_col;
+	else if (part == 6) pc = cape_col;
+	else if (part == 7) pc = vest_col;
+	else if (part == 8) pc = apron_col;
+	int fab = int(pc.a * 8.0 + 0.5);
+	if (part == 3 || part == 4) fab = 3;
+	bool robe = trim > 0.5 && fab == 2;
+	vec3 col = pc.rgb;
+	if (part == 4) col = mix(boot_col.rgb, vec3(0.16, 0.1, 0.06), 0.5);
 	float rough = 0.92;
 	float metal = 0.0;
 	float sheen = 0.0;
-	if (part == 2) col = pants_col.rgb;
-	else if (part == 3) { col = boot_col.rgb; rough = 0.55; }
-	else if (part == 4) { col = mix(boot_col.rgb, vec3(0.16, 0.1, 0.06), 0.5); rough = 0.5; }
-	else if (part == 6) col = mix(pants_col.rgb, shirt_col.rgb, 0.3) * 0.8;
-	else if (part == 7) { col = pants_col.rgb * 0.7; rough = 0.6; }
 	// The cloth itself: what it is, how big its weave is and how deep.
 	float det;
 	float relief;
-	if (part == 3 || part == 4) {
+	// Each cloth its own: smooth fine linen, chunky knitted wool, soft velvet with a sheen,
+	// tough canvas, oiled leather; `contrast` is how strongly its weave shows.
+	float contrast = 1.0;
+	if (fab == 3) {
 		det = fabric(leather, rest_pos, rest_n, 0.22);
 		relief = 0.0012;
-		rough += (0.72 - det) * 0.5;
-	} else if (part == 6 || (part == 5 && robe)) {
+		rough = 0.48 + (0.72 - det) * 0.5;
+		contrast = 0.8;
+	} else if (fab == 2) {
 		det = fabric(velvet, rest_pos, rest_n, 0.3);
-		relief = 0.0004;
-		sheen = 0.45;
-	} else if (part == 1 && knit > 0.5 && age < 2) {
-		det = fabric(wool, rest_pos, rest_n, 0.085);
-		relief = 0.0016;
+		relief = 0.0003;
+		sheen = 0.5;
+		rough = 0.7;
+		contrast = 0.35;
+	} else if (fab == 1) {
+		det = fabric(wool, rest_pos, rest_n, part == 1 ? 0.085 : 0.12);
+		relief = 0.0018;
+		rough = 0.97;
 	} else {
-		det = fabric(linen, rest_pos, rest_n, age == 2 ? 0.045 : (part == 2 ? 0.13 : 0.1));
-		relief = 0.0006;
+		det = fabric(linen, rest_pos, rest_n, fab == 5 ? 0.03 : 0.05);
+		relief = 0.0003;
+		rough = fab == 5 ? 0.72 : 0.86;
+		contrast = fab == 5 ? 0.3 : 0.45;
 	}
-	col *= det / 0.72;
+	col *= mix(1.0, det / 0.72, contrast);
 	float h = det * relief;
-	if (part == 7 && age == 2) {
-		// Quilted channels on the sci-fi vest.
-		float q = abs(fract(rest.y * 14.0) - 0.5) * 2.0;
+	if (fab == 4) {
+		// Quilted channels: a gambeson, or a padded sci-fi vest.
+		float q = abs(fract(rest.y * (age == 2 ? 14.0 : 11.0)) - 0.5) * 2.0;
 		col *= 0.75 + 0.25 * smoothstep(0.0, 0.35, q);
 		h += smoothstep(0.0, 0.6, q) * 0.003;
 	}
-	if (part == 5 || part == 6) {
+	if (part == 5 || part == 6 || part == 8) {
 		// Hanging folds and a darker hem band, or embroidery on a fine robe or cape.
 		float folds = 0.82 + 0.18 * sin(UV.x * 34.0 + vnoise(UV * vec2(6.0, 2.0)) * 3.0);
 		col *= folds;
-		float edge = part == 5 ? UV.y : UV.y / 1.5;
+		float edge = part == 6 ? UV.y / 1.5 : UV.y;
 		if (robe && edge > 1.8 && edge < 1.97) {
 			float t = (edge - 1.8) / 0.17;
-			vec3 g = texture(gold_trim, vec2(UV.x * (part == 5 ? 5.0 : 3.8), 0.07 + t * 0.38)).rgb;
+			vec3 g = texture(gold_trim, vec2(UV.x * (part == 6 ? 3.8 : 5.0), 0.07 + t * 0.38)).rgb;
 			float gold = smoothstep(0.12, 0.3, max(g.r, g.g) - g.b);
 			col = mix(col * 0.35, g, gold) * mix(1.0, folds, 0.5);
 			metal = gold * 0.6;
 			rough = mix(0.8, 0.4, gold);
 			h += gold * dot(g, vec3(0.33)) * 0.002;
 			sheen = 0.0;
-		} else {
-			col = mix(col, col * 0.55, smoothstep(1.86, 1.92, edge));
+		} else if (fab != 3) {
+			col = mix(col, col * 0.7, smoothstep(1.88, 1.94, edge));
 			sheen = max(sheen, 0.25);
 		}
 	}
@@ -118,7 +146,7 @@ void fragment() {
 	vec3 n = NORMAL;
 	if (!FRONT_FACING) {
 		n = -n;
-		col *= 0.6;
+		col *= 0.45; // the inside of a garment, in its own shadow
 	}
 	NORMAL = fabric_bump(n, VERTEX, h);
 	ALBEDO = col;

@@ -47,6 +47,13 @@ const CLOTH := [
 static func settlement_id(sx: int, sz: int) -> String:
 	return "%d_%d" % [sx, sz]
 
+## A settlement's people the first time it is seen: a town's (settlement_at sites) or a
+## boat's crew (Boats sites, which carry "boat").
+static func create(gen: ChunkGenerator, site: Dictionary) -> Dictionary:
+	if Boats.is_boat(site):
+		return Boats.crew(gen.seed, site)
+	return generate(gen.seed, gen, site, gen.settlement_layout(site))
+
 ## site: from ChunkGenerator.settlement_at; layout: ChunkGenerator.settlement_layout(site).
 static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, layout: Array) -> Dictionary:
 	var sx: int = site["sx"]

@@ -135,6 +135,7 @@ const LIST := [
 	{"out": "wall_window", "qty": 1, "in": {"planks": 3, "stone": 2}, "at": "workbench"},
 	{"out": "wall_door", "qty": 1, "in": {"planks": 4, "stone": 1}, "at": "workbench"},
 	{"out": "wall_door_stone", "qty": 1, "in": {"stone": 6, "planks": 1}, "at": "workbench"},
+	{"out": "wall_window_stone", "qty": 1, "in": {"stone": 5, "planks": 2}, "at": "workbench"},
 	{"out": "door_wood", "qty": 1, "in": {"planks": 6, "iron_ingot": 1}, "at": "workbench"},
 	{"out": "door_iron", "qty": 1, "in": {"planks": 6, "iron_ingot": 4}, "at": "anvil"},
 	{"out": "stairs_wood", "qty": 1, "in": {"planks": 8}, "at": "workbench"},
