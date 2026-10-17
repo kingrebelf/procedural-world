@@ -430,17 +430,22 @@ void fragment() {
 		col = mix(col, mix(dust, st * 0.8, smoothstep(0.4, 0.9, snow)), snow);
 		// Wind ripples: long low ridges across the drifts, wandering with the ground.
 		vec2 wd = vec2(0.83, 0.55);
-		vec2 rip = wd * cos(dot(p, wd) * 2.1 + meso * 9.0) * 0.09 * (1.0 - far);
-		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip, snow);
+		vec2 rip = wd * cos(dot(p, wd) * 2.1 + meso * 9.0) * 0.14 * (1.0 - far);
+		// Drifts: soft swells a few metres across, so the sun models the snow (lit faces,
+		// blue shade) instead of lighting one flat white sheet.
+		float de = 0.7;
+		float d0 = fbm(p * 0.21 + 7.0);
+		vec2 drift = -vec2(fbm((p + vec2(de, 0.0)) * 0.21 + 7.0) - d0, fbm((p + vec2(0.0, de)) * 0.21 + 7.0) - d0) / de * 1.4;
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip + drift * (1.0 - far * 0.5), snow);
 		rock_n *= 1.0 - snow;
 		// Glints: here and there a crystal faces just right and flashes the sun back.
 		if (snow > 0.5 && dist < 30.0 && sun_dir_g.y > 0.0) {
-			vec3 cell = floor(wpos * 24.0);
+			vec3 cell = floor(wpos * 20.0);
 			float hs = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
 			vec3 facet = normalize(wnorm + (vec3(fract(hs * 13.1), fract(hs * 7.7), fract(hs * 3.3)) - 0.5) * 0.9);
 			vec3 hv = normalize(normalize(CAMERA_POSITION_WORLD - wpos) + sun_dir_g);
-			float glint = step(0.985, hs) * pow(max(dot(facet, hv), 0.0), 60.0);
-			EMISSION += sun_light_g * glint * 2.5 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
+			float glint = step(0.95, hs) * pow(max(dot(facet, hv), 0.0), 24.0);
+			EMISSION += sun_light_g * glint * 4.0 * smoothstep(0.5, 0.9, snow) * (1.0 - smoothstep(14.0, 30.0, dist)) * (1.0 - cloud_shadow(wpos));
 		}
 	}
 
