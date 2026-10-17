@@ -3,8 +3,8 @@ class_name RiverMesh
 ## runs on worker threads and in tests.
 
 ## River water surface for this chunk (worker thread): the cells of the 2 m river grid
-## that hold water, at the river's level, coloured with the downhill flow direction and
-## an edge fade. Empty when the chunk has no river.
+## that hold water, at the river's level, coloured with the downhill flow direction, its
+## steepness and an edge fade. Empty when the chunk has no river.
 static func build_river_arrays(chunk: Dictionary) -> Array:
 	if not chunk.has("river"):
 		return []
@@ -37,7 +37,8 @@ static func build_river_arrays(chunk: Dictionary) -> Array:
 					var a := (1.0 - smoothstep(0.85, 1.15, rv[k + 1])) * clampf(rv[k + 2] * 1.5, 0.0, 1.0)
 					vid[c] = verts.size()
 					verts.append(Vector3(c.x * 2.0, lv, c.y * 2.0))
-					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, 0.0, a))
+					# b: how steeply the river falls here (rapids where it is high).
+					cols.append(Color(f.x * 0.5 + 0.5, f.y * 0.5 + 0.5, clampf(g.length() * 2.5, 0.0, 1.0), a))
 				ids.append(vid[c])
 			idx.append_array([ids[0], ids[1], ids[2], ids[1], ids[3], ids[2]])
 	if idx.is_empty():

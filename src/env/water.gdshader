@@ -1,7 +1,8 @@
 shader_type spatial;
 // Lakes and seas: wind-driven swell (sum of directional deep-water waves, larger over
-// deep water), depth-tinted, refractive and fresnel-reflective, with whitecaps when the
-// wind is strong and foam where waves meet the shore.
+// deep water), depth-tinted, refractive, mirroring the shores and sky (water_ssr), with
+// whitecaps when the wind is strong, lacy foam rolling in through the shallows, and ring
+// waves where something broke the surface (water_rings).
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 #include "res://src/env/clouds.gdshaderinc"
@@ -17,6 +18,8 @@ uniform vec2 depth_origin = vec2(-800.0);
 uniform float depth_size = 1600.0;
 uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+#include "res://src/env/water_ssr.gdshaderinc"
+#include "res://src/env/water_rings.gdshaderinc"
 
 varying vec3 wpos;
 varying float crest;
@@ -41,6 +44,14 @@ float n2(vec2 p) {
 }
 float ripples(vec2 p, float t) {
 	return n2(p * 0.35 + vec2(t * 0.12, t * 0.05)) * 0.6 + n2(p * 1.1 - vec2(t * 0.2, -t * 0.15)) * 0.3 + n2(p * 3.3 + t * 0.4) * 0.1;
+}
+// Foam lace: thin, branching strands with holes between, as foam lies on the water,
+// not a solid white sheet.
+float foam_lace(vec2 p, float t) {
+	float a = n2(p * 2.3 + vec2(t * 0.15, -t * 0.1));
+	float b = n2(p * 5.3 - vec2(t * 0.2, t * 0.12));
+	float web = clamp(1.0 - abs(a * 2.0 + b) * 2.6, 0.0, 1.0);
+	return web * smoothstep(-0.25, 0.15, n2(p * 0.7 + t * 0.05) + 0.1);
 }
 vec2 rot(vec2 v, float a) { return vec2(v.x * cos(a) - v.y * sin(a), v.x * sin(a) + v.y * cos(a)); }
 
@@ -85,13 +96,17 @@ void fragment() {
 	float h = ripples(wpos.xz, t);
 	float rs = 0.5 + wind_strength * 1.2;
 	vec3 rn = vec3(-(ripples(wpos.xz + vec2(e, 0), t) - h) / e, 0.0, -(ripples(wpos.xz + vec2(0, e), t) - h) / e) * rs;
-	vec3 nw = normalize((inverse(VIEW_MATRIX) * vec4(NORMAL, 0.0)).xyz + rn * 0.6);
+	vec2 rg = ring_slope(wpos.xz);
+	vec3 swell_n = (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
+	vec3 nw = normalize(swell_n + rn * 0.6 + vec3(-rg.x, 0.0, -rg.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(nw, 0.0)).xyz);
 
 	float depth = texture(depth_tex, SCREEN_UV).r;
 	vec4 world = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, depth, 1.0);
 	world.xyz /= world.w;
 	float water_depth = clamp((-world.z - (-VERTEX.z)), 0.0, 100.0);
+	// How deep the bed lies straight down (the path through the water is longer).
+	float vdepth = max(wpos.y - (INV_VIEW_MATRIX * vec4(world.xyz, 1.0)).y, 0.0);
 	float k = 1.0 - exp(-water_depth / clarity);
 	vec2 refr_uv = SCREEN_UV + nw.xz * 0.02 * k;
 	vec3 under = textureLod(screen_tex, refr_uv, 1.0).rgb;
@@ -111,18 +126,34 @@ void fragment() {
 	float tip = smoothstep(0.15, 0.9, crest) * clamp(amp * 3.0, 0.0, 1.0);
 	col += vec3(0.04, 0.16, 0.13) * tip * (0.35 + 1.2 * back) * smoothstep(-0.05, 0.2, sun_dir_g.y);
 	col *= 1.0 - 0.3 * cloud_shadow(wpos);
-	// Foam: a broken line where the water meets the shore (not over every shallow flat),
-	// and whitecaps on wave crests in a strong wind.
+	// Foam: lace where the wash thins out at the water's edge, and lines of broken water
+	// rolling in through the shallows toward the beach (they ride the depth, so they
+	// follow the shore's shape); whitecaps on wave crests in a strong wind.
+	float lace = foam_lace(wpos.xz, t);
+	float lap = 0.5 + 0.5 * sin(t * 0.9 + n2(wpos.xz * 0.08) * 9.0);
+	float edge_f = (1.0 - smoothstep(0.0, 0.06 + amp * 0.3 + lap * 0.05, vdepth)) * smoothstep(0.0, 0.015, vdepth);
+	float roll = sin(vdepth * 7.0 + t * 1.3 + n2(wpos.xz * 0.25) * 4.0);
+	float rollers = smoothstep(0.7, 1.0, roll) * (1.0 - smoothstep(0.2, 0.8 + amp * 2.0, vdepth)) * smoothstep(0.03, 0.12, vdepth);
+	float shore = clamp(edge_f * 0.9 + rollers * (0.35 + wind_strength), 0.0, 1.0) * lace;
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
-	float shore = (1.0 - smoothstep(0.0, 0.12 + amp * 0.5, water_depth)) * (0.4 + 0.6 * smoothstep(0.0, 0.3, n2(wpos.xz * 0.9 - t * 0.2) + 0.15));
-	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n;
-	float foam = max(shore * 0.55 * (0.6 + 0.4 * sin(t * 1.5 + wpos.x * 0.8 + wpos.z * 0.5)), caps);
+	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n * (0.5 + 0.5 * lace);
+	float foam = max(shore * 0.85, caps);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
 	seen *= 1.0 - foam;
 	// Looking across the water you see more reflection and less of what lies beneath.
 	float ndv = clamp(dot(nw, vdir), 0.0, 1.0); // vdir points back at the eye
 	float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
 	seen *= 1.0 - fres;
+	// The shores, rocks and trees mirrored, traced through the frame; the sky's own
+	// reflection (from the environment) shows wherever the trace finds nothing.
+	vec4 refl = vec4(0.0);
+	if (FRONT_FACING && fres > 0.025) {
+		// Half the small ripples' tilt: at their full tilt the mirrored image broke into
+		// scattered blobs.
+		vec3 rw = reflect(-vdir, normalize(mix(swell_n, nw, 0.5)));
+		rw = normalize(vec3(rw.x, max(rw.y, 0.02), rw.z));
+		refl = water_ssr(VERTEX, (VIEW_MATRIX * vec4(rw, 0.0)).xyz, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, wpos.y - 0.3, 0.6 + wind_strength * 1.5);
+	}
 	if (!FRONT_FACING) {
 		// Seen from below: Snell's window. Looking up steeply you see the bright, rippling
 		// sky through the surface; at shallower angles it mirrors the dim water below.
@@ -138,9 +169,10 @@ void fragment() {
 		METALLIC = 0.0;
 	} else {
 		ALBEDO = col;
+		ALPHA = smoothstep(0.0, 0.04, vdepth);
 		ROUGHNESS = 0.03 + wind_strength * 0.08 + foam * 0.6;
 		METALLIC = 0.0;
-		SPECULAR = 0.5;
-		EMISSION = seen + glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
+		SPECULAR = 0.5 * (1.0 - refl.a * 0.9);
+		EMISSION = seen + refl.rgb * fres * refl.a * (1.0 - foam) + glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
 	}
 }

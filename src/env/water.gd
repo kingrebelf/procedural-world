@@ -20,6 +20,7 @@ var _depth_img: Image
 var _depth_tex: ImageTexture
 var _depth_origin := Vector2.ZERO
 var _depth_timer := 0.0
+var _ssr_steps := 20
 static var _wind := 0.3
 static var _dir := Vector2(0.8, 0.6)
 static var _depth_lookup: Callable
@@ -41,6 +42,14 @@ func _ready() -> void:
 	_river_lookup = river_at
 	_current_lookup = current_at
 	add_child(Splashes.new())
+	Settings.changed.connect(_apply_settings)
+	_apply_settings()
+
+## Reflections of shores and banks on the water (water_ssr.gdshaderinc) follow the
+## "Screen-space reflections" setting.
+func _apply_settings() -> void:
+	_ssr_steps = 20 if bool(Settings.get_value("ssr")) else 0
+	_mat.set_shader_parameter("ssr_steps", _ssr_steps)
 
 func _process(delta: float) -> void:
 	if target:
@@ -53,6 +62,7 @@ func _process(delta: float) -> void:
 		if ChunkNode.river_material:
 			ChunkNode.river_material.set_shader_parameter("shallow", Color(0.2, 0.42, 0.4) * w[0] + Color(0.12, 0.5, 0.52) * w[1] + Color(0.16, 0.32, 0.38) * w[2])
 			ChunkNode.river_material.set_shader_parameter("glow_amount", w[1] * 0.12)
+			ChunkNode.river_material.set_shader_parameter("ssr_steps", _ssr_steps)
 		_wind = atmosphere.wind_strength
 		_dir = atmosphere.wind_dir
 	_depth_timer -= delta

@@ -3,7 +3,10 @@ extends SceneTree
 ## the water's colour, see-through, foam and reflections:
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20] [--river]
 ##     [--under [--novfog] [--nooverlay]]
-## --river uses the river shader instead (flowing diagonally, no edge fade). --under puts
+## Rocks standing in the water and a sandbank give the reflections and shore foam
+## something to show.
+## --river uses the river shader instead (flowing diagonally, no edge fade; --rapids
+## makes it fall steeply). --under puts
 ## the eye 2.5 m under the surface with the game's underwater fog and overlay (either can
 ## be left out, to tell which one an artefact comes from).
 func _initialize() -> void:
@@ -16,6 +19,7 @@ func _run() -> void:
 	var under := false
 	var vfog := true
 	var overlay := true
+	var rapids := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -29,6 +33,8 @@ func _run() -> void:
 			vfog = false
 		elif a == "--nooverlay":
 			overlay = false
+		elif a == "--rapids":
+			rapids = true
 	get_root().size = Vector2i(1600, 900)
 	RenderingServer.global_shader_parameter_set("sun_dir_g", Vector3(0.4, 0.6, 0.3).normalized())
 	RenderingServer.global_shader_parameter_set("wind_dir", Vector2(1, 0.3))
@@ -85,12 +91,45 @@ func _run() -> void:
 	bed.rotation = Vector3(-atan(6.0 / 64.0), 0, 0)
 	bed.position = Vector3(0, -4.0, -26)
 	get_root().add_child(bed)
+	# Rocks standing out of the water, and a sandbank breaking the surface.
+	var rock_mat := StandardMaterial3D.new()
+	rock_mat.albedo_color = Color(0.32, 0.3, 0.28)
+	rock_mat.roughness = 0.9
+	for r in [Vector4(-14, -30, 2.5, 9.0), Vector4(9, -48, 4.0, 16.0), Vector4(26, -80, 6.0, 24.0), Vector4(-40, -70, 5.0, 12.0), Vector4(3, -14, 0.8, 1.2)]:
+		var cone := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = r.z * 0.25
+		cm.bottom_radius = r.z
+		cm.height = r.w + 8.0
+		cone.mesh = cm
+		cone.material_override = rock_mat
+		cone.position = Vector3(r.x, r.w * 0.5 - 4.0, r.y)
+		get_root().add_child(cone)
+	var bank := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	bank.mesh = sm
+	bank.material_override = sand
+	bank.scale = Vector3(14.0, 1.2, 6.0)
+	bank.position = Vector3(-20, -0.9, -12)
+	get_root().add_child(bank)
 	var water := MeshInstance3D.new()
 	var wm := PlaneMesh.new()
 	wm.size = Vector2(400, 400)
 	wm.subdivide_width = 200
 	wm.subdivide_depth = 200
 	water.mesh = wm
+	if shader.ends_with("river.gdshader"):
+		# The flow, steepness and edge fade RiverMesh puts in the vertex colours.
+		var arr := wm.get_mesh_arrays()
+		var cols := PackedColorArray()
+		cols.resize((arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size())
+		cols.fill(Color(0.5 + 0.35, 0.5 - 0.2, 0.9 if rapids else 0.1, 1.0))
+		arr[Mesh.ARRAY_COLOR] = cols
+		var am := ArrayMesh.new()
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+		water.mesh = am
 	var mat := ShaderMaterial.new()
 	mat.shader = load(shader)
 	water.material_override = mat
