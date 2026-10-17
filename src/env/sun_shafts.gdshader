@@ -53,6 +53,6 @@ void fragment() {
 	float fall = 1.0 - smoothstep(0.2, 1.1, length((uv - sun_uv) * aspect));
 	float d = texture(depth_tex, uv).r;
 	vec4 vp = INV_PROJECTION_MATRIX * vec4(uv * 2.0 - 1.0, d, 1.0);
-	float air = d < 1e-6 ? 0.3 : 1.0 - exp(vp.z / vp.w / 14.0);
+	float air = d < 1e-6 ? 0.3 : 1.0 - exp(vp.z / vp.w / 22.0);
 	ALBEDO = tint * acc * strength * fall * air;
 }

@@ -6,11 +6,15 @@ extends MeshInstance3D
 ## worker thread around you and rebuilt when you have gone far enough; wherever a real
 ## chunk is drawn the distant land leaves itself out (a mask, one texel per chunk).
 
-## Grid spacing and reach (metres). The span is a whole number of chunks.
-const CELL := 32.0
+## Reach (metres, a whole number of chunks) and grid spacing: FINE apart out to
+## FINE_REACH from where it was built, then wider and wider towards the horizon, where
+## a cell covers only a few pixels.
 const SPAN := 8192.0
+const FINE := 16.0
+const FINE_REACH := 1280.0
+const COARSE := 128.0
 ## Rebuilt around you once you are this far from where it was last built.
-const REBUILD := 1024.0
+const REBUILD := 640.0
 ## Grid rows built per worker task, so the chunks streaming in round you never wait long.
 const STRIP := 16
 
@@ -81,7 +85,7 @@ func _step(delta: float) -> void:
 		if p.distance_to(_center) <= REBUILD or not streamer.is_ready_at(target.global_position):
 			return
 		_center = p.snapped(Vector2.ONE * ChunkGenerator.SIZE)
-		_job = _job_inputs(_center - Vector2.ONE * SPAN * 0.5)
+		_job = _job_inputs(_center)
 		_rows = []
 		_row = 0
 		_held = 0.0
@@ -127,9 +131,10 @@ func _update_mask() -> void:
 	_mask_tex.update(_mask_img)
 
 ## What the workers need, read on the main thread (the world's seed and its settings).
-func _job_inputs(origin: Vector2) -> Dictionary:
-	return {"origin": origin, "seed": Game.seed, "terrain_v": WorldField.terrain_v,
+func _job_inputs(center: Vector2) -> Dictionary:
+	return {"center": center, "seed": Game.seed, "terrain_v": WorldField.terrain_v,
 		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
+		"rivers": Game.store.has_rivers() if Game.store else true,
 		"field": WorldField.new(Game.seed)}
 
 ## On a worker, one at a time: the main thread reads the results once each task is done.
@@ -142,7 +147,7 @@ func _finish() -> void:
 func _show() -> void:
 	if _arrays.is_empty():
 		return
-	_built_at = _job["origin"]
+	_built_at = (_job["center"] as Vector2) - Vector2.ONE * SPAN * 0.5
 	_job = {}
 	_rows = []
 	var am := ArrayMesh.new()
@@ -154,7 +159,23 @@ func _show() -> void:
 	_mask_sum = -1
 
 static func grid_n() -> int:
-	return int(SPAN / CELL) + 1
+	return axis().size()
+
+## The grid lines' offsets from the centre, along x and along z alike.
+static func axis() -> PackedFloat32Array:
+	var half := PackedFloat32Array([0.0])
+	var x := 0.0
+	var step := FINE
+	while x < SPAN * 0.5:
+		if x >= FINE_REACH:
+			step = minf(step * 1.06, COARSE)
+		x = minf(x + step, SPAN * 0.5)
+		half.append(x)
+	var out := PackedFloat32Array()
+	for k in range(half.size() - 1, 0, -1):
+		out.append(-half[k])
+	out.append_array(half)
+	return out
 
 ## The distant land's mesh arrays: heights, normals, era weights and landform looks like
 ## a chunk's terrain (ChunkNode.build_terrain_arrays), and snow on the high ground.
@@ -163,10 +184,11 @@ static func build_arrays(job: Dictionary) -> Array:
 
 ## Rows j0..j1-1 of the grid: heights, era weights and landform looks.
 static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
-	var origin: Vector2 = job["origin"]
+	var center: Vector2 = job["center"]
+	var ax := axis()
 	var field: WorldField = job["field"] if job.has("field") else WorldField.new(int(job["seed"]))
 	var human: bool = job["human"]
-	var n := grid_n()
+	var n := ax.size()
 	var c := (j1 - j0) * n
 	var hs := PackedFloat32Array()
 	hs.resize(c)
@@ -183,15 +205,29 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 	var look := PackedByteArray()
 	look.resize(12)
 	var tv := int(job["terrain_v"])
+	var rivers: bool = job.get("rivers", false)
 	var regions := {}
 	for j in range(j0, j1):
 		for i in n:
-			var x := origin.x + i * CELL
-			var z := origin.y + j * CELL
+			var x := center.x + ax[i]
+			var z := center.y + ax[j]
 			var v := (j - j0) * n + i
 			var w := field.era_weights(x, z)
 			var lw := field.landform_weights(x, z)
-			hs[v] = field.height(x, z, w, lw)
+			var sh := field.shape(x, z, w, lw)
+			# Rivers cut their vales as the chunks carve them (ChunkGenerator), and where
+			# the water shows the shader lays it on (CUSTOM2.w, the distance from the
+			# river's centre in half-widths, over six).
+			var rt := field.river_t(x, z) if rivers else INF
+			var h := sh.x + sh.y * smoothstep(WorldField.RIVER_REACH, WorldField.RIVER_REACH + 4.0, rt) + sh.z
+			var wet := 1.0
+			if rt < WorldField.RIVER_REACH:
+				var lv := river_level(field, x, z)
+				var m := WorldField.river_strength(h - sh.z, lv)
+				h = WorldField.carve_river(h, rt, lv, m)
+				if m > 0.25 and lv > ChunkGenerator.WATER_LEVEL + 0.2:
+					wet = rt / WorldField.RIVER_REACH
+			hs[v] = h
 			# As a chunk paints them: human worlds dress their sci-fi land as the wilds.
 			cols[v] = Color(w[Eras.MEDIEVAL] + (w[Eras.SCIFI] if human else 0.0), w[Eras.FANTASY], 0.0 if human else w[Eras.SCIFI], 1.0)
 			if tv >= 7:
@@ -226,11 +262,22 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 				tint += (regions[key][1] as Color) * t * w[e]
 			if trees > 0.01:
 				tint /= trees
+			# No trees in the river or on its edge.
+			trees *= smoothstep(1.2 / WorldField.RIVER_REACH, 2.5 / WorldField.RIVER_REACH, wet)
 			l2[v * 4 + 2] = int(clampf(1.0 - exp(-trees * 0.011), 0.0, 1.0) * 255.0)
+			l2[v * 4 + 3] = int(clampf(wet, 0.0, 1.0) * 255.0)
 			cc[v * 4] = int(clampf(tint.r, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 1] = int(clampf(tint.g, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 2] = int(clampf(tint.b, 0.0, 1.0) * 255.0)
 	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc}
+
+## A river's water level near (x, z): just below the lowest ground round about, as
+## WorldField.river_level finds it on its grid (more coarsely: this is seen from afar).
+static func river_level(field: WorldField, x: float, z: float) -> float:
+	var lo := field.shape(x, z).x
+	for o in [Vector2(40, 0), Vector2(-40, 0), Vector2(0, 40), Vector2(0, -40)]:
+		lo = minf(lo, field.shape(x + o.x, z + o.y).x)
+	return lo - 0.4
 
 ## The colour a region's trees give the canopy seen from afar (sRGB), each species by
 ## how common it is there.
@@ -262,9 +309,10 @@ static func canopy_colour(bp: Dictionary) -> Color:
 
 ## The whole grid from its strips of rows (in order): normals, snow and triangles.
 static func finish_arrays(job: Dictionary, rows: Array) -> Array:
-	var origin: Vector2 = job["origin"]
+	var center: Vector2 = job["center"]
+	var ax := axis()
 	var snow_line: float = job["snow_line"]
-	var n := grid_n()
+	var n := ax.size()
 	var hs := PackedFloat32Array()
 	var cols := PackedColorArray()
 	var l0 := PackedByteArray()
@@ -287,13 +335,13 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	for j in n:
 		for i in n:
 			var v := j * n + i
-			verts[v] = Vector3(origin.x + i * CELL, hs[v], origin.y + j * CELL)
+			verts[v] = Vector3(center.x + ax[i], hs[v], center.y + ax[j])
 			var hl := hs[j * n + maxi(i - 1, 0)]
 			var hr := hs[j * n + mini(i + 1, n - 1)]
 			var hd := hs[maxi(j - 1, 0) * n + i]
 			var hu := hs[mini(j + 1, n - 1) * n + i]
-			var dx := (hr - hl) / (CELL * float(mini(i + 1, n - 1) - maxi(i - 1, 0)))
-			var dz := (hu - hd) / (CELL * float(mini(j + 1, n - 1) - maxi(j - 1, 0)))
+			var dx := (hr - hl) / (ax[mini(i + 1, n - 1)] - ax[maxi(i - 1, 0)])
+			var dz := (hu - hd) / (ax[mini(j + 1, n - 1)] - ax[maxi(j - 1, 0)])
 			norms[v] = Vector3(-dx, 1.0, -dz).normalized()
 			# Snow lies on high ground and slides off steep faces (GroundCover, coarsely).
 			var steep := smoothstep(0.7, 1.25, Vector2(dx, dz).length())

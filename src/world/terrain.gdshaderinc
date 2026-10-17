@@ -85,8 +85,10 @@ varying vec4 soil_v;
 varying vec2 form_v;
 varying vec4 cover_v;
 #ifdef FAR_LAND
-// The forest seen from afar: crown colour (sRGB) and how densely the trees stand.
+// The forest seen from afar: crown colour (sRGB) and how densely the trees stand; and
+// the distance from a river's centre (in six half-widths: under 1/6 is water).
 varying vec4 canopy_v;
+varying float river_v;
 #endif
 
 float hash12(vec2 p) {
@@ -199,6 +201,7 @@ void vertex() {
 	cover_v = CUSTOM3;
 #ifdef FAR_LAND
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
+	river_v = CUSTOM2.w;
 	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
 #endif
 }
@@ -513,6 +516,13 @@ void fragment() {
 		snow *= 1.0 - canopy;
 		crown_n = -vec3(off.x, 0.0, off.y) * 0.9 * here * detail;
 	}
+	// Rivers: still water reflecting the sky, on muddy banks.
+	float river = 1.0 - smoothstep(0.92, 1.08, river_v * 6.0);
+	float bank = (1.0 - smoothstep(1.1, 1.8, river_v * 6.0)) * (1.0 - river);
+	col = mix(col, col * vec3(0.62, 0.58, 0.52), bank * (1.0 - canopy));
+	col = mix(col, vec3(0.025, 0.045, 0.05), river);
+	canopy *= 1.0 - river;
+	snow *= 1.0 - river;
 #endif
 
 	// Cloud shadows drifting over the land.
@@ -521,8 +531,8 @@ void fragment() {
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
 #ifdef FAR_LAND
-	ROUGHNESS = mix(ROUGHNESS, 0.95, canopy);
-	SPECULAR = mix(0.4, 0.25, canopy);
+	ROUGHNESS = mix(mix(ROUGHNESS, 0.95, canopy), 0.06, river);
+	SPECULAR = mix(mix(0.4, 0.25, canopy), 0.5, river);
 #endif
 
 	// Procedural detail normal from the noise gradient (world space -> view space).
@@ -549,6 +559,7 @@ void fragment() {
 	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.9 + vec3(ripple.x, 0.0, ripple.y));
 #ifdef FAR_LAND
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
+	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), river));
 #endif
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }
