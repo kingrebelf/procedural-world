@@ -8,7 +8,15 @@ extends Node3D
 ##
 ## Record: kind ("animal" | "person"), p (chunk-local Vector3), yaw, day (of death),
 ## name, era; animals: sp, butchered, items (once butchered, what is left on it);
-## people: who (NPC id), body, job, gear (what they wore), items, purse.
+## people: who (NPC id), body, job, gear (what they wore), items, purse. Once the body
+## has fallen limp and come to rest (Ragdoll): rag (the pose it lies in, Ragdoll.capture)
+## and c (where its middle is, from p, turned by yaw).
+## The player's own body leaves no corpse but a bag (kind "bag", see DeathBag), kept the
+## same way and opened the same way, marked on its owner's map.
+
+## A dropped bag changed: dropped, taken from, or gone (rec is then {}). For a multiplayer
+## server to pass on to the other players.
+signal bag_changed(chunk: Vector2i, id: String, rec: Dictionary)
 
 const RADIUS := 2 ## chunks around the player whose bodies are drawn
 
@@ -16,7 +24,7 @@ var streamer: ChunkStreamer
 var player: Node3D
 var npcs: NPCManager
 var _shown: Dictionary = {} ## key -> {node, cn, id}
-var _fresh: Dictionary = {} ## ids that should play their fall when first drawn
+var _fresh: Dictionary = {} ## id -> how it died ({pose, vel, hit}), for its fall when first drawn
 var _scan := 0.0
 var _crime_t := -99.0
 
@@ -35,6 +43,8 @@ func add_animal(c: Creature) -> void:
 		if not is_nan(g):
 			at.y = maxf(g, Water.LEVEL - 0.6)
 	_put(at, "a" + c.id, rec)
+	var sk: Skeleton3D = c._kit.skeleton() if c._kit and not c._kit.procedural() else null
+	_fresh["a" + c.id] = _dying(c, sk, c._speed)
 
 ## Person `n` was just killed: their body keeps everything they had on them.
 func add_person(n: NPC) -> void:
@@ -56,22 +66,70 @@ func add_person(n: NPC) -> void:
 	rec["held"] = null
 	rec["pockets"] = []
 	_put(at, "p" + String(rec["id"]), body)
+	_fresh["p" + String(rec["id"])] = _dying(n, n._human.skeleton if n._human else null, n._speed)
 
-func _put(at: Vector3, id: String, rec: Dictionary) -> void:
+## You died at `at`: everything on you goes into a bag there (on dry ground, if you went
+## down in the water), and your map marks the spot. Returns the bag's key, "" if its
+## ground had not loaded.
+func drop_bag(at: Vector3, rec: Dictionary) -> String:
+	var spot := bag_spot(at)
+	var k := ChunkStreamer.chunk_of(spot)
+	var id := "b%s_%d" % [String(rec.get("owner", "")), int(rec.get("unix", 0.0) * 1000.0) % 1000000000]
+	rec["yaw"] = randf() * TAU
+	if not _put(spot, id, rec):
+		spot = at
+		k = ChunkStreamer.chunk_of(spot)
+		if not _put(spot, id, rec):
+			return ""
+	if DeathBag.is_mine(rec, Game.my_id()):
+		for m in Game.markers.list.duplicate():
+			if m["kind"] == "death" and m.get("name", "") == "Last death":
+				m["name"] = "Your bag, day %d" % (int(m.get("dday", 0)) + 1)
+		Game.markers.add("Last death", spot.x, spot.z, Game.planet, "death",
+			{"icon": "death", "color": 2, "bag": id, "cx": k.x, "cz": k.y, "dday": int(Game.day)})
+		Game.touch_player()
+	bag_changed.emit(k, id, rec)
+	return key_of(k, id)
+
+## Where a bag dropped at `at` comes to rest: on whatever floor is under it (a cave's, a
+## room's), or the nearest dry ground if that floor is under water.
+func bag_spot(at: Vector3) -> Vector3:
+	var floor_at := at
+	if is_inside_tree():
+		var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, 0.8, 0), at - Vector3(0, 80, 0))
+		if player is CollisionObject3D:
+			q.exclude = [(player as CollisionObject3D).get_rid()]
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		if not hit.is_empty():
+			floor_at = hit["position"]
+		elif npcs and not is_nan(npcs.ground(at.x, at.z)):
+			floor_at.y = npcs.ground(at.x, at.z)
+	var ground := func(x: float, z: float) -> float: return npcs.ground(x, z) if npcs else NAN
+	return DeathBag.rest_spot(floor_at, ground, func(x: float, z: float) -> float: return Water.surface_height(x, z, 0.0))
+
+func _put(at: Vector3, id: String, rec: Dictionary) -> bool:
 	if streamer == null:
-		return
+		return false
 	var k := ChunkStreamer.chunk_of(at)
 	var cn := streamer.get_chunk(k)
 	if cn == null:
-		return
+		return false
 	rec["p"] = at - cn.position
 	rec["day"] = Game.day
 	if not cn.data.has("corpses"):
 		cn.data["corpses"] = {}
 	cn.data["corpses"][id] = rec
 	Game.mark_chunk_dirty(cn.data)
-	_fresh[id] = true
+	_fresh[id] = {}
 	_scan = 0.0
+	return true
+
+## How `who` was moving the moment it died: its pose, its velocity (it walks along its
+## +Z) and the blow that killed it.
+static func _dying(who: Node3D, sk: Skeleton3D, speed: float) -> Dictionary:
+	if sk == null:
+		return {}
+	return {"pose": Ragdoll.snapshot(sk), "vel": who.global_basis.z.normalized() * speed, "hit": Ragdoll.hit_of(who)}
 
 # --- Drawing and decay -----------------------------------------------------------------
 
@@ -93,7 +151,15 @@ func _process(delta: float) -> void:
 			var all: Dictionary = cn.data["corpses"]
 			for id in all.keys():
 				var c: Dictionary = all[id]
-				if CorpseLoot.expired(c, Game.day) or not CorpseLoot.has_any(c) and c["kind"] == "animal":
+				if DeathBag.is_bag(c):
+					if not CorpseLoot.has_any(c) or DeathBag.expired(c, Time.get_unix_time_from_system()):
+						# Emptied (by you, if it was yours: its marker goes with it).
+						all.erase(id)
+						Game.mark_chunk_dirty(cn.data)
+						_forget_bag(id, "")
+						bag_changed.emit(k, id, {})
+						continue
+				elif CorpseLoot.expired(c, Game.day) or not CorpseLoot.has_any(c) and c["kind"] == "animal":
 					# Rotted away, or picked clean.
 					all.erase(id)
 					Game.mark_chunk_dirty(cn.data)
@@ -106,6 +172,24 @@ func _process(delta: float) -> void:
 	for key in _shown.keys():
 		if not seen.has(key):
 			_hide(key)
+	_check_marked_bags()
+
+## Your marked bags whose ground is loaded but which are no longer there: someone else
+## emptied them, or they lay out too long.
+func _check_marked_bags() -> void:
+	for m in Game.markers.on_planet(Game.planet, "death"):
+		var cn := streamer.get_chunk(Vector2i(int(m.get("cx", 0)), int(m.get("cz", 0))))
+		if cn != null and not cn.data.get("corpses", {}).has(String(m.get("bag", ""))):
+			_forget_bag(String(m.get("bag", "")), "Your bag from day %d is gone. Someone got to it first." % (int(m.get("dday", 0)) + 1))
+
+## Takes a bag of yours off the map (saying `why`, if anything).
+func _forget_bag(id: String, why: String) -> void:
+	for m in Game.markers.list.duplicate():
+		if m["kind"] == "death" and String(m.get("bag", "")) == id:
+			Game.markers.remove(int(m["id"]))
+			Game.touch_player()
+			if why != "":
+				Game.toast.emit(why)
 
 func _hide(key: String) -> void:
 	if not _shown.has(key):
@@ -117,12 +201,15 @@ func _hide(key: String) -> void:
 
 func _show(key: String, cn: ChunkNode, id: String, c: Dictionary) -> void:
 	var fresh: bool = _fresh.has(id)
+	var dying: Dictionary = _fresh.get(id, {})
 	_fresh.erase(id)
+	var limp := c.has("rag") or not dying.is_empty()
 	var node: Node3D
 	if c["kind"] == "animal":
 		var cr := Creature.new()
 		cr.as_corpse = true
 		cr.fresh = fresh
+		cr.limp = limp
 		cr.sp = int(c["sp"])
 		cr.era = int(c["era"])
 		cr.p = Creature.species(cr.sp, cr.era)
@@ -130,15 +217,78 @@ func _show(key: String, cn: ChunkNode, id: String, c: Dictionary) -> void:
 		node = cr
 	else:
 		node = Node3D.new()
+		if DeathBag.is_bag(c):
+			node.add_child(_bag_model())
 	add_child(node)
 	node.global_position = cn.position + (c["p"] as Vector3)
 	node.rotation.y = float(c.get("yaw", 0.0))
 	_shown[key] = {"node": node, "cn": cn, "id": id}
 	if c["kind"] == "person":
-		_dress(key, fresh)
+		_dress(key, fresh, limp)
+	if limp:
+		_lay(key, node, c, dying)
+
+## A body that falls limp: freshly killed, it drops as a ragdoll from how it died and the
+## pose it comes to rest in is saved with it; found again later, it lies in that pose.
+func _lay(key: String, node: Node3D, c: Dictionary, dying: Dictionary) -> void:
+	var sk: Skeleton3D = null
+	var spec := Ragdoll.HUMAN
+	if node is Creature:
+		var kit: AnimalModel = (node as Creature)._kit
+		sk = kit.skeleton() if kit and not kit.procedural() else null
+		if sk:
+			kit.freeze_for_ragdoll()
+			spec = Ragdoll.animal_spec(sk)
+	elif node.has_meta("human"):
+		var h: HumanModel = node.get_meta("human")
+		sk = h.skeleton
+		h.freeze_for_ragdoll()
+	if sk == null:
+		return
+	if c.has("rag") and Ragdoll.apply_pose(sk, c["rag"]):
+		return
+	if dying.is_empty() or not Ragdoll.apply_pose(sk, dying["pose"]):
+		return
+	var rd := Ragdoll.new()
+	node.add_child(rd)
+	rd.build(sk, spec)
+	rd.settled.connect(func(pose: PackedFloat32Array) -> void:
+		var r := record(key)
+		if not r.is_empty() and is_instance_valid(node):
+			r["rag"] = pose
+			r["c"] = node.global_transform.affine_inverse() * rd.center()
+			Game.mark_chunk_dirty(_shown[key]["cn"].data)
+		rd.queue_free())
+	rd.start(dying["vel"], dying["hit"])
+
+## A sack on the ground, with a pouch tied to it.
+static func _bag_model() -> Node3D:
+	var root := Node3D.new()
+	for e in [["props/Bag", Vector3.ZERO, 0.0, 0.9], ["props/Pouch_Large", Vector3(0.42, 0, 0.12), 40.0, 1.5]]:
+		var path := "res://assets/models/%s.gltf" % e[0]
+		if not ResourceLoader.exists(path):
+			continue
+		var m: Node3D = (load(path) as PackedScene).instantiate()
+		m.position = e[1]
+		m.rotation_degrees.y = e[2]
+		m.scale = Vector3.ONE * float(e[3])
+		root.add_child(m)
+	if root.get_child_count() == 0:
+		var mi := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.3
+		sm.height = 0.45
+		mi.mesh = sm
+		mi.position.y = 0.2
+		root.add_child(mi)
+	return root
+
+## Slots in this body's or bag's own inventory.
+static func slots_of(c: Dictionary) -> int:
+	return DeathBag.SLOTS if DeathBag.is_bag(c) else CorpseLoot.SLOTS
 
 ## Builds (or re-dresses) a person's body: who they were, in what they still wear.
-func _dress(key: String, fresh := false) -> void:
+func _dress(key: String, fresh := false, limp := false) -> void:
 	var e: Dictionary = _shown.get(key, {})
 	var c := record(key)
 	if e.is_empty() or c.is_empty() or not HumanModel.available():
@@ -152,9 +302,8 @@ func _dress(key: String, fresh := false) -> void:
 		h.scale = Vector3(s, s, s)
 		node.add_child(h)
 		node.set_meta("human", h)
-		h.pose("death")
-		if not fresh and h.anim.current_animation != "":
-			h.anim.seek(h.anim.current_animation_length, true)
+		if not limp:
+			h.pose("death", not fresh)
 	h.wear(still_worn(c))
 
 ## The gear a body still wears: what it died in, less whatever has been taken.
@@ -182,27 +331,36 @@ func record(key: String) -> Dictionary:
 		return {}
 	return e["cn"].data.get("corpses", {}).get(e["id"], {})
 
+## Where a drawn body lies: its middle, wherever the fall took it.
 func world_pos(key: String) -> Vector3:
 	var e: Dictionary = _shown.get(key, {})
 	if e.is_empty() or not is_instance_valid(e["node"]):
 		return Vector3.INF
-	return (e["node"] as Node3D).global_position
+	var n: Node3D = e["node"]
+	var c := record(key)
+	return n.global_transform * (c["c"] as Vector3) if c.get("c") is Vector3 else n.global_position
 
 ## Bodies within `radius` of `at` that still hold something: [{key, rec, pos}].
 func near(at: Vector3, radius: float) -> Array:
 	var out := []
 	for key in _shown:
 		var n = _shown[key]["node"]
-		if not is_instance_valid(n) or (n as Node3D).global_position.distance_to(at) > radius:
+		if not is_instance_valid(n):
+			continue
+		var pos := world_pos(key)
+		if pos.distance_to(at) > radius:
 			continue
 		var c := record(key)
 		if not c.is_empty() and CorpseLoot.has_any(c):
-			out.append({"key": key, "rec": c, "pos": (n as Node3D).global_position})
+			out.append({"key": key, "rec": c, "pos": pos})
 	return out
 
 ## What Interact on this body does: [kind, verb]. kind "carcass" is held to butcher;
 ## "corpse" opens it.
 static func use_of(c: Dictionary) -> Array:
+	if DeathBag.is_bag(c):
+		var t := DeathBag.title(c, Game.my_id())
+		return ["corpse", "Open %s" % (t.to_lower() if t.begins_with("Your") else t)]
 	var what := String(c["name"])
 	if c["kind"] == "person":
 		return ["corpse", "Search %s's body" % what.split(" ")[0]]
@@ -265,14 +423,20 @@ func took_from(key: String, worth: int) -> void:
 		return
 	var e: Dictionary = _shown[key]
 	Game.mark_chunk_dirty(e["cn"].data)
-	if c["kind"] == "person":
-		_dress(key)
+	if DeathBag.is_bag(c):
+		bag_changed.emit(Vector2i(int(e["cn"].data["cx"]), int(e["cn"].data["cz"])), String(e["id"]), c)
+	# Someone else's things: a townsperson's body, or another player's bag.
+	var theirs: bool = c["kind"] == "person" or DeathBag.is_bag(c) and not DeathBag.is_mine(c, Game.my_id())
+	if theirs:
+		if c["kind"] == "person":
+			_dress(key)
 		var at := world_pos(key)
+		var whose := ("from %s" % DeathBag.title(c, Game.my_id())) if DeathBag.is_bag(c) else "from %s's body" % String(c["name"]).split(" ")[0]
 		if worth > 0 and npcs and at != Vector3.INF and not npcs.town_at(at).is_empty():
 			var t := Time.get_ticks_msec() / 1000.0
 			if t - _crime_t > 4.0:
 				_crime_t = t
-				if not npcs.report_crime(at, "theft", worth, "from %s's body" % String(c["name"]).split(" ")[0]):
+				if not npcs.report_crime(at, "theft", worth, whose):
 					Game.toast.emit("Looted unseen (%d Marks' worth)" % worth)
 					Game.practice("sneak", 1.0)
 	_scan = 0.0

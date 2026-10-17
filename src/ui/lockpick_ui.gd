@@ -39,7 +39,7 @@ func _ready() -> void:
 func is_open() -> bool:
 	return visible
 
-## Starts picking the lock on a town chest. Needs a lockpick.
+## Starts picking the lock on a town chest or someone's door. Needs a lockpick.
 func open_lock(chunk: ChunkNode, o: Dictionary, at: Vector3) -> void:
 	if visible or player == null:
 		return
@@ -115,16 +115,21 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _opened() -> void:
-	_obj["st"]["lock"] = 0
-	Game.mark_chunk_dirty(_chunk.data)
+	var door := Doors.is_door(_obj["t"])
+	if not door:
+		_obj["st"]["lock"] = 0
+		Game.mark_chunk_dirty(_chunk.data)
 	Game.practice("lock", 4.0 + 4.0 * _game.tier)
 	Game.add_xp(3.0 * _game.tier, "Lockpicking")
 	Game.toast.emit("The lock clicks open")
 	var c := _chunk
 	var o := _obj
 	close_lock()
-	# Straight on to what's inside, as if you'd opened it.
-	player.use_cache_after_lock(c, o)
+	# Straight on to what's inside (or through the door), as if you'd opened it.
+	if door:
+		player.use_door_after_lock(c, o)
+	else:
+		player.use_cache_after_lock(c, o)
 
 func _broke() -> void:
 	_flash = 1.0

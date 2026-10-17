@@ -11,7 +11,8 @@ const DIR := "res://assets/models/"
 ## id -> definition.
 ##   models: [[file under assets/models, yaw degrees, offset, scale]] merged in order.
 ##   snap:   floor (cell centre), wall (cell edge), roof_v (grid corner), roof_c (cell centre
-##           a storey up), free (anywhere, turned with the rotate key).
+##           a storey up), door (in a doorway you built, see Doors), free (anywhere, turned
+##           with the rotate key).
 ##   grid / storey: cell size and floor-to-floor height in metres.
 ##   proc:   extra procedural parts built with MeshKit (see _proc).
 ##   station: crafting station id recipes can ask for.  light: colour of its glow.
@@ -29,6 +30,8 @@ const PIECES := {
 		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 10.0, "era": 0},
+	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
+		"snap": "wall", "grid": 2.0, "storey": 3.0, "mat": "stone", "hp": 16.0, "era": 0},
 	"stairs_wood": {"name": "Wooden Stairs", "models": [["village/Stair_Interior_Solid", 0, Vector3(0, 0, 1.0), 1.0]],
 		"snap": "floor", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 8.0, "era": 0, "ramp": true},
 	"roof_small": {"name": "Tiled Roof (4x4)", "models": [["village/Roof_RoundTiles_4x4", 0, Vector3.ZERO, 1.0],
@@ -49,6 +52,17 @@ const PIECES := {
 		"snap": "wall", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 34.0, "era": 2},
 	"door_scifi": {"name": "Bulkhead Doorway", "models": [["scifi/Door_Frame_Square", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 40.0, "era": 2},
+	# Doors hang in a doorway you built ("fits"), at its spot and facing; each leaf's model
+	# origin is its hinge (Doors.leaf_xf). They open, close and lock (see Doors).
+	"door_wood": {"name": "Wooden Door", "models": [["village/Door_1_Round", 0, Vector3(-0.535, 0, -0.11), 1.0]],
+		"snap": "door", "grid": 2.0, "storey": 3.0, "mat": "wood", "hp": 30.0, "era": 0,
+		"door": {"tier": 1, "fits": ["wall_door", "wall_door_stone"]}},
+	"door_iron": {"name": "Iron-bound Door", "models": [["village/Door_2_Round", 0, Vector3(-0.535, 0, -0.11), 1.0]],
+		"snap": "door", "grid": 2.0, "storey": 3.0, "mat": "metal", "hp": 40.0, "era": 0,
+		"door": {"tier": 2, "fits": ["wall_door", "wall_door_stone"]}},
+	"door_bulkhead": {"name": "Bulkhead Door", "models": [["scifi/Door_Metal", 0, Vector3(0, 0, -0.05), 1.0], ["scifi/Door_Metal", 180, Vector3(0, 0, 0.05), 1.0]],
+		"snap": "door", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 160.0, "era": 2,
+		"door": {"tier": 3, "fits": ["door_scifi"], "slide": true}},
 	"stairs_scifi": {"name": "Alloy Stairs", "models": [["scifi/Platform_Stairs_4WideTall", 0, Vector3(0, 0, -2), Vector3(1, 5.0 / 3.0, 1.32)]],
 		"snap": "floor", "grid": 4.0, "storey": 5.0, "mat": "metal", "hp": 30.0, "era": 2, "ramp": true},
 	# Crafting stations.

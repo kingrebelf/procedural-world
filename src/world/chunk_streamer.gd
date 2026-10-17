@@ -26,6 +26,11 @@ var preview := false
 func _ready() -> void:
 	ChunkNode.ensure_shared()
 	KitFlora.preload_all()
+	# Build the stone and grass meshes here, so worker threads only read the caches.
+	for k in StoneKit.KINDS:
+		StoneKit.mesh(k)
+	for sp in GrassKit.SPECIES:
+		GrassKit.mesh(sp)
 
 func set_target(t: Node3D) -> void:
 	_target = t
@@ -81,7 +86,7 @@ func _retarget() -> void:
 		if want_grass and not node.has_grass() and not _jobs.has(k):
 			_submit(k, "grass")
 		elif not want_grass and node.has_grass():
-			node.set_grass(PackedFloat32Array())
+			node.set_grass({})
 	var cur := chunks.get(_center) as ChunkNode
 	if cur != null and not preview:
 		Game.visit_chunk(cur.data)
@@ -131,16 +136,25 @@ func _run_job(job: Dictionary) -> void:
 			ObjectLibrary.get_mesh(mk)
 	else:
 		chunk = job["data"]
+	# Where the ground is stony, gravelly, littered or snowed on: shared by the terrain,
+	# the grass and the stones.
+	var cover := GroundCover.build(chunk)
+	res["cover"] = cover
 	if job["mode"] != "grass":
-		res["terrain"] = ChunkNode.build_terrain_arrays(chunk, job["lod"])
+		res["terrain"] = ChunkNode.build_terrain_arrays(chunk, job["lod"], cover)
 		# Cave walls only up close, where the ground has its openings.
 		if chunk.has("cave"):
 			res["cave"] = Caves.build(chunk) if job["lod"] == 1 else {}
 	if job["grass"] and job["mode"] != "lod":
-		res["grass"] = ChunkNode.build_grass_buffer(chunk, job["density"])
-		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0))
+		res["grass"] = ChunkNode.build_grass_buffers(chunk, job["density"], cover)
+		res["clutter"] = ChunkNode.build_clutter_buffers(chunk, minf(job["density"], 1.0), cover)
+		for mk in res["grass"]:
+			GrassKit.mesh(String(mk).get_slice("@", 0))
 		for mk in res["clutter"]:
-			ObjectLibrary.get_mesh(mk)
+			if String(mk).begins_with("stone:"):
+				StoneKit.mesh(String(mk).substr(6).get_slice("@", 0))
+			elif not String(mk).begins_with("~"):
+				ObjectLibrary.get_mesh(mk)
 	_mutex.lock()
 	_results.append(res)
 	_mutex.unlock()
@@ -163,6 +177,7 @@ func _collect() -> void:
 			node.setup(res["data"], res["terrain"], res["lod"], res["objects"])
 			node.set_river(res["river"])
 			node.set_cave(res.get("cave", {}))
+			node.cover = res["cover"]
 			add_child(node)
 			chunks[k] = node
 			node.set_near(d <= near_radius)
@@ -174,6 +189,7 @@ func _collect() -> void:
 			chunk_ready.emit(node)
 		elif chunks.has(k):
 			var node: ChunkNode = chunks[k]
+			node.cover = res["cover"]
 			if res.has("terrain"):
 				node.set_terrain(res["terrain"], res["lod"])
 			if res.has("cave"):
@@ -193,7 +209,8 @@ func rebuild_now(k: Vector2i) -> void:
 	var node: ChunkNode = chunks.get(k)
 	if node == null:
 		return
-	node.set_terrain(ChunkNode.build_terrain_arrays(node.data, node.lod), node.lod)
+	node.cover = GroundCover.build(node.data)
+	node.set_terrain(ChunkNode.build_terrain_arrays(node.data, node.lod, node.cover), node.lod)
 
 ## Applies a crater across every loaded chunk it touches (shared edges stay in sync).
 func dig(world_pos: Vector3, radius: float, depth: float) -> void:
@@ -268,6 +285,8 @@ func refresh_grass(k: Vector2i) -> void:
 func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	if not is_equal_approx(detail, ChunkNode.detail_mult):
 		ChunkNode.detail_mult = detail
+		if ChunkNode.grass_material != null:
+			ChunkNode.grass_material.set_shader_parameter("detail", detail)
 		for k in chunks:
 			chunks[k].apply_detail()
 	# Only a real change regrows grass: Settings.changed fires for every setting.
@@ -277,4 +296,4 @@ func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	grass_density = grass
 	_center = Vector2i(999999, 999999)
 	for k in chunks:
-		chunks[k].set_grass(PackedFloat32Array())
+		chunks[k].set_grass({})

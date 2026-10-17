@@ -124,6 +124,7 @@ func _ready() -> void:
 		body.build(LOOK, Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
+		body.set_ground(Callable(), [get_rid()])
 		# The armour you wear shows on your body (third person, and your shadow).
 		body.wear(Game.equipment)
 		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
@@ -229,18 +230,21 @@ func _apply_view() -> void:
 func _animate_body(hspeed: float) -> void:
 	if body == null:
 		return
+	var t: String = _held_type()
+	var ready := "pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "")
+	# The gait and its pace follow how fast you really move; a weapon stays raised on the run.
 	if swimming:
-		body.play("swim", clampf(hspeed / SWIM, 0.5, 1.5))
+		body.play("swim" if hspeed > 0.5 else "swim_idle")
+		body.set_upper("")
+	elif _crouched:
+		body.play("crouch_walk" if hspeed > 0.3 else "crouch")
+		body.set_upper(ready if hspeed > 0.3 else "")
 	elif hspeed > 0.4:
-		if hspeed > WALK + 1.0:
-			body.play("sprint", clampf(hspeed / SPRINT, 0.6, 1.5))
-		elif hspeed > CROUCH + 0.6:
-			body.play("jog", clampf(hspeed / WALK, 0.6, 1.5))
-		else:
-			body.play("walk", clampf(hspeed / CROUCH, 0.6, 1.5))
+		body.play("sprint" if hspeed > WALK + 1.0 else "jog")
+		body.set_upper(ready)
 	else:
-		var t: String = _held_type()
-		body.play("pistol_idle" if t != "" and Viewmodel.pointed(t) else ("sword_idle" if t.begins_with("sword") else "idle"))
+		body.play(ready if ready != "" else "idle")
+		body.set_upper("")
 	_grip_body()
 
 func _held_type() -> String:
@@ -318,7 +322,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()
-		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"]:
+		elif focus.get("kind", "") in ["built", "station", "vehicle", "carcass"] or (focus.get("kind", "") == "door" and focus.get("own", false) and not sneaking()):
 			# Your own pieces and vehicles: tap to use (a station) or ride (a vehicle),
 			# hold to take the piece down or pack the vehicle up. Carcasses: hold to butcher.
 			_decon_on = {"key": _focus_key(focus), "kind": focus["kind"]}
@@ -603,7 +607,8 @@ func _find_focus() -> Dictionary:
 					var sc := _focus_score(eye, fwd, wp + Vector3(0, use["h"] * 0.5, 0))
 					if sc < best_s:
 						best_s = sc
-						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use)}
+						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use),
+							"own": use["kind"] == "door" and is_own_piece(o)}
 	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
 	if streamer and best.is_empty():
 		var got := streamer.find_under(eye, eye + fwd * (USE_RANGE - 1.0), 0.45)
@@ -617,7 +622,9 @@ func _find_focus() -> Dictionary:
 		if h.has("obj") and h["point"].distance_to(eye) <= USE_RANGE + 1.0:
 			var c: ChunkNode = h["chunk"]
 			var o: Dictionary = c.get_object(h["obj"])
-			if is_own_piece(o):
+			if Doors.is_door(o["t"]) and not o["st"].get("gone", false):
+				best = {"kind": "door", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0), "verb": _door_verb(o), "own": is_own_piece(o)}
+			elif is_own_piece(o):
 				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
 				var station := d.has("station") or d.has("storage") or d.has("teleporter")
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
@@ -635,7 +642,11 @@ func sneaking() -> bool:
 	return _crouched and vehicle == null
 
 static func is_own_piece(o: Dictionary) -> bool:
-	return ObjectLibrary.kind(o["t"]) == "built" and not o["st"].get("gone", false) and String(o["st"].get("by", "you")) == "you"
+	if ObjectLibrary.kind(o["t"]) != "built" or o["st"].get("gone", false):
+		return false
+	if Doors.is_door(o["t"]):
+		return Doors.is_mine(o)
+	return String(o["st"].get("by", "you")) == "you"
 
 # --- Deconstructing your own pieces -------------------------------------------------
 const DECON_TIME := 0.8
@@ -683,6 +694,8 @@ func _update_decon(delta: float) -> void:
 		Game.toast.emit("Keep holding [%s] to %s it" % [_key("interact"), focus.get("verb", "butcher").split(" ")[0].to_lower()])
 	elif _decon_on["kind"] == "station" and decon < 0.5:
 		_use_station()
+	elif _decon_on["kind"] == "door" and decon < 0.5:
+		_use_door()
 	elif _decon_on["kind"] == "vehicle" and decon < 0.5 and is_instance_valid(focus.get("vehicle")):
 		mount(focus["vehicle"])
 	_decon_on = {}
@@ -694,6 +707,9 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 		return false
 	if not Storage.is_empty(o):
 		Game.toast.emit("Empty the chest before taking it down")
+		return false
+	if not Doors.fits(BuildCatalog.id_of(o["t"])).is_empty() and not Doors.door_at(streamer, chunk.position + o["p"]).is_empty():
+		Game.toast.emit("Take the door down before its doorway")
 		return false
 	used_tool.emit("hit")
 	if body:
@@ -720,6 +736,8 @@ static func _use_of(o: Dictionary) -> Dictionary:
 			return {"kind": "trader", "verb": "Trade with %s" % String(o["st"].get("name", "the trader")).split(" ")[0], "h": 2.6}
 		"built":
 			var d := BuildCatalog.def(BuildCatalog.id_of(t))
+			if d.has("door"):
+				return {"kind": "door", "verb": Doors.verb(o, false), "h": 1.4}
 			if d.has("station") or d.has("storage") or d.has("teleporter"):
 				return {"kind": "station", "verb": _station_verb(d), "h": 1.2}
 	return {}
@@ -744,6 +762,53 @@ func _use_station() -> void:
 			get_tree().call_group("trade_ui", "open_travel", o, c)
 			return
 	get_tree().call_group("trade_ui", "open", "craft")
+
+## The prompt on a door: open, shut, lock or pick it; your own can also be taken down.
+func _door_verb(o: Dictionary) -> String:
+	var v := Doors.verb(o, sneaking())
+	return v + ("   (hold: take down)" if is_own_piece(o) and not sneaking() else "")
+
+## Interact on a door: crouched, lock or unlock it (when it's yours, or your alliance's);
+## otherwise open or shut it. A lock you have no key for brings out the lockpicks.
+func _use_door() -> void:
+	var c = focus.get("chunk")
+	if not (c is ChunkNode and is_instance_valid(c)):
+		return
+	var o: Dictionary = c.get_object(focus["i"])
+	if o["st"].get("gone", false) or not Doors.is_door(o["t"]):
+		return
+	_focus_t = 0.0
+	var wp: Vector3 = c.position + o["p"]
+	var nm := String(BuildCatalog.def(BuildCatalog.id_of(o["t"]))["name"]).to_lower()
+	if sneaking() and Doors.set_locked(o, not Doors.is_locked(o)):
+		c.door_changed(o["i"])
+		Audio.play_at("door/lock", wp + Vector3(0, 1.0, 0), -4.0)
+		Game.toast.emit(("Locked the %s. Only you%s can open it now." % [nm, "" if Doors.SOLO == Doors.my_id() else " and your alliance"]) if Doors.is_locked(o) else "Unlocked the %s" % nm)
+		return
+	var slide := bool(Doors.spec(o).get("slide", false))
+	match Doors.toggle(o, Doors.side_of(o, wp, global_position)):
+		"locked":
+			Audio.play_at("door/lock", wp + Vector3(0, 1.0, 0), -6.0)
+			get_tree().call_group("lockpick_ui", "open_lock", c, o, wp)
+			return
+		"opened":
+			Audio.play_at("door/slide_open" if slide else "door/open", wp + Vector3(0, 1.2, 0), -3.0)
+		"closed":
+			Audio.play_at("door/slide_close" if slide else "door/close", wp + Vector3(0, 1.2, 0), -3.0)
+	c.door_changed(o["i"])
+	used_tool.emit("interact")
+
+## The lockpicks beat a door's lock: it swings open, away from you. Picking someone
+## else's lock in a town is a break-in if anyone sees.
+func use_door_after_lock(chunk: ChunkNode, o: Dictionary) -> void:
+	if not is_instance_valid(chunk):
+		return
+	var wp: Vector3 = chunk.position + o["p"]
+	Doors.picked(o, Doors.side_of(o, wp, global_position))
+	chunk.door_changed(o["i"])
+	Audio.play_at("door/slide_open" if bool(Doors.spec(o).get("slide", false)) else "door/open", wp + Vector3(0, 1.2, 0), -3.0)
+	if npcs and not Doors.is_mine(o):
+		npcs.report_crime(wp, "lockpick", 0, "")
 
 # --- Binoculars ----------------------------------------------------------------------
 ## Hold Use with binoculars: the view zooms in, and an animal under the crosshair (out to
@@ -835,13 +900,18 @@ func _update_look_target() -> void:
 				_:
 					text = "[%s] %s" % [_key("use"), "chop" if mat == "wood" or mat == "fungus" else "break"]
 			var lines: Array = ["Yields: " + Durability.describe_yields(o)] if k != "built" else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)]
+			if Doors.is_door(t):
+				lines = Doors.describe(o) if not is_own_piece(o) else ["Built by you on day %d" % (int(o["st"].get("day", 0)) + 1)] + Doors.describe(o)
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
 			if k == "cache" and not o["st"].get("opened", false):
 				lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
 				if WonderSite.sealed((h["chunk"] as ChunkNode).data, o):
 					lines.append("Sealed until %s falls" % WonderSite.BOSSES[o["st"]["wonder"]][0])
-			lines.append("Best tool: %s" % Durability.BEST_TOOL[mat] if k != "built" else "Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
+			if k != "built":
+				lines.append("Best tool: %s" % Durability.BEST_TOOL[mat])
+			elif is_own_piece(o):
+				lines.append("Hold [%s] to take it down, or one hit with a Builder's Hammer" % _key("interact"))
 			var held = held_item()
 			var d: Dictionary = ItemDB.stats(held) if held != null else Durability.FIST
 			var hits := ceili(Durability.health_left(o) / maxf(0.001, Durability.power(d, mat) * (held.get("quality", 1.0) if held != null else 1.0)))
@@ -876,6 +946,9 @@ func interact() -> void:
 				return
 			"station":
 				_use_station()
+				return
+			"door":
+				_use_door()
 				return
 			"portal":
 				if is_instance_valid(focus["chunk"]):
@@ -971,6 +1044,8 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 
 ## The prompt for a cache, saying when it belongs to someone in town (and how likely the lock is to give).
 func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
+	if use["kind"] == "door":
+		return _door_verb(o)
 	if use["kind"] != "cache" or npcs == null or o["st"].has("wonder"):
 		return use["verb"]
 	var town := npcs.town_at(wp)
@@ -983,6 +1058,8 @@ func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
 
 ## How hard a town chest's lock is: 0 for none or picked, 1..3. Chosen once per chest.
 static func lock_of(o: Dictionary) -> int:
+	if Doors.is_door(o["t"]):
+		return Doors.tier(o) if not Doors.can_open(o) else 0
 	var st: Dictionary = o["st"]
 	if not st.has("lock"):
 		var h := absi(hash(str(o["p"]) + String(o["t"])))
@@ -1262,12 +1339,12 @@ func use_held() -> void:
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
 		Audio.play_at("hit/flesh", h["point"], -2.0)
-		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq)
+		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
 		Audio.play_at("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0)
-		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq)
+		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
@@ -1275,7 +1352,7 @@ func use_held() -> void:
 		var mat := Durability.material(o["t"])
 		used_tool.emit("chop" if mat == "wood" or mat == "fungus" else "mine")
 		Audio.play_at("hit/plank" if ObjectLibrary.kind(o["t"]) == "built" else Audio.hit_bank(mat), h.get("point", chunk.position + o["p"]), -1.0 if fresh else -5.0)
-		if d.get("build", false) and ObjectLibrary.kind(o["t"]) == "built":
+		if d.get("build", false) and is_own_piece(o):
 			# The builder's hammer takes your own pieces down in one blow.
 			damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
 			return
@@ -1514,12 +1591,12 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	if col.has_meta("creature") and fauna:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
-			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at))
+			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at), at)
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
-			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at))
+			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at), at)
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1540,7 +1617,8 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
 ## `head`: a shot to the head (guns and bows), for HEADSHOT times the damage.
-func _strike(it, creature, npc, dmg: float, head := false) -> void:
+## `point`: where it struck, so a killing blow knocks the body that way (Ragdoll).
+func _strike(it, creature, npc, dmg: float, head := false, point := Vector3.INF) -> void:
 	Audio.combat()
 	if Rarity.has_affix(it, "keen") and randf() < 0.2:
 		dmg *= 2.0
@@ -1548,6 +1626,7 @@ func _strike(it, creature, npc, dmg: float, head := false) -> void:
 	if head:
 		dmg *= HEADSHOT
 	var at: Vector3 = creature.global_position if creature != null else npc.global_position
+	_mark_blow(creature if creature != null else npc, point if point != Vector3.INF else at + Vector3(0, 1.0, 0), dmg, head)
 	if creature != null:
 		fauna.player_hit(creature, dmg)
 	else:
@@ -1562,6 +1641,13 @@ func _strike(it, creature, npc, dmg: float, head := false) -> void:
 				fauna.player_hit(c, dmg * 0.4)
 
 const HEADSHOT := 2.0
+
+## Remembers a blow on `target` for its ragdoll, should it die of it: from your eyes
+## through the point struck, harder the more it hurt.
+func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> void:
+	var dir := point - camera.global_position if camera else -global_basis.z
+	dir.y = maxf(dir.y, -0.2 * dir.length())
+	Ragdoll.mark_hit(target, point, dir, clampf(10.0 + dmg * 0.8, 10.0, 70.0), "Head" if head else "")
 
 ## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
 ## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
@@ -1603,6 +1689,10 @@ func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:
 		return
 	for c in fauna.creatures_near(at, radius):
 		var f := 1.0 - 0.6 * clampf(c.global_position.distance_to(at) / radius, 0.0, 1.0)
+		# Thrown outward and up from the blast.
+		var mid: Vector3 = c.global_position + Vector3(0, 0.6, 0)
+		var out := (mid - at).normalized() + Vector3(0, 0.6, 0)
+		Ragdoll.mark_hit(c, mid, out, clampf(dmg * f * 1.5, 20.0, 160.0))
 		fauna.player_hit(c, dmg * f)
 
 ## One hit on a world object: damage, pay out yields as they are earned, destroy at zero.
@@ -1650,6 +1740,11 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		for it in Storage.spill(o):
 			if not Game.give(it):
 				Game.toast.emit("No room for the %s from the chest" % ItemDB.display_name(it).to_lower())
+		if k0 == "built":
+			_doorway_gone(chunk, o)
+		if Doors.is_door(o["t"]) and not Doors.is_mine(o) and npcs:
+			# Breaking down someone else's door, in a town, is a crime if anyone sees.
+			npcs.report_crime(chunk.position + o["p"], "vandalism", 0, "door")
 		xp += clampf(Durability.max_hp(o) * 0.5, 3.0, 60.0)
 	if k0 != "built" and xp > 0.0:
 		Game.add_xp(xp, "Gathering" if how == "gathered" else ("Mining" if how == "mined" else "Salvaging"))
@@ -1675,6 +1770,19 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and randf() < 0.15:
 			npcs.player_vandalised(chunk.position + o["p"], "")
 
+## A doorway brought down takes the door hanging in it along (back to your pack if it was yours).
+func _doorway_gone(chunk: ChunkNode, o: Dictionary) -> void:
+	if Doors.fits(BuildCatalog.id_of(o["t"])).is_empty():
+		return
+	var hit := Doors.door_at(streamer, chunk.position + o["p"])
+	if hit.is_empty():
+		return
+	var dc: ChunkNode = hit["chunk"]
+	var door: Dictionary = hit["obj"]
+	if Doors.is_mine(door):
+		Game.give(ItemDB.make(BuildCatalog.id_of(door["t"]), 1, 1.0, Game.origin_here("reclaimed", door["e"], dc.key)))
+	dc.remove_object(door["i"])
+
 # --- Vehicles ------------------------------------------------------------------------
 
 ## A stable name for what the player is focused on, to tell when the focus changes.
@@ -1690,7 +1798,7 @@ static func _focus_key(f: Dictionary) -> String:
 ## Sets the held vehicle down a few steps ahead.
 func deploy_vehicle() -> bool:
 	var it = held_item()
-	if it == null or vehicles == null:
+	if it == null or vehicles == null or not Vehicle.KINDS.has(it["type"]):
 		return false
 	var fwd := -global_transform.basis.z
 	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * (2.0 + float(Vehicle.KINDS[it["type"]]["length"]) * 0.6)

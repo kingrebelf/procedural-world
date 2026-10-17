@@ -1055,6 +1055,42 @@ func test_outfits() -> void:
 
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
+## Walk, jog and sprint are blended so the blended stride over the blended cycle is the
+## speed the body moves: planted feet don't skate.
+func test_gaits() -> void:
+	if not HumanModel.available():
+		return
+	var lib := HumanModel.library()
+	var gait := {}
+	for g in HumanAnimator.GAITS:
+		var a := lib.get_animation(g)
+		check(float(a.get_meta("speed", 0.0)) > 0.5 and a.has_meta("phase"), "%s knows how fast it travels (%.2f m/s)" % [g, float(a.get_meta("speed", 0.0))])
+		gait[g] = {"speed": float(a.get_meta("speed", 1.0)), "len": a.length, "phase": float(a.get_meta("phase", 0.0))}
+	var worst := 0.0
+	for i in 70:
+		var v := 0.6 + i * 0.15
+		var r := HumanAnimator.solve(v, gait)
+		var stride := 0.0
+		var wsum := 0.0
+		for k in 3:
+			var g: String = HumanAnimator.GAITS[k]
+			stride += float(r["w"][k]) * float(gait[g]["speed"]) * float(gait[g]["len"])
+			wsum += float(r["w"][k])
+		check(is_equal_approx(wsum, 1.0), "gait weights sum to one at %.2f m/s" % v)
+		worst = maxf(worst, absf(stride / float(r["cycle"]) - v) / v)
+	check(worst < 0.01, "blended gaits cover the ground at the body's speed (worst %.1f%%)" % (worst * 100.0))
+	var h := HumanModel.new()
+	root.add_child(h)
+	h.build(Player.LOOK, Eras.MEDIEVAL, "")
+	check(h.anim is AnimationTree and h.ik != null, "people animate through a blend tree with IK")
+	h.play("jog")
+	h.play_once("hit")
+	check(h.busy(), "a one-shot plays")
+	h.pose("death", true)
+	h.advance(0.1)
+	check(h.animator.state() == "death", "posed bodies hold their pose")
+	h.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return
@@ -1253,6 +1289,93 @@ func test_storage() -> void:
 	var spilled := Storage.spill(o)
 	check(spilled.size() == 1 and spilled[0]["qty"] == 5 and Storage.is_empty(o), "a broken chest spills what it held")
 	check(Recipes.LIST.any(func(r): return r["out"] == "storage_chest"), "storage chests can be crafted")
+
+class DoorStreamerShim:
+	var chunks := {}
+	func get_chunk(k: Vector2i):
+		return chunks.get(k)
+
+func test_doors() -> void:
+	for id in ["door_wood", "door_iron", "door_bulkhead"]:
+		check(Doors.is_door_piece(id) and Doors.is_door(BuildCatalog.PREFIX + id), "%s is a door" % id)
+		check(BuildCatalog.mesh(id) != null and BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a model" % id)
+		check(Recipes.LIST.any(func(r): return r["out"] == id), "%s can be crafted" % id)
+		check(ItemDB.has(id) and ItemDB.def(id).get("kind", "") == "placeable", "%s is a building item" % id)
+		for m in BuildCatalog.def(id)["models"]:
+			check(Doors.leaf_mesh(String(m[0])).get_surface_count() > 0, "%s leaf %s has a mesh" % [id, m[0]])
+	check(Doors.fits("wall_door").has("door_wood") and Doors.fits("wall_door_stone").has("door_iron") and Doors.fits("door_scifi") == ["door_bulkhead"], "doors fit their doorways")
+	check(Doors.fits("wall_plaster").is_empty(), "a plain wall takes no door")
+	check(not Doors.is_door("b:wall_door") and not Doors.is_door("oak"), "a doorway isn't a door")
+	check(ItemDB.UNLOCK["door_wood"] < ItemDB.UNLOCK["door_iron"] and ItemDB.UNLOCK["door_iron"] < Eras.UNLOCK_LEVEL and ItemDB.UNLOCK["door_bulkhead"] >= Eras.UNLOCK_LEVEL, "plank doors before iron-bound, both medieval; bulkheads later")
+	var o := {"t": "b:door_wood", "i": 0, "p": Vector3(4, 0, 4), "r": 0.0, "s": 1.0, "e": 0, "st": {"by": "you"}}
+	Doors.init_state(o["st"])
+	check(not Doors.is_open(o) and not Doors.is_locked(o) and Doors.is_mine(o) and Doors.owner_of(o) == Doors.my_id(), "a new door is shut, unlocked and yours")
+	check(Doors.toggle(o, 1.0) == "opened" and Doors.is_open(o), "it opens")
+	check(Doors.toggle(o, 1.0) == "closed" and not Doors.is_open(o), "and shuts")
+	check(Doors.set_locked(o, true) and Doors.is_locked(o) and Doors.can_open(o), "you lock it and still have the key")
+	check(Doors.can_open(o), "no lock to pick on your own door")
+	# Someone else's locked door.
+	var theirs := {"t": "b:door_iron", "i": 1, "p": Vector3.ZERO, "r": 0.0, "s": 1.0, "e": 0, "st": {}}
+	Doors.init_state(theirs["st"])
+	theirs["st"]["owner"] = "player_42"
+	check(Doors.toggle(theirs, 1.0) == "opened", "an unlocked door opens for anyone")
+	Doors.toggle(theirs, 1.0)
+	theirs["st"]["locked"] = true
+	check(not Doors.can_open(theirs) and Doors.toggle(theirs, 1.0) == "locked" and not Doors.is_open(theirs), "a stranger's locked door stays shut")
+	check(not Doors.set_locked(theirs, false) and Doors.is_locked(theirs), "and you can't unlock it")
+	check(not Doors.grant(theirs, Doors.my_id()), "nor give yourself a key")
+	check(Doors.tier(theirs) == 2 and Doors.verb(theirs, false).begins_with("Pick the adept lock"), "an iron-bound lock is adept to pick")
+	theirs["st"]["access"] = [Doors.my_id()]
+	check(Doors.can_open(theirs), "the access list lets you in")
+	theirs["st"]["access"] = []
+	Doors.picked(theirs, -1.0)
+	check(not Doors.is_locked(theirs) and Doors.is_open(theirs) and float(theirs["st"]["side"]) == -1.0, "a picked lock opens away from you")
+	check(Doors.grant(o, "friend") and Doors.has_access(o, "friend") and not Doors.has_access(o, "stranger"), "you can hand out a key")
+	check(Doors.revoke(o, "friend") and not Doors.has_access(o, "friend"), "and take it back")
+	check(Doors.may_access("") and Doors.may_access(Doors.my_id()) and not Doors.may_access("player_42"), "may_access: no owner, or you")
+	# Swinging away from whoever opened it, with the hinge on either side.
+	for e in [["village/Door_1_Round", 0, Vector3(-0.535, 0, -0.11), 1.0], ["village/Door_1_Round", 180, Vector3(0.535, 0, -0.11), 1.0]]:
+		var edge := Vector3(1.0, 1.0, 0.0)
+		var shut: Vector3 = Doors.leaf_xf(e, false, 0.0, 1.0) * edge
+		check(shut.is_equal_approx(BuildCatalog._xf(e) * edge), "a shut leaf sits where the model puts it")
+		check((Doors.leaf_xf(e, false, 1.0, 1.0) * edge).z < shut.z - 0.5, "opened from the front, it swings to the back (yaw %d)" % e[1])
+		check((Doors.leaf_xf(e, false, 1.0, -1.0) * edge).z > shut.z + 0.5, "opened from the back, it swings to the front (yaw %d)" % e[1])
+		check(Doors.leaf_xf(e, false, 1.0, 1.0).origin.is_equal_approx(BuildCatalog._xf(e).origin), "a leaf turns on its hinge")
+	var bulk: Array = BuildCatalog.def("door_bulkhead")["models"]
+	var l0 := Doors.leaf_xf(bulk[0], true, 1.0, 1.0).origin - BuildCatalog._xf(bulk[0]).origin
+	var l1 := Doors.leaf_xf(bulk[1], true, 1.0, 1.0).origin - BuildCatalog._xf(bulk[1]).origin
+	check(l0.x < -1.5 and l1.x > 1.5 and absf(l0.z) < 0.01, "bulkhead leaves slide apart")
+	check(Doors.side_of(o, Vector3(4, 0, 4), Vector3(4, 0, 6)) == 1.0 and Doors.side_of(o, Vector3(4, 0, 4), Vector3(4, 0, 2)) == -1.0, "which side of a door you stand on")
+	# Hanging a door in a doorway, and the door found there afterwards.
+	var cd := {"cx": 0, "cz": 0, "objects": [{"t": "b:wall_door", "i": 0, "p": Vector3(5, 2, 7), "r": PI * 0.5, "s": 1.0, "e": 0, "st": {}}]}
+	var shim := DoorStreamerShim.new()
+	shim.chunks[Vector2i(0, 0)] = {"data": cd}
+	var eye := Vector3(9, 3.6, 7)
+	var dw := Doors.doorway_near(shim, "door_wood", eye, Vector3(1, 2.5, 7))
+	check(not dw.is_empty() and (dw["pos"] as Vector3).is_equal_approx(Vector3(5, 2, 7)) and is_equal_approx(float(dw["yaw"]), PI * 0.5), "aiming through a doorway finds it")
+	check(Doors.doorway_near(shim, "door_bulkhead", eye, Vector3(1, 2.5, 7)).is_empty(), "a bulkhead doesn't hang in a village doorway")
+	check(Doors.doorway_near(shim, "door_wood", eye, Vector3(9, 0, 1)).is_empty(), "nothing when aiming away")
+	check(Doors.door_at(shim, Vector3(5, 2, 7)).is_empty(), "no door there yet")
+	var hung := {"t": "b:door_wood", "i": 1, "p": Vector3(5, 2, 7), "r": PI * 0.5, "s": 1.0, "e": 0, "st": {"by": "you"}}
+	Doors.init_state(hung["st"])
+	cd["objects"].append(hung)
+	check(not Doors.door_at(shim, Vector3(5, 2, 7)).is_empty(), "the door in a doorway is found")
+	check(BuildCatalog.occupied(shim, "door_iron", Vector3(5, 2, 7), PI * 1.5), "a doorway holds one door")
+	# Door state is saved with the chunk.
+	var s := _tmp_store("doors")
+	var g := ChunkGenerator.new(77)
+	var c := s.get_or_create_chunk(g, 1, 1)
+	var st := {"by": "you"}
+	Doors.init_state(st)
+	st["locked"] = true
+	st["open"] = true
+	st["side"] = -1.0
+	st["access"] = ["friend"]
+	c["objects"].append({"t": "b:door_iron", "i": c["objects"].size(), "p": Vector3(3, 1, 3), "r": 0.0, "s": 1.0, "e": 0, "st": st})
+	s.save_chunk(c)
+	var back = s.load_chunk(1, 1)
+	var bd: Dictionary = back["objects"][back["objects"].size() - 1]
+	check(Doors.is_door(bd["t"]) and Doors.is_locked(bd) and Doors.is_open(bd) and float(bd["st"]["side"]) == -1.0 and Doors.has_access(bd, "friend") and Doors.is_mine(bd), "a door keeps its lock, owner, keys and swing through a save")
 
 func test_hand_light() -> void:
 	var inv := Inventory.new()
@@ -1575,11 +1698,39 @@ func test_world_themes() -> void:
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_kit_flora() -> void:
+	var forms := {}
 	for t in ["oak", "pine"]:
-		for sp in range(1, 40):
+		for sp in range(1, 60):
 			var p := Flora.species(t, sp)
-			var n := KitFlora.model_name(t, p, sp, 0)
-			check(n != "" and ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "%s species %d has a kit model (%s)" % [t, sp, n])
+			var bare: bool = p["form"] == "dead" or p["form"] == "snag"
+			forms[t + ":" + String(p["form"])] = true
+			var m := RealTree.build(t, sp, sp % Flora.VARIANTS)
+			check(m != null and m.get_surface_count() == (1 if bare else 2), "%s species %d (%s) has bark%s" % [t, sp, p["form"], "" if bare else " and leaves"])
+			if m == null:
+				continue
+			var tall := m.get_aabb().size.y
+			check(tall > float(p["height"]) * 0.5 and tall < float(p["height"]) * 1.6, "%s species %d is about its species' height (%.1f m of %.1f)" % [t, sp, tall, p["height"]])
+			if not bare:
+				var leaves := m.surface_get_array_len(1)
+				check(leaves >= (96 if p["form"] == "shrub" else 200), "%s species %d has a full crown of sprays (%d vertices)" % [t, sp, leaves])
+				var far := RealTree.far_parts(t, sp, sp % Flora.VARIANTS)
+				var fl: int = (far["leaf"][Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+				check(fl > 0 and fl * 4 <= leaves, "%s species %d has a far version (%d vs %d vertices)" % [t, sp, fl, leaves])
+	check(forms.size() >= 10, "trees come in many forms (%d)" % forms.size())
+	var bush := RealTree.build_bush(5, 1.0)
+	check(bush.get_surface_count() == 2 and bush.get_aabb().size.y < 1.6, "bushes are leaf sprays about a metre tall")
+	# Oaks keep green (or copper beech) leaves on every world: violet foliage belongs to
+	# alien flora, and oaks never grow there.
+	var was := Eras.theme
+	for th in ["human", "alien"]:
+		Eras.theme = th
+		var violet := 0
+		for sp in range(1, 400):
+			var h := (Flora.species("oak", sp)["leaf"] as Color).h
+			if h > 0.7 and h < 0.97:
+				violet += 1
+		check(violet == 0, "no violet oaks on %s worlds: %d" % [th, violet])
+	Eras.theme = was
 	for n in KitFlora.ALL:
 		check(ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "kit model %s is in the repo" % n)
 
@@ -2083,15 +2234,15 @@ func test_wonder_meshes() -> void:
 		check(ObjectLibrary.kind(t) == "structure" and Wonders.unbreakable(t), "%s is an unbreakable structure" % t)
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
-	# Human worlds: no glowing glyphs, shards or inlays on the wonders they can have.
+	# Human worlds: nothing on the wonders they can have glows (the locator beam aside).
 	for t in ["w_throne", "w_dreadnought", "w_column", "w_pylon"]:
-		var calm := WonderSite.build(t, false, true)
+		var calm := WonderSite.build(t, true, true)
 		var lit := 0
 		for i in calm.get_surface_count():
 			var mat := calm.surface_get_material(i) as StandardMaterial3D
-			if mat != null and mat.emission_enabled and mat.emission_texture != null:
+			if mat != null and mat.emission_enabled:
 				lit += 1
-		check(lit == 0, "a human world's %s has no glowing stone (%d lit surfaces)" % [t, lit])
+		check(lit == 0, "a human world's %s has nothing glowing (%d lit surfaces)" % [t, lit])
 	var o := {"t": "w_throne"}
 	var was := Eras.theme
 	Eras.theme = "human"
@@ -2168,6 +2319,48 @@ static func _species_named(name: String, era: int) -> Dictionary:
 		if p["name"] == name:
 			return p
 	return {}
+
+func test_death_bag() -> void:
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("bread", 4, 1.0, {}))
+	inv.add(ItemDB.make("sword_iron", 1, 1.0, {}))
+	var armour := ""
+	for t in ItemDB.ITEMS:
+		if ItemDB.def(t).get("kind", "") == "armor":
+			armour = t
+			break
+	var worn := ItemDB.make(armour, 1, 1.0, {})
+	worn["uid"] = 77
+	var slot: String = ItemDB.def(armour)["slot"]
+	var bag := DeathBag.make("p1", "", inv, {slot: worn}, 120, 1000.0)
+	var held := Inventory.new(DeathBag.SLOTS)
+	held.from_data(bag["items"])
+	check(held.count("bread") == 4 and held.count("sword_iron") == 1 and held.count(armour) == 1, "the bag holds the pack and the armour")
+	check(int(bag["purse"]) == 120 and int(bag["worn"][slot]) == 77, "the bag keeps the purse and what was worn where")
+	check(CorpseLoot.has_any(bag) and not CorpseLoot.has_any(DeathBag.make("p1", "", Inventory.new(), {}, 0, 0.0)), "an empty pack drops nothing worth keeping")
+	check(DeathBag.SLOTS >= Inventory.SIZE + 7, "a full pack and full armour fit in a bag")
+	check(DeathBag.title(bag, "p1") == "Your bag" and DeathBag.title(bag, "p2") == "Someone's bag", "your bag and someone else's")
+	bag["owner_name"] = "Ada Smith"
+	check(DeathBag.title(bag, "p2") == "Ada's bag", "a named player's bag")
+	check(not DeathBag.expired(bag, 1.0e12), "bags never go away by default")
+	DeathBag.lifetime_s = 3.0 * 86400.0
+	check(not DeathBag.expired(bag, 1000.0 + 86400.0) and DeathBag.expired(bag, 1000.0 + 4.0 * 86400.0), "a server can make bags last a few days")
+	DeathBag.lifetime_s = 0.0
+	check(DeathBag.can_take(bag, "p2"), "anyone may open a bag")
+	DeathBag.may_take = func(c: Dictionary, who: String) -> bool: return who == c["owner"]
+	check(DeathBag.can_take(bag, "p1") and not DeathBag.can_take(bag, "p2"), "a server can say who may open it")
+	DeathBag.may_take = Callable()
+	# Where it lands: land rises to the east (x > 20 is dry), the sea is at 0.
+	var ground := func(x: float, _z: float) -> float: return (x - 20.0) * 0.5
+	var water := func(_x: float, _z: float) -> float: return 0.0
+	var dry := DeathBag.rest_spot(Vector3(30, 5, 0), ground, water)
+	check(dry == Vector3(30, 5, 0), "on dry ground the bag stays where you fell")
+	var shore := DeathBag.rest_spot(Vector3(0, -10, 0), ground, water)
+	check(shore.y >= DeathBag.DRY_MARGIN and shore.x > 20.0 and shore.x < 30.0, "drowned: the bag washes up on the nearest shore (%s)" % shore)
+	var cave := DeathBag.rest_spot(Vector3(0, 12, 0), ground, water)
+	check(cave == Vector3(0, 12, 0), "a floor above the water (a cave, a room) keeps the bag")
+	var sea := DeathBag.rest_spot(Vector3(0, -10, 0), func(_x: float, _z: float) -> float: return -30.0, water)
+	check(sea == Vector3(0, 0, 0), "far out at sea it floats where you went down")
 
 func test_corpse_butchering() -> void:
 	var rng := RandomNumberGenerator.new()

@@ -111,9 +111,9 @@ func _begin(fresh: bool) -> void:
 	crime = Crime.new()
 	guilds = {}
 	estates = []
+	treasure = []
 	buffs = {}
 	regen_left = 0.0
-	treasure = []
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -133,6 +133,7 @@ func _begin(fresh: bool) -> void:
 		crime = Crime.from_data(p.get("crime"))
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
+		treasure = (p.get("treasure", []) as Array).duplicate(true)
 		var bf = p.get("buffs", {})
 		if bf is Dictionary:
 			for id in bf:
@@ -140,7 +141,6 @@ func _begin(fresh: bool) -> void:
 					buffs[id] = float(bf[id])
 		regen_left = float(p.get("regen", 0.0))
 		refresh_bonus()
-		treasure = (p.get("treasure", []) as Array).duplicate(true)
 		pending_player_state = p
 	else:
 		money = 50
@@ -330,7 +330,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "buffs": buffs, "regen": regen_left, "treasure": treasure}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -443,6 +443,59 @@ func _revive_from_pack() -> bool:
 			toast.emit("The %s jolt you back to your feet" % ItemDB.display_name(it).to_lower())
 			return true
 	return false
+
+## Who you are: the owner id on what you leave in the world, such as the bag you drop
+## when you die. Net's (the multiplayer layer) once it is there, "solo" offline.
+func my_id() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.my_id()) if net and net.has_method("my_id") else "solo"
+
+## Your name as other players see it ("" offline).
+func my_name() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.player_name(my_id())) if net and net.has_method("player_name") and net.has_method("online") and net.online() else ""
+
+## A server option (Net.option), or `fallback` offline or before Net exists.
+func server_option(key: String, fallback):
+	var net := get_node_or_null("/root/Net")
+	if net and net.has_method("option"):
+		var v = net.option(key)
+		return fallback if v == null else v
+	return fallback
+
+## Everything you carry, wear and have in your purse, packed into a bag record
+## (DeathBag.make) and taken off you: you have just died.
+func pack_death_bag() -> Dictionary:
+	var bag := DeathBag.make(my_id(), my_name(), inventory, equipment, money, Time.get_unix_time_from_system())
+	for i in inventory.capacity:
+		inventory.slots[i] = null
+	inventory.changed.emit()
+	equipment = {}
+	equipment_changed.emit()
+	money = 0
+	money_changed.emit(money)
+	_player_dirty = true
+	return bag
+
+## Puts armour from your dropped bag back on: `worn` is slot -> the uid of the piece worn
+## there, and entries are dropped once that piece is on again (or the slot is taken).
+func rewear(worn: Dictionary) -> void:
+	var on := 0
+	for slot in worn.keys():
+		if equipment.has(slot):
+			worn.erase(slot)
+			continue
+		for i in inventory.capacity:
+			var it = inventory.get_slot(i)
+			if it is Dictionary and int(it.get("uid", 0)) == int(worn[slot]) and armor_slot_of(it) == slot:
+				equipment[slot] = inventory.remove_at(i, 1)
+				worn.erase(slot)
+				on += 1
+				break
+	if on > 0:
+		_player_dirty = true
+		equipment_changed.emit()
+		toast.emit("You put your armour back on")
 
 ## Back on your feet after dying: full health and stamina. You keep your pack.
 func revive() -> void:

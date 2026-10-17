@@ -32,6 +32,12 @@ TEX(regolith_tex); NRM(regolith_nrm);
 TEX(rock_tex); NRM(rock_nrm);
 TEX(mud_tex); NRM(mud_nrm);
 TEX(snow_tex); NRM(snow_nrm);
+// Ground cover (vertex CUSTOM3, GroundCover): scree, gravel, leaf litter, snow; and the
+// layered rock of cliff faces.
+TEX(scree_tex); NRM(scree_nrm);
+TEX(gravel_tex); NRM(gravel_nrm);
+TEX(litter_tex); NRM(litter_nrm);
+TEX(cliff_tex); NRM(cliff_nrm);
 uniform bool use_textures = false;
 uniform float snow_line = 40.0;
 // Linear-space mean colour of each texture (printed by tools/make_textures.py). Detail is
@@ -44,6 +50,10 @@ const vec3 DARKSOIL_MEAN = vec3(0.0399, 0.0322, 0.0412);
 const vec3 REGOLITH_MEAN = vec3(0.1887, 0.1621, 0.1343);
 const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
 const vec3 MUD_MEAN = vec3(0.1112, 0.094, 0.0732);
+const vec3 SCREE_MEAN = vec3(0.1527, 0.1086, 0.064);
+const vec3 GRAVEL_MEAN = vec3(0.2507, 0.2429, 0.2351);
+const vec3 LITTER_MEAN = vec3(0.145, 0.076, 0.0497);
+const vec3 CLIFF_MEAN = vec3(0.2418, 0.2256, 0.2061);
 const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 const float GRASS_TILE = 2.6; // metres per repeat
 const float DIRT_TILE = 3.2;
@@ -52,6 +62,10 @@ const float MUD_TILE = 3.5;
 const float MOSS_TILE = 3.0;
 const float DUST_TILE = 5.0;
 const float SNOW_TILE = 7.0;
+const float SCREE_TILE = 3.0;
+const float GRAVEL_TILE = 1.8;
+const float LITTER_TILE = 2.4;
+const float CLIFF_TILE = 9.0;
 uniform float night_glow = 1.0;
 
 varying vec3 wpos;
@@ -61,6 +75,7 @@ varying vec3 wnorm;
 varying vec4 stone_v;
 varying vec4 soil_v;
 varying vec2 form_v;
+varying vec4 cover_v;
 
 float hash12(vec2 p) {
 	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -169,6 +184,13 @@ void vertex() {
 	stone_v = CUSTOM0;
 	soil_v = CUSTOM1;
 	form_v = CUSTOM2.xy;
+	cover_v = CUSTOM3;
+}
+
+// Height-blended layer amount: the layer shows first where its texture is bright (stones
+// stand proud of the soil), and its edge is broken up by noise.
+float layer(float amount, float lum, float mean, float noise) {
+	return smoothstep(0.35, 0.65, amount + (lum / max(mean, 0.001) - 1.0) * 0.25 * amount + (noise - 0.5) * 0.35);
 }
 
 void fragment() {
@@ -180,10 +202,19 @@ void fragment() {
 	float slope = 1.0 - clamp(wnorm.y, 0.0, 1.0);
 	vec2 p = wpos.xz;
 
-	// Multi-scale variation: macro patches, meso clumps, micro grain.
+	// Multi-scale variation: macro patches, meso clumps, micro grain. On steep faces the
+	// ground plane squeezes a whole cliff into a few texels of x/z, which drew the grain
+	// as long vertical streaks; there it comes from 3D noise instead.
 	float macro = fbm(p * 0.015);
 	float meso = fbm(p * 0.18);
 	float micro = vnoise(p * 3.1) * 0.5 + vnoise(p * 7.3) * 0.5;
+	float steep = smoothstep(0.3, 0.55, slope);
+	if (steep > 0.01) {
+		float meso3 = vnoise3(wpos * 0.18) * 0.6 + vnoise3(wpos * 0.37 + 4.1) * 0.4;
+		float micro3 = vnoise3(wpos * 3.1) * 0.5 + vnoise3(wpos * 7.3) * 0.5;
+		meso = mix(meso, meso3, steep);
+		micro = mix(micro, micro3, steep);
+	}
 
 	vec3 grass = grass_m * w.r + grass_f * w.g + grass_s * w.b;
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
@@ -195,6 +226,7 @@ void fragment() {
 	vec2 tilt_g = vec2(0.0); // texture normal detail (world x/z) for grass, soil, rock
 	vec2 tilt_s = vec2(0.0);
 	vec2 tilt_r = vec2(0.0);
+	vec3 rock_n = vec3(0.0); // world-space tilt of rock faces
 	vec3 mud_d = vec3(1.0);
 	float moss_glow = 0.0;
 	if (use_textures) {
@@ -225,16 +257,24 @@ void fragment() {
 		grass = gm;
 		soil = gs;
 		mud_d = untiled(mud_tex, p + 23.0, gp, MUD_TILE, meso, far).rgb / MUD_MEAN;
-		// Rock: triplanar so cliffs are textured from every side.
+		// Rock: triplanar so cliffs are textured from every side. Faces show layered cliff
+		// rock (upright, at two scales so the repeat breaks up); tops the cracked rock.
 		vec3 bw = pow(abs(wnorm), vec3(4.0));
 		bw /= bw.x + bw.y + bw.z;
 		vec3 rp = wpos / ROCK_TILE;
-		vec3 rt = texture(rock_tex, rp.zy).rgb * bw.x + texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y + texture(rock_tex, rp.xy).rgb * bw.z;
-		rock = recolor(rt, ROCK_MEAN, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
-		vec3 nx = texture(rock_nrm, rp.zy).xyz * 2.0 - 1.0;
-		vec3 nz = texture(rock_nrm, rp.xy).xyz * 2.0 - 1.0;
+		vec2 cx = vec2(wpos.z, -wpos.y) / CLIFF_TILE;
+		vec2 cz = vec2(wpos.x, -wpos.y) / CLIFF_TILE;
+		float cm = smoothstep(0.3, 0.7, vnoise3(wpos * 0.06));
+		vec3 rt = mix(texture(cliff_tex, cx).rgb, texture(cliff_tex, cx * 0.43 + 0.31).rgb, cm) * bw.x
+			+ texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y
+			+ mix(texture(cliff_tex, cz).rgb, texture(cliff_tex, cz * 0.43 + 0.31).rgb, cm) * bw.z;
+		vec3 rmean = mix(CLIFF_MEAN, ROCK_MEAN, bw.y);
+		rock = recolor(rt, rmean, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
+		vec3 nx = mix(texture(cliff_nrm, cx).xyz, texture(cliff_nrm, cx * 0.43 + 0.31).xyz, cm) * 2.0 - 1.0;
+		vec3 nz = mix(texture(cliff_nrm, cz).xyz, texture(cliff_nrm, cz * 0.43 + 0.31).xyz, cm) * 2.0 - 1.0;
 		vec3 ny = texture(rock_nrm, rp.xz * 0.8 + 0.5).xyz * 2.0 - 1.0;
-		tilt_r = vec2(nz.x * bw.z + ny.x * bw.y, nx.x * bw.x - ny.y * bw.y);
+		// Each projection's tangent normal tilts the surface within its own plane.
+		rock_n = vec3(0.0, nx.y, nx.x) * bw.x + vec3(ny.x, 0.0, -ny.y) * bw.y + vec3(nz.x, nz.y, 0.0) * bw.z;
 	} else {
 		// Rock: stratified bands plus 3D crevices so cliffs read as stone from every angle.
 		float strata = fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05));
@@ -251,9 +291,12 @@ void fragment() {
 		rock = mix(rock, mix(rock * 0.78, alt, band) * (0.9 + 0.2 * fine), form_v.y);
 	}
 
-	// Grass: lush and dry patches, darker in hollows.
+	// Grass: lush and dry patches, darker in hollows, and broad swathes of deeper and
+	// paler green so distant meadows are never one flat colour.
 	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
-	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.55 * w.r);
+	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.7 * w.r);
+	float swathe = fbm(p * 0.035 + 21.0);
+	g *= mix(vec3(0.82, 0.9, 0.8), vec3(1.12, 1.08, 0.92), smoothstep(0.3, 0.7, swathe));
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
 	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
@@ -262,6 +305,34 @@ void fragment() {
 		float lm = dot(soil, LUM) / max(dot(soil_m * w.r + soil_f * w.g + soil_s * w.b, LUM), 0.001);
 		own *= clamp(mix(1.0, lm, 0.6), 0.6, 1.4) * (0.86 + 0.28 * meso) * (0.94 + 0.12 * micro);
 		ground = mix(ground, own, soil_v.a);
+	}
+	// Ground cover: leaf litter under trees, stony scree at the feet of cliffs and in rocky
+	// patches, gravel on banks and shores. Each blends in by its own texture's height.
+	vec2 tilt_c = vec2(0.0);
+	float cov = 0.0;
+	if (use_textures && cover_v.r + cover_v.g + cover_v.b > 0.01) {
+		if (cover_v.b > 0.01) {
+			vec3 lt = untiled(litter_tex, p + 51.0, gp, LITTER_TILE, meso, far).rgb;
+			float a = layer(cover_v.b * (0.4 + 0.6 * w.r), dot(lt, LUM), dot(LITTER_MEAN, LUM), micro);
+			ground = mix(ground, recolor(lt, LITTER_MEAN, soil, 0.75 * w.r), a);
+			tilt_c = mix(tilt_c, untiled_n(litter_nrm, p + 51.0, gp, LITTER_TILE, meso, far), a);
+			cov = max(cov, a);
+		}
+		if (cover_v.r > 0.01) {
+			vec3 st = untiled(scree_tex, p + 61.0, gp, SCREE_TILE, meso, far).rgb;
+			float a = layer(cover_v.r, dot(st, LUM), dot(SCREE_MEAN, LUM), micro);
+			vec3 pal = mix(soil, rock, 0.35);
+			ground = mix(ground, recolor(st, SCREE_MEAN, pal, 0.55 * w.r), a);
+			tilt_c = mix(tilt_c, untiled_n(scree_nrm, p + 61.0, gp, SCREE_TILE, meso, far) * 1.3, a);
+			cov = max(cov, a);
+		}
+		if (cover_v.g > 0.01) {
+			vec3 gt = untiled(gravel_tex, p + 71.0, gp, GRAVEL_TILE, meso, far).rgb;
+			float a = layer(cover_v.g, dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro);
+			ground = mix(ground, recolor(gt, GRAVEL_MEAN, rock * 0.9, 0.5 * w.r), a);
+			tilt_c = mix(tilt_c, untiled_n(gravel_nrm, p + 71.0, gp, GRAVEL_TILE, meso, far) * 1.2, a);
+			cov = max(cov, a);
+		}
 	}
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
@@ -277,7 +348,7 @@ void fragment() {
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
 		vec2 tm = untiled_n(mud_nrm, p + 23.0, gp, MUD_TILE, meso, far);
-		tilt = mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
+		tilt = mix(mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tilt_c, cov), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
 	}
 	vec3 col = mix(ground, rock, rock_mask);
 
@@ -298,13 +369,19 @@ void fragment() {
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
+	// The cover map says where snow lies (drifts on high ground, none on steep faces); it
+	// settles into the hollows of the ground first, so its edge follows the texture.
 	float snow = 0.0;
-	if (use_textures && wpos.y > snow_line - 12.0) {
-		snow = smoothstep(snow_line - 6.0, snow_line + 8.0, wpos.y + (macro - 0.5) * 14.0 + (meso - 0.5) * 4.0);
-		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.45, 0.75, slope));
+	if (use_textures && cover_v.a > 0.01) {
+		float under = dot(col, LUM) / max(dot(col, LUM) + 0.05, 0.001);
+		snow = smoothstep(0.25, 0.6, cover_v.a + (meso - 0.5) * 0.3 + (micro - 0.5) * 0.12 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
+		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.55, 0.85, slope));
 		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb;
-		col = mix(col, st * 0.92, snow);
-		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far), snow);
+		// Thin snow lets the ground show as a grey-blue dusting before it closes over.
+		vec3 dust = mix(col, st * vec3(0.86, 0.9, 0.96), 0.6);
+		col = mix(col, mix(dust, st * 0.95, smoothstep(0.4, 0.9, snow)), snow);
+		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.6, snow);
+		rock_n *= 1.0 - snow;
 	}
 
 	// Sci-fi: weathered dust and ash; no panel grid, no glitter.
@@ -335,7 +412,7 @@ void fragment() {
 
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
-	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.75, snow);
+	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow);
 	METALLIC = plates * 0.6;
 	SPECULAR = 0.4;
 
@@ -347,6 +424,19 @@ void fragment() {
 	float rs = 1.0 + rock_mask * 1.5;
 	vec3 dn = normalize(vec3(-(hx - h0) / e * detail_strength * rs, 1.0, -(hz - h0) / e * detail_strength * rs));
 	float proc = use_textures ? 0.35 : 1.0;
-	vec3 n = normalize(wnorm + vec3(dn.x, 0.0, dn.z) * proc * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 + vec3(ripple.x, 0.0, ripple.y));
+	vec3 bump = vec3(dn.x, 0.0, dn.z) * proc * (1.0 - steep) * (1.0 - snow * 0.7);
+	if (steep > 0.01) {
+		// Faces: the gradient of 3D noise, kept in the plane of the face.
+		float e3 = 0.2;
+		vec3 q = wpos * 0.9;
+		float g0 = vnoise3(q) + vnoise3(q * 2.3) * 0.5;
+		vec3 gr = vec3(vnoise3(q + vec3(e3, 0, 0)) + vnoise3((q + vec3(e3, 0, 0)) * 2.3) * 0.5,
+			vnoise3(q + vec3(0, e3, 0)) + vnoise3((q + vec3(0, e3, 0)) * 2.3) * 0.5,
+			vnoise3(q + vec3(0, 0, e3)) + vnoise3((q + vec3(0, 0, e3)) * 2.3) * 0.5) - g0;
+		gr /= e3;
+		gr -= dot(gr, wnorm) * wnorm;
+		bump -= gr * detail_strength * 0.5 * steep * proc;
+	}
+	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.9 + vec3(ripple.x, 0.0, ripple.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }
