@@ -471,10 +471,10 @@ static func interior(t: String) -> ArrayMesh:
 	var any := false
 	for m in models:
 		if m[0] == "props/Torch_Metal":
-			ItemModels.torch_wad(wads, Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * float(m[3])), m[2]))
+			ToolModels.torch_wad(wads, Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * float(m[3])), m[2]))
 			any = true
 	if any:
-		wads.commit(ItemModels.mat, mesh)
+		wads.commit(ToolModels.mat, mesh)
 	return mesh
 
 ## Lamplit window panels of a sci-fi block's ground floor, drawn from further off.

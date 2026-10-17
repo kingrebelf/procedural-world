@@ -1284,7 +1284,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(ItemModels.mat("it_wood") in mats and ItemModels.mat("it_leather") in mats and ItemModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -3198,12 +3198,12 @@ func test_server_alliances() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
 
-func test_item_models() -> void:
+func test_tool_models() -> void:
 	# Every tool and weapon with a built model is a real shape (not the fallback box),
 	# of a believable size, and is an item the game knows.
-	for t in ItemModels.BUILD:
+	for t in ToolModels.BUILD:
 		check(not ItemDB.def(t).is_empty(), "%s: modelled item exists" % t)
-		var m := ItemModels.build(t)
+		var m := ToolModels.build(t)
 		check(m != null and m.get_surface_count() > 0, "%s: model builds" % t)
 		if m == null:
 			continue

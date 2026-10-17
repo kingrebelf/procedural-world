@@ -1,4 +1,4 @@
-class_name ItemModels
+class_name ToolModels
 ## Real models for the tools and weapons that have no kit model: each one built from the
 ## parts the real thing is made of, at its real size, in materials that read as what they
 ## are (forged steel with a ground edge, cast bronze, grained ash and oak, wrapped leather,
@@ -648,7 +648,7 @@ static func build(t: String) -> ArrayMesh:
 	if not BUILD.has(t):
 		return null
 	var k := MeshKit.new(t.hash() & 0xFF)
-	var grip = (Callable(ItemModels, BUILD[t])).call(k)
+	var grip = (Callable(ToolModels, BUILD[t])).call(k)
 	var out := k.commit(mat)
 	if grip is Vector3:
 		out.set_meta("grip", grip)

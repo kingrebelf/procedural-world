@@ -68,8 +68,8 @@ static func torch_fire() -> Node3D:
 
 static func torch_model() -> ArrayMesh:
 	var k := MeshKit.new(5)
-	ItemModels.torch(k)
-	return k.commit(ItemModels.mat)
+	ToolModels.torch(k)
+	return k.commit(ToolModels.mat)
 
 func is_on() -> bool:
 	return lit() != ""

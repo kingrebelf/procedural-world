@@ -1,14 +1,14 @@
 extends SceneTree
 ## A sheet of held-item models laid on their sides under an open sky, for judging shape
 ## and material. Run windowed:
-##   godot --path . --script res://tools/preview_items.gd -- --out=/abs/sheet.png [--items=a,b] [--cols=6]
-## Without --items it draws every ItemModels model. "gltf:props/Name" draws a kit model.
+##   godot --path . --script res://tools/preview_tools.gd -- --out=/abs/sheet.png [--items=a,b] [--cols=6]
+## Without --items it draws every ToolModels model (tools, weapons, lights). "gltf:props/Name" draws a kit model.
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
 	var out := "/tmp/sheet.png"
-	var items: Array = ItemModels.BUILD.keys()
+	var items: Array = ToolModels.BUILD.keys()
 	var cols := 6
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="): out = a.substr(6)
@@ -45,8 +45,8 @@ func _run() -> void:
 		var m: ArrayMesh = Viewmodel.kit_mesh(t.substr(5), Transform3D.IDENTITY) if t.begins_with("gltf:") else Viewmodel.model(t)
 		if t == "gltf:props/Torch_Metal":
 			var kk := MeshKit.new(3)
-			ItemModels.torch_wad(kk, Transform3D.IDENTITY)
-			kk.commit(ItemModels.mat, m)
+			ToolModels.torch_wad(kk, Transform3D.IDENTITY)
+			kk.commit(ToolModels.mat, m)
 		if m == null: continue
 		var mi := MeshInstance3D.new()
 		mi.mesh = m

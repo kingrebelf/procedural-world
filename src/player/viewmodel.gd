@@ -132,13 +132,13 @@ static func aura_for(it) -> Material:
 ## Held like a gun: the item points along the view instead of being raised.
 const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars"]
 
-## Bows built along +Y (ItemModels, the forged longbow) are held like a tool, fist closed
-## round the middle of the stave. A bow GunLook builds points along -Z like a gun and is
-## held like one.
+## Bows are held like a tool, fist closed round the middle of the stave, not like a gun.
+## Every bow model (ToolModels, Firearms, the forged longbow) runs its stave along +Y with
+## the riser at its "grip" and the string on the +Z side.
 const BOWS := ["shortbow", "longbow", "composite_bow", "royal_bow", "crystal_bow", "eclipse_bow"]
 
 static func is_bow(t: String) -> bool:
-	return t in BOWS and not GunLook.has(t)
+	return t in BOWS
 
 static func pointed(t: String) -> bool:
 	return t in POINTED or ItemDB.def(t).get("ranged", false)
@@ -258,8 +258,8 @@ static func model(t: String) -> ArrayMesh:
 		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.115, hy, 0)), 0.042, 0.042, 0.05, 10)
 		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.09, hy + 0.015, 0)), Vector3(0.07, 0.045, 0.05))
 		_append(out, k.commit(Materials.get_mat))
-	elif ItemModels.has(t):
-		out = ItemModels.build(t)
+	elif ToolModels.has(t):
+		out = ToolModels.build(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():
