@@ -220,8 +220,17 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 ## Per-mesh MultiMesh buffers (transform + tint) for all objects still present. Each
 ## instance gets its own slight tint and proportions, so even two of the same variant
 ## never look identical.
-static func build_object_buffers(chunk: Dictionary) -> Dictionary:
+## Trees drawn by RealTree switch to the merged far mesh beyond this distance (from the
+## middle of the chunk).
+const TREE_NEAR := 170.0
+
+## Instance buffers per mesh key, plus "~far": the far versions of every RealTree tree in
+## the chunk merged into one mesh's surface arrays (one surface per material), so a
+## distant forest costs a couple of draw calls per chunk. `far` false skips that merge
+## (a tree felled up close: the far mesh is out of sight and is rebuilt later).
+static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 	var by_key := {}
+	var far_bufs := {} # surface key -> [verts, normals, uvs, colours, indices]
 	var seed: int = int(chunk.get("seed", 0)) ^ (int(chunk["cx"]) * 73856093) ^ (int(chunk["cz"]) * 19349663)
 	for o in chunk["objects"]:
 		if o["st"].get("gone", false):
@@ -254,6 +263,8 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 				var to := Color(clampf(st.r / 0.5, 0.45, 1.5), clampf(st.g / 0.5, 0.45, 1.5), clampf(st.b / 0.5, 0.45, 1.5))
 				tint = tint * Color(1, 1, 1).lerp(to, st.a * 0.85)
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0]
+		if far and k == "tree" and RealTree.handles(o["t"]):
+			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o.get("sp", 0)), int(o.get("v", 0))), Transform3D(b, p), tint)
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array(row)
 		by_key[key] = buf
@@ -264,7 +275,53 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
 				eb.append_array(row)
 				by_key[extra] = eb
+	if not far_bufs.is_empty():
+		var surfs := {}
+		for sk in far_bufs:
+			var fb: Array = far_bufs[sk]
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = fb[0]
+			arr[Mesh.ARRAY_NORMAL] = fb[1]
+			arr[Mesh.ARRAY_TEX_UV] = fb[2]
+			arr[Mesh.ARRAY_COLOR] = fb[3]
+			arr[Mesh.ARRAY_INDEX] = fb[4]
+			surfs[sk] = arr
+		by_key["~far"] = surfs
 	return by_key
+
+## Appends one tree's far parts, moved by `xf` and tinted, to the chunk's far buffers.
+static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint: Color) -> void:
+	if parts.is_empty():
+		return
+	var look: Array = parts["look"]
+	for part in ["bark", "leaf"]:
+		var a: Array = parts[part]
+		var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+		if pv.is_empty():
+			continue
+		var sk: String = part + ":" + String(look[1] if part == "bark" else look[0])
+		if not bufs.has(sk):
+			bufs[sk] = [PackedVector3Array(), PackedVector3Array(), PackedVector2Array(), PackedColorArray(), PackedInt32Array()]
+		var fb: Array = bufs[sk]
+		var vs: PackedVector3Array = fb[0]
+		var ns: PackedVector3Array = fb[1]
+		var uvs: PackedVector2Array = fb[2]
+		var cs: PackedColorArray = fb[3]
+		var ix: PackedInt32Array = fb[4]
+		var base := vs.size()
+		var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+		var pc: PackedColorArray = a[Mesh.ARRAY_COLOR]
+		var nb := xf.basis.orthonormalized()
+		for j in pv.size():
+			vs.append(xf * pv[j])
+			ns.append(nb * pn[j])
+			cs.append(pc[j] * tint)
+		uvs.append_array(a[Mesh.ARRAY_TEX_UV])
+		for q in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
+			ix.append(base + q)
+		# Packed arrays inside an Array are copies: store them back.
+		bufs[sk] = [vs, ns, uvs, cs, ix]
 
 static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat32Array:
 	var buf := PackedFloat32Array()
@@ -507,11 +564,22 @@ func _add_cave_shape() -> void:
 	_cave_shape.shape = cs
 	_body.add_child(_cave_shape)
 
-func set_objects(buffers: Dictionary) -> void:
+## `keep_far` keeps the current far tree mesh when `buffers` has none (see refresh_far).
+func set_objects(buffers: Dictionary, keep_far := false) -> void:
+	var old_far = _mm.get("~far") if keep_far and not buffers.has("~far") else null
 	for t in _mm:
-		_mm[t].queue_free()
+		if _mm[t] != old_far:
+			_mm[t].queue_free()
 	_mm.clear()
+	if old_far != null:
+		_mm["~far"] = old_far
+		buffers = buffers.duplicate()
+		buffers["~far"] = {} # near trees still hand over to it
 	for t in buffers:
+		if t == "~far":
+			if old_far == null:
+				_add_far_mesh(buffers[t])
+			continue
 		var buf: PackedFloat32Array = buffers[t]
 		if t.ends_with("~in") or t.ends_with("~glow"):
 			_add_rooms(t, buf)
@@ -526,12 +594,38 @@ func set_objects(buffers: Dictionary) -> void:
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
 		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if k == "structure" or k == "tree" or k == "built":
+		if k == "tree" and RealTree.handles(t.get_slice("#", 0)) and buffers.has("~far"):
+			# Up close only; the merged far mesh takes over beyond.
+			mmi.visibility_range_end = TREE_NEAR
+			mmi.visibility_range_end_margin = 12.0
+		elif k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
 		else:
 			_set_range(mmi, 260.0)
 		add_child(mmi)
 		_mm[t] = mmi
+
+## The chunk's distant trees as one mesh (see build_object_buffers), drawn from where the
+## near multimeshes stop.
+func _add_far_mesh(surfs: Dictionary) -> void:
+	if _mm.has("~far"):
+		_mm["~far"].queue_free()
+		_mm.erase("~far")
+	if surfs.is_empty():
+		return
+	var m := ArrayMesh.new()
+	for sk in surfs:
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surfs[sk])
+		var kind := String(sk).get_slice(":", 1)
+		m.surface_set_material(m.get_surface_count() - 1, RealTree.bark_material(kind) if String(sk).begins_with("bark") else RealTree.leaf_material(kind))
+	var mi := MeshInstance3D.new()
+	mi.mesh = m
+	mi.name = "TreesFar"
+	mi.visibility_range_begin = TREE_NEAR
+	mi.visibility_range_begin_margin = 12.0
+	mi.visibility_range_end = 900.0
+	add_child(mi)
+	_mm["~far"] = mi
 
 ## Furniture inside rooms (drawn only when you could see in) and their lamplit windows
 ## (only from further off), one node per room: a visibility range measures from the
@@ -746,7 +840,8 @@ func add_built(id: String, lp: Vector3, yaw: float, st: Dictionary) -> Dictionar
 func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) -> Dictionary:
 	var o := {"i": data["objects"].size(), "t": t, "p": lp, "r": yaw, "s": 1.0, "e": era, "st": st}
 	data["objects"].append(o)
-	set_objects(build_object_buffers(data))
+	set_objects(build_object_buffers(data, false), true)
+	refresh_far()
 	if near:
 		_add_obj_body(o)
 	Game.mark_chunk_dirty(data)
@@ -762,10 +857,39 @@ func remove_object(i: int) -> void:
 	if _obj_bodies.has(i):
 		_obj_bodies[i].queue_free()
 		_obj_bodies.erase(i)
-	set_objects(build_object_buffers(data))
+	set_objects(build_object_buffers(data, false), true)
+	if ObjectLibrary.kind(o["t"]) == "tree":
+		refresh_far()
 	Game.mark_chunk_dirty(data)
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
+
+## Rebuilds the far tree mesh on a worker thread after a tree was felled or something
+## built: merging every tree of the chunk is too slow to do in the frame you swing the axe,
+## and the far mesh is out of sight while you stand that close anyway.
+func refresh_far() -> void:
+	var snap := data.duplicate(false)
+	snap["objects"] = (data["objects"] as Array).duplicate()
+	var me: WeakRef = weakref(self)
+	_wait_far()
+	_far_task = WorkerThreadPool.add_task(func():
+		var surfs: Dictionary = build_object_buffers(snap).get("~far", {})
+		var apply := func():
+			var n = me.get_ref()
+			if n != null and is_instance_valid(n) and n.is_inside_tree():
+				n._add_far_mesh(surfs)
+		apply.call_deferred())
+
+var _far_task := -1
+
+func _wait_far() -> void:
+	if _far_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_far_task)
+		_far_task = -1
+
+func _exit_tree() -> void:
+	# Never leave a merge running against a chunk that is going away (or a closing game).
+	_wait_far()
 
 ## Lowers terrain in a smooth crater around local point (lx, lz). Returns true if changed.
 func dig(lx: float, lz: float, radius: float, depth: float) -> bool:
