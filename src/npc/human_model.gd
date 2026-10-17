@@ -605,6 +605,8 @@ func play_once(state: String, dur := 0.0) -> void:
 	_shot += 1
 	var my := _shot
 	animator.shot(state, speed)
+	if not is_inside_tree():
+		return
 	get_tree().create_timer(maxf(a.length / speed - 0.05, 0.05), false).timeout.connect(func():
 		if my == _shot and is_instance_valid(self):
 			if a.loop_mode != Animation.LOOP_NONE:

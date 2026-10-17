@@ -673,6 +673,7 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	var label := kc.label()
 	var at := kc.global_position
 	kc.hp = 1.0
+	Ragdoll.mark_hit(kc, at + Vector3(0, 0.8, 0), Vector3(1, 0.1, 0), 40.0)
 	world.fauna.player_hit(kc, 10.0)
 	await _frames(3)
 	check(not is_instance_valid(kc), "the killed animal stops being a live creature")
@@ -688,6 +689,28 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	check(cr is Creature and cr.as_corpse and cr._body == null, "the carcass is drawn, with no hit box")
 	if cr is Creature and cr._kit != null and not cr._kit.procedural():
 		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
+	if cr is Creature and cr._kit != null and not cr._kit.procedural():
+		# It falls limp, comes to rest, and the pose it lies in is kept with it.
+		for i in 900:
+			if world.corpses.record(key).has("rag"):
+				break
+			await physics_frame
+		var rag = world.corpses.record(key).get("rag")
+		var sk: Skeleton3D = cr._kit.skeleton()
+		check(rag is PackedFloat32Array and rag.size() == sk.get_bone_count() * 7, "the carcass falls as a ragdoll and keeps the pose it settled in")
+		check(world.corpses.record(key).get("c") is Vector3, "the carcass remembers where its body came to rest")
+		if rag is PackedFloat32Array:
+			world.corpses._hide(key)
+			world.corpses._scan = 0.0
+			await _frames(3)
+			var again = world.corpses._shown.get(key, {}).get("node")
+			var sk2: Skeleton3D = again._kit.skeleton() if again is Creature and again._kit else null
+			var back := Ragdoll.snapshot(sk2) if sk2 else PackedFloat32Array()
+			var same: bool = back.size() == rag.size()
+			for i in back.size():
+				same = same and absf(back[i] - rag[i]) < 0.0001
+			check(same, "drawn again, the carcass lies exactly as it fell")
+			cr = again
 	check(Corpses.use_of(found["rec"])[0] == "carcass", "a fresh carcass is held to butcher")
 	var cn: ChunkNode = world.corpses._shown[key]["cn"]
 	game.flush_chunks()
