@@ -671,6 +671,7 @@ func _run() -> void:
 	world.fauna._scan = 0.0
 	await _corpses(game, world, player, kc)
 	await _bandits(game, world, player)
+	await _round_the_cliff(world, streamer, player)
 	await _pirates(game, world, player)
 	await _crowd(game, world, player)
 
@@ -1164,6 +1165,69 @@ func _bandits(game, world, player) -> void:
 	check(e2.get("nodes", []).size() == 2, "the dead one doesn't come back with the band")
 	world.npcs._unload("b9_9_0")
 	game.health = 100.0
+
+## People go round a cliff, not up it: a wall too steep to climb put across the ground
+## under you (in memory only) with a way round its end; an outlaw sent across it walks
+## round by the gap, and nowhere under their feet is steeper than a person walks.
+func _round_the_cliff(world, streamer: ChunkStreamer, player) -> void:
+	var npcs: NPCManager = world.npcs
+	var k := ChunkStreamer.chunk_of(player.global_position)
+	var cn: ChunkNode = streamer.get_chunk(k)
+	var res := ChunkGenerator.RES
+	var hs0: PackedFloat32Array = cn.data["heights"]
+	var hs := hs0.duplicate()
+	var o := Vector2(k.x * ChunkGenerator.SIZE, k.y * ChunkGenerator.SIZE)
+	var h0: float = maxf(hs0[32 * res + 32], ChunkGenerator.WATER_LEVEL + 2.0)
+	for j in range(2, 63):
+		for i in range(2, 63):
+			hs[j * res + i] = h0 + (12.0 if i >= 30 and i <= 33 and j <= 44 else 0.0)
+	cn.data["heights"] = hs
+	npcs.walk._chunks.erase(k)
+	var camp := o + Vector2(10.0, 10.0)
+	var r := RandomNumberGenerator.new()
+	r.seed = 91
+	var b := {"id": "b9_9_1", "cell": Vector2i(9999, 9997), "camp": camp, "era": Eras.MEDIEVAL, "zone": 3,
+		"route": [camp], "name": "Cliff band", "members": [Bandits._member(r, Eras.MEDIEVAL, 3, 0, "b9_9_1", camp, 9999, 9997)]}
+	npcs._load_band(b)
+	await _frames(3)
+	var e: Dictionary = npcs.settlements.get("b9_9_1", {})
+	if e.is_empty() or e["nodes"].is_empty():
+		check(false, "a band to walk round the cliff")
+		cn.data["heights"] = hs0
+		return
+	# Out of the manager's hands, walked here a step at a time.
+	var n: NPC = e["nodes"][0]
+	e["nodes"] = []
+	var from := o + Vector2(18.0, 24.0)
+	var to := o + Vector2(46.0, 24.0)
+	n.global_position = Vector3(from.x, h0, from.y)
+	n.action = "flee"
+	n.target = to
+	n.target_player = false
+	check(not npcs.walk.clear(from, to, WalkGrid.PERSON), "the straight way is up a cliff")
+	var far := Vector3(o.x + 400.0, h0, o.y + 400.0)
+	var top := -INF
+	var worst := 0.0
+	var round_end := false
+	for f in 200:
+		for s in 4:
+			n.step(0.05, npcs._ground, far, [])
+		var at: Vector3 = n.global_position
+		top = maxf(top, at.y)
+		worst = maxf(worst, npcs.walk.grade(at.x, at.z))
+		round_end = round_end or at.z - o.y > 44.0
+		if Vector2(at.x, at.z).distance_to(to) < 1.0:
+			break
+		await process_frame
+	var end := Vector2(n.global_position.x, n.global_position.z)
+	check(end.distance_to(to) < 1.0, "they get there (%.1f m off)" % end.distance_to(to))
+	check(top < h0 + 0.5 and worst <= WalkGrid.PERSON, "without climbing it (highest %.1f m up, steepest %.2f)" % [top - h0, worst])
+	check(round_end, "going round its end")
+	npcs._by_id.erase(n.rec["id"])
+	n.queue_free()
+	npcs._unload("b9_9_1")
+	cn.data["heights"] = hs0
+	npcs.walk._chunks.erase(k)
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.

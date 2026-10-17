@@ -31,6 +31,8 @@ var _think_t := 0.0
 var _deciding := false
 var _thinking := false
 var _ground := Callable(self, "ground")
+## How steep the loaded land is, for routes that go round cliffs (people and animals).
+var walk := WalkGrid.new(Callable(self, "_chunk_data"))
 var _stealth_t := 0.0
 var _mob_t := 0.0
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
@@ -61,6 +63,10 @@ func ground(x: float, z: float) -> float:
 	if c == null:
 		return NAN
 	return ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE)
+
+func _chunk_data(k: Vector2i) -> Dictionary:
+	var c := streamer.get_chunk(k) if streamer else null
+	return c.data if c else {}
 
 func all_nodes() -> Array:
 	var out: Array = []
