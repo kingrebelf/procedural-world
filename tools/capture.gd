@@ -1227,7 +1227,9 @@ func _boat_shots(g: ChunkGenerator) -> void:
 		var bc: Vector2 = best[key]["center"]
 		world.player.set_physics_process(false)
 		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
-		var b: BoatNode = world.boats.put(best[key], true)
+		# The small boat is caught under way (oars pulling, bow wave and wake); the big ones
+		# lie still.
+		var b: BoatNode = world.boats.put(best[key], key != "small")
 		for v in views[key]:
 			if not only.is_empty() and not only.has(String(v[0]).substr(0, 2)):
 				continue
