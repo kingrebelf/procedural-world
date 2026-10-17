@@ -730,7 +730,8 @@ func _update_look_target() -> void:
 		var mat := Durability.material(t)
 		if Wonders.unbreakable(t):
 			# A relic: what it does instead of what it yields.
-			text = "" if not Wonders.use_of(o, Game.day).is_empty() else Wonders.describe(o, Game.day)
+			var w := Wonders.use_of(o, Game.day)
+			text = ("[%s] %s" % [_key("interact"), w["verb"]]) if not w.is_empty() else Wonders.describe(o, Game.day)
 			info = {"title": ObjectLibrary.label_of(o), "sub": "Relic  ·  %s" % (Eras.NAMES[o["e"]] if o["e"] >= 0 else ""),
 				"lines": [Wonders.describe(o, Game.day), "Can't be broken: use it with [%s]" % _key("interact")], "icon": Durability.yields(o)[0][0]}
 		else:

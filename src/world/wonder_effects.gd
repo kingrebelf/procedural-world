@@ -5,6 +5,7 @@ class_name WonderEffects
 const WAKE_XP := 80.0
 const BEACON_XP := 30.0
 const RUNES_XP := 25.0
+const LANDMARK_XP := 60.0
 const LOOK := 1600.0 ## how far a beacon or runestone knows the way to a settlement
 
 static var _gen: ChunkGenerator
@@ -60,6 +61,8 @@ static func apply(o: Dictionary, chunk: ChunkNode, player: Player) -> String:
 			Game.set_stamina(Game.stats.max_stamina())
 			Game.set_health(Game.health + 10.0)
 			msg = "Cool, clear water: stamina restored"
+		_:
+			msg = _landmark(o, rng, origin, wp)
 	st["day"] = today
 	Game.mark_chunk_dirty(chunk.data)
 	return msg
@@ -137,3 +140,55 @@ static func _mark_settlement(wp: Vector3) -> String:
 	Game.markers.add(best["name"], c.x, c.y, Game.planet)
 	Game.touch_player()
 	return "%s, %d m to the %s (marked on your atlas)" % [best["name"], int(round(bd / 10.0)) * 10, Wonders.compass(here, c)]
+
+## The hidden landmarks: a first visit pays well; some give a little more every day.
+static func _landmark(o: Dictionary, rng: RandomNumberGenerator, origin: Dictionary, wp: Vector3) -> String:
+	var st: Dictionary = o["st"]
+	var first := not st.get("used", false)
+	st["used"] = true
+	if first:
+		Game.add_xp(LANDMARK_XP, "Discovery")
+	var era := clampi(int(o["e"]), 0, Eras.COUNT - 1)
+	var q := func() -> float: return rng.randf_range(0.95, 1.3)
+	var gifts: Array = []
+	var msg := ""
+	match String(o["t"]):
+		"summit_shrine":
+			_restore(1.0)
+			if first:
+				gifts.append(ItemDB.make("rune_tablet", 1, q.call(), origin))
+			msg = "A calm settles over you at the shrine: health and stamina restored"
+		"eyrie":
+			gifts = ItemDB.roll_loot(era, rng, origin, 1.0)
+			msg = "Among the giant's bones and feathers you find"
+		"sunken_altar":
+			_restore(1.0)
+			if first:
+				gifts.append(ItemDB.make("health_potion", 2, q.call(), origin))
+			msg = "The altar warms under your hand: health and stamina restored"
+		"fallen_star":
+			gifts.append(ItemDB.make("aether_crystal", rng.randi_range(2, 4) if first else rng.randi_range(1, 3), q.call(), origin))
+			if first or rng.randf() < 0.15:
+				gifts.append(ItemDB.make("void_gem", 1, q.call(), origin))
+			msg = "Shards of the star come away in your hands"
+		"star_wreck":
+			gifts.append(ItemDB.make("alloy_scrap", rng.randi_range(3, 6), q.call(), origin))
+			gifts.append(ItemDB.make("circuitry", rng.randi_range(1, 2), q.call(), origin))
+			if first or rng.randf() < 0.25:
+				gifts.append(ItemDB.make("power_cell", 1, q.call(), origin))
+			msg = "You strip the wreck"
+		"titan_bones":
+			Game.add_xp(LANDMARK_XP * 0.5, "Discovery")
+			var way := _mark_settlement(wp)
+			msg = "Marks scratched into the bones point the way to %s" % way if way != "" else "You read the old marks scratched into the bones"
+		"dolmen":
+			_restore(1.0)
+			if first:
+				gifts.append(ItemDB.make("stamina_potion", 2, q.call(), origin))
+			msg = "You rest in the dolmen's shade: health and stamina restored"
+	var got := _give_all(gifts)
+	if got != "":
+		msg += (" %s" if msg.ends_with("find") else ", and find %s") % got
+	elif msg.ends_with("find"):
+		msg += " nothing you can carry"
+	return msg

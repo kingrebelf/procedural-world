@@ -479,8 +479,12 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var crystal: Dictionary = rc.add_object("crystal_shard", at.call(-10.0, 0.0), 0.0, Eras.FANTASY, {})
 	msg = WonderEffects.apply(crystal, rc, player)
 	check(game.inventory.count("flashlight_dead") == 0 and game.inventory.count("flashlight") >= 1, "a crystal recharges a dead flashlight (%s)" % msg)
+	var star: Dictionary = rc.add_object("star_wreck", at.call(10.0, 0.0), 0.0, Eras.SCIFI, {})
+	var scrap0: int = game.inventory.count("alloy_scrap")
+	msg = WonderEffects.apply(star, rc, player)
+	check(game.inventory.count("alloy_scrap") > scrap0 and Wonders.use_of(star, game.day).is_empty(), "a wrecked starship can be salvaged once a day (%s)" % msg)
 	# Out of the way of what comes next.
-	for o in [ruin, beacon, pod, stone, crystal]:
+	for o in [ruin, beacon, pod, stone, crystal, star]:
 		if not o.is_empty():
 			rc.remove_object(o["i"])
 	await _frames(2)

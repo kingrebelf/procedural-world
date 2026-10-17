@@ -868,6 +868,10 @@ func test_wonders() -> void:
 	check(Wonders.use_of({"t": "standing_stone", "st": {"read": true}}, 9.0).is_empty(), "runes are read once")
 	check(not Wonders.use_of({"t": "well", "st": {"day": 5}}, 5.5).is_empty(), "a well can always be drunk from")
 	check(Wonders.unbreakable("alien_ruin") and Wonders.unbreakable("beacon") and not Wonders.unbreakable("well"), "relics can't be broken; a well can")
+	check(not Wonders.use_of({"t": "summit_shrine", "st": {}}, 1.0).is_empty() and Wonders.use_of({"t": "summit_shrine", "st": {"used": true, "day": 1}}, 1.5).is_empty() and not Wonders.use_of({"t": "summit_shrine", "st": {"used": true, "day": 1}}, 2.2).is_empty(), "a shrine blesses you once a day")
+	check(Wonders.use_of({"t": "eyrie", "st": {"used": true, "day": 1}}, 9.0).is_empty(), "a nest is searched once")
+	for t in Wonders.LANDMARKS:
+		check(Landmark.has(t) and Wonders.unbreakable(t), "landmark %s is used, not broken" % t)
 	check(Wonders.compass(Vector2.ZERO, Vector2(0, -10)) == "north" and Wonders.compass(Vector2.ZERO, Vector2(10, 10)) == "southeast", "compass words")
 
 func test_levelling_and_attributes() -> void:
