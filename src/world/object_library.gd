@@ -6,7 +6,7 @@ static var _meshes: Dictionary = {}
 static var _shapes: Dictionary = {}
 
 const KIND := {
-	"oak": "tree", "pine": "tree", "glowcap": "tree", "crystal_tree": "tree", "solar_mast": "tree",
+	"oak": "tree", "pine": "tree", "palm": "tree", "tropic": "tree", "glowcap": "tree", "crystal_tree": "tree", "solar_mast": "tree",
 	"rock": "rock", "iron_vein": "ore", "aether_crystal": "ore", "alloy_scrap": "ore",
 	"chest": "cache", "rune_coffer": "cache", "supply_pod": "cache",
 	"standing_stone": "marker", "crystal_shard": "marker", "beacon": "marker",
@@ -47,12 +47,12 @@ const TOWN_PROP_SIZE := {"market_stall": Vector3(2.6, 2.7, 1.2), "fruit_cart": V
 
 ## What a gatherable object yields.
 const YIELD := {
-	"oak": "wood", "pine": "wood", "glowcap": "glowberry", "crystal_tree": "glowroot", "solar_mast": "circuitry",
+	"oak": "wood", "pine": "wood", "palm": "wood", "tropic": "wood", "glowcap": "glowberry", "crystal_tree": "glowroot", "solar_mast": "circuitry",
 	"rock": "stone", "iron_vein": "iron_ore", "aether_crystal": "aether_crystal", "alloy_scrap": "alloy_scrap",
 }
 
 const LABEL := {
-	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Xeno Plant",
+	"oak": "Oak", "pine": "Pine", "palm": "Palm", "tropic": "Tropical Tree", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Xeno Plant",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
 	"hab_block": "Hab Block", "lab_block": "Lab Block", "ops_tower": "Ops Tower", "solar_farm": "Solar Farm",
 	"depot": "Cargo Depot", "outpost_light": "Floodlight",
@@ -358,6 +358,8 @@ static func shape_of(o: Dictionary) -> Array:
 		match t:
 			"oak": r = float(p["girth"]) * 1.1; h = float(p["height"]) * 0.8
 			"pine": r = float(p["width"]) * 0.12 + 0.14; h = float(p["height"]) * 0.7
+			"palm": r = float(p["girth"]) * 1.15; h = float(p["height"]) * 0.8
+			"tropic": r = float(p["girth"]) * 1.1; h = float(p["height"]) * 0.8
 			"glowcap": r = float(p["stem_r"]) * 1.1; h = float(p["height"]) * 0.8
 			"crystal_tree": r = float(p["girth"]) * 1.2; h = float(p["height"]) * 0.8
 		var c := CylinderShape3D.new()

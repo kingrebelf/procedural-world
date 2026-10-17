@@ -4,7 +4,7 @@ shader_type spatial;
 // holds a tree beyond the streamed chunks and within TREE_BB_TO, and collapses to nothing
 // everywhere else. The tree is drawn by the fragment shader in its species' form and
 // colour (forest.gdshaderinc): a lumpy round crown on its trunk, lit as a soft dome that
-// lets the light through, a conifer's spire of tiers, bare dead limbs, or an alien
+// lets the light through, a conifer's spire of tiers, a palm, bare dead limbs, or an alien
 // world's mushroom cap, crystal spike or mast.
 render_mode world_vertex_coords, cull_disabled, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
@@ -45,6 +45,9 @@ void vertex() {
 		w = h * 0.9;
 	} else if (form == FORM_CRYSTAL) {
 		w = h * 0.5;
+	} else if (form == FORM_PALM) {
+		h *= 1.15;
+		w = h * 0.7;
 	}
 	vec2 to = normalize(CAMERA_POSITION_WORLD.xz - at + vec2(0.0001));
 	b_right = vec3(-to.y, 0.0, to.x);
@@ -91,6 +94,19 @@ void fragment() {
 		crown = max(step(abs(q.x - 0.5), hw), step(abs(q.x - 0.5 - 0.22 * (seed - 0.5)), side));
 		cn = vec3(sign(q.x - 0.5) * 0.8, 0.35, 0.6);
 		rough = 0.25;
+	} else if (form == FORM_PALM) {
+		// A palm: a slim stem, curving a little, under a star of fronds that arch out and
+		// hang at their tips.
+		float bend = (seed - 0.5) * 0.18 * q.y * q.y;
+		vec2 e = (q - vec2(0.5 + bend, 0.8)) / vec2(0.5, 0.2);
+		float a = atan(e.y, e.x);
+		float lobe = 0.45 + 0.55 * pow(abs(sin(a * 3.5 + seed * 11.0)), 0.6);
+		// Fronds droop: the crown hangs lower at its sides than it stands up in the middle.
+		float hang = e.y + 0.55 * e.x * e.x;
+		crown = step(length(vec2(e.x, hang)), lobe * (0.9 + 0.12 * n)) * step(-0.95, e.y);
+		cn = vec3(e.x, max(e.y, 0.0) + 0.35, sqrt(max(1.0 - dot(e, e), 0.0)));
+		trunk = step(abs(q.x - 0.5 - bend), 0.022 * (1.2 - q.y * 0.5)) * step(q.y, 0.8);
+		stem = vec3(0.17, 0.15, 0.12);
 	} else if (form == FORM_MAST) {
 		// A mast: a thin pole and its panels.
 		trunk = step(abs(q.x - 0.5), 0.025);

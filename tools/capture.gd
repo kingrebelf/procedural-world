@@ -468,6 +468,8 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
+		await _climate_shots(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -979,6 +981,47 @@ func _landform_shots(g: ChunkGenerator) -> void:
 				cam = c
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
+
+## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
+## cold spruce uplands; standing on its edge looking in.
+const CLIMATE_SHOTS := {"93_rainforest": [3, 2], "94_savanna": [3, 1], "95_boreal": [0, 1]}
+
+func _climate_shots(g: ChunkGenerator) -> void:
+	for shot in CLIMATE_SHOTS:
+		if not only.is_empty() and not only.has(String(shot).substr(0, 2)):
+			continue
+		var want: Array = CLIMATE_SHOTS[shot]
+		var best := Vector2.INF
+		for r in 16:
+			for iz in range(-r, r + 1):
+				for ix in range(-r, r + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != r:
+						continue
+					if g.field.site_landform(ix, iz) != WorldField.LF_NONE:
+						continue
+					var site := g.field.site_pos(ix, iz)
+					# Low, dry ground in the region seen from low, dry ground in it too: up toward
+					# the snow line every region turns to pine and snow (Biome.by_altitude).
+					for k in 9:
+						var p := site + Vector2(k % 3 - 1, k / 3 - 1) * 70.0
+						var cam := p + Vector2(-60, -35)
+						if best == Vector2.INF and _climate_is(g, p, want) and _climate_is(g, cam, want) \
+								and _low_ground(g, p) and _low_ground(g, cam):
+							best = p
+		if best == Vector2.INF:
+			print("no region with climate ", want)
+			continue
+		print("climate shot ", shot, " at ", best, " ", g.field.region_name_at(best.x, best.y))
+		var cam := best + Vector2(-60, -35)
+		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
+
+func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
+	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
+	return c.x == int(want[0]) and c.y >= int(want[1]) and (int(want[1]) >= 2 or c.y < 2)
+
+func _low_ground(g: ChunkGenerator, p: Vector2) -> bool:
+	var h := g.field.height(p.x, p.y)
+	return h > WATER_SAFE + 1.0 and h < WorldField.snow_line - 26.0
 
 const WATER_SAFE := 1.0
 
