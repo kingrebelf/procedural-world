@@ -1,7 +1,9 @@
 shader_type canvas_item;
 // Looking out from under water: the view wobbles and softens, light falls off the deeper
 // you go, a shimmer of sunlight plays near the surface, and the edges darken.
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+// Softened with a small blur of our own rather than the screen's mipmaps: those came out
+// blocky on some GPUs (light and dark rectangles across the view).
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform float depth = 0.0; // metres the eye is below the surface
 uniform float daylight = 1.0;
 uniform vec3 tint : source_color = vec3(0.35, 0.7, 0.75);
@@ -17,7 +19,15 @@ void fragment() {
 	float t = TIME;
 	vec2 wob = vec2(sin(uv.y * 23.0 + t * 1.7) + sin(uv.y * 41.0 - t * 2.3) * 0.5,
 		cos(uv.x * 19.0 + t * 1.3) + cos(uv.x * 37.0 + t * 2.1) * 0.5) * 0.0028;
-	vec3 c = textureLod(screen_tex, uv + wob, 1.5).rgb;
+	vec2 px = SCREEN_PIXEL_SIZE * 2.5;
+	vec3 c = vec3(0.0);
+	for (int i = -1; i <= 1; i++) {
+		for (int j = -1; j <= 1; j++) {
+			float w = (i == 0 ? 2.0 : 1.0) * (j == 0 ? 2.0 : 1.0);
+			c += textureLod(screen_tex, uv + wob + vec2(float(i), float(j)) * px, 0.0).rgb * w;
+		}
+	}
+	c /= 16.0;
 	float d = clamp(depth / 30.0, 0.0, 1.0);
 	// Water swallows red first, then green: deeper is bluer and darker.
 	vec3 absorb = mix(vec3(1.0), tint, 0.55 + 0.45 * d);
