@@ -16,6 +16,9 @@ var _canvas: MapCanvas
 var _disc: TextureRect
 var _over: Control
 var _info: Label
+var _finds: Label
+var _zone := {}
+var _zone_t := 0.0
 var _t := 0.0
 
 const MASK := """
@@ -32,7 +35,7 @@ void fragment() {
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size = Vector2(DIAM, DIAM + 40)
+	custom_minimum_size = Vector2(DIAM, DIAM + 80)
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(RES, RES)
 	_vp.transparent_bg = true
@@ -66,6 +69,15 @@ func _ready() -> void:
 	_info.add_theme_constant_override("outline_size", 4)
 	_info.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
 	add_child(_info)
+	# What this kind of zone holds, under the clock.
+	_finds = UITheme.label("", 12, Color(1, 1, 1, 0.72))
+	_finds.position = Vector2(-10, DIAM + 24)
+	_finds.size = Vector2(DIAM + 20, 52)
+	_finds.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_finds.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_finds.add_theme_constant_override("outline_size", 4)
+	_finds.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	add_child(_finds)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e.is_action_pressed("minimap_zoom"):
@@ -90,6 +102,11 @@ func _process(delta: float) -> void:
 	_over.queue_redraw()
 	var t := fposmod(Game.day, 1.0) * 24.0
 	_info.text = "Day %d  %02d:%02d   ·   %d, %d" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), int(p.x), int(p.z)]
+	_zone_t -= delta
+	if _zone_t <= 0.0:
+		_zone_t = 0.5
+		_zone = ZoneInfo.at(Game.seed, p.x, p.z)
+		_finds.text = _zone["finds"]
 
 ## World x, z to a point on the turned disc, and whether it falls inside the rim.
 func _place(x: float, z: float) -> Array:
@@ -166,8 +183,27 @@ func _draw_over() -> void:
 		_over.draw_string(font, q + Vector2(-tw * 0.5, fs * 0.36), letters[i], HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 			Color(1.0, 0.42, 0.35) if i == 0 else UITheme.TEXT)
 	MapCanvas.draw_player(_over, c, Vector2(0, -1), 8.0)
+	_draw_zone(font, c, r)
 	var zs := "%d m" % int(RANGES[zoom])
 	_over.draw_string(font, c + Vector2(r * 0.52, r * 0.98), zs, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.45))
+
+## A translucent band across the lower disc: the zone's name, kind and level range.
+func _draw_zone(font: Font, c: Vector2, r: float) -> void:
+	if _zone.is_empty():
+		return
+	var y := c.y + r * 0.42
+	var w := r * 1.25
+	var box := Rect2(c.x - w * 0.5, y, w, 38)
+	_over.draw_rect(box, Color(0.03, 0.04, 0.05, 0.5))
+	var col: Color = _zone["color"]
+	_over.draw_line(box.position, box.position + Vector2(w, 0), Color(col.r, col.g, col.b, 0.7), 1.0)
+	var name: String = _zone["name"]
+	var nw := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	_over.draw_string_outline(font, Vector2(c.x - nw * 0.5, y + 15), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, 3, Color(0, 0, 0, 0.6))
+	_over.draw_string(font, Vector2(c.x - nw * 0.5, y + 15), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, UITheme.TEXT)
+	var sub := "%s  ·  Lv %d–%d" % [_zone["kind"], _zone["level_lo"], _zone["level_hi"]]
+	var sw := font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	_over.draw_string(font, Vector2(c.x - sw * 0.5, y + 31), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, col.lightened(0.25))
 
 func _edge_pin(q: Vector2, col: Color, dist: float) -> void:
 	_over.draw_circle(q, 5.5, Color(0, 0, 0, 0.7))
