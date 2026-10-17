@@ -35,12 +35,15 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 	# Steepness per vertex (1 on a cliff face), from the height gradient.
 	var steep := PackedFloat32Array()
 	steep.resize(n)
+	var grad := PackedFloat32Array()
+	grad.resize(n)
 	for j in RES:
 		for i in RES:
 			var k := j * RES + i
 			var dx := (hs[j * RES + mini(i + 1, RES - 1)] - hs[j * RES + maxi(i - 1, 0)]) / float(mini(i + 1, RES - 1) - maxi(i - 1, 0))
 			var dz := (hs[mini(j + 1, RES - 1) * RES + i] - hs[maxi(j - 1, 0) * RES + i]) / float(mini(j + 1, RES - 1) - maxi(j - 1, 0))
-			steep[k] = smoothstep(0.7, 1.25, Vector2(dx, dz).length())
+			grad[k] = Vector2(dx, dz).length()
+			steep[k] = smoothstep(0.7, 1.25, grad[k])
 	# Spread it out over the ground around (a falloff max filter, rows then columns):
 	# that is where rock falling from the face comes to rest.
 	var row := PackedFloat32Array()
@@ -78,6 +81,21 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 				if d < 1.0:
 					var k := j * RES + i
 					litter[k] = minf(litter[k] + (1.0 - d * d) * 0.8, 1.0)
+	# Settled ground: around buildings and on roads people have cleared the stones.
+	var settled := PackedFloat32Array()
+	settled.resize(n)
+	for q: PackedFloat32Array in ChunkGenerator.keep_out(chunk):
+		var reach := q[8] + 24.0
+		var ri := int(ceil(reach))
+		for j in range(maxi(int(q[1]) - ri, 0), mini(int(q[1]) + ri + 1, RES)):
+			for i in range(maxi(int(q[0]) - ri, 0), mini(int(q[0]) + ri + 1, RES)):
+				var d := Vector2(i - q[0], j - q[1]).length() - q[8]
+				var k := j * RES + i
+				settled[k] = maxf(settled[k], 1.0 - smoothstep(8.0, 24.0, d))
+	var road: PackedByteArray = chunk.get("road", PackedByteArray())
+	if road.size() == n:
+		for k in n:
+			settled[k] = maxf(settled[k], minf(road[k] / 255.0 * 2.0, 1.0))
 	var rv: PackedFloat32Array = chunk.get("river", PackedFloat32Array())
 	var rn := ChunkGenerator.RIVER_N
 	var snow_line := Planets.snow_line
@@ -93,10 +111,12 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			var ns := small.get_noise_2d(wx, wz)
 			var flat := 1.0 - steep[k]
 			# Scree below cliffs, broken into tongues and gaps; rocky patches in the open,
-			# more of them on high ground.
+			# on rising and high ground rather than flat meadow, and never in a village or
+			# on a road.
 			var scree := clampf(foot[k] * 1.4 * (0.55 + 0.6 * (ns * 0.5 + 0.5)), 0.0, 1.0)
-			var patch := smoothstep(0.36, 0.52, nb + clampf((h - 18.0) * 0.006, 0.0, 0.12) + ns * 0.08)
-			scree = maxf(scree, patch) * flat
+			var rise := clampf(smoothstep(0.12, 0.45, grad[k]) + clampf((h - 18.0) * 0.01, 0.0, 0.5), 0.0, 1.0)
+			var patch := smoothstep(0.4, 0.55, nb + clampf((h - 18.0) * 0.006, 0.0, 0.12) + ns * 0.08) * lerpf(0.25, 1.0, rise)
+			scree = maxf(scree * (1.0 - 0.85 * settled[k]), patch * (1.0 - settled[k])) * flat
 			# Gravel on river banks and lake shores, in patches; the odd dry gravel bed.
 			var gravel := 0.0
 			if not rv.is_empty():
@@ -105,7 +125,7 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 					gravel = (1.0 - smoothstep(1.2, 2.6, rv[rk + 1])) * rv[rk + 2]
 			var shore := 1.0 - smoothstep(0.5, 1.6, h - ChunkGenerator.WATER_LEVEL)
 			gravel = maxf(gravel, shore * smoothstep(-0.15, 0.2, nb + ns * 0.3))
-			gravel = maxf(gravel, smoothstep(0.5, 0.62, -nb + ns * 0.1) * 0.9)
+			gravel = maxf(gravel, smoothstep(0.5, 0.62, -nb + ns * 0.1) * 0.9 * (1.0 - settled[k]))
 			gravel *= flat
 			# Snow lies on high ground, in drifts, and slides off steep faces.
 			var snow := smoothstep(snow_line - 6.0, snow_line + 8.0, h + nb * 9.0 + ns * 2.0) * (1.0 - smoothstep(0.55, 0.9, steep[k] * 0.5 + 0.4 * (1.0 - flat)))

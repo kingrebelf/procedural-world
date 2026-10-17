@@ -15,19 +15,27 @@ static var _mat: ShaderMaterial
 static var _lock := Mutex.new()
 
 static func material() -> Material:
+	# Never hold the lock across a load: a load on a worker thread can wait on the main
+	# thread, and the main thread may be waiting on this lock (that deadlocked streaming).
+	_lock.lock()
+	var m := _mat
+	_lock.unlock()
+	if m != null:
+		return m
+	var rock := Materials.photo("rock", "albedo")
+	if rock == null:
+		return Materials.get_mat("stone_w")
+	m = ShaderMaterial.new()
+	m.shader = load("res://src/world/shaders/rock.gdshader")
+	m.set_shader_parameter("rock_tex", rock)
+	m.set_shader_parameter("rock_nrm", Materials.photo("rock", "normal"))
+	m.set_shader_parameter("moss_tex", Materials.photo("grass", "albedo"))
 	_lock.lock()
 	if _mat == null:
-		var rock := Materials.photo("rock", "albedo")
-		if rock == null:
-			_lock.unlock()
-			return Materials.get_mat("stone_w")
-		_mat = ShaderMaterial.new()
-		_mat.shader = load("res://src/world/shaders/rock.gdshader")
-		_mat.set_shader_parameter("rock_tex", rock)
-		_mat.set_shader_parameter("rock_nrm", Materials.photo("rock", "normal"))
-		_mat.set_shader_parameter("moss_tex", Materials.photo("grass", "albedo"))
+		_mat = m
+	m = _mat
 	_lock.unlock()
-	return _mat
+	return m
 
 static func mesh(kind: String) -> ArrayMesh:
 	_lock.lock()

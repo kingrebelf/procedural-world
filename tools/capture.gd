@@ -278,12 +278,16 @@ func _ground_shots(g: ChunkGenerator) -> void:
 				var d := Vector2.from_angle(k * TAU / 16.0)
 				var side := d.orthogonal()
 				var wall := true
-				for o in [-12.0, 0.0, 12.0]:
-					var q := p + side * o
+				for o: float in [-12.0, 0.0, 12.0]:
+					var q: Vector2 = p + side * o
 					wall = wall and g.field.height(q.x + d.x * 20.0, q.y + d.y * 20.0) - h > 8.0
 					wall = wall and absf(g.field.height(q.x + d.x * 4.0, q.y + d.y * 4.0) - h) < 1.2
 				var back := p - d * 18.0
 				wall = wall and absf(g.field.height(back.x, back.y) - h) < 2.0
+				# On dry ground: no lake or river where the camera stands or looks.
+				if wall:
+					for t in 5:
+						wall = wall and _dry(g, back.lerp(p + d * 3.0, t / 4.0))
 				if wall:
 					cliff = Vector4(p.x, p.y, d.x, d.y)
 					break
@@ -298,6 +302,18 @@ func _ground_shots(g: ChunkGenerator) -> void:
 		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
 		# Standing at the cliff foot, looking down at the stones ahead.
 		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
+
+var _dry_chunks := {}
+
+## Whether a point is on land, above the sea and out of any river or lake.
+func _dry(g: ChunkGenerator, p: Vector2) -> bool:
+	var key := Vector2i(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+	if not _dry_chunks.has(key):
+		_dry_chunks[key] = g.generate(key.x, key.y)
+	var c: Dictionary = _dry_chunks[key]
+	var lx := p.x - key.x * 64.0
+	var lz := p.y - key.y * 64.0
+	return ChunkGenerator.height_at(c, lx, lz) > ChunkGenerator.WATER_LEVEL + 1.5 and not ChunkGenerator.by_river(c, lx, lz)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell

@@ -26,6 +26,11 @@ var preview := false
 func _ready() -> void:
 	ChunkNode.ensure_shared()
 	KitFlora.preload_all()
+	# Build the stone and grass meshes here, so worker threads only read the caches.
+	for k in StoneKit.KINDS:
+		StoneKit.mesh(k)
+	for sp in GrassKit.SPECIES:
+		GrassKit.mesh(sp)
 
 func set_target(t: Node3D) -> void:
 	_target = t
