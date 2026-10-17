@@ -214,11 +214,14 @@ func start(velocity: Vector3, hit: Dictionary) -> void:
 				best = body
 		if best:
 			var j: Vector3 = (hit["dir"] as Vector3) * float(hit["force"])
-			best.apply_impulse(j, at - best.global_position)
-			# The rest of the body is carried a little by the blow, through the joints.
+			# The part struck takes the brunt, at the point struck (so it twists the body);
+			# the rest of the blow carries the whole body, as the joints would.
+			best.apply_impulse(j * 0.4, at - best.global_position)
+			var total := 0.0
 			for body in _bones:
-				if body != best:
-					(body as RigidBody3D).apply_central_impulse(j * 0.05)
+				total += (body as RigidBody3D).mass
+			for body in _bones:
+				(body as RigidBody3D).apply_central_impulse(j * 0.6 * (body as RigidBody3D).mass / total)
 	_active.append(self)
 	while _active.size() > MAX_ACTIVE:
 		var old: Ragdoll = _active.pop_front()

@@ -572,17 +572,26 @@ static func _hint_row(pairs: Array) -> Control:
 # --- Crafting ------------------------------------------------------------------------
 
 const CRAFT_AMOUNTS := [1, 5, 10, 100]
-const CRAFT_TABS := ["All", "Materials", "Tools", "Stations", "Building", "Furniture"]
 var _craft_scroll := 0
 var _craft_tab := "All"
+var _craft_find := ""
+var _craft_ready_only := false
 
-static func _recipe_tab(r: Dictionary) -> String:
-	match String(ItemDB.def(r["out"]).get("kind", "")):
-		"tool", "weapon", "light": return "Tools"
-		"station": return "Stations"
-		"placeable": return "Building"
-		"decor": return "Furniture"
-	return "Materials"
+## True when the recipe is in the open tab and passes the search and "Can craft now".
+func _craft_shows(r: Dictionary, stations: Dictionary) -> bool:
+	if _craft_tab != "All" and not ItemDB.craft_tabs(r["out"]).has(_craft_tab):
+		return false
+	if _craft_ready_only and not _craft_ready(r, stations):
+		return false
+	var q := _craft_find.strip_edges().to_lower()
+	if q == "":
+		return true
+	if String(ItemDB.def(r["out"]).get("name", r["out"])).to_lower().contains(q):
+		return true
+	return r["in"].keys().any(func(t): return String(ItemDB.def(t).get("name", t)).to_lower().contains(q))
+
+static func _craft_ready(r: Dictionary, stations: Dictionary) -> bool:
+	return Recipes.station_ok(r, stations) and Recipes.level_ok(r, Game.stats.level) and Recipes.max_crafts(Game.inventory, r) > 0
 
 static func _icon_rect(type: String, px: int) -> TextureRect:
 	var r := UITheme.icon_rect(type, px)
@@ -607,10 +616,14 @@ func _craft_panel() -> Control:
 	var v: VBoxContainer = s[1]
 	var here := player.global_position if player else Vector3.ZERO
 	var stations := BuildCatalog.stations_near(streamer, here)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 6)
-	for t in CRAFT_TABS:
+	# One tab per kind of thing; tabs with nothing to make in them stay hidden.
+	var tabs := HFlowContainer.new()
+	tabs.add_theme_constant_override("h_separation", 6)
+	tabs.add_theme_constant_override("v_separation", 6)
+	for t in ["All"] + ItemDB.CRAFT_TABS:
 		var tab: String = t
+		if tab != "All" and not Recipes.LIST.any(func(r): return ItemDB.craft_tabs(r["out"]).has(tab)):
+			continue
 		var tb := UITheme.button(tab, func():
 			_craft_tab = tab
 			_craft_scroll = 0
@@ -618,30 +631,72 @@ func _craft_panel() -> Control:
 		tb.toggle_mode = true
 		tb.button_pressed = tab == _craft_tab
 		tabs.add_child(tb)
+	v.add_child(tabs)
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 10)
+	var sc := ScrollContainer.new()
+	var list := VBoxContainer.new()
+	var find := LineEdit.new()
+	find.placeholder_text = "Search recipes or materials"
+	find.text = _craft_find
+	find.custom_minimum_size = Vector2(300, 0)
+	find.clear_button_enabled = true
+	# Typing only redraws the list, so the box keeps its focus.
+	find.text_changed.connect(func(t):
+		_craft_find = t
+		_craft_scroll = 0
+		sc.scroll_vertical = 0
+		_fill_craft_list(list, stations))
+	find.text_submitted.connect(func(_t): find.release_focus())
+	bar.add_child(find)
+	var ready_b := UITheme.button("Can craft now", func():
+		_craft_ready_only = not _craft_ready_only
+		_craft_scroll = 0
+		_refresh())
+	ready_b.toggle_mode = true
+	ready_b.button_pressed = _craft_ready_only
+	bar.add_child(ready_b)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tabs.add_child(sp)
+	bar.add_child(sp)
 	var names: Array = []
 	for st in stations:
 		names.append(Recipes.STATION_NAMES.get(st, st))
-	tabs.add_child(UITheme.label("Nearby: " + (", ".join(names) if not names.is_empty() else "no stations"), 15, UITheme.ACCENT if not names.is_empty() else UITheme.DIM))
-	v.add_child(tabs)
-	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(980, 560)
+	var near := UITheme.label("Nearby: " + (", ".join(names) if not names.is_empty() else "no stations"), 15, UITheme.ACCENT if not names.is_empty() else UITheme.DIM)
+	near.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_child(near)
+	v.add_child(bar)
+	sc.custom_minimum_size = Vector2(980, 520)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 6)
 	sc.add_child(list)
+	_fill_craft_list(list, stations)
+	sc.get_v_scroll_bar().value_changed.connect(func(val): _craft_scroll = int(val))
+	(func(): sc.scroll_vertical = _craft_scroll).call_deferred()
+	v.add_child(sc)
+	if _craft_find != "" and not Game.using_pad:
+		# Back after crafting from a search: keep typing where you left off.
+		(func():
+			find.grab_focus()
+			find.caret_column = find.text.length()).call_deferred()
+	return s[0]
+
+func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
+	for c in list.get_children():
+		c.queue_free()
 	# Recipes you can make first, then the rest in their usual order.
-	var order: Array = Recipes.LIST.filter(func(r): return _craft_tab == "All" or _recipe_tab(r) == _craft_tab)
+	var order: Array = Recipes.LIST.filter(func(r): return _craft_shows(r, stations))
 	var lv := Game.stats.level
-	var ready := func(r): return Recipes.station_ok(r, stations) and Recipes.level_ok(r, lv) and Recipes.max_crafts(Game.inventory, r) > 0
+	var ready := func(r): return _craft_ready(r, stations)
 	# Locked recipes go last, soonest unlocked first.
 	order.sort_custom(func(x, y):
 		if ready.call(x) != ready.call(y):
 			return ready.call(x)
 		return Recipes.unlock_level(x["out"]) < Recipes.unlock_level(y["out"]) and not Recipes.level_ok(x, lv))
+	if order.is_empty():
+		var msg := "Nothing you can craft here right now." if _craft_ready_only else "No recipes match."
+		list.add_child(UITheme.label(msg, 16, UITheme.DIM))
 	for r in order:
 		var at_ok := Recipes.station_ok(r, stations)
 		var unlocked := Recipes.level_ok(r, lv)
@@ -688,10 +743,6 @@ func _craft_panel() -> Control:
 		all.disabled = most <= 0
 		row.add_child(all)
 		list.add_child(card)
-	sc.get_v_scroll_bar().value_changed.connect(func(val): _craft_scroll = int(val))
-	(func(): sc.scroll_vertical = _craft_scroll).call_deferred()
-	v.add_child(sc)
-	return s[0]
 
 # --- Storage -------------------------------------------------------------------------
 
@@ -1102,9 +1153,14 @@ func _marker_editor(side: VBoxContainer, mk: Dictionary) -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.icon = MapCanvas.icon_texture(ic)
 		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		b.tooltip_text = String(ic).capitalize()
-		if String(mk.get("icon", "pin")) == ic:
-			b.add_theme_stylebox_override("normal", UITheme.sb(Color(1, 1, 1, 0.12), UITheme.ACCENT, 6, 2, 4))
+		# Flat tiles: the painted button frame would hide the small icons.
+		var on: bool = String(mk.get("icon", "pin")) == String(ic)
+		var flat := UITheme.sb(Color(1, 1, 1, 0.14) if on else Color(0, 0, 0, 0.35), UITheme.ACCENT if on else Color(1, 1, 1, 0.08), 6, 2 if on else 1, 4)
+		for st in ["normal", "pressed", "focus"]:
+			b.add_theme_stylebox_override(st, flat)
+		b.add_theme_stylebox_override("hover", UITheme.sb(Color(1, 1, 1, 0.18), UITheme.ACCENT, 6, 1, 4))
 		b.pressed.connect(func():
 			commit.call()
 			Game.markers.edit(id, {"icon": ic})
@@ -1139,6 +1195,8 @@ func _map_filters(side: VBoxContainer) -> void:
 		cb.add_theme_font_size_override("font_size", 14)
 		cb.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
 		cb.button_pressed = Game.map.shows(cat)
+		for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			cb.add_theme_stylebox_override(st, StyleBoxEmpty.new())
 		cb.toggled.connect(func(on): Game.map.set_shown(cat, on))
 		grid.add_child(cb)
 	side.add_child(grid)

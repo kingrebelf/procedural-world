@@ -49,6 +49,8 @@ func add_person(n: NPC) -> void:
 	var inv := Inventory.new(CorpseLoot.SLOTS)
 	for it in CorpseLoot.person_items(rec, NPCSocial.pockets(rec), Game.origin_here("looted", int(rec["era"]), k)):
 		inv.add(it)
+	if randf() < Treasure.PERSON_CHANCE:
+		inv.add(Treasure.make_map(maxi(int(rec["era"]), 0), Game.origin_here("looted", int(rec["era"]), k)))
 	var body := {"kind": "person", "era": int(rec["era"]), "yaw": n.rotation.y, "name": rec["name"],
 		"who": rec["id"], "body": (rec["body"] as Dictionary).duplicate(true), "job": rec["job"],
 		"gear": (rec.get("gear", {}) as Dictionary).duplicate(true), "items": inv.to_data(), "purse": int(rec.get("purse", 0))}

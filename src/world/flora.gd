@@ -36,8 +36,12 @@ static func species(t: String, sp: int) -> Dictionary:
 			var form: String = forms[r.randi() % (forms.size() - 1) if r.randf() > 0.06 else forms.size() - 1]
 			var autumn := r.randf() < 0.22
 			var hue := r.randf_range(0.0, 0.12) if autumn else r.randf_range(0.17, 0.32)
+			# Copper beeches in place of the old magenta oaks (purple leaves are alien-only;
+			# oaks never grow on alien worlds). Both draws stay so the later rolls, and so
+			# every other species, keep their looks.
 			if r.randf() < 0.05:
-				hue = r.randf_range(0.75, 0.95)
+				r.randf_range(0.75, 0.95)
+				hue = 0.0 if autumn else 0.03
 			var nouns := {"round": "Oak", "oval": "Elm", "spreading": "Chestnut", "weeping": "Willow", "column": "Birch", "shrub": "Thornbush", "dead": "Deadwood"}
 			return {
 				"form": form, "noun": nouns[form],
@@ -436,10 +440,12 @@ static func _rock(k: MeshKit, t: String, p: Dictionary, r: RandomNumberGenerator
 				var b := Basis(Vector3(cos(a), 0, sin(a)).cross(Vector3.UP).normalized(), r.randf_range(0.1, 0.6))
 				k.crystal(mat, Transform3D(b, Vector3(cos(a) * 0.35, 0.2, sin(a) * 0.35)), r.randf_range(0.12, 0.26), r.randf_range(0.8, 2.4))
 		"alloy_scrap":
+			# A heap of wrecked machinery (Ben's scrap photos) with burnt plates stuck in it.
+			k.sphere("scrap_pile", I.translated(Vector3(0, 0.2, 0)), 1.25, 8, 14, 0.35, 0.5, Color(0.95, 0.93, 0.9).darkened(r.randf() * 0.2))
 			for n in 7:
 				var b := Basis.from_euler(Vector3(r.randf_range(-0.6, 0.6), r.randf() * TAU, r.randf_range(-0.6, 0.6)))
 				var pos := Vector3(r.randf_range(-0.9, 0.9), r.randf_range(0.3, 0.9), r.randf_range(-0.9, 0.9))
-				k.box("metal_w", Transform3D(b, pos), Vector3(r.randf_range(0.3, 1.2), r.randf_range(0.05, 0.3), r.randf_range(0.3, 1.0)), Color.from_hsv(r.randf(), r.randf_range(0, 0.5), r.randf_range(0.4, 0.8)))
+				k.box("scrap_plate", Transform3D(b, pos), Vector3(r.randf_range(0.3, 1.2), r.randf_range(0.05, 0.3), r.randf_range(0.3, 1.0)), Color.from_hsv(r.randf(), r.randf_range(0, 0.15), r.randf_range(0.7, 1.0)))
 			k.box("glow@%d" % int(p["glow"]), Transform3D(Basis(Vector3.UP, r.randf()), Vector3(0.2, 0.95, 0.1)), Vector3(0.4, 0.05, 0.05))
 
 static func _alien(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:

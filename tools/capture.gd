@@ -109,6 +109,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
 	await _wait_loaded(p, streamer)
+	# Loading can take a long while on a slow renderer: put the clock back to the shot's time.
+	Game.day = day
 	# Use the real (snapshotted, flattened) height once the chunk exists.
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(p.global_position))
 	if c:
@@ -125,6 +127,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
+	# The clock ran on while things settled (a game hour per real minute).
+	Game.day = day
+	await _wait(3)
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
@@ -218,6 +223,8 @@ func _run() -> void:
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
 		await _shot("06_medieval_sunset", c + Vector2(-50, 14), c, 0.735)
+	# Midnight, looking as far up as a player can: the stars and the Milky Way.
+	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)
