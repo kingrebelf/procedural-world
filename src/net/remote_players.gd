@@ -49,6 +49,8 @@ class Puppet extends Node3D:
 		tag.font_size = 48
 		tag.outline_size = 10
 		tag.no_depth_test = false
+		tag.render_priority = Creature.TAG_PRIORITY
+		tag.outline_render_priority = Creature.TAG_PRIORITY - 1
 		tag.position.y = 2.1
 		tag.modulate = Color(1, 0.95, 0.85)
 		add_child(tag)

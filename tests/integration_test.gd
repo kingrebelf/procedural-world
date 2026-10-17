@@ -495,6 +495,11 @@ func _run() -> void:
 	world.fauna.add_child(kc)
 	await _frames(3)
 	check(kc._kit != null and kc._kit.anim.is_playing(), "kit animal is animated (%s)" % kc.label())
+	# Its name tag draws after the water surface (0) and splash rings (1), so a lake behind
+	# or under the animal never covers it.
+	kc.update_tag(true, 1)
+	check(kc._tag_label.render_priority > 1 and kc._tag_label.outline_render_priority > 1
+		and Creature._bar_mat.render_priority > 1, "animal name tags draw over the water")
 	# An animal stuck in the water next to ground that isn't loaded yet stays put instead
 	# of jumping onto the missing ground (it went to NaN and vanished for good).
 	var uc := Creature.new()

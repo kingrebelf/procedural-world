@@ -357,12 +357,22 @@ static func _tamed(m: Material) -> Material:
 	# white sheet: give them the tinted, reflective glass the rest of the game uses.
 	if m is BaseMaterial3D and m.resource_name == "M_Glass":
 		return Materials.get_mat("glass")
+	if m is BaseMaterial3D and (m.resource_name.ends_with("_Dark") or m.resource_name.contains("Cables")):
+		# The cabled inset panels are near black: a dark grey that still shows its cables.
+		if not _tamed_mats.has(m):
+			var dk := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			dk.albedo_color = dk.albedo_color * 2.0
+			_tamed_mats[m] = dk
+		return _tamed_mats[m]
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
+		# Bare polished metal mirrors the dark ground and turned whole outposts black:
+		# the panels are painted plate, lighter, with a little sheen.
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-		c.metallic = 0.55
+		c.metallic = 0.2
 		c.roughness = maxf(c.roughness, 0.55)
+		c.albedo_color = c.albedo_color * 1.45
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
 
