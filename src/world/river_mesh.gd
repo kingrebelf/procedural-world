@@ -21,6 +21,14 @@ static func build_river_arrays(chunk: Dictionary) -> Array:
 		for i in N - 1:
 			if not (wet.call(i, j) or wet.call(i + 1, j) or wet.call(i, j + 1) or wet.call(i + 1, j + 1)):
 				continue
+			# Not down the face of a waterfall (Waterfalls): its own sheet pours there.
+			if chunk.has("falls"):
+				var l00 := rv[(j * N + i) * 3]
+				var l11 := rv[((j + 1) * N + i + 1) * 3]
+				var l10 := rv[(j * N + i + 1) * 3]
+				var l01 := rv[((j + 1) * N + i) * 3]
+				if maxf(maxf(l00, l11), maxf(l10, l01)) - minf(minf(l00, l11), minf(l10, l01)) > 1.2:
+					continue
 			var corners := [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i, j + 1), Vector2i(i + 1, j + 1)]
 			var ids := []
 			for c in corners:
