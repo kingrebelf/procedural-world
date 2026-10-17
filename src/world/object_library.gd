@@ -155,6 +155,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return WorldPortal.build()
 	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
 		return WonderSite.build(key.trim_suffix("~solid"), true)
+	if ForestFloor.has(key):
+		return ForestFloor.build(key)
 	if TOWN_PROPS.has(key):
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
