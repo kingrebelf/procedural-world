@@ -3558,3 +3558,29 @@ func test_boat_models() -> void:
 		"name": "Black Gull", "phase": 0.0, "yaw": 0.0, "loop": 0.0}
 	var crew := Boats.crew(1, site)
 	check(not crew["npcs"].is_empty() and crew["npcs"].all(func(p): return p["job"] == "pirate" and p["faction"] == "pirate" and int(p["rel"]) < 0), "pirate crews are hostile")
+
+## Every held ranged weapon (bar thrown ones) has a real model with a grip, and nothing
+## people made glows: only alien (Fantasy era) weapons have emissive parts.
+func test_firearm_models() -> void:
+	for t in ItemDB.ITEMS:
+		var d: Dictionary = ItemDB.def(t)
+		if not d.get("ranged", false) or d.get("thrown", false):
+			continue
+		check(GunLook.has(t), "%s has a ranged-weapon model" % t)
+		var m: ArrayMesh = Viewmodel.model(t)
+		if m == null:
+			check(false, "%s has a mesh" % t)
+			continue
+		var verts := 0
+		for i in m.get_surface_count():
+			verts += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(verts > 300, "%s is built from parts, not a box" % t)
+		check(m.has_meta("grip"), "%s says where the hand grips it" % t)
+		if Firearms.has(t):
+			check(float(m.get_meta("grip_r", 0.0)) > 0.005, "%s says how thick its grip is" % t)
+		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY:
+			var lit := false
+			for i in m.get_surface_count():
+				var mat := m.surface_get_material(i) as BaseMaterial3D
+				lit = lit or (mat != null and mat.emission_enabled)
+			check(not lit, "%s (human work) has no glowing part" % t)
