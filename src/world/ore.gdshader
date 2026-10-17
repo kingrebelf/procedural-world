@@ -57,19 +57,19 @@ void fragment() {
 		METALLIC = ore * ore_metal;
 		ROUGHNESS = mix(0.88, 0.45, ore);
 		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
-		return;
+	} else {
+		vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
+		// Veins: where a warped noise field crosses 0.5, in thin seams that branch.
+		vec3 q = obj_pos * vein_freq;
+		float n = noise(q + noise(q * 2.3) * 1.5);
+		float d = abs(n - 0.5);
+		float vein = 1.0 - smoothstep(vein_width * 0.35, vein_width * 0.5, d);
+		// Specks of the paler second mineral inside the seams.
+		float speck = step(0.78, noise(obj_pos * 9.0)) * vein;
+		vec3 ore = mix(ore_col, ore_col2, speck) * (0.8 + 0.4 * noise(obj_pos * 4.0));
+		ALBEDO = mix(stone, ore, vein);
+		METALLIC = vein * ore_metal;
+		ROUGHNESS = mix(0.9, 0.35, vein);
+		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
 	}
-	vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
-	// Veins: where a warped noise field crosses 0.5, in thin seams that branch.
-	vec3 q = obj_pos * vein_freq;
-	float n = noise(q + noise(q * 2.3) * 1.5);
-	float d = abs(n - 0.5);
-	float vein = 1.0 - smoothstep(vein_width * 0.35, vein_width * 0.5, d);
-	// Specks of the paler second mineral inside the seams.
-	float speck = step(0.78, noise(obj_pos * 9.0)) * vein;
-	vec3 ore = mix(ore_col, ore_col2, speck) * (0.8 + 0.4 * noise(obj_pos * 4.0));
-	ALBEDO = mix(stone, ore, vein);
-	METALLIC = vein * ore_metal;
-	ROUGHNESS = mix(0.9, 0.35, vein);
-	NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
 }
