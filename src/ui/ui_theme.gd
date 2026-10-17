@@ -1,13 +1,24 @@
 class_name UITheme
-## One shared look for every menu: dark glass panels, warm gold accent.
+## One shared look for every menu and the HUD: framed dark-steel panels with gold trim,
+## bevelled buttons, inset item slots and glossy bars. The frames are painted into small
+## nine-slice textures at startup (no image files), so the whole look lives in this file.
+## Fonts: Cinzel for titles, Barlow Semi Condensed for everything else (both SIL OFL,
+## assets/fonts).
 
-const ACCENT := Color(0.95, 0.78, 0.42)
+const ACCENT := Color(0.96, 0.79, 0.45)
 const ACCENT_2 := Color(0.45, 0.85, 0.95)
 const TEXT := Color(0.93, 0.92, 0.88)
-const DIM := Color(0.62, 0.62, 0.62)
+const DIM := Color(0.62, 0.63, 0.66)
+const BAD := Color(0.95, 0.45, 0.38)
 const ERA_COLORS := [Color(0.55, 0.75, 0.35), Color(0.45, 0.85, 0.85), Color(0.55, 0.7, 1.0)]
+## Panel body colours, top and bottom of the gradient.
+const PANEL_TOP := Color(0.095, 0.105, 0.125, 0.96)
+const PANEL_BOTTOM := Color(0.035, 0.04, 0.05, 0.96)
+const SLOT_BG := Color(0.035, 0.04, 0.048, 0.92)
 
 static var _theme: Theme
+static var _tex: Dictionary = {}
+static var _fonts: Dictionary = {}
 
 static func sb(bg: Color, border: Color = Color(1, 1, 1, 0.08), radius: int = 6, bw: int = 1, pad: int = 10) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -22,60 +33,258 @@ static func sb(bg: Color, border: Color = Color(1, 1, 1, 0.08), radius: int = 6,
 	s.anti_aliasing = true
 	return s
 
+# --- Fonts ------------------------------------------------------------------------
+
+static func font(which: String) -> Font:
+	if _fonts.has(which):
+		return _fonts[which]
+	var f: Font = null
+	match which:
+		"title":
+			var base = _load_font("res://assets/fonts/Cinzel.ttf")
+			if base:
+				var v := FontVariation.new()
+				v.base_font = base
+				v.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
+				f = v
+		"body": f = _load_font("res://assets/fonts/BarlowSemiCondensed-Medium.ttf")
+		"bold": f = _load_font("res://assets/fonts/BarlowSemiCondensed-SemiBold.ttf")
+	_fonts[which] = f
+	return f
+
+static func _load_font(path: String) -> Font:
+	return load(path) as Font if ResourceLoader.exists(path) else null
+
+# --- Painted frames -----------------------------------------------------------------
+
+## Signed distance (negative inside) from p to a rounded rectangle of size sz.
+static func _rr(p: Vector2, sz: Vector2, r: float) -> float:
+	var q := (p - sz * 0.5).abs() - (sz * 0.5 - Vector2(r, r))
+	return Vector2(maxf(q.x, 0.0), maxf(q.y, 0.0)).length() + minf(maxf(q.x, q.y), 0.0) - r
+
+static func _blend(under: Color, over: Color) -> Color:
+	var a := over.a + under.a * (1.0 - over.a)
+	if a <= 0.0:
+		return Color(0, 0, 0, 0)
+	var c := (Color(over.r, over.g, over.b) * over.a + Color(under.r, under.g, under.b) * under.a * (1.0 - over.a)) / a
+	return Color(c.r, c.g, c.b, a)
+
+## Paints a framed box. look: "panel", "button", "hover", "pressed", "disabled", "slot",
+## "slot_hover", "slot_sel", "bar_bg", "tab", "tab_on", "keycap".
+static func _paint(look: String, n: int, radius: float) -> Image:
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var sz := Vector2(n, n)
+	for y in n:
+		for x in n:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var d := -_rr(p, sz, radius) ## depth inside the edge, in pixels
+			if d <= -0.5:
+				img.set_pixel(x, y, Color(0, 0, 0, 0))
+				continue
+			var cov := clampf(d + 0.5, 0.0, 1.0)
+			var t := float(y) / (n - 1)
+			var c: Color
+			match look:
+				"panel":
+					c = PANEL_TOP.lerp(PANEL_BOTTOM, smoothstep(0.0, 1.0, t))
+					c = _blend(c, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.05 * (1.0 - smoothstep(0.0, 0.35, t))))
+					if d < 1.0: c = Color(0, 0, 0, 0.9)
+					elif d < 2.0: c = _blend(c, Color(1, 1, 1, 0.09))
+					elif d >= 4.0 and d < 5.0:
+						# Inner gold line, brightest at the corners like a bracket.
+						var corner := minf(minf(x, n - 1 - x), minf(y, n - 1 - y)) < 2 or (minf(x, n - 1 - x) < 16 and minf(y, n - 1 - y) < 16)
+						c = _blend(c, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.85 if corner else 0.22))
+				"button", "hover", "pressed", "disabled", "tab", "tab_on":
+					var top := Color(0.2, 0.21, 0.23, 0.95)
+					var bot := Color(0.1, 0.105, 0.115, 0.95)
+					var edge := Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.28)
+					match look:
+						"hover", "tab_on":
+							top = Color(0.33, 0.27, 0.16, 0.97)
+							bot = Color(0.16, 0.13, 0.08, 0.97)
+							edge = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.95)
+						"pressed":
+							top = Color(0.1, 0.08, 0.05, 0.97)
+							bot = Color(0.24, 0.19, 0.11, 0.97)
+							edge = ACCENT
+						"disabled":
+							top = Color(0.1, 0.1, 0.11, 0.7)
+							bot = Color(0.07, 0.07, 0.08, 0.7)
+							edge = Color(1, 1, 1, 0.06)
+						"tab":
+							top = Color(0.13, 0.14, 0.16, 0.9)
+							bot = Color(0.07, 0.075, 0.085, 0.9)
+							edge = Color(1, 1, 1, 0.1)
+					c = top.lerp(bot, t)
+					if d < 1.0: c = Color(0, 0, 0, 0.85)
+					elif d < 2.0: c = edge
+					elif d < 3.0 and y < n / 2 and look != "pressed": c = _blend(c, Color(1, 1, 1, 0.1))
+				"slot", "slot_hover", "slot_sel":
+					c = SLOT_BG
+					# Inset: shadow falls from the top edge, the floor glows faintly.
+					c = _blend(c, Color(0, 0, 0, 0.45 * (1.0 - smoothstep(0.0, 10.0, d)) * (1.2 - t)))
+					var g := 1.0 - (p - sz * 0.5).length() / (n * 0.7)
+					c = _blend(c, Color(0.5, 0.6, 0.75, 0.06 * maxf(g, 0.0)))
+					var edge := Color(1, 1, 1, 0.13)
+					if look == "slot_hover": edge = Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.7)
+					if look == "slot_sel": edge = ACCENT
+					if d < 1.0: c = Color(0, 0, 0, 0.8)
+					elif d < (3.0 if look == "slot_sel" else 2.0): c = edge
+					elif look == "slot_sel" and d < 7.0:
+						c = _blend(c, Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.22 * (1.0 - (d - 3.0) / 4.0)))
+				"bar_bg":
+					c = Color(0.02, 0.022, 0.026, 0.85)
+					c = _blend(c, Color(0, 0, 0, 0.5 * (1.0 - t)))
+					if d < 1.0: c = Color(0, 0, 0, 0.9)
+					elif d < 2.0: c = Color(1, 1, 1, 0.1)
+				"keycap":
+					c = Color(0.93, 0.9, 0.82).lerp(Color(0.7, 0.67, 0.6), t)
+					if d < 1.0: c = Color(0.15, 0.13, 0.1, 0.9)
+					elif d > 2.0 and y > n - 5: c = c.darkened(0.25)
+			c.a *= cov
+			img.set_pixel(x, y, c)
+	return img
+
+## A nine-slice style of one of the painted looks, cached.
+static func tex_sb(look: String, pad := 10, pad_v := -1) -> StyleBoxTexture:
+	var key := look
+	if not _tex.has(key):
+		var n := 48
+		var r := 6.0
+		match look:
+			"panel": n = 64; r = 7.0
+			"slot", "slot_hover", "slot_sel": n = 48; r = 5.0
+			"bar_bg": n = 16; r = 3.0
+			"keycap": n = 24; r = 4.0
+		_tex[key] = ImageTexture.create_from_image(_paint(look, n, r))
+	var t: ImageTexture = _tex[key]
+	var s := StyleBoxTexture.new()
+	s.texture = t
+	var m := 16.0 if look == "panel" else (5.0 if look == "bar_bg" or look == "keycap" else 9.0)
+	s.texture_margin_left = m
+	s.texture_margin_right = m
+	s.texture_margin_top = m
+	s.texture_margin_bottom = m
+	s.content_margin_left = pad
+	s.content_margin_right = pad
+	s.content_margin_top = pad * 0.6 if pad_v < 0 else pad_v
+	s.content_margin_bottom = pad * 0.6 if pad_v < 0 else pad_v
+	return s
+
+## The glossy fill of a bar in the given colour.
+static func bar_fill(col: Color) -> StyleBoxTexture:
+	var key := "fill_" + col.to_html()
+	if not _tex.has(key):
+		var h := 16
+		var img := Image.create(8, h, false, Image.FORMAT_RGBA8)
+		for y in h:
+			var t := float(y) / (h - 1)
+			var c := col.lightened(0.35).lerp(col, smoothstep(0.0, 0.45, t)).lerp(col.darkened(0.35), smoothstep(0.5, 1.0, t))
+			if y == 1:
+				c = c.lightened(0.4)
+			for x in 8:
+				img.set_pixel(x, y, c)
+		_tex[key] = ImageTexture.create_from_image(img)
+	var s := StyleBoxTexture.new()
+	s.texture = _tex[key]
+	s.texture_margin_top = 3
+	s.texture_margin_bottom = 3
+	s.texture_margin_left = 2
+	s.texture_margin_right = 2
+	return s
+
 ## A slot frame in the item's rank colour; Uncommon and up glow, brighter by rank.
-static func rarity_sb(it: Dictionary, bg: Color, bw := 2, pad := 6) -> StyleBoxFlat:
+static func rarity_sb(it: Dictionary, bg: Color = SLOT_BG, bw := 2, pad := 6) -> StyleBox:
 	var r := Rarity.of(it)
+	if r == 0:
+		return tex_sb("slot", pad)
 	var c := Rarity.color(it)
-	var s := sb(bg.lerp(c * Color(0.35, 0.35, 0.35, 1.0), 0.12 * r), c * Color(1, 1, 1, 0.45 if r == 0 else 0.95), 6, bw if r > 0 else 1, pad)
-	if r > 0:
-		s.shadow_color = c * Color(1, 1, 1, 0.25 + 0.1 * r)
-		s.shadow_size = 2 + r * 2
+	var s := sb(bg.lerp(c * Color(0.3, 0.3, 0.3, 1.0), 0.1 + 0.05 * r), c * Color(1, 1, 1, 0.95), 5, bw, pad)
+	s.shadow_color = c * Color(1, 1, 1, 0.22 + 0.08 * r)
+	s.shadow_size = 2 + r * 2
 	return s
 
 static func get_theme() -> Theme:
 	if _theme != null:
 		return _theme
 	var t := Theme.new()
-	t.default_font_size = 18
+	if font("body"):
+		t.default_font = font("body")
+	t.default_font_size = 19
 	t.set_color("font_color", "Label", TEXT)
-	t.set_color("font_color", "Button", TEXT)
-	t.set_color("font_hover_color", "Button", ACCENT)
-	t.set_color("font_pressed_color", "Button", ACCENT)
-	t.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.5))
-	t.set_stylebox("normal", "Button", sb(Color(0.12, 0.13, 0.15, 0.85)))
-	t.set_stylebox("hover", "Button", sb(Color(0.2, 0.19, 0.16, 0.95), ACCENT * Color(1, 1, 1, 0.7)))
-	t.set_stylebox("pressed", "Button", sb(Color(0.25, 0.21, 0.13, 0.95), ACCENT))
-	t.set_stylebox("disabled", "Button", sb(Color(0.1, 0.1, 0.1, 0.6)))
-	t.set_stylebox("focus", "Button", sb(Color(0, 0, 0, 0), ACCENT * Color(1, 1, 1, 0.5)))
-	t.set_stylebox("panel", "PanelContainer", sb(Color(0.06, 0.07, 0.085, 0.88), Color(1, 1, 1, 0.1), 10, 1, 18))
-	t.set_stylebox("panel", "Panel", sb(Color(0.06, 0.07, 0.085, 0.88), Color(1, 1, 1, 0.1), 10))
-	t.set_stylebox("normal", "LineEdit", sb(Color(0.08, 0.09, 0.1, 0.9)))
-	t.set_stylebox("focus", "LineEdit", sb(Color(0.08, 0.09, 0.1, 0.9), ACCENT))
+	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.55))
+	t.set_constant("shadow_offset_y", "Label", 1)
+	t.set_constant("shadow_offset_x", "Label", 0)
+	if font("bold"):
+		t.set_font("font", "Button", font("bold"))
+		t.set_font("font", "OptionButton", font("bold"))
+		t.set_font("font", "TabContainer", font("bold"))
+	for ty in ["Button", "OptionButton"]:
+		t.set_color("font_color", ty, TEXT)
+		t.set_color("font_hover_color", ty, Color(1.0, 0.92, 0.72))
+		t.set_color("font_pressed_color", ty, ACCENT)
+		t.set_color("font_hover_pressed_color", ty, ACCENT)
+		t.set_color("font_focus_color", ty, Color(1.0, 0.92, 0.72))
+		t.set_color("font_disabled_color", ty, Color(0.45, 0.45, 0.47))
+		t.set_stylebox("normal", ty, tex_sb("button", 14, 7))
+		t.set_stylebox("hover", ty, tex_sb("hover", 14, 7))
+		t.set_stylebox("pressed", ty, tex_sb("pressed", 14, 7))
+		t.set_stylebox("hover_pressed", ty, tex_sb("pressed", 14, 7))
+		t.set_stylebox("disabled", ty, tex_sb("disabled", 14, 7))
+		t.set_stylebox("focus", ty, sb(Color(0, 0, 0, 0), ACCENT * Color(1, 1, 1, 0.75), 6, 2))
+	t.set_stylebox("panel", "PanelContainer", tex_sb("panel", 22, 18))
+	t.set_stylebox("panel", "Panel", tex_sb("panel", 22, 18))
+	t.set_stylebox("normal", "LineEdit", tex_sb("bar_bg", 10, 8))
+	t.set_stylebox("focus", "LineEdit", sb(Color(0, 0, 0, 0), ACCENT, 4, 1))
 	t.set_color("font_color", "LineEdit", TEXT)
-	t.set_stylebox("normal", "OptionButton", sb(Color(0.12, 0.13, 0.15, 0.85)))
-	t.set_stylebox("hover", "OptionButton", sb(Color(0.2, 0.19, 0.16, 0.95), ACCENT))
-	t.set_stylebox("pressed", "OptionButton", sb(Color(0.2, 0.19, 0.16, 0.95), ACCENT))
-	t.set_stylebox("panel", "PopupMenu", sb(Color(0.08, 0.09, 0.1, 0.98)))
-	t.set_stylebox("tab_selected", "TabContainer", sb(Color(0.2, 0.18, 0.13, 0.95), ACCENT, 6, 1, 14))
-	t.set_stylebox("tab_unselected", "TabContainer", sb(Color(0.1, 0.1, 0.12, 0.8), Color(1, 1, 1, 0.05), 6, 1, 14))
-	t.set_stylebox("tab_hovered", "TabContainer", sb(Color(0.16, 0.15, 0.13, 0.9), ACCENT * Color(1, 1, 1, 0.5), 6, 1, 14))
-	t.set_stylebox("panel", "TabContainer", sb(Color(0.05, 0.06, 0.07, 0.6), Color(1, 1, 1, 0.06), 8, 1, 16))
-	t.set_stylebox("background", "ProgressBar", sb(Color(0, 0, 0, 0.5), Color(1, 1, 1, 0.1), 4, 1, 0))
-	t.set_stylebox("fill", "ProgressBar", sb(Color(0.75, 0.2, 0.18), Color(0, 0, 0, 0), 4, 0, 0))
-	t.set_stylebox("slider", "HSlider", sb(Color(0.2, 0.2, 0.22), Color(0, 0, 0, 0), 3, 0, 2))
-	t.set_stylebox("grabber_area", "HSlider", sb(ACCENT * Color(1, 1, 1, 0.8), Color(0, 0, 0, 0), 3, 0, 2))
-	t.set_stylebox("grabber_area_highlight", "HSlider", sb(ACCENT, Color(0, 0, 0, 0), 3, 0, 2))
-	t.set_stylebox("panel", "TooltipPanel", sb(Color(0.05, 0.05, 0.06, 0.97), ACCENT * Color(1, 1, 1, 0.5)))
+	t.set_color("caret_color", "LineEdit", ACCENT)
+	t.set_stylebox("panel", "PopupMenu", tex_sb("panel", 10, 8))
+	t.set_color("font_hover_color", "PopupMenu", ACCENT)
+	t.set_stylebox("hover", "PopupMenu", sb(Color(0.3, 0.24, 0.13, 0.9), Color(0, 0, 0, 0), 4, 0))
+	t.set_stylebox("tab_selected", "TabContainer", tex_sb("tab_on", 18, 8))
+	t.set_stylebox("tab_unselected", "TabContainer", tex_sb("tab", 18, 8))
+	t.set_stylebox("tab_hovered", "TabContainer", tex_sb("hover", 18, 8))
+	t.set_stylebox("panel", "TabContainer", sb(Color(0.02, 0.025, 0.03, 0.55), Color(1, 1, 1, 0.06), 6, 1, 16))
+	t.set_color("font_selected_color", "TabContainer", ACCENT)
+	t.set_color("font_unselected_color", "TabContainer", DIM)
+	t.set_color("font_hovered_color", "TabContainer", TEXT)
+	t.set_stylebox("background", "ProgressBar", tex_sb("bar_bg", 0, 0))
+	t.set_stylebox("fill", "ProgressBar", bar_fill(Color(0.75, 0.2, 0.18)))
+	t.set_stylebox("slider", "HSlider", tex_sb("bar_bg", 0, 3))
+	t.set_stylebox("grabber_area", "HSlider", bar_fill(ACCENT.darkened(0.15)))
+	t.set_stylebox("grabber_area_highlight", "HSlider", bar_fill(ACCENT))
+	for sbar in ["VScrollBar", "HScrollBar"]:
+		t.set_stylebox("scroll", sbar, sb(Color(0, 0, 0, 0.35), Color(0, 0, 0, 0), 4, 0, 3))
+		t.set_stylebox("grabber", sbar, sb(ACCENT * Color(0.7, 0.7, 0.7, 0.6), Color(0, 0, 0, 0), 4, 0, 3))
+		t.set_stylebox("grabber_highlight", sbar, sb(ACCENT * Color(1, 1, 1, 0.85), Color(0, 0, 0, 0), 4, 0, 3))
+		t.set_stylebox("grabber_pressed", sbar, sb(ACCENT, Color(0, 0, 0, 0), 4, 0, 3))
+	t.set_stylebox("panel", "TooltipPanel", tex_sb("panel", 14, 10))
 	t.set_color("font_color", "TooltipLabel", TEXT)
+	t.set_font_size("font_size", "TooltipLabel", 16)
 	t.set_color("font_color", "CheckBox", TEXT)
+	t.set_color("font_hover_color", "CheckBox", ACCENT)
+	t.set_stylebox("separator", "HSeparator", sb(Color(1, 1, 1, 0.08), Color(0, 0, 0, 0), 0, 0, 0))
 	_theme = t
 	return t
 
 static func title(text: String, size: int = 30) -> Label:
 	var l := Label.new()
 	l.text = text
+	if font("title"):
+		l.add_theme_font_override("font", font("title"))
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", ACCENT)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	l.add_theme_constant_override("shadow_offset_y", 2)
+	l.add_theme_constant_override("outline_size", 2)
+	l.add_theme_color_override("font_outline_color", Color(0.18, 0.11, 0.03, 0.6))
+	return l
+
+## A small gold caption in capitals, for section headings inside a panel.
+static func heading(text: String, size: int = 14) -> Label:
+	var l := label(text.to_upper(), size, ACCENT)
+	if font("bold"):
+		l.add_theme_font_override("font", font("bold"))
 	return l
 
 static func label(text: String, size: int = 18, color: Color = TEXT) -> Label:
@@ -90,6 +299,71 @@ static func button(text: String, cb: Callable) -> Button:
 	b.text = text
 	b.pressed.connect(cb)
 	return b
+
+## A tall main-menu button.
+static func big_button(text: String, cb: Callable) -> Button:
+	var b := button(text, cb)
+	b.custom_minimum_size = Vector2(0, 50)
+	b.add_theme_font_size_override("font_size", 22)
+	return b
+
+## A keyboard key drawn as a little cap: "[Tab]".
+static func keycap(text: String, size := 14) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", tex_sb("keycap", 6, 1))
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := label(text, size, Color(0.1, 0.09, 0.08))
+	l.add_theme_constant_override("shadow_offset_y", 0)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
+	if font("bold"):
+		l.add_theme_font_override("font", font("bold"))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.custom_minimum_size = Vector2(maxi(12, size), 0)
+	p.add_child(l)
+	return p
+
+## An ornamental rule: a gold line fading out at both ends with a diamond in the middle.
+static func divider(width := 0.0) -> Control:
+	var c := Control.new()
+	c.custom_minimum_size = Vector2(width, 12)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.draw.connect(func():
+		var w := c.size.x
+		var y := c.size.y * 0.5
+		var segs := 24
+		for i in segs:
+			var a := float(i) / segs
+			var b := float(i + 1) / segs
+			var k := 1.0 - absf((a + b) - 1.0)
+			c.draw_line(Vector2(w * a, y), Vector2(w * b, y), Color(ACCENT.r, ACCENT.g, ACCENT.b, 0.55 * k), 1.0)
+		var m := Vector2(w * 0.5, y)
+		c.draw_colored_polygon(PackedVector2Array([m + Vector2(0, -4), m + Vector2(5, 0), m + Vector2(0, 4), m + Vector2(-5, 0)]), ACCENT)
+		c.draw_colored_polygon(PackedVector2Array([m + Vector2(-14, 0), m + Vector2(-10, -2), m + Vector2(-8, 0), m + Vector2(-10, 2)]), ACCENT * Color(1, 1, 1, 0.6))
+		c.draw_colored_polygon(PackedVector2Array([m + Vector2(14, 0), m + Vector2(10, -2), m + Vector2(8, 0), m + Vector2(10, 2)]), ACCENT * Color(1, 1, 1, 0.6)))
+	return c
+
+## A small item icon as a TextureRect.
+static func icon_rect(type: String, px: int) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = Icons.get_icon(type)
+	r.custom_minimum_size = Vector2(px, px)
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
+
+## "[coin] 293": money with the coin icon.
+static func money_tag(amount: int, size := 22) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(icon_rect("gold_coin", size + 6))
+	var l := label("%d" % amount, size, ACCENT)
+	if font("bold"):
+		l.add_theme_font_override("font", font("bold"))
+	h.add_child(l)
+	h.tooltip_text = "Marks"
+	return h
 
 static func describe_item(it: Dictionary) -> String:
 	var d := ItemDB.def(it["type"])

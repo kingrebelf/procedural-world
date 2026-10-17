@@ -80,7 +80,7 @@ func toggle() -> void:
 		_input.grab_focus.call_deferred()
 	else:
 		_input.release_focus()
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		Cursor.restore()
 
 func _print(t: String) -> void:
 	_log.append_text(t + "\n")

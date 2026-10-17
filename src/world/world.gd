@@ -86,7 +86,7 @@ func _ready() -> void:
 
 	Settings.changed.connect(_apply_settings)
 	_apply_settings()
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Cursor.restore()
 	if OS.get_cmdline_user_args().has("--capture") and ResourceLoader.exists("res://tools/capture.gd") and not get_tree().root.has_node("CaptureTour"):
 		var cap: Node = load("res://tools/capture.gd").new()
 		cap.name = "CaptureTour"
@@ -118,7 +118,7 @@ func _on_died(cause: String) -> void:
 	Game.stats_changed.emit()
 	hud.hide_death()
 	player.ui_open = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Cursor.restore()
 	Game.toast.emit("You wake where you first arrived. Your pack is safe.")
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.

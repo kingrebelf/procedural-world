@@ -85,15 +85,15 @@ func _home() -> void:
 	var worlds := WorldStore.list_worlds()
 	if not worlds.is_empty():
 		var w: Dictionary = worlds[0]
-		v.add_child(UITheme.button("Continue: %s" % w.get("name", "World"), func(): _play(w["id"])))
-	v.add_child(UITheme.button("New World", _new_world))
+		v.add_child(UITheme.big_button("Continue: %s" % w.get("name", "World"), func(): _play(w["id"])))
+	v.add_child(UITheme.big_button("New World", _new_world))
 	if worlds.size() > 0:
-		v.add_child(UITheme.button("Load World", _load_world))
-	v.add_child(UITheme.button("Settings", func():
+		v.add_child(UITheme.big_button("Load World", _load_world))
+	v.add_child(UITheme.big_button("Settings", func():
 		var m := SettingsMenu.new()
 		m.closed.connect(_home)
 		_swap(m)))
-	v.add_child(UITheme.button("Quit", func(): get_tree().quit()))
+	v.add_child(UITheme.big_button("Quit", func(): get_tree().quit()))
 	var ver := UITheme.label("v%s  ·  MIT licensed  ·  Godot %s" % [ProjectSettings.get_setting("application/config/version"), Engine.get_version_info()["string"]], 13, UITheme.DIM)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(ver)
