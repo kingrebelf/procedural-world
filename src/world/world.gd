@@ -98,6 +98,21 @@ func _ready() -> void:
 		cap.world = self
 		add_child(cap)
 
+	if OS.get_cmdline_user_args().has("--bench"):
+		_auto_bench.call_deferred()
+
+## --bench: run the performance test once the ground has loaded, print it and quit.
+func _auto_bench() -> void:
+	while player.frozen:
+		await get_tree().process_frame
+	for i in 300:
+		await get_tree().process_frame
+	var b := Benchmark.new()
+	b.name = "Benchmark"
+	b.world = self
+	b.quit_when_done = true
+	add_child(b)
+
 func _apply_settings() -> void:
 	streamer.apply_settings(int(Settings.get_value("view_distance")), float(Settings.get_value("grass_density")),
 		float(Settings.get_value("detail_distance")))

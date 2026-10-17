@@ -15,6 +15,7 @@ const HELP := """Commands:
   time <hour>    set the time of day (0-24)
   tp <x> <z>     teleport
   items          list item ids
+  bench          performance test: what each graphics feature costs on this PC
   clear          clear this log"""
 
 var player: Player
@@ -126,6 +127,15 @@ func run(text: String) -> String:
 				return "Usage: speed <multiplier>   (now %.1f)" % player.speed_mult
 			player.speed_mult = clampf(a[1].to_float(), 0.1, 20.0)
 			return "Speed x%.1f" % player.speed_mult
+		"bench":
+			if get_tree().current_scene.has_node("Benchmark"):
+				return "A performance test is already running"
+			var b := Benchmark.new()
+			b.name = "Benchmark"
+			b.world = get_tree().current_scene
+			get_tree().current_scene.add_child(b)
+			toggle()
+			return "Performance test started: stand still for about a minute"
 		"heal":
 			Game.set_health(Game.max_health())
 			Game.set_stamina(Game.max_stamina())

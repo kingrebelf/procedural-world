@@ -175,7 +175,7 @@ static func build(t: String) -> ArrayMesh:
 		for j in int(dm.z / 2):
 			models.append(["village/Floor_WoodDark", 90 * ((i + j) % 2), Vector3(-dm.x / 2 + 1 + 2 * i, FLOOR - 0.01, -dm.z / 2 + 1 + 2 * j), 1.0])
 	k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.07, 0)), Vector3(dm.x - 0.5, 0.1, dm.z - 0.5))
-	k.box("planks", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.05, 0)), Vector3(dm.x - 0.5, 0.1, dm.z - 0.5))
+	k.box("wood_floor", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.05, 0)), Vector3(dm.x - 0.5, 0.1, dm.z - 0.5))
 	for j in int(dm.z / 2) + 1:
 		var z := -dm.z / 2 + WALL_IN + 0.1 + (dm.z - 2 * WALL_IN - 0.2) * j / int(dm.z / 2)
 		k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.2, z)), Vector3(dm.x - 0.5, 0.22, 0.2))
@@ -205,18 +205,21 @@ static func interior(t: String) -> ArrayMesh:
 	var hx := hearth_x(t)
 	var back := -dm.z / 2 + WALL_IN
 	# Hearth: a raised stone floor, cheeks, a timber mantel and the chimney breast.
-	k.box("cobble", I.translated(Vector3(hx, FLOOR + 0.1, back + 0.45)), Vector3(1.7, 0.2, 0.9))
+	k.box("stone_floor", I.translated(Vector3(hx, FLOOR + 0.1, back + 0.45)), Vector3(1.7, 0.2, 0.9))
 	for side in [-1.0, 1.0]:
-		k.box("stone", I.translated(Vector3(hx + side * 0.66, FLOOR + 0.7, back + 0.33)), Vector3(0.38, 1.0, 0.66))
+		k.box("hearth_brick", I.translated(Vector3(hx + side * 0.66, FLOOR + 0.7, back + 0.33)), Vector3(0.38, 1.0, 0.66))
 	k.box("stone_dark", I.translated(Vector3(hx, FLOOR + 0.7, back + 0.05)), Vector3(1.0, 1.0, 0.1))
 	k.box("timber", I.translated(Vector3(hx, FLOOR + 1.27, back + 0.38)), Vector3(1.9, 0.14, 0.78))
 	var breast := dm.y - (FLOOR + 1.34)
-	k.box("stone", I.translated(Vector3(hx, FLOOR + 1.34 + breast * 0.5, back + 0.28)), Vector3(1.4, breast, 0.56))
+	k.box("hearth_brick", I.translated(Vector3(hx, FLOOR + 1.34 + breast * 0.5, back + 0.28)), Vector3(1.4, breast, 0.56))
 	# The fire: crossed logs and embers.
 	for n in 3:
 		var b := Basis(Vector3.UP, n * 1.1 + 0.3) * Basis(Vector3.RIGHT, PI / 2)
 		k.cylinder("bark", Transform3D(b, Vector3(hx, FLOOR + 0.28, back + 0.4)) * I.translated(Vector3(0, -0.32, 0)), 0.06, 0.05, 0.64, 6)
 	k.sphere("glow_warm", I.translated(Vector3(hx, FLOOR + 0.3, back + 0.38)), 0.24, 5, 8, 0.3, 0.55)
+	if t != "townhouse":
+		# A hanging on the plain stretch of back wall away from the hearth.
+		Interiors.tapestry(k, I.translated(Vector3(-1.8, 1.8, back + 0.02)))
 	var rug: Array = RUGS[t]
 	var rc: Vector3 = rug[1]
 	var rs: Vector2 = rug[2]
