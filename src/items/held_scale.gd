@@ -66,13 +66,9 @@ const REAL := {
 	"shard_gauntlet": [0.12, 0.4],
 }
 
-## Known wrong, with whose model it is: the kit's sci-fi long guns (GunLook) are held at
-## the pistols' scale, so the rifles come out carbine-short. The test fails once one is
-## fixed, so it comes off this list.
-const OWED := {
-	"pulse_rifle": "GunLook (firearms)", "rail_rifle": "GunLook (firearms)",
-	"arc_launcher": "GunLook (firearms)",
-}
+## Known wrong, with whose model it is (none now). The test fails once one is fixed, so
+## it comes off this list.
+const OWED := {}
 
 ## What isn't in REAL (food, flasks, trinkets, scrolls, kits) by kind: it fits in a hand.
 const KIND_MAX := {"instrument": 1.1, "trap": 0.6}
