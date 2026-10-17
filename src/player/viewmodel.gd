@@ -83,12 +83,15 @@ const TOOL_PALM := Vector3(-0.6, -0.2, -1.0)
 ## ahead below the line of sight (so its barrel reads as pointing ahead, not off toward
 ## the middle of the view); a heavy gun's grip (stockless, or too big to shoulder at
 ## rest: HIP) at the hip; a bow's grip ahead, its stave canted left.
-const LONG_BUTT := Vector3(0.07, -0.24, 0.14)
+const LONG_BUTT := Vector3(0.12, -0.22, 0.16)
+## A shouldered gun's barrel is turned in this far toward the middle of the view, so its
+## side shows rather than the gun being seen end-on along its barrel.
+const LONG_TOE := 0.12
 const BUTT_POCKET := Vector3(-0.05, -0.03, -0.03)
 const HIP := ["minigun", "rocket_launcher"]
 const SHOULDER_AT := Vector3(0.17, -0.21, 0.04)
-const PISTOL_GRIP := Vector3(-0.05, -0.2, -0.4)
-const HEAVY_GRIP := Vector3(0.12, -0.38, -0.15)
+const PISTOL_GRIP := Vector3(0.0, -0.15, -0.34)
+const HEAVY_GRIP := Vector3(0.14, -0.32, -0.2)
 const BOW_GRIP := Vector3(0.1, -0.12, -0.38)
 const BOW_CANT := 0.3
 ## A tool's head faces this far left of straight ahead: a pick's point and an axe's edge
@@ -535,6 +538,7 @@ func _hold_gun() -> void:
 	elif m.has_meta("butt") and not _type in HIP:
 		pin = m.get_meta("butt")
 		at = LONG_BUTT
+		gb = Basis(Vector3.UP, LONG_TOE)
 	elif m.has_meta("fore"):
 		at = HEAVY_GRIP
 	# The arms come along with the gun: the right shoulder set where this hold puts it, so
