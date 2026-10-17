@@ -526,11 +526,12 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: C
 	var reg: PackedInt32Array = s["r"]
 	var cols := 8
 	var rows := maxi(4, int((neck - bottom) / 0.035))
-	var front := PackedVector3Array()
+	var front := PackedInt32Array()
 	for i in v.size():
 		if (reg[i] == 1 or reg[i] == 5 or reg[i] == 0) and v[i].z > 0.0 and v[i].y > bottom - 0.03 and v[i].y < neck + 0.03 and absf(v[i].x) < 0.24:
-			front.append(v[i])
+			front.append(i)
 	var grid: Array = []
+	var near: Array = [] # the skin vertex under each grid point, whose skinning it borrows
 	for ri in rows + 1:
 		var y := lerpf(bottom, neck - 0.01, float(ri) / rows)
 		# Wide over the chest (a smith's bib covers it, not a strip of it), narrowing to the neck.
@@ -540,10 +541,18 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: C
 			var x := lerpf(-half, half, float(ci) / cols)
 			# The body's front at (x, y): the furthest-forward skin near that point.
 			var z := -INF
-			for q in front:
+			var best := -1
+			var bd := INF
+			for i in front:
+				var q := v[i]
 				if absf(q.x - x) < 0.035 and absf(q.y - y) < 0.035:
 					z = maxf(z, q.z)
+				var d := Vector2(q.x - x, q.y - y).length_squared()
+				if d < bd:
+					bd = d
+					best = i
 			row.append(Vector3(x, y, (z if z > -INF else 0.1) + off))
+			near.append(best)
 		grid.append(row)
 	# Bridge the hollow under the chest: each column hangs no further back than the line
 	# between the rows above and below it.
@@ -554,12 +563,23 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: C
 				p.z = maxf(p.z, (grid[ri - 1][ci].z + grid[ri + 1][ci].z) * 0.5)
 				grid[ri][ci] = p
 	var base: int = o["v"].size()
+	var per: int = s["per"]
+	var bones: PackedInt32Array = s["b"]
+	var wts: PackedFloat32Array = s["w"]
 	for ri in rows + 1:
 		for ci in cols + 1:
 			var p: Vector3 = grid[ri][ci]
 			var u := clampf((p.y - float(s["waist"])) / (sy - float(s["waist"])), 0.0, 1.0)
 			var wb := {"spine_03": u, "spine_02": 1.0 - absf(u - 0.5) * 2.0, "spine_01": 1.0 - u}
 			_vert(s, o, p, Vector3(0, 0, 1), Vector2(float(ci) / cols, float(ri) / rows), wb, PART_APRON, col)
+			# Skinned like the chest beneath it, so a twist or a lean of the torso carries the
+			# bib with the shirt instead of sliding it off to one side.
+			var k: int = near[ri * (cols + 1) + ci]
+			if k >= 0:
+				var at: int = o["b"].size() - per
+				for j in per:
+					o["b"][at + j] = bones[k * per + j]
+					o["w"][at + j] = wts[k * per + j]
 	for ri in rows:
 		for ci in cols:
 			var a := base + ri * (cols + 1) + ci
@@ -583,7 +603,6 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: C
 				o["v"].append(q)
 				o["n"].append(Vector3(signf(p.x), 0, 0.2).normalized())
 				o["uv"].append(o["uv"][src])
-				var per: int = s["per"]
 				for j in per:
 					o["b"].append(o["b"][src * per + j])
 					o["w"].append(o["w"][src * per + j])
@@ -596,7 +615,7 @@ static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: C
 static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color, clear := 0.0, over := 0.0) -> void:
 	var top: float = s["shoulder_y"] + 0.02
 	var waist: float = s["waist"]
-	var cols := 30
+	var cols := 36
 	var rows := maxi(3, int((top - hem) / 0.06))
 	var base: int = o["v"].size()
 	# It wraps the back as a curve (the upper back's own depth), draping a little fuller
@@ -610,15 +629,15 @@ static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color, clear :=
 		var m := _measure(s, y, 0.03)
 		rz_back = minf(rz_back, float(m["back"]))
 		# Below the waist it also clears a tunic or skirt hanging under it.
-		var depth := maxf(cz - rz_back, 0.1) + 0.035 + over + 0.05 * k + clear * smoothstep(waist + 0.05, waist - 0.1, y)
-		var wide := float(s["shoulder_x"]) * lerpf(1.02, 1.35, k) + 0.02
+		var depth := maxf(cz - rz_back, 0.1) + 0.035 + over + 0.07 * k + clear * smoothstep(waist + 0.05, waist - 0.1, y)
+		var wide := float(s["shoulder_x"]) * lerpf(1.02, 1.45, k) + 0.02
 		var arc := deg_to_rad(lerpf(88.0, 74.0, k))
 		for ci in cols + 1:
 			var u2 := float(ci) / cols
 			var t := lerpf(-arc, arc, u2)
 			# Vertical folds hanging from the shoulders, deepening toward the hem, shaded by
 			# their own slope so the cape reads as heavy cloth rather than a board.
-			var amp := 0.006 + 0.02 * k
+			var amp := 0.006 + 0.034 * k
 			var fold := sin(u2 * TAU * 4.5 + 0.7) * amp
 			var out := Vector3(sin(t) * wide, 0.0, -cos(t) * depth)
 			var nrm := Vector3(sin(t) / wide, 0.0, -cos(t) / depth).normalized()
