@@ -88,6 +88,22 @@ func _tests() -> Array:
 			if nd:
 				nd.visible = not off
 				nd.process_mode = Node.PROCESS_MODE_DISABLED if off else Node.PROCESS_MODE_INHERIT])
+	# The same split: drawing only, their shadows only, and their scripts only.
+	for n in ["People", "Wildlife"]:
+		var nd = world.get_node_or_null(n)
+		if nd == null:
+			continue
+		t.append(["%s drawn" % n, func(off: bool): nd.visible = not off])
+		var casters: Array = []
+		for gi in nd.find_children("*", "GeometryInstance3D", true, false):
+			if (gi as GeometryInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				casters.append([gi, (gi as GeometryInstance3D).cast_shadow])
+		t.append(["%s shadows" % n, func(off: bool):
+			for c in casters:
+				if is_instance_valid(c[0]):
+					(c[0] as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if off else c[1]])
+		t.append(["%s scripts" % n, func(off: bool):
+			nd.process_mode = Node.PROCESS_MODE_DISABLED if off else Node.PROCESS_MODE_INHERIT])
 	return t
 
 static func _show_named(streamer: ChunkStreamer, n: String, on: bool) -> void:

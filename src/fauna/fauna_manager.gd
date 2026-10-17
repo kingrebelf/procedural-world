@@ -61,8 +61,14 @@ func _process(delta: float) -> void:
 		for c in _herds[k]:
 			if is_instance_valid(c):
 				if held:
-					# They notice, chase and flee from whichever player is nearest.
-					c.step(delta, g, Net.nearest_player(c.global_position, pp)[1])
+					# Out of sight and calm, an animal thinks and moves a quarter as often
+					# (with the time it skipped): nothing on screen changes.
+					c.lod_dt += delta
+					c.lod_tick += 1
+					if c.lod_tick % _step_every(c, eye, cam) == 0:
+						# They notice, chase and flee from whichever player is nearest.
+						c.step(c.lod_dt, g, Net.nearest_player(c.global_position, pp)[1])
+						c.lod_dt = 0.0
 					if shared:
 						out.append(c.net_state())
 				else:
@@ -80,6 +86,16 @@ func _process(delta: float) -> void:
 	if not out.is_empty():
 		Net.send_mobs("f", out)
 	_declutter(shown, cam, spotted, lv)
+
+## How many frames apart an animal steps: every frame on screen, near you or when it is
+## chasing or fleeing; every fourth frame otherwise.
+static func _step_every(c: Creature, eye: Vector3, cam: Camera3D) -> int:
+	if cam == null or c.state == "chase" or c.state == "flee":
+		return 1
+	var p := c.global_position
+	if eye.distance_squared_to(p) < 144.0 or cam.is_position_in_frustum(p + Vector3.UP * 0.5):
+		return 1
+	return 4
 
 ## Shows the tags of these animals, nearest (and the one you are spotting) first, but not
 ## one that would land on another's on screen: a flock shows a tag or two, not a pile.

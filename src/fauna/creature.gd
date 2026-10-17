@@ -403,6 +403,8 @@ func blocked(x: float, z: float) -> bool:
 
 ## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
 ## goal has swung round: same path, a tenth of the ground probes and rays.
+var lod_dt := 0.0 ## time saved up while FaunaManager skips frames for this animal
+var lod_tick := 0
 var _steer_at := Vector3.INF
 var _steer_from := Vector3.ZERO
 var _steer_turn := 0.0
