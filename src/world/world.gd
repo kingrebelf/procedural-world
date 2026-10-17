@@ -75,6 +75,11 @@ func _ready() -> void:
 	fauna.npcs = npcs
 	add_child(fauna)
 	player.fauna = fauna
+	var aquatic := AquaticLife.new()
+	aquatic.name = "WaterLife"
+	aquatic.streamer = streamer
+	aquatic.player = player
+	add_child(aquatic)
 	corpses = Corpses.new()
 	corpses.name = "Corpses"
 	corpses.streamer = streamer
