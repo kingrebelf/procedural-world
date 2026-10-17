@@ -100,6 +100,62 @@ func _water_checks(streamer: ChunkStreamer, player) -> void:
 	for i in 30:
 		await physics_frame
 
+## Treasure maps: picking one up buries a chest out there and marks it; a chest in land
+## that is already loaded is buried at once, dug out with the pickaxe and opened.
+func _treasure(game, world, streamer: ChunkStreamer, player) -> Dictionary:
+	var at: Vector3 = player.global_position
+	game.give(Treasure.make_map(0, {}))
+	var it = null
+	for i in game.inventory.slots.size():
+		var sl = game.inventory.get_slot(i)
+		if sl != null and sl["type"] == "treasure_map":
+			it = sl
+	check(it != null and it.has("hunt") and game.treasure.size() == 1, "picking up a treasure map starts a hunt")
+	if it == null or game.treasure.is_empty():
+		return {}
+	var h: Dictionary = game.treasure[0]
+	var d := Vector2(h["x"], h["z"]).distance_to(Vector2(at.x, at.z))
+	check(d > Treasure.MIN_DIST - 30.0 and d < Treasure.MAX_DIST + 30.0, "its chest lies a few hundred metres off (%d m)" % d)
+	check(game.markers.count_kind("treasure") == 1, "an X marks the spot on the map")
+	# A second hunt, pointed into loaded land outside any town, to dig up right here.
+	var cn: ChunkNode = null
+	var ck := ChunkStreamer.chunk_of(at)
+	for off in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+		var c: ChunkNode = streamer.get_chunk(ck + off)
+		if c != null and player.npcs.town_at(c.position + Vector3(32, 0, 32)).is_empty():
+			cn = c
+			break
+	check(cn != null, "a loaded chunk outside town to bury a chest in")
+	if cn == null:
+		return {}
+	var r := RandomNumberGenerator.new()
+	var near := {"id": 99, "planet": game.planet, "x": cn.position.x + 32.0, "z": cn.position.z + 32.0, "era": 0, "level": 1,
+		"loot": Treasure.roll_loot(0, r, cn.key), "found": false}
+	game.treasure.append(near)
+	world.get_node("Treasure").bury(cn, near)
+	var o := Treasure.chest_in(cn.data, 99)
+	check(not o.is_empty() and Treasure.covered(cn.data, o), "the chest is buried under the ground")
+	if o.is_empty():
+		return {}
+	world.get_node("Treasure").bury(cn, near)
+	var n := 0
+	for oo in cn.data["objects"]:
+		n += 1 if int(oo["st"].get("treasure", -1)) == 99 else 0
+	check(n == 1, "a chest is buried only once")
+	player._use_object(cn, o)
+	check(not o["st"]["opened"], "a buried chest can't be opened")
+	var wp: Vector3 = cn.position + o["p"]
+	var hits := 0
+	while Treasure.covered(cn.data, o) and hits < 40:
+		streamer.dig(wp, 1.6 + 0.6 * 0.6, 0.35 * 0.6)
+		hits += 1
+	check(not Treasure.covered(cn.data, o) and hits > 4, "dug out with %d pickaxe blows" % hits)
+	var m0: int = game.money
+	player._use_object(cn, o)
+	check(o["st"]["opened"] and near["found"] and game.money > m0, "opened, the chest pays out (%d Marks)" % (game.money - m0))
+	await _frames(5)
+	return {"key": cn.key, "id": 99, "open": int(h["id"])}
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -187,6 +243,7 @@ func _run() -> void:
 	streamer.dig(p, 2.0, 1.0)
 	var after := ChunkGenerator.height_at(here.data, lx, lz)
 	check(after < before - 0.5, "dig lowered terrain (%.2f -> %.2f)" % [before, after])
+	var tre := await _treasure(game, world, streamer, player)
 
 	# Pull up a plant of undergrowth: it vanishes and is remembered by its chunk.
 	var plant := Vector3.INF
@@ -478,6 +535,13 @@ func _run() -> void:
 	if not looted.is_empty():
 		var c3 = store.load_chunk(looted["key"].x, looted["key"].y)
 		check(c3["objects"][looted["i"]]["st"]["opened"], "looted cache stays empty")
+	if not tre.is_empty():
+		var tc = store.load_chunk(tre["key"].x, tre["key"].y)
+		var tch := Treasure.chest_in(tc, tre["id"])
+		check(not tch.is_empty() and tch["st"]["opened"] and not Treasure.covered(tc, tch), "the dug-up chest stays dug up and empty")
+		var th: Dictionary = game.hunt(tre["open"])
+		check(not th.is_empty() and not th["found"] and not (th["loot"] as Array).is_empty() and game.hunt(tre["id"])["found"], "hunts are saved, found or not, with what's buried")
+		check(game.markers.count_kind("treasure") == 1, "the open hunt keeps its X")
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")

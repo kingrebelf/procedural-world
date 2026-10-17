@@ -185,6 +185,22 @@ static func get_icon(type: String) -> Texture2D:
 			_line(img, Vector2(18, 54), Vector2(40, 22), 2, Color(0.66, 0.48, 0.3))
 			_poly(img, [Vector2(28, 12), Vector2(50, 26), Vector2(44, 36), Vector2(22, 22)], Color(0.48, 0.5, 0.54))
 			_poly(img, [Vector2(28, 12), Vector2(50, 26), Vector2(48, 29), Vector2(26, 15)], Color(0.7, 0.72, 0.76))
+		"treasure_map":
+			# A rolled-open parchment with a dotted trail to a red X.
+			_poly(img, [Vector2(8, 14), Vector2(56, 10), Vector2(54, 52), Vector2(10, 56)], c)
+			_rect(img, Rect2(6, 10, 6, 46), c.darkened(0.25))
+			_rect(img, Rect2(52, 8, 6, 46), c.darkened(0.25))
+			for i in 5:
+				_circle(img, Vector2(18 + i * 5, 46 - i * 5), 1.6, Color(0.35, 0.25, 0.15))
+			_line(img, Vector2(38, 18), Vector2(48, 28), 3, Color(0.75, 0.12, 0.1))
+			_line(img, Vector2(48, 18), Vector2(38, 28), 3, Color(0.75, 0.12, 0.1))
+		"treasure_chip":
+			_rect(img, Rect2(14, 12, 36, 40), c)
+			_rect(img, Rect2(20, 18, 24, 18), Color(0.12, 0.14, 0.16))
+			_line(img, Vector2(26, 23), Vector2(38, 31), 2, Color(0.95, 0.75, 0.3))
+			_line(img, Vector2(38, 23), Vector2(26, 31), 2, Color(0.95, 0.75, 0.3))
+			for i in 5:
+				_rect(img, Rect2(18 + i * 6, 44, 3, 8), Color(0.85, 0.7, 0.3))
 		"moonpearl", "data_core":
 			_circle(img, Vector2(32, 32), 18.0, c)
 			_circle(img, Vector2(26, 26), 6.0, c.lightened(0.6))

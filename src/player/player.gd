@@ -588,7 +588,7 @@ func _find_focus() -> Dictionary:
 					if wp.distance_squared_to(global_position) > 49.0:
 						continue
 					var use := _use_of(o)
-					if use.is_empty():
+					if use.is_empty() or Treasure.covered(c.data, o):
 						continue
 					var sc := _focus_score(eye, fwd, wp + Vector3(0, use["h"] * 0.5, 0))
 					if sc < best_s:
@@ -842,6 +842,13 @@ func _update_look_target() -> void:
 		var held = held_item()
 		var can_dig: bool = held != null and ItemDB.def(held["type"]).has("dig")
 		info = {"title": "Ground", "sub": "Terrain", "lines": ["Dig with a pickaxe or drill for Stone" if not can_dig else "[%s] dig: leaves a permanent crater" % _key("use")], "icon": "stone"}
+		var cn = h["chunk"]
+		if cn is ChunkNode and h.has("point"):
+			var lp: Vector3 = h["point"] - cn.position
+			for o in cn.data["objects"]:
+				if Treasure.covered(cn.data, o) and Vector2(o["p"].x - lp.x, o["p"].z - lp.z).length() < Treasure.MOUND_R + 1.0:
+					info = {"title": "Turned Soil", "sub": "Something is buried here", "lines": ["Dig it out with a pickaxe or drill"], "icon": Treasure.MAPS[0]}
+					break
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
@@ -912,6 +919,16 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			if WonderSite.sealed(chunk.data, o):
 				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 				return
+			if Treasure.covered(chunk.data, o):
+				Game.toast.emit("Still buried. Dig it out with a pickaxe.")
+				return
+			if not o["st"].has("map_roll") and not o["st"].has("treasure"):
+				# Now and then a cache holds a treasure map (decided when first opened).
+				o["st"]["map_roll"] = true
+				if randf() < Treasure.CACHE_CHANCE:
+					var era := maxi(int(o["e"]), 0)
+					(o["st"]["loot"] as Array).append(Treasure.make_map(era, Game.origin_here("found", era, chunk.key)))
+				Game.mark_chunk_dirty(chunk.data)
 			var wp: Vector3 = chunk.position + o["p"]
 			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.owns_house_at(wp) else {}
 			if not town.is_empty() and not _pick_lock(chunk, o, wp):
@@ -927,6 +944,8 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			o["st"]["loot"] = kept
 			o["st"]["opened"] = kept.is_empty()
 			Game.mark_chunk_dirty(chunk.data)
+			if o["st"].has("treasure") and o["st"]["opened"]:
+				Game.finish_treasure(int(o["st"]["treasure"]))
 			if not town.is_empty() and worth > 0:
 				# It belonged to someone here. Seen or not, it's stolen.
 				if not npcs.report_crime(wp, "theft", worth, ObjectLibrary.label(o["t"]).to_lower()):
@@ -1023,6 +1042,11 @@ func use_held() -> void:
 	if it != null and Vehicle.is_vehicle_item(it["type"]):
 		_cooldown = 0.5
 		deploy_vehicle()
+		return
+	if it != null and Treasure.is_map(it["type"]):
+		_cooldown = 0.5
+		var h := Game.hunt(int(it.get("hunt", -1))) if it.has("hunt") else Game.start_treasure(it)
+		Game.toast.emit(Treasure.hint(h, global_position))
 		return
 	if it != null and BuildCatalog.is_piece_item(it["type"]):
 		_cooldown = 0.25
@@ -1328,6 +1352,8 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			if Game.give(it):
 				spilled += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 		o["st"]["loot"] = []
+		if o["st"].has("treasure"):
+			Game.finish_treasure(int(o["st"]["treasure"]))
 		if spilled > 0 and npcs and not Game.owns_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
