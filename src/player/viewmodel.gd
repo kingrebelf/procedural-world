@@ -62,7 +62,7 @@ const SUPPORT_FINGERS := Vector3(1.0, -0.1, -0.45)
 ## Anything else you carry (food, a bottle, an ingot, a gauge) is held up nearer the middle
 ## of the view to be looked at: upright in a loose fist, the back of the hand turned out a
 ## little, and its face (+Z of the model) turned to your eye.
-const CARRY_REST := Vector3(-0.09, 0.06, 0.1)
+const CARRY_REST := Vector3(-0.07, 0.02, -0.02)
 const CARRY_AIM := Vector3(-0.15, 1.0, -0.25)
 const CARRY_PALM := Vector3(-1.0, 0.0, 0.2)
 ## Which way the palm of a hand holding a tool faces: ahead and in toward the middle, the
