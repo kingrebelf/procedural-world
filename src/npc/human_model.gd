@@ -182,6 +182,10 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	posture = BodyPosture.new()
 	posture.stoop = float(shape["stoop"])
 	posture.shoulder_in = float(shape["shoulder_in"])
+	posture.arms_out = float(shape["arms_out"])
+	posture.waddle = float(shape["waddle"])
+	posture.limp = float(shape["limp"])
+	posture.animator = animator
 	skeleton.add_child(posture)
 	ik = HumanIK.new()
 	skeleton.add_child(ik)

@@ -2,7 +2,8 @@ extends SceneTree
 ## Renders line-ups of villagers of every age, weight and build (BodyShape), front and
 ## side on, for judging body variety: slim to heavy, young to stooped and grey.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_bodies.gd -- --out=/abs/dir
-## --heads frames the heads close up (hair and faces). --check runs headless and
+## --heads frames the heads close up (hair and faces). --walk films them walking at their
+## own pace, three-quarter on (sway, limp, stoop). --check runs headless and
 ## prints each body's feet height and head height (feet must stay on the ground).
 
 ## [female, age, build (0.85..1.2), height (0.9..1.08), job]
@@ -37,9 +38,12 @@ func _run() -> void:
 	var out := "user://"
 	var check := false
 	var heads := false
+	var walk := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a == "--walk":
+			walk = true
 		elif a == "--heads":
 			heads = true
 		elif a == "--check":
@@ -88,11 +92,15 @@ func _run() -> void:
 		h.scale = Vector3(s, s, s)
 		h.position = Vector3((i - (n - 1) * 0.5) * (0.42 if heads else 0.9), 0, 0)
 		h.set_ground(flat)
+		if walk:
+			h.animator.manual = true
 		people.append(h)
 	var cam := Camera3D.new()
 	cam.fov = 30
 	vp.add_child(cam)
 	var shots := [["front", Vector3.ZERO], ["side", Vector3(0, PI * 0.5, 0)]]
+	if walk:
+		shots = [["walk", Vector3.ZERO]]
 	for shot in shots:
 		var yaw: float = (shot[1] as Vector3).y
 		for i in n:
@@ -100,13 +108,20 @@ func _run() -> void:
 			people[i].position.z = 0.0
 		cam.position = Vector3(0, 1.0, 7.4)
 		cam.look_at(Vector3(0, 0.9, 0))
+		if walk:
+			cam.position = Vector3(5.5, 1.3, 9.0)
+			cam.look_at(Vector3(0, 0.9, 2.6))
 		if heads:
 			cam.position = Vector3(0, 1.62, 1.55)
 			cam.look_at(Vector3(0, 1.5, 0))
 		var t0 := Time.get_ticks_msec()
 		var frames := 0
-		while frames < 12 or (Time.get_ticks_msec() - t0 < 900 and frames < 200):
-			for h in people:
+		while frames < (75 if walk else 12) or (not walk and Time.get_ticks_msec() - t0 < 900 and frames < 200):
+			for k in people.size():
+				var h := people[k]
+				if walk:
+					var row: Array = LINEUP[who[k]]
+					h.position.z += 1.35 * BodyShape.pace(_body(who[k]), int(row[1])) / 30.0
 				h.advance(1.0 / 30.0)
 			await process_frame
 			frames += 1

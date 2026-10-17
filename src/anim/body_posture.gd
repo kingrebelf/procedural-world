@@ -10,12 +10,22 @@ extends SkeletonModifier3D
 var stoop := 0.0
 ## How far each shoulder joint sits in from the kit hero's broad frame (rest units, m).
 var shoulder_in := 0.0
+## Arms held out from the body (radians): the heavy don't hang their arms against their sides.
+var arms_out := 0.0
+## Side-to-side sway over each planted foot while walking (heavy builds), 0..1.
+var waddle := 0.0
+## A limp: + favours the right leg, - the left, by how much (0..1).
+var limp := 0.0
+## Where the stride is: HumanAnimator.stride() (phase, how much on the move).
+var animator: HumanAnimator
 
 var _ready_bones := false
 var _bones: Array = [] ## [bone, local axis (character x in the bone's frame), angle per stoop]
 var _legs: Array = [] ## [thigh, calf, local axis thigh, local axis calf, leg length]
 var _pelvis := -1
-var _arms: Array = [] ## [upper arm, its rest position from the clavicle]
+var _arms: Array = [] ## [upper arm, its rest position from the clavicle, local forward axis, side +1 left]
+var _roll := -1 ## spine_01: the torso leans over the planted foot
+var _roll_axis := Vector3.ZERO
 
 ## Bend per unit of stoop, radians; the neck and head lift back so the eyes stay level.
 const CHAIN := [["spine_01", 0.13], ["spine_02", 0.18], ["spine_03", 0.25], ["neck_01", -0.2], ["Head", -0.24]]
@@ -35,7 +45,7 @@ func _setup(sk: Skeleton3D) -> void:
 			_bones.append([c, _axis(sk, c, Vector3.UP), SHOULDER * (-1.0 if s == "l" else 1.0)])
 		var ua := sk.find_bone("upperarm_" + s)
 		if ua >= 0:
-			_arms.append([ua, sk.get_bone_rest(ua).origin])
+			_arms.append([ua, sk.get_bone_rest(ua).origin, _axis(sk, ua, Vector3.BACK), 1.0 if s == "l" else -1.0])
 		var th := sk.find_bone("thigh_" + s)
 		var ca := sk.find_bone("calf_" + s)
 		var fo := sk.find_bone("foot_" + s)
@@ -44,6 +54,9 @@ func _setup(sk: Skeleton3D) -> void:
 			var l := sk.get_bone_global_rest(ca).origin.distance_to(sk.get_bone_global_rest(fo).origin)
 			_legs.append([th, ca, _axis(sk, th, Vector3.RIGHT), _axis(sk, ca, Vector3.RIGHT), a + l])
 	_pelvis = sk.find_bone("pelvis")
+	_roll = sk.find_bone("spine_01")
+	if _roll >= 0:
+		_roll_axis = _axis(sk, _roll, Vector3.BACK)
 
 ## A character-space axis in bone `b`'s own rest frame.
 static func _axis(sk: Skeleton3D, b: int, v: Vector3) -> Vector3:
@@ -51,15 +64,18 @@ static func _axis(sk: Skeleton3D, b: int, v: Vector3) -> Vector3:
 
 func _process_modification_with_delta(_delta: float) -> void:
 	var sk := get_skeleton()
-	if sk == null or (absf(stoop) < 0.01 and shoulder_in < 0.001):
+	if sk == null:
 		return
 	if not _ready_bones:
 		_setup(sk)
-	# Narrower shoulders: the arm hangs from further in along the collarbone.
-	if shoulder_in >= 0.001:
-		for a in _arms:
+	for a in _arms:
+		# Narrower shoulders: the arm hangs from further in along the collarbone.
+		if shoulder_in >= 0.001:
 			var r: Vector3 = a[1]
 			sk.set_bone_pose_position(a[0], r * maxf(1.0 - shoulder_in / maxf(r.length(), 0.01), 0.5))
+		if arms_out > 0.001:
+			sk.set_bone_pose_rotation(a[0], sk.get_bone_pose_rotation(a[0]) * Quaternion(a[2], arms_out * float(a[3])))
+	_gait(sk)
 	if absf(stoop) < 0.01:
 		return
 	for e in _bones:
@@ -78,3 +94,25 @@ func _process_modification_with_delta(_delta: float) -> void:
 	var pg := sk.get_bone_global_pose(_pelvis)
 	pg.origin.y -= drop
 	sk.set_bone_global_pose(_pelvis, pg)
+
+## Sway and limp, in step with the stride: the torso leans over the planted foot (the left
+## is down from phase 0 to 0.5); a limping body lurches and dips over its bad leg.
+func _gait(sk: Skeleton3D) -> void:
+	if animator == null or _roll < 0 or (waddle < 0.01 and absf(limp) < 0.01):
+		return
+	var st := animator.stride()
+	if st.y < 0.02:
+		return
+	var w := sin(st.x * TAU) # + while the left foot bears the weight
+	# Rotating about the body's back-to-front axis tips the torso toward -x (its right).
+	var lean := waddle * 0.07 * w
+	var dip := 0.0
+	if absf(limp) >= 0.01:
+		var on_bad := maxf(0.0, -w if limp > 0.0 else w)
+		lean += 0.13 * absf(limp) * on_bad * (-1.0 if limp > 0.0 else 1.0)
+		dip = 0.03 * absf(limp) * on_bad
+	sk.set_bone_pose_rotation(_roll, sk.get_bone_pose_rotation(_roll) * Quaternion(_roll_axis, -lean * st.y))
+	if dip > 0.0 and _pelvis >= 0:
+		var pg := sk.get_bone_global_pose(_pelvis)
+		pg.origin.y -= dip * st.y
+		sk.set_bone_global_pose(_pelvis, pg)

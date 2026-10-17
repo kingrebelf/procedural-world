@@ -14,7 +14,7 @@ extends RefCounted
 ##
 ## shape() keys (for clothing and anything else that fits the body):
 ##   age (years), weight 0..1 (slim..heavy), muscle 0..1 (soft..kit hero), old 0..1,
-##   stoop 0..1, shoulder_in (m the shoulder joints move in, BodyPosture), girth {bone name: [sx, sy, sz] in character space or [g] across the
+##   stoop 0..1, limp (-1..1, sign = side), waddle 0..1, arms_out (rad), shoulder_in (m the shoulder joints move in, BodyPosture), girth {bone name: [sx, sy, sz] in character space or [g] across the
 ##   bone, pivot offset Vector3}, stature (model scale), pace (walk speed multiplier).
 
 ## Jobs that build muscle, and jobs that don't.
@@ -73,7 +73,14 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	var stoop := clampf(old * (0.45 + 0.75 * _rnd(b, "stoop")) + (_rnd(b, "slouch") - 0.4) * 0.25, -0.1, 1.0)
 	# The kit hero's shoulders are broad as a door; most people's are not.
 	var shoulder_in := (0.032 * (1.0 - f) + 0.012 * f) * soft * (1.0 - 0.4 * w)
+	# A few limp (more of the old); heavy builds sway and hold their arms off their sides.
+	var limp := 0.0
+	if known and _rnd(b, "limp") < 0.05 + 0.12 * old:
+		limp = (0.5 + 0.5 * _rnd(b, "limp_how")) * (1.0 if _rnd(b, "limp_side") < 0.5 else -1.0)
+	var waddle := smoothstep(0.45, 1.0, w)
+	var arms_out := 0.03 + 0.16 * w + 0.04 * m
 	return {"age": yrs, "weight": w, "muscle": m, "old": old, "stoop": stoop, "female": fem, "shoulder_in": shoulder_in,
+		"limp": limp, "waddle": waddle, "arms_out": arms_out,
 		"girth": girth, "stature": stature(b, age), "pace": pace(b, age)}
 
 ## The model's uniform scale: the kit body is 1.82 m (male) and 1.78 m (female); people
