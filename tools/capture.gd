@@ -93,6 +93,9 @@ func _wait_ms(ms: int) -> void:
 func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 	for i in 3000:
 		await get_tree().process_frame
+		# Guards and wolves find you while the world loads: their bites fill the log.
+		if i % 30 == 0:
+			_shoo_creatures(p.global_position, 45.0, true)
 		var c := ChunkStreamer.chunk_of(p.global_position)
 		var ok := streamer._jobs.is_empty() and streamer._results.is_empty()
 		for dz in range(-streamer.view_radius, streamer.view_radius + 1):
@@ -107,8 +110,12 @@ func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 	if far == null:
 		return
 	var t0 := Time.get_ticks_msec()
+	var n := 0
 	while not far.settled_at(p.global_position) and Time.get_ticks_msec() - t0 < 60000:
 		await get_tree().process_frame
+		n += 1
+		if n % 30 == 0:
+			_shoo_creatures(p.global_position, 45.0, true)
 
 func _find_settlement(g: ChunkGenerator, era: int, min_size := 0) -> Dictionary:
 	for r in 40:
