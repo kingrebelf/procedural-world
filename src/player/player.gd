@@ -74,6 +74,10 @@ var swim := Swim.new()
 const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
 	"cloth": Color(0.36, 0.42, 0.3), "cloth2": Color(0.28, 0.23, 0.18), "height": 1.0, "build": 0.5}
 const BOOM := 3.2
+## The render layer your own body and pack are on in first person. Only the sun and moon
+## draw their shadows: a lamp or torch just behind you would throw your head's shadow,
+## blown up to fill the view, onto the wall in front (_shade_self).
+const SELF_LAYER := 1 << 19
 var third_person := false
 var body: HumanModel
 var _arm: SpringArm3D
@@ -132,10 +136,15 @@ func _ready() -> void:
 		body.set_ground(Callable(), [get_rid()])
 		# The armour you wear shows on your body (third person, and your shadow).
 		body.wear(Game.equipment)
-		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
+		Game.equipment_changed.connect(func():
+			body.wear(Game.equipment)
+			_tag_self())
 	jetpack = Jetpack.new()
 	add_child(jetpack)
 	_apply_view()
+	get_tree().node_added.connect(_shade_self)
+	for l in get_tree().root.find_children("*", "Light3D", true, false):
+		_shade_self(l)
 	builder = Builder.new()
 	builder.player = self
 	add_child(builder)
@@ -210,6 +219,7 @@ func _refresh_held() -> void:
 	if body:
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
+		_tag_self()
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -233,6 +243,23 @@ func _apply_view() -> void:
 		body.set_shadow_only(not third_person)
 	if jetpack:
 		jetpack.set_shadow_only(not third_person)
+	_tag_self()
+
+## Puts your body, what it holds and wears, and your pack on SELF_LAYER in first person
+## (layer 1 in third person, where every light shadows you).
+func _tag_self() -> void:
+	var layer := 1 if third_person else SELF_LAYER
+	for n in [body, jetpack]:
+		if n == null:
+			continue
+		for gi in (n as Node).find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).layers = layer
+
+## Lamps, torches and fires never shadow your first-person body (SELF_LAYER); the sun and
+## moon still do.
+func _shade_self(n: Node) -> void:
+	if n is OmniLight3D or n is SpotLight3D:
+		(n as Light3D).shadow_caster_mask &= ~SELF_LAYER
 
 ## Body animation from what the controller is doing; swings come from use_held.
 func _animate_body(hspeed: float) -> void:
