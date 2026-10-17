@@ -780,10 +780,12 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if hem > 0.0 and hem < 0.45 and p.y > float(s["knee"]) - 0.06:
 			return -1.0 # under a long skirt, hose only on the shins
-		if r == 5 and p.y <= waist - 0.03:
-			return t_pants
-		if r == 6 and p.y > boot_h - 0.03:
-			return t_pants
+		if (r == 5 and p.y <= waist - 0.03) or (r == 6 and p.y > boot_h - 0.03):
+			if fit <= 1.0:
+				return t_pants
+			# Work trousers hang straight from the seat: close over the thigh's bulk,
+			# roomier from the knee down, rather than ballooning like jodhpurs.
+			return lerpf(0.01, 0.022, clampf((float(s["knee"]) + 0.12 - p.y) / 0.25, 0.0, 1.0))
 		return -1.0, 30)
 	if fit > 1.0:
 		# A stand-up jacket collar.
@@ -799,15 +801,15 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 				_vert(s, o, p, Vector3(sin(ang), 0, cos(ang)), Vector2(float(si) / 24.0 * 4.0, ri * 0.2), {"spine_03": 1.0 - ri * 0.5, "neck_01": ri * 0.5}, PART_SHIRT, Color.WHITE)
 		for si in 24:
 			o["i"].append_array([nb + si, nb + si + 1, nb + 25 + si, nb + si + 1, nb + 26 + si, nb + 25 + si])
-		# Cargo pockets on the outside of each thigh and two on the chest.
+		# Cargo pockets on the outside of each thigh, and two on a man's chest.
 		var knee: float = s["knee"]
 		var crotch: float = s["crotch"]
 		_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 			if r == 5 and p.y > knee + 0.1 and p.y < crotch - 0.06 and absf(p.x) > 0.13 and absf(p.z + 0.03) < 0.06:
-				return t_pants + 0.012
-			return -1.0)
+				return 0.024
+			return -1.0, 8, 0.012)
 		_shell(s, o, PART_TRIM if vest_kind > 0 else PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-			if r == 1 and p.y > float(s["shoulder_y"]) - 0.2 and p.y < float(s["shoulder_y"]) - 0.09 and absf(p.x) > 0.04 and absf(p.x) < 0.13 and p.z > 0.0:
+			if not fem and r == 1 and p.y > float(s["shoulder_y"]) - 0.2 and p.y < float(s["shoulder_y"]) - 0.09 and absf(p.x) > 0.04 and absf(p.x) < 0.13 and p.z > 0.0:
 				return t_shirt + (0.03 if vest_kind > 0 else 0.01)
 			return -1.0)
 	# Boots (or low shoes) with a thicker turned-over top, and a roomy toe so they read
