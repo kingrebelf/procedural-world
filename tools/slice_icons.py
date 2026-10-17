@@ -2,7 +2,9 @@
 """Cuts a painted icon grid into the game's icon sheet (assets/icons/items.png).
 
 Usage: python3 tools/slice_icons.py <source image> [out.png] [--grid]
-(--grid: an even 6x5 grid without labels, e.g. assets/icons/items2.png)
+(--grid: an even 6x5 grid without labels, e.g. assets/icons/items2.png;
+ --strip: one row of items on a flat background, split wherever the background shows
+ between them, e.g. assets/icons/items_hunt.png)
 
 The source is a 6x5 grid in the order of Icons.SHEET_ORDER (src/ui/icons.gd). Each
 cell's flat background is keyed out by flood fill from the cell border, the icon is
@@ -18,11 +20,38 @@ ROWS = [(2, [140] * 6), (188, [330] * 6), (386, [540, 540, 545, 545, 540, 545]),
 C = 128
 
 
-def main(src, out, grid=False):
+def strip_columns(im, n=6):
+    """Column edges (in 1024-wide units) around the n items of a one-row strip: the
+    middles of the widest runs of background-only columns between them."""
+    w, h = im.size
+    px = im.load()
+    bg = px[2, 2]
+    empty = []
+    for x in range(w):
+        empty.append(all(sum(abs(px[x, y][i] - bg[i]) for i in range(3)) < 40 for y in range(0, h, 3)))
+    runs = []
+    x = 0
+    while x < w:
+        if empty[x]:
+            x0 = x
+            while x < w and empty[x]:
+                x += 1
+            if x0 > 0 and x < w:
+                runs.append((x - x0, (x0 + x) // 2))
+        else:
+            x += 1
+    cuts = sorted(c for _, c in sorted(runs, reverse=True)[:n - 1])
+    return [0] + [c * 1024.0 / w for c in cuts] + [1024]
+
+
+def main(src, out, grid=False, strip=False):
     im = Image.open(src).convert("RGB")
     sx, sy = im.size[0] / 1024.0, im.size[1] / 1024.0
     cols, rows = COLS, ROWS
-    if grid:
+    if strip:
+        cols = strip_columns(im)
+        rows = [(4, [1020] * 6)]
+    elif grid:
         # An evenly spaced 6x5 grid with no label text (later sheets).
         cols = [round(i * 1024 / 6) for i in range(7)]
         rows = [(round(r * 1024 / 5) + 10, [round((r + 1) * 1024 / 5) - 10] * 6) for r in range(5)]
@@ -47,7 +76,7 @@ def main(src, out, grid=False):
                 x, y, ref = q.popleft()
                 if (x, y) in seen or x < 0 or y < 0 or x >= w or y >= h:
                     continue
-                if sum(abs(px[x, y][i] - ref[i]) for i in range(3)) > 40:
+                if sum(abs(px[x, y][i] - ref[i]) for i in range(3)) > (14 if strip else 40):
                     continue
                 seen.add((x, y))
                 ap[x, y] = 0
@@ -87,5 +116,5 @@ def main(src, out, grid=False):
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--grid"]
-    main(args[0], args[1] if len(args) > 1 else "assets/icons/items.png", "--grid" in sys.argv)
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(args[0], args[1] if len(args) > 1 else "assets/icons/items.png", "--grid" in sys.argv, "--strip" in sys.argv)

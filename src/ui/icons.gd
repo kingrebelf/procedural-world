@@ -25,6 +25,9 @@ const SHEET2_ORDER := [
 	"battle_axe", "war_hammer", "longbow", "spear", "dagger", "mace",
 	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
 ]
+## Butchering goods (one row; tools/slice_icons.py --strip).
+const SHEET_HUNT_PATH := "res://assets/icons/items_hunt.png"
+const SHEET_HUNT_ORDER := ["bone", "animal_fat", "antler", "fur_pelt", "leather", "skinning_knife"]
 const BUILD_DIR := "res://assets/icons/build/"
 static var _sheets: Dictionary = {}
 
@@ -43,6 +46,9 @@ static func _from_sheet(type: String) -> Texture2D:
 	if SHEET2_ORDER.has(type):
 		order = SHEET2_ORDER
 		path = SHEET2_PATH
+	elif SHEET_HUNT_ORDER.has(type):
+		order = SHEET_HUNT_ORDER
+		path = SHEET_HUNT_PATH
 	var idx := order.find(type)
 	var sheet := _sheet_image(path) if idx >= 0 else null
 	if sheet == null:
