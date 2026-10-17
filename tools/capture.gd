@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -10,6 +10,9 @@ var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
 var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
+## --hud=none hides the 2D layer, --hud=under keeps only the underwater overlay of it and
+## --hud=nounder keeps all but that overlay: to tell whether an artefact is in the 3D image.
+var hud_mode := ""
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -19,6 +22,8 @@ func _ready() -> void:
 			settle_frames = a.substr(9).to_int()
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
+		if a.begins_with("--hud="):
+			hud_mode = a.substr(6)
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -30,6 +35,26 @@ func _ready() -> void:
 	# Nothing may kill the photographer (castle hounds did, mid-tour).
 	Game.cheats["god"] = true
 	_run.call_deferred()
+
+func _apply_hud_mode() -> void:
+	var hud: HUD = world.hud if world else null
+	if hud_mode == "" or hud == null:
+		return
+	var layer := hud.get_parent() as CanvasLayer
+	if hud_mode == "none":
+		layer.visible = false
+		return
+	# Hidden children move under one hidden holder: the HUD shows and hides them every
+	# frame, which can't override a hidden parent.
+	var hold := Control.new()
+	hold.visible = false
+	layer.add_child(hold)
+	for c in layer.get_children() + hud.get_children():
+		if c == hold or c == hud:
+			continue
+		if (c == hud._under) == (hud_mode == "nounder"):
+			c.reparent(hold, false)
+	print("hud mode ", hud_mode)
 
 func _wait(n: int) -> void:
 	for i in n:
@@ -175,6 +200,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 
 func _run() -> void:
 	await _wait(5)
+	_apply_hud_mode()
 	var g := ChunkGenerator.new(Game.seed)
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
