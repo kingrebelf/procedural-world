@@ -39,7 +39,7 @@ const YIELD := {
 }
 
 const LABEL := {
-	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
+	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Xeno Plant",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
 	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
@@ -111,6 +111,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 				return ku
 			Flora.build_under(kit, int(parts[1]), int(parts[2]))
 			return kit.commit(Materials.get_mat)
+		var hm := HiFlora.build(parts[0], int(parts[1]), int(parts[2]))
+		if hm != null:
+			return hm
 		var km := KitFlora.build(parts[0], int(parts[1]), int(parts[2]))
 		if km != null:
 			return km

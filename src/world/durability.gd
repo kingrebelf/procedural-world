@@ -11,7 +11,7 @@ const TABLE := {
 	"pine": ["wood", 7.0, [["wood", -1]]],
 	"glowcap": ["fungus", 5.0, [["glowberry", -1], ["glowroot", 1]]],
 	"crystal_tree": ["crystal", 8.0, [["glowroot", -1], ["aether_crystal", 1]]],
-	"solar_mast": ["metal", 30.0, [["circuitry", -1], ["alloy_scrap", 2]]],
+	"solar_mast": ["fungus", 12.0, [["circuitry", -1], ["alloy_scrap", 2]]],
 	"rock": ["stone", 5.0, [["stone", -1]]],
 	"iron_vein": ["ore", 8.0, [["iron_ore", -1], ["stone", 2]]],
 	"aether_crystal": ["crystal", 9.0, [["aether_crystal", -1]]],

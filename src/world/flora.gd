@@ -84,7 +84,8 @@ static func species(t: String, sp: int) -> Dictionary:
 			var forms := ["panel", "turbine", "antenna", "pylon", "xeno"]
 			var form: String = forms[r.randi() % forms.size()]
 			return {
-				"form": form, "noun": {"panel": "Solar Mast", "turbine": "Wind Turbine", "antenna": "Relay Antenna", "pylon": "Power Pylon", "xeno": "Xeno Bloom"}[form],
+				# Alien plants now (machines belong in facilities, not the wilds).
+				"form": form, "noun": HiFlora.XENO_NOUNS[HiFlora.xeno_form(sp)],
 				"height": r.randf_range(4.0, 11.0), "glow": r.randi() % 12,
 				"paint": Color.from_hsv(r.randf(), r.randf_range(0.0, 0.5), r.randf_range(0.35, 0.85)),
 				"blades": r.randi_range(2, 5), "tilt": r.randf_range(-0.7, -0.2),

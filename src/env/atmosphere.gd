@@ -207,6 +207,7 @@ func _update_time_of_day() -> void:
 	env.ambient_light_energy = lerpf(0.2, 0.6, daylight)
 	var night_glow := 0.15 + 1.25 * (1.0 - daylight)
 	ChunkNode.ensure_shared()
+	RenderingServer.global_shader_parameter_set("night_glow_g", night_glow)
 	ChunkNode.terrain_material.set_shader_parameter("night_glow", night_glow)
 	ChunkNode.terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
 	ChunkNode.grass_material.set_shader_parameter("night_glow", night_glow)
