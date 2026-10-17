@@ -3150,3 +3150,32 @@ func test_server_alliances() -> void:
 	check(not al.list.has(id), "an alliance ends with its last member")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
+
+func test_water_life() -> void:
+	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
+	# whole instances and its mesh builds. (Chunks of seed 4242 found by probing.)
+	var g := ChunkGenerator.new(4242)
+	var f := AquaFlora.Field.new(4242)
+	check(f.sea_t(-8 * 64.0 + 32.0, -52 * 64.0 + 32.0) > 0.9 and f.sea_t(24 * 64.0 + 32.0, -52 * 64.0 + 32.0) < 0.1, "sea and lake told apart")
+	var lake := {}
+	AquaFlora.build(g.generate(24, -52), 1.0, lake)
+	var sea := {}
+	var sea_chunk := g.generate(-8, -52)
+	AquaFlora.build(sea_chunk, 1.0, sea)
+	var again := {}
+	AquaFlora.build(sea_chunk, 1.0, again)
+	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lake has reeds and lily pads: %s" % [lake.keys()])
+	check(not lake.has("aq_coral_brain@0") and not lake.has("aq_kelp@0"), "no reef in a lake")
+	check(sea.has("aq_coral_branch@0") and sea.has("aq_coral_brain@0"), "the sea has a reef: %s" % [sea.keys()])
+	check(sea.hash() == again.hash(), "water plants are the same every time")
+	for k in lake.keys() + sea.keys():
+		var buf: PackedFloat32Array = lake.get(k, sea.get(k))
+		check(buf.size() % 16 == 0 and buf.size() > 0, "%s holds whole instances" % k)
+		check(AquaKit.SPECIES.has(k.get_slice("@", 0)), "%s is a known species" % k)
+	var dry := {}
+	AquaFlora.build(g.generate(0, 0), 1.0, dry)
+	check(dry.is_empty() or g.field.height(32.0, 32.0) < 1.0, "dry land grows no water plants")
+	for sp in AquaKit.SPECIES:
+		check(AquaKit.mesh(sp).get_surface_count() == 1, "%s mesh builds" % sp)
+	for k in FishKit.KINDS:
+		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)

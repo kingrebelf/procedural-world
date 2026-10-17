@@ -483,6 +483,8 @@ func _run() -> void:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
 		await _water_shots(g, shore)
+	if only.is_empty() or only.has("80") or only.has("81") or only.has("82") or only.has("83"):
+		await _aqua_shots(g)
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
 	if only.is_empty() or only.has("11") or only.has("12"):
@@ -968,6 +970,68 @@ func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 			Splashes.ring(Vector3(spot.x + 2.0, 0.0, spot.y + 1.0), 1.6)
 			await _wait(4)
 	await _shot("36_splash", shore - out * 2.0, spot, 0.42, 2.2, Water.LEVEL + 0.6, burst)
+
+## Life in the water: a coral reef and a kelp forest from under the sea, lily pads on a
+## lake from just above it, and a school of fish up close.
+func _aqua_shots(g: ChunkGenerator) -> void:
+	var best := {"reef": [0, Vector2.ZERO, Vector2.ZERO], "kelp": [0, Vector2.ZERO, Vector2.ZERO], "pad": [0, Vector2.ZERO, Vector2.ZERO]}
+	var tried := 0
+	for ring in range(0, 40):
+		for j in range(-ring, ring + 1):
+			for i in range(-ring, ring + 1):
+				if maxi(absi(i), absi(j)) != ring or tried > 60:
+					continue
+				var h := g.field.height(i * 64.0 + 32.0, j * 64.0 + 32.0)
+				if h > -1.0 or h < -14.0:
+					continue
+				tried += 1
+				var c := g.generate(i, j)
+				var out := {}
+				AquaFlora.build(c, 1.0, out)
+				for what in best:
+					var n := 0
+					var at := Vector2.ZERO
+					for k in out:
+						var hit: bool = (what == "reef" and k.begins_with("aq_coral")) or (what == "kelp" and k == "aq_kelp@0") or (what == "pad" and k.begins_with("aq_pad"))
+						if not hit:
+							continue
+						var buf: PackedFloat32Array = out[k]
+						n += buf.size() / 16
+						at = Vector2(i * 64.0 + buf[3], j * 64.0 + buf[11])
+					if n > best[what][0]:
+						best[what] = [n, at, Vector2(i * 64.0 + 32.0, j * 64.0 + 32.0)]
+	print("aqua spots: ", best)
+	var p: Player = world.player
+	for what in ["reef", "kelp"]:
+		if best[what][0] == 0:
+			continue
+		var at: Vector2 = best[what][1]
+		var mid: Vector2 = best[what][2]
+		var from := at + (mid - at).normalized().rotated(0.7) * 6.0 if at.distance_to(mid) > 1.0 else at + Vector2(6, 0)
+		p.underwater = true
+		await _shot("80_reef" if what == "reef" else "81_kelp", from, at, 0.45, 1.6, g.field.height(at.x, at.y) + (0.8 if what == "reef" else 3.0))
+		p.underwater = false
+	if best["pad"][0] > 0:
+		var at: Vector2 = best["pad"][1]
+		var from := at + Vector2(7, 3)
+		await _shot("82_lily_pond", from, at, 0.42, 1.5 - g.field.height(from.x, from.y), Water.LEVEL)
+	# A school of fish: the nearest one to the reef (or wherever we are), from a few
+	# metres off, under the water with it.
+	var life := world.get_node_or_null("WaterLife") as AquaticLife
+	if life == null:
+		return
+	var eye := p.global_position
+	var near: AquaticLife.School = null
+	for k in life._groups:
+		for grp in life._groups[k]:
+			if grp is AquaticLife.School and grp.pos.size() >= 5 and (near == null or grp.center.distance_to(eye) < near.center.distance_to(eye)):
+				near = grp
+	if near != null:
+		var cpos: Vector3 = near.center
+		var from := Vector2(cpos.x, cpos.z) + Vector2(5.5, 1.5)
+		p.underwater = true
+		await _shot("83_fish_school", from, Vector2(cpos.x, cpos.z), 0.45, cpos.y - g.field.height(from.x, from.y), cpos.y)
+		p.underwater = false
 
 ## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
 func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:

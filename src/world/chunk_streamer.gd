@@ -335,6 +335,7 @@ func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 		ChunkNode.detail_mult = detail
 		if ChunkNode.grass_material != null:
 			ChunkNode.grass_material.set_shader_parameter("detail", detail)
+			AquaKit.get_material().set_shader_parameter("detail", detail)
 		for k in chunks:
 			chunks[k].apply_detail()
 	# Only a real change regrows grass: Settings.changed fires for every setting.

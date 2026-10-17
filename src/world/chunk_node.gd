@@ -50,6 +50,7 @@ static func ensure_shared() -> void:
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_material.set_shader_parameter("detail", detail_mult)
+		AquaKit.get_material().set_shader_parameter("detail", detail_mult)
 		river_material = ShaderMaterial.new()
 		river_material.shader = load("res://src/env/river.gdshader")
 
@@ -333,6 +334,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		return out
 	if cover.is_empty():
 		cover = GroundCover.build(chunk)
+	var base_density := density
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 901)
 	var biome_tint := Color(0, 0, 0, 0)
 	var biome_era: int = Eras.nature(chunk.get("era", 0))
@@ -461,6 +463,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, -1.0])
 		out[key] = buf
+	# Lily pads, reeds, kelp and coral reefs (their own keys, "aq_...@0").
+	AquaFlora.build(chunk, base_density, out)
 	return out
 
 ## Ground clutter (stones, tiny glowing mushrooms, alloy debris, undergrowth), keyed by
@@ -895,15 +899,18 @@ func set_grass(bufs: Dictionary) -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
-		mm.mesh = GrassKit.mesh(sp)
+		var aqua := AquaKit.is_aqua(sp)
+		mm.mesh = AquaKit.mesh(sp) if aqua else GrassKit.mesh(sp)
 		mm.instance_count = buf.size() / 16
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.material_override = grass_material
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# A quarter's middle can be 23 m from its corner; the shader thins it out before.
-		_set_range(mmi, GrassKit.range_of(sp).y + 24.0)
+		mmi.material_override = AquaKit.get_material() if aqua else grass_material
+		# Reefs and kelp are big enough to shade the sand under them.
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if sp == "aq_kelp" or sp == "aq_coral_table" else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# A quarter's middle can be 23 m from its corner (aquatic clumps span the whole
+		# chunk: 46 m); the shader thins it out before.
+		_set_range(mmi, AquaKit.range_of(sp).y + 46.0 if aqua else GrassKit.range_of(sp).y + 24.0)
 		mmi.name = "Grass_" + key.replace("@", "_")
 		add_child(mmi)
 		_grass.append(mmi)
