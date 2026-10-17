@@ -108,11 +108,15 @@ static func _build_mesh(key: String) -> ArrayMesh:
 	if BuildCatalog.is_built(key):
 		return BuildCatalog.mesh(BuildCatalog.id_of(key))
 	if key.ends_with("~in"):
-		return KitHouse.interior(key.trim_suffix("~in"))
+		var room := key.trim_suffix("~in")
+		return KitHouse.interior(room) if KitHouse.has(room) else Interiors.interior(room)
 	if key.ends_with("~glow"):
-		return KitHouse.glow(key.trim_suffix("~glow"))
+		var room := key.trim_suffix("~glow")
+		return KitHouse.glow(room) if KitHouse.has(room) else Interiors.glow(room)
 	if KitHouse.has(key):
 		return KitHouse.build(key)
+	if Interiors.rebuilds(key):
+		return Interiors.build(key)
 	if KitBase.has(key):
 		return KitBase.build(key)
 	if Stronghold.has(key):
@@ -195,12 +199,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			k.box("timber", Transform3D(Basis(Vector3.UP, PI / 2).rotated(Vector3.UP, 0.25), Vector3(0, 1.85, 0.4)), Vector3(0.9, 0.22, 0.05))
 			k.box("stone", I.translated(Vector3(0, 0.12, 0)), Vector3(0.5, 0.25, 0.5))
 		"cottage": _cottage(k)
-		"watchtower": _watchtower(k)
 		"well": _well(k)
-		"shrine": _shrine(k)
-		"mushroom_house": _mushroom_house(k)
 		"spire": _spire(k)
-		"hab_dome": _hab_dome(k)
 		"comms_spire": _comms_spire(k)
 		"cargo_stack": _cargo_stack(k)
 		"trader": _trader(k)
@@ -305,6 +305,9 @@ static func get_shape(t: String) -> Array:
 	if KitHouse.has(t):
 		_shapes[t] = KitHouse.shape(t)
 		return _shapes[t]
+	if Interiors.has(t):
+		_shapes[t] = Interiors.shape(t)
+		return _shapes[t]
 	var s: Shape3D
 	var off := Vector3.ZERO
 	match kind(t):
@@ -333,11 +336,8 @@ static func get_shape(t: String) -> Array:
 			var b := BoxShape3D.new()
 			var sz: Vector3 = KitHouse.size_of(t) if KitHouse.has(t) else KitBase.size_of(t) if KitBase.has(t) else Landmark.SIZE[t] if Landmark.has(t) else TOWN_PROP_SIZE.get(t, Vector3(7, 6, 6))
 			match t:
-				"watchtower", "spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
+				"spire", "comms_spire": sz = Vector3(4.5, 16, 4.5)
 				"well": sz = Vector3(2.4, 2.5, 2.4)
-				"hab_dome": sz = Vector3(9, 5, 9)
-				"mushroom_house": sz = Vector3(5, 6, 5)
-				"shrine": sz = Vector3(5, 5, 5)
 				"cargo_stack": sz = Vector3(6.2, 5.2, 2.6)
 				"alien_ruin": sz = Vector3(6, 7, 6)
 			b.size = sz
@@ -469,19 +469,6 @@ static func _cottage(k: MeshKit) -> void:
 	k.box("glow_warm", I.translated(Vector3(-1.5, 2.4, -d / 2 - 0.04)), Vector3(0.8, 0.8, 0.04))
 	k.box("cobble", I.translated(Vector3(-w / 2 + 0.8, 4.4, -0.8)), Vector3(0.8, 3.0, 0.8))
 
-static func _watchtower(k: MeshKit) -> void:
-	var I := Transform3D.IDENTITY
-	k.cylinder("cobble", I, 2.3, 1.9, 12.0, 16, false, 0.03, 3)
-	k.cylinder("stone", I.translated(Vector3(0, 12.0, 0)), 2.4, 2.4, 0.5, 16)
-	for n in 8:
-		var a := TAU * n / 8
-		k.box("cobble", Transform3D(Basis(Vector3.UP, -a), Vector3(cos(a) * 2.1, 13.0, sin(a) * 2.1)), Vector3(0.6, 1.2, 0.6))
-	k.box("timber", I.translated(Vector3(0, 1.2, 2.05)), Vector3(1.0, 2.2, 0.3))
-	for y in [5.0, 8.5]:
-		k.box("glow_warm", I.translated(Vector3(0, y, 2.0)), Vector3(0.3, 0.8, 0.1))
-	k.cylinder("timber", I.translated(Vector3(0, 12.5, 0)), 0.06, 0.06, 4.0, 5)
-	k.box("cloth", I.translated(Vector3(0.6, 15.8, 0)), Vector3(1.2, 0.7, 0.03))
-
 static func _well(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY
 	k.cylinder("cobble", I, 1.1, 1.1, 0.9, 14, false, 0.02)
@@ -492,27 +479,6 @@ static func _well(k: MeshKit) -> void:
 	for s in [-1, 1]:
 		k.box("slate", Transform3D(Basis(Vector3(1, 0, 0), s * 0.7), Vector3(0, 2.7, s * 0.45)), Vector3(2.4, 0.08, 1.3))
 
-static func _shrine(k: MeshKit) -> void:
-	var I := Transform3D.IDENTITY
-	k.cylinder("rune_stone", I, 2.6, 2.6, 0.4, 20)
-	for n in 6:
-		var a := TAU * n / 6
-		k.cylinder("stem", I.translated(Vector3(cos(a) * 2.0, 0.4, sin(a) * 2.0)), 0.22, 0.18, 3.2, 8)
-	k.sphere("moss", I.translated(Vector3(0, 3.5, 0)), 2.5, 8, 16, 0.08, 0.55, Color.WHITE, true)
-	k.crystal("crystal", I.translated(Vector3(0, 0.4, 0)), 0.35, 2.0)
-	k.sphere("glow_teal", I.translated(Vector3(0, 3.0, 0)), 0.25, 6, 8)
-
-static func _mushroom_house(k: MeshKit) -> void:
-	var I := Transform3D.IDENTITY
-	k.cylinder("stem", I, 2.0, 1.6, 4.0, 18, false, 0.06, 3)
-	k.sphere("cap_teal", I.translated(Vector3(0, 3.8, 0)), 3.6, 10, 20, 0.1, 0.55, Color.WHITE, true)
-	k.box("timber", I.translated(Vector3(0, 1.1, 1.85)), Vector3(1.0, 2.0, 0.3))
-	for a in [0.9, -0.9, 2.6]:
-		k.sphere("glow_warm", I.translated(Vector3(sin(a) * 1.75, 2.6, cos(a) * 1.75)), 0.3, 5, 8)
-	for n in 12:
-		var a := n * 0.52
-		k.sphere("glow_violet", I.translated(Vector3(cos(a) * 3.0, 3.7, sin(a) * 3.0)), 0.1, 3, 5)
-
 static func _spire(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY
 	for n in 5:
@@ -521,20 +487,6 @@ static func _spire(k: MeshKit) -> void:
 	k.crystal("crystal_violet", I.translated(Vector3(0, 15.0, 0)), 0.6, 3.5)
 	for n in 3:
 		k.box("glow_violet", Transform3D(Basis(Vector3.UP, n * 2.1), Vector3(0, 4 + n * 3.0, 0)).translated_local(Vector3(0, 0, 1.55 - n * 0.3)), Vector3(0.25, 1.2, 0.05))
-
-static func _hab_dome(k: MeshKit) -> void:
-	var I := Transform3D.IDENTITY
-	k.cylinder("metal_dark", I, 4.6, 4.6, 0.5, 24)
-	k.sphere("panel", I.translated(Vector3(0, 0.5, 0)), 4.2, 12, 24, 0.0, 0.85, Color.WHITE, true)
-	k.cylinder("glow_cyan", I.translated(Vector3(0, 0.5, 0)), 4.25, 4.25, 0.08, 24, false)
-	k.box("metal", I.translated(Vector3(0, 1.4, 4.1)), Vector3(2.0, 2.8, 1.4))
-	k.box("glass", I.translated(Vector3(0, 1.3, 4.82)), Vector3(1.4, 2.2, 0.04))
-	k.box("glow_cyan", I.translated(Vector3(0, 2.75, 4.82)), Vector3(1.6, 0.08, 0.05))
-	for n in 6:
-		var a := TAU * n / 6 + 0.5
-		k.box("glass", Transform3D(Basis(Vector3.UP, -a + PI * 0.5), Vector3(cos(a) * 3.55, 2.4, sin(a) * 3.55)), Vector3(1.4, 0.5, 0.05))
-	k.cylinder("metal", I.translated(Vector3(1.5, 3.9, 0)), 0.08, 0.05, 2.5, 6)
-	k.sphere("glow_red", I.translated(Vector3(1.5, 6.45, 0)), 0.1, 4, 6)
 
 static func _comms_spire(k: MeshKit) -> void:
 	var I := Transform3D.IDENTITY

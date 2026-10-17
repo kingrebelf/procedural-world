@@ -185,13 +185,17 @@ func save_chunk(chunk: Dictionary) -> bool:
 
 ## The one way to obtain a chunk: from disk if it ever existed, otherwise generated
 ## and immediately snapshotted. Thread-safe as long as callers do not race on the
-## same (cx, cz), which ChunkStreamer guarantees.
+## same (cx, cz), which ChunkStreamer guarantees. Rooms get their loot the first time
+## either way, so chunks saved before rooms had loot are stocked when next loaded.
 func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 	var c = load_chunk(cx, cz)
 	if c is Dictionary:
+		if Interiors.stock(c):
+			save_chunk(c)
 		return c
 	c = gen.generate(cx, cz)
 	c["created"] = Time.get_unix_time_from_system()
+	Interiors.stock(c)
 	stitch_edges(c)
 	save_chunk(c)
 	return c

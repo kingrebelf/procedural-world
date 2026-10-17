@@ -2,7 +2,8 @@ class_name KitHouse
 ## Village houses assembled from the Medieval Village kit's modular pieces: 2 m wall
 ## modules, 3 m storeys, tiled roofs with brick gables. The door faces +z (the square).
 ## Houses can be walked into: the door stands open, the walls and roof collide, and the
-## rooms are furnished from the Fantasy Props kit. The furniture is its own mesh
+## rooms are furnished from the Fantasy Props kit, with a real chest to loot where
+## Interiors.LOOT puts it. The furniture is its own mesh
 ## (key "<type>~in") drawn only up close; from further off, lamplit panels behind the
 ## windows (key "<type>~glow") stand in for it.
 
@@ -39,7 +40,6 @@ const FURNISH := {
 		["props/Bed_Twin1", 0, Vector3(-1.6, F, -1.45), true],
 		["props/Stool", 0, Vector3(-0.3, F, -2.35), false],
 		["props/Candle_1", 0, Vector3(-0.3, F + 0.58, -2.35), false],
-		["props/Chest_Wood", 0, Vector3(-1.6, F, 0.3), true],
 		["props/Table_Large", 90, Vector3(1.75, F, 0.75), true],
 		["props/Chair_1", 90, Vector3(0.95, F, 0.2), false],
 		["props/Chair_1", 90, Vector3(0.95, F, 1.35), false],
@@ -73,7 +73,6 @@ const FURNISH := {
 		["props/Shelf_Small_Bottles", -90, Vector3(2.38, F + 1.0, 1.75), false],
 		["props/Cauldron", 0, Vector3(-1.2, F, 0.95), true],
 		["props/Vase_4", 0, Vector3(2.2, F, 0.6), false],
-		["props/Chest_Wood", -90, Vector3(2.25, F, -0.6), true],
 		["props/Chandelier", 0, Vector3(0, 5.95, 0), false],
 	],
 	"longhouse": [
@@ -92,7 +91,6 @@ const FURNISH := {
 		["props/Barrel", 0, Vector3(-0.35, F, -3.25), true],
 		["props/Cabinet", 90, Vector3(-2.5, F, 1.0), true],
 		["props/Shelf_Small_Bottles", 90, Vector3(-2.38, F + 1.0, 1.0), false],
-		["props/Chest_Wood", 90, Vector3(-2.25, F, 3.0), true],
 		["props/FarmCrate_Carrot", -90, Vector3(2.3, F, 2.1), true],
 		["props/Barrel_Apples", 0, Vector3(2.2, F, 3.2), true],
 		["props/Bucket_Wooden_1", 0, Vector3(1.45, F, 3.3), false],

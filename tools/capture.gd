@@ -197,6 +197,8 @@ func _run() -> void:
 						low = h
 						cam = c
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
+	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29")):
+		await _room_shots(g)
 	if g.landforms:
 		await _landform_shots(g)
 	var b := _find_border(g)
@@ -222,6 +224,52 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## Inside walk-in rooms, from just within the door: an outpost block, the nearest
+## stronghold's keep, and a mushroom house at night.
+func _room_shots(g: ChunkGenerator) -> void:
+	var picks: Array = [] ## [name, type, centre, yaw, ground height, day]
+	var sci := _find_settlement(g, Eras.SCIFI, 1)
+	if not sci.is_empty():
+		for it in g.settlement_layout(sci):
+			if it["t"] in ["lab_block", "hab_block", "ops_tower"]:
+				picks.append(["27_outpost_room", it["t"], it["p"], it["yaw"], float(sci["target_h"]), 0.45])
+				break
+	var fort := {}
+	for r in 8:
+		for cz in range(-r, r + 1):
+			for cx in range(-r, r + 1):
+				if fort.is_empty() and maxi(absi(cx), absi(cz)) == r:
+					fort = Stronghold.at_cell(g, cx, cz)
+	if not fort.is_empty():
+		for it in Stronghold.layout(g, fort):
+			if String(it["t"]).ends_with("_keep"):
+				picks.append(["28_keep_hall", it["t"], it["p"], it["yaw"], float(fort["target_h"]), 0.45])
+	var fan := _find_settlement(g, Eras.FANTASY)
+	if not fan.is_empty():
+		for it in g.settlement_layout(fan):
+			if it["t"] == "mushroom_house":
+				picks.append(["29_mushroom_night", it["t"], it["p"], it["yaw"], float(fan["target_h"]), 0.93])
+				break
+	for pk in picks:
+		var t: String = pk[1]
+		var c: Vector2 = pk[2]
+		var yaw: float = pk[3]
+		var fl := 0.2
+		var cam := Vector2.ZERO
+		var look := Vector2.ZERO
+		if Interiors.BOX.has(t):
+			var b: Array = Interiors.BOX[t]
+			fl = b[1]
+			cam = Vector2(float(b[5][0]), (b[0] as Vector2).y - 0.5)
+			look = Vector2(float(b[5][0]) * 0.3 - 1.0, -(b[0] as Vector2).y)
+		elif Interiors.ROUND.has(t):
+			var p: Array = Interiors.ROUND[t]
+			fl = p[5]
+			cam = Vector2(0, float(p[0]) - float(p[2]) - 0.45)
+			look = Vector2(-0.3, -2.0)
+		var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
+		await _shot(pk[0], to_w.call(cam), to_w.call(look), pk[5], fl - 0.1, float(pk[4]) + fl + 0.7)
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.

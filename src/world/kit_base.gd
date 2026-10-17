@@ -15,6 +15,8 @@ const WALL := {
 }
 const TOP := {"astra": "scifi/TopAstra_Straight", "band": "scifi/TopCables_Straight"}
 const STOREY := 5.0
+## Ground floor height, a step above the ground (world objects sink 0.15 m into it).
+const FLOOR := 0.2
 
 ## Yard facilities: fenced, so their parts read as one installation.
 const YARDS := {"solar_farm": Vector3(16, 2.2, 12), "depot": Vector3(12, 5.0, 12), "outpost_light": Vector3(0.9, 5.4, 0.9)}
@@ -36,14 +38,23 @@ static func build(t: String) -> ArrayMesh:
 		"solar_farm": _solar_farm(k, models)
 		"depot": _depot(k, models)
 		"outpost_light": _light(k, models)
-		_: _building(t, k, models)
+		_: _building(t, k, models, [])
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
 
+## Where the ground floor's lamplit window panels go (drawn from further off, so you
+## can see into the room up close).
+static func window_glows(t: String) -> Array:
+	var glows: Array = []
+	_building(t, MeshKit.new(1), [], glows)
+	return glows
+
 ## Walls go on each outer tile edge; a kit wall sits on its tile's -x edge, so the yaw
-## turns -x to face outwards.
-static func _building(t: String, k: MeshKit, models: Array) -> void:
+## turns -x to face outwards. The doors stand slid open and the floor sits a step
+## above the ground, so the room can be walked into (Interiors furnishes it). Ground
+## floor window panels go to `glows` rather than the mesh.
+static func _building(t: String, k: MeshKit, models: Array, glows: Array) -> void:
 	var p: Array = PLANS[t]
 	var nx: int = p[0]
 	var nz: int = p[1]
@@ -69,17 +80,23 @@ static func _building(t: String, k: MeshKit, models: Array) -> void:
 					if s == 0 and yaw == 90.0 and i == door_i:
 						var at := c + out * 2.0
 						models.append(["scifi/Door_Frame_Square", 0, at, 1.0])
-						models.append(["scifi/Door_Metal", 0, at + Vector3(0, 0, -0.05), 1.0])
-						models.append(["scifi/Door_Metal", 180, at + Vector3(0, 0, -0.05), 1.0])
+						# Both leaves slide into the wall beside them; at the corner tile there
+						# is no wall to the right, so both go left, one behind the other.
+						models.append(["scifi/Door_Metal", 0, at + Vector3(-1.95, 0, -0.05), 1.0])
+						models.append(["scifi/Door_Metal", 180, at + Vector3(1.95 if door_i < nx - 1 else -4.06, 0, -0.05), 1.0])
 						k.box("glow_white", Transform3D.IDENTITY.translated(at + Vector3(0, 4.35, 0.3)), Vector3(2.6, 0.07, 0.06))
 						continue
 					var window := (i + j + s) % 2 == 0 or yaw == 90.0 or r.randf() < 0.3
 					models.append([WALL[style][1 if window else 0], yaw, c, 1.0])
 					models.append([TOP[style], yaw, c, 1.0])
 					if window:
-						k.box("glow_white", Transform3D(Basis(Vector3.UP, deg_to_rad(yaw + 90.0)), c + out * 1.55 + Vector3(0, 1.6, 0)), Vector3(3.0, 1.4, 0.04))
+						var gx := Transform3D(Basis(Vector3.UP, deg_to_rad(yaw + 90.0)), c + out * 1.55 + Vector3(0, 1.6, 0))
+						if s == 0:
+							glows.append(gx)
+						else:
+							k.box("glow_white", gx, Vector3(3.0, 1.4, 0.04))
 				if s == 0:
-					models.append(["scifi/Platform_Simple", 0, c + Vector3(0, 0.03, 0), 1.0])
+					models.append(["scifi/Platform_Simple", 0, c + Vector3(0, FLOOR, 0), 1.0])
 		for cx in [-w / 2, w / 2]:
 			for cz in [-d / 2, d / 2]:
 				models.append(["scifi/Column_Pipes", 0, Vector3(cx, y, cz), 1.0])
@@ -99,7 +116,7 @@ static func _building(t: String, k: MeshKit, models: Array) -> void:
 		k.sphere("panel", Transform3D(b, Vector3(w / 2 - 1.2, top + 2.6, -d / 2 + 1.5)), 1.1, 6, 14, 0.0, 0.35, Color.WHITE, true)
 		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top + 4.1, -d / 2 + 1.2)), 0.12, 4, 6)
 	# Foundation pad, and a lit step out of the door.
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -0.45, 0)), Vector3(w + 1.4, 0.95, d + 1.4))
+	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.6, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
 	models.append(["scifi/Platform_DarkPlates", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.03, d / 2 + 2.0), Vector3(1, 1, 0.5)])
 	models.append(["scifi/Prop_Light_Floor", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.04, d / 2 + 2.9), 1.0])
 

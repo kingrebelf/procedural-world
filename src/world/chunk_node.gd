@@ -244,10 +244,10 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array(row)
 		by_key[key] = buf
-		# A house brings its furnished room (drawn up close) and its lamplit windows (from
-		# further off) as their own meshes.
-		if KitHouse.has(key):
-			for extra in [key + "~in", key + "~glow"]:
+		# A room you can walk into brings its furniture (drawn up close) and any lamplit
+		# windows (from further off) as their own meshes.
+		if KitHouse.has(key) or Interiors.has(key):
+			for extra in [key + "~in", key + "~glow"] if KitHouse.has(key) or Interiors.glows(key) else [key + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
 				eb.append_array(row)
 				by_key[extra] = eb
@@ -596,18 +596,18 @@ func _add_obj_body(o: Dictionary) -> void:
 	if sh.size() > 2:
 		cs.basis = sh[2]
 	b.add_child(cs)
-	if KitHouse.has(o["t"]):
-		# The hearth fire lights the room.
+	# A hearth, lamps or screens light the room inside.
+	for l in Interiors.lights(o["t"]):
 		var hl := OmniLight3D.new()
-		hl.light_color = Color(1.0, 0.62, 0.32)
-		hl.light_energy = 1.5
-		hl.omni_range = 6.5
+		hl.light_color = l[1]
+		hl.light_energy = l[2]
+		hl.omni_range = l[3]
 		hl.omni_attenuation = 1.4
 		hl.shadow_enabled = false
 		hl.distance_fade_enabled = true
 		hl.distance_fade_begin = 40.0
 		hl.distance_fade_length = 15.0
-		hl.position = KitHouse.light_at(o["t"])
+		hl.position = l[0]
 		b.add_child(hl)
 	if built:
 		var lc = BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("light")

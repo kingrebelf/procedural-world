@@ -112,7 +112,7 @@ func _run() -> void:
 	for k in streamer.chunks:
 		var c: ChunkNode = streamer.chunks[k]
 		for o in c.data["objects"]:
-			if ObjectLibrary.kind(o["t"]) == "cache" and not o["st"].get("opened", false):
+			if ObjectLibrary.kind(o["t"]) == "cache" and not o["st"].get("opened", false) and not o["st"].has("inside"):
 				if best_c == null or (c.position + o["p"]).distance_to(player.global_position) < (best_c.position + best_o["p"]).distance_to(player.global_position):
 					best_c = c
 					best_o = o
@@ -136,6 +136,7 @@ func _run() -> void:
 	check(not looted.is_empty(), "found a chest to loot")
 
 	await _walk_into_house(game, world, streamer, player)
+	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
@@ -554,6 +555,110 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	for mmi in hc.get_children():
 		room = room or (mmi is MultiMeshInstance3D and String(mmi.name).ends_with("~in"))
 	check(room, "the room is furnished")
+	# The house's chest: walk up to it and open it.
+	var chest := {}
+	var chest_c: ChunkNode = null
+	for k in streamer.chunks:
+		var cn: ChunkNode = streamer.chunks[k]
+		for o in cn.data["objects"]:
+			if o["st"].get("inside", "") == t and (cn.position + o["p"]).distance_to(hp + Vector3(0, (cn.position + o["p"]).y, 0)) < 4.0:
+				chest = o
+				chest_c = cn
+	check(not chest.is_empty() and chest["t"] == "chest" and not chest["st"]["opened"], "the %s has a chest to loot" % t)
+	if not chest.is_empty():
+		await _open_inside(player, chest_c, chest)
+
+## Walks up to a cache inside a room, as a player would, and opens it.
+func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
+	var f := Vector3(sin(o["r"]), 0, cos(o["r"]))
+	var cw: Vector3 = c.position + o["p"]
+	var stand := cw + f * 1.3
+	player.set_state({"pos": stand + Vector3(0, 0.1, 0), "yaw": atan2(f.x, f.z), "pitch": -0.45, "slot": 0})
+	await _frames(20)
+	check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "facing the %s in the %s offers to open it (%s)" % [o["t"], o["st"]["inside"], player.focus.get("verb", "nothing")])
+	player.interact()
+	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
+
+## Walk-in rooms beyond village houses: set each down near the player, walk in through
+## its door, stand on its floor, see it lit, and open the loot inside.
+func _rooms(game, streamer: ChunkStreamer, player) -> void:
+	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
+	# The flattest spot in the chunk, as a settlement's ground would be.
+	var lp := Vector3.ZERO
+	var rough := INF
+	for gz in range(14, 51, 4):
+		for gx in range(14, 51, 4):
+			var crowded := false
+			for o in rc.data["objects"]:
+				if not o["st"].get("gone", false) and Vector2(o["p"].x - gx, o["p"].z - gz).length() < 10.0:
+					crowded = true
+			if crowded:
+				continue
+			var h0 := ChunkGenerator.height_at(rc.data, gx, gz)
+			var worst := 0.0
+			for dz in range(-7, 8, 2):
+				for dx in range(-7, 8, 2):
+					worst = maxf(worst, absf(ChunkGenerator.height_at(rc.data, gx + dx, gz + dz) - h0))
+			if worst < rough:
+				rough = worst
+				lp = Vector3(gx, h0, gz)
+	print("  rooms stand where the ground varies %.2f m" % rough)
+	for t in ["ops_tower", "hab_dome", "mushroom_house", "castle_keep", "watchtower"]:
+		var era := Eras.SCIFI if t in ["ops_tower", "hab_dome"] else (Eras.FANTASY if t == "mushroom_house" else Eras.MEDIEVAL)
+		var n0: int = rc.data["objects"].size()
+		var room: Dictionary = rc.add_object(t, lp, 0.0, era, {})
+		# Rooms are stocked as their chunk loads; this one arrived later.
+		Interiors.stock(rc.data)
+		rc.set_objects(ChunkNode.build_object_buffers(rc.data))
+		for i in range(n0 + 1, rc.data["objects"].size()):
+			rc._add_obj_body(rc.data["objects"][i])
+		var door_x := 0.0
+		var front := 0.0
+		var fl := 0.0
+		var deep := 0.0
+		if Interiors.BOX.has(t):
+			var b: Array = Interiors.BOX[t]
+			door_x = b[5][0]
+			front = (b[3] as Vector2).y
+			fl = b[1]
+			deep = (b[0] as Vector2).y
+		elif Interiors.ROUND.has(t):
+			var p: Array = Interiors.ROUND[t]
+			front = p[0]
+			fl = p[5]
+			deep = float(p[0]) - float(p[2])
+		else:
+			front = 5.1
+			fl = Interiors.DOME[3]
+			deep = 3.6
+		var w: Vector3 = rc.position + lp
+		var stand := w + Vector3(door_x, 0, front + 1.2)
+		player.set_state({"pos": stand + Vector3(0, 0.3, 0), "yaw": 0.0, "pitch": 0.0, "slot": 0})
+		for i in 3:
+			await _frames(15)
+			player.global_position = stand + Vector3(0, 0.3, 0)
+			player.velocity = Vector3.ZERO
+		Input.action_press("move_forward")
+		for i in 150:
+			await physics_frame
+		Input.action_release("move_forward")
+		await _frames(10)
+		var l: Vector3 = player.global_position - w
+		check(l.z < deep - 0.4 and l.z > -deep, "walking in at the door of a %s takes you inside (%.1f, %.1f, %.2f)" % [t, l.x, l.z, l.y])
+		var floor_y: float = w.y - Interiors.SINK + fl
+		check(absf(player.global_position.y - floor_y) < 0.45, "you stand on the %s floor (%.2f m off)" % [t, player.global_position.y - floor_y])
+		var lit := false
+		for b in rc.get_children():
+			if b is StaticBody3D and b.get_meta("obj", -1) == room["i"]:
+				for c in b.get_children():
+					lit = lit or c is OmniLight3D
+		check(lit, "the %s is lit inside" % t)
+		var cache: Dictionary = rc.data["objects"][rc.data["objects"].size() - 1]
+		check(cache["st"].get("inside", "") == t, "the %s is stocked" % t)
+		await _open_inside(player, rc, cache)
+		rc.remove_object(cache["i"])
+		rc.remove_object(room["i"])
+		await _frames(2)
 
 ## v7 landforms colour the terrain through vertex data: a karst chunk's mesh carries
 ## pale limestone for every vertex, at every LOD.

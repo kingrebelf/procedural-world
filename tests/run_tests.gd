@@ -312,6 +312,117 @@ func test_house_interiors() -> void:
 		var floor_at := inside.y - _ray_hit(faces, inside, Vector3(0, -2.0, inside.z))
 		check(absf(floor_at - KitHouse.FLOOR) < 0.01, "%s: the floor collides where it is drawn (%.2f)" % [t, floor_at])
 
+func test_room_interiors() -> void:
+	for t in Interiors.FURNISH:
+		var shell := ObjectLibrary.get_mesh(t)
+		check(shell != null and shell.get_surface_count() >= 2, "%s builds" % t)
+		var room := ObjectLibrary.get_mesh(t + "~in")
+		check(room.get_surface_count() >= 2, "%s has a furnished room (%d surfaces)" % [t, room.get_surface_count()])
+		if Interiors.glows(t):
+			check(ObjectLibrary.get_mesh(t + "~glow").get_surface_count() == 1, "%s has lamplit windows" % t)
+		check(not Interiors.lights(t).is_empty() and Interiors.LOOT.has(t), "%s is lit and has loot" % t)
+		var faces: PackedVector3Array = (Interiors.shape(t)[0] as ConcavePolygonShape3D).get_faces()
+		# Where the doorway is, how high the floor is, and a point in the middle of the room.
+		var door_x := 0.0
+		var outside := 0.0
+		var past := 0.0
+		var fl := Interiors.SHRINE_FLOOR
+		var mid := Vector3.ZERO
+		if Interiors.BOX.has(t):
+			var b: Array = Interiors.BOX[t]
+			fl = b[1]
+			door_x = b[5][0]
+			outside = (b[3] as Vector2).y + 2.0
+			past = (b[0] as Vector2).y - 0.6
+			mid = Vector3(door_x, fl + 1.2, (b[0] as Vector2).y - 1.2)
+		elif Interiors.ROUND.has(t):
+			var p: Array = Interiors.ROUND[t]
+			fl = p[5]
+			outside = float(p[0]) + 2.0
+			past = float(p[0]) - float(p[2]) - 0.5
+			mid = Vector3(0, fl + 1.2, past - 0.3)
+		elif t == "hab_dome":
+			fl = Interiors.DOME[3]
+			outside = 6.5
+			past = 2.2
+			mid = Vector3(0, fl + 1.2, 1.4)
+		else:
+			outside = 4.0
+			past = 0.6
+			mid = Vector3(0, fl + 1.2, 1.2)
+		var open := true
+		for y in [0.4, 1.0, 1.8]:
+			for x in [-0.32, 0.0, 0.32]:
+				open = open and _ray_hit(faces, Vector3(door_x + x, fl + y, outside), Vector3(door_x + x, fl + y, past)) == INF
+		check(open, "%s: the doorway is open" % t)
+		var floor_at := mid.y - _ray_hit(faces, mid, mid + Vector3(0, -3.0, 0))
+		check(absf(floor_at - fl) < 0.02, "%s: the floor collides where it is drawn (%.2f, drawn %.2f)" % [t, floor_at, fl])
+		if t != "shrine":
+			var shut := true
+			for to in [Vector3(-20, 0, 0), Vector3(20, 0, 0), Vector3(0, 0, -20), Vector3(0, 20, 0)]:
+				shut = shut and _ray_hit(faces, mid, mid + to) < INF
+			check(shut, "%s: walls and ceiling are closed" % t)
+		# The loot goes on the floor, clear of the furniture you bump into.
+		for spot in Interiors.LOOT[t]:
+			var q: Vector3 = spot[0]
+			check(absf(q.y - fl) < 0.01, "%s: loot sits on the floor" % t)
+			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(spot[1]))), q)
+			var cb := xf * AABB(Vector3(-0.6, 0.05, -0.4), Vector3(1.2, 0.8, 0.8))
+			var clear := true
+			for e in Interiors.FURNISH[t]:
+				if e[3]:
+					var ex := Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2])
+					var bx: AABB
+					if String(e[0]).begins_with("@"):
+						var sz: Vector3 = Interiors.PIECES[e[0]]
+						bx = ex * AABB(Vector3(-sz.x * 0.5, 0, -sz.z * 0.5), sz)
+					else:
+						bx = KitHouse._model_box(e[0], ex)
+					if bx.intersects(cb):
+						clear = false
+						printerr("  %s: loot overlaps %s" % [t, e[0]])
+			check(clear, "%s: the loot spot is clear" % t)
+			check(_ray_hit(faces, xf * Vector3(0, 0.6, 1.0), xf * Vector3(0, 0.4, 0)) == INF, "%s: the loot can be reached from in front" % t)
+
+func test_rooms_get_stocked() -> void:
+	var chunk := {"cx": 3, "cz": -2, "seed": 77, "objects": [
+		{"i": 0, "t": "castle_keep", "e": 0, "p": Vector3(10, 5, 12), "r": 0.7, "s": 1.0, "st": {"tier": 3}},
+		{"i": 1, "t": "cottage", "e": 0, "p": Vector3(30, 4, 30), "r": -1.2, "s": 1.0, "st": {}},
+		{"i": 2, "t": "hab_dome", "e": 2, "p": Vector3(50, 6, 8), "r": 2.0, "s": 1.0, "st": {}},
+		{"i": 3, "t": "crypt_keep", "e": 1, "p": Vector3(5, 5, 50), "r": 0.0, "s": 1.0, "st": {"gone": true}},
+		{"i": 4, "t": "oak", "e": 0, "p": Vector3(20, 4, 20), "r": 0.0, "s": 1.0, "st": {}},
+	]}
+	check(Interiors.stock(chunk), "rooms are stocked")
+	var objs: Array = chunk["objects"]
+	check(objs.size() == 8, "one cache per loot spot, none in a ruin (%d objects)" % objs.size())
+	var kinds := []
+	for i in range(5, objs.size()):
+		var c: Dictionary = objs[i]
+		kinds.append(c["t"])
+		check(c["i"] == i and not (c["st"]["loot"] as Array).is_empty() and not c["st"]["opened"], "cache %d is indexed and full" % i)
+		var host: Dictionary = objs[0] if c["st"]["inside"] == "castle_keep" else (objs[1] if c["st"]["inside"] == "cottage" else objs[2])
+		var local: Vector3 = (Basis(Vector3.UP, host["r"]).inverse() * ((c["p"] as Vector3) - (host["p"] as Vector3)))
+		var spot: Vector3 = Interiors.LOOT[c["st"]["inside"]][0][0]
+		check(Vector2(local.x - spot.x, local.z - spot.z).length() < 0.01, "cache %d stands at its spot" % i)
+		check(absf((c["p"] as Vector3).y - (host["p"] as Vector3).y - spot.y) < 0.01, "cache %d stands on the floor (%.2f)" % [i, (c["p"] as Vector3).y - (host["p"] as Vector3).y])
+	check(kinds == ["chest", "chest", "supply_pod"], "each era's cache (%s)" % [kinds])
+	check(objs[0]["st"]["stocked"] and not objs[3]["st"].has("stocked") and not objs[4]["st"].has("stocked"), "only standing rooms are marked")
+	var before := var_to_bytes(objs)
+	check(not Interiors.stock(chunk) and var_to_bytes(chunk["objects"]) == before, "stocking twice changes nothing")
+	# The same chunk always rolls the same loot.
+	var again := {"cx": 3, "cz": -2, "seed": 77, "objects": [chunk["objects"][0].duplicate(true)]}
+	again["objects"][0]["st"].erase("stocked")
+	Interiors.stock(again)
+	check(var_to_bytes(again["objects"][1]["st"]["loot"]) == var_to_bytes(objs[5]["st"]["loot"]), "loot is deterministic")
+	# Chunks saved before rooms had loot get it when next loaded.
+	var s := _tmp_store("rooms")
+	var old := {"cx": 0, "cz": 0, "seed": 5, "heights": PackedFloat32Array(), "objects": [
+		{"i": 0, "t": "townhouse", "e": 0, "p": Vector3(20, 3, 20), "r": 0.0, "s": 1.0, "st": {}}]}
+	s.save_chunk(old)
+	var loaded := s.get_or_create_chunk(ChunkGenerator.new(5), 0, 0)
+	check(loaded["objects"].size() == 2 and loaded["objects"][1]["t"] == "chest", "an old chunk's house gets its chest")
+	check((s.load_chunk(0, 0) as Dictionary)["objects"].size() == 2, "and keeps it saved")
+
 static func _ray_hit(faces: PackedVector3Array, a: Vector3, b: Vector3) -> float:
 	var best := INF
 	for i in range(0, faces.size(), 3):

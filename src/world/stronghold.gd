@@ -83,14 +83,14 @@ static func layout(g: ChunkGenerator, f: Dictionary) -> Array:
 		items.append({"t": t, "p": c + q.rotated(-yaw), "yaw": yaw + face, "st": st})
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
-			put.call(pc[1], Vector2(sx, sz) * HALF, 0.0)
+			put.call(pc[1], Vector2(sx, sz) * HALF, 0.0, {"tier": tier})
 	# Walls: three 8 m sections per side, the gate in the middle of the front (+z).
 	for side in 4:
 		var face := side * PI / 2.0
 		for k in [-1, 0, 1]:
 			var q := Vector2(k * 8.0, HALF).rotated(-face)
 			put.call(pc[2] if side == 0 and k == 0 else pc[0], q, face)
-	put.call(pc[3], Vector2(0, -6.0), 0.0)
+	put.call(pc[3], Vector2(0, -6.0), 0.0, {"tier": tier})
 	# Loot in the courtyard and the keep's doorway: more and better with the tier.
 	var caches := ["chest", "rune_coffer", "supply_pod"]
 	var luck := 0.25 + 0.25 * tier
@@ -193,11 +193,13 @@ static func _merlons(k: MeshKit, mat: String, x0: float, x1: float, y: float, zo
 
 ## Brick walls on one face of a run of 2 m modules: `n` modules centred on the origin
 ## along local x, facing `yaw`, `rows` storeys high.
-static func _face(models: Array, n: int, rows: int, yaw: float, out: float, win_row: int, broken: bool, r: RandomNumberGenerator) -> void:
+static func _face(models: Array, n: int, rows: int, yaw: float, out: float, win_row: int, broken: bool, r: RandomNumberGenerator, door := -1) -> void:
 	var b := Basis(Vector3.UP, yaw)
 	for row in rows:
 		for m in n:
 			if broken and row == rows - 1 and r.randf() < 0.35:
+				continue
+			if row == 0 and m == door:
 				continue
 			var x := -n + 1.0 + m * 2.0
 			var piece := BRICK_WIN if row == win_row and m % 2 == 1 else BRICK
@@ -257,20 +259,22 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array) -> voi
 			if ruined:
 				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(0, 5.2, 1.02)), Vector3(1.2, 0.25, 0.04))
 		"keep":
-			# 8 by 8 m, three storeys, a door to the courtyard, crenellated roof.
+			# 8 by 8 m, three storeys, a door to the courtyard standing open into a hall you
+			# can walk into (Interiors furnishes it), crenellated roof.
 			for side in 4:
 				var yaw := side * PI / 2.0
-				_face(models, 4, 3, yaw, 4.0, 1, ruined, r)
+				_face(models, 4, 3, yaw, 4.0, 1, ruined, r, 2 if side == 0 else -1)
 			for c in [Vector3(-4, 0, -4), Vector3(4, 0, -4), Vector3(4, 0, 4), Vector3(-4, 0, 4)]:
 				for row in 3:
 					models.append(["village/Corner_Exterior_Brick", 0, c + Vector3(0, row * 3.0, 0), 1.0])
-			# Doorway: replace the front wall's ground row middle module with a door.
+			# Doorway: the front wall's ground row middle module, the door swung inwards.
 			models.append(["village/Wall_UnevenBrick_Door_Round", 0, Vector3(1, 0, 4.0), 1.0])
-			models.append(["village/Door_1_Round", 0, Vector3(1 - 0.53, 0, 3.88), 1.0])
+			models.append(["village/Door_1_Round", 100, Vector3(1 - 0.53, 0, 4.0 - 0.18), 1.0])
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, 9.15, 0)), Vector3(8.6, 0.3, 8.6))
 			for side in 4:
 				_merlons(k, face_stone, -4.2, 4.2, 9.3, 4.05, side * PI / 2.0, ruined, r)
-			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 0.05, 0)), Vector3(7.6, 0.1, 7.6))
+			var fl: float = Interiors.BOX["castle_keep"][1]
+			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, fl * 0.5, 0)), Vector3(7.6, fl, 7.6))
 			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.95, 0)), Vector3(7.6, 0.1, 7.6))
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
 			if ruined:
