@@ -10,7 +10,7 @@ class_name MarketCrowd
 ## "head_home"), so the decision engine, fear, the player and conversation all work on
 ## them as on anyone else.
 
-const BASE := [7, 10, 14] ## visitors per day, by town size
+const BASE := [6, 9, 12] ## visitors per day, by town size
 const NEAR := 130.0 ## they only come while you are this close to the town (they cost frames)
 const LEAVE := 0.35 ## hours before the end of their visit they set off for the road
 

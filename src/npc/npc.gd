@@ -541,6 +541,9 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
 		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"
 	_human.set_upper(up)
+	# Day visitors standing about (MarketCrowd) are a background crowd: animated a little
+	# less often unless you are close.
+	_human.animator.calm = rec.has("visit") and not moving and not talking and _speech_t <= 0.0 and (perform == "" or perform == "sit")
 	if action == "attack" and attack_cd > 1.3 and not rec.has("band"):
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":
