@@ -269,10 +269,11 @@ func _run() -> void:
 	await _frames(5)
 	var world = current_scene
 	var player = world.player
-	for i in 600:
+	# Waits by the clock, not by frames: the cheaper the frames, the more of them pass
+	# while the first chunks build on the workers.
+	var t0 := Time.get_ticks_msec()
+	while player.frozen and Time.get_ticks_msec() - t0 < 30000:
 		await process_frame
-		if not player.frozen:
-			break
 	check(not player.frozen, "player spawned on loaded ground")
 	await _frames(120)
 	var streamer: ChunkStreamer = world.streamer
