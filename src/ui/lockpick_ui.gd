@@ -50,7 +50,7 @@ func open_lock(chunk: ChunkNode, o: Dictionary, at: Vector3) -> void:
 	_obj = o
 	_at = at
 	var tier := Player.lock_of(o)
-	_game = LockGame.new(tier, int(Game.stats.skills["lock"]), absi(hash(str(o["p"]) + "sweet")))
+	_game = LockGame.new(tier, int(Game.stats.skills["lock"]) + int(Game.stats._b("lock") * 100.0), absi(hash(str(o["p"]) + "sweet")))
 	_done = false
 	visible = true
 	player.ui_open = true

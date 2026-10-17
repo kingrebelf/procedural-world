@@ -27,7 +27,10 @@ const KINDS := {
 			["helm_visor", "exo_chest", "exo_legs", "mag_boots", "gauntlets_power", "shield_emitter", "boots_leather",
 				"hat_cowboy", "duster", "gloves_riding", "chaps", "boots_riding", "hardhat_lamp", "overalls", "gloves_work",
 				"trousers_canvas", "boots_steeltoe", "welding_mask", "vest_plated", "gauntlets_heavy", "legplates_riveted",
-				"boots_iron", "shield_riot", "gasmask", "trenchcoat", "gloves_rubber", "trousers_wool_heavy", "boots_hobnail"]],
+				"boots_iron", "shield_riot", "gasmask", "trenchcoat", "gloves_rubber", "trousers_wool_heavy", "boots_hobnail",
+				"helm_recon", "suit_recon", "gloves_tactical", "pants_recon", "boots_tactical", "pack_recon", "helm_combat",
+				"armor_combat", "gloves_combat", "legs_combat", "boots_combat", "shield_ballistic", "helm_eva", "suit_eva",
+				"gloves_eva", "legs_eva", "boots_eva", "oxygen_pack", "helm_stealth", "boots_stealth"]],
 		"icon": ["helm_iron", "helm_elven", "helm_visor"],
 	},
 	"weaponsmith": {
@@ -44,7 +47,10 @@ const KINDS := {
 				"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
 				"derringer", "flare_gun", "harpoon_gun", "sabre", "machete", "tomahawk", "bowie_knife", "bayonet", "sledgehammer",
 				"dynamite", "frag_grenade", "fire_bottle", "bear_trap", "tripwire", "black_powder", "musket_balls",
-				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil"]],
+				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil", "laser_pistol", "smart_pistol", "needle_gun",
+				"carbine_combat", "auto_shotgun", "plasma_rifle", "gauss_rifle", "grenade_launcher", "vibro_knife", "stun_baton",
+				"combat_machete", "chain_axe", "smart_rounds", "energy_cell", "shells_12g", "plasma_canister", "gauss_slugs",
+				"frag_grenade_mk2", "smoke_grenade"]],
 		"icon": ["sword_iron", "sword_runic", "pulse_rifle"],
 	},
 	"apothecary": {
@@ -58,7 +64,8 @@ const KINDS := {
 				"herb_blue", "herb_yellow", "herb_mint", "herb_root", "empty_vial", "mortar_pestle", "honey"],
 			["health_potion", "stamina_potion", "glowberry", "moonpearl"],
 			["health_potion", "stamina_potion", "ration_pack", "medkit_frontier", "bandage_roll", "splint", "tonic_bottle",
-				"iodine", "syringe_glass", "tea_tin"]],
+				"iodine", "syringe_glass", "tea_tin", "painkillers", "bio_gel", "stimpack", "trauma_kit", "medkit_mil",
+				"antirad", "cryo_vial", "splint_mech", "eye_drops", "oxygen_mask", "o2_canister"]],
 		"icon": ["health_potion", "health_potion", "health_potion"],
 	},
 	"general": {
@@ -75,7 +82,10 @@ const KINDS := {
 				"wrench", "crowbar", "hand_drill", "pickaxe_miner", "axe_lumber", "lamp_kerosene", "gears", "springs",
 				"pipe_section", "valve", "pressure_gauge", "piston", "coal_sack", "oil_barrel", "rubber", "steel_sheet",
 				"copper_wire", "glass_pane", "compass", "backpack_canvas", "satchel", "water_canteen", "coffee_beans",
-				"beans_can", "jerky", "biscuit_hard", "apple_dried"]],
+				"beans_can", "jerky", "biscuit_hard", "apple_dried", "multitool", "survival_knife", "scanner", "flare_chem",
+				"rope_synth", "beacon_nav", "binoculars_digital", "toolbox_tech", "battery_small", "titanium_ingot", "polymer",
+				"circuit_board", "wiring_loom", "microchip", "servo", "optic_lens", "coolant", "magnet", "antenna", "solar_panel",
+				"hull_patch", "ration_bar", "water_pouch", "hydro_greens"]],
 		"icon": ["pickaxe_iron", "glowberry", "power_cell"],
 	},
 	"tavern": {
@@ -88,7 +98,9 @@ const KINDS := {
 				"pie_meat", "pie_berry", "soup_veg", "travel_bread", "milk", "wine", "mead", "fish_cooked", "dice", "pear", "grapes"],
 			["glowberry", "cooked_meat", "bread", "stamina_potion"],
 			["ration_pack", "cooked_meat", "stamina_potion", "steak", "chili", "cornbread", "coffee_pot", "whiskey",
-				"sarsaparilla", "pickles", "cheese_wheel_small", "egg_fried", "pancakes", "stew_tin", "cards_deck", "harmonica"]],
+				"sarsaparilla", "pickles", "cheese_wheel_small", "egg_fried", "pancakes", "stew_tin", "cards_deck", "harmonica",
+				"synth_steak", "noodles", "freeze_meal", "protein_pack", "nutri_paste", "fruit_cube", "algae_bar",
+				"space_coffee", "energy_drink", "chess_set", "music_player"]],
 		"icon": ["cooked_meat", "glowberry", "ration_pack"],
 	},
 	"land": {
@@ -150,22 +162,27 @@ const GUILDS := {
 	"mercenary_guild": {"era": 2, "label": "Mercenary Guild", "job": "contract broker", "fee": 220,
 		"names": ["Iron Wolves", "The Free Company", "Blackstar Contractors"], "favours": ["armourer", "weaponsmith"],
 		"goods": ["pulse_rifle", "rail_rifle", "exo_chest", "exo_legs", "rounds", "shield_emitter", "health_potion",
-			"bolt_rifle", "lever_rifle", "rifle_cartridges", "vest_plated", "shield_riot", "frag_grenade", "sheriff_star"], "icon": "rail_rifle",
+			"bolt_rifle", "lever_rifle", "rifle_cartridges", "vest_plated", "shield_riot", "frag_grenade", "sheriff_star",
+			"rocket_launcher", "rocket", "minigun", "flamethrower", "fuel_canister", "breach_charge", "proximity_mine",
+			"emp_grenade", "turret_deploy", "dog_tags", "medal"], "icon": "rail_rifle",
 		"perk": "Members pay less at armour depots and armories."},
 	"engineers_guild": {"era": 2, "label": "Engineers' Guild", "job": "chief engineer", "fee": 240,
 		"names": ["The Gearwrights", "Union of Builders", "The Torque Society"], "favours": ["general"],
 		"goods": ["power_cell", "circuitry", "alloy_plate", "pickaxe_plasma", "jet_fuel", "jetpack", "pocket_watch",
-			"pressure_gauge", "piston", "valve", "dynamite", "powder_keg", "welding_mask", "gauntlets_heavy"], "icon": "power_cell",
+			"pressure_gauge", "piston", "valve", "dynamite", "powder_keg", "welding_mask", "gauntlets_heavy",
+			"laser_cutter", "welder", "mining_laser", "repair_kit", "graphene", "carbon_fiber", "nanotube_spool", "processor",
+			"sensor_module", "gyroscope", "thruster_part", "superconductor", "fusion_core", "shield_gen", "drone_scout"], "icon": "power_cell",
 		"perk": "Members pay less for supplies and buy jetpacks."},
 	"smugglers_syndicate": {"era": 2, "label": "Smugglers' Syndicate", "job": "fence", "fee": 140,
 		"names": ["The Back Channel", "Dark Dock", "The Grey Market"], "favours": [], "fence": true,
 		"goods": ["void_gem", "data_core", "scrap_pistol", "dungeon_key", "safe_key", "derringer", "cigar_box", "whiskey",
-			"gold_nugget"], "icon": "void_gem",
+			"gold_nugget", "hack_tablet", "keycard_red", "keycard_blue", "suit_stealth", "gloves_stealth", "legs_stealth",
+			"credit_chip", "holo_projector"], "icon": "void_gem",
 		"perk": "Members can fence treasure here at a much better price."},
 	"pilots_guild": {"era": 2, "label": "Pilots' Guild", "job": "flight master", "fee": 280,
 		"names": ["Wings of the Frontier", "The Long Haul Club", "Skyward Union"], "favours": ["*"],
 		"goods": ["jet_fuel", "jetpack", "flashlight", "mag_boots", "speeder", "compass", "spectacles", "banjo",
-			"bandana"], "icon": "jetpack",
+			"bandana", "grapple", "headset", "motion_tracker", "magboots_kit", "jetpack_military", "lucky_charm_dice"], "icon": "jetpack",
 		"perk": "Members get better prices in every shop."},
 }
 
@@ -291,6 +308,16 @@ static func icon_of(kind: String, era: int) -> String:
 	if is_guild(kind):
 		return GUILDS[kind]["icon"]
 	return KINDS[kind]["icon"][era]
+
+## The keeper's wares within reach of the town's zone (themed worlds): a frontier store
+## at level 12 has no power armour on the shelf; out past level 40 it does.
+static func pool_for(rec: Dictionary) -> Array:
+	var all := goods_of(String(rec["shop_kind"]), int(rec["era"]))
+	if not Eras.themed() or not rec.get("pos") is Vector3:
+		return all
+	var p: Vector3 = rec["pos"]
+	var cap := Eras.zone_level(p.x, p.z) + 5
+	return all.filter(func(t): return int(ItemDB.UNLOCK.get(t, 1)) <= cap)
 
 static func goods_of(kind: String, era: int) -> Array:
 	if is_guild(kind):
@@ -586,13 +613,13 @@ static func trade_state(rec: Dictionary, h: Dictionary, guilds: Dictionary) -> D
 		r.seed = hash(String(rec["id"])) ^ 0x5409
 		var title: String = h.get("title", rec["name"])
 		var st := {"era": era, "name": "%s · %s" % [title, rec["name"]], "foreign": 1.3 + r.randf() * 0.5,
-			"stock": {}, "demand": {}, "last_day": 0.0, "restock_seed": r.randi(), "pool": goods_of(kind, era)}
+			"stock": {}, "demand": {}, "last_day": 0.0, "restock_seed": r.randi(), "pool": pool_for(rec)}
 		Economy._restock(st, 0)
 		_fill(st)
 		rec["shop"] = st
 	var s: Dictionary = rec["shop"]
 	# Wares added since the shop first opened (older saves) come in with the next restock.
-	s["pool"] = goods_of(kind, era)
+	s["pool"] = pool_for(rec)
 	var day := NPCMind.game_day()
 	var cycle := int(floor(float(s["last_day"]) / Economy.RESTOCK_DAYS))
 	Economy.tick(s, day)
