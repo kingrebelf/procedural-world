@@ -39,12 +39,13 @@ const MESH_LOD := [6.0, 3.0, 1.0, 0.5] ## Viewport.mesh_lod_threshold per mesh_d
 
 const DEFAULTS := {
 	"preset": "High",
-	"window_mode": 1, "resolution": "native", "vsync": 1, "fps_cap": 0, "fov": 80.0,
+	"window_mode": 1, "resolution": "native", "vsync": 1, "fps_cap": 0, "fov": 90.0,
 	"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "sharpness": 0.2,
 	"aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0, "gi": GI.SDFGI, "ssao": true, "ssr": true,
 	"volumetric_fog": 1, "sun_shafts": true, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
 	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
-	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "stick_sensitivity": 3.0,
+	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "head_bob_strength": 1.0, "stick_sensitivity": 3.0,
+	"motion_blur": true, "motion_blur_strength": 0.3,
 	"master_volume": 0.8, "music_volume": 0.5, "sfx_volume": 0.8, "ambience_volume": 0.7,
 	"show_fps": false, "menu_flyover": true,
 }
@@ -59,6 +60,11 @@ func _ready() -> void:
 	if not load_settings():
 		_first_run()
 	apply()
+
+## The "fov" setting is the horizontal angle on a 16:9 screen, as most shooters give it;
+## cameras take the vertical angle (and keep it, so a wider screen sees more at the sides).
+static func vertical_fov(horizontal: float) -> float:
+	return rad_to_deg(2.0 * atan(tan(deg_to_rad(horizontal) * 0.5) * 9.0 / 16.0))
 
 func get_value(k: String):
 	return values.get(k, DEFAULTS.get(k))

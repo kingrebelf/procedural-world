@@ -24,6 +24,8 @@ var ores := {} ## "cx,cz" -> [{t, x, z, n}]: each kind of ore in the chunk, at i
 var people := {} ## npc id -> {name, job, town, x, z}: everyone you have spoken with
 ## What the atlas and minimap show, by category (see category()); missing means shown.
 var filters := {}
+## The overlay painted over the land (MapLayers.OFF, LEVELS, ...; set_layer).
+var layer := 0
 
 ## Filter categories in the order the atlas lists them: [key, label, icon].
 const CATEGORIES := [["wonder", "Wonders", "wonder"], ["town", "Settlements", "village"],
@@ -38,6 +40,10 @@ func shows(cat: String) -> bool:
 
 func set_shown(cat: String, on: bool) -> void:
 	filters[cat] = on
+	_index_dirty = true
+
+func set_layer(l: int) -> void:
+	layer = l
 	_index_dirty = true
 
 ## Everything known of one category as [{name, x, z, ...}], for the atlas's finder.
@@ -119,6 +125,7 @@ func open(store: WorldStore, visited: Dictionary) -> void:
 			ores = idx.get("ores", {})
 			people = idx.get("people", {})
 			filters = idx.get("filters", {})
+			layer = int(idx.get("layer", 0))
 	for key in visited:
 		var p: PackedStringArray = String(key).split(",")
 		var k := Vector2i(p[0].to_int(), p[1].to_int())
@@ -137,6 +144,7 @@ func close() -> void:
 	ores = {}
 	people = {}
 	filters = {}
+	layer = 0
 	_queue.clear()
 	_migrate.clear()
 	_last = Vector2(INF, INF)
@@ -156,7 +164,7 @@ func save(background := false) -> void:
 			pg.unsaved = false
 	if _index_dirty:
 		files.append([_dir.path_join("index.dat"), {"pois": pois.duplicate(true), "wonders": wonders.duplicate(true), "ores": ores.duplicate(true),
-			"people": people.duplicate(true), "filters": filters.duplicate(true)}])
+			"people": people.duplicate(true), "filters": filters.duplicate(true), "layer": layer}])
 		_index_dirty = false
 	_wait_save()
 	if files.is_empty():

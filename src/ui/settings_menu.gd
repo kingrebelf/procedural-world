@@ -8,6 +8,9 @@ signal closed
 var _rows: Dictionary = {}
 var _building := false
 
+## Settings > AI > Voice engine choices, in menu order.
+const ENGINES := ["auto", "builtin", "ai", "system"]
+
 func _ready() -> void:
 	theme = UITheme.get_theme()
 	custom_minimum_size = Vector2(860, 640)
@@ -124,6 +127,8 @@ func _graphics_tab() -> Control:
 	_check(g, "sun_shafts", "Light shafts", "Rays of sunlight through trees, gaps and windows.")
 	_check(g, "glow", "Bloom")
 	_check(g, "auto_exposure", "Auto exposure")
+	_check(g, "motion_blur", "Motion blur", "A slight smear when you turn or move fast, as a camera shutter gives. The held item stays sharp.")
+	_slider(g, "motion_blur_strength", "Motion blur amount", 0.1, 1.0, 0.05, "%.2f", "How long the shutter stays open, in 60ths of a second. 0.3 is subtle; 1.0 is film-like.")
 	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")
 	_option(g, "effects", "Effects quality", ["Low", "Medium", "High"], "Sample counts for ambient occlusion, screen-space and SDFGI light. Low and Medium run GI at half resolution.")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
@@ -146,7 +151,7 @@ func _display_tab() -> Control:
 	_option(g, "resolution", "Window resolution", res.map(func(r): return "Native" if r == "native" else r), "Used in windowed mode.", res)
 	_option(g, "vsync", "V-Sync", ["Off", "On", "Adaptive", "Mailbox"])
 	_option(g, "fps_cap", "Frame rate limit", ["Unlimited", "30", "60", "90", "120", "144", "165", "240"], "", [0, 30, 60, 90, 120, 144, 165, 240])
-	_slider(g, "fov", "Field of view", 60, 110, 1, "%d°")
+	_slider(g, "fov", "Field of view", 70, 120, 1, "%d°", "The horizontal angle you see on a 16:9 screen, as most shooters measure it. 90 is usual; wider screens see more at the sides.")
 	_check(g, "show_fps", "Show FPS counter")
 	return p
 
@@ -156,7 +161,8 @@ func _controls_tab() -> Control:
 	_slider(g, "mouse_sensitivity", "Mouse sensitivity", 0.02, 0.5, 0.01, "%.2f")
 	_slider(g, "stick_sensitivity", "Controller look speed", 0.5, 8.0, 0.1, "%.1f")
 	_check(g, "invert_y", "Invert vertical look")
-	_check(g, "head_bob", "Head bob")
+	_check(g, "head_bob", "Head bob and sway", "Your view rises and falls with each step, sways side to side, dips when you land and leans a little as you strafe.")
+	_slider(g, "head_bob_strength", "Head bob amount", 0.2, 1.5, 0.05, "%.2f")
 	var pads := Input.get_connected_joypads()
 	_label(g, "Controller")
 	g.add_child(UITheme.label(Input.get_joy_name(pads[0]) if not pads.is_empty() else "None connected (Xbox, PlayStation and generic pads are supported)", 15, UITheme.DIM))
@@ -256,12 +262,12 @@ func _ai_tab() -> Control:
 	_ai_line(g, "decide_url", "Fast decision service URL", "Optional. An HTTP endpoint that picks NPC actions every 2 s (see docs/AI.md). Leave empty to use the built-in engine.")
 	_ai_line(g, "decide_key", "Decision service key", "Optional bearer token for the decision service.", true)
 	_ai_check(g, "voices", "Spoken voices", "People say their lines aloud.")
-	_label(g, "Voice engine", "Natural voices come from a voice server (below) and sound like real people with accents. This PC's voices work offline but sound robotic.")
+	_label(g, "Voice engine", "The built-in natural voices come with the game and run offline: everyone has their own voice and accent. A voice server (below) can be used instead. This PC's voices sound robotic.")
 	var eng := OptionButton.new()
-	for t in ["Natural when a voice server is set, else this PC's", "Natural voices (voice server)", "This PC's voices"]:
+	for t in ["Automatic (voice server if set, else built-in)", "Built-in natural voices", "Natural voices (voice server)", "This PC's voices"]:
 		eng.add_item(t)
-	eng.select(maxi(["auto", "ai", "system"].find(AI.get_value("voice_engine")), 0))
-	eng.item_selected.connect(func(i): AI.set_value("voice_engine", ["auto", "ai", "system"][i]))
+	eng.select(maxi(ENGINES.find(AI.get_value("voice_engine")), 0))
+	eng.item_selected.connect(func(i): AI.set_value("voice_engine", ENGINES[i]))
 	g.add_child(eng)
 	_ai_fields["voice_engine"] = eng
 	_ai_line(g, "tts_url", "Voice server", "OpenAI-compatible /audio/speech. Empty uses the OpenAI provider above if that is your provider. Free and local: a Kokoro server (e.g. Kokoro-FastAPI, http://127.0.0.1:8880/v1) or speaches. Cloud: https://api.openai.com/v1")
@@ -341,7 +347,7 @@ func _ai_refresh() -> void:
 		elif k == "format":
 			c.select(1 if v == "anthropic" else 0)
 		elif k == "voice_engine":
-			c.select(maxi(["auto", "ai", "system"].find(v), 0))
+			c.select(maxi(ENGINES.find(v), 0))
 	var off: bool = AI.get_value("provider") == "off"
 	for k in _ai_fields:
 		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key",
@@ -354,26 +360,35 @@ func _ai_refresh() -> void:
 			elif c is Range:
 				c.editable = not off
 
+## Each press is someone new: another voice, age and accent.
 func _voice_test() -> void:
-	var rec := {"id": "voice_test_%d" % randi(), "name": "Edda Thorne", "job": "farmer", "era": 0, "age": 40, "mood": "happy",
-		"body": {"female": randf() < 0.5}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
+	var era := 0 if randf() < 0.6 else 2
+	var rec := {"id": "%d_%d_%d" % [randi() % 99, randi() % 99, randi() % 40], "name": "Edda Thorne", "job": "farmer", "era": era,
+		"age": [9, 16, 25, 34, 45, 58, 70][randi() % 7], "mood": "happy",
+		"body": {"female": randf() < 0.5, "build": randf_range(0.85, 1.2)}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
+	var line: String = ["Well met! Fine weather for the road, isn't it?", "Mind the mud by the well, it's been raining since Tuesday."][randi() % 2] if era == 0 \
+		else ["Hey there. Power's back on in the east block, finally.", "You picked a good day to land. Supply drop came in early."][randi() % 2]
 	var e := AI.voice_engine()
 	if e == "":
 		_ai_status.text = "Spoken voices are off."
 		return
 	if e == "ai":
-		_ai_status.text = "Asking the voice server..."
-		var r: Dictionary = await AI.speech("Well met, traveller! Fine weather for the road, isn't it?", Voice.natural_for(rec))
+		var builtin: bool = AI.tts_target().get("model", "") == "builtin"
+		_ai_status.text = "Loading the built-in voices..." if builtin else "Asking the voice server..."
+		var r: Dictionary = await AI.speech(line, Voice.natural_for(rec))
 		if not is_instance_valid(_ai_status):
 			return
 		if not r["ok"]:
-			_ai_status.text = "Voice server failed: %s. Using this PC's voices until it works." % r["error"]
+			_ai_status.text = "%s failed: %s. Using this PC's voices until it works." % ["Built-in voices" if builtin else "Voice server", r["error"]]
 			return
-		_ai_status.text = "Natural voice: %s." % Voice.natural_for(rec)["voice"]
+		var o := Voice.natural_for(rec)
+		_ai_status.text = ("Built-in voice %s, a %d-year-old %s." % [o["voice"], rec["age"], "woman" if rec["body"]["female"] else "man"]) if builtin else "Natural voice: %s." % o["voice"]
+		Voice.speak(rec, line)
+		return
 	else:
 		var v := Voice.voice_for(rec)
 		_ai_status.text = "This PC's voice: %s. For natural voices, set a voice server." % (v.get("id", "none") if not v.is_empty() else "none installed")
-	Voice.speak(rec, "Well met, traveller! Fine weather for the road, isn't it?")
+	Voice.speak(rec, line)
 
 func _mic_test() -> void:
 	var mic := Microphone.new()

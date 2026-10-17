@@ -14,7 +14,8 @@ extends RefCounted
 ##
 ## shape() keys (for clothing and anything else that fits the body):
 ##   age (years), weight 0..1 (slim..heavy), muscle 0..1 (soft..kit hero), old 0..1,
-##   stoop 0..1, limp (-1..1, sign = side), waddle 0..1, arms_out (rad), shoulder_in (m the shoulder joints move in, BodyPosture), girth {bone name: [sx, sy, sz] in character space or [g] across the
+##   stoop 0..1, limp (-1..1, sign = side), waddle 0..1, arms_out (rad), hip (-1..1, the
+##   leg they stand on, + left), shoulder_in (m the shoulder joints move in, BodyPosture), girth {bone name: [sx, sy, sz] in character space or [g] across the
 ##   bone, pivot offset Vector3}, stature (model scale), pace (walk speed multiplier).
 
 ## Jobs that build real muscle, jobs that keep people wiry, and jobs that don't.
@@ -81,9 +82,13 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	if known and _rnd(b, "limp") < 0.05 + 0.12 * old:
 		limp = (0.5 + 0.5 * _rnd(b, "limp_how")) * (1.0 if _rnd(b, "limp_side") < 0.5 else -1.0)
 	var waddle := smoothstep(0.45, 1.0, w)
-	var arms_out := 0.03 + 0.24 * w + 0.04 * m
+	# The kit idle holds the arms out like a hero's; slim people let them hang closer.
+	var arms_out := -0.18 + 0.4 * w + 0.06 * m
+	# Standing, most rest their weight on one leg (the hip up on that side), some more
+	# than others; the side is their habit (+ the left leg).
+	var hip := (0.35 + 0.65 * _rnd(b, "hip")) * (1.0 if _rnd(b, "hip_side") < 0.5 else -1.0) * (1.0 - 0.4 * old)
 	return {"age": yrs, "weight": w, "muscle": m, "old": old, "stoop": stoop, "female": fem, "shoulder_in": shoulder_in,
-		"limp": limp, "waddle": waddle, "arms_out": arms_out,
+		"limp": limp, "waddle": waddle, "arms_out": arms_out, "hip": hip,
 		"girth": girth, "stature": stature(b, age), "pace": pace(b, age)}
 
 ## The model's uniform scale: the kit body is 1.82 m (male) and 1.78 m (female); people
@@ -116,6 +121,28 @@ static func hair_color(b: Dictionary, age := -1) -> Color:
 	var to := GREY.lerp(WHITE, smoothstep(62.0, 82.0, yrs))
 	# Fair hair goes straight to white; dark hair keeps some of its depth (salt and pepper).
 	return c.lerp(to.darkened(0.25 * (1.0 - c.get_luminance()) * (1.0 - g)), g)
+
+## Facial hair for a man: 0 clean-shaven, 1 stubble, 2 moustache, 3 moustache and chin
+## (goatee), 4 short beard, 5 full beard. The young grow fewer full beards, the old more.
+## `age` < 0 (players and age-less previews): facial hair on odd hair styles, as players
+## chose it, its style (moustache to full beard) their own.
+static func beard(b: Dictionary, age := -1) -> int:
+	if b.get("female", false):
+		return 0
+	if age < 0:
+		return 2 + mini(int(_rnd(b, "beard") * 4.0), 3) if int(b.get("hair_style", 0)) % 2 == 1 else 0
+	var r := _rnd(b, "beard")
+	var full := smoothstep(18.0, 40.0, float(age)) # share of full beards grows with age
+	var odds := [0.3, 0.18, 0.12, 0.14, 0.13 * (0.5 + 0.5 * full), 0.13 * full]
+	var total := 0.0
+	for o in odds:
+		total += o
+	r *= total
+	for i in odds.size():
+		r -= odds[i]
+		if r <= 0.0:
+			return i
+	return 0
 
 ## Whether an older man has lost his hair.
 static func bald(b: Dictionary, age := -1) -> bool:

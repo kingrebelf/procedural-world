@@ -1308,6 +1308,26 @@ func _map_filters(side: VBoxContainer) -> void:
 		cb.toggled.connect(func(on): Game.map.set_shown(cat, on))
 		grid.add_child(cb)
 	side.add_child(grid)
+	# The overlay painted over the land, one at a time (also the map overlay key).
+	side.add_child(UITheme.label("Map overlay", 18, UITheme.ACCENT))
+	var lg := GridContainer.new()
+	lg.columns = 2
+	var group := ButtonGroup.new()
+	for i in MapLayers.COUNT:
+		var rb := CheckBox.new()
+		rb.text = MapLayers.NAMES[i]
+		rb.button_group = group
+		rb.add_theme_font_size_override("font_size", 14)
+		rb.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+		rb.button_pressed = Game.map.layer == i
+		# Ticks like the filters above (the default radio rings barely show on the panel).
+		for ic in [["radio_checked", "checked"], ["radio_unchecked", "unchecked"]]:
+			rb.add_theme_icon_override(ic[0], ThemeDB.get_default_theme().get_icon(ic[1], "CheckBox"))
+		for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			rb.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		rb.toggled.connect(func(on): if on: Game.map.set_layer(i))
+		lg.add_child(rb)
+	side.add_child(lg)
 
 static var _find := "ore_iron_vein"
 

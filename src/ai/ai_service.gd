@@ -40,13 +40,13 @@ const DEFAULTS := {
 	"decide_url": "", ## Optional external fast-decision endpoint.
 	"decide_key": "",
 	"decide_timeout": 1.5,
-	"voices": true, ## People speak their lines aloud with this PC's text-to-speech voices.
+	"voices": true, ## People speak their lines aloud.
 	"voice_volume": 80,
 	"voice_barks": true, ## Also speak greetings and calls from passers-by, not just conversation.
 	"stt_url": "", ## Speech-to-text server (OpenAI-compatible /audio/transcriptions); empty = the AI provider above.
 	"stt_key": "",
 	"stt_model": "",
-	"voice_engine": "auto", ## "auto" (natural AI voices when a server for them is set, else this PC's), "ai" or "system".
+	"voice_engine": "auto", ## "auto" (a voice server when one is set, else the built-in natural voices, else this PC's), "builtin", "ai" or "system".
 	"tts_url": "", ## Natural voices: an OpenAI-compatible /audio/speech server (OpenAI, or a local Kokoro / speaches server).
 	"tts_key": "",
 	"tts_model": "",
@@ -62,9 +62,16 @@ var stats := {"requests": 0, "failures": 0, "last_latency_ms": 0}
 var _active := 0
 var _recent: Array = [] ## Unix times of recent model requests (rate limiting).
 
+var voice_server: VoiceServer
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	load_config()
+	voice_server = VoiceServer.new()
+	add_child(voice_server)
+	# Load the built-in voices in the background now, so the first line is quick.
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("server") and voice_engine() == "ai" and _builtin_voices():
+		voice_server.start()
 
 # --- Configuration -------------------------------------------------------------------
 
@@ -479,11 +486,26 @@ static func parse_windows_stt(raw: String) -> Dictionary:
 
 # --- Natural voices (text to speech) ----------------------------------------------------------
 
-## Where lines go to become natural speech: {url, key, model}, or {} for none. An empty
-## address uses the AI provider only when that is OpenAI itself; local chat servers
-## (Ollama, LM Studio...) don't speak, so they need a voice server set here, such as a
-## free local Kokoro or speaches server.
+## Where lines go to become natural speech: {url, key, model}, or {} for none. A voice
+## server set in Settings comes first (unless the built-in voices are chosen), then the
+## built-in voices (model "builtin", see VoiceServer).
 func tts_target() -> Dictionary:
+	if _builtin_voices():
+		return voice_server.target()
+	return server_target()
+
+## True when lines go to the built-in voices rather than a voice server.
+func _builtin_voices() -> bool:
+	var e := String(cfg["voice_engine"])
+	if e == "system" or e == "ai" or voice_server == null or not voice_server.usable():
+		return false
+	return e == "builtin" or server_target().is_empty() or _tts_fails >= 3
+
+## The voice server set in Settings: {url, key, model}, or {} for none. An empty address
+## uses the AI provider only when that is OpenAI itself; local chat servers (Ollama, LM
+## Studio...) don't speak, so they need a voice server set here, such as a free local
+## Kokoro or speaches server.
+func server_target() -> Dictionary:
 	var url := String(cfg["tts_url"]).strip_edges().trim_suffix("/")
 	var key := String(cfg["tts_key"]).strip_edges()
 	if url == "":
@@ -498,16 +520,17 @@ func tts_target() -> Dictionary:
 		model = "gpt-4o-mini-tts" if url.contains("api.openai.com") else "kokoro"
 	return {"url": url, "key": key, "model": model}
 
-## "ai" (natural voices from a server), "system" (this PC's voices) or "" (silent).
+## "ai" (natural voices: a voice server or the built-in ones), "system" (this PC's
+## voices) or "" (silent).
 func voice_engine() -> String:
 	if not bool(cfg["voices"]):
 		return ""
 	var e := String(cfg["voice_engine"])
 	if e == "system":
 		return "system"
-	if not tts_target().is_empty() and _tts_fails < 3:
+	if _builtin_voices() or (e != "builtin" and not server_target().is_empty() and _tts_fails < 3):
 		return "ai"
-	return "system" if e == "auto" or e == "ai" else ""
+	return "system"
 
 var _tts_fails := 0
 
@@ -529,9 +552,12 @@ func speech(text: String, opts: Dictionary) -> Dictionary:
 	var target := tts_target()
 	if target.is_empty():
 		return {"ok": false, "error": "No voice server"}
+	var builtin: bool = target["model"] == "builtin"
+	if builtin and not await voice_server.wait_ready():
+		return {"ok": false, "error": "The built-in voices could not start"}
 	var req := build_speech(target, text, opts)
 	var http := HTTPRequest.new()
-	http.timeout = minf(float(cfg["timeout"]), 20.0)
+	http.timeout = 60.0 if builtin else minf(float(cfg["timeout"]), 20.0) # built-in lines wait their turn
 	add_child(http)
 	var out := {"ok": false, "error": ""}
 	if http.request(req["url"], req["headers"], HTTPClient.METHOD_POST, req["body"]) != OK:
@@ -550,6 +576,11 @@ func speech(text: String, opts: Dictionary) -> Dictionary:
 			else:
 				out["error"] = "Unreadable audio"
 	http.queue_free()
+	if builtin:
+		if not out["ok"]:
+			voice_server.check()
+			_set_status("Built-in voices: " + out["error"])
+		return out
 	_tts_fails = 0 if out["ok"] else _tts_fails + 1
 	if not out["ok"]:
 		_set_status("Voice server: " + out["error"])

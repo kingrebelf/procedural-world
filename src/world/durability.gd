@@ -42,6 +42,7 @@ const TABLE := {
 	"border_barrier": ["metal", 140.0, [["alloy_plate", 3], ["stone", 8]]],
 	"border_booth": ["metal", 300.0, [["alloy_plate", 6], ["circuitry", 2]]],
 	"crash_debris": ["metal", 90.0, [["alloy_scrap", -1], ["alloy_plate", 2], ["circuitry", 1]]],
+	"crash_trunk": ["wood", 30.0, [["wood", 4]]],
 	"well": ["stone", 70.0, [["stone", 14]]],
 	"shrine": ["stone", 120.0, [["stone", 12], ["aether_crystal", 3]]],
 	"mushroom_house": ["fungus", 80.0, [["glowroot", 10], ["glowberry", 6]]],

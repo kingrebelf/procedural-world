@@ -345,6 +345,27 @@ void fragment() {
 	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
 	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
 	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);
+	// Tussocks: the sward grows in clumps a stride or two across, darker between them, so
+	// a meadow or a grassy bank seen from across the valley isn't one smooth baize. (They
+	// average out further off, where they would only shimmer.)
+	float near_g = 1.0 - smoothstep(60.0, 160.0, dist);
+	float tuss = mix(0.5, vnoise(p * 0.7 + 5.0) * 0.6 + vnoise(p * 2.3 + 13.0) * 0.4, near_g);
+	ground *= mix(1.0, 0.84 + 0.32 * tuss, w.r * (1.0 - bare));
+	// Terracettes: on steep pasture, grazing beasts tread level paths along the contours,
+	// lines of short pale turf with little bare-earth risers below them, here and there
+	// across a bank rather than over every hillside.
+	float stg = smoothstep(0.06, 0.14, slope) * (1.0 - smoothstep(0.26, 0.36, slope)) * w.r;
+	if (stg > 0.01) {
+		float tfade = 1.0 - smoothstep(110.0, 240.0, dist);
+		float patch = smoothstep(0.42, 0.62, fbm(p * 0.025 + 31.0));
+		float ph = wpos.y / 0.62 + (fbm(p * 0.07 + 5.0) - 0.5) * 2.6 + (vnoise(p * 0.35) - 0.5) * 0.5;
+		float sp = fract(ph);
+		float riser = smoothstep(0.7, 0.84, sp) * (1.0 - smoothstep(0.92, 1.0, sp));
+		float tread = 1.0 - smoothstep(0.0, 0.5, sp);
+		float k = stg * patch * tfade;
+		ground = mix(ground, mix(soil, ground * 0.7, 0.45), riser * 0.6 * k);
+		ground *= 1.0 + 0.1 * tread * k;
+	}
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
 		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
@@ -443,6 +464,9 @@ void fragment() {
 	float glass = 0.0;
 	if (scar_v.x > 0.01) {
 		float burn = smoothstep(0.1, 0.6, scar_v.x + (meso - 0.5) * 0.5 + (micro - 0.5) * 0.15);
+		// Round the burn: churned earth and ash, grey-brown, not the land's bare red soil.
+		float ash = smoothstep(0.0, 0.12, scar_v.x) * (1.0 - burn);
+		col = mix(col, vec3(dot(col, LUM)) * vec3(0.95, 0.88, 0.8) * 0.85, ash * 0.75);
 		col = mix(col, col * vec3(0.2, 0.18, 0.17) + vec3(0.01), burn * 0.92);
 		// Only on the flat trench floor where the melt pooled; banks and walls stay soot.
 		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - smoothstep(0.08, 0.2, slope)) * (1.0 - rock_mask) * (1.0 - far * 0.5);
@@ -475,7 +499,8 @@ void fragment() {
 		// Human worlds: the road changes where it crosses into the next zone (ZoneBorder),
 		// packed earth in the medieval lands, laid setts in the Borderlands, tarmac beyond.
 		float zr = length(p) + (meso - 0.5) * 1.5;
-		float b1 = zone_rings.x > 0.0 ? step(zone_rings.x, zr) : 0.0;
+		// (The setts start ragged over the first ten metres, a few loose ones lying ahead.)
+		float b1 = zone_rings.x > 0.0 ? smoothstep(zone_rings.x - 3.0, zone_rings.x + 10.0, zr) : 0.0;
 		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
 		vec2 dome = vec2(0.0);
 		if (b1 > 0.0 && b2 < 1.0) {
@@ -499,6 +524,11 @@ void fragment() {
 			// Towards the edges stones are missing and the grass has crept in over them.
 			float in_road = smoothstep(0.3, 0.95, road + (meso - 0.5) * 0.35);
 			float keep = step(hash12(cid + 3.1), in_road * 1.35 - 0.1) * step(hash12(cid + 9.7), 0.97);
+			float laid = step(hash12(cid + 5.3), b1 * 1.1 - 0.05);
+			// Where the paving gives out, the odd sett lies loose and smaller in the dirt.
+			float loose = (1.0 - laid) * step(hash12(cid + 8.1), 0.3) * step(0.01, b1) * (1.0 - smoothstep(0.22, 0.3, max(abs(f.x), abs(f.y))));
+			keep *= max(laid, loose);
+			joint *= 1.0 - loose;
 			rc = mix(mix(rm * 0.85, fill, moss * 0.5), mix(sett, fill, joint), keep);
 			edge *= 1.0 - (1.0 - keep) * (1.0 - smoothstep(0.35, 0.8, in_road)) * 0.85;
 			vec2 tip = (vec2(hash12(cid + 4.2), hash12(cid + 6.6)) - 0.5) * 0.5;

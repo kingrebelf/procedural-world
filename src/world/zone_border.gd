@@ -189,15 +189,26 @@ static func build(t: String) -> ArrayMesh:
 	var out: ArrayMesh = null
 	match t:
 		"border_stone":
-			# A dressed boundary stone sunk in the turf: a rounded head, a cut line down
-			# each face, a painted band and field stones heaped at its foot.
-			k.box("castle_stone", Transform3D(Basis(Vector3.FORWARD, r.randf_range(-0.05, 0.05)), Vector3(0, 0.45, 0)), Vector3(0.62, 1.2, 0.36))
-			k.cylinder("castle_stone", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 1.05, -0.18)), 0.31, 0.31, 0.36, 12, true)
-			k.box("stone_dark", I.translated(Vector3(0, 0.95, 0.181)), Vector3(0.05, 0.42, 0.01))
-			k.box("stone_dark", I.translated(Vector3(0, 0.95, -0.181)), Vector3(0.05, 0.42, 0.01))
-			k.box("painted", I.translated(Vector3(0, 0.55, 0)), Vector3(0.64, 0.12, 0.38), red)
-			k.sphere("stone", I.translated(Vector3(0.22, -0.04, 0.16)), 0.26, 4, 7, 0.3, 0.5)
-			k.sphere("stone", I.translated(Vector3(-0.3, -0.05, -0.15)), 0.22, 4, 6, 0.3, 0.5)
+			# An old boundary stone: one rough, weathered block of field stone set upright in
+			# the turf, a cross and a band carved into its face, lichen on its shoulders and
+			# smaller stones heaped at its foot. (No paint or dressed masonry: it should look
+			# as if it has stood there for centuries.)
+			var lean := Basis(Vector3.FORWARD, r.randf_range(-0.07, 0.07)) * Basis(Vector3.RIGHT, r.randf_range(-0.05, 0.05))
+			var face := Color(0.9, 0.88, 0.83)
+			k.cylinder("stone", Transform3D(lean.scaled(Vector3(1.0, 1.0, 0.62)), Vector3(0, -0.25, 0)), 0.36, 0.28, 1.35, 7, true, 0.1, 4, face)
+			k.sphere("stone", Transform3D(lean, lean * Vector3(0, 1.1, 0)), 0.27, 5, 7, 0.25, 0.55, face)
+			# The carving, cut a little into the front and back faces.
+			for side in [1.0, -1.0]:
+				var z: float = 0.205 * side
+				k.box("stone_dark", Transform3D(lean, lean * Vector3(0, 0.78, z)), Vector3(0.05, 0.34, 0.012))
+				k.box("stone_dark", Transform3D(lean, lean * Vector3(0, 0.84, z)), Vector3(0.24, 0.05, 0.012))
+				k.box("stone_dark", Transform3D(lean, lean * Vector3(0, 0.45, z)), Vector3(0.5, 0.035, 0.012))
+			# Lichen and moss where the rain sits.
+			k.sphere("stone", Transform3D(lean, lean * Vector3(0.05, 1.2, 0.02)), 0.2, 4, 6, 0.3, 0.3, Color(0.62, 0.68, 0.45))
+			k.sphere("stone", I.translated(Vector3(-0.1, -0.02, 0.2)), 0.2, 4, 6, 0.3, 0.35, Color(0.5, 0.6, 0.36))
+			k.sphere("stone", I.translated(Vector3(0.24, -0.04, 0.16)), 0.24, 4, 7, 0.3, 0.5)
+			k.sphere("stone", I.translated(Vector3(-0.3, -0.05, -0.15)), 0.21, 4, 6, 0.3, 0.5)
+			k.sphere("stone", I.translated(Vector3(0.12, -0.06, -0.3)), 0.15, 4, 6, 0.3, 0.5)
 		"border_post":
 			# A concrete boundary bollard banded red and white.
 			k.cylinder("panel", I.translated(Vector3(0, -0.3, 0)), 0.2, 0.17, 1.55, 10, true, 0.0, 1, Color(0.72, 0.71, 0.68))

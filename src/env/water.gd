@@ -325,7 +325,7 @@ static func river_surface(x: float, z: float) -> float:
 	return NAN
 
 ## Height of the water surface at (x, z) and time t: a river where there is one, else the
-## sea (whose waves must match water.gdshader).
+## sea (whose waves must match water_swell.gdshaderinc, which the water and boat foam use).
 static func surface_height(x: float, z: float, t: float) -> float:
 	if _river_lookup.is_valid():
 		var r: float = _river_lookup.call(x, z)

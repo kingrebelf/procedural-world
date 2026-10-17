@@ -852,6 +852,19 @@ func test_craft_tabs() -> void:
 	check(ItemDB.craft_tabs("power_cell") == ["Materials", "Ammo"], "power cells also show under Ammo")
 	check(ItemDB.craft_tabs("lantern") == ["Furniture", "Lights"], "lanterns also show under Lights")
 
+## A piece can't go up through a wild tree: not over its trunk, not up into its crown;
+## a floor laid in the crown's shade is fine, and so is a wall clear of it.
+func test_build_round_trees() -> void:
+	var trees := [[Vector3(10, 2, 10), 0.3, 4.0, 8.0, 2.5]]
+	check(BuildCatalog.tree_in_way(trees, AABB(Vector3(9, 2, 9), Vector3(3, 0.4, 3))), "no floor over a trunk")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(11, 2, 9), Vector3(3, 0.4, 3))), "a floor under the crown, clear of the trunk")
+	check(BuildCatalog.tree_in_way(trees, AABB(Vector3(11, 2, 9.9), Vector3(2, 3, 0.2))), "no wall up into the crown")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(13, 2, 9.9), Vector3(2, 3, 0.2))), "a wall clear of the crown")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(9, 8.5, 9), Vector3(3, 0.3, 3))), "a roof above the top")
+	var key := ObjectLibrary.mesh_key({"t": "oak", "sp": 3, "v": 0, "s": 1.0, "p": Vector3.ZERO, "r": 0.0, "i": 0, "e": 0, "st": {}})
+	var t := BuildCatalog.tree_shape(key, Vector3.ZERO, 1.0)
+	check(float(t[3]) > 2.0 and float(t[4]) > 0.5 and float(t[2]) < float(t[3]), "a tree's shape from its mesh (%s)" % str(t))
+
 func test_build_pieces() -> void:
 	for id in BuildCatalog.PIECES:
 		var m := BuildCatalog.mesh(id)
@@ -1224,6 +1237,121 @@ func test_npc_requests_and_gestures() -> void:
 	p["mood"] = "angry"
 	check(NPCMind.builtin_reply(p, s, "Can you dance for me?").get("do", "") != "dance", "an angry person won't")
 
+## A town's worth of people of one era, for the built-in dialogue tests.
+func _talk_town(era: int, count: int) -> Dictionary:
+	var r := RandomNumberGenerator.new()
+	r.seed = 99 + era
+	var people: Array = []
+	for i in count:
+		var p := NPCGen.person(r, era, i, 7, 9)
+		p["job"] = NPCGen.JOBS[era][i % NPCGen.JOBS[era].size()]
+		people.append(p)
+	return {"name": "Testford", "npcs": people, "rumors": ["Day 2: Wolves were seen by the mill."]}
+
+func test_builtin_dialogue_variety() -> void:
+	var was := Eras.theme
+	Eras.theme = "human"
+	var s := _talk_town(Eras.MEDIEVAL, 40)
+	var greets := {}
+	for p in s["npcs"]:
+		greets[NPCMind.bark(p, "greet")] = true
+	check(greets.size() >= 30, "forty villagers greet you forty ways, not four (%d distinct)" % greets.size())
+	var hellos := {}
+	for p in s["npcs"]:
+		hellos[NPCMind.builtin_reply(p, s, "Hello")["say"]] = true
+	check(hellos.size() >= 30, "and answer a hello differently (%d distinct)" % hellos.size())
+	# One person asked the same odd thing over and over doesn't parrot one line.
+	var p: Dictionary = s["npcs"][3]
+	var seen := {}
+	var last := ""
+	var repeats := 0
+	for i in 8:
+		var say: String = NPCMind.builtin_reply(p, s, "I like turtles")["say"]
+		seen[say] = true
+		if say == last:
+			repeats += 1
+		last = say
+	check(seen.size() >= 6 and repeats == 0, "no parroting the same answer (%d distinct of 8)" % seen.size())
+	check((p["_said"] as Array).size() <= NPCTalk.SAID_MAX, "what they said lately stays a short list")
+	Eras.theme = was
+
+func test_builtin_dialogue_fits_the_world() -> void:
+	var was := Eras.theme
+	Eras.theme = "human"
+	var banned := ["glow", "magic", "fey", "fairy", "faerie", "sylvari", "grove", "enchant", "spirit", "rune", "moss", "the light find", "*"]
+	var asks := ["Hello", "Who are you?", "What is this place?", "Any news?", "What do you do here?", "Nice weather today", "Tell me a joke",
+		"Is there magic here?", "Do you believe in the gods?", "What about the king?", "Tell me about the old days", "Any monsters about?",
+		"How are you?", "What do you like?", "What worries you?", "I like turtles", "Goodbye", "Where is the tavern?", "Got any family?"]
+	var bad: Array = []
+	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
+		var s := _talk_town(era, 24)
+		for p in s["npcs"]:
+			var said: Array = [NPCMind.bark(p, "greet"), NPCMind.bark(p, "attack"), NPCMind.bark(p, "flee"), NPCMind.bark(p, "confront")]
+			for q in asks:
+				said.append(NPCMind.builtin_reply(p, s, q)["say"])
+			for line in said:
+				for w in banned:
+					if String(line).to_lower().contains(w):
+						bad.append(line)
+			check(NPCTalk.culture(p) == ("old" if era == Eras.MEDIEVAL else "frontier"), "human folk speak as humans")
+	check(bad.is_empty(), "nothing glows and nobody talks magic on a human world: %s" % str(bad.slice(0, 3)))
+	check(NPCMind.system_prompt(_talk_town(0, 2)["npcs"][1], _talk_town(0, 2), {}).contains("no magic"), "the model is told the world's rules")
+	Eras.theme = "alien"
+	var v: Dictionary = _talk_town(Eras.SCIFI, 2)["npcs"][1]
+	check(NPCTalk.culture(v) == "vex" and not NPCMind.system_prompt(v, _talk_town(Eras.SCIFI, 2), {}).contains("no magic"), "the Vex talk like the Vex")
+	Eras.theme = was
+
+func test_builtin_dialogue_never_dead_ends() -> void:
+	var was := Eras.theme
+	Eras.theme = ""
+	var dead := ["Hm. Can't say I follow.", "Is that so?", "Interesting. Tell me more another time.", "If you say so."]
+	var odd := ["blorp", "The moon is made of cheese", "hmm", "Do you have a dog?", "42", "...", "purple monkey dishwasher", "What would you do with a dragon?",
+		"I'm hungry", "Tell me something", "yes", "Are you happy?", "What's the time?", "I come from far away"]
+	var s := _talk_town(Eras.FANTASY, 6)
+	for e in [Eras.MEDIEVAL, Eras.SCIFI]:
+		s["npcs"].append_array(_talk_town(e, 6)["npcs"])
+	var empty := 0
+	var deadends := 0
+	var staged := 0
+	for p in s["npcs"]:
+		for q in odd:
+			var say := String(NPCMind.builtin_reply(p, s, q)["say"])
+			if say.strip_edges() == "":
+				empty += 1
+			if dead.has(say):
+				deadends += 1
+			if say.contains("*") or say.contains("{") or say != say.strip_edges():
+				staged += 1
+	check(empty == 0, "always says something")
+	check(deadends == 0, "never the old dead-end shrug")
+	check(staged == 0, "no stage directions or unfilled blanks in spoken lines")
+	# Rudeness stings, kind words warm, and both are remembered in how they feel.
+	var p: Dictionary = s["npcs"][14]
+	p["rel"] = 10
+	p["mood"] = "calm"
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "You're a stupid fool"))
+	check(int(p["rel"]) < 10 and p["mood"] in ["angry", "sad"], "an insult lowers their opinion (%d)" % p["rel"])
+	var low := int(p["rel"])
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "You look lovely today"))
+	check(int(p["rel"]) > low, "a compliment raises it")
+	# What you talked about is remembered and brought up again.
+	NPCMind.apply_reply(p, s, NPCMind.builtin_reply(p, s, "Lovely weather, isn't it?"))
+	check(NPCTalk.last_topic(p) == "the weather", "they remember what you talked about (%s)" % NPCTalk.last_topic(p))
+	# Requests and favours still take their actions.
+	p["rel"] = 30
+	check(NPCMind.builtin_reply(p, s, "Come with me.")["action"] == "follow", "a friend comes along")
+	check(NPCMind.builtin_reply(p, s, "Stay here.")["action"] == "stop_following", "and stays when told")
+	p["rel"] = 60
+	p["mood"] = "happy"
+	var wink := NPCMind.builtin_reply(p, s, "Could you wink at me?")
+	check(wink.get("do", "") == "wink" and not String(wink["say"]).contains("*"), "a wink is done, not read out")
+	var kid: Dictionary = s["npcs"][2].duplicate(true)
+	kid["child"] = true
+	kid["age"] = 9
+	kid["id"] = "kid"
+	check(NPCTalk.persona(kid)["tone"] == "child" and String(NPCMind.builtin_reply(kid, s, "Who are you?")["say"]).length() > 0, "children talk like children")
+	Eras.theme = was
+
 func test_speech_to_text_request() -> void:
 	var svc = load("res://src/ai/ai_service.gd")
 	var pcm := PackedByteArray()
@@ -1309,6 +1437,46 @@ func test_voice_and_quick_replies() -> void:
 	loud.encode_s16(400, -16384)
 	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
 
+## The built-in natural voices: everyone in a town sounds like someone else, voices fit
+## sex and age, accents fit the era, and long lines are spoken sentence by sentence.
+func test_builtin_voices() -> void:
+	check(Voice.catalog().size() >= 100, "voice table loaded (%d voices)" % Voice.catalog().size())
+	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
+		var r := RandomNumberGenerator.new()
+		r.seed = 7 + era
+		var seen := {}
+		var people := 0
+		var accents := {}
+		for i in 40:
+			var p := NPCGen.person(r, era, i, 12, -5)
+			p["job"] = NPCGen.JOBS[era][i % 8]
+			var o := Voice.builtin_for(p)
+			check(o == Voice.builtin_for(p), "a person keeps their voice")
+			var sid := int(String(o["voice"]).get_slice("@", 0))
+			var v: Dictionary = Voice.catalog()[sid]
+			check(v["sex"] == ("f" if p["body"]["female"] else "m") or Voice.is_child(p), "voice fits sex")
+			seen[[sid, o["pitch"]]] = true
+			accents[String(o["voice"]).get_slice("@", 1)] = true
+			people += 1
+		check(seen.size() == people, "era %d: no two people of a town share a voice (%d of %d)" % [era, seen.size(), people])
+		if era == Eras.MEDIEVAL:
+			check(not accents.has("en-US") and not accents.has("en-US-nyc"), "no American accents in the old lands")
+		else:
+			check(accents.has("en-US"), "frontier accents")
+	var kid := {"id": "3_4_9", "era": 0, "age": 8, "job": "farmer", "mood": "calm", "body": {"female": false, "build": 1.0},
+		"traits": {"friendly": 0.5, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.5}}
+	var old := kid.duplicate(true)
+	old["age"] = 70
+	check(float(Voice.builtin_for(kid)["pitch"]) > 1.12, "children sound young")
+	check(float(Voice.builtin_for(old)["pitch"]) < 0.97, "old folk sound older")
+	check(float(Voice.builtin_for(old)["speed"]) * float(Voice.builtin_for(old)["pitch"]) < float(Voice.builtin_for(kid)["speed"]) * float(Voice.builtin_for(kid)["pitch"]), "old folk talk slower")
+	check(Voice.pieces("Aye. That's the miller's cart, not mine! Ask him yourself.") == ["Aye. That's the miller's cart, not mine!", "Ask him yourself."], "lines split into sentences")
+	check(Voice.pieces("No full stop here") == ["No full stop here"], "a line without a stop")
+	check(Voice.pieces("Hmm... let me think. Aye.") == ["Hmm... let me think. Aye."], "short bits stay together")
+	var svc = load("res://src/ai/ai_service.gd")
+	var body = JSON.parse_string(svc.build_speech({"url": "http://127.0.0.1:1/v1/audio/speech", "key": "t", "model": "builtin"}, "Hi", {"voice": "12@en-GB-scotland", "speed": 0.9, "pitch": 1.1})["body"])
+	check(body["voice"] == "12@en-GB-scotland" and is_equal_approx(float(body["speed"]), 0.9), "built-in voice request")
+
 func test_outfits() -> void:
 	if not HumanModel.available():
 		return
@@ -1344,6 +1512,16 @@ func test_body_variety() -> void:
 	var hs := BodyShape.shape(heavy, 40, "innkeeper")
 	check(float(hs["girth"]["spine_01"][0][2]) > float(BodyShape.shape(b, 40, "innkeeper")["girth"]["spine_01"][0][2]) + 0.15, "heavier people have a belly")
 	check(float(BodyShape.shape(b, 30, "smith")["muscle"]) > float(BodyShape.shape(b, 30, "scribe")["muscle"]), "a smith is more muscled than a scribe")
+	# Facial hair: every style turns up among men, none on women.
+	var styles := {}
+	var womens := 0
+	for k in 300:
+		var m := b.duplicate()
+		m["height"] = 0.9 + 0.0006 * k
+		styles[BodyShape.beard(m, 45)] = true
+		m["female"] = true
+		womens += BodyShape.beard(m, 45)
+	check(styles.size() == 6 and womens == 0, "men wear every facial hair style, from clean-shaven to a full beard; women none")
 	if not HumanModel.available():
 		return
 	var a := HumanModel.new()
@@ -1453,6 +1631,76 @@ func test_gaits() -> void:
 	check(h.animator.state() == "death", "posed bodies hold their pose")
 	h.free()
 
+## Everything a hand can hold is its real size (HeldScale): no six-foot pickaxes, in a
+## villager's hand or yours, whoever is holding it.
+func test_held_scale() -> void:
+	var checked := 0
+	for t: String in ItemDB.ITEMS:
+		if ItemDB.def(t).get("kind", "") in ["armor", "ammo", "resource", "vehicle", "station", "camp", "crop"]:
+			continue
+		var prop := Viewmodel.prop_for(t)
+		if not HeldScale.unmodelled(prop):
+			checked += 1
+			var p := HeldScale.problem(t, prop)
+			if HeldScale.OWED.has(t):
+				check(p != "", "%s is its real size now: take it off HeldScale.OWED" % t)
+			else:
+				check(p == "", p)
+		prop.free()
+	check(checked > 100, "most things held have a model to measure (%d)" % checked)
+	if not HumanModel.available():
+		return
+	var h := HumanModel.new()
+	h.scale = Vector3.ONE * 0.9
+	root.add_child(h)
+	h.build({"height": 1.0, "build": 1.0, "female": true, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.MEDIEVAL, "farmer")
+	var tool = h._held.get_child(0) if h._held else null
+	check(tool == null or String(tool.get_meta("item", "")) in HumanModel.WORK_TOOLS["farmer"], "a farmer works with a farm tool, not a pickaxe")
+	for job: String in HumanModel.WORK_TOOLS:
+		h._tool(job)
+		if h._held == null:
+			continue
+		var prop: Node3D = h._held.get_child(0)
+		var t := String(prop.get_meta("item", ""))
+		check(t in HumanModel.WORK_TOOLS[job], "a %s holds their own tool (%s)" % [job, t])
+		check(HeldScale.problem(t, prop) == "", "a %s's %s is its real size" % [job, t])
+		# The body is drawn at 0.9 of the rig; the tool is not shrunk (or grown) with it.
+		check(is_equal_approx(prop.transform.basis.get_scale().x * h.scale.x, 1.0), "a short person's %s is as big as anyone's" % t)
+		h.hold(null)
+	h.free()
+
+## Muscle-like easing: turns ease off and settle without overshoot, and a skipped frame
+## lands where even steps would have. Kit animals' gaits are paced from their hooves'
+## IK controllers, and pacing a gallop through its stride keeps the stride's length.
+func test_natural_motion() -> void:
+	var a := Vector2(0.0, 0.0)
+	var peak := 0.0
+	for i in 120:
+		a = AnimMath.spring(a.x, a.y, 1.0, 8.0, 1.0 / 60.0)
+		peak = maxf(peak, a.x)
+	check(absf(a.x - 1.0) < 0.001 and peak <= 1.0 + 1e-5, "a spring settles on its mark without overshoot (%.4f)" % a.x)
+	var one := AnimMath.spring(0.0, 0.0, 1.0, 8.0, 0.2)
+	var two := Vector2.ZERO
+	for i in 4:
+		two = AnimMath.spring(two.x, two.y, 1.0, 8.0, 0.05)
+	check(absf(one.x - two.x) < 1e-4, "one long spring step is four short ones")
+	check(absf(AnimMath.drift(3.0, 1.0)) <= 1.0, "a drift stays in -1..1")
+	if not AnimalModel.available("Horse"):
+		return
+	var sc: Node3D = (load(AnimalModel.path_of("Horse")) as PackedScene).instantiate()
+	var ap: AnimationPlayer = sc.find_children("*", "AnimationPlayer", true, false)[0]
+	var sk: Skeleton3D = sc.find_children("*", "Skeleton3D", true, false)[0]
+	var g := AnimalModel.gaits("Horse", ap, sk)
+	check(g.has("Walk") and g.has("Gallop") and float(g["Gallop"]) > float(g["Walk"]) * 2.0, "a horse's gallop covers ground faster than its walk (%s)" % str(g))
+	var w: PackedFloat32Array = AnimalModel._warp_cache["Horse"].get("Gallop", PackedFloat32Array())
+	var inv := 0.0
+	for x in w:
+		inv += 1.0 / x
+	check(w.size() == 48 and absf(inv / w.size() - 1.0) < 0.01, "pacing a gallop through its stride keeps its length")
+	var st: Array = AnimalModel._stance_cache["Horse"].get("Walk", [])
+	check(st.size() == 4, "each of a horse's feet knows when it is down in a walk")
+	sc.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return
@@ -1535,7 +1783,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -2945,6 +3193,26 @@ func test_no_double_floors() -> void:
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
 
+## Outpost blocks come in several looks by where they stand, each a whole building with
+## its own paint and fittings, and a look's key still finds its type's rooms.
+func test_outpost_variants() -> void:
+	for t in KitBase.VARIANTS:
+		var keys := {}
+		for i in 60:
+			keys[ObjectLibrary.mesh_key({"t": t, "p": Vector3(i * 7.3, 0, i * 3.1)})] = true
+		check(keys.size() == int(KitBase.VARIANTS[t]), "%s comes in %d looks (%s)" % [t, KitBase.VARIANTS[t], keys.keys()])
+		var plain := ObjectLibrary.get_mesh(t)
+		var plain_v := 0
+		for i in plain.get_surface_count():
+			plain_v += (plain.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		for key: String in keys:
+			check(key.get_slice(Stronghold.VAR, 0) == t, "%s is still a %s" % [key, t])
+			var m := ObjectLibrary.get_mesh(key)
+			var n := 0
+			for i in m.get_surface_count():
+				n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+			check(n > plain_v, "%s has its own paint and fittings (%d vertices, plain %d)" % [key, n, plain_v])
+
 static func _species_named(name: String, era: int) -> Dictionary:
 	for sp in range(1, 4000):
 		var p := Creature.species(sp, era)
@@ -3685,6 +3953,23 @@ func test_server_alliances() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
 
+func test_tool_models() -> void:
+	# Every tool and weapon with a built model is a real shape (not the fallback box),
+	# of a believable size, and is an item the game knows.
+	for t in ToolModels.BUILD:
+		check(not ItemDB.def(t).is_empty(), "%s: modelled item exists" % t)
+		var m := ToolModels.build(t)
+		check(m != null and m.get_surface_count() > 0, "%s: model builds" % t)
+		if m == null:
+			continue
+		var n := 0
+		for i in m.get_surface_count():
+			n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(n > 24, "%s: more than a box (%d verts)" % [t, n])
+		var s := m.get_aabb().size
+		check(maxf(s.x, maxf(s.y, s.z)) > 0.04 and maxf(s.x, maxf(s.y, s.z)) < 2.5, "%s: believable size %s" % [t, s])
+	check(Viewmodel._strike_axis("tomahawk") == Vector3.FORWARD and Viewmodel._strike_axis("warpick") == Vector3.RIGHT, "new axes and picks swing edge first")
+
 # --- Lived-in villages ------------------------------------------------------------
 
 func _medieval_town(gen: ChunkGenerator) -> Dictionary:
@@ -3696,6 +3981,20 @@ func _medieval_town(gen: ChunkGenerator) -> Dictionary:
 				if best.is_empty() or (s["center"] as Vector2).length() < (best["center"] as Vector2).length():
 					best = s
 	return best
+
+## A streamer of flat, empty chunks for TownLife, with objects placed by hand.
+class FakeTownStreamer extends Node:
+	class Chunk:
+		var data := {}
+	var chunks := {}
+	func get_chunk(k: Vector2i):
+		if not chunks.has(k):
+			var c := Chunk.new()
+			var hs := PackedFloat32Array()
+			hs.resize(ChunkGenerator.RES * ChunkGenerator.RES)
+			c.data = {"heights": hs, "objects": []}
+			chunks[k] = c
+		return chunks[k]
 
 func test_town_life() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
@@ -3709,6 +4008,55 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
+	var tl := TownLife.new()
+	tl.setup(gen, null, s)
+	var smokes := 0
+	var keyed := 0
+	for g in tl._pending:
+		for e in g["pieces"]:
+			if e["k"] == "smoke":
+				smokes += 1
+				if e.has("house") and int(e["house"]) == int(g["house"]):
+					keyed += 1
+	check(smokes > 0 and keyed == smokes, "every smoke piece knows its house (%d of %d)" % [keyed, smokes])
+	tl.free()
+	# An orchard tree (or a yard prop) where the player has built doesn't grow through it,
+	# and comes back when the building is dismantled.
+	var orch: Array = pl["orchards"]
+	check(not orch.is_empty(), "the town has an orchard")
+	if not orch.is_empty():
+		var t0: Dictionary = orch[0]["trees"][0]
+		var tp: Vector2 = t0["p"]
+		var tree := {"k": "tree", "p": tp, "yaw": t0["yaw"], "sp": orch[0]["sp"], "v": t0["v"], "s": t0["s"]}
+		var pile := {"k": "barrels", "p": tp + Vector2(5.0, 0.0), "seed": 1}
+		var fs := FakeTownStreamer.new()
+		var tl0 := TownLife.new()
+		tl0.gen = gen
+		tl0.site = s
+		tl0.streamer = fs
+		check(tl0._standing([tree, pile]).size() == 2, "with nothing built, the orchard tree and the prop stand")
+		var k := TownLife._chunk_of(Vector3(tp.x, 0, tp.y))
+		var lp := Vector3(tp.x - k.x * ChunkGenerator.SIZE + 1.5, 0, tp.y - k.y * ChunkGenerator.SIZE)
+		var fo := {"t": BuildCatalog.PREFIX + "foundation", "p": lp, "r": 0.0, "s": 1.0, "st": {}}
+		fs.get_chunk(k).data["objects"].append(fo)
+		var left := tl0._standing([tree, pile])
+		check(left.size() == 1 and left[0]["k"] == "barrels", "a foundation built 1.5 m from an orchard tree keeps it from being built")
+		# Built a little beyond the trunk, but under the crown: the leaves would reach in.
+		var reach := TownLife.crown_reach(tree)
+		check(reach > 1.0 and reach < TownLife.REACH_MAX, "an orchard tree's crown reaches out (%.1f m)" % reach)
+		fo["p"] = lp + Vector3(reach + 0.5, 0, 0)
+		check(tl0._standing([tree]).is_empty(), "a wall built under an orchard tree's crown keeps it from being built")
+		fo["p"] = lp + Vector3(reach + TownLife.PIECE_HALF + TownLife.TREE_CLEAR + 0.3, 0, 0)
+		check(tl0._standing([tree]).size() == 1, "one built clear of the crown leaves the tree standing")
+		fo["p"] = lp
+		var rev := TownLife._rev
+		TownLife.note_built(tp)
+		check(TownLife._rev == rev + 1 and tl0._seen != TownLife._rev, "a build is noted for the towns to stand aside")
+		fo["st"]["gone"] = true
+		check(tl0._standing([tree, pile]).size() == 2, "once it's dismantled the tree stands again")
+		tl0.free()
+		fs.free()
 	var kinds := {}
 	for e in pl["pieces"]:
 		kinds[e["k"]] = true
@@ -3942,6 +4290,30 @@ func test_crater_rims() -> void:
 			check(f.crater_spoil(p.x, p.y) > 0.6, "fresh spoil shows on the crest")
 			tested += 1
 	check(tested > 0, "found big craters to check")
+	# Old craters on a human world are grassed over: stony only along the inner lip.
+	var g := ChunkGenerator.new(4242, true)
+	var bare := 0
+	var grassy := 0
+	var lip_scree := 0.0
+	var lips := 0
+	for kz in range(25, 28):
+		for kx in range(25, 28):
+			var ch := g.generate(kx, kz)
+			if not ch.has("grassed"):
+				continue
+			var cov := GroundCover.build(ch)
+			for vj in ChunkGenerator.RES:
+				for vi in ChunkGenerator.RES:
+					var gw := GroundCover._look_cell(ch["grassed"], vi, vj, 1, 0)
+					var sp := GroundCover._look_cell(ch["look"], vi, vj, ChunkGenerator.LOOK_BYTES, 11)
+					var sc := cov[(vj * ChunkGenerator.RES + vi) * 4] / 255.0
+					if gw > 0.95 and sp < 0.01:
+						grassy += 1
+						bare += int(sc > 0.1)
+					elif gw > 0.95 and sp > 0.4:
+						lips += 1
+						lip_scree += sc
+	check(grassy > 500 and bare < grassy * 0.01, "an old crater field is grassed, not scree (%d of %d bare)" % [bare, grassy])
 	WorldField.terrain_v = 15
 	check(f.crater_spoil(5000, -3000) == 0.0, "older worlds keep their craters")
 	_restore_world(was)
@@ -3998,11 +4370,20 @@ func test_dreadnought_crash() -> void:
 	var bad := 0
 	var bits := 0
 	var burnt := 0
+	var felled := 0
+	var standing := 0
+	var snags := 0
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var nb := g.generate(k.x + d.x, k.y + d.y)
 		for o in nb["objects"]:
 			if o["t"] == WonderSite.DEBRIS:
 				bits += 1
+			elif o["t"] == WonderSite.TRUNK:
+				felled += 1
+			elif ObjectLibrary.kind(o["t"]) == "tree":
+				snags += int(o["st"].get("burnt", false) and String(Flora.species(o["t"], int(o["sp"]))["form"]) in ["dead", "snag"])
+				var wp: Vector3 = o["p"] + Vector3((k.x + d.x) * 64.0, 0, (k.y + d.y) * 64.0)
+				standing += int(WonderSite.blast(cr, wp.x, wp.z) > 0.95)
 		var lb: PackedByteArray = nb.get("look", PackedByteArray())
 		for i in range(10, lb.size(), ChunkGenerator.LOOK_BYTES):
 			burnt += int(lb[i] > 40)
@@ -4026,6 +4407,12 @@ func test_dreadnought_crash() -> void:
 				bad += 1
 	check(bad == 0, "the trench's chunks meet the wonder's (%d bad edge points)" % bad)
 	check(bits > 0 and burnt > 0, "wreckage (%d) and scorched ground (%d) reach the chunks round it" % [bits, burnt])
+	for o in ch["objects"]:
+		if o["t"] == WonderSite.TRUNK:
+			felled += 1
+	check(snags > 0, "further out the trees stand burnt bare (%d)" % snags)
+	check(standing == 0, "no tree stands where the blast hit hardest (%d do)" % standing)
+	check(felled > 0 and ObjectLibrary.kind(WonderSite.TRUNK) == "structure" and WonderSite.trunk(5, 1).get_surface_count() > 0, "the trees it reached lie snapped and scorched (%d)" % felled)
 	for sp in range(1, 7):
 		check(WonderSite.debris(sp, 1).get_surface_count() > 0, "wreckage kind %d has a mesh" % sp)
 	_restore_world(was)
@@ -4033,6 +4420,8 @@ func test_dreadnought_crash() -> void:
 func _ground(g: ChunkGenerator, p: Vector2) -> float:
 	var k := Vector2i(floori(p.x / 64.0), floori(p.y / 64.0))
 	return ChunkGenerator.height_at(g.generate(k.x, k.y), p.x - k.x * 64.0, p.y - k.y * 64.0)
+
+# --- Boats ---------------------------------------------------------------------------------
 
 # --- Food, drink and containers ------------------------------------------------------
 
@@ -4099,3 +4488,44 @@ func test_animal_individuals() -> void:
 				check((mi as MeshInstance3D).get_surface_override_material(s).shader.resource_path == AnimalSkin.LOCK_SHADER, "horse locks use the lock shader")
 	check(locks >= 1, "a horse's mane and tail grow locks (%d)" % locks)
 	m.free()
+func test_camera_feel() -> void:
+	# Head bob: still at rest, moves when walking, dips on landing, and is gone when off.
+	var hb := HeadBob.new()
+	for i in 30:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+	check(hb.offset.length() < 0.001 and hb.tilt.length() < 0.001, "head bob rests when standing")
+	var lo := 0.0
+	var hi := -1.0
+	for i in 120:
+		hb.step(1.0 / 60.0, 1.0, fmod(i / 60.0, 1.0), 1.0, true, false, 0.0, 0.0, 0.0)
+		lo = minf(lo, hb.offset.y)
+		hi = maxf(hi, hb.offset.y)
+	check(hi - lo > 0.01 and hi - lo < 0.05, "walking bobs the eye a little (%.3f m)" % (hi - lo))
+	hb.reset()
+	var dip := 0.0
+	hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 8.0, 0.0)
+	for i in 60:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+		dip = minf(dip, hb.offset.y)
+	check(dip < -0.02 and dip > -0.15 and absf(hb.offset.y) < 0.01, "a landing dips the eye and springs back (%.3f m)" % dip)
+	hb.reset()
+	for i in 60:
+		hb.step(1.0 / 60.0, 0.0, fmod(i / 60.0, 1.0), 1.8, true, false, 1.0, 6.0, 0.0)
+	check(hb.offset.length() < 0.0001 and hb.tilt.length() < 0.0001, "head bob off keeps the eye still")
+	# Motion blur: skips still frames and cuts, and scales with the shutter.
+	var old := CameraBlur.strength
+	CameraBlur.strength = 0.3
+	var a := Transform3D.IDENTITY
+	check(CameraBlur.shutter_scale(a, a, 1.0 / 60.0) == 0.0, "no blur while the camera holds still")
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 1.2), 1.0 / 60.0) == 0.0, "no blur across a camera cut")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0), 0.3), "the shutter is strength / 60 s")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 120.0), 0.6), "the same shutter at a higher frame rate")
+	CameraBlur.strength = 0.0
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
+	CameraBlur.strength = old
+
+func test_fov_is_horizontal() -> void:
+	var gs = load("res://src/settings/graphics_settings.gd")
+	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
+	check(absf(gs.vertical_fov(121.28) - 90.0) < 0.05, "the old 90 tall is about 121 across")
+	check(is_equal_approx(float(gs.DEFAULTS["fov"]), 90.0), "the default view is 90 degrees across")

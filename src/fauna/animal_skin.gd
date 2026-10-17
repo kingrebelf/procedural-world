@@ -28,7 +28,7 @@ const LOOKS := {
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
 	"Bull": {"vary": 0.22, "strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
 		"belly": 0.08, "dorsal": 0.1, "patches": 0.2, "patch_col": Color(0.3, 0.2, 0.12), "blaze": 0.2},
-	"Horse": {"vary": 0.2, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
+	"Horse": {"vary": 0.2, "dapple": 0.35, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.1, "socks": 0.45, "sock_col": Color(0.66, 0.63, 0.58), "blaze": 0.5, "spots": 0.15, "spot_col": Color(0.5, 0.36, 0.24), "spot_size": 0.06},
 	"Horse_White": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},
@@ -433,12 +433,12 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		var tail := p.z < cz
 		var length := ht * (r.randf_range(0.09, 0.17) if tail else r.randf_range(0.05, 0.09))
 		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
-		var d0 := (sn * (0.2 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.1 if tail else 0.35), 0, -0.12)).normalized()
-		var hang := Vector3(side * 0.05, -1.0, -0.12).normalized()
+		var d0 := (sn * (0.08 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.03 if tail else 0.35), 0, -0.12)).normalized()
+		var hang := Vector3(side * (0.0 if tail else 0.05), -1.0, -0.12).normalized()
 		var wave := r.randf() * TAU
-		var lw0 := w * r.randf_range(0.7, 1.3)
+		var lw0 := w * r.randf_range(0.7, 1.3) * (1.4 if tail else 1.0)
 		var lid := r.randf()
-		var q := p - sn * w * 0.3
+		var q := p - sn * w * (0.6 if tail else 0.3)
 		var base := v.size()
 		var dir := d0
 		for j in rows:

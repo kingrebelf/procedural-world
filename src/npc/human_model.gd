@@ -43,6 +43,9 @@ var _oneshot := false
 static func available() -> bool:
 	return ResourceLoader.exists(ANIMS) and ResourceLoader.exists(DIR + BODY[false] + ".gltf")
 
+## How far up the forearm from the wrist joint a sleeve ends.
+const WRIST_BACK := 0.02
+
 ## The body mesh with per-vertex region / rest height / |x| in CUSTOM0, built once per sex.
 static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 	var key := "body_%s" % fem
@@ -65,6 +68,11 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				r = REGION_OF[k]
 				break
 		region_of_bind.append(r)
+	# The wrist: forearm skin past it is the hand's, so a sleeve ends in a clean line
+	# there (Outfit cuts the shirt at the same place) instead of a fringe of triangles.
+	var wrist := INF
+	if sk and sk.find_bone("hand_l") >= 0:
+		wrist = absf(sk.get_bone_global_rest(sk.find_bone("hand_l")).origin.x) - WRIST_BACK
 	var custom := PackedFloat32Array()
 	custom.resize(verts.size() * 3)
 	for v in verts.size():
@@ -75,6 +83,8 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				bw = weights[v * per + j]
 				best = bones[v * per + j]
 		custom[v * 3] = float(region_of_bind[best]) if best < region_of_bind.size() else 1.0
+		if custom[v * 3] == 3.0 and absf(verts[v].x) > wrist:
+			custom[v * 3] = 4.0
 		custom[v * 3 + 1] = verts[v].y
 		custom[v * 3 + 2] = verts[v].x
 	a[Mesh.ARRAY_CUSTOM0] = custom
@@ -154,6 +164,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 			mi.set_instance_shader_parameter("hair_col", BodyShape.hair_color(b, age - 12 if age >= 0 else age).darkened(0.12))
 			mi.set_instance_shader_parameter("strands", 1.0)
 			mi.set_instance_shader_parameter("sparse", 0.42)
+			mi.set_instance_shader_parameter("scalp_col", b["skin"])
 			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.
@@ -165,14 +176,16 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		style = ""
 	_dress_up(era)
 	if style != "":
-		_add_hair(style, hair_col, BodyShape.thinning(b, age))
-	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
-		_add_hair("Hair_Beard", hair_col)
+		_add_hair(style, hair_col, BodyShape.thinning(b, age), b["skin"])
+	# Facial hair in the hair's own colour; sci-fi faces are clean-shaven or stubbled.
+	var bs := BodyShape.beard(b, age)
+	if era == Eras.SCIFI:
+		bs = mini(bs, 1)
+	if bs > 0:
+		_add_hair("Hair_Beard", hair_col, 0.0, b["skin"], bs)
 	_headgear(era, job, b)
-	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		if not String(mi.name).contains("_shell"):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, false)
 	if _body and _body.skin:
 		BodyShape.apply_girth(_body.skin, skeleton, shape)
 		_body.set_instance_shader_parameter("tone", float(shape["muscle"]))
@@ -187,6 +200,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	posture.arms_out = float(shape["arms_out"])
 	posture.waddle = float(shape["waddle"])
 	posture.limp = float(shape["limp"])
+	posture.hip = float(shape["hip"])
 	posture.animator = animator
 	skeleton.add_child(posture)
 	ik = HumanIK.new()
@@ -194,9 +208,8 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	animator.ik = ik
 	gestures = BodyLanguage.new()
 	skeleton.add_child(gestures)
-	if _gripping:
-		gestures.grip_r = GRIP
-		gestures.grip_rot = _wrap(_work_tool)
+	gestures.relaxed = true # idle clips clench the fists; empty hands hang loose
+	_tool(job)
 	_eyelids(b)
 	play("idle")
 	return self
@@ -347,7 +360,8 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 
 ## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
 ## `thin` lets the scalp show through at the crown.
-func _add_hair(style: String, col: Color, thin := 0.0) -> void:
+## `beard`: BodyShape.beard() style, for the beard mesh.
+func _add_hair(style: String, col: Color, thin := 0.0, scalp := Color(0, 0, 0, 0), beard := 0) -> void:
 	var path := DIR + style + ".gltf"
 	if not ResourceLoader.exists(path):
 		return
@@ -366,11 +380,21 @@ func _add_hair(style: String, col: Color, thin := 0.0) -> void:
 		mi.set_instance_shader_parameter("hair_col", col)
 		mi.set_instance_shader_parameter("strands", 1.0)
 		mi.set_instance_shader_parameter("thin", thin)
-		var layers: Array = HairStrands.shells(mi, style)
+		mi.set_instance_shader_parameter("scalp_col", scalp)
+		var lift: float = HairStrands.LIFT.get(style, 0.0)
+		if beard == 1:
+			lift = -0.0045 # stubble lies on the skin
+		mi.set_instance_shader_parameter("lift", lift)
+		mi.set_instance_shader_parameter("beard", float(beard))
+		var layers: Array = [] if beard == 1 else HairStrands.shells(mi, style)
 		for sh in layers:
+			sh.set_instance_shader_parameter("beard", float(beard))
+			if beard == 4:
+				sh.set_instance_shader_parameter("shell_depth", HairStrands.DEPTH[style] * 0.5)
 			sh.set_instance_shader_parameter("hair_col", col)
 			sh.set_instance_shader_parameter("strands", 1.0)
 			sh.set_instance_shader_parameter("thin", thin)
+			sh.set_instance_shader_parameter("lift", lift)
 		if style != "Hair_Beard":
 			_hair.append(mi)
 			_hair.append_array(layers)
@@ -458,27 +482,24 @@ func _hair_fit(cz: float, y0: float, r_min: float, r_max: float, top_min: float)
 		base += 0.01
 	return Vector3(r_max, top, base)
 
+## What a job works with, in the order tried: the first the game has a model for goes in
+## the hand. The same models and sizes the player holds (Viewmodel.prop_for), so a
+## villager's tool is never bigger than yours.
+const WORK_TOOLS := {
+	"smith": ["hammer"], "farmer": ["hoe", "sickle"], "hydroponics tech": ["wrench"],
+	"hunter": ["axe_iron"], "warden": ["axe_iron"], "guard": ["sword_iron"],
+}
+
 ## Tools in hand for jobs that work with one.
-func _tool(era: int, job: String) -> void:
-	var model := ""
-	match job:
-		"smith": model = "Sword_Bronze"
-		"farmer", "beekeeper", "hydroponics tech": model = "Pickaxe_Bronze"
-		"hunter", "warden": model = "Axe_Bronze"
-		"guard": model = "Sword_Bronze"
-	var path := "res://assets/models/props/%s.gltf" % model
-	if model == "" or not ResourceLoader.exists(path):
-		return
-	var t: Node3D = (load(path) as PackedScene).instantiate()
-	_bone_attach("hand_r").add_child(t)
-	t.transform = grip_transform(skeleton, t)
-	_gripping = true
-	_work_tool = t
+func _tool(job: String) -> void:
+	for t: String in WORK_TOOLS.get(job, []):
+		var m := Viewmodel.model(t)
+		if m != null and not m.has_meta("placeholder"):
+			hold(Viewmodel.prop_for(t))
+			return
 
 ## How far each finger of a hand holding something curls (BodyLanguage finger order).
 const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
-var _gripping := false
-var _work_tool: Node3D
 
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
 ## pose: the handle lies across the palm on a diagonal, touching it (HandGrip), and the
@@ -553,13 +574,19 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 		return
 	var ba := _bone_attach("hand_r")
 	ba.add_child(prop)
-	prop.transform = grip_transform(skeleton, prop, 1.0, aim, tilt, point)
+	prop.transform = grip_transform(skeleton, prop, _true_size(), aim, tilt, point)
 	_held = ba
 	if gestures:
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(prop)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+
+## The scale a prop is held at so it stays its real size however tall this person is
+## drawn (NPC sets the whole body's scale to their stature): a short woman's pickaxe is
+## as long as a tall man's.
+func _true_size() -> float:
+	return 1.0 / maxf(scale.x, 0.01)
 
 ## The finger rotations that close the hand round the prop where it now sits: along its
 ## handle (+Y) through its grip point, as measured in the hand.
@@ -572,7 +599,9 @@ func _wrap(prop: Node3D) -> Dictionary:
 	var center := prop.transform * grip
 	# The rest frame and the attachment's frame are the same bone's.
 	var t := _held_type(prop)
-	var pose := "" if not Viewmodel.pointed(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	var pose := "" if not Viewmodel.pointed(t) or Viewmodel.is_bow(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	if prop.get_child_count() > 0 and prop.get_child(0) is MeshInstance3D and (prop.get_child(0) as MeshInstance3D).mesh is QuadMesh:
+		pose = "fist" # an icon card has no handle to close on: a loose fist under it
 	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
 
 static func _held_type(prop: Node3D) -> String:
@@ -637,13 +666,36 @@ func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	# (fwd, up) are in the bone's own space: the bone's basis maps them onto (f, u).
 	gestures.hand_r = Basis(f, u, f.cross(u)) * Basis(fwd, up, fwd.cross(up)).inverse()
 
+## Puts the left hand on `at` (world), fingers along `fingers`, palm facing `palm`: a
+## support hand under a long gun's fore-end. Vector3.ZERO for `at` lets the arm go.
+func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if at == Vector3.ZERO:
+		gestures.reach_l = {}
+		return
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	gestures.reach_l = {"at": skeleton.global_transform.affine_inverse() * at,
+		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
+
+## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
+func pull_in(at: Vector3) -> void:
+	if gestures == null or skeleton == null:
+		return
+	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+
+## The right shoulder in world space.
+func shoulder_r() -> Vector3:
+	var b := skeleton.find_bone("upperarm_r")
+	return skeleton.global_transform * skeleton.get_bone_global_pose(b).origin if b >= 0 else global_position
+
 ## Re-aims what the hand holds (first person: called every frame so the item keeps
 ## facing the view whatever the arms' animation does).
 func reaim(aim: Vector3, tilt := 0.0, point := Vector3.ZERO) -> void:
 	if _held == null or _held.get_child_count() == 0:
 		return
 	var prop := _held.get_child(0) as Node3D
-	prop.transform = grip_transform(skeleton, prop, 1.0, aim, tilt, point)
+	prop.transform = grip_transform(skeleton, prop, _true_size(), aim, tilt, point)
 
 ## A world direction expressed in the right hand's current (animated) space.
 func hand_space(dir: Vector3) -> Vector3:
@@ -690,7 +742,21 @@ func _is_held(n: Node) -> bool:
 func set_shadow_only(on: bool) -> void:
 	_shadow_only = on
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).cast_shadow = _shadow_of(mi, on)
+		if _no_shadow(mi):
+			# They cast no shadow, so a body seen only by its shadow hides them outright.
+			(mi as MeshInstance3D).visible = not on
+
+## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
+## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.
+## Hair shells (HairStrands) only fray the outline, which the base hair already shadows.
+static func _shadow_of(mi: Node, shadow_only: bool) -> GeometryInstance3D.ShadowCastingSetting:
+	if _no_shadow(mi):
+		return GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+static func _no_shadow(mi: Node) -> bool:
+	return mi.name == &"Eyes" or mi.name == &"Eyebrows" or String(mi.name).contains("_shell")
 
 ## Plays a looping state, cross-fading. Walk, jog and sprint all mean "on the move": the
 ## gait and its pace follow how fast the body really moves (HumanAnimator), so `speed`
@@ -705,6 +771,8 @@ func play(state: String, speed := 1.0) -> void:
 		_idle_variety()
 	else:
 		_idle_alt = ""
+		if state in HumanAnimator.GAITS:
+			_walk_glances()
 	animator.set_state(_idle_alt if state == "idle" and _idle_alt != "" else state, speed)
 
 ## Plays an action once, then returns to the looping state. `dur` (optional) fits the
@@ -866,11 +934,40 @@ func _idle_variety() -> void:
 		_glance = global_position + side * randf_range(4.0, 12.0) + Vector3.UP * randf_range(0.6, 2.0)
 		_glance_t = randf_range(1.2, 3.0)
 		_apply_look()
-	elif r < 0.72 and not _gripping and _held == null and anim.has_animation("fold_arms"):
+	elif r < 0.72 and _held == null and anim.has_animation("fold_arms"):
 		_idle_alt = "fold_arms"
 		_idle_alt_t = randf_range(5.0, 11.0)
-	elif r < 0.85 and not _gripping and _held == null:
+	elif r < 0.85 and _held == null:
 		gesture("hips")
+
+## On the move, eyes don't stay locked straight ahead: every few seconds a look aside at
+## something passed, or down at the path a few steps on.
+func _walk_glances() -> void:
+	var now := Time.get_ticks_msec()
+	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
+	_last_idle_ms = now
+	if _glance != Vector3.INF:
+		_glance_t -= dt
+		if _glance_t <= 0.0:
+			_glance = Vector3.INF
+			_apply_look()
+		return
+	if _walk_glance_t <= 0.0:
+		_walk_glance_t = randf_range(2.5, 8.0)
+	_walk_glance_t -= dt
+	if _walk_glance_t > 0.0:
+		return
+	var fwd := global_basis.z.normalized()
+	if randf() < 0.6:
+		var side := fwd.rotated(Vector3.UP, randf_range(0.45, 1.1) * (1.0 if randf() < 0.5 else -1.0))
+		_glance = global_position + side * randf_range(5.0, 15.0) + Vector3.UP * randf_range(0.4, 1.9)
+		_glance_t = randf_range(0.7, 1.8)
+	else:
+		_glance = global_position + fwd * randf_range(2.5, 4.0) + Vector3.UP * 0.1
+		_glance_t = randf_range(0.5, 1.1)
+	_apply_look()
+
+var _walk_glance_t := 0.0
 
 func set_flash(v: float) -> void:
 	if _body:

@@ -29,6 +29,10 @@ var vfog := 1.0
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
+## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
+## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
+var spin := 0.0
+var _spinning := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -57,6 +61,8 @@ func _ready() -> void:
 		# --moon=0.5 shoots every night at that moon phase (0 new, 0.5 full).
 		if a.begins_with("--moon="):
 			Atmosphere.moon_phase_override = a.substr(7).to_float()
+		if a.begins_with("--spin="):
+			spin = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -289,6 +295,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
+	_spinning = spin != 0.0
 	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
@@ -297,6 +304,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
+	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
 	_report_broken(world)
@@ -305,6 +313,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
+func _process(delta: float) -> void:
+	if _spinning and world and world.player:
+		world.player._yaw += deg_to_rad(spin) * delta
+		world.player._apply_look()
+
 func _report_broken(n: Node) -> void:
 	if n is Node3D and not (n as Node3D).global_transform.is_finite():
 		print("  non-finite transform: ", n.get_path(), " (", n.get_class(), ") ", (n as Node3D).transform)
@@ -584,9 +597,9 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 		var f := Vector2(sin(float(cp["yaw"])), cos(float(cp["yaw"])))
 		# Stand back on the old side of the line (the road changes under the camera's
 		# gaze), off to the left of the road so the held tool doesn't hide the bar.
-		var back := 24.0
-		while back < 80.0 and (x - f * back).length() > float(cp["R"]) - 8.0:
-			back += 4.0
+		var back := 14.0
+		while back < 60.0 and (x - f * back).length() > float(cp["R"]) - 5.0:
+			back += 3.0
 		var cam := x - f * back - f.orthogonal() * 3.0
 		await _shot("04_era_border", cam, x + f * 6.0 - f.orthogonal() * 2.5, 0.4, 1.8, g.field.height(x.x, x.y) + 2.5, Callable(), 6.0)
 	else:
@@ -609,9 +622,41 @@ func _zone_shots(_g: ChunkGenerator) -> void:
 			open = open and _dry(g, Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0)
 		if not open or not _dry(g, p):
 			continue
-		# Just inside the line, looking along it so the next few stones stand in a row.
-		var along := Vector2(cos(a + 0.035), sin(a + 0.035)) * R0
-		await _shot("73_zone_stones", Vector2(cos(a), sin(a)) * (R0 - 2.5), along, 0.42, 1.8, h + 0.6, Callable(), 3.0)
+		# The stones actually standing along this stretch, in order along the line.
+		var stones: Array = []
+		var trees: Array = []
+		var seen := {}
+		for k in 8:
+			var q := Vector2(cos(a + k * 0.006), sin(a + k * 0.006)) * R0
+			var ck := Vector2i(floori(q.x / 64.0), floori(q.y / 64.0))
+			if seen.has(ck):
+				continue
+			seen[ck] = true
+			var ch := g.generate(ck.x, ck.y)
+			for o in ch["objects"]:
+				var wp := Vector2(o["p"].x + ck.x * 64.0, o["p"].z + ck.y * 64.0)
+				if o["t"] == "border_stone":
+					var oa := atan2(wp.y, wp.x)
+					if angle_difference(a, oa) > -0.004 and angle_difference(a, oa) < 0.05:
+						stones.append([angle_difference(a, oa), wp])
+				elif ObjectLibrary.kind(o["t"]) == "tree":
+					trees.append(wp)
+		stones.sort_custom(func(x, y): return x[0] < y[0])
+		if stones.size() < 3:
+			continue
+		# From a few metres short of the first, just inside the line, toward the third:
+		# no tree in the way.
+		var s0: Vector2 = stones[0][1]
+		var s2: Vector2 = stones[2][1]
+		var tan := (s2 - s0).normalized()
+		var cam := s0 - tan * 7.0 - s0.normalized() * 1.5
+		var blocked := false
+		for t in trees:
+			var u := clampf((t - cam).dot(tan), 0.0, (s2 - cam).length())
+			blocked = blocked or (cam + tan * u).distance_to(t) < 3.0
+		if blocked:
+			continue
+		await _shot("73_zone_stones", cam, s2, 0.42, 1.7, g.field.height(s2.x, s2.y) + 0.7, Callable(), 3.0)
 		return
 	print("no open stretch of the zone line found")
 

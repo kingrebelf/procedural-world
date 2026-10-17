@@ -1,0 +1,1129 @@
+{
+ "version": 1,
+ "model": "kokoro-multi-lang-v1_0",
+ "voices": [
+  {
+   "mix": {
+    "bf_emma": 1.0
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 180
+  },
+  {
+   "mix": {
+    "bf_isabella": 1.0
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 203
+  },
+  {
+   "mix": {
+    "bf_alice": 1.0
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 211
+  },
+  {
+   "mix": {
+    "bf_lily": 1.0
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 190
+  },
+  {
+   "mix": {
+    "af_heart": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 196
+  },
+  {
+   "mix": {
+    "af_bella": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 196
+  },
+  {
+   "mix": {
+    "af_nicole": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 156
+  },
+  {
+   "mix": {
+    "af_aoede": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 178
+  },
+  {
+   "mix": {
+    "af_kore": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 149
+  },
+  {
+   "mix": {
+    "af_sarah": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 187
+  },
+  {
+   "mix": {
+    "af_nova": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 159
+  },
+  {
+   "mix": {
+    "af_sky": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 159
+  },
+  {
+   "mix": {
+    "af_alloy": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 139
+  },
+  {
+   "mix": {
+    "af_jessica": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 213
+  },
+  {
+   "mix": {
+    "af_river": 1.0
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 181
+  },
+  {
+   "mix": {
+    "ff_siwis": 1.0
+   },
+   "accent": "fr",
+   "sex": "f",
+   "pitch": 209
+  },
+  {
+   "mix": {
+    "hf_alpha": 1.0
+   },
+   "accent": "in",
+   "sex": "f",
+   "pitch": 213
+  },
+  {
+   "mix": {
+    "hf_beta": 1.0
+   },
+   "accent": "in",
+   "sex": "f",
+   "pitch": 189
+  },
+  {
+   "mix": {
+    "if_sara": 1.0
+   },
+   "accent": "it",
+   "sex": "f",
+   "pitch": 218
+  },
+  {
+   "mix": {
+    "ef_dora": 1.0
+   },
+   "accent": "es",
+   "sex": "f",
+   "pitch": 175
+  },
+  {
+   "mix": {
+    "pf_dora": 1.0
+   },
+   "accent": "pt",
+   "sex": "f",
+   "pitch": 180
+  },
+  {
+   "mix": {
+    "bf_alice": 0.44,
+    "af_kore": 0.56
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 181
+  },
+  {
+   "mix": {
+    "af_kore": 0.33,
+    "af_bella": 0.67
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 182
+  },
+  {
+   "mix": {
+    "bf_lily": 0.4,
+    "af_alloy": 0.6
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 157
+  },
+  {
+   "mix": {
+    "bf_lily": 0.41,
+    "bf_emma": 0.59
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 183
+  },
+  {
+   "mix": {
+    "bf_emma": 0.47,
+    "bf_alice": 0.53
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 198
+  },
+  {
+   "mix": {
+    "bf_isabella": 0.48,
+    "bf_emma": 0.52
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "bf_isabella": 0.65,
+    "af_nicole": 0.35
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 182
+  },
+  {
+   "mix": {
+    "bf_emma": 0.45,
+    "af_bella": 0.55
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 190
+  },
+  {
+   "mix": {
+    "bf_lily": 0.26,
+    "af_alloy": 0.32,
+    "bf_emma": 0.42
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 170
+  },
+  {
+   "mix": {
+    "bf_alice": 0.57,
+    "af_nicole": 0.43
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 185
+  },
+  {
+   "mix": {
+    "bf_emma": 0.58,
+    "af_alloy": 0.42
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 165
+  },
+  {
+   "mix": {
+    "bf_emma": 0.67,
+    "af_jessica": 0.33
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 189
+  },
+  {
+   "mix": {
+    "af_nicole": 0.63,
+    "af_heart": 0.37
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 168
+  },
+  {
+   "mix": {
+    "bf_lily": 0.38,
+    "af_sarah": 0.33,
+    "af_sky": 0.29
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 179
+  },
+  {
+   "mix": {
+    "af_sarah": 0.52,
+    "af_heart": 0.48
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 192
+  },
+  {
+   "mix": {
+    "af_bella": 0.35,
+    "af_aoede": 0.65
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 187
+  },
+  {
+   "mix": {
+    "bf_emma": 0.36,
+    "bf_alice": 0.64
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 200
+  },
+  {
+   "mix": {
+    "bf_emma": 0.7,
+    "af_aoede": 0.3
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 180
+  },
+  {
+   "mix": {
+    "bf_lily": 0.41,
+    "af_heart": 0.59
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 190
+  },
+  {
+   "mix": {
+    "bf_emma": 0.41,
+    "af_sarah": 0.23,
+    "af_heart": 0.36
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 186
+  },
+  {
+   "mix": {
+    "bf_emma": 0.36,
+    "af_sarah": 0.64
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 184
+  },
+  {
+   "mix": {
+    "pf_dora": 0.6,
+    "bf_isabella": 0.4
+   },
+   "accent": "pt",
+   "sex": "f",
+   "pitch": 188
+  },
+  {
+   "mix": {
+    "bf_lily": 0.38,
+    "bf_isabella": 0.62
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 199
+  },
+  {
+   "mix": {
+    "bf_isabella": 0.63,
+    "bf_emma": 0.37
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 195
+  },
+  {
+   "mix": {
+    "af_aoede": 0.46,
+    "af_river": 0.54
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 182
+  },
+  {
+   "mix": {
+    "ef_dora": 0.4,
+    "bf_isabella": 0.6
+   },
+   "accent": "es",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "bf_lily": 0.58,
+    "af_heart": 0.42
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 189
+  },
+  {
+   "mix": {
+    "ff_siwis": 0.54,
+    "af_alloy": 0.46
+   },
+   "accent": "fr",
+   "sex": "f",
+   "pitch": 175
+  },
+  {
+   "mix": {
+    "bf_lily": 0.6,
+    "af_bella": 0.4
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 197
+  },
+  {
+   "mix": {
+    "bf_alice": 0.31,
+    "af_aoede": 0.69
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "ef_dora": 0.52,
+    "af_alloy": 0.48
+   },
+   "accent": "es",
+   "sex": "f",
+   "pitch": 156
+  },
+  {
+   "mix": {
+    "bf_emma": 0.36,
+    "af_heart": 0.64
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 190
+  },
+  {
+   "mix": {
+    "bf_emma": 0.37,
+    "af_aoede": 0.3,
+    "af_heart": 0.33
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 185
+  },
+  {
+   "mix": {
+    "bf_emma": 0.46,
+    "af_alloy": 0.25,
+    "af_sarah": 0.29
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 173
+  },
+  {
+   "mix": {
+    "bf_alice": 0.59,
+    "bf_lily": 0.41
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 198
+  },
+  {
+   "mix": {
+    "bf_alice": 0.34,
+    "bf_emma": 0.66
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "af_jessica": 0.5,
+    "af_nova": 0.5
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 185
+  },
+  {
+   "mix": {
+    "af_sarah": 0.41,
+    "af_alloy": 0.59
+   },
+   "accent": "us",
+   "sex": "f",
+   "pitch": 160
+  },
+  {
+   "mix": {
+    "bf_emma": 0.5,
+    "af_nicole": 0.5
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 162
+  },
+  {
+   "mix": {
+    "bf_emma": 0.41,
+    "af_jessica": 0.59
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 196
+  },
+  {
+   "mix": {
+    "bf_isabella": 0.5,
+    "af_nicole": 0.5
+   },
+   "accent": "mid",
+   "sex": "f",
+   "pitch": 176
+  },
+  {
+   "mix": {
+    "hf_alpha": 0.53,
+    "af_kore": 0.47
+   },
+   "accent": "in",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "bf_isabella": 0.31,
+    "af_sarah": 0.69
+   },
+   "accent": "gb",
+   "sex": "f",
+   "pitch": 191
+  },
+  {
+   "mix": {
+    "bm_george": 1.0
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 143
+  },
+  {
+   "mix": {
+    "bm_fable": 1.0
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 117
+  },
+  {
+   "mix": {
+    "bm_lewis": 1.0
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 122
+  },
+  {
+   "mix": {
+    "bm_daniel": 1.0
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 129
+  },
+  {
+   "mix": {
+    "am_fenrir": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 134
+  },
+  {
+   "mix": {
+    "am_michael": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 118
+  },
+  {
+   "mix": {
+    "am_puck": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 122
+  },
+  {
+   "mix": {
+    "am_echo": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 108
+  },
+  {
+   "mix": {
+    "am_eric": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 156
+  },
+  {
+   "mix": {
+    "am_liam": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 121
+  },
+  {
+   "mix": {
+    "am_onyx": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 95
+  },
+  {
+   "mix": {
+    "am_santa": 1.0
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 187
+  },
+  {
+   "mix": {
+    "im_nicola": 1.0
+   },
+   "accent": "it",
+   "sex": "m",
+   "pitch": 101
+  },
+  {
+   "mix": {
+    "hm_omega": 1.0
+   },
+   "accent": "in",
+   "sex": "m",
+   "pitch": 127
+  },
+  {
+   "mix": {
+    "hm_psi": 1.0
+   },
+   "accent": "in",
+   "sex": "m",
+   "pitch": 137
+  },
+  {
+   "mix": {
+    "em_alex": 1.0
+   },
+   "accent": "es",
+   "sex": "m",
+   "pitch": 136
+  },
+  {
+   "mix": {
+    "em_santa": 1.0
+   },
+   "accent": "es",
+   "sex": "m",
+   "pitch": 142
+  },
+  {
+   "mix": {
+    "pm_alex": 1.0
+   },
+   "accent": "pt",
+   "sex": "m",
+   "pitch": 139
+  },
+  {
+   "mix": {
+    "pm_santa": 1.0
+   },
+   "accent": "pt",
+   "sex": "m",
+   "pitch": 139
+  },
+  {
+   "mix": {
+    "am_liam": 0.66,
+    "am_fenrir": 0.34
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 128
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.37,
+    "am_fenrir": 0.28,
+    "am_onyx": 0.35
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 116
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.64,
+    "am_puck": 0.36
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 125
+  },
+  {
+   "mix": {
+    "bm_fable": 0.51,
+    "am_fenrir": 0.49
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 127
+  },
+  {
+   "mix": {
+    "bm_fable": 0.69,
+    "am_fenrir": 0.31
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 123
+  },
+  {
+   "mix": {
+    "am_puck": 0.36,
+    "am_santa": 0.64
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 156
+  },
+  {
+   "mix": {
+    "am_adam": 0.38,
+    "am_eric": 0.62
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 141
+  },
+  {
+   "mix": {
+    "pm_alex": 0.66,
+    "bm_fable": 0.34
+   },
+   "accent": "pt",
+   "sex": "m",
+   "pitch": 133
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.39,
+    "bm_george": 0.61
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 138
+  },
+  {
+   "mix": {
+    "am_fenrir": 0.54,
+    "am_santa": 0.46
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 155
+  },
+  {
+   "mix": {
+    "pm_alex": 0.31,
+    "am_santa": 0.69
+   },
+   "accent": "pt",
+   "sex": "m",
+   "pitch": 170
+  },
+  {
+   "mix": {
+    "bm_george": 0.63,
+    "am_echo": 0.37
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 130
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.47,
+    "am_adam": 0.53
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 125
+  },
+  {
+   "mix": {
+    "bm_george": 0.34,
+    "am_onyx": 0.66
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 103
+  },
+  {
+   "mix": {
+    "hm_omega": 0.65,
+    "am_michael": 0.35
+   },
+   "accent": "in",
+   "sex": "m",
+   "pitch": 123
+  },
+  {
+   "mix": {
+    "bm_george": 0.29,
+    "am_onyx": 0.36,
+    "am_adam": 0.35
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 114
+  },
+  {
+   "mix": {
+    "am_santa": 0.64,
+    "am_adam": 0.36
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 156
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.57,
+    "am_liam": 0.43
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 126
+  },
+  {
+   "mix": {
+    "bm_fable": 0.5,
+    "am_onyx": 0.5
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 101
+  },
+  {
+   "mix": {
+    "em_santa": 0.44,
+    "am_liam": 0.56
+   },
+   "accent": "es",
+   "sex": "m",
+   "pitch": 124
+  },
+  {
+   "mix": {
+    "am_onyx": 0.66,
+    "am_puck": 0.34
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 100
+  },
+  {
+   "mix": {
+    "bm_fable": 0.34,
+    "am_eric": 0.66
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 143
+  },
+  {
+   "mix": {
+    "bm_lewis": 0.51,
+    "am_fenrir": 0.49
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 130
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.41,
+    "am_adam": 0.59
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 124
+  },
+  {
+   "mix": {
+    "bm_fable": 0.51,
+    "am_puck": 0.49
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 118
+  },
+  {
+   "mix": {
+    "bm_lewis": 0.3,
+    "am_liam": 0.36,
+    "am_fenrir": 0.34
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 127
+  },
+  {
+   "mix": {
+    "bm_george": 0.3,
+    "am_fenrir": 0.7
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 138
+  },
+  {
+   "mix": {
+    "bm_lewis": 0.58,
+    "bm_george": 0.42
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 124
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.62,
+    "am_michael": 0.38
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 124
+  },
+  {
+   "mix": {
+    "bm_fable": 0.27,
+    "am_adam": 0.38,
+    "bm_lewis": 0.35
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 120
+  },
+  {
+   "mix": {
+    "am_echo": 0.33,
+    "am_liam": 0.67
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 117
+  },
+  {
+   "mix": {
+    "bm_fable": 0.32,
+    "bm_lewis": 0.68
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 123
+  },
+  {
+   "mix": {
+    "bm_lewis": 0.44,
+    "bm_george": 0.56
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 124
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.64,
+    "bm_fable": 0.36
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 126
+  },
+  {
+   "mix": {
+    "bm_george": 0.39,
+    "am_michael": 0.36,
+    "am_fenrir": 0.25
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 130
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.4,
+    "bm_fable": 0.6
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 125
+  },
+  {
+   "mix": {
+    "bm_george": 0.32,
+    "am_michael": 0.68
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 125
+  },
+  {
+   "mix": {
+    "bm_george": 0.33,
+    "am_eric": 0.67
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 150
+  },
+  {
+   "mix": {
+    "bm_fable": 0.61,
+    "am_michael": 0.39
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 119
+  },
+  {
+   "mix": {
+    "im_nicola": 0.52,
+    "am_fenrir": 0.48
+   },
+   "accent": "it",
+   "sex": "m",
+   "pitch": 115
+  },
+  {
+   "mix": {
+    "bm_fable": 0.7,
+    "am_onyx": 0.3
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 107
+  },
+  {
+   "mix": {
+    "bm_daniel": 0.33,
+    "am_adam": 0.36,
+    "bm_george": 0.3
+   },
+   "accent": "mid",
+   "sex": "m",
+   "pitch": 132
+  },
+  {
+   "mix": {
+    "im_nicola": 0.46,
+    "bm_fable": 0.54
+   },
+   "accent": "it",
+   "sex": "m",
+   "pitch": 112
+  },
+  {
+   "mix": {
+    "bm_george": 0.64,
+    "bm_fable": 0.36
+   },
+   "accent": "gb",
+   "sex": "m",
+   "pitch": 134
+  },
+  {
+   "mix": {
+    "am_fenrir": 0.39,
+    "am_puck": 0.61
+   },
+   "accent": "us",
+   "sex": "m",
+   "pitch": 125
+  }
+ ]
+}
