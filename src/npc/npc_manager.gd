@@ -274,8 +274,10 @@ func _decide_aboard(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
 	if dist > 40.0:
 		rec["greeted"] = false
 		return
-	if not rec.get("greeted", false) and dist < 22.0:
+	# One hail at a time from a boat, so the crew don't all shout over each other.
+	if not rec.get("greeted", false) and dist < 22.0 and t - float(e.get("hail_t", -99.0)) > 5.0:
 		rec["greeted"] = true
+		e["hail_t"] = t
 		if String(rec.get("faction", "folk")) == "pirate":
 			_bark(n, ["Heave to, landlubber!", "That one's ours, lads!", "Your purse or your life!"][randi() % 3], dist)
 			n.act("fist")

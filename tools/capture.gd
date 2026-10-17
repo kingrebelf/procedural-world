@@ -1216,8 +1216,8 @@ func _boat_shots(g: ChunkGenerator) -> void:
 					best[key] = s
 	# [name, eye (boat-local; y is above the water), look at (boat-local)].
 	var views := {
-		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 3.0, 6.0)]],
-		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 5.6, -2.2)]],
+		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 2.2, 6.0)]],
+		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
 	}
 	for key in views:
