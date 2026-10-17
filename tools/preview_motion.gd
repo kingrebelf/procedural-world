@@ -86,6 +86,7 @@ func _run() -> void:
 	await _strip(out + "/walk_uphill.png", 1.35, "walk")
 	await _strip(out + "/run_uphill.png", 3.6, "jog")
 	await _standing(out + "/standing_on_slope.png")
+	await _animals(out + "/animals_on_slope.png")
 	print("saved to ", out)
 	quit()
 
@@ -154,6 +155,34 @@ func _standing(path: String) -> void:
 		for h in people:
 			h.play("idle")
 			_step(h, DT)
+		await process_frame
+	vp.get_texture().get_image().save_png(path)
+	vp.size = FRAME
+	print("saved ", path)
+
+## A deer and a horse stand across the slope; the deer has seen the camera and watches it.
+func _animals(path: String) -> void:
+	_clear()
+	vp.size = Vector2i(FRAME.x * 2, FRAME.y)
+	var kinds := ["Deer", "Horse"]
+	for i in 2:
+		var a := AnimalModel.new()
+		vp.add_child(a)
+		a.build(kinds[i])
+		people.append(a)
+		a.global_position = Vector3((i - 0.5) * 2.6, 0, 0.3 * i)
+		a.global_position.y = ground(a.global_position.x, a.global_position.z)
+		a.rotation.y = PI * 0.5 if i == 0 else -PI * 0.6
+		if a.get("ground") != null:
+			a.ground = Callable(self, "ground")
+			a.lod = false
+	cam.global_position = Vector3(0.0, ground(0, 5.0) + 0.9, 5.0)
+	cam.look_at(Vector3(0, 0.7, 0))
+	if people[0].has_method("look_at_target"):
+		people[0].look_at_target(cam.global_position, 1.0)
+	for f in 90:
+		for a in people:
+			a.play("Idle")
 		await process_frame
 	vp.get_texture().get_image().save_png(path)
 	vp.size = FRAME

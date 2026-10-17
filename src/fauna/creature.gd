@@ -27,6 +27,8 @@ var _bite_cd := 0.0
 ## Lives in a cave: walks on the cave floor (FaunaManager.cave_floor), stopped by its walls.
 var underground := false
 var _flash := 0.0
+var _alert_t := 0.0 ## how long a wary animal has been watching you
+var _graze_clip := "Eating"
 ## Drawn as a carcass (see Corpses): no hit box, no mind, lying where it fell. `fresh`
 ## plays the fall; otherwise it is already down.
 var as_corpse := false
@@ -370,19 +372,39 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		var t: String = p["temper"]
 		if t == "skittish" and d < 14.0:
 			state = "flee"
+		elif t == "skittish" and d < 24.0 and state in ["wander", "graze", "alert"] and p["plan"] != "bird":
+			# Heads up: it stops and watches you, and bolts if you come closer or linger.
+			state = "alert"
+			if _alert_t > randf_range(4.0, 9.0):
+				state = "flee"
 		elif t == "aggressive" and d < 16.0:
 			state = "chase"
-		elif state == "flee" and d > 26.0 or state == "chase" and d > 30.0:
+		elif state == "flee" and d > 26.0 or state == "chase" and d > 30.0 or state == "alert":
 			state = "wander"
 			_pick_wander()
 		elif state == "wander" and randf() < 0.15:
 			state = "graze"
+			_graze_clip = _pick_graze()
 		elif state == "graze" and randf() < 0.3:
 			state = "wander"
 			_pick_wander()
+	_alert_t = _alert_t + delta if state == "alert" else 0.0
+	if _kit:
+		_kit.ground = ground
+		if state in ["alert", "chase"]:
+			_kit.look_at_target(player_pos + Vector3.UP * 1.4, 1.0)
+		elif state != "flee" and d < 8.0:
+			_kit.look_at_target(player_pos + Vector3.UP * 1.4, 0.5)
+		else:
+			_kit.look_at_target(Vector3.INF)
 	var goal := _target
 	var want := 0.0
 	match state:
+		"alert":
+			want = 0.0
+			goal = player_pos
+			var face := atan2(player_pos.x - global_position.x, player_pos.z - global_position.z)
+			rotation.y = lerp_angle(rotation.y, face, clampf(delta * 2.5, 0.0, 1.0))
 		"wander":
 			want = float(p["speed"]) * 0.35
 			if Vector2(global_position.x, global_position.z).distance_to(Vector2(_target.x, _target.z)) < 1.0:
@@ -441,12 +463,11 @@ func _animate(delta: float) -> void:
 			_kit.position.x = sin(_flash * 80.0) * 0.05
 		return
 	if _kit:
+		# The gait and its pace follow the ground speed (AnimalModel).
 		if _speed < 0.15:
-			_kit.play("Eating" if state == "graze" else "Idle")
-		elif _speed < 3.2:
-			_kit.play("Walk", clampf(_speed / 1.4, 0.5, 1.8))
+			_kit.play(_graze_clip if state == "graze" else ("Idle_2" if state == "alert" and _kit.anim.has_animation("Idle_2") else "Idle"))
 		else:
-			_kit.play("Gallop", clampf(_speed / 6.0, 0.6, 1.6))
+			_kit.play("Walk")
 		if _flash > 0.0:
 			_flash -= delta
 		return
@@ -465,6 +486,16 @@ func _animate(delta: float) -> void:
 	if _flash > 0.0:
 		_flash -= delta
 		_model.position.x = sin(_flash * 80.0) * 0.05
+
+## Grazing looks different from one bite to the next: head down eating, or nosing about.
+func _pick_graze() -> String:
+	if _kit == null:
+		return "Eating"
+	var opts := ["Eating", "Eating"]
+	for n in ["Idle_Headlow", "Idle_2_HeadLow"]:
+		if _kit.anim.has_animation(n):
+			opts.append(n)
+	return opts[randi() % opts.size()]
 
 func hurt(dmg: float) -> bool:
 	hp -= dmg

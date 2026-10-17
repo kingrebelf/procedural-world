@@ -60,30 +60,39 @@ static func foot_forward_phase(a: Animation, sk: Skeleton3D, foot: int, fwd := V
 	return at
 
 ## How fast a cycle carries its body along, from the feet alone (for clips made to play in
-## place): the speed at which whichever foot is lowest slides backwards. `feet` are bone
-## indices; returns metres (skeleton units) per second.
-static func planted_speed(a: Animation, sk: Skeleton3D, feet: Array, fwd := Vector3(0, 0, 1), samples := 60) -> float:
+## place): the speed at which feet on the ground slide backwards (the median over every
+## foot and moment a foot is down, so a foot still landing or already lifting doesn't
+## skew it). `feet` are bone indices; `tips` (optional, one per foot) is the point in each
+## bone's own space that touches the ground (a hoof at the end of a leaf bone). Returns
+## metres (skeleton units) per second.
+static func planted_speed(a: Animation, sk: Skeleton3D, feet: Array, fwd := Vector3(0, 0, 1), samples := 60, tips := []) -> float:
 	var tracks := track_map(a)
-	var dt := a.length / float(samples)
-	var travel := 0.0
-	var counted := 0
-	var prev := []
-	for f in feet:
-		prev.append(global_at(a, tracks, sk, f, 0.0, true).origin)
-	for i in range(1, samples + 1):
-		var t := dt * float(i)
-		var cur := []
-		var low := 0
+	var pts := []
+	var lo := INF
+	var hi := -INF
+	for i in samples + 1:
+		var t := a.length * float(i) / float(samples)
+		var row := []
 		for j in feet.size():
-			cur.append(global_at(a, tracks, sk, feet[j], t, true).origin)
-			if (cur[j] as Vector3).y < (cur[low] as Vector3).y:
-				low = j
-		var d := ((prev[low] as Vector3) - (cur[low] as Vector3)).dot(fwd)
-		if d > 0.0:
-			travel += d
-			counted += 1
-		prev = cur
-	return travel / maxf(a.length, 0.001) if counted > 0 else 0.0
+			var g := global_at(a, tracks, sk, feet[j], t, true)
+			var p: Vector3 = g * (tips[j] as Vector3) if j < tips.size() else g.origin
+			row.append(p)
+			lo = minf(lo, p.y)
+			hi = maxf(hi, p.y)
+		pts.append(row)
+	var down := lo + maxf((hi - lo) * 0.08, 0.005)
+	var dt := a.length / float(samples)
+	var v := []
+	for i in samples:
+		for j in feet.size():
+			var p0: Vector3 = pts[i][j]
+			var p1: Vector3 = pts[i + 1][j]
+			if p0.y <= down and p1.y <= down:
+				v.append((p0 - p1).dot(fwd) / dt)
+	if v.is_empty():
+		return 0.0
+	v.sort()
+	return maxf(float(v[v.size() / 2]), 0.0)
 
 ## The knee position that puts a two-bone limb (hip `h`, lengths `a` and `b`) on target `t`,
 ## bending toward `pole` (any point the knee should lean toward). The target is pulled in
