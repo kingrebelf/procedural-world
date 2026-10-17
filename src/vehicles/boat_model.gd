@@ -117,6 +117,12 @@ static func get_mat(name: String) -> Material:
 			s.metallic_specular = 0.9
 			s.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m = s
+		"spar":
+			# Masts and yards: dressed, oiled wood with the grain along them, not bark.
+			var s := (Materials.get_mat("planks") as StandardMaterial3D).duplicate() as StandardMaterial3D
+			s.albedo_color = Color(0.62, 0.46, 0.3)
+			s.roughness = 0.6
+			m = s
 		"rope":
 			var s := StandardMaterial3D.new()
 			s.albedo_color = Color(0.5, 0.42, 0.3)
@@ -497,7 +503,7 @@ static func _stairs(k: MeshKit, shapes: Array, a: Vector3, b: Vector3, w: float,
 
 ## Square sail hung from a yard, bellied forward by the wind (or furled on the yard).
 static func _square_sail(k: MeshKit, top_y: float, bot_y: float, half_w: float, z: float, belly: float, furled: bool, col := Color.WHITE) -> void:
-	_beam(k, "timber", Vector3(-half_w - 0.3, top_y, z), Vector3(half_w + 0.3, top_y, z), 0.09)
+	_beam(k, "spar", Vector3(-half_w - 0.3, top_y, z), Vector3(half_w + 0.3, top_y, z), 0.09)
 	if furled:
 		_beam(k, "sail", Vector3(-half_w, top_y - 0.12, z + 0.05), Vector3(half_w, top_y - 0.12, z + 0.05), 0.2, 8)
 		for i in 5:
@@ -517,15 +523,23 @@ static func _square_sail(k: MeshKit, top_y: float, bot_y: float, half_w: float, 
 			var b := belly * sin(u * PI) * sin(clampf(v * 1.1, 0.0, 1.0) * PI * 0.85 + 0.15)
 			row.append(Vector3(x, y, z - b))
 		pts.append(row)
+	# Smooth normals, so the cloth shades as one curved sheet, not a quilt of facets.
+	var nrm := func(j: int, i: int) -> Vector3:
+		var du: Vector3 = pts[j][mini(i + 1, nx)] - pts[j][maxi(i - 1, 0)]
+		var dv: Vector3 = pts[mini(j + 1, ny)][i] - pts[maxi(j - 1, 0)][i]
+		return du.cross(dv).normalized()
 	for j in ny:
 		for i in nx:
 			var a: Vector3 = pts[j][i]
 			var b: Vector3 = pts[j][i + 1]
 			var c: Vector3 = pts[j + 1][i + 1]
 			var d: Vector3 = pts[j + 1][i]
-			var n := (b - a).cross(d - a).normalized()
-			k.tri("sail", Transform3D.IDENTITY, a, b, c, n, n, n, col)
-			k.tri("sail", Transform3D.IDENTITY, a, c, d, n, n, n, col)
+			var na: Vector3 = nrm.call(j, i)
+			var nb: Vector3 = nrm.call(j, i + 1)
+			var nc: Vector3 = nrm.call(j + 1, i + 1)
+			var nd: Vector3 = nrm.call(j + 1, i)
+			k.tri("sail", Transform3D.IDENTITY, a, b, c, na, nb, nc, col)
+			k.tri("sail", Transform3D.IDENTITY, a, c, d, na, nc, nd, col)
 
 ## Something to sit on, crates and barrels: the clutter of a working deck.
 static func _barrel(k: MeshKit, p: Vector3, r := 0.3, h := 0.85) -> void:
@@ -661,7 +675,7 @@ static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -
 	_deck(k, shapes, h, dy, "planks", 0.03, 0.93, Color(0.72, 0.6, 0.48))
 	# Mast with a lug sail drawing, a tiller at the stern.
 	var mast := Vector3(0, dy, -1.3)
-	_beam(k, "timber", mast, mast + Vector3(0, 6.2, 0), 0.09)
+	_beam(k, "spar", mast, mast + Vector3(0, 6.2, 0), 0.09)
 	_square_sail(k, dy + 5.8, dy + 1.5, 1.7, -1.15, 0.55, false, Color(0.82, 0.7, 0.58))
 	for s in [-1.0, 1.0]:
 		_line(k, mast + Vector3(0, 5.9, 0), Vector3(s * (_width_at(h, 0.6, dy) - 0.05), dy + 0.2, -1.0))
@@ -728,9 +742,9 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	_beam(k, "timber", Vector3(0, float(h["F"]) + float(h["rise"]) * 1.3 + 0.1, -10.0), Vector3(0, float(h["F"]) + 2.6, -13.2), 0.14)
 	# Mainmast, furled square sail on its yard, shrouds and stays; a crow's nest.
 	var mast := Vector3(0, dy, -0.8)
-	_beam(k, "timber", mast - Vector3(0, 1.5, 0), mast + Vector3(0, 16.5, 0), 0.24, 10)
+	_beam(k, "spar", mast - Vector3(0, 1.5, 0), mast + Vector3(0, 16.5, 0), 0.24, 10)
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, mast + Vector3(0, 13.4, 0)), 0.8, 0.9, 0.9, 12, true, 0.0, 1, Color(0.65, 0.52, 0.4))
-	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 1.2, false, Color(0.9, 0.84, 0.72))
+	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 1.9, false, Color(0.9, 0.84, 0.72))
 	for s in [-1.0, 1.0]:
 		for z in [-2.2, -0.9, 0.4]:
 			var u: float = 0.5 - z / float(h["L"])
