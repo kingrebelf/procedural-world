@@ -115,6 +115,7 @@ Every object in a chunk has a stable identity `(cx, cz, index)` assigned at gene
 | Cache | chest, rune coffer, supply pod | open → loot (contents fixed at generation) |
 | Structure | cottage, watchtower, shrine, hab dome, comms spire | static scenery, settlement anchor |
 | Trader | merchant per era | buy/sell |
+| Room prop (Lore) | terminals, wall screens, holo-tables, bookcases, lecterns, journals, letters, scrolls, tombs inside walk-in rooms | Interact → read logs, books and epitaphs about the place; terminals download their survey to the atlas and charge flashlights once a day, holo-tables mark the nearest settlement, a shrine's rite restores stamina daily (state in the room's `lore` / `lore_act`) |
 | Threshold marker | standing stone, crystal shard, beacon | scenery in transition bands |
 | Creature (planned) | wolves, wisps, sentinel drones | combat, drops |
 

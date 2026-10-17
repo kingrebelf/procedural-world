@@ -706,12 +706,62 @@ func _rooms(game, streamer: ChunkStreamer, player) -> void:
 		check(lit, "the %s is lit inside" % t)
 		var cache: Dictionary = rc.data["objects"][rc.data["objects"].size() - 1]
 		check(cache["st"].get("inside", "") == t, "the %s is stocked" % t)
+		if Lore.has(t):
+			await _use_lore(game, player, rc, room)
 		if Interiors.TOWER.has(t):
 			await _climb(player, w, t)
 		await _open_inside(player, rc, cache)
 		rc.remove_object(cache["i"])
 		rc.remove_object(room["i"])
 		await _frames(2)
+
+## The room's first readable prop (a terminal, bookcase, book...): look at it, Interact
+## opens its page, and everything every room can show reads without loose placeholders.
+func _use_lore(game, player, rc: ChunkNode, room: Dictionary) -> void:
+	var at: Vector3 = rc.position + Lore.anchor(room, 0)
+	var ctr: Vector3 = rc.position + room["p"]
+	var d := Vector3(ctr.x - at.x, 0, ctr.z - at.z).normalized()
+	var stand: Vector3 = at + d * 1.5
+	stand.y = player.global_position.y
+	var to: Vector3 = at - (stand + Vector3(0, 1.6, 0))
+	player.set_state({"pos": stand, "yaw": atan2(-to.x, -to.z), "pitch": atan2(to.y, Vector2(to.x, to.z).length()), "slot": 0})
+	player.velocity = Vector3.ZERO
+	await _frames(30)
+	var eye: Vector3 = player.head.global_position
+	check(player.focus.get("kind", "") == "lore", "looking at the %s's %s offers to use it (focus: %s; score %.2f, in sight %s, %.2f m)" % [room["t"], Lore.spots(room["t"])[0][0],
+		player.focus.get("verb", "nothing"), player._focus_score(eye, -player.camera.global_transform.basis.z, at), player._can_see(eye, at), eye.distance_to(at)])
+	if player.focus.get("kind", "") == "lore":
+		player.interact()
+		await _frames(3)
+		var ui = player.get_tree().get_first_node_in_group("lore_ui")
+		check(ui != null and ui.is_open(), "Interact opens the %s's page" % room["t"])
+		if ui != null and ui.is_open():
+			check(String(ui._body.text).length() > 40, "the page has something to read")
+			ui.close()
+			await _frames(2)
+		check(not player.ui_open, "stepping away gives the controls back")
+	if room["t"] != "ops_tower":
+		return
+	# Reading everything gives XP and marks the atlas; later checks count on neither.
+	var stats: Dictionary = game.stats.to_data()
+	var marks: Dictionary = game.markers.to_data()
+	var loose: Array = []
+	var types: Array = Interiors.FURNISH.keys() + KitHouse.FURNISH.keys()
+	for t in types:
+		for era in Eras.COUNT:
+			var o := {"t": t, "e": era, "p": room["p"], "r": 0.0, "s": 1.0, "i": 9000 + era, "st": {}}
+			for k in Lore.spots(t).size():
+				var e: Dictionary = Lore.read(o, rc, k, player.npcs)
+				for pg in e["pages"]:
+					if String(pg["text"]).contains("{") or String(pg["text"]).strip_edges() == "":
+						loose.append("%s/%d/%d" % [t, era, k])
+				for pg in e["pages"]:
+					for a in pg.get("actions", []):
+						if Lore.act(o, rc, k, a[0], player) == "":
+							loose.append("%s/%d/%d action %s" % [t, era, k, a[0]])
+	check(loose.is_empty(), "every readable prop reads cleanly in every era (%s)" % ", ".join(loose.slice(0, 6)))
+	game.stats = Stats.from_data(stats)
+	game.markers = Markers.from_data(marks)
 
 ## Climbs a tower's stair from the corner at its foot, flight by flight, turning on each
 ## landing, and walks out through the hatch onto the roof.
