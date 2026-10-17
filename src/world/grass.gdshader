@@ -1,6 +1,7 @@
 shader_type spatial;
 // Instanced grass blades with wind. INSTANCE_CUSTOM.rgb is the era-blended tint,
-// INSTANCE_CUSTOM.a the fantasy glow amount. Vertex COLOR (GrassKit): rgb the blade's own
+// INSTANCE_CUSTOM.a the fantasy glow amount, or -1 for waterweed, which sways slowly in
+// the current instead of the wind. Vertex COLOR (GrassKit): rgb the blade's own
 // shade times SHADE_SCALE, or with a = 0 the fixed colour of a petal or seed head. UV2 is
 // the distance over which the species thins out.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
@@ -26,9 +27,15 @@ void vertex() {
 	float wave = smoothstep(0.2, 1.0, sin(dot(wp.xz, wind_dir) * 0.045 - wind_time * 0.55 + sin(wp.x * 0.013) * 1.5));
 	float bend = UV.y * UV.y * (0.1 + wind_strength * 0.75) * (sway + wind_strength * 0.7 + wave * (0.25 + wind_strength * 0.6));
 	vec3 local_wind = (inverse(MODEL_MATRIX) * vec4(wind_dir.x, 0.0, wind_dir.y, 0.0)).xyz;
+	if (INSTANCE_CUSTOM.a < -0.5) {
+		// Under water: a slow to-and-fro, each clump in its own phase, the same in any wind.
+		float ph = TIME * 0.7 + wp.x * 0.37 + wp.z * 0.23;
+		bend = UV.y * UV.y * (sin(ph) * 0.22 + sin(ph * 2.3 + 1.7) * 0.07);
+		local_wind = (inverse(MODEL_MATRIX) * vec4(0.8, 0.0, 0.6, 0.0)).xyz;
+	}
 	VERTEX.xz += normalize(local_wind.xz + vec2(0.0001)) * bend;
 	VERTEX.y -= abs(bend) * 0.3;
-	glow = INSTANCE_CUSTOM.a;
+	glow = max(INSTANCE_CUSTOM.a, 0.0);
 	// Tints are authored as sRGB colours; shading happens in linear space.
 	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
 	shade = 1.0 - 0.42 * cloud_shadow(wp);

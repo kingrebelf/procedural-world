@@ -374,6 +374,35 @@ func _run() -> void:
 						still = true
 		check(not still, "a harvested plant does not grow back when the chunk is rebuilt")
 
+	# Lake beds grow waterweed and lie strewn with stones.
+	var lg := ChunkGenerator.new(game.seed, game.store.has_rivers())
+	var bed := {}
+	for r in 10:
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if bed.is_empty() and maxi(absi(dx), absi(dz)) == r:
+					var ch := lg.generate(dx, dz)
+					var deep := 0
+					for h in ch["heights"]:
+						deep += 1 if h < -2.0 else 0
+					if deep > 600:
+						bed = ch
+	check(not bed.is_empty(), "found a lake bed near spawn")
+	if not bed.is_empty():
+		var weeds := 0
+		var grass := ChunkNode.build_grass_buffers(bed, 1.0)
+		for key in grass:
+			if String(key).begins_with("weed@"):
+				weeds += (grass[key] as PackedFloat32Array).size() / 16
+		var sunk := 0
+		var clutter := ChunkNode.build_clutter_buffers(bed, 1.0)
+		for key in clutter:
+			if String(key).begins_with("stone:"):
+				var b: PackedFloat32Array = clutter[key]
+				for i in range(0, b.size(), 16):
+					sunk += 1 if b[i + 7] < -0.6 else 0
+		check(weeds > 20 and sunk > 20, "a lake bed has waterweed and stones (%d weeds, %d stones)" % [weeds, sunk])
+
 	# Loot the nearest cache by walking up to it, as a player would: the floating prompt
 	# should pick it and Interact should open it.
 	var looted := {}

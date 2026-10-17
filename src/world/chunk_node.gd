@@ -429,6 +429,38 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, w[biome_era] * lumen])
 		out[key] = buf
+	# Waterweed on lake and sea beds, in beds of its own, thickest a couple of metres
+	# down and thinning out where the light fades. (Its own draws, so the grass above
+	# stays as it was.)
+	var rw := WHash.rng(seed, chunk["cx"], chunk["cz"], 905)
+	for n in int(2600 * density):
+		var lx := rw.randf() * SIZE
+		var lz := rw.randf() * SIZE
+		var y := ChunkGenerator.height_at(chunk, lx, lz)
+		var roll := rw.randf()
+		var yaw := rw.randf() * TAU
+		var size := rw.randf()
+		if y > -0.7 or y < -9.0:
+			continue
+		var wx := x0 + lx
+		var wz := z0 + lz
+		var depth := smoothstep(-0.7, -2.2, y) * (1.0 - smoothstep(-5.0, -9.0, y))
+		if roll > depth * smoothstep(-0.1, 0.45, wild.get_noise_2d(wx * 1.7 + 300.0, wz * 1.7)):
+			continue
+		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.5 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.3):
+			continue
+		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
+			continue
+		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
+		var sc := lerpf(0.7, 1.4, size)
+		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * rw.randf_range(0.8, 1.3), sc))
+		var tint := Color(0.26, 0.34, 0.12) * w[0] + Color(0.12, 0.36, 0.3) * w[1] + Color(0.3, 0.27, 0.16) * w[2]
+		tint = tint.lerp(Color(0.36, 0.3, 0.14), rw.randf() * 0.35)
+		var key := "weed@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
+		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
+		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
+			tint.r, tint.g, tint.b, -1.0])
+		out[key] = buf
 	return out
 
 ## Ground clutter (stones, tiny glowing mushrooms, alloy debris, undergrowth), keyed by
@@ -559,6 +591,49 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		var v := r.randf_range(0.8, 1.12) * (1.08 if gravelly else 1.0)
 		tint = Color(tint.r * v * r.randf_range(0.96, 1.04), tint.g * v, tint.b * v * r.randf_range(0.95, 1.05),
 			w[Eras.MEDIEVAL] * r.randf() * (0.0 if gravelly else (0.25 if stony > 0.3 else 0.7)))
+		var key := "stone:" + kind
+		if kind == "pebble":
+			key += "@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
+		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
+		buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a])
+		out[key] = buf
+		if size * flat >= 0.25:
+			solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
+	# Stones on lake and sea beds, scattered and in drifts, furred green with algae.
+	# (Their own draws, so the stones on land stay where they were.)
+	var rs := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 906)
+	for n in int(2200 * density):
+		var lx := rs.randf() * SIZE
+		var lz := rs.randf() * SIZE
+		var y := ChunkGenerator.height_at(chunk, lx, lz)
+		var roll := rs.randf()
+		var a := rs.randf()
+		var flat := rs.randf_range(0.55, 0.95)
+		var turn := rs.randf() * TAU
+		var tip := Vector2(rs.randf_range(-0.25, 0.25), rs.randf_range(-0.25, 0.25))
+		var grey: Color = greys[rs.randi() % greys.size()]
+		var v := rs.randf_range(0.75, 1.1)
+		var algae := rs.randf()
+		if y > -0.6 or y < -14.0 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.3):
+			continue
+		# Drifts where a slow noise of the bed is high, a few loose ones anywhere.
+		var drift := 0.5 + 0.5 * sin(lx * 0.21 + float(chunk["cx"]) * 3.1) * cos(lz * 0.17 + float(chunk["cz"]) * 2.3)
+		if roll > 0.04 + 0.3 * drift * drift:
+			continue
+		var size := 0.06 + 0.7 * pow(a, 5.0)
+		var kind := "pebble"
+		if size >= 0.5:
+			kind = "rock_a" if a > 0.985 else "rock_b"
+		elif size >= 0.16:
+			kind = "stone_a" if a > 0.8 else "stone_b"
+		var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 0.5, lz) - ChunkGenerator.height_at(chunk, lx + 0.5, lz), 1.0,
+			ChunkGenerator.height_at(chunk, lx, lz - 0.5) - ChunkGenerator.height_at(chunk, lx, lz + 0.5)).normalized()
+		var b := Basis(Quaternion(Vector3.UP, nrm)) * Basis(Vector3.UP, turn) * Basis.from_euler(Vector3(tip.x, 0, tip.y))
+		b = b.scaled_local(Vector3(size, size * flat, size))
+		var p := Vector3(lx, y - size * flat * 0.15, lz)
+		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
+		var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
+		tint = Color(tint.r * v * 0.9, tint.g * v * 0.95, tint.b * v * 0.85, 0.35 + 0.6 * algae)
 		var key := "stone:" + kind
 		if kind == "pebble":
 			key += "@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]

@@ -4,14 +4,15 @@ class_name GrassKit
 ##   meadow   the knee-high field grass
 ##   tall     wild grass with seed heads on stalks, in rough and lush ground
 ##   flowers_N  wildflowers among a few blades: daisy, buttercup, cornflower, poppy
+##   weed     long ribbons of waterweed on lake beds, swaying in the current
 ## Every vertex carries its blade's own shade (COLOR.rgb, a multiplier on the instance's
 ## tint; COLOR.a 0 marks seed heads and petals, which keep their own colour), its height up
 ## the blade (UV.y, which drives the wind), and the distance over which the species
 ## thins out (UV2: start, end), read by grass.gdshader.
 
-const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3"]
+const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3", "weed"]
 ## [thinning starts, all gone] in metres from the camera.
-const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0)}
+const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0), "weed": Vector2(30.0, 75.0)}
 ## Petal and centre colours (sRGB) of the wildflowers.
 const PETALS := [[Color(0.93, 0.93, 0.88), Color(0.95, 0.75, 0.15)], [Color(0.96, 0.8, 0.16), Color(0.85, 0.62, 0.1)],
 	[Color(0.42, 0.48, 0.86), Color(0.3, 0.28, 0.5)], [Color(0.82, 0.16, 0.1), Color(0.12, 0.1, 0.08)]]
@@ -60,6 +61,11 @@ static func _build(species: String) -> ArrayMesh:
 				var h := r.randf_range(0.75, 1.15)
 				var tip := _blade(st, r, rg, off, h, 0.006, r.randf_range(0.08, 0.2), 4, false)
 				_seed_head(st, r, rg, tip, r.randf_range(0.07, 0.12))
+		"weed":
+			# Ribbons that keep their width most of the way up, leaning every way.
+			for b in 7:
+				var off := _spot(r, 0.2)
+				_blade(st, r, rg, off, r.randf_range(0.45, 1.3), r.randf_range(0.022, 0.034), r.randf_range(0.1, 0.4), 6, false)
 		_:
 			var pc: Array = PETALS[int(species.substr(8)) % PETALS.size()]
 			for b in 6:
