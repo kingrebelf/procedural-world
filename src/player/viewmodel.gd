@@ -145,7 +145,8 @@ const BOWS := ["shortbow", "longbow", "composite_bow", "royal_bow", "crystal_bow
 
 ## Held to be looked at rather than used: not a tool, weapon or light.
 static func carried(t: String) -> bool:
-	return t != "" and not ItemDB.def(t).get("kind", "") in ["tool", "weapon", "light"]
+	var d := ItemDB.def(t)
+	return not d.is_empty() and not d.get("kind", "") in ["tool", "weapon", "light"]
 
 static func is_bow(t: String) -> bool:
 	return t in BOWS
@@ -365,6 +366,8 @@ static func _metal_mask(a: Array, mat: Material) -> PackedByteArray:
 var _item = null
 
 func show_item(t: String, it = null) -> void:
+	if t != "" and ItemDB.def(t).is_empty():
+		t = "" # nothing the game knows: empty hands, not a blank card
 	if t == _type and is_same(it, _item) and t != "":
 		return # same thing still in hand (an inventory change elsewhere)
 	_type = t

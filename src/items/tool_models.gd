@@ -23,16 +23,18 @@ static func mat(name: String) -> Material:
 	match name:
 		"it_steel":
 			# Ground and polished: bright, a little brushed along the blade.
-			m.albedo_color = Color(0.66, 0.67, 0.69)
-			m.metallic = 1.0
-			m.roughness = 0.26
+			# Not fully metallic: with nothing bright to reflect (a cave, a capture without a
+			# sky) a pure metal renders black; real steel still shows its grey there.
+			m.albedo_color = Color(0.62, 0.63, 0.65)
+			m.metallic = 0.72
+			m.roughness = 0.3
 			m.roughness_texture = _noise("brushed", 0.02, Vector2(1.0, 14.0), Color(0.55, 0.55, 0.55), Color(1, 1, 1))
 			m.uv1_scale = Vector3(18.0, 3.0, 1.0)
 		"it_iron":
 			# Forged and blackened: dark, hammer-marked, rough where it wasn't ground.
-			m.albedo_color = Color(0.3, 0.3, 0.31)
-			m.metallic = 0.85
-			m.roughness = 0.55
+			m.albedo_color = Color(0.36, 0.36, 0.37)
+			m.metallic = 0.55
+			m.roughness = 0.58
 			m.albedo_texture = _noise("hammered", 0.05, Vector2.ONE, Color(0.7, 0.7, 0.7), Color(1, 1, 1), true)
 			m.normal_enabled = true
 			m.normal_texture = _noise("hammered", 0.05, Vector2.ONE, Color.BLACK, Color.WHITE, true, true)
@@ -40,18 +42,18 @@ static func mat(name: String) -> Material:
 			m.uv1_scale = Vector3(10.0, 10.0, 1.0)
 		"it_bronze":
 			m.albedo_color = Color(0.74, 0.5, 0.27)
-			m.metallic = 1.0
+			m.metallic = 0.8
 			m.roughness = 0.34
 			# Patches of dull green-brown patina.
 			m.albedo_texture = _noise("patina", 0.04, Vector2.ONE, Color(0.62, 0.72, 0.6), Color(1, 1, 1))
 			m.uv1_scale = Vector3(8.0, 8.0, 1.0)
 		"it_brass":
 			m.albedo_color = Color(0.8, 0.63, 0.33)
-			m.metallic = 1.0
+			m.metallic = 0.8
 			m.roughness = 0.3
 		"it_gold":
 			m.albedo_color = Color(1.0, 0.78, 0.36)
-			m.metallic = 1.0
+			m.metallic = 0.85
 			m.roughness = 0.22
 		"it_wood":
 			# Straight grain along the handle, darker late-wood lines.
@@ -446,7 +448,7 @@ static func sword(k: MeshKit, o: Dictionary) -> void:
 	var grip: float = o.get("grip", 0.11)
 	var metal: String = o.get("metal", "it_steel")
 	var gc: Color = o.get("guard_col", Color.WHITE)
-	var gm: String = o.get("guard", metal if metal != "it_steel" else "it_iron")
+	var gm: String = o.get("guard", metal)
 	var r: float = o.get("grip_r", 0.014)
 	# The tang's grip: wood under a leather or cord wrap.
 	haft(k, -0.005, grip, r, r * 0.92, o.get("wood", Color(0.35, 0.22, 0.13)), false)
