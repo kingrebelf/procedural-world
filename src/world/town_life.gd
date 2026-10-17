@@ -834,6 +834,21 @@ var _smokes: Array = []
 var _t := 0.0
 var _hour_t := 0.0
 var _shops: Dictionary = {} ## layout index of a shop's house -> true
+var _built: Array = [] ## groups standing: {pieces, house, root, box}
+var _seen := 0 ## the last of _changes this town has stood aside for
+
+## Where the player built or dismantled something lately, as [rev, Vector2]: the town's
+## props there stand aside (an orchard tree doesn't grow through a player's house), and
+## come back when it is gone.
+static var _rev := 0
+static var _changes: Array = []
+
+## Called when a built piece is placed or removed at a world point.
+static func note_built(at: Vector2) -> void:
+	_rev += 1
+	_changes.append([_rev, at])
+	if _changes.size() > 64:
+		_changes.pop_front()
 
 static var _smoke_mat: StandardMaterial3D
 static var _smoke_pm: ParticleProcessMaterial
@@ -846,6 +861,7 @@ func setup(g: ChunkGenerator, s: Node, st: Dictionary) -> void:
 	if not applies(gen, site):
 		set_process(false)
 		return
+	_seen = _rev
 	var pl := plan(gen, site)
 	for h in TownShops.plan(gen, site):
 		if h["kind"] != "":
@@ -952,6 +968,8 @@ func _process(delta: float) -> void:
 			for f in _flames:
 				if is_instance_valid(f):
 					f.visible = lit == 1
+	if _seen != _rev:
+		_restand()
 	_t -= delta
 	if _t > 0.0 or _pending.is_empty():
 		return
@@ -978,8 +996,87 @@ func _process(delta: float) -> void:
 		if not ready:
 			continue
 		_pending.erase(g)
-		_build(g["pieces"], base)
+		var root := _build(_standing(g["pieces"]), base)
+		var box := Rect2(_points(g["pieces"][0])[0], Vector2.ZERO)
+		for e in g["pieces"]:
+			for q: Vector2 in _points(e):
+				box = box.expand(q)
+		_built.append({"pieces": g["pieces"], "house": g["house"], "root": root, "box": box})
 		built += 1
+
+## Sends the groups near anything built or dismantled since last time back to be built
+## again, so they stand aside for it (or return once it's gone).
+func _restand() -> void:
+	for ch: Array in _changes:
+		if int(ch[0]) <= _seen:
+			continue
+		var at: Vector2 = ch[1]
+		for g in _built.duplicate():
+			if not (g["box"] as Rect2).grow(TREE_CLEAR + 1.0).has_point(at):
+				continue
+			if g["root"] != null and is_instance_valid(g["root"]):
+				(g["root"] as Node).queue_free()
+			_built.erase(g)
+			_pending.append({"pieces": g["pieces"], "house": g["house"]})
+	_seen = _rev
+
+const TREE_CLEAR := 3.0 ## how far an orchard tree keeps from a player's building
+const PROP_CLEAR := 1.2 ## and a yard or farm prop
+
+## Where a piece stands, for keeping it off the player's buildings.
+static func _points(e: Dictionary) -> Array:
+	if e.has("a"):
+		return [e["a"], e["b"], ((e["a"] as Vector2) + (e["b"] as Vector2)) * 0.5]
+	return [e["p"]]
+
+## The pieces of a group that don't stand in anything the player has built. A house's
+## own plinth, smoke and lantern always stand (they go with the house), and so do the
+## square's setts.
+func _standing(pieces: Array) -> Array:
+	var box := Rect2(_points(pieces[0])[0], Vector2.ZERO)
+	for e in pieces:
+		for q: Vector2 in _points(e):
+			box = box.expand(q)
+	var near := _player_built(box.grow(TREE_CLEAR))
+	if near.is_empty():
+		return pieces
+	var out: Array = []
+	for e in pieces:
+		var k: String = e["k"]
+		var keep := true
+		if k != "smoke" and k != "lantern" and k != "plinth" and k != "paving":
+			var r := TREE_CLEAR if k == "tree" else PROP_CLEAR
+			for q: Vector2 in _points(e):
+				for b: Vector2 in near:
+					if q.distance_to(b) < r:
+						keep = false
+						break
+				if not keep:
+					break
+		if keep:
+			out.append(e)
+	return out
+
+## The player's built pieces (not dismantled) inside a box, as world points.
+func _player_built(box: Rect2) -> Array:
+	var out: Array = []
+	if streamer == null:
+		return out
+	const S := ChunkGenerator.SIZE
+	var k0 := _chunk_of(Vector3(box.position.x, 0, box.position.y))
+	var k1 := _chunk_of(Vector3(box.end.x, 0, box.end.y))
+	for cz in range(k0.y, k1.y + 1):
+		for cx in range(k0.x, k1.x + 1):
+			var c = streamer.get_chunk(Vector2i(cx, cz))
+			if c == null or c.data.is_empty():
+				continue
+			for o in c.data["objects"]:
+				if not BuildCatalog.is_built(o["t"]) or o["st"].get("gone", false):
+					continue
+				var q := Vector2(o["p"].x + cx * S, o["p"].z + cz * S)
+				if box.has_point(q):
+					out.append(q)
+	return out
 
 ## Where a piece touches the ground (all must be loaded before it is built).
 func _spots(e: Dictionary) -> Array:
@@ -998,7 +1095,9 @@ func _spots(e: Dictionary) -> Array:
 	return [e["p"]]
 
 ## Builds a group of pieces into one mesh (with its colliders, flames and smoke).
-func _build(pieces: Array, base: float) -> void:
+func _build(pieces: Array, base: float) -> Node3D:
+	if pieces.is_empty():
+		return null
 	var first: Dictionary = pieces[0]
 	var o2: Vector2 = first["p"] if first.has("p") else first["a"]
 	var oy := base if not is_nan(base) else _ground(o2.x, o2.y)
@@ -1055,6 +1154,7 @@ func _build(pieces: Array, base: float) -> void:
 		root.add_child(body)
 	else:
 		body.free()
+	return root
 
 static func _box_shape(body: StaticBody3D, xf: Transform3D, size: Vector3) -> void:
 	var cs := CollisionShape3D.new()
