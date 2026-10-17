@@ -6,6 +6,7 @@ shader_type spatial;
 // meets the ground.
 render_mode diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
+#include "res://src/world/noise2d.gdshaderinc"
 
 uniform sampler2D rock_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D rock_nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -48,12 +49,19 @@ void fragment() {
 	// The tint's colour with the photo's light and shade, plus a little of its own hue.
 	vec3 own = t / max(dot(t, LUM), 0.001) * dot(tint, LUM);
 	vec3 col = mix(tint, own, 0.3) * clamp(mix(1.0, lum, 0.85), 0.3, 1.8);
-	// Moss on the upward faces, filling the darker crevices first.
-	float up = smoothstep(0.35, 0.85, n.y);
+	// Moss on the upward faces, filling the darker crevices first, in patches and
+	// cushions with ragged edges (not a carpet laid over the top), the bare stone
+	// showing through between them.
+	float up = smoothstep(0.25, 0.9, n.y);
 	vec3 mt = texture(moss_tex, wp.xz / 1.3).rgb;
-	float moss = smoothstep(0.35, 0.65, COLOR.a * up * 1.3 - (lum - 1.0) * 0.35 + (dot(mt, LUM) - 0.12) * 1.5);
-	// moss_col is already linear (source_color); the grass photo gives it texture.
-	col = mix(col, moss_col * clamp(dot(mt, LUM) / 0.155, 0.4, 1.6), moss * step(0.01, COLOR.a));
+	float patches = fbm(wp.xz * 0.9 + wp.y * 0.6 + 5.0);
+	float moss = smoothstep(0.3, 0.75, COLOR.a * up * 1.25 - (lum - 1.0) * 0.45 + (dot(mt, LUM) - 0.12) * 1.5
+		+ (patches - 0.5) * 0.9 - 0.08);
+	// moss_col is already linear (source_color); the grass photo gives it texture, and
+	// cushions in the sun go yellower and paler, those in the crevices deeper.
+	vec3 mc = moss_col * clamp(dot(mt, LUM) / 0.155, 0.4, 1.6);
+	mc = mix(mc * vec3(0.8, 0.85, 0.9), mc * vec3(1.25, 1.18, 0.85), smoothstep(0.35, 0.75, fbm(wp.xz * 2.3 + 9.0)));
+	col = mix(col, mc * mix(0.75, 1.0, smoothstep(0.6, 1.0, moss)), moss * step(0.01, COLOR.a));
 	// Contact shadow where the stone's sides meet the ground (a low stone's top, open to
 	// the sky, stays lit).
 	col *= mix(0.55, 1.0, max(smoothstep(-0.05, 0.3, wp.y - base_y), smoothstep(0.35, 0.8, wn.y)));
