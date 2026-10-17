@@ -732,7 +732,10 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 			return -1.0, 60)
 	var top := waist - 0.02
 	if hem > 0.0:
-		if sp.get("open", false):
+		if vest == 3:
+			# A guard's quilted skirt hangs clear of leg armour worn under it.
+			_skirt(s, o, top, hem, sp["flare"], PART_SKIRT, Color.WHITE, 1.0, 0.03)
+		elif sp.get("open", false):
 			_skirt(s, o, top, hem, sp["flare"], PART_SKIRT, Color.WHITE, 0.86, 0.0, -1.0, true)
 		else:
 			_skirt(s, o, top, hem, sp["flare"], PART_SKIRT, Color.WHITE)
@@ -849,7 +852,9 @@ static func _piece(s: Dictionary, o: Dictionary, slot: String, style: int, col: 
 			_shell(s, o, 5, c, func(_i, p: Vector3, r: int) -> float:
 				if r != 0 or p.y < s["neck"] + 0.03:
 					return -1.0
-				var face := p.z > head.z + 0.035 and p.y < head.y + 0.115
+				# The opening reaches a little round the cheeks and up the brow, so the
+				# helm's thick rim never cuts across the face.
+				var face := p.z > head.z + 0.015 and p.y < head.y + 0.125
 				if face and face_open:
 					return -1.0
 				return thick + 0.006 + (0.01 if p.y > head.y + 0.12 else 0.0))
