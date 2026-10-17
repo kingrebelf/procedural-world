@@ -48,6 +48,8 @@ static func _find(g: ChunkGenerator, want: PackedStringArray) -> Dictionary:
 		var h := g.field.height(p.x, p.y)
 		if h < 3.0:
 			continue
+		if "terraces" in want and not found.has("terraces") and g.field.landform_weights(p.x, p.y)[WorldField.LF_TERRACES] > 0.95:
+			found["terraces"] = p
 		if "craters" in want and not found.has("craters") and g.field.landform_weights(p.x, p.y)[WorldField.LF_CRATERS] > 0.95:
 			found["craters"] = p
 		if "dunes" in want and not found.has("dunes") and g.field.landform_weights(p.x, p.y)[WorldField.LF_DUNES] > 0.95:

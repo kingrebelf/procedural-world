@@ -472,6 +472,19 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_TERRACES:
 			# Hillsides stepped into flat terraces.
 			var base := h * 1.2 + 3.0
+			if terrain_v >= 16:
+				# v16: terraces as people cut them, not a staircase of even bands: their
+				# height and the steepness of the bank between them vary along the hill,
+				# the edges wander off the contour a little, and each tread ends in a low
+				# lip of earth at its outer edge.
+				var wob := _rwarp.get_noise_2d(x * 8.0, z * 8.0) * 1.1 + _hills.get_noise_2d(x * 3.0, z * 3.0) * 0.5
+				var step := 3.0 * (0.85 + 0.3 * (_mesa.get_noise_2d(x * 1.5, z * 1.5) * 0.5 + 0.5))
+				var riser := 0.32 + 0.2 * (_plate.get_noise_2d(x * 6.0, z * 6.0) * 0.5 + 0.5)
+				var hw := base + wob
+				var t := hw / step
+				var f := t - floorf(t)
+				var lip := 0.28 * smoothstep(1.0 - riser - 0.14, 1.0 - riser - 0.03, f) * (1.0 - smoothstep(1.0 - riser - 0.03, 1.0 - riser + 0.06, f))
+				return Vector3(base, 0.0, _steps(hw, step, riser) + lip - base)
 			if terrain_v >= 13:
 				# v13: deeper steps with wider banks between them, so a terrace edge spans a
 				# few metres of ground and reads as a bank, not a saw-tooth on the 1 m grid.
