@@ -26,6 +26,7 @@ static var _dir := Vector2(0.8, 0.6)
 static var _depth_lookup: Callable
 static var _river_lookup: Callable
 static var _current_lookup: Callable
+static var _murk_lookup: Callable
 
 func _ready() -> void:
 	mesh = _sheet()
@@ -34,21 +35,26 @@ func _ready() -> void:
 	material_override = _mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	position.y = LEVEL
-	_depth_img = Image.create(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RF)
+	_depth_img = Image.create(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RGF)
 	_depth_img.fill(Color(20, 0, 0))
 	_depth_tex = ImageTexture.create_from_image(_depth_img)
 	_mat.set_shader_parameter("depth_map", _depth_tex)
 	_depth_lookup = depth_at
 	_river_lookup = river_at
 	_current_lookup = current_at
+	_murk_lookup = murk_at
 	add_child(Splashes.new())
-	Settings.changed.connect(_apply_settings)
-	_apply_settings()
+	var settings := get_node_or_null("/root/Settings")
+	if settings:
+		settings.changed.connect(_apply_settings)
+		_apply_settings()
 
 ## Reflections of shores and banks on the water (water_ssr.gdshaderinc) follow the
-## "Screen-space reflections" setting.
+## "Screen-space reflections" setting. (The autoload is looked up rather than named, so
+## Water and everything that asks it about the water still compile without autoloads,
+## as in the unit tests.)
 func _apply_settings() -> void:
-	_ssr_steps = 20 if bool(Settings.get_value("ssr")) else 0
+	_ssr_steps = 20 if bool(get_node("/root/Settings").get_value("ssr")) else 0
 	_mat.set_shader_parameter("ssr_steps", _ssr_steps)
 
 func _process(delta: float) -> void:
@@ -111,10 +117,13 @@ static func _sheet() -> ArrayMesh:
 	return am
 
 ## Water depth map around the player (metres below sea level, 0 on land), so the shader
-## can grow waves over deep water and calm them in the shallows.
+## can grow waves over deep water and calm them in the shallows. Its second channel is
+## how murky the water is (see _murk).
 func _update_depth() -> void:
 	_depth_origin = Vector2(position.x, position.z) - Vector2(SIZE, SIZE) * 0.5
 	var step := SIZE / DEPTH_RES
+	var depths := PackedFloat32Array()
+	depths.resize(DEPTH_RES * DEPTH_RES)
 	for j in DEPTH_RES:
 		for i in DEPTH_RES:
 			var x := _depth_origin.x + (i + 0.5) * step
@@ -124,10 +133,56 @@ func _update_depth() -> void:
 			var d := 12.0
 			if c != null:
 				d = clampf(LEVEL - ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE), 0.0, 40.0)
-			_depth_img.set_pixel(i, j, Color(d, 0, 0))
+			depths[j * DEPTH_RES + i] = d
+	var murk := _murk(depths)
+	for j in DEPTH_RES:
+		for i in DEPTH_RES:
+			_depth_img.set_pixel(i, j, Color(depths[j * DEPTH_RES + i], murk[j * DEPTH_RES + i], 0))
 	_depth_tex.update(_depth_img)
 	_mat.set_shader_parameter("depth_origin", _depth_origin)
 	_mat.set_shader_parameter("depth_size", SIZE)
+
+## How murky the water is across the depth map: 0 for open sea (clear and blue), 1 for
+## ponds and small lakes (green-brown with silt). Judged by how much of the 400 m round
+## each point is water and how deep that water runs on average, from summed-area tables.
+static func _murk(depths: PackedFloat32Array) -> PackedFloat32Array:
+	var n := DEPTH_RES + 1
+	var wet := PackedFloat32Array()
+	var deep := PackedFloat32Array()
+	wet.resize(n * n)
+	deep.resize(n * n)
+	for j in DEPTH_RES:
+		for i in DEPTH_RES:
+			var d := depths[j * DEPTH_RES + i]
+			var k := (j + 1) * n + i + 1
+			wet[k] = (1.0 if d > 0.3 else 0.0) + wet[k - 1] + wet[k - n] - wet[k - n - 1]
+			deep[k] = d + deep[k - 1] + deep[k - n] - deep[k - n - 1]
+	var r := int(200.0 / (SIZE / DEPTH_RES))
+	var out := PackedFloat32Array()
+	out.resize(DEPTH_RES * DEPTH_RES)
+	for j in DEPTH_RES:
+		for i in DEPTH_RES:
+			var x0 := maxi(i - r, 0)
+			var x1 := mini(i + r + 1, DEPTH_RES)
+			var z0 := maxi(j - r, 0)
+			var z1 := mini(j + r + 1, DEPTH_RES)
+			var area := float((x1 - x0) * (z1 - z0))
+			var w := wet[z1 * n + x1] - wet[z0 * n + x1] - wet[z1 * n + x0] + wet[z0 * n + x0]
+			var dsum := deep[z1 * n + x1] - deep[z0 * n + x1] - deep[z1 * n + x0] + deep[z0 * n + x0]
+			var mean_depth := dsum / maxf(w, 1.0)
+			out[j * DEPTH_RES + i] = 1.0 - smoothstep(0.55, 0.9, w / area) * smoothstep(4.0, 14.0, mean_depth)
+	return out
+
+## How murky the lake or sea at (x, z) is: 0 clear open sea, 1 a silty pond.
+static func turbidity(x: float, z: float) -> float:
+	return _murk_lookup.call(x, z) if _murk_lookup.is_valid() else 0.0
+
+func murk_at(x: float, z: float) -> float:
+	var u := (x - _depth_origin.x) / SIZE * DEPTH_RES
+	var v := (z - _depth_origin.y) / SIZE * DEPTH_RES
+	if u < 0 or v < 0 or u >= DEPTH_RES or v >= DEPTH_RES:
+		return 0.0
+	return _depth_img.get_pixel(int(u), int(v)).g
 
 func depth_at(x: float, z: float) -> float:
 	var u := (x - _depth_origin.x) / SIZE * DEPTH_RES

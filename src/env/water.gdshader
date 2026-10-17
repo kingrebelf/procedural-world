@@ -2,7 +2,9 @@ shader_type spatial;
 // Lakes and seas: wind-driven swell (sum of directional deep-water waves, larger over
 // deep water), depth-tinted, refractive, mirroring the shores and sky (water_ssr), with
 // whitecaps when the wind is strong, lacy foam rolling in through the shallows, and ring
-// waves where something broke the surface (water_rings).
+// waves where something broke the surface (water_rings). The open sea is clear and blue;
+// ponds and small lakes are green-brown with silt (the depth map's second channel, from
+// Water._murk).
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 #include "res://src/env/clouds.gdshaderinc"
@@ -24,6 +26,7 @@ uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 varying vec3 wpos;
 varying float crest;
 varying float amp;
+varying float murk;
 
 // Integer hash of a lattice point (PCG2D). Exact on every GPU: the old sin() hash gave a
 // shared cell corner two different values on some GPUs (NVIDIA: light and dark rectangles
@@ -83,6 +86,8 @@ void vertex() {
 	float depth = depth_here(wpos.xz);
 	float open = smoothstep(0.5, 14.0, depth);
 	amp = (0.04 + wind_strength * wind_strength * 1.1) * (0.15 + 0.85 * open);
+	vec2 muv = (wpos.xz - depth_origin) / depth_size;
+	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(depth_map, muv).g;
 	vec3 s = swell(wpos.xz, TIME, amp);
 	VERTEX.y += s.x;
 	wpos.y += s.x;
@@ -107,18 +112,21 @@ void fragment() {
 	float water_depth = clamp((-world.z - (-VERTEX.z)), 0.0, 100.0);
 	// How deep the bed lies straight down (the path through the water is longer).
 	float vdepth = max(wpos.y - (INV_VIEW_MATRIX * vec4(world.xyz, 1.0)).y, 0.0);
-	float k = 1.0 - exp(-water_depth / clarity);
+	float clear_m = mix(clarity, 1.4, murk);
+	float k = 1.0 - exp(-water_depth / clear_m);
 	vec2 refr_uv = SCREEN_UV + nw.xz * 0.02 * k;
 	vec3 under = textureLod(screen_tex, refr_uv, 1.0).rgb;
 	// What lies under the water is already lit, so it is seen through (emission), dimmed
 	// as the water swallows red first, then green: clear and sandy in the shallows,
 	// green-blue then dark further out. Lighting it again as albedo made lakes glare cyan.
-	vec3 absorb = vec3(0.4, 0.14, 0.17) * (4.0 / clarity);
+	// Silt in a pond swallows blue most and you see only a metre or so into it.
+	vec3 absorb = mix(vec3(0.4, 0.14, 0.17) * (4.0 / clarity), vec3(0.7, 0.55, 1.05), murk);
 	vec3 trans = exp(-absorb * water_depth * 1.5);
-	vec3 tint = mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3);
+	vec3 tint = mix(mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3), vec3(0.95, 1.0, 0.78), murk);
 	vec3 seen = under * trans * tint;
 	// The water's own colour, from light scattered inside it: shows where it is deep.
-	vec3 col = deep * (1.0 - trans.g) * 1.6;
+	// ...in a pond, the silt hanging in it, lit by the sun: murky green-brown.
+	vec3 col = mix(deep * 1.6, vec3(0.03, 0.034, 0.016), murk) * (1.0 - trans.g);
 	// Light passing through the thin tops of waves turns them a brighter green-blue,
 	// most when you look toward a low sun.
 	vec3 vdir = normalize((inverse(VIEW_MATRIX) * vec4(VIEW, 0.0)).xyz);
@@ -156,12 +164,21 @@ void fragment() {
 	}
 	if (!FRONT_FACING) {
 		// Seen from below: Snell's window. Looking up steeply you see the bright, rippling
-		// sky through the surface; at shallower angles it mirrors the dim water below.
+		// sky through the surface; at shallower angles the surface is a mirror (total
+		// internal reflection) showing the bed and whatever swims below, traced like the
+		// reflections above, and the lit water itself where the trace finds nothing.
 		float up = clamp(-vdir.y, 0.0, 1.0);
 		float window = smoothstep(0.62, 0.74, up + (nw.x + nw.z) * 0.08);
 		vec3 sky = textureLod(screen_tex, SCREEN_UV + nw.xz * 0.05, 0.0).rgb;
 		float day = smoothstep(-0.1, 0.25, sun_dir_g.y);
-		vec3 mirror = deep * (0.6 + 1.2 * day) + shallow * 0.12 * day;
+		vec3 lit_water = mix(vec3(0.03, 0.12, 0.16), vec3(0.06, 0.09, 0.04), murk);
+		vec3 mirror = lit_water * (0.25 + 1.2 * day);
+		if (window < 0.99) {
+			vec3 rd = reflect(-vdir, -nw);
+			rd = normalize(vec3(rd.x, min(rd.y, -0.02), rd.z));
+			vec4 below = water_ssr(VERTEX, (VIEW_MATRIX * vec4(rd, 0.0)).xyz, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX, -10000.0, 1.0);
+			mirror = mix(mirror, below.rgb * 0.85, below.a);
+		}
 		ALBEDO = vec3(0.0);
 		EMISSION = mix(mirror, sky * vec3(0.75, 0.95, 1.0) * 1.1, window) + vec3(0.9, 0.95, 1.0) * caps * 0.15 * day;
 		ROUGHNESS = 1.0;

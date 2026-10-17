@@ -337,14 +337,17 @@ func _update_time_of_day() -> void:
 	sm.set_shader_parameter("tint", sun.light_color)
 	if target and target.get("underwater"):
 		sm.set_shader_parameter("strength", 0.0)
-		# Under water you see a few metres into a lit blue-green murk, darker at night.
-		var murk := Color(0.06, 0.2, 0.24).lerp(Color(0.01, 0.03, 0.05), 1.0 - daylight)
+		# Under water you see a few metres into a lit blue-green murk, darker at night; in a
+		# silty pond (Water.turbidity) it is green-brown and you see barely two metres.
+		var tp := target.global_position
+		var silt := Water.turbidity(tp.x, tp.z)
+		var murk := Color(0.06, 0.2, 0.24).lerp(Color(0.07, 0.1, 0.045), silt).lerp(Color(0.01, 0.03, 0.05), 1.0 - daylight)
 		env.fog_light_color = murk
-		env.fog_density = 0.075
+		env.fog_density = lerpf(0.075, 0.22, silt)
 		env.fog_sky_affect = 1.0
 		env.fog_sun_scatter = 0.3
-		env.volumetric_fog_density = 0.02
-		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
+		env.volumetric_fog_density = lerpf(0.02, 0.05, silt)
+		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65).lerp(Color(0.4, 0.45, 0.25), silt)
 	else:
 		env.fog_sun_scatter = 0.12
 	# Less sky fill in the golden hour, so the side away from the sun falls into shade.

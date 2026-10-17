@@ -4,7 +4,7 @@ extends SceneTree
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20] [--river]
 ##     [--under [--novfog] [--nooverlay]]
 ## Rocks standing in the water and a sandbank give the reflections and shore foam
-## something to show.
+## something to show. --murk=M (0 clear sea, 1 silty pond) sets how murky the lake is.
 ## --river uses the river shader instead (flowing diagonally, no edge fade; --rapids
 ## makes it fall steeply). --under puts
 ## the eye 2.5 m under the surface with the game's underwater fog and overlay (either can
@@ -20,6 +20,7 @@ func _run() -> void:
 	var vfog := true
 	var overlay := true
 	var rapids := false
+	var murk := 0.0
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -33,6 +34,8 @@ func _run() -> void:
 			vfog = false
 		elif a == "--nooverlay":
 			overlay = false
+		elif a.begins_with("--murk="):
+			murk = float(a.substr(7))
 		elif a == "--rapids":
 			rapids = true
 	get_root().size = Vector2i(1600, 900)
@@ -133,6 +136,10 @@ func _run() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load(shader)
 	water.material_override = mat
+	# Water's depth map: deep open water everywhere, as murky as asked.
+	var dimg := Image.create(1, 1, false, Image.FORMAT_RGF)
+	dimg.set_pixel(0, 0, Color(12.0, murk, 0.0))
+	mat.set_shader_parameter("depth_map", ImageTexture.create_from_image(dimg))
 	get_root().add_child(water)
 	var cam := Camera3D.new()
 	cam.fov = 70.0
