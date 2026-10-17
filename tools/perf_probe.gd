@@ -12,6 +12,9 @@ const SAMPLE := 90
 
 var spots: PackedStringArray = []
 var quick := false ## --quick: skip the per-feature GPU tests
+## --compare=name:key=value+key=value/name2:... measures whole groups of settings at each
+## view instead of the per-system and per-feature tests (e.g. render scale options).
+var compare: Array = []
 var report: PackedStringArray = []
 
 func _ready() -> void:
@@ -20,6 +23,14 @@ func _ready() -> void:
 			spots = a.substr(8).split(",")
 		if a == "--quick":
 			quick = true
+		if a.begins_with("--compare="):
+			for opt in a.substr(10).split("/"):
+				var sets := {}
+				for kv in opt.get_slice(":", 1).split("+"):
+					if kv.count("=") == 1:
+						var v = str_to_var(kv.get_slice("=", 1))
+						sets[kv.get_slice("=", 0)] = v if v != null else kv.get_slice("=", 1)
+				compare.append([opt.get_slice(":", 0), sets])
 	super._ready()
 
 func _out(s: String) -> void:
@@ -192,6 +203,17 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 	_out("== %s at %s" % [label, at])
 	_out("  " + _fmt(base))
 	_out("  " + _census())
+	if not compare.is_empty():
+		var saved := Settings.values.duplicate()
+		for c in compare:
+			for k in c[1]:
+				Settings.values[k] = c[1][k]
+			Settings.apply()
+			var m: Dictionary = await _measure()
+			_out("  %-22s %s" % [c[0], _fmt(m)])
+			Settings.values = saved.duplicate()
+			Settings.apply()
+		return
 	# CPU: what each game system's scripts cost per frame (switched off one at a time).
 	_out("  Script/physics cost by system (ms saved: frame / script / physics):")
 	for n in ["People", "Wildlife", "Corpses", "Vehicles", "Water", "FarLand", "Chunks", "Treasure", "Player"]:
