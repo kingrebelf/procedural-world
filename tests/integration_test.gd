@@ -675,11 +675,14 @@ func _death_bag(game, world, player) -> void:
 	game.set_health(-5.0, "test")
 	check(game.dead and player.ui_open, "zero health kills you")
 	check(game.inventory.free_slots() == game.inventory.capacity and game.equipment.is_empty() and game.money == 0, "dying empties your pack, armour and purse")
+	await _frames(3)
 	var bag := {}
-	for b in world.corpses.near(at, 6.0):
+	for b in world.corpses.near(at, 40.0):
 		if DeathBag.is_bag(b["rec"]):
 			bag = b
-	check(not bag.is_empty(), "a bag lies where you fell")
+	check(not bag.is_empty() and Vector2(bag["pos"].x, bag["pos"].z).distance_to(Vector2(at.x, at.z)) < 6.0, "a bag lies where you fell")
+	if bag.is_empty():
+		print("  no bag drawn; shown: %s" % [world.corpses._shown.keys()])
 	var marks: Array = game.markers.on_planet(game.planet, "death")
 	check(marks.size() == 1 and Vector2(marks[0]["x"], marks[0]["z"]).distance_to(Vector2(at.x, at.z)) < 6.0, "the map marks where you died")
 	if bag.is_empty():
@@ -692,8 +695,20 @@ func _death_bag(game, world, player) -> void:
 	await _frames(30)
 	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
 	# Back to the bag: open it and take everything.
-	player.global_position = bag["pos"] + Vector3(1.5, 1.0, 0)
-	await _frames(5)
+	var bag_at: Vector3 = bag["pos"]
+	player.global_position = bag_at + Vector3(1.5, 1.0, 0)
+	bag = {}
+	for i in 40:
+		world.corpses._scan = 0.0
+		await _frames(5)
+		for b in world.corpses.near(bag_at, 2.0):
+			if DeathBag.is_bag(b["rec"]):
+				bag = b
+		if not bag.is_empty():
+			break
+	check(not bag.is_empty(), "the bag is still there when you come back")
+	if bag.is_empty():
+		return
 	var menus = world.menus
 	menus.open_corpse(world.corpses, bag["key"])
 	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
