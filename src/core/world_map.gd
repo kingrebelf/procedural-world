@@ -126,6 +126,10 @@ func open(store: WorldStore, visited: Dictionary) -> void:
 			_migrate.append(k)
 
 func close() -> void:
+	_wait_save()
+	for t in _paint_tasks:
+		WorkerThreadPool.wait_for_task_completion(t[0])
+	_paint_tasks.clear()
 	_pages.clear()
 	_missing.clear()
 	pois = {}
@@ -139,17 +143,40 @@ func close() -> void:
 	_dir = ""
 	_store = null
 
-func save() -> void:
+## `background`: the files are compressed and written on a worker (the copy of the data is
+## taken now), so the save every 20 s no longer freezes the game for 30-50 ms.
+func save(background := false) -> void:
 	if _dir == "":
 		return
+	var files: Array = []
 	for k in _pages:
 		var pg: Page = _pages[k]
 		if pg.unsaved:
-			WorldStore.write_var(_page_path(k), {"c": pg.color.get_data(), "f": pg.fog.get_data(), "p": pg.painted}, true)
+			files.append([_page_path(k), {"c": pg.color.get_data(), "f": pg.fog.get_data(), "p": pg.painted.duplicate()}])
 			pg.unsaved = false
 	if _index_dirty:
-		WorldStore.write_var(_dir.path_join("index.dat"), {"pois": pois, "wonders": wonders, "ores": ores, "people": people, "filters": filters}, true)
+		files.append([_dir.path_join("index.dat"), {"pois": pois.duplicate(true), "wonders": wonders.duplicate(true), "ores": ores.duplicate(true),
+			"people": people.duplicate(true), "filters": filters.duplicate(true)}])
 		_index_dirty = false
+	_wait_save()
+	if files.is_empty():
+		return
+	if background:
+		_save_task = WorkerThreadPool.add_task(_write_files.bind(files), false, "map save")
+	else:
+		_write_files(files)
+
+var _save_task := -1
+
+static func _write_files(files: Array) -> void:
+	for f in files:
+		WorldStore.write_var(f[0], f[1], true)
+
+## Lets a background save finish (before anything else reads or writes the map's files).
+func _wait_save() -> void:
+	if _save_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_save_task)
+		_save_task = -1
 
 func _page_path(k: Vector2i) -> String:
 	return _dir.path_join("p%d_%d.dat" % [k.x, k.y])
@@ -167,6 +194,8 @@ func page(k: Vector2i, make := false) -> Page:
 		return pg
 	if not make and _missing.has(k):
 		return null
+	if _dir != "" and _save_task >= 0:
+		_wait_save()
 	if _dir != "" and FileAccess.file_exists(_page_path(k)):
 		var d = WorldStore.read_var(_page_path(k), true)
 		if d is Dictionary and (d.get("c") as PackedByteArray).size() == PX * PX * 3:
@@ -316,12 +345,22 @@ func _generator() -> ChunkGenerator:
 ## Paints waiting chunks, lifts the fog around the player and notices wonders.
 func process(delta: float, player: Node3D) -> void:
 	_clock += delta
+	# New chunks are painted on workers (about 5 ms each) and blitted in here.
 	var budget := 3
-	while budget > 0 and not _queue.is_empty():
+	for t in _paint_tasks.duplicate():
+		if WorkerThreadPool.is_task_completed(t[0]):
+			WorkerThreadPool.wait_for_task_completion(t[0])
+			_paint_tasks.erase(t)
+			var ch: Dictionary = t[1]
+			if not _is_painted(Vector2i(int(ch["cx"]), int(ch["cz"]))) and not (t[2] as Array).is_empty():
+				_blit(ch, t[2][0])
+				budget -= 1
+	while _paint_tasks.size() < 2 and not _queue.is_empty():
 		var ch: Dictionary = _queue.pop_front()
 		if not _is_painted(Vector2i(int(ch["cx"]), int(ch["cz"]))):
-			paint(ch)
-			budget -= 1
+			var out: Array = []
+			var task := WorkerThreadPool.add_task(func(): out.append(paint_tile(ch)), false, "map paint")
+			_paint_tasks.append([task, ch, out])
 	if budget > 0 and not _migrate.is_empty() and _store != null:
 		var k: Vector2i = _migrate.pop_back()
 		if not _is_painted(k) and _store.has_chunk(k.x, k.y):
@@ -350,7 +389,7 @@ func process(delta: float, player: Node3D) -> void:
 	_save_t -= delta
 	if _save_t <= 0.0:
 		_save_t = 20.0
-		save()
+		save(true)
 		_evict()
 
 ## A cave mouth (v10) goes on the map only once you have stood by it: they are hidden.
@@ -443,12 +482,18 @@ const LIGHT := Vector3(-0.55, 0.75, -0.4)
 
 ## Paints one chunk onto its page.
 func paint(chunk: Dictionary) -> void:
+	_blit(chunk, paint_tile(chunk))
+
+var _paint_tasks: Array = [] ## [task id, chunk, [tile once done]]
+
+## Puts a chunk's painted tile (paint_tile) on its page.
+func _blit(chunk: Dictionary, px: PackedByteArray) -> void:
 	var c := Vector2i(int(chunk["cx"]), int(chunk["cz"]))
 	var pk := page_of_chunk(c)
 	var pg := page(pk, true)
 	if pg == null:
 		return
-	var tile := Image.create_from_data(CPX, CPX, false, Image.FORMAT_RGB8, paint_tile(chunk))
+	var tile := Image.create_from_data(CPX, CPX, false, Image.FORMAT_RGB8, px)
 	var lc := c - pk * PAGE
 	pg.color.blit_rect(tile, Rect2i(0, 0, CPX, CPX), lc * CPX)
 	pg.painted[lc.y * PAGE + lc.x] = 1

@@ -28,6 +28,15 @@ varying vec3 rest;
 
 void vertex() {
 	rest = CUSTOM0.xyz;
+	// Under real garments (Outfit) the body is drawn a little inside itself, so the skin
+	// can't push through a sleeve, shirt or trouser leg where a joint bends. The hands,
+	// head and bare forearms stay true.
+	int region = int(CUSTOM0.x + 0.5);
+	bool covered = region == 1 || region == 5 || region == 6 || region == 7
+		|| (region == 2 && cut.x >= 1.0) || (region == 3 && cut.x >= 2.0);
+	if (covered && arms_only < 0.5) {
+		VERTEX -= NORMAL * 0.007;
+	}
 }
 
 float hash(vec2 p) {

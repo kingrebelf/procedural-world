@@ -137,9 +137,12 @@ func _run() -> void:
 	mat.shader = load(shader)
 	water.material_override = mat
 	# Water's depth map: deep open water everywhere, as murky as asked.
-	var dimg := Image.create(1, 1, false, Image.FORMAT_RGF)
-	dimg.set_pixel(0, 0, Color(12.0, murk, 0.0))
+	var dimg := Image.create(1, 1, false, Image.FORMAT_RF)
+	dimg.set_pixel(0, 0, Color(12.0, 0.0, 0.0))
 	mat.set_shader_parameter("depth_map", ImageTexture.create_from_image(dimg))
+	var mimg := Image.create(1, 1, false, Image.FORMAT_RF)
+	mimg.set_pixel(0, 0, Color(murk, 0.0, 0.0))
+	mat.set_shader_parameter("murk_map", ImageTexture.create_from_image(mimg))
 	get_root().add_child(water)
 	var cam := Camera3D.new()
 	cam.fov = 70.0

@@ -37,6 +37,27 @@ static func material() -> Material:
 	_lock.unlock()
 	return m
 
+## The rock material for cave shells: their walls hold still (no wobble), since you walk
+## against their collision.
+static func cave_material() -> Material:
+	_lock.lock()
+	var m := _cave_mat
+	_lock.unlock()
+	if m != null:
+		return m
+	var base := material()
+	m = base.duplicate() if base is ShaderMaterial else base
+	if m is ShaderMaterial:
+		(m as ShaderMaterial).set_shader_parameter("wobble", 0.0)
+	_lock.lock()
+	if _cave_mat == null:
+		_cave_mat = m
+	m = _cave_mat
+	_lock.unlock()
+	return m
+
+static var _cave_mat: Material
+
 static func mesh(kind: String) -> ArrayMesh:
 	_lock.lock()
 	var m: ArrayMesh = _meshes.get(kind)
@@ -50,8 +71,10 @@ static func mesh(kind: String) -> ArrayMesh:
 		m.surface_set_material(0, material())
 		var pts := PackedVector3Array()
 		var seen := {}
+		# One point per 7 cm cell: the weathered kit rocks have thousands of corners, and a
+		# hull of them all costs Jolt far more to build for a difference no foot can feel.
 		for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
-			var key := Vector3i(roundi(v.x * 40.0), roundi(v.y * 40.0), roundi(v.z * 40.0))
+			var key := Vector3i(roundi(v.x * 14.0), roundi(v.y * 14.0), roundi(v.z * 14.0))
 			if not seen.has(key):
 				seen[key] = true
 				pts.append(v)
@@ -65,6 +88,19 @@ static func mesh(kind: String) -> ArrayMesh:
 		_meshes[kind] = m
 	_lock.unlock()
 	return m
+
+## One collision hull per kind, shared by every stone of it: each stone's own turn and
+## squash go on its CollisionShape3D. (Jolt builds a hull once per shape, about 0.3 ms:
+## a hull per stone made a chunk's thousand stones freeze the game as it came near.)
+## Main thread only.
+static func shape(kind: String) -> ConvexPolygonShape3D:
+	if not _shapes.has(kind):
+		var sh := ConvexPolygonShape3D.new()
+		sh.points = hull(kind)
+		_shapes[kind] = sh
+	return _shapes[kind]
+
+static var _shapes: Dictionary = {}
 
 ## The points of a stone's collision hull, in mesh space (after mesh() built it).
 static func hull(kind: String) -> PackedVector3Array:

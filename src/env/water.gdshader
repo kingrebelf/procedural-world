@@ -3,8 +3,7 @@ shader_type spatial;
 // deep water), depth-tinted, refractive, mirroring the shores and sky (water_ssr), with
 // whitecaps when the wind is strong, lacy foam rolling in through the shallows, and ring
 // waves where something broke the surface (water_rings). The open sea is clear and blue;
-// ponds and small lakes are green-brown with silt (the depth map's second channel, from
-// Water._murk).
+// ponds and small lakes are green-brown with silt (murk_map, from Water._murk).
 render_mode blend_mix, depth_draw_always, cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 #include "res://src/env/clouds.gdshaderinc"
@@ -16,6 +15,7 @@ uniform vec3 glow : source_color = vec3(0.1, 0.9, 0.8);
 uniform float glow_amount = 0.0;
 uniform float clarity = 4.0;
 uniform sampler2D depth_map : filter_linear, repeat_disable;
+uniform sampler2D murk_map : filter_linear, repeat_disable; // Water._murk, over the same square
 uniform vec2 depth_origin = vec2(-800.0);
 uniform float depth_size = 1600.0;
 uniform sampler2D depth_tex : hint_depth_texture, filter_linear;
@@ -93,7 +93,7 @@ void vertex() {
 	vec2 dg = vec2(depth_here(wpos.xz + vec2(12.0, 0.0)) - depth_here(wpos.xz - vec2(12.0, 0.0)),
 		depth_here(wpos.xz + vec2(0.0, 12.0)) - depth_here(wpos.xz - vec2(0.0, 12.0)));
 	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
-	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(depth_map, muv).g;
+	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(murk_map, muv).r;
 	vec3 s = swell(wpos.xz, TIME, amp);
 	VERTEX.y += s.x;
 	wpos.y += s.x;
@@ -152,7 +152,9 @@ void fragment() {
 	rollers *= smoothstep(-0.05, 0.25, n2(wpos.xz * 0.05 + vec2(t * 0.03, 0.0)));
 	// Surf needs fetch: a sheltered pond barely laps, a big lake or the sea breaks.
 	float surf = (1.0 - 0.85 * murk) * exposure * smoothstep(0.05, 0.6, wind_strength);
-	float shore = clamp(edge_f * (0.12 + 0.75 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace;
+	// (Not on the tool in your hand where it dips into the water: it is no shore.)
+	float shore = clamp(edge_f * (0.12 + 0.75 * surf) + rollers * (0.35 + wind_strength) * surf, 0.0, 1.0) * lace
+		* smoothstep(1.0, 2.0, -world.z);
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n * (0.5 + 0.5 * lace);
 	float foam = max(shore * 0.85, caps);

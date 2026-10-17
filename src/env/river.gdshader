@@ -133,14 +133,16 @@ void fragment() {
 	float along = dot(wpos.xz, fd);
 	float step_ = smoothstep(0.5, 0.95, sin(along * 0.5 + n2(wpos.xz * 0.07) * 7.0)) * smoothstep(-0.15, 0.2, n2(wpos.xz * 0.25 + 3.0));
 	float white = rapids * step_ * smoothstep(-0.1, 0.45, hs + rapids * 0.2);
-	float bank = (1.0 - smoothstep(0.0, 0.12, vdepth)) * smoothstep(0.0, 0.02, vdepth);
+	// (None on the tool in your hand where it dips into the water: it is no bank or rock.)
+	float near = smoothstep(1.0, 2.0, -world.z);
+	float bank = (1.0 - smoothstep(0.0, 0.12, vdepth)) * smoothstep(0.0, 0.02, vdepth) * near;
 	vec3 f3 = vec3(fd.x, 0.0, fd.y);
 	float rocks = 0.0;
 	if (spd > 0.05) {
 		rocks = obstacle(wpos + f3 * 0.5, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX) * 0.7
 			+ obstacle(wpos - f3 * 1.2, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX) * 0.6
 			+ obstacle(wpos - f3 * 2.8, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX) * 0.35;
-		rocks *= 0.4 + spd;
+		rocks *= (0.4 + spd) * near;
 	}
 	float foam = clamp((flecks * (1.0 - rapids * 0.6) + white + bank * 0.5 + rocks * 0.8) * lace + white * white * 0.3, 0.0, 0.85);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);

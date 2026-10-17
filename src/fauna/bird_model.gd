@@ -1,7 +1,7 @@
 class_name BirdModel
 ## Procedural fliers (no free bird models fit the asset rule): smooth lathed bodies with
 ## a beak, eyes and a fanned tail, and wings laid up from coverts and long primary and
-## secondary feathers. Fantasy moths get broad patterned wings with glowing eye spots,
+## secondary feathers, all in feathered plumage (feather.gdshader). Fantasy moths get broad patterned wings with glowing eye spots,
 ## sci-fi skies get drifting jellies and scout drones. Facing +z, about 0.5 m long at
 ## scale 1; build() returns the body, the right wing (mirror it for the left) and the
 ## shoulder the wing hinges on. Meshes are cached per species.
@@ -21,8 +21,45 @@ static func build(p: Dictionary, era: int) -> Dictionary:
 	_cache[key] = out
 	return out
 
-static func _feather(a: Color, b: Color, glow := 0.0, gcol := Color.WHITE) -> ShaderMaterial:
-	return HiFlora.organic(a, b, {"streaks": 0.55, "sss": 0.2, "rough": 0.72, "glow": glow, "glow_col": gcol})
+static var _plumage: Shader
+
+## Plumage (feather.gdshader). mode 0: body contour feathers, 1: flight and tail
+## feathers, 2: wing coverts.
+static func _feather(a: Color, b: Color, glow := 0.0, gcol := Color.WHITE, mode := 0, name := "") -> ShaderMaterial:
+	if _plumage == null:
+		_plumage = load("res://src/fauna/shaders/feather.gdshader")
+	var m := ShaderMaterial.new()
+	m.shader = _plumage
+	m.set_shader_parameter("mode", mode)
+	m.set_shader_parameter("col_a", a)
+	m.set_shader_parameter("col_b", b)
+	m.set_shader_parameter("glow", glow)
+	m.set_shader_parameter("glow_col", gcol)
+	var dark := (a.get_luminance() + b.get_luminance()) * 0.5 < 0.12
+	m.set_shader_parameter("fringe", -0.25 if dark else 0.3)
+	m.set_shader_parameter("sheen", 1.0 if dark else 0.0)
+	m.set_shader_parameter("bars", 0.45 if name == "Kestrel" and mode == 1 else 0.0)
+	return m
+
+## The profile through its points on a Catmull-Rom curve, `k` steps a span, so the
+## lathed body is smooth rather than ringed with facets.
+static func _smooth_profile(p: PackedVector2Array, k: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := p.size()
+	for i in n - 1:
+		var p0 := p[maxi(i - 1, 0)]
+		var p1 := p[i]
+		var p2 := p[i + 1]
+		var p3 := p[mini(i + 2, n - 1)]
+		for j in k:
+			var t := float(j) / k
+			var t2 := t * t
+			var t3 := t2 * t
+			var q := 0.5 * ((2.0 * p1) + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t3)
+			q.x = maxf(q.x, 0.0)
+			out.append(q)
+	out.append(p[n - 1])
+	return out
 
 ## Natural colours for the real birds; the rest take the species' own.
 static func _palette(p: Dictionary) -> Array:
@@ -42,10 +79,12 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var swallow := name == "Swallow"
 	var finch := name == "Wisp Finch"
 	var g := HiFlora.Geo.new()
-	g.add_mat("body", _feather(pal[0], pal[1], 0.15 if glows else 0.0, gcol))
-	g.add_mat("dark", _feather(pal[2], pal[2].lightened(0.15)))
+	g.add_mat("body", _feather(pal[0], pal[1], 0.15 if glows else 0.0, gcol, 0, name))
+	g.add_mat("dark", _feather(pal[2], pal[2].lightened(0.15), 0.0, Color.WHITE, 1, name))
 	g.add_mat("beak", HiFlora.organic(pal[3].darkened(0.2), pal[3], {"streaks": 0.0, "sss": 0.1, "rough": 0.45}))
-	g.add_mat("eye", HiFlora.organic(Color(0.02, 0.02, 0.02), Color(0.05, 0.04, 0.03), {"streaks": 0.0, "sss": 0.0, "rough": 0.1}))
+	# Eyes: a dark pupil in a coloured iris, wet and glossy.
+	var iris := Color(0.35, 0.2, 0.06) if name == "Kestrel" else (Color(0.28, 0.2, 0.1) if name == "Crow" else Color(0.18, 0.11, 0.06))
+	g.add_mat("eye", HiFlora.organic(Color(0.01, 0.01, 0.01), iris, {"streaks": 0.0, "sss": 0.0, "rough": 0.03}))
 	if glows:
 		g.add_mat("glow", HiFlora.organic(gcol.darkened(0.3), gcol, {"glow": 1.4, "glow_col": gcol, "streaks": 0.2, "sss": 0.9, "rough": 0.4}))
 	var fat := 1.18 if finch else 1.0
@@ -53,13 +92,14 @@ static func _bird(p: Dictionary, era: int) -> Dictionary:
 	var prof := PackedVector2Array([Vector2(0.0, 0.25), Vector2(0.035, 0.245), Vector2(0.058, 0.225), Vector2(0.064, 0.2),
 		Vector2(0.057, 0.172), Vector2(0.074 * fat, 0.13), Vector2(0.095 * fat, 0.06), Vector2(0.097 * fat, -0.01),
 		Vector2(0.082 * fat, -0.08), Vector2(0.052, -0.14), Vector2(0.026, -0.18), Vector2(0.0, -0.195)])
+	prof = _smooth_profile(prof, 4)
 	var axis := Transform3D(Basis(Vector3.RIGHT, PI * 0.5) * Basis().scaled(Vector3(0.9, 1.0, 1.0)), Vector3.ZERO)
-	g.lathe("body", prof, 14, axis, Vector2(0.0, -0.035))
+	g.lathe("body", prof, 24, axis, Vector2(0.0, -0.035))
 	# Beak, eyes.
 	var bl := 0.045 if finch else (0.075 if name == "Crow" else 0.055)
 	g.prism("beak", Vector3(0, 0.034, 0.238), Vector3(0, -0.22 if name == "Kestrel" else -0.1, 1.0), 0.02 if not finch else 0.024, bl, 5, 0.75)
 	for s in [-1.0, 1.0]:
-		g.lathe("eye", HiFlora._ellipse(0.013, 0.013, 6), 8, Transform3D(Basis(), Vector3(s * 0.05, 0.058, 0.205)))
+		g.lathe("eye", HiFlora._ellipse(0.0095, 0.0095, 6), 10, Transform3D(Basis(), Vector3(s * 0.051, 0.058, 0.205)))
 	# Tail fan, forked on swallows, with glowing streamers on wisp finches.
 	var n := 7
 	for i in n:
@@ -91,8 +131,8 @@ static func _wing(pal: Array, glows: bool, gcol: Color, name: String) -> ArrayMe
 	var g := HiFlora.Geo.new()
 	var pointed := name == "Kestrel" or name == "Swallow"
 	var span := 0.62 if pointed else 0.52
-	g.add_mat("cov", _feather(pal[1], pal[1].lerp(pal[2], 0.4)))
-	g.add_mat("flight", _feather(pal[2].lightened(0.08), pal[2], 0.6 if glows else 0.0, gcol))
+	g.add_mat("cov", _feather(pal[1], pal[1].lerp(pal[2], 0.4), 0.0, Color.WHITE, 2, name))
+	g.add_mat("flight", _feather(pal[2].lightened(0.08), pal[2], 0.6 if glows else 0.0, gcol, 1, name))
 	# Coverts: one broad, gently cambered strip from shoulder to wrist.
 	var cov := PackedVector3Array()
 	var cw := PackedFloat32Array()
