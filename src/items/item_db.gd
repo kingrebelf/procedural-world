@@ -316,7 +316,9 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		if Eras.themed() and zl * 160.0 + 1.0 < Eras.UNLOCK_LEVEL:
 			# The first zones only hold their own era's blades and bows.
 			t = t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
-		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
+		# Some eras have nothing that low (the filter can empty the list).
+		if not t.is_empty():
+			loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
 	if luck > 0.0:
 		var extra: Array = DUNGEON_LOOT[era]
 		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
