@@ -399,7 +399,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
 			continue
 		var on_road := ChunkGenerator.road_at(chunk, lx, lz)
-		if on_road > 0.5 or (on_road > 0.0 and r.randf() < on_road * 1.6):
+		# A verge of uncut grass right up to the wheel-worn edge, not a mown strip.
+		if on_road > 0.5 or (on_road > 0.3 and r.randf() < (on_road - 0.3) * 5.0):
 			continue
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
@@ -416,6 +417,9 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		elif green > 0.3 and u < 0.06 + 0.3 * smoothstep(0.5, 0.85, wl):
 			sp = "tall"
 			sc = lerpf(0.75, 1.25, size)
+		elif on_road > 0.0 and u < 0.65:
+			sp = "tall"
+			sc = lerpf(0.7, 1.15, size)
 		elif u < 0.62 - 0.4 * wl:
 			sp = "turf"
 			sc = lerpf(0.8, 1.35, size)
