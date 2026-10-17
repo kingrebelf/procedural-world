@@ -306,13 +306,12 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	var shirt: Color = cols[Outfit.PART_SHIRT]
 	var pants: Color = cols[Outfit.PART_PANTS]
 	var boots: Color = cols[Outfit.PART_BOOTS]
-	var hem: float = sp["hem"]
 	_body.set_instance_shader_parameter("skin_col", b["skin"])
 	_body.set_instance_shader_parameter("shirt_col", Color(shirt.r, shirt.g, shirt.b))
 	_body.set_instance_shader_parameter("pants_col", Color(pants.r, pants.g, pants.b))
 	_body.set_instance_shader_parameter("boot_col", Color(boots.r, boots.g, boots.b))
 	_body.set_instance_shader_parameter("accent_col", accent)
-	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], hem if hem > 0.0 and hem < 0.45 else 0.0, 0.0))
+	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], 0.0, 0.0))
 
 func _add_hair(style: String, col: Color) -> void:
 	var path := DIR + style + ".gltf"

@@ -126,7 +126,7 @@ void fragment() {
 	vec3 n = NORMAL;
 	if (!FRONT_FACING) {
 		n = -n;
-		col *= 0.6;
+		col *= 0.45; // the inside of a garment, in its own shadow
 	}
 	NORMAL = fabric_bump(n, VERTEX, h);
 	ALBEDO = col;

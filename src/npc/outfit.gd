@@ -164,7 +164,7 @@ static func _vert(s: Dictionary, o: Dictionary, p: Vector3, n: Vector3, uv: Vect
 static func _leg_weights(s: Dictionary, p: Vector3, top: float) -> Dictionary:
 	var legs := smoothstep(0.0, top - float(s["crotch"]) + 0.03, top - p.y)
 	var side := smoothstep(-0.05, 0.05, p.x * float(s["lx"]))
-	var calf := clampf((float(s["knee"]) + 0.04 - p.y) / 0.35, 0.0, 1.0) * 0.5
+	var calf := clampf((float(s["knee"]) + 0.04 - p.y) / 0.3, 0.0, 1.0) * 0.7
 	return {"pelvis": 1.0 - legs,
 		"thigh_l": legs * side * (1.0 - calf), "calf_l": legs * side * calf,
 		"thigh_r": legs * (1.0 - side) * (1.0 - calf), "calf_r": legs * (1.0 - side) * calf}
@@ -434,12 +434,12 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 				cols[PART_TRIM] = fab.call(bodice, FAB_VELVET if trim else FAB_WOOL)
 			if robe:
 				sp["belt"] = chance.call(0.7)
-				sp["boot_h"] = 0.14
+				sp["boot_h"] = 0.24
 				if chance.call(0.4):
 					sp["cape"] = 0.3
 					cols[PART_CAPE] = fab.call(top if chance.call(0.5) else pick.call(CLERIC), FAB_VELVET if trim else FAB_WOOL)
 			elif fem:
-				sp["boot_h"] = [0.14, 0.3][r.randi() % 2]
+				sp["boot_h"] = [0.26, 0.32][r.randi() % 2]
 		else:
 			# Men's tunic over hose, or a shirt and trousers with a jerkin.
 			if role != "smith" and chance.call(0.6 if role in ["artisan", "merchant", "worker"] else 0.45):
@@ -545,10 +545,8 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		if r == 0 and p.y < s["neck"] + 0.02:
 			return 0.006
 		return -1.0)
-	# Trousers down into the boots (under a long skirt, only what could show below it).
+	# Trousers or hose down into the boots, under a skirt too (a lifted hem shows hose).
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-		if hem > 0.0 and hem < 0.45 and p.y > hem + 0.1:
-			return -1.0
 		if r == 5 and p.y <= waist - 0.03:
 			return 0.007
 		if r == 6 and p.y > boot_h - 0.03:
