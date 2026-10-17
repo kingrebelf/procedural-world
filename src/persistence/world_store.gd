@@ -194,7 +194,8 @@ func save_chunk(chunk: Dictionary) -> bool:
 func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 	var c = load_chunk(cx, cz)
 	if c is Dictionary:
-		if Interiors.stock(c):
+		var stocked := Interiors.stock(c)
+		if gen.fill_keep_out(c) or stocked:
 			save_chunk(c)
 		return c
 	c = gen.generate(cx, cz)

@@ -1627,3 +1627,64 @@ func test_wonder_meshes() -> void:
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
 
+
+## Nothing grows through a floor: trees, rocks, caches and markers keep out of every
+## building's ground plan, including a neighbour chunk's building reaching in.
+func test_keep_out() -> void:
+	var plan := [ChunkGenerator._plan(10.0, 10.0, PI / 2.0, Vector2(-1, -3), Vector2(1, 3))]
+	check(ChunkGenerator.kept_out(plan, 12.5, 10.0, 0.0), "a turned plan covers its long side")
+	check(not ChunkGenerator.kept_out(plan, 10.0, 7.5, 0.0), "and not past its short side")
+	check(ChunkGenerator.kept_out(plan, 10.0, 8.8, 0.3), "a margin widens it")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var picked := {}
+	for sz in range(-10, 11):
+		for sx in range(-10, 11):
+			var st := g.settlement_at(sx, sz)
+			if not st.is_empty() and not picked.has(st["era"]) and int(st["size"]) >= 1:
+				picked[st["era"]] = st
+	check(picked.size() >= 2, "settlements of several eras to look at (%d)" % picked.size())
+	var reach := 0
+	var inside: Array = []
+	var looked := 0
+	for st in picked.values():
+		var c: Vector2 = st["center"]
+		var ccx := int(floor(c.x / ChunkGenerator.SIZE))
+		var ccz := int(floor(c.y / ChunkGenerator.SIZE))
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var ch := g.generate(ccx + dx, ccz + dz)
+				var plans := ChunkGenerator.keep_out(ch)
+				reach += (ch["keep_out"] as PackedFloat32Array).size() / 7
+				for o in ch["objects"]:
+					var k := ObjectLibrary.kind(o["t"])
+					if k == "tree" or k == "rock" or k == "ore" or k == "marker" or (k == "cache" and not o["st"].has("landmark")):
+						looked += 1
+						if ChunkGenerator.kept_out(plans, o["p"].x, o["p"].z, 0.3):
+							var by := "a neighbour"
+							for b in ch["objects"]:
+								if ObjectLibrary.keeps_out(b["t"]):
+									var f := ObjectLibrary.footprint(b)
+									if ChunkGenerator.kept_out([ChunkGenerator._plan(b["p"].x, b["p"].z, b["r"], f.position, f.end)], o["p"].x, o["p"].z, 0.3):
+										by = b["t"]
+							inside.append("%s in %s at (%.1f, %.1f)" % [o["t"], by, o["p"].x, o["p"].z])
+				if dx == 0 and dz == 0:
+					var again := ch.duplicate()
+					again.erase("keep_out")
+					check(g.fill_keep_out(again) and again["keep_out"] == ch["keep_out"], "chunks saved before keep the same plans when loaded (%d)" % (ch["keep_out"] as PackedFloat32Array).size())
+	check(looked > 20 and inside.is_empty(), "nothing wild stands inside a building (%d looked at, %s)" % [looked, inside])
+	check(reach > 0, "buildings reaching in from the next chunk are kept out too (%d)" % reach)
+
+## Floors drawn twice at one height flicker: the sci-fi blocks' foundations sit under
+## their floor tiles, and plates and forks sit on the table rather than in it.
+func test_no_double_floors() -> void:
+	for t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]:
+		var low: Array = []
+		for f in ZFight.find(t):
+			var y := float(f.get_slice(" at y ", 1).get_slice(" ", 0))
+			if y < 0.5:
+				low.append(f)
+		check(low.is_empty(), "%s has one floor (%s)" % [t, low])
+	for t in KitHouse.FURNISH.keys() + Interiors.FURNISH.keys():
+		var hits := ZFight.items(t)
+		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])

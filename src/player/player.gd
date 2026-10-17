@@ -558,6 +558,13 @@ func _find_focus() -> Dictionary:
 					if sc < best_s:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": use["verb"]}
+	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
+	if streamer and best.is_empty():
+		var got := streamer.find_under(eye, eye + fwd * (USE_RANGE - 1.0), 0.45)
+		if not got.is_empty():
+			var parts := String(got["key"]).split("#")
+			var pos: Vector3 = got["pos"]
+			best = {"kind": "plant", "found": got, "pos": pos + Vector3(0, 0.9, 0), "verb": Flora.under_verb(int(parts[1]), int(parts[2]))}
 	# A piece you built, right under the crosshair, can be taken down (or used, if a station).
 	if not best.get("kind", "") in ["npc", "vehicle"]:
 		var h := _hit_object()
@@ -797,6 +804,10 @@ func interact() -> void:
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
 				_focus_t = 0.0
 				return
+			"plant":
+				_pick_plant(focus["found"])
+				_focus_t = 0.0
+				return
 	var h := _hit_object()
 	if h.has("npc") and is_instance_valid(h["npc"]):
 		get_tree().call_group("dialogue_ui", "open_with", h["npc"])
@@ -957,6 +968,22 @@ func _harvest_under(h: Dictionary, q: float) -> bool:
 	for y in Flora.under_yield(int(parts[1]), era, randf()):
 		Game.give(ItemDB.make(y[0], y[1], q, Game.origin_here("gathered", era, ck)))
 	return true
+
+## Picks a plant by hand (Interact): the same yield as cutting it, at plain quality.
+func _pick_plant(found: Dictionary) -> void:
+	if streamer == null or not streamer.pick_under(found):
+		return
+	used_tool.emit("interact")
+	if body:
+		body.play_once("interact")
+	var parts := String(found["key"]).split("#")
+	var era := int(parts[2])
+	var ck := ChunkStreamer.chunk_of(found["pos"])
+	var got: Array = []
+	for y in Flora.under_yield(int(parts[1]), era, randf()):
+		Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("gathered", era, ck)))
+		got.append("%s x%d" % [ItemDB.def(y[0])["name"], y[1]])
+	Game.toast.emit("Picked: " + ", ".join(got))
 
 func _fire(it: Dictionary, d: Dictionary) -> void:
 	if not d.get("auto", false):

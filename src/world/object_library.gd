@@ -325,6 +325,29 @@ static func shape_of(o: Dictionary) -> Array:
 	_lock.unlock()
 	return out
 
+static var _foot: Dictionary = {}
+
+## A building's ground plan (local x/z, unscaled): the box its mesh fills, so grass,
+## flowers and trees keep out of it. Thread-safe like get_mesh.
+static func footprint(o: Dictionary) -> Rect2:
+	var key := mesh_key(o)
+	_lock.lock()
+	var f = _foot.get(key)
+	_lock.unlock()
+	if f == null:
+		var a := get_mesh(key).get_aabb()
+		f = Rect2(a.position.x, a.position.z, a.size.x, a.size.z)
+		_lock.lock()
+		_foot[key] = f
+		_lock.unlock()
+	return f
+
+## Whether nothing should grow inside type t: buildings, stalls, traders and anything
+## the player built, but not bridges (the ground under them is open) or caves.
+static func keeps_out(t: String) -> bool:
+	var k := kind(t)
+	return (k == "structure" or k == "trader" or k == "built") and t != "bridge" and t != "cave"
+
 ## Collision: [shape, local offset].
 static func get_shape(t: String) -> Array:
 	if _shapes.has(t):

@@ -141,6 +141,13 @@ static func was_cleared(chunk: Dictionary, lx: float, lz: float) -> bool:
 			return true
 	return false
 
+## What picking a plant by hand is called, by its form.
+const UNDER_VERBS := {"fern": "Gather the fern", "bush": "Forage the bush", "flowers": "Pick the flowers",
+	"reeds": "Pull up the reeds", "glowbulbs": "Pick the glowbulbs", "fronds": "Gather the fronds", "tendrils": "Pull up the tendrils"}
+
+static func under_verb(sp: int, era: int) -> String:
+	return UNDER_VERBS.get(under_form(sp, era), "Pick it")
+
 ## What harvesting one undergrowth plant gives: [[item, qty], ...].
 static func under_yield(sp: int, era: int, roll: float) -> Array:
 	var form := under_form(sp, era)

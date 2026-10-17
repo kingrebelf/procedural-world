@@ -16,6 +16,41 @@ func check(c: bool, m: String) -> void:
 func _initialize() -> void:
 	_run.call_deferred()
 
+## Walk up to a fern or flower and pick it with Interact, no tool needed.
+func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
+	var plant := Vector3.INF
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for mmi in c._clutter:
+			if not String(mmi.get_meta("key", "")).begins_with("under"):
+				continue
+			for i in mmi.multimesh.instance_count:
+				var t: Transform3D = mmi.multimesh.get_instance_transform(i)
+				var at := c.position + t.origin
+				# On open ground, with nothing usable about to take the prompt instead.
+				if t.basis.get_scale().y > 0.5 and plant == Vector3.INF and at.distance_to(player.global_position) < 60.0 \
+						and ChunkGenerator.slope_at(c.data, t.origin.x + 1.5, t.origin.z) < 0.3:
+					plant = at
+	check(plant != Vector3.INF, "a plant to pick by hand")
+	if plant == Vector3.INF:
+		return
+	var pc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(plant))
+	var stand := plant + Vector3(1.4, 0, 0)
+	stand.y = ChunkGenerator.height_at(pc.data, stand.x - pc.position.x, stand.z - pc.position.z) + 0.1
+	player.set_state({"pos": stand, "yaw": PI / 2.0, "pitch": -0.75, "slot": 0})
+	for i in 300:
+		await _frames(1)
+		if streamer.is_ready_at(stand):
+			break
+	player.global_position = stand
+	await _frames(20)
+	check(player.focus.get("kind", "") == "plant", "looking at a plant offers to pick it (%s)" % player.focus.get("verb", "nothing"))
+	var fiber: int = game.inventory.count("fiber")
+	player.interact()
+	check(game.inventory.count("fiber") > fiber, "picking it by hand gives fiber (%d -> %d)" % [fiber, game.inventory.count("fiber")])
+	await _frames(15)
+	check(player.focus.get("found", {}).get("pos", Vector3.INF) != plant, "a picked plant is gone")
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -145,6 +180,7 @@ func _run() -> void:
 		looted = {"key": c.key, "i": o["i"]}
 	check(not looted.is_empty(), "found a chest to loot")
 
+	await _pick_by_hand(game, streamer, player)
 	await _walk_into_house(game, world, streamer, player)
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)

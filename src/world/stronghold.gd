@@ -319,7 +319,7 @@ static func _bunker(part: String, k: MeshKit, models: Array) -> void:
 		"gate":
 			for x in [-3.0, 3.0]:
 				models.append(["scifi/Column_Pipes", 0, Vector3(x, 0, 0), 1.0])
-				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, 2.5, 0)), Vector3(2.0, 5.0, 3.2))
+				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, 2.52, 0)), Vector3(2.0, 5.04, 3.2))
 				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, -2.0, 0)), Vector3(2.2, 4.0, 3.4))
 			models.append(["scifi/Door_Frame_Square", 0, Vector3(0, 0, 1.0), 0.85])
 			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 4.7, 0)), Vector3(4.0, 0.6, 3.2))
