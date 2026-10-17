@@ -53,6 +53,7 @@ var _look_hp: ProgressBar
 var _look_icon: TextureRect
 var _feed: VBoxContainer
 var _under: ColorRect
+var _bino: ColorRect ## the twin-circle view through raised binoculars
 var _breath: ProgressBar
 var _feed_rows: Dictionary = {} ## type -> {row, qty, label, t}
 var _badge: Control ## the round level badge on the vitals plate
@@ -286,6 +287,16 @@ func _ready() -> void:
 	_under.visible = false
 	add_child(_under)
 	move_child(_under, 0)
+	_bino = ColorRect.new()
+	_bino.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_bino.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bino.visible = false
+	var sh := Shader.new()
+	sh.code = BINO_SHADER
+	_bino.material = ShaderMaterial.new()
+	(_bino.material as ShaderMaterial).shader = sh
+	add_child(_bino)
+	move_child(_bino, 1)
 	_breath = ProgressBar.new()
 	_breath.add_theme_stylebox_override("fill", UITheme.bar_fill(Color(0.35, 0.7, 0.95)))
 	_breath.custom_minimum_size = Vector2(260, 8)
@@ -316,6 +327,7 @@ func bind_player(p: Player) -> void:
 	player = p
 	_minimap.player = p
 	p.look_info_changed.connect(_on_look)
+	p.hit_marker.connect(_on_hit_marker)
 	p.look_target_changed.connect(func(t): _prompt.text = t)
 	p.selected_changed.connect(func(_i): _refresh())
 	_refresh()
@@ -629,6 +641,7 @@ var _cross_mode := 0
 func _draw_cross(cross: Control) -> void:
 	if not Cursor.locked() and not Game.using_pad:
 		return
+	_draw_marker(cross)
 	if player and player.gunplay and player.gunplay.held() != null:
 		_draw_gun_cross(cross)
 		return
@@ -644,6 +657,36 @@ func _draw_cross(cross: Control) -> void:
 		var d := Vector2.from_angle(a * PI * 0.5 + PI * 0.25)
 		cross.draw_line(d * 7.0, d * 11.0, Color(0, 0, 0, 0.4), 3.0, true)
 		cross.draw_line(d * 7.0, d * 11.0, Color(1, 1, 1, 0.55), 1.5, true)
+
+## Hit marker: an X of four short slashes around the crosshair that pops out and fades
+## when a blow or shot lands. White for a hit, red and wider for a headshot, and a
+## bigger, bolder red X for a kill.
+var _marker := ""
+var _marker_t := 0.0
+const MARKER_TIME := {"hit": 0.22, "head": 0.32, "kill": 0.5}
+
+func _on_hit_marker(kind: String) -> void:
+	# A kill or headshot isn't overwritten by the body-hit tick that may follow it.
+	if _marker_t > 0.0 and MARKER_TIME.get(_marker, 0.0) > MARKER_TIME[kind]:
+		return
+	_marker = kind
+	_marker_t = MARKER_TIME[kind]
+	_cross.queue_redraw()
+
+func _draw_marker(cross: Control) -> void:
+	if _marker_t <= 0.0:
+		return
+	var f: float = _marker_t / float(MARKER_TIME[_marker]) # 1 fresh .. 0 gone
+	var pop: float = 1.0 + 0.35 * f * f # opens outward and settles
+	var col := Color(1, 1, 1) if _marker == "hit" else Color(1.0, 0.22, 0.18)
+	var inner: float = (8.0 if _marker == "hit" else 9.0) * pop
+	var outer: float = inner + (7.0 if _marker == "hit" else (10.0 if _marker == "head" else 13.0))
+	var w: float = 2.0 if _marker == "hit" else (2.6 if _marker == "head" else 3.4)
+	var a: float = clampf(f * 1.6, 0.0, 1.0)
+	for i in 4:
+		var d := Vector2.from_angle(PI * 0.25 + i * PI * 0.5)
+		cross.draw_line(d * inner, d * outer, Color(0, 0, 0, 0.5 * a), w + 2.0, true)
+		cross.draw_line(d * inner, d * outer, Color(col, a), w, true)
 
 ## With a gun or bow: four ticks spaced to the real spread of the next shot (they open
 ## up as you move or fire and close as you aim), a ring filling through a reload, and
@@ -807,9 +850,25 @@ func _on_region(region: String, era: int) -> void:
 	tw.tween_interval(3.5)
 	tw.tween_property(_banner_box, "modulate:a", 0.0, 2.0)
 
+## Dark everywhere but two overlapping circles, softly edged, with a faint lens tint.
+const BINO_SHADER := """shader_type canvas_item;
+uniform float amount = 1.0;
+void fragment() {
+	vec2 px = 1.0 / SCREEN_PIXEL_SIZE;
+	vec2 p = (UV - 0.5) * px / px.y;
+	float r = 0.36;
+	float d = min(length(p - vec2(-0.2, 0.0)), length(p - vec2(0.2, 0.0)));
+	float inside = 1.0 - smoothstep(r - 0.02, r + 0.005, d);
+	float rim = smoothstep(r - 0.12, r, d) * inside;
+	COLOR = vec4(0.0, 0.0, 0.0, amount * mix(1.0, 0.45 * rim, inside));
+}"""
+
 func _process(_d: float) -> void:
 	if player == null:
 		return
+	_bino.visible = player._zoom > 0.75
+	if _bino.visible:
+		(_bino.material as ShaderMaterial).set_shader_parameter("amount", smoothstep(0.75, 1.0, player._zoom))
 	_update_use_prompt(_d)
 	var p := player.global_position
 	var t := fposmod(Game.day, 1.0) * 24.0
@@ -821,6 +880,9 @@ func _process(_d: float) -> void:
 	_compass.queue_redraw()
 	_update_mouse_hint()
 	_update_cross()
+	if _marker_t > 0.0:
+		_marker_t = maxf(0.0, _marker_t - _d)
+		_cross.queue_redraw()
 	if player.gunplay and player.gunplay.held() != null:
 		_cross.queue_redraw()
 	_update_crime()

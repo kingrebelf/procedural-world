@@ -194,6 +194,13 @@ static func draw_marker(ci: CanvasItem, mk: Dictionary, p: Vector2, s: float) ->
 	if mk["kind"] == "teleporter":
 		draw_icon(ci, "teleporter", p, s * 2.4)
 		return
+	if mk["kind"] == "treasure":
+		# X marks the spot.
+		var r := s * 0.9
+		for w in [[s * 0.55, Color(0, 0, 0, 0.7)], [s * 0.32, Color(0.85, 0.12, 0.08)]]:
+			ci.draw_line(p + Vector2(-r, -r), p + Vector2(r, r), w[1], w[0], true)
+			ci.draw_line(p + Vector2(r, -r), p + Vector2(-r, r), w[1], w[0], true)
+		return
 	var col := Markers.color_of(mk)
 	var icon: String = mk.get("icon", "pin")
 	if icon == "pin":

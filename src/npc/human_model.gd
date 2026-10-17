@@ -93,6 +93,8 @@ static func _body_mat(fem: bool) -> ShaderMaterial:
 		m.set_shader_parameter("skin_tex", load(DIR + "body_%s_albedo.png" % g))
 		m.set_shader_parameter("normal_tex", load(DIR + "body_%s_normal.png" % g))
 		m.set_shader_parameter("skin_mean", 0.49 if fem else 0.47)
+		m.set_shader_parameter("rough_tex", load(DIR + "body_%s_rough.png" % g))
+		m.set_shader_parameter("skin_avg", Vector3(0.667, 0.466, 0.322) if fem else Vector3(0.655, 0.454, 0.316))
 		_mats[key] = m
 	return _mats[key]
 
@@ -212,12 +214,12 @@ func wear(worn: Dictionary) -> void:
 			_armour.set_instance_shader_parameter("visor_y", skeleton.get_bone_global_rest(hb).origin.y + 0.085)
 		_armour.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _arms:
-			_armour.visible = false
+			_arms_cut(_armour)
 	var helmet: bool = worn.get("head") is Dictionary
 	for h in _hair:
-		(h as Node3D).visible = not helmet
+		(h as Node3D).visible = not helmet and not _arms
 	if _headgear_node:
-		_headgear_node.visible = not helmet
+		_headgear_node.visible = not helmet and not _arms
 	if worn.get("shield") is Dictionary:
 		_shield = _shield_mesh(worn["shield"])
 		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
@@ -444,13 +446,18 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 		var b: AABB = xf * (mi as MeshInstance3D).mesh.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
-	var grip_y := box.position.y + minf(0.12, box.size.y * 0.25)
+	var grip := Vector3(0, box.position.y + minf(0.12, box.size.y * 0.25), 0)
+	# A model can say where the fist closes round it (a gun's grip).
+	for mi in prop.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (mi as MeshInstance3D).mesh
+		if mesh and mesh.has_meta("grip"):
+			grip = _rel(prop, mi) * (mesh.get_meta("grip") as Vector3)
 	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
 	if point != Vector3.ZERO:
 		var z := -point.normalized()
 		var y := (aim - z * aim.dot(z)).normalized()
 		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
-	return Transform3D(basis, center - basis * Vector3(0, grip_y, 0))
+	return Transform3D(basis, center - basis * grip)
 
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 	var xf := Transform3D.IDENTITY
@@ -482,6 +489,33 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 
+## Turns the right hand (over its animation) so its knuckle line, little finger to index,
+## runs along `knuckles` and the back of the hand points the fingers along `fingers`
+## (world directions); Vector3.ZERO for both hands it back to the animation.
+func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if knuckles == Vector3.ZERO:
+		gestures.hand_r = null
+		return
+	var hb := skeleton.find_bone("hand_r")
+	var bi := skeleton.find_bone("index_01_r")
+	var bp := skeleton.find_bone("pinky_01_r")
+	var bm := skeleton.find_bone("middle_01_r")
+	if hb < 0 or bi < 0 or bp < 0 or bm < 0:
+		return
+	var g := skeleton.get_bone_global_rest(hb)
+	var inv := g.affine_inverse()
+	var up := (inv * skeleton.get_bone_global_rest(bi).origin - inv * skeleton.get_bone_global_rest(bp).origin).normalized()
+	var m := inv * skeleton.get_bone_global_rest(bm).origin
+	var fwd := (m - up * m.dot(up)).normalized()
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	var u := (to_sk * knuckles).normalized()
+	var f := to_sk * fingers
+	f = (f - u * f.dot(u)).normalized()
+	# (fwd, up) are in the bone's own space: the bone's basis maps them onto (f, u).
+	gestures.hand_r = Basis(f, u, f.cross(u)) * Basis(fwd, up, fwd.cross(up)).inverse()
+
 ## Re-aims what the hand holds (first person: called every frame so the item keeps
 ## facing the view whatever the arms' animation does).
 func reaim(aim: Vector3, tilt := 0.0, point := Vector3.ZERO) -> void:
@@ -496,6 +530,9 @@ func hand_space(dir: Vector3) -> Vector3:
 	if hb < 0:
 		return dir
 	var pose := skeleton.global_transform * skeleton.get_bone_global_pose(hb)
+	if gestures and gestures.hand_r != null:
+		# Turned by aim_hand: the pose read back may predate that turn this frame.
+		pose.basis = skeleton.global_basis * (gestures.hand_r as Basis)
 	return (pose.basis.inverse() * dir).normalized()
 
 ## First-person arms: only the arms and hands are drawn, nothing casts shadows.
@@ -505,13 +542,25 @@ func set_arms_only(right_only := false) -> void:
 	var side := 1.0
 	if right_only and skeleton and skeleton.find_bone("hand_r") >= 0:
 		side = 2.0 if skeleton.get_bone_global_rest(skeleton.find_bone("hand_r")).origin.x < 0.0 else 3.0
+	_side = side
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if m == _body:
 			m.set_instance_shader_parameter("arms_only", side)
+		elif m == _clothes or m == _armour:
+			# The real sleeve and any armour on the arms and hands, cut at the shoulder.
+			_arms_cut(m)
 		elif not _is_held(m):
 			m.visible = false
+
+var _side := 1.0
+
+func _arms_cut(m: MeshInstance3D) -> void:
+	m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	m.set_instance_shader_parameter("arms_only", _side)
+	var bu := skeleton.find_bone("upperarm_l")
+	m.set_instance_shader_parameter("arms_x", (absf(skeleton.get_bone_global_rest(bu).origin.x) if bu >= 0 else 0.2) + 0.04)
 
 func _is_held(n: Node) -> bool:
 	return _held != null and _held.is_ancestor_of(n)

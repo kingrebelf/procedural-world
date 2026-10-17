@@ -23,6 +23,9 @@ const ITEMS := {
 	"silver_chalice": {"name": "Silver Chalice", "era": Eras.MEDIEVAL, "value": 60, "stack": true, "kind": "treasure", "color": Color(0.85, 0.85, 0.9)},
 	"moonpearl": {"name": "Moonpearl", "era": Eras.FANTASY, "value": 85, "stack": true, "kind": "treasure", "color": Color(0.9, 0.9, 1.0)},
 	"data_core": {"name": "Encrypted Data Core", "era": Eras.SCIFI, "value": 110, "stack": true, "kind": "treasure", "color": Color(0.2, 1.0, 0.8)},
+	# Treasure maps: picking one up buries a chest somewhere out there (see Treasure).
+	"treasure_map": {"name": "Treasure Map", "era": Eras.MEDIEVAL, "value": 25, "stack": false, "kind": "map", "color": Color(0.86, 0.76, 0.54)},
+	"treasure_chip": {"name": "Cache Data Chip", "era": Eras.SCIFI, "value": 40, "stack": false, "kind": "map", "color": Color(0.32, 0.36, 0.42)},
 	# Food
 	"bread": {"name": "Bread", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "food", "heal": 25, "color": Color(0.8, 0.6, 0.3)},
 	"glowberry": {"name": "Glowberries", "era": Eras.FANTASY, "value": 6, "stack": true, "kind": "food", "heal": 35, "color": Color(0.6, 0.3, 1.0)},
@@ -43,7 +46,7 @@ const ITEMS := {
 	"pickaxe_mythril": {"name": "Mythril Pickaxe", "era": Eras.FANTASY, "value": 140, "stack": false, "kind": "tool", "mine": 2.0, "chop": 0.4, "damage": 12, "range": 3.0, "dig": 1.0},
 	"pickaxe_plasma": {"name": "Plasma Drill", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "tool", "mine": 3.5, "chop": 0.6, "damage": 10, "range": 3.5, "dig": 1.6, "beam": true, "beam_dps": 45.0, "beam_range": 10.0, "beam_mine": 4.0},
 	"axe_iron": {"name": "Iron Axe", "era": Eras.MEDIEVAL, "value": 40, "stack": false, "kind": "tool", "mine": 0.3, "chop": 1.0, "damage": 12, "range": 3.0},
-	"lockpick": {"name": "Lockpick", "era": ANY, "value": 4, "stack": true, "kind": "resource", "color": Color(0.72, 0.74, 0.78)},
+	"lockpick": {"name": "Lockpick", "era": ANY, "value": 4, "stack": true, "kind": "resource", "cat": "Tools", "color": Color(0.72, 0.74, 0.78)},
 	"torch": {"name": "Torch", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "light", "color": Color(0.85, 0.5, 0.2)},
 	"flashlight": {"name": "Flashlight", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "light", "color": Color(0.3, 0.32, 0.36)},
 	"flashlight_dead": {"name": "Flashlight (dead battery)", "era": Eras.SCIFI, "value": 20, "stack": false, "kind": "light", "color": Color(0.22, 0.22, 0.24)},
@@ -84,7 +87,7 @@ const ITEMS := {
 	"shield_emitter": {"name": "Hex Shield Emitter", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "armor", "slot": "shield", "armor": 22, "color": Color(0.5, 0.85, 1.0)},
 	# Jetpack: worn on the back; fire it in the air with Jump (see Jetpack). Burns Jet Fuel.
 	"jetpack": {"name": "Jetpack", "era": ANY, "value": 450, "stack": false, "kind": "armor", "slot": "back", "armor": 2, "color": Color(0.62, 0.64, 0.68)},
-	"jet_fuel": {"name": "Jet Fuel", "era": ANY, "value": 12, "stack": true, "kind": "resource", "color": Color(0.95, 0.55, 0.15)},
+	"jet_fuel": {"name": "Jet Fuel", "era": ANY, "value": 12, "stack": true, "kind": "resource", "cat": "Fuel", "color": Color(0.95, 0.55, 0.15)},
 	# Heavier weapons; "swing" scales the time between swings.
 	"battle_axe": {"name": "Battle Axe", "era": Eras.MEDIEVAL, "value": 110, "stack": false, "kind": "weapon", "damage": 36, "range": 3.2, "swing": 1.3, "chop": 0.8},
 	"war_hammer": {"name": "War Hammer", "era": Eras.MEDIEVAL, "value": 120, "stack": false, "kind": "weapon", "damage": 40, "range": 3.0, "swing": 1.45, "mine": 0.6},
@@ -100,8 +103,8 @@ const ITEMS := {
 	"gold_idol": {"name": "Golden Skull Idol", "era": Eras.MEDIEVAL, "value": 200, "stack": true, "kind": "treasure", "color": Color(1.0, 0.8, 0.3)},
 	"void_gem": {"name": "Void Gem", "era": Eras.SCIFI, "value": 240, "stack": true, "kind": "treasure", "color": Color(0.7, 0.35, 1.0)},
 	"dungeon_key": {"name": "Ornate Key", "era": ANY, "value": 40, "stack": true, "kind": "treasure", "color": Color(0.8, 0.65, 0.3)},
-	"health_potion": {"name": "Health Potion", "era": ANY, "value": 30, "stack": true, "kind": "food", "heal": 80, "color": Color(0.9, 0.15, 0.15)},
-	"stamina_potion": {"name": "Stamina Potion", "era": ANY, "value": 25, "stack": true, "kind": "food", "heal": 0, "stamina": true, "color": Color(0.3, 0.9, 0.35)},
+	"health_potion": {"name": "Health Potion", "era": ANY, "value": 30, "stack": true, "kind": "food", "cat": "Medicine", "heal": 80, "color": Color(0.9, 0.15, 0.15)},
+	"stamina_potion": {"name": "Stamina Potion", "era": ANY, "value": 25, "stack": true, "kind": "food", "cat": "Medicine", "heal": 0, "stamina": true, "color": Color(0.3, 0.9, 0.35)},
 	"bolt": {"name": "Crossbow Bolts", "era": ANY, "value": 1, "stack": true, "kind": "ammo", "color": Color(0.6, 0.45, 0.3)},
 	"rounds": {"name": "Revolver Rounds", "era": ANY, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.8, 0.65, 0.3)},
 	# Vehicles: use one to set it down in the world, then ride it (see Vehicle).
@@ -163,11 +166,58 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"rail_rifle": 5.0, "arc_launcher": 5.5, "bolt": 0.05, "rounds": 0.02, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
-	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2}
+	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2,
+	"treasure_map": 0.05, "treasure_chip": 0.05}
 const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 
 static var _piece_defs := {}
+
+## Crafting window tabs, in order ("All" comes first in the window). Each item sits in one
+## tab: its "cat" when the definition has one (one of these names), otherwise the tab its
+## "kind" maps to in KIND_TAB, otherwise Materials. A few also show in a second tab: what
+## any ranged weapon fires (its "ammo") under Ammo, anything with a "fuel" key under Fuel,
+## and furniture that gives light under Lights. New items need nothing more than a kind.
+const CRAFT_TABS := ["Materials", "Tools", "Weapons", "Ammo", "Armour", "Fuel", "Food", "Medicine", "Lights",
+	"Vehicles", "Stations", "Building", "Furniture"]
+const KIND_TAB := {"resource": "Materials", "material": "Materials", "ore": "Materials", "ingot": "Materials",
+	"component": "Materials", "treasure": "Materials", "valuable": "Materials", "relic": "Materials",
+	"tool": "Tools", "gadget": "Tools", "instrument": "Tools", "key": "Tools", "scroll": "Tools",
+	"weapon": "Weapons", "explosive": "Weapons", "trap": "Weapons", "ammo": "Ammo",
+	"armor": "Armour", "trinket": "Armour", "implant": "Armour", "fuel": "Fuel",
+	"food": "Food", "drink": "Food", "ingredient": "Food", "crop": "Food",
+	"medicine": "Medicine", "potion": "Medicine", "herb": "Medicine", "consumable": "Medicine",
+	"light": "Lights", "vehicle": "Vehicles", "station": "Stations", "placeable": "Building", "camp": "Building",
+	"decor": "Furniture"}
+
+static var _ammo_types := {}
+
+## The crafting tab an item belongs in (see CRAFT_TABS).
+static func craft_tab(type: String) -> String:
+	var d := def(type)
+	if d.has("cat"):
+		return d["cat"]
+	return KIND_TAB.get(String(d.get("kind", "")), "Materials")
+
+## Every crafting tab an item shows under: its own tab, then any second one.
+static func craft_tabs(type: String) -> Array:
+	if _ammo_types.is_empty():
+		for t in ITEMS:
+			if ITEMS[t].has("ammo"):
+				_ammo_types[ITEMS[t]["ammo"]] = true
+	var tabs := [craft_tab(type)]
+	var extra := []
+	if _ammo_types.has(type):
+		extra.append("Ammo")
+	if def(type).has("fuel"):
+		extra.append("Fuel")
+	if craft_tab(type) == "Furniture" and BuildCatalog.def(type).has("light"):
+		extra.append("Lights")
+	for t in extra:
+		if not tabs.has(t):
+			tabs.append(t)
+	return tabs
+
 
 ## Weight of one item of this type, in kg. Vehicles are carried as their keys.
 static func weight(type: String) -> float:
@@ -266,7 +316,9 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		if Eras.themed() and zl * 160.0 + 1.0 < Eras.UNLOCK_LEVEL:
 			# The first zones only hold their own era's blades and bows.
 			t = t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
-		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
+		# Some eras have nothing that low (the filter can empty the list).
+		if not t.is_empty():
+			loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
 	if luck > 0.0:
 		var extra: Array = DUNGEON_LOOT[era]
 		for i in rng.randi_range(1, 1 + int(luck * 3.0)):

@@ -32,6 +32,10 @@ var _under_target := 0.0
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = load("res://src/env/sky.gdshader")
+	if ResourceLoader.exists("res://assets/textures/sky/night_stars.jpg"):
+		sky_mat.set_shader_parameter("night_stars", load("res://assets/textures/sky/night_stars.jpg"))
+	if ResourceLoader.exists("res://assets/textures/sky/moon.png"):
+		sky_mat.set_shader_parameter("moon_tex", load("res://assets/textures/sky/moon.png"))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
@@ -60,9 +64,11 @@ func _ready() -> void:
 	env.volumetric_fog_anisotropy = 0.35
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 0.98
-	env.adjustment_contrast = 1.06
+	env.adjustment_contrast = 1.1
 	env.ssao_radius = 1.4
-	env.ssao_intensity = 1.6
+	env.ssao_intensity = 2.0
+	# A little AO on direct light too, so things sit on the ground even in sunlight.
+	env.ssao_light_affect = 0.15
 	env.ssil_radius = 6.0
 	env.sdfgi_use_occlusion = true
 	env.sdfgi_cascades = 4
@@ -130,8 +136,9 @@ func apply_settings() -> void:
 		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	var cq := int(Settings.get_value("clouds"))
 	sky_mat.set_shader_parameter("volumetric_clouds", cq > 0)
-	sky_mat.set_shader_parameter("cloud_steps", 16 if cq == 1 else 28)
-	sky_mat.set_shader_parameter("cloud_light_steps", 2 if cq == 1 else 4)
+	# Ben (2026-10-17): quality first, so the high setting marches the clouds finely.
+	sky_mat.set_shader_parameter("cloud_steps", 20 if cq == 1 else 40)
+	sky_mat.set_shader_parameter("cloud_light_steps", 3 if cq == 1 else 6)
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
 
@@ -209,13 +216,16 @@ func _update_time_of_day() -> void:
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)
-	sun.light_energy = 2.0 * smoothstep(-0.05, 0.15, elev)
+	# The low sun is still strong, and warmer: long, hard, golden shadows at dusk instead of
+	# a flat grey wash.
+	sun.light_energy = 2.0 * smoothstep(-0.05, 0.08, elev) * (1.0 + 0.2 * golden)
 	sun.visible = elev > -0.1
 	moon.visible = elev < 0.1
 	moon.light_energy = 0.14 * (1.0 - daylight)
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
+	sky_mat.set_shader_parameter("stars_turn", t)
 	sky_mat.set_shader_parameter("zenith_day", sky_tint)
 	sky_mat.set_shader_parameter("horizon_day", sky_tint.lerp(Color(0.85, 0.88, 0.92), 0.6))
 	sky_mat.set_shader_parameter("era_fantasy", _w[Eras.FANTASY])
@@ -247,7 +257,9 @@ func _update_time_of_day() -> void:
 		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
 	else:
 		env.fog_sun_scatter = 0.12
-	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.05, underground)
+	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
+	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+		* lerpf(1.0, 0.05, underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

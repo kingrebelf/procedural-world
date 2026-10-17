@@ -34,6 +34,8 @@ SOURCES = {
     "alien_hull": 4.0, "screen": 1.0,
     # Ground cover (2026-10-17): Ben's gravel, leaf litter and layered cliff rock.
     "gravel": 4.0, "litter": 3.0, "cliff": 5.0,
+    # Ben's ore and scrap sheets (2026-10-17, art/ores/seamless, art/scrap/seamless).
+    "iron_ore": 5.0, "aether_rock": 5.0, "scrap_machinery": 4.0, "scrap_burnt": 3.5,
 }
 
 # CC0 PBR sets that bring their own normal map (OpenGL convention): name -> (colour, normal)

@@ -15,7 +15,7 @@ class_name WonderSite
 
 const CELL := 14 ## chunks per side of a wonder cell (about 900 m)
 const CHANCE := 0.5 ## of a cell trying to hold one; the ground often says no
-const GATE_CHANCE := 0.2
+const GATE_CHANCE := 0.2 ## alien and older worlds; human worlds have no gates
 const PLAZA := 19.0 ## level ground radius
 const EDGE := 25.0 ## where the levelled ground meets the land again
 const RING := 15.5 ## pillar ring radius
@@ -118,7 +118,8 @@ static func place(g: ChunkGenerator, chunk: Dictionary, sites: Array) -> Diction
 			return {}
 	var w := ChunkGenerator.weights_at(chunk, c.x, c.y)
 	var era := WorldField.dominant(w)
-	var t: String = "w_gate" if r.randf() < GATE_CHANCE else BY_ERA[era]
+	var gate := r.randf() < GATE_CHANCE and Eras.theme != "human"
+	var t: String = "w_gate" if gate else BY_ERA[era]
 	var yaw := r.randf() * TAU
 	_level(g, chunk, c, sum / n + 0.2)
 	var put := func(type: String, q: Vector2, face: float, st := {}) -> void:
@@ -215,10 +216,15 @@ static func of_chunk(chunk: Dictionary) -> Dictionary:
 # --- Meshes ---------------------------------------------------------------------------
 
 static var _beams := {}
+## Mesh key suffix for a wonder built for a human world: glowing glyphs, shards and inlays
+## become carved stone, gold and plain glinting glass (Ben: nothing glows on human worlds).
+const CALM := "@calm"
+const CALM_MATS := {"titan_glow": "titan_stone", "starfall_glass": "starfall_glass_dull",
+	"void_stone": "void_stone_dull", "glow_violet": "gold", "glow_red": "gold", "glow_teal": "gold"}
 static var _portal: Material
 
 ## The mesh of a wonder piece. `solid` leaves out the light (for collision).
-static func build(t: String, solid := false) -> ArrayMesh:
+static func build(t: String, solid := false, calm := false) -> ArrayMesh:
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
 	var r := RandomNumberGenerator.new()
 	r.seed = WHash.str_hash(t)
@@ -268,7 +274,10 @@ static func build(t: String, solid := false) -> ArrayMesh:
 		_vault_floor(k, FRONT[t])
 	if not solid and is_centre(t):
 		_beam(k, t)
-	return k.commit(_mat, out)
+	return k.commit(_calm_mat if calm else _mat, out)
+
+static func _calm_mat(name: String) -> Material:
+	return _mat(CALM_MATS.get(name, name))
 
 static func _mat(name: String) -> Material:
 	if name.begins_with("beam_"):

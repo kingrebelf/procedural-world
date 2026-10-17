@@ -114,6 +114,9 @@ var _palm0: Vector3
 ## Right-hand finger curls (thumb..pinky, 0..1) held while the hand grips something
 ## (HumanModel.hold), under any gesture; [] for none.
 var grip_r: Array = []
+## The right hand's orientation in skeleton space, overriding the animation's (a gun
+## held square to the view); null leaves the hand as animated.
+var hand_r = null
 
 func play(name: String) -> bool:
 	var g := resolve(name)
@@ -152,6 +155,11 @@ func _process_modification() -> void:
 	var now := Time.get_ticks_msec()
 	var dt := clampf((now - _last) / 1000.0, 0.0, 0.1) if _last > 0 else 0.0
 	_last = now
+	if hand_r != null and _bone("hand_r") >= 0:
+		var hb := _bone("hand_r")
+		var parent := sk.get_bone_parent(hb)
+		var pb := sk.get_bone_global_pose(parent).basis.orthonormalized() if parent >= 0 else Basis()
+		sk.set_bone_pose_rotation(hb, (pb.inverse() * (hand_r as Basis)).get_rotation_quaternion())
 	if not grip_r.is_empty():
 		for i in 5:
 			_finger(sk, "r", i, float(grip_r[i]), 1.0)
@@ -255,7 +263,10 @@ func _finger(sk: Skeleton3D, side: String, i: int, curl: float, w: float) -> voi
 	if b1 < 0:
 		return
 	var toward := _palm0
-	if i == 0:
+	if i == 0 and hand_r != null and side == "r":
+		# Round a gun's grip the thumb wraps the palm side and lies along it, forward.
+		toward = _palm0
+	elif i == 0:
 		# The thumb folds across the palm toward the little finger.
 		var pk := sk.get_bone_global_rest(_bone("pinky_01_" + side)).origin
 		var ix := sk.get_bone_global_rest(_bone("index_01_" + side)).origin

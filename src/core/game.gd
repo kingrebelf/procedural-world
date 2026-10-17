@@ -48,6 +48,10 @@ var markers := Markers.new() ## map pins and teleporters
 var guilds: Dictionary = {} ## guild (TownShops.GUILDS key) -> {day, town}
 var estates: Array = [] ## houses you bought: TownShops.estate records
 var map := WorldMap.new() ## the painted atlas under its fog of war
+## Treasure hunts from maps you picked up: Treasure.new_hunt records, kept found or not.
+var treasure: Array = []
+signal treasure_started(hunt: Dictionary)
+signal treasure_found(hunt: Dictionary)
 
 var _dirty_chunks: Dictionary = {} ## Vector2i -> chunk dict
 var _dirty_timer := 0.0
@@ -58,7 +62,7 @@ var _current_region := ""
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
-	inventory.changed.connect(func(): _player_dirty = true)
+	inventory.changed.connect(_on_inventory_changed)
 
 func is_playing() -> bool:
 	return store != null
@@ -90,7 +94,7 @@ func _begin(fresh: bool) -> void:
 	seed = home_seed
 	day = store.meta.get("day", 0.3)
 	inventory = Inventory.new()
-	inventory.changed.connect(func(): _player_dirty = true)
+	inventory.changed.connect(_on_inventory_changed)
 	_dirty_chunks.clear()
 	_current_region = ""
 	pending_player_state = null
@@ -101,6 +105,7 @@ func _begin(fresh: bool) -> void:
 	crime = Crime.new()
 	guilds = {}
 	estates = []
+	treasure = []
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -120,6 +125,7 @@ func _begin(fresh: bool) -> void:
 		crime = Crime.from_data(p.get("crime"))
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
+		treasure = (p.get("treasure", []) as Array).duplicate(true)
 		pending_player_state = p
 	else:
 		money = 50
@@ -216,6 +222,59 @@ func travel_portal(who: Node3D, n: int, from: Vector2) -> void:
 	toast.emit("You step out on %s, %s" % [info["name"], Planets.theme_label(info).to_lower()])
 	get_tree().change_scene_to_file.call_deferred("res://src/world/world.tscn")
 
+# --- Treasure maps ---------------------------------------------------------------
+
+func _on_inventory_changed() -> void:
+	_player_dirty = true
+	if player == null or store == null:
+		return
+	# However a map reached your pack (a cache, a body, a trade), picking it up starts its hunt.
+	for i in inventory.slots.size():
+		var it = inventory.get_slot(i)
+		if it != null and Treasure.is_map(it["type"]) and not it.has("hunt"):
+			start_treasure(it)
+
+## Reads map `it` for the first time: buries its chest out there and marks the spot.
+func start_treasure(it: Dictionary) -> Dictionary:
+	var id := 1
+	for h in treasure:
+		id = maxi(id, int(h["id"]) + 1)
+	it["hunt"] = id
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed, id, Time.get_ticks_usec(), it.get("uid", 0)])
+	var at: Vector3 = player.global_position
+	var h := Treasure.new_hunt(id, ChunkGenerator.new(seed, store.has_rivers()), Vector2(at.x, at.z), planet, rng)
+	treasure.append(h)
+	var m := markers.add(Treasure.marker_name(h), float(h["x"]), float(h["z"]), planet, "treasure", {"hunt": id, "color": 2})
+	h["marker"] = m["id"]
+	_player_dirty = true
+	toast.emit("%s! %s" % [ItemDB.display_name(it), Treasure.hint(h, at)])
+	treasure_started.emit(h)
+	return h
+
+func hunt(id: int) -> Dictionary:
+	for h in treasure:
+		if int(h["id"]) == id:
+			return h
+	return {}
+
+## The chest of a hunt was opened or broken: the hunt is over, its map and marker go.
+func finish_treasure(id: int) -> void:
+	var h := hunt(id)
+	if h.is_empty() or h.get("found", false):
+		return
+	h["found"] = true
+	markers.remove(int(h.get("marker", -1)))
+	for i in inventory.slots.size():
+		var it = inventory.get_slot(i)
+		if it != null and int(it.get("hunt", -1)) == id:
+			inventory.remove_at(i, 1)
+			break
+	_player_dirty = true
+	add_xp(Treasure.XP, "Treasure found")
+	discovered.emit("Treasure found", "Zone level %d" % int(h.get("level", 1)), Color(0.95, 0.78, 0.42))
+	treasure_found.emit(h)
+
 ## Something saved with the player changed (markers, for one).
 func touch_player() -> void:
 	_player_dirty = true
@@ -256,7 +315,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data()}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "treasure": treasure}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
