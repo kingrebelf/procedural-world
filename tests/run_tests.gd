@@ -2791,3 +2791,56 @@ func test_pack_c_items() -> void:
 	Eras.theme = was
 	check(early_ok, "frontier caches hold no sci-fi gear")
 	check(late > 30, "far-out caches hold the sci-fi age (%d)" % late)
+
+func test_pack_d_items() -> void:
+	for t in ["bio_rifle", "star_pistol", "crystal_bow", "hive_cannon", "singularity_orb", "spore_launcher", "shard_gauntlet",
+			"precursor_rifle", "nova_staff", "eclipse_bow"]:
+		var d := ItemDB.def(t)
+		check(ItemDB.has(String(d.get("ammo", ""))), "%s fires a real item (%s)" % [t, d.get("ammo", "")])
+		check(d.get("alien", false) and ItemDB.UNLOCK.get(t, 0) >= 50, "%s is alien endgame gear" % t)
+	var r0 := RandomNumberGenerator.new()
+	r0.seed = 3
+	check(Rarity.of(ItemDB.make("worldbreaker", 1, 1.0, {}, r0)) >= Rarity.LEGENDARY, "a found Worldbreaker is legendary")
+	# Implants: each kind fits once, its points kept through a save.
+	var st := Stats.new()
+	var str0: int = st.attrs["str"]
+	check(st.fit_implant("implant_arm", ItemDB.def("implant_arm")["implant"]), "an arm implant fits")
+	check(st.attrs["str"] == str0 + 1, "and makes you stronger")
+	check(not st.fit_implant("implant_arm", ItemDB.def("implant_arm")["implant"]) and st.attrs["str"] == str0 + 1, "a second of the same kind does not")
+	var back := Stats.from_data(JSON.parse_string(JSON.stringify(st.to_data())))
+	check(back.implants == ["implant_arm"] and back.attrs["str"] == str0 + 1, "implants are saved")
+	check(Stats.from_data({"level": 2}).implants.is_empty(), "older saves have no implants")
+	check(Effects.describe(ItemDB.def("symbiote")).size() > 0, "an implant says what it does")
+	# Alien work turns up only on alien worlds.
+	var was := Eras.theme
+	var rng := RandomNumberGenerator.new()
+	Eras.theme = "human"
+	var human_ok := true
+	for i in 200:
+		rng.seed = 3900 + i
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(100, 0)}, 0.8):
+			if ItemDB.def(it["type"]).get("alien", false):
+				human_ok = false
+	check(human_ok, "human worlds hold no alien loot, however far out")
+	Eras.theme = "alien"
+	var base := Eras.base_level
+	Eras.base_level = 60
+	var alien := 0
+	var human_gear := 0
+	for i in 200:
+		rng.seed = 4900 + i
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(4, 0)}, 0.6):
+			if ItemDB.def(it["type"]).get("alien", false):
+				alien += 1
+			elif Rarity.is_gear(it["type"]) and ItemDB.UNLOCK.get(it["type"], 1) >= 25:
+				human_gear += 1
+	Eras.base_level = base
+	Eras.theme = was
+	check(alien > 30, "xeno caches hold alien work (%d)" % alien)
+	check(human_gear == 0, "and no human sci-fi gear (%d)" % human_gear)
+	# Alien beasts give up alien parts.
+	Eras.theme = "alien"
+	rng.seed = 5
+	var parts := CorpseLoot.animal_yields({"name": "Test Beast", "size": 1.5, "drops": [["raw_meat", 1], ["hide", 1]]}, 1.0, 0.0, rng).map(func(e): return e[0])
+	Eras.theme = was
+	check(parts.has("hide_xeno") and parts.has("meat_xeno"), "an alien beast gives xeno hide and meat (%s)" % str(parts))

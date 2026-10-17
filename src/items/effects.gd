@@ -24,6 +24,11 @@ const BUFFS := {
 	"spotter": {"name": "Drone overhead", "desc": "+10% damage, +10% speed", "bonus": {"damage": 0.1, "speed": 0.1}},
 	"shielded": {"name": "Shielded", "desc": "+30 armour", "bonus": {"armor": 30.0}},
 	"hidden": {"name": "In the smoke", "desc": "Much harder to notice", "bonus": {"stealth": 0.5}},
+	"voidskin": {"name": "Voidskin", "desc": "+40 armour, harder to notice", "bonus": {"armor": 40.0, "stealth": 0.2}},
+	"starfire": {"name": "Starfire", "desc": "+30% damage, +20% speed", "bonus": {"damage": 0.3, "speed": 0.2}},
+	"mutated": {"name": "Mutated", "desc": "+60 max health, +30 max stamina", "bonus": {"health": 60.0, "stamina": 30.0}},
+	"guardian": {"name": "Guardian", "desc": "+20% damage, +20 armour", "bonus": {"damage": 0.2, "armor": 20.0}},
+	"haste": {"name": "Haste", "desc": "+30% speed and swing", "bonus": {"speed": 0.3, "swing": 0.3}},
 	"quenched": {"name": "Quenched", "desc": "Not thirsty", "bonus": {}, "hidden": true},
 	"poison": {"name": "Poisoned", "desc": "Losing health", "bonus": {}, "dot": 1.0, "bad": true},
 }
@@ -143,6 +148,11 @@ static func describe(d: Dictionary) -> Array:
 		out.append("Carried: when you fall, it brings you back once at half health")
 	if d.get("smoke", false):
 		out.append("Its smoke hides you: much harder to notice for a while")
+	if d.has("implant"):
+		var parts: PackedStringArray = []
+		for a in d["implant"]:
+			parts.append("+%d %s" % [int(d["implant"][a]), Stats.NAMES.get(a, a)])
+		out.append("Fit it: %s for good (each kind fits once)" % ", ".join(parts))
 	if d.has("grapple"):
 		out.append("Use it: pulls you to what you aim at, up to %d m" % int(d["grapple"]))
 	if String(d.get("kind", "")) == "kit" and d.has("buff"):

@@ -26,8 +26,9 @@ const SHEET2_ORDER := [
 	"rune_tablet", "dungeon_key", "health_potion", "stamina_potion", "gold_idol", "void_gem",
 ]
 ## Later sheets, each a 6x5 grid in the same layout: tools and ammo (items3; "" marks a
-## painted cell with no item yet), then the medieval age (pack A, items4-9) and the
-## frontier (pack B, items10-13).
+## painted cell with no item yet), then the medieval age (pack A, items4-9), the frontier
+## (pack B, items10-13), the human sci-fi age (pack C, items14-18) and the alien endgame
+## (pack D, items19-23).
 const MORE_SHEETS := [
 	["res://assets/icons/items3.png", [
 		"fiber", "wild_berries", "torch", "flashlight", "flashlight_dead", "binoculars",
@@ -140,6 +141,41 @@ const MORE_SHEETS := [
 		"medkit_mil", "stimpack", "trauma_kit", "antirad", "cryo_vial", "nanite_injector",
 		"painkillers", "bio_gel", "splint_mech", "eye_drops", "oxygen_mask", "defibrillator",
 		"family_photo", "medal", "toy_robot", "music_player", "lucky_charm_dice", "chess_set",
+	]],
+	["res://assets/icons/items19.png", [
+		"void_lance", "bio_rifle", "star_pistol", "crystal_bow", "hive_cannon", "grav_hammer",
+		"psi_blade", "chitin_sword", "singularity_orb", "plasma_whip", "spore_launcher", "shard_gauntlet",
+		"precursor_rifle", "ion_scythe", "worldbreaker", "nova_staff", "eclipse_bow", "phase_daggers",
+		"void_grenade", "acid_pod", "stasis_mine", "swarm_hive", "star_charge", "gravity_well",
+		"void_cell", "bio_ammo", "star_shards", "psi_crystal", "chitin_spikes", "ion_core",
+	]],
+	["res://assets/icons/items20.png", [
+		"helm_chitin", "carapace_chitin", "claws_chitin", "legs_chitin", "feet_chitin", "wings_chitin",
+		"helm_void", "plate_void", "gauntlets_void", "legs_void", "boots_void", "shield_void",
+		"helm_star", "plate_star", "gauntlets_star", "legs_star", "boots_star", "halo_pack",
+		"helm_crystal", "robe_crystal", "gloves_crystal", "legs_crystal", "boots_crystal", "shield_prism",
+		"helm_precursor", "chest_precursor", "hands_precursor", "legs_precursor", "feet_precursor", "cape_precursor",
+	]],
+	["res://assets/icons/items21.png", [
+		"relic_eye", "relic_heart", "relic_cube", "relic_seed", "relic_skull", "relic_idol",
+		"orb_memory", "tablet_star", "key_gate", "shard_god", "egg_alien", "compass_void",
+		"crown_hive", "chalice_star", "mirror_void", "bell_astral", "lantern_spirit", "hourglass_time",
+		"ring_void", "ring_star", "amulet_hive", "amulet_precursor", "bracelet_crystal", "earring_nebula",
+		"map_galaxy", "beacon_ancient", "codex_alien", "core_titan", "feather_phoenix", "coin_alien",
+	]],
+	["res://assets/icons/items22.png", [
+		"voidstone_ore", "starsteel_ore", "chitin_plate", "bio_gel_alien", "psi_crystal_large", "neutronium",
+		"voidsteel_ingot", "starsteel_ingot", "crystal_thread", "living_metal", "dark_matter", "light_essence",
+		"alien_circuit", "grav_core", "warp_coil", "ai_shard", "bio_battery", "phase_lens",
+		"hide_xeno", "fang_xeno", "eye_xeno", "spore_sac", "venom_gland", "scale_dragon",
+		"seed_glow", "fruit_alien", "fungus_alien", "egg_alien_food", "nectar_alien", "meat_xeno",
+	]],
+	["res://assets/icons/items23.png", [
+		"elixir_void", "elixir_star", "serum_hive", "nanite_swarm", "regen_pod", "mutagen",
+		"implant_eye", "implant_spine", "implant_heart", "implant_arm", "implant_brain", "symbiote",
+		"food_star", "food_hive", "food_void", "food_crystal", "food_bio", "drink_nebula",
+		"teleport_shard", "shield_charm", "revive_feather", "summon_orb", "time_shard", "invis_cloak_vial",
+		"key_hive", "key_void", "key_star", "key_precursor", "keystone", "sigil_stone",
 	]],
 ]
 ## type -> [sheet path, its order], built on first use.
