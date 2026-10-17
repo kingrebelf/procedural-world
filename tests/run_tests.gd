@@ -907,6 +907,43 @@ func test_scenery_meshes() -> void:
 	for kind in ["dome", "flat", "cone", "bell", "funnel", "shelf"]:
 		check(HiFlora._cap_profile(kind, 0.1)[0].size() > 3, "mushroom cap '%s' has a profile" % kind)
 
+func test_town_walls() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var town := {}
+	for r in 30:
+		for sz in range(-r, r + 1):
+			for sx in range(-r, r + 1):
+				if town.is_empty() and maxi(absi(sx), absi(sz)) == r:
+					var s := g.settlement_at(sx, sz)
+					if s.get("walled", false) and not g.road_crossings(s, float(s["inner"]) + 2.5).is_empty():
+						town = s
+	check(not town.is_empty(), "walled towns exist")
+	if town.is_empty():
+		return
+	var lay := g.settlement_layout(town)
+	var kinds := {}
+	for it in lay:
+		if Stronghold.has(it["t"]):
+			kinds[it["t"]] = int(kinds.get(it["t"], 0)) + 1
+	var rad := float(town["inner"]) + 2.5
+	var ways := g.road_crossings(town, rad)
+	check(kinds.get("castle_gate", 0) >= 1 and kinds.get("castle_gate", 0) <= maxi(1, ways.size()), "a gate per road (%s, %d roads)" % [kinds, ways.size()])
+	check(kinds.get("castle_wall", 0) > 20 and kinds.get("castle_tower", 0) >= 2, "a ring of walls and towers (%s)" % [kinds])
+	# Every road passes through a gate.
+	var c: Vector2 = town["center"]
+	for w in ways:
+		var best := INF
+		for it in lay:
+			if it["t"] == "castle_gate":
+				best = minf(best, (it["p"] as Vector2).distance_to(c + Vector2.from_angle(w) * rad))
+		check(best < 3.0, "the road at %.2f rad goes through a gate (%.1f m off)" % [w, best])
+	# Old worlds keep their open towns.
+	WorldField.terrain_v = 5
+	var old := ChunkGenerator.new(4242)
+	check(not old.settlement_at(town["sx"], town["sz"]).get("walled", false), "v5 towns stay unwalled")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+
 func test_strongholds() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)

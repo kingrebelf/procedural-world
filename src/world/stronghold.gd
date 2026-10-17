@@ -103,6 +103,51 @@ static func layout(g: ChunkGenerator, f: Dictionary) -> Array:
 		put.call(t, q, r.randf() * TAU, {"loot": ItemDB.roll_loot(era, r, o, luck), "opened": false})
 	return items
 
+## The curtain wall round a big medieval town, just outside its flat ground: 8 m
+## sections on a circle, a gate wherever a road crosses it, towers flanking each gate
+## and every few sections between. Appended to `items` in world coordinates.
+static func town_wall(g: ChunkGenerator, s: Dictionary, items: Array) -> void:
+	var c: Vector2 = s["center"]
+	var rad := float(s["inner"]) + 2.5
+	var half := asin(4.0 / rad) ## angular half-width of one section
+	var gates: Array = []
+	for a in g.road_crossings(s, rad):
+		var dup := false
+		for b in gates:
+			if absf(angle_difference(a, b)) < half * 3.0:
+				dup = true
+		if not dup:
+			gates.append(a)
+	if gates.is_empty():
+		gates.append(WHash.rng(g.seed, s["sx"], s["sz"], 405).randf() * TAU)
+	gates.sort()
+	var mid := rad * cos(half) ## chord midpoints sit slightly inside the circle
+	var put := func(t: String, ang: float, r: float) -> void:
+		var d := Vector2(cos(ang), sin(ang))
+		# Local +z (the outer face) points away from the town.
+		items.append({"t": t, "p": c + d * r, "yaw": atan2(d.x, d.y), "st": {}})
+	for i in gates.size():
+		var g0: float = gates[i]
+		var g1: float = gates[(i + 1) % gates.size()]
+		var span := fposmod(g1 - g0, TAU)
+		if gates.size() == 1:
+			span = TAU
+		put.call("castle_gate", g0, mid)
+		put.call("castle_tower", g0 - half * 2.0, rad + 2.0)
+		put.call("castle_tower", g0 + half * 2.0, rad + 2.0)
+		# Walls fill the arc between this gate's tower and the next gate's.
+		var from := g0 + half * 3.0
+		var arc := span - half * 6.0
+		if arc <= 0.0:
+			continue
+		var n := int(ceil(arc / (half * 2.0)))
+		for k in n:
+			var ang := from + arc * (k + 0.5) / n
+			if k > 0 and k % 6 == 0 and n - k > 2:
+				put.call("castle_tower", ang, rad + 2.0)
+			else:
+				put.call("castle_wall", ang, mid)
+
 ## Guards in the courtyard, by world position: [{p, tier, id}].
 static func guards(f: Dictionary) -> Array:
 	var c: Vector2 = f["center"]

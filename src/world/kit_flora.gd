@@ -70,10 +70,13 @@ static func build_under(sp: int, era: int) -> ArrayMesh:
 	var xf := Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(s, s, s)), Vector3.ZERO)
 	# Mostly the kit's own colours, nudged toward the era's: greener fields, teal and violet
 	# fantasy growth, rust-red sci-fi scrub.
-	var hue: float = [r.randf_range(0.18, 0.32), fposmod(0.45 + r.randf_range(-0.12, 0.35), 1.0), r.randf_range(0.0, 0.1)][clampi(era, 0, 2)]
-	var shift: float = [0.15, 0.55, 0.5][clampi(era, 0, 2)]
-	var coloured := Color.WHITE.lerp(Color.from_hsv(hue, 0.55, 0.95), shift)
-	var leaf := Color.from_hsv(hue, 0.5 + shift * 0.2, 0.62)
+	# Fantasy growth leans teal-green with some violet, but muted: saturated purple
+	# carpets read as plastic.
+	var fh := r.randf_range(0.36, 0.52) if r.randf() < 0.7 else r.randf_range(0.7, 0.8)
+	var hue: float = [r.randf_range(0.18, 0.32), fh, r.randf_range(0.0, 0.1)][clampi(era, 0, 2)]
+	var shift: float = [0.15, 0.35, 0.5][clampi(era, 0, 2)]
+	var coloured := Color.WHITE.lerp(Color.from_hsv(hue, 0.5, 0.92), shift)
+	var leaf := Color.from_hsv(hue, 0.5 + shift * 0.2, 0.62) if era != Eras.FANTASY else Color.from_hsv(hue, 0.36, 0.5)
 	return _assemble(src, xf, leaf, Color.WHITE, coloured)
 
 ## The species' mesh from its kit model, or null when it has none.

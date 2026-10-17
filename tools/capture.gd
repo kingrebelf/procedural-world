@@ -98,7 +98,7 @@ func _find_river(g: ChunkGenerator) -> Vector4:
 				return Vector4(q.x, q.y, p.x - d.x * 20.0 - d.y * 25.0, p.y - d.y * 20.0 + d.x * 25.0)
 	return Vector4.ZERO
 
-func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7) -> void:
+func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN) -> void:
 	if not only.is_empty() and not only.has(name.substr(0, 2)):
 		return
 	var p: Player = world.player
@@ -118,6 +118,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var tc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(look_at.x, 0, look_at.y)))
 	if tc:
 		tgt_h = ChunkGenerator.height_at(tc.data, look_at.x - tc.key.x * 64.0, look_at.y - tc.key.y * 64.0) + 3.0
+	if not is_nan(look_y):
+		tgt_h = look_y
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
@@ -171,16 +173,29 @@ func _run() -> void:
 		var best_d := INF
 		var vm := Vector2.ZERO
 		var vd := Vector2.ZERO
+		var deck := 0.0
 		for rd in g.roads_near(-900.0, -900.0, 900.0, 900.0):
 			var pts: PackedVector2Array = rd["pts"]
 			var ar: PackedByteArray = rd["air"]
+			var lv: PackedFloat32Array = rd["level"]
 			for i in range(2, pts.size() - 2):
 				if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d:
 					best_d = pts[i].length()
 					vm = pts[i]
 					vd = (pts[i + 1] - pts[i - 1]).normalized()
+					deck = lv[i]
 		if best_d < INF:
-			await _shot("16_viaduct", vm + vd.orthogonal() * 48.0 + vd * 14.0, vm, 0.4, 6.0)
+			# Stand on whichever side the ground falls away, level with the deck.
+			var cam := vm + vd.orthogonal() * 48.0
+			var low := INF
+			for side in [-1.0, 1.0]:
+				for dist in [40.0, 55.0, 70.0]:
+					var c: Vector2 = vm + vd.orthogonal() * dist * side + vd * 14.0
+					var h := g.field.height(c.x, c.y)
+					if h < low:
+						low = h
+						cam = c
+			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():

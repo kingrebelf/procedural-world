@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 5 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids.
+const GEN_VERSION := 6 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -23,6 +23,8 @@ var rivers := false
 var towns := false
 ## v5: sci-fi outposts on a street grid.
 var outposts := false
+## v6: the biggest medieval towns are walled.
+var walls := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
@@ -48,6 +50,7 @@ func _init(world_seed: int, with_rivers := false) -> void:
 	rivers = with_rivers
 	towns = WorldField.terrain_v >= 4
 	outposts = WorldField.terrain_v >= 5
+	walls = WorldField.terrain_v >= 6
 	if outposts:
 		road_reach = 26.0
 
@@ -77,8 +80,11 @@ func _settlement_at(sx: int, sz: int) -> Dictionary:
 	if towns:
 		var r := WHash.unit2(seed, sx, sz, 204)
 		size = 2 if r < 0.15 else (1 if r < 0.5 else 0)
-	return {"center": c, "era": era, "target_h": th, "sx": sx, "sz": sz,
+	var out := {"center": c, "era": era, "target_h": th, "sx": sx, "sz": sz,
 		"size": size, "inner": SITE_RADII[size][0], "outer": SITE_RADII[size][1]}
+	if walls and size == 2 and era == Eras.MEDIEVAL:
+		out["walled"] = true
+	return out
 
 func settlements_near(x0: float, z0: float, x1: float, z1: float) -> Array:
 	var out: Array = []
@@ -667,7 +673,8 @@ func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: 
 ## Within `extra` metres of a settlement's flat ground.
 func _near_settlement(x: float, z: float, sites: Array, extra: float) -> bool:
 	for s in sites:
-		if Vector2(x, z).distance_to(s["center"]) < float(s["inner"]) + extra:
+		# A town wall stands just outside the flat ground; keep the wilds off it too.
+		if Vector2(x, z).distance_to(s["center"]) < float(s["inner"]) + extra + (8.0 if s.get("walled", false) else 0.0):
 			return true
 	return false
 
@@ -850,6 +857,8 @@ func settlement_layout(s: Dictionary) -> Array:
 		_town_rings(s, r, kit, items)
 		if era == Eras.MEDIEVAL:
 			_market(s, items)
+		if s.get("walled", false):
+			Stronghold.town_wall(self, s, items)
 		# A signpost where each road leaves the village.
 		for w in road_angles(s):
 			var at: Vector2 = c + Vector2.from_angle(w) * (float(s["inner"]) - 4.0) + Vector2.from_angle(w + PI / 2) * (ROAD_HALF + 1.4)
@@ -1000,6 +1009,37 @@ func _market(s: Dictionary, items: Array) -> void:
 		items.append({"t": props[r.randi() % props.size()], "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
 
 ## Directions (radians, as Vector2.angle) in which roads leave a settlement's square.
+## Where each road of a settlement crosses the circle of radius `rad` round its centre,
+## as angles.
+func road_crossings(s: Dictionary, rad: float) -> Array:
+	var c: Vector2 = s["center"]
+	var lines: Array = []
+	for t in owned_roads(s):
+		lines.append(road_points(s, t))
+	var sx: int = s["sx"]
+	var sz: int = s["sz"]
+	for o in [Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1), Vector2i(-1, 1), Vector2i(-2, 0), Vector2i(0, -2)]:
+		var n := settlement_at(sx + o.x, sz + o.y)
+		if n.is_empty():
+			continue
+		for t in owned_roads(n):
+			if t["sx"] == sx and t["sz"] == sz:
+				var pts := road_points(n, t)
+				var rev := PackedVector2Array()
+				for i in range(pts.size() - 1, -1, -1):
+					rev.append(pts[i])
+				lines.append(rev)
+	var out: Array = []
+	for pts in lines:
+		for i in range(1, pts.size()):
+			var d0: float = (pts[i - 1] as Vector2).distance_to(c)
+			var d1: float = (pts[i] as Vector2).distance_to(c)
+			if d0 < rad and d1 >= rad:
+				var p: Vector2 = (pts[i - 1] as Vector2).lerp(pts[i], (rad - d0) / maxf(d1 - d0, 0.001))
+				out.append((p - c).angle())
+				break
+	return out
+
 func road_angles(s: Dictionary) -> Array:
 	var out: Array = []
 	for t in owned_roads(s):
