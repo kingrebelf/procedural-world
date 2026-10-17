@@ -11,6 +11,10 @@ extends RefCounted
 const SHELLS := 4
 const DEPTH := {"Hair_Long": 0.009, "Hair_Buns": 0.008, "Hair_SimpleParted": 0.007, "Hair_Beard": 0.005, "Hair_Buzzed": 0.0035, "Hair_BuzzedFemale": 0.0035}
 
+## How far each style's base layer stands off the scalp (m): where the kit mesh hugs the
+## skull, the head showed through as bare patches.
+const LIFT := {"Hair_SimpleParted": 0.004, "Hair_Buzzed": 0.002, "Hair_BuzzedFemale": 0.002, "Hair_Long": 0.003, "Hair_Buns": 0.003}
+
 static var _cache := {}
 static var _mats := {}
 

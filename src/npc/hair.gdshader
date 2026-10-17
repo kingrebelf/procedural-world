@@ -15,11 +15,16 @@ instance uniform float shell = 0.0;
 instance uniform float shell_depth = 0.006;
 // Thinning with age: 0 full, 1 the crown mostly bare.
 instance uniform float thin = 0.0;
+// The person's skin, for thinning hair seen from too far to resolve single strands.
+instance uniform vec4 scalp_col : source_color = vec4(0.0);
 instance uniform float strands = 0.0;
 // Sparse hair (eyebrows): only the strands above this survive.
 instance uniform float sparse = 0.0;
 // Under a hat: hair above this rest height is hidden (HumanModel.cap_hair).
 instance uniform float cap_y = 99.0;
+// The base layer stands this far off the scalp (m), so the head can't push through it
+// where the kit mesh hugs the skull (a parting, a buzz cut).
+instance uniform float lift = 0.0;
 
 varying vec4 rest;
 varying vec3 flow;
@@ -27,6 +32,7 @@ varying vec3 flow;
 void vertex() {
 	rest = CUSTOM0;
 	flow = CUSTOM1.xyz;
+	VERTEX += NORMAL * lift;
 	if (shell > 0.0) {
 		// Ends stand off further than roots.
 		VERTEX += NORMAL * shell * shell_depth * (0.45 + 0.55 * CUSTOM0.w);
@@ -48,8 +54,15 @@ float vnoise3(vec3 p) {
 }
 
 void fragment() {
-	// Screen-space footprint, taken before any branch (derivatives need uniform flow).
-	float px = max(length(dFdx(rest.xyz)), length(dFdy(rest.xyz)));
+	// Position with the run along the strand squeezed out: noise in it streaks along the
+	// combing direction. Its screen-space footprint (taken before any branch: derivatives
+	// need uniform flow) says how fine a strand can be drawn; only the size across the
+	// strands counts, so hair seen edge-on keeps its strands.
+	vec3 f = flow / max(length(flow), 1e-4);
+	vec3 q = rest.xyz - f * dot(rest.xyz, f) * 0.985;
+	vec3 dx = dFdx(rest.xyz);
+	vec3 dy = dFdy(rest.xyz);
+	float px = max(length(dx - f * dot(dx, f) * 0.985), length(dy - f * dot(dy, f) * 0.985));
 	vec3 t = texture(tex, UV).rgb;
 	float lum = clamp(dot(t, vec3(0.299, 0.587, 0.114)) / 0.56, 0.4, 1.6);
 	if (strands < 0.5 || dot(flow, flow) < 0.25) {
@@ -61,10 +74,6 @@ void fragment() {
 		if (rest.y > cap_y) {
 			discard;
 		}
-		vec3 f = normalize(flow);
-		// Position with the run along the strand squeezed out: noise in it streaks along f.
-		float along = dot(rest.xyz, f);
-		vec3 q = rest.xyz - f * along * 0.985;
 		// Strands finer than a pixel fade to their average instead of sparkling.
 		float hi = 1.0 - smoothstep(0.5, 1.3, px * 1000.0);
 		float lo = 1.0 - smoothstep(0.5, 1.3, px * 420.0);
@@ -81,9 +90,14 @@ void fragment() {
 			keep = step(0.42 + shell * 0.38 - tip * 0.12, s * (0.85 + 0.3 * clump)) * step(0.2, lo);
 		} else if (sparse > 0.0) {
 			keep = step(sparse + 0.15 * tip, s);
-		} else if (thin > 0.0) {
-			// Thinning hair: the scalp shows between strands, most at the crown.
-			keep = step(thin * (1.0 - tip) * 0.85, s);
+		}
+		// Thinning hair: the scalp shows between single strands, most at the crown. Cut
+		// by the strand pattern alone (cut by the clumps it read as a patchy wig), and
+		// only while strands are big enough to see; further off the scalp tints the hair.
+		float bare = thin * (1.0 - tip) * 0.85;
+		float near = smoothstep(0.35, 0.65, lo);
+		if (shell <= 0.0 && sparse <= 0.0 && bare > 0.0) {
+			keep = step(bare * near, fine);
 		}
 		if (keep < 0.5) {
 			discard;
@@ -91,6 +105,9 @@ void fragment() {
 		// Roots and the inner layers in shadow; ends catch the light.
 		float ao = mix(0.55, 1.0, clamp(shell * 0.8 + tip * 0.35 + 0.2, 0.0, 1.0));
 		vec3 col = hair_col.rgb * (0.5 + 0.8 * s) * (0.9 + 0.2 * wave) * mix(1.0, lum, 0.2) * ao;
+		if (scalp_col.a > 0.0) {
+			col = mix(col, scalp_col.rgb, bare * 0.6 * (1.0 - near));
+		}
 		ALBEDO = col;
 		// Each strand a little round: the normal tips across it with the strand pattern.
 		NORMAL = normalize(NORMAL + BINORMAL * (fine - 0.5) * 0.6);

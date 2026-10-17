@@ -165,7 +165,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		style = ""
 	_dress_up(era)
 	if style != "":
-		_add_hair(style, hair_col, BodyShape.thinning(b, age))
+		_add_hair(style, hair_col, BodyShape.thinning(b, age), b["skin"])
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
 		_add_hair("Hair_Beard", hair_col)
 	_headgear(era, job, b)
@@ -347,7 +347,7 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 
 ## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
 ## `thin` lets the scalp show through at the crown.
-func _add_hair(style: String, col: Color, thin := 0.0) -> void:
+func _add_hair(style: String, col: Color, thin := 0.0, scalp := Color(0, 0, 0, 0)) -> void:
 	var path := DIR + style + ".gltf"
 	if not ResourceLoader.exists(path):
 		return
@@ -366,11 +366,15 @@ func _add_hair(style: String, col: Color, thin := 0.0) -> void:
 		mi.set_instance_shader_parameter("hair_col", col)
 		mi.set_instance_shader_parameter("strands", 1.0)
 		mi.set_instance_shader_parameter("thin", thin)
+		mi.set_instance_shader_parameter("scalp_col", scalp)
+		var lift: float = HairStrands.LIFT.get(style, 0.0)
+		mi.set_instance_shader_parameter("lift", lift)
 		var layers: Array = HairStrands.shells(mi, style)
 		for sh in layers:
 			sh.set_instance_shader_parameter("hair_col", col)
 			sh.set_instance_shader_parameter("strands", 1.0)
 			sh.set_instance_shader_parameter("thin", thin)
+			sh.set_instance_shader_parameter("lift", lift)
 		if style != "Hair_Beard":
 			_hair.append(mi)
 			_hair.append_array(layers)
