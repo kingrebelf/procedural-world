@@ -17,6 +17,8 @@ var target_player := false
 var talking := false ## True while the player is in a conversation with this NPC.
 var talk_here := false ## talking with you while someone else's game runs them (multiplayer)
 var decide_in := 0.0
+var lod_dt := 0.0 ## time saved up while NPCManager skips frames for this person
+var lod_tick := 0
 var think_at := 0.0
 var attack_cd := 0.0
 ## What their trade's routine has them doing (NPCRoles.duty_at), while action is "work".
