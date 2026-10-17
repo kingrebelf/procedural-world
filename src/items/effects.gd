@@ -148,6 +148,12 @@ static func describe(d: Dictionary) -> Array:
 		out.append("Carried: when you fall, it brings you back once at half health")
 	if d.get("smoke", false):
 		out.append("Its smoke hides you: much harder to notice for a while")
+	if d.has("unpack"):
+		out.append("Open it: %d %s" % [int(d["unpack"][1]), ItemDB.def(d["unpack"][0]).get("name", "")])
+	if d.has("loader"):
+		out.append("Carried: fills a %s gun's whole magazine at once" % ItemDB.def(d["loader"]).get("name", "").to_lower())
+	if d.has("spent"):
+		out.append("Leaves a spent cell to recharge")
 	if d.has("implant"):
 		var parts: PackedStringArray = []
 		for a in d["implant"]:

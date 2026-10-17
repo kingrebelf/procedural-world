@@ -92,8 +92,6 @@ const HANDLING := {
 	"star_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
 	"gravity_well": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
 }
-## Better arrows a bow nocks first when you carry them: [ammo, alternative, damage multiplier].
-const BETTER_AMMO := {"arrow": ["broadhead_arrows", 1.3]}
 const DEFAULT := {"mag": 10, "reload": 1.6, "recoil": 1.5, "spread": 1.5, "speed": 150.0, "drop": 0.2, "zoom": 1.3}
 const MAX_SHOTS := 64
 const MAX_STUCK := 24
@@ -133,17 +131,11 @@ func reserve(it) -> int:
 	var d := ItemDB.def(it["type"])
 	if d.get("thrown", false):
 		return 0
-	var n := Game.inventory.count(String(d.get("ammo", "")))
-	if BETTER_AMMO.has(d.get("ammo", "")):
-		n += Game.inventory.count(BETTER_AMMO[d["ammo"]][0])
-	return n * int(d.get("shots_per_ammo", 1))
+	return ItemDB.ammo_carried(Game.inventory, String(d.get("ammo", ""))) * int(d.get("shots_per_ammo", 1))
 
-## The ammunition the weapon loads next: better arrows first.
+## The ammunition the weapon loads next: better loads first (ItemDB.AMMO_VARIANTS).
 static func ammo_of(d: Dictionary) -> String:
-	var a := String(d.get("ammo", ""))
-	if BETTER_AMMO.has(a) and Game.inventory.count(BETTER_AMMO[a][0]) > 0:
-		return BETTER_AMMO[a][0]
-	return a
+	return ItemDB.ammo_next(Game.inventory, String(d.get("ammo", "")))
 
 func mag_size(t: String) -> int:
 	return int(handling(t)["mag"])
@@ -217,9 +209,14 @@ func fire(it: Dictionary, d: Dictionary) -> void:
 		return
 	else:
 		it["charge"] = rounds(it) - 1
-	if String(it.get("loaded", "")) != "" and BETTER_AMMO.has(d.get("ammo", "")) and it["loaded"] == BETTER_AMMO[d["ammo"]][0]:
+	var mods := ItemDB.ammo_mods(String(d.get("ammo", "")), String(it.get("loaded", "")))
+	if not mods.is_empty():
 		d = d.duplicate()
-		d["damage"] = float(d.get("damage", 0.0)) * float(BETTER_AMMO[d["ammo"]][1])
+		d["damage"] = float(d.get("damage", 0.0)) * float(mods.get("damage", 1.0))
+		if mods.has("pellets"):
+			d["pellets"] = int(mods["pellets"])
+		if mods.has("splash"):
+			d["splash"] = float(mods["splash"])
 	player._cooldown = float(d.get("cooldown", 0.22))
 	var cam := player.camera
 	var fwd := -cam.global_transform.basis.z
@@ -359,7 +356,7 @@ func start_reload(it) -> bool:
 	if reserve(it) <= 0:
 		return false
 	var spa := int(ItemDB.def(t).get("shots_per_ammo", 1))
-	if spa > 1 and rounds(it) > 0 and Game.inventory.count(String(ItemDB.def(t)["ammo"])) <= 0:
+	if spa > 1 and rounds(it) > 0 and ItemDB.ammo_carried(Game.inventory, String(ItemDB.def(t)["ammo"])) <= 0:
 		return false
 	_reload_uid = int(it.get("uid", -1))
 	reload_total = float(h["reload"]) / Game.stats.reload_mult()
@@ -377,9 +374,16 @@ func _finish_reload(it: Dictionary) -> void:
 	var spa := int(d.get("shots_per_ammo", 1))
 	reload_left = 0.0
 	if spa > 1:
-		# A fresh cell: whatever was left in the old one is spent.
+		# A fresh cell: whatever was left in the old one is spent, and the empty shell
+		# goes back in the pack to be recharged (ItemDB "spent").
 		if Game.inventory.remove_type(ammo, 1) > 0:
 			it["charge"] = mag_size(t)
+			if ItemDB.def(ammo).has("spent"):
+				Game.give(ItemDB.make(String(ItemDB.def(ammo)["spent"]), 1, 1.0, {}))
+	elif h.get("per_round", false) and _has_loader(String(d.get("ammo", ""))):
+		# A speed loader or stripper clip fills the whole magazine in one go.
+		it["charge"] = rounds(it) + Game.inventory.remove_type(ammo, mag_size(t) - rounds(it))
+		gun_event.emit("reload_round", t, player.global_position, "")
 	elif h.get("per_round", false):
 		if Game.inventory.remove_type(ammo, 1) > 0:
 			it["charge"] = rounds(it) + 1
@@ -391,6 +395,14 @@ func _finish_reload(it: Dictionary) -> void:
 		it["charge"] = rounds(it) + Game.inventory.remove_type(ammo, mag_size(t) - rounds(it))
 	_reload_uid = -1
 	gun_event.emit("reload_end", t, player.global_position, "")
+
+## True when the pack holds a loader (speed loader, stripper clip) for `ammo`.
+func _has_loader(ammo: String) -> bool:
+	for i in Game.inventory.slots.size():
+		var s = Game.inventory.get_slot(i)
+		if s != null and String(ItemDB.def(s["type"]).get("loader", "")) == ammo:
+			return true
+	return false
 
 func _cancel_reload() -> void:
 	reload_left = 0.0

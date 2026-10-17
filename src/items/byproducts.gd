@@ -23,7 +23,7 @@ const FROM := {
 	"oak": [["honey", 0.025, 1], ["beeswax", 0.025, 1], ["egg", 0.02, 1]],
 }
 ## Each spadeful of earth: [[item, chance]], scaled by how good the tool is at digging.
-const DIG := [["clay", 0.3], ["flint", 0.08], ["potato", 0.02]]
+const DIG := [["clay", 0.3], ["flint", 0.08], ["peat", 0.05], ["potato", 0.02]]
 
 ## Extras for `units` items taken from an object of type `t`. `zone`: the zone level.
 static func of_object(t: String, units: int, zone: int, rng: RandomNumberGenerator) -> Array:

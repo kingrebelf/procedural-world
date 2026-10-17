@@ -27,8 +27,8 @@ const SHEET2_ORDER := [
 ]
 ## Later sheets, each a 6x5 grid in the same layout: tools and ammo (items3; "" marks a
 ## painted cell with no item yet), then the medieval age (pack A, items4-9), the frontier
-## (pack B, items10-13), the human sci-fi age (pack C, items14-18) and the alien endgame
-## (pack D, items19-23).
+## (pack B, items10-13), the human sci-fi age (pack C, items14-18) the alien endgame (pack D,
+## items19-23), and ammunition variants and fuels (pack E, items24).
 const MORE_SHEETS := [
 	["res://assets/icons/items3.png", [
 		"fiber", "wild_berries", "torch", "flashlight", "flashlight_dead", "binoculars",
@@ -176,6 +176,13 @@ const MORE_SHEETS := [
 		"food_star", "food_hive", "food_void", "food_crystal", "food_bio", "drink_nebula",
 		"teleport_shard", "shield_charm", "revive_feather", "summon_orb", "time_shard", "invis_cloak_vial",
 		"key_hive", "key_void", "key_star", "key_precursor", "keystone", "sigil_stone",
+	]],
+	["res://assets/icons/items24.png", [
+		"arrow_fire", "arrow_barbed", "arrow_steel", "bolt_steel", "bolt_explosive", "quiver",
+		"rounds_hollow", "rounds_ap", "rounds_box", "speed_loader", "rifle_clip", "slug_shells",
+		"power_cell_small", "power_cell_large", "power_cell_spent", "battery_pack_rifle", "capacitor_bank", "charger_dock",
+		"firewood", "coal_briquettes", "peat", "lamp_oil", "kerosene_can", "diesel_jerrycan",
+		"hydrogen_cell", "fusion_pellets", "rocket_fuel", "plasma_fuel", "void_fuel", "star_fuel",
 	]],
 ]
 ## type -> [sheet path, its order], built on first use.

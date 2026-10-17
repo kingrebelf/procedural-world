@@ -11,7 +11,7 @@ const FLASH_CHARGE := 10800.0 ## seconds a flashlight runs before its battery fa
 
 const CANDLE_BURN := 600.0 ## seconds one candle burns on its own
 ## What a lantern burns, best first: [item, seconds one lasts].
-const LANTERN_FUEL := [["lamp_oil", 1800.0], ["candle", 900.0]]
+const LANTERN_FUEL := [["lamp_oil", 1800.0], ["candle", 900.0], ["kerosene_can", 5400.0], ["diesel_jerrycan", 7200.0]]
 const KEROSENE_BURN := 1.5 ## a kerosene lamp's wick makes its fuel last this much longer
 
 var kind := "" ## "", "torch", "flashlight", "lantern" or "candle": the light in the off hand (T)
