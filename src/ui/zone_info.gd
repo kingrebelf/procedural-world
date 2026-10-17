@@ -31,7 +31,7 @@ static func _field_for(seed: int) -> WorldField:
 	return _field
 
 static func level_at(x: float, z: float) -> int:
-	return Eras.zone_level(x, z) if Eras.themed() else 1 + int(Vector2(x, z).length() / PER_LEVEL)
+	return Eras.zone_level(x, z) if Eras.themed() else mini(1 + int(Vector2(x, z).length() / PER_LEVEL), Eras.HUMAN_MAX_LEVEL)
 
 ## {name, kind, era, level, level_lo, level_hi, finds, color} for world point (x, z).
 static func at(seed: int, x: float, z: float) -> Dictionary:
@@ -56,4 +56,4 @@ static func at(seed: int, x: float, z: float) -> Dictionary:
 			kind = MIXED[era][0]
 			finds = MIXED[era][1]
 	return {"name": f.region_name_at(x, z), "kind": kind, "era": era, "level": lv,
-		"level_lo": maxi(lo, 1), "level_hi": lo + 9, "finds": finds, "color": UITheme.ERA_COLORS[era]}
+		"level_lo": maxi(lo, 1), "level_hi": maxi(mini(lo + 9, maxi(Eras.max_level(), lv)), lv), "finds": finds, "color": UITheme.ERA_COLORS[era]}

@@ -1658,6 +1658,17 @@ func test_world_themes() -> void:
 			far += 1
 	check(far > 25 and far < 60, "far out, most land is sci-fi (%d of 60)" % far)
 	check(Eras.zone_level(0, 0) == 1 and Eras.zone_level(1500, 0) == 11 and Eras.zone_level(0, -6000) == 41, "zone levels rise 1 per 150 m")
+	check(Eras.zone_level(26364, -9360) == Eras.HUMAN_MAX_LEVEL and Eras.zone_level(0, 200000) == Eras.HUMAN_MAX_LEVEL, "human zone levels stop at %d" % Eras.HUMAN_MAX_LEVEL)
+	check(int(ZoneInfo.at(77, 26364, -9360)["level_hi"]) <= Eras.HUMAN_MAX_LEVEL, "the minimap never shows a band past the cap")
+	# Wonder guardians rate by their zone: a boss near the start is a few levels up, not 60.
+	var boss := Creature.species(-100, Eras.MEDIEVAL)
+	boss["zone"] = 3
+	var elite := Creature.species(-5, Eras.MEDIEVAL)
+	elite["zone"] = 3
+	var blv := Creature.level_of(boss)
+	var elv := Creature.level_of(elite)
+	check(blv > elv and elv > 3 and blv <= 3 + WonderSite.BOSS_ABOVE, "a Lv 3 zone's boss is Lv %d and its elites Lv %d" % [blv, elv])
+	check(float(boss["hp"]) > float(elite["hp"]), "the boss still outlasts its elites")
 	check(Eras.nature(Eras.SCIFI) == Eras.MEDIEVAL and Eras.look(PackedFloat32Array([0.2, 0, 0.8]))[Eras.MEDIEVAL] > 0.99, "human sci-fi land looks natural")
 	check(Biome.params(12345, Eras.SCIFI)["lumen"] == 0.0 and Biome.params(54321, Eras.SCIFI)["flora"][0]["t"] in ["oak", "pine"], "no glow and natural trees on a human world")
 	check(Recipes.unlock_level("sword_iron") == 1 and Recipes.unlock_level("pulse_pistol") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("scrap_pistol") == 10, "advanced weapons unlock at level 10")

@@ -52,8 +52,13 @@ const BOSSES := {
 	"w_dreadnought": ["Hive Matriarch", "Alien_Scolitex", 3.0, Color(0.6, 0.12, 0.1), true, [["data_core", 3], ["void_gem", 2], ["power_cell", 6]]],
 	"w_gate": ["The Gatekeeper", "Alien_Cyclop", 2.8, Color(0.45, 0.2, 0.7), true, [["void_gem", 3], ["moonpearl", 2], ["aether_crystal", 6]]],
 }
-const BOSS_HP := 1500.0
-const BOSS_BITE := 3.6 ## bite multiplier
+## A boss's health and bite at zone level 1; like every guard it grows with its zone
+## (Creature._zone_scale), so a level 40 wonder's boss has about 2700 hp.
+const BOSS_HP := 480.0
+const BOSS_BITE := 2.2 ## bite multiplier
+const BOSS_ABOVE := 5 ## levels a boss stands above its zone
+const LEGACY_BOSS_HP := 1500.0 ## older worlds (no zones): fixed
+const LEGACY_BOSS_BITE := 3.6
 
 static func has(t: String) -> bool:
 	return LABELS.has(t)
