@@ -134,7 +134,7 @@ void fragment() {
 		alb = look.rgb * clump * (0.85 + 0.3 * seed);
 		// A solid crown shows more of its own shade than a near tree's open leaves do.
 		if (form == FORM_BROADLEAF) {
-			alb = mix(vec3(dot(alb, vec3(0.2126, 0.7152, 0.0722))), alb, 0.88) * 0.86;
+			alb = mix(vec3(dot(alb, vec3(0.2126, 0.7152, 0.0722))), alb, 0.88) * 0.8;
 		}
 		// Leaves let the light through: a crown against the sun glows its own colour.
 		back = look.rgb / max(max(look.r, look.g), 0.001) * 0.55 * leafy;
