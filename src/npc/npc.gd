@@ -28,7 +28,8 @@ const WORK_ANIM := {"farmer": "harvest", "smith": "fix", "guard": "sword_idle", 
 	"warden": "sword_idle", "runecarver": "fix", "bard": "dance", "mystic": "spell", "beekeeper": "plant",
 	"lamplighter": "torch", "scribe": "interact", "engineer": "fix", "medic": "interact", "scavenger": "pickup",
 	"pilot": "interact", "security officer": "fold_arms", "data broker": "fold_arms", "hydroponics tech": "water",
-	"courier": "carry"}
+	"courier": "carry", "guildmaster": "fold_arms", "archmage": "spell", "fence": "fold_arms", "steward": "interact",
+	"ranger captain": "fold_arms", "archdruid": "spell", "contract broker": "fold_arms", "flight master": "fold_arms"}
 var _hips: Node3D
 var _torso: Node3D
 var _head: Node3D
@@ -255,6 +256,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	if target_player:
 		goal = Vector2(player_pos.x, player_pos.z)
 		stop_at = {"greet": 2.2, "follow": 3.0, "confront": 2.8, "attack": 1.3, "trade": 2.0}.get(action, 2.0)
+	elif rec.has("room"):
+		# Shopkeepers go in and out by the door.
+		goal = TownShops.route(rec["room"], p2, goal)
 	var moving := false
 	_update_perform(delta)
 	# Doing something on the spot holds them there, unless they must run.
@@ -291,6 +295,12 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	var h: float = ground.call(p2.x, p2.y)
 	if is_nan(h):
 		return
+	if rec.has("room") and rec["room"].has("y"):
+		# On the shop's floor, not the ground under it.
+		var rm: Dictionary = rec["room"]
+		var lp := TownShops.to_local(rm["c"], rm["yaw"], p2)
+		if absf(lp.x) < (rm["half"] as Vector2).x and absf(lp.y) < (rm["half"] as Vector2).y:
+			h = maxf(h, float(rm["y"]))
 	global_position = Vector3(p2.x, h, p2.y)
 	rec["pos"] = global_position
 	rec["yaw"] = rotation.y

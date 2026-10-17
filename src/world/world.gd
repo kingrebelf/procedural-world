@@ -109,7 +109,14 @@ func _on_died(cause: String) -> void:
 	if not is_inside_tree():
 		return
 	Game.stats.xp = int(Game.stats.xp * 0.75)
-	player.global_position = find_spawn() + Vector3(0, 2, 0)
+	var home = Game.home_near(player.global_position)
+	if home is Vector2:
+		var h := npcs.ground(home.x, home.y)
+		if is_nan(h):
+			h = npcs.gen.field.height(home.x, home.y)
+		player.global_position = Vector3(home.x, h + 1.5, home.y)
+	else:
+		player.global_position = find_spawn() + Vector3(0, 2, 0)
 	player.velocity = Vector3.ZERO
 	player.frozen = true
 	player.snap_down = true
@@ -119,7 +126,7 @@ func _on_died(cause: String) -> void:
 	hud.hide_death()
 	player.ui_open = false
 	Cursor.restore()
-	Game.toast.emit("You wake where you first arrived. Your pack is safe.")
+	Game.toast.emit("You wake at your house. Your pack is safe." if home is Vector2 else "You wake where you first arrived. Your pack is safe.")
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:

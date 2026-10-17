@@ -23,6 +23,7 @@ var _mic: Microphone
 var _mic_btn: Button
 var _extra: Control ## the Give / Ask drawer, when open
 var _body: VBoxContainer
+var _join_btn: Button
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -48,6 +49,8 @@ func open_with(n: NPC) -> void:
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var first: String = NPCMind.bark(n.rec, "greet") if int(n.rec.get("rel", 0)) > -40 else "What do you want?"
+	if n.rec.has("shop_kind") and int(n.rec.get("rel", 0)) > -40:
+		first = TownShops.greeting(n.rec, _shop())
 	_add_line(n.rec["name"].split(" ")[0], first, UITheme.ACCENT)
 	Voice.speak(n.rec, first)
 	if int(n.rec.get("rel", 0)) > 10:
@@ -131,13 +134,20 @@ func _build() -> void:
 	var head := HBoxContainer.new()
 	var tv := VBoxContainer.new()
 	tv.add_child(UITheme.title(npc.rec["name"], 24))
-	var who := "%s of %s" % [npc.rec["job"].capitalize(), npc.settlement["name"]]
+	var who := _who()
 	tv.add_child(UITheme.label("%s    %s" % [who, _relation_text()], 14, UITheme.DIM))
 	head.add_child(tv)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(sp)
-	head.add_child(UITheme.button("Trade", _open_trade))
+	var kind: String = npc.rec.get("shop_kind", "")
+	if kind == "land":
+		head.add_child(UITheme.button("Houses", _show_houses))
+	else:
+		head.add_child(UITheme.button("Trade", _open_trade))
+	if TownShops.is_guild(kind) and not Game.guilds.has(kind):
+		_join_btn = UITheme.button("Join", _join_guild)
+		head.add_child(_join_btn)
 	head.add_child(UITheme.button("Give", _show_give))
 	head.add_child(UITheme.button("Ask", _show_ask))
 	head.add_child(UITheme.button("Goodbye", close_talk))
@@ -264,6 +274,10 @@ func _act(action: String, d: Dictionary = {}) -> void:
 			npc.act("beckon")
 		"trade":
 			_open_trade()
+		"join_guild":
+			_join_guild()
+		"buy_house":
+			_show_houses()
 		"follow":
 			manager.instruct(npc, "follow", 1800.0)
 			Game.toast.emit("%s is following you" % npc.rec["name"].split(" ")[0])
@@ -274,7 +288,38 @@ func _act(action: String, d: Dictionary = {}) -> void:
 			close_talk()
 			manager.instruct(n, action, 60.0)
 
+func _who() -> String:
+	if npc.rec.has("shop_kind"):
+		var t: String = npc.rec.get("shop_title", "")
+		var lbl: String = npc.rec.get("shop_label", "")
+		if npc.rec["shop_kind"] == "land" or t == "":
+			return "%s of %s, %s" % [npc.rec["job"].capitalize(), lbl if lbl != "" else "town", npc.settlement["name"]]
+		return "%s of %s, %s" % [npc.rec["job"].capitalize(), t, npc.settlement["name"]]
+	return "%s of %s" % [npc.rec["job"].capitalize(), npc.settlement["name"]]
+
+## The shop this person keeps (TownShops plan entry), or {}.
+func _shop() -> Dictionary:
+	var site := manager.site_of(npc)
+	return {} if site.is_empty() else TownShops.shop_of(manager.gen, site, npc.rec)
+
 func _open_trade() -> void:
+	if npc.rec.has("shop_kind"):
+		var kind: String = npc.rec["shop_kind"]
+		var first: String = npc.rec["name"].split(" ")[0]
+		if int(npc.rec.get("rel", 0)) <= -40:
+			_add_line(first, "Get out of my shop.", UITheme.ACCENT)
+			return
+		if kind == "land":
+			_show_houses()
+			return
+		if TownShops.is_guild(kind) and not Game.guilds.has(kind):
+			_add_line(first, "Guild goods are for members. %s" % TownShops.pitch(npc.rec), UITheme.ACCENT)
+			return
+		var st := TownShops.trade_state(npc.rec, _shop(), Game.guilds)
+		manager.mark_dirty(npc.settlement)
+		close_talk()
+		menus.open_trader(st, null)
+		return
 	if npc.rec["job"] != "trader" or not npc.rec.has("stall"):
 		# Anyone else trades the goods of their own work, from their own purse.
 		if int(npc.rec.get("rel", 0)) <= -40:
@@ -292,6 +337,82 @@ func _open_trade() -> void:
 	Economy.tick(s[0], Game.day)
 	close_talk()
 	menus.open_trader(s[0], s[1])
+
+# --- Guilds and houses ---------------------------------------------------------------------------
+
+func _join_guild() -> void:
+	var kind: String = npc.rec.get("shop_kind", "")
+	if not TownShops.is_guild(kind):
+		return
+	var first: String = npc.rec["name"].split(" ")[0]
+	var g: Dictionary = TownShops.GUILDS[kind]
+	if Game.guilds.has(kind):
+		_add_line(first, "You're already one of us.", UITheme.ACCENT)
+		return
+	var fee := TownShops.fee(kind, npc.rec)
+	if int(npc.rec.get("rel", 0)) <= -30:
+		_add_line(first, "We don't take your sort.", UITheme.ACCENT)
+		return
+	if Game.money < fee:
+		_add_line(first, "Membership is %d Marks. Come back when you have it." % fee, UITheme.ACCENT)
+		return
+	Game.add_money(-fee)
+	npc.rec["purse"] = int(npc.rec["purse"]) + fee
+	Game.join_guild(kind, npc.settlement["name"])
+	NPCMind.change_rel(npc.rec, 8)
+	NPCMind.remember(npc.rec, "The traveller joined the %s." % g["label"])
+	var line := "Welcome to the %s. %s" % [g["label"], g["perk"]]
+	_reaction("(You pay %d Marks and join the %s.)" % [fee, g["label"]], line, "cheer")
+	Game.toast.emit("Joined the %s" % g["label"])
+	if is_instance_valid(_join_btn):
+		_join_btn.queue_free()
+
+## The land seller's houses: each with where it is and what it costs.
+func _show_houses() -> void:
+	if npc == null or npc.rec.get("shop_kind", "") != "land":
+		return
+	var site := manager.site_of(npc)
+	if site.is_empty():
+		return
+	var houses := TownShops.for_sale(manager.gen, site, Game.estates)
+	var v := _drawer("Houses for sale in %s   ·   you have %d Marks" % [npc.settlement["name"], Game.money])
+	if houses.is_empty():
+		v.add_child(UITheme.label("Nothing is for sale here just now.", 15, UITheme.DIM))
+		return
+	var note := UITheme.label("A house of your own is where you wake if you fall, and has a sign over the door with your name.", 13, UITheme.DIM)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(note)
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(list)
+	v.add_child(sc)
+	for h in houses:
+		var cost := TownShops.price(h, npc.rec)
+		var row := HBoxContainer.new()
+		var l := UITheme.label(TownShops.where(h, site["center"]), 15)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var hh: Dictionary = h
+		var b := UITheme.button("Buy for %d" % cost, func(): _buy_house(hh, cost))
+		b.disabled = Game.money < cost
+		row.add_child(b)
+		list.add_child(row)
+
+func _buy_house(h: Dictionary, cost: int) -> void:
+	if npc == null or Game.money < cost:
+		return
+	var site := manager.site_of(npc)
+	Game.add_money(-cost)
+	npc.rec["purse"] = int(npc.rec["purse"]) + cost
+	Game.buy_house(TownShops.estate(h, npc.settlement["name"], Game.planet))
+	manager.houses_changed(site)
+	NPCMind.change_rel(npc.rec, 10)
+	NPCMind.remember(npc.rec, "Sold the traveller a %s in town." % String(h["t"]).replace("_", " "))
+	_close_extra()
+	_reaction("(You pay %d Marks for the deed.)" % cost, "It's yours. Your name goes over the door today. Welcome home.", "bow")
+	Game.toast.emit("You own a house in %s" % npc.settlement["name"])
 
 # --- Giving and asking --------------------------------------------------------------------------
 
@@ -401,7 +522,7 @@ func _panel_header_refresh() -> void:
 		var head := _body.get_child(0)
 		var tv := head.get_child(0)
 		if tv.get_child_count() > 1:
-			(tv.get_child(1) as Label).text = "%s of %s    %s" % [npc.rec["job"].capitalize(), npc.settlement["name"], _relation_text()]
+			(tv.get_child(1) as Label).text = "%s    %s" % [_who(), _relation_text()]
 
 ## Ask them to do things. They decide by personality (and the model, if connected).
 const ASKS := [
