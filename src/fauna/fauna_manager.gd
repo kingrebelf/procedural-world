@@ -25,6 +25,7 @@ func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
 
 const TAG_RANGE := 28.0
+const SPAWN_BUDGET_USEC := 4000
 
 func _process(delta: float) -> void:
 	if player == null or streamer == null or Game.store == null:
@@ -137,16 +138,25 @@ func _refresh() -> void:
 				if is_instance_valid(c) and dead.has(c.id):
 					_herds[k].erase(c)
 					c.die()
-	for dz in range(-RADIUS, RADIUS + 1):
-		for dx in range(-RADIUS, RADIUS + 1):
-			var k := pc + Vector2i(dx, dz)
-			if _herds.has(k):
-				continue
-			var cn := streamer.get_chunk(k)
-			if cn == null:
-				continue
-			_herds[k] = _spawn(cn)
-			added.append([k, Vector2((k.x + 0.5) * ChunkGenerator.SIZE, (k.y + 0.5) * ChunkGenerator.SIZE)])
+	# A few chunks' herds per call (each animal takes a few ms to dress), nearest first;
+	# the rest come on the next calls, soon after.
+	var t0 := Time.get_ticks_usec()
+	for r in RADIUS + 1:
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dz)) != r:
+					continue
+				var k := pc + Vector2i(dx, dz)
+				if _herds.has(k):
+					continue
+				var cn := streamer.get_chunk(k)
+				if cn == null:
+					continue
+				if Time.get_ticks_usec() - t0 > SPAWN_BUDGET_USEC:
+					_scan = minf(_scan, 0.05)
+					continue
+				_herds[k] = _spawn(cn)
+				added.append([k, Vector2((k.x + 0.5) * ChunkGenerator.SIZE, (k.y + 0.5) * ChunkGenerator.SIZE)])
 	if not gone.is_empty() or not added.is_empty():
 		Net.watch("f", added, gone)
 
