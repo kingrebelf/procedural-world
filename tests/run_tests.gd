@@ -956,10 +956,10 @@ func test_armor_items() -> void:
 	for t in ItemDB.ITEMS:
 		var d: Dictionary = ItemDB.ITEMS[t]
 		if d.get("kind", "") == "armor":
-			check(d.get("slot", "") in ["head", "chest", "hands", "legs", "feet", "shield"], "%s has a slot" % t)
+			check(d.get("slot", "") in ["head", "chest", "hands", "legs", "feet", "shield", "back"], "%s has a slot" % t)
 			check(float(d.get("armor", 0)) > 0.0, "%s protects" % t)
 			slots[d["slot"]] = true
-	check(slots.size() == 6, "armour for every slot")
+	check(slots.size() == 7, "armour for every slot")
 	var helm := ItemDB.make("helm_iron", 1, 1.0, {})
 	Rarity.apply(helm, Rarity.LEGENDARY, rng)
 	check(float(ItemDB.stats(helm)["armor"]) > 8.0, "ranked armour protects more")

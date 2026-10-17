@@ -35,7 +35,7 @@ var player: Node3D ## Set by the player when it spawns.
 var pending_player_state = null
 ## Armour you are wearing, by slot (ARMOR_SLOTS); saved with the player.
 var equipment: Dictionary = {}
-const ARMOR_SLOTS := ["head", "chest", "hands", "legs", "feet", "shield"]
+const ARMOR_SLOTS := ["head", "chest", "hands", "legs", "feet", "shield", "back"]
 signal equipment_changed
 
 ## Your vehicles out in the world (VehicleManager); saved with the player.

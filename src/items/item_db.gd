@@ -75,6 +75,9 @@ const ITEMS := {
 	"shield_crystal": {"name": "Crescent Ward", "era": Eras.FANTASY, "value": 200, "stack": false, "kind": "armor", "slot": "shield", "armor": 16, "color": Color(0.6, 0.85, 1.0)},
 	"gauntlets_power": {"name": "Power Gauntlets", "era": Eras.SCIFI, "value": 240, "stack": false, "kind": "armor", "slot": "hands", "armor": 9, "color": Color(0.45, 0.46, 0.5)},
 	"shield_emitter": {"name": "Hex Shield Emitter", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "armor", "slot": "shield", "armor": 22, "color": Color(0.5, 0.85, 1.0)},
+	# Jetpack: worn on the back; fire it in the air with Jump (see Jetpack). Burns Jet Fuel.
+	"jetpack": {"name": "Jetpack", "era": ANY, "value": 450, "stack": false, "kind": "armor", "slot": "back", "armor": 2, "color": Color(0.62, 0.64, 0.68)},
+	"jet_fuel": {"name": "Jet Fuel", "era": ANY, "value": 12, "stack": true, "kind": "resource", "color": Color(0.95, 0.55, 0.15)},
 	# Heavier weapons; "swing" scales the time between swings.
 	"battle_axe": {"name": "Battle Axe", "era": Eras.MEDIEVAL, "value": 110, "stack": false, "kind": "weapon", "damage": 36, "range": 3.2, "swing": 1.3, "chop": 0.8},
 	"war_hammer": {"name": "War Hammer", "era": Eras.MEDIEVAL, "value": 120, "stack": false, "kind": "weapon", "damage": 40, "range": 3.0, "swing": 1.45, "mine": 0.6},
@@ -123,7 +126,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"rail_rifle": 5.0, "arc_launcher": 5.5, "bolt": 0.05, "rounds": 0.02, "flashlight": 0.6, "flashlight_dead": 0.6, "hammer": 1.5,
 	"pickaxe_iron": 4.0, "pickaxe_mythril": 3.0, "pickaxe_plasma": 5.0, "axe_iron": 3.0, "axe_mythril": 2.2,
 	"sword_iron": 3.5, "sword_runic": 2.5, "pulse_pistol": 1.6, "foundation": 8.0, "floor_wood": 4.0, "wall_stone": 8.0,
-	"workbench": 15.0, "forge": 20.0, "anvil": 25.0}
+	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2}
 const KIND_WEIGHT := {"decor": 3.0, "resource": 1.0, "treasure": 0.5, "food": 0.3, "tool": 2.5, "weapon": 3.0, "vehicle": 0.0, "armor": 4.0,
 	"placeable": 4.0, "station": 12.0}
 

@@ -20,6 +20,8 @@ const PICK_GLYPHS := ["Y", "B", "X", "A", "←", "→", "↑", "↓"]
 var _health_val: Label
 var _stamina: ProgressBar
 var _stamina_val: Label
+var _fuel: ProgressBar ## shown only while a jetpack is worn
+var _fuel_val: Label
 var _xp: ProgressBar
 var _xp_val: Label
 var _level: Label
@@ -135,6 +137,9 @@ func _ready() -> void:
 	var sb := _bar(vit, "STAMINA", Color(0.36, 0.72, 0.3), 10)
 	_stamina = sb[0]
 	_stamina_val = sb[1]
+	var fb := _bar(vit, "JETPACK FUEL", Color(0.95, 0.55, 0.15), 8)
+	_fuel = fb[0]
+	_fuel_val = fb[1]
 	var xb := _bar(vit, "EXPERIENCE", Color(0.92, 0.72, 0.28), 6)
 	_xp = xb[0]
 	_xp_val = xb[1]
@@ -547,6 +552,13 @@ func _process(_d: float) -> void:
 	_stamina.max_value = Game.max_stamina()
 	_stamina.value = Game.stamina
 	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]
+	var jp = Jetpack.worn()
+	_fuel.visible = jp != null
+	_fuel_val.get_parent().visible = jp != null
+	if jp != null:
+		_fuel.max_value = Jetpack.TANK
+		_fuel.value = float(jp.get("fuel", 0.0))
+		_fuel_val.text = "%d s  +%d canisters" % [int(ceilf(_fuel.value)), Game.inventory.count("jet_fuel")]
 	var show: bool = Settings.get_value("show_fps")
 	if show != _fps.visible:
 		# GPU timing costs a query per frame, so only measure while the counter is shown.

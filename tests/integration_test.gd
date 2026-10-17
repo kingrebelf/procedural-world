@@ -39,6 +39,24 @@ func _run() -> void:
 	var here: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var here_key: Vector2i = here.key
 
+	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
+	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
+	game.give(ItemDB.make("jet_fuel", 2, 1.0, {}))
+	var jslot := -1
+	for i in Inventory.SIZE:
+		var js = game.inventory.get_slot(i)
+		if js != null and js["type"] == "jetpack":
+			jslot = i
+	check(jslot >= 0 and game.equip(jslot) and Jetpack.worn() != null, "a jetpack can be worn on the back")
+	var lift: float = player.jetpack.thrust(0.1, true, true, false, 0.0, game.inventory)
+	check(lift > 0.0 and player.jetpack.firing and game.inventory.count("jet_fuel") == 1, "jumping in the air fires the jetpack and loads a fuel canister")
+	check(player.jetpack.thrust(0.1, true, true, true, 0.0, game.inventory) == 0.0, "the jetpack does not fire on the ground")
+	Jetpack.worn()["fuel"] = 0.0
+	game.inventory.remove_type("jet_fuel", 99)
+	check(player.jetpack.thrust(0.1, true, true, false, 0.0, game.inventory) == 0.0 and not player.jetpack.firing, "an empty jetpack does nothing")
+	game.unequip("back")
+	game.inventory.remove_type("jetpack", 1)
+
 	# Fell the first tree in the current chunk (or any loaded chunk).
 	var felled := {}
 	for k in streamer.chunks:
