@@ -2247,6 +2247,70 @@ func test_lock_game() -> void:
 	check(LockGame.sweet_half(2, 50) > LockGame.sweet_half(2, 0) * 2.0, "Lockpicking widens the sweet spot")
 	check(ItemDB.has("lockpick") and Recipes.LIST.any(func(rr): return rr["out"] == "lockpick"), "lockpicks are an item you can make")
 
+func test_standing_and_town_gates() -> void:
+	var st := Standing.new()
+	st.note("0:1_1", "Ashford", Vector2(0, 0), 1.0)
+	st.note("0:3_1", "Brookmere", Vector2(900, 0), 1.0)
+	st.note("0:9_9", "Farholt", Vector2(5000, 0), 1.0)
+	st.note("1:1_1", "Moonbase", Vector2(10, 0), 1.0)
+	check(st.score("0:1_1", 1.0) == 0 and Standing.tier_of(0) == "Stranger", "a new town sees a stranger")
+	st.deed("0:1_1", "Ashford", Vector2(0, 0), -60.0, 1.0)
+	check(st.score("0:1_1", 1.0) == -60 and Standing.tier_of(-60) == "Outcast", "a bad deed counts in full")
+	check(st.score("0:3_1", 1.0) < -5 and st.score("0:3_1", 1.0) > -25, "word reaches a town near (%d)" % st.score("0:3_1", 1.0))
+	check(st.score("0:9_9", 1.0) == 0 and st.score("1:1_1", 1.0) == 0, "but not one far off, nor another planet")
+	check(st.score("0:1_1", 13.0) == -30, "bad deeds halve in %d days (%d)" % [int(Standing.FADE_BAD), st.score("0:1_1", 13.0)])
+	st.note("0:2_1", "Coldwell", Vector2(400, 0), 1.0)
+	check(st.score("0:2_1", 1.0) < -10, "a town seen for the first time has already heard (%d)" % st.score("0:2_1", 1.0))
+	st.set_folk("0:9_9", 60.0)
+	check(st.score("0:9_9", 1.0) == 30 and Standing.tier_of(30) == "Known", "townsfolk who like you raise your standing")
+	check(st.score("0:9_9", 1.0, 2) == 30 - 2 * Standing.PER_STAR, "being wanted there counts against you")
+	st.give_pass("0:9_9", 3.0, "vouched", "9_9_4")
+	check(st.has_pass("0:9_9", 2.0) and not st.has_pass("0:9_9", 3.5) and st.pass_of("0:9_9", 2.0)["by"] == "9_9_4", "passes run out")
+	var back := Standing.from_data(bytes_to_var(var_to_bytes(st.to_data())))
+	check(back.score("0:1_1", 1.0) == -60 and back.has_pass("0:9_9", 2.0) and back.towns["0:3_1"]["name"] == "Brookmere", "standing survives a save")
+	back.revoke("0:9_9")
+	check(not back.has_pass("0:9_9", 2.0), "a crime tears up the pass")
+	# Town tempers come from the people who live there.
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var site: Dictionary = fx[1]
+	var data := NPCGen.generate(777, gen, site, gen.settlement_layout(site))
+	var kind := data.duplicate(true)
+	var harsh := data.duplicate(true)
+	for rec in kind["npcs"]:
+		rec["traits"]["friendly"] = 0.95
+		rec["traits"]["brave"] = 0.2
+		rec["worry"] = "taxes"
+	for rec in harsh["npcs"]:
+		rec["traits"]["friendly"] = 0.1
+		rec["traits"]["brave"] = 0.95
+		rec["worry"] = "bandits on the road"
+	var tk := GatePolicy.temper(site, kind)
+	var th := GatePolicy.temper(site, harsh)
+	check(float(th["strict"]) > float(tk["strict"]) + 0.3, "brave, wary folk make a stricter town (%.2f vs %.2f)" % [th["strict"], tk["strict"]])
+	check(int(th["need"]) > int(tk["need"]) and int(th["toll"]) > int(tk["toll"]), "a strict town asks more standing and a higher toll")
+	check(th["night_shut"] and not tk["night_shut"], "strict towns shut their gates at night")
+	harsh["rumors"] = ["The traveller was seen stealing.", "Ada was killed by the traveller."]
+	check(float(GatePolicy.temper(site, harsh)["strict"]) >= float(th["strict"]), "trouble you made makes it stricter still")
+	var need: int = tk["need"]
+	check(GatePolicy.admit(tk, need, false, false, 0, false, 12.0)["ok"], "standing enough: waved through")
+	check(GatePolicy.admit(tk, need - 1, false, false, 0, false, 12.0)["why"] == "stranger", "a little less and you're a stranger")
+	check(GatePolicy.admit(tk, need - 1, false, true, 0, false, 12.0)["ok"], "a guild seal helps")
+	check(GatePolicy.admit(tk, -80, false, false, 0, true, 12.0)["ok"], "a pass is a pass")
+	check(GatePolicy.admit(tk, -80, true, false, 0, false, 12.0)["why"] == "citizen", "your own house: you're a citizen")
+	check(GatePolicy.admit(tk, 100, true, false, 1, true, 12.0)["why"] == "wanted", "nobody gets in wanted")
+	check(GatePolicy.admit(th, int(th["need"]), false, false, 0, false, 23.0)["why"] == "night", "strict gates are shut at night")
+	check(GatePolicy.toll(th, 23.0) == 2 * int(th["toll"]), "the night toll is double")
+	check(not GatePolicy.sells_pass(-40, 0) and GatePolicy.sells_pass(0, 0) and not GatePolicy.sells_pass(50, 1), "no pass for the Distrusted or the wanted")
+	var greedy := {"traits": {"greedy": 0.95}, "rel": 20}
+	var honest := {"traits": {"greedy": 0.05}, "rel": 0}
+	check(float(GatePolicy.bribe(tk, greedy, 12.0)["odds"]) > 0.7 and float(GatePolicy.bribe(tk, honest, 12.0)["odds"]) < 0.15, "greedy guards take bribes, honest ones don't")
+	check(int(GatePolicy.bribe(tk, greedy, 12.0)["price"]) < int(tk["toll"]), "a bribe is cheaper than the toll")
+	kind["npcs"][2]["rel"] = 55
+	var vs := GatePolicy.vouchers(kind)
+	check(vs.size() == 1 and vs[0]["id"] == kind["npcs"][2]["id"] or NPCGen.GUARD_JOBS.has(String(kind["npcs"][2]["job"])), "a friend in town will vouch for you")
+	check(GatePolicy.folk_regard(kind) > 0.0, "the people's regard is their mean")
+
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
 	check(c.stars("0:1_2", 3.0) == 0 and c.worst(3.0).is_empty(), "not wanted at first")

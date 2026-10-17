@@ -160,6 +160,10 @@ func _build() -> void:
 		pay.disabled = Game.money < owe
 		pay.tooltip_text = "Settle what you owe %s and the guards stand down." % npc.settlement["name"]
 		head.add_child(pay)
+	if not manager.gates.gate_of(npc).is_empty():
+		var gb := UITheme.button("Gate", _show_gate)
+		gb.tooltip_text = "Ask to be let into %s: your standing, the toll, a bribe, or a friend in town to vouch for you." % npc.settlement["name"]
+		head.add_child(gb)
 	var kind: String = npc.rec.get("shop_kind", "")
 	if kind == "land":
 		head.add_child(UITheme.button("Houses", _show_houses))
@@ -559,6 +563,7 @@ func _join_guild() -> void:
 	var line := "Welcome to the %s. %s" % [g["label"], g["perk"]]
 	_reaction("(You pay %d Marks and join the %s.)" % [fee, g["label"]], line, "cheer")
 	Game.toast.emit("Joined the %s" % g["label"])
+	manager.gates.deed_for(npc, "guild")
 	if is_instance_valid(_join_btn):
 		_join_btn.queue_free()
 
@@ -608,6 +613,96 @@ func _buy_house(h: Dictionary, cost: int) -> void:
 	_close_extra()
 	_reaction("(You pay %d Marks for the deed.)" % cost, "It's yours. Your name goes over the door today. Welcome home.", "bow")
 	Game.toast.emit("You own a house in %s" % npc.settlement["name"])
+	manager.gates.deed_for(npc, "house")
+
+# --- At a town's gate ---------------------------------------------------------------------------
+
+## A guard of a walled town: what it takes to be let in, and each way you might try.
+func _show_gate() -> void:
+	var o := manager.gates.options(npc)
+	if o.is_empty():
+		return
+	var v := _drawer("The gate of %s   ·   you have %d Marks" % [o["town"], Game.money])
+	var ad: Dictionary = o["admit"]
+	var head := UITheme.label("%s town. Your standing: %s (%d). Waved through from %d." % [o["temper"], o["tier"], o["score"], o["need"]], 15)
+	head.add_theme_color_override("font_color", Standing.tier_color(o["tier"]))
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(head)
+	var ps: Dictionary = o["pass"]
+	var note := ""
+	match String(ad["why"]):
+		"citizen": note = "You own a house here: you come and go as you please."
+		"pass": note = "Your pass is good for %.1f more days." % (float(ps["until"]) - Game.day)
+		"standing": note = "They know you here. Walk on through."
+		"wanted": note = "You're wanted here. Pay your bounty before they'll let you in."
+		"outcast": note = "They won't sell an Outcast a pass. A bribe, or another way in."
+		"night": note = "The gates are shut for the night. Strangers pay double."
+		_: note = "A stranger here pays the toll, or needs someone in town to speak for them."
+	if bool(o["inside"]) and not ad["ok"]:
+		note += " You're already inside without leave: paying now costs a %d Mark fine on top." % o["late"]
+	var nl := UITheme.label(note, 14, UITheme.DIM)
+	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(nl)
+	if ad["ok"]:
+		return
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(list)
+	v.add_child(sc)
+	var row := func(text: String, btn: String, cb: Callable, ok: bool) -> void:
+		var h := HBoxContainer.new()
+		var l := UITheme.label(text, 15)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		h.add_child(l)
+		var b := UITheme.button(btn, cb)
+		b.disabled = not ok
+		h.add_child(b)
+		list.add_child(h)
+	if String(ad["why"]) == "wanted":
+		return
+	var cost: int = int(o["toll"]) + int(o["late"])
+	if o["sells"]:
+		row.call("Pay the toll: a pass for %.1f days." % o["days"], "Pay %d" % cost, _gate_toll, Game.money >= cost)
+	var br: Dictionary = o["bribe"]
+	row.call("Slip the guard something to look the other way (%d%% they take it; if not, it's a crime)." % int(round(float(br["odds"]) * 100.0)),
+		"Bribe %d" % br["price"], _gate_bribe, Game.money >= int(br["price"]))
+	for rec in o["vouchers"]:
+		var who: Dictionary = rec
+		row.call("%s, the %s, thinks well of you and would vouch for you." % [who["name"], String(who["job"])], "Name them", func(): _gate_vouch(who), true)
+	if (o["vouchers"] as Array).is_empty():
+		var hint := UITheme.label("Nobody in town would vouch for you yet. Townsfolk who like you (gifts, help, a kind word) will.", 13, UITheme.DIM)
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list.add_child(hint)
+
+func _gate_toll() -> void:
+	var o := manager.gates.options(npc)
+	var cost: int = int(o.get("toll", 0)) + int(o.get("late", 0))
+	if not manager.gates.pay_toll(npc):
+		return
+	_close_extra()
+	_reaction("(You pay %d Marks at the gate.)" % cost, ["Pass is good for a few days. Mind the law in here.", "Welcome to %s. Keep out of trouble." % o["town"], "On you go."][randi() % 3], "nod")
+	_history.append({"role": "user", "content": "(The traveller pays the toll to enter town.)"})
+
+func _gate_bribe() -> void:
+	var o := manager.gates.options(npc)
+	var price: int = int(o.get("bribe", {}).get("price", 0))
+	_close_extra()
+	if manager.gates.try_bribe(npc):
+		_reaction("(You press %d Marks into the guard's hand.)" % price, ["I didn't see you. Go on, quick.", "Never met you. Move along.", "Pleasure doing business."][randi() % 3], "wink")
+		_history.append({"role": "user", "content": "(The traveller bribes you to let them into town, and you take it.)"})
+	else:
+		_reaction("(The guard won't take it.)", ["You think the watch can be bought? That's a fine.", "Put that away before I put you in irons.", "A bribe? You'll pay for that."][randi() % 3], "fist")
+		_history.append({"role": "user", "content": "(The traveller tried to bribe you. You refused and reported it.)"})
+
+func _gate_vouch(by: Dictionary) -> void:
+	if not manager.gates.vouch(npc, by):
+		return
+	_close_extra()
+	_reaction("(You name %s.)" % by["name"], "%s speaks for you? Then you're welcome. Don't make them regret it." % String(by["name"]).split(" ")[0], "nod")
+	_history.append({"role": "user", "content": "(%s vouches for the traveller at the gate.)" % by["name"]})
 
 # --- Giving and asking --------------------------------------------------------------------------
 

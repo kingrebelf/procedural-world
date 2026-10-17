@@ -616,6 +616,7 @@ func _run() -> void:
 	await _corpses(game, world, player, kc)
 	await _bandits(game, world, player)
 	await _pirates(game, world, player)
+	await _town_gate(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -1107,6 +1108,90 @@ func _bandits(game, world, player) -> void:
 	check(e2.get("nodes", []).size() == 2, "the dead one doesn't come back with the band")
 	world.npcs._unload("b9_9_0")
 	game.health = 100.0
+
+## A walled town's gate: its guard stops a stranger, a paid toll lets you in; slip in
+## past nobody and a guard who doesn't know you asks for your pass, then fines you for
+## trespass; a friend in town vouches for you, and is shamed if you break the law. Standing
+## and passes are kept in your save.
+func _town_gate(game, world, player) -> void:
+	var at: Vector3 = player.global_position
+	var npcs: NPCManager = world.npcs
+	var c := Vector2(at.x + 40.0, at.z)
+	var gate := Vector2(at.x + 18.0, at.z)
+	var site := {"center": c, "walled": true, "inner": 20.0, "outer": 40.0, "sx": 9997, "sz": 9996, "era": Eras.MEDIEVAL, "size": 2}
+	var r := RandomNumberGenerator.new()
+	r.seed = 99
+	var guard := NPCGen.person(r, Eras.MEDIEVAL, 0, 9997, 9996)
+	guard["job"] = "guard"
+	guard["traits"]["greedy"] = 0.0
+	var friend := NPCGen.person(r, Eras.MEDIEVAL, 1, 9997, 9996)
+	friend["job"] = "farmer"
+	for rec in [guard, friend]:
+		rec["home"] = c
+		rec["work"] = c
+		rec["pos"] = Vector3(gate.x + 2.0, at.y, gate.y)
+	friend["pos"] = Vector3(c.x, at.y, c.y)
+	var data := {"sx": 9997, "sz": 9996, "era": Eras.MEDIEVAL, "center": c, "name": "Gatehold", "npcs": [guard, friend], "rumors": [], "sim_day": -1.0}
+	var sid := "%d:9997_9996" % game.planet
+	var e := {"data": data, "nodes": [], "dirty": false, "site": site, "outer": 40.0, "sid": sid, "transient": true,
+		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate]}}
+	npcs.settlements["9997_9996"] = e
+	var gn: NPC = npcs._add_node(e, guard)
+	var fn: NPC = npcs._add_node(e, friend)
+	game.crime = Crime.new()
+	var wait := func(): await create_timer(0.4).timeout
+	# Walk up to the gate: the guard stops you.
+	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	await wait.call()
+	check(game.standing.towns.has(sid) and game.standing.towns[sid]["name"] == "Gatehold", "a town you come near is noted")
+	var o: Dictionary = npcs.gates.options(gn)
+	check(not o.is_empty() and not o["admit"]["ok"] and o["sells"], "a stranger isn't let in, but can pay (%s)" % str(o.get("admit")))
+	check(gn.action == "confront", "the gate guard comes to stop you (%s)" % gn.action)
+	# Pay the toll: a pass.
+	game.add_money(int(o["toll"]) + 10)
+	var m0: int = game.money
+	check(npcs.gates.pay_toll(gn) and game.money == m0 - int(o["toll"]), "the toll is paid")
+	check(npcs.gates.options(gn)["admit"]["why"] == "pass" and game.standing.has_pass(sid, game.day), "and buys a pass")
+	# Slip in with no guard on watch.
+	game.standing.revoke(sid)
+	gn.rec["dead"] = true
+	player.global_position = Vector3(c.x - 10.0, at.y, c.y)
+	await wait.call()
+	check(e["gate"]["inside"] and game.crime.owed(sid, game.day) == 0, "with nobody watching you slip in")
+	# A guard who doesn't know you, up close and facing you, asks for your pass, then fines you.
+	gn.rec["dead"] = false
+	gn.rec["rel"] = 0
+	gn.global_position = player.global_position + Vector3(1.5, 0, 0)
+	gn.rotation.y = atan2(-1.5, 0.0)
+	for i in 12:
+		await wait.call()
+		if e["gate"]["warned"]:
+			break
+	check(e["gate"]["warned"], "a guard asks a stranger inside for their pass")
+	var before: int = game.town_standing(sid)
+	e["gate"]["warn_until"] = 0.0
+	for i in 12:
+		await wait.call()
+		if game.crime.owed(sid, game.day) > 0:
+			break
+	check(game.crime.owed(sid, game.day) >= Crime.FINES["trespass"], "staying without leave is trespass (%d)" % game.crime.owed(sid, game.day))
+	check(game.town_standing(sid) < before, "and the town thinks less of you (%d -> %d)" % [before, game.town_standing(sid)])
+	# A friend vouches; break the law and they're shamed.
+	game.crime = Crime.new()
+	friend["rel"] = 60
+	check(npcs.gates.vouch(gn, friend) and game.standing.pass_of(sid, game.day)["how"] == "vouched", "a friend in town vouches for you")
+	var rel0 := int(friend["rel"])
+	game.add_bounty(sid, "Gatehold", 20, "Theft")
+	check(int(friend["rel"]) < rel0 - 20 and not game.standing.has_pass(sid, game.day), "break the law and they're shamed, and the pass is gone")
+	# Saved with you.
+	game.save_player()
+	var p = game.store.load_player()
+	check(p is Dictionary and Standing.from_data(p.get("standing")).towns.has(sid), "standing is kept in your save")
+	npcs._unload("9997_9996")
+	game.crime = Crime.new()
+	game.standing.towns.erase(sid)
+	player.global_position = at
+	await _frames(2)
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.
