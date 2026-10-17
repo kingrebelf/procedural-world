@@ -47,6 +47,10 @@ static func crew(era: int, zone: int, stations: int, at: Vector2) -> Array:
 	var out: Array = []
 	for i in n:
 		var p := NPCGen.person(r, era, i, 0, 0)
+		for _try in 8: # never a child
+			if not p.get("child", false):
+				break
+			p = NPCGen.person(r, era, i, 0, 0)
 		var leader := i == 0
 		p["id"] = "pirate_%d_%d" % [r.randi() % 1000000, i]
 		p["job"] = "pirate captain" if leader else "pirate"
