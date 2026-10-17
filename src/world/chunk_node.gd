@@ -1266,8 +1266,16 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 	refresh_far()
 	if near:
 		_add_obj_body(o)
+	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
 	return o
+
+## Regrows the grass after something that keeps it out (a floor, a house) came or went,
+## so none grows through a floor and the ground under a dismantled one greens again.
+func _regrow_if_kept_out(t: String) -> void:
+	var s := get_parent() as ChunkStreamer
+	if s != null and ObjectLibrary.keeps_out(t):
+		s.refresh_grass(key)
 
 func get_object(i: int) -> Dictionary:
 	return data["objects"][i]
@@ -1282,6 +1290,7 @@ func remove_object(i: int) -> void:
 	set_objects(build_object_buffers(data, false), true)
 	if ObjectLibrary.kind(o["t"]) == "tree":
 		refresh_far()
+	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
