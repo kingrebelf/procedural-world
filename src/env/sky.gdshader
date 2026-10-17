@@ -34,6 +34,10 @@ uniform int cloud_steps = 28;
 uniform int cloud_light_steps = 4;
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
+// How much of the sky reflects and lights from it (1 in the open; Atmosphere lowers it
+// underground, so metal and gloss in a cave don't mirror the daylit sky). Only the
+// radiance pass: the sky you see never changes.
+global uniform float sky_reflect_g;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -342,6 +346,6 @@ void sky() {
 		below_w = smoothstep(0.0, -0.02, d.y);
 	}
 	col = mix(col, below, below_w);
-	COLOR = col;
+	COLOR = AT_CUBEMAP_PASS ? col * sky_reflect_g : col;
 	}
 }
