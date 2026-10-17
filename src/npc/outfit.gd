@@ -154,8 +154,8 @@ static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: 
 		var y := lerpf(top, hem, k)
 		var m := _measure(s, y)
 		var below := clampf((top - y) / 0.15, 0.0, 1.0) # room for the thighs to move under it
-		var rx := maxf(float(m["rx"]) * 1.04 + 0.022 + 0.025 * below, prev_rx) + flare * k * k * 0.1
-		var rz := maxf(float(m["rz"]) * 1.08 + 0.03 + 0.03 * below, prev_rz) + flare * k * k * 0.08
+		var rx := maxf(float(m["rx"]) * 1.04 + 0.022 + 0.045 * below, prev_rx) + flare * k * k * 0.1
+		var rz := maxf(float(m["rz"]) * 1.08 + 0.03 + 0.04 * below, prev_rz) + flare * k * k * 0.08
 		prev_rx = rx
 		prev_rz = rz
 		var cz: float = m["cz"]
@@ -166,7 +166,7 @@ static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: 
 			# Mostly carried by the hips; the side over each leg follows that thigh a little,
 			# so walking moves the hem without the whole skirt swinging out.
 			var side := smoothstep(-0.55 * rx, 0.55 * rx, p.x)
-			var legs := 0.4 * pow(swing, 1.5)
+			var legs := 0.55 * pow(swing, 1.5)
 			var wb := {"pelvis": 1.0 - legs, "thigh_l": legs * side, "thigh_r": legs * (1.0 - side)}
 			_vert(s, o, p, Vector3(sin(ang) / rx, 0.15 * k, cos(ang) / rz), Vector2(float(si) / segs * 3.0, k * 2.0), wb, part, col)
 	for ri in rings:
@@ -296,8 +296,11 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		if r == 0 and p.y < s["neck"] + 0.02:
 			return 0.006
 		return -1.0)
-	# Trousers down into the boots.
+	# Trousers down into the boots (under a robe, only what shows below its hem).
+	var robe_hem: float = sp["hem"]
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+		if robe_hem > 0.0 and p.y > robe_hem + 0.06:
+			return -1.0
 		if r == 5 and p.y <= waist - 0.03:
 			return 0.007
 		if r == 6 and p.y > boot_h - 0.03:
@@ -311,7 +314,8 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 			return 0.016 if p.y > boot_h - 0.03 else 0.013
 		return -1.0)
 	if sp["belt"]:
-		_belt(s, o, waist - 0.035, Color.WHITE)
+		var loose: bool = sp["hem"] > 0.0 or sp["tunic"]
+		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.045, 0.04 if loose else 0.012)
 	var hem: float = sp["hem"]
 	if hem > 0.0:
 		_skirt(s, o, waist - 0.02, hem, 0.6 if hem < 0.2 else 0.35, PART_SKIRT, Color.WHITE)

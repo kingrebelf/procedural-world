@@ -20,9 +20,12 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var out := "user://people.png"
+	var only := -1 ## --only=N renders just that person, close up
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
+		elif a.begins_with("--only="):
+			only = a.substr(7).to_int()
 	var vp := SubViewport.new()
 	vp.size = Vector2i(1800, 760)
 	vp.own_world_3d = true
@@ -55,6 +58,8 @@ func _run() -> void:
 	rng.seed = 7
 	var people: Array = []
 	for i in LINEUP.size():
+		if only >= 0 and i != only:
+			continue
 		var e2: Array = LINEUP[i]
 		var era: int = e2[1]
 		var cl: Array = NPCGen.CLOTH[era]
@@ -67,12 +72,12 @@ func _run() -> void:
 		for slot in e2[3]:
 			worn[slot] = ItemDB.make(e2[3][slot], 1, 1.0, {})
 		h.wear(worn)
-		h.position = Vector3((i - (LINEUP.size() - 1) * 0.5) * 0.95, 0, 0)
+		h.position = Vector3((i - (LINEUP.size() - 1) * 0.5) * 0.95 if only < 0 else 0.0, 0, 0)
 		people.append([h, String(e2[4])])
 	var cam := Camera3D.new()
 	cam.fov = 32
 	vp.add_child(cam)
-	cam.position = Vector3(0, 1.25, 7.4)
+	cam.position = Vector3(0, 1.25, 7.4) if only < 0 else Vector3(0.6, 1.3, 2.4)
 	cam.look_at(Vector3(0, 0.95, 0))
 	for p in people:
 		var g: String = p[1]

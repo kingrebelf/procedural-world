@@ -87,10 +87,15 @@ func _unhandled_input(event: InputEvent) -> void:
 				var f: Dictionary = player.focus if "focus" in player else {}
 				if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")):
 					open_with(f["npc"])
+					_input.release_focus() # so the key isn't typed, and its release reaches us
 			if npc != null:
 				_mic_start()
-		elif _mic.recording:
-			_mic_stop()
+		get_viewport().set_input_as_handled()
+
+func _input(event: InputEvent) -> void:
+	# Letting go of the voice key always ends the recording, wherever focus is.
+	if _mic.recording and InputMap.has_action("voice") and event.is_action_released("voice"):
+		_mic_stop()
 		get_viewport().set_input_as_handled()
 
 func _process(_d: float) -> void:
