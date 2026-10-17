@@ -200,10 +200,14 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 		var stocked := Interiors.stock(c)
 		if gen.fill_keep_out(c) or stocked:
 			save_chunk(c)
+		# Strongholds' dungeons, dug under old saves' forts too (after their keep-out).
+		if Dungeon.stock(gen, c):
+			save_chunk(c)
 		return c
 	c = gen.generate(cx, cz)
 	c["created"] = Time.get_unix_time_from_system()
 	Interiors.stock(c)
+	Dungeon.stock(gen, c)
 	stitch_edges(c)
 	save_chunk(c)
 	return c
