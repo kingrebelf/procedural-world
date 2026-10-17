@@ -63,9 +63,9 @@ static func _build(species: String) -> ArrayMesh:
 				_seed_head(st, r, rg, tip, r.randf_range(0.07, 0.12))
 		"weed":
 			# Ribbons that keep their width most of the way up, leaning every way.
-			for b in 7:
-				var off := _spot(r, 0.2)
-				_blade(st, r, rg, off, r.randf_range(0.45, 1.3), r.randf_range(0.022, 0.034), r.randf_range(0.1, 0.4), 6, false)
+			for b in 11:
+				var off := _spot(r, 0.24)
+				_blade(st, r, rg, off, r.randf_range(0.45, 1.4), r.randf_range(0.03, 0.05), r.randf_range(0.1, 0.45), 6, false)
 		_:
 			var pc: Array = PETALS[int(species.substr(8)) % PETALS.size()]
 			for b in 6:

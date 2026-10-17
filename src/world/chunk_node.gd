@@ -433,19 +433,19 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 	# down and thinning out where the light fades. (Its own draws, so the grass above
 	# stays as it was.)
 	var rw := WHash.rng(seed, chunk["cx"], chunk["cz"], 905)
-	for n in int(2600 * density):
+	for n in int(6000 * density):
 		var lx := rw.randf() * SIZE
 		var lz := rw.randf() * SIZE
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
 		var roll := rw.randf()
 		var yaw := rw.randf() * TAU
 		var size := rw.randf()
-		if y > -0.7 or y < -9.0:
+		if y > -0.7 or y < -14.0:
 			continue
 		var wx := x0 + lx
 		var wz := z0 + lz
-		var depth := smoothstep(-0.7, -2.2, y) * (1.0 - smoothstep(-5.0, -9.0, y))
-		if roll > depth * smoothstep(-0.1, 0.45, wild.get_noise_2d(wx * 1.7 + 300.0, wz * 1.7)):
+		var depth := smoothstep(-0.7, -2.2, y) * (1.0 - smoothstep(-9.0, -14.0, y))
+		if roll > depth * smoothstep(-0.35, 0.25, wild.get_noise_2d(wx * 1.7 + 300.0, wz * 1.7)):
 			continue
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.5 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.3):
 			continue
@@ -454,8 +454,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var sc := lerpf(0.7, 1.4, size)
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * rw.randf_range(0.8, 1.3), sc))
-		var tint := Color(0.26, 0.34, 0.12) * w[0] + Color(0.12, 0.36, 0.3) * w[1] + Color(0.3, 0.27, 0.16) * w[2]
-		tint = tint.lerp(Color(0.36, 0.3, 0.14), rw.randf() * 0.35)
+		var tint := Color(0.34, 0.46, 0.15) * w[0] + Color(0.14, 0.46, 0.38) * w[1] + Color(0.4, 0.36, 0.2) * w[2]
+		tint = tint.lerp(Color(0.46, 0.4, 0.17), rw.randf() * 0.35)
 		var key := "weed@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
 		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
@@ -620,10 +620,10 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		var drift := 0.5 + 0.5 * sin(lx * 0.21 + float(chunk["cx"]) * 3.1) * cos(lz * 0.17 + float(chunk["cz"]) * 2.3)
 		if roll > 0.04 + 0.3 * drift * drift:
 			continue
-		var size := 0.06 + 0.7 * pow(a, 5.0)
+		var size := 0.08 + 0.85 * pow(a, 3.0)
 		var kind := "pebble"
 		if size >= 0.5:
-			kind = "rock_a" if a > 0.985 else "rock_b"
+			kind = "rock_a" if a > 0.96 else "rock_b"
 		elif size >= 0.16:
 			kind = "stone_a" if a > 0.8 else "stone_b"
 		var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 0.5, lz) - ChunkGenerator.height_at(chunk, lx + 0.5, lz), 1.0,

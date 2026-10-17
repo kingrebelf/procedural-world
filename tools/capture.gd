@@ -474,7 +474,7 @@ func _run() -> void:
 			if flat and h > Water.LEVEL + 2.0 and h > g.field.height(hill.x, hill.y):
 				hill = q
 	var sky_dir := Vector2(2, 1).normalized()
-	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.62))
+	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.38))
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
@@ -1200,7 +1200,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:
 	var names := {"sword_stone": "53_egg_sword", "gnome_ring": "54_egg_gnome", "msg_bottle": "55_egg_bottle", "lost_camp": "56_egg_camp", "tiny_door": "57_egg_door"}
-	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [1.4, -0.72, 0.05], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
+	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [1.4, -0.72, -1.58], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
 	var best := {}
 	for r in 12:
 		for wz in range(-r, r + 1):
@@ -1223,7 +1223,8 @@ func _egg_shots(g: ChunkGenerator) -> void:
 			# From in front (+z of the find, turned by its yaw), a little to one side.
 			# (The sword is seen from low down, against the sky rather than the trees behind.
 			# Heights are the player's feet; the eye is 1.63 m above them, so the bottle's
-			# negative height crouches the eye to under a metre over the sand.)
+			# negative height crouches the eye to under a metre over the sand. The aim is
+			# taken from the feet too, hence its low target: 30 degrees down onto the bottle.)
 			var front := Vector2(sin(o["r"] + 0.35), cos(o["r"] + 0.35))
 			await _shot(names[t], at + front * float(v[0]), at, 0.4, float(v[1]), float(o["p"].y) + float(v[2]))
 			print("egg ", t, " at ", at)
