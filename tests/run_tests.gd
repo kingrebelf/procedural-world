@@ -3672,6 +3672,13 @@ func test_town_life() -> void:
 			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
 				standing += 1
 	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# The market square: paved, a well or cross near the middle, stalls round it.
+	check(not (pl["square"] as Dictionary).is_empty(), "the town has a market square")
+	var sq_kinds := {}
+	for e in pl["pieces"]:
+		sq_kinds[e["k"]] = int(sq_kinds.get(e["k"], 0)) + 1
+	check(sq_kinds.has("well") or sq_kinds.has("cross"), "a well or market cross on the square")
+	check(int(sq_kinds.get("stall", 0)) >= 2, "stalls round the square (%d)" % int(sq_kinds.get("stall", 0)))
 	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
 	# their own, and every build shares the plain wall's ground plan.
 	var fw := ObjectLibrary.footprint({"t": "castle_wall"})

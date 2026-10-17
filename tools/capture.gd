@@ -481,7 +481,7 @@ func _run() -> void:
 		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
 	# Village life up close (TownLife): a house's yard at eye height, and a field's edge.
 	var lt := _find_settlement(g, Eras.MEDIEVAL, 1) if g.towns else {}
-	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91")):
+	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91") or only.has("92")):
 		var pl := TownLife.plan(g, lt)
 		var yard := {}
 		var best := -1
@@ -518,6 +518,12 @@ func _run() -> void:
 			var fy: float = fd["yaw"]
 			await _shot("91_village_fields", TownLife.frame_to_world(fp, fy, Vector2(-float(fd["hx"]) - 3.0, -float(fd["hz"]) - 3.0)),
 				TownLife.frame_to_world(fp, fy, Vector2(float(fd["hx"]) * 0.5, float(fd["hz"]))), 0.6, 2.0)
+		# The market square from its edge at eye height: setts, the well, stalls.
+		var sqd: Dictionary = pl["square"]
+		if not sqd.is_empty():
+			var sc: Vector2 = sqd["c"]
+			var from := sc + Vector2(0.8, 0.6).normalized() * (float(sqd["rad"]) - 1.0)
+			await _shot("92_market_square", from, sc, 0.42)
 	# Midnight on the highest ground near spawn, looking well up: the stars and the Milky
 	# Way over a strip of skyline (from low ground a hill and a boulder filled half of it).
 	var hill := Vector2(8, 8)

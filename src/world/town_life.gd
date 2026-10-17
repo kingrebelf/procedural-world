@@ -128,7 +128,7 @@ static func _rect_pts(p: Vector2, yaw: float, hx: float, hz: float, n := 2) -> A
 # --- The plan ----------------------------------------------------------------------------
 
 static func _make(gen: ChunkGenerator, s: Dictionary) -> Dictionary:
-	var out := {"houses": [], "paths": [], "soil": [], "fields": [], "orchards": [], "pieces": [], "lamps": [], "smoke": []}
+	var out := {"houses": [], "paths": [], "soil": [], "fields": [], "orchards": [], "pieces": [], "lamps": [], "smoke": [], "square": {}}
 	if not applies(gen, s):
 		return out
 	var c: Vector2 = s["center"]
@@ -165,8 +165,94 @@ static func _make(gen: ChunkGenerator, s: Dictionary) -> Dictionary:
 	for h in houses:
 		_yard(ctx, h, r, out)
 	_lamps(ctx, layout, r, out)
+	_square(ctx, layout, s, r, out)
 	_farms(gen, ctx, s, r, out)
 	return out
+
+## Stall layouts on the market square: [model, yaw (degrees), offset, scale], in the
+## stall's frame (counter toward +z, the square's middle). The counter top is 0.95 m up.
+const STALLS := {
+	"produce": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/FarmCrate_Carrot", 0, Vector3(-0.5, 0.95, 0.1), 1.2],
+		["props/FarmCrate_Apple", 8, Vector3(0.45, 0.95, 0.05), 1.2], ["props/Bag", 20, Vector3(1.55, 0, 0.35), 1.0],
+		["props/FarmCrate_Empty", -10, Vector3(-1.6, 0, -0.2), 1.0]],
+	"pots": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/Vase_2", 0, Vector3(-0.6, 0.95, 0.05), 1.0],
+		["props/Pot_1", 30, Vector3(-0.05, 0.95, 0.1), 1.0], ["props/Vase_4", 0, Vector3(0.55, 0.95, 0.0), 1.0],
+		["props/Vase_2", 0, Vector3(1.5, 0, 0.3), 1.2], ["props/Pot_1", 0, Vector3(-1.5, 0, 0.25), 1.2]],
+	"stores": [["props/Stall_Empty", 0, Vector3.ZERO, 1.2], ["props/FarmCrate_Carrot", 5, Vector3(-0.55, 0.95, 0.05), 1.0],
+		["props/Pouch_Large", 40, Vector3(0.0, 0.95, 0.12), 1.0], ["props/Bottle_1", 0, Vector3(0.4, 0.95, 0.1), 1.0],
+		["props/Mug", 0, Vector3(0.6, 0.95, -0.05), 1.0], ["props/Barrel", 0, Vector3(1.55, 0, 0.0), 1.0],
+		["props/Bag", -30, Vector3(-1.5, 0, 0.3), 1.0]],
+	"cart": [["props/Stall_Cart_Empty", 0, Vector3(0.6, 0, 0), 1.0], ["props/FarmCrate_Carrot", 0, Vector3(-0.2, 0.8, 0), 1.0],
+		["props/FarmCrate_Apple", -8, Vector3(0.65, 0.8, 0.05), 1.0]],
+}
+
+## The market square: setts laid over the square and the streets inside the town, a well
+## (or, in a big town, a market cross) near the middle, more stalls and a cart or two
+## round the edge, with crates and sacks stacked behind them.
+static func _square(ctx: Dictionary, layout: Array, s: Dictionary, r: RandomNumberGenerator, out: Dictionary) -> void:
+	var c: Vector2 = ctx["c"]
+	var size := int(s["size"])
+	var sq := float(ctx["square"])
+	var rad := sq + 4.5
+	out["square"] = {"c": c, "rad": rad, "streets": float(ctx["inner"]) - 2.0, "seed": r.randi()}
+	var keep: float = ctx["square"]
+	ctx["square"] = 0.0
+	# The well or cross: as near the middle as it fits (roads may run through the middle;
+	# it stands in the open among them).
+	var mid := Vector2.INF
+	for d in [0.0, 2.5, 4.0, 5.5]:
+		for k in 8:
+			var q: Vector2 = c + Vector2.from_angle(TAU * k / 8.0 + 0.3) * d
+			var ok := true
+			for o: Array in ctx["obs"]:
+				var he: Vector2 = o[3]
+				var lq := world_to_frame(o[1], float(o[2]), q)
+				if (he.y < 0.0 and lq.length() < he.x + 1.6) or (he.y >= 0.0 and absf(lq.x) < he.x + 1.6 and absf(lq.y) < he.y + 1.6):
+					ok = false
+					break
+			if ok:
+				mid = q
+				break
+			if d == 0.0:
+				break
+		if mid != Vector2.INF:
+			break
+	if mid != Vector2.INF:
+		out["pieces"].append({"k": "cross" if size >= 2 else "well", "p": mid, "yaw": r.randf() * TAU, "house": -1, "seed": r.randi()})
+		_take(ctx, [mid], 2.2)
+	# Stalls round the square, facing in, between the roads.
+	var kinds := ["produce", "pots", "stores", "produce", "cart"]
+	var want := 3 + size * 2
+	var a0 := r.randf() * TAU
+	var tries := want * 4
+	var placed := 0
+	for i in tries:
+		if placed >= want:
+			break
+		var a := a0 + TAU * (i * 0.618034)
+		var q := c + Vector2.from_angle(a) * r.randf_range(sq * 0.55, rad - 1.6)
+		if not _free(ctx, q, 1.8, -1, false):
+			continue
+		var kind: String = kinds[r.randi() % kinds.size()]
+		var yaw := atan2(c.x - q.x, c.y - q.y)
+		out["pieces"].append({"k": "stall", "kind": kind, "p": q, "yaw": yaw, "house": -1, "seed": r.randi()})
+		_take(ctx, [q], 2.0)
+		placed += 1
+		# Stock stacked behind it.
+		var back := frame_to_world(q, yaw, Vector2(r.randf_range(-1.2, 1.2), -1.7))
+		if _free(ctx, back, 0.7, -1, false):
+			out["pieces"].append({"k": "goods", "p": back, "yaw": yaw + r.randf_range(-0.5, 0.5), "house": -1, "seed": r.randi()})
+			_take(ctx, [back], 0.8)
+	# A wagon or two standing at the edge.
+	for i in 1 + size:
+		var a := r.randf() * TAU
+		var q := c + Vector2.from_angle(a) * (rad - 1.0)
+		var yaw := a + PI * 0.5 + r.randf_range(-0.3, 0.3)
+		var pts := [q, frame_to_world(q, yaw, Vector2(0, 1.7)), frame_to_world(q, yaw, Vector2(0, -1.7))]
+		if _all_free(ctx, pts, 1.1, -1, false):
+			out["pieces"].append({"k": "cart", "p": q, "yaw": yaw, "house": -1, "hay": r.randf() < 0.4, "seed": r.randi()})
+			_take(ctx, pts, 1.2)
+	ctx["square"] = keep
 
 ## Paths worn from each door toward the square (stopping where they meet a road), and
 ## between some neighbours' doors.
@@ -780,6 +866,9 @@ func setup(g: ChunkGenerator, s: Node, st: Dictionary) -> void:
 			_pending.append({"pieces": by[k], "house": -1})
 	for l in pl["lamps"]:
 		_pending.append({"pieces": [{"k": "torch_post", "p": l["p"], "yaw": l["yaw"]}], "house": -1})
+	if not (pl["square"] as Dictionary).is_empty():
+		var sqd: Dictionary = pl["square"]
+		_pending.append({"pieces": [{"k": "paving", "p": sqd["c"], "rad": sqd["rad"], "streets": sqd["streets"], "seed": sqd["seed"]}], "house": -1})
 
 static func _chunk_of(p: Vector3) -> Vector2i:
 	return Vector2i(int(floor(p.x / ChunkGenerator.SIZE)), int(floor(p.z / ChunkGenerator.SIZE)))
@@ -876,6 +965,13 @@ func _spots(e: Dictionary) -> Array:
 			return [e["a"], e["b"]]
 		"smoke", "lantern":
 			return []
+		"paving":
+			# Its middle and round its edge: what's paved waits for the ground under it.
+			var out: Array = [e["p"]]
+			for k in 8:
+				out.append((e["p"] as Vector2) + Vector2.from_angle(TAU * k / 8.0) * float(e["rad"]))
+				out.append((e["p"] as Vector2) + Vector2.from_angle(TAU * (k + 0.5) / 8.0) * float(e["streets"]))
+			return out
 	return [e["p"]]
 
 ## Builds a group of pieces into one mesh (with its colliders, flames and smoke).
@@ -914,6 +1010,11 @@ func _build(pieces: Array, base: float) -> void:
 					_fence(models, e["a"], e["b"], o2, oy, body)
 			"scarecrow": _scarecrow(k, xf, r)
 			"stook": _stook(k, xf, r)
+			"stall": _stall(models, xf, String(e["kind"]), body)
+			"goods": _goods(models, xf, r, body)
+			"well": _well(root, xf, body)
+			"cross": _cross(k, xf, r, body)
+			"paving": _paving(root, e, o2, oy)
 			"plinth": _plinth(k, xf, float(e["w"]), float(e["d"]), float(e["door"]), r, body)
 			"tree": _tree(root, e, at)
 			"torch_post": _torch_post(k, models, root, xf, body)
@@ -1131,6 +1232,154 @@ static func _haystack(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator, bod
 	cs.shape = cy
 	cs.transform = xf * I.translated(Vector3(0, cy.height * 0.5, 0))
 	body.add_child(cs)
+
+## A market stall from STALLS, set out with its wares.
+static func _stall(models: Array, xf: Transform3D, kind: String, body: StaticBody3D) -> void:
+	var yd := rad_to_deg(xf.basis.get_euler().y)
+	for m: Array in STALLS[kind]:
+		models.append([m[0], yd + float(m[1]), xf * (m[2] as Vector3), m[3]])
+	var sz: Vector3 = ObjectLibrary.TOWN_PROP_SIZE["fruit_cart" if kind == "cart" else "market_stall"]
+	_box_shape(body, xf * Transform3D.IDENTITY.translated(Vector3(0, sz.y * 0.5, 0)), sz)
+
+## Stock waiting behind a stall: crates, a barrel, sacks.
+static func _goods(models: Array, xf: Transform3D, r: RandomNumberGenerator, body: StaticBody3D) -> void:
+	var yd := rad_to_deg(xf.basis.get_euler().y)
+	var pool := ["props/Crate_Wooden", "props/Crate_Wooden", "props/Barrel", "props/Bag", "props/FarmCrate_Empty", "props/Bag"]
+	var x := -0.7
+	for i in 3 + r.randi() % 2:
+		models.append([pool[r.randi() % pool.size()], yd + r.randf_range(-25, 25), xf * Vector3(x, 0, r.randf_range(-0.2, 0.2)), r.randf_range(0.9, 1.05)])
+		x += r.randf_range(0.55, 0.75)
+	_box_shape(body, xf * Transform3D.IDENTITY.translated(Vector3(0, 0.4, 0)), Vector3(2.2, 0.8, 0.8))
+
+## The village well (the world's own well model).
+func _well(root: Node3D, xf: Transform3D, body: StaticBody3D) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = ObjectLibrary.get_mesh("well")
+	mi.transform = xf * Transform3D.IDENTITY.translated(Vector3(0, -0.1, 0))
+	mi.visibility_range_end = PROP_RANGE
+	root.add_child(mi)
+	var cs := CollisionShape3D.new()
+	var cy := CylinderShape3D.new()
+	cy.radius = 1.15
+	cy.height = 1.0
+	cs.shape = cy
+	cs.transform = xf * Transform3D.IDENTITY.translated(Vector3(0, 0.5, 0))
+	body.add_child(cs)
+
+## A market cross: three octagonal steps, a tall shaft and a stone cross on top.
+static func _cross(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator, body: StaticBody3D) -> void:
+	var I := Transform3D.IDENTITY
+	var tone := Color(0.85, 0.82, 0.76) * r.randf_range(0.9, 1.05)
+	var y := -0.2
+	for st in [[1.7, 0.42], [1.25, 0.34], [0.85, 0.34]]:
+		k.cylinder("stone", xf * I.translated(Vector3(0, y, 0)), st[0], st[0] * 0.97, st[1], 8, true, 0.0, 1, tone * r.randf_range(0.92, 1.04))
+		y += float(st[1])
+	k.box("stone", xf * I.translated(Vector3(0, y + 0.25, 0)), Vector3(0.62, 0.5, 0.62), tone)
+	k.cylinder("stone", xf * I.translated(Vector3(0, y + 0.5, 0)), 0.17, 0.13, 3.0, 8, true, 0.0, 1, tone)
+	var top := y + 3.5
+	k.box("stone", xf * I.translated(Vector3(0, top + 0.2, 0)), Vector3(0.2, 0.75, 0.2), tone)
+	k.box("stone", xf * I.translated(Vector3(0, top + 0.28, 0)), Vector3(0.75, 0.18, 0.2), tone)
+	var cs := CollisionShape3D.new()
+	var cy := CylinderShape3D.new()
+	cy.radius = 1.7
+	cy.height = 1.1
+	cs.shape = cy
+	cs.transform = xf * I.translated(Vector3(0, 0.35, 0))
+	body.add_child(cs)
+	_box_shape(body, xf * I.translated(Vector3(0, y + 2.0, 0)), Vector3(0.4, 4.0, 0.4))
+
+## Setts laid over the market square (a ragged-edged disc) and the streets running
+## through the town inside `streets`, a cobble surface a few centimetres over the ground,
+## each cell a slightly different tone. Ground not loaded yet is left bare.
+func _paving(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
+	var c: Vector2 = e["p"]
+	var rad: float = e["rad"]
+	var streets: float = e["streets"]
+	var seed := int(e["seed"])
+	var pl := plan(gen, site)
+	var roads: Array = []
+	for rd in gen.roads_near(c.x - streets, c.y - streets, c.x + streets, c.y + streets):
+		# Only the stretch inside the town (a road's points run on for hundreds of metres).
+		var near := PackedVector2Array()
+		for q: Vector2 in ChunkGenerator.road_pts(rd):
+			if q.distance_to(c) < streets + 8.0:
+				near.append(q)
+			elif near.size() > 0:
+				near.append(q)
+				roads.append(near)
+				near = PackedVector2Array()
+		if near.size() > 1:
+			roads.append(near)
+	var houses: Array = []
+	for h in pl["houses"]:
+		if (h["p"] as Vector2).distance_to(c) < streets + 8.0:
+			houses.append(h)
+	var ph := float(seed % 628) * 0.01
+	var paved := func(q: Vector2) -> bool:
+		var d := q.distance_to(c)
+		var a := (q - c).angle()
+		if d < rad + 1.1 * sin(a * 3.0 + ph) + 0.6 * sin(a * 7.0 - ph * 2.0):
+			pass
+		elif d < streets:
+			var on := false
+			for pts: PackedVector2Array in roads:
+				if _line_d(q, pts) < ChunkGenerator.ROAD_HALF + 0.15 + 0.35 * sin(q.x * 0.9 + q.y * 1.3):
+					on = true
+					break
+			if not on:
+				return false
+		else:
+			return false
+		for h in houses:
+			if (h["p"] as Vector2).distance_squared_to(q) > 49.0:
+				continue
+			var lq := world_to_frame(h["p"], h["yaw"], q)
+			if absf(lq.x) < float(h["w"]) * 0.5 + 0.3 and absf(lq.y) < float(h["d"]) * 0.5 + 0.3:
+				return false
+		return true
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var cells := [0]
+	var quad := func(q0: Vector2, sz: float, tone: float) -> void:
+		var ys: Array[float] = []
+		for cq: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
+			var y := _ground(q0.x + cq.x * sz, q0.y + cq.y * sz)
+			if is_nan(y):
+				return
+			ys.append(y + 0.035 - oy)
+		var v: Array[Vector3] = [Vector3(q0.x - o2.x, ys[0], q0.y - o2.y), Vector3(q0.x + sz - o2.x, ys[1], q0.y - o2.y),
+			Vector3(q0.x + sz - o2.x, ys[2], q0.y + sz - o2.y), Vector3(q0.x - o2.x, ys[3], q0.y + sz - o2.y)]
+		var nrm := (v[3] - v[0]).cross(v[1] - v[0]).normalized()
+		st.set_color(Color(tone, tone * 0.97, tone * 0.93))
+		st.set_normal(nrm)
+		for idx in [0, 1, 2, 0, 2, 3]:
+			st.set_uv(Vector2(v[idx].x, v[idx].z))
+			st.add_vertex(v[idx])
+		cells[0] += 1
+	# Metre cells, split into quarters along the edge so it doesn't step in whole metres.
+	var n := int(ceil(streets))
+	for j in range(-n, n):
+		for i in range(-n, n):
+			var q0 := c + Vector2(i, j)
+			var tone := 0.72 + 0.14 * fposmod(sin(float(i) * 12.9898 + float(j) * 78.233) * 43758.5453, 1.0)
+			var inside := 0
+			for cq: Vector2 in [Vector2(0.25, 0.25), Vector2(0.75, 0.25), Vector2(0.25, 0.75), Vector2(0.75, 0.75)]:
+				if paved.call(q0 + cq):
+					inside += 1
+			if inside == 4:
+				quad.call(q0, 1.0, tone)
+			elif inside > 0:
+				for cq: Vector2 in [Vector2(0, 0), Vector2(0.5, 0), Vector2(0, 0.5), Vector2(0.5, 0.5)]:
+					if paved.call(q0 + cq + Vector2(0.25, 0.25)):
+						quad.call(q0 + cq, 0.5, tone)
+	if cells[0] == 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = Materials.get_mat("cobble")
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = 400.0
+	root.add_child(mi)
 
 ## A stook: eight sheaves of cut wheat stood up leaning together to dry, ears up.
 static func _stook(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator) -> void:
