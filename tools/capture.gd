@@ -1140,8 +1140,9 @@ func _player_house() -> void:
 			if side == 0 and e % 3 == 1:
 				id = "wall_door_stone" if k == 0 else "wall_window"
 			elif e % 3 != 1 and side < 2:
-				id = "wall_window" if k == 1 or side == 0 else id
-			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor"}))
+				id = "wall_window" if k == 1 else ("wall_window_stone" if side == 0 else id)
+			var near_now := BuildCatalog.built_near(streamer, hit, 4.0)
+			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor", "near": near_now}))
 	# Stairs from the front left cell, climbing toward the back; the upper floor leaves
 	# their two cells open.
 	put.call("stairs_wood", BuildCatalog.snap("stairs_wood", Vector3(cx - 2.0, base.y + 0.02, cz + 2.0), 0.0, 0, base, false, {"hit_mode": "floor"}))
@@ -1170,8 +1171,9 @@ func _player_house() -> void:
 	print("house: built at ", base)
 	var cam := Vector2(cx - 9.0, cz + 12.0)
 	await _shot("59_player_house", cam, Vector2(cx, cz), 0.42, 2.2, base.y + 3.0)
-	var inside := Vector2(cx + 0.8, cz + 2.4)
-	await _shot("60_player_house_inside", inside, Vector2(cx - 2.0, cz - 1.0), 0.45, base.y + 1.6 - float(ground.call(inside.x, inside.y)), base.y + 2.2)
+	# On the ground floor (the player's feet on it), looking across at the stairs.
+	var inside := Vector2(cx + 1.6, cz + 2.4)
+	await _shot("60_player_house_inside", inside, Vector2(cx - 2.0, cz - 1.5), 0.45, base.y + 0.02 - float(ground.call(inside.x, inside.y)), base.y + 1.7)
 
 ## The vehicle bay and stable with a speeder, a rover and a horse in front, then riding.
 func _vehicles() -> void:

@@ -32,6 +32,8 @@ const PIECES := {
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
@@ -361,6 +363,14 @@ static func _tamed(m: Material) -> Material:
 	# white sheet: give them the tinted, reflective glass the rest of the game uses.
 	if m is BaseMaterial3D and m.resource_name == "M_Glass":
 		return Materials.get_mat("glass")
+	# The village kit's plaster normal map is authored for small props: on a whole wall it
+	# reads as cottage cheese. Lime plaster is smooth with only a gentle unevenness.
+	if m is BaseMaterial3D and m.resource_name == "MI_Plaster":
+		if not _tamed_mats.has(m):
+			var p := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+			p.normal_scale = 0.3
+			_tamed_mats[m] = p
+		return _tamed_mats[m]
 	if m is BaseMaterial3D and (m.resource_name.ends_with("_Dark") or m.resource_name.contains("Cables")):
 		# The cabled inset panels are near black: a dark grey that still shows its cables.
 		if not _tamed_mats.has(m):
@@ -567,9 +577,11 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 			var dx := hit.x - cell.x
 			var dz := hit.z - cell.z
 			var flip := PI if turn % 2 else 0.0
-			if absf(dx) > absf(dz):
-				return {"pos": Vector3(cell.x + signf(dx) * g * 0.5, y, cell.z), "yaw": PI * 0.5 + flip}
-			return {"pos": Vector3(cell.x, y, cell.z + signf(dz) * g * 0.5), "yaw": flip}
+			var e := Vector3(signf(dx), 0, 0) if absf(dx) > absf(dz) else Vector3(0, 0, signf(dz))
+			var pos := cell + e * g * 0.5
+			if ctx.has("near"):
+				return {"pos": pos, "yaw": face_out(ctx["near"], pos, e, g, ctx.get("eye")) + flip}
+			return {"pos": pos, "yaw": (PI * 0.5 if e.x != 0.0 else 0.0) + flip}
 	return {"pos": hit, "yaw": 0.0}
 
 ## Where the held piece could go for this aim, best first; the builder takes the first
@@ -620,7 +632,7 @@ static func candidates(id: String, hit: Vector3, look_yaw: float, turn: int, anc
 		out = [first]
 		for dd in _sides(rel, Vector3.ZERO, g):
 			var e: Vector3 = dd
-			out.append({"pos": hp + e * g * 0.5 + up, "yaw": (PI * 0.5 if absf(e.x) > 0.5 else 0.0) + flip})
+			out.append({"pos": hp + e * g * 0.5 + up, "yaw": _yaw_facing(e) + flip})
 	elif mode == "floor" and not ramp and hit_mode == "wall":
 		var mirror: Vector3 = first["pos"]
 		mirror = Vector3(2.0 * hp.x - mirror.x, mirror.y, 2.0 * hp.z - mirror.z)
@@ -647,6 +659,33 @@ static func candidates(id: String, hit: Vector3, look_yaw: float, turn: int, anc
 		for e in scored:
 			out.append(e[1])
 	return out if not out.is_empty() else [first]
+
+## A wall's dressed face (stone, brick, timber framing) is its local +z; the other face
+## is the plain inside. The yaw that turns it to face `out`.
+static func _yaw_facing(out: Vector3) -> float:
+	return atan2(out.x, out.z)
+
+## Which way a wall at `pos` on a cell edge should face, `e` pointing from the cell you
+## aimed at to the edge: away from a floor on one side (the room is inside), and with no
+## floor either side, toward you.
+static func face_out(near: Array, pos: Vector3, e: Vector3, g: float, eye = null) -> float:
+	var here := _floor_at(near, pos - e * g * 0.5)
+	var there := _floor_at(near, pos + e * g * 0.5)
+	if here != there:
+		return _yaw_facing(e if here else -e)
+	if eye != null:
+		var to_eye := Vector3((eye as Vector3).x - pos.x, 0, (eye as Vector3).z - pos.z)
+		return _yaw_facing(e if to_eye.dot(e) >= 0.0 else -e)
+	return _yaw_facing(e)
+
+## True when a floor (or foundation, or platform) has its middle at this cell centre, on
+## this level or below (an upper storey's walls go up before its floor does).
+static func _floor_at(near: Array, c: Vector3) -> bool:
+	for f in near:
+		var p: Vector3 = f["pos"]
+		if slot(f["id"]) == "floor" and absf(p.x - c.x) < 0.3 and absf(p.z - c.z) < 0.3 and p.y < c.y + 0.6:
+			return true
+	return false
 
 ## The four sides of a cell (unit vectors), the one `rel` (the aim, from the cell's
 ## middle) points at first; ties go to the side you face.
