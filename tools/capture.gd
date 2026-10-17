@@ -276,7 +276,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if sight > 0.0:
 		_clear_line(streamer, Vector3(at.x, y, at.y), Vector3(look_at.x, tgt_h, look_at.y), sight)
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
-	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
+	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _settle(p)
@@ -462,8 +462,19 @@ func _run() -> void:
 		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
 		# across the houses and their shadows reach toward you.
 		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
-	# Midnight, looking as far up as a player can: the stars and the Milky Way.
-	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
+	# Midnight on the highest ground near spawn, looking well up: the stars and the Milky
+	# Way over a strip of skyline (from low ground a hill and a boulder filled half of it).
+	var hill := Vector2(8, 8)
+	for j in range(-20, 21):
+		for i in range(-20, 21):
+			var q := Vector2(i * 16.0, j * 16.0)
+			var h := g.field.height(q.x, q.y)
+			# Open ground you could stand on, not the tip of a rock tower.
+			var flat := absf(g.field.height(q.x + 4.0, q.y) - h) < 1.5 and absf(g.field.height(q.x, q.y + 4.0) - h) < 1.5
+			if flat and h > Water.LEVEL + 2.0 and h > g.field.height(hill.x, hill.y):
+				hill = q
+	var sky_dir := Vector2(2, 1).normalized()
+	await _shot("39_night_sky", hill, hill + sky_dir * 200.0, 0.0, 1.7, g.field.height(hill.x, hill.y) + 1.7 + 200.0 * tan(0.62))
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
 		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
@@ -1189,7 +1200,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:
 	var names := {"sword_stone": "53_egg_sword", "gnome_ring": "54_egg_gnome", "msg_bottle": "55_egg_bottle", "lost_camp": "56_egg_camp", "tiny_door": "57_egg_door"}
-	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [0.9, 0.85, -0.3], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
+	var view := {"sword_stone": [3.6, 1.1, 1.9], "gnome_ring": [3.4, 1.5, 0.3], "msg_bottle": [1.4, -0.72, 0.05], "lost_camp": [6.0, 1.9, 0.4], "tiny_door": [2.4, 1.6, -0.2]}
 	var best := {}
 	for r in 12:
 		for wz in range(-r, r + 1):
@@ -1210,7 +1221,9 @@ func _egg_shots(g: ChunkGenerator) -> void:
 			var at := Vector2(k.x * 64.0 + o["p"].x, k.y * 64.0 + o["p"].z)
 			var v: Array = view[t]
 			# From in front (+z of the find, turned by its yaw), a little to one side.
-			# (The sword is seen from low down, against the sky rather than the trees behind.)
+			# (The sword is seen from low down, against the sky rather than the trees behind.
+			# Heights are the player's feet; the eye is 1.63 m above them, so the bottle's
+			# negative height crouches the eye to under a metre over the sand.)
 			var front := Vector2(sin(o["r"] + 0.35), cos(o["r"] + 0.35))
 			await _shot(names[t], at + front * float(v[0]), at, 0.4, float(v[1]), float(o["p"].y) + float(v[2]))
 			print("egg ", t, " at ", at)
