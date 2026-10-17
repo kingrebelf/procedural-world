@@ -709,20 +709,30 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 ## foliage batching can be compared before and after.
 func _forest_shots(g: ChunkGenerator) -> void:
 	var sp3 := Planets.spawn_point(Game.seed, Game.store.has_rivers())
-	var best := Vector2(sp3.x, sp3.z)
-	var most := -1
-	for dz in range(-5, 6):
-		for dx in range(-5, 6):
-			var cx := int(floor(sp3.x / 64.0)) + dx
-			var cz := int(floor(sp3.z / 64.0)) + dz
-			var ch := g.generate(cx, cz)
+	# Coarse pass every third chunk out to ~1 km (any seed has woods somewhere in that), then
+	# the chunks around the best one.
+	var c0 := Vector2i(int(floor(sp3.x / 64.0)), int(floor(sp3.z / 64.0)))
+	var counts := {}
+	var count := func(k: Vector2i) -> int:
+		if not counts.has(k):
 			var n := 0
-			for o in ch["objects"]:
+			for o in g.generate(k.x, k.y)["objects"]:
 				if ObjectLibrary.kind(o["t"]) == "tree":
 					n += 1
-			if n > most:
-				most = n
-				best = Vector2(cx * 64.0 + 32.0, cz * 64.0 + 32.0)
+			counts[k] = n
+		return counts[k]
+	var top := c0
+	for dz in range(-15, 16, 3):
+		for dx in range(-15, 16, 3):
+			if count.call(c0 + Vector2i(dx, dz)) > count.call(top):
+				top = c0 + Vector2i(dx, dz)
+	var around := top
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if count.call(around + Vector2i(dx, dz)) > count.call(top):
+				top = around + Vector2i(dx, dz)
+	var best := Vector2(top.x * 64.0 + 32.0, top.y * 64.0 + 32.0)
+	var most: int = count.call(top)
 	print("forest chunk ", best, " trees ", most)
 	await _shot("44_forest_close", best + Vector2(-14, -10), best + Vector2(20, 18), 0.4, 1.7, NAN, _draw_stats)
 	await _shot("43_forest_overlook", best + Vector2(-90, -70), best, 0.4, 28.0, NAN, _draw_stats)
