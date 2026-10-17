@@ -18,6 +18,9 @@ func _initialize() -> void:
 
 ## Walk up to a fern or flower and pick it with Interact, no tool needed.
 func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
+	# The chest just opened is still showing its loot.
+	player.get_tree().call_group("trade_ui", "close")
+	await _frames(2)
 	var plant := Vector3.INF
 	for k in streamer.chunks:
 		var c: ChunkNode = streamer.chunks[k]
@@ -27,9 +30,9 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 			for i in mmi.multimesh.instance_count:
 				var t: Transform3D = mmi.multimesh.get_instance_transform(i)
 				var at := c.position + t.origin
-				# On open ground, with nothing usable about to take the prompt instead.
-				if t.basis.get_scale().y > 0.5 and plant == Vector3.INF and at.distance_to(player.global_position) < 60.0 \
-						and ChunkGenerator.slope_at(c.data, t.origin.x + 1.5, t.origin.z) < 0.3:
+				# The nearest on gentle ground.
+				if t.basis.get_scale().y > 0.5 and ChunkGenerator.slope_at(c.data, t.origin.x, t.origin.z) < 0.4 \
+						and (plant == Vector3.INF or at.distance_to(player.global_position) < plant.distance_to(player.global_position)):
 					plant = at
 	check(plant != Vector3.INF, "a plant to pick by hand")
 	if plant == Vector3.INF:
@@ -643,7 +646,7 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	check(lit, "the hearth lights the room")
 	var room := false
 	for mmi in hc.get_children():
-		room = room or (mmi is MultiMeshInstance3D and String(mmi.name).ends_with("~in"))
+		room = room or (String(mmi.name).begins_with("Rooms_") and String(mmi.name).ends_with("_in") and mmi.get_child_count() > 0)
 	check(room, "the room is furnished")
 	# The house's chest: walk up to it and open it.
 	var chest := {}
