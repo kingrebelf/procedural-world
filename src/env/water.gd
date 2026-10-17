@@ -77,6 +77,13 @@ func _process(delta: float) -> void:
 			ChunkNode.river_material.set_shader_parameter("ssr_steps", _ssr_steps)
 		_wind = atmosphere.wind_strength
 		_dir = atmosphere.wind_dir
+	_rain_timer -= delta
+	if _rain_timer <= 0.0:
+		_rain_timer = 0.25
+		var r := rain_now()
+		_mat.set_shader_parameter("rain", r)
+		if ChunkNode.river_material:
+			ChunkNode.river_material.set_shader_parameter("rain", r)
 	_depth_timer -= delta
 	if _depth_timer <= 0.0 and streamer != null and _depth_row < 0:
 		_depth_timer = 1.5
@@ -89,15 +96,25 @@ func _process(delta: float) -> void:
 	if _depth_row >= 0 and streamer != null:
 		_update_depth()
 
-## The water sheet: 2 m squares round the middle, so the swell's shorter waves are drawn
-## in the surface itself (not just shaded on it), easing out to 8 m squares across the
-## middle SIZE metres, then squares growing outwards to REACH, so the sea runs on to the
+var _rain_timer := 0.0
+
+## How hard it is raining (0..1): the weather's shared weather_rain_g, when the project
+## has one (the weather system sets it), else dry.
+static func rain_now() -> float:
+	if not ProjectSettings.has_setting("shader_globals/weather_rain_g"):
+		return 0.0
+	var v = RenderingServer.global_shader_parameter_get("weather_rain_g")
+	return clampf(float(v), 0.0, 1.0) if v != null else 0.0
+
+## The water sheet: 1.5 m squares round the middle, so the swell's shorter waves and the
+## boats' wakes are drawn in the surface itself (not just shaded on it), easing out to
+## 8 m squares across the middle SIZE metres, then squares growing outwards to REACH, so the sea runs on to the
 ## horizon under the distant land (FarLand) instead of ending in a square edge.
-const FINE := 120.0 ## metres either side of the middle in 2 m squares
+const FINE := 96.0 ## metres either side of the middle in 1.5 m squares
 static func _sheet() -> ArrayMesh:
 	var half := PackedFloat32Array() # 0 and the lines out from the middle, one side
 	var x := 0.0
-	var step := 2.0
+	var step := 1.5
 	half.append(0.0)
 	while x < SIZE * 0.5:
 		if x >= FINE:

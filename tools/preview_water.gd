@@ -4,7 +4,8 @@ extends SceneTree
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_water.gd -- --out=F.png [--pitch=-20] [--river]
 ##     [--under [--novfog] [--nooverlay]]
 ## Rocks standing in the water and a sandbank give the reflections and shore foam
-## something to show. --murk=M (0 clear sea, 1 silty pond) sets how murky the lake is.
+## something to show. --murk=M (0 clear sea, 1 silty pond) sets how murky the lake is;
+## --wind=W (0..1, default 0.35) the wind and --rain=R (0..1) the rain.
 ## --river uses the river shader instead (flowing diagonally, no edge fade; --rapids
 ## makes it fall steeply). --under puts
 ## the eye 2.5 m under the surface with the game's underwater fog and overlay (either can
@@ -21,6 +22,8 @@ func _run() -> void:
 	var overlay := true
 	var rapids := false
 	var murk := 0.0
+	var rain := 0.0
+	var wind := 0.35
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -38,10 +41,14 @@ func _run() -> void:
 			murk = float(a.substr(7))
 		elif a == "--rapids":
 			rapids = true
+		elif a.begins_with("--rain="):
+			rain = float(a.substr(7))
+		elif a.begins_with("--wind="):
+			wind = float(a.substr(7))
 	get_root().size = Vector2i(1600, 900)
 	RenderingServer.global_shader_parameter_set("sun_dir_g", Vector3(0.4, 0.6, 0.3).normalized())
 	RenderingServer.global_shader_parameter_set("wind_dir", Vector2(1, 0.3))
-	RenderingServer.global_shader_parameter_set("wind_strength", 0.35)
+	RenderingServer.global_shader_parameter_set("wind_strength", wind)
 	var sky_mat := ProceduralSkyMaterial.new()
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
@@ -143,6 +150,7 @@ func _run() -> void:
 	var mimg := Image.create(1, 1, false, Image.FORMAT_RF)
 	mimg.set_pixel(0, 0, Color(murk, 0.0, 0.0))
 	mat.set_shader_parameter("murk_map", ImageTexture.create_from_image(mimg))
+	mat.set_shader_parameter("rain", rain)
 	get_root().add_child(water)
 	var cam := Camera3D.new()
 	cam.fov = 70.0
