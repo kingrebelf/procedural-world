@@ -117,7 +117,7 @@ func _draw_over() -> void:
 					continue
 				var at: Array = _place(wp.x, wp.y)
 				if at[1]:
-					MapCanvas.draw_poi(_over, poi["k"], at[0], 5.0, MapCanvas.POI_COLORS.get(poi["k"], Color.WHITE))
+					MapCanvas.draw_poi(_over, poi, at[0], 6.5)
 	# Wonders: shown once their chunk has loaded near you, pinned to the rim beyond range.
 	for key in Game.map.wonders:
 		var w: Dictionary = Game.map.wonders[key]
@@ -131,8 +131,7 @@ func _draw_over() -> void:
 		var at: Array = _place(mk["x"], mk["z"])
 		var col := Color(0.45, 0.9, 1.0) if mk["kind"] == "teleporter" else Markers.color_of(mk)
 		if at[1]:
-			var q: Vector2 = at[0]
-			_over.draw_colored_polygon(PackedVector2Array([q + Vector2(0, -6), q + Vector2(5, 0), q + Vector2(0, 6), q + Vector2(-5, 0)]), col)
+			MapCanvas.draw_marker(_over, mk, at[0], 7.0)
 		else:
 			_edge_pin(c + (at[2] as Vector2).normalized() * (r - 7.0), col, Vector2(mk["x"], mk["z"]).distance_to(me))
 	# The rim: a dark band, a thin gold line and the compass points turning with you.

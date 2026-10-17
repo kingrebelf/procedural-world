@@ -119,20 +119,13 @@ func _draw_icons() -> void:
 		var p: Vector2 = th[1]
 		match String(th[0]):
 			"wonder":
-				MapCanvas.draw_wonder(_icons, th[3], p, 9.0, _t)
+				MapCanvas.draw_wonder(_icons, th[3], p, 11.0, _t)
 			"marker":
-				var mk: Dictionary = th[3]
-				var c := Color(0.45, 0.9, 1.0) if mk["kind"] == "teleporter" else Markers.color_of(mk)
-				if mk["kind"] == "teleporter":
-					_icons.draw_circle(p, 7.0, Color(0, 0, 0, 0.6))
-					_icons.draw_arc(p, 6.0, 0.0, TAU, 16, c, 2.0)
-				else:
-					_icons.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -9), p + Vector2(6, 0), p + Vector2(0, 9), p + Vector2(-6, 0)]), Color(0, 0, 0, 0.7))
-					_icons.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -8), p + Vector2(5, 0), p + Vector2(0, 8), p + Vector2(-5, 0)]), c)
-				_label(font, p + Vector2(10, 5), th[2], 13, Color(1, 1, 1, 0.9))
+				MapCanvas.draw_marker(_icons, th[3], p, 9.0)
+				_label(font, p + Vector2(12, 5), th[2], 13, Color(1, 1, 1, 0.9))
 			_:
-				var s := 6.0 if th[0] != "town" else 5.0 + float(th[3].get("size", 0)) * 1.5
-				MapCanvas.draw_poi(_icons, th[0], p, s, MapCanvas.POI_COLORS.get(th[0], Color.WHITE))
+				var s := 8.0 if th[0] != "town" else 8.0 + float(th[3].get("size", 0)) * 2.0
+				MapCanvas.draw_poi(_icons, th[3], p, s)
 				if th[0] == "town" and _ppm > 0.1:
 					_label(font, p + Vector2(10, 5), th[2], 13 + int(th[3].get("size", 0)), Color(1, 0.96, 0.86, 0.95))
 		if p.distance_to(_hover) < nd:
@@ -142,7 +135,7 @@ func _draw_icons() -> void:
 	var at := _canvas.to_local_px(me.x, me.y)
 	if player and is_instance_valid(player):
 		var f := -player.global_transform.basis.z
-		MapCanvas.draw_player(_icons, at, Vector2(f.x, f.z), 10.0)
+		MapCanvas.draw_player(_icons, at, Vector2(f.x, f.z), 11.0)
 	# Hover: what it is and how far.
 	if not near.is_empty():
 		var wp := _canvas.to_world(near[1])
