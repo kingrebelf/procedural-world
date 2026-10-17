@@ -72,7 +72,7 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var r := WHash.rng(seed, cx, cz, 701)
 	if r.randf() > HERD_CHANCE:
 		return out
-	var era: int = chunk.get("era", 0)
+	var era: int = Eras.nature(chunk.get("era", 0)) # real animals in a human world's outposts too
 	var bh: int = chunk.get("biome", field.region_hash_at(cx * 64.0 + 32.0, cz * 64.0 + 32.0))
 	var bp := Biome.params(bh, era)
 	var fauna: Array = bp.get("fauna", [])

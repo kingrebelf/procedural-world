@@ -130,7 +130,7 @@ func _show_planet() -> void:
 	_rim_mat.set_shader_parameter("air", k["air"])
 	for c in _others.get_children():
 		c.queue_free()
-	for p in Planets.system(Game.home_seed):
+	for p in Game.worlds():
 		if p["n"] == Game.planet:
 			continue
 		var m := MeshInstance3D.new()
@@ -149,7 +149,7 @@ func _show_planet() -> void:
 		m.position = Vector3(cos(a) * 520.0, 60.0 + sin(a * 1.7) * 90.0, -300.0 - absf(sin(a)) * 600.0)
 		_others.add_child(m)
 		var l := Label3D.new()
-		l.text = "%s\n%s" % [p["name"], Planets.kind_of(p)["label"]]
+		l.text = "%s\n%s" % [p["name"], Planets.theme_label(p)]
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.no_depth_test = true
 		l.pixel_size = 0.03 * maxf(1.0, m.position.length() / 400.0)
@@ -158,16 +158,16 @@ func _show_planet() -> void:
 		l.outline_size = 8
 		_others.add_child(l)
 	_title.text = here["name"]
-	_sub.text = "In orbit  ·  %s" % k["label"]
+	_sub.text = "In orbit  ·  %s" % Planets.theme_label(here)
 	for c in _panel.get_children():
 		c.queue_free()
 	_panel.add_child(UITheme.button("Land on %s" % here["name"], _land))
 	_panel.add_child(UITheme.label("Warp to", 16, UITheme.ACCENT))
-	for p in Planets.system(Game.home_seed):
+	for p in Game.worlds():
 		if p["n"] == Game.planet:
 			continue
 		var n: int = p["n"]
-		_panel.add_child(UITheme.button("%s  ·  %s" % [p["name"], Planets.kind_of(p)["label"]], func(): _warp(n)))
+		_panel.add_child(UITheme.button("%s  ·  %s%s" % [p["name"], Planets.theme_label(p), ("  ·  level %d+" % int(p["base"])) if p.get("theme", "") != "" else ""], func(): _warp(n)))
 	_panel.add_child(HSeparator.new())
 	_panel.add_child(UITheme.button("Save and quit to title", _quit))
 	UITheme.focus_first(_panel)

@@ -49,7 +49,18 @@ static func guard_species(era: int, tier: int) -> Dictionary:
 	p["name"] = GUARD_RANKS[clampi(tier - 1, 0, GUARD_RANKS.size() - 1)] + GUARD_NAMES[era]
 	p["temper"] = "aggressive"
 	p["herd"] = 1
-	if era == Eras.SCIFI:
+	if era == Eras.SCIFI and Eras.theme == "human":
+		# Human outposts keep armoured patrol dogs, not alien crawlers.
+		p["name"] = GUARD_RANKS[clampi(tier - 1, 0, GUARD_RANKS.size() - 1)] + "Patrol Hound"
+		p["plan"] = "quad"
+		p["kit"] = "Husky"
+		p["kit_scale"] = 1.1 + 0.08 * tier
+		p["size"] = AnimalModel.HEIGHT["Husky"] / 1.2 * float(p["kit_scale"])
+		p["col"] = Color(0.3, 0.3, 0.32)
+		p["col2"] = Color(0.45, 0.45, 0.48)
+		p["has_glow"] = false
+		p["drops"] = [["hide", 1 + tier], ["circuitry", tier]]
+	elif era == Eras.SCIFI:
 		p["plan"] = "hexa"
 		p["kit"] = "Alien_Scolitex"
 		p["kit_scale"] = 1.0 + 0.12 * tier
@@ -208,10 +219,24 @@ func setup(_id: String, _sp: int, _era: int, at: Vector3, m: Node) -> void:
 	sp = _sp
 	era = _era
 	p = species(sp, era)
+	if sp > -100: # wild animals and guards
+		_zone_scale(at)
 	home = at
 	manager = m
 	hp = p["hp"]
 	name = "Creature_" + id
+
+## Wild animals and guards grow tougher with the zone level of where they live (themed
+## worlds): about +12% health and +4% bite per level, so a level 40 zone's wolves are
+## level 40-ish beasts. Livestock and wonder bosses stay as they are.
+func _zone_scale(at: Vector3) -> void:
+	var zl := Eras.zone_level(at.x, at.z)
+	if zl <= 1:
+		return
+	p = p.duplicate()
+	p["hp"] = float(p["hp"]) * (1.0 + 0.12 * (zl - 1))
+	p["bite_mult"] = float(p.get("bite_mult", 1.0)) * (1.0 + 0.04 * (zl - 1))
+	p["zone"] = zl
 
 func _ready() -> void:
 	_build()
@@ -249,6 +274,9 @@ static func level_of(sp_p: Dictionary) -> int:
 	lv += float(sp_p.get("guard", 0)) * 4.0
 	if sp_p.has("boss"):
 		return 60
+	if sp_p.has("zone"):
+		# Its health was scaled up for the zone; rate it by the zone instead.
+		lv = float(sp_p["zone"]) + (2.0 if sp_p["temper"] == "aggressive" else 0.0) + float(sp_p.get("guard", 0)) * 2.0
 	return clampi(int(round(lv)), 1, 60)
 
 func bite_damage() -> float:

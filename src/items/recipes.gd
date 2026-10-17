@@ -136,6 +136,16 @@ const LIST := [
 const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
 	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable", "launch_pad": "Launch Pad"}
 
+## Player level that unlocks making (and placing) a thing (ItemDB.unlock_level).
+const SHIP_LEVEL := ItemDB.SHIP_LEVEL
+
+static func unlock_level(out: String) -> int:
+	return ItemDB.unlock_level(out)
+
+## True when the player's level has unlocked the recipe.
+static func level_ok(recipe: Dictionary, level: int) -> bool:
+	return level >= unlock_level(recipe["out"])
+
 ## True when the recipe needs no station or one is in `stations` (BuildCatalog.stations_near).
 static func station_ok(recipe: Dictionary, stations: Dictionary) -> bool:
 	return not recipe.has("at") or stations.has(recipe["at"])

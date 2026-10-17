@@ -456,7 +456,7 @@ func _space() -> void:
 	await _wait(settle_frames)
 	await _snap("13_orbit")
 	var fey := 1
-	for pl in Planets.system(Game.home_seed):
+	for pl in Game.worlds():
 		if pl["kind"] == "fey":
 			fey = pl["n"]
 	# Slow time so the streaks are mid-flight when the (slow) software renderer shoots.

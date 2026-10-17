@@ -102,6 +102,34 @@ const ITEMS := {
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
 }
 
+## Player level that unlocks making (and placing) a thing, on themed worlds: the starting
+## era's basics from level 1, its sturdier work over the first levels, and anything of
+## the advanced era from Eras.UNLOCK_LEVEL, its best pieces later still (a starship at
+## 35). Older worlds lock nothing.
+const SHIP_LEVEL := 35
+const UNLOCK := {
+	# Medieval building and stations.
+	"wall_stone": 3, "roof_small": 2, "roof_large": 4, "stairs_wood": 2, "foundation": 2,
+	"forge": 3, "anvil": 5, "stable": 6, "storage_chest": 2, "bed": 2, "lantern": 2,
+	"metal_crate": 3, "cage": 4, "weapon_stand": 4, "market_stall": 5, "cart": 5, "horse": 7,
+	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
+	# Gunpowder is the first step out of the medieval age.
+	"scrap_pistol": 10, "rounds": 10,
+	# Advanced gear: tech, vehicles, teleporters and starships.
+	"fabricator": 10, "flashlight": 10, "pulse_pistol": 10, "pulse_smg": 12, "pulse_rifle": 14,
+	"rail_rifle": 18, "arc_launcher": 22, "pickaxe_plasma": 12, "crossbow_runic": 12,
+	"helm_visor": 11, "exo_chest": 13, "exo_legs": 12, "mag_boots": 11, "gauntlets_power": 11,
+	"shield_emitter": 14, "vehicle_bay": 14, "speeder": 15, "rover": 15, "teleporter": 18,
+	"storage_crate": 11, "launch_pad": 30, "ship": SHIP_LEVEL,
+}
+static func unlock_level(out: String) -> int:
+	if not Eras.themed():
+		return 1
+	var lv: int = UNLOCK.get(out, 1)
+	if Eras.tier(int(def(out).get("era", ANY))) > 0:
+		lv = maxi(lv, Eras.UNLOCK_LEVEL)
+	return lv
+
 ## Gear that turns up in caches and dungeons, per era.
 const GEAR_LOOT := [["sword_iron", "axe_iron", "crossbow", "scrap_pistol", "helm_iron", "mail_iron", "greaves_iron", "boots_leather",
 		"gloves_leather", "shield_wood", "battle_axe", "war_hammer", "mace", "spear", "dagger", "longbow"],
@@ -211,6 +239,11 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		[["alloy_scrap", 2, 6], ["circuitry", 1, 4], ["power_cell", 1, 2], ["ration_pack", 1, 3], ["data_core", 1, 1]],
 	]
 	var rare_tools := [["sword_iron", "axe_iron"], ["sword_runic", "pickaxe_mythril"], ["pulse_pistol", "pickaxe_plasma"]]
+	# Out in higher zones (themed worlds) the gear is better and the purses fuller.
+	var zl := 0.0
+	if origin.get("chunk") is Vector2i:
+		var ck: Vector2i = origin["chunk"]
+		zl = Eras.zone_luck(ck.x * 64.0 + 32.0, ck.y * 64.0 + 32.0)
 	var n := rng.randi_range(2, 4)
 	var pool: Array = pools[era]
 	for i in n:
@@ -219,13 +252,16 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			idx = 0
 		var e: Array = pool[idx]
 		loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
-	if rng.randf() < 0.12 + luck * 0.7:
+	if rng.randf() < 0.12 + (luck + zl) * 0.7:
 		var t: Array = rare_tools[era] + GEAR_LOOT[era]
-		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, luck))
+		if Eras.themed() and zl * 160.0 + 1.0 < Eras.UNLOCK_LEVEL:
+			# The first zones only hold their own era's blades and bows.
+			t = t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
+		loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
 	if luck > 0.0:
 		var extra: Array = DUNGEON_LOOT[era]
 		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
 			var t: String = extra[rng.randi() % extra.size()]
 			loot.append(make(t, rng.randi_range(1, 3) if t != "arrow" else rng.randi_range(8, 20), rng.randf_range(0.9, 1.2), origin))
-	loot.append({"type": "_marks", "qty": int(rng.randi_range(5, 40) * (1.0 + luck * 4.0))})
+	loot.append({"type": "_marks", "qty": int(rng.randi_range(5, 40) * (1.0 + (luck + zl) * 4.0))})
 	return loot

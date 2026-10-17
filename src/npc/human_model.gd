@@ -300,7 +300,8 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 				hem = maxf(hem, 0.3)
 			accent = Color(0.4, 1.0, 0.7, 0.0)
 		Eras.SCIFI:
-			accent = Color(0.3, 0.9, 1.0, 1.0)
+			# Glowing seams are alien fashion; human outposts wear plain work clothes.
+			accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
 			cloth2 = cloth.darkened(0.25)
 	_body.set_instance_shader_parameter("skin_col", b["skin"])
 	_body.set_instance_shader_parameter("shirt_col", cloth)

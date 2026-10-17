@@ -11,6 +11,8 @@ static var _lock := Mutex.new()
 
 ## h: region hash (WorldField.region_hash_at). Returns an immutable parameter dict.
 static func params(h: int, era: int) -> Dictionary:
+	# Human worlds grow natural plants in their sci-fi regions too (Eras.nature).
+	era = Eras.nature(era)
 	var key := (h & 0xFFFFFFF) * 4 + era
 	_lock.lock()
 	var p = _cache.get(key)
@@ -71,6 +73,8 @@ static func _roll(h: int, era: int) -> Dictionary:
 ## fantasy regions glow, a few sci-fi ones, no medieval ones. (Its own hash, so the rest
 ## of a region's roll is unchanged.)
 static func _lumen(h: int, era: int) -> float:
+	if Eras.theme == "human":
+		return 0.0 # nothing glows on a human world
 	var u := WHash.unit2(h & 0xFFFFFFF, era, 0, 77)
 	var chance: float = [0.0, 0.33, 0.1][era]
 	if u >= chance:

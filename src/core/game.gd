@@ -74,7 +74,7 @@ func new_world(name: String, seed_text: String) -> void:
 		sd = s.to_int()
 	else:
 		sd = WHash.str_hash(s)
-	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd)
+	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human")
 	_begin(true)
 
 func load_world(id: String) -> bool:
@@ -192,6 +192,29 @@ func owns_at(at: Vector3) -> bool:
 			return true
 	return false
 
+## Steps through the world portal at `from` (on this world) to world `n`: you come out
+## beside a portal there (WorldPortal.arrival), and the portal you used is where you
+## come back out on this world.
+func travel_portal(who: Node3D, n: int, from: Vector2) -> void:
+	if n == planet or store == null:
+		return
+	landings[planet] = from
+	var st: Dictionary = who.get_state() if who != null and who.has_method("get_state") else {}
+	if who != null:
+		who.set_physics_process(false)
+	player = null
+	set_planet(n)
+	var g := ChunkGenerator.new(seed, store.has_rivers())
+	var at := WorldPortal.arrival(g, landings.get(n))
+	st["pos"] = at if at != Vector3.INF else Planets.spawn_point(seed, store.has_rivers())
+	st["drop"] = true
+	st["riding"] = -1
+	pending_player_state = st
+	save_player()
+	var info := planet_info()
+	toast.emit("You step out on %s, %s" % [info["name"], Planets.theme_label(info).to_lower()])
+	get_tree().change_scene_to_file.call_deferred("res://src/world/world.tscn")
+
 ## Something saved with the player changed (markers, for one).
 func touch_player() -> void:
 	_player_dirty = true
@@ -201,13 +224,21 @@ func _enter_planet(n: int) -> void:
 	store.set_planet(planet)
 	seed = Planets.seed_of(home_seed, planet)
 	WorldField.terrain_v = store.terrain_version()
-	Planets.apply(Planets.get_planet(home_seed, planet))
+	Planets.apply(planet_info())
 	discovery = store.load_discovery()
 	map.open(store, discovery["visited"])
 	_current_region = ""
 
 func planet_info() -> Dictionary:
-	return Planets.get_planet(home_seed, planet)
+	return Planets.get_planet(home_seed, planet, world_theme())
+
+## Every world linked to this one (Planets.system), home first.
+func worlds() -> Array:
+	return Planets.system(home_seed, world_theme())
+
+## "human" for worlds made since world themes exist; "" for older, mixed worlds.
+func world_theme() -> String:
+	return String(store.meta.get("theme", "")) if store != null else ""
 
 func save_all() -> void:
 	if store == null:
