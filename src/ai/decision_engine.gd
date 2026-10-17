@@ -7,7 +7,8 @@ class_name DecisionEngine
 ## The same action vocabulary is used by the LLM (dialogue and background goals) and by
 ## the external decision service, so every source of "what to do next" is interchangeable.
 
-const ACTIONS := ["idle", "wander", "work", "socialize", "go_home", "sleep", "greet", "follow", "flee", "confront", "attack", "trade"]
+const ACTIONS := ["idle", "wander", "work", "socialize", "go_home", "sleep", "greet", "follow", "flee", "confront", "attack", "trade",
+	"dance", "sit", "gift"]
 
 ## per (perception):
 ##   hour: float 0..24, pos: Vector2, center: Vector2, noise: float 0..1,
@@ -37,6 +38,24 @@ static func decide(npc: Dictionary, per: Dictionary) -> Dictionary:
 	# Guards walk their rounds rather than standing at one spot all day.
 	if guard and workday:
 		s["wander"] += 0.25
+	# Evenings: the sociable dance in the square (every seventh day is a festival), the
+	# weary and the old sit down for a while.
+	var mood: String = npc.get("mood", "calm")
+	var festive := int(per.get("day", 1)) % 7 == 0
+	var dance := 0.1 + float(t["friendly"]) * 0.35 + float(t["curious"]) * 0.25 - float(t["diligent"]) * 0.2 + (0.2 if mood == "happy" else 0.0)
+	if hour >= 18.0 and hour < 22.5:
+		s["dance"] = dance * (1.6 if festive else 0.75)
+	elif not night:
+		s["dance"] = dance * 0.12
+	if not night:
+		s["sit"] = (1.0 - energy) * 0.7 + (0.18 if int(npc.get("age", 30)) > 55 else 0.0) + (0.1 if evening else 0.0)
+	if guard:
+		s["dance"] = s.get("dance", 0.0) * 0.3
+		s["sit"] = s.get("sit", 0.0) * 0.5
+	# Someone who is fond of you may bring you a little present, once a day.
+	var rel_i := int(npc.get("rel", 0))
+	if rel_i >= 50 and float(t["friendly"]) > 0.45 and pd < 25.0 and int(npc.get("gift_day", -1)) != int(per.get("day", 1)):
+		s["gift"] = 0.55 + float(t["friendly"]) * 0.45
 
 	# The player.
 	if pd < 7.0 and rel > -0.15 and not npc.get("greeted", false):
@@ -85,8 +104,13 @@ static func _resolve(npc: Dictionary, per: Dictionary, a: String, score: float, 
 		"wander":
 			var ang := noise * TAU * 3.0
 			out["target"] = c + Vector2(cos(ang), sin(ang)) * (6.0 + noise * 12.0)
-		"greet", "follow", "confront", "attack", "trade":
+		"greet", "follow", "confront", "attack", "trade", "gift":
 			out["target_player"] = true
+		"dance":
+			var ang := noise * TAU * 2.0
+			out["target"] = c + Vector2(cos(ang), sin(ang)) * (2.5 + noise * 3.0)
+		"sit":
+			out["target"] = pos
 		"flee":
 			var pp: Vector2 = per.get("player_pos", pos)
 			var away := (pos - pp)

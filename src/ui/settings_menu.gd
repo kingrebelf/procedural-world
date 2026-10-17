@@ -253,6 +253,12 @@ func _ai_tab() -> Control:
 	_ai_slider(g, "max_rpm", "Max model requests per minute", 2, 120, 1, "%d")
 	_ai_line(g, "decide_url", "Fast decision service URL", "Optional. An HTTP endpoint that picks NPC actions every 2 s (see docs/AI.md). Leave empty to use the built-in engine.")
 	_ai_line(g, "decide_key", "Decision service key", "Optional bearer token for the decision service.", true)
+	_ai_check(g, "voices", "Spoken voices", "People say their lines aloud with this PC's built-in text-to-speech voices. Works offline.")
+	_ai_check(g, "voice_barks", "Passers-by speak too", "Greetings and shouts from people nearby are spoken, not only conversations.")
+	_ai_slider(g, "voice_volume", "Voice volume", 0, 100, 5, "%d")
+	_ai_line(g, "stt_url", "Speech-to-text server", "For talking with your microphone (hold B near someone). Empty uses the provider above if it is OpenAI-compatible. Any server with /audio/transcriptions works, e.g. https://api.openai.com/v1 or a local speaches / LocalAI server.")
+	_ai_line(g, "stt_model", "Speech-to-text model", "Empty picks gpt-4o-mini-transcribe for OpenAI, whisper-1 elsewhere.")
+	_ai_line(g, "stt_key", "Speech-to-text key", "Only if the speech-to-text server differs from the provider above.", true)
 	var test := UITheme.button("Test connection", _ai_test)
 	g.add_child(test)
 	_ai_status = UITheme.label(AI.last_status, 14, UITheme.DIM)
@@ -317,7 +323,7 @@ func _ai_refresh() -> void:
 			c.select(1 if v == "anthropic" else 0)
 	var off: bool = AI.get_value("provider") == "off"
 	for k in _ai_fields:
-		if k != "provider" and k != "decide_url" and k != "decide_key":
+		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key"]:
 			var c = _ai_fields[k]
 			if c is BaseButton:
 				c.disabled = off

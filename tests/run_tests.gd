@@ -680,7 +680,7 @@ func test_decision_engine() -> void:
 	var r := DecisionEngine.decide(f, per)
 	check(r["action"] == "follow" and r.get("target_player", false), "instructions override the schedule")
 	for a in DecisionEngine.ACTIONS:
-		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront"] , "action known: " + a)
+		check(NPCMind.TALK_ACTIONS.has(a) or a in ["idle", "wander", "work", "socialize", "sleep", "greet", "confront", "dance", "sit"] , "action known: " + a)
 
 func test_npc_memory_and_replies() -> void:
 	var fx := _npc_fixture()
@@ -692,13 +692,118 @@ func test_npc_memory_and_replies() -> void:
 	check(p["mem"].size() == NPCMind.MAX_MEMORIES, "memory is bounded")
 	check(String(p["mem"][-1]).ends_with("event 29"), "newest memory kept")
 	var a := NPCMind.apply_reply(p, s, {"say": "hi", "mood": "happy", "rel_change": 50, "action": "trade", "remember": "x"})
-	check(a == "none", "non-traders cannot open trade")
+	check(a == "trade", "anyone can trade the goods of their work")
 	check(int(p["rel"]) == 10, "relationship change clamped per exchange")
 	check(p["mood"] == "happy", "mood applied")
 	var t: Dictionary = s["npcs"][0]
 	check(NPCMind.builtin_reply(t, s, "Can we trade?")["action"] == "trade", "built-in trader trades")
 	var sys := NPCMind.system_prompt(p, s, {"held": "Iron Sword"})
 	check(sys.contains(p["name"]) and sys.contains("Iron Sword") and sys.contains("JSON"), "prompt carries persona, context and format")
+
+func test_npc_money_gifts_and_loans() -> void:
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var s := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var kind: Dictionary = s["npcs"][1].duplicate(true)
+	var mean: Dictionary = s["npcs"][1].duplicate(true)
+	kind["id"] = "k"
+	mean["id"] = "m"
+	NPCSocial.ensure(kind)
+	NPCSocial.ensure(mean)
+	kind["purse"] = 100
+	mean["purse"] = 100
+	kind["traits"] = {"friendly": 0.9, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.1}
+	mean["traits"] = {"friendly": 0.1, "brave": 0.5, "curious": 0.5, "diligent": 0.5, "greedy": 0.9}
+	kind["rel"] = 40
+	mean["rel"] = 0
+	kind["mood"] = "calm"
+	mean["mood"] = "calm"
+	var kg := NPCSocial.will_give(kind, "beg")
+	check(kg > 0 and kg <= 100, "a kind friend spares some Marks (%d)" % kg)
+	check(NPCSocial.will_give(mean, "beg") == 0, "a greedy stranger gives nothing")
+	check(NPCSocial.will_give(kind, "beg", 3) == mini(3, kg), "never more than asked")
+	var lent := NPCSocial.hand_over(kind, NPCSocial.will_give(kind, "lend"), "lend")
+	check(lent > 0 and int(kind["debt"]) == lent and int(kind["purse"]) == 100 - lent, "a loan leaves a debt (%d)" % lent)
+	check(NPCSocial.will_give(kind, "lend") == 0, "no second loan while one is owed")
+	var r := NPCSocial.receive_marks(kind, lent + 10)
+	check(int(r["repaid"]) == lent and int(kind["debt"]) == 0 and int(r["rel"]) > 0, "paying back clears the debt first, the rest is a gift")
+	var g := NPCSocial.receive_item(kind, ItemDB.make("helm_iron", 1, 1.0, {}))
+	check(g["use"] == "wear" and kind["gear"].has("head"), "armour you give is worn")
+	check(NPCSocial.receive_item(kind, ItemDB.make("bread", 1, 1.0, {}))["use"] == "eat", "food gets eaten")
+	var guard: Dictionary = s["npcs"][1].duplicate(true)
+	guard["id"] = "g"
+	guard.erase("gear")
+	guard["job"] = NPCGen.GUARD_JOBS[int(guard["era"])]
+	NPCSocial.ensure(guard)
+	check(guard["gear"].has("chest") and guard["gear"].has("head"), "guards start in armour")
+	# Trading with anyone: their goods, their purse, their prices.
+	var st := NPCSocial.shop(kind)
+	check(st.has("purse") and not st["stock"].is_empty(), "villagers trade their own goods")
+	var friend_price := Economy.sell_price(st, st["stock"].keys()[0])
+	kind["rel"] = -30
+	var st2 := NPCSocial.shop(kind)
+	check(Economy.sell_price(st2, st2["stock"].keys()[0]) >= friend_price, "strangers pay more than friends")
+	st2["purse"] = 7
+	NPCSocial.ensure(kind)
+	check(int(kind["purse"]) == 7, "what they spend trading comes out of their purse")
+	NPCSocial.receive_marks(kind, 5)
+	check(int(kind["purse"]) == 12 and int(kind["shop"]["purse"]) == 12, "gifts reach the shop purse too")
+
+func test_npc_requests_and_gestures() -> void:
+	check(NPCMind.requested_do("Can you hold up three fingers?") == "fingers_3", "three fingers")
+	check(NPCMind.requested_do("show me your middle finger") == "finger_middle", "a named finger")
+	check(NPCMind.requested_do("Dance!") == "dance", "imperative request")
+	check(NPCMind.requested_do("I think so") == "", "plain talk asks for nothing")
+	check(NPCMind.requested_do("please visit me") == "", "whole words only")
+	check(NPCMind.requested_do("could you wink at me") == "wink", "wink")
+	for n in NPCMind.doable():
+		check(NPCMind.PERFORM.has(n) or not BodyLanguage.resolve(n).is_empty(), "doable: " + n)
+	var two := BodyLanguage.count_fingers(2)
+	check(two[1] == 0.0 and two[2] == 0.0 and two[0] == 1.0 and two[3] == 1.0, "two fingers: index and middle")
+	check(BodyLanguage.count_fingers(5) == [0.0, 0.0, 0.0, 0.0, 0.0], "five fingers: open hand")
+	var mid: Array = BodyLanguage.resolve("finger_middle")["fingers_r"]
+	check(mid[2] == 0.0 and mid[1] == 1.0 and mid[4] == 1.0, "middle finger alone")
+	check(NPCMind.reply_do({"do": "Thumbs Up"}) == "thumbs_up" and NPCMind.reply_do({"do": "teleport"}) == "", "model 'do' is validated")
+	var fx := _npc_fixture()
+	var gen: ChunkGenerator = fx[0]
+	var s := NPCGen.generate(777, gen, fx[1], gen.settlement_layout(fx[1]))
+	var p: Dictionary = s["npcs"][1]
+	p["rel"] = 60
+	p["mood"] = "happy"
+	var d := NPCMind.builtin_reply(p, s, "Can you dance for me?")
+	check(d.get("do", "") == "dance", "a friend dances when asked")
+	p["rel"] = -20
+	p["mood"] = "angry"
+	check(NPCMind.builtin_reply(p, s, "Can you dance for me?").get("do", "") != "dance", "an angry person won't")
+
+func test_speech_to_text_request() -> void:
+	var svc = load("res://src/ai/ai_service.gd")
+	var pcm := PackedByteArray()
+	pcm.resize(3200)
+	var wav: PackedByteArray = load("res://src/ai/microphone.gd").wav_bytes(pcm, 16000)
+	check(wav.size() == 44 + 3200 and wav.slice(0, 4).get_string_from_ascii() == "RIFF", "wav header")
+	var req: Dictionary = svc.build_transcription({"url": "http://x/v1/audio/transcriptions", "key": "k", "model": "whisper-1"}, wav, "BND")
+	var body: String = (req["body"] as PackedByteArray).slice(0, 300).get_string_from_ascii()
+	check(body.contains("name=\"model\"") and body.contains("whisper-1") and body.contains("filename=\"speech.wav\""), "multipart fields")
+	check(String(req["headers"][0]).contains("boundary=BND") and String(req["headers"][1]) == "Authorization: Bearer k", "headers")
+	check(svc.parse_transcription(200, "{\"text\": \" hello there \"}")["text"] == "hello there", "transcription parsed")
+	check(not svc.parse_transcription(401, "{\"error\": {\"message\": \"bad key\"}}")["ok"], "errors reported")
+
+func test_outfits() -> void:
+	if not HumanModel.available():
+		return
+	var b := {"height": 1.0, "build": 1.0, "female": false, "skin": Color(0.8, 0.6, 0.5), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}
+	for era in 3:
+		var h := HumanModel.new()
+		root.add_child(h)
+		h.build(b, era, "priest")
+		var cl: MeshInstance3D = h.get_node_or_null(NodePath(String(h.get_path_to(h.skeleton)) + "/Clothes"))
+		check(cl != null and cl.mesh.get_surface_count() == 1 and cl.skin != null, "era %d: clothes are a skinned mesh" % era)
+		h.wear({"head": ItemDB.make("helm_iron", 1, 1.0, {}), "chest": ItemDB.make("mail_iron", 1, 1.0, {}), "shield": ItemDB.make("shield_wood", 1, 1.0, {})})
+		var ar: MeshInstance3D = h.get_node_or_null(NodePath(String(h.get_path_to(h.skeleton)) + "/Armour"))
+		check(ar != null and ar.mesh.get_surface_count() == 1, "era %d: armour drawn" % era)
+		check(h.gesture("fingers_2") and h.gesture("wink") and not h.gesture("teleport"), "gestures play")
+		h.free()
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)

@@ -526,7 +526,10 @@ static func _dist(d: float) -> String:
 
 func _trade_panel() -> Control:
 	var st := _trader
-	var s := _shell(st["name"], "%s trader. Goods from other eras fetch a premium here; selling floods demand." % Eras.NAMES[st["era"]])
+	var blurb := "%s trader. Goods from other eras fetch a premium here; selling floods demand." % Eras.NAMES[st["era"]]
+	if st.has("purse"):
+		blurb = "Trading with %s, who has %d Marks to spend. Friends get better prices." % [st["name"], int(st["purse"])]
+	var s := _shell(st["name"], blurb)
 	var v: VBoxContainer = s[1]
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 24)
@@ -553,6 +556,8 @@ func _trade_panel() -> Control:
 			if Game.give(ItemDB.make(t, 1, 1.0, o)):
 				Game.add_money(-price)
 				st["stock"][t] -= 1
+				if st.has("purse"):
+					st["purse"] = int(st["purse"]) + price
 				if _trader_chunk:
 					Game.mark_chunk_dirty(_trader_chunk.data)
 				_refresh())
@@ -592,9 +597,20 @@ func _sell(idx: int, qty: int) -> void:
 		return
 	var n: int = it["qty"] if qty < 0 else qty
 	var total := 0
+	var sold := 0
 	for k in n:
-		total += Economy.buy_price(_trader, it)
+		var unit := Economy.buy_price(_trader, it)
+		if _trader.has("purse") and total + unit > int(_trader["purse"]):
+			break
+		total += unit
+		sold += 1
 		Economy.record_sale_to_trader(_trader, it["type"], 1)
+	if sold == 0:
+		Game.toast.emit("%s can't afford that" % String(_trader["name"]).split(" ")[0])
+		return
+	n = sold
+	if _trader.has("purse"):
+		_trader["purse"] = int(_trader["purse"]) - total
 	Game.inventory.remove_at(idx, n)
 	Game.add_money(total)
 	Game.toast.emit("Sold for %d Marks" % total)

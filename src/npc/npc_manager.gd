@@ -188,7 +188,7 @@ func perception(n: NPC, e: Dictionary, pp: Vector3, t: float) -> Dictionary:
 		"hour": NPCMind.hour_now(), "pos": pos, "center": e["data"]["center"],
 		"noise": float(absi(hash(n.rec["id"] + str(int(t / 20.0)))) % 1000) / 1000.0,
 		"player_dist": n.global_position.distance_to(pp), "player_pos": Vector2(pp.x, pp.z),
-		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t,
+		"player_armed": armed, "override": _overrides.get(n.rec["id"]), "now": t, "day": NPCMind.day_num(),
 	}
 
 func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
@@ -204,18 +204,85 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
 	n.target = d.get("target", Vector2.INF)
 	n.target_player = d.has("target_player")
 	rec["_action"] = n.action
+	var dist: float = per["player_dist"]
 	if n.action != prev:
+		# Ambient performances end when the person moves on to something else.
+		if n.ambient and n.is_performing():
+			n.stop_perform()
 		match n.action:
 			"greet":
 				rec["greeted"] = true
-				n.say(NPCMind.bark(rec, "greet"))
+				if NPCSocial.overdue(rec):
+					_bark(n, "Oi! You still owe me %d Marks." % rec["debt"], dist)
+					n.act("beckon")
+					if int(rec.get("debt_noticed", -1)) != NPCMind.day_num():
+						rec["debt_noticed"] = NPCMind.day_num()
+						NPCMind.change_rel(rec, -5)
+						NPCMind.remember(rec, "The traveller is late paying back my loan.")
+				else:
+					_bark(n, NPCMind.bark(rec, "greet"), dist)
+					var t2: Dictionary = rec["traits"]
+					if int(rec.get("rel", 0)) > 25 and float(t2["friendly"]) > 0.65 and float(t2["curious"]) > 0.55 and randf() < 0.35:
+						n.act("wink")
+					else:
+						n.act(["wave", "wave", "nod", "salute" if NPCGen.GUARD_JOBS.has(rec["job"]) else "wave"][randi() % 4])
 			"confront", "attack", "flee":
-				n.say(NPCMind.bark(rec, n.action))
+				_bark(n, NPCMind.bark(rec, n.action), dist)
+				if n.action == "confront":
+					n.act("point" if float(rec["traits"]["brave"]) < 0.7 else "fist")
+	# Dancing in the square and sitting down start once they get there.
+	if not n.is_performing() and n.target != Vector2.INF:
+		var here := Vector2(n.global_position.x, n.global_position.z).distance_to(n.target) < 1.6
+		if n.action == "dance" and here:
+			n.act("dance", randf_range(15.0, 30.0))
+			n.ambient = true
+		elif n.action == "sit":
+			n.act("sit", randf_range(20.0, 45.0))
+			n.ambient = true
+	# Chatting with neighbours comes with hands.
+	if n.action == "socialize" and not n.is_performing() and randf() < 0.18:
+		n.act(["nod", "shrug", "think", "point", "tilt", "shake_head", "clap", "hips"][randi() % 8])
+	if n.action == "gift" and dist < 2.6:
+		_give_gift(n)
 	# Needs drift: sleep restores energy, company restores sociability.
 	var sleeping: bool = n.action == "sleep" and n.is_hidden()
 	rec["energy"] = clampf(float(rec.get("energy", 1.0)) + (0.02 if sleeping else -0.002), 0.0, 1.0)
 	rec["social"] = clampf(float(rec.get("social", 0.5)) + (0.03 if n.action == "socialize" else -0.003), 0.0, 1.0)
 	e["dirty"] = true
+
+## A line said out loud: shown above their head, and spoken if passers-by have voices.
+func _bark(n: NPC, line: String, dist: float) -> void:
+	if line == "":
+		return
+	n.say(line)
+	if AI.get_value("voice_barks"):
+		Voice.speak(n.rec, line, dist, false)
+
+## Someone fond of you hands over a little present.
+func _give_gift(n: NPC) -> void:
+	var rec := n.rec
+	if int(rec.get("gift_day", -1)) == NPCMind.day_num():
+		return
+	rec["gift_day"] = NPCMind.day_num()
+	var g := NPCSocial.gift_for(rec)
+	var first: String = rec["name"].split(" ")[0]
+	var what := ""
+	if g.has("item") and Game.give(g["item"]):
+		what = ItemDB.display_name(g["item"])
+	elif g.has("marks"):
+		var m := NPCSocial.hand_over(rec, int(g["marks"]), "beg")
+		if m <= 0:
+			return
+		Game.add_money(m)
+		what = "%d Marks" % m
+	if what == "":
+		return
+	NPCMind.remember(rec, "Gave the traveller a present: %s." % what)
+	_bark(n, ["Here, I wanted you to have this.", "A little something for you, friend.", "Saw this and thought of you."][randi() % 3], 2.0)
+	n.act("hand_over")
+	Game.toast.emit("%s gave you %s" % [first, what])
+	n.decide_in = 0.5
+	mark_dirty(n.settlement)
 
 ## Gives an NPC an instruction for a while (from dialogue, the model or the service).
 func instruct(n: NPC, action: String, seconds: float) -> void:
@@ -227,6 +294,8 @@ func instruct(n: NPC, action: String, seconds: float) -> void:
 		return
 	if action == "leave":
 		action = "go_home"
+	if action in ["follow", "go_home", "flee", "attack"]:
+		n.stop_perform()
 	_overrides[n.rec["id"]] = {"action": action, "until": now() + seconds}
 	n.decide_in = 0.0
 
