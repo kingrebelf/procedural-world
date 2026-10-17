@@ -156,6 +156,32 @@ func _treasure(game, world, streamer: ChunkStreamer, player) -> Dictionary:
 	await _frames(5)
 	return {"key": cn.key, "id": 99, "open": int(h["id"])}
 
+## Looting fills the pack with the item packs' odds and ends; set them aside so the items
+## the test gives next have room; if that leaves fewer than `n` slots free, clear the last
+## slots (whatever was looted lately) too.
+func _make_room(game, n := 0) -> void:
+	var loot := {}
+	for sh in Icons.MORE_SHEETS.slice(1):
+		for t in sh[1]:
+			loot[t] = true
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null and loot.has(it["type"]):
+			game.inventory.set_slot(i, null)
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= n:
+			break
+		game.inventory.set_slot(i, null)
+
+## What is in the pack, for a failure message.
+func _pack_list(game) -> String:
+	var out: PackedStringArray = []
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null:
+			out.append("%s x%d" % [it["type"], int(it["qty"])])
+	return ", ".join(out)
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -232,6 +258,7 @@ func _run() -> void:
 				felled = {"key": k, "i": o["i"], "t": o["t"]}
 				c.remove_object(o["i"])
 				game.give(ItemDB.make(ObjectLibrary.YIELD[o["t"]], 5, 1.0, game.origin_here("gathered", o["e"], k)))
+				check(game.inventory.count(ObjectLibrary.YIELD[o["t"]]) >= 5, "harvested %s goes in the pack" % ObjectLibrary.YIELD[o["t"]])
 				break
 		if not felled.is_empty():
 			break
@@ -312,6 +339,7 @@ func _run() -> void:
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
+	_make_room(game)
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
 	var fi := -1
 	for i in Inventory.SIZE:
@@ -411,6 +439,7 @@ func _run() -> void:
 	await _corpses(game, world, player, kc)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
+	_make_room(game)
 	game.inventory.add(ItemDB.make("speeder", 1, 1.0, {}))
 	var vslot := -1
 	for i in game.inventory.slots.size():
@@ -486,16 +515,7 @@ func _run() -> void:
 	check(player.global_position.y > y0 + 1.0, "fly mode rises (%.1f -> %.1f)" % [y0, player.global_position.y])
 	con.run("fly")
 	check(not player.fly and not player._shape.disabled, "fly off restores collision")
-	# Looting so far fills the pack with medieval odds and ends; set them aside so the
-	# items the rest of the test gives have room.
-	var medieval := {}
-	for sh in Icons.MORE_SHEETS.slice(1):
-		for t in sh[1]:
-			medieval[t] = true
-	for i in Inventory.SIZE:
-		var it = game.inventory.get_slot(i)
-		if it != null and medieval.has(it["type"]):
-			game.inventory.set_slot(i, null)
+	_make_room(game)
 	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
 	await _frames(60)
 
@@ -557,7 +577,7 @@ func _run() -> void:
 	check(game.money == money_before, "money identical after reload")
 	check(game.equipment.has("head") and game.equipment["head"]["type"] == "helm_elven", "worn armour restored")
 	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
-	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
+	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested %s is in the pack (%d, pack %s)" % [ObjectLibrary.YIELD[felled["t"]], game.inventory.count(ObjectLibrary.YIELD[felled["t"]]), _pack_list(game)])
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")
 	check(absf(game.map.revealed(pos_before.x, pos_before.z) - map_seen) < 0.01 and map_seen > 0.9, "the atlas remembers where the fog lifted")
@@ -746,6 +766,7 @@ func _death_bag(game, world, player) -> void:
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
 ## butchered for meat, hide and bone; a dead person's body holds their gear and purse.
 func _corpses(game, world, player, kc: Creature) -> void:
+	_make_room(game)
 	var label := kc.label()
 	var at := kc.global_position
 	kc.hp = 1.0
@@ -844,16 +865,10 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	if menus._mode != "":
 		menus.close()
 
-## Clears the last slots of the pack (whatever the test has looted lately) until `n` are free.
-func _make_room(game, n: int) -> void:
-	for i in range(Inventory.SIZE - 1, -1, -1):
-		if game.inventory.free_slots() >= n:
-			break
-		game.inventory.set_slot(i, null)
-
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.
 func _guns(game, world, player, kc: Creature, slot: int) -> void:
+	_make_room(game)
 	var cells0: int = game.inventory.count("power_cell")
 	game.give(ItemDB.make("power_cell", 2, 1.0, {}))
 	var gun := ItemDB.make("pulse_pistol", 1, 1.0, {})
@@ -971,6 +986,7 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var stone: Dictionary = rc.add_object("standing_stone", at.call(-10.0, -12.0), 0.0, Eras.MEDIEVAL, {})
 	msg = WonderEffects.apply(stone, rc, player)
 	check(stone["st"].get("read", false) and Wonders.use_of(stone, game.day).is_empty(), "runes are read once (%s)" % msg)
+	_make_room(game)
 	game.give(ItemDB.make("flashlight_dead", 1, 1.0, {}))
 	var crystal: Dictionary = rc.add_object("crystal_shard", at.call(-10.0, 0.0), 0.0, Eras.FANTASY, {})
 	msg = WonderEffects.apply(crystal, rc, player)

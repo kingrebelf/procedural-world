@@ -1726,8 +1726,7 @@ func test_pack_a_items() -> void:
 		for t in sh[1]:
 			if t == "":
 				continue
-			# treasure_map is the buried treasure maps change's item; its icon waits here for it.
-			check(ItemDB.has(t) or t == "treasure_map", "icon %s is an item" % t)
+			check(ItemDB.has(t), "icon %s is an item" % t)
 			known[t] = true
 	var made := {}
 	for r in Recipes.LIST:
