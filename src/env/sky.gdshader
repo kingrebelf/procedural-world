@@ -331,7 +331,17 @@ void sky() {
 	// Below horizon: hazy toward the horizon colour, so the far edge of the land (seen from
 	// the air) melts into haze instead of a dark band.
 	vec3 below = mix(hor, ground_col * (0.2 + 0.8 * daylight), 0.4);
-	col = mix(col, below, smoothstep(0.0, -0.08, d.y));
+	float below_w = smoothstep(0.0, -0.08, d.y);
+	if (AT_CUBEMAP_PASS) {
+		// What metal and gloss reflect (and the sky light from below): the land under
+		// the horizon is daylit earth, a third as bright as the haze above it and warmer,
+		// with a soft horizon line between. A reflection that is the same pale haze above
+		// and below is what makes metal look like grey paint.
+		vec3 earth = vec3(0.3, 0.28, 0.2) * dot(hor, vec3(0.3333));
+		below = mix(hor * 0.85, earth, smoothstep(-0.005, -0.12, d.y));
+		below_w = smoothstep(0.0, -0.02, d.y);
+	}
+	col = mix(col, below, below_w);
 	COLOR = col;
 	}
 }

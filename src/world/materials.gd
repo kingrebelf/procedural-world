@@ -316,7 +316,10 @@ static func _get_mat(name: String) -> Material:
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
-		"metal_w": m = _pbr(Color(1, 1, 1), 0.35, 0.9, "metal", 0.03, 0.8, 0.3)
+		# Metals share one look (Metals, metal.gdshader): real reflectance, wear and grime.
+		"metal_w":
+			_cache[name] = Metals.mat("worked", 0.35, true)
+			return _cache[name]
 		"cloth_w": m = _pbr(Color(1, 1, 1), 0.97, 0.0, "cloth", 0.15, 1.0, 0.6) # felt hats and hoods
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"bark_pine": m = _pbr(Color(0.34, 0.24, 0.18), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
@@ -340,13 +343,34 @@ static func _get_mat(name: String) -> Material:
 		"planks": m = _pbr(Color(0.55, 0.40, 0.26), 0.8, 0.0, "planks", 0.03, 0.5, 0.8)
 		"thatch": m = _pbr(Color(0.62, 0.52, 0.30), 0.95, 0.0, "thatch", 0.09, 0.8, 1.8)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)
-		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "forged", 0.04, 1.0, 0.4)
-		"rust": m = _pbr(Color(0.55, 0.30, 0.18), 0.8, 0.4, "rust", 0.06, 1.2, 1.0)
-		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
-		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)
-		"metal_dark": m = _pbr(Color(0.26, 0.27, 0.3), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
+		"iron":
+			_cache[name] = Metals.mat("iron", -1.0, true)
+			return _cache[name]
+		"rust":
+			_cache[name] = Metals.mat("rusty", -1.0, true)
+			return _cache[name]
+		"gold":
+			_cache[name] = Metals.mat("gold", -1.0, true)
+			return _cache[name]
+		# Plain worked steel and dark steel, for every era's fittings.
+		"metal":
+			_cache[name] = Metals.mat("steel", -1.0, true)
+			return _cache[name]
+		"metal_dark":
+			_cache[name] = Metals.mat("dark_steel", -1.0, true)
+			return _cache[name]
+		# Sci-fi hull plate: brushed alloy and dark steel over the panels photo.
+		"hull_metal":
+			_cache[name] = Metals.mat("alloy", -1.0, true, "panels")
+			return _cache[name]
+		"hull_metal_dark":
+			_cache[name] = Metals.mat("dark_steel", -1.0, true, "panels")
+			return _cache[name]
 		"petal_w": m = _pbr(Color(1, 1, 1), 0.7, 0.0, "", 0, 1)
-		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
+		# Paint (the vertex colour) over steel, chipped through at the edges.
+		"painted":
+			_cache[name] = Metals.mat("painted", -1.0, true)
+			return _cache[name]
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)

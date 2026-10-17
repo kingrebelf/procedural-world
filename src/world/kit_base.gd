@@ -120,10 +120,10 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 		# Slabs stand a little proud of the wall and column tops under them, and the
 		# foundation a little below the floor tiles on it: faces at one height flicker.
 		if s > 0:
-			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, y - 0.08, 0)), Vector3(w - 0.4, 0.2, d - 0.4))
+			k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, y - 0.08, 0)), Vector3(w - 0.4, 0.2, d - 0.4))
 	var top := storeys * STOREY
 	# Roof: a slab capped by plate tiles, with vents and fans on top.
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, top - 0.23, 0)), Vector3(w + 0.6, 0.5, d + 0.6))
+	k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, top - 0.23, 0)), Vector3(w + 0.6, 0.5, d + 0.6))
 	for i in nx:
 		for j in nz:
 			models.append(["scifi/Platform_Squares", 0, Vector3(-w / 2 + 2 + i * 4, top + 0.04, -d / 2 + 2 + j * 4), 1.0])
@@ -134,7 +134,7 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 		_livery(t, k, models, w, d, top, style, v)
 	if storeys > 1:
 		var b := Basis(Vector3(1, 0, 0), -0.9)
-		k.cylinder("metal", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top, -d / 2 + 1.2)), 0.08, 0.05, 4.0, 6)
+		k.cylinder("hull_metal", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top, -d / 2 + 1.2)), 0.08, 0.05, 4.0, 6)
 		k.sphere("panel", Transform3D(b, Vector3(w / 2 - 1.2, top + 2.6, -d / 2 + 1.5)), 1.1, 6, 14, 0.0, 0.35, Color.WHITE, true)
 		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top + 4.1, -d / 2 + 1.2)), 0.12, 4, 6)
 	# Foundation pad, and a lit step out of the door.
@@ -162,8 +162,8 @@ static func _roof_kit(t: String, k: MeshKit, models: Array, w: float, d: float, 
 	if w >= 12.0:
 		units.append(Vector3(0.6, 0, d / 2 - 1.4))
 	for u in units:
-		k.box("metal_dark", I.translated(u + Vector3(0, top + 0.55, 0)), Vector3(1.9, 1.0, 1.4))
-		k.box("metal", I.translated(u + Vector3(0, top + 0.08, 0)), Vector3(2.1, 0.12, 1.6))
+		k.box("hull_metal_dark", I.translated(u + Vector3(0, top + 0.55, 0)), Vector3(1.9, 1.0, 1.4))
+		k.box("hull_metal", I.translated(u + Vector3(0, top + 0.08, 0)), Vector3(2.1, 0.12, 1.6))
 		models.append(["scifi/Prop_Fan_Small", 0, u + Vector3(0, top + 1.05, 0), 0.75])
 	# Which plant: the plain block's, or the variant's own.
 	var plant := t
@@ -178,17 +178,17 @@ static func _roof_kit(t: String, k: MeshKit, models: Array, w: float, d: float, 
 			for a in 3:
 				var ang := a * TAU / 3.0
 				var foot := mc + Vector3(cos(ang), 0, sin(ang)) * 0.35
-				k.cylinder("metal", Transform3D(Basis(Vector3(-sin(ang), 0, cos(ang)), 0.06), foot), 0.035, 0.03, 6.0, 5)
+				k.cylinder("hull_metal", Transform3D(Basis(Vector3(-sin(ang), 0, cos(ang)), 0.06), foot), 0.035, 0.03, 6.0, 5)
 			for n in 6:
-				k.box("metal", I.translated(mc + Vector3(0, 0.8 + n, 0)), Vector3(0.62, 0.04, 0.62))
+				k.box("hull_metal", I.translated(mc + Vector3(0, 0.8 + n, 0)), Vector3(0.62, 0.04, 0.62))
 			k.sphere("panel", Transform3D(Basis(Vector3(1, 0, 0), -0.6), mc + Vector3(0, 4.2, 0.45)), 0.8, 6, 12, 0.0, 0.35, Color.WHITE, true)
-			k.cylinder("metal", I.translated(mc + Vector3(0, 6.0, 0)), 0.02, 0.01, 2.2, 4)
+			k.cylinder("hull_metal", I.translated(mc + Vector3(0, 6.0, 0)), 0.02, 0.01, 2.2, 4)
 			k.sphere("glow_red", I.translated(mc + Vector3(0, 8.2, 0)), 0.09, 4, 6)
 		"hab_block":
 			# A water tank on short legs.
 			var tc := Vector3(w / 2 - 1.5, top, -d / 2 + 1.6)
 			for lg in [Vector2(-0.6, -0.6), Vector2(0.6, -0.6), Vector2(-0.6, 0.6), Vector2(0.6, 0.6)]:
-				k.cylinder("metal_dark", I.translated(tc + Vector3(lg.x, 0, lg.y)), 0.06, 0.06, 0.6, 6)
+				k.cylinder("hull_metal_dark", I.translated(tc + Vector3(lg.x, 0, lg.y)), 0.06, 0.06, 0.6, 6)
 			k.cylinder("painted", I.translated(tc + Vector3(0, 0.6, 0)), 0.95, 0.95, 1.7, 14, true, 0.0, 1, Color(0.72, 0.74, 0.72))
 			k.cylinder("painted", I.translated(tc + Vector3(0, 2.3, 0)), 0.95, 0.3, 0.35, 14, true, 0.0, 1, Color(0.6, 0.62, 0.6))
 		"lab_block":
@@ -196,27 +196,27 @@ static func _roof_kit(t: String, k: MeshKit, models: Array, w: float, d: float, 
 			var tilt := Basis(Vector3(1, 0, 0), -0.5)
 			for n in 3:
 				var pc := Vector3(-w / 2 + 2.4 + n * 2.3, top + 0.7, -d / 2 + 1.8)
-				k.box("metal_dark", Transform3D(tilt, pc), Vector3(2.1, 0.06, 1.5))
+				k.box("hull_metal_dark", Transform3D(tilt, pc), Vector3(2.1, 0.06, 1.5))
 				k.box("solar_cell", Transform3D(tilt, pc + Vector3(0, 0.04, 0)), Vector3(2.0, 0.02, 1.4))
-				k.cylinder("metal", I.translated(Vector3(pc.x, top, pc.z + 0.3)), 0.04, 0.04, 0.55, 6)
-				k.cylinder("metal", I.translated(Vector3(pc.x, top, pc.z - 0.35)), 0.04, 0.04, 0.95, 6)
+				k.cylinder("hull_metal", I.translated(Vector3(pc.x, top, pc.z + 0.3)), 0.04, 0.04, 0.55, 6)
+				k.cylinder("hull_metal", I.translated(Vector3(pc.x, top, pc.z - 0.35)), 0.04, 0.04, 0.95, 6)
 			var mc := Vector3(w / 2 - 1.3, top, d / 2 - 1.3)
-			k.cylinder("metal", I.translated(mc), 0.07, 0.05, 3.0, 6)
+			k.cylinder("hull_metal", I.translated(mc), 0.07, 0.05, 3.0, 6)
 			k.sphere("panel", Transform3D(Basis(Vector3(1, 0, 0), -0.7), mc + Vector3(0, 2.4, 0.2)), 0.7, 6, 12, 0.0, 0.35, Color.WHITE, true)
 	if v == 3 and t == "hab_block":
 		# A second tank's worth of solar panels along the front edge too.
 		var tilt := Basis(Vector3(1, 0, 0), 0.45)
 		for n in 2:
 			var pc := Vector3(-0.6 + n * 2.3, top + 0.6, d / 2 - 1.3)
-			k.box("metal_dark", Transform3D(tilt, pc), Vector3(2.1, 0.06, 1.3))
+			k.box("hull_metal_dark", Transform3D(tilt, pc), Vector3(2.1, 0.06, 1.3))
 			k.box("solar_cell", Transform3D(tilt, pc + Vector3(0, 0.04, 0)), Vector3(2.0, 0.02, 1.2))
-			k.cylinder("metal", I.translated(Vector3(pc.x, top, pc.z)), 0.04, 0.04, 0.6, 6)
+			k.cylinder("hull_metal", I.translated(Vector3(pc.x, top, pc.z)), 0.04, 0.04, 0.6, 6)
 	# Service pipes up the back wall, bent over the parapet onto the roof.
 	for px in [-w / 2 + 1.0, -w / 2 + 1.35]:
-		k.cylinder("metal", I.translated(Vector3(px, 0.0, -d / 2 - 0.95)), 0.09, 0.09, top + 0.4, 8)
-		k.box("metal", I.translated(Vector3(px, top + 0.4, -d / 2 - 0.3)), Vector3(0.18, 0.18, 1.5))
+		k.cylinder("hull_metal", I.translated(Vector3(px, 0.0, -d / 2 - 0.95)), 0.09, 0.09, top + 0.4, 8)
+		k.box("hull_metal", I.translated(Vector3(px, top + 0.4, -d / 2 - 0.3)), Vector3(0.18, 0.18, 1.5))
 	for bh in range(1, int(top / 2.0) + 1):
-		k.box("metal_dark", I.translated(Vector3(-w / 2 + 1.18, bh * 2.0, -d / 2 - 0.88)), Vector3(0.7, 0.08, 0.2))
+		k.box("hull_metal_dark", I.translated(Vector3(-w / 2 + 1.18, bh * 2.0, -d / 2 - 0.88)), Vector3(0.7, 0.08, 0.2))
 
 ## A variant's own paint and fittings: a livery stripe along the trim band on every
 ## side, and one of air-conditioning units hung high on a side wall, an awning over the
@@ -240,35 +240,35 @@ static func _livery(t: String, k: MeshKit, models: Array, w: float, d: float, to
 			# Air-conditioning units hung high on the left wall, above head height.
 			for n in 2:
 				var at := Vector3(-w / 2 - face - 0.25, 2.5, -d / 2 + 1.5 + n * 2.6)
-				k.box("metal_dark", I.translated(at), Vector3(0.5, 0.7, 0.95))
-				k.box("metal", I.translated(at + Vector3(-0.26, 0, 0)), Vector3(0.02, 0.56, 0.8))
-				k.cylinder("metal_dark", Transform3D(Basis(Vector3(0, 0, 1), PI / 2), at + Vector3(-0.27, 0, 0)), 0.28, 0.28, 0.02, 12)
-				k.box("metal", I.translated(at + Vector3(0.05, -0.4, 0)), Vector3(0.45, 0.04, 0.9))
+				k.box("hull_metal_dark", I.translated(at), Vector3(0.5, 0.7, 0.95))
+				k.box("hull_metal", I.translated(at + Vector3(-0.26, 0, 0)), Vector3(0.02, 0.56, 0.8))
+				k.cylinder("hull_metal_dark", Transform3D(Basis(Vector3(0, 0, 1), PI / 2), at + Vector3(-0.27, 0, 0)), 0.28, 0.28, 0.02, 12)
+				k.box("hull_metal", I.translated(at + Vector3(0.05, -0.4, 0)), Vector3(0.45, 0.04, 0.9))
 		1:
 			# An awning over the door in the livery colour, on two struts from the wall.
 			var dx := -w / 2 + 2 + (int(w / 4.0) / 2) * 4
 			k.box("painted", Transform3D(Basis(Vector3(1, 0, 0), 0.18), Vector3(dx, 3.25, d / 2 + face + 1.0)), Vector3(4.2, 0.08, 1.9), col)
 			for sx in [-1.9, 1.9]:
-				k.cylinder("metal", Transform3D(Basis(Vector3(1, 0, 0), 1.1), Vector3(dx + sx, 2.3, d / 2 + face)), 0.03, 0.03, 1.9, 5)
+				k.cylinder("hull_metal", Transform3D(Basis(Vector3(1, 0, 0), 1.1), Vector3(dx + sx, 2.3, d / 2 + face)), 0.03, 0.03, 1.9, 5)
 		2:
 			# A plant room on the roof: a louvred housing with an exhaust stack.
 			var at := Vector3(-w / 2 + 2.2, top + 1.0, 0.0)
 			k.box("painted", I.translated(at), Vector3(2.4, 2.0, 2.0), col.lerp(Color(0.5, 0.5, 0.5), 0.55))
-			k.box("metal_dark", I.translated(at + Vector3(0, 1.05, 0)), Vector3(2.6, 0.1, 2.2))
+			k.box("hull_metal_dark", I.translated(at + Vector3(0, 1.05, 0)), Vector3(2.6, 0.1, 2.2))
 			for n in 5:
-				k.box("metal_dark", I.translated(at + Vector3(0, -0.6 + n * 0.25, 1.01)), Vector3(1.6, 0.06, 0.03))
-			k.cylinder("metal", I.translated(at + Vector3(0.7, 1.1, -0.5)), 0.14, 0.14, 1.8, 8)
-			k.cylinder("metal_dark", I.translated(at + Vector3(0.7, 2.9, -0.5)), 0.18, 0.18, 0.12, 8)
+				k.box("hull_metal_dark", I.translated(at + Vector3(0, -0.6 + n * 0.25, 1.01)), Vector3(1.6, 0.06, 0.03))
+			k.cylinder("hull_metal", I.translated(at + Vector3(0.7, 1.1, -0.5)), 0.14, 0.14, 1.8, 8)
+			k.cylinder("hull_metal_dark", I.translated(at + Vector3(0.7, 2.9, -0.5)), 0.18, 0.18, 0.12, 8)
 		3:
 			# A caged ladder up the back wall to the roof.
 			var lx := w / 2 - 1.2
 			var lz := -d / 2 - face - 0.45
 			for sx in [-0.25, 0.25]:
-				k.cylinder("metal", I.translated(Vector3(lx + sx, 0.0, lz)), 0.025, 0.025, top + 1.0, 5)
+				k.cylinder("hull_metal", I.translated(Vector3(lx + sx, 0.0, lz)), 0.025, 0.025, top + 1.0, 5)
 			for n in int((top + 0.8) / 0.3):
-				k.box("metal", I.translated(Vector3(lx, 0.3 + n * 0.3, lz)), Vector3(0.5, 0.025, 0.025))
+				k.box("hull_metal", I.translated(Vector3(lx, 0.3 + n * 0.3, lz)), Vector3(0.5, 0.025, 0.025))
 			for n in int((top - 2.2) / 0.9) + 1:
-				k.cylinder("metal", I.translated(Vector3(lx, 2.4 + n * 0.9, lz - 0.3)), 0.38, 0.38, 0.04, 12, false)
+				k.cylinder("hull_metal", I.translated(Vector3(lx, 2.4 + n * 0.9, lz - 0.3)), 0.38, 0.38, 0.04, 12, false)
 
 ## A fenced array: three rows of tilted panels facing the same way, an inverter and
 ## battery bank at the gate end, cable runs between them.
@@ -281,18 +281,18 @@ static func _solar_farm(k: MeshKit, models: Array) -> void:
 		for n in 4:
 			var x := -sz.x / 2 + 2.2 + n * 3.1
 			for lx in [-1.2, 1.2]:
-				k.cylinder("metal", Transform3D.IDENTITY.translated(Vector3(x + lx, 0, z + 0.3)), 0.05, 0.05, 1.6, 6)
-				k.cylinder("metal", Transform3D.IDENTITY.translated(Vector3(x + lx, 0, z - 0.4)), 0.05, 0.05, 1.2, 6)
-			k.box("metal_dark", Transform3D(tilt, Vector3(x, 1.45, z)), Vector3(2.9, 0.06, 1.9))
+				k.cylinder("hull_metal", Transform3D.IDENTITY.translated(Vector3(x + lx, 0, z + 0.3)), 0.05, 0.05, 1.6, 6)
+				k.cylinder("hull_metal", Transform3D.IDENTITY.translated(Vector3(x + lx, 0, z - 0.4)), 0.05, 0.05, 1.2, 6)
+			k.box("hull_metal_dark", Transform3D(tilt, Vector3(x, 1.45, z)), Vector3(2.9, 0.06, 1.9))
 			k.box("solar_cell", Transform3D(tilt, Vector3(x, 1.49, z)), Vector3(2.8, 0.02, 1.8))
 	# Inverter and batteries by the gate (gate is on +z).
 	var bz := sz.z / 2 - 2.0
 	models.append(["scifi/Prop_PipeHolder", 0, Vector3(3.5, 0, bz), 1.0])
 	for n in 4:
-		k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(-5.2 + n * 1.0, 0.75, bz)), Vector3(0.8, 1.5, 0.9))
+		k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(-5.2 + n * 1.0, 0.75, bz)), Vector3(0.8, 1.5, 0.9))
 		k.box("glow_cyan", Transform3D.IDENTITY.translated(Vector3(-5.2 + n * 1.0, 1.2, bz + 0.46)), Vector3(0.4, 0.05, 0.02))
 	models.append(["scifi/Prop_Computer", 180, Vector3(0.6, 0, bz + 0.2), 1.0])
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -0.15, 0)), Vector3(sz.x, 0.35, sz.z))
+	k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -0.15, 0)), Vector3(sz.x, 0.35, sz.z))
 
 ## A fenced cargo yard: containers in rows, crates and drums stacked on pallets.
 static func _depot(k: MeshKit, models: Array) -> void:
@@ -315,14 +315,14 @@ static func _depot(k: MeshKit, models: Array) -> void:
 	for n in 5:
 		models.append(["scifi/Prop_Barrel_Large", 0, Vector3(2.0 + (n % 3) * 0.6, 0, 2.2 + (n / 3) * 0.6), 1.0])
 	models.append(["scifi/Prop_Computer", 180, Vector3(3.8, 0, 4.6), 1.0])
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -0.15, 0)), Vector3(sz.x, 0.35, sz.z))
+	k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -0.15, 0)), Vector3(sz.x, 0.35, sz.z))
 
 ## A street lamp: a pipe column with a light bar under a cap.
 static func _light(k: MeshKit, models: Array) -> void:
 	models.append(["scifi/Column_Pipes", 0, Vector3.ZERO, 1.0])
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 5.1, 0.5)), Vector3(0.5, 0.15, 1.6))
+	k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 5.1, 0.5)), Vector3(0.5, 0.15, 1.6))
 	k.box("glow_white", Transform3D.IDENTITY.translated(Vector3(0, 5.0, 0.9)), Vector3(0.3, 0.05, 1.0))
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 0.1, 0)), Vector3(1.1, 0.2, 1.1))
+	k.box("hull_metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 0.1, 0)), Vector3(1.1, 0.2, 1.1))
 
 ## A railing round a w by d yard, with a gap of `gates` sections at mid +z. A rail
 ## section runs 4 m along its -z from where it is placed.
