@@ -74,6 +74,11 @@ func _run() -> void:
 	check(not player.frozen, "player spawned on loaded ground")
 	await _frames(120)
 	var streamer: ChunkStreamer = world.streamer
+	# Streaming runs on worker threads: give a busy machine longer than a fixed count of frames.
+	for i in 600:
+		if streamer.chunks.size() >= 9:
+			break
+		await process_frame
 	check(streamer.chunks.size() >= 9, "chunks streamed in (%d)" % streamer.chunks.size())
 	var here: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var here_key: Vector2i = here.key
