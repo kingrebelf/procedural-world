@@ -78,7 +78,7 @@ void fragment() {
 			float swell_of_it = 0.55 + 0.45 * vn(vec2(back * 0.12, 9.1));
 			// Only the first stretch breaks white; further back the arms are ripples, not foam.
 			float whiten = mix(1.0, 0.12, smoothstep(3.0, 28.0, back));
-			a = band * smoothstep(0.4, 0.85, n * 0.4 + feathers * 0.5 + band * 0.15) * f * whiten * swell_of_it * 0.75;
+			a = band * smoothstep(0.3, 0.95, n * 0.4 + feathers * 0.5 + band * 0.15) * f * whiten * swell_of_it * 0.75;
 		} else if (kind < 0.85) {
 			// Transverse waves: curved crests across her track (bowed back at the middle),
 			// marked by thin foam lines and slicks rather than painted bands.
