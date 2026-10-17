@@ -852,6 +852,19 @@ func test_craft_tabs() -> void:
 	check(ItemDB.craft_tabs("power_cell") == ["Materials", "Ammo"], "power cells also show under Ammo")
 	check(ItemDB.craft_tabs("lantern") == ["Furniture", "Lights"], "lanterns also show under Lights")
 
+## A piece can't go up through a wild tree: not over its trunk, not up into its crown;
+## a floor laid in the crown's shade is fine, and so is a wall clear of it.
+func test_build_round_trees() -> void:
+	var trees := [[Vector3(10, 2, 10), 0.3, 4.0, 8.0, 2.5]]
+	check(BuildCatalog.tree_in_way(trees, AABB(Vector3(9, 2, 9), Vector3(3, 0.4, 3))), "no floor over a trunk")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(11, 2, 9), Vector3(3, 0.4, 3))), "a floor under the crown, clear of the trunk")
+	check(BuildCatalog.tree_in_way(trees, AABB(Vector3(11, 2, 9.9), Vector3(2, 3, 0.2))), "no wall up into the crown")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(13, 2, 9.9), Vector3(2, 3, 0.2))), "a wall clear of the crown")
+	check(not BuildCatalog.tree_in_way(trees, AABB(Vector3(9, 8.5, 9), Vector3(3, 0.3, 3))), "a roof above the top")
+	var key := ObjectLibrary.mesh_key({"t": "oak", "sp": 3, "v": 0, "s": 1.0, "p": Vector3.ZERO, "r": 0.0, "i": 0, "e": 0, "st": {}})
+	var t := BuildCatalog.tree_shape(key, Vector3.ZERO, 1.0)
+	check(float(t[3]) > 2.0 and float(t[4]) > 0.5 and float(t[2]) < float(t[3]), "a tree's shape from its mesh (%s)" % str(t))
+
 func test_build_pieces() -> void:
 	for id in BuildCatalog.PIECES:
 		var m := BuildCatalog.mesh(id)
