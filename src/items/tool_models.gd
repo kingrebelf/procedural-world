@@ -4,7 +4,7 @@ class_name ToolModels
 ## are (forged steel with a ground edge, cast bronze, grained ash and oak, wrapped leather,
 ## knapped flint, wax, glass). Handles run along +Y with the hand near the bottom (or at
 ## the model's "grip" meta); an axe's edge faces -Z, a pick's point and a hammer's face +X;
-## bows and guns point along -Z.
+## spear points and daggers along +Y. (Bows and guns are Firearms.)
 ##
 ## Built on the main thread (they are shown in the hand and on shop counters).
 
@@ -32,8 +32,8 @@ static func mat(name: String) -> Material:
 			m.uv1_scale = Vector3(18.0, 3.0, 1.0)
 		"it_iron":
 			# Forged and blackened: dark, hammer-marked, rough where it wasn't ground.
-			m.albedo_color = Color(0.36, 0.36, 0.37)
-			m.metallic = 0.55
+			m.albedo_color = Color(0.45, 0.45, 0.46)
+			m.metallic = 0.45
 			m.roughness = 0.58
 			m.albedo_texture = _noise("hammered", 0.05, Vector2.ONE, Color(0.7, 0.7, 0.7), Color(1, 1, 1), true)
 			m.normal_enabled = true
@@ -602,34 +602,6 @@ static func chain(k: MeshKit, a: Vector3, b: Vector3, links: int, r: float) -> v
 			ring.append(_at(p, nrm, tan.cross(nrm).normalized(), sec_round(r, r, 5)))
 		sweep(k, "it_iron", Transform3D.IDENTITY, ring, false, Color.WHITE, false)
 
-## A bow, upright, its back toward -Z: limbs tapering from the riser to the tips, the
-## string straight between the nocks. `recurve` flips the tips forward.
-static func bow(k: MeshKit, half: float, depth: float, col: Color, m := "it_wood", recurve := 0.0, grip_col := Color(0.3, 0.19, 0.11)) -> void:
-	var st := []
-	var n := 24
-	var tips := []
-	for i in n + 1:
-		var f := float(i) / n * 2.0 - 1.0
-		var y := f * half
-		var z := -depth * (1.0 - f * f) + recurve * pow(absf(f), 6.0)
-		var dz := -depth * (-2.0 * f) + recurve * 6.0 * pow(absf(f), 5.0) * signf(f)
-		var tang := Vector3(0, half, dz).normalized()
-		var thick := lerpf(0.011, 0.005, absf(f))
-		var wide := lerpf(0.016, 0.008, absf(f))
-		if absf(f) < 0.12:
-			thick = 0.016
-			wide = 0.018
-		var nrm := Vector3(0, -tang.z, tang.y)
-		st.append(_at(Vector3(0, y, z), Vector3(1, 0, 0), nrm, sec_round(wide, thick, 8)))
-		if i == 0 or i == n:
-			tips.append(Vector3(0, y, z))
-	sweep(k, m, Transform3D.IDENTITY, st, false, col)
-	wrap_grip(k, -0.06, 0.06, 0.0, grip_col, "it_leather", 0.012, 0.002)
-	# The string, a thin cord from nock to nock.
-	var a: Vector3 = tips[0]
-	var b: Vector3 = tips[1]
-	k.cylinder("it_cord", Transform3D(Basis(), a), 0.0016, 0.0016, (b - a).length(), 5, false, 0.0, 1, Color(0.85, 0.82, 0.72))
-
 # --- The catalogue ---------------------------------------------------------------------
 
 ## Colours of the woods and finishes the catalogue uses.
@@ -728,8 +700,7 @@ const BUILD := {
 	"rapier": "_rapier", "zweihander": "_zweihander", "halberd": "_halberd", "glaive": "_glaive",
 	"morning_star": "_morning_star", "kings_mace": "_kings_mace", "flail": "_flail",
 	"warpick": "_warpick", "executioner_axe": "_executioner_axe", "dragonbone_dagger": "_dragonbone_dagger",
-	"throwing_knives": "_throwing_knives", "shortbow": "_shortbow", "composite_bow": "_composite_bow",
-	"royal_bow": "_royal_bow", "sling": "_sling", "shovel": "_shovel", "hoe": "_hoe", "sickle": "_sickle",
+	"throwing_knives": "_throwing_knives", 	"shovel": "_shovel", "hoe": "_hoe", "sickle": "_sickle",
 	"fishing_rod": "_fishing_rod", "saw": "_saw", "tongs": "_tongs", "bucket": "_bucket",
 	"hand_lantern": "_hand_lantern", "candle": "_candle", "tinderbox": "_tinderbox",
 	"quill_ink": "_quill_ink", "mortar_pestle": "_mortar_pestle", "cauldron_small": "_cauldron_small",
@@ -746,8 +717,10 @@ const BUILD := {
 	"binoculars_digital": "_binoculars_digital", "toolbox_tech": "_toolbox_tech", "flare_chem": "_flare_chem",
 	"chitin_sword": "_chitin_sword", "psi_blade": "_psi_blade", "void_lance": "_void_lance",
 	"grav_hammer": "_grav_hammer", "ion_scythe": "_ion_scythe", "worldbreaker": "_worldbreaker",
-	"phase_daggers": "_phase_daggers", "plasma_whip": "_plasma_whip", "crystal_bow": "_crystal_bow",
-	"eclipse_bow": "_eclipse_bow", "nova_staff": "_nova_staff", "void_grenade": "_void_grenade",
+	"phase_daggers": "_phase_daggers", "plasma_whip": "_plasma_whip", 	"void_grenade": "_void_grenade",
+	"pickaxe_iron": "_pickaxe_iron", "pickaxe_mythril": "_pickaxe_mythril", "axe_iron": "_axe_iron",
+	"axe_mythril": "_axe_mythril", "battle_axe": "_battle_axe", "hammer": "_hammer", "sword_iron": "_sword_iron",
+	"sword_runic": "_sword_runic", "dagger": "_dagger", "skinning_knife": "_skinning_knife",
 	"acid_pod": "_acid_pod", "star_charge": "_star_charge", "gravity_well": "_gravity_well",
 	"singularity_orb": "_singularity_orb", "swarm_hive": "_swarm_hive", "shard_gauntlet": "_shard_gauntlet",
 }
@@ -827,6 +800,77 @@ static func _bronze_axe(k: MeshKit):
 static func _pickaxe_bronze(k: MeshKit):
 	haft(k, -0.02, 0.65, 0.017, 0.016, ASH)
 	pick_head(k, "it_bronze", 0.6, 0.2, 0.12, 0.016, Color.WHITE, true)
+
+## Mythril reads as a pale, faintly blue steel: polished, never glowing.
+const MYTHRIL := Color(0.8, 0.88, 1.0)
+
+static func _pickaxe_iron(k: MeshKit):
+	haft(k, -0.02, 0.66, 0.017, 0.016, HICKORY)
+	pick_head(k, "it_iron", 0.61, 0.23, 0.21, 0.017)
+	_wedge(k, 0.61, 0.017)
+
+static func _pickaxe_mythril(k: MeshKit):
+	haft(k, -0.02, 0.68, 0.017, 0.016, WALNUT)
+	wrap_grip(k, 0.02, 0.2, 0.017, Color(0.22, 0.16, 0.12))
+	pick_head(k, "it_steel", 0.63, 0.25, 0.22, 0.017, MYTHRIL)
+	_wedge(k, 0.63, 0.017)
+
+static func _axe_iron(k: MeshKit):
+	haft(k, -0.02, 0.6, 0.017, 0.015, HICKORY)
+	axe_head(k, "it_iron", 0.54, 0.12, 0.085, 0.02, 0.026)
+	_wedge(k, 0.54, 0.015)
+
+static func _axe_mythril(k: MeshKit):
+	haft(k, -0.02, 0.62, 0.017, 0.015, WALNUT)
+	wrap_grip(k, 0.02, 0.18, 0.017, Color(0.22, 0.16, 0.12))
+	axe_head(k, "it_steel", 0.56, 0.13, 0.09, 0.03, 0.024, MYTHRIL)
+	_wedge(k, 0.56, 0.015)
+
+static func _battle_axe(k: MeshKit):
+	# A long bearded war axe: an ash haft with a leather grip, a spike behind the head and
+	# iron straps (langets) running down the haft from it.
+	haft(k, -0.02, 0.86, 0.019, 0.017, ASH)
+	wrap_grip(k, 0.02, 0.26, 0.019, Color(0.3, 0.19, 0.11))
+	axe_head(k, "it_steel", 0.78, 0.17, 0.11, 0.07, 0.024, Color.WHITE, 0.019)
+	k.cylinder("it_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.79, 0.055)), 0.011, 0.001, 0.07, 6)
+	for x in [-1.0, 1.0]:
+		k.box("it_iron", Transform3D.IDENTITY.translated(Vector3(x * 0.018, 0.69, 0)), Vector3(0.003, 0.12, 0.012))
+		for y in [0.65, 0.72]:
+			k.cylinder("it_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x * 0.02, y, 0)), 0.003, 0.003, 0.003, 6)
+	return Vector3(0, 0.12, 0)
+
+static func _hammer(k: MeshKit):
+	# A claw hammer: a hickory handle with a swelling at the butt, a round steel face to +X
+	# and a split claw curving down to -X.
+	haft(k, -0.02, 0.33, 0.016, 0.013, HICKORY)
+	hammer_head(k, "it_iron", 0.315, 0.035, 0.015)
+	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.035, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.016, 0.0), Vector2(0.015, 0.012), Vector2(0.0, 0.013)], 12)
+	for z in [-1.0, 1.0]:
+		var st := []
+		for i in 7:
+			var f := float(i) / 6.0
+			var a := f * 0.9
+			var w := lerpf(0.011, 0.004, f)
+			st.append(_at(Vector3(-0.035 - sin(a) * 0.07, 0.315 - (1.0 - cos(a)) * 0.07, z * 0.0055), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0045, w, 0.3)))
+		sweep(k, "it_iron", Transform3D.IDENTITY, st, true)
+	_wedge(k, 0.315, 0.013)
+	return Vector3(0, 0.07, 0)
+
+static func _sword_iron(k: MeshKit):
+	sword(k, {"len": 0.72, "w": 0.024, "t": 0.006, "cross": 0.1, "grip": 0.12, "guard": "it_iron", "pommel": 0.024})
+
+static func _sword_runic(k: MeshKit):
+	sword(k, {"len": 0.78, "w": 0.024, "t": 0.006, "cross": 0.11, "droop": 0.01, "grip": 0.13, "col": MYTHRIL, "guard": "it_brass", "pommel": 0.025, "wrap_col": Color(0.12, 0.14, 0.24), "wrap_m": "it_cloth"})
+
+static func _dagger(k: MeshKit):
+	sword(k, {"len": 0.24, "w": 0.018, "t": 0.005, "tip": 0.35, "cross": 0.05, "grip": 0.095, "pommel": 0.017})
+
+static func _skinning_knife(k: MeshKit):
+	sword(k, {"len": 0.13, "w": 0.018, "t": 0.004, "single": true, "belly": 0.45, "tip": 0.3, "grip": 0.1, "wrap": false, "wood": Color(0.42, 0.3, 0.2), "pommel": 0.013, "wheel": false})
+
+## A steel wedge driven into the top of a haft through the head's eye.
+static func _wedge(k: MeshKit, y: float, r: float) -> void:
+	k.box("it_steel", Transform3D.IDENTITY.translated(Vector3(0, y + r * 1.5 + 0.004, 0)), Vector3(0.003, 0.008, r * 1.9))
 
 static func _pickaxe_steel(k: MeshKit):
 	haft(k, -0.02, 0.68, 0.017, 0.016, HICKORY)
@@ -965,36 +1009,6 @@ static func _merge_into(k: MeshKit, sub: MeshKit, xf: Transform3D) -> void:
 			# MeshKit.tri takes counter-clockwise order; committed triangles are clockwise.
 			k.tri(name, xf, v[i0], v[i2], v[i1], n[i0], n[i2], n[i1], c[i0])
 
-static func _shortbow(k: MeshKit):
-	bow(k, 0.5, 0.11, ASH)
-	return Vector3.ZERO
-
-static func _composite_bow(k: MeshKit):
-	bow(k, 0.52, 0.09, Color(0.42, 0.28, 0.16), "it_wood", 0.06, Color(0.5, 0.12, 0.08))
-	# Horn bellies on the limbs.
-	for s in [-1.0, 1.0]:
-		k.sphere("it_bone", Transform3D(Basis.from_scale(Vector3(0.5, 2.0, 0.5)), Vector3(0, s * 0.42, -0.04)), 0.012, 4, 6, 0.0, 1.0, Color(0.25, 0.22, 0.2))
-	return Vector3.ZERO
-
-static func _royal_bow(k: MeshKit):
-	bow(k, 0.85, 0.15, Color(0.36, 0.23, 0.14), "it_wood", 0.0, Color(0.45, 0.08, 0.1))
-	for s in [-1.0, 1.0]:
-		lathe(k, "it_gold", Transform3D(Basis(), Vector3(0, s * 0.84, 0.0)), [Vector2(0, -0.02), Vector2(0.008, -0.015), Vector2(0.009, 0.015), Vector2(0, 0.02)], 8)
-	return Vector3.ZERO
-
-static func _sling(k: MeshKit):
-	# Two cords from your fist to a leather pouch holding a stone.
-	var pouch := Vector3(0.0, -0.32, -0.03)
-	for x in [-0.03, 0.03]:
-		var a := Vector3(x * 0.2, 0.0, 0)
-		var b := pouch + Vector3(x, 0.02, 0)
-		var d := b - a
-		k.cylinder("it_cord", Transform3D(Basis(Vector3.UP.cross(d.normalized()).normalized(), Vector3.UP.angle_to(d.normalized())), a), 0.002, 0.002, d.length(), 5, false, 0.0, 1, CORD)
-	k.sphere("it_leather", Transform3D(Basis.from_scale(Vector3(1.4, 0.6, 1.0)), pouch), 0.03, 5, 8, 0.1, 1.0, LEATHER, false)
-	k.sphere("it_stone", Transform3D(Basis(), pouch + Vector3(0, 0.012, 0)), 0.02, 4, 7, 0.2, 0.8, Color(0.55, 0.53, 0.5))
-	k.sphere("it_cord", Transform3D(Basis(), Vector3(0, 0.0, 0)), 0.012, 4, 6, 0.0, 1.0, CORD)
-	return Vector3(0, 0.0, 0)
-
 static func _shovel(k: MeshKit):
 	pole(k, -0.15, 0.85, 0.017, 0.016, ASH)
 	# A D-handle at the top, and a dished iron blade with a socket.
@@ -1004,13 +1018,14 @@ static func _shovel(k: MeshKit):
 		st.append(_at(Vector3(cos(a) * 0.055, 0.88 + sin(a) * 0.07, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.011, 0.011, 8)))
 	sweep(k, "it_wood", Transform3D.IDENTITY, st, false, ASH)
 	k.cylinder("it_wood", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.06, 0.885, 0)), 0.013, 0.013, 0.12, 8, true, 0.0, 1, ASH)
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.019, -0.16), Vector2(0.02, -0.08), Vector2(0.03, -0.2)], 10)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.02, -0.08), Vector2(0.019, -0.15), Vector2(0.03, -0.2)], 10)
 	plate(k, "it_iron", 6, 8, func(u, v):
 		var x: float = (u - 0.5) * 0.22 * (1.0 - 0.25 * v * v)
 		var y: float = -0.2 - v * 0.27 - 0.03 * (1.0 - pow(2.0 * u - 1.0, 2.0)) * v
 		var z := 0.02 * pow(2.0 * u - 1.0, 2.0) - 0.01
 		return Vector3(x, y, z), 0.003)
-	return Vector3(0, 0.82, 0)
+	# Held by the shaft a hand's width above the socket; Viewmodel holds it blade up.
+	return Vector3(0, 0.12, 0)
 
 static func _hoe(k: MeshKit):
 	pole(k, -0.2, 1.05, 0.016, 0.015, ASH)
@@ -1498,22 +1513,6 @@ static func _plasma_whip(k: MeshKit):
 		var f := float(i) / 30.0
 		st.append(_at(Vector3(sin(f * 7.0) * 0.06 * f, 0.16 - f * 0.55, cos(f * 5.0) * 0.04 * f), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(0.006 * (1.0 - f * 0.7), 0.006 * (1.0 - f * 0.7), 6)))
 	sweep(k, "glow_violet", Transform3D.IDENTITY, st, false)
-
-static func _crystal_bow(k: MeshKit):
-	bow(k, 0.55, 0.1, Color(0.7, 0.75, 1.0, 0.8), "it_crystal", 0.03, Color(0.25, 0.22, 0.3))
-	return Vector3.ZERO
-
-static func _eclipse_bow(k: MeshKit):
-	bow(k, 0.6, 0.12, Color(0.2, 0.17, 0.24), "it_chitin", 0.07, Color(0.4, 0.3, 0.5))
-	return Vector3.ZERO
-
-static func _nova_staff(k: MeshKit):
-	pole(k, -0.85, 0.85, 0.016, 0.014, Color(0.25, 0.2, 0.3), "it_chitin")
-	for i in 3:
-		var a := TAU * i / 3.0
-		k.cylinder("alien_hull", Transform3D(Basis(Vector3(-sin(a), 0, cos(a)), 0.35), Vector3(cos(a) * 0.01, 0.85, sin(a) * 0.01)), 0.006, 0.003, 0.12, 6)
-	k.sphere("it_crystal", Transform3D(Basis(), Vector3(0, 0.95, 0)), 0.035, 8, 10, 0.0, 1.0, Color(0.95, 0.8, 0.5, 0.8))
-	return Vector3(0, 0.0, 0)
 
 static func _orb(k: MeshKit, c: Color, shell: String):
 	# A grown shell in segments, the light of its charge showing through the seams, a

@@ -43,6 +43,9 @@ var _oneshot := false
 static func available() -> bool:
 	return ResourceLoader.exists(ANIMS) and ResourceLoader.exists(DIR + BODY[false] + ".gltf")
 
+## How far up the forearm from the wrist joint a sleeve ends.
+const WRIST_BACK := 0.02
+
 ## The body mesh with per-vertex region / rest height / |x| in CUSTOM0, built once per sex.
 static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 	var key := "body_%s" % fem
@@ -65,6 +68,11 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				r = REGION_OF[k]
 				break
 		region_of_bind.append(r)
+	# The wrist: forearm skin past it is the hand's, so a sleeve ends in a clean line
+	# there (Outfit cuts the shirt at the same place) instead of a fringe of triangles.
+	var wrist := INF
+	if sk and sk.find_bone("hand_l") >= 0:
+		wrist = absf(sk.get_bone_global_rest(sk.find_bone("hand_l")).origin.x) - WRIST_BACK
 	var custom := PackedFloat32Array()
 	custom.resize(verts.size() * 3)
 	for v in verts.size():
@@ -75,6 +83,8 @@ static func _body_mesh(fem: bool, src: MeshInstance3D) -> ArrayMesh:
 				bw = weights[v * per + j]
 				best = bones[v * per + j]
 		custom[v * 3] = float(region_of_bind[best]) if best < region_of_bind.size() else 1.0
+		if custom[v * 3] == 3.0 and absf(verts[v].x) > wrist:
+			custom[v * 3] = 4.0
 		custom[v * 3 + 1] = verts[v].y
 		custom[v * 3 + 2] = verts[v].x
 	a[Mesh.ARRAY_CUSTOM0] = custom
@@ -193,6 +203,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	animator.ik = ik
 	gestures = BodyLanguage.new()
 	skeleton.add_child(gestures)
+	gestures.relaxed = true # idle clips clench the fists; empty hands hang loose
 	if _gripping:
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(_work_tool)
