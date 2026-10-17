@@ -2,7 +2,7 @@ extends SceneTree
 ## Shoots a person and a deer and films them going down as ragdolls (Ragdoll), then
 ## checks the settled pose saves and reloads exactly.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_ragdoll.gd -- --out=/abs/dir
-##   godot --headless --path . --script res://tools/preview_ragdoll.gd -- --check
+##   godot --headless --path . --script res://tools/preview_ragdoll.gd -- --check [--animal=Boar]
 
 const FRAME := Vector2i(480, 420)
 const COLS := 6
@@ -11,6 +11,8 @@ const SLOPE := 0.25
 var vp: SubViewport
 var cam: Camera3D
 var render := true
+
+var animal := "Deer" ## --animal=<kind>: which animal falls, any AnimalModel kind
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -22,6 +24,8 @@ func _run() -> void:
 			out = a.substr(6)
 		elif a == "--check":
 			render = false
+		elif a.begins_with("--animal="):
+			animal = a.substr(9)
 	DirAccess.make_dir_recursive_absolute(out)
 	vp = SubViewport.new()
 	vp.size = FRAME
@@ -133,7 +137,7 @@ func _shoot_animal(path: String) -> bool:
 			c.queue_free()
 	var a := AnimalModel.new()
 	vp.add_child(a)
-	a.build("Deer")
+	a.build(animal)
 	a.global_position = Vector3(0, _h(0), 0)
 	a.rotation.y = PI * 0.5
 	a.play("Gallop")
