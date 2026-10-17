@@ -291,7 +291,7 @@ func _pay_bounty(btn: Button) -> void:
 	var paid := manager.pay_bounty(npc)
 	if paid < 0:
 		return
-	var line := ["Your debt to %s is paid. Keep your hands to yourself." % npc.settlement["name"], "Fine. You're free to go, for now.", "Paid in full. Don't let me catch you again."][randi() % 3]
+	var line: String = ["Your debt to %s is paid. Keep your hands to yourself." % npc.settlement["name"], "Fine. You're free to go, for now.", "Paid in full. Don't let me catch you again."][randi() % 3]
 	_add_line("", "(You pay a %d Mark bounty.)" % paid, UITheme.DIM)
 	_add_line(npc.rec["name"].split(" ")[0], line, UITheme.ACCENT)
 	npc.say(line, 5.0)

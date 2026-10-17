@@ -559,9 +559,9 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why := {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
-	var shout := {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
+	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
 		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"]}.get(kind, ["Guards!"])
 	var shouted := false
