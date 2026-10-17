@@ -63,6 +63,7 @@ func start(c: ServerConfig) -> Error:
 	mp.peer_disconnected.connect(_on_peer_disconnected)
 	get_tree().set_multiplayer(mp)
 	mp.multiplayer_peer = peer
+	_open_lan()
 	Net.mode = Net.Mode.SERVER
 	Net.host = self
 	Net.options = cfg.options
@@ -451,6 +452,14 @@ func chunk_save(peer: int, p: int, data: PackedByteArray) -> void:
 	if not _valid_chunk(m[0]):
 		m = [c, true]
 	c = m[0]
+	if not bool(cfg.options.get("building", true)) and cur is Dictionary:
+		# Building is off: new pieces don't stay (the game already stops you placing them).
+		var objs: Array = c["objects"]
+		var had: int = (cur["objects"] as Array).size()
+		for i in range(objs.size() - 1, had - 1, -1):
+			if BuildCatalog.is_built(String(objs[i].get("t", ""))):
+				objs.remove_at(i)
+				m[1] = true
 	c["_rev"] = sync.next_rev()
 	data = NetPack.pack(c)
 	store_for(p).save_chunk(c)
@@ -613,9 +622,33 @@ func ai_chat(peer: int, id: int, system: String, messages: Array, background: bo
 
 # --- Clock and saving ---------------------------------------------------------------------------
 
+## Answers "who's there?" from Join Server screens on the local network.
+var _lan: PacketPeerUDP
+
+func _open_lan() -> void:
+	if not cfg.lan_discovery:
+		return
+	_lan = PacketPeerUDP.new()
+	if _lan.bind(ServerQuery.LAN_PORT) != OK:
+		say_log("LAN discovery is off: UDP port %d is in use (another server on this machine?)" % ServerQuery.LAN_PORT)
+		_lan = null
+
+func _answer_lan() -> void:
+	while _lan.get_available_packet_count() > 0:
+		var pkt := _lan.get_packet()
+		if pkt.get_string_from_utf8() != ServerQuery.HELLO:
+			continue
+		var info := cfg.info(online.size())
+		info["game"] = "procedural-world"
+		info["port"] = cfg.port
+		_lan.set_dest_address(_lan.get_packet_ip(), _lan.get_packet_port())
+		_lan.put_packet(JSON.stringify(info).to_utf8_buffer())
+
 func _process(delta: float) -> void:
 	if mp == null:
 		return
+	if _lan != null:
+		_answer_lan()
 	_collect()
 	match String(cfg.options["time"]):
 		"day": day = floorf(day) + NOON
@@ -647,6 +680,9 @@ func stop() -> void:
 			WorkerThreadPool.wait_for_task_completion(_jobs[id]["task"])
 	_collect()
 	save()
+	if _lan != null:
+		_lan.close()
+		_lan = null
 	var p := mp.multiplayer_peer
 	if p is ENetMultiplayerPeer and p.host != null:
 		p.host.flush()

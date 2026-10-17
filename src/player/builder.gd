@@ -150,6 +150,9 @@ func _door_target(from: Vector3, p: Vector3) -> Dictionary:
 func place() -> bool:
 	if _id == "" or _target.is_empty():
 		return false
+	if not bool(Game.server_option("building", true)):
+		Game.toast.emit("Building is turned off on this server")
+		return false
 	if not _target["ok"]:
 		if _target.get("why", "") == "doorway":
 			Game.toast.emit("Hang a %s in a doorway you've built" % String(BuildCatalog.def(_id)["name"]).to_lower())

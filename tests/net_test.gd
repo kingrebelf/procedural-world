@@ -95,6 +95,23 @@ func _run() -> void:
 	await _frames(30)
 	check(FileAccess.file_exists(_data.path_join("server.cfg")), "server wrote its server.cfg")
 
+	# The Join Server screen asks servers how they are, and finds ones on your network.
+	var q = load("res://src/net/server_query.gd").new() # by path: Net is not up yet when this compiles
+	root.add_child(q)
+	var answers := {}
+	q.answered.connect(func(k, info): answers[k] = info)
+	q.ask("127.0.0.1", PORT)
+	q.scan("127.0.0.1")
+	q.ask("127.0.0.1", PORT + 50)
+	var t_ask := Time.get_ticks_msec()
+	await _until(func(): return answers.size() >= 3 or Time.get_ticks_msec() - t_ask > 8000, 100000)
+	var a1: Dictionary = answers.get("127.0.0.1:%d" % PORT, {})
+	check(String(a1.get("name", "")) == "Test Server" and bool(a1.get("password", false)) and a1.has("ping"), "a server answers with its name, password flag and ping (%s)" % a1)
+	var lan: Dictionary = answers.get("lan:127.0.0.1:%d" % PORT, {})
+	check(String(lan.get("name", "")) == "Test Server" and int(lan.get("port", 0)) == PORT, "and on the local network (%s)" % lan)
+	check(answers.get("127.0.0.1:%d" % (PORT + 50), {}).has("error"), "an address with no server says so")
+	q.queue_free()
+
 	# Identity, password and names.
 	root.get_node("/root/Net") # keep autoload path in use
 	_identity("alice")
@@ -110,6 +127,21 @@ func _run() -> void:
 	check(String(net.info.get("name", "")) == "Test Server", "and its name (%s)" % net.info.get("name", ""))
 	check(String(net.option("time")) == "day" and is_equal_approx(game.time_lock, 0.5), "always-day locks the clock")
 	check(game.money == 50 and game.inventory.count("pickaxe_iron") == 1, "a new player gets the starter pack")
+
+	# Server rates: loot and experience.
+	var opts: Dictionary = net.options
+	net.options = {"loot_mult": 0.0}
+	var st0: int = game.inventory.count("stone")
+	check(game.give_loot({"type": "stone", "qty": 3}) and game.inventory.count("stone") == st0, "a loot rate of 0 gives nothing")
+	net.options = {"loot_mult": 2.0}
+	game.give_loot({"type": "stone", "qty": 3})
+	check(game.inventory.count("stone") == st0 + 6, "a loot rate of 2 doubles a harvest")
+	net.options = {"xp_mult": 3.0}
+	var xp0: float = game.stats.xp
+	var lv0: int = game.stats.level
+	game.add_xp(1.0)
+	check(game.stats.level > lv0 or is_equal_approx(game.stats.xp - xp0, 3.0), "an experience rate of 3 triples experience")
+	net.options = opts
 
 	# The server's model, for a player with none.
 	check(bool(net.info.get("ai", false)) and ai_node.enabled(), "the server offers its villagers' model")

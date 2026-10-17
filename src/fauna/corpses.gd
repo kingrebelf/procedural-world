@@ -393,6 +393,11 @@ func butcher(key: String, item) -> void:
 	var left := Inventory.new(CorpseLoot.SLOTS)
 	var got: Array = []
 	for y in CorpseLoot.animal_yields(p, blade, age, rng):
+		var m := float(Game.server_option("loot_mult", 1.0)) # a server's loot rate
+		if not is_equal_approx(m, 1.0):
+			y = [y[0], int(floor(float(y[1]) * m)) + (1 if rng.randf() < fmod(float(y[1]) * m, 1.0) else 0)]
+			if int(y[1]) <= 0:
+				continue
 		var it := ItemDB.make(y[0], y[1], rng.randf_range(0.85, 1.15) * (1.1 if blade >= 1.5 else 1.0), origin)
 		var rest := Game.inventory.add(it)
 		if rest < int(y[1]):
