@@ -243,6 +243,7 @@ func _run() -> void:
 	player._cooldown = 0.0
 	player.use_held()
 	check(kc.hp < hp1, "a level swing hits an animal at your feet (%.0f -> %.0f hp)" % [hp1, kc.hp])
+	await _guns(game, world, player, kc, bare)
 	world.fauna._herds.erase(Vector2i(99999, 99999))
 	world.fauna._scan = 0.0
 	kc.hurt(1.0)
@@ -449,6 +450,47 @@ func _run() -> void:
 ## Relics and markers are used, not broken: a xenolith circle wakes once with gifts and
 ## then restores you once a day, a beacon calls down a supply pod and marks a settlement,
 ## runes are read once, a crystal recharges your flashlight.
+## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
+## it; the magazine empties and a reload takes a fresh power cell.
+func _guns(game, world, player, kc: Creature, slot: int) -> void:
+	var cells0: int = game.inventory.count("power_cell")
+	game.give(ItemDB.make("power_cell", 2, 1.0, {}))
+	var gun := ItemDB.make("pulse_pistol", 1, 1.0, {})
+	gun["charge"] = 2
+	game.inventory.set_slot(slot, gun)
+	player.select(slot)
+	var fwd: Vector3 = -player.camera.global_transform.basis.z
+	fwd.y = 0.0
+	kc.global_position = player.global_position + fwd.normalized() * 12.0
+	kc.global_position.y = world.vehicles.ground(kc.global_position.x, kc.global_position.z)
+	await _frames(3)
+	var aim_at: Vector3 = kc.global_position + Vector3(0, float(kc.p["size"]) * 0.45, 0)
+	var d: Vector3 = (aim_at - player.camera.global_position).normalized()
+	player.set_state({"pos": player.global_position, "yaw": atan2(-d.x, -d.z), "pitch": asin(d.y), "slot": slot, "view": 1})
+	await _frames(2)
+	var hp_was := kc.hp
+	kc.hp = 10000.0 # tough enough not to die of it
+	var hp0 := kc.hp
+	player._cooldown = 0.0
+	player.gunplay.ads = 1.0
+	player.gunplay.bloom = 0.0
+	player._trigger_held = false
+	player.use_held()
+	check(int(gun.get("charge", 0)) == 1, "firing spends a round from the magazine")
+	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
+	await _frames(30)
+	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
+	gun["charge"] = 0
+	player._cooldown = 0.0
+	player._trigger_held = false
+	player.use_held()
+	check(player.gunplay.reloading(), "pulling the trigger on an empty magazine starts a reload")
+	# Reloads run on physics time, which headless frames outpace.
+	await create_timer(player.gunplay.reload_total + 0.5).timeout
+	check(not player.gunplay.reloading() and int(gun.get("charge", 0)) == player.gunplay.mag_size("pulse_pistol"), "the reload fills the magazine (%d)" % int(gun.get("charge", 0)))
+	check(game.inventory.count("power_cell") == cells0 + 1, "the reload uses one power cell")
+	kc.hp = hp_was
+
 func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var at := func(dx: float, dz: float) -> Vector3:

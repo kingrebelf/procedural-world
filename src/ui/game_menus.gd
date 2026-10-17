@@ -61,7 +61,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("inventory"):
 		_toggle("inventory")
-	elif event.is_action_pressed("craft"):
+	elif event.is_action_pressed("craft") and not (_mode == "" and event.is_action_pressed("reload") and player and player.gunplay.wants_reload()):
+		# R is both Crafting and Reload: with a gun in hand that can be reloaded, it reloads.
 		_toggle("craft")
 	elif event.is_action_pressed("map"):
 		_toggle("map")
