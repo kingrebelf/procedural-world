@@ -3,15 +3,16 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bwfnglnmyg67v"
-path="res://.godot/imported/sparks_flipbook.png-4c10d29a72089a4985b44e419f7e767a.ctex"
+path.s3tc="res://.godot/imported/sparks_flipbook.png-4c10d29a72089a4985b44e419f7e767a.s3tc.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/textures/fx/sparks_flipbook.png"
-dest_files=["res://.godot/imported/sparks_flipbook.png-4c10d29a72089a4985b44e419f7e767a.ctex"]
+dest_files=["res://.godot/imported/sparks_flipbook.png-4c10d29a72089a4985b44e419f7e767a.s3tc.ctex"]
 
 [params]
 
