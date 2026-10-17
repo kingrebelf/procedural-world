@@ -26,17 +26,17 @@ const PIECES := {
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 14.0, "era": 0},
 	"floor_wood": {"name": "Wooden Floor", "models": [["village/Floor_WoodDark", 0, Vector3.ZERO, 1.0]],
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 6.0, "era": 0},
-	"wall_plaster": {"name": "Timber Wall", "models": [["village/Wall_Plaster_Straight", 0, Vector3.ZERO, 1.0]],
+	"wall_plaster": {"name": "Timber Wall", "models": [["village/Wall_Plaster_Straight", 0, Vector3.ZERO, 1.0]], "proc": "trim_wall",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]],
+	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]], "proc": "trim_wall",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
+	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]], "proc": "trim_window",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]], "proc": "trim_window",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]], "proc": "trim_door",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_door_stone": {"name": "Stone Doorway", "models": [["village/Wall_UnevenBrick_Door_Round", 0, Vector3.ZERO, 1.0]], "proc": "trim_door",
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"stairs_wood": {"name": "Wooden Stairs", "models": [["village/Stair_Interior_Solid", 0, Vector3(0, 0, 0.694), Vector3(1, 1.03, 0.8493)]],
 		"snap": "floor", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 8.0, "era": 0, "ramp": true, "foot": 0},
@@ -511,6 +511,10 @@ static func _proc(k: MeshKit, what: String) -> void:
 		return
 	var I := Transform3D.IDENTITY
 	match what:
+		"trim_wall", "trim_window", "trim_door":
+			# The inside face finished: a skirting along its foot, a casing round a
+			# doorway, a sill under a window (the room is on the wall's -z side).
+			Trim.kit_wall(k, I, what.trim_prefix("trim_"))
 		"plinth":
 			# Stone block under the floor tile, reaching into the ground on slopes: a
 			# storey deep, so a foundation set a storey above the ground still meets it.

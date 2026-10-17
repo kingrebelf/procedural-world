@@ -433,9 +433,11 @@ static func interior(t: String) -> ArrayMesh:
 			# Dressed stone flags over the boards, and a tapestry on the east wall.
 			k.box("stone_floor", I.translated(Vector3(0, _F_KEEP + 0.004, 0)), Vector3(7.3, 0.008, 7.3))
 			tapestry(k, Transform3D(Basis(Vector3.UP, -PI / 2), Vector3(3.69 - 0.02, 1.8, -1.8)))
+			_hall_trim(k, "castle_stone")
 		"crypt_keep":
 			# Stone flags over the boards, and runes glowing over the wall tombs.
 			k.box("flagstone", I.translated(Vector3(0, _F_KEEP + 0.004, 0)), Vector3(7.3, 0.008, 7.3))
+			_hall_trim(k, "crypt_stone")
 			for z in [-2.2, 1.1]:
 				k.box("glow_violet", I.translated(Vector3(-3.67, 2.15, z)), Vector3(0.02, 0.07, 1.7))
 			k.box("glow_violet", I.translated(Vector3(1.2, 2.6, -3.67)), Vector3(1.4, 0.07, 0.02))
@@ -460,6 +462,10 @@ static func interior(t: String) -> ArrayMesh:
 			k.cylinder("glow_white", I.translated(Vector3(0, top - 0.12, 0)), 0.6, 0.6, 0.03, 16)
 		"castle_tower", "crypt_tower":
 			_stair(k, t)
+			# A plinth course round the foot of the walls, open at the door.
+			var w := HALL - Trim.KIT_PLASTER
+			Trim.room(k, "castle_stone" if t == "castle_tower" else "crypt_stone", Trim.PLINTH, -w, w, -w, w, _F_KEEP,
+				[["+z", 3.0 - 0.66, 3.0 + 0.66]])
 		"watchtower":
 			# The hatch the ladder climbs to.
 			k.box("timber", I.translated(Vector3(0, 3.18, -1.25)), Vector3(0.9, 0.04, 0.9))
@@ -476,6 +482,32 @@ static func interior(t: String) -> ArrayMesh:
 	if any:
 		wads.commit(ToolModels.mat, mesh)
 	return mesh
+
+## Where a keep's or stone tower's kit walls stand, out from the middle (Stronghold).
+const HALL := 4.0
+## The keep hall's beams, along x across the hall (Stronghold): their z and underside.
+const HALL_BEAMS := [-3.2, -1.6, 0.0, 1.6, 3.2]
+const HALL_CEILING := 2.9
+
+## A keep hall's finish: a stone plinth course round the foot of the walls, open at
+## the doorway, which gets a dressed stone casing round its arch; a hewn timber wall
+## plate round the walls under the boards; stone corbels under it where each beam's
+## end rests on the wall.
+static func _hall_trim(k: MeshKit, stone: String) -> void:
+	var w := HALL - Trim.KIT_PLASTER
+	var dx: float = BOX["castle_keep"][5][0]
+	var fl := _F_KEEP + 0.008
+	Trim.room(k, stone, Trim.PLINTH, -w, w, -w, w, fl, [["+z", dx - 0.66, dx + 0.66]])
+	Trim.room(k, "timber", Trim.WALL_PLATE, -w, w, -w, w, HALL_CEILING, [], true)
+	for side: float in [-1.0, 1.0]:
+		var xf := Transform3D(Basis(Vector3.UP, -side * PI / 2), Vector3(side * w, HALL_CEILING - 0.2, 0))
+		Trim.corbels(k, stone, xf, HALL_BEAMS, 0.24, 0.34, 0.26)
+	var edge := PackedVector2Array()
+	for i in range(Trim.KIT_DOOR.size() - 1, -1, -1):
+		var p: Vector2 = Trim.KIT_DOOR[i]
+		edge.append(Vector2(-p.x, maxf(p.y, fl)))
+	Trim.casing(k, stone, Transform3D(Basis(Vector3.UP, PI), Vector3(dx, 0, w)), edge,
+		[Vector2(0, 0.03), Vector2(0.012, 0.04), Vector2(0.13, 0.04), Vector2(0.14, 0.03), Vector2(0.14, 0)])
 
 ## Lamplit window panels of a sci-fi block's ground floor, drawn from further off.
 static func glow(t: String) -> ArrayMesh:
@@ -658,23 +690,40 @@ static func _stair(k: MeshKit, t: String) -> void:
 			var stone := Color(tone, tone * r.randf_range(0.97, 1.0), tone * r.randf_range(0.93, 0.99))
 			var ts := Vector3(wide - 0.02, 0.06, tread + 0.04) if along_z else Vector3(tread + 0.04, 0.06, wide - 0.02)
 			var tilt := Basis(fwd.cross(Vector3.UP).normalized(), r.randf_range(-0.012, 0.012)).rotated(fwd, r.randf_range(-0.012, 0.012))
-			k.box(mat, Transform3D(tilt, Vector3(c.x, y - 0.03, c.z) - fwd * 0.03), ts, stone)
+			k.bevel_box(mat, Transform3D(tilt, Vector3(c.x, y - 0.03, c.z) - fwd * 0.03), ts, 0.012, stone)
 		var p0 := fo + hw * 0.92 + Vector3(0, 0.95, 0)
 		var p1 := hd + hw * 0.92 + Vector3(0, 0.95, 0)
 		var ax := (p1 - p0).normalized()
 		var ay := (Vector3.UP - ax * ax.dot(Vector3.UP)).normalized()
-		k.box(rail, Transform3D(Basis(ax, ay, ax.cross(ay)), (p0 + p1) * 0.5 + ay * 0.02), Vector3(p0.distance_to(p1), 0.07, 0.08))
+		var slope := Basis(ax, ay, ax.cross(ay))
+		k.bevel_box(rail, Transform3D(slope, (p0 + p1) * 0.5 + ay * 0.02), Vector3(p0.distance_to(p1), 0.07, 0.08), 0.015)
 		for s in [0.0, 0.25, 0.5, 0.75, 1.0]:
 			var pp: Vector3 = fo.lerp(hd, s) + hw * 0.92
-			k.box(rail, I.translated(pp + Vector3(0, 0.48, 0)), Vector3(0.08, 0.96, 0.08))
+			k.bevel_box(rail, I.translated(pp + Vector3(0, 0.48, 0)), Vector3(0.08, 0.96, 0.08), 0.012)
+			# A cap on each newel, standing proud of the handrail.
+			k.bevel_box(rail, I.translated(pp + Vector3(0, 1.05, 0)), Vector3(0.11, 0.05, 0.11), 0.012)
+		# Balusters between the newels, from the treads' line up to the handrail.
+		var bw := 0.035 if rail == "timber" else 0.022
+		for b in 16:
+			var s := (b + 0.5) / 16.0
+			if absf(s * 4.0 - roundf(s * 4.0)) < 0.15:
+				continue
+			var pb: Vector3 = fo.lerp(hd, s) + hw * 0.92
+			k.box(rail, I.translated(pb + Vector3(0, 0.46, 0)), Vector3(bw, 0.92, bw))
+		# The wall string: a board along the wall side, closing the gap between the
+		# treads' ends and the wall and following the flight up.
+		var wall_side := -hw.normalized() * (hw.length() + 0.055)
+		var w0 := fo + wall_side + Vector3(0, 0.03, 0)
+		var w1 := hd + wall_side + Vector3(0, 0.03, 0)
+		k.bevel_box(mat, Transform3D(slope, (w0 + w1) * 0.5), Vector3(w0.distance_to(w1) + 0.3, 0.32, 0.14), 0.02)
 		if i > 0:
 			var q0 := fo + hw * 0.96 - Vector3(0, 0.22, 0)
 			var q1 := hd + hw * 0.96 - Vector3(0, 0.22, 0)
-			k.box(mat, Transform3D(Basis(ax, ay, ax.cross(ay)), (q0 + q1) * 0.5), Vector3(q0.distance_to(q1), 0.42, 0.14))
+			k.bevel_box(mat, Transform3D(slope, (q0 + q1) * 0.5), Vector3(q0.distance_to(q1), 0.42, 0.14), 0.02)
 	for l in landings(t):
 		var top: Vector3 = l[0]
 		var th: float = l[1]
-		k.box(mat, I.translated(top - Vector3(0, th * 0.5, 0)), Vector3(STAIR_W, th, STAIR_W))
+		k.bevel_box(mat, I.translated(top - Vector3(0, th * 0.5, 0)), Vector3(STAIR_W, th, STAIR_W), 0.02)
 
 static func _round_room(f: PackedVector3Array, t: String) -> void:
 	var p: Array = ROUND[t]
@@ -939,47 +988,47 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 		"@bunk":
 			for x in [-0.97, 0.97]:
 				for z in [-0.44, 0.44]:
-					k.box("metal", at.call(Vector3(x, 0.95, z)), Vector3(0.06, 1.9, 0.06))
+					k.bevel_box("metal", at.call(Vector3(x, 0.95, z)), Vector3(0.06, 1.9, 0.06))
 			for y in [0.35, 1.35]:
-				k.box("metal_dark", at.call(Vector3(0, y, 0)), Vector3(2.0, 0.08, 0.92))
-				k.box("cloth_blue", at.call(Vector3(0, y + 0.11, 0)), Vector3(1.9, 0.14, 0.85))
-				k.box("cloth", at.call(Vector3(-0.72, y + 0.23, 0)), Vector3(0.38, 0.1, 0.6))
-			k.box("metal", at.call(Vector3(0, 1.62, 0.44)), Vector3(1.94, 0.05, 0.04))
+				k.bevel_box("metal_dark", at.call(Vector3(0, y, 0)), Vector3(2.0, 0.08, 0.92))
+				k.bevel_box("cloth_blue", at.call(Vector3(0, y + 0.11, 0)), Vector3(1.9, 0.14, 0.85))
+				k.bevel_box("cloth", at.call(Vector3(-0.72, y + 0.23, 0)), Vector3(0.38, 0.1, 0.6))
+			k.bevel_box("metal", at.call(Vector3(0, 1.62, 0.44)), Vector3(1.94, 0.05, 0.04))
 		"@cot":
-			k.box("metal_dark", at.call(Vector3(0, 0.15, 0)), Vector3(2.0, 0.3, 0.9))
-			k.box("cloth_blue", at.call(Vector3(0, 0.38, 0)), Vector3(1.9, 0.16, 0.82))
-			k.box("cloth", at.call(Vector3(-0.72, 0.5, 0)), Vector3(0.38, 0.1, 0.6))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.15, 0)), Vector3(2.0, 0.3, 0.9))
+			k.bevel_box("cloth_blue", at.call(Vector3(0, 0.38, 0)), Vector3(1.9, 0.16, 0.82))
+			k.bevel_box("cloth", at.call(Vector3(-0.72, 0.5, 0)), Vector3(0.38, 0.1, 0.6))
 		"@locker":
-			k.box("metal_dark", at.call(Vector3(0, 1.05, 0)), Vector3(0.58, 2.1, 0.52))
-			k.box("metal", at.call(Vector3(0, 1.05, 0.265)), Vector3(0.5, 2.0, 0.01))
-			k.box("glow_cyan", at.call(Vector3(0.18, 1.3, 0.275)), Vector3(0.04, 0.4, 0.01))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 1.05, 0)), Vector3(0.58, 2.1, 0.52))
+			k.bevel_box("metal", at.call(Vector3(0, 1.05, 0.265)), Vector3(0.5, 2.0, 0.01))
+			k.bevel_box("glow_cyan", at.call(Vector3(0.18, 1.3, 0.275)), Vector3(0.04, 0.4, 0.01))
 			for y in [1.75, 1.82, 1.89]:
-				k.box("metal_dark", at.call(Vector3(0, y, 0.275)), Vector3(0.36, 0.025, 0.01))
+				k.bevel_box("metal_dark", at.call(Vector3(0, y, 0.275)), Vector3(0.36, 0.025, 0.01))
 		"@console":
-			k.box("metal_dark", at.call(Vector3(0, 0.375, -0.05)), Vector3(1.6, 0.75, 0.7))
-			k.box("panel", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(0, 0.8, 0.12)), Vector3(1.5, 0.05, 0.5))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.375, -0.05)), Vector3(1.6, 0.75, 0.7))
+			k.bevel_box("panel", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(0, 0.8, 0.12)), Vector3(1.5, 0.05, 0.5))
 			for x in [-0.38, 0.38]:
-				k.box("glow_cyan", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(x, 0.83, 0.12)), Vector3(0.6, 0.01, 0.32))
-			k.box("metal_dark", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
-			k.box("screen", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
+				k.bevel_box("glow_cyan", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(x, 0.83, 0.12)), Vector3(0.6, 0.01, 0.32))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
+			k.bevel_box("screen", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
 		"@desk":
-			k.box("metal", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8))
+			k.bevel_box("metal", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8))
 			for x in [-0.85, 0.85]:
-				k.box("metal_dark", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
-			k.box("metal_dark", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72))
-			k.box("metal_dark", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
-			k.box("screen", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
+				k.bevel_box("metal_dark", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
+			k.bevel_box("metal_dark", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72))
+			k.bevel_box("metal_dark", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
+			k.bevel_box("screen", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
 		"@chair":
 			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.25, 0.25, 0.03, 8)
 			k.cylinder("metal", at.call(Vector3(0, 0.03, 0)), 0.04, 0.04, 0.43, 6)
-			k.box("metal_dark", at.call(Vector3(0, 0.46, 0)), Vector3(0.46, 0.06, 0.46))
-			k.box("cloth_blue", at.call(Vector3(0, 0.515, 0)), Vector3(0.42, 0.05, 0.42))
-			k.box("metal_dark", at.call(Vector3(0, 0.78, -0.21)), Vector3(0.44, 0.5, 0.05))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.46, 0)), Vector3(0.46, 0.06, 0.46))
+			k.bevel_box("cloth_blue", at.call(Vector3(0, 0.515, 0)), Vector3(0.42, 0.05, 0.42))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.78, -0.21)), Vector3(0.44, 0.5, 0.05))
 		"@tank":
 			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.47, 0.47, 0.25, 12)
 			k.cylinder("glow_teal", at.call(Vector3(0, 0.25, 0)), 0.36, 0.36, 1.8, 12)
 			for a in [0.0, 2.1, 4.2]:
-				k.box("metal", at.call(Vector3(cos(a) * 0.4, 1.15, sin(a) * 0.4)), Vector3(0.05, 1.8, 0.05))
+				k.bevel_box("metal", at.call(Vector3(cos(a) * 0.4, 1.15, sin(a) * 0.4)), Vector3(0.05, 1.8, 0.05))
 			k.cylinder("metal_dark", at.call(Vector3(0, 2.05, 0)), 0.47, 0.42, 0.25, 12)
 			k.crystal("crystal", at.call(Vector3(0, 0.8, 0)), 0.14, 0.7)
 		"@holo":
@@ -993,39 +1042,39 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 				k.sphere("glow_cyan", at.call(Vector3(0, 1.4, 0)), 0.22, 6, 10)
 				k.cylinder("glow_cyan", at.call(Vector3(0, 1.38, 0)), 0.45, 0.45, 0.01, 16, false)
 		"@rack":
-			k.box("metal_dark", at.call(Vector3(0, 1.0, -0.14)), Vector3(2.0, 2.0, 0.06))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 1.0, -0.14)), Vector3(2.0, 2.0, 0.06))
 			for y in [0.55, 1.05, 1.55]:
-				k.box("metal", at.call(Vector3(0, y, 0.0)), Vector3(1.9, 0.04, 0.3))
+				k.bevel_box("metal", at.call(Vector3(0, y, 0.0)), Vector3(1.9, 0.04, 0.3))
 			for g in [["scifi/AR_1", Vector3(0, 1.75, 0)], ["scifi/SMG_1", Vector3(-0.45, 1.44, 0)], ["scifi/Pistol_1", Vector3(0.45, 1.23, 0)],
 					["scifi/Sniper_1", Vector3(-0.35, 0.75, 0)], ["scifi/Pistol_2", Vector3(0.75, 0.73, 0)]]:
 				models.append([g[0], rad_to_deg(xf.basis.get_euler().y), xf * (g[1] as Vector3), 0.85 if g[0] == "scifi/Sniper_1" else 1.0])
 		"@tomb":
-			k.box("stone_dark", at.call(Vector3(0, 0.05, 0)), Vector3(1.1, 0.1, 2.4))
-			k.box("crypt_stone", at.call(Vector3(0, 0.42, 0)), Vector3(0.98, 0.66, 2.28))
-			k.box("stone", at.call(Vector3(0, 0.84, 0)), Vector3(1.1, 0.18, 2.4))
-			k.box("stone_dark", at.call(Vector3(0, 0.98, 0.1)), Vector3(0.42, 0.1, 1.5))
+			k.bevel_box("stone_dark", at.call(Vector3(0, 0.05, 0)), Vector3(1.1, 0.1, 2.4))
+			k.bevel_box("crypt_stone", at.call(Vector3(0, 0.42, 0)), Vector3(0.98, 0.66, 2.28))
+			k.bevel_box("stone", at.call(Vector3(0, 0.84, 0)), Vector3(1.1, 0.18, 2.4))
+			k.bevel_box("stone_dark", at.call(Vector3(0, 0.98, 0.1)), Vector3(0.42, 0.1, 1.5))
 			k.sphere("stone_dark", at.call(Vector3(0, 1.0, -0.82)), 0.15, 5, 8)
 			for x in [-0.5, 0.5]:
-				k.box("glow_violet", at.call(Vector3(x, 0.45, 0)), Vector3(0.01, 0.05, 1.8))
+				k.bevel_box("glow_violet", at.call(Vector3(x, 0.45, 0)), Vector3(0.01, 0.05, 1.8))
 		"@screen":
-			k.box("metal_dark", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
 			# A lit display, not a white slab of light.
-			k.box("screen", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
+			k.bevel_box("screen", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
 		"@planter":
-			k.box("metal_dark", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6))
-			k.box("moss", at.call(Vector3(0, 0.62, 0)), Vector3(1.1, 0.05, 0.5))
+			k.bevel_box("metal_dark", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6))
+			k.bevel_box("moss", at.call(Vector3(0, 0.62, 0)), Vector3(1.1, 0.05, 0.5))
 			for x in [-0.4, -0.13, 0.13, 0.4]:
 				k.sphere("moss", at.call(Vector3(x, 0.75, 0.05 * signf(x))), 0.17, 5, 7, 0.35)
 			for x in [-0.55, 0.55]:
-				k.box("metal", at.call(Vector3(x, 0.75, -0.25)), Vector3(0.04, 0.9, 0.04))
-			k.box("glow_white", at.call(Vector3(0, 1.2, -0.25)), Vector3(1.1, 0.03, 0.08))
+				k.bevel_box("metal", at.call(Vector3(x, 0.75, -0.25)), Vector3(0.04, 0.9, 0.04))
+			k.bevel_box("glow_white", at.call(Vector3(0, 1.2, -0.25)), Vector3(1.1, 0.03, 0.08))
 		"@ladder":
 			for x in [-0.22, 0.22]:
-				k.box("timber", at.call(Vector3(x, 1.5, 0)), Vector3(0.06, 3.0, 0.06))
+				k.bevel_box("timber", at.call(Vector3(x, 1.5, 0)), Vector3(0.06, 3.0, 0.06))
 			for n in 10:
-				k.box("timber", at.call(Vector3(0, 0.3 + n * 0.29, 0)), Vector3(0.44, 0.04, 0.05))
+				k.bevel_box("timber", at.call(Vector3(0, 0.3 + n * 0.29, 0)), Vector3(0.44, 0.04, 0.05))
 		"@table":
-			k.box("metal", at.call(Vector3(0, 0.735, 0)), Vector3(1.4, 0.05, 0.9))
+			k.bevel_box("metal", at.call(Vector3(0, 0.735, 0)), Vector3(1.4, 0.05, 0.9))
 			for x in [-0.64, 0.64]:
 				for z in [-0.39, 0.39]:
-					k.box("metal_dark", at.call(Vector3(x, 0.355, z)), Vector3(0.05, 0.71, 0.05))
+					k.bevel_box("metal_dark", at.call(Vector3(x, 0.355, z)), Vector3(0.05, 0.71, 0.05))
