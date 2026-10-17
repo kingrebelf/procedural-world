@@ -247,6 +247,21 @@ func _slope(dt: float) -> void:
 	_tilt = _tilt.lerp(want, clampf(dt * 6.0, 0.0, 1.0))
 	_scene.rotation = Vector3(_tilt.x, _scene.rotation.y, _tilt.y)
 
+## Stops animating and holds the pose it is in, for a ragdoll (or a saved pose).
+func freeze_for_ragdoll() -> void:
+	set_process(false)
+	_busy = true
+	_current = "Death"
+	if look:
+		look.active = false
+
+## The kit's skeleton, or null for a procedural animal.
+func skeleton() -> Skeleton3D:
+	if _scene == null:
+		return null
+	var all := _scene.find_children("*", "Skeleton3D", true, false)
+	return all[0] if not all.is_empty() else null
+
 ## Turns the head toward world point `p` (INF to stop), `amount` 0..1.
 func look_at_target(p: Vector3, amount := 1.0) -> void:
 	if look:

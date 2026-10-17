@@ -8,7 +8,9 @@ extends Node3D
 ##
 ## Record: kind ("animal" | "person"), p (chunk-local Vector3), yaw, day (of death),
 ## name, era; animals: sp, butchered, items (once butchered, what is left on it);
-## people: who (NPC id), body, job, gear (what they wore), items, purse.
+## people: who (NPC id), body, job, gear (what they wore), items, purse. Once the body
+## has fallen limp and come to rest (Ragdoll): rag (the pose it lies in, Ragdoll.capture)
+## and c (where its middle is, from p, turned by yaw).
 
 const RADIUS := 2 ## chunks around the player whose bodies are drawn
 
@@ -16,7 +18,7 @@ var streamer: ChunkStreamer
 var player: Node3D
 var npcs: NPCManager
 var _shown: Dictionary = {} ## key -> {node, cn, id}
-var _fresh: Dictionary = {} ## ids that should play their fall when first drawn
+var _fresh: Dictionary = {} ## id -> how it died ({pose, vel, hit}), for its fall when first drawn
 var _scan := 0.0
 var _crime_t := -99.0
 
@@ -35,6 +37,8 @@ func add_animal(c: Creature) -> void:
 		if not is_nan(g):
 			at.y = maxf(g, Water.LEVEL - 0.6)
 	_put(at, "a" + c.id, rec)
+	var sk: Skeleton3D = c._kit.skeleton() if c._kit and not c._kit.procedural() else null
+	_fresh["a" + c.id] = _dying(c, sk, c._speed)
 
 ## Person `n` was just killed: their body keeps everything they had on them.
 func add_person(n: NPC) -> void:
@@ -54,6 +58,7 @@ func add_person(n: NPC) -> void:
 	rec["held"] = null
 	rec["pockets"] = []
 	_put(at, "p" + String(rec["id"]), body)
+	_fresh["p" + String(rec["id"])] = _dying(n, n._human.skeleton if n._human else null, n._speed)
 
 func _put(at: Vector3, id: String, rec: Dictionary) -> void:
 	if streamer == null:
@@ -68,8 +73,15 @@ func _put(at: Vector3, id: String, rec: Dictionary) -> void:
 		cn.data["corpses"] = {}
 	cn.data["corpses"][id] = rec
 	Game.mark_chunk_dirty(cn.data)
-	_fresh[id] = true
+	_fresh[id] = {}
 	_scan = 0.0
+
+## How `who` was moving the moment it died: its pose, its velocity (it walks along its
+## +Z) and the blow that killed it.
+static func _dying(who: Node3D, sk: Skeleton3D, speed: float) -> Dictionary:
+	if sk == null:
+		return {}
+	return {"pose": Ragdoll.snapshot(sk), "vel": who.global_basis.z.normalized() * speed, "hit": Ragdoll.hit_of(who)}
 
 # --- Drawing and decay -----------------------------------------------------------------
 
@@ -115,12 +127,15 @@ func _hide(key: String) -> void:
 
 func _show(key: String, cn: ChunkNode, id: String, c: Dictionary) -> void:
 	var fresh: bool = _fresh.has(id)
+	var dying: Dictionary = _fresh.get(id, {})
 	_fresh.erase(id)
+	var limp := c.has("rag") or not dying.is_empty()
 	var node: Node3D
 	if c["kind"] == "animal":
 		var cr := Creature.new()
 		cr.as_corpse = true
 		cr.fresh = fresh
+		cr.limp = limp
 		cr.sp = int(c["sp"])
 		cr.era = int(c["era"])
 		cr.p = Creature.species(cr.sp, cr.era)
@@ -133,10 +148,45 @@ func _show(key: String, cn: ChunkNode, id: String, c: Dictionary) -> void:
 	node.rotation.y = float(c.get("yaw", 0.0))
 	_shown[key] = {"node": node, "cn": cn, "id": id}
 	if c["kind"] == "person":
-		_dress(key, fresh)
+		_dress(key, fresh, limp)
+	if limp:
+		_lay(key, node, c, dying)
+
+## A body that falls limp: freshly killed, it drops as a ragdoll from how it died and the
+## pose it comes to rest in is saved with it; found again later, it lies in that pose.
+func _lay(key: String, node: Node3D, c: Dictionary, dying: Dictionary) -> void:
+	var sk: Skeleton3D = null
+	var spec := Ragdoll.HUMAN
+	if node is Creature:
+		var kit: AnimalModel = (node as Creature)._kit
+		sk = kit.skeleton() if kit and not kit.procedural() else null
+		if sk:
+			kit.freeze_for_ragdoll()
+			spec = Ragdoll.animal_spec(sk)
+	elif node.has_meta("human"):
+		var h: HumanModel = node.get_meta("human")
+		sk = h.skeleton
+		h.freeze_for_ragdoll()
+	if sk == null:
+		return
+	if c.has("rag") and Ragdoll.apply_pose(sk, c["rag"]):
+		return
+	if dying.is_empty() or not Ragdoll.apply_pose(sk, dying["pose"]):
+		return
+	var rd := Ragdoll.new()
+	node.add_child(rd)
+	rd.build(sk, spec)
+	rd.settled.connect(func(pose: PackedFloat32Array) -> void:
+		var r := record(key)
+		if not r.is_empty() and is_instance_valid(node):
+			r["rag"] = pose
+			r["c"] = node.global_transform.affine_inverse() * rd.center()
+			Game.mark_chunk_dirty(_shown[key]["cn"].data)
+		rd.queue_free())
+	rd.start(dying["vel"], dying["hit"])
 
 ## Builds (or re-dresses) a person's body: who they were, in what they still wear.
-func _dress(key: String, fresh := false) -> void:
+func _dress(key: String, fresh := false, limp := false) -> void:
 	var e: Dictionary = _shown.get(key, {})
 	var c := record(key)
 	if e.is_empty() or c.is_empty() or not HumanModel.available():
@@ -150,7 +200,8 @@ func _dress(key: String, fresh := false) -> void:
 		h.scale = Vector3(s, s, s)
 		node.add_child(h)
 		node.set_meta("human", h)
-		h.pose("death", not fresh)
+		if not limp:
+			h.pose("death", not fresh)
 	h.wear(still_worn(c))
 
 ## The gear a body still wears: what it died in, less whatever has been taken.
@@ -178,22 +229,28 @@ func record(key: String) -> Dictionary:
 		return {}
 	return e["cn"].data.get("corpses", {}).get(e["id"], {})
 
+## Where a drawn body lies: its middle, wherever the fall took it.
 func world_pos(key: String) -> Vector3:
 	var e: Dictionary = _shown.get(key, {})
 	if e.is_empty() or not is_instance_valid(e["node"]):
 		return Vector3.INF
-	return (e["node"] as Node3D).global_position
+	var n: Node3D = e["node"]
+	var c := record(key)
+	return n.global_transform * (c["c"] as Vector3) if c.get("c") is Vector3 else n.global_position
 
 ## Bodies within `radius` of `at` that still hold something: [{key, rec, pos}].
 func near(at: Vector3, radius: float) -> Array:
 	var out := []
 	for key in _shown:
 		var n = _shown[key]["node"]
-		if not is_instance_valid(n) or (n as Node3D).global_position.distance_to(at) > radius:
+		if not is_instance_valid(n):
+			continue
+		var pos := world_pos(key)
+		if pos.distance_to(at) > radius:
 			continue
 		var c := record(key)
 		if not c.is_empty() and CorpseLoot.has_any(c):
-			out.append({"key": key, "rec": c, "pos": (n as Node3D).global_position})
+			out.append({"key": key, "rec": c, "pos": pos})
 	return out
 
 ## What Interact on this body does: [kind, verb]. kind "carcass" is held to butcher;

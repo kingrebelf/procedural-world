@@ -594,6 +594,19 @@ func _end_shot() -> void:
 		return
 	_oneshot = false
 
+## Stops animating and holds the pose it is in, for a ragdoll (or a saved pose) to take
+## over the bones.
+func freeze_for_ragdoll() -> void:
+	if animator:
+		animator.set_process(false)
+		animator.tree.active = false
+	if ik:
+		ik.active = false
+	if gestures:
+		gestures.active = false
+	_holding = true
+	_oneshot = true
+
 ## Settles the animation `dt` seconds on at once (a pose wanted this frame).
 func advance(dt: float) -> void:
 	if animator:

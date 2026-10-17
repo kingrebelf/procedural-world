@@ -33,6 +33,7 @@ var _graze_clip := "Eating"
 ## plays the fall; otherwise it is already down.
 var as_corpse := false
 var fresh := false
+var limp := false ## lies as a ragdoll (Corpses lays it), not in its death clip
 
 const NAMES := [
 	{"quad": ["Red Deer", "Elk", "Wild Boar", "Grey Wolf", "Hare", "Aurochs", "Red Fox", "Wild Horse", "Wild Donkey"], "bird": ["Crow", "Kestrel", "Swallow"]},
@@ -519,6 +520,9 @@ func die() -> void:
 ## A carcass: kit animals hold the last frame of their death; the rest keel over.
 func _lie_dead() -> void:
 	if _kit and not _kit.procedural():
+		if limp:
+			_kit.freeze_for_ragdoll()
+			return
 		_kit.play_once("Death")
 		if not fresh and _kit.anim.current_animation != "":
 			_kit.anim.seek(_kit.anim.current_animation_length, true)
