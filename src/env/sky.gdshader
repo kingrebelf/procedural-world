@@ -158,7 +158,10 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 			float powder = 1.0 - exp(-den * 2.5);
 			float hfrac = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
 			vec3 lum = sun_col * beer * powder * phase * 2.6 + amb * (0.55 + 0.8 * hfrac);
-			float a = 1.0 - exp(-den * sigma * dt);
+			// Far off, the air between thins a cloud into the haze behind it (beyond about
+			// fourteen kilometres), so the low decks toward the horizon read as distant, not as
+			// bright white pancakes stacked on the skyline.
+			float a = (1.0 - exp(-den * sigma * dt)) * exp(-max(t - 14000.0, 0.0) / 22000.0);
 			col += trans * a * lum;
 			trans *= 1.0 - a;
 			if (trans < 0.02) break;
@@ -166,7 +169,7 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 		t += dt;
 	}
 	// Fade into the haze toward the horizon.
-	float fade = smoothstep(0.015, 0.12, d.y);
+	float fade = smoothstep(0.015, 0.06, d.y);
 	return vec4(col, (1.0 - trans) * fade);
 }
 
