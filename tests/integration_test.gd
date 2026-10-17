@@ -257,6 +257,59 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	player.set_state(back)
 	await _frames(2)
 
+## Power: a wood-gas generator cabled through a knife switch to a lamp lights it while it
+## has fuel and the switch is closed; the cables cost Copper Wire and give it back.
+func _power_checks(game, world, player: Player, pc: ChunkNode, lp: Vector3) -> void:
+	var grid: PowerGrid = PowerGrid.current
+	check(grid != null and grid.get_parent() == world, "the world runs a power grid")
+	if grid == null:
+		return
+	var mk := func(id: String, at: Vector3) -> Dictionary:
+		var st := {"by": "you", "day": 0.0, "owner": Doors.my_id(), "owner_name": "You"}
+		Power.init_state(id, st)
+		return pc.add_built(id, at, 0.0, st)
+	_make_room(game, 4)
+	var gen: Dictionary = mk.call("gen_woodgas", lp)
+	var sw: Dictionary = mk.call("knife_switch", lp + Vector3(3, 1.5, 0))
+	var lamp: Dictionary = mk.call("lamp_wall", lp + Vector3(6, 1.8, 0))
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	var w0: int = game.inventory.count("copper_wire")
+	check(grid.connect_pieces(pc, gen, pc, sw) == "" and grid.connect_pieces(pc, sw, pc, lamp) == "", "cables strung generator to switch to lamp")
+	check(game.inventory.count("copper_wire") < w0, "cables use Copper Wire")
+	var far: Dictionary = mk.call("lamp_wall", lp + Vector3(40, 1.8, 0))
+	check(grid.connect_pieces(pc, gen, pc, far) != "", "a cable can't span 40 m")
+	var lit := func() -> bool:
+		var pn: PowerNode = pc.power_node(lamp["i"])
+		return pn != null and pn._lit
+	var wait := func(want: bool) -> bool:
+		var t0 := Time.get_ticks_msec()
+		while Time.get_ticks_msec() - t0 < 3000:
+			if lit.call() == want:
+				return true
+			await process_frame
+		return lit.call() == want
+	check(not await wait.call(true), "no fuel, no light")
+	game.give(ItemDB.make("wood", 4, 1.0, game.origin_here("crafted", -1, pc.key)))
+	var wood0: int = game.inventory.count("wood")
+	grid.use_piece(pc, gen, false)
+	check(float(gen["st"]["fuel"]) > 0.0 and game.inventory.count("wood") < wood0 and Power.is_on(gen), "the generator takes wood from the pack and starts (fuel %.0f, wood %d, on %s)" % [float(gen["st"]["fuel"]), game.inventory.count("wood"), Power.is_on(gen)])
+	check(await wait.call(true), "the lamp lights")
+	var line: Array = grid.describe(pc, lamp, true)
+	check(" ".join(line).contains("Network: makes"), "the look-at panel reads out the network (%s)" % [str(line)])
+	grid.use_piece(pc, sw, false)
+	check(await wait.call(false), "opening the switch cuts the lamp off")
+	grid.use_piece(pc, sw, false)
+	check(await wait.call(true), "closing it lights the lamp again")
+	grid.use_piece(pc, lamp, false)
+	check(await wait.call(false), "the lamp switches off on its own")
+	var before: int = game.inventory.count("copper_wire")
+	check(player.deconstruct(pc, sw) and sw["st"].get("gone", false), "the switch comes down")
+	check(game.inventory.count("copper_wire") > before and Power.links(gen).is_empty(), "its cables come down with it, as wire")
+	for o in [gen, lamp, far]:
+		player.deconstruct(pc, o)
+	for t in ["copper_wire", "gen_woodgas", "lamp_wall", "knife_switch"]:
+		game.inventory.remove_type(t, game.inventory.count(t))
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -537,6 +590,7 @@ func _run() -> void:
 	var fence := pc.add_built("fence", placed["p"] + Vector3(-3, 0, 0), 0.0, {"by": "you", "day": 0.0})
 	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
 	await _door_checks(game, streamer, player, pc, placed["p"] + Vector3(0, 0, -6), here_key)
+	await _power_checks(game, world, player, pc, placed["p"] + Vector3(6, 0, 6))
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 

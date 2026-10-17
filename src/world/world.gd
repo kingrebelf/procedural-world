@@ -33,6 +33,11 @@ func _ready() -> void:
 	streamer.name = "Chunks"
 	add_child(streamer)
 	streamer.chunk_ready.connect(func(n: ChunkNode): Game.map.note_chunk(n.data))
+	var grid := PowerGrid.new()
+	grid.name = "Power"
+	grid.streamer = streamer
+	grid.atmosphere = atmosphere
+	add_child(grid)
 	var sites := TreasureSites.new()
 	sites.name = "Treasure"
 	sites.streamer = streamer
