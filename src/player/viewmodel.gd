@@ -18,7 +18,14 @@ const ARMS_REST := Vector3(0.08, -0.03, 0.0)
 ## One-handed tools: only the right arm, further right and lower, the tool leaning in.
 const ARM_REST := Vector3(0.14, -0.07, -0.02)
 const GUN_REST := Vector3(0.1, -0.02, 0.0)
+## A crossbow is long and wide: held further out and lower, so the prod sits under the
+## sight line and the butt clears the corner of the screen.
+const CROSSBOW_REST := Vector3(0.06, -0.06, -0.12)
 const TOOL_AIM := Vector3(-0.3, 0.5, -1.0)
+## A gun's grip in the view: the knuckle line leans forward with a pistol grip's rake,
+## the back of the hand points the fingers ahead and a little down round the grip.
+const GUN_KNUCKLES := Vector3(0.0, 0.9, -0.44)
+const GUN_FINGERS := Vector3(-0.15, -0.3, -0.95)
 ## A tool's head faces this far left of straight ahead, so it shows three-quarters on.
 const STRIKE_YAW := 0.6
 
@@ -280,8 +287,9 @@ func show_item(t: String, it = null) -> void:
 	_item = it
 	if arms:
 		_mesh.mesh = null
+		arms.aim_hand(Vector3.ZERO, Vector3.ZERO)
 		arms.set_arms_only(t != "")
-		_rest = ARMS_REST if t == "" else (GUN_REST if pointed(t) else ARM_REST)
+		_rest = ARMS_REST if t == "" else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -310,8 +318,10 @@ func _aim() -> void:
 	# The rig's own frame, so the item swings with the arms.
 	var b := global_transform.basis.orthonormalized()
 	if pointed(_type):
+		arms.aim_hand(b * GUN_KNUCKLES, b * GUN_FINGERS)
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
 	else:
+		arms.aim_hand(Vector3.ZERO, Vector3.ZERO)
 		arms.reaim(arms.hand_space(b * TOOL_AIM), 0.65)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).

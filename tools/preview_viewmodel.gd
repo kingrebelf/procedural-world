@@ -1,7 +1,8 @@
 extends SceneTree
 ## Renders the first-person view of held items against a plain sky, for tuning how big
 ## and where tools sit on screen. Run windowed:
-##   godot --path . --script res://tools/preview_viewmodel.gd -- --out=DIR [--items=a,b] [--night]
+##   godot --path . --script res://tools/preview_viewmodel.gd -- --out=DIR [--items=a,b] [--night] [--hand]
+## --hand: close-ups of the gripping hand from the left and from the right as well.
 ## --night: a dark evening with a held torch's flickering light, to judge fire and shadow.
 func _initialize() -> void:
 	_run.call_deferred()
@@ -10,6 +11,7 @@ func _run() -> void:
 	var out := "user://viewmodel"
 	var items := ["pickaxe_iron", "axe_iron", "sword_iron", "torch", "pulse_rifle"]
 	var night := false
+	var hand := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -17,6 +19,8 @@ func _run() -> void:
 			items = Array(a.substr(8).split(","))
 		elif a == "--night":
 			night = true
+		elif a == "--hand":
+			hand = true
 	DirAccess.make_dir_recursive_absolute(out)
 	get_root().size = Vector2i(1600, 900)
 	var env := WorldEnvironment.new()
@@ -60,5 +64,20 @@ func _run() -> void:
 			await process_frame
 		var img := get_root().get_texture().get_image()
 		img.save_png(out.path_join("%s.png" % t))
+		if hand and vm.arms:
+			var sk := vm.arms.skeleton
+			var at: Vector3 = (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("hand_r"))).origin
+			var close := Camera3D.new()
+			close.fov = 40.0
+			get_root().add_child(close)
+			for side in [["left", Vector3(-0.45, 0.12, 0.05)], ["right", Vector3(0.4, -0.05, 0.15)]]:
+				close.position = at + side[1]
+				close.look_at(at)
+				close.make_current()
+				await process_frame
+				await process_frame
+				get_root().get_texture().get_image().save_png(out.path_join("%s_%s.png" % [t, side[0]]))
+			close.queue_free()
+			cam.make_current()
 		print("saved ", t)
 	quit()
