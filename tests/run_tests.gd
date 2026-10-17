@@ -1961,4 +1961,18 @@ func test_cave_networks() -> void:
 					var wp := p + Vector3(sx * ChunkGenerator.SIZE, 0.5, sz * ChunkGenerator.SIZE)
 					check(Caves.sdf(c["cave"], wp) < 0.0, "%s underground is in the open" % o["t"])
 	check(under > 3, "caves hold ore, crystals or loot (%d)" % under)
+	# Nothing glows on human worlds.
+	var was_theme := Eras.theme
+	Eras.theme = "human"
+	var hg := ChunkGenerator.new(4243, true)
+	var glows := 0
+	var crystals := 0
+	for sz in range(-6, 6):
+		for sx in range(-6, 6):
+			for o in hg.generate(sx, sz)["objects"]:
+				glows += int(o["t"] == "cave_glow")
+				crystals += int(o["t"] == "cave_crystal")
+	check(glows == 0 and crystals > 0, "human worlds' cave crystals give no light (%d glowing, %d plain)" % [glows, crystals])
+	check(Caves.lights({"t": "cave_crystal", "v": 0}).is_empty(), "plain crystals carry no lamp")
+	Eras.theme = was_theme
 	WorldField.terrain_v = was

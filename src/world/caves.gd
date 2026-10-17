@@ -69,7 +69,7 @@ static func prims_near(gen: ChunkGenerator, x0: float, z0: float, x1: float, z1:
 ## The network planned for cell (sx, sz), or {}: {prims, mouth, dir, chambers}.
 static func network(gen: ChunkGenerator, sx: int, sz: int) -> Dictionary:
 	# Rivers and the terrain version reshape the land the plan is made on.
-	var key := [gen.seed, sx, sz, WorldField.terrain_v, gen.rivers]
+	var key := [gen.seed, sx, sz, WorldField.terrain_v, gen.rivers, Eras.theme]
 	_lock.lock()
 	var have = _nets.get(key)
 	_lock.unlock()
@@ -436,7 +436,8 @@ static func _furnish(gen: ChunkGenerator, chunk: Dictionary, ps: PackedFloat32Ar
 	for n in r.randi_range(1, 3) + (3 if ch["big"] else 0):
 		var p: Vector3 = spots.call(0.3, 0.7)
 		if not is_nan(p.y):
-			_put(chunk, "cave_glow", era, p, r.randf() * TAU, r.randf_range(0.7, 1.3), {}, r.randi_range(1, 12), era)
+			# Only alien worlds glow; on human worlds the crystals just catch your torchlight.
+			_put(chunk, "cave_glow" if Eras.theme == "alien" else "cave_crystal", era, p, r.randf() * TAU, r.randf_range(0.7, 1.3), {}, r.randi_range(1, 12), era)
 	# Something lives down here: more of them, and tougher, in the great caverns.
 	var dwellers := r.randi_range(0, 2) + (2 if ch["big"] else 0)
 	var tier := 1 + (1 if ch["big"] else 0) + (1 if r.randf() < 0.2 else 0)
@@ -698,8 +699,9 @@ static func material() -> ShaderMaterial:
 
 const GLOW := [Color(0.45, 0.75, 1.0), Color(0.55, 1.0, 0.75), Color(0.9, 0.45, 1.0)]
 
-## A cluster of pale crystals that light the cave around them; tinted by era (`v`).
-static func build_glow(sp: int, era: int) -> ArrayMesh:
+## A cluster of pale crystals, tinted by era (`v`): lit from within when `glow` (alien
+## worlds), otherwise clear stone that only glints.
+static func build_glow(sp: int, era: int, glow := true) -> ArrayMesh:
 	var r := WHash.rng(sp, era, 0, 5)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -723,10 +725,14 @@ static func build_glow(sp: int, era: int) -> ArrayMesh:
 					st.add_vertex(v)
 	var m := StandardMaterial3D.new()
 	var c: Color = GLOW[clampi(era, 0, 2)]
-	m.albedo_color = c.lerp(Color(1, 1, 1), 0.3)
-	m.emission_enabled = true
-	m.emission = c
-	m.emission_energy_multiplier = 2.2
+	if glow:
+		m.albedo_color = c.lerp(Color(1, 1, 1), 0.3)
+		m.emission_enabled = true
+		m.emission = c
+		m.emission_energy_multiplier = 2.2
+	else:
+		m.albedo_color = c.lerp(Color(0.8, 0.82, 0.85), 0.6).darkened(0.25)
+		m.metallic = 0.3
 	m.roughness = 0.15
 	m.metallic_specular = 0.8
 	var out := st.commit()
