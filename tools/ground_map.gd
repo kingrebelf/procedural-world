@@ -31,6 +31,7 @@ static func run() -> void:
 ## makes: {name: world xz}.
 static func _find(g: ChunkGenerator, want: PackedStringArray) -> Dictionary:
 	var found := {}
+	var rcache := {}
 	for i in 30000:
 		var a := i * 0.37
 		var p := Vector2(cos(a), sin(a)) * (50.0 + i * 2.0)
@@ -45,6 +46,15 @@ static func _find(g: ChunkGenerator, want: PackedStringArray) -> Dictionary:
 				ok = ok and absf(g.field.height(q.x + d.x * 30.0, q.y + d.y * 30.0) - hq) < 4.0
 			if ok:
 				found["meadow"] = q
+		if "rapids" in want and not found.has("rapids") and g.field.river_t(p.x, p.y) < 0.3:
+			# A steep reach of river: its level drops fast along it.
+			var lv := g.field.river_level(p.x, p.y, rcache)
+			if WorldField.river_strength(g.field.height(p.x, p.y), lv) > 0.8 and lv > ChunkGenerator.WATER_LEVEL + 1.0:
+				for k in 8:
+					var q := p + Vector2.from_angle(k * TAU / 8.0) * 8.0
+					if g.field.river_t(q.x, q.y) < 0.4 and absf(g.field.river_level(q.x, q.y, rcache) - lv) > 0.7:
+						found["rapids"] = p
+						break
 		var h := g.field.height(p.x, p.y)
 		if h < 3.0:
 			continue

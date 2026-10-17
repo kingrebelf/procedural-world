@@ -468,7 +468,9 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if only.is_empty() or ["65", "66", "67", "68", "69", "88"].any(func(n): return only.has(n)):
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
+		await _climate_shots(g)
+	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
@@ -494,7 +496,7 @@ func _run() -> void:
 		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
 	# Village life up close (TownLife): a house's yard at eye height, and a field's edge.
 	var lt := _find_settlement(g, Eras.MEDIEVAL, 1) if g.towns else {}
-	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91")):
+	if not lt.is_empty() and (only.is_empty() or only.has("90") or only.has("91") or only.has("92")):
 		var pl := TownLife.plan(g, lt)
 		var yard := {}
 		var best := -1
@@ -531,6 +533,37 @@ func _run() -> void:
 			var fy: float = fd["yaw"]
 			await _shot("91_village_fields", TownLife.frame_to_world(fp, fy, Vector2(-float(fd["hx"]) - 3.0, -float(fd["hz"]) - 3.0)),
 				TownLife.frame_to_world(fp, fy, Vector2(float(fd["hx"]) * 0.5, float(fd["hz"]))), 0.6, 2.0)
+		# The market square: from just behind the well or cross, a little above eye height,
+		# over it to a stall's counter and the setts between (picking the stall whose
+		# viewpoint is clearest of everything else on the square).
+		var sqd: Dictionary = pl["square"]
+		if not sqd.is_empty():
+			var sc: Vector2 = sqd["c"]
+			var mid := sc
+			var stalls: Array = []
+			var things: Array = []
+			for e in pl["pieces"]:
+				if e["k"] == "well" or e["k"] == "cross":
+					mid = e["p"]
+				elif e["k"] == "stall":
+					stalls.append(e["p"])
+				if e.has("p") and (e["p"] as Vector2).distance_to(sc) < float(sqd["rad"]) + 4.0:
+					things.append(e["p"])
+			var from := sc + Vector2(0.8, 0.6).normalized() * (float(sqd["rad"]) - 1.0)
+			var look := sc
+			var clearest := -1.0
+			for sp: Vector2 in stalls:
+				var away: Vector2 = (mid - sp).normalized()
+				var q: Vector2 = mid + away * 6.0 + away.orthogonal() * 2.2
+				var clear := INF
+				for t: Vector2 in things:
+					if t != mid:
+						clear = minf(clear, q.distance_to(t))
+				if clear > clearest:
+					clearest = clear
+					from = q
+					look = sp
+			await _shot("92_market_square", from, look, 0.42, 2.4, g.field.height(look.x, look.y) + 1.0)
 	# Midnight on the highest ground near spawn, looking well up: the stars and the Milky
 	# Way over a strip of skyline (from low ground a hill and a boulder filled half of it).
 	var hill := Vector2(8, 8)
@@ -564,6 +597,8 @@ func _run() -> void:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
+	if only.is_empty() or only.has("80") or only.has("81") or only.has("82") or only.has("83"):
+		await _aqua_shots(g)
 	if only.is_empty() or only.has("59") or only.has("60"):
 		await _player_house()
 	if only.is_empty() or only.has("09") or only.has("10"):
@@ -947,6 +982,47 @@ func _landform_shots(g: ChunkGenerator) -> void:
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
 
+## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
+## cold spruce uplands; standing on its edge looking in.
+const CLIMATE_SHOTS := {"93_rainforest": [3, 2], "94_savanna": [3, 1], "95_boreal": [0, 1]}
+
+func _climate_shots(g: ChunkGenerator) -> void:
+	for shot in CLIMATE_SHOTS:
+		if not only.is_empty() and not only.has(String(shot).substr(0, 2)):
+			continue
+		var want: Array = CLIMATE_SHOTS[shot]
+		var best := Vector2.INF
+		for r in 16:
+			for iz in range(-r, r + 1):
+				for ix in range(-r, r + 1):
+					if best != Vector2.INF or maxi(absi(ix), absi(iz)) != r:
+						continue
+					if g.field.site_landform(ix, iz) != WorldField.LF_NONE:
+						continue
+					var site := g.field.site_pos(ix, iz)
+					# Low, dry ground in the region seen from low, dry ground in it too: up toward
+					# the snow line every region turns to pine and snow (Biome.by_altitude).
+					for k in 9:
+						var p := site + Vector2(k % 3 - 1, k / 3 - 1) * 70.0
+						var cam := p + Vector2(-60, -35)
+						if best == Vector2.INF and _climate_is(g, p, want) and _climate_is(g, cam, want) \
+								and _low_ground(g, p) and _low_ground(g, cam):
+							best = p
+		if best == Vector2.INF:
+			print("no region with climate ", want)
+			continue
+		print("climate shot ", shot, " at ", best, " ", g.field.region_name_at(best.x, best.y))
+		var cam := best + Vector2(-60, -35)
+		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
+
+func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
+	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
+	return c.x == int(want[0]) and c.y >= int(want[1]) and (int(want[1]) >= 2 or c.y < 2)
+
+func _low_ground(g: ChunkGenerator, p: Vector2) -> bool:
+	var h := g.field.height(p.x, p.y)
+	return h > WATER_SAFE + 1.0 and h < WorldField.snow_line - 26.0
+
 const WATER_SAFE := 1.0
 
 ## The nearest wonder by day and by night, then the atlas and minimap around it.
@@ -1205,6 +1281,198 @@ func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
 			await _wait(4)
 		print("  splash burst took %d ms" % (Time.get_ticks_msec() - t0))
 	await _shot("36_splash", shore - out * 2.0, spot, 0.42, 2.2, Water.LEVEL + 0.6, burst)
+
+## Life in the water: a coral reef and a kelp forest from under the sea, lily pads on a
+## lake from just above it, and a school of fish up close.
+func _aqua_shots(g: ChunkGenerator) -> void:
+	# For each subject, the chunk where it grows thickest, and in it the instance with the
+	# most of its kind around it.
+	var best := {"reef": [0, Vector2.ZERO], "kelp": [0, Vector2.ZERO], "pad": [0, Vector2.ZERO]}
+	var tried := 0
+	var sea := AquaFlora.Field.new(Game.seed)
+	var seas := 0
+	for ring in range(0, 56):
+		for j in range(-ring, ring + 1):
+			for i in range(-ring, ring + 1):
+				if maxi(absi(i), absi(j)) != ring or tried > 90:
+					continue
+				var h := g.field.height(i * 64.0 + 32.0, j * 64.0 + 32.0)
+				if h > -1.0 or h < -14.0:
+					continue
+				# Reefs and kelp grow only on the few wide seas: past the nearest lakes,
+				# look only at sea chunks (a lily pond turns up long before then).
+				var is_sea := sea.sea_t(i * 64.0 + 32.0, j * 64.0 + 32.0) > 0.3
+				if tried > 30 and not is_sea or is_sea and seas > 40:
+					continue
+				if is_sea:
+					seas += 1
+				tried += 1
+				var c := g.generate(i, j)
+				var out := {}
+				AquaFlora.build(c, 1.0, out)
+				for what in best:
+					var pts := PackedVector2Array()
+					for k in out:
+						var hit: bool = (what == "reef" and k.begins_with("aq_coral")) or (what == "kelp" and k == "aq_kelp@0") or (what == "pad" and k.begins_with("aq_pad"))
+						if not hit:
+							continue
+						var buf: PackedFloat32Array = out[k]
+						for n in range(0, buf.size(), 16):
+							pts.append(Vector2(i * 64.0 + buf[n + 3], j * 64.0 + buf[n + 11]))
+					if pts.size() <= best[what][0]:
+						continue
+					var most := -1
+					var at := Vector2.ZERO
+					for p in pts:
+						var near := 0
+						for q in pts:
+							if p.distance_squared_to(q) < 36.0:
+								near += 1
+						if near > most:
+							most = near
+							at = p
+					best[what] = [pts.size(), at]
+	print("aqua spots: ", best)
+	var p: Player = world.player
+	var life := world.get_node_or_null("WaterLife") as AquaticLife
+	if life:
+		life.calm = true
+	for what in ["reef", "kelp"]:
+		if best[what][0] == 0:
+			continue
+		var at: Vector2 = best[what][1]
+		var from := _clear_water_spot(g, at, 7.0, 2.0 if what == "kelp" else 0.6)
+		var ground := g.field.height(from.x, from.y)
+		p.underwater = true
+		# Well under the surface, looking a little down at the bed by the subject.
+		await _shot("80_reef" if what == "reef" else "81_kelp", from, at, 0.45, minf(1.6, -1.0 - ground), g.field.height(at.x, at.y) + (0.5 if what == "reef" else 2.0))
+		_print_water_life(life)
+		p.underwater = false
+	if best["pad"][0] > 0:
+		var at: Vector2 = best["pad"][1]
+		var from := at + Vector2(7, 3)
+		await _shot("82_lily_pond", from, at, 0.42, 1.5 - g.field.height(from.x, from.y), Water.LEVEL)
+	# A school of fish: the nearest one to wherever we are, from a few metres off, under
+	# the water with it.
+	if life == null:
+		return
+	# Fish live only round the player: when the earlier shots were skipped (--shots=83)
+	# the player is still at spawn, so go and stand by the lily pond (or the reef) and
+	# let its fish turn up.
+	var near := _biggest_school(life, p.global_position)
+	if near == null:
+		for what in ["pad", "reef", "kelp"]:
+			if best[what][0] == 0:
+				continue
+			var at: Vector2 = best[what][1]
+			p.global_position = Vector3(at.x, g.field.height(at.x, at.y) + 1.5, at.y)
+			await _wait_loaded(p, world.streamer)
+			await _wait(60)
+			near = _biggest_school(life, p.global_position)
+			if near != null:
+				break
+	_print_water_life(life)
+	if near == null:
+		print("83_fish_school: no school found near any water spot")
+	if near != null:
+		var cpos: Vector3 = near.center
+		var from := _under_water_spot(g, Vector2(cpos.x, cpos.z), 3.5)
+		var eye_y := minf(cpos.y, Water.LEVEL - 0.6)
+		p.underwater = true
+		# The school moves on while the view settles: step in close to where it is now and
+		# look straight at it just before the picture is taken.
+		var close_in := func() -> void:
+			var c: Vector3 = near.center
+			var side := Vector3(c.x - p.camera.global_position.x, 0.0, c.z - p.camera.global_position.z).normalized()
+			var back: float = 1.4 + (near.f[5] as float) * 0.5
+			var cam_at := c - side * back
+			cam_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
+			# From whichever side nothing (a rock, the bank) stands between eye and school.
+			var space := p.get_world_3d().direct_space_state
+			for k in 12:
+				var try_at := c - side.rotated(Vector3.UP, TAU * k / 12.0) * back
+				try_at.y = minf(c.y + 0.3, Water.LEVEL - 0.5)
+				var q := PhysicsRayQueryParameters3D.create(try_at, c)
+				q.exclude = [p.get_rid()]
+				if space.intersect_ray(q).is_empty() and space.intersect_ray(PhysicsRayQueryParameters3D.create(c, try_at)).is_empty():
+					cam_at = try_at
+					break
+			var d := c - cam_at
+			var eye_off: Vector3 = p.camera.global_position - p.global_position
+			p.set_state({"pos": cam_at - eye_off, "yaw": atan2(-d.x, -d.z), "pitch": atan2(d.y, Vector2(d.x, d.z).length()), "slot": 0})
+			await _wait(3)
+		await _shot("83_fish_school", from, Vector2(near.center.x, near.center.z), 0.45, eye_y - g.field.height(from.x, from.y), near.center.y, close_in)
+		p.underwater = false
+	elif best["pad"][0] > 0:
+		# No school anywhere: still a picture, under the lily pond, so the shot is never missing.
+		var at: Vector2 = best["pad"][1]
+		var from := _clear_water_spot(g, at, 6.0, 0.5)
+		var ground := g.field.height(from.x, from.y)
+		p.underwater = true
+		await _shot("83_fish_school", from, at, 0.45, minf(1.2, -0.6 - ground), Water.LEVEL - 0.8)
+		p.underwater = false
+	life.calm = false
+
+## The biggest school of fish within 60 m of `eye`, or null.
+func _biggest_school(life: AquaticLife, eye: Vector3) -> AquaticLife.School:
+	var near: AquaticLife.School = null
+	for k in life._groups:
+		for grp in life._groups[k]:
+			if grp is AquaticLife.School and grp.center.distance_to(eye) < 60.0 and (near == null or grp.pos.size() > near.pos.size()):
+				near = grp
+	return near
+
+## A point `r` metres from `at`, under the water, from which nothing on the bed stands
+## between the eye and the subject (`up` metres above the bed at `at`): of those, the
+## deepest. (The deepest alone was often in a hollow looking at the side of a ridge.)
+func _clear_water_spot(g: ChunkGenerator, at: Vector2, r: float, up: float) -> Vector2:
+	var tgt := g.field.height(at.x, at.y) + up
+	var best := Vector2.INF
+	var best_h := INF
+	for k in 16:
+		var q := at + Vector2(r, 0).rotated(TAU * k / 16.0)
+		var h := g.field.height(q.x, q.y)
+		var eye := minf(1.6, -1.0 - h) + h
+		if eye > -0.6:
+			continue
+		var clear := true
+		for s in range(1, 8):
+			var t := s / 8.0
+			var m := q.lerp(at, t)
+			if g.field.height(m.x, m.y) > lerpf(eye, tgt, t) - 0.3:
+				clear = false
+				break
+		if clear and h < best_h:
+			best_h = h
+			best = q
+	return best if best != Vector2.INF else _under_water_spot(g, at, r)
+
+## A point `r` metres from `at` where the water is deepest (so the camera is under it).
+func _under_water_spot(g: ChunkGenerator, at: Vector2, r: float) -> Vector2:
+	var best := at + Vector2(r, 0)
+	for k in 16:
+		var q := at + Vector2(r, 0).rotated(TAU * k / 16.0)
+		if g.field.height(q.x, q.y) < g.field.height(best.x, best.y):
+			best = q
+	return best
+
+func _print_water_life(life: AquaticLife) -> void:
+	if life == null:
+		return
+	var schools := 0
+	var fish := 0
+	var crawlers := 0
+	var nearest := INF
+	var eye: Vector3 = world.player.global_position
+	for k in life._groups:
+		for grp in life._groups[k]:
+			if grp is AquaticLife.School:
+				schools += 1
+				fish += grp.pos.size()
+				nearest = minf(nearest, grp.center.distance_to(eye))
+			else:
+				crawlers += grp.pos.size()
+	print("  water life: %d schools, %d fish, %d crabs/crayfish, nearest school %.1f m" % [schools, fish, crawlers, nearest])
 
 ## Clears trees, rocks and ruins near `at` so a staged shot has a clear view.
 func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
@@ -1553,21 +1821,30 @@ func _boat_shots(g: ChunkGenerator) -> void:
 			["88_cog_stern", Vector3(8.5, 1.5, 15.0), Vector3(0, 1.4, 7.5)]],
 		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
 		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
+		# The cog under way from high on her quarter, her wake spreading out behind.
+		"cog_wake": [["89_cog_wake", Vector3(16.0, 15.0, 30.0), Vector3(0, 0, 26.0)],
+			# Low astern, just off her track, looking up the wake to her stern: the
+			# transverse waves and the arms stand up between the camera and her.
+			["89_cog_wake_low", Vector3(4.0, 1.8, 30.0), Vector3(0, 0.0, 14.0)]],
 	}
 	for key in views:
-		if not best.has(key):
-			print("no %s near spawn for the boat shots" % key)
+		var bk: String = "cog" if key == "cog_wake" else key
+		if not best.has(bk):
+			print("no %s near spawn for the boat shots" % bk)
 			continue
-		var bc: Vector2 = best[key]["center"]
+		var bc: Vector2 = best[bk]["center"]
 		world.player.set_physics_process(false)
 		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
 		# The small boat is caught under way (oars pulling, bow wave and wake); the big ones
 		# lie still.
-		var b: BoatNode = world.boats.put(best[key], key != "small")
-		if key == "small":
-			# Always the same stretch of its loop, whatever the game clock says, so the shot
-			# (and its light) is the same every run.
-			b.route_t = 0.0
+		var under_way: bool = key in ["small", "cog_wake"]
+		var b: BoatNode = world.boats.put(best[bk], not under_way)
+		if under_way:
+			# Always the same stretch of its loop (mid-passage), whatever the game clock says,
+			# so the shot (and its light) is the same every run, with the wake she'd have left.
+			b.held = 0.0
+			b.route_t = 120.0
+			b.prime_wake()
 			for i in 3:
 				await get_tree().physics_frame
 		for v in views[key]:

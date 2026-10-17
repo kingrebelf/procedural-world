@@ -18,6 +18,7 @@ var _i := -1
 var _spot := -1
 var _opened_at := 0
 var _screen := false
+var _at := Vector3.INF ## where a free-standing entry (open_entry) was read
 
 const SCREEN_BG := Color(0.02, 0.06, 0.05, 0.96)
 const SCREEN_TEXT := Color(0.55, 1.0, 0.78)
@@ -43,6 +44,7 @@ func open_spot(chunk: ChunkNode, i: int, spot: int) -> void:
 	_chunk = chunk
 	_i = i
 	_spot = spot
+	_at = Vector3.INF
 	_entry = Lore.read(o, chunk, spot, player.npcs)
 	_screen = _entry["look"] == "screen"
 	_page = 0
@@ -51,6 +53,25 @@ func open_spot(chunk: ChunkNode, i: int, spot: int) -> void:
 	_show_page(0)
 	if _entry.get("note", "") != "":
 		_note.text = _entry["note"]
+	visible = true
+	player.ui_open = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## Opens a text that isn't a chunk's object (a dungeon's notice): `entry` as Lore.read
+## gives it, closed again once you walk 12 m from `at`.
+func open_entry(entry: Dictionary, at: Vector3) -> void:
+	if is_open():
+		return
+	_chunk = null
+	_i = -1
+	_spot = -1
+	_at = at
+	_entry = entry
+	_screen = _entry.get("look", "") == "screen"
+	_page = 0
+	_opened_at = Time.get_ticks_msec()
+	_build()
+	_show_page(0)
 	visible = true
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -75,6 +96,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(_d: float) -> void:
 	if not is_open():
+		return
+	if _at != Vector3.INF:
+		if player.global_position.distance_to(_at) > 12.0:
+			close()
 		return
 	var o: Dictionary = _chunk.get_object(_i) if is_instance_valid(_chunk) else {}
 	if o.is_empty() or player.global_position.distance_to(_chunk.position + o["p"]) > 12.0:

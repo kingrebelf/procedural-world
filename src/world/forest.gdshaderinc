@@ -10,23 +10,24 @@ uniform sampler2D near_mask : filter_nearest, repeat_disable;
 uniform vec4 near_rect = vec4(0.0, 0.0, 1.0, 1.0);
 // Over the square round where the distant land was built, one texel per 16 m grid point:
 // the crown colour (sRGB) of the species that grows there and how densely trees stand;
-// and the ground's height and that species' form (FORM_* over 5). forest_rect: origin
+// and the ground's height and that species' form (FORM_* over 6). forest_rect: origin
 // x/z, 1 / spacing, 1 / texels across.
 uniform sampler2D forest_tex : filter_linear, repeat_disable;
 uniform sampler2D forest_hgt : filter_linear, repeat_disable;
 uniform vec4 forest_rect = vec4(0.0, 0.0, 0.0625, 1.0);
 
 // A tree's form (FarLand.FORM_*): a round crown, a mushroom cap, bare dead limbs, a
-// crystal spike, a mast, a conifer's spire.
+// crystal spike, a mast, a conifer's spire, a palm.
 const int FORM_BROADLEAF = 0;
 const int FORM_CAP = 1;
 const int FORM_BARE = 2;
 const int FORM_CRYSTAL = 3;
 const int FORM_MAST = 4;
 const int FORM_CONIFER = 5;
+const int FORM_PALM = 6;
 
 int tree_form(float g) {
-	return int(g * 5.0 + 0.5);
+	return int(g * 6.0 + 0.5);
 }
 
 const float TREE_CELL = 4.5;

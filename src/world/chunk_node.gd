@@ -54,6 +54,7 @@ static func ensure_shared() -> void:
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_material.set_shader_parameter("detail", detail_mult)
+		AquaKit.get_material().set_shader_parameter("detail", detail_mult)
 		river_material = ShaderMaterial.new()
 		river_material.shader = load("res://src/env/river.gdshader")
 
@@ -381,6 +382,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		return out
 	if cover.is_empty():
 		cover = GroundCover.build(chunk)
+	var base_density := density
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 901)
 	var biome_tint := Color(0, 0, 0, 0)
 	var biome_era: int = Eras.nature(chunk.get("era", 0))
@@ -427,7 +429,8 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var dens := w[0] * Eras.GRASS_DENSITY[0] + w[1] * Eras.GRASS_DENSITY[1] + w[2] * Eras.GRASS_DENSITY[2]
 		if pick > dens:
 			continue
-		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.55:
+		# Thinning out up a steep bank (smaller clumps hold on longest), not a hard line.
+		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.4 + 0.15 * (1.0 - size):
 			continue
 		if pick > dens * looks[ChunkGenerator.look_cell(lx, lz)]:
 			continue
@@ -510,15 +513,23 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		if has_cave and ChunkGenerator.in_cave(chunk, lx, lz):
 			continue
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
-		var sc := lerpf(0.7, 1.4, size)
-		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * rw.randf_range(0.8, 1.3), sc))
+		var sc := lerpf(0.55, 1.6, size * size)
+		# Each clump its own kind and its own lean, so a bed never reads as rows of one card.
+		var kind := ["weed", "weed_1", "weed_2", "weed_3"][int(rw.randf() * 3.999)] as String
+		if kind == "weed_1" and y > -2.5:
+			kind = "weed_2" # the tall strands only where they stay under the surface
+		sc = minf(sc, maxf(-y / 1.6, 0.55))
+		var tilt := Basis(Vector3(cos(yaw * 1.7), 0, sin(yaw * 1.7)), rw.randf_range(0.0, 0.3))
+		var b := (tilt * Basis(Vector3.UP, yaw)).scaled(Vector3(sc, sc * rw.randf_range(0.7, 1.4), sc))
 		var tint := Color(0.34, 0.46, 0.15) * w[0] + Color(0.14, 0.46, 0.38) * w[1] + Color(0.4, 0.36, 0.2) * w[2]
 		tint = tint.lerp(Color(0.46, 0.4, 0.17), rw.randf() * 0.35)
-		var key := "weed@%d" % [(1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
+		var key := "%s@%d" % [kind, (1 if lx >= SIZE * 0.5 else 0) + (2 if lz >= SIZE * 0.5 else 0)]
 		var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz,
 			tint.r, tint.g, tint.b, -1.0])
 		out[key] = buf
+	# Lily pads, reeds, kelp and coral reefs (their own keys, "aq_...@0").
+	AquaFlora.build(chunk, base_density, out)
 	return out
 
 ## Ground clutter (stones, tiny glowing mushrooms, alloy debris, undergrowth), keyed by
@@ -561,6 +572,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var buf: PackedFloat32Array = out[key]
 		buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
 		out[key] = buf
+	_scatter_floor(chunk, density, cover, plans, out)
 	# Undergrowth: the region's own ferns, bushes, flowers and stranger things.
 	if chunk.has("biome"):
 		var era: int = Eras.nature(chunk.get("era", 0))
@@ -574,6 +586,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		thicket.frequency = 0.045
 		thicket.fractal_octaves = 3
 		var looks := ChunkGenerator.look_grid(chunk)
+		var top := _top(chunk)
 		var ux0 := float(chunk["cx"]) * SIZE
 		var uz0 := float(chunk["cz"]) * SIZE
 		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
@@ -597,8 +610,12 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 				continue
 			# Each plant where its kind grows: the region's first species (from the roll)
 			# that suits this spot, or none.
-			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9)
+			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
 			if sp < 0:
+				continue
+			# Wild flowers come in drifts, not dotted one by one across the grass, and even
+			# in a drift there is more green than bloom (a solid mat reads as alien).
+			if era == Eras.MEDIEVAL and (mask < 0.2 or (pick >> 12) & 1 == 1) and Flora.under_form(sp, era) == "flowers":
 				continue
 			var key := "under#%d#%d" % [sp, era]
 			if not out.has(key):
@@ -616,7 +633,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 ## near the snow line; reeds and rushes only at the water's edge; ferns in the shade and
 ## litter of woods, not out on open meadow. (Fantasy and alien forms grow where they
 ## like.) `u` is a spare uniform roll.
-static func _under_for(chunk: Dictionary, cover: PackedByteArray, unders: Array, pick: int, era: int, lx: float, lz: float, y: float, u: float) -> int:
+static func _under_for(chunk: Dictionary, cover: PackedByteArray, unders: Array, pick: int, era: int, lx: float, lz: float, y: float, u: float, top: float) -> int:
 	var cv := GroundCover.at(cover, lx, lz)
 	if cv.a > 0.12 or y > WorldField.snow_line - 4.0 - 8.0 * u:
 		return -1
@@ -635,14 +652,85 @@ static func _under_for(chunk: Dictionary, cover: PackedByteArray, unders: Array,
 					if u > wet:
 						continue
 			"fern":
-				if era == Eras.MEDIEVAL and u > cv.b * 2.5:
-					continue
+				# Woodland ferns: in the litter under trees, never out on a beach, a gravel
+				# bar or the wet ground at the water's edge (that is sedge and rush country),
+				# nor in the cold of high ground or a valley under snowy peaks.
+				if era == Eras.MEDIEVAL:
+					if u > cv.b * 2.5 or cv.g > 0.25 or ChunkGenerator.sand_at(chunk, lx, lz) > 0.2:
+						continue
+					if wet < 0.0:
+						wet = ChunkGenerator.wet_at(chunk, lx, lz)
+					if wet > 0.2 or u < _chill(top, y):
+						continue
 			"flowers":
 				# Wild flowers want light: few under the trees.
 				if u < cv.b * 0.8:
 					continue
 		return sp
 	return -1
+
+## The floor of a wood (ForestFloor): fallen branches, cones under conifers, cushions of
+## moss and drifts of needles, gathered under the oaks and pines, so the ground there
+## is not smooth bare soil. Keys "floor:<kind>".
+static func _scatter_floor(chunk: Dictionary, density: float, cover: PackedByteArray, plans: Array, out: Dictionary) -> void:
+	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 905)
+	for o in chunk["objects"]:
+		var t: String = o["t"]
+		if (t != "pine" and t != "oak") or o["st"].get("gone", false):
+			continue
+		var p: Vector3 = o["p"]
+		var reach := 2.0 + 1.8 * float(o["s"])
+		for n in int(r.randi_range(2, 6) * density):
+			var a := r.randf() * TAU
+			var d := sqrt(r.randf()) * reach
+			var lx := p.x + cos(a) * d
+			var lz := p.z + sin(a) * d
+			var roll := r.randf()
+			var yaw := r.randf() * TAU
+			var sc := r.randf_range(0.7, 1.3)
+			if lx < 0.0 or lz < 0.0 or lx >= SIZE or lz >= SIZE:
+				continue
+			var cv := GroundCover.at(cover, lx, lz)
+			if cv.a > 0.3 or cv.b < 0.15 or ChunkGenerator.slope_at(chunk, lx, lz) > 0.7 \
+					or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 \
+					or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
+				continue
+			var kind := "duff"
+			if roll < 0.22:
+				kind = "branch"
+			elif roll < 0.55:
+				kind = "cones" if t == "pine" else "duff"
+			elif roll < 0.75:
+				kind = "moss"
+			var key := "floor:" + kind
+			if not out.has(key):
+				out[key] = PackedFloat32Array()
+			var y := ChunkGenerator.height_at(chunk, lx, lz)
+			# Lie with the ground, not level across a slope.
+			var nrm := Vector3(ChunkGenerator.height_at(chunk, lx - 0.5, lz) - ChunkGenerator.height_at(chunk, lx + 0.5, lz), 1.0,
+				ChunkGenerator.height_at(chunk, lx, lz - 0.5) - ChunkGenerator.height_at(chunk, lx, lz + 0.5)).normalized()
+			var b := Basis(Vector3.UP, yaw)
+			var ax := Vector3.UP.cross(nrm)
+			if ax.length() > 0.001:
+				b = Basis(ax.normalized(), Vector3.UP.angle_to(nrm)) * b
+			b = b.scaled_local(Vector3(sc, sc * r.randf_range(0.8, 1.2), sc))
+			var buf: PackedFloat32Array = out[key]
+			buf.append_array([b.x.x, b.y.x, b.z.x, lx, b.x.y, b.y.y, b.z.y, y, b.x.z, b.y.z, b.z.z, lz])
+			out[key] = buf
+
+## How cold the spot at height y feels to a plant, 0 (lowland) to 1: high up near the snow
+## line, or low down in a chunk whose ground climbs toward it (a lake under snowy peaks).
+## `top` is the chunk's highest ground (_top).
+static func _chill(top: float, y: float) -> float:
+	var sl := WorldField.snow_line
+	return maxf(smoothstep(sl - 34.0, sl - 12.0, y), 0.8 * smoothstep(sl - 40.0, sl - 8.0, top))
+
+static func _top(chunk: Dictionary) -> float:
+	var top := -INF
+	var hs: PackedFloat32Array = chunk["heights"]
+	for k in range(0, hs.size(), 7):
+		top = maxf(top, hs[k])
+	return top
 
 ## Loose stones (StoneKit) into `out`: a few in the grass, thick on scree and gravel so
 ## the ground there is more stone than soil. Keys "stone:<kind>" (pebbles per quarter of
@@ -785,8 +873,78 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		out[key] = buf
 		if size * flat >= 0.25:
 			solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
+	_river_rocks(chunk, density, greys, out, solid)
+	# The rock mounds coral reefs grow on (AquaFlora lays the coral over them).
+	AquaFlora.reef_rocks(chunk, out, solid)
 	if not solid.is_empty():
 		out["~stones"] = solid
+
+## Boulders and stones in a river's bed, breaking the surface: thick where the water
+## falls steeply (the rapids, whose white water needs something to break on), a few
+## anywhere along the channel and toward its banks, where the current drops what it
+## carries. From the chunk's 2 m river grid, with their own draws (the other stones keep their
+## places).
+static func _river_rocks(chunk: Dictionary, density: float, greys: Array, out: Dictionary, solid: PackedFloat32Array) -> void:
+	if not chunk.has("river"):
+		return
+	var rv: PackedFloat32Array = chunk["river"]
+	var N := ChunkGenerator.RIVER_N
+	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 908)
+	var wet := func(i: int, j: int) -> bool:
+		var k := (j * N + i) * 3
+		return rv[k + 1] < 1.0 and rv[k + 2] > 0.25 and rv[k] > ChunkGenerator.WATER_LEVEL + 0.2
+	for j in N:
+		for i in N:
+			var k := (j * N + i) * 3
+			var roll := r.randf()
+			if not wet.call(i, j):
+				continue
+			# The water's own fall per 4 m, between wet neighbours (its level climbs the
+			# banks, which is no rapid).
+			var fall := 0.0
+			for d in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var a := Vector2i(mini(i + d.x, N - 1), mini(j + d.y, N - 1))
+				var b := Vector2i(maxi(i - d.x, 0), maxi(j - d.y, 0))
+				if wet.call(a.x, a.y) and wet.call(b.x, b.y):
+					fall = maxf(fall, absf(rv[(a.y * N + a.x) * 3] - rv[(b.y * N + b.x) * 3]))
+			var rapid := smoothstep(0.12, 0.35, fall)
+			var bank := smoothstep(0.45, 0.9, rv[k + 1])
+			var count := 0
+			if roll < (0.025 + 0.06 * bank + 0.5 * rapid) * density:
+				count = 1 + int(r.randf() * (1.0 + 2.0 * rapid))
+			for c in count:
+				var lx := clampf(i * 2.0 + r.randf_range(-1.0, 1.0), 0.0, SIZE - 0.01)
+				var lz := clampf(j * 2.0 + r.randf_range(-1.0, 1.0), 0.0, SIZE - 0.01)
+				var bed := ChunkGenerator.height_at(chunk, lx, lz)
+				var depth := rv[k] - bed
+				if depth > 0.9 or depth < 0.05:
+					continue
+				var flat := r.randf_range(0.8, 1.05)
+				var a := r.randf()
+				# Most just break the surface; a few lie under it, a few stand well out.
+				var top := depth + lerpf(-0.15, 0.45, a) * (0.6 + 0.6 * rapid)
+				# (The kit rocks stand about 0.66 of their width, 0.12 of it sunk in the bed.)
+				var size := clampf(top / (flat * 0.54), 0.25, 1.6)
+				var kind := "rock_a" if r.randf() < 0.5 else "rock_b"
+				var long := r.randf_range(0.75, 1.35)
+				var b := Basis(Vector3.UP, r.randf() * TAU) * Basis.from_euler(Vector3(r.randf_range(-0.15, 0.15), 0, r.randf_range(-0.15, 0.15)))
+				b = b.scaled_local(Vector3(size * long, size * flat, size / long))
+				var p := Vector3(lx, bed - size * flat * 0.12, lz)
+				var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
+				var grey: Color = greys[r.randi() % greys.size()]
+				var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
+				var st := ChunkGenerator.stone_at(chunk, lx, lz)
+				if st.a > 0.0:
+					tint = tint.lerp(Color(st.r, st.g, st.b), st.a * 0.8)
+				# Water-dark, with a little green weed low down in slack water.
+				var v := r.randf_range(0.72, 0.95)
+				tint = Color(tint.r * v, tint.g * v, tint.b * v, w[Eras.MEDIEVAL] * r.randf_range(0.05, 0.3) * (1.0 - rapid))
+				var key := "stone:" + kind
+				var buf: PackedFloat32Array = out.get(key, PackedFloat32Array())
+				buf.append_array([b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a])
+				out[key] = buf
+				if size * flat >= 0.4:
+					solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
 
 ## Crags: big rocks set into steep faces, standing out of them and up past their rims,
 ## so a cliff reads as broken rock with a ragged skyline instead of one smooth draped
@@ -838,6 +996,17 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 		var b := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, turn) * Basis.from_euler(Vector3(tip.x, 0, tip.y))
 		b = b.scaled_local(Vector3(size, size * lerpf(flat, 1.0, rim), size * 0.8))
 		var p := Vector3(lx, y, lz) - nrm * size * lerpf(0.2, 0.12, rim)
+		# Never stuck on in mid-air: where the face falls away under it (an upright block
+		# at a rim stood out over the drop, a big slab off a sheer face) it goes further
+		# into the hill until most of its base is on rock and a good part of it is inside;
+		# failing that, it isn't there.
+		var inward := Vector3(-nrm.x, 0.0, -nrm.z).normalized()
+		var tries := 0
+		while _crag_loose(chunk, kind, b, p, size) and tries < 5:
+			p += inward * size * 0.1
+			tries += 1
+		if tries == 5 and _crag_loose(chunk, kind, b, p, size):
+			continue
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
 		# The landform's own rock (red sandstone, pale limestone...), as the face shows it.
@@ -853,6 +1022,61 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 	if not solid.is_empty():
 		out["~crags"] = solid
 	return out
+
+## How many of eight points round a crag's base (basis `b` at `p`) stand clear of the
+## ground by more than a few percent of its size.
+static func _crag_hangs(chunk: Dictionary, b: Basis, p: Vector3, size: float) -> int:
+	var n := 0
+	for d in 8:
+		var a := TAU * d / 8.0
+		var w := p + b * (Vector3(cos(a), 0.06, sin(a)) * 0.42)
+		if w.y - ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)) > 0.15 * size:
+			n += 1
+	return n
+
+## How much of a crag (StoneKit `kind`, basis `b` at `p`) is inside the hill: the share
+## of its hull's corners under the ground (a sample of them).
+static func _crag_inside(chunk: Dictionary, kind: String, b: Basis, p: Vector3) -> float:
+	var hull := StoneKit.hull(kind)
+	if hull.is_empty():
+		return 1.0
+	var every := maxi(1, hull.size() / 64)
+	var n := 0
+	var under := 0
+	for i in range(0, hull.size(), every):
+		var w := p + b * hull[i]
+		n += 1
+		if w.y < ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)):
+			under += 1
+	return float(under) / float(n)
+
+## Most air allowed under a crag's lower half (_crag_air): a third of its size, and never
+## more than a metre and a half under the biggest.
+const AIR_SHARE := 0.33
+const AIR_MAX := 1.5
+
+## The most air under a crag, in metres: over its hull's lower half (a sample of the
+## corners below its middle), how far the highest stands above the ground straight under
+## it. A crag standing well into a slope can still jut out over the fall of it, with
+## daylight under its outer side, and from across a crater or valley it hangs there.
+static func _crag_air(chunk: Dictionary, kind: String, b: Basis, p: Vector3) -> float:
+	var hull := StoneKit.hull(kind)
+	if hull.is_empty():
+		return 0.0
+	var mid := (p + b * Vector3(0.0, 0.5, 0.0)).y
+	var every := maxi(1, hull.size() / 64)
+	var most := 0.0
+	for i in range(0, hull.size(), every):
+		var w := p + b * hull[i]
+		if w.y < mid:
+			most = maxf(most, w.y - ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)))
+	return most
+
+## True when a crag would read as stuck on in mid-air: its base half over a drop, too
+## little of it inside the hill, or daylight under its lower side.
+static func _crag_loose(chunk: Dictionary, kind: String, b: Basis, p: Vector3, size: float) -> bool:
+	return _crag_hangs(chunk, b, p, size) >= 3 or _crag_inside(chunk, kind, b, p) < 0.38 \
+		or _crag_air(chunk, kind, b, p) > minf(AIR_SHARE * size, AIR_MAX)
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
@@ -1132,15 +1356,18 @@ func set_grass(bufs: Dictionary) -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
-		mm.mesh = GrassKit.mesh(sp)
+		var aqua := AquaKit.is_aqua(sp)
+		mm.mesh = AquaKit.mesh(sp) if aqua else GrassKit.mesh(sp)
 		mm.instance_count = buf.size() / 16
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
-		mmi.material_override = grass_material
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# A quarter's middle can be 23 m from its corner; the shader thins it out before.
-		_set_range(mmi, GrassKit.range_of(sp).y + 24.0)
+		mmi.material_override = AquaKit.get_material() if aqua else grass_material
+		# Reefs and kelp are big enough to shade the sand under them.
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if sp == "aq_kelp" or sp == "aq_coral_table" else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# A quarter's middle can be 23 m from its corner (aquatic clumps span the whole
+		# chunk: 46 m); the shader thins it out before.
+		_set_range(mmi, AquaKit.range_of(sp).y + 46.0 if aqua else GrassKit.range_of(sp).y + 24.0)
 		mmi.name = "Grass_" + key.replace("@", "_")
 		add_child(mmi)
 		_grass.append(mmi)

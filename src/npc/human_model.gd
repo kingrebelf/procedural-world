@@ -160,11 +160,9 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		else:
 			# Eyebrows: fine, sparse hairs, a shade darker than the hair.
 			mi.mesh = HairStrands.mesh("Eyebrows_%s" % fem, mi.mesh)
-			mi.material_override = HairStrands.material(1)
+			mi.material_override = HairStrands.brow_material()
 			mi.set_instance_shader_parameter("hair_col", BodyShape.hair_color(b, age - 12 if age >= 0 else age).darkened(0.12))
-			mi.set_instance_shader_parameter("strands", 1.0)
 			mi.set_instance_shader_parameter("sparse", 0.42)
-			mi.set_instance_shader_parameter("scalp_col", b["skin"])
 			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.

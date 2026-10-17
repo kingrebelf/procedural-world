@@ -631,7 +631,7 @@ func _run() -> void:
 		var weeds := 0
 		var grass := ChunkNode.build_grass_buffers(bed, 1.0)
 		for key in grass:
-			if String(key).begins_with("weed@"):
+			if String(key).begins_with("weed"):
 				weeds += (grass[key] as PackedFloat32Array).size() / 16
 		var sunk := 0
 		var clutter := ChunkNode.build_clutter_buffers(bed, 1.0)
@@ -667,11 +667,13 @@ func _run() -> void:
 				var b: PackedFloat32Array = crags[key]
 				for i in range(0, b.size(), 16):
 					placed += 1
-					# (The rock sits a little into the face from the point it was placed on, and
-					# the ones at a rim stand by the level ground above it.)
+					# (The rock sits into the face from the point it was placed on, up to half its
+					# size further where it would otherwise jut out, and the ones at a rim stand by
+					# the level ground above it.)
 					var face := 0.0
-					for o in [Vector2.ZERO, Vector2(3, 0), Vector2(-3, 0), Vector2(0, 3), Vector2(0, -3)]:
-						face = maxf(face, ChunkGenerator.slope_at(steep, clampf(b[i + 3] + o.x, 0.0, 64.0), clampf(b[i + 11] + o.y, 0.0, 64.0)))
+					var reach := maxf(3.0, Vector3(b[i], b[i + 4], b[i + 8]).length() * 0.7)
+					for o in [Vector2.ZERO, Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+						face = maxf(face, ChunkGenerator.slope_at(steep, clampf(b[i + 3] + o.x * reach, 0.0, 64.0), clampf(b[i + 11] + o.y * reach, 0.0, 64.0)))
 					on_steep = on_steep and face > 0.8
 		var again := ChunkNode.build_crag_buffers(steep)
 		check(placed > 3 and on_steep, "cliffs are dressed with crags on their steep faces (%d)" % placed)
@@ -840,6 +842,7 @@ func _run() -> void:
 	await _corpses(game, world, player, kc)
 	await _bandits(game, world, player)
 	await _pirates(game, world, player)
+	await _crowd(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -1334,6 +1337,65 @@ func _bandits(game, world, player) -> void:
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.
+## Market crowd: folk from the countryside fill the square by day and go home by night.
+func _crowd(game, world, player) -> void:
+	var e: Dictionary = {}
+	for x in world.npcs.settlements.values():
+		if x.has("places") and not x["data"].has("band") and not x.has("boat"):
+			e = x
+	check(not e.is_empty(), "a town is loaded for the market crowd")
+	if e.is_empty():
+		return
+	var day0: float = game.day
+	var c: Vector2 = e["data"]["center"]
+	var at := Vector3(c.x, player.global_position.y, c.y)
+	var visitors := func() -> Array:
+		var out: Array = []
+		for n in e["nodes"]:
+			if is_instance_valid(n) and n.rec.has("visit"):
+				out.append(n)
+		return out
+	var residents: int = e["nodes"].size() - visitors.call().size()
+	var was: Vector3 = player.global_position
+	player.global_position = at + Vector3(0, 1, 0) # near enough that they stay
+	game.day = floor(day0) + 12.5 / 24.0
+	world.npcs._crowd(e, at)
+	await _frames(5)
+	var vs: Array = visitors.call()
+	check(vs.size() >= 3, "by midday visitors fill the town (%d, with %d townsfolk)" % [vs.size(), residents])
+	var inside := 0
+	for n in vs:
+		inside += int(Vector2(n.global_position.x, n.global_position.z).distance_to(c) < float(e["places"]["outer"]))
+	check(inside == vs.size(), "in the town, not out in the fields (%d/%d)" % [inside, vs.size()])
+	for n in vs:
+		n.decide_in = 0.0
+	await _frames(10)
+	var busy := 0
+	for n in vs:
+		busy += int(n.action == "work" and not n.duty.is_empty())
+	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
+	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
+	var benches: Array = e["places"].get("benches", [])
+	if not benches.is_empty():
+		var sitter: NPC = vs[0]
+		var spot: Array = world.npcs._bench_spot(sitter, e, benches[0][0])
+		sitter.global_position = Vector3(spot[0].x, sitter.global_position.y, spot[0].y)
+		sitter.target = spot[0]
+		sitter.face_to = spot[1]
+		world.npcs.instruct(sitter, "sit", 120.0) # told to sit and stay sat
+		await _frames(120)
+		check(sitter.perform == "sit" and world.npcs.bench_under(sitter) and sitter._stool == null, "someone sitting down by a door sits on its bench, not a stool")
+		var other: NPC = vs[1]
+		check(world.npcs._bench_spot(other, e, benches[0][0]).is_empty() or int(other.get_meta("bench_i", -1)) != int(sitter.get_meta("bench_i", -2)), "one to a bench")
+		sitter.stop_perform()
+	world.npcs._crowd(e, at + Vector3(400, 0, 0))
+	check(visitors.call().is_empty(), "nobody near: they cost nothing")
+	game.day = floor(day0) + 1.0 + 3.0 / 24.0
+	world.npcs._crowd(e, at)
+	check(visitors.call().is_empty(), "and by night they have gone home")
+	game.day = day0
+	player.global_position = was
+
 func _pirates(game, world, player) -> void:
 	var at: Vector3 = player.global_position + Vector3(14.0, 0.0, 0.0)
 	var npcs: NPCManager = world.npcs
@@ -1735,6 +1797,15 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 
 ## Walks up to a cache inside a room, as a player would, and opens it.
 func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
+	# The checks before this fill the pack, and a full pack leaves the loot in the chest
+	# (which read here as the chest not opening, now and then): make room first.
+	var inv: Inventory = root.get_node("/root/Game").inventory
+	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR - 1, -1):
+		if inv.free_slots() >= 12:
+			break
+		var it = inv.get_slot(i)
+		if it != null and it["type"] != "lockpick":
+			inv.set_slot(i, null)
 	var f := Vector3(sin(o["r"]), 0, cos(o["r"]))
 	var cw: Vector3 = c.position + o["p"]
 	var stand := cw + f * 1.3
@@ -1762,7 +1833,7 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 			check(Player.lock_of(o) <= 0 and not ui.is_open() and not player.ui_open, "the lock is open and the minigame closes")
 	else:
 		player.interact()
-	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it")
+	check(o["st"].get("opened", false) or (o["st"]["loot"] as Array).size() < 2, "interact loots it (%d left in it, %d free slots, facing %s)" % [(o["st"]["loot"] as Array).size(), inv.free_slots(), player.focus.get("kind", "nothing")])
 	# Looting in town may have been seen; let the law forget so guards don't crowd later checks.
 	root.get_node("/root/Game").crime = Crime.new()
 

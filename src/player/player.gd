@@ -25,6 +25,7 @@ var npcs: NPCManager
 var fauna: FaunaManager
 var corpses: Corpses
 var vehicles: VehicleManager
+var dungeons: Dungeons
 ## The vehicle you are riding, or null.
 var vehicle: Vehicle = null
 var pending_ride := -1 ## vehicle id to get back on once it loads (from a save)
@@ -625,6 +626,13 @@ func _find_focus() -> Dictionary:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use),
 							"own": use["kind"] in ["door", "power"] and is_own_piece(o)}
+	if dungeons:
+		# Levers, keys, plates, braziers, seals and notices down in a dungeon.
+		for u in dungeons.usables(global_position):
+			var sc := _focus_score(eye, fwd, u["at"])
+			if sc < best_s and _can_see(eye, u["at"]):
+				best_s = sc
+				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
 	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
 	if streamer and best.is_empty():
 		var got := streamer.find_under(eye, eye + fwd * (USE_RANGE - 1.0), 0.45)
@@ -1046,6 +1054,12 @@ func interact() -> void:
 			"cache", "trader":
 				if is_instance_valid(focus["chunk"]):
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
+				_focus_t = 0.0
+				return
+			"dungeon":
+				if is_instance_valid(focus["node"]):
+					focus["node"].use(focus["n"], self)
+					used_tool.emit("interact")
 				_focus_t = 0.0
 				return
 			"plant":
