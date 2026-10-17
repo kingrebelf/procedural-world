@@ -154,6 +154,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 			mi.set_instance_shader_parameter("hair_col", BodyShape.hair_color(b, age - 12 if age >= 0 else age).darkened(0.12))
 			mi.set_instance_shader_parameter("strands", 1.0)
 			mi.set_instance_shader_parameter("sparse", 0.42)
+			mi.set_instance_shader_parameter("scalp_col", b["skin"])
 			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.
@@ -192,6 +193,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	posture.arms_out = float(shape["arms_out"])
 	posture.waddle = float(shape["waddle"])
 	posture.limp = float(shape["limp"])
+	posture.hip = float(shape["hip"])
 	posture.animator = animator
 	skeleton.add_child(posture)
 	ik = HumanIK.new()

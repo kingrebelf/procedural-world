@@ -87,12 +87,16 @@ void fragment() {
 		float s = fine * 0.75 + clump * 0.25;
 		float tip = rest.w;
 		float keep = 1.0;
+		// 1 while single strands are big enough to see, 0 once they are finer than a pixel.
+		float near = smoothstep(0.35, 0.65, lo);
 		if (shell > 0.0) {
 			// Fewer, finer strands further out, and fewer near the roots; once the strands
 			// are too fine to see, the shells give way to the smooth base layer.
 			keep = step(0.42 + shell * 0.38 - tip * 0.12, s * (0.85 + 0.3 * clump)) * step(0.2, lo);
 		} else if (sparse > 0.0) {
-			keep = step(sparse + 0.15 * tip, s);
+			// Gaps between the hairs only where they can be seen; further off the brow
+			// is a soft tint over the skin instead of a ragged stripe.
+			keep = step((sparse + 0.15 * tip) * near, s);
 		}
 		if (beard > 0.5 && beard < 3.5) {
 			// Regions of the beard mesh (rest metres: mouth about 1.63 up, face forward
@@ -114,7 +118,6 @@ void fragment() {
 		// by the strand pattern alone (cut by the clumps it read as a patchy wig), and
 		// only while strands are big enough to see; further off the scalp tints the hair.
 		float bare = thin * (1.0 - tip) * 0.85;
-		float near = smoothstep(0.35, 0.65, lo);
 		if (shell <= 0.0 && sparse <= 0.0 && bare > 0.0) {
 			keep = step(bare * near, fine);
 		}
@@ -128,6 +131,8 @@ void fragment() {
 			float skin = bare * 0.6 * (1.0 - near);
 			if (beard > 0.5 && beard < 1.5) {
 				skin = 0.7 * (1.0 - smoothstep(0.35, 0.65, hi));
+			} else if (sparse > 0.0) {
+				skin = (sparse + 0.15 * tip) * (1.0 - near);
 			}
 			col = mix(col, scalp_col.rgb, skin);
 		}
