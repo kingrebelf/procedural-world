@@ -32,6 +32,7 @@ func _ready() -> void:
 	player.streamer = streamer
 	add_child(player)
 	Game.player = player
+	Audio.world = self
 	if Game.pending_player_state is Dictionary and Game.pending_player_state.has("pos"):
 		player.set_state(Game.pending_player_state)
 	else:
@@ -136,4 +137,5 @@ func _unhandled_input(event: InputEvent) -> void:
 		Settings.set_value("show_fps", not Settings.get_value("show_fps"))
 
 func _exit_tree() -> void:
+	Audio.world = null
 	Game.save_all()

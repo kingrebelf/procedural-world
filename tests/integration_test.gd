@@ -148,6 +148,7 @@ func _run() -> void:
 	await _walk_into_house(game, world, streamer, player)
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
+	await _audio_checks(world, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
@@ -449,6 +450,44 @@ func _run() -> void:
 ## Relics and markers are used, not broken: a xenolith circle wakes once with gifts and
 ## then restores you once a day, a beacon calls down a supply pod and marks a settlement,
 ## runes are read once, a crystal recharges your flashlight.
+## Sound: every bank the game plays has files, the ambience sampler knows where you
+## are, footsteps find a surface, and the buses follow the volume settings.
+func _audio_checks(world, player) -> void:
+	var audio = root.get_node("/root/Audio")
+	var banks := ["step/grass", "step/stone", "step/wood", "step/snow", "step/gravel", "step/metal", "hit/wood",
+		"hit/stone", "hit/metal", "hit/crystal", "hit/soft", "hit/flesh", "hit/heavy", "hit/dig", "hit/plank",
+		"harvest/rustle", "swing/whoosh", "water/splash", "item/pickup", "item/coins", "item/equip",
+		"weapon/laser", "weapon/laser_big", "weapon/explosion", "weapon/draw", "ui/click", "ui/hover", "ui/open",
+		"ui/close", "ui/tab", "ui/toggle", "ui/tick", "ui/error", "jingle/level_up", "jingle/discovery", "jingle/death"]
+	var empty: Array = []
+	for b in banks:
+		if audio.bank(b).is_empty():
+			empty.append(b)
+	check(empty.is_empty(), "every sound bank has files %s" % [empty])
+	for id in audio.LAYERS:
+		check(audio._layers[id].stream != null, "ambience layer %s loads" % id)
+	for m in audio.MOODS:
+		for t in audio.MOODS[m]:
+			check(ResourceLoader.exists("res://assets/audio/music/%s.ogg" % t), "music %s exists" % t)
+	await _frames(30)
+	check(audio.env.get("where", "") == "world", "ambience sampler sees the world (%s)" % audio.env.get("where", ""))
+	var on := 0
+	for id in audio._layer_target:
+		if audio._layer_target[id] > 0.0:
+			on += 1
+	check(on > 0, "some ambience is playing outdoors (%d layers)" % on)
+	var surf: String = player.steps.surface(player)
+	check(surf in ["grass", "stone", "wood", "snow", "gravel", "metal", "sand", "wade"], "footstep surface under the player: %s" % surf)
+	audio.combat()
+	check(audio._want_mood() == "combat", "a fight brings in battle music")
+	audio._combat_t = -100.0
+	var s = root.get_node("/root/Settings")
+	var old: float = s.get_value("music_volume")
+	s.set_value("music_volume", 0.0)
+	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music slider at zero mutes the music bus")
+	s.set_value("music_volume", old)
+	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
+
 func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var at := func(dx: float, dz: float) -> Vector3:
