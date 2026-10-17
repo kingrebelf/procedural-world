@@ -335,6 +335,14 @@ func test_sun_windows() -> void:
 		var glows: Array = KitHouse._plan(t)["glows"]
 		var at_pane := wins.all(func(w): return glows.any(func(g: Transform3D): return g.origin.distance_to((w[0] as Vector3) + Vector3(0, Interiors.SINK, 0)) < 0.3))
 		check(not wins.is_empty() and wins.size() <= glows.size() and at_pane, "%s lets the sun in at its windows (%d of %d panes)" % [t, wins.size(), glows.size()])
+	# Whether the sun reaches a window is asked by rays from just outside it, which must
+	# start clear of the building's own collision (a ray inside a wall hits it).
+	for t in Interiors.TOWER.keys() + KitHouse.PLANS.keys():
+		var sh: Array = ObjectLibrary.shape_of({"t": t, "st": {}})
+		var box := (sh[0] as Shape3D).get_debug_mesh().get_aabb()
+		box.position += sh[1]
+		var clear := Interiors.sun_windows(t).all(func(w): return not box.has_point((w[0] as Vector3) - (w[1] as Vector3) * SunBeams.RAY_OUT))
+		check(clear, "%s: the sun rays start outside its walls" % t)
 	check(SunBeams.mesh("hab_block") == null and Interiors.sun_windows("castle_keep").is_empty(), "rooms without sun windows have no beams")
 
 func test_room_interiors() -> void:

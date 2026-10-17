@@ -639,6 +639,9 @@ func _house_shot(g: ChunkGenerator) -> void:
 		var yaw: float = it["yaw"]
 		var away := ((it["p"] as Vector2) - mid).normalized()
 		for w in Interiors.sun_windows(t):
+			# A ground-floor window, so the beam lands on the floor in view.
+			if (w[0] as Vector3).y > 3.0:
+				continue
 			var n: Vector3 = w[1]
 			# The way the window looks out, in the world.
 			var out := -Vector2(n.x * cos(yaw) + n.z * sin(yaw), -n.x * sin(yaw) + n.z * cos(yaw))
@@ -665,7 +668,7 @@ func _house_shot(g: ChunkGenerator) -> void:
 	var cam := at + n * span + Vector2(-n.y, n.x) * 0.9
 	var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 	var gh: float = med["target_h"]
-	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + (w[0] as Vector3).y + 0.2)
+	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 0.7)
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.

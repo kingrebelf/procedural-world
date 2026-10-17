@@ -27,6 +27,10 @@ static func node(t: String) -> MeshInstance3D:
 	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return mi
 
+## How far outside a window's inner face its sun rays start: clear of the wall's
+## collision, which on a tower reaches out to its merlons.
+const RAY_OUT := 0.8
+
 ## The most windows a room's beams follow the sun at (Shafts, the shader's lit0..lit5).
 const MAX_WINDOWS := 24
 
@@ -76,8 +80,9 @@ class Shafts extends MeshInstance3D:
 			_want[i] = 0.0
 			if s.y < 0.03 or s.dot(n) > -0.05:
 				continue
-			# Just outside the wall, at the window's top and bottom.
-			var out := xf * ((w[0] as Vector3) - (w[1] as Vector3) * 0.45)
+			# Clear of the wall's outer face (a tower's collision reaches out to its merlons),
+			# at the window's top and bottom.
+			var out := xf * ((w[0] as Vector3) - (w[1] as Vector3) * RAY_OUT)
 			for dy in [-0.6, 0.6]:
 				var from := out + xf.basis * Vector3(0, float(w[3]) * dy, 0)
 				if _clear(space, from, from + s * 120.0):
@@ -85,6 +90,7 @@ class Shafts extends MeshInstance3D:
 
 	static func _clear(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
 		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2)
+		q.hit_back_faces = false
 		for k in 4:
 			var hit := space.intersect_ray(q)
 			if hit.is_empty():
