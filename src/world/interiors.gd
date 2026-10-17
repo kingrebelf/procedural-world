@@ -318,6 +318,12 @@ static func rebuilds(t: String) -> bool:
 static func glows(t: String) -> bool:
 	return t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]
 
+## Flames in the object's own space (sunk like the object): [foot, height in metres].
+static func fires(t: String) -> Array:
+	if KitHouse.has(t):
+		return [[KitHouse.fire_at(t), 1.0]]
+	return []
+
 ## Lights in the object's own space (sunk like the object): [position, colour, energy, range].
 static func lights(t: String) -> Array:
 	if KitHouse.has(t):

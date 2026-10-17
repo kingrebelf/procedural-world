@@ -55,7 +55,7 @@ const PIECES := {
 	"workbench": {"name": "Workbench", "models": [["props/Workbench", 0, Vector3.ZERO, 1.0], ["props/Workbench_Drawers", 0, Vector3.ZERO, 1.0]],
 		"snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "station": "workbench"},
 	"campfire": {"name": "Campfire", "models": [], "proc": "campfire",
-		"snap": "free", "mat": "stone", "hp": 5.0, "era": -1, "station": "campfire", "light": Color(1.0, 0.55, 0.25)},
+		"snap": "free", "mat": "stone", "hp": 5.0, "era": -1, "station": "campfire", "light": Color(1.0, 0.55, 0.25), "fire": 0.95},
 	"forge": {"name": "Forge", "models": [["props/Bucket_Metal", 0, Vector3(1.15, 0, 0.35), 1.0]], "proc": "forge",
 		"snap": "free", "mat": "stone", "hp": 24.0, "era": -1, "station": "forge", "light": Color(1.0, 0.45, 0.2)},
 	"anvil": {"name": "Anvil", "models": [["props/Anvil_Log", 0, Vector3.ZERO, 1.0]],
@@ -356,7 +356,8 @@ static func _proc(k: MeshKit, what: String) -> void:
 			for n in 3:
 				var b := Basis(Vector3.UP, n * TAU / 3.0) * Basis(Vector3.RIGHT, 1.1)
 				k.cylinder("bark", Transform3D(b, Vector3(0, 0.05, 0)) * I.translated(Vector3(0, -0.45, 0)), 0.07, 0.06, 0.9, 6)
-			k.sphere("glow_warm", I.translated(Vector3(0, 0.12, 0)), 0.3, 6, 8, 0.25)
+			# Embers under the flames ("fire").
+			k.sphere("glow_red", I.translated(Vector3(0, 0.06, 0)), 0.28, 6, 8, 0.25, 0.35)
 		"forge":
 			k.box("cobble", I.translated(Vector3(0, 0.45, 0)), Vector3(1.6, 0.9, 1.2))
 			k.box("glow_red", I.translated(Vector3(0, 0.91, 0)), Vector3(1.1, 0.04, 0.7))

@@ -1039,6 +1039,21 @@ func test_tool_grip() -> void:
 	check(Viewmodel._strike_axis("pickaxe_iron") == Vector3.RIGHT and Viewmodel._strike_axis("hammer") == Vector3.RIGHT, "a pick's point and a hammer's face lead")
 	check(Viewmodel._strike_axis("axe_iron") == Vector3.FORWARD and Viewmodel._strike_axis("sword_iron") == Vector3.ZERO, "an axe's edge leads; a sword isn't turned")
 
+## Hearths, campfires and torches burn with Ben's fire flipbook.
+func test_fires() -> void:
+	check(ResourceLoader.exists(FireFx.SHEET), "the fire flipbook is in the game")
+	var f := Interiors.fires("cottage")
+	check(f.size() == 1 and absf((f[0][0] as Vector3).x - KitHouse.hearth_x("cottage")) < 0.01, "a cottage's fire burns in its hearth")
+	check(Interiors.fires("castle_tower").is_empty(), "a tower has lamps, not a hearth fire")
+	check(float(BuildCatalog.def("campfire").get("fire", 0.0)) > 0.5, "a campfire you build has flames")
+	var fl := FireFx.flame(1.0)
+	var cards := fl.find_children("*", "MeshInstance3D", true, false)
+	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a flame is two cards sharing the fire material")
+	fl.free()
+	var torch := Viewmodel.prop_for("torch")
+	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
+	torch.free()
+
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
 	var species := {}

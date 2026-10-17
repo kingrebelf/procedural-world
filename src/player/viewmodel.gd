@@ -48,6 +48,10 @@ static func prop_for(t: String, it = null) -> Node3D:
 	if d.get("kind", "") in ["tool", "weapon", "light"] and model(t) != null:
 		mi.mesh = model(t)
 		mi.material_overlay = aura_for(it)
+		if t == "torch":
+			var fl := FireFx.flame(HandLight.TORCH_FLAME[1])
+			fl.position = HandLight.TORCH_FLAME[0]
+			mi.add_child(fl)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)

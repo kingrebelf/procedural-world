@@ -642,8 +642,15 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.distance_fade_length = 15.0
 		hl.position = l[0]
 		b.add_child(hl)
+	for f in Interiors.fires(o["t"]):
+		var fl := FireFx.flame(f[1])
+		fl.position = f[0]
+		b.add_child(fl)
 	if built:
-		var lc = BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("light")
+		var bd := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
+		if bd.has("fire"):
+			b.add_child(FireFx.flame(float(bd["fire"])))
+		var lc = bd.get("light")
 		if lc != null:
 			var l := OmniLight3D.new()
 			l.light_color = lc

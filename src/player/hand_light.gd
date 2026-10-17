@@ -44,13 +44,19 @@ func _ready() -> void:
 	_torch_mesh.rotation = Vector3(-0.25, 0.0, 0.18)
 	_torch_mesh.visible = false
 	add_child(_torch_mesh)
+	var fl := FireFx.flame(TORCH_FLAME[1])
+	fl.position = TORCH_FLAME[0]
+	_torch_mesh.add_child(fl)
+
+## Where a torch's flame stands on its model, and how tall it is.
+const TORCH_FLAME := [Vector3(0, 0.41, 0), 0.3]
 
 static func torch_model() -> ArrayMesh:
 	var k := MeshKit.new(5)
 	k.cylinder("bark", Transform3D.IDENTITY, 0.024, 0.03, 0.42, 8)
 	k.cylinder("cloth", Transform3D.IDENTITY.translated(Vector3(0, 0.36, 0)), 0.038, 0.036, 0.09, 8, true, 0.0, 1, Color(0.35, 0.28, 0.2))
-	k.sphere("glow_warm", Transform3D.IDENTITY.translated(Vector3(0, 0.48, 0)), 0.05, 6, 8, 0.25, 1.6)
-	k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 0.45, 0)), 0.042, 6, 8, 0.2, 1.1)
+	# Embers in the wrapping; the flame is FireFx (TORCH_FLAME).
+	k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 0.44, 0)), 0.036, 6, 8, 0.2, 0.8)
 	return k.commit(Materials.get_mat)
 
 func is_on() -> bool:

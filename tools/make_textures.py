@@ -193,8 +193,26 @@ def make_leaf_card(src, out_name="leaves_card.png", size=512):
     print("leaf card", out_name)
 
 
+# Ben's effect flipbooks (2026-10-17): 4 x 4 frames on black, drawn additively, so the
+# black is see-through and the alpha is dropped. name -> sheet size (fire is seen close up).
+FX = {"fire": 1024, "jet": 512, "explosion": 512, "magic": 512}
+
+
+def make_fx(src_dir):
+    out = OUT / "fx"
+    out.mkdir(parents=True, exist_ok=True)
+    for name, size in FX.items():
+        p = Path(src_dir) / f"{name}_flipbook.png"
+        if not p.exists():
+            print("missing", p)
+            continue
+        Image.open(p).convert("RGB").resize((size, size), Image.LANCZOS).save(out / f"{name}_flipbook.png", optimize=True)
+        print(name, "flipbook", size)
+
+
 if __name__ == "__main__":
     main(sys.argv[1])
     make_fabrics(sys.argv[1])
+    make_fx(sys.argv[1])
     if (Path(sys.argv[1]) / "leaves.jpg").exists():
         make_leaf_card(Path(sys.argv[1]) / "leaves.jpg")
