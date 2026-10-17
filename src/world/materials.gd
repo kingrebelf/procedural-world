@@ -65,9 +65,9 @@ const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "bi
 const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 ## Own-colour photos shot brighter than the stone really is, toned down to a believable
 ## albedo (castle_wall averages 0.65 linear), so sunlit walls and tower roofs don't glare
-## white: about 0.33, weathered limestone. (Darker, the castle is stone through now, and
-## its walls in shade went near black beside the plastered houses.)
-const PHOTO_TONE := {"castle_wall": 0.5}
+## white, and the dressed stone sits with the castle's rubble walls (about 0.2) instead of
+## standing out pale against them.
+const PHOTO_TONE := {"castle_wall": 0.42}
 
 static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: float, tri_scale: float, normal_scale: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()

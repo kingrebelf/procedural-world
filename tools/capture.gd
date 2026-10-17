@@ -549,7 +549,7 @@ func _run() -> void:
 					things.append(e["p"])
 			var from := sc + Vector2(0.8, 0.6).normalized() * (float(sqd["rad"]) - 1.0)
 			var look := sc
-			var best := -1.0
+			var clearest := -1.0
 			for sp: Vector2 in stalls:
 				var away: Vector2 = (mid - sp).normalized()
 				var q: Vector2 = mid + away * 6.0 + away.orthogonal() * 2.2
@@ -557,8 +557,8 @@ func _run() -> void:
 				for t: Vector2 in things:
 					if t != mid:
 						clear = minf(clear, q.distance_to(t))
-				if clear > best:
-					best = clear
+				if clear > clearest:
+					clearest = clear
 					from = q
 					look = sp
 			await _shot("92_market_square", from, look, 0.42, 2.4, g.field.height(look.x, look.y) + 1.0)
