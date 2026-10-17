@@ -38,13 +38,19 @@ static func model(t: String) -> ArrayMesh:
 	var grip: Vector3 = Callable(Firearms, BUILD[t]).call(k)
 	var out := k.commit(Firearms.mat)
 	out.set_meta("grip", grip)
+	out.set_meta("grip_r", _grip_r)
 	if _fore != Vector3.INF:
 		out.set_meta("fore", _fore)
 	_fore = Vector3.INF
+	_grip_r = WRIST_R
 	return out
 
 ## Where the second hand goes on the gun being built (set by the builder).
 static var _fore := Vector3.INF
+## The radius of what the fist closes round on the gun being built (the "grip_r" meta):
+## a stock's wrist unless the builder made a pistol grip, a riser or a bar.
+const WRIST_R := 0.016
+static var _grip_r := WRIST_R
 
 # --- Materials -----------------------------------------------------------------------
 
@@ -265,6 +271,7 @@ static func _grip(k: MeshKit, m: String, top: Vector3, rake: float, len: float, 
 		ws.append(w * swell * (0.9 if i == 5 else 1.0))
 		hs.append(d * swell * (0.92 if i == 5 else 1.0))
 	GunLook._loft(k, m, pts, ws, hs, Vector3.FORWARD, 16)
+	_grip_r = (w + d) * 0.5 * 1.06
 	if cap != "":
 		var end: Vector3 = pts[5]
 		GunLook._loft(k, cap, [end - dir * 0.004, end + dir * 0.003], [w * 0.92, w * 0.85], [d * 0.94, d * 0.86], Vector3.FORWARD, 16)
@@ -1407,6 +1414,7 @@ static func _riser(k: MeshKit, m: String, h: float, w: float, t: float, wrap := 
 		ws.append(t * 0.5 * thick)
 		hs.append(w * 0.5)
 	GunLook._loft(k, m, pts, ws, hs, Vector3.RIGHT, 14)
+	_grip_r = (w + t) * 0.25 * 1.2
 	GunLook._loft(k, wrap, [Vector3(0, -0.05, -0.002), Vector3(0, 0.0, -0.004), Vector3(0, 0.045, -0.002)],
 		[t * 0.66, t * 0.68, t * 0.66], [w * 0.56, w * 0.58, w * 0.56], Vector3.RIGHT, 14)
 	_box(k, m, Vector3(-w * 0.5 - 0.003, 0.054, -0.004), Vector3(0.008, 0.004, t * 0.9))
@@ -1553,6 +1561,7 @@ static func _sling(k: MeshKit) -> Vector3:
 		var a := TAU * i / 12.0
 		loop.append(Vector3(cos(a) * 0.013, sin(a) * 0.013, 0.0))
 	GunLook._rod(k, "gun_string", loop, 0.0028, 6)
+	_grip_r = 0.008
 	var pouch := Vector3(0, -0.4, -0.02)
 	for s in [-1.0, 1.0]:
 		var c: Array = []
@@ -1642,6 +1651,7 @@ static func _spore_launcher(k: MeshKit) -> Vector3:
 static func _shard_gauntlet(k: MeshKit) -> Vector3:
 	# The fist closes inside round a grip bar at the origin; the bracer runs back up the arm.
 	k.cylinder("gun_bone", Transform3D(Basis(), Vector3(0, -0.04, 0)), 0.011, 0.011, 0.08, 10)
+	_grip_r = 0.011
 	GunLook._loft(k, "gun_chitin", [Vector3(0, 0.0, 0.06), Vector3(0, 0.0, 0.14), Vector3(0, 0.0, 0.24)], [0.045, 0.048, 0.044], [0.045, 0.05, 0.046], Vector3.UP, 20)
 	for n in 3:
 		_tube(k, "gun_bone", Vector3(0, 0.0, 0.08 + n * 0.07), 0.01, 0.05, 0.05, 20)

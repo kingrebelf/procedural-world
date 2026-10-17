@@ -3207,6 +3207,8 @@ func test_firearm_models() -> void:
 			verts += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
 		check(verts > 300, "%s is built from parts, not a box" % t)
 		check(m.has_meta("grip"), "%s says where the hand grips it" % t)
+		if Firearms.has(t):
+			check(float(m.get_meta("grip_r", 0.0)) > 0.005, "%s says how thick its grip is" % t)
 		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY:
 			var lit := false
 			for i in m.get_surface_count():
