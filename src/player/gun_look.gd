@@ -140,8 +140,8 @@ static func mat(name: String) -> Material:
 		# the bright steel in places.
 		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
 		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
-		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.11, 0.11, 0.115), 0.25, 0.45)
-		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
+		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.45)
+		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.38, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
 		"gun_fletch": m = _base(Color(0.82, 0.8, 0.76), 0.85, 0.0)
@@ -224,7 +224,8 @@ static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: fl
 	var g := Gradient.new()
 	var edge := clampf(1.0 - wear, 0.05, 0.98)
 	g.offsets = PackedFloat32Array([0.0, 0.45, edge - 0.03, edge, 1.0])
-	g.colors = PackedColorArray([c * 0.8, c, c * 1.12, wear_c, wear_c])
+	# A clean finish varies only a little; the wear is where it shows through.
+	g.colors = PackedColorArray([c * 0.93, c, c * 1.05, wear_c, wear_c])
 	var t := NoiseTexture2D.new()
 	t.seamless = true
 	t.noise = _wear_noise
@@ -234,11 +235,15 @@ static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: fl
 	r.seamless = true
 	r.noise = _wear_noise
 	var rg := Gradient.new()
-	rg.set_color(0, Color(1, 1, 1))
-	rg.set_color(1, Color(0.5, 0.5, 0.5))
+	# Strong contrast: matt where the finish is fresh, glossy where hands have polished
+	# it, so highlights break up across the steel.
+	rg.offsets = PackedFloat32Array([0.0, 1.0])
+	rg.colors = PackedColorArray([Color(1, 1, 1), Color(0.55, 0.55, 0.55)])
 	r.color_ramp = rg
 	m.roughness_texture = r
-	m.roughness = minf(rough * 1.3, 1.0)
+	m.roughness = minf(rough * 1.6, 1.0)
+	# Steel reflects strongly; paint, polymer and ceramic like any dielectric.
+	m.metallic_specular = 0.75 if metal > 0.5 else 0.5
 	m.normal_scale = bump
 	return m
 
@@ -338,8 +343,15 @@ static func _revolver() -> ArrayMesh:
 
 ## A smooth, rounded-rectangle tube through `pts`: half-widths `ws` and half-heights `hs`
 ## at each point (heights measured toward `up`). Ends capped. Stocks, grips and limbs.
+## Through three or more points the path is a smooth curve (and widths ease between
+## their values) rather than straight runs meeting at kinks.
 static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up := Vector3.UP, segs := 16) -> void:
 	var I := Transform3D.IDENTITY
+	if pts.size() >= 3:
+		var sm := _smooth(pts, ws, hs, 3)
+		pts = sm[0]
+		ws = sm[1]
+		hs = sm[2]
 	var rings: Array = []
 	var norms: Array = []
 	for i in pts.size():
@@ -391,6 +403,46 @@ static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up :=
 				k.tri(m, I, a, b, c, n, n, n)
 			else:
 				k.tri(m, I, a, c, b, n, n, n)
+
+## `pts` resampled along a centripetal Catmull-Rom curve, `per` steps to each span, with
+## the widths `ws` and heights `hs` eased between stations (never past their neighbours,
+## so a sudden step stays a step, not a bulge).
+static func _smooth(pts: Array, ws: Array, hs: Array, per: int) -> Array:
+	var n := pts.size()
+	var op: Array = []
+	var ow: Array = []
+	var oh: Array = []
+	for i in n - 1:
+		var p0: Vector3 = pts[maxi(i - 1, 0)]
+		var p1: Vector3 = pts[i]
+		var p2: Vector3 = pts[i + 1]
+		var p3: Vector3 = pts[mini(i + 2, n - 1)]
+		if i == 0:
+			p0 = p1 * 2.0 - p2
+		if i + 2 >= n:
+			p3 = p2 * 2.0 - p1
+		var t1 := _knot(p0, p1)
+		var t2 := t1 + _knot(p1, p2)
+		var t3 := t2 + _knot(p2, p3)
+		for j in per:
+			var f := float(j) / per
+			var t := lerpf(t1, t2, f)
+			var a1 := p0.lerp(p1, (t - 0.0) / t1) if t1 > 0.0 else p1
+			var a2 := p1.lerp(p2, (t - t1) / (t2 - t1)) if t2 > t1 else p1
+			var a3 := p2.lerp(p3, (t - t2) / (t3 - t2)) if t3 > t2 else p2
+			var b1 := a1.lerp(a2, (t - 0.0) / t2) if t2 > 0.0 else a2
+			var b2 := a2.lerp(a3, (t - t1) / (t3 - t1)) if t3 > t1 else a2
+			op.append(b1.lerp(b2, (t - t1) / (t2 - t1)) if t2 > t1 else a2)
+			var e := f * f * (3.0 - 2.0 * f)
+			ow.append(lerpf(ws[i], ws[i + 1], e))
+			oh.append(lerpf(hs[i], hs[i + 1], e))
+	op.append(pts[n - 1])
+	ow.append(ws[n - 1])
+	oh.append(hs[n - 1])
+	return [op, ow, oh]
+
+static func _knot(a: Vector3, b: Vector3) -> float:
+	return maxf(sqrt(a.distance_to(b)), 1e-5)
 
 ## A straight loft along -Z from z0 to z1 (a band, a strip): a short tube.
 static func _sleeve(k: MeshKit, m: String, at: Vector3, len: float, w: float, h: float) -> void:

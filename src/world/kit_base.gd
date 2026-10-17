@@ -25,6 +25,12 @@ const FLOOR := 0.2
 ## stay the type's own (Interiors furnishes and lights them by type).
 const VARIANTS := {"hab_block": 4, "lab_block": 3}
 const LIVERY := [Color(0.13, 0.4, 0.44), Color(0.72, 0.5, 0.13), Color(0.48, 0.16, 0.12), Color(0.16, 0.22, 0.42), Color(0.28, 0.4, 0.24), Color(0.62, 0.62, 0.6)]
+## Each variant's cladding: the kit's pale panels as they come, or painted sand, slate
+## blue, olive drab, terracotta or graphite, as outposts are put up by different outfits.
+const CLADDING := {"hab_block": [Color(1, 1, 1), Color(0.92, 0.77, 0.54), Color(0.52, 0.62, 0.76), Color(0.6, 0.66, 0.42)],
+	"lab_block": [Color(1, 1, 1), Color(0.9, 0.6, 0.46), Color(0.4, 0.42, 0.46)]}
+static var _clad := {}
+static var _clad_lock := Mutex.new()
 
 static func variant_key(o: Dictionary) -> String:
 	if not o.has("p"):
@@ -81,6 +87,7 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 	var d := nz * 4.0
 	var r := WHash.rng(WHash.str_hash(t), 0, 0, 1)
 	var door_i := nx / 2
+	var clad := _cladding(t, v)
 	for s in storeys:
 		var y := s * STOREY
 		for i in nx:
@@ -96,16 +103,16 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 					var out: Vector3 = e[1]
 					if s == 0 and yaw == 90.0 and i == door_i:
 						var at := c + out * 2.0
-						models.append(["scifi/Door_Frame_Square", 0, at, 1.0])
+						models.append(["scifi/Door_Frame_Square", 0, at, 1.0, clad])
 						# Both leaves slide into the wall beside them; at the corner tile there
 						# is no wall to the right, so both go left, one behind the other.
-						models.append(["scifi/Door_Metal", 0, at + Vector3(-1.95, 0, -0.05), 1.0])
-						models.append(["scifi/Door_Metal", 180, at + Vector3(1.95 if door_i < nx - 1 else -4.06, 0, -0.05), 1.0])
+						models.append(["scifi/Door_Metal", 0, at + Vector3(-1.95, 0, -0.05), 1.0, clad])
+						models.append(["scifi/Door_Metal", 180, at + Vector3(1.95 if door_i < nx - 1 else -4.06, 0, -0.05), 1.0, clad])
 						k.box("glow_white", Transform3D.IDENTITY.translated(at + Vector3(0, 4.35, 0.3)), Vector3(2.6, 0.07, 0.06))
 						continue
 					var window := (i + j + s) % 2 == 0 or yaw == 90.0 or r.randf() < 0.3
-					models.append([WALL[style][1 if window else 0], yaw, c, 1.0])
-					models.append([TOP[style], yaw, c, 1.0])
+					models.append([WALL[style][1 if window else 0], yaw, c, 1.0, clad])
+					models.append([TOP[style], yaw, c, 1.0, clad])
 					if window:
 						var gx := Transform3D(Basis(Vector3.UP, deg_to_rad(yaw + 90.0)), c + out * 1.55 + Vector3(0, 1.6, 0))
 						if s == 0:
@@ -116,7 +123,7 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 					models.append(["scifi/Platform_Simple", 0, c + Vector3(0, FLOOR, 0), 1.0])
 		for cx in [-w / 2, w / 2]:
 			for cz in [-d / 2, d / 2]:
-				models.append(["scifi/Column_Pipes", 0, Vector3(cx, y, cz), 1.0])
+				models.append(["scifi/Column_Pipes", 0, Vector3(cx, y, cz), 1.0, clad])
 		# Slabs stand a little proud of the wall and column tops under them, and the
 		# foundation a little below the floor tiles on it: faces at one height flicker.
 		if s > 0:
@@ -141,6 +148,39 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array, v := -
 	k.box("scifi_floor", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.62, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
 	models.append(["scifi/Platform_DarkPlates", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.03, d / 2 + 2.0), Vector3(1, 1, 0.5)])
 	models.append(["scifi/Prop_Light_Floor", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.04, d / 2 + 2.9), 1.0])
+
+## The variant's cladding as material swaps for the kit's walls: its main panels (and the
+## trims, a shade darker) painted the variant's colour, and window glass that takes a
+## reflection of the sky instead of reading as a black hole in the wall.
+static func _cladding(t: String, v: int) -> Dictionary:
+	var key := "%s:%d" % [t, v]
+	_clad_lock.lock()
+	var have = _clad.get(key)
+	_clad_lock.unlock()
+	if have != null:
+		return have
+	var out := {}
+	var tints: Array = CLADDING.get(t, [Color.WHITE])
+	var tint: Color = tints[v % tints.size()] if v >= 0 else Color.WHITE
+	if tint != Color.WHITE:
+		for n in ["MI_Trim_03", "MI_Trim_02", "MI_Trim_01"]:
+			var base := BuildCatalog.kit_material("scifi/WallAstra_Straight", n) as StandardMaterial3D
+			if base == null:
+				continue
+			var m := base.duplicate() as StandardMaterial3D
+			m.resource_name = n
+			var tt := tint if n == "MI_Trim_03" else tint.lerp(Color.WHITE, 0.35) * 0.9
+			m.albedo_color = Color(base.albedo_color.r * tt.r, base.albedo_color.g * tt.g, base.albedo_color.b * tt.b, base.albedo_color.a)
+			out[n] = m
+	var glass := StandardMaterial3D.new()
+	glass.albedo_color = Color(0.1, 0.14, 0.17)
+	glass.roughness = 0.06
+	glass.metallic_specular = 0.9
+	out[""] = glass
+	_clad_lock.lock()
+	_clad[key] = out
+	_clad_lock.unlock()
+	return out
 
 ## What makes a block read as a working building and not a box: a railing round the
 ## roof, plant on it (air handlers, a water tank, panels, masts), and service pipes

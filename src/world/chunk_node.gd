@@ -1306,7 +1306,8 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.light_energy = l[2]
 		hl.omni_range = l[3]
 		hl.omni_attenuation = 1.4
-		_cast_shadows(hl)
+		# A hearth's fire bed is broad, a lamp's flame small.
+		_cast_shadows(hl, 0.3 if KitHouse.has(o["t"]) else 0.1)
 		hl.distance_fade_enabled = true
 		hl.distance_fade_begin = 40.0
 		hl.distance_fade_length = 15.0
@@ -1351,7 +1352,12 @@ func _add_obj_body(o: Dictionary) -> void:
 			# The light is where the flames are: from lower down the stand's own arms threw
 			# black blots over the ceiling.
 			l.position = wicks / flames.size() if not flames.is_empty() else Vector3(0, 1.0, 0)
-			_cast_shadows(l)
+			# Several candles light from a spread, not a point: the arms' shadows on the
+			# ceiling blur into a soft dapple instead of hard black blots.
+			var spread := 0.0
+			for f in flames:
+				spread = maxf(spread, ((f[0] as Vector3) - l.position).length())
+			_cast_shadows(l, clampf(spread * 1.5 + 0.03, 0.04, 0.45))
 			l.distance_fade_enabled = true
 			l.distance_fade_begin = 40.0
 			l.distance_fade_length = 15.0
@@ -1360,8 +1366,8 @@ func _add_obj_body(o: Dictionary) -> void:
 			# the lamp is dim rather than black.
 			var fill := OmniLight3D.new()
 			fill.light_color = (lc as Color).lerp(Color(1.0, 0.9, 0.8), 0.4)
-			fill.light_energy = 0.22
-			fill.omni_range = 6.0
+			fill.light_energy = 0.35
+			fill.omni_range = 7.5
 			fill.omni_attenuation = 0.8
 			fill.light_specular = 0.0
 			fill.shadow_enabled = false
@@ -1379,8 +1385,11 @@ func _add_obj_body(o: Dictionary) -> void:
 
 ## Room lights, fires and lamps cast shadows near you: furniture and beams throw them, and
 ## the light stays inside its walls instead of shining out through them.
-static func _cast_shadows(l: OmniLight3D) -> void:
+## `size` is the flame's (or fire's) breadth in metres: shadows soften with distance from
+## what casts them, as under a real flame.
+static func _cast_shadows(l: OmniLight3D, size := 0.1) -> void:
 	l.shadow_enabled = true
+	l.light_size = size
 	l.shadow_bias = 0.04
 	l.shadow_normal_bias = 1.2
 	l.shadow_blur = 1.5
@@ -1405,6 +1414,8 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 		_add_obj_body(o)
 	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
+	if BuildCatalog.is_built(t):
+		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
 	return o
 
 ## Regrows the grass after something that keeps it out (a floor, a house) came or went,
@@ -1429,6 +1440,9 @@ func remove_object(i: int) -> void:
 		refresh_far()
 	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
+	if BuildCatalog.is_built(o["t"]):
+		var lp: Vector3 = o["p"]
+		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
 	if ObjectLibrary.kind(o["t"]) == "ore":
 		Game.map.note_chunk(data) # the atlas forgets a mined-out vein
 

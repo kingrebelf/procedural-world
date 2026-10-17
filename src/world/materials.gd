@@ -64,10 +64,16 @@ const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "bi
 ## Photos used in their own colours rather than as greyscale detail under the material colour.
 const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 ## Own-colour photos shot brighter than the stone really is, toned down to a believable
-## albedo (castle_wall averages 0.65 linear), so sunlit walls and tower roofs don't glare
-## white, and the dressed stone sits with the castle's rubble walls (about 0.2) instead of
-## standing out pale against them.
-const PHOTO_TONE := {"castle_wall": 0.42}
+## albedo: castle_wall averages 0.65 linear, so 0.6 gives a pale limestone of about 0.39
+## that doesn't glare white in the sun, and (now the castle is that stone through, with no
+## darker rubble beside it) doesn't sink to near-black in the shade either.
+const PHOTO_TONE := {"castle_wall": 0.6}
+## Own-colour photos warmed or cooled to sit with what they're laid beside: the castle's
+## flagstones take the honey tone of its walls instead of a cold blue-grey.
+const PHOTO_TINT := {"flagstone": Color(1.0, 0.95, 0.86)}
+## Normal strength per photo: the travertine's pores, stretched over big castle blocks,
+## read as deep black pits at full strength.
+const PHOTO_NORMAL := {"panels": 0.45, "castle_wall": 0.6}
 
 static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: float, tri_scale: float, normal_scale: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -82,14 +88,14 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 		# Detail textures average 0.72, so lift the colour to keep the old brightness.
 		if own:
 			var v: float = PHOTO_TONE.get(ph, 0.95)
-			m.albedo_color = Color(v, v, v)
+			m.albedo_color = Color(v, v, v) * (PHOTO_TINT.get(ph, Color.WHITE) as Color)
 			m.albedo_texture = photo(ph, "albedo")
 		else:
 			m.albedo_color = Color(albedo.r / 0.72, albedo.g / 0.72, albedo.b / 0.72, albedo.a)
 			m.albedo_texture = photo(ph, "detail")
 		m.normal_enabled = true
 		m.normal_texture = photo(ph, "normal")
-		m.normal_scale = 0.45 if ph == "panels" else 1.0
+		m.normal_scale = PHOTO_NORMAL.get(ph, 1.0)
 		if ph == "panels":
 			# Without nearby reflections, highly metallic dark plates read as pure black and
 			# look like crumpled foil; keep them part-metal and a little rough.

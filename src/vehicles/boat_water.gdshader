@@ -1,7 +1,7 @@
 shader_type spatial;
 // Where a boat meets the water (BoatWater): foam lapping round the hull, the bow waves
 // spreading back in a V and the churned wash behind the stern. Lies on the swell (the
-// same waves as water.gdshader). COLOR.r says which part a vertex belongs to (0 the
+// same waves as water.gdshader, water_swell). COLOR.r says which part a vertex belongs to (0 the
 // lapping foam, 0.5 a bow wave, 1 the stern wash), COLOR.g how strong that part is for
 // this boat; UV.x runs along it (the foam: 1 at the bow), UV.y across.
 render_mode blend_mix, depth_draw_never, cull_disabled, diffuse_burley, specular_schlick_ggx, shadows_disabled;
@@ -26,25 +26,20 @@ float vn(vec2 p) {
 	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
 }
-vec2 rot(vec2 v, float a) { return vec2(v.x * cos(a) - v.y * sin(a), v.x * sin(a) + v.y * cos(a)); }
+// Water's depth map, for how tall the swell runs here (as under the hull, Water.surface_height()).
+global uniform sampler2D water_map : filter_linear;
+global uniform vec4 water_map_rect; // its origin x, z and size
+#include "res://src/env/water_swell.gdshaderinc"
 
-// Must match Water.surface_height() (open water).
-float swell(vec2 p, float t) {
-	vec2 d = normalize(wind_dir + vec2(0.0001));
-	vec2 dirs[4] = vec2[](d, rot(d, 0.6), rot(d, -0.45), rot(d, 1.3));
-	float lens[4] = float[](38.0, 21.0, 13.0, 7.0);
-	float amps[4] = float[](0.5, 0.28, 0.15, 0.07);
-	float r = 0.0;
-	for (int i = 0; i < 4; i++) {
-		float k = 6.2831853 / lens[i];
-		r += amps[i] * sin(k * (dot(p, dirs[i]) - sqrt(9.8 / k) * t));
-	}
-	return r * (0.04 + wind_strength * wind_strength * 1.1);
+float depth_at(vec2 p) {
+	vec2 uv = (p - water_map_rect.xy) / water_map_rect.z;
+	if (water_map_rect.z <= 0.0 || uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 12.0;
+	return textureLod(water_map, uv, 0.0).r;
 }
 
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	float y = swell(wpos.xz, TIME) + 0.035;
+	float y = swell(wpos.xz, TIME, swell_amp(depth_at(wpos.xz))).x + 0.035;
 	VERTEX.y += y - wpos.y;
 	wpos.y = y;
 	col = COLOR;
