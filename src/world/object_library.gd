@@ -16,7 +16,7 @@ const KIND := {
 	"shrine": "structure", "mushroom_house": "structure", "spire": "structure",
 	"hab_dome": "structure", "comms_spire": "structure", "cargo_stack": "structure",
 	"trader": "trader", "alien_ruin": "structure",
-	"signpost": "marker",
+	"signpost": "marker", "bridge": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -41,7 +41,7 @@ const YIELD := {
 const LABEL := {
 	"oak": "Oak", "pine": "Pine", "glowcap": "Glowcap", "crystal_tree": "Crystalbark Tree", "solar_mast": "Derelict Solar Mast",
 	"rock": "Boulder", "iron_vein": "Iron Vein", "aether_crystal": "Aether Crystal Cluster", "alloy_scrap": "Alloy Scrap Pile",
-	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost",
+	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
 }
@@ -100,6 +100,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return BuildCatalog.merge_models(TOWN_PROPS[key])
 	if key.contains("#"):
 		var parts := key.split("#")
+		if parts[0] == "bridge":
+			return Bridge.build(int(parts[1]))
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
@@ -183,6 +185,8 @@ static func shape_of(o: Dictionary) -> Array:
 	var t: String = o["t"]
 	var sp: int = o.get("sp", 0)
 	var k := kind(t)
+	if t == "bridge" and sp != 0:
+		return Bridge.shape(sp)
 	if sp == 0 or not (k == "tree" or k == "rock" or k == "ore"):
 		return get_shape(t)
 	var key := mesh_key(o)

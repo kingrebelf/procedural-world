@@ -24,6 +24,7 @@ const TABLE := {
 	"beacon": ["metal", 60.0, [["circuitry", 3], ["power_cell", 1], ["alloy_scrap", 3]]],
 	"cottage": ["stone", 110.0, [["stone", 14], ["planks", 8], ["wood", 4]]],
 	"townhouse": ["stone", 160.0, [["stone", 16], ["planks", 14], ["wood", 6]]],
+	"bridge": ["stone", 900.0, [["stone", 60]]],
 	"signpost": ["wood", 8.0, [["planks", 2], ["wood", 1]]],
 	"market_stall": ["wood", 30.0, [["planks", 4], ["wood", 2], ["wild_berries", 3]]],
 	"fruit_cart": ["wood", 30.0, [["planks", 4], ["wood", 3], ["wild_berries", 2]]],

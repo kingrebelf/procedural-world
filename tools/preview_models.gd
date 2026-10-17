@@ -45,7 +45,10 @@ func _run() -> void:
 	vp.add_child(ground)
 	var x := 0.0
 	var top := 1.0
-	for n in names:
+	for n0 in names:
+		# "name@deg" turns the model about Y (e.g. to see a long bridge side-on).
+		var n := String(n0).get_slice("@", 0)
+		var turn := float(String(n0).get_slice("@", 1)) if String(n0).contains("@") else 0.0
 		var node: Node3D
 		if String(n).begins_with("mesh:"):
 			# A world object mesh by key, e.g. mesh:oak#1234#0.
@@ -60,6 +63,7 @@ func _run() -> void:
 				continue
 			node = ps.instantiate()
 		vp.add_child(node)
+		node.rotation.y = deg_to_rad(turn)
 		var aabb := AABB()
 		var first := true
 		for mi in node.find_children("*", "MeshInstance3D", true, false):

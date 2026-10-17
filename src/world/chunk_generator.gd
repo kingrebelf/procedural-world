@@ -206,6 +206,49 @@ func _road_field(x0: float, z0: float, roads: Array) -> Array:
 						level[k] = lerpf(ha, hb, t)
 	return [dist, level]
 
+## A stone bridge wherever a road crosses running river water inside this chunk. Each
+## crossing is found the same way from any chunk, so exactly one chunk owns it.
+func _place_bridges(chunk: Dictionary, roads: Array) -> void:
+	var x0 := float(int(chunk["cx"]) * SIZE)
+	var z0 := float(int(chunk["cz"]) * SIZE)
+	for pts in roads:
+		for i in range(1, pts.size() - 1):
+			var p: Vector2 = pts[i]
+			if p.x < x0 - ROAD_STEP or p.x > x0 + SIZE + ROAD_STEP or p.y < z0 - ROAD_STEP or p.y > z0 + SIZE + ROAD_STEP:
+				continue
+			var t := field.river_t(p.x, p.y)
+			if t > 1.2 or t > field.river_t(pts[i - 1].x, pts[i - 1].y) or t >= field.river_t(pts[i + 1].x, pts[i + 1].y):
+				continue
+			# Refine to the deepest point along the road, then measure the wet span.
+			var a: Vector2 = pts[i - 1]
+			var b: Vector2 = pts[i + 1]
+			var best := p
+			var bt := t
+			for k in 17:
+				var q := a.lerp(b, k / 16.0)
+				var tq := field.river_t(q.x, q.y)
+				if tq < bt:
+					bt = tq
+					best = q
+			if best.x < x0 or best.x >= x0 + SIZE or best.y < z0 or best.y >= z0 + SIZE:
+				continue
+			var lx := best.x - x0
+			var lz := best.y - z0
+			var level := river_surface(chunk, lx, lz)
+			if is_nan(level):
+				continue
+			var dir := (b - a).normalized()
+			var wet := 0.0
+			for sgn in [-1.0, 1.0]:
+				var d := 0.0
+				while d < 40.0 and field.river_t(best.x + dir.x * d * sgn, best.y + dir.y * d * sgn) < 1.5:
+					d += 1.0
+				wet += d
+			if wet > 50.0:
+				continue # the road runs along the river here, not across it
+			var deck := level + 1.7 - height_at(chunk, lx, lz)
+			_add(chunk, "bridge", WorldField.dominant(weights_at(chunk, lx, lz)), lx, lz, atan2(dir.x, dir.y), 1.0, {}, Bridge.pack(wet + 2.0, deck), 0)
+
 ## How much of the road surface shows at this point of the chunk (0..1).
 static func road_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	if not chunk.has("road"):
@@ -311,6 +354,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["river"] = river
 	if any_road:
 		chunk["road"] = road_mask
+	if has_river and not roads.is_empty():
+		_place_bridges(chunk, roads)
 	_place_objects(chunk, sites)
 	return chunk
 

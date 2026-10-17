@@ -59,7 +59,7 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 	for it in layout:
 		if it["t"] == "trader":
 			stall = it
-		elif ObjectLibrary.kind(it["t"]) == "structure" and not ObjectLibrary.TOWN_PROPS.has(it["t"]):
+		elif ObjectLibrary.kind(it["t"]) == "structure" and not ObjectLibrary.TOWN_PROPS.has(it["t"]) and it["t"] != "bridge":
 			# The door is on the side facing the square.
 			var p: Vector2 = it["p"]
 			homes.append({"p": p + (c - p).normalized() * 4.2, "t": it["t"]})
