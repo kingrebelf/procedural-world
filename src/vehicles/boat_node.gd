@@ -27,6 +27,7 @@ var _water: BoatWater
 var _oars: Array = [] ## [node, side]
 
 var _wake_t := 0.0
+var _line := PackedVector2Array() ## the hull's waterline outline (BoatModel.waterline)
 var _bob := Vector3.ZERO
 var _yaw := 0.0
 var _pos2 := Vector2.ZERO
@@ -148,7 +149,17 @@ func _place(delta: float) -> void:
 
 func _wake(delta: float, d: Dictionary) -> void:
 	_wake_t -= delta
-	if _wake_t > 0.0 or speed < 0.6:
+	if _wake_t > 0.0:
+		return
+	if speed < 0.6:
+		# At rest the swell still slaps the hull: now and then a soft ring spreads from a
+		# point on the waterline.
+		_wake_t = randf_range(0.8, 2.2)
+		if _line.is_empty():
+			_line = BoatModel.waterline(kind)
+		var q := _line[randi() % _line.size()]
+		var at := global_transform * Vector3(q.x * 1.05, 0.0, q.y * 1.02)
+		Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)), at.z), 0.5 + float(d["len"]) * 0.03)
 		return
 	_wake_t = clampf(1.4 / speed, 0.12, 0.6)
 	var at := global_position + global_transform.basis.z * float(d["len"]) * 0.45

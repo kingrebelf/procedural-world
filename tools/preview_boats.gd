@@ -15,7 +15,7 @@ const SHOTS := {
 	"life_raft": [[Vector3(4, 2.6, 4), Vector3(0, 0.6, 0)]],
 	"launch": [[Vector3(8, 4, 7), Vector3(0, 1.2, 0)], [Vector3(-1.0, 2.4, 4.6), Vector3(0.4, 1.2, -1)]],
 	"research_vessel": [[Vector3(26, 10, 22), Vector3(0, 4, 0)], [Vector3(-20, 6, -20), Vector3(0, 4, 0)], [Vector3(1.2, 6.3, 0.9), Vector3(0, 5.6, -2.2)],
-		[Vector3(0.0, 3.6, 5.2), Vector3(1.6, 2.6, -1.0)], [Vector3(4, 4.5, 16), Vector3(0, 2.5, 6)]],
+		[Vector3(0.0, 3.6, 5.2), Vector3(1.6, 2.6, -1.0)], [Vector3(4, 4.5, 16), Vector3(0, 2.5, 6)], [Vector3(11, 2.2, 8), Vector3(3.3, 1.6, 2)]],
 }
 
 func _initialize() -> void:

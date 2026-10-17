@@ -43,7 +43,7 @@ const SEATED := ["sit", "row", "sit_bench"]
 const HULLS := {
 	"rowboat": {"L": 4.4, "B": 1.45, "D": 0.32, "F": 0.42, "rise": 0.18, "transom": 0.55, "deck": NAN},
 	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6, "tumble": 0.04},
-	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.62, "deck": 1.6, "tumble": 0.09},
+	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.4, "deck": 1.6, "tumble": 0.09},
 	"launch": {"L": 7.5, "B": 2.5, "D": 0.55, "F": 0.7, "rise": 0.25, "transom": 0.8, "deck": 0.52, "paint": true},
 	"research_vessel": {"L": 26.0, "B": 7.0, "D": 2.4, "F": 2.1, "rise": 0.9, "transom": 0.85, "deck": 1.95, "paint": true},
 }
@@ -119,10 +119,7 @@ static func get_mat(name: String) -> Material:
 			m = s
 		"spar":
 			# Masts and yards: dressed, oiled wood with the grain along them, not bark.
-			var s := (Materials.get_mat("planks") as StandardMaterial3D).duplicate() as StandardMaterial3D
-			s.albedo_color = Color(0.62, 0.46, 0.3)
-			s.roughness = 0.6
-			m = s
+			m = Materials.get_mat("timber")
 		"upholstery":
 			var s := StandardMaterial3D.new()
 			s.albedo_color = Color.WHITE
@@ -184,9 +181,11 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"launch":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.93, 0.94, 0.95), Color(0.16, 0.22, 0.36))
 			_launch(k, shapes, r)
+			_weather_steel(k, HULLS[kind], r, 5, 3)
 		"research_vessel":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.94, 0.94, 0.95), Color(0.55, 0.12, 0.1))
 			_research_vessel(k, shapes, r, root)
+			_weather_steel(k, HULLS[kind], r, 14, 5)
 	if kind == "rowboat":
 		_oars(root, seed)
 	var mi := MeshInstance3D.new()
@@ -273,8 +272,12 @@ static func _hull(k: MeshKit, shapes: Array, h: Dictionary, mat: String, col: Co
 				var c := col
 				# Painted hulls: bottom paint to the waterline; planked ones dark and wet a
 				# hand's breadth above it.
-				if below.a > 0.0 and (p00.y + p11.y) * 0.5 < (0.3 if mat == "planks" else 0.12):
+				var my := (p00.y + p11.y) * 0.5
+				if below.a > 0.0 and my < (0.3 if mat == "planks" else 0.12):
 					c = below
+				elif mat != "planks" and my < 0.6:
+					# Waterline scum on painted hulls: greenish brown, fading up the side.
+					c = c.lerp(Color(0.42, 0.42, 0.33), 0.45 * (1.0 - smoothstep(0.12, 0.6, my)))
 				var n00 := _hull_n(h, grid, i, j, side)
 				var n10 := _hull_n(h, grid, i + 1, j, side)
 				var n11 := _hull_n(h, grid, i + 1, j + 1, side)
@@ -596,9 +599,11 @@ static func _square_sail(k: MeshKit, top_y: float, bot_y: float, half_w: float, 
 		var v := float(j) / ny
 		for i in nx + 1:
 			var u := float(i) / nx
-			var x := lerpf(-half_w, half_w, u) * (1.0 - v * 0.06)
-			var y := lerpf(top_y, bot_y, v)
-			var b := belly * sin(u * PI) * sin(clampf(v * 1.1, 0.0, 1.0) * PI * 0.85 + 0.15)
+			# Filled by the wind: deepest a little below the middle, the leeches drawn in as
+			# the cloth bellies, and the foot sagging between its clews.
+			var b := belly * pow(sin(u * PI), 0.8) * sin(clampf(v * 1.05, 0.0, 1.0) * PI * 0.8 + 0.2)
+			var x := lerpf(-half_w, half_w, u) * (1.0 - v * 0.06) * (1.0 - 0.05 * b / maxf(belly, 0.01))
+			var y := lerpf(top_y, bot_y, v) + (top_y - bot_y) * 0.06 * sin(u * PI) * v * v * v
 			row.append(Vector3(x, y, z - b))
 		pts.append(row)
 	# Smooth normals, so the cloth shades as one curved sheet, not a quilt of facets.
@@ -660,11 +665,105 @@ static func _lantern(root: Node3D, k: MeshKit, p: Vector3, tech := false) -> voi
 	l.distance_fade_length = 20.0
 	root.add_child(l)
 
+## A working steel hull's wear: rust weeping down from scuppers and hawse holes in
+## tapering streaks, and fenders hung over the side on lines from the rail.
+static func _weather_steel(k: MeshKit, h: Dictionary, r: RandomNumberGenerator, streaks: int, fenders: int) -> void:
+	for side in [1.0, -1.0]:
+		for si in streaks:
+			var u := r.randf_range(0.08, 0.9)
+			var v0 := r.randf_range(0.95, 0.99)
+			var v1 := v0 - r.randf_range(0.12, 0.3)
+			var w0 := r.randf_range(0.04, 0.09) * (1.0 if float(h["L"]) > 10.0 else 0.6)
+			var col := Color(0.6, 0.36, 0.2).lerp(Color(0.5, 0.3, 0.2), r.randf())
+			# The scupper it weeps from.
+			var sp := _skin(h, u, v0 + 0.004, side)
+			k.box("metal_dark", Transform3D(Basis.IDENTITY, sp), Vector3(0.03, 0.06, w0 * 2.4))
+			var segs := 5
+			for i in segs:
+				var t0 := float(i) / segs
+				var t1 := float(i + 1) / segs
+				var a := _skin(h, u, lerpf(v0, v1, t0), side)
+				var b := _skin(h, u, lerpf(v0, v1, t1), side)
+				var wa := w0 * (1.0 - t0 * 0.85)
+				var wb := w0 * (1.0 - t1 * 0.85)
+				var along := Vector3(0, 0, wa)
+				var along_b := Vector3(0, 0, wb)
+				var n := Vector3(side, 0, 0)
+				# Fading out into the paint as it runs down.
+				var c := col.lerp(Color(0.86, 0.82, 0.76), t1 * 0.75)
+				_tri_out(k, "rust", a - along, a + along, b + along_b, n, n, n, n, c)
+				_tri_out(k, "rust", a - along, b + along_b, b - along_b, n, n, n, n, c)
+		for fi in fenders:
+			var u := lerpf(0.25, 0.7, (float(fi) + 0.5) / fenders)
+			var z := float(h["L"]) * (0.5 - u)
+			var top := float(h["F"]) + float(h["rise"]) * pow(2.0 * u - 1.0, 2.0)
+			var x: float = side * (_width_at(h, u, top - 0.6) + 0.17)
+			var R := 0.12 if float(h["L"]) < 10.0 else 0.2
+			k.cylinder("rubber", Transform3D(Basis.IDENTITY, Vector3(x, top - 0.75, z)), R, R, R * 3.2, 12, true, 0.0, 1, Color(0.12, 0.13, 0.15))
+			_line(k, Vector3(x, top - 0.75 + R * 1.6, z), Vector3(x - side * 0.15, top + 0.05, z), 0.01)
+
+## A point just off the outside of the hull's skin on side s (decals sit on it).
+static func _skin(h: Dictionary, u: float, v: float, s: float) -> Vector3:
+	var p := _hull_pt(h, u, v)
+	return Vector3(s * (p.x + 0.015), p.y, p.z)
+
+## A ship's wheel: rim, eight spokes with turned handles past the rim, a hub on a column
+## rising from the console.
+static func _helm_wheel(k: MeshKit, c: Vector3) -> void:
+	var b := Basis(Vector3.RIGHT, -0.35)
+	var R := 0.23
+	var segs := 16
+	for i in segs:
+		var a0 := TAU * i / segs
+		var a1 := TAU * (i + 1) / segs
+		_beam(k, "metal_dark", c + b * Vector3(cos(a0) * R, sin(a0) * R, 0), c + b * Vector3(cos(a1) * R, sin(a1) * R, 0), 0.016, 6)
+	for i in 8:
+		var a := TAU * i / 8.0
+		var d := b * Vector3(cos(a), sin(a), 0)
+		_beam(k, "metal", c, c + d * (R + 0.08), 0.009, 5)
+		# Handle along the spoke (a cylinder's axis is its local y).
+		k.cylinder("rubber", Transform3D(b * Basis(Vector3.BACK, a - PI * 0.5), c + d * (R + 0.06)), 0.014, 0.014, 0.07, 6)
+	k.cylinder("metal", Transform3D(b * Basis(Vector3.RIGHT, PI * 0.5), c + b * Vector3(0, 0, 0.03)), 0.045, 0.045, 0.08, 10)
+	_beam(k, "metal_dark", c + b * Vector3(0, 0, 0.07), c + Vector3(0, -0.22, 0.25), 0.04)
+
+## The wheelhouse's walls under its windows: a dado rail all round, instrument panels
+## with gauges and small screens to the sides, a chart table, a radio rack and a fire
+## extinguisher by the door.
+static func _bridge_walls(k: MeshKit, shapes: Array, c: Vector3, size: Vector3) -> void:
+	var hx := size.x * 0.5 - 0.1
+	var z0 := c.z - size.z * 0.5 + 0.1
+	var z1 := c.z + size.z * 0.5 - 0.1
+	var f := c.y
+	var grey := Color(0.55, 0.58, 0.62)
+	for s in [-1.0, 1.0]:
+		k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(s * hx, f + 0.95, c.z)), Vector3(0.04, 0.05, size.z - 0.2), grey)
+		k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(s * hx, f + 0.08, c.z)), Vector3(0.03, 0.16, size.z - 0.2), Color(0.3, 0.32, 0.35))
+		# Instrument panel: a dark plate with gauges and one small screen.
+		var pz := c.z - 0.5
+		k.box("metal_dark", Transform3D(Basis.IDENTITY, Vector3(s * (hx - 0.02), f + 0.6, pz)), Vector3(0.04, 0.5, 1.1))
+		for i in 3:
+			var g := Vector3(s * (hx - 0.05), f + 0.68, pz - 0.35 + i * 0.35)
+			k.cylinder("metal", Transform3D(Basis(Vector3.BACK, PI * 0.5), g), 0.07, 0.07, 0.025, 14, true, 0.0, 1, Color(0.85, 0.86, 0.84))
+		k.box("screen", Transform3D(Basis.IDENTITY, Vector3(s * (hx - 0.045), f + 0.47, pz)), Vector3(0.01, 0.16, 0.3))
+	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(0, f + 0.95, z0)), Vector3(size.x - 0.2, 0.05, 0.04), grey)
+	# Chart table (port, aft) with a chart and dividers; radio rack (starboard, aft).
+	_solid(k, shapes, "hull_paint", Vector3(-hx + 0.45, f + 0.45, z1 - 0.7), Vector3(0.8, 0.9, 0.9), Color(0.7, 0.72, 0.75))
+	k.box("pitch_cloth", Transform3D(Basis(Vector3.UP, 0.1), Vector3(-hx + 0.45, f + 0.905, z1 - 0.7)), Vector3(0.6, 0.005, 0.5), Color(0.92, 0.9, 0.82))
+	_solid(k, shapes, "metal_dark", Vector3(hx - 0.3, f + 0.75, z1 - 0.9), Vector3(0.5, 1.5, 0.5))
+	for i in 3:
+		k.box("metal", Transform3D(Basis.IDENTITY, Vector3(hx - 0.56, f + 0.45 + i * 0.4, z1 - 0.9)), Vector3(0.02, 0.3, 0.44))
+	k.box("screen", Transform3D(Basis.IDENTITY, Vector3(hx - 0.575, f + 1.25, z1 - 0.9)), Vector3(0.005, 0.1, 0.25))
+	k.cylinder("painted", Transform3D(Basis.IDENTITY, Vector3(-0.7, f + 0.3, z1 - 0.02)), 0.08, 0.08, 0.55, 10, true, 0.0, 1, Color(0.75, 0.08, 0.06))
+
 ## A bridge chair facing the bow: pedestal on a foot plate, padded seat and back with
 ## piping, and armrests.
 static func _helm_chair(k: MeshKit, p: Vector3) -> void:
 	var cloth := Color(0.36, 0.42, 0.5)
-	k.cylinder("metal", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.015, 0)), 0.24, 0.26, 0.03, 16, true)
+	# A five-legged star base bolted to the deck.
+	for i in 5:
+		var a := TAU * i / 5.0
+		_beam(k, "metal_dark", p + Vector3(0, 0.05, 0), p + Vector3(cos(a) * 0.3, 0.02, sin(a) * 0.3), 0.025)
+		k.cylinder("rubber", Transform3D(Basis.IDENTITY, p + Vector3(cos(a) * 0.3, 0.02, sin(a) * 0.3)), 0.035, 0.035, 0.04, 8)
 	k.cylinder("metal", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.26, 0)), 0.045, 0.055, 0.46, 10, true)
 	k.box("metal_dark", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.5, 0)), Vector3(0.44, 0.03, 0.42))
 	k.box("upholstery", Transform3D(Basis.IDENTITY, p + Vector3(0, 0.55, 0.02)), Vector3(0.5, 0.08, 0.48), cloth)
@@ -751,7 +850,7 @@ static func oar_basis(s: float, sweep: float, dip: float, feather: float) -> Bas
 
 ## An oar at stroke phase `ph` (BodyLanguage.row_phase) while rowing with effort `w`
 ## (0 at rest): blades squared and buried on the drive, feathered and lifted clear on the
-## way back; at rest they trail flat on the water.
+## way back; at rest they trail aft alongside the hull, blades flat on the water.
 static func oar_stroke(s: float, ph: float, w: float) -> Basis:
 	var sweep: float
 	var dip := 0.36
@@ -763,7 +862,7 @@ static func oar_stroke(s: float, ph: float, w: float) -> Basis:
 		dip -= 0.24 * sin(PI * clampf((ph - 0.4) / 0.56, 0.0, 1.0))
 		feather = smoothstep(0.4, 0.5, ph) * (1.0 - smoothstep(0.88, 0.97, ph))
 	var e := smoothstep(0.0, 1.0, w)
-	return oar_basis(s, lerpf(-0.25, sweep, e), lerpf(0.3, dip, e), lerpf(1.0, feather, e))
+	return oar_basis(s, lerpf(-1.15, sweep, e), lerpf(0.12, dip, e), lerpf(1.0, feather, e))
 
 static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
 	var h: Dictionary = HULLS["fishing_boat"]
@@ -772,7 +871,7 @@ static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -
 	# Mast with a lug sail drawing, a tiller at the stern.
 	var mast := Vector3(0, dy, -1.3)
 	_beam(k, "spar", mast, mast + Vector3(0, 6.2, 0), 0.09)
-	_square_sail(k, dy + 5.8, dy + 1.5, 1.7, -1.15, 0.55, false, Color(0.82, 0.7, 0.58))
+	_square_sail(k, dy + 5.8, dy + 1.5, 1.7, -1.15, 0.85, false, Color(0.82, 0.7, 0.58))
 	for s in [-1.0, 1.0]:
 		_line(k, mast + Vector3(0, 5.9, 0), Vector3(s * (_width_at(h, 0.6, dy) - 0.05), dy + 0.2, -1.0))
 	_line(k, mast + Vector3(0, 6.0, 0), Vector3(0, float(h["F"]) + 0.4, -float(h["L"]) * 0.5 + 0.1))
@@ -851,7 +950,7 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	var mast := Vector3(0, dy, -0.8)
 	_beam(k, "spar", mast - Vector3(0, 1.5, 0), mast + Vector3(0, 16.5, 0), 0.24, 10)
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, mast + Vector3(0, 13.4, 0)), 0.8, 0.9, 0.9, 12, true, 0.0, 1, Color(0.65, 0.52, 0.4))
-	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 1.9, false, Color(0.9, 0.84, 0.72))
+	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 2.7, false, Color(0.9, 0.84, 0.72))
 	for s in [-1.0, 1.0]:
 		# Shrouds to deadeyes on the rail, with ratlines across them to climb to the top.
 		var feet: Array = []
@@ -1005,7 +1104,15 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	_solid(k, shapes, "hull_paint", Vector3(0, bf + 0.5, -2.0), Vector3(4.2, 1.0, 0.6), Color(0.25, 0.28, 0.32))
 	for x in [-1.4, 0.0, 1.4]:
 		k.box("screen", Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(x, bf + 1.05, -1.85)), Vector3(1.0, 0.03, 0.4))
-	k.cylinder("metal_dark", Transform3D(Basis(Vector3.RIGHT, -1.1), Vector3(0.0, bf + 1.1, -1.65)), 0.22, 0.22, 0.05, 16)
+	_helm_wheel(k, Vector3(0.0, bf + 1.12, -1.6))
+	# Twin throttles on the console's starboard side, a radio handset to port.
+	for x in [0.62, 0.78]:
+		var lever := Transform3D(Basis(Vector3.RIGHT, 0.5), Vector3(x, bf + 1.06, -1.85))
+		k.box("metal_dark", Transform3D(Basis.IDENTITY, Vector3(0.7, bf + 1.02, -1.85)), Vector3(0.36, 0.06, 0.24))
+		_beam(k, "metal", lever.origin, lever.origin + lever.basis.y * 0.22, 0.012)
+		k.sphere("rubber", Transform3D(Basis.IDENTITY, lever.origin + lever.basis.y * 0.24), 0.035, 5, 8, 0.0, 1.0, Color(0.6, 0.1, 0.08) if x < 0.7 else Color(0.1, 0.3, 0.6))
+	k.box("metal_dark", Transform3D(Basis.IDENTITY, Vector3(-0.8, bf + 1.05, -1.88)), Vector3(0.18, 0.08, 0.1))
+	_bridge_walls(k, shapes, br_c, br)
 	for x in [-0.9, 0.9]:
 		_helm_chair(k, Vector3(x, bf, -0.9))
 	_lantern(root, k, Vector3(0, bf + br.y - 0.06, -0.6), true)
