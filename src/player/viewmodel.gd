@@ -79,8 +79,8 @@ func _ready() -> void:
 		arms.advance(0.5)
 	position = _rest
 
-## The item as something a hand can hold: tools and weapons as models, anything else as
-## its icon on a card.
+## The item as something a hand can hold: tools, weapons and materials as models, anything
+## else as its icon on a card.
 static func prop_for(t: String, it = null) -> Node3D:
 	var n := Node3D.new()
 	var mi := MeshInstance3D.new()
@@ -93,6 +93,10 @@ static func prop_for(t: String, it = null) -> Node3D:
 			mi.add_child(HandLight.torch_fire())
 			# Its light burns at the head, so the torch's own shadow would black out the stick.
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	elif ItemModels.has(t):
+		# Materials, parts and gear modelled at their real size (see ItemModels).
+		mi.mesh = ItemModels.model(t)
+		mi.material_overlay = aura_for(it)
 	else:
 		var q := QuadMesh.new()
 		q.size = Vector2(0.2, 0.2)
