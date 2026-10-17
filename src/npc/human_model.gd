@@ -347,7 +347,11 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 		k.cylinder("thatch", I.translated(Vector3(0, 0.17, 0)), 0.095, 0.07, 0.09, 10)
 		k.cylinder("thatch", I.translated(Vector3(0, 0.15, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.12, -0.02)), 0.13, 0.0, 0.3, 10, true, 0.0, 1, b["cloth2"])
+		# A soft felt hat whose point flops over, on a narrow brim.
+		var felt: Color = (b["cloth2"] as Color).darkened(0.25)
+		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.115, 0.06, 0.16, 12, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, 0.25, -0.02)), 0.06, 0.0, 0.13, 10, true, 0.0, 1, felt)
 	else:
 		return
 	var mi := MeshInstance3D.new()

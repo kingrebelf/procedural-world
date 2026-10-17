@@ -37,6 +37,17 @@ void vertex() {
 	rest = CUSTOM0.xyz;
 	rest_pos = vec3(CUSTOM0.w, CUSTOM0.y, CUSTOM0.z);
 	rest_n = CUSTOM1.xyz;
+	// Loose cloth (skirts, capes, aprons) ripples a little toward its hem, out of step from
+	// one person to the next, so it never hangs as a rigid tube.
+	int part = int(CUSTOM0.x + 0.5);
+	if (part == 5 || part == 6 || part == 8) {
+		float hang = part == 6 ? UV.y / 3.0 : UV.y / 2.0;
+		vec3 wp = NODE_POSITION_WORLD;
+		float ph = wp.x * 1.7 + wp.z * 2.3;
+		float around = UV.x * (part == 6 ? 3.0 : 2.1);
+		float wave = sin(TIME * 1.9 + around * 6.2832 + ph) * 0.6 + sin(TIME * 3.3 - around * 12.566 + ph * 1.3) * 0.4;
+		VERTEX += NORMAL * wave * 0.014 * hang * hang;
+	}
 }
 
 float hash(vec2 p) {
@@ -77,22 +88,31 @@ void fragment() {
 	// The cloth itself: what it is, how big its weave is and how deep.
 	float det;
 	float relief;
+	// Each cloth its own: smooth fine linen, chunky knitted wool, soft velvet with a sheen,
+	// tough canvas, oiled leather; `contrast` is how strongly its weave shows.
+	float contrast = 1.0;
 	if (fab == 3) {
 		det = fabric(leather, rest_pos, rest_n, 0.22);
 		relief = 0.0012;
-		rough = 0.55 + (0.72 - det) * 0.5;
+		rough = 0.48 + (0.72 - det) * 0.5;
+		contrast = 0.8;
 	} else if (fab == 2) {
 		det = fabric(velvet, rest_pos, rest_n, 0.3);
-		relief = 0.0004;
-		sheen = 0.45;
+		relief = 0.0003;
+		sheen = 0.5;
+		rough = 0.7;
+		contrast = 0.35;
 	} else if (fab == 1) {
 		det = fabric(wool, rest_pos, rest_n, part == 1 ? 0.085 : 0.12);
-		relief = 0.0016;
+		relief = 0.0018;
+		rough = 0.97;
 	} else {
-		det = fabric(linen, rest_pos, rest_n, fab == 5 ? 0.045 : (part == 2 ? 0.13 : 0.1));
-		relief = 0.0006;
+		det = fabric(linen, rest_pos, rest_n, fab == 5 ? 0.03 : 0.05);
+		relief = 0.0003;
+		rough = fab == 5 ? 0.72 : 0.86;
+		contrast = fab == 5 ? 0.3 : 0.45;
 	}
-	col *= det / 0.72;
+	col *= mix(1.0, det / 0.72, contrast);
 	float h = det * relief;
 	if (fab == 4) {
 		// Quilted channels: a gambeson, or a padded sci-fi vest.

@@ -117,9 +117,15 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 		for k in [a, b, c]:
 			if not remap.has(k):
 				remap[k] = base + remap.size()
-				var rp := v[k] + nr[k] * off[k]
+				var dir := nr[k]
+				if part == PART_BOOTS and reg[k] == 7:
+					# A boot is pushed out from the middle of the foot as well as along the
+					# skin, so it closes over the toes instead of showing each one.
+					var mid := Vector3(signf(v[k].x) * 0.11, 0.05, 0.0)
+					dir = (nr[k] + (v[k] - mid).normalized() * 1.2).normalized()
+				var rp := v[k] + dir * off[k]
 				o["v"].append(rp)
-				o["n"].append(nr[k])
+				o["n"].append(dir)
 				o["uv"].append(uv[k] if uv.size() > k else Vector2.ZERO)
 				for j in per:
 					o["b"].append(bones[k * per + j])
@@ -477,7 +483,7 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 	for part in [PART_SHIRT, PART_PANTS, PART_SKIRT, PART_TRIM]:
 		if cols.has(part) and _near(cols[part], skin):
 			var c: Color = cols[part]
-			var d: Color = c.darkened(0.45) if skin.v > 0.45 else c.lightened(0.5)
+			var d: Color = c.darkened(0.45) if skin.v > 0.45 else c.lerp(Color(0.25, 0.33, 0.45), 0.7)
 			cols[part] = Color(d.r, d.g, d.b, c.a)
 	for part in [PART_SKIRT, PART_TRIM, PART_APRON, PART_CAPE]:
 		if not cols.has(part):
@@ -492,6 +498,7 @@ static func _near(c: Color, skin: Color) -> bool:
 ## Human sci-fi folk: jumpsuits and work shirts, padded vests, a long coat for the dealers.
 static func _scifi(sp: Dictionary, cols: Dictionary, role: String, fem: bool, pick: Callable, fab: Callable, chance: Callable) -> void:
 	sp["boot_h"] = 0.4
+	sp["fit"] = 2.0
 	var main: Color = pick.call(UTILITY)
 	match role:
 		"medic":
@@ -532,35 +539,52 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	var boot_h: float = sp["boot_h"]
 	var shoulder_x: float = s["shoulder_x"]
 	var hem: float = sp["hem"]
+	# Work clothes (sci-fi) are cut roomier than linen and wool, with pockets.
+	var fit: float = sp.get("fit", 1.0)
+	var vest_kind: int = sp["vest"]
+	var t_shirt := 0.009 * fit
+	var t_pants := 0.007 * fit
 	# Shirt: the torso down to the hips, sleeves to the elbow or the wrist with a cuff.
 	_shell(s, o, PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if r == 1:
-			return 0.009
+			return t_shirt
 		if r == 5 and p.y > waist - 0.06:
-			return 0.009
+			return t_shirt
 		if r == 2 and sleeves >= 1:
-			return 0.009 + (0.006 if sleeves == 1 and absf(p.x) > shoulder_x + 0.2 else 0.0)
+			return t_shirt + (0.006 if sleeves == 1 and absf(p.x) > shoulder_x + 0.2 else 0.0)
 		if r == 3 and sleeves >= 2:
-			return 0.009 + (0.006 if absf(p.x) > shoulder_x + 0.42 else 0.0)
+			return t_shirt + (0.006 if absf(p.x) > shoulder_x + 0.42 else 0.0)
 		if r == 0 and p.y < s["neck"] + 0.02:
 			return 0.006
 		return -1.0)
 	# Trousers or hose down into the boots, under a skirt too (a lifted hem shows hose).
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-		if r == 5 and p.y <= waist - 0.03:
-			return 0.007
+		if r == 5 and p.y <= (waist - 0.03 if hem <= 0.0 else float(s["crotch"]) - 0.05):
+			return t_pants
 		if r == 6 and p.y > boot_h - 0.03:
-			return 0.007
+			return t_pants
 		return -1.0)
+	if fit > 1.0:
+		# Cargo pockets on the outside of each thigh and two on the chest.
+		var knee: float = s["knee"]
+		var crotch: float = s["crotch"]
+		_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+			if r == 5 and p.y > knee + 0.1 and p.y < crotch - 0.06 and absf(p.x) > 0.13 and absf(p.z + 0.03) < 0.06:
+				return t_pants + 0.012
+			return -1.0)
+		_shell(s, o, PART_TRIM if vest_kind > 0 else PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+			if r == 1 and p.y > float(s["shoulder_y"]) - 0.2 and p.y < float(s["shoulder_y"]) - 0.09 and absf(p.x) > 0.04 and absf(p.x) < 0.13 and p.z > 0.0:
+				return t_shirt + (0.03 if vest_kind > 0 else 0.01)
+			return -1.0)
 	# Boots (or low shoes) with a thicker turned-over top, and a roomy toe so they read
 	# as boots rather than feet.
 	_shell(s, o, PART_BOOTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if r == 7:
-			return 0.014 + 0.012 * clampf(p.z / 0.1, 0.0, 1.0)
+			return 0.016 + 0.01 * clampf(p.z / 0.1, 0.0, 1.0)
 		if r == 6 and p.y < boot_h:
 			return 0.016 if p.y > boot_h - 0.03 else 0.013
 		return -1.0)
-	var vest: int = sp["vest"]
+	var vest: int = vest_kind
 	if vest > 0:
 		# A bodice or jerkin (1), a padded sci-fi vest (2) or a gambeson (3) over the shirt.
 		var vt := 0.016 if vest == 1 else 0.02
