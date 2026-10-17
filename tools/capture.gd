@@ -1222,7 +1222,7 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 		if best[what][0] == 0:
 			continue
 		var at: Vector2 = best[what][1]
-		var from := _under_water_spot(g, at, 6.0)
+		var from := _clear_water_spot(g, at, 7.0, 2.0 if what == "kelp" else 0.6)
 		var ground := g.field.height(from.x, from.y)
 		p.underwater = true
 		# Well under the surface, looking a little down at the bed by the subject.
@@ -1264,6 +1264,31 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 		await _shot("83_fish_school", from, Vector2(near.center.x, near.center.z), 0.45, eye_y - g.field.height(from.x, from.y), near.center.y, close_in)
 		p.underwater = false
 	life.calm = false
+
+## A point `r` metres from `at`, under the water, from which nothing on the bed stands
+## between the eye and the subject (`up` metres above the bed at `at`): of those, the
+## deepest. (The deepest alone was often in a hollow looking at the side of a ridge.)
+func _clear_water_spot(g: ChunkGenerator, at: Vector2, r: float, up: float) -> Vector2:
+	var tgt := g.field.height(at.x, at.y) + up
+	var best := Vector2.INF
+	var best_h := INF
+	for k in 16:
+		var q := at + Vector2(r, 0).rotated(TAU * k / 16.0)
+		var h := g.field.height(q.x, q.y)
+		var eye := minf(1.6, -1.0 - h) + h
+		if eye > -0.6:
+			continue
+		var clear := true
+		for s in range(1, 8):
+			var t := s / 8.0
+			var m := q.lerp(at, t)
+			if g.field.height(m.x, m.y) > lerpf(eye, tgt, t) - 0.3:
+				clear = false
+				break
+		if clear and h < best_h:
+			best_h = h
+			best = q
+	return best if best != Vector2.INF else _under_water_spot(g, at, r)
 
 ## A point `r` metres from `at` where the water is deepest (so the camera is under it).
 func _under_water_spot(g: ChunkGenerator, at: Vector2, r: float) -> Vector2:

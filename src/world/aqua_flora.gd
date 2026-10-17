@@ -213,7 +213,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.85, 1.15), sc))
 		_put(out, sp, b, lx, y - (0.12 if on >= 0 else 0.03) * sc, lz, _reef_tint(sp, r, alien), AquaKit.sway_of(sp), _glow(sp, alien))
 	# Kelp where there is no reef and the water is deep enough to stand in.
-	for n in int(380 * density):
+	for n in int(560 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var roll := r.randf()
@@ -227,14 +227,14 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		var kelp := (1.0 - smoothstep(-0.1, 0.2, f.patch(wx, wz))) * smoothstep(0.5, 0.8, f.sea_t(wx, wz))
 		# Kelp grows in stands: thick where it grows at all.
 		var stand := smoothstep(-0.3, 0.4, sin(wx * 0.09 + sin(wz * 0.07) * 2.0) * cos(wz * 0.08 + sin(wx * 0.05) * 2.0))
-		if roll > kelp * smoothstep(-3.5, -6.0, y) * (0.25 + 0.75 * stand):
+		if roll > kelp * smoothstep(-3.5, -6.0, y) * (0.3 + 1.0 * stand):
 			continue
 		if not spot.call(lx, lz, 0.6, 0.3):
 			continue
 		var depth := -y
 		var sc := lerpf(0.8, 1.4, size)
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, depth * r.randf_range(0.7, 0.95), sc))
-		var tint := Color(0.55, 0.45, 0.18).lerp(Color(0.44, 0.4, 0.16), r.randf())
+		var tint := Color(0.36, 0.29, 0.12).lerp(Color(0.3, 0.27, 0.11), r.randf())
 		if alien:
 			tint = Color(0.3, 0.16, 0.42).lerp(Color(0.12, 0.4, 0.38), r.randf())
 		_put(out, "aq_kelp", b, lx, y - 0.05, lz, tint, AquaKit.SWAY_CURRENT, 0.4 if alien else 0.0)
