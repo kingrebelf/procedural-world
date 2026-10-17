@@ -262,9 +262,16 @@ static func model_parts(name: String) -> Array:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		push_warning("kit model read off the main thread: " + name)
 	var out: Array = []
-	var ps: PackedScene = load(DIR + name + ".gltf")
+	# Containers and drink (bottles, mugs, barrels, chests, crates) are built by Provisions.
+	var stand_in := Provisions.kit(name)
+	for e in stand_in:
+		var m: ArrayMesh = e[0]
+		for s in m.get_surface_count():
+			out.append([m.surface_get_material(s), m.surface_get_arrays(s), e[1]])
+	var ps: PackedScene = null if not stand_in.is_empty() else load(DIR + name + ".gltf")
 	if ps == null:
-		push_warning("missing kit model " + name)
+		if stand_in.is_empty():
+			push_warning("missing kit model " + name)
 	else:
 		var root := ps.instantiate()
 		for c in root.find_children("*", "MeshInstance3D", true, false):

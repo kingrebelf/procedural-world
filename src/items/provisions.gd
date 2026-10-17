@@ -492,6 +492,16 @@ static func _mat(name: String) -> Material:
 			m = s
 		"pv_soft": m = _std(0.6, 0.0, "soft", 0.3, 24.0, 0.3)
 		"pv_wood": m = _std(0.62, 0.0, "woodgrain", 0.08, 10.0, 0.5)
+		"pv_board":
+			# Sawn boards: the planks photo in grey under each board's own tint.
+			var s := _std(0.78, 0.0, "woodgrain", 0.08, 10.0, 0.5)
+			if Materials.photo("planks", "detail") != null:
+				s.albedo_texture = Materials.photo("planks", "detail")
+				s.uv1_scale = Vector3.ONE * 0.6
+				if Materials.photo("planks", "normal") != null:
+					s.normal_texture = Materials.photo("planks", "normal")
+					s.normal_scale = 0.7
+			m = s
 		"pv_clay": m = _std(0.9, 0.0, "clay", 0.25, 16.0, 0.6)
 		"pv_glaze":
 			var s := _std(0.22, 0.0, "clay", 0.25, 16.0, 0.2)
@@ -1625,7 +1635,9 @@ static func _cross(k: MeshKit, xf: Transform3D, at: Vector3, n: Vector3, s: floa
 	k.box("pv_plastic", xf * Transform3D(b, at), Vector3(s * 0.32, 0.002, s), col)
 
 ## A wooden barrel of `staves` staves bound with iron hoops, `h` tall.
-static func barrel(k: MeshKit, xf: Transform3D, r: float, h: float, staves := 18, wood := Color(0.48, 0.3, 0.16)) -> void:
+## With `floor_y` at or above 0 it is open: no top head, the staves' inner faces showing
+## down to a floor at that height.
+static func barrel(k: MeshKit, xf: Transform3D, r: float, h: float, staves := 18, wood := Color(0.48, 0.3, 0.16), floor_y := -1.0) -> void:
 	var bulge := func(a: float, _t: float, _p: Vector3) -> float:
 		# A groove between each stave.
 		return 1.0 - 0.012 * pow(absf(cos(a * staves * 0.5)), 30.0)
@@ -1634,14 +1646,26 @@ static func barrel(k: MeshKit, xf: Transform3D, r: float, h: float, staves := 18
 		return wood.darkened(0.18 * fposmod(stave * 0.618, 1.0) + 0.12 * _nz(p * Vector3(1, 0.15, 1), 60.0))
 	var prof := _curve([Vector2(r * 0.86, 0.0), Vector2(r * 0.97, h * 0.25), Vector2(r, h * 0.5), Vector2(r * 0.97, h * 0.75), Vector2(r * 0.86, h)], 4)
 	lathe(k, "pv_wood", xf, prof, staves * 3, col, bulge)
-	for y in [0.0, h]:
+	var wall := maxf(0.006, r * 0.07)
+	if floor_y >= 0.0:
+		# The inside: staves seen from within, a rim across their ends, the floor.
+		var inner := PackedVector2Array()
+		for i in range(prof.size() - 1, -1, -1):
+			if prof[i].y >= floor_y - 0.001:
+				inner.append(Vector2(prof[i].x - wall, prof[i].y))
+		inner.append(Vector2(_radius_at(prof, floor_y) - wall, floor_y))
+		lathe(k, "pv_wood", xf, inner, staves * 3, func(p: Vector3, a: float, t2: float) -> Color: return (col.call(p, a, t2) as Color).darkened(0.35 * t2), bulge)
+		lathe(k, "pv_wood", xf, PackedVector2Array([Vector2(prof[prof.size() - 1].x, h), Vector2(prof[prof.size() - 1].x - wall, h)]), staves * 3, col)
+		lathe(k, "pv_wood", xf, PackedVector2Array([Vector2(_radius_at(prof, floor_y) - wall, floor_y), Vector2(0, floor_y)]), 24, wood.darkened(0.45))
+	for y in ([0.0] if floor_y >= 0.0 else [0.0, h]):
 		# The heads, sunk a little inside the chime.
 		var hy: float = y + (0.012 if y == 0.0 else -0.012)
 		lathe(k, "pv_wood", xf, PackedVector2Array([Vector2(0, hy), Vector2(r * 0.86, hy)]) if y > 0.0 else PackedVector2Array([Vector2(r * 0.86, hy), Vector2(0, hy)]), 24, func(p: Vector3, _a: float, _t: float) -> Color: return wood.darkened(0.25 * fposmod(floorf(p.x * 18.0 / r) * 0.618, 1.0)))
 	for f in [0.06, 0.2, 0.8, 0.94]:
 		var y: float = h * f
 		var rr := _radius_at(prof, y) + 0.0015
-		lathe(k, "iron", xf, PackedVector2Array([Vector2(rr, y - 0.012), Vector2(rr + 0.002, y), Vector2(rr, y + 0.012)]), staves * 3, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.25, 0.12), clampf(_nz(p, 50.0), 0.0, 0.7)))
+		var hw := minf(0.012, h * 0.025)
+		lathe(k, "iron", xf, PackedVector2Array([Vector2(rr, y - hw), Vector2(rr + hw * 0.17, y), Vector2(rr, y + hw)]), staves * 3, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.25, 0.12), clampf(_nz(p, 50.0), 0.0, 0.7)))
 
 ## A sprig: a stem with leaves in pairs up it, and maybe flowers or berries at the top.
 static func sprig(k: MeshKit, xf: Transform3D, h: float, leaf_col: Color, leaf_len: float, pairs := 4, flower := Color(0, 0, 0, 0), berry := Color(0, 0, 0, 0)) -> void:
@@ -2082,3 +2106,234 @@ static func _packed(k: MeshKit, t: String) -> Variant:
 			lathe(k, "pv_glass", I, _curve([Vector2(0, 0.06), Vector2(0.045, 0.058), Vector2(0.05, 0.062), Vector2(0.042, 0.085), Vector2(0.022, 0.1), Vector2(0, 0.104)], 4), 32, Color(0.55, 0.88, 0.95, 0.6))
 			return Vector3(0, 0.03, 0)
 	return null
+
+# --- World props ------------------------------------------------------------------------
+# Kit props that are containers or drink (shop wares, cellar barrels, chests) are built
+# here instead, so the bottle on a tavern shelf is the same glass as the one in the hand.
+
+static var _kits: Dictionary = {}
+
+## Stand-ins for kit model `name` (as BuildCatalog.model_parts knows it): [mesh, transform]
+## pairs at the kit model's own size, or empty if it keeps its kit model.
+static func kit(name: String) -> Array:
+	if _kits.has(name):
+		return _kits[name]
+	var I := Transform3D.IDENTITY
+	var out: Array = []
+	match name:
+		"props/Bottle_1":
+			out = [[model("wine"), Transform3D(Basis.from_scale(Vector3.ONE * 1.2), Vector3.ZERO)]]
+		"props/Potion_1":
+			out = [[model("health_potion"), Transform3D(Basis.from_scale(Vector3.ONE * 1.2), Vector3.ZERO)]]
+		"props/Potion_2":
+			out = [[model("potion_health_greater"), Transform3D(Basis.from_scale(Vector3.ONE * 1.5), Vector3.ZERO)]]
+		"props/Mug", "props/Barrel", "props/Chest_Wood", "props/Crate_Wooden", "props/Bag", "props/Barrel_Apples", "props/FarmCrate_Apple", "props/FarmCrate_Empty":
+			out = [[_prop(name), I]]
+			if name == "props/Barrel_Apples" or name == "props/FarmCrate_Apple":
+				out.append_array(_apples(name))
+	_kits[name] = out
+	return out
+
+## Apples heaped in an open barrel or laid in a farm crate, as [mesh, transform] pairs.
+static func _apples(name: String) -> Array:
+	var bare: ArrayMesh = _models.get("kit:apple")
+	if bare == null:
+		# The apple without its leaf: thirty leaves in a crate look like a salad.
+		bare = ArrayMesh.new()
+		var src := model("apple")
+		var leaf_mat := _mat("pv_leaf")
+		for s in src.get_surface_count():
+			if src.surface_get_material(s) != leaf_mat:
+				bare.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, src.surface_get_arrays(s))
+				bare.surface_set_material(bare.get_surface_count() - 1, src.surface_get_material(s))
+		_models["kit:apple"] = bare
+	var r := RandomNumberGenerator.new()
+	r.seed = WHash.str_hash(name)
+	var out: Array = []
+	var spots: Array = []
+	if name == "props/Barrel_Apples":
+		# Two loose rings and a crown, heaped above the barrel's false floor.
+		for e in [[0.0, 1, 0.84], [0.09, 6, 0.81], [0.2, 12, 0.775], [0.05, 4, 0.875], [0.14, 8, 0.83]]:
+			for i in e[1]:
+				var a: float = TAU * (float(i) + r.randf() * 0.4) / float(e[1]) + float(e[0]) * 7.0
+				spots.append(Vector3(cos(a) * float(e[0]), float(e[2]), sin(a) * float(e[0])))
+	else:
+		for ix in 8:
+			for iz in 4:
+				spots.append(Vector3(-0.29 + ix * 0.083 + r.randf_range(-0.008, 0.008), 0.15 + r.randf_range(0.0, 0.012), -0.12 + iz * 0.08 + r.randf_range(-0.008, 0.008)))
+	for at in spots:
+		var b := Basis(Vector3(r.randf() - 0.5, r.randf() * 0.3, r.randf() - 0.5).normalized(), r.randf_range(0.3, 1.6)) * Basis.from_scale(Vector3.ONE * r.randf_range(0.92, 1.08))
+		out.append([bare, Transform3D(b, at)])
+	return out
+
+static func _prop(name: String) -> ArrayMesh:
+	var key := "kit:" + name
+	if _models.has(key):
+		return _models[key]
+	var k := MeshKit.new(WHash.str_hash(name) & 0xFFFF)
+	var r := RandomNumberGenerator.new()
+	r.seed = WHash.str_hash(name)
+	var I := Transform3D.IDENTITY
+	match name:
+		"props/Mug":
+			# A staved wooden tankard bound in iron, a handle, a head of foam on the ale.
+			barrel(k, I, 0.062, 0.165, 12, Color(0.5, 0.33, 0.18), 0.012)
+			lathe(k, "pv_glossy", I, PackedVector2Array([Vector2(0.052, 0.138), Vector2(0, 0.138)]), 20, Color(0.45, 0.24, 0.05))
+			lathe(k, "pv_soft", I, _curve([Vector2(0.0525, 0.139), Vector2(0.05, 0.146), Vector2(0.03, 0.152), Vector2(0, 0.154)], 3), 24, Color(0.95, 0.92, 0.82), func(_a: float, _t: float, p: Vector3) -> float: return 1.0 + 0.06 * _nz(p, 120.0))
+			var h := PackedVector3Array()
+			var hr := PackedFloat32Array()
+			for i in 9:
+				var a := lerpf(-1.4, 1.4, i / 8.0)
+				h.append(Vector3(0.06 + 0.045 * cos(a), 0.085 + 0.05 * sin(a), 0))
+				hr.append(0.009)
+			tube(k, "pv_wood", Transform3D(Basis.from_scale(Vector3(1, 1, 0.6)), Vector3.ZERO), h, hr, 8, Color(0.46, 0.3, 0.16))
+		"props/Barrel":
+			barrel(k, I, 0.33, 0.88, 22)
+		"props/Barrel_Apples":
+			barrel(k, I, 0.33, 0.88, 22, Color(0.48, 0.3, 0.16), 0.76)
+		"props/Bag":
+			sack(k, Transform3D(Basis.from_scale(Vector3(1.0, 1.0, 0.82)), Vector3.ZERO), 0.29, 0.78, false)
+		"props/Chest_Wood":
+			chest(k, I, Vector3(1.2, 0.7, 0.72), r)
+		"props/Crate_Wooden":
+			crate(k, I, Vector3(0.82, 0.86, 0.86), r)
+		"props/FarmCrate_Apple", "props/FarmCrate_Empty":
+			farm_crate(k, I, Vector3(0.7, 0.24, 0.4), r)
+	var out := k.commit(_mat)
+	_models[key] = out
+	return out
+
+## A run of boards along local X, stacked up Y from y = 0 with hairline gaps, each its
+## own shade, sat a hair off true.
+static func _boards(k: MeshKit, xf: Transform3D, w: float, h: float, thick: float, n: int, col: Color, r: RandomNumberGenerator, gap := 0.005) -> void:
+	var bh := h / n
+	for i in n:
+		var c := col.darkened(r.randf_range(0.0, 0.2)).lightened(r.randf_range(0.0, 0.06))
+		k.box("pv_board", xf * Transform3D(Basis(Vector3.FORWARD, r.randf_range(-0.004, 0.004)), Vector3(r.randf_range(-0.003, 0.003), bh * (i + 0.5), r.randf_range(-0.0015, 0.0015))), Vector3(w, bh - gap, thick), c)
+
+## A round nail head (or rivet) on a face whose normal is `n`.
+static func _nail(k: MeshKit, xf: Transform3D, at: Vector3, n: Vector3, rad := 0.007, col := Color(0.2, 0.19, 0.18)) -> void:
+	lathe(k, "iron", xf * Transform3D(_facing(n), at), _curve([Vector2(rad, 0.0), Vector2(rad * 0.8, rad * 0.35), Vector2(0, rad * 0.45)], 2), 8, col)
+
+## A shipping crate: planked walls and lid, framed with battens round every face, a
+## diagonal brace across each side, nailed at the joints.
+static func crate(k: MeshKit, xf: Transform3D, size: Vector3, r: RandomNumberGenerator, col := Color(0.62, 0.48, 0.32)) -> void:
+	var t := 0.02
+	var bat := Vector2(0.07, 0.022)
+	var n := 5
+	for sd in [1.0, -1.0]:
+		# Front and back, boards running across; the sides fit between them.
+		_boards(k, xf * Transform3D(Basis.IDENTITY, Vector3(0, 0, sd * (size.z * 0.5 - t * 0.5))), size.x, size.y, t, n, col, r)
+		_boards(k, xf * Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(sd * (size.x * 0.5 - t * 0.5), 0, 0)), size.z - 2.0 * t, size.y, t, n, col, r)
+	# The lid: boards running along X laid side by side.
+	_boards(k, xf * Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, size.y - t * 0.5, size.z * 0.5)), size.x, size.z, t, n, col, r)
+	var frame := col.darkened(0.12)
+	# Battens round each of the four walls, and a brace corner to corner.
+	for face in 4:
+		var yaw := face * PI * 0.5
+		var w := size.x if face % 2 == 0 else size.z
+		var d := (size.z if face % 2 == 0 else size.x) * 0.5 + bat.y * 0.5
+		var fb := xf * Transform3D(Basis(Vector3.UP, yaw), Vector3(0, 0, d).rotated(Vector3.UP, yaw))
+		for sx in [-1.0, 1.0]:
+			k.box("pv_wood", fb * Transform3D(Basis.IDENTITY, Vector3(sx * (w * 0.5 - bat.x * 0.5), size.y * 0.5, 0)), Vector3(bat.x, size.y, bat.y), frame.darkened(r.randf_range(0.0, 0.1)))
+		for sy in [0.0, 1.0]:
+			k.box("pv_wood", fb * Transform3D(Basis.IDENTITY, Vector3(0, bat.x * 0.5 + sy * (size.y - bat.x), 0)), Vector3(w - 2.0 * bat.x, bat.x, bat.y), frame.darkened(r.randf_range(0.0, 0.1)))
+		var span := Vector2(w - 2.0 * bat.x, size.y - 2.0 * bat.x)
+		var ang := atan2(span.y, span.x) * (1.0 if face % 2 == 0 else -1.0)
+		k.box("pv_wood", fb * Transform3D(Basis(Vector3.BACK, ang), Vector3(0, size.y * 0.5, -0.002)), Vector3(span.length() - bat.x * 0.6, bat.x * 0.9, bat.y * 0.9), frame.darkened(r.randf_range(0.0, 0.12)))
+		for sx in [-1.0, 1.0]:
+			for sy in [0.0, 1.0]:
+				var at := Vector3(sx * (w * 0.5 - bat.x * 0.5), bat.x * 0.5 + sy * (size.y - bat.x), bat.y * 0.5)
+				_nail(k, fb, at + Vector3(-0.015, 0, 0), Vector3.BACK, 0.005)
+				_nail(k, fb, at + Vector3(0.015, 0, 0), Vector3.BACK, 0.005)
+
+## A travelling chest: a planked box with a barrel-vaulted lid, iron straps over the top
+## and down the front, iron corners, a hasp and padlock, and drop handles at the ends.
+static func chest(k: MeshKit, xf: Transform3D, size: Vector3, r: RandomNumberGenerator, col := Color(0.5, 0.32, 0.18)) -> void:
+	var t := 0.024
+	var hb := size.y * 0.62
+	var hl := size.y - hb
+	var d := size.z
+	var iron := Color(0.2, 0.19, 0.18)
+	var rusty := func(p: Vector3, _a: float, _t: float) -> Color: return iron.lerp(Color(0.38, 0.2, 0.1), clampf(_nz(p, 18.0) * 1.2, 0.0, 0.8))
+	var feet := 0.03
+	for sd in [1.0, -1.0]:
+		_boards(k, xf * Transform3D(Basis.IDENTITY, Vector3(0, feet, sd * (d * 0.5 - t * 0.5))), size.x, hb - feet, t, 3, col, r)
+		_boards(k, xf * Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(sd * (size.x * 0.5 - t * 0.5), feet, 0)), d - 2.0 * t, hb - feet, t, 3, col, r)
+	k.box("pv_board", xf * Transform3D(Basis.IDENTITY, Vector3(0, feet + 0.01, 0)), Vector3(size.x - 0.01, 0.02, d - 0.01), col.darkened(0.2))
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			k.box("pv_wood", xf * Transform3D(Basis.IDENTITY, Vector3(sx * (size.x * 0.5 - 0.05), feet * 0.5, sz * (d * 0.5 - 0.05))), Vector3(0.09, feet, 0.09), col.darkened(0.3))
+	# The vaulted lid: planks running along X round a half-ellipse, closed at the ends.
+	var planks := 7
+	var lid_col := func(p: Vector3, _u: float, v: float) -> Color:
+		var i := floorf(v * planks)
+		var edge := absf(fposmod(v * planks, 1.0) - 0.5) * 2.0
+		return col.darkened(0.16 * fposmod(i * 0.618, 1.0) + 0.35 * smoothstep(0.88, 1.0, edge) + 0.06 * _nz(p, 25.0))
+	var arc := func(v: float, grow: float) -> Vector3:
+		var ph := v * PI
+		return Vector3(0, hb + sin(ph) * (hl + grow), -cos(ph) * (d * 0.5 + grow))
+	var vault := func(u: float, v: float) -> Vector3: return arc.call(v, 0.0) + Vector3((u - 0.5) * size.x, 0, 0)
+	sheet(k, "pv_board", xf, 4, 28, vault, lid_col, Vector3.ZERO)
+	for sx in [-1.0, 1.0]:
+		var cap := func(u: float, v: float) -> Vector3:
+			var e: Vector3 = arc.call(v, 0.0)
+			return Vector3(sx * size.x * 0.5, hb + (e.y - hb) * u, e.z * u)
+		sheet(k, "pv_board", xf, 3, 20, cap, lid_col, Vector3(sx, 0, 0))
+	# Iron straps: over the lid and down front and back, a little proud.
+	for sx in [-0.3, 0.3]:
+		var x: float = sx * size.x
+		var strap := func(u: float, v: float) -> Vector3: return arc.call(v, 0.006) + Vector3(x + (u - 0.5) * 0.06, 0, 0)
+		sheet(k, "iron", xf, 1, 24, strap, rusty, Vector3.ZERO)
+		for sd in [1.0, -1.0]:
+			k.box("iron", xf * Transform3D(Basis.IDENTITY, Vector3(x, feet + (hb - feet) * 0.5, sd * (d * 0.5 + 0.003))), Vector3(0.06, hb - feet, 0.005), iron)
+			for y in [0.12, 0.3, 0.5]:
+				_nail(k, xf, Vector3(x, feet + y * hb, sd * (d * 0.5 + 0.006)), Vector3(0, 0, sd), 0.008)
+	# Iron corner plates on the box.
+	for sx in [-1.0, 1.0]:
+		for sd in [1.0, -1.0]:
+			for y in [feet + 0.05, hb - 0.05]:
+				k.box("iron", xf * Transform3D(Basis.IDENTITY, Vector3(sx * (size.x * 0.5 - 0.045), y, sd * (d * 0.5 + 0.003))), Vector3(0.1, 0.1, 0.005), iron)
+				k.box("iron", xf * Transform3D(Basis.IDENTITY, Vector3(sx * (size.x * 0.5 + 0.003), y, sd * (d * 0.5 - 0.045))), Vector3(0.005, 0.1, 0.1), iron)
+	# The hasp hanging from the lid over a staple, and a padlock through it.
+	var front := d * 0.5 + 0.006
+	k.box("iron", xf * Transform3D(Basis.IDENTITY, Vector3(0, hb - 0.01, front)), Vector3(0.06, 0.12, 0.006), iron)
+	lathe(k, "iron", xf * Transform3D(Basis.IDENTITY, Vector3(0, hb - 0.13, front + 0.02)), _curve([Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.036, 0.02), Vector2(0.034, 0.05), Vector2(0.028, 0.06), Vector2(0, 0.06)], 2), 16, rusty, func(a: float, _t: float, _p: Vector3) -> float: return 1.0 - 0.45 * pow(absf(sin(a)), 2.0))
+	var shackle := PackedVector3Array()
+	var sr := PackedFloat32Array()
+	for i in 11:
+		var a := PI * i / 10.0
+		shackle.append(Vector3(cos(a) * 0.018, hb - 0.075 + sin(a) * 0.026, front + 0.02))
+		sr.append(0.0045)
+	tube(k, "iron", xf, shackle, sr, 6, Color(0.4, 0.38, 0.36))
+	# Drop handles at the ends.
+	for sx in [-1.0, 1.0]:
+		var hd := PackedVector3Array()
+		var hr := PackedFloat32Array()
+		for i in 9:
+			var a := PI * i / 8.0
+			hd.append(Vector3(sx * (size.x * 0.5 + 0.02), hb * 0.68 - sin(a) * 0.045, cos(a) * 0.07))
+			hr.append(0.007)
+		tube(k, "iron", xf, hd, hr, 6, iron)
+		for sz in [-1.0, 1.0]:
+			k.box("iron", xf * Transform3D(Basis.IDENTITY, Vector3(sx * (size.x * 0.5 + 0.004), hb * 0.68, sz * 0.07)), Vector3(0.008, 0.04, 0.03), iron)
+
+## An open farm crate: solid end boards, two slats along each side with a gap between,
+## slatted bottom.
+static func farm_crate(k: MeshKit, xf: Transform3D, size: Vector3, r: RandomNumberGenerator, col := Color(0.7, 0.56, 0.38)) -> void:
+	var t := 0.016
+	for sx in [-1.0, 1.0]:
+		k.box("pv_board", xf * Transform3D(Basis.IDENTITY, Vector3(sx * (size.x * 0.5 - 0.012), size.y * 0.5, 0)), Vector3(0.024, size.y, size.z), col.darkened(r.randf_range(0.05, 0.15)))
+	for sd in [1.0, -1.0]:
+		for i in 2:
+			var y := 0.03 + i * (size.y * 0.5)
+			k.box("pv_board", xf * Transform3D(Basis(Vector3.FORWARD, r.randf_range(-0.005, 0.005)), Vector3(0, y + size.y * 0.18, sd * (size.z * 0.5 - t * 0.5))), Vector3(size.x - 0.004, size.y * 0.36, t), col.darkened(r.randf_range(0.0, 0.2)))
+	for i in 4:
+		var z := (i - 1.5) * size.z * 0.24
+		k.box("pv_board", xf * Transform3D(Basis.IDENTITY, Vector3(0, 0.006, z)), Vector3(size.x - 0.04, 0.012, size.z * 0.18), col.darkened(r.randf_range(0.1, 0.25)))
+	# A false floor the apples rest on (hidden under them).
+	k.box("pv_board", xf * Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0)), Vector3(size.x - 0.05, 0.01, size.z - 0.03), col.darkened(0.45))
+	for sx in [-1.0, 1.0]:
+		for sd in [1.0, -1.0]:
+			for i in 2:
+				_nail(k, xf, Vector3(sx * (size.x * 0.5 - 0.012), 0.03 + i * (size.y * 0.5) + size.y * 0.18, sd * (size.z * 0.5 + 0.001)), Vector3(0, 0, sd), 0.004)

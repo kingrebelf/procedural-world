@@ -3211,3 +3211,8 @@ func test_provisions_models() -> void:
 	var k := MeshKit.new()
 	Provisions.msg_bottle(k, RandomNumberGenerator.new())
 	check(k.commit(Provisions._mat).get_surface_count() >= 6, "the message in a bottle builds")
+	# Kit props that are containers come from Provisions at about the kit model's size.
+	for e in [["props/Barrel", 0.88], ["props/Chest_Wood", 0.7], ["props/Crate_Wooden", 0.86], ["props/Mug", 0.17], ["props/Bottle_1", 0.36], ["props/Barrel_Apples", 0.88], ["props/FarmCrate_Apple", 0.24], ["props/Bag", 0.78]]:
+		check(not Provisions.kit(e[0]).is_empty(), "%s has a stand-in" % e[0])
+		var km := BuildCatalog.merge_models([[e[0], 0, Vector3.ZERO, 1.0]])
+		check(absf(km.get_aabb().size.y - float(e[1])) < float(e[1]) * 0.2, "%s stands %.2f m tall" % [e[0], km.get_aabb().size.y])

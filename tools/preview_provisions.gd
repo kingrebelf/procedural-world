@@ -4,7 +4,8 @@ extends SceneTree
 ## icons. Run windowed:
 ##   godot --path . --script res://tools/preview_provisions.gd -- --out=DIR [--items=a,b] [--size=512]
 ## Without --items it renders every item Provisions has a model for. "egg:msg_bottle" as
-## an item renders that Easter egg (EasterEggs.build) instead.
+## an item renders that Easter egg (EasterEggs.build) instead, and "kit:props/Barrel" a kit
+## prop as the world builds it (BuildCatalog.merge_models).
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -64,7 +65,13 @@ func _run() -> void:
 	var holder := MeshInstance3D.new()
 	get_root().add_child(holder)
 	for t in items:
-		var m: ArrayMesh = EasterEggs.build(t.substr(4)) if t.begins_with("egg:") else Provisions.model(t)
+		var m: ArrayMesh
+		if t.begins_with("egg:"):
+			m = EasterEggs.build(t.substr(4))
+		elif t.begins_with("kit:"):
+			m = BuildCatalog.merge_models([[t.substr(4), 0, Vector3.ZERO, 1.0]])
+		else:
+			m = Provisions.model(t)
 		if m == null:
 			print("no model: ", t)
 			continue
@@ -86,6 +93,6 @@ func _run() -> void:
 		cam.near = 0.01
 		for i in 4:
 			await process_frame
-		get_root().get_texture().get_image().save_png(out.path_join("%s.png" % t.replace(":", "_")))
+		get_root().get_texture().get_image().save_png(out.path_join("%s.png" % t.replace(":", "_").replace("/", "_")))
 		print("saved ", t)
 	quit()
