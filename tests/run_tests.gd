@@ -4187,3 +4187,104 @@ func test_camera_feel() -> void:
 	CameraBlur.strength = 0.0
 	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
 	CameraBlur.strength = old
+
+# --- Power ------------------------------------------------------------------------
+
+func _pw(id: String, i: int, st := {}) -> Dictionary:
+	var s := {"owner": "solo"}
+	Power.init_state(id, s)
+	s.merge(st, true)
+	return {"i": i, "t": BuildCatalog.PREFIX + id, "p": Vector3.ZERO, "r": 0.0, "s": 1.0, "e": -1, "st": s}
+
+func test_power_networks_and_switches() -> void:
+	var gen := _pw("windmill", 0)
+	var sw := _pw("knife_switch", 1)
+	var lamp := _pw("lamp_ceiling", 2)
+	var far_lamp := _pw("lamp_wall", 3)
+	check(Power.link(gen, "0,0,0", sw, "0,0,1"), "cable windmill to switch")
+	check(Power.link(sw, "0,0,1", lamp, "0,0,2"), "cable switch to lamp")
+	check(not Power.link(sw, "0,0,1", lamp, "0,0,2"), "no second cable between the same two")
+	check(lamp["st"]["pw"].has("0,0,1") and gen["st"]["pw"].has("0,0,1"), "both ends know the cable")
+	var pieces := {"0,0,0": gen, "0,0,1": sw, "0,0,2": lamp, "0,0,3": far_lamp}
+	var nets := Power.networks(pieces)
+	check(nets.size() == 2, "closed switch joins windmill and lamp, the lone lamp is its own (%d)" % nets.size())
+	sw["st"]["on"] = false
+	nets = Power.networks(pieces)
+	check(nets.size() == 4, "an open switch cuts the line (%d networks)" % nets.size())
+	check(Power.wire_for(4.0) == 1 and Power.wire_for(11.0) == 3, "a Copper Wire per 5 m of cable")
+	var pole := _pw("power_pole", 4)
+	for n in 8:
+		Power.link(pole, "0,0,4", _pw("lamp_wall", 10 + n), "0,0,%d" % (10 + n))
+	check(not Power.link(pole, "0,0,4", _pw("lamp_wall", 30), "0,0,30"), "a pole takes 8 cables, no more")
+	check(Power.parse_id("-3,7,12") == [Vector2i(-3, 7), 12], "piece ids parse back")
+
+func test_power_sharing() -> void:
+	var gen := _pw("windmill", 0)
+	var bank := _pw("battery_bank", 1)
+	var lamp := _pw("lamp_ceiling", 2)
+	var es := [{"id": "a", "o": gen, "f": 1.0}, {"id": "b", "o": bank}, {"id": "c", "o": lamp}]
+	# A fresh breeze: the windmill lights the lamp and charges the bank with the rest.
+	var r := Power.solve(es, {"wind": 0.8, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(r["pieces"]["c"]["powered"], "lamp lit by the wind")
+	check(is_equal_approx(float(bank["st"]["charge"]), 400.0 - 60.0), "bank took the spare 340 W for an hour (%.1f Wh)" % float(bank["st"]["charge"]))
+	# Calm: the bank carries the lamp.
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(r["pieces"]["c"]["powered"] and is_equal_approx(float(bank["st"]["charge"]), 280.0), "bank carries the lamp in a calm (%.1f Wh)" % float(bank["st"]["charge"]))
+	lamp["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(not r["pieces"]["c"]["powered"] and is_equal_approx(float(bank["st"]["charge"]), 280.0), "a lamp switched off draws nothing")
+	# Flat batteries, no wind: dark.
+	lamp["st"]["on"] = true
+	bank["st"]["charge"] = 0.0
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 1.0)
+	check(not r["pieces"]["c"]["powered"] and float(r["short"]) > 59.0, "no power, no light")
+
+func test_power_engines_and_brownout() -> void:
+	var gen := _pw("gen_woodgas", 0, {"fuel": 100.0})
+	var lamps: Array = []
+	var es := [{"id": "g", "o": gen}]
+	for n in 5:
+		var l := _pw("floodlight", 1 + n)
+		lamps.append(l)
+		es.append({"id": "l%d" % n, "o": l})
+	# 1500 W engine, 5 x 300 W floodlights: exactly full load.
+	var r := Power.solve(es, {"wind": 0.0}, 10.0)
+	check(r["pieces"]["l4"]["powered"] and is_equal_approx(float(gen["st"]["fuel"]), 90.0), "full load burns a second of fuel a second (%.2f)" % float(gen["st"]["fuel"]))
+	for n in 4:
+		lamps[n]["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0}, 10.0)
+	check(is_equal_approx(float(gen["st"]["fuel"]), 88.0), "a fifth of the load burns a fifth as fast (%.2f)" % float(gen["st"]["fuel"]))
+	gen["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0}, 10.0)
+	check(is_equal_approx(float(gen["st"]["fuel"]), 88.0) and not r["pieces"]["l4"]["powered"], "a stopped engine burns nothing and powers nothing")
+	# Short of power, defences outlast lights: a 400 W windmill on 3 x 300 W floods.
+	var wind := _pw("windmill", 9)
+	var es2 := [{"id": "w", "o": wind, "f": 1.0}]
+	for n in 3:
+		es2.append({"id": "f%d" % n, "o": _pw("floodlight", 10 + n)})
+	r = Power.solve(es2, {"wind": 1.0}, 1.0)
+	var lit := 0
+	for n in 3:
+		lit += 1 if r["pieces"]["f%d" % n]["powered"] else 0
+	check(lit == 1, "400 W lights one 300 W floodlight of three, not all dimly (%d)" % lit)
+
+func test_power_sun_and_wind() -> void:
+	var noon := Power.sun_dir_at(10.5)
+	var midnight := Power.sun_dir_at(10.0)
+	check(noon.y > 0.9 and midnight.y < -0.9, "sun high at noon, under at midnight")
+	check(Power.solar_factor(0.0, noon) > 0.8, "a panel tipped toward the sun's side takes most of it (%.2f)" % Power.solar_factor(0.0, noon))
+	check(Power.solar_factor(0.0, midnight) == 0.0, "no sun at night")
+	check(Power.solar_factor(0.0, noon) > Power.solar_factor(PI, noon), "facing the sun beats facing away")
+	check(Power.wind_curve(0.02) == 0.0 and Power.wind_curve(0.9) == 1.0, "calm makes nothing, a fresh wind full power")
+	for id in BuildCatalog.PIECES:
+		var s := Power.spec_of(id)
+		if s.is_empty():
+			continue
+		check(ItemDB.UNLOCK.has(id), "%s has an unlock level" % id)
+		check(ItemDB.UNLOCK.get(id, 0) >= Eras.UNLOCK_LEVEL, "%s is past the medieval age" % id)
+		var made := false
+		for rc in Recipes.LIST:
+			if rc["out"] == id:
+				made = true
+		check(made, "%s can be made" % id)
+		check(BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a mesh" % id)
