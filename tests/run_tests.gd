@@ -1497,6 +1497,13 @@ func test_world_themes() -> void:
 			alien += 1
 			check(int(p["base"]) >= 50, "alien worlds are level 50+ (%s)" % p["kind"])
 	check(alien == 2, "two alien worlds are linked to a human home")
+	# Oaks grow on human worlds, so no oak species has violet or magenta leaves.
+	var odd := 0
+	for sp in range(1, 3001):
+		var h: float = Color(Flora.species("oak", sp)["leaf"]).h
+		if h > 0.45 and h < 0.97:
+			odd += 1
+	check(odd == 0, "no purple oaks (%d of 3000)" % odd)
 	check(var_to_str(Planets.system(4242)) != var_to_str(sys), "old worlds keep their old system")
 	Planets.apply(sys[0])
 	check(Eras.theme == "human" and WorldField.allowed_eras == [Eras.MEDIEVAL, Eras.SCIFI], "applying the home world sets its theme")

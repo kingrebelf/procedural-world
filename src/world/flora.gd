@@ -36,8 +36,12 @@ static func species(t: String, sp: int) -> Dictionary:
 			var form: String = forms[r.randi() % (forms.size() - 1) if r.randf() > 0.06 else forms.size() - 1]
 			var autumn := r.randf() < 0.22
 			var hue := r.randf_range(0.0, 0.12) if autumn else r.randf_range(0.17, 0.32)
+			# Copper beeches in place of the old magenta oaks (purple leaves are alien-only;
+			# oaks never grow on alien worlds). Both draws stay so the later rolls, and so
+			# every other species, keep their looks.
 			if r.randf() < 0.05:
-				hue = r.randf_range(0.75, 0.95)
+				r.randf_range(0.75, 0.95)
+				hue = 0.0 if autumn else 0.03
 			var nouns := {"round": "Oak", "oval": "Elm", "spreading": "Chestnut", "weeping": "Willow", "column": "Birch", "shrub": "Thornbush", "dead": "Deadwood"}
 			return {
 				"form": form, "noun": nouns[form],
