@@ -978,14 +978,23 @@ func _aqua_shots(g: ChunkGenerator) -> void:
 	# most of its kind around it.
 	var best := {"reef": [0, Vector2.ZERO], "kelp": [0, Vector2.ZERO], "pad": [0, Vector2.ZERO]}
 	var tried := 0
-	for ring in range(0, 40):
+	var sea := AquaFlora.Field.new(Game.seed)
+	var seas := 0
+	for ring in range(0, 56):
 		for j in range(-ring, ring + 1):
 			for i in range(-ring, ring + 1):
-				if maxi(absi(i), absi(j)) != ring or tried > 60:
+				if maxi(absi(i), absi(j)) != ring or tried > 90:
 					continue
 				var h := g.field.height(i * 64.0 + 32.0, j * 64.0 + 32.0)
 				if h > -1.0 or h < -14.0:
 					continue
+				# Reefs and kelp grow only on the few wide seas: past the nearest lakes,
+				# look only at sea chunks (a lily pond turns up long before then).
+				var is_sea := sea.sea_t(i * 64.0 + 32.0, j * 64.0 + 32.0) > 0.3
+				if tried > 30 and not is_sea or is_sea and seas > 40:
+					continue
+				if is_sea:
+					seas += 1
 				tried += 1
 				var c := g.generate(i, j)
 				var out := {}

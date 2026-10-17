@@ -3153,7 +3153,9 @@ func test_server_alliances() -> void:
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
-	# whole instances and its mesh builds.
+	# whole instances and its mesh builds. (On today's terrain, as a new world has it.)
+	var tv := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)
 	var f := AquaFlora.Field.new(4242)
 	var lakes: Array = []
@@ -3179,6 +3181,24 @@ func test_water_life() -> void:
 	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lakes have reeds and lily pads: %s" % [lake.keys()])
 	check(not lake.has("aq_coral_brain@0"), "no reef in a lake")
 	check(sea.has("aq_coral_branch@0") and sea.has("aq_kelp@0"), "the sea has reefs and kelp: %s" % [sea.keys()])
+	# Reefs stand on rock: some sea chunk has bommies, laid as stones.
+	var rocks := {}
+	var solid := PackedFloat32Array()
+	for k in seas:
+		AquaFlora.reef_rocks(g.generate(k.x, k.y), rocks, solid)
+	check(rocks.has("stone:rock_a") or rocks.has("stone:rock_b"), "reefs have rock bommies")
+	check(solid.size() % 13 == 0 and solid.size() > 0, "bommie rocks are solid")
+	# No coral in water under snowy mountains, however wide.
+	var cold := {}
+	var n_cold := 0
+	for j in range(-20, 20, 2):
+		for i in range(-20, 20, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			if n_cold < 6 and g.field.height(x, z) < -2.0 and f.warm(x, z) < 0.02:
+				n_cold += 1
+				AquaFlora.build(g.generate(i, j), 1.0, cold)
+	check(n_cold > 0 and not cold.has("aq_coral_branch@0") and not cold.has("aq_coral_brain@0"), "no coral in cold mountain water (%d chunks)" % n_cold)
 	var one := {}
 	var again := {}
 	var sea_chunk := g.generate(seas[0].x, seas[0].y)
@@ -3196,3 +3216,4 @@ func test_water_life() -> void:
 		check(AquaKit.mesh(sp).get_surface_count() == 1, "%s mesh builds" % sp)
 	for k in FishKit.KINDS:
 		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
+	WorldField.terrain_v = tv

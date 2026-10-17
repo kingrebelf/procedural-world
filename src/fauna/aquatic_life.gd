@@ -129,7 +129,7 @@ func _spawn(k: Vector2i, d: Dictionary) -> Array:
 		if river and top > Water.LEVEL + 0.2:
 			water = "river"
 		elif sea > 0.5:
-			water = "reef" if _field.patch(wx, wz) > -0.1 and top - y < 14.0 else "sea"
+			water = "reef" if _field.patch(wx, wz) > -0.1 and _field.warm(wx, wz) > 0.5 and top - y < 14.0 else "sea"
 		var sp := _pick(water, top - y, r)
 		if sp == "":
 			continue

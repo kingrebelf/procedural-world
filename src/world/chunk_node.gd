@@ -652,6 +652,8 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 		out[key] = buf
 		if size * flat >= 0.25:
 			solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
+	# The rock mounds coral reefs grow on (AquaFlora lays the coral over them).
+	AquaFlora.reef_rocks(chunk, out, solid)
 	if not solid.is_empty():
 		out["~stones"] = solid
 

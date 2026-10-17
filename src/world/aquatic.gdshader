@@ -22,7 +22,7 @@ void vertex() {
 	vec3 wp = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	float mode = floor(INSTANCE_CUSTOM.a + 0.001);
 	glow = INSTANCE_CUSTOM.a - mode;
-	leafy = mode < 1.5 ? 1.0 : 0.0;
+	leafy = mode < 0.5 ? 1.0 : (mode < 1.5 ? 2.0 : 0.0);
 	float sx = length(MODEL_MATRIX[0].xyz);
 	float sy = length(MODEL_MATRIX[1].xyz);
 	float h = UV.y * UV.y;
@@ -68,10 +68,12 @@ void fragment() {
 		NORMAL = -NORMAL;
 	}
 	// Thin leaves and ribbons shade like the bed of plants they make, not each on its own
-	// (as the grass does), and glow through when the light is behind them.
+	// (as the grass does), and glow through when the light is behind them. Kelp's blades
+	// turn every way in the current, so they take still more of the bed's shading, or
+	// each one flashes light or dark by which way it faces.
 	if (leafy > 0.5) {
 		vec3 up = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-		NORMAL = normalize(mix(NORMAL, up, 0.45));
+		NORMAL = normalize(mix(NORMAL, up, leafy > 1.5 ? 0.7 : 0.45));
 		BACKLIGHT = base * 0.55;
 	}
 	EMISSION = base * glow * night_glow_g * 2.0;
