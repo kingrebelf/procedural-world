@@ -32,6 +32,8 @@ SOURCES = {
     "wood_floor": 4.0, "stone_floor": 5.0, "tapestry": 1.5, "bookshelf": 3.0, "wallpaper": 1.5,
     "hearth_brick": 5.0, "scifi_floor": 4.0, "scifi_panels": 4.0, "scifi_lights": 4.0, "hazard": 3.0,
     "alien_hull": 4.0, "screen": 1.0,
+    # Ben's ore and scrap sheets (2026-10-17, art/ores/seamless, art/scrap/seamless).
+    "iron_ore": 5.0, "aether_rock": 5.0, "scrap_machinery": 4.0, "scrap_burnt": 3.5,
 }
 
 # Sources whose glowing parts get an emission map (<name>_emit.jpg): name -> (hue in

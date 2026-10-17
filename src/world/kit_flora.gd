@@ -372,6 +372,8 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 	if t == "iron_vein":
 		mat = _ore_material("iron")
 		col = col.darkened(0.25)
+	elif t == "aether_crystal":
+		mat = _ore_material("aether")
 	# Merge the pieces as raw arrays. Never round-trip through a temporary ArrayMesh here:
 	# reading a mesh's arrays back asks the RenderingServer, which waits on the main thread,
 	# and this runs in chunk jobs the main thread may itself be waiting on (scene change).
@@ -393,8 +395,11 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 		k.commit(Materials.get_mat, out)
 	return out
 
+## kind -> [vein colour, speck colour, vein width, vein frequency, Ben's ore photo]. With
+## the photo in assets/textures the rock is that photo and the veins are its own.
 const ORES := {
-	"iron": [Color(0.5, 0.24, 0.12), Color(0.62, 0.6, 0.58), 0.16, 1.4],
+	"iron": [Color(0.5, 0.24, 0.12), Color(0.62, 0.6, 0.58), 0.16, 1.4, "iron_ore"],
+	"aether": [Color(0.25, 0.45, 0.75), Color(0.6, 0.85, 0.9), 0.1, 1.2, "aether_rock"],
 }
 
 static func _ore_material(kind: String) -> Material:
@@ -405,11 +410,18 @@ static func _ore_material(kind: String) -> Material:
 		var o: Array = ORES[kind]
 		var sm := ShaderMaterial.new()
 		sm.shader = load("res://src/world/ore.gdshader")
-		var alb := Materials.photo("rock", "albedo")
-		if alb == null:
-			alb = Materials.photo("rock", "detail")
+		var alb := Materials.photo(o[4], "albedo")
+		if alb != null:
+			sm.set_shader_parameter("photo_ore", true)
+			sm.set_shader_parameter("stone_nrm", Materials.photo(o[4], "normal"))
+			sm.set_shader_parameter("tri_scale", 0.45)
+			sm.set_shader_parameter("ore_metal", 0.45)
+		else:
+			alb = Materials.photo("rock", "albedo")
+			if alb == null:
+				alb = Materials.photo("rock", "detail")
+			sm.set_shader_parameter("stone_nrm", Materials.photo("rock", "normal"))
 		sm.set_shader_parameter("stone_tex", alb)
-		sm.set_shader_parameter("stone_nrm", Materials.photo("rock", "normal"))
 		sm.set_shader_parameter("ore_col", o[0])
 		sm.set_shader_parameter("ore_col2", o[1])
 		sm.set_shader_parameter("vein_width", o[2])

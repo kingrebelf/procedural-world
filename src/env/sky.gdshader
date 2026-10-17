@@ -15,6 +15,16 @@ uniform float era_fantasy = 0.0;
 uniform float era_scifi = 0.0;
 uniform float time_s = 0.0;
 uniform float cloud_cover = 0.5;
+// The real night sky (assets/textures/sky/night_stars.jpg, tools/make_sky.py): the upper
+// hemisphere's stars and Milky Way, zenith at the top row. It wheels once a day.
+uniform sampler2D night_stars : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform float stars_turn = 0.0;
+// Ben's moon painting (assets/textures/sky/moon.png, cropped to the disc by tools/make_sky.py).
+uniform sampler2D moon_tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform float moon_size = 0.045;
+// The moon and the night clouds go by sun_dir_g (clouds.gdshaderinc), not LIGHT0: the sun
+// light itself is switched off at night.
+uniform float stars_gain = 1.3;
 // Cloud quality (graphics settings): ray-marched clouds or the flat deck, and march steps.
 uniform bool volumetric_clouds = true;
 uniform int cloud_steps = 28;
@@ -88,22 +98,50 @@ float hg(float c, float g) {
 	return (1.0 - g * g) / (12.566 * pow(1.0 + g * g - 2.0 * g * c, 1.5));
 }
 
+// Interleaved gradient noise: a start offset that differs from each pixel to the next in
+// an even, fine pattern (white noise leaves sandy clumps), stepped on each frame by the
+// golden ratio so temporal antialiasing or upscaling averages it out.
+float ign(vec2 px) {
+	float f = floor(time_s * 60.0);
+	return fract(52.9829189 * fract(dot(px, vec2(0.06711056, 0.00583715))) + f * 0.618034);
+}
+
 vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 	if (d.y < 0.015) return vec4(0.0);
 	float t0 = CLOUD_LO / d.y;
 	float t1 = min(CLOUD_HI / d.y, 60000.0);
 	if (t0 > 60000.0) return vec4(0.0);
-	int STEPS = cloud_steps;
+	// Low rays cross far more cloud, so they get more steps.
+	int STEPS = int(float(cloud_steps) * mix(1.6, 1.0, smoothstep(0.05, 0.4, d.y)));
 	float dt = (t1 - t0) / float(STEPS);
-	float t = t0 + dt * hash(vec3(jitter_px, time_s));
+	float t = t0 + dt * ign(jitter_px);
+	// Coarse steps find the cloud, then a step back and finer steps go through it: most
+	// of the budget lands where there is something to see, which keeps edges smooth.
+	bool fine = false;
+	int empty = 0;
+	int budget = STEPS * 2;
 	vec2 drift = cloud_drift;
 	float cos_s = dot(d, sun);
 	float phase = mix(hg(cos_s, 0.6), hg(cos_s, -0.25), 0.3) * 6.0 + 0.4;
 	vec3 col = vec3(0.0);
 	float trans = 1.0;
-	for (int i = 0; i < STEPS; i++) {
+	for (int i = 0; i < budget; i++) {
+		if (t > t1) break;
 		vec3 p = d * t;
 		float den = cloud_density(p, drift, false);
+		if (den > 0.002 && !fine) {
+			fine = true;
+			t = max(t0, t - dt * 0.75);
+			dt *= 0.4;
+			continue;
+		}
+		// Out the far side into clear air: back to long strides.
+		empty = den > 0.002 ? 0 : empty + 1;
+		if (fine && empty > 6) {
+			fine = false;
+			dt /= 0.4;
+			empty = 0;
+		}
 		if (den > 0.002) {
 			// Light: a few steps toward the sun.
 			float od = 0.0;
@@ -132,9 +170,15 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 void sky() {
 	vec3 d = EYEDIR;
 	if (AT_HALF_RES_PASS) {
-		vec3 sunh = LIGHT0_DIRECTION;
-		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sunh.y)) * daylight;
-		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035);
+		// By day the sun lights the clouds; once it is well down, the moon opposite it
+		// does, faintly and silver. Both are dark at the hand-over, so nothing jumps.
+		vec3 sg = normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0));
+		float ws = smoothstep(-0.08, 0.0, sg.y);
+		float wm = 1.0 - smoothstep(-0.16, -0.08, sg.y);
+		vec3 sunh = sg.y > -0.08 ? sg : -sg;
+		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sg.y)) * daylight * ws
+			+ vec3(0.5, 0.58, 0.75) * 0.16 * wm * (1.0 - daylight);
+		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035) * (0.35 + 0.65 * daylight);
 		// Flat-cloud quality skips the march entirely.
 		vec4 c = volumetric_clouds ? march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy) : vec4(0.0);
 		COLOR = c.rgb;
@@ -159,17 +203,46 @@ void sky() {
 	if (LIGHT0_ENABLED) {
 		col += LIGHT0_COLOR * (smoothstep(0.9994, 0.9998, sd) * 40.0 + pow(sd, 400.0) * 3.0) * LIGHT0_ENERGY * step(-0.05, sun_h);
 	}
-	// Moon opposite the sun.
-	float md = max(dot(d, -sun), 0.0);
-	col += vec3(0.85, 0.9, 1.0) * smoothstep(0.9990, 0.9994, md) * 2.0 * (1.0 - daylight);
+	// Moon opposite the sun, full as it should be there, with a faint halo in the haze.
+	// Its face is laid out on the plane facing you; derivatives are taken outside the branch.
+	vec3 mdir = -normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0));
+	vec3 mr = normalize(abs(mdir.y) > 0.999 ? vec3(1.0, 0.0, 0.0) : cross(vec3(0.0, 1.0, 0.0), mdir));
+	vec3 mu = cross(mdir, mr);
+	vec2 mq = vec2(dot(d, mr), dot(d, mu)) / moon_size;
+	vec2 mgx = dFdx(mq) * 0.5;
+	vec2 mgy = dFdy(mq) * 0.5;
+	float md = dot(d, mdir);
+	float moon_vis = 1.0 - daylight * 0.7;
+	if (md > 0.0) {
+		float mrad = length(mq);
+		col += vec3(0.55, 0.65, 0.85) * 0.05 / (1.0 + mrad * mrad * 0.3) * (1.0 - daylight);
+		if (mrad < 1.0 && !AT_CUBEMAP_PASS) {
+			vec3 face = textureGrad(moon_tex, vec2(0.5 + mq.x * 0.5, 0.5 - mq.y * 0.5), vec2(mgx.x, -mgx.y), vec2(mgy.x, -mgy.y)).rgb;
+			float edge = smoothstep(1.0, 0.96, mrad);
+			col = mix(col, face * 1.5 + col * 0.25, edge * moon_vis);
+		}
+	}
 
 	// Stars.
 	float night = 1.0 - daylight;
-	if (night > 0.01 && d.y > 0.0) {
-		vec3 sp = d * 300.0;
-		float s = hash(floor(sp));
-		float star = smoothstep(0.9975, 1.0, s) * (0.5 + 0.5 * sin(time_s * 2.0 + s * 100.0));
-		col += vec3(star) * night * 1.5;
+	// Stars come out only once the sun is well down (past civil twilight), not while dawn or
+	// dusk still lights the sky; auto exposure would otherwise show them over a blue sky.
+	float star_vis = 1.0 - smoothstep(-0.2, -0.07, normalize(sun_dir_g + vec3(0.0, 1e-5, 0.0)).y);
+	// Mip from whichever of two azimuths has no seam here: atan jumps by a whole turn
+	// behind you, and a mip picked across the jump would draw a line down the sky. Near the
+	// zenith the map squeezes, and the mips keep it from sparkling. (Derivatives are taken
+	// here, outside any branch, where every pixel computes them.)
+	float el = asin(clamp(d.y, 0.0, 1.0));
+	float u = atan(d.x, -d.z) / TAU + stars_turn;
+	float v = 1.0 - el / (PI * 0.5);
+	float u2 = fract(u + 0.5);
+	float gx = abs(dFdx(u)) < abs(dFdx(u2)) ? dFdx(u) : dFdx(u2);
+	float gy = abs(dFdy(u)) < abs(dFdy(u2)) ? dFdy(u) : dFdy(u2);
+	vec2 gv = vec2(dFdx(v), dFdy(v));
+	if (star_vis > 0.0 && d.y > 0.0) {
+		if (!AT_CUBEMAP_PASS) {
+			col += textureGrad(night_stars, vec2(u, v), vec2(gx, gv.x), vec2(gy, gv.y)).rgb * star_vis * stars_gain;
+		}
 	}
 
 	// Fantasy aurora: drifting curtains of light.

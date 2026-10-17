@@ -88,6 +88,9 @@ const MAX_MESHES := 400
 static func mesh_key(o: Dictionary) -> String:
 	var sp: int = o.get("sp", 0)
 	if sp == 0:
+		# On human worlds a wonder wears carved and inlaid stone, nothing that glows.
+		if Eras.theme == "human" and WonderSite.has(o["t"]):
+			return o["t"] + WonderSite.CALM
 		return o["t"]
 	return "%s#%d#%d" % [o["t"], sp, int(o.get("v", 0))]
 
@@ -136,6 +139,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Landmark.build(key)
 	if WonderSite.has(key):
 		return WonderSite.build(key)
+	if key.ends_with(WonderSite.CALM) and WonderSite.has(key.trim_suffix(WonderSite.CALM)):
+		return WonderSite.build(key.trim_suffix(WonderSite.CALM), false, true)
 	if ShipPad.has(key):
 		return ShipPad.build(key)
 	if key == WorldPortal.TYPE:

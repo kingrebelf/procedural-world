@@ -10,6 +10,9 @@ uniform float vein_width = 0.16;
 uniform float vein_freq = 1.6;
 uniform float ore_metal = 0.7;
 uniform float tri_scale = 0.35;
+// Ben's ore photos already carry their veins: then the photo is the rock, in its own
+// colours, and its saturated parts (rust, gold, mineral) are the ore that shines.
+uniform bool photo_ore = false;
 
 varying vec3 obj_pos;
 varying vec3 obj_nrm;
@@ -43,6 +46,19 @@ vec4 tri(sampler2D t, vec3 p, vec3 n) {
 
 void fragment() {
 	vec3 p = obj_pos * tri_scale;
+	if (photo_ore) {
+		vec3 c = tri(stone_tex, p, obj_nrm).rgb;
+		float lt = max(dot(tint, vec3(0.3333)), 0.02);
+		vec3 rock = c * mix(vec3(1.0), tint / lt, 0.25) * (0.75 + 0.5 * clamp(lt * 3.0, 0.0, 1.0));
+		float mx = max(c.r, max(c.g, c.b));
+		float sat = (mx - min(c.r, min(c.g, c.b))) / max(mx, 0.02);
+		float ore = smoothstep(0.35, 0.6, sat) * smoothstep(0.03, 0.12, mx);
+		ALBEDO = rock;
+		METALLIC = ore * ore_metal;
+		ROUGHNESS = mix(0.88, 0.45, ore);
+		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
+		return;
+	}
 	vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
 	// Veins: where a warped noise field crosses 0.5, in thin seams that branch.
 	vec3 q = obj_pos * vein_freq;
