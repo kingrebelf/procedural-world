@@ -273,8 +273,9 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key[key] = buf
 		# A room you can walk into brings its furniture (drawn up close) and any lamplit
 		# windows (from further off) as their own meshes.
-		if KitHouse.has(key) or Interiors.has(key):
-			for extra in [key + "~in", key + "~glow"] if KitHouse.has(key) or Interiors.glows(key) else [key + "~in"]:
+		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
+		if KitHouse.has(rk) or Interiors.has(rk):
+			for extra in [rk + "~in", rk + "~glow"] if KitHouse.has(rk) or Interiors.glows(rk) else [rk + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
 				eb.append_array(row)
 				by_key[extra] = eb

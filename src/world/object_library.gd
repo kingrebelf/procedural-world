@@ -97,6 +97,9 @@ static func mesh_key(o: Dictionary) -> String:
 		# On human worlds a wonder wears carved and inlaid stone, nothing that glows.
 		if Eras.theme == "human" and WonderSite.has(o["t"]):
 			return o["t"] + WonderSite.CALM
+		# Castle walls and towers come in a few builds, picked by where they stand.
+		if Stronghold.VARIANTS.has(o["t"]):
+			return Stronghold.variant_key(o)
 		return o["t"]
 	return "%s#%d#%d" % [o["t"], sp, int(o.get("v", 0))]
 
@@ -141,7 +144,7 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Interiors.build(key)
 	if KitBase.has(key):
 		return KitBase.build(key)
-	if Stronghold.has(key):
+	if Stronghold.has(key.get_slice(Stronghold.VAR, 0)):
 		return Stronghold.build(key)
 	if Landmark.has(key):
 		return Landmark.build(key)
