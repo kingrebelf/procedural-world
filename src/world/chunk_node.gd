@@ -1339,9 +1339,7 @@ func _add_obj_body(o: Dictionary) -> void:
 		var flames := FireFx.prop_flames(bd.get("models", []))
 		var wicks := Vector3.ZERO
 		for f in flames:
-			var pf := FireFx.flame(f[1])
-			pf.position = f[0]
-			b.add_child(pf)
+			b.add_child(FireFx.prop_flame(f))
 			wicks += (f[0] as Vector3) + Vector3(0, float(f[1]) * 0.6, 0)
 		var lc = bd.get("light")
 		if lc != null:

@@ -1555,7 +1555,12 @@ func test_fires() -> void:
 		lmax = maxf(lmax, lv)
 	check(lmin >= 0.0 and lmax <= 1.0 and absf(lsum / 2000.0 - 0.5) < 0.12 and lmax - lmin > 0.4, "a flame's life wavers about the middle (%.2f..%.2f, mean %.2f)" % [lmin, lmax, lsum / 2000.0])
 	check(not is_equal_approx(FireFx.life(5.0, 0.1), FireFx.life(5.0, 0.6)), "no two fires flicker in step")
-	check(FireFx.prop_flames(BuildCatalog.def("lantern")["models"]).size() == 1, "a lantern you hang burns behind its glass")
+	var lf := FireFx.prop_flames(BuildCatalog.def("lantern")["models"])
+	check(lf.size() == 1, "a lantern you hang burns")
+	if lf.size() == 1:
+		var ln := FireFx.prop_flame(lf[0])
+		check(ln.find_child("Glass", true, false) != null, "a lit lantern's glass glows with its flame, seen from any side")
+		ln.free()
 	var torch := Viewmodel.prop_for("torch")
 	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
 	check(torch.find_child("Drag", true, false) != null, "a carried torch's flame trails as it moves")

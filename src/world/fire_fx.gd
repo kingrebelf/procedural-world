@@ -17,8 +17,8 @@ const FPS := 8.0
 ## Wall torches burn in their iron cups; candles at their wicks.
 const PROP_FLAMES := {
 	"props/Torch_Metal": [[Vector3(0, 0.34, 0.27), 0.42]],
-	# The wick in the hanging lantern, behind its glass.
-	"props/Lantern_Wall": [[Vector3(0, 0.2, 0.8), 0.11]],
+	# The wick in the hanging lantern, behind its glass (the third entry: the panes' box).
+	"props/Lantern_Wall": [[Vector3(0, 0.2, 0.8), 0.11, Vector3(0.2, 0.24, 0.2)]],
 	"props/Candle_1": [[Vector3(0, 0.128, 0), 0.07]],
 	"props/CandleStick_Triple": [[Vector3(0, 0.457, 0), 0.07], [Vector3(-0.17, 0.335, 0), 0.07], [Vector3(0.18, 0.335, 0), 0.07]],
 	"props/CandleStick_Stand": [[Vector3(-0.31, 1.3, 0), 0.07], [Vector3(0.31, 1.297, 0), 0.07], [Vector3(-0.21, 1.297, 0.21), 0.07],
@@ -41,7 +41,7 @@ static func prop_flames(models: Array) -> Array:
 		var s: float = float(m[3]) if m.size() > 3 and m[3] is float else 1.0
 		var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * s), m[2])
 		for f in at:
-			out.append([xf * (f[0] as Vector3), float(f[1]) * s])
+			out.append([xf * (f[0] as Vector3), float(f[1]) * s] + ([(f[2] as Vector3) * s] if f.size() > 2 else []))
 	return out
 
 ## Flames smaller than this (candles, lamp wicks) are drawn (wick_flame.gdshader) rather
@@ -74,6 +74,13 @@ static func life(t: float, seed: float) -> float:
 	var s := seed * 97.0
 	return 0.5 * _noise(t * 1.9 + s) + 0.3 * _noise(t * 5.3 + s * 1.7 + 11.0) + 0.2 * _noise(t * 12.7 + s * 2.3 + 23.0)
 
+## The flame for one entry of prop_flames(), stood where it burns (with its lantern
+## glass, if it has one).
+static func prop_flame(f: Array) -> Node3D:
+	var n := flame(float(f[1]), Color(1, 1, 1, 1), "fire", false, -1.0, f[2] if f.size() > 2 else Vector3.ZERO)
+	n.position = f[0]
+	return n
+
 ## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
 static func material(sheet := "fire") -> ShaderMaterial:
 	if _mats.has(sheet):
@@ -103,7 +110,7 @@ static func wick_material() -> ShaderMaterial:
 ## a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
 ## 1 in the open, about 0.15 indoors or behind a lantern's glass; below 0 picks by size.
 ## Its seed (meta "fire_seed") is what a FlickerLight beside it follows.
-static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false, wind := -1.0) -> Node3D:
+static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false, wind := -1.0, glass := Vector3.ZERO) -> Node3D:
 	var n := Node3D.new()
 	n.name = "Flame"
 	var seed := randf()
@@ -127,6 +134,19 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		mi.set_instance_shader_parameter("size", size)
 		mi.set_instance_shader_parameter("exposed", wind)
 		n.add_child(mi)
+		if glass != Vector3.ZERO:
+			# A lantern's panes, lit by it: centred on the wick, its bottom a little below.
+			var g := MeshInstance3D.new()
+			g.name = "Glass"
+			var bm := BoxMesh.new()
+			bm.size = glass
+			g.mesh = bm
+			g.material_override = glass_material()
+			g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			g.position = Vector3(0, glass.y * 0.5 - 0.03, 0)
+			g.visibility_range_end = 120.0
+			g.set_instance_shader_parameter("seed", seed)
+			n.add_child(g)
 		return n
 	# A big fire burns all across its bed: more tongues of flame round the middle one,
 	# over glowing coals.
@@ -168,6 +188,15 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		bed.set_instance_shader_parameter("seed", seed)
 		n.add_child(bed)
 	return n
+
+static var _glass: ShaderMaterial
+
+## A lit lantern's glass.
+static func glass_material() -> ShaderMaterial:
+	if _glass == null:
+		_glass = ShaderMaterial.new()
+		_glass.shader = load("res://src/world/lamp_glass.gdshader")
+	return _glass
 
 static var _coals: ShaderMaterial
 
@@ -214,7 +243,7 @@ class Drag extends Node3D:
 		want.y = 0.0
 		_lean = _lean.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
 		for c in get_parent().get_children():
-			if c is MeshInstance3D and c.name != "Coals":
+			if c is MeshInstance3D and c.name != "Coals" and c.name != "Glass":
 				(c as MeshInstance3D).set_instance_shader_parameter("drag", _lean)
 
 static var _swirl: ShaderMaterial

@@ -106,9 +106,7 @@ func _run() -> void:
 			vp.add_child(pmi)
 			for f in FireFx.prop_flames([["props/Torch_Metal", 0, Vector3(1.0, 1.6, -0.47), 1.0],
 					["props/Lantern_Wall", 90, Vector3(1.13, 0.5, -0.6), 1.0], ["props/Candle_1", 0, Vector3(0.2, 0.7, 0.8), 1.0]]):
-				var fl := FireFx.flame(f[1])
-				fl.position = f[0]
-				vp.add_child(fl)
+				vp.add_child(FireFx.prop_flame(f))
 				_light(vp, (f[0] as Vector3) + Vector3(0, 0.1, 0), 1.2 if f[1] > 0.2 else 0.5, 6.0 if f[1] > 0.2 else 3.0)
 			cam.position = Vector3(0.0, 1.5, 4.2)
 			cam.look_at(Vector3(0.0, 0.8, 0.0))
