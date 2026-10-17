@@ -147,7 +147,7 @@ func _ready() -> void:
 	_refresh_held()
 
 func _apply_settings() -> void:
-	camera.fov = float(Settings.get_value("fov"))
+	camera.fov = Settings.vertical_fov(float(Settings.get_value("fov")))
 
 func get_state() -> Dictionary:
 	# The world saves from its own _exit_tree, after the player has already left the
@@ -891,7 +891,7 @@ func _binoculars(delta: float, on: bool) -> void:
 	_zoom = move_toward(_zoom, 1.0 if on else 0.0, delta * 4.0)
 	# Aiming down a gun's sights narrows the view too (fov is a full angle, so divide the
 	# tangent, not the angle, to magnify).
-	var base := float(Settings.get_value("fov"))
+	var base := Settings.vertical_fov(float(Settings.get_value("fov")))
 	base = rad_to_deg(2.0 * atan(tan(deg_to_rad(base) * 0.5) / gunplay.zoom()))
 	camera.fov = lerpf(base, ZOOM_FOV, smoothstep(0.0, 1.0, _zoom))
 	spotted = null

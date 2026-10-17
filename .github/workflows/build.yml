@@ -19,7 +19,8 @@ jobs:
 
       - name: Install Godot and NSIS
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq nsis zip
+          sudo apt-get update -qq && sudo apt-get install -y -qq nsis zip gcc-mingw-w64-x86-64
+          python3 -m pip install --quiet --user --break-system-packages numpy onnx
           curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
           unzip -q godot.zip && sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
           curl -sSL -o tpl.tpz https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
@@ -41,6 +42,12 @@ jobs:
 
       - name: Run dedicated server test
         run: timeout 900 godot --headless --path . --script res://tests/net_test.gd
+
+      # The built-in voices' downloads (sherpa-onnx libraries, Kokoro model), see tools/voice_server.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pw-voices
+          key: pw-voices-${{ hashFiles('tools/voice_server/build.sh') }}
 
       - name: Build games, installer and servers
         run: ./tools/build.sh

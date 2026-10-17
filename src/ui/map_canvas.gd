@@ -7,6 +7,10 @@ var center := Vector2.ZERO
 var scale_ppm := 1.0
 var _terrain: Control
 var _fog: Control
+var _layer_lo: Control ## the map overlay, under the fog (MapLayers)
+var _layer_hi: Control ## and over it, for layers that give nothing away
+## Categories of the map overlay in view (a bitmask, for the legend).
+var layer_mask := 0
 var _fog_mat: ShaderMaterial
 var _land_mat: ShaderMaterial
 
@@ -102,6 +106,7 @@ func _ready() -> void:
 	_land_mat.set_shader_parameter("paper", PAPER_TEX)
 	_terrain.material = _land_mat
 	add_child(_terrain)
+	_layer_lo = _layer_control(false)
 	_fog = Control.new()
 	_fog.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_fog.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -115,6 +120,23 @@ func _ready() -> void:
 	_fog_mat.set_shader_parameter("paper", PAPER_TEX)
 	_fog.material = _fog_mat
 	add_child(_fog)
+	_layer_hi = _layer_control(true)
+
+func _layer_control(over_fog: bool) -> Control:
+	var c := Control.new()
+	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	c.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	c.draw.connect(_draw_layer.bind(c, over_fog))
+	add_child(c)
+	return c
+
+func _draw_layer(c: Control, over_fog: bool) -> void:
+	var l := MapLayers.current()
+	if l == MapLayers.OFF:
+		layer_mask = 0
+	elif MapLayers.over_fog(l) == over_fog:
+		layer_mask = MapLayers.draw_tiles(c, self, l)
 
 func refresh() -> void:
 	for m in [_fog_mat, _land_mat]:
@@ -123,6 +145,9 @@ func refresh() -> void:
 		m.set_shader_parameter("half_size", size * 0.5)
 	_terrain.queue_redraw()
 	_fog.queue_redraw()
+	_layer_lo.queue_redraw()
+	_layer_hi.queue_redraw()
+	MapLayers.pump()
 
 func to_local_px(x: float, z: float) -> Vector2:
 	return size * 0.5 + (Vector2(x, z) - center) * scale_ppm

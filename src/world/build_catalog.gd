@@ -831,6 +831,57 @@ static func built_near(streamer, pos: Vector3, radius: float) -> Array:
 					out.append({"id": id_of(o["t"]), "pos": wp, "yaw": float(o["r"])})
 	return out
 
+## Wild trees near `pos` (standing, not felled), each as [trunk foot, trunk radius,
+## crown bottom, top, crown reach], all world space, from the tree's mesh at its scale.
+static func trees_near(streamer, pos: Vector3, radius: float) -> Array:
+	var out: Array = []
+	if streamer == null:
+		return out
+	var ck := _chunk_of(pos)
+	var reach := int(ceil(radius / ChunkGenerator.SIZE))
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var c = streamer.get_chunk(ck + Vector2i(dx, dz))
+			if c == null:
+				continue
+			var origin := Vector3((ck.x + dx) * ChunkGenerator.SIZE, 0, (ck.y + dz) * ChunkGenerator.SIZE)
+			for o in c.data["objects"]:
+				if ObjectLibrary.kind(o["t"]) != "tree" or o["st"].get("gone", false):
+					continue
+				var wp: Vector3 = origin + o["p"]
+				if Vector2(wp.x - pos.x, wp.z - pos.z).length() > radius:
+					continue
+				out.append(tree_shape(ObjectLibrary.mesh_key(o), wp, float(o["s"])))
+	return out
+
+static var _tree_boxes := {} ## tree mesh key -> its AABB, unscaled
+
+## A tree as tree_in_way() reads it: its trunk a post up the middle, its crown a drum
+## from a third of the way up to the top, a little narrower than its widest leaves.
+static func tree_shape(key: String, at: Vector3, s: float) -> Array:
+	if not _tree_boxes.has(key):
+		var m := ObjectLibrary.get_mesh(key)
+		_tree_boxes[key] = m.get_aabb() if m != null else AABB(Vector3(-2, 0, -2), Vector3(4, 7, 4))
+	var bb: AABB = _tree_boxes[key]
+	var top := bb.end.y * s
+	var wide := maxf(maxf(absf(bb.position.x), absf(bb.end.x)), maxf(absf(bb.position.z), absf(bb.end.z))) * s
+	return [at, clampf(top * 0.03, 0.18, 0.5), at.y + top * 0.35, at.y + top, wide * 0.75]
+
+## True when a piece filling `box` (world space) would stand through a tree's trunk or
+## up into its crown (`trees` from trees_near). A floor laid under the crown is fine.
+static func tree_in_way(trees: Array, box: AABB) -> bool:
+	var lo := Vector2(box.position.x, box.position.z)
+	var hi := Vector2(box.end.x, box.end.z)
+	for t in trees:
+		var at: Vector3 = t[0]
+		var q := Vector2(at.x, at.z)
+		var d := q.distance_to(q.clamp(lo, hi))
+		if d < float(t[1]) and box.end.y > at.y + 0.1 and box.position.y < float(t[3]):
+			return true
+		if d < float(t[4]) and box.end.y > float(t[2]) + 0.2 and box.position.y < float(t[3]):
+			return true
+	return false
+
 ## True when a piece taking the same slot (see slot()) already sits at this spot.
 static func occupied(streamer, id: String, pos: Vector3, yaw: float) -> bool:
 	return occupied_in(built_near(streamer, pos, 1.0), id, pos, yaw)
