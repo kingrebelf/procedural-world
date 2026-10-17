@@ -40,22 +40,22 @@ const ARMOUR_SLOTS := ["head", "chest", "hands", "legs", "feet", "ring", "neck"]
 
 ## item -> [shape, args...]. Colours are albedo (sRGB); metals use their real reflectance.
 const SHAPES := {
-	# Metal: [bar, colour, roughness, patina colour, patina amount, length, form]. Forms
-	# follow how each metal really came: iron as a rough cast bar, copper as a
-	# plano-convex bun from the furnace bottom, bronze as an oxhide slab, precious
-	# metals as stamped trapezoid bars, steel and sci-fi alloys as machined billets.
+	# Metal: [bar, colour, roughness, patina colour, patina amount, length, form]. Every
+	# ingot is the same family, a cast trapezoid bar with foundry marks, so they read as
+	# ingots at a glance and differ by metal (colour, sheen, tarnish). Other forms
+	# (currency bar, bun, oxhide, billet) remain available.
 	"iron_ingot": ["bar", Color(0.46, 0.45, 0.44), 0.62, Color(0.45, 0.24, 0.12), 0.45, 0.15, "bar"],
-	"steel_ingot": ["bar", Color(0.66, 0.67, 0.69), 0.3, Color(0.35, 0.36, 0.4), 0.15, 0.16, "billet"],
-	"copper_ingot": ["bar", Color(0.95, 0.62, 0.48), 0.35, Color(0.32, 0.55, 0.45), 0.2, 0.15, "bun"],
-	"bronze_ingot": ["bar", Color(0.8, 0.58, 0.34), 0.38, Color(0.3, 0.42, 0.32), 0.18, 0.15, "oxhide"],
+	"steel_ingot": ["bar", Color(0.66, 0.67, 0.69), 0.3, Color(0.35, 0.36, 0.4), 0.15, 0.16, "bar"],
+	"copper_ingot": ["bar", Color(0.95, 0.62, 0.48), 0.35, Color(0.32, 0.55, 0.45), 0.2, 0.15, "bar"],
+	"bronze_ingot": ["bar", Color(0.8, 0.58, 0.34), 0.38, Color(0.3, 0.42, 0.32), 0.18, 0.15, "bar"],
 	"silver_ingot": ["bar", Color(0.95, 0.94, 0.92), 0.25, Color(0.36, 0.33, 0.3), 0.22, 0.14, "bar"],
 	"silver_bar": ["bar", Color(0.95, 0.94, 0.92), 0.2, Color(0.36, 0.33, 0.3), 0.12, 0.17, "bar"],
 	"gold_ingot": ["bar", Color(1.0, 0.8, 0.42), 0.24, Color(0.8, 0.55, 0.25), 0.05, 0.13, "bar"],
 	"mythril_ingot": ["bar", Color(0.78, 0.9, 0.98), 0.18, Color(0.55, 0.75, 0.9), 0.1, 0.15, "bar"],
-	"titanium_ingot": ["bar", Color(0.62, 0.6, 0.58), 0.4, Color(0.5, 0.42, 0.6), 0.25, 0.16, "billet"],
-	"voidsteel_ingot": ["bar", Color(0.22, 0.2, 0.28), 0.25, Color(0.4, 0.2, 0.6), 0.3, 0.16, "billet"],
-	"starsteel_ingot": ["bar", Color(0.85, 0.86, 0.95), 0.15, Color(0.7, 0.6, 0.9), 0.2, 0.16, "billet"],
-	"neutronium": ["bar", Color(0.35, 0.36, 0.42), 0.12, Color(0.2, 0.22, 0.3), 0.1, 0.07, "billet"],
+	"titanium_ingot": ["bar", Color(0.62, 0.6, 0.58), 0.4, Color(0.5, 0.42, 0.6), 0.25, 0.16, "bar"],
+	"voidsteel_ingot": ["bar", Color(0.22, 0.2, 0.28), 0.25, Color(0.4, 0.2, 0.6), 0.3, 0.16, "bar"],
+	"starsteel_ingot": ["bar", Color(0.85, 0.86, 0.95), 0.15, Color(0.7, 0.6, 0.9), 0.2, 0.16, "bar"],
+	"neutronium": ["bar", Color(0.35, 0.36, 0.42), 0.12, Color(0.2, 0.22, 0.3), 0.1, 0.07, "bar"],
 	# Ore: [ore, rock colour, mineral colour, second mineral, seam width, metallic, angular]
 	"stone": ["ore", Color(0.52, 0.5, 0.47), Color(0.6, 0.58, 0.55), Color(0.7, 0.68, 0.64), 0.00, 0.0, 0.5],
 	"iron_ore": ["ore", Color(0.48, 0.3, 0.22), Color(0.26, 0.25, 0.26), Color(0.62, 0.3, 0.16), 0.14, 0.75, 0.45],
@@ -151,7 +151,10 @@ static func _build(t: String) -> ArrayMesh:
 		"halite": _halite(k, r, s[1])
 		"crystals": _crystals(k, r, t, s[1], s[2], s[3], s[4])
 		"amber": _amber(k, r)
-		"log": _log(k, r, s[1], s[2], s[3])
+		"log":
+			# Leaned toward the eye so a sawn end with its rings shows.
+			_log(k, r, s[1], s[2], s[3])
+			return _transformed(k.commit(mat), Transform3D(Basis(Vector3.RIGHT, 0.5), Vector3.ZERO))
 		"split": _split(k, r)
 		"planks": _planks(k, r)
 		"brick": _brick(k, r, s[1], s[2], s[3], s[4])
@@ -654,6 +657,16 @@ static func _crystals(k: MeshKit, r: RandomNumberGenerator, t: String, col: Colo
 		var cr := h * r.randf_range(0.12, 0.2)
 		k.crystal(m, cxf, cr, h, 6, 0.22, Color(col.r, col.g, col.b, alpha))
 		if alpha < 0.95:
+			# Flaws: a couple of pale, half-clear fracture veils caught inside the body,
+			# which break up the flat facets the way real quartz does.
+			for f in 2:
+				var fy := h * r.randf_range(0.2, 0.6)
+				var fa := r.randf() * TAU
+				var fd := Vector3(cos(fa), 0, sin(fa)) * cr * 0.55
+				var up := Vector3(0, h * r.randf_range(0.12, 0.25), 0)
+				var side := fd.cross(Vector3.UP).normalized() * cr * 0.3
+				_quad(k, "im:crystal:" + t, cxf, Vector3(0, fy, 0) - fd - side, Vector3(0, fy, 0) + fd - side, Vector3(0, fy, 0) + fd + side + up, Vector3(0, fy, 0) - fd + side + up,
+					side.cross(up).normalized(), Color(1, 1, 1, 0.35))
 			# A cloudy core and a veil of flaws inside, as real crystals have.
 			k.crystal("im:crystal:" + t, cxf.translated_local(Vector3(0, h * 0.05, 0)), cr * 0.45, h * 0.6, 6, 0.3, Color(col.lightened(0.5).r, col.lightened(0.5).g, col.lightened(0.5).b, 0.5))
 
