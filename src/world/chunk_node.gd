@@ -237,10 +237,6 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			continue
 		var key := ObjectLibrary.mesh_key(o)
 		var real := RealTree.handles(o["t"]) and int(o.get("sp", 0)) != 0
-		if real:
-			# One mesh per species: variants only re-rolled fine detail, and each tree's own
-			# turn, size and tint already set it apart. A third of the draw calls.
-			key = "%s#%d#0" % [o["t"], int(o["sp"])]
 		if not by_key.has(key):
 			by_key[key] = PackedFloat32Array()
 		var h := WHash.combine(seed, int(o["i"]))
@@ -269,7 +265,7 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 				tint = tint * Color(1, 1, 1).lerp(to, st.a * 0.85)
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, 1.0]
 		if far and real:
-			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), 0), Transform3D(b, p), tint)
+			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), int(o.get("v", 0))), Transform3D(b, p), tint)
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array(row)
 		by_key[key] = buf
