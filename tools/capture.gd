@@ -183,6 +183,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if c:
 		y = ChunkGenerator.height_at(c.data, at.x - c.key.x * 64.0, at.y - c.key.y * 64.0) + height
 		p.global_position.y = y
+	# The eye never stands inside a tree's crown (the river shot was one big leaf).
+	_clear_trees(streamer, Vector3(at.x, y, at.y), 4.5)
+	_shoo_creatures(Vector3(at.x, y, at.y), 45.0, true)
 	var tgt_h := y
 	var tc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(look_at.x, 0, look_at.y)))
 	if tc:
@@ -203,6 +206,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
 	await _wait(3)
+	_shoo_creatures(p.global_position, 45.0, true)
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
@@ -301,8 +305,18 @@ func _run() -> void:
 					if clear and not found:
 						cam = c
 						found = true
+			# The field's heights miss rock spires and cliffs (the shot once faced a rock
+			# wall): check the sight line against what is really there.
+			var cands: Array = [cam] if found else []
+			for dist in [45.0, 60.0, 75.0, 90.0, 110.0]:
+				for side in [-1.0, 1.0]:
+					for along in [14.0, -14.0, 30.0]:
+						cands.append(vm + vd.orthogonal() * dist * side + vd * along)
+			var seen := await _clear_view(cands, Vector3(vm.x, deck - 4.0, vm.y), 2.0, 12.0, deck + 2.0)
+			if seen != Vector2.INF:
+				cam = seen
 			var low := g.field.height(cam.x, cam.y)
-			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
+			await _shot("16_viaduct", cam, vm, 0.4, maxf(deck - low + 2.0, 2.0), deck - 4.0)
 	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
@@ -318,6 +332,11 @@ func _run() -> void:
 	if not fan.is_empty():
 		var c: Vector2 = fan["center"]
 		await _shot("05_fantasy_village_night", c + Vector2(40, -34), c, 0.93)
+	elif not med.is_empty():
+		# Human worlds have no fantasy villages: a medieval one by night, its windows and
+		# hearths the only light.
+		var c: Vector2 = med["center"]
+		await _shot("05_village_night", c + Vector2(40, -34), c, 0.93)
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
 		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
@@ -475,7 +494,12 @@ func _room_shots(g: ChunkGenerator) -> void:
 			var b: Array = Interiors.BOX[it["t"]]
 			var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 			await _shot("33_tower_stair", to_w.call(Vector2(1.6, 2.2)), to_w.call(Vector2(-3.0, -3.0)), 0.45, float(b[1]) - 0.1, gh + 7.0)
-			await _shot("34_tower_roof", to_w.call(Vector2(-2.2, -0.6)), fort["center"], 0.45, float(b[4]) - 0.1, gh + 2.0)
+			# Stand on the side of the roof toward the castle so the flag pole in the middle
+			# is behind you, not across the view.
+			var fc: Vector2 = fort["center"]
+			var rel := fc - c
+			var loc := Vector2(rel.x * cos(yaw) - rel.y * sin(yaw), rel.x * sin(yaw) + rel.y * cos(yaw)).normalized() * 2.6
+			await _shot("34_tower_roof", to_w.call(loc), fc, 0.45, float(b[4]) - 0.1, gh + 2.0)
 			break
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
@@ -608,52 +632,74 @@ func _wonder_types() -> void:
 ## rocks or a hill (the throne shot stood in the stone king's knees), with nothing solid
 ## between the eye and the middle of the wonder. Tries wider and further spots in turn.
 func _wonder_view(wc: Vector2, front: Vector2, look_y: float) -> Vector2:
+	var cands: Array = []
+	for d in [30.0, 38.0, 46.0, 56.0]:
+		for a in [0.3, -0.3, 0.6, -0.6, 0.0, 0.9, -0.9, 1.25, -1.25]:
+			cands.append(wc + front.rotated(a) * d)
+	var at := await _clear_view(cands, Vector3(wc.x, look_y, wc.y), 3.0, 14.0)
+	return at if at != Vector2.INF else wc + front * 30.0
+
+## The first of `cands` (ground-plan points) where an eye `eye_h` above the ground, or at
+## least `min_y`, stands in open air under open sky and sees `target` (or something within
+## `near` of it). Loads the ground around the target first. Vector2.INF if none does.
+func _clear_view(cands: Array, target: Vector3, eye_h: float, near: float, min_y := -INF) -> Vector2:
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
 	p.set_physics_process(false)
-	p.global_position = Vector3(wc.x, look_y + 20.0, wc.y)
+	p.global_position = target + Vector3(0, 20, 0)
 	await _wait_loaded(p, streamer)
 	await _wait(5) # colliders of the new chunks
 	var space := p.get_world_3d().direct_space_state
-	var target := Vector3(wc.x, look_y, wc.y)
-	for d in [30.0, 38.0, 46.0, 56.0]:
-		for a in [0.3, -0.3, 0.6, -0.6, 0.0, 0.9, -0.9, 1.25, -1.25]:
-			var q: Vector2 = wc + front.rotated(a) * d
-			var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(q.x, 0, q.y)))
-			if c == null:
-				continue
-			var eye := Vector3(q.x, ChunkGenerator.height_at(c.data, q.x - c.key.x * 64.0, q.y - c.key.y * 64.0) + 3.0, q.y)
-			var ball := PhysicsShapeQueryParameters3D.new()
-			ball.shape = SphereShape3D.new()
-			(ball.shape as SphereShape3D).radius = 1.2
-			ball.transform = Transform3D(Basis(), eye)
-			ball.exclude = [p.get_rid()]
-			if not space.intersect_shape(ball, 1).is_empty():
-				continue
-			# Open sky overhead: a sphere wholly inside a big rock touches none of its faces.
-			var up := PhysicsRayQueryParameters3D.create(eye + Vector3(0, 60, 0), eye)
-			up.exclude = [p.get_rid()]
-			if not space.intersect_ray(up).is_empty():
-				continue
-			var ray := PhysicsRayQueryParameters3D.create(eye, target)
-			ray.exclude = [p.get_rid()]
-			var hit := space.intersect_ray(ray)
-			# Seeing the wonder itself is fine: it is what the ray runs into near the middle.
-			if hit.is_empty() or (hit["position"] as Vector3).distance_to(target) < 14.0:
-				print("wonder view at ", d, " m, ", rad_to_deg(a), " deg")
-				return q
-	print("wonder view: no clear spot, standing in front")
-	return wc + front * 30.0
+	for q in cands:
+		var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(q.x, 0, q.y)))
+		if c == null:
+			continue
+		var gy := ChunkGenerator.height_at(c.data, q.x - c.key.x * 64.0, q.y - c.key.y * 64.0)
+		var eye := Vector3(q.x, maxf(gy + eye_h, min_y), q.y)
+		var ball := PhysicsShapeQueryParameters3D.new()
+		ball.shape = SphereShape3D.new()
+		(ball.shape as SphereShape3D).radius = 1.2
+		ball.transform = Transform3D(Basis(), eye)
+		ball.exclude = [p.get_rid()]
+		if not space.intersect_shape(ball, 1).is_empty():
+			continue
+		# Open sky overhead: a sphere wholly inside a big rock touches none of its faces.
+		var up := PhysicsRayQueryParameters3D.create(eye + Vector3(0, 60, 0), eye)
+		up.exclude = [p.get_rid()]
+		if not space.intersect_ray(up).is_empty():
+			continue
+		var ray := PhysicsRayQueryParameters3D.create(eye, target)
+		ray.exclude = [p.get_rid()]
+		var hit := space.intersect_ray(ray)
+		if hit.is_empty() or (hit["position"] as Vector3).distance_to(target) < near:
+			print("clear view from ", q, " (", eye.distance_to(target), " m)")
+			return q
+	print("no clear view of ", target)
+	return Vector2.INF
 
 ## Guards and the boss would run at the camera and fill the photo with their name tags:
-## the photo is of the place, so they go.
-func _shoo_creatures(at: Vector3, r: float) -> void:
+## the photo is of the place, so they go (only the hostile ones, if asked).
+func _shoo_creatures(at: Vector3, r: float, hostile_only := false) -> void:
 	for k in world.fauna._herds:
 		var herd: Array = world.fauna._herds[k]
 		for cr in herd.duplicate():
-			if is_instance_valid(cr) and cr.global_position.distance_to(at) < r:
-				herd.erase(cr)
-				cr.queue_free()
+			if not is_instance_valid(cr) or cr.global_position.distance_to(at) >= r:
+				continue
+			if hostile_only and String(cr.p.get("temper", "")) != "aggressive":
+				continue
+			herd.erase(cr)
+			cr.queue_free()
+
+## Trees standing within r (on the ground plan) of the eye, whose crowns would wrap it.
+func _clear_trees(streamer: ChunkStreamer, eye: Vector3, r: float) -> void:
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for o in c.data["objects"]:
+			if o["st"].get("gone", false) or ObjectLibrary.kind(o["t"]) != "tree":
+				continue
+			var w: Vector3 = c.position + o["p"]
+			if Vector2(w.x - eye.x, w.z - eye.z).length() < r:
+				c.remove_object(o["i"])
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:
