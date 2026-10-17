@@ -657,7 +657,14 @@ void fragment() {
 	// The cover map says where snow lies (drifts on high ground, none on steep faces); it
 	// settles into the hollows of the ground first, so its edge follows the texture.
 	float snow = 0.0;
-	if (use_textures && cover_v.a > 0.01 && wpos.y > snow_line - 20.0) {
+	// Gullies down a mountain side, tens of metres apart (their relief is below): a crease
+	// line where gl.x crosses a half.
+	vec4 gl = vec4(1.0, 0.0, 0.0, 0.0);
+	if (steep > 0.01) {
+		gl = vnoise3d(wpos * vec3(0.05, 0.005, 0.05) + 31.0);
+	}
+	float couloir = (1.0 - smoothstep(0.01, 0.05, abs(gl.x - 0.5))) * steep;
+	if (use_textures && (cover_v.a > 0.01 || steep > 0.01) && wpos.y > snow_line - 20.0) {
 		float under = dot(col, LUM) / max(dot(col, LUM) + 0.05, 0.001);
 		// A wide, ragged edge: patches and tongues of snow out into the grass, bare
 		// hollows inside it, never one clean line.
@@ -667,6 +674,12 @@ void fragment() {
 		// over the bare face, not one ruled line along the foot of the slope.
 		float crag = slope + (fbm(p * 0.3 + 8.0) - 0.5) * 0.4 + (micro - 0.5) * 0.12;
 		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.48, 0.82, crag));
+		// High on a mountain the snow that slides off the bare faces lodges in the gullies
+		// and in narrow streaks down the rock, so a peak is streaked white, not capped.
+		float streak_s = smoothstep(0.62, 0.74, vnoise(vec2((wpos.x - wpos.z) * 0.25, wpos.y * 0.04) + 17.0));
+		float lodge = max(couloir, streak_s * steep * 0.85) * (1.0 - smoothstep(0.75, 0.9, slope));
+		lodge *= smoothstep(snow_line, snow_line + 30.0, wpos.y + (macro - 0.5) * 20.0) * (1.0 - w.g);
+		snow = max(snow, smoothstep(0.35, 0.7, lodge * (0.6 + 0.5 * vnoise(vec2(wpos.x + wpos.z, wpos.y) * 0.08))));
 		// The map is per metre, so on a tall wall one triangle spans its snowy top and its
 		// foot: never let snow run down below the snow line's reach.
 		snow *= smoothstep(snow_line - 16.0, snow_line - 8.0, wpos.y + (macro - 0.5) * 8.0);
@@ -833,17 +846,16 @@ void fragment() {
 		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
 		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
 		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask * (1.0 - smoothstep(0.8, 2.5, fw));
-		vec4 gl = vnoise3d(wpos * vec3(0.05, 0.005, 0.05) + 31.0);
-		float gully = (1.0 - smoothstep(0.0, 0.12, abs(gl.x - 0.5))) * rock_mask * steep * (1.0 - smoothstep(4.0, 12.0, fw));
+		float gully = couloir * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
 		gr += sign(gl.x - 0.5) * 3.0 * gl.yzw * vec3(0.05, 0.005, 0.05) * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
 		col *= 1.0 - 0.18 * gully * (1.0 - snow);
 		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
 		float bf = fract(bed);
-		float foot = smoothstep(0.0, 0.2, bf);
-		float dfoot = bf < 0.2 ? 150.0 * bf * (1.0 - bf * 5.0) : 0.0;
+		float foot = smoothstep(0.0, 0.35, bf);
+		float dfoot = bf < 0.35 ? 6.0 * bf * (0.35 - bf) / (0.35 * 0.35 * 0.35) : 0.0;
 		// Some beds stand proud along a stretch and fade back into the face elsewhere.
 		float proud = smoothstep(0.3, 0.7, vnoise(vec2((wpos.x - wpos.z) * 0.07, floor(bed) * 1.7)));
-		proud *= 0.3 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.1, 0.4, fwidth(bed)));
+		proud *= 0.15 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.04, 0.15, fwidth(bed)));
 		gr.y += proud * (dfoot * (1.0 - bf) - foot) / 2.3;
 		gr -= dot(gr, wnorm) * wnorm;
 		face_gr = gr * steep * (1.0 - snow * 0.8);
@@ -872,7 +884,7 @@ void fragment() {
 	vec3 bump = vec3(dn.x, 0.0, dn.z) * proc * (1.0 - steep) * (1.0 - snow * 0.7);
 	bump -= face_gr;
 	// The photo's fine bump fades with distance, where it only adds crawling grain.
-	float rock_bump = mix(0.42, 0.14, smoothstep(6.0, 45.0, dist));
+	float rock_bump = mix(0.42, 0.22, smoothstep(6.0, 60.0, dist));
 	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * rock_bump + vec3(ripple.x, 0.0, ripple.y));
 #ifdef FAR_LAND
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
