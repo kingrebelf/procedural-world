@@ -38,6 +38,7 @@ func _process(delta: float) -> void:
 	var spotted: Creature = player.spotted if player.get("spotted") != null else null
 	var cam := get_viewport().get_camera_3d()
 	var eye: Vector3 = cam.global_position if cam else pp + Vector3(0, 1.6, 0)
+	var shown := []
 	for k in _herds:
 		for c in _herds[k]:
 			if is_instance_valid(c):
@@ -47,7 +48,35 @@ func _process(delta: float) -> void:
 				# for animals you can actually see: not through a wall or a hill.
 				if near and c != spotted:
 					near = _in_sight(c, eye, delta)
-				c.update_tag(near, lv)
+				if near:
+					shown.append(c)
+				else:
+					c.update_tag(false, lv)
+	_declutter(shown, cam, spotted, lv)
+
+## Shows the tags of these animals, nearest (and the one you are spotting) first, but not
+## one that would land on another's on screen: a flock shows a tag or two, not a pile.
+func _declutter(shown: Array, cam: Camera3D, spotted: Creature, lv: int) -> void:
+	if cam == null:
+		for c in shown:
+			c.update_tag(true, lv)
+		return
+	var eye := cam.global_position
+	shown.sort_custom(func(a, b): return a == spotted or (b != spotted and a.global_position.distance_squared_to(eye) < b.global_position.distance_squared_to(eye)))
+	var h := get_viewport().get_visible_rect().size.y
+	var placed := []
+	for c in shown:
+		var at: Vector3 = c._tag.global_position if c._tag else c.global_position + Vector3(0, 1.0, 0)
+		var free := true
+		if not cam.is_position_behind(at):
+			var sp := cam.unproject_position(at)
+			for o in placed:
+				if absf(sp.x - o.x) < h * 0.13 and absf(sp.y - o.y) < h * 0.04:
+					free = false
+					break
+			if free:
+				placed.append(sp)
+		c.update_tag(free, lv)
 
 var _sight := {} ## creature instance id -> [seconds until checked again, could see it]
 
