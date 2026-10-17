@@ -2,7 +2,7 @@ extends SceneTree
 ## Renders close-ups of item models (ItemModels) one by one under a daylight sky, and a
 ## contact sheet of them all, for judging whether each reads as the real thing. Run windowed:
 ##   godot --path . --script res://tools/preview_items.gd -- --out=DIR [--items=a,b] [--size=512]
-## With no --items, every item ItemModels has is shown.
+## With no --items, every item ItemModels has is shown; "b:<id>" shows a build piece.
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -52,7 +52,8 @@ func _run() -> void:
 	for t in items:
 		for c in holder.get_children():
 			c.queue_free()
-		var mesh := ItemModels.model(t)
+		# "b:<id>" shows a build piece (BuildCatalog) instead.
+		var mesh: Mesh = BuildCatalog.mesh(t.substr(2)) if t.begins_with("b:") else ItemModels.model(t)
 		if mesh == null:
 			push_warning("no model for " + t)
 			continue

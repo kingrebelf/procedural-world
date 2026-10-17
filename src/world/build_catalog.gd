@@ -274,7 +274,7 @@ static func model_parts(name: String) -> Array:
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
-				var mat: Material = _tamed(om if om != null else mi.mesh.surface_get_material(s))
+				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)))
 				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
 	_lock.lock()
@@ -375,6 +375,36 @@ static func _tamed(m: Material) -> Material:
 		c.albedo_color = c.albedo_color * 1.45
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
+
+static var _aged_mats := {}
+
+## The Fantasy Props kit's furniture and fittings as the real things look: its iron
+## straps, hinges, candle stands and lanterns are blackened wrought iron (not the light
+## painted grey the sci-fi taming above gives every metal), its timber oak darkened and
+## less orange with age and wax. Only furniture and props in the world; held tools keep
+## their own look (Viewmodel.kit_mesh tames them itself).
+static func _aged(m: Material) -> Material:
+	if not (m is BaseMaterial3D) or not m.resource_name.begins_with("MI_Trim_"):
+		return m
+	var metal: bool = m.resource_name.begins_with("MI_Trim_Metal")
+	var wood: bool = m.resource_name == "MI_Trim_Furniture"
+	if not metal and not wood:
+		return m
+	_lock.lock()
+	var out = _aged_mats.get(m)
+	if out == null:
+		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+		if metal:
+			c.albedo_color = Color(0.36, 0.35, 0.34)
+			c.metallic = 0.65
+			c.roughness = 1.0
+		else:
+			c.albedo_color = Color(0.74, 0.63, 0.55)
+			c.roughness = 1.0
+		_aged_mats[m] = c
+		out = c
+	_lock.unlock()
+	return out
 
 static func _node_xf(n: Node3D, root: Node) -> Transform3D:
 	var xf := n.transform
