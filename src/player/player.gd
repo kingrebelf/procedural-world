@@ -265,9 +265,9 @@ func _grip_body() -> void:
 	if Viewmodel.pointed(t):
 		body.reaim(body.hand_space(up), 0.0, body.hand_space(fwd))
 	elif body.busy():
-		body.reaim(Vector3.ZERO)
+		body.aim_handle(Vector3.ZERO)
 	else:
-		body.reaim(body.hand_space(fwd * 0.55 - up * 0.8), 0.75)
+		body.aim_handle(fwd * 0.55 - up * 0.8, 0.75)
 
 static func swing_anim(t: String) -> String:
 	if t == "":
