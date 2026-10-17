@@ -46,6 +46,7 @@ static func ensure_shared() -> void:
 			terrain_material.set_shader_parameter(t + "_nrm", n)
 		terrain_material.set_shader_parameter("use_textures", all)
 		terrain_material.set_shader_parameter("snow_line", Planets.snow_line)
+		terrain_material.set_shader_parameter("paved_roads", Eras.theme == "human")
 		grass_material = ShaderMaterial.new()
 		grass_material.shader = load("res://src/world/grass.gdshader")
 		grass_material.set_shader_parameter("detail", detail_mult)
@@ -101,8 +102,10 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			var wk := k * Eras.COUNT
 			# Alpha: 1 minus how much road surface shows (roads and village squares).
 			# Human worlds dress their sci-fi land as the medieval wilds (Eras.look).
-			var ws := 0.0 if human else wb[wk + 2] / 255.0
-			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - (rb[k] / 255.0 if not rb.is_empty() else 0.0))
+			# There blue is only how paved the road is (the tech era's streets and roads).
+			var rd := rb[k] / 255.0 if not rb.is_empty() else 0.0
+			var ws := wb[wk + 2] / 255.0 * (1.0 if rd > 0.0 else 0.0) if human else wb[wk + 2] / 255.0
+			cols[v] = Color((wb[wk] + (wb[wk + 2] if human else 0)) / 255.0, wb[wk + 1] / 255.0, ws, 1.0 - rd)
 			if has_look:
 				_look_at(lb, gi, gj, l0, l1, l2, v * 4)
 			for b in 4:

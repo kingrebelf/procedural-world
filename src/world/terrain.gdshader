@@ -40,6 +40,9 @@ TEX(litter_tex); NRM(litter_nrm);
 TEX(cliff_tex); NRM(cliff_nrm);
 uniform bool use_textures = false;
 uniform float snow_line = 40.0;
+// Human worlds dress sci-fi land as the wilds; there the blue vertex channel only says
+// where a road is paved (outpost streets and the roads of the tech era).
+uniform bool paved_roads = false;
 // Linear-space mean colour of each texture (printed by tools/make_textures.py). Detail is
 // the texture's brightness relative to its mean, recoloured by the era palette and mixed
 // with some of the photo's own colour.
@@ -198,6 +201,11 @@ void fragment() {
 	vec3 dwy = dFdy(wpos);
 	vec4 gp = vec4(dwx.xz, dwy.xz);
 	vec3 w = COLOR.rgb;
+	float paved = 0.0;
+	if (paved_roads) {
+		paved = w.b;
+		w.b = 0.0;
+	}
 	w /= max(w.r + w.g + w.b, 0.001);
 	float slope = 1.0 - clamp(wnorm.y, 0.0, 1.0);
 	vec2 p = wpos.xz;
@@ -372,8 +380,20 @@ void fragment() {
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
 		vec3 rc = rm * w.r + rf * w.g + rs * w.b;
+		if (paved > 0.01) {
+			// Asphalt: fine dark grit, greyer where it has worn and weathered.
+			vec3 asph = vec3(0.07, 0.07, 0.068);
+			if (use_textures) {
+				vec3 gt2 = untiled(gravel_tex, p + 37.0, gp, GRAVEL_TILE * 0.5, meso, far).rgb;
+				asph = recolor(gt2, GRAVEL_MEAN, asph, 0.0);
+			}
+			asph *= (0.8 + 0.5 * smoothstep(0.35, 0.75, fbm(p * 0.07 + 3.0))) * (0.92 + 0.16 * micro);
+			rc = mix(rc, asph, paved);
+			// A paved edge is a clean line, not a ragged track.
+			edge = mix(edge, smoothstep(0.3, 0.45, road), paved);
+		}
 		col = mix(col, rc, edge * (1.0 - rock_mask * 0.6));
-		tilt *= 1.0 - edge * 0.4;
+		tilt *= 1.0 - edge * mix(0.4, 0.85, paved);
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
