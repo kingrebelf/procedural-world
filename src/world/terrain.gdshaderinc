@@ -6,6 +6,7 @@
 
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
+#include "res://src/world/noise2d.gdshaderinc"
 
 uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
 uniform vec3 soil_m : source_color = vec3(0.44, 0.36, 0.28);
@@ -39,10 +40,7 @@ TEX(litter_tex); NRM(litter_nrm);
 TEX(cliff_tex); NRM(cliff_nrm);
 uniform bool use_textures = false;
 #ifdef FAR_LAND
-// Where real chunks of terrain are drawn (one texel per 64 m chunk) over the distant
-// land's span: origin x/z and 1 / span. The distant land leaves those out.
-uniform sampler2D near_mask : filter_nearest, repeat_disable;
-uniform vec4 near_rect = vec4(0.0, 0.0, 1.0, 1.0);
+#include "res://src/world/forest.gdshaderinc"
 #endif
 uniform float snow_line = 40.0;
 // Human worlds dress sci-fi land as the wilds; there the blue vertex channel only says
@@ -91,20 +89,6 @@ varying vec4 canopy_v;
 varying float river_v;
 #endif
 
-float hash12(vec2 p) {
-	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
-	p3 += dot(p3, p3.yzx + 33.33);
-	return fract((p3.x + p3.y) * p3.z);
-}
-
-float vnoise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x),
-		mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
-}
-
 float hash13(vec3 p3) {
 	p3 = fract(p3 * 0.1031);
 	p3 += dot(p3, p3.zyx + 31.32);
@@ -126,17 +110,6 @@ float rock3(vec3 p) {
 	for (int i = 0; i < 4; i++) {
 		s += a * (1.0 - abs(vnoise3(p) * 2.0 - 1.0));
 		p = p * 2.1 + vec3(3.1, 1.7, 5.3);
-		a *= 0.5;
-	}
-	return s;
-}
-
-float fbm(vec2 p) {
-	float a = 0.5;
-	float s = 0.0;
-	for (int i = 0; i < 5; i++) {
-		s += a * vnoise(p);
-		p = p * 2.03 + vec2(17.1, 9.2);
 		a *= 0.5;
 	}
 	return s;
@@ -212,42 +185,10 @@ float layer(float amount, float lum, float mean, float noise) {
 	return smoothstep(0.35, 0.65, amount + (lum / max(mean, 0.001) - 1.0) * 0.25 * amount + (noise - 0.5) * 0.35);
 }
 
-#ifdef FAR_LAND
-// The nearest tree crown to p, on a jittered grid of 4.5 m cells of which a fraction `d`
-// hold a tree: x 1 inside a standing tree's crown, y the distance from its centre over
-// its radius, zw the offset to its centre (in cells); id a random number per tree.
-vec4 crown_at(vec2 p, float d, out float id) {
-	vec2 g = p / 4.5;
-	vec2 gi = floor(g);
-	float f1 = 9.0;
-	vec2 off = vec2(0.0);
-	float r = 1.0;
-	vec2 ci = gi;
-	for (int y = -1; y <= 1; y++) {
-		for (int x = -1; x <= 1; x++) {
-			vec2 c = gi + vec2(float(x), float(y));
-			float h = hash12(c);
-			vec2 o = c + 0.5 + (vec2(h, hash12(c + 17.3)) - 0.5) * 0.7 - g;
-			float dd = dot(o, o);
-			if (dd < f1) {
-				f1 = dd;
-				off = o;
-				r = h;
-				ci = c;
-			}
-		}
-	}
-	id = hash12(ci + 3.1);
-	float size = 0.36 + 0.22 * hash12(ci + 9.7);
-	float rad = sqrt(f1) / size;
-	return vec4(step(r, d) * (1.0 - smoothstep(0.85, 1.05, rad)), rad, off / size);
-}
-#endif
 
 void fragment() {
 #ifdef FAR_LAND
-	vec2 nm = (wpos.xz - near_rect.xy) * near_rect.zw;
-	if (texture(near_mask, nm).r > 0.5) {
+	if (near_drawn(wpos.xz)) {
 		discard;
 	}
 #endif
@@ -506,35 +447,41 @@ void fragment() {
 	}
 
 #ifdef FAR_LAND
-	// Forest seen from afar: one crown to a few metres, as many as the chunks grow
-	// trees there (in loose clumps), each lit as a dome and casting its shadow on the
-	// ground away from the sun. Side on, the trees behind close the gaps; far off the
-	// crowns blend into their mean.
+	// Forest seen from afar (forest.gdshaderinc). Out to TREE_BB_TO the trees stand as
+	// billboards (FarTrees) and only their shadows fall here; beyond, crowns are painted
+	// on the ground, lit as domes with their shadows away from the sun, and far off (or
+	// seen side on, where painted crowns read as puddles) the forest takes its mean colour.
 	float canopy = 0.0;
 	vec3 crown_n = vec3(0.0);
-	if (canopy_v.a > 0.004) {
+	vec2 fuv = forest_uv(p);
+	vec4 fdat = in_forest_rect(fuv) ? textureLod(forest_tex, fuv, 0.0) : canopy_v;
+	if (fdat.a > 0.004) {
 		vec3 vd = (CAMERA_POSITION_WORLD - wpos) / max(dist, 0.001);
 		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
-		float d = 1.0 - pow(1.0 - canopy_v.a, 1.0 + 2.5 * graze);
-		d = clamp(d + (fbm(p * 0.012 + 7.0) - 0.5) * 0.45 * canopy_v.a, 0.0, 1.0);
-		// Single crowns only where you look down on them: side on, crowns painted on the
-		// ground read as dark puddles, so there the forest is its mean colour.
+		float dr = tree_density(fdat.a, p);
+		// Side on, the trees behind close the gaps.
+		float dg = 1.0 - pow(1.0 - dr, 1.0 + 2.5 * graze);
 		float detail = (1.0 - smoothstep(600.0, 1800.0, dist)) * smoothstep(0.12, 0.35, 1.0 - graze);
-		float id;
-		vec4 cr = crown_at(p, d, id);
-		float id2;
-		vec4 cs = crown_at(p + sun_dir_g.xz / max(sun_dir_g.y, 0.25) * 5.0, d, id2);
+		float paint = smoothstep(TREE_BB_FROM, TREE_BB_TO, dist);
+		vec2 cell;
+		vec4 cr = crown_at(p, dg, cell);
+		float own = cr.x * (billboarded(cell, dist) ? 0.0 : 1.0);
+		vec2 cell2;
+		vec4 cs = crown_at(p + sun_dir_g.xz / max(sun_dir_g.y, 0.25) * 5.0, dr, cell2);
+		float bb_shadow = cs.x * (billboarded(cell2, dist) ? 1.0 : 0.0);
 		float lit = smoothstep(-0.05, 0.15, sun_dir_g.y);
 		// The ground between the trees, in their shadows (far off, on average).
-		col *= 1.0 - 0.5 * lit * mix(d * 0.6, cs.x * (1.0 - cr.x), detail);
-		canopy = mix(d * 0.85, cr.x, detail);
-		vec3 cc = pow(canopy_v.rgb, vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
+		float shade = bb_shadow + mix(dg * 0.6 * paint, (cs.x - bb_shadow) * (1.0 - own), detail);
+		col *= 1.0 - 0.5 * lit * clamp(shade, 0.0, 1.0);
+		canopy = mix(dg * 0.85 * paint, own, detail);
+		float id = hash12(cell + 3.1);
+		vec3 cc = pow(fdat.rgb, vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
 		// Darker at a crown's rim, where its leaves turn under.
 		cc *= mix(1.0, mix(1.0, 0.7, smoothstep(0.55, 1.0, cr.y)), detail);
 		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);
 		col = mix(col, cc, canopy);
 		snow *= 1.0 - canopy;
-		crown_n = -vec3(cr.z, 0.0, cr.w) * 2.2 * cr.x * detail;
+		crown_n = -vec3(cr.z, 0.0, cr.w) * 2.2 * own * detail;
 	}
 	// Rivers: still water reflecting the sky, on muddy banks.
 	float river = 1.0 - smoothstep(0.92, 1.08, river_v * 6.0);

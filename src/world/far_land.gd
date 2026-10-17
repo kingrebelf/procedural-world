@@ -11,10 +11,11 @@ extends MeshInstance3D
 ## a cell covers only a few pixels.
 const SPAN := 8192.0
 const FINE := 16.0
-const FINE_REACH := 1280.0
+const FINE_REACH := 1440.0
 const COARSE := 128.0
-## Rebuilt around you once you are this far from where it was last built.
-const REBUILD := 640.0
+## Rebuilt around you once you are this far from where it was last built (so the distant
+## trees, out to 900 m from you, stay inside the fine grid and its forest data).
+const REBUILD := 512.0
 ## Grid rows built per worker task, so the chunks streaming in round you never wait long.
 const STRIP := 16
 
@@ -30,11 +31,13 @@ var _rows: Array = []
 var _row := 0
 var _strip: Dictionary = {}
 var _arrays: Array = []
+var _forest: Array = []
 var _built_at := Vector2.ZERO
 var _mask_img: Image
 var _mask_tex: ImageTexture
 var _mask_sum := -1
 var _sync_t := 0.0
+var _trees: FarTrees
 
 func _ready() -> void:
 	ChunkNode.ensure_shared()
@@ -48,6 +51,9 @@ func _ready() -> void:
 	_mask_img = Image.create(m, m, false, Image.FORMAT_R8)
 	_mask_tex = ImageTexture.create_from_image(_mask_img)
 	_mat.set_shader_parameter("near_mask", _mask_tex)
+	_trees = FarTrees.new()
+	add_child(_trees)
+	_trees.mat.set_shader_parameter("near_mask", _mask_tex)
 	_sync_material()
 
 func _exit_tree() -> void:
@@ -142,6 +148,7 @@ func _build_strip(j0: int) -> void:
 
 func _finish() -> void:
 	_arrays = finish_arrays(_job, _rows)
+	_forest = forest_data(_job, _arrays)
 
 func _show() -> void:
 	if _arrays.is_empty():
@@ -154,7 +161,14 @@ func _show() -> void:
 	mesh = am
 	_arrays = []
 	var m := _mask_img.get_width()
-	_mat.set_shader_parameter("near_rect", Vector4(_built_at.x, _built_at.y, 1.0 / (m * ChunkGenerator.SIZE), 1.0 / (m * ChunkGenerator.SIZE)))
+	var forest: Array = _forest
+	_forest = []
+	for mt in [_mat, _trees.mat]:
+		mt.set_shader_parameter("near_rect", Vector4(_built_at.x, _built_at.y, 1.0 / (m * ChunkGenerator.SIZE), 1.0 / (m * ChunkGenerator.SIZE)))
+		if not forest.is_empty():
+			mt.set_shader_parameter("forest_tex", ImageTexture.create_from_image(forest[0]))
+			mt.set_shader_parameter("forest_hgt", ImageTexture.create_from_image(forest[1]))
+			mt.set_shader_parameter("forest_rect", forest[2])
 	_mask_sum = -1
 
 static func grid_n() -> int:
@@ -246,21 +260,24 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			var rh := field.region_hash_at(x, z)
 			var trees := 0.0
 			var tint := Color(0, 0, 0)
+			var conifers := 0.0
 			for e in 3:
 				if w[e] < 0.05:
 					continue
 				var key := (rh & 0xFFFFFFF) * 4 + e
 				if not regions.has(key):
 					var bp := Biome.params(rh, e)
-					regions[key] = [float(bp["tree_density"]), canopy_colour(bp)]
+					regions[key] = [float(bp["tree_density"]), canopy_colour(bp), conifer_share(bp)]
 				var dens: float = regions[key][0]
 				var t := minf(Eras.TREE_DENSITY[e] * (0.25 + forest * 1.6) * dens * lt, 64.0)
 				if tv >= 4:
 					t += 40.0 * smoothstep(1.3, 2.2, dens) * (1.0 if e != Eras.SCIFI else 0.3) * minf(1.0, lt)
 				trees += t * w[e]
 				tint += (regions[key][1] as Color) * t * w[e]
+				conifers += float(regions[key][2]) * t * w[e]
 			if trees > 0.01:
 				tint /= trees
+				conifers /= trees
 			# No trees in the river or on its edge.
 			trees *= smoothstep(1.2 / WorldField.RIVER_REACH, 2.5 / WorldField.RIVER_REACH, wet)
 			l2[v * 4 + 2] = int(clampf(1.0 - exp(-trees * 0.011), 0.0, 1.0) * 255.0)
@@ -268,6 +285,7 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			cc[v * 4] = int(clampf(tint.r, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 1] = int(clampf(tint.g, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 2] = int(clampf(tint.b, 0.0, 1.0) * 255.0)
+			cc[v * 4 + 3] = int(clampf(conifers, 0.0, 1.0) * 255.0)
 	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc}
 
 ## A river's water level near (x, z): just below the lowest ground round about, as
@@ -277,6 +295,47 @@ static func river_level(field: WorldField, x: float, z: float) -> float:
 	for o in [Vector2(40, 0), Vector2(-40, 0), Vector2(0, 40), Vector2(0, -40)]:
 		lo = minf(lo, field.shape(x + o.x, z + o.y).x)
 	return lo - 0.4
+
+## The share of a region's trees that are conifers (pines: spires, not round crowns).
+static func conifer_share(bp: Dictionary) -> float:
+	var pines := 0.0
+	var wt := 0.0
+	for f in bp["flora"]:
+		wt += float(f["w"])
+		if f["t"] == "pine":
+			pines += float(f["w"])
+	return pines / wt if wt > 0.0 else 0.0
+
+## The forest over the fine grid's square, for the distant trees and the ground under
+## them (forest.gdshaderinc): crown colour and density, and ground height and conifer
+## share, one texel per grid point; and the square's rect for the shaders.
+static func forest_data(job: Dictionary, arr: Array) -> Array:
+	var ax := axis()
+	var n := ax.size()
+	var k0 := (n - 1) / 2 - int(FINE_REACH / FINE)
+	var t := int(FINE_REACH / FINE) * 2 + 1
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var l2: PackedByteArray = arr[Mesh.ARRAY_CUSTOM2]
+	var cv: PackedByteArray = arr[Mesh.ARRAY_CUSTOM3]
+	var conif: PackedByteArray = job["conifers"]
+	var a := PackedByteArray()
+	a.resize(t * t * 4)
+	var b := PackedFloat32Array()
+	b.resize(t * t * 2)
+	for tj in t:
+		for ti in t:
+			var v := (k0 + tj) * n + k0 + ti
+			var o := tj * t + ti
+			a[o * 4] = cv[v * 4]
+			a[o * 4 + 1] = cv[v * 4 + 1]
+			a[o * 4 + 2] = cv[v * 4 + 2]
+			a[o * 4 + 3] = l2[v * 4 + 2]
+			b[o * 2] = verts[v].y
+			b[o * 2 + 1] = conif[v] / 255.0
+	var origin: Vector2 = (job["center"] as Vector2) + Vector2.ONE * ax[k0]
+	return [Image.create_from_data(t, t, false, Image.FORMAT_RGBA8, a),
+		Image.create_from_data(t, t, false, Image.FORMAT_RGF, b.to_byte_array()),
+		Vector4(origin.x, origin.y, 1.0 / FINE, 1.0 / t)]
 
 ## The colour a region's trees give the canopy seen from afar (sRGB), each species by
 ## how common it is there.
@@ -331,6 +390,8 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	norms.resize(n * n)
 	var cv := PackedByteArray()
 	cv.resize(n * n * 4)
+	var conif := PackedByteArray()
+	conif.resize(n * n)
 	for j in n:
 		for i in n:
 			var v := j * n + i
@@ -350,6 +411,7 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 			# water or on cliffs.
 			for b in 3:
 				cv[v * 4 + b] = cc[v * 4 + b]
+			conif[v] = cc[v * 4 + 3]
 			var dry := smoothstep(ChunkGenerator.WATER_LEVEL + 0.2, ChunkGenerator.WATER_LEVEL + 1.5, hs[v])
 			l2[v * 4 + 2] = int(float(l2[v * 4 + 2]) * dry * (1.0 - smoothstep(0.6, 0.9, Vector2(dx, dz).length())))
 	var idx := PackedInt32Array()
@@ -377,4 +439,5 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	arr[Mesh.ARRAY_CUSTOM1] = l1
 	arr[Mesh.ARRAY_CUSTOM2] = l2
 	arr[Mesh.ARRAY_CUSTOM3] = cv
+	job["conifers"] = conif
 	return arr
