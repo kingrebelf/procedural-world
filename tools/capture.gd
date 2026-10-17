@@ -8,6 +8,7 @@ var world: Node3D
 var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
+var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -68,18 +69,34 @@ func _find_border(g: ChunkGenerator) -> Vector2:
 			return p
 	return Vector2.ZERO
 
+## A beach on open water: dry land just above the lake with a wide fan of deep water in
+## front of it, so the shot looks out over the lake rather than at the far wall of a river
+## canyon or a narrow inlet. Sets `shore_out` to the way the water lies.
 func _find_shore(g: ChunkGenerator) -> Vector2:
 	for i in 6000:
 		var a := i * 0.37
 		var p := Vector2(cos(a), sin(a)) * (60.0 + i * 5.0)
-		if g.field.height(p.x, p.y) < Water.LEVEL - 4.0:
-			# Walk back toward the origin until we reach dry land a little above the water.
-			var dir := -p.normalized()
-			for k in 80:
-				var q := p + dir * (k * 3.0)
-				if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
+		if g.field.height(p.x, p.y) >= Water.LEVEL - 4.0 or g.field.river_t(p.x, p.y) < 3.0:
+			continue
+		# Walk back toward the origin until we reach dry land a little above the water.
+		var dir := -p.normalized()
+		for k in 80:
+			var q := p + dir * (k * 3.0)
+			if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
+				if _open_water(g, q, -dir):
+					shore_out = -dir
 					return q
+				break
 	return Vector2.ZERO
+
+func _open_water(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
+	var side := Vector2(-out.y, out.x)
+	for d in [20.0, 40.0, 70.0, 110.0, 160.0]:
+		for s in [-0.6, 0.0, 0.6]:
+			var w: Vector2 = q + out * d + side * (d * s)
+			if g.field.height(w.x, w.y) > Water.LEVEL - 1.0:
+				return false
+	return true
 
 ## A spot on a river bank, with a point mid-river to look at (Vector4: at.xy, look.zw).
 func _find_river(g: ChunkGenerator) -> Vector4:
@@ -160,8 +177,10 @@ func _run() -> void:
 			await _shot("01_medieval_town", tc + Vector2.from_angle(ways[0]) * 100.0, tc, 0.40, 18.0, float(town["target_h"]) + 4.0)
 		else:
 			await _shot("01_medieval_town", c + Vector2(44, 30), c, 0.40)
+	# Human worlds have no wildwood (the fantasy era is alien-only), so there's nothing to frame.
 	var f := _find_era(g, Eras.FANTASY, 0.995)
-	await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
+	if f != Vector2.ZERO:
+		await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
 	if not sci.is_empty():
 		var c: Vector2 = sci["center"]
 		var big := _find_settlement(g, Eras.SCIFI, 1) if g.outposts else {}
@@ -246,7 +265,7 @@ func _run() -> void:
 	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
-		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)
+		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
@@ -491,7 +510,7 @@ func _starship() -> void:
 
 ## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
-	var out := shore.normalized()
+	var out := shore_out
 	var deep := shore
 	for k in 60:
 		deep = shore + out * (k * 3.0)

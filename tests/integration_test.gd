@@ -343,6 +343,7 @@ func _run() -> void:
 	check(is_equal_approx(fmod(absf(fwp.x), 2.0), 1.0) and is_equal_approx(fmod(absf(fwp.z), 2.0), 1.0), "foundation sits on the 2 m grid (%s)" % fwp)
 	var wb := pc.add_built("workbench", placed["p"] + Vector3(3, 0, 0), 0.0, {"by": "you", "day": 0.0})
 	check(BuildCatalog.stations_near(streamer, fwp).has("workbench"), "workbench counts as a nearby station")
+	_make_room(game, 3)
 	var wall := pc.add_built("wall_stone", placed["p"] + Vector3(0, 0, 1), 0.0, {"by": "you", "day": 0.0})
 	player.damage_object(pc, wall, 1000.0, 1.0)
 	check(wall["st"].get("gone", false) and game.inventory.count("wall_stone") == 1, "taking a wall down returns it")
@@ -422,22 +423,23 @@ func _run() -> void:
 	player.select(vslot)
 	check(player.deploy_vehicle() and game.vehicles.size() == 1 and game.inventory.count("speeder") == 0, "a speeder sets down from the pack")
 	await _frames(5)
-	var sp: Vehicle = world.vehicles.nodes.get(int(game.vehicles[0]["id"]))
+	var sp: Vehicle = world.vehicles.nodes.get(int(game.vehicles[0]["id"])) if not game.vehicles.is_empty() else null
 	check(sp != null, "the speeder is in the world")
-	player.mount(sp)
-	var v0: Vector3 = sp.global_position
-	Input.action_press("move_forward")
-	for i in 120:
-		await physics_frame
-	Input.action_release("move_forward")
-	var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
-	check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
-	check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
-	check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
-	check(player.get_state()["riding"] == int(sp.rec["id"]), "riding is saved")
-	player.dismount()
-	check(player.vehicle == null and sp.rider == null, "getting off")
-	check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
+	if sp != null:
+		player.mount(sp)
+		var v0: Vector3 = sp.global_position
+		Input.action_press("move_forward")
+		for i in 120:
+			await physics_frame
+		Input.action_release("move_forward")
+		var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
+		check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
+		check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
+		check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
+		check(player.get_state()["riding"] == int(sp.rec["id"]), "riding is saved")
+		player.dismount()
+		check(player.vehicle == null and sp.rider == null, "getting off")
+		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
 	# A starship climbs where you look, won't let you step out in mid-air, and lands.
 	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
 	for i in 30:
@@ -794,6 +796,8 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	game.flush_chunks()
 	var saved = game.store.load_chunk(int(cn.data["cx"]), int(cn.data["cz"]))
 	check(saved is Dictionary and saved.get("corpses", {}).has(world.corpses._shown[key]["id"]), "the carcass is saved with its chunk")
+	# What the hunt and the guard's body hand over, and the speeder after, need room.
+	_make_room(game, 14)
 	var bone0: int = game.inventory.count("bone")
 	world.corpses.butcher(key, ItemDB.make("skinning_knife", 1, 1.0, {}))
 	check(game.inventory.count("bone") > bone0, "butchering gives bone")
@@ -839,6 +843,13 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	check(Corpses.still_worn(world.corpses.record(body["key"])).is_empty(), "taken armour comes off the body")
 	if menus._mode != "":
 		menus.close()
+
+## Clears the last slots of the pack (whatever the test has looted lately) until `n` are free.
+func _make_room(game, n: int) -> void:
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= n:
+			break
+		game.inventory.set_slot(i, null)
 
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.

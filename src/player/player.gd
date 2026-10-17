@@ -1612,7 +1612,7 @@ static func _focus_key(f: Dictionary) -> String:
 ## Sets the held vehicle down a few steps ahead.
 func deploy_vehicle() -> bool:
 	var it = held_item()
-	if it == null or vehicles == null:
+	if it == null or vehicles == null or not Vehicle.KINDS.has(it["type"]):
 		return false
 	var fwd := -global_transform.basis.z
 	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * (2.0 + float(Vehicle.KINDS[it["type"]]["length"]) * 0.6)
