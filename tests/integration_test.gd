@@ -1064,6 +1064,9 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player._cooldown = 0.0
 	player.use_held()
 	check(player.traps.count() == 1 and game.inventory.count("bear_trap") == 1, "a bear trap is set at your feet")
+	# Well away from the trap at your feet (it may have come for you), so only the trap
+	# set under it can catch it.
+	kc.global_position = player.global_position + Vector3(5, 0, 0)
 	var hp_t := kc.hp
 	player.traps.add("bear_trap", kc.global_position)
 	await create_timer(0.8).timeout
