@@ -5,6 +5,8 @@ shader_type spatial;
 // neighbouring trees never move in lockstep.
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
+#include "res://src/world/plant_look.gdshaderinc"
+
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
 global uniform float wind_time;
@@ -20,12 +22,19 @@ uniform float sway = 1.0;
 // so the crown normal is passed through unflipped instead.
 uniform bool crown_normals = false;
 uniform float alpha_cut = 0.45;
+// Each plant its own shade, dry sprays and thin side (plant_look.gdshaderinc). Off on the
+// merged far mesh, which has them baked in.
+uniform bool individual = false;
 
 varying vec3 inst_col;
 varying vec3 crown_n;
+varying vec4 look;
+varying vec3 plant_p;
 
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	look = individual ? plant_look(origin) : vec4(0.0);
+	plant_p = VERTEX;
 	float h = max(VERTEX.y, 0.0);
 	float phase = dot(origin.xz, vec2(0.13, 0.17));
 	float t = wind_time; // the wind's own clock, so a change in wind never makes leaves jump
@@ -59,7 +68,13 @@ void fragment() {
 	if (!is_core && tex.a < alpha_cut) {
 		discard;
 	}
+	if (individual && plant_gap(plant_p, look, COLOR.a)) {
+		discard;
+	}
 	ALBEDO = tex.rgb * albedo * inst_col;
+	if (individual) {
+		ALBEDO = plant_leaf(ALBEDO, look, COLOR.a);
+	}
 	// Bend normals toward the sky: cards facing the ground otherwise render near black.
 	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
 	// The core's underside would otherwise go black in its own shadow.

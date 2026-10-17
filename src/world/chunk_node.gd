@@ -243,6 +243,14 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		var built := k == "built"
 		var sy := s * (lerpf(0.88, 1.15, u1) if organic else 1.0)
 		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, sy, s))
+		if real:
+			# No two trees alike: a crown a little broader one way than the other, and a
+			# lean (most trees stand nearly straight, a few lean well over; spires less).
+			var u3 := WHash.to_unit(WHash.h32(h ^ 0x5bd1e995))
+			var u4 := WHash.to_unit(WHash.h32(h ^ 0x27d4eb2f))
+			b = Basis(Vector3.UP, o["r"]).scaled(Vector3(s * lerpf(0.9, 1.12, u3), sy, s * lerpf(0.9, 1.12, u4)))
+			var tilt := u3 * u3 * u3 * deg_to_rad(3.0 if o["t"] == "pine" else 7.0)
+			b = Basis(Vector3(cos(u4 * TAU), 0.0, sin(u4 * TAU)), tilt) * b
 		var p: Vector3 = o["p"]
 		# Sink slightly so bases never float on slopes.
 		if not built and not EasterEggs.floats(o["t"]):
@@ -263,7 +271,8 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			tint.a = w[Eras.MEDIEVAL] * lerpf(0.2, 0.9, u2) * ChunkGenerator.cover_at(chunk, p.x, p.z)
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a]
 		if far and real:
-			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), int(o.get("v", 0))), Transform3D(b, p), tint)
+			var look := RealTree.plant_look(float(chunk["cx"]) * SIZE + p.x, float(chunk["cz"]) * SIZE + p.z)
+			_add_far(far_bufs, RealTree.far_parts(o["t"], int(o["sp"]), int(o.get("v", 0))), Transform3D(b, p), tint, look)
 		var buf: PackedFloat32Array = by_key[key]
 		buf.append_array(row)
 		by_key[key] = buf
@@ -289,8 +298,10 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key["~far"] = surfs
 	return by_key
 
-## Appends one tree's far parts, moved by `xf` and tinted, to the chunk's far buffers.
-static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint: Color) -> void:
+## Appends one tree's far parts, moved by `xf` and tinted, to the chunk's far buffers,
+## with its own look (RealTree.plant_look) baked into the leaves: the shade and dry sprays
+## it has up close, and the same thin side.
+static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint: Color, plant := Vector4.ZERO) -> void:
 	if parts.is_empty():
 		return
 	var look: Array = parts["look"]
@@ -312,13 +323,31 @@ static func _add_far(bufs: Dictionary, parts: Dictionary, xf: Transform3D, tint:
 		var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
 		var pc: PackedColorArray = a[Mesh.ARRAY_COLOR]
 		var nb := xf.basis.orthonormalized()
-		for j in pv.size():
-			vs.append(xf * pv[j])
-			ns.append(nb * pn[j])
-			cs.append(pc[j] * tint)
-		uvs.append_array(a[Mesh.ARRAY_TEX_UV])
-		for q in (a[Mesh.ARRAY_INDEX] as PackedInt32Array):
-			ix.append(base + q)
+		var pu: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
+		var pix: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		if part == "leaf":
+			# Leaves are cards: four vertices and six indices each, in order.
+			for q in pv.size() / 4:
+				var v0 := q * 4
+				var card := pc[v0].a
+				if RealTree.plant_gap((pv[v0] + pv[v0 + 1] + pv[v0 + 2] + pv[v0 + 3]) * 0.25, plant, card):
+					continue
+				var vb := vs.size()
+				for j in range(v0, v0 + 4):
+					vs.append(xf * pv[j])
+					ns.append(nb * pn[j])
+					cs.append(RealTree.plant_leaf(pc[j], plant) * tint)
+					uvs.append(pu[j])
+				for k in range(q * 6, q * 6 + 6):
+					ix.append(vb + pix[k] - v0)
+		else:
+			for j in pv.size():
+				vs.append(xf * pv[j])
+				ns.append(nb * pn[j])
+				cs.append(pc[j] * tint)
+			uvs.append_array(pu)
+			for q in pix:
+				ix.append(base + q)
 		# Packed arrays inside an Array are copies: store them back.
 		bufs[sk] = [vs, ns, uvs, cs, ix]
 
@@ -845,7 +874,7 @@ func _add_far_mesh(surfs: Dictionary) -> void:
 	for sk in surfs:
 		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surfs[sk])
 		var kind := String(sk).get_slice(":", 1)
-		m.surface_set_material(m.get_surface_count() - 1, RealTree.bark_material(kind) if String(sk).begins_with("bark") else RealTree.leaf_material(kind))
+		m.surface_set_material(m.get_surface_count() - 1, RealTree.bark_material(kind, true) if String(sk).begins_with("bark") else RealTree.leaf_material(kind, true))
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
 	mi.name = "TreesFar"
