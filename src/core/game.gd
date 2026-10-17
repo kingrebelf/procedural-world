@@ -18,6 +18,8 @@ signal saving ## Emitted before everything is written, so other systems can save
 signal discovered(title: String, sub: String, color: Color) ## a wonder found or conquered
 
 const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
+var day_seconds := DAY_SECONDS ## a server may set its own day length
+var time_lock := -1.0 ## a server's always-day (0.5) or always-night (0.0); -1 = the clock runs
 const AUTOSAVE_INTERVAL := 10.0
 const DIRTY_FLUSH_DELAY := 0.75
 
@@ -95,6 +97,11 @@ func load_world(id: String) -> bool:
 	_begin(false)
 	return true
 
+## Plays on a server: `s` (a RemoteStore) already holds the world's meta and your save.
+func join_remote(s: WorldStore) -> void:
+	store = s
+	_begin(false)
+
 func _begin(fresh: bool) -> void:
 	home_seed = store.meta["seed"]
 	seed = home_seed
@@ -169,6 +176,8 @@ func close_world() -> void:
 	map.close()
 	store = null
 	player = null
+	day_seconds = DAY_SECONDS
+	time_lock = -1.0
 	Planets.apply(Planets.get_planet(0, 0)) # back to an ordinary world for the title screen
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
@@ -344,7 +353,10 @@ func _process(delta: float) -> void:
 	if store == null:
 		return
 	if not get_tree().paused:
-		day += delta / DAY_SECONDS
+		if time_lock >= 0.0:
+			day = floorf(day) + time_lock
+		else:
+			day += delta / day_seconds
 		_tick_effects(delta)
 		map.process(delta, player)
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta

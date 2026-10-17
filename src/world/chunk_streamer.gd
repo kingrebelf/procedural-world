@@ -125,7 +125,15 @@ func _run_job(job: Dictionary) -> void:
 	var k: Vector2i = job["key"]
 	var res := {"key": k, "mode": job["mode"], "lod": job["lod"]}
 	var chunk: Dictionary
-	if job["mode"] == "load":
+	if job.has("given"):
+		chunk = job["given"]
+		res["data"] = chunk
+		res["replace"] = true
+		res["objects"] = ChunkNode.build_object_buffers(chunk)
+		res["river"] = RiverMesh.build_river_arrays(chunk)
+		for mk in res["objects"]:
+			ObjectLibrary.get_mesh(mk)
+	elif job["mode"] == "load":
 		var gen := ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers())
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
 		res["data"] = chunk
@@ -170,6 +178,10 @@ func _collect() -> void:
 			WorkerThreadPool.wait_for_task_completion(_jobs[k])
 			_jobs.erase(k)
 		var d := _dist(k)
+		if res.get("replace", false):
+			if chunks.has(k):
+				chunks[k].queue_free()
+				chunks.erase(k)
 		if res["mode"] == "load":
 			if d > view_radius + 1 or chunks.has(k):
 				continue
@@ -197,12 +209,38 @@ func _collect() -> void:
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
+		if _replacing.has(k) and not _jobs.has(k):
+			if chunks.has(k):
+				_submit_replace(k)
+			else:
+				_replacing.erase(k)
+			continue
 		# The center may have moved while this job ran; re-evaluate LOD/grass.
 		if chunks.has(k):
 			var node: ChunkNode = chunks[k]
 			node.set_near(d <= near_radius)
 			if node.lod != lod_for(d) and not _jobs.has(k):
 				_submit(k, "lod")
+
+## Swaps in a newer copy of a chunk (another player's edit, from the server): the
+## loaded chunk is rebuilt from it in the background and replaced when ready.
+func replace_chunk(data: Dictionary) -> void:
+	var k := Vector2i(int(data["cx"]), int(data["cz"]))
+	if not chunks.has(k) and not _jobs.has(k):
+		return # not loaded: it loads the new copy when it next streams in
+	_replacing[k] = data
+	if not _jobs.has(k):
+		_submit_replace(k)
+	# else: swapped in when the running job finishes (_collect)
+
+var _replacing: Dictionary = {} ## Vector2i -> newer chunk data waiting to be swapped in
+
+func _submit_replace(k: Vector2i) -> void:
+	var d := _dist(k)
+	var job := {"key": k, "mode": "load", "lod": lod_for(d), "grass": d <= grass_radius, "density": grass_density,
+		"store": store if store else Game.store, "seed": seed if store else Game.seed, "given": _replacing[k]}
+	_replacing.erase(k)
+	_jobs[k] = WorkerThreadPool.add_task(_run_job.bind(job), false, "chunk %s" % k)
 
 ## Rebuilds a chunk's terrain mesh and collision immediately (after digging).
 func rebuild_now(k: Vector2i) -> void:

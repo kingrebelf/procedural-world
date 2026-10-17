@@ -9,7 +9,7 @@ class_name Doors
 ## multiplayer lands, the owner's alliance (Net.may_access). Anyone on the door's access
 ## list also gets in. Anyone else has to pick the lock or break the door down.
 
-## Who you are, until multiplayer's Net.my_id() lands ("solo" offline there too).
+## Who you are offline (Net.my_id() says the same when not on a server).
 const SOLO := "solo"
 ## How far a hinged door swings open, and how far a bulkhead leaf slides aside.
 const SWING_DEG := 100.0
@@ -19,16 +19,22 @@ const SPEED := 2.2
 ## How close to a doorway's middle you have to aim to hang a door in it.
 const HANG_REACH := 1.8
 
+static func _net() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	return tree.root.get_node_or_null("Net") if tree else null
+
 static func my_id() -> String:
-	return SOLO
+	var net := _net()
+	return String(net.my_id()) if net else SOLO
 
 static func my_name() -> String:
-	return "You"
+	var net := _net()
+	return String(net.player_name(net.my_id())) if net and net.is_client() else "You"
 
-## True when `owner` lets you in: no owner, you, or (multiplayer) your alliance. The one
-## line to swap for Net.may_access(owner).
+## True when `owner` lets you in: no owner, you, or (multiplayer) your alliance.
 static func may_access(owner: String) -> bool:
-	return owner == "" or owner == my_id()
+	var net := _net()
+	return bool(net.may_access(owner)) if net else owner == "" or owner == SOLO
 
 static func is_door(t: String) -> bool:
 	return BuildCatalog.is_built(t) and BuildCatalog.def(BuildCatalog.id_of(t)).has("door")

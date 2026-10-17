@@ -1,5 +1,6 @@
 extends Control
-## Title screen: continue, new world (name + seed), load or delete worlds, settings, quit.
+## Title screen: continue, new world (name + seed), load or delete worlds, join a server,
+## settings, quit.
 
 var _content: Control
 var _bg_t := 0.0
@@ -9,6 +10,8 @@ var _cover := 1.0
 var _reveal := false
 
 func _ready() -> void:
+	if Net.wants_server():
+		return # the dedicated server replaces this scene (Net)
 	theme = UITheme.get_theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -89,11 +92,21 @@ func _home() -> void:
 	v.add_child(UITheme.big_button("New World", _new_world))
 	if worlds.size() > 0:
 		v.add_child(UITheme.big_button("Load World", _load_world))
+	v.add_child(UITheme.big_button("Join Server", func():
+		var j := JoinServerMenu.new()
+		j.closed.connect(_home)
+		_swap(j)))
 	v.add_child(UITheme.big_button("Settings", func():
 		var m := SettingsMenu.new()
 		m.closed.connect(_home)
 		_swap(m)))
 	v.add_child(UITheme.big_button("Quit", func(): get_tree().quit()))
+	if Net.last_reason != "":
+		var why := UITheme.label("Left the server: %s" % Net.last_reason, 15, Color(0.95, 0.7, 0.5))
+		why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(why)
+		Net.last_reason = ""
 	var ver := UITheme.label("v%s  ·  MIT licensed  ·  Godot %s" % [ProjectSettings.get_setting("application/config/version"), Engine.get_version_info()["string"]], 13, UITheme.DIM)
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(ver)

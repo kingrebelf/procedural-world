@@ -1,6 +1,7 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...]
+## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
 
@@ -9,6 +10,12 @@ var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
 var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
+## --hud=none hides the 2D layer, --hud=under keeps only the underwater overlay of it and
+## --hud=nounder keeps all but that overlay: to tell whether an artefact is in the 3D image.
+var hud_mode := ""
+## --env=property=value sets a property of the world's Environment for this run, for A/B
+## looks (tonemapper, exposure, contrast) without touching the game.
+var env_sets: Array = []
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -18,10 +25,41 @@ func _ready() -> void:
 			settle_frames = a.substr(9).to_int()
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
+		if a.begins_with("--hud="):
+			hud_mode = a.substr(6)
+		if a.begins_with("--env=") and a.count("=") == 2:
+			env_sets.append(a.substr(6).split("="))
+		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
+		# which effect an artefact comes from.
+		if a.begins_with("--set=") and a.count("=") == 2:
+			var kv := a.substr(6).split("=")
+			Settings.set_value(kv[0], str_to_var(kv[1]) if str_to_var(kv[1]) != null else kv[1], false)
+			print("setting ", kv[0], " = ", Settings.get_value(kv[0]))
+	Settings.apply()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	# Nothing may kill the photographer (castle hounds did, mid-tour).
 	Game.cheats["god"] = true
 	_run.call_deferred()
+
+func _apply_hud_mode() -> void:
+	var hud: HUD = world.hud if world else null
+	if hud_mode == "" or hud == null:
+		return
+	var layer := hud.get_parent() as CanvasLayer
+	if hud_mode == "none":
+		layer.visible = false
+		return
+	# Hidden children move under one hidden holder: the HUD shows and hides them every
+	# frame, which can't override a hidden parent.
+	var hold := Control.new()
+	hold.visible = false
+	layer.add_child(hold)
+	for c in layer.get_children() + hud.get_children():
+		if c == hold or c == hud:
+			continue
+		if (c == hud._under) == (hud_mode == "nounder"):
+			c.reparent(hold, false)
+	print("hud mode ", hud_mode)
 
 func _wait(n: int) -> void:
 	for i in n:
@@ -83,11 +121,21 @@ func _find_shore(g: ChunkGenerator) -> Vector2:
 		for k in 80:
 			var q := p + dir * (k * 3.0)
 			if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
-				if _open_water(g, q, -dir):
+				if _open_water(g, q, -dir) and _gentle_beach(g, q, -dir):
 					shore_out = -dir
 					return q
 				break
 	return Vector2.ZERO
+
+## Low land behind and beside the spot (a beach, not the foot of a sea cliff that would
+## fill one side of the frame).
+func _gentle_beach(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
+	var side := Vector2(-out.y, out.x)
+	for o in [side * 12.0, side * -12.0, side * 25.0, side * -25.0, -out * 15.0, -out * 30.0 + side * 15.0, -out * 30.0 - side * 15.0]:
+		var w: Vector2 = q + o
+		if g.field.height(w.x, w.y) > Water.LEVEL + 5.0:
+			return false
+	return true
 
 func _open_water(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
 	var side := Vector2(-out.y, out.x)
@@ -157,6 +205,12 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 
 func _run() -> void:
 	await _wait(5)
+	_apply_hud_mode()
+	for kv in env_sets:
+		var env: Environment = world.atmosphere.env
+		var v = str_to_var(kv[1])
+		env.set(kv[0], v if v != null else kv[1])
+		print("env ", kv[0], " = ", env.get(kv[0]))
 	var g := ChunkGenerator.new(Game.seed)
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
@@ -190,7 +244,7 @@ func _run() -> void:
 			await _shot("03_scifi_outpost", bc + Vector2.from_angle(a) * 62.0, bc, 0.55, 14.0)
 		else:
 			await _shot("03_scifi_outpost", c + Vector2(-42, 38), c, 0.55, 2.5)
-	if g.outposts and (only.is_empty() or only.has("11")):
+	if g.outposts and (only.is_empty() or only.has("37")):
 		# The nearest stronghold, from outside its gate.
 		var best := {}
 		for r in 8:
@@ -201,7 +255,7 @@ func _run() -> void:
 		if not best.is_empty():
 			var fc: Vector2 = best["center"]
 			var out := Vector2(0, 46).rotated(-float(best["yaw"]))
-			await _shot("11_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
+			await _shot("37_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
 	if g.outposts and (only.is_empty() or only.has("16")):
 		# The nearest tall viaduct (deck well above the valley under it), from the side.
 		var best_d := INF
@@ -247,7 +301,7 @@ func _run() -> void:
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
-	if only.is_empty() or only.has("35") or only.has("36") or only.has("37") or only.has("38"):
+	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
 		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
@@ -502,8 +556,8 @@ func _wonder_shots() -> void:
 		world.menus.close()
 		await _wait(5)
 
-## The nearest wonder of each kind, close up by day: 35 throne, 36 worldroot,
-## 37 dreadnought, 38 gate.
+## The nearest wonder of each kind, close up by day: 45 throne, 46 worldroot,
+## 47 dreadnought, 48 gate.
 func _wonder_types() -> void:
 	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
 	var found := {}
@@ -533,8 +587,67 @@ func _wonder_types() -> void:
 				yaw = o["r"]
 		var front := Vector2(0, 1).rotated(-yaw)
 		var h := ChunkGenerator.height_at(ch, w["lx"], w["lz"])
+		var name := "%d_%s" % [45 + i, t]
+		if not only.is_empty() and not only.has(name.substr(0, 2)):
+			continue
 		print("wonder ", t, " at ", wc)
-		await _shot("%d_%s" % [35 + i, t], wc + front * 24.0 + front.orthogonal() * 8.0, wc, 0.4, 3.0, h + 6.0)
+		var cam := await _wonder_view(wc, front, h + 6.0)
+		var at := Vector3(wc.x, h, wc.y)
+		_shoo_creatures(at, 70.0)
+		await _shot(name, cam, wc, 0.4, 3.0, h + 6.0, func():
+			_shoo_creatures(at, 70.0)
+			await _wait(3))
+
+## Where to stand to see a wonder whole: out in front at a slight angle, not inside its
+## rocks or a hill (the throne shot stood in the stone king's knees), with nothing solid
+## between the eye and the middle of the wonder. Tries wider and further spots in turn.
+func _wonder_view(wc: Vector2, front: Vector2, look_y: float) -> Vector2:
+	var p: Player = world.player
+	var streamer: ChunkStreamer = world.streamer
+	p.set_physics_process(false)
+	p.global_position = Vector3(wc.x, look_y + 20.0, wc.y)
+	await _wait_loaded(p, streamer)
+	await _wait(5) # colliders of the new chunks
+	var space := p.get_world_3d().direct_space_state
+	var target := Vector3(wc.x, look_y, wc.y)
+	for d in [30.0, 38.0, 46.0, 56.0]:
+		for a in [0.3, -0.3, 0.6, -0.6, 0.0, 0.9, -0.9, 1.25, -1.25]:
+			var q: Vector2 = wc + front.rotated(a) * d
+			var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(q.x, 0, q.y)))
+			if c == null:
+				continue
+			var eye := Vector3(q.x, ChunkGenerator.height_at(c.data, q.x - c.key.x * 64.0, q.y - c.key.y * 64.0) + 3.0, q.y)
+			var ball := PhysicsShapeQueryParameters3D.new()
+			ball.shape = SphereShape3D.new()
+			(ball.shape as SphereShape3D).radius = 1.2
+			ball.transform = Transform3D(Basis(), eye)
+			ball.exclude = [p.get_rid()]
+			if not space.intersect_shape(ball, 1).is_empty():
+				continue
+			# Open sky overhead: a sphere wholly inside a big rock touches none of its faces.
+			var up := PhysicsRayQueryParameters3D.create(eye + Vector3(0, 60, 0), eye)
+			up.exclude = [p.get_rid()]
+			if not space.intersect_ray(up).is_empty():
+				continue
+			var ray := PhysicsRayQueryParameters3D.create(eye, target)
+			ray.exclude = [p.get_rid()]
+			var hit := space.intersect_ray(ray)
+			# Seeing the wonder itself is fine: it is what the ray runs into near the middle.
+			if hit.is_empty() or (hit["position"] as Vector3).distance_to(target) < 14.0:
+				print("wonder view at ", d, " m, ", rad_to_deg(a), " deg")
+				return q
+	print("wonder view: no clear spot, standing in front")
+	return wc + front * 30.0
+
+## Guards and the boss would run at the camera and fill the photo with their name tags:
+## the photo is of the place, so they go.
+func _shoo_creatures(at: Vector3, r: float) -> void:
+	for k in world.fauna._herds:
+		var herd: Array = world.fauna._herds[k]
+		for cr in herd.duplicate():
+			if is_instance_valid(cr) and cr.global_position.distance_to(at) < r:
+				herd.erase(cr)
+				cr.queue_free()
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:

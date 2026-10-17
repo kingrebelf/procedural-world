@@ -36,14 +36,40 @@ func _process(delta: float) -> void:
 	# Tags show within TAG_RANGE, or far out for the one you are looking at through
 	# binoculars.
 	var spotted: Creature = player.spotted if player.get("spotted") != null else null
+	var cam := get_viewport().get_camera_3d()
+	var eye: Vector3 = cam.global_position if cam else pp + Vector3(0, 1.6, 0)
 	for k in _herds:
 		for c in _herds[k]:
 			if is_instance_valid(c):
 				c.step(delta, g, pp)
 				var near: bool = c._body != null and (c.global_position.distance_to(pp) < TAG_RANGE or c == spotted)
+				# Tags draw over everything (so grass doesn't hide them), so they only show
+				# for animals you can actually see: not through a wall or a hill.
+				if near and c != spotted:
+					near = _in_sight(c, eye, delta)
 				c.update_tag(near, lv)
 
+var _sight := {} ## creature instance id -> [seconds until checked again, could see it]
+
+func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
+	var id := c.get_instance_id()
+	var e: Array = _sight.get(id, [0.0, false])
+	e[0] -= delta
+	if e[0] <= 0.0:
+		e[0] = randf_range(0.2, 0.3)
+		var to: Vector3 = c._tag.global_position if c._tag else c.global_position + Vector3(0, 1.0, 0)
+		var q := PhysicsRayQueryParameters3D.create(eye, to)
+		q.collision_mask = 0xFFFFFFFF & ~2 # other animals don't block the view
+		if player is CollisionObject3D:
+			q.exclude = [(player as CollisionObject3D).get_rid()]
+		e[1] = get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+	_sight[id] = e
+	return e[1]
+
 func _refresh() -> void:
+	for id in _sight.keys():
+		if not is_instance_id_valid(id):
+			_sight.erase(id)
 	var pc := ChunkStreamer.chunk_of(player.global_position)
 	for k in _herds.keys():
 		if absi(k.x - pc.x) > RADIUS + 1 or absi(k.y - pc.y) > RADIUS + 1:
