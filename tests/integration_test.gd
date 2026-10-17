@@ -47,6 +47,9 @@ func _run() -> void:
 	check(game.map.revealed(ppos.x + 600.0, ppos.z) == 0.0, "but not far away")
 	check(not game.map.textures(WorldMap.page_of_chunk(here_key)).is_empty(), "the map page under you is painted")
 	check(world.hud._minimap != null and world.hud._minimap.player == player, "the HUD has a minimap")
+	await process_frame
+	var mc: Vector2 = world.hud._minimap._canvas.center
+	check(mc.distance_to(Vector2(ppos.x, ppos.z)) < 2.0, "the minimap follows you (%s vs %s)" % [mc, Vector2(ppos.x, ppos.z)])
 	await _map_unit_checks()
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
