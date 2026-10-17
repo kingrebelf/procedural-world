@@ -11,7 +11,34 @@ const SHEET := "res://assets/textures/fx/fire_flipbook.png"
 const FOOT := {"fire": 0.12, "jet": 0.02}
 const FPS := 12.0
 
+## Where kit props burn, in the prop's own space: model -> [[foot of the flame, height]].
+## Wall torches burn in their iron cups; candles at their wicks.
+const PROP_FLAMES := {
+	"props/Torch_Metal": [[Vector3(0, 0.34, 0.27), 0.42]],
+	"props/Candle_1": [[Vector3(0, 0.128, 0), 0.07]],
+	"props/CandleStick_Triple": [[Vector3(0, 0.457, 0), 0.07], [Vector3(-0.17, 0.335, 0), 0.07], [Vector3(0.18, 0.335, 0), 0.07]],
+	"props/CandleStick_Stand": [[Vector3(-0.31, 1.3, 0), 0.07], [Vector3(0.31, 1.297, 0), 0.07], [Vector3(-0.21, 1.297, 0.21), 0.07],
+		[Vector3(0.22, 1.296, -0.21), 0.07], [Vector3(0, 1.272, 0), 0.07]],
+	"props/Chandelier": [[Vector3(0.41, -0.912, -0.41), 0.07], [Vector3(0.41, -0.973, 0.41), 0.07], [Vector3(-0.58, -0.912, 0), 0.07],
+		[Vector3(0, -0.947, -0.57), 0.07], [Vector3(0.58, -0.912, 0), 0.07], [Vector3(-0.41, -0.912, 0.41), 0.07],
+		[Vector3(0, -0.947, 0.58), 0.07], [Vector3(-0.41, -0.973, -0.41), 0.07]],
+}
+
 static var _mats: Dictionary = {}
+
+## The flames of the burning props among placed models ([model, yaw degrees, position,
+## scale], as rooms and build pieces list them): [[foot, height]] in the same space.
+static func prop_flames(models: Array) -> Array:
+	var out: Array = []
+	for m in models:
+		var at: Array = PROP_FLAMES.get(m[0], [])
+		if at.is_empty():
+			continue
+		var s: float = float(m[3]) if m.size() > 3 and m[3] is float else 1.0
+		var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(m[1]))).scaled(Vector3.ONE * s), m[2])
+		for f in at:
+			out.append([xf * (f[0] as Vector3), float(f[1]) * s])
+	return out
 
 ## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
 static func material(sheet := "fire") -> ShaderMaterial:

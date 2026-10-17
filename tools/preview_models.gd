@@ -2,7 +2,8 @@ extends SceneTree
 ## Renders kit models side by side on a grass plane, for judging how they look in-game.
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_models.gd -- \
 ##     --out=/abs/path.png nature/CommonTree_1 nature/Pine_1 mesh:oak#1234#0 ...
-## fire:SIZE is a flame with sparks and smoke; swirl:SIZE:Y:Z a portal's swirl at height Y, Z ahead;
+## fire:SIZE is a flame with sparks and smoke; fires:TYPE the flames of a room (with --at0
+## and "mesh:TYPE~in"); swirl:SIZE:Y:Z a portal's swirl at height Y, Z ahead;
 ## --frames=N waits N frames before saving (let sparks and smoke build up).
 
 func _initialize() -> void:
@@ -76,6 +77,15 @@ func _run() -> void:
 		elif String(n).begins_with("fire:"):
 			node = FireFx.flame(float(String(n).get_slice(":", 1)))
 			node.add_child(FireFx.embers(float(String(n).get_slice(":", 1))))
+		elif String(n).begins_with("fires:"):
+			node = Node3D.new()
+			for f in Interiors.fires(String(n).substr(6)):
+				var fl := FireFx.flame(f[1])
+				# Fires are placed in the sunk body's space; the room mesh here is not sunk.
+				fl.position = (f[0] as Vector3) + Vector3(0, Interiors.SINK, 0)
+				if f[1] >= 0.3:
+					fl.add_child(FireFx.embers(f[1], false))
+				node.add_child(fl)
 		elif String(n).begins_with("swirl:"):
 			node = Node3D.new()
 			var sw := FireFx.swirl(float(String(n).get_slice(":", 1)))

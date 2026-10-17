@@ -318,11 +318,20 @@ static func rebuilds(t: String) -> bool:
 static func glows(t: String) -> bool:
 	return t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]
 
-## Flames in the object's own space (sunk like the object): [foot, height in metres].
+static var _fires: Dictionary = {}
+
+## Flames in the object's own space (sunk like the object): [foot, height in metres]: a
+## house's hearth, and the wall torches and candles burning in its rooms.
 static func fires(t: String) -> Array:
+	if _fires.has(t):
+		return _fires[t]
+	var out: Array = []
 	if KitHouse.has(t):
-		return [[KitHouse.fire_at(t), 1.0]]
-	return []
+		out.append([KitHouse.fire_at(t), 1.0])
+	for f in FireFx.prop_flames(FURNISH.get(t, KitHouse.FURNISH.get(t, []))):
+		out.append([(f[0] as Vector3) - Vector3(0, SINK, 0), f[1]])
+	_fires[t] = out
+	return out
 
 ## Lights in the object's own space (sunk like the object): [position, colour, energy, range].
 static func lights(t: String) -> Array:
