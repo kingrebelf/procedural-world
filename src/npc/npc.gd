@@ -68,6 +68,8 @@ func _ready() -> void:
 		_human.scale = Vector3(_scale, _scale, _scale)
 		add_child(_human)
 		_model = _human
+		if manager and manager.has_method("ground"):
+			_human.set_ground(Callable(manager, "ground"))
 	else:
 		_build_model(b)
 	_body = AnimatableBody3D.new()
@@ -322,7 +324,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 
 func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> void:
 	if _human:
-		_animate_human(delta, moving, run)
+		_animate_human(delta, moving, run, player_pos)
 		return
 	var amt := clampf(_speed / WALK, 0.0, 1.6)
 	_phase += delta * (_speed * 2.9 / _scale + 0.0)
@@ -357,7 +359,18 @@ func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> voi
 	else:
 		_model.position.x = 0.0
 
-func _animate_human(delta: float, moving: bool, run: bool) -> void:
+func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) -> void:
+	# Eyes on you when talking to you or coming for you; a curious look when you pass close.
+	var near := global_position.distance_to(player_pos)
+	if action != "flee" and (talking or target_player) and near < 25.0:
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 1.0)
+	elif action != "flee" and near < 6.0 and perform == "":
+		_human.look_at_target(player_pos + Vector3.UP * 1.6, 0.55)
+	else:
+		_human.look_at_target(Vector3.INF)
+	# Shop floors aren't the ground under them.
+	_human.ik.feet_here = not rec.has("room")
+	_human.set_upper("sword_idle" if moving and NPCGen.GUARD_JOBS.has(rec["job"]) and action in ["confront", "attack"] else "")
 	if action == "attack" and attack_cd > 1.3:
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":

@@ -64,6 +64,9 @@ def people(kits: Path) -> None:
     anim.mkdir(parents=True, exist_ok=True)
     shutil.copy(kits / "anim" / "Universal Animation Library[Standard]" / "Unreal-Godot" / "UAL1_Standard.glb", anim / "UAL1.glb")
     shutil.copy(kits / "anim2" / "Universal Animation Library 2[Standard]" / "Unreal-Godot" / "UAL2_Standard.glb", anim / "UAL2.glb")
+    # The root-motion exports: tools/bake_anims.gd measures how fast each clip travels.
+    shutil.copy(kits / "anim" / "Universal Animation Library[Standard]" / "Unreal-Godot" / "UAL1_Standard_RM.glb", anim / "UAL1_RM.glb")
+    shutil.copy(kits / "anim2" / "Universal Animation Library 2[Standard]" / "Unreal-Godot" / "UAL2_Standard_RM.glb", anim / "UAL2_RM.glb")
 
 
 def kit_models(names, gltf_dirs, tex_dirs, out: Path, size: int = 1024) -> None:
@@ -95,7 +98,7 @@ VILLAGE = ["Floor_WoodDark", "Floor_UnevenBrick", "Floor_Brick", "Wall_Plaster_S
     "Roof_RoundTiles_4x4", "Roof_RoundTiles_6x6", "Roof_Front_Brick4", "Roof_Front_Brick6", "Prop_WoodenFence_Single", "Corner_Exterior_Wood", "Prop_Chimney",
     # Village houses.
     "Wall_UnevenBrick_Window_Wide_Round", "Wall_Plaster_WoodGrid", "Window_Wide_Round1", "WindowShutters_Wide_Round_Open",
-    "WindowShutters_Wide_Round_Closed", "Door_1_Round", "Roof_RoundTiles_6x8", "Roof_RoundTiles_4x6", "Prop_Chimney2",
+    "WindowShutters_Wide_Round_Closed", "Door_1_Round", "Door_2_Round", "Roof_RoundTiles_6x8", "Roof_RoundTiles_4x6", "Prop_Chimney2",
     "Wall_Plaster_Window_Thin_Round", "Window_Thin_Round1", "Wall_UnevenBrick_Window_Thin_Round", "Corner_Exterior_Brick",
     "Prop_Vine2", "Prop_Vine5", "Balcony_Simple_Straight", "Overhang_Plaster_Long"]
 SCIFI = ["Platform_Metal", "Platform_DarkPlates", "WallAstra_Straight", "WallAstra_Straight_Window", "TopSimple_Straight",

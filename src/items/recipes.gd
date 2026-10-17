@@ -134,6 +134,9 @@ const LIST := [
 	{"out": "wall_stone", "qty": 1, "in": {"stone": 6, "planks": 1}, "at": "workbench"},
 	{"out": "wall_window", "qty": 1, "in": {"planks": 3, "stone": 2}, "at": "workbench"},
 	{"out": "wall_door", "qty": 1, "in": {"planks": 4, "stone": 1}, "at": "workbench"},
+	{"out": "wall_door_stone", "qty": 1, "in": {"stone": 6, "planks": 1}, "at": "workbench"},
+	{"out": "door_wood", "qty": 1, "in": {"planks": 6, "iron_ingot": 1}, "at": "workbench"},
+	{"out": "door_iron", "qty": 1, "in": {"planks": 6, "iron_ingot": 4}, "at": "anvil"},
 	{"out": "stairs_wood", "qty": 1, "in": {"planks": 8}, "at": "workbench"},
 	{"out": "roof_small", "qty": 1, "in": {"planks": 6, "stone": 4}, "at": "workbench"},
 	{"out": "roof_large", "qty": 1, "in": {"planks": 12, "stone": 8}, "at": "workbench"},
@@ -142,6 +145,7 @@ const LIST := [
 	{"out": "wall_scifi", "qty": 1, "in": {"alloy_plate": 3, "circuitry": 1}, "at": "fabricator"},
 	{"out": "wall_scifi_window", "qty": 1, "in": {"alloy_plate": 3, "aether_crystal": 1}, "at": "fabricator"},
 	{"out": "door_scifi", "qty": 1, "in": {"alloy_plate": 4, "circuitry": 2}, "at": "fabricator"},
+	{"out": "door_bulkhead", "qty": 1, "in": {"alloy_plate": 6, "circuitry": 3, "power_cell": 1}, "at": "fabricator"},
 	{"out": "stairs_scifi", "qty": 1, "in": {"alloy_plate": 6}, "at": "fabricator"},
 
 	# --- The medieval age (pack A) ---------------------------------------------------------

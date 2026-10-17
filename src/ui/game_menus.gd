@@ -130,9 +130,12 @@ func open_corpse(corpses: Corpses, key: String) -> void:
 	var c := corpses.record(key)
 	if c.is_empty():
 		return
+	if DeathBag.is_bag(c) and not DeathBag.can_take(c, Game.my_id()):
+		Game.toast.emit("You can't open that bag")
+		return
 	_corpses = corpses
 	_corpse_key = key
-	_store = Inventory.new(CorpseLoot.SLOTS)
+	_store = Inventory.new(Corpses.slots_of(c))
 	if c.get("items") is Dictionary:
 		_store.from_data(c["items"])
 	open("corpse")
@@ -816,10 +819,13 @@ func _corpse_changed(marks := 0) -> void:
 		return
 	var before := 0
 	if c.get("items") is Dictionary:
-		var old := Inventory.new(CorpseLoot.SLOTS)
+		var old := Inventory.new(Corpses.slots_of(c))
 		old.from_data(c["items"])
 		before = _worth(old)
 	c["items"] = _store.to_data()
+	if DeathBag.is_mine(c, Game.my_id()) and not (c.get("worn", {}) as Dictionary).is_empty():
+		# Your own armour goes back on as you take it.
+		Game.rewear(c["worn"])
 	_corpses.took_from(_corpse_key, maxi(0, before - _worth(_store)) + marks)
 	if not CorpseLoot.has_any(c) and c["kind"] == "animal":
 		close()
@@ -837,13 +843,16 @@ func _take_purse() -> int:
 func _corpse_panel() -> Control:
 	var c := _corpses.record(_corpse_key) if is_instance_valid(_corpses) else {}
 	var person: bool = c.get("kind", "") == "person"
+	var bag := DeathBag.is_bag(c)
 	var title := ("%s (dead)" % c.get("name", "Someone")) if person else "%s carcass" % c.get("name", "Animal")
+	if bag:
+		title = DeathBag.title(c, Game.my_id())
 	var kg := Game.inventory.weight()
 	var s := _shell(title, "Click an item to take it. Your pack: %.0f / %d kg." % [kg, int(Game.stats.carry_capacity())])
 	var v: VBoxContainer = s[1]
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 10)
-	bar.add_child(UITheme.label("ON THE BODY" if person else "LEFT ON THE CARCASS", 15, UITheme.ACCENT))
+	bar.add_child(UITheme.label("IN THE BAG" if bag else "ON THE BODY" if person else "LEFT ON THE CARCASS", 15, UITheme.ACCENT))
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(sp)
@@ -863,7 +872,7 @@ func _corpse_panel() -> Control:
 	for i in _store.capacity:
 		g.add_child(_move_button(_store, i, Game.inventory))
 	v.add_child(g)
-	if person and _store.free_slots() == _store.capacity and purse <= 0:
+	if (person or bag) and _store.free_slots() == _store.capacity and purse <= 0:
 		v.add_child(UITheme.label("Nothing left on them.", 15, UITheme.DIM))
 	return s[0]
 

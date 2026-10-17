@@ -12,10 +12,9 @@ static var _mats: Dictionary = {}
 static var _models: Dictionary = {}
 static var _lock := Mutex.new()
 
-const ALL := ["CommonTree_1", "CommonTree_2", "CommonTree_3", "CommonTree_4", "CommonTree_5",
-	"Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5", "DeadTree_1", "DeadTree_2", "DeadTree_3",
-	"DeadTree_4", "DeadTree_5", "TwistedTree_1", "TwistedTree_2", "TwistedTree_3", "TwistedTree_4",
-	"TwistedTree_5", "Bush_Common", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
+## (Oaks and pines are RealTree's now; their kit models stay as a fallback, loaded only if
+## something asks for one.)
+const ALL := ["Bush_Common", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
 	"Bush_Common_Flowers", "Fern_1", "Flower_3_Group", "Flower_4_Group", "Grass_Wispy_Tall", "Grass_Common_Tall",
 	"Plant_1_Big", "Plant_7_Big", "Mushroom_Common", "Mushroom_Laetiporus",
 	"Pebble_Round_1", "Pebble_Round_2", "Pebble_Round_3", "Pebble_Round_4", "Pebble_Round_5",
@@ -64,6 +63,9 @@ static func build_under(sp: int, era: int) -> ArrayMesh:
 		return null
 	var e: Array = UNDER[form]
 	var r := Flora._rng(sp, 6)
+	if form == "bush" and era != Eras.FANTASY:
+		# Leaf-spray bushes (RealTree) rather than the kit's smooth lime blobs.
+		return RealTree.build_bush(sp, r.randf_range(e[1], e[2]) * 1.15, r.randf() < 0.12)
 	var names: Array = e[0]
 	var src := _model(names[r.randi() % names.size()])
 	if src.is_empty():
@@ -368,7 +370,7 @@ static func _rock(t: String, p: Dictionary, sp: int, v: int) -> ArrayMesh:
 				pieces.append(["Rock_Medium_%d" % (1 + (sp + n) % 3), Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(sz, sz * sq * 1.2, sz) * u),
 					Vector3(cos(a) * 0.7, -0.05, sin(a) * 0.7))])
 		_: pieces.append([base, Transform3D(Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3(1.0, 0.55 + sq * 0.6, 1.0) * u), Vector3(0, -0.1, 0))])
-	var mat: Material = Materials.get_mat("stone_w")
+	var mat: Material = StoneKit.material()
 	if t == "iron_vein":
 		mat = _ore_material("iron")
 		col = col.darkened(0.25)

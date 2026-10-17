@@ -167,6 +167,9 @@ static func _build_mesh(key: String) -> ArrayMesh:
 				return hu
 			Flora.build_under(kit, int(parts[1]), int(parts[2]))
 			return kit.commit(Materials.get_mat)
+		var rt := RealTree.build(parts[0], int(parts[1]), int(parts[2]))
+		if rt != null:
+			return rt
 		var hm := HiFlora.build(parts[0], int(parts[1]), int(parts[2]))
 		if hm != null:
 			return hm

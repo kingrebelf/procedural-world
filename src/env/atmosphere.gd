@@ -226,8 +226,10 @@ func _update_time_of_day() -> void:
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
 	sky_mat.set_shader_parameter("stars_turn", t)
-	sky_mat.set_shader_parameter("zenith_day", sky_tint)
-	sky_mat.set_shader_parameter("horizon_day", sky_tint.lerp(Color(0.85, 0.88, 0.92), 0.6))
+	# In the golden hour the zenith deepens and the whole horizon warms to peach, not only
+	# the sun's side: a low sun should read at a glance whichever way you look.
+	sky_mat.set_shader_parameter("zenith_day", sky_tint.lerp(Color(0.24, 0.3, 0.52), golden * 0.45))
+	sky_mat.set_shader_parameter("horizon_day", sky_tint.lerp(Color(0.85, 0.88, 0.92), 0.6).lerp(Color(1.0, 0.7, 0.52), golden * 0.5))
 	sky_mat.set_shader_parameter("era_fantasy", _w[Eras.FANTASY])
 	sky_mat.set_shader_parameter("era_scifi", _w[Eras.SCIFI])
 	sky_mat.set_shader_parameter("time_s", Time.get_ticks_msec() / 1000.0)
