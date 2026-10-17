@@ -1087,6 +1087,79 @@ func test_npc_roles() -> void:
 	check(sm_ok, "a shop too small for a counter still has its stand and wares (%s)" % [small.get("props", [])])
 	check((NPCRoles.chatter(f, g, s, 4) as Array).size() == 2, "small talk has an answer")
 
+## A made-up stretch of land 2x2 chunks: flat at 5 m with a sheer-sided mesa (20 m)
+## standing across the middle, and a road along its south foot.
+func _walk_land() -> Dictionary:
+	var res := ChunkGenerator.RES
+	var land := {}
+	for kz in 2:
+		for kx in 2:
+			var hs := PackedFloat32Array()
+			hs.resize(res * res)
+			var rb := PackedByteArray()
+			rb.resize(res * res)
+			for j in res:
+				for i in res:
+					var x := float(kx * ChunkGenerator.SIZE + i)
+					var z := float(kz * ChunkGenerator.SIZE + j)
+					hs[j * res + i] = 20.0 if x > 50.0 and x < 80.0 and z > 20.0 and z < 110.0 else 5.0
+					if z > 12.0 and z < 16.0:
+						rb[j * res + i] = 255
+			land[Vector2i(kx, kz)] = {"heights": hs, "road": rb}
+	return land
+
+func test_walk_grid_goes_round_cliffs() -> void:
+	var land := _walk_land()
+	var walk := WalkGrid.new(func(k: Vector2i) -> Dictionary: return land.get(k, {}))
+	walk.build_per_frame = 99
+	walk.search_usec = 1 << 30
+	check(is_equal_approx(walk.grade(10.0, 64.0), 0.0), "flat ground is flat (%.2f)" % walk.grade(10.0, 64.0))
+	check(walk.grade(50.5, 64.0) > 2.0, "a mesa's side is a cliff (%.2f)" % walk.grade(50.5, 64.0))
+	check(walk.on_road(30.0, 14.0) and not walk.on_road(30.0, 40.0), "the road is marked")
+	var a := Vector2(20.0, 64.0)
+	var b := Vector2(110.0, 64.0)
+	check(not walk.clear(a, b, WalkGrid.PERSON), "straight across the mesa is too steep")
+	check(walk.clear(a, Vector2(40.0, 90.0), WalkGrid.PERSON), "the flat beside it isn't")
+	var r := walk.route(a, b, WalkGrid.PERSON)
+	check(not r.is_empty() and r["reached"], "there is a way round")
+	if r.is_empty():
+		return
+	var pts: PackedVector2Array = r["pts"]
+	check(pts[pts.size() - 1] == b, "that ends where they were going")
+	# Walk it a quarter metre at a time: nowhere on it is steeper than a person walks.
+	var at := a
+	var worst := 0.0
+	var long := 0.0
+	for q in pts:
+		var n := int(ceil(at.distance_to(q) / 0.25))
+		for i in n:
+			var p := at.lerp(q, float(i + 1) / float(n))
+			worst = maxf(worst, walk.grade(p.x, p.y))
+		long += at.distance_to(q)
+		at = q
+	check(worst <= WalkGrid.PERSON, "the way round climbs nothing steeper than %.2f (%.2f)" % [WalkGrid.PERSON, worst])
+	check(pts.size() <= 8, "pulled tight into a few legs, not grid steps (%d)" % pts.size())
+	# Round the south end along the road (the north way round is as long without it).
+	var south := false
+	for q in pts:
+		south = south or q.y < 22.0
+	check(south and long < 160.0, "by the road at the mesa's south foot (%.0f m)" % long)
+	# A goal up on the mesa can't be got to: the nearest place under it instead.
+	var top := walk.route(a, Vector2(65.0, 64.0), WalkGrid.PERSON)
+	check(not top.is_empty() and not top["reached"], "no way up a sheer mesa")
+	if not top.is_empty():
+		var end: Vector2 = (top["pts"] as PackedVector2Array)[top["pts"].size() - 1]
+		check(end.distance_to(Vector2(65.0, 64.0)) < 20.0 and walk.grade(end.x, end.y) <= WalkGrid.PERSON, "but stops at its foot (%s)" % end)
+	# A budget a frame: the second search in a frame waits for the next.
+	var w2 := WalkGrid.new(func(k: Vector2i) -> Dictionary: return land.get(k, {}))
+	w2.build_per_frame = 99
+	w2.search_usec = 1
+	check(not w2.route(a, b, WalkGrid.PERSON).is_empty() and w2.route(a, b, WalkGrid.PERSON).is_empty(), "searches wait once a frame's time is spent")
+	var w3 := WalkGrid.new(func(k: Vector2i) -> Dictionary: return land.get(k, {}))
+	w3.grade(10.0, 10.0)
+	w3.grade(100.0, 10.0)
+	check(is_nan(w3.grade(10.0, 100.0)) and not w3.clear(Vector2(10.0, 100.0), Vector2(12.0, 100.0), WalkGrid.PERSON), "ground not worked out yet isn't taken as safe")
+
 func test_bandits() -> void:
 	var gen := ChunkGenerator.new(777)
 	var was := Eras.theme

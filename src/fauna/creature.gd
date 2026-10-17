@@ -436,7 +436,11 @@ func _pick_wander() -> void:
 	for i in 6:
 		var a := randf() * TAU
 		_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(minf(3.0, roam * 0.3), roam)
-		if underground or p["plan"] == "bird" or not blocked(_target.x, _target.z):
+		if underground or p["plan"] == "bird":
+			return
+		# Somewhere it can walk to straight: not over a cliff or up a crag.
+		var w := _walk()
+		if not blocked(_target.x, _target.z) and (w == null or w.clear(Vector2(global_position.x, global_position.z), Vector2(_target.x, _target.z), WalkGrid.ANIMAL)):
 			return
 
 ## True where a walking animal can't stand: in the sea, a lake or a river, or inside a
@@ -477,6 +481,8 @@ func _steer_cached(pos: Vector3, dir: Vector3) -> Vector3:
 func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
 	var wet_here := blocked_wet(pos.x, pos.z)
+	var w := _walk()
+	var steep_here: float = w.grade(pos.x, pos.z) if w else NAN
 	for turn in [0.0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]:
 		var d: Vector3 = dir.rotated(Vector3.UP, turn)
 		var ahead := pos + d * reach
@@ -485,10 +491,22 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 			return d
 		if not wet_here and blocked_wet(ahead.x, ahead.z):
 			continue
+		if w and _too_steep(w, pos + d * maxf(reach, WalkGrid.CELL), steep_here):
+			continue
 		if solid_at(Vector3(ahead.x, h, ahead.z)):
 			continue
 		return d
 	return Vector3.ZERO
+
+## The ground ahead is a cliff or a bank too steep to take, and no gentler than where it
+## stands (so one on a slope already can still get off it).
+func _too_steep(w: WalkGrid, ahead: Vector3, here: float) -> bool:
+	var g := w.grade(ahead.x, ahead.z)
+	return not is_nan(g) and g > WalkGrid.ANIMAL and (is_nan(here) or g > here)
+
+func _walk() -> WalkGrid:
+	var npcs = manager.get("npcs") if manager else null
+	return npcs.walk if npcs else null
 
 func blocked_wet(x: float, z: float) -> bool:
 	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
