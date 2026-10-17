@@ -268,6 +268,7 @@ func info() -> Dictionary:
 		match mode:
 			"free": lines.append("Place anywhere. %s turns it." % k.call("rotate_build"))
 			"wall": lines.append("Snaps to cell edges (%d m grid). Aim at a wall's end for the next one along, its middle to stack one on top. %s flips it." % [int(d["grid"]), k.call("rotate_build")])
+			"post": lines.append("Stands on the grid corner nearest your aim, where two walls meet. %s turns it." % k.call("rotate_build"))
 			"roof_v", "roof_c": lines.append("Aim at a wall top to roof the rooms beside it, or at a roof for the next one along. %s turns it." % k.call("rotate_build"))
 			_:
 				if d.get("ramp", false):

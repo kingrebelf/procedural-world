@@ -10,7 +10,7 @@ const DIR := "res://assets/models/"
 
 ## id -> definition.
 ##   models: [[file under assets/models, yaw degrees, offset, scale]] merged in order.
-##   snap:   floor (cell centre), wall (cell edge), roof_v (grid corner), roof_c (cell centre
+##   snap:   floor (cell centre), wall (cell edge), post (grid corner), roof_v (grid corner), roof_c (cell centre
 ##           a storey up), door (in a doorway you built, see Doors), free (anywhere, turned
 ##           with the rotate key).
 ##   grid / storey: cell size and floor-to-floor height in metres.
@@ -30,9 +30,9 @@ const PIECES := {
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
@@ -46,6 +46,11 @@ const PIECES := {
 	"roof_large": {"name": "Tiled Roof (6x6)", "models": [["village/Roof_RoundTiles_6x6", 0, Vector3.ZERO, 1.0],
 		["village/Roof_Front_Brick6", 0, Vector3(0, 0, 3), 1.0], ["village/Roof_Front_Brick6", 180, Vector3(0, 0, -3), 1.0]],
 		"snap": "roof_c", "span": 3, "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 16.0, "era": 0},
+	# Corner posts close the seam where two walls meet: a dressed stone quoin or a timber post.
+	"corner_stone": {"name": "Stone Corner", "models": [["village/Corner_Exterior_Brick", 0, Vector3(0.087, 0, -0.089), Vector3(1, 1.04, 1)]],
+		"snap": "post", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 12.0, "era": 0},
+	"corner_timber": {"name": "Timber Corner Post", "models": [["village/Corner_Exterior_Wood", 0, Vector3.ZERO, Vector3(1, 1.04, 1)]],
+		"snap": "post", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 6.0, "era": 0},
 	"fence": {"name": "Wooden Fence", "models": [["village/Prop_WoodenFence_Single", 0, Vector3.ZERO, 0.97]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 4.0, "era": 0},
 	# Sci-fi kit: 4 m cells, 5 m storeys. Its walls sit on a cell's -x edge; turn them
@@ -571,7 +576,7 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 			return {"pos": cell, "yaw": yaw}
 		"roof_c":
 			return {"pos": cell, "yaw": turn * PI * 0.5}
-		"roof_v":
+		"roof_v", "post":
 			return {"pos": Vector3(roundf(hit.x / g) * g, y, roundf(hit.z / g) * g), "yaw": turn * PI * 0.5}
 		"wall":
 			var dx := hit.x - cell.x

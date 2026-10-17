@@ -1647,6 +1647,12 @@ func _build_snapping() -> void:
 	check(dressed.call(out_up).is_equal_approx(Vector3(0, 0, -1)), "upstairs too, before its floor is down (%s)" % dressed.call(out_up))
 	var bare := BuildCatalog.snap("fence", Vector3(10.9, 0.0, 10.2), 0.0, 0, null, true, {"near": [], "eye": Vector3(10, 1.6, 14)})
 	check(dressed.call(bare).is_equal_approx(Vector3(0, 0, 1)), "a lone fence shows you its good side (%s)" % dressed.call(bare))
+	# Corner posts stand on the grid corner nearest the aim, on the storey of the wall aimed at.
+	var post := BuildCatalog.snap("corner_stone", Vector3(2.8, 4.0, 0.3), 0.0, 0, Vector3(1, 3.12, 0), false, {"hit_mode": "wall"})
+	check((post["pos"] as Vector3).is_equal_approx(Vector3(2, 3.12, 0)), "a corner post stands where walls meet (%s)" % post["pos"])
+	check(not BuildCatalog.occupied_in(near, "corner_stone", Vector3(0, 0, 0), 0.0), "a corner post fits beside the walls it joins")
+	# Window walls are glazed.
+	check(BuildCatalog.def("wall_window")["models"].any(func(e): return String(e[0]).begins_with("village/Window_")), "window walls have a glazed frame")
 	# A roof aimed at a wall covers the room that wall belongs to.
 	var room := []
 	for e in [[Vector3(1, 0, 0), 0.0], [Vector3(3, 0, 0), 0.0], [Vector3(1, 0, 4), 0.0], [Vector3(3, 0, 4), 0.0],
