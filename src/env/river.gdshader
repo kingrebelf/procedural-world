@@ -128,7 +128,11 @@ void fragment() {
 	float lace = mix(foam_lace(q0 * 0.8), foam_lace(q1 * 0.8), w);
 	float hs = mix(h0, h1, w);
 	float flecks = smoothstep(0.35, 0.6, hs) * spd * 0.3;
-	float white = rapids * smoothstep(0.05, 0.55, hs + rapids * 0.15);
+	// White water gathers below the steps where a rapid drops (every dozen metres or so,
+	// broken across the channel), with glassy runs between, never one even streaking.
+	float along = dot(wpos.xz, fd);
+	float step_ = smoothstep(0.5, 0.95, sin(along * 0.5 + n2(wpos.xz * 0.07) * 7.0)) * smoothstep(-0.15, 0.2, n2(wpos.xz * 0.25 + 3.0));
+	float white = rapids * step_ * smoothstep(-0.1, 0.45, hs + rapids * 0.2);
 	float bank = (1.0 - smoothstep(0.0, 0.12, vdepth)) * smoothstep(0.0, 0.02, vdepth);
 	vec3 f3 = vec3(fd.x, 0.0, fd.y);
 	float rocks = 0.0;
@@ -138,7 +142,7 @@ void fragment() {
 			+ obstacle(wpos - f3 * 2.8, VIEW_MATRIX, PROJECTION_MATRIX, INV_PROJECTION_MATRIX, INV_VIEW_MATRIX) * 0.35;
 		rocks *= 0.4 + spd;
 	}
-	float foam = clamp((flecks + white + bank * 0.5 + rocks * 0.8) * lace + white * white * 0.3, 0.0, 0.85);
+	float foam = clamp((flecks * (1.0 - rapids * 0.6) + white + bank * 0.5 + rocks * 0.8) * lace + white * white * 0.3, 0.0, 0.85);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
 	vec3 vdir = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz); // back toward the eye
 	float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(nw, vdir), 0.0, 1.0), 5.0);
