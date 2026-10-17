@@ -324,7 +324,7 @@ static func _get_mat(name: String) -> Material:
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
 		# Metals share one look (Metals, metal.gdshader): real reflectance, wear and grime.
 		"metal_w":
-			_cache[name] = Metals.mat("worked", 0.35, true)
+			_cache[name] = Metals.mat("worked", 0.42, true)
 			return _cache[name]
 		"cloth_w": m = _pbr(Color(1, 1, 1), 0.97, 0.0, "cloth", 0.15, 1.0, 0.6) # felt hats and hoods
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)

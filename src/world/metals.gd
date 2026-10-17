@@ -10,12 +10,13 @@ class_name Metals
 ## kind -> {colour (sRGB reflectance), rough, var, scratch, hammer, brushed, wear, grime,
 ## rust, rust_col, paint, lift}. Missing keys take DEFAULT's values.
 const KINDS := {
-	# Bright worked steel: blades, tools, armour plate.
-	"steel": {"col": Color(0.77, 0.77, 0.78), "rough": 0.32, "var": 0.22, "scratch": 0.5, "wear": 0.5, "grime": 0.2},
+	# Worked steel: blades, tools, armour plate. Forged and handled, a satin sheen
+	# that blurs the sky (Ben: mirror polish is for the sci-fi era only).
+	"steel": {"col": Color(0.74, 0.74, 0.75), "rough": 0.44, "var": 0.24, "scratch": 0.5, "wear": 0.5, "grime": 0.2},
 	# Forged iron: hammered, darker, grime in the hollows, a little rust.
-	"iron": {"col": Color(0.72, 0.71, 0.69), "rough": 0.45, "var": 0.3, "hammer": 0.5, "wear": 0.65, "grime": 0.35, "rust": 0.05},
+	"iron": {"col": Color(0.66, 0.65, 0.63), "rough": 0.56, "var": 0.3, "hammer": 0.5, "wear": 0.65, "grime": 0.35, "rust": 0.05},
 	# Blackened wrought iron (hinges, straps, candle stands): dark oxide, bright where handled.
-	"wrought": {"col": Color(0.5, 0.49, 0.48), "rough": 0.5, "var": 0.3, "hammer": 0.6, "wear": 0.8, "grime": 0.35, "rust": 0.08},
+	"wrought": {"col": Color(0.5, 0.49, 0.48), "rough": 0.6, "var": 0.3, "hammer": 0.6, "wear": 0.8, "grime": 0.35, "rust": 0.08},
 	# Old iron gone to rust in blotches.
 	"rusty": {"col": Color(0.6, 0.58, 0.56), "rough": 0.55, "var": 0.3, "hammer": 0.3, "wear": 0.4, "grime": 0.3, "rust": 0.62},
 	"brass": {"col": Color(0.96, 0.85, 0.58), "rough": 0.28, "var": 0.25, "wear": 0.5, "grime": 0.3, "rust": 0.05, "rust_col": Color(0.3, 0.42, 0.33)},
@@ -29,11 +30,11 @@ const KINDS := {
 	# Zinc-coated sheet: the coat's crystals make the roughness blotchy.
 	"galvanised": {"col": Color(0.8, 0.81, 0.82), "rough": 0.42, "var": 0.45, "scratch": 0.2, "wear": 0.2, "grime": 0.3},
 	# Dark steel and gunmetal (sci-fi frames, machinery, dark fittings).
-	"dark_steel": {"col": Color(0.5, 0.51, 0.53), "rough": 0.38, "var": 0.22, "scratch": 0.4, "wear": 0.55, "grime": 0.25},
+	"dark_steel": {"col": Color(0.5, 0.51, 0.53), "rough": 0.46, "var": 0.22, "scratch": 0.4, "wear": 0.55, "grime": 0.25},
 	# Paint (the vertex colour) over steel, chipped at the edges.
 	"painted": {"col": Color(0.75, 0.75, 0.76), "rough": 0.4, "var": 0.2, "wear": 0.6, "grime": 0.3, "paint": 1.0, "paint_rough": 0.45},
 	# Any metal coloured by its vertices (items: ingots, coins, fittings, ores' grains).
-	"worked": {"col": Color(1, 1, 1), "rough": 0.35, "var": 0.22, "scratch": 0.4, "wear": 0.5, "grime": 0.2, "lift": 1.0},
+	"worked": {"col": Color(1, 1, 1), "rough": 0.42, "var": 0.22, "scratch": 0.4, "wear": 0.5, "grime": 0.2, "lift": 1.0},
 	"worked_rolled": {"col": Color(1, 1, 1), "rough": 0.38, "var": 0.15, "scratch": 0.4, "brushed": 1.0, "wear": 0.35, "grime": 0.15, "lift": 1.0},
 }
 const DEFAULT := {"col": Color(1, 1, 1), "rough": 0.4, "var": 0.25, "scratch": 0.3, "hammer": 0.0, "brushed": 0.0,
