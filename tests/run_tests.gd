@@ -3206,7 +3206,7 @@ func test_provisions_models() -> void:
 		for i in m.get_surface_count():
 			var mat := m.surface_get_material(i)
 			check(not (mat is StandardMaterial3D and (mat as StandardMaterial3D).albedo_color == Color(1, 0, 1)), "%s surface %s has a real material" % [t, m.surface_get_name(i)])
-	check(n >= 60, "food and drink models: %d" % n)
+	check(n >= 120, "food and drink models: %d" % n)
 	check(Provisions.model("sword_iron") == null, "a sword is not food")
 	var k := MeshKit.new()
 	Provisions.msg_bottle(k, RandomNumberGenerator.new())

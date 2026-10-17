@@ -338,6 +338,18 @@ static func label(k: MeshKit, xf: Transform3D, r: float, y0: float, y1: float, s
 	var prof := PackedVector2Array([Vector2(r + 0.0006, y0), Vector2(r + 0.0006, y1)])
 	lathe(k, "pv_label_" + style, xf, prof, 20, Color.WHITE, null, Vector2(at - arc * 0.5, at + arc * 0.5))
 
+## A flat paper label `w` by `h` centred at `at`, facing `n`, its picture the right way up.
+static func decal(k: MeshKit, mat: String, xf: Transform3D, at: Vector3, n: Vector3, w: float, h: float, up := Vector3.UP) -> void:
+	var z := n.normalized()
+	var x := up.cross(z).normalized()
+	var y := z.cross(x)
+	var c := [at - x * w * 0.5 - y * h * 0.5, at + x * w * 0.5 - y * h * 0.5, at - x * w * 0.5 + y * h * 0.5, at + x * w * 0.5 + y * h * 0.5]
+	var uv := [Vector2(0, 1), Vector2(1, 1), Vector2(0, 0), Vector2(1, 0)]
+	var st := k._tool(mat)
+	var nb := xf.basis.inverse().transposed()
+	_tri(st, xf, nb, [c[0], c[1], c[2]], [z, z, z], [Color.WHITE, Color.WHITE, Color.WHITE], [uv[0], uv[1], uv[2]])
+	_tri(st, xf, nb, [c[1], c[3], c[2]], [z, z, z], [Color.WHITE, Color.WHITE, Color.WHITE], [uv[1], uv[3], uv[2]])
+
 ## Twine wound round a neck: a few turns of thin cord.
 static func twine(k: MeshKit, xf: Transform3D, r: float, y: float, turns := 3, col := Color(0.72, 0.6, 0.42)) -> void:
 	for i in turns:
@@ -409,6 +421,15 @@ static func _mat(name: String) -> Material:
 			m = s
 		"pv_veg": m = _std(0.72, 0.0, "veg", 0.25, 18.0, 0.6)
 		"pv_sand": m = _std(0.95, 0.0, "sandgrain", 0.9, 40.0, 0.6)
+		# Crinkled foil: bright, but every crease catches the light differently.
+		"pv_foil": m = _std(0.38, 0.7, "crinkle", 0.6, 24.0, 1.2, true)
+		"pv_burlap":
+			var s := _std(0.98, 0.0, "burlap", 0.5, 30.0, 1.0)
+			if Materials.photo("fabric_linen", "detail") != null:
+				s.albedo_texture = Materials.photo("fabric_linen", "detail")
+				s.uv1_scale = Vector3.ONE * 8.0
+			m = s
+		"pv_coal": m = _std(0.55, 0.1, "coal", 0.5, 30.0, 1.0, true)
 		"pv_leaf":
 			var s := _std(0.55)
 			s.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -685,7 +706,7 @@ static func _build(k: MeshKit, t: String) -> Variant:
 			var outer := [Vector2(0, 0.004), Vector2(0.034, 0.0), Vector2(0.034, 0.0), Vector2(0.038, 0.006), Vector2(0.038, 0.15), Vector2(0.034, 0.168), Vector2(0.018, 0.178), Vector2(0.0125, 0.188), Vector2(0.0125, 0.21), Vector2(0.0125, 0.21), Vector2(0.015, 0.213), Vector2(0.015, 0.222), Vector2(0.015, 0.222), Vector2(0.013, 0.224)]
 			vessel(k, I, outer, 0.003, CLEAR, WHISKY, 0.15, 40, square)
 			cork(k, I, 0.0098, 0.224, 0.016)
-			k.box("pv_label_white", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.085, 0.0381)), Vector3(0.036, 0.06, 0.0008))
+			decal(k, "pv_label_white", I, Vector3(0.0, 0.085, 0.0386), Vector3.BACK, 0.036, 0.06)
 			return Vector3(0, 0.07, 0)
 		"sarsaparilla":
 			# A brown glass soda bottle with a crown cap and a red-banded label.
@@ -728,7 +749,7 @@ static func _build(k: MeshKit, t: String) -> Variant:
 			var outer := [Vector2(0, 0.003), Vector2(0.022, 0.0), Vector2(0.022, 0.0), Vector2(0.025, 0.004), Vector2(0.025, 0.07), Vector2(0.021, 0.079), Vector2(0.011, 0.083), Vector2(0.009, 0.088), Vector2(0.009, 0.096), Vector2(0.009, 0.096), Vector2(0.011, 0.098), Vector2(0.011, 0.103), Vector2(0.011, 0.103), Vector2(0.0095, 0.104)]
 			vessel(k, I, outer, 0.0025, CLEAR, OIL, 0.062, 40, square)
 			cork(k, I, 0.0068, 0.104, 0.012)
-			k.box("pv_label_parch", Transform3D(Basis.IDENTITY, Vector3(0, 0.035, 0.0256)), Vector3(0.034, 0.036, 0.0008))
+			decal(k, "pv_label_parch", I, Vector3(0, 0.035, 0.0262), Vector3.BACK, 0.034, 0.036)
 			return Vector3(0, 0.04, 0)
 		# Potions ---------------------------------------------------------------------
 		"health_potion", "potion_health_minor", "potion_health_greater", "holy_water", "tonic_warmth", "elixir_swiftness":
@@ -810,7 +831,8 @@ static func _build(k: MeshKit, t: String) -> Variant:
 			if t == "antidote":
 				# A paper tag on a string round the neck.
 				twine(k, I, r * 0.7, h * 0.86, 1)
-				k.box("pv_label_parch", Transform3D(Basis(Vector3.FORWARD, -0.5), Vector3(r + 0.016, h * 0.62, 0.004)), Vector3(0.02, 0.03, 0.0006))
+				for nz in [1.0, -1.0]:
+					decal(k, "pv_label_parch", I, Vector3(r + 0.016, h * 0.62, 0.004 + nz * 0.0003), Vector3(0, 0, nz), 0.02, 0.03, Vector3(0.45, 1, 0))
 			return Vector3(0, h * 0.4, 0)
 		"elixir_strength", "potion_stamina_greater":
 			# A heavy faceted flask: few, flat sides catch the light.
@@ -927,7 +949,7 @@ static func _build(k: MeshKit, t: String) -> Variant:
 			lathe(k, "pv_paint", I, PackedVector2Array([Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.03, 0.0), Vector2(0.03, 0.075), Vector2(0.03, 0.075), Vector2(0, 0.075)]), 48, worn, square)
 			lathe(k, "pv_paint", I, PackedVector2Array([Vector2(0.0312, 0.065), Vector2(0.0312, 0.082), Vector2(0.0312, 0.082), Vector2(0.026, 0.084), Vector2(0, 0.084)]), 48, worn, square)
 			return Vector3(0, 0.04, 0)
-		"antirad", "painkillers":
+		"antirad":
 			# An amber pill bottle with a white child-proof cap.
 			var outer := [Vector2(0, 0.002), Vector2(0.02, 0.0), Vector2(0.02, 0.0), Vector2(0.021, 0.004), Vector2(0.021, 0.065), Vector2(0.019, 0.068), Vector2(0.019, 0.07)]
 			vessel(k, I, outer, 0.0015, Color(0.62, 0.3, 0.05, 0.5), Color(0, 0, 0, 0), 0.0, 28)
@@ -1096,7 +1118,7 @@ static func _food(k: MeshKit, t: String) -> Variant:
 				lathe(k, "pv_skin", Transform3D(Basis(Vector3.UP, rb.randf() * TAU), at), _sphere(rr * rb.randf_range(0.9, 1.1), 8, 1.1 if big else 1.0), 12, func(p: Vector3, _a: float, t2: float) -> Color: return c.lerp(Color(0.6, 0.58, 0.72), 0.25 * clampf(_nz(p, 500.0) + 0.3, 0.0, 1.0) if big else 0.0).darkened(0.2 * (1.0 - t2)))
 			leaf(k, Transform3D(Basis(Vector3.FORWARD, -1.2), Vector3(0.004, 0.025, 0)), 0.07 if big else 0.04, 0.06 if big else 0.022, Color(0.25, 0.45, 0.12), 0.2)
 			return Vector3(0, 0.01, 0)
-		"mushroom", "fungus_alien":
+		"mushroom":
 			# A pair of ceps: fat pale stems, brown caps paler underneath.
 			for e in [[Vector3(0, 0, 0), 1.0, 0.0], [Vector3(0.035, 0, 0.01), 0.7, 0.3]]:
 				var s: float = e[1]
@@ -1257,7 +1279,7 @@ static func _food(k: MeshKit, t: String) -> Variant:
 			for sz in [-1.0, 1.0]:
 				lathe(k, "pv_glossy", Transform3D(Basis(Vector3.RIGHT, sz * PI * 0.5), Vector3(-0.07, 0.006, sz * 0.0105)), _sphere(0.0045, 6, 0.6), 10, Color(0.05, 0.05, 0.05) if not cooked else Color(0.85, 0.82, 0.75))
 			return Vector3(0.05, 0, 0)
-		"stew", "porridge", "soup_veg", "chili", "food_bio", "food_void":
+		"stew", "porridge", "soup_veg", "chili":
 			# A turned wooden bowl (a tin one for chili), filled.
 			var tin := t == "chili"
 			var outer := _curve([Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.03, 0.0), Vector2(0.033, 0.004), Vector2(0.055, 0.02), Vector2(0.068, 0.045), Vector2(0.07, 0.05), Vector2(0.07, 0.05)], 3)
@@ -1287,7 +1309,7 @@ static func _food(k: MeshKit, t: String) -> Variant:
 					else:
 						k.box("pv_soft", Transform3D(Basis(Vector3(rc.randf(), rc.randf(), rc.randf()).normalized(), rc.randf() * 1.5), Vector3(cos(a) * d, surf, sin(a) * d)), Vector3.ONE * s, c)
 			return Vector3(0, 0.025, 0)
-		"pie_meat", "pie_berry", "food_hive":
+		"pie_meat", "pie_berry":
 			# A pie in its fluted crust: the meat pie domed, glazed and vented; the berry
 			# pie open under a lattice.
 			var crimp := func(a: float, t2: float, _p: Vector3) -> float: return 1.0 + 0.035 * sin(a * 28.0) * smoothstep(0.55, 0.8, t2)
@@ -1371,4 +1393,537 @@ static func _food(k: MeshKit, t: String) -> Variant:
 					ring.append(Vector2(0.024 + cos(a) * 0.012, sin(a) * 0.004))
 				lathe(k, "pv_crumb", Transform3D(Basis(Vector3.RIGHT, 0.2 * i - 0.2), Vector3(i * 0.02, i * 0.006, -i * 0.01)), ring, 28, func(p: Vector3, _a: float, t2: float) -> Color: return Color(0.8, 0.62, 0.38).lerp(Color(0.5, 0.12, 0.08), smoothstep(0.35, 0.42, t2) * (1.0 - smoothstep(0.58, 0.65, t2))).darkened(0.1 * _nz(p, 80.0)), func(a: float, _t: float, _p: Vector3) -> float: return 1.0 + 0.07 * sin(a * 4.0 + i))
 			return Vector3(0.02, 0.005, 0)
+	return _packed(k, t)
+
+# --- Packets, kits, sacks, barrels, herbs and alien fare -----------------------------------
+
+## A surface over a grid: `f(u, v)` gives each point (u, v in 0..1); normals face along
+## `out` (or away from the middle when `out` is zero).
+static func sheet(k: MeshKit, mat: String, xf: Transform3D, nu: int, nv: int, f: Callable, col: Variant = Color.WHITE, out := Vector3.ZERO) -> void:
+	var P := []
+	for j in nv + 1:
+		var row := PackedVector3Array()
+		for i in nu + 1:
+			row.append(f.call(float(i) / nu, float(j) / nv))
+		P.append(row)
+	var st := k._tool(mat)
+	var nb := xf.basis.inverse().transposed()
+	var N := []
+	for j in nv + 1:
+		var row := PackedVector3Array()
+		for i in nu + 1:
+			var du: Vector3 = (P[j] as PackedVector3Array)[mini(i + 1, nu)] - (P[j] as PackedVector3Array)[maxi(i - 1, 0)]
+			var dv: Vector3 = (P[mini(j + 1, nv)] as PackedVector3Array)[i] - (P[maxi(j - 1, 0)] as PackedVector3Array)[i]
+			var n := du.cross(dv).normalized()
+			var p: Vector3 = (P[j] as PackedVector3Array)[i]
+			var want := out if out != Vector3.ZERO else p
+			if n.dot(want) < 0.0:
+				n = -n
+			row.append(n)
+		N.append(row)
+	for j in nv:
+		for i in nu:
+			var q := [[i, j], [i + 1, j], [i, j + 1], [i + 1, j + 1]]
+			var ps := []
+			var ns := []
+			var cs := []
+			var uvs := []
+			for e in q:
+				var p: Vector3 = (P[e[1]] as PackedVector3Array)[e[0]]
+				ps.append(p)
+				ns.append((N[e[1]] as PackedVector3Array)[e[0]])
+				cs.append(_colour(col, p, float(e[0]) / nu, float(e[1]) / nv))
+				uvs.append(Vector2(float(e[0]) / nu, 1.0 - float(e[1]) / nv))
+			for tri in [[0, 1, 2], [1, 3, 2]]:
+				_tri(st, xf, nb, [ps[tri[0]], ps[tri[1]], ps[tri[2]]], [ns[tri[0]], ns[tri[1]], ns[tri[2]]], [cs[tri[0]], cs[tri[1]], cs[tri[2]]], [uvs[tri[0]], uvs[tri[1]], uvs[tri[2]]])
+
+## A sealed packet: two sheets puffed out by what's inside and crinkled, crimped seals
+## top and bottom. Stands along +Y from y = 0, `w` wide.
+static func pouch(k: MeshKit, mat: String, xf: Transform3D, w: float, h: float, bulge: float, col: Variant, seal := 0.012, crinkle := 0.25) -> void:
+	for side in [1.0, -1.0]:
+		var f := func(u: float, v: float) -> Vector3:
+			var y := v * h
+			var inner := clampf((y - seal) / maxf(h - 2.0 * seal, 0.001), 0.0, 1.0)
+			var puff := pow(sin(PI * u) * sin(PI * inner), 0.6)
+			var p := Vector3((u - 0.5) * w * (1.0 - 0.06 * puff), y, 0.0)
+			p.z = side * bulge * puff * (1.0 + crinkle * _nz(p, 90.0))
+			return p
+		sheet(k, mat, xf, 16, 20, f, col, Vector3(0, 0, side))
+	# The crimped seals: fine ridges across each end.
+	for y in [seal * 0.5, h - seal * 0.5]:
+		for i in 8:
+			k.box(mat, xf * Transform3D(Basis.IDENTITY, Vector3(0, y - seal * 0.4 + seal * 0.8 * i / 7.0, 0)), Vector3(w, seal * 0.06, 0.0012), _colour(col, Vector3(0, y, 0), 0.5, y / h))
+
+## A box with rounded edges standing on y = 0: a lathe squared off by a superellipse.
+static func rounded_box(k: MeshKit, mat: String, xf: Transform3D, size: Vector3, round_r: float, col: Variant, sharp := 8.0, shape_extra: Variant = null) -> void:
+	var rr := clampf(round_r / maxf(size.y, 0.001), 0.0, 0.45)
+	var prof := _curve([Vector2(0, 0.0), Vector2(1.0 - rr * 1.2, 0.0), Vector2(1.0 - rr * 0.3, rr * 0.3), Vector2(1.0, rr), Vector2(1.0, 1.0 - rr), Vector2(1.0 - rr * 0.3, 1.0 - rr * 0.3), Vector2(1.0 - rr * 1.2, 1.0), Vector2(0, 1.0)], 2)
+	var sq := func(a: float, t: float, p: Vector3) -> float:
+		var m := 1.0 / pow(pow(absf(cos(a)), sharp) + pow(absf(sin(a)), sharp), 1.0 / sharp)
+		return m * (shape_extra.call(a, t, p) if shape_extra is Callable else 1.0)
+	lathe(k, mat, xf * Transform3D(Basis.from_scale(Vector3(size.x * 0.5, size.y, size.z * 0.5)), Vector3.ZERO), prof, 40, col, sq)
+
+## A white cross on a medical kit, on the face whose normal is `n`.
+static func _cross(k: MeshKit, xf: Transform3D, at: Vector3, n: Vector3, s: float, col := Color(0.95, 0.95, 0.93)) -> void:
+	var b := _facing(n)
+	k.box("pv_plastic", xf * Transform3D(b, at), Vector3(s, 0.002, s * 0.32), col)
+	k.box("pv_plastic", xf * Transform3D(b, at), Vector3(s * 0.32, 0.002, s), col)
+
+## A wooden barrel of `staves` staves bound with iron hoops, `h` tall.
+static func barrel(k: MeshKit, xf: Transform3D, r: float, h: float, staves := 18, wood := Color(0.48, 0.3, 0.16)) -> void:
+	var bulge := func(a: float, _t: float, _p: Vector3) -> float:
+		# A groove between each stave.
+		return 1.0 - 0.012 * pow(absf(cos(a * staves * 0.5)), 30.0)
+	var col := func(p: Vector3, a: float, _t: float) -> Color:
+		var stave := floorf(a / TAU * staves)
+		return wood.darkened(0.18 * fposmod(stave * 0.618, 1.0) + 0.12 * _nz(p * Vector3(1, 0.15, 1), 60.0))
+	var prof := _curve([Vector2(r * 0.86, 0.0), Vector2(r * 0.97, h * 0.25), Vector2(r, h * 0.5), Vector2(r * 0.97, h * 0.75), Vector2(r * 0.86, h)], 4)
+	lathe(k, "pv_wood", xf, prof, staves * 3, col, bulge)
+	for y in [0.0, h]:
+		# The heads, sunk a little inside the chime.
+		var hy: float = y + (0.012 if y == 0.0 else -0.012)
+		lathe(k, "pv_wood", xf, PackedVector2Array([Vector2(0, hy), Vector2(r * 0.86, hy)]) if y > 0.0 else PackedVector2Array([Vector2(r * 0.86, hy), Vector2(0, hy)]), 24, func(p: Vector3, _a: float, _t: float) -> Color: return wood.darkened(0.25 * fposmod(floorf(p.x * 18.0 / r) * 0.618, 1.0)))
+	for f in [0.06, 0.2, 0.8, 0.94]:
+		var y: float = h * f
+		var rr := _radius_at(prof, y) + 0.0015
+		lathe(k, "iron", xf, PackedVector2Array([Vector2(rr, y - 0.012), Vector2(rr + 0.002, y), Vector2(rr, y + 0.012)]), staves * 3, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.25, 0.12), clampf(_nz(p, 50.0), 0.0, 0.7)))
+
+## A sprig: a stem with leaves in pairs up it, and maybe flowers or berries at the top.
+static func sprig(k: MeshKit, xf: Transform3D, h: float, leaf_col: Color, leaf_len: float, pairs := 4, flower := Color(0, 0, 0, 0), berry := Color(0, 0, 0, 0)) -> void:
+	var stem := PackedVector3Array()
+	for i in 6:
+		var f := i / 5.0
+		stem.append(Vector3(0.01 * sin(f * 3.0), f * h, 0.006 * sin(f * 5.0)))
+	tube(k, "pv_leaf", xf, stem, PackedFloat32Array([0.0022, 0.002, 0.0018, 0.0015, 0.0012, 0.001]), 5, leaf_col.darkened(0.2), false)
+	for i in pairs:
+		var f := 0.25 + 0.6 * i / maxf(1.0, pairs - 1.0)
+		var at := Vector3(0.01 * sin(f * 3.0), f * h, 0.006 * sin(f * 5.0))
+		var l := leaf_len * (1.0 - 0.4 * f)
+		for sd in [-1.0, 1.0]:
+			leaf(k, xf * Transform3D(Basis(Vector3.UP, i * 1.57 + (0.0 if sd > 0.0 else PI)) * Basis(Vector3.FORWARD, -sd * 1.0), at), l, l * 0.45, leaf_col.lightened(0.05 * sd), 0.25, 5)
+	var top := stem[5]
+	if flower.a > 0.0:
+		for i in 6:
+			var a := TAU * i / 6.0
+			leaf(k, xf * Transform3D(Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, 1.2), top), 0.014, 0.009, flower, -0.2, 3)
+		lathe(k, "pv_skin", xf * Transform3D(Basis.IDENTITY, top), _sphere(0.0035, 5), 8, flower.darkened(0.4))
+	if berry.a > 0.0:
+		for i in 5:
+			var a := TAU * i / 5.0
+			lathe(k, "pv_skin", xf * Transform3D(Basis.IDENTITY, top + Vector3(cos(a) * 0.012, -0.012 - 0.004 * (i % 2), sin(a) * 0.012)), _sphere(0.0055, 7), 10, berry)
+
+## A burlap sack, plump at the bottom, its neck gathered and tied (or rolled open).
+static func sack(k: MeshKit, xf: Transform3D, r: float, h: float, open: bool, col := Color(0.66, 0.55, 0.38)) -> PackedVector2Array:
+	var lumpy := func(a: float, t: float, p: Vector3) -> float: return 1.0 + 0.08 * _nz(p, 14.0) + 0.04 * sin(a * 7.0) * t
+	var prof: PackedVector2Array
+	if open:
+		prof = _curve([Vector2(0, 0.0), Vector2(r * 0.8, 0.004), Vector2(r, h * 0.2), Vector2(r * 1.02, h * 0.6), Vector2(r * 0.95, h * 0.85), Vector2(r * 1.05, h * 0.9), Vector2(r * 1.08, h * 0.95), Vector2(r * 0.98, h), Vector2(r * 0.9, h * 0.94)], 3)
+	else:
+		prof = _curve([Vector2(0, 0.0), Vector2(r * 0.8, 0.004), Vector2(r, h * 0.2), Vector2(r * 1.02, h * 0.5), Vector2(r * 0.7, h * 0.75), Vector2(r * 0.18, h * 0.84), Vector2(r * 0.2, h * 0.9), Vector2(r * 0.45, h), Vector2(r * 0.1, h * 0.97), Vector2(0, h * 0.93)], 3)
+	lathe(k, "pv_burlap", xf, prof, 36, func(p: Vector3, _a: float, _t: float) -> Color: return col.darkened(0.15 * _nz(p, 20.0)), lumpy)
+	if not open:
+		twine(k, xf, r * 0.19, h * 0.84, 3)
+	return prof
+
+## A hypodermic or auto-injector along +Y: a glass barrel showing its dose, a plunger
+## or cap at the back, a fine needle at the front (+Y).
+static func injector(k: MeshKit, xf: Transform3D, r: float, length: float, dose: Color, cap_col: Color, glass_syringe := false) -> void:
+	var outer := [Vector2(0, 0.0), Vector2(r, 0.0), Vector2(r, 0.0), Vector2(r, length), Vector2(r, length), Vector2(r * 0.4, length + 0.006)]
+	vessel(k, xf, outer, 0.0012, CLEAR, dose, length * 0.75, 18)
+	k.cylinder("metal", xf * Transform3D(Basis.IDENTITY, Vector3(0, length + 0.005, 0)), 0.0006, 0.0003, length * 0.45, 6, true, 0.0, 1, Color(0.85, 0.85, 0.88))
+	if glass_syringe:
+		# Finger flanges and the plunger with its thumb ring.
+		k.box("metal", xf * Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0)), Vector3(r * 5.0, 0.003, r * 1.6), Color(0.75, 0.72, 0.66))
+		k.cylinder("metal", xf * Transform3D(Basis.IDENTITY, Vector3(0, -length * 0.45, 0)), r * 0.25, r * 0.25, length * 0.5, 6, true, 0.0, 1, Color(0.75, 0.72, 0.66))
+		var ring := PackedVector3Array()
+		var rr := PackedFloat32Array()
+		for s in 17:
+			var a := TAU * s / 16.0
+			ring.append(Vector3(cos(a) * r * 1.4, -length * 0.45 - r * 1.4 + sin(a) * r * 1.4, 0))
+			rr.append(r * 0.25)
+		tube(k, "metal", xf, ring, rr, 6, Color(0.75, 0.72, 0.66), false)
+	else:
+		lathe(k, "pv_plastic", xf, _curve([Vector2(0, -length * 0.5), Vector2(r * 1.1, -length * 0.48), Vector2(r * 1.25, -length * 0.3), Vector2(r * 1.25, 0.0), Vector2(r * 1.25, 0.0), Vector2(r * 0.9, 0.004)], 2), 20, cap_col)
+		lathe(k, "pv_plastic", xf, PackedVector2Array([Vector2(r * 1.15, length - 0.008), Vector2(r * 1.15, length + 0.004), Vector2(r * 1.15, length + 0.004), Vector2(r * 0.5, length + 0.008)]), 20, cap_col.darkened(0.3))
+
+static func _packed(k: MeshKit, t: String) -> Variant:
+	var I := Transform3D.IDENTITY
+	match t:
+		# Space-age packets -----------------------------------------------------------
+		"ration_pack", "protein_pack", "space_coffee", "freeze_meal":
+			var foil := Color(0.72, 0.73, 0.75)
+			var w := 0.11
+			var h := 0.15
+			match t:
+				"space_coffee":
+					foil = Color(0.24, 0.17, 0.12)
+					w = 0.09
+					h = 0.12
+				"protein_pack":
+					w = 0.1
+					h = 0.13
+			pouch(k, "pv_foil", I, w, h, 0.016 if t != "freeze_meal" else 0.024, foil, 0.012, 0.3)
+			match t:
+				"ration_pack":
+					decal(k, "pv_label_white", I, Vector3(0, 0.075, 0.0185), Vector3.BACK, 0.07, 0.05)
+				"protein_pack":
+					decal(k, "pv_label_white", I, Vector3(0, 0.06, 0.0185), Vector3.BACK, 0.06, 0.035)
+				"space_coffee":
+					# The one-way valve on a coffee bag.
+					k.cylinder("pv_plastic", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.085, 0.017)), 0.007, 0.007, 0.0015, 14, true, 0.0, 1, Color(0.1, 0.08, 0.07))
+				"freeze_meal":
+					# Torn open: the meal shows inside the top.
+					lathe(k, "pv_crumb", I, PackedVector2Array([Vector2(0.045, 0.14), Vector2(0, 0.145)]), 20, func(p: Vector3, _a: float, _t: float) -> Color: return [Color(0.8, 0.6, 0.3), Color(0.5, 0.65, 0.2), Color(0.8, 0.3, 0.15)][int(absf(_nz(p, 300.0)) * 6.0) % 3], func(a: float, _t: float, _p: Vector3) -> float: return 1.0 / pow(pow(absf(cos(a)), 4.0) + pow(absf(sin(a)) * 2.4, 4.0), 0.25))
+			return Vector3(0, h * 0.5, 0)
+		"water_pouch", "fruit_cube", "bio_gel":
+			# Clear plastic: what's inside shows through.
+			var w := 0.1 if t != "bio_gel" else 0.07
+			var h := 0.13 if t != "bio_gel" else 0.07
+			var fill := WATER if t == "water_pouch" else (Color(0.2, 0.75, 0.68, 0.7) if t == "bio_gel" else Color(0, 0, 0, 0))
+			pouch(k, "pv_glass", I, w, h, 0.018 if t != "bio_gel" else 0.007, Color(0.9, 0.94, 0.96, 0.12), 0.01, 0.1)
+			if fill.a > 0.0:
+				pouch(k, "pv_liquid", Transform3D(Basis.from_scale(Vector3(0.94, 0.9, 0.85)), Vector3(0, 0.004, 0)), w, h * (0.8 if t == "water_pouch" else 1.0), 0.016 if t != "bio_gel" else 0.006, fill, 0.012, 0.0)
+			if t == "water_pouch":
+				lathe(k, "pv_plastic", I, PackedVector2Array([Vector2(0.008, h - 0.004), Vector2(0.008, h + 0.012), Vector2(0.008, h + 0.012), Vector2(0.011, h + 0.013), Vector2(0.011, h + 0.024), Vector2(0.011, h + 0.024), Vector2(0, h + 0.025)]), 16, Color(0.92, 0.92, 0.9))
+			elif t == "fruit_cube":
+				var rf := RandomNumberGenerator.new()
+				rf.seed = 4
+				var cs := [Color(0.9, 0.2, 0.3), Color(0.95, 0.65, 0.15), Color(0.95, 0.85, 0.2), Color(0.5, 0.2, 0.55), Color(0.85, 0.35, 0.15)]
+				for i in 18:
+					k.box("pv_glossy", Transform3D(Basis(Vector3(rf.randf(), rf.randf(), rf.randf()).normalized(), rf.randf()), Vector3(rf.randf_range(-0.035, 0.035), rf.randf_range(0.02, 0.09), rf.randf_range(-0.008, 0.008))), Vector3.ONE * 0.016, cs[i % cs.size()])
+			return Vector3(0, h * 0.5, 0)
+		"ration_bar", "algae_bar":
+			# A dense bar; the ration bar half out of its torn foil wrapper.
+			var bar := Color(0.45, 0.3, 0.16) if t == "ration_bar" else Color(0.22, 0.32, 0.12)
+			var lumpy := func(_a: float, _t: float, p: Vector3) -> float: return 1.0 + 0.04 * _nz(p, 300.0)
+			rounded_box(k, "pv_crumb", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.06, 0.012, 0)), Vector3(0.024, 0.12, 0.036), 0.004, func(p: Vector3, _a: float, _t: float) -> Color: return bar.darkened(0.25 * _nz(p, 400.0)), 8.0, lumpy)
+			if t == "ration_bar":
+				rounded_box(k, "pv_foil", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.062, 0.012, 0)), Vector3(0.028, 0.08, 0.04), 0.004, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.2, 0.45, 0.75) if absf(p.y - 0.5) < 0.18 else Color(0.75, 0.76, 0.78))
+				# The crimped end, and the torn edge where it was opened.
+				for i in 6:
+					k.box("pv_foil", Transform3D(Basis.IDENTITY, Vector3(0.066 + 0.0015 * i, 0.012, 0)), Vector3(0.0008, 0.026, 0.042), Color(0.75, 0.76, 0.78))
+			return Vector3(0.03, 0.012, 0)
+		"nutri_paste":
+			# A squeeze tube: round at the cap, crimped flat at the far end.
+			var flat := func(a: float, t2: float, _p: Vector3) -> float: return lerpf(1.0, absf(cos(a)) * 1.25 + 0.06, smoothstep(0.2, 0.95, t2))
+			lathe(k, "pv_paint", I, _curve([Vector2(0.008, 0.0), Vector2(0.016, 0.006), Vector2(0.017, 0.03), Vector2(0.017, 0.1), Vector2(0.017, 0.135)], 3), 28, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.15, 0.4, 0.7) if absf(p.y - 0.07) < 0.012 else Color(0.85, 0.86, 0.86), flat)
+			k.box("pv_paint", Transform3D(Basis.IDENTITY, Vector3(0, 0.138, 0)), Vector3(0.045, 0.008, 0.002), Color(0.8, 0.81, 0.82))
+			lathe(k, "pv_plastic", I, _curve([Vector2(0.007, 0.002), Vector2(0.007, -0.016), Vector2(0.007, -0.016), Vector2(0, -0.017)], 2), 16, Color(0.95, 0.95, 0.94), func(a: float, _t: float, _p: Vector3) -> float: return 1.0 + 0.05 * pow(absf(sin(a * 10.0)), 3.0))
+			return Vector3(0, 0.06, 0)
+		"noodles":
+			# A paper cup of instant noodles, lid peeled back.
+			var cup := _curve([Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.03, 0.0), Vector2(0.032, 0.004), Vector2(0.045, 0.1), Vector2(0.045, 0.1), Vector2(0.047, 0.102), Vector2(0.046, 0.104), Vector2(0.046, 0.104), Vector2(0.043, 0.1), Vector2(0.03, 0.006), Vector2(0, 0.006)], 2)
+			lathe(k, "pv_soft", I, cup, 36, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.78, 0.12, 0.1) if p.y > 0.04 and p.y < 0.06 else Color(0.95, 0.94, 0.9))
+			lathe(k, "pv_glossy", I, PackedVector2Array([Vector2(0.042, 0.088), Vector2(0, 0.09)]), 28, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.86, 0.66, 0.32).darkened(0.25 * absf(sin(p.x * 900.0 + sin(p.z * 700.0) * 3.0))).lerp(Color(0.3, 0.6, 0.2), 0.8 if _nz(p, 700.0) > 0.55 else 0.0))
+			sheet(k, "pv_foil", I, 8, 8, func(u: float, v: float) -> Vector3: return Vector3((u - 0.5) * 0.09, 0.104 + v * 0.06 * v, -0.045 + v * 0.03 - 0.02 * sin(u * PI) * v), Color(0.8, 0.8, 0.82), Vector3(0, 0, 1))
+			return Vector3(0, 0.05, 0)
+		"hydro_greens":
+			# A steel grow tray of lettuce.
+			var tray := _curve([Vector2(0, 0.0), Vector2(0.9, 0.0), Vector2(0.9, 0.0), Vector2(1.0, 1.0), Vector2(1.0, 1.0), Vector2(0.94, 1.0), Vector2(0.86, 0.15), Vector2(0, 0.15)], 1)
+			lathe(k, "pv_tin", Transform3D(Basis.from_scale(Vector3(0.07, 0.04, 0.045)), Vector3.ZERO), tray, 40, Color(0.7, 0.72, 0.74), func(a: float, _t: float, _p: Vector3) -> float: return 1.0 / pow(pow(absf(cos(a)), 10.0) + pow(absf(sin(a)), 10.0), 0.1))
+			var rl := RandomNumberGenerator.new()
+			rl.seed = 8
+			for i in 22:
+				var at := Vector3(rl.randf_range(-0.05, 0.05), 0.012, rl.randf_range(-0.03, 0.03))
+				leaf(k, Transform3D(Basis(Vector3.UP, rl.randf() * TAU) * Basis(Vector3.RIGHT, rl.randf_range(0.3, 0.9)), at), rl.randf_range(0.035, 0.055), 0.03, Color(0.25, 0.5, 0.15).lightened(rl.randf_range(-0.1, 0.15)), 0.35, 5)
+			return Vector3(0, 0.02, 0)
+		# Medicine ---------------------------------------------------------------------
+		"medkit_frontier":
+			# A leather doctor's bag: a fat body on a hinged metal frame, a handle, a clasp.
+			var hide := Color(0.32, 0.18, 0.1)
+			rounded_box(k, "pv_leather", I, Vector3(0.24, 0.13, 0.11), 0.03, func(p: Vector3, _a: float, _t: float) -> Color: return hide.darkened(0.2 * _nz(p, 6.0)), 4.0, func(_a: float, t2: float, _p: Vector3) -> float: return 1.0 - 0.25 * smoothstep(0.6, 1.0, t2))
+			k.box("metal", I.translated(Vector3(0, 0.131, 0)), Vector3(0.2, 0.006, 0.02), Color(0.7, 0.6, 0.4))
+			k.box("gold", I.translated(Vector3(0, 0.12, 0.04)), Vector3(0.016, 0.014, 0.004), Color(0.8, 0.65, 0.35))
+			var handle := PackedVector3Array()
+			var hr := PackedFloat32Array()
+			for s in 11:
+				var a := PI * s / 10.0
+				handle.append(Vector3(cos(a) * 0.05, 0.135 + sin(a) * 0.035, 0))
+				hr.append(0.007)
+			tube(k, "pv_leather", I, handle, hr, 8, hide.darkened(0.2))
+			_cross(k, I, Vector3(0, 0.06, 0.0535), Vector3.BACK, 0.035)
+			return Vector3(0, 0.16, 0)
+		"medkit_mil", "trauma_kit":
+			# A hard olive case with latches, or an orange soft pack with straps.
+			var mil := t == "medkit_mil"
+			var body := Color(0.3, 0.36, 0.22) if mil else Color(0.9, 0.38, 0.1)
+			rounded_box(k, "pv_paint" if mil else "pv_cloth", I, Vector3(0.24, 0.15, 0.09), 0.015 if mil else 0.035, func(p: Vector3, _a: float, _t: float) -> Color: return body.darkened(0.12 * _nz(p, 20.0)), 10.0 if mil else 4.0)
+			if mil:
+				for sx in [-0.07, 0.07]:
+					k.box("metal_dark", I.translated(Vector3(sx, 0.1, 0.046)), Vector3(0.025, 0.03, 0.006))
+				k.box("metal_dark", I.translated(Vector3(0, 0.075, 0.0)), Vector3(0.242, 0.006, 0.092))
+			else:
+				for sx in [-0.07, 0.07]:
+					k.box("pv_rubber", I.translated(Vector3(sx, 0.075, 0.0)), Vector3(0.02, 0.152, 0.094), Color(0.1, 0.1, 0.1))
+				var zip := PackedVector3Array()
+				var zr := PackedFloat32Array()
+				for s in 21:
+					var a := TAU * s / 20.0
+					zip.append(Vector3(cos(a) * 0.119, 0.13, sin(a) * 0.044))
+					zr.append(0.002)
+				tube(k, "metal_dark", I, zip, zr, 4, Color(0.15, 0.15, 0.15), false)
+			var handle := PackedVector3Array()
+			var hr := PackedFloat32Array()
+			for s in 9:
+				var a := PI * s / 8.0
+				handle.append(Vector3(cos(a) * 0.04, 0.15 + sin(a) * 0.02, 0))
+				hr.append(0.006)
+			tube(k, "pv_rubber", I, handle, hr, 8, Color(0.1, 0.1, 0.1))
+			_cross(k, I, Vector3(0, 0.075, 0.046 if mil else 0.05), Vector3.BACK, 0.05, Color(0.95, 0.95, 0.93) if mil else Color(0.97, 0.97, 0.97))
+			return Vector3(0, 0.17, 0)
+		"stimpack":
+			injector(k, I, 0.008, 0.1, Color(0.8, 0.1, 0.12, 0.85), Color(0.15, 0.3, 0.6))
+			return Vector3(0, 0.0, 0)
+		"nanite_injector":
+			injector(k, I, 0.008, 0.11, Color(0.55, 0.58, 0.62, 0.9), Color(0.2, 0.2, 0.22))
+			for y in [0.02, 0.05, 0.08]:
+				lathe(k, "gold", I, PackedVector2Array([Vector2(0.0092, y - 0.002), Vector2(0.0095, y), Vector2(0.0092, y + 0.002)]), 16, Color(0.85, 0.65, 0.3))
+			return Vector3(0, 0.0, 0)
+		"syringe_glass":
+			injector(k, I, 0.0065, 0.07, Color(0.85, 0.8, 0.6, 0.35), Color.WHITE, true)
+			return Vector3(0, 0.0, 0)
+		"painkillers":
+			# A blister pack: a foil card, a row of clear domes with white pills.
+			k.box("pv_foil", I.translated(Vector3(0, 0.001, 0)), Vector3(0.1, 0.002, 0.05), Color(0.78, 0.78, 0.8))
+			for i in 10:
+				var at := Vector3(-0.036 + (i % 5) * 0.018, 0.002, -0.011 + (i / 5) * 0.022)
+				lathe(k, "pv_glass", I.translated(at), _sphere(0.0075, 6, 0.6).slice(6), 14, Color(0.9, 0.92, 0.94, 0.15))
+				lathe(k, "pv_plastic", I.translated(at + Vector3(0, 0.002, 0)), _sphere(0.0055, 6, 0.45), 14, Color(0.95, 0.94, 0.92))
+			return Vector3(0, 0.0, 0)
+		"bandage_roll", "bandage_linen":
+			# A rolled bandage, its loose end hanging.
+			var cloth := Color(0.9, 0.86, 0.76) if t == "bandage_linen" else Color(0.86, 0.84, 0.78)
+			var ring := _curve([Vector2(0.012, 0.0), Vector2(0.034, 0.0), Vector2(0.034, 0.0), Vector2(0.036, 0.004), Vector2(0.036, 0.066), Vector2(0.034, 0.07), Vector2(0.034, 0.07), Vector2(0.012, 0.07), Vector2(0.012, 0.07), Vector2(0.012, 0.0)], 2)
+			lathe(k, "pv_cloth", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.035, 0.036, 0)), ring, 32, func(p: Vector3, _a: float, _t: float) -> Color: return cloth.darkened(0.25 * pow(absf(sin(Vector2(p.x, p.z).length() * 700.0)), 6.0) + 0.05 * _nz(p, 40.0)))
+			sheet(k, "pv_cloth", I, 4, 10, func(u: float, v: float) -> Vector3: return Vector3((u - 0.5) * 0.068, 0.0012, 0.004 + v * 0.1) + Vector3(0, 0.006 * sin(v * 9.0), 0) * v, cloth, Vector3.UP)
+			return Vector3(0, 0.036, 0)
+		"splint":
+			# Three wooden slats bound with strips of cloth.
+			for i in 3:
+				k.box("pv_wood", Transform3D(Basis(Vector3.UP, 0.04 * (i - 1)), Vector3(0, 0.007 + i * 0.011, 0.002 * i)), Vector3(0.2, 0.01, 0.025), Color(0.55, 0.4, 0.24).darkened(0.08 * i))
+			for x in [-0.06, 0.06]:
+				lathe(k, "pv_cloth", Transform3D(Basis(Vector3.FORWARD, PI * 0.5) * Basis.from_scale(Vector3(1.0, 1.0, 1.0)), Vector3(x, 0.018, 0)), PackedVector2Array([Vector2(0.024, -0.012), Vector2(0.025, 0.0), Vector2(0.024, 0.012)]), 20, Color(0.88, 0.85, 0.78), func(a: float, _t: float, _p: Vector3) -> float: return 1.0 / pow(pow(absf(cos(a)) * 1.0, 4.0) + pow(absf(sin(a)) * 1.25, 4.0), 0.25))
+			return Vector3(0, 0.02, 0)
+		"salve", "smelling_salts":
+			# A shallow round tin, lid off and propped beside it, the contents showing.
+			var salve := t == "salve"
+			var case := Color(0.48, 0.32, 0.18) if salve else Color(0.7, 0.7, 0.68)
+			var pot := _curve([Vector2(0, 0.0), Vector2(0.034, 0.0), Vector2(0.034, 0.0), Vector2(0.036, 0.003), Vector2(0.036, 0.03), Vector2(0.036, 0.03), Vector2(0.032, 0.03), Vector2(0.032, 0.006), Vector2(0, 0.006)], 2)
+			lathe(k, "pv_wood" if salve else "pv_tin", I, pot, 32, case)
+			lathe(k, "pv_glossy" if salve else "pv_crumb", I, PackedVector2Array([Vector2(0.031, 0.024), Vector2(0, 0.026)]), 28, Color(0.42, 0.55, 0.22) if salve else Color(0.95, 0.95, 0.93))
+			var lid := Transform3D(Basis(Vector3.RIGHT, -1.25), Vector3(0, 0.022, -0.05))
+			lathe(k, "pv_wood" if salve else "pv_tin", lid, _curve([Vector2(0, 0.0), Vector2(0.038, 0.0), Vector2(0.038, 0.0), Vector2(0.038, 0.012), Vector2(0.038, 0.012), Vector2(0.035, 0.012), Vector2(0.035, 0.002), Vector2(0, 0.002)], 2), 32, case.darkened(0.1))
+			if not salve:
+				# A folded cloth to hold under the nose.
+				k.box("pv_cloth", Transform3D(Basis(Vector3.UP, 0.4), Vector3(0.05, 0.004, 0.03)), Vector3(0.05, 0.006, 0.035), Color(0.92, 0.9, 0.85))
+			return Vector3(0, 0.015, 0)
+		"herbal_poultice":
+			# Herbs bundled in linen, the neck gathered and tied, leaves poking out.
+			sack(k, I, 0.03, 0.075, false, Color(0.82, 0.78, 0.64))
+			for i in 3:
+				leaf(k, Transform3D(Basis(Vector3.UP, i * 2.1) * Basis(Vector3.FORWARD, 0.4 + 0.2 * i), Vector3(0, 0.068, 0)), 0.04, 0.02, Color(0.25, 0.42, 0.14), 0.3)
+			return Vector3(0, 0.03, 0)
+		# Sacks, sheaves and herbs ------------------------------------------------------
+		"flour", "coal_sack":
+			var flour := t == "flour"
+			var prof := sack(k, I, 0.07 if flour else 0.1, 0.17 if flour else 0.24, true, Color(0.7, 0.6, 0.42) if flour else Color(0.5, 0.4, 0.28))
+			var top_y := prof[prof.size() - 1].y - 0.01
+			if flour:
+				lathe(k, "pv_crumb", I, _curve([Vector2(0.066, top_y - 0.01), Vector2(0.04, top_y + 0.004), Vector2(0, top_y + 0.012)], 3), 28, Color(0.95, 0.93, 0.88), func(_a: float, _t: float, p: Vector3) -> float: return 1.0 + 0.06 * _nz(p, 40.0))
+			else:
+				var rc := RandomNumberGenerator.new()
+				rc.seed = 21
+				lathe(k, "pv_coal", I, PackedVector2Array([Vector2(0.09, top_y - 0.02), Vector2(0, top_y)]), 20, Color(0.12, 0.12, 0.12))
+				for i in 16:
+					var a := rc.randf() * TAU
+					var d := sqrt(rc.randf()) * 0.075
+					k.crystal("pv_coal", Transform3D(Basis(Vector3(rc.randf(), rc.randf(), rc.randf()).normalized(), rc.randf() * PI), Vector3(cos(a) * d, top_y - 0.005, sin(a) * d)), rc.randf_range(0.012, 0.02), rc.randf_range(0.02, 0.035), 5, 0.3, Color(0.13, 0.13, 0.14))
+			return Vector3(0, 0.08, 0)
+		"coffee_beans":
+			# A heap of roasted beans, each split down its flat side.
+			var rb := RandomNumberGenerator.new()
+			rb.seed = 13
+			for i in 40:
+				var a := rb.randf() * TAU
+				var d := sqrt(rb.randf()) * 0.045
+				var y := (0.045 - d) * 0.5 + rb.randf_range(0.0, 0.004)
+				var b := Basis(Vector3(rb.randf_range(-1, 1), rb.randf_range(-1, 1), rb.randf_range(-1, 1)).normalized(), rb.randf() * PI)
+				lathe(k, "pv_roast", Transform3D(b * Basis.from_scale(Vector3(1.0, 0.65, 1.4)), Vector3(cos(a) * d, y + 0.004, sin(a) * d)), _sphere(0.0055, 6), 10, Color(0.32, 0.18, 0.09).darkened(rb.randf_range(0.0, 0.25)), func(a2: float, _t: float, _p: Vector3) -> float: return 1.0 - 0.3 * pow(absf(cos(a2)), 40.0))
+			return Vector3(0, 0.012, 0)
+		"wheat":
+			# A sheaf of wheat tied round the middle.
+			var rw := RandomNumberGenerator.new()
+			rw.seed = 17
+			var gold := Color(0.85, 0.68, 0.32)
+			for i in 30:
+				var a := rw.randf() * TAU
+				var d := sqrt(rw.randf()) * 0.018
+				var base := Vector3(cos(a) * d * 1.6, 0.0, sin(a) * d * 1.6)
+				var top := Vector3(cos(a) * d * 2.8, 0.3 + rw.randf_range(-0.02, 0.02), sin(a) * d * 2.8)
+				var mid := Vector3(cos(a) * d * 0.6, 0.13, sin(a) * d * 0.6)
+				tube(k, "pv_leaf", I, PackedVector3Array([base, mid, top]), PackedFloat32Array([0.0016, 0.0014, 0.0011]), 4, gold.darkened(rw.randf_range(0.0, 0.15)), false)
+				var ear := (top - mid).normalized()
+				lathe(k, "pv_crumb", Transform3D(_facing(ear), top), _curve([Vector2(0, 0.0), Vector2(0.0035, 0.008), Vector2(0.004, 0.03), Vector2(0, 0.045)], 3), 6, gold.darkened(rw.randf_range(0.0, 0.1)), func(a2: float, t2: float, _p: Vector3) -> float: return 1.0 + 0.25 * absf(sin(t2 * 40.0 + a2 * 2.0)))
+			twine(k, I, 0.012, 0.125, 3)
+			return Vector3(0, 0.12, 0)
+		"herb_red", "herb_blue", "herb_yellow", "herb_mint", "herb_nightshade":
+			var leafc: Color = {"herb_red": Color(0.48, 0.12, 0.1), "herb_blue": Color(0.36, 0.46, 0.44), "herb_yellow": Color(0.28, 0.42, 0.14), "herb_mint": Color(0.28, 0.5, 0.2), "herb_nightshade": Color(0.18, 0.3, 0.12)}[t]
+			var flower: Color = {"herb_red": Color(0.75, 0.08, 0.1), "herb_yellow": Color(0.98, 0.72, 0.1), "herb_mint": Color(0.92, 0.9, 0.86), "herb_nightshade": Color(0.42, 0.2, 0.62)}.get(t, Color(0, 0, 0, 0))
+			for i in 3:
+				sprig(k, Transform3D(Basis(Vector3.FORWARD, (i - 1) * 0.3) * Basis(Vector3.UP, i * 2.0), Vector3(0, 0, 0)), 0.11 - 0.015 * i, leafc, 0.035 if t != "herb_blue" else 0.05, 4, flower if i == 0 else Color(0, 0, 0, 0), Color(0.05, 0.04, 0.06) if t == "herb_nightshade" and i == 1 else Color(0, 0, 0, 0))
+			return Vector3(0, 0.02, 0)
+		"herb_root":
+			# A gnarled root with a tuft of leaves.
+			var rr := RandomNumberGenerator.new()
+			rr.seed = 19
+			tube(k, "pv_veg", I, PackedVector3Array([Vector3(0, 0.0, 0), Vector3(0.01, 0.03, 0.004), Vector3(-0.004, 0.06, 0.0), Vector3(0.006, 0.09, -0.004), Vector3(0.0, 0.1, 0)]), PackedFloat32Array([0.006, 0.012, 0.013, 0.01, 0.006]), 10, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.5, 0.35, 0.2).darkened(0.25 * _nz(p, 120.0)))
+			for i in 6:
+				var a := rr.randf() * TAU
+				var y := rr.randf_range(0.0, 0.07)
+				tube(k, "pv_veg", I, PackedVector3Array([Vector3(0, y, 0), Vector3(cos(a) * 0.02, y - 0.015, sin(a) * 0.02), Vector3(cos(a) * 0.035, y - 0.04, sin(a) * 0.035)]), PackedFloat32Array([0.004, 0.0025, 0.001]), 6, Color(0.48, 0.34, 0.2))
+			for i in 4:
+				leaf(k, Transform3D(Basis(Vector3.UP, i * 1.6) * Basis(Vector3.FORWARD, 0.5), Vector3(0, 0.1, 0)), 0.04, 0.02, Color(0.26, 0.42, 0.14), 0.3)
+			return Vector3(0, 0.05, 0)
+		# Barrels and fuel cans ---------------------------------------------------------
+		"oil_barrel", "powder_keg":
+			barrel(k, I, 0.2 if t == "oil_barrel" else 0.14, 0.55 if t == "oil_barrel" else 0.32, 20 if t == "oil_barrel" else 16)
+			if t == "powder_keg":
+				# A fuse plugged into the bung.
+				tube(k, "pv_twine", I, PackedVector3Array([Vector3(0.05, 0.31, 0), Vector3(0.055, 0.34, 0.01), Vector3(0.07, 0.36, 0.02)]), PackedFloat32Array([0.003, 0.0025, 0.002]), 5, Color(0.25, 0.22, 0.18), true)
+			else:
+				k.cylinder("pv_wood", I.translated(Vector3(0.0, 0.25, 0.198)).rotated_local(Vector3.RIGHT, PI * 0.5), 0.016, 0.014, 0.01, 10, true, 0.0, 1, Color(0.3, 0.2, 0.12))
+			return Vector3(0, 0.3 if t == "oil_barrel" else 0.18, 0)
+		"kerosene_can", "diesel_jerrycan":
+			var jerry := t == "diesel_jerrycan"
+			var paint := Color(0.62, 0.1, 0.08) if not jerry else Color(0.28, 0.33, 0.2)
+			var scuffed := func(p: Vector3, _a: float, _t: float) -> Color: return paint.lerp(Color(0.45, 0.42, 0.38), clampf(_nz(p, 30.0) * 1.6 - 0.6, 0.0, 0.8))
+			var size := Vector3(0.17, 0.26, 0.1) if jerry else Vector3(0.14, 0.2, 0.09)
+			rounded_box(k, "pv_paint", I, size, 0.014, scuffed, 14.0)
+			if jerry:
+				# The pressed X on each face and three handles on top.
+				for sz in [-1.0, 1.0]:
+					for d in [0.7, -0.7]:
+						k.box("pv_paint", Transform3D(Basis(Vector3.BACK, d), Vector3(0, 0.12, sz * 0.05)), Vector3(0.012, 0.22, 0.004), paint.darkened(0.15))
+				for x in [-0.045, 0.0, 0.045]:
+					k.box("pv_paint", I.translated(Vector3(x, 0.275, 0)), Vector3(0.012, 0.03, 0.03), paint)
+				k.box("pv_paint", I.translated(Vector3(0, 0.29, 0)), Vector3(0.11, 0.01, 0.03), paint)
+				lathe(k, "metal_dark", Transform3D(Basis(Vector3.BACK, 0.6), Vector3(0.07, 0.26, 0)), PackedVector2Array([Vector2(0.016, 0.0), Vector2(0.016, 0.02), Vector2(0.016, 0.02), Vector2(0, 0.022)]), 14, Color(0.2, 0.2, 0.2))
+			else:
+				# A spout with its cap, and a carrying handle.
+				tube(k, "pv_paint", I, PackedVector3Array([Vector3(0.045, 0.19, 0), Vector3(0.05, 0.22, 0), Vector3(0.06, 0.24, 0)]), PackedFloat32Array([0.011, 0.009, 0.009]), 10, paint)
+				lathe(k, "pv_paint", Transform3D(Basis(Vector3.BACK, -0.45), Vector3(0.06, 0.238, 0)), PackedVector2Array([Vector2(0.011, 0.0), Vector2(0.011, 0.014), Vector2(0.011, 0.014), Vector2(0, 0.015)]), 12, Color(0.8, 0.65, 0.2))
+				var handle := PackedVector3Array()
+				var hr := PackedFloat32Array()
+				for s in 9:
+					var a := PI * s / 8.0
+					handle.append(Vector3(-0.02 + cos(a) * 0.035, 0.195 + sin(a) * 0.03, 0))
+					hr.append(0.005)
+				tube(k, "pv_paint", I, handle, hr, 8, paint.darkened(0.2))
+			return Vector3(0, size.y + 0.02, 0)
+		# Alien fare -------------------------------------------------------------------
+		"fruit_alien":
+			# A star fruit the size of a fist: five ridges, waxy magenta skin, gold at the tips.
+			var star := func(a: float, _t: float, _p: Vector3) -> float: return 0.55 + 0.45 * pow(absf(cos(a * 2.5)), 3.0)
+			lathe(k, "pv_skin", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(-0.05, 0.035, 0)), _curve([Vector2(0, 0.0), Vector2(0.03, 0.015), Vector2(0.04, 0.05), Vector2(0.03, 0.085), Vector2(0, 0.1)], 4), 60, func(_p: Vector3, a: float, _t: float) -> Color: return Color(0.75, 0.1, 0.35).lerp(Color(0.95, 0.75, 0.25), pow(absf(cos(a * 2.5)), 8.0)), star)
+			return Vector3(0, 0.035, 0)
+		"egg_alien_food":
+			var re := RandomNumberGenerator.new()
+			re.seed = 23
+			for i in 9:
+				var at := Vector3(re.randf_range(-0.03, 0.03), 0.014 + re.randf_range(0.0, 0.02), re.randf_range(-0.03, 0.03))
+				lathe(k, "pv_glossy", I.translated(at), _sphere(0.014, 8), 14, Color(0.95, 0.5, 0.08))
+			sheet(k, "pv_leaf", I, 10, 10, func(u: float, v: float) -> Vector3: return Vector3((u - 0.5) * 0.09, 0.014 - 0.012 * sin(u * PI) * sin(v * PI) + 0.003 * _nz(Vector3(u, v, 0), 6.0), (v - 0.5) * 0.09), func(p: Vector3, _u: float, _v: float) -> Color: return Color(0.85, 0.72, 0.5, 1.0).darkened(0.2 * absf(_nz(p, 300.0))), Vector3.UP)
+			return Vector3(0, 0.02, 0)
+		"nectar_alien", "drink_nebula", "elixir_void", "elixir_star", "invis_cloak_vial":
+			# Teardrop flasks in silver filigree.
+			var liquid: Color = {"nectar_alien": Color(0.45, 0.12, 0.7, 0.85), "drink_nebula": Color(0.55, 0.2, 0.75, 0.75), "elixir_void": Color(0.1, 0.05, 0.25, 0.92), "elixir_star": Color(0.85, 0.85, 0.95, 0.35), "invis_cloak_vial": Color(0.5, 0.52, 0.55, 0.3)}[t]
+			var outer := [Vector2(0, 0.0), Vector2(0.02, 0.002), Vector2(0.036, 0.02), Vector2(0.038, 0.04), Vector2(0.026, 0.07), Vector2(0.012, 0.09), Vector2(0.008, 0.1), Vector2(0.008, 0.11), Vector2(0.008, 0.11), Vector2(0.0095, 0.112), Vector2(0.0095, 0.116), Vector2(0.0095, 0.116), Vector2(0.008, 0.117)]
+			vessel(k, I, outer, 0.0024, CLEAR, liquid, 0.06, 28)
+			lathe(k, "metal", I, _curve([Vector2(0, 0.112), Vector2(0.011, 0.113), Vector2(0.011, 0.113), Vector2(0.01, 0.125), Vector2(0.004, 0.14), Vector2(0, 0.145)], 2), 12, Color(0.75, 0.75, 0.8))
+			for i in 3:
+				var pts := PackedVector3Array()
+				var rr := PackedFloat32Array()
+				for s in 13:
+					var f := s / 12.0
+					var y := 0.005 + f * 0.09
+					var r := _radius_at(_curve(outer, 3), y) + 0.0012
+					var a := TAU * i / 3.0 + f * 2.0
+					pts.append(Vector3(cos(a) * r, y, sin(a) * r))
+					rr.append(0.0014)
+				tube(k, "metal", I, pts, rr, 5, Color(0.75, 0.75, 0.8), false)
+			return Vector3(0, 0.035, 0)
+		"serum_hive", "nanite_swarm", "regen_pod", "mutagen":
+			# A capsule cradled in a cage of ribs.
+			var fill: Color = {"serum_hive": Color(0.9, 0.6, 0.1, 0.8), "nanite_swarm": Color(0.7, 0.72, 0.78, 0.55), "regen_pod": Color(0.85, 0.4, 0.45, 0.85), "mutagen": Color(0.4, 0.7, 0.75, 0.75)}[t]
+			var cage: String = "metal" if t == "nanite_swarm" else ("gold" if t == "regen_pod" else "pv_roast")
+			var cage_col := Color(0.7, 0.72, 0.75) if t == "nanite_swarm" else (Color(0.85, 0.65, 0.3) if t == "regen_pod" else Color(0.3, 0.22, 0.12))
+			var is_round := t == "mutagen"
+			var outer := [Vector2(0, 0.0), Vector2(0.018, 0.004), Vector2(0.024, 0.02), Vector2(0.024, 0.07), Vector2(0.018, 0.086), Vector2(0, 0.09)] if not is_round else [Vector2(0, 0.0), Vector2(0.026, 0.01), Vector2(0.034, 0.035), Vector2(0.026, 0.06), Vector2(0, 0.07)]
+			var prof := _curve(outer, 3)
+			lathe(k, "pv_glass", I, prof, 24, Color(0.9, 0.92, 0.94, 0.15))
+			var inner := PackedVector2Array()
+			for p in prof:
+				inner.append(Vector2(p.x * 0.9, lerpf(prof[0].y, prof[prof.size() - 1].y, 0.5) + (p.y - lerpf(prof[0].y, prof[prof.size() - 1].y, 0.5)) * 0.92))
+			lathe(k, "pv_liquid", I, inner, 24, fill)
+			for i in 6:
+				var a := TAU * i / 6.0
+				var pts := PackedVector3Array()
+				var rr := PackedFloat32Array()
+				for s in 9:
+					var y := lerpf(prof[0].y - 0.006, prof[prof.size() - 1].y + 0.006, s / 8.0)
+					var r := _radius_at(prof, clampf(y, prof[0].y + 0.001, prof[prof.size() - 1].y - 0.001)) + 0.003
+					pts.append(Vector3(cos(a + s * 0.12) * r, y, sin(a + s * 0.12) * r))
+					rr.append(0.0022)
+				tube(k, cage, I, pts, rr, 5, cage_col)
+			if t == "mutagen":
+				# Feelers curling off it.
+				for i in 4:
+					var a := TAU * i / 4.0
+					var pts := PackedVector3Array()
+					var rr := PackedFloat32Array()
+					for s in 10:
+						var f := s / 9.0
+						pts.append(Vector3(cos(a) * (0.03 + f * 0.03), 0.06 + f * 0.04 - f * f * 0.05, sin(a) * (0.03 + f * 0.03)) + Vector3(cos(a + 1.6), 0, sin(a + 1.6)) * 0.015 * sin(f * 6.0))
+						rr.append(0.003 * (1.0 - f) + 0.0006)
+					tube(k, "pv_meat", I, pts, rr, 6, Color(0.35, 0.55, 0.6))
+			return Vector3(0, 0.04, 0)
+		"food_star":
+			# A violet cake under a crust of gold stars.
+			lathe(k, "pv_crumb", I, _curve([Vector2(0, 0.0), Vector2(0.07, 0.0), Vector2(0.07, 0.0), Vector2(0.072, 0.03), Vector2(0.068, 0.045), Vector2(0, 0.048)], 3), 40, func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.3, 0.16, 0.45).lerp(Color(0.85, 0.75, 0.95), 0.8 if _nz(p, 500.0) > 0.55 else 0.0))
+			for i in 8:
+				var a := TAU * i / 8.0
+				k.crystal("gold", Transform3D(Basis.IDENTITY, Vector3(cos(a) * 0.045, 0.046, sin(a) * 0.045)), 0.008, 0.012, 4, 0.8, Color(0.9, 0.72, 0.3))
+			k.crystal("gold", I.translated(Vector3(0, 0.047, 0)), 0.012, 0.025, 4, 0.8, Color(0.9, 0.72, 0.3))
+			return Vector3(0, 0.024, 0)
+		"food_crystal":
+			var rc := RandomNumberGenerator.new()
+			rc.seed = 29
+			var cs := [Color(0.95, 0.4, 0.55, 0.6), Color(0.4, 0.8, 0.95, 0.6), Color(0.6, 0.95, 0.6, 0.6), Color(0.9, 0.5, 0.95, 0.6)]
+			for i in 5:
+				var c: Color = cs[i % cs.size()]
+				k.crystal("pv_glass", Transform3D(Basis(Vector3(rc.randf(), rc.randf(), rc.randf()).normalized(), rc.randf() * 0.8), Vector3(rc.randf_range(-0.03, 0.03), 0.0, rc.randf_range(-0.03, 0.03))), rc.randf_range(0.015, 0.022), rc.randf_range(0.03, 0.045), 6, 0.4, c)
+			return Vector3(0, 0.015, 0)
+		"food_hive":
+			# A footed gold bowl brimming with honey.
+			lathe(k, "gold", I, _curve([Vector2(0, 0.0), Vector2(0.025, 0.0), Vector2(0.025, 0.0), Vector2(0.018, 0.012), Vector2(0.012, 0.02), Vector2(0.03, 0.03), Vector2(0.055, 0.055), Vector2(0.06, 0.07), Vector2(0.06, 0.07), Vector2(0.056, 0.07), Vector2(0.05, 0.056), Vector2(0.02, 0.034), Vector2(0, 0.032)], 3), 36, Color(0.85, 0.65, 0.3))
+			lathe(k, "pv_glossy", I, _curve([Vector2(0.056, 0.066), Vector2(0.03, 0.072), Vector2(0, 0.074)], 3), 32, Color(0.95, 0.6, 0.08), func(_a: float, _t: float, p: Vector3) -> float: return 1.0 + 0.04 * _nz(p, 60.0))
+			return Vector3(0, 0.015, 0)
+		"food_bio":
+			# A parcel of food wrapped in broad leaves and bound with a vine.
+			rounded_box(k, "pv_leaf", I, Vector3(0.1, 0.05, 0.07), 0.02, func(p: Vector3, a: float, _t: float) -> Color: return Color(0.25, 0.42, 0.15).lerp(Color(0.5, 0.6, 0.25), pow(absf(sin(a * 7.0 + p.y * 30.0)), 20.0)), 3.0, func(_a: float, _t: float, p: Vector3) -> float: return 1.0 + 0.06 * _nz(p, 10.0))
+			lathe(k, "pv_wood", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.0, 0.025, 0)), PackedVector2Array([Vector2(0.03, -0.003), Vector2(0.032, 0.0), Vector2(0.03, 0.003)]), 20, Color(0.4, 0.35, 0.15), func(a: float, _t: float, _p: Vector3) -> float: return 1.0 / pow(pow(absf(cos(a)) * 1.15, 4.0) + pow(absf(sin(a)) * 0.82, 4.0), 0.25))
+			return Vector3(0, 0.025, 0)
+		"food_void":
+			# A dark loaf flecked with violet, a slice cut from it.
+			var col := func(p: Vector3, _a: float, _t: float) -> Color: return Color(0.12, 0.08, 0.16).lerp(Color(0.6, 0.35, 0.85), 0.9 if _nz(p, 300.0) > 0.6 else 0.0)
+			var prof := PackedVector2Array()
+			for v in _sphere(1.0, 20):
+				prof.append(Vector2(pow(v.x, 0.6), v.y))
+			lathe(k, "pv_crust", Transform3D(Basis.from_scale(Vector3(0.1, 0.05, 0.055)) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(0, 0.04, 0)), prof, 40, col, func(a: float, _t: float, _p: Vector3) -> float: return 1.0 - 0.3 * smoothstep(0.25, 0.95, cos(a)))
+			return Vector3(0, 0.04, 0)
+		"fungus_alien":
+			# A pale, translucent bell-capped mushroom.
+			lathe(k, "pv_glass", I, _curve([Vector2(0, 0.0), Vector2(0.012, 0.0), Vector2(0.009, 0.04), Vector2(0.008, 0.07), Vector2(0, 0.072)], 3), 16, Color(0.75, 0.92, 0.95, 0.75))
+			lathe(k, "pv_glass", I, _curve([Vector2(0, 0.06), Vector2(0.045, 0.058), Vector2(0.05, 0.062), Vector2(0.042, 0.085), Vector2(0.022, 0.1), Vector2(0, 0.104)], 4), 32, Color(0.55, 0.88, 0.95, 0.6))
+			return Vector3(0, 0.03, 0)
 	return null
