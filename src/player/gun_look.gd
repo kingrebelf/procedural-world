@@ -141,7 +141,7 @@ static func mat(name: String) -> Material:
 		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
 		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
 		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.45)
-		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
+		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.38, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
 		"gun_fletch": m = _base(Color(0.82, 0.8, 0.76), 0.85, 0.0)

@@ -260,7 +260,7 @@ static func _texture_detail(m: StandardMaterial3D, checker: bool) -> void:
 
 ## Case-hardened steel: the mottled straw, blue and grey of a bone-charcoal quench.
 static func _case_hardened() -> StandardMaterial3D:
-	var m := GunLook._base(Color.WHITE, 0.26, 0.92)
+	var m := GunLook._base(Color.WHITE, 0.4, 0.9)
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	n.frequency = 0.02
