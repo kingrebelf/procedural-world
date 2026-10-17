@@ -191,6 +191,12 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 				out["stall"].append(p + Vector2(sin(float(it["yaw"])), cos(float(it["yaw"]))) * 1.6)
 	# The village's own fields (medieval villages and towns), for the farmers.
 	out["fields"] = TownLife.plan(gen, site)["fields"] if TownLife.applies(gen, site) else []
+	# Benches by the doors, for anyone sitting down: [spot, yaw it faces out along].
+	out["benches"] = []
+	if TownLife.applies(gen, site):
+		for pc in TownLife.plan(gen, site)["pieces"]:
+			if pc["k"] == "bench":
+				out["benches"].append([pc["p"], float(pc["yaw"])])
 	# Beside each shop's door, a yard where its keeper works at their trade.
 	out["shop_yards"] = {}
 	for h in TownShops.shops_of(gen, site):

@@ -1146,6 +1146,19 @@ func _crowd(game, world, player) -> void:
 		busy += int(n.action == "work" and not n.duty.is_empty())
 	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
 	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
+	var benches: Array = e["places"].get("benches", [])
+	if not benches.is_empty():
+		var sitter: NPC = vs[0]
+		var spot: Array = world.npcs._bench_spot(sitter, e, benches[0][0])
+		sitter.global_position = Vector3(spot[0].x, sitter.global_position.y, spot[0].y)
+		sitter.target = spot[0]
+		sitter.face_to = spot[1]
+		world.npcs._sit(sitter, 30.0)
+		await _frames(90)
+		check(sitter.perform == "sit" and world.npcs.bench_under(sitter) and sitter._stool == null, "someone sitting down by a door sits on its bench, not a stool")
+		var other: NPC = vs[1]
+		check(world.npcs._bench_spot(other, e, benches[0][0]).is_empty() or int(other.get_meta("bench_i", -1)) != int(sitter.get_meta("bench_i", -2)), "one to a bench")
+		sitter.stop_perform()
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	await _frames(2)
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")

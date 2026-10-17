@@ -472,6 +472,18 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	n.face_to = Vector2.INF
 	if n.action == "socialize":
 		_find_company(n, e, pp)
+	# Sitting down: on a bench by someone's door if one is free nearby.
+	var sits: bool = n.action == "sit" or n.action == "work" and String(n.duty.get("perform", "")) == "sit"
+	if sits and not n.is_performing():
+		var spot := _bench_spot(n, e, n.duty.get("target", n.target) if n.action == "work" else Vector2(n.global_position.x, n.global_position.z))
+		if not spot.is_empty():
+			n.target = spot[0]
+			n.face_to = spot[1]
+			if n.action == "work":
+				n.duty["target"] = spot[0]
+				n.duty["face"] = INF
+	elif not sits and not n.is_performing():
+		_free_bench(n, e)
 	var dist: float = per["player_dist"]
 	if n.action != prev:
 		# Ambient performances end when the person moves on to something else.
@@ -509,14 +521,15 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		if n.action == "dance" and here:
 			n.act("dance", randf_range(15.0, 30.0))
 			n.ambient = true
-		elif n.action == "sit":
-			n.act("sit", randf_range(20.0, 45.0))
-			n.ambient = true
+		elif n.action == "sit" and (not n.has_meta("bench_i") or Vector2(n.global_position.x, n.global_position.z).distance_to(n.target) < 0.9):
+			_sit(n, randf_range(20.0, 45.0))
 	# At work: a meal sat down, a tune in the square, a prayer now and then, and a word
 	# about it for anyone passing.
 	if n.action == "work" and not n.duty.is_empty() and n.at_work():
 		var perf := String(n.duty.get("perform", ""))
-		if perf != "" and not n.is_performing():
+		if perf == "sit" and not n.is_performing():
+			_sit(n, randf_range(25.0, 50.0))
+		elif perf != "" and not n.is_performing():
 			n.act(perf, randf_range(25.0, 50.0))
 			n.ambient = true
 		elif String(n.duty.get("gesture", "")) != "" and not n.is_performing() and randf() < 0.12:
@@ -1047,6 +1060,62 @@ func _on_town_pushed(sx: int, sz: int) -> void:
 			_add_node(e, rec)
 
 # --- Outlaws -----------------------------------------------------------------------------------
+
+# --- Benches ---------------------------------------------------------------------------
+
+## Where someone about to sit down sits: [spot, a point they face] on a free bench by a
+## door within 25 m of `near` (held for them while they use it), or [] (they sit on the
+## stool they carry).
+func _bench_spot(n: NPC, e: Dictionary, near: Vector2) -> Array:
+	var benches: Array = e.get("places", {}).get("benches", [])
+	if benches.is_empty():
+		return []
+	var taken: Dictionary = e.get_or_add("benches_taken", {})
+	var bi := int(n.get_meta("bench_i", -1))
+	if bi < 0:
+		var bd := 25.0
+		for i in benches.size():
+			var o = taken.get(i)
+			if o != null and is_instance_valid(o) and o != n and int(o.get_meta("bench_i", -1)) == i:
+				continue
+			var d := near.distance_to(benches[i][0])
+			if d < bd:
+				bd = d
+				bi = i
+		if bi < 0:
+			return []
+		taken[bi] = n
+		n.set_meta("bench_i", bi)
+	var b: Array = benches[bi]
+	var front := Vector2(sin(float(b[1])), cos(float(b[1])))
+	# Feet a little out from the bench, so the hips land on the seat.
+	return [(b[0] as Vector2) + front * 0.32, (b[0] as Vector2) + front * 4.0]
+
+func _free_bench(n: NPC, e: Dictionary) -> void:
+	if not n.has_meta("bench_i"):
+		return
+	var taken: Dictionary = e.get("benches_taken", {})
+	if taken.get(int(n.get_meta("bench_i"))) == n:
+		taken.erase(int(n.get_meta("bench_i")))
+	n.remove_meta("bench_i")
+
+## Whether someone sitting here is on a bench (so they don't bring out a stool too).
+func bench_under(n: NPC) -> bool:
+	var e := _entry_of(n.settlement)
+	var p := Vector2(n.global_position.x, n.global_position.z)
+	for b in e.get("places", {}).get("benches", []):
+		if p.distance_to(b[0]) < 0.7:
+			return true
+	return false
+
+## Sit down: on the bench they went to, else on their own stool.
+func _sit(n: NPC, secs: float) -> void:
+	if n.has_meta("bench_i"):
+		var at: Vector2 = n.duty.get("target", n.target) if n.action == "work" else n.target
+		n.global_position = Vector3(at.x, n.global_position.y, at.y)
+		n.rotation.y = atan2(n.face_to.x - n.global_position.x, n.face_to.y - n.global_position.z)
+	n.act("sit", secs)
+	n.ambient = true
 
 # --- Market crowd -------------------------------------------------------------------------
 

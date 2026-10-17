@@ -1076,6 +1076,7 @@ func test_npc_roles() -> void:
 		for pr in NPCRoles.props(vpl, vs):
 			crates += int(pr[0] == NPCRoles.PROPS["field"])
 		check(crates == 0, "no stand-in crop crates beside real fields")
+		check(not (vpl["benches"] as Array).is_empty(), "the village's door benches are seats for sitters")
 	# Market crowd: folk in from the country by day, gone by night.
 	var crowd := MarketCrowd.roster(site, 0, 12, pl["gates"])
 	check(crowd.size() >= MarketCrowd.BASE[int(site.get("size", 0))] - 1, "a town gets its day visitors (%d)" % crowd.size())
