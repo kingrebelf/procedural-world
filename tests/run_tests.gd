@@ -689,6 +689,21 @@ func test_batch_crafting() -> void:
 	var pick: Dictionary = Recipes.LIST.filter(func(r): return r["out"] == "pickaxe_iron")[0]
 	check(Recipes.craft_many(inv, pick, o, -1) == 10 and inv.count("pickaxe_iron") == 10, "craft all tools, one slot each")
 
+func test_craft_tabs() -> void:
+	for r in Recipes.LIST:
+		var tabs := ItemDB.craft_tabs(r["out"])
+		check(not tabs.is_empty() and tabs.all(func(t): return ItemDB.CRAFT_TABS.has(t)), "%s sorts into known tabs (%s)" % [r["out"], tabs])
+	for t in ItemDB.ITEMS:
+		if ItemDB.ITEMS[t].has("cat"):
+			check(ItemDB.CRAFT_TABS.has(ItemDB.ITEMS[t]["cat"]), "%s has a known cat" % t)
+	for pair in [["bolt", "Ammo"], ["arrow", "Ammo"], ["rounds", "Ammo"], ["helm_iron", "Armour"], ["shield_wood", "Armour"],
+			["sword_iron", "Weapons"], ["crossbow", "Weapons"], ["jet_fuel", "Fuel"], ["cooked_meat", "Food"],
+			["health_potion", "Medicine"], ["torch", "Lights"], ["speeder", "Vehicles"], ["lockpick", "Tools"],
+			["iron_ingot", "Materials"], ["forge", "Stations"], ["wall_stone", "Building"], ["chair", "Furniture"]]:
+		check(ItemDB.craft_tab(pair[0]) == pair[1], "%s is under %s (got %s)" % [pair[0], pair[1], ItemDB.craft_tab(pair[0])])
+	check(ItemDB.craft_tabs("power_cell") == ["Materials", "Ammo"], "power cells also show under Ammo")
+	check(ItemDB.craft_tabs("lantern") == ["Furniture", "Lights"], "lanterns also show under Lights")
+
 func test_build_pieces() -> void:
 	for id in BuildCatalog.PIECES:
 		var m := BuildCatalog.mesh(id)
@@ -1497,6 +1512,13 @@ func test_world_themes() -> void:
 			alien += 1
 			check(int(p["base"]) >= 50, "alien worlds are level 50+ (%s)" % p["kind"])
 	check(alien == 2, "two alien worlds are linked to a human home")
+	# Oaks grow on human worlds, so no oak species has violet or magenta leaves.
+	var odd := 0
+	for sp in range(1, 3001):
+		var h: float = Color(Flora.species("oak", sp)["leaf"]).h
+		if h > 0.45 and h < 0.97:
+			odd += 1
+	check(odd == 0, "no purple oaks (%d of 3000)" % odd)
 	check(var_to_str(Planets.system(4242)) != var_to_str(sys), "old worlds keep their old system")
 	Planets.apply(sys[0])
 	check(Eras.theme == "human" and WorldField.allowed_eras == [Eras.MEDIEVAL, Eras.SCIFI], "applying the home world sets its theme")
@@ -1640,8 +1662,7 @@ func test_pack_a_items() -> void:
 		for t in sh[1]:
 			if t == "":
 				continue
-			# treasure_map is the buried treasure maps change's item; its icon waits here for it.
-			check(ItemDB.has(t) or t == "treasure_map", "icon %s is an item" % t)
+			check(ItemDB.has(t), "icon %s is an item" % t)
 			known[t] = true
 	var made := {}
 	for r in Recipes.LIST:
@@ -2062,6 +2083,22 @@ func test_wonder_meshes() -> void:
 		check(ObjectLibrary.kind(t) == "structure" and Wonders.unbreakable(t), "%s is an unbreakable structure" % t)
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
+	# Human worlds: no glowing glyphs, shards or inlays on the wonders they can have.
+	for t in ["w_throne", "w_dreadnought", "w_column", "w_pylon"]:
+		var calm := WonderSite.build(t, false, true)
+		var lit := 0
+		for i in calm.get_surface_count():
+			var mat := calm.surface_get_material(i) as StandardMaterial3D
+			if mat != null and mat.emission_enabled and mat.emission_texture != null:
+				lit += 1
+		check(lit == 0, "a human world's %s has no glowing stone (%d lit surfaces)" % [t, lit])
+	var o := {"t": "w_throne"}
+	var was := Eras.theme
+	Eras.theme = "human"
+	check(ObjectLibrary.mesh_key(o) == "w_throne" + WonderSite.CALM, "human worlds use the calm wonder mesh")
+	Eras.theme = "alien"
+	check(ObjectLibrary.mesh_key(o) == "w_throne", "alien worlds keep the glow")
+	Eras.theme = was
 
 
 ## Nothing grows through a floor: trees, rocks, caches and markers keep out of every
@@ -2271,3 +2308,64 @@ func test_cave_networks() -> void:
 	check(Caves.lights({"t": "cave_crystal", "v": 0}).is_empty(), "plain crystals carry no lamp")
 	Eras.theme = was_theme
 	WorldField.terrain_v = was
+
+func test_treasure_maps() -> void:
+	check(ItemDB.def("treasure_map").get("kind", "") == "map" and not ItemDB.is_stackable("treasure_map"), "a treasure map is its own item")
+	check(Treasure.map_for(Eras.MEDIEVAL) == "treasure_map" and Treasure.map_for(Eras.SCIFI) == "treasure_chip", "parchment in the old lands, a data chip on the frontier")
+	# A buried chest holds five or six ordinary caches' worth.
+	var worth := func(loot: Array) -> int:
+		var w := 0
+		for it in loot:
+			w += int(it["qty"]) if it["type"] == "_marks" else int(ItemDB.def(it["type"]).get("value", 1)) * int(it["qty"])
+		return w
+	var r := RandomNumberGenerator.new()
+	r.seed = 99
+	var one := 0
+	var chest := 0
+	for i in 40:
+		one += worth.call(ItemDB.roll_loot(Eras.MEDIEVAL, r, {"chunk": Vector2i(2, 2)}, Treasure.LUCK))
+		var t := Treasure.roll_loot(Eras.MEDIEVAL, r, Vector2i(2, 2))
+		chest += worth.call(t)
+		var types := {}
+		for it in t:
+			check(not Treasure.is_map(it["type"]), "no maps inside treasure")
+			if ItemDB.is_stackable(it["type"]) or it["type"] == "_marks":
+				check(not types.has(it["type"]), "stacks in a chest are merged")
+				types[it["type"]] = true
+	check(chest > one * 4 and chest < one * 7, "a treasure chest is worth 5-6 caches (%d vs %d)" % [chest, one])
+	# The spot: a few hundred metres to a kilometre off, on open dry land.
+	var g := ChunkGenerator.new(5150)
+	r.seed = 7
+	var h := Treasure.new_hunt(1, g, Vector2(10, 20), 0, r)
+	var d := Vector2(h["x"], h["z"]).distance_to(Vector2(10, 20))
+	check(d >= Treasure.MIN_DIST and d <= Treasure.MAX_DIST, "the X is %d m away" % d)
+	check(Treasure.open_land(g, Vector2(h["x"], h["z"])), "on open dry land")
+	check(not (h["loot"] as Array).is_empty() and not h["found"], "the hunt knows what's in the chest")
+	# Buried in its chunk under a mound of turned soil; dig and it can be opened.
+	var k := Treasure.chunk_of(h)
+	var c := g.generate(k.x, k.y)
+	var ground := ChunkGenerator.height_at(c, float(h["x"]) - k.x * 64.0, float(h["z"]) - k.y * 64.0)
+	var lp := Treasure.burial(c, h)
+	check(lp.x >= Treasure.EDGE and lp.x <= 64.0 - Treasure.EDGE and lp.z >= Treasure.EDGE and lp.z <= 64.0 - Treasure.EDGE, "the chest lies inside its chunk")
+	var before := ChunkGenerator.height_at(c, lp.x, lp.z)
+	check(absf(before - Treasure.DEPTH - lp.y) < 0.01, "%.1f m under the ground" % Treasure.DEPTH)
+	Treasure.dress(c, lp)
+	check(ChunkGenerator.height_at(c, lp.x, lp.z) > before + 0.1 and ChunkGenerator.road_at(c, lp.x, lp.z) > 0.5, "turned soil heaps over it")
+	var o := {"i": c["objects"].size(), "t": "chest", "p": lp, "r": 0.0, "s": 1.0, "e": 0, "st": {"loot": h["loot"], "opened": false, "treasure": 1}}
+	c["objects"].append(o)
+	check(Treasure.covered(c, o) and Treasure.chest_in(c, 1) == o and Treasure.chest_in(c, 2).is_empty(), "the chest starts buried")
+	var hs: PackedFloat32Array = c["heights"]
+	for j in range(int(lp.z) - 2, int(lp.z) + 3):
+		for i in range(int(lp.x) - 2, int(lp.x) + 3):
+			hs[j * ChunkGenerator.RES + i] = minf(hs[j * ChunkGenerator.RES + i], lp.y)
+	c["heights"] = hs
+	check(not Treasure.covered(c, o), "dug down to, it can be opened")
+	check(not Treasure.covered(c, {"p": lp, "st": {}}), "ordinary caches are never buried")
+	# The snapshot keeps chest, mound and hole.
+	var s := _tmp_store("treasure")
+	s.save_chunk(c)
+	var back = s.load_chunk(k.x, k.y)
+	check(back is Dictionary and int(Treasure.chest_in(back, 1).get("st", {}).get("treasure", -1)) == 1 and absf(ChunkGenerator.height_at(back, lp.x, lp.z) - lp.y) < 0.01, "the snapshot keeps the chest and the dig")
+	check(Treasure.compass(Vector2(0, -5)) == "north" and Treasure.compass(Vector2(5, 5)) == "south-east", "compass directions")
+	check(Treasure.hint(h, Vector3(h["x"], 0, h["z"] + 500.0)).contains("north"), "the map says which way to go")
+	check(ground == ground, "ground sampled")

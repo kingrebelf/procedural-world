@@ -121,7 +121,9 @@ static func _surface(ph: String, scale: float, rough: float, metal: float, glow:
 		m.normal_texture = photo(ph, "normal")
 	if glow > 0.0 and photo(ph, "emit") != null:
 		m.emission_enabled = true
+		# Multiply, so only the texture's lit parts glow (Add would light the whole face).
 		m.emission = Color.WHITE
+		m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
 		m.emission_texture = photo(ph, "emit")
 		m.emission_energy_multiplier = glow
 	m.uv1_triplanar = true
@@ -312,6 +314,7 @@ static func _get_mat(name: String) -> Material:
 			m = _pbr(Color(0.05, 0.08, 0.16), 0.12, 0.6, "", 0, 1)
 			m.clearcoat_enabled = true
 			m.clearcoat = 0.8
+		"rubber": m = _pbr(Color(0.06, 0.06, 0.065), 0.85, 0.0, "cloth", 0.15, 1.0, 0.35)
 		"cloth": m = _pbr(Color(0.62, 0.20, 0.16), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		"cloth_blue": m = _pbr(Color(0.2, 0.3, 0.6), 0.95, 0.0, "cloth", 0.15, 1.0, 0.6)
 		# A torch's stick: noise squeezed across it and stretched along it reads as grain.
@@ -367,6 +370,8 @@ static func _get_mat(name: String) -> Material:
 		"gate_metal": m = _surface("gate_ring_metal", 0.22, 0.35, 0.7, 2.5)
 		"void_stone": m = _surface("void_stone", 0.25, 0.6, 0.0, 1.6)
 		# Interiors and sci-fi buildings from Ben's art.
+		"scrap_pile": m = _surface("scrap_machinery", 0.55, 0.6, 0.55, 0.0)
+		"scrap_plate": m = _surface("scrap_burnt", 0.7, 0.5, 0.65, 0.0)
 		"wood_floor": m = _surface("wood_floor", 0.5, 0.72, 0.0, 0.0)
 		"stone_floor": m = _surface("stone_floor", 0.3, 0.85, 0.0, 0.0)
 		"tapestry": m = _surface("tapestry", 1.0 / 1.2, 0.95, 0.0, 0.0) # one picture per hanging (Interiors.tapestry)
@@ -379,6 +384,9 @@ static func _get_mat(name: String) -> Material:
 		"hazard": m = _surface("hazard", 0.7, 0.6, 0.2, 0.0)
 		"alien_hull": m = _surface("alien_hull", 0.3, 0.35, 0.25, 3.0)
 		"screen": m = _surface("screen", 0.9, 0.2, 0.0, 1.4)
+		# Unlit versions for human worlds: the shards glint, nothing glows.
+		"starfall_glass_dull": m = _surface("starfall_glass", 0.14, 0.12, 0.6, 0.0)
+		"void_stone_dull": m = _surface("void_stone", 0.25, 0.5, 0.1, 0.0)
 		"glow_cyan": m = _glow(Color(0.2, 0.85, 1.0), 4.0)
 		"glow_teal": m = _glow(Color(0.2, 1.0, 0.8), 3.0)
 		"glow_violet": m = _glow(Color(0.7, 0.4, 1.0), 3.0)

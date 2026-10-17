@@ -9,6 +9,10 @@ render_mode diffuse_burley, specular_schlick_ggx;
 
 instance uniform float visor_y = 1.68;
 instance uniform float flash = 0.0;
+// First-person arms (as human.gdshader): 1 both arms, 2 only the -x arm, 3 only the +x
+// arm; everything nearer the middle than arms_x is cut away.
+instance uniform float arms_only = 0.0;
+instance uniform float arms_x = 0.25;
 
 uniform sampler2D chainmail : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D leather : hint_default_white, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -28,6 +32,12 @@ float hash(vec2 p) {
 }
 
 void fragment() {
+	if (arms_only > 0.5) {
+		bool other_arm = (arms_only > 1.5 && arms_only < 2.5 && rest_pos.x > 0.0) || (arms_only > 2.5 && rest_pos.x < 0.0);
+		if (abs(rest_pos.x) < arms_x || other_arm) {
+			discard;
+		}
+	}
 	int style = int(tint.a * 8.0 + 0.5);
 	int part = int(rest.x + 0.5);
 	vec3 col = tint.rgb;

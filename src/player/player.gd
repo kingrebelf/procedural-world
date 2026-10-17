@@ -461,6 +461,7 @@ func _physics_process(delta: float) -> void:
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.ads = gunplay.ads
+	viewmodel.raise = _zoom
 	viewmodel.sway(delta, hv.length() / SPRINT)
 	if not fly:
 		steps.tick(self, delta, Vector2(velocity.x, velocity.z).length(), is_on_floor(), _crouched, landed_vy, jumped)
@@ -590,7 +591,7 @@ func _find_focus() -> Dictionary:
 					if wp.distance_squared_to(global_position) > 49.0:
 						continue
 					var use := _use_of(o)
-					if use.is_empty():
+					if use.is_empty() or Treasure.covered(c.data, o):
 						continue
 					var sc := _focus_score(eye, fwd, wp + Vector3(0, use["h"] * 0.5, 0))
 					if sc < best_s:
@@ -844,6 +845,13 @@ func _update_look_target() -> void:
 		var held = held_item()
 		var can_dig: bool = held != null and ItemDB.def(held["type"]).has("dig")
 		info = {"title": "Ground", "sub": "Terrain", "lines": ["Dig with a pickaxe or drill for Stone" if not can_dig else "[%s] dig: leaves a permanent crater" % _key("use")], "icon": "stone"}
+		var cn = h["chunk"]
+		if cn is ChunkNode and h.has("point"):
+			var lp: Vector3 = h["point"] - cn.position
+			for o in cn.data["objects"]:
+				if Treasure.covered(cn.data, o) and Vector2(o["p"].x - lp.x, o["p"].z - lp.z).length() < Treasure.MOUND_R + 1.0:
+					info = {"title": "Turned Soil", "sub": "Something is buried here", "lines": ["Dig it out with a pickaxe or drill"], "icon": Treasure.MAPS[0]}
+					break
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
@@ -914,6 +922,16 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			if WonderSite.sealed(chunk.data, o):
 				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 				return
+			if Treasure.covered(chunk.data, o):
+				Game.toast.emit("Still buried. Dig it out with a pickaxe.")
+				return
+			if not o["st"].has("map_roll") and not o["st"].has("treasure"):
+				# Now and then a cache holds a treasure map (decided when first opened).
+				o["st"]["map_roll"] = true
+				if randf() < Treasure.CACHE_CHANCE:
+					var era := maxi(int(o["e"]), 0)
+					(o["st"]["loot"] as Array).append(Treasure.make_map(era, Game.origin_here("found", era, chunk.key)))
+				Game.mark_chunk_dirty(chunk.data)
 			var wp: Vector3 = chunk.position + o["p"]
 			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.owns_house_at(wp) else {}
 			if not town.is_empty() and not _pick_lock(chunk, o, wp):
@@ -929,6 +947,8 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 			o["st"]["loot"] = kept
 			o["st"]["opened"] = kept.is_empty()
 			Game.mark_chunk_dirty(chunk.data)
+			if o["st"].has("treasure") and o["st"]["opened"]:
+				Game.finish_treasure(int(o["st"]["treasure"]))
 			if not town.is_empty() and worth > 0:
 				# It belonged to someone here. Seen or not, it's stolen.
 				if not npcs.report_crime(wp, "theft", worth, ObjectLibrary.label(o["t"]).to_lower()):
@@ -1117,6 +1137,11 @@ func use_held() -> void:
 	if it != null and Vehicle.is_vehicle_item(it["type"]):
 		_cooldown = 0.5
 		deploy_vehicle()
+		return
+	if it != null and Treasure.is_map(it["type"]):
+		_cooldown = 0.5
+		var h := Game.hunt(int(it.get("hunt", -1))) if it.has("hunt") else Game.start_treasure(it)
+		Game.toast.emit(Treasure.hint(h, global_position))
 		return
 	if it != null and BuildCatalog.is_piece_item(it["type"]):
 		_cooldown = 0.25
@@ -1351,11 +1376,15 @@ func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
 			fauna.player_hit(c, dmg)
+			if c.hp <= 0.0 or gunplay._beam_ticks % 3 == 1:
+				_mark(c, null, false)
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
 			npcs.player_hit(n, dmg)
+			if float(n.rec.get("hp", 1.0)) <= 0.0 or gunplay._beam_ticks % 3 == 1:
+				_mark(null, n, false)
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1391,12 +1420,12 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	if col.has_meta("creature") and fauna:
 		var c = col.get_meta("creature")
 		if is_instance_valid(c):
-			_strike(it, c, null, float(d.get("damage", 10)) * q)
+			_strike(it, c, null, float(d.get("damage", 10)) * q, c.is_head(at))
 		return "creature"
 	if col.has_meta("npc") and npcs:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
-			_strike(it, null, n, float(d.get("damage", 10)) * q)
+			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at))
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1416,16 +1445,20 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
-func _strike(it, creature, npc, dmg: float) -> void:
+## `head`: a shot to the head (guns and bows), for HEADSHOT times the damage.
+func _strike(it, creature, npc, dmg: float, head := false) -> void:
 	Audio.combat()
 	if Rarity.has_affix(it, "keen") and randf() < 0.2:
 		dmg *= 2.0
 		Game.toast.emit("Critical hit!")
+	if head:
+		dmg *= HEADSHOT
 	var at: Vector3 = creature.global_position if creature != null else npc.global_position
 	if creature != null:
 		fauna.player_hit(creature, dmg)
 	else:
 		npcs.player_hit(npc, dmg)
+	_mark(creature, npc, head)
 	if Rarity.has_affix(it, "vampiric"):
 		Game.set_health(minf(Game.max_health(), Game.health + dmg * 0.08))
 	if Rarity.has_affix(it, "shock") and fauna:
@@ -1433,6 +1466,29 @@ func _strike(it, creature, npc, dmg: float) -> void:
 		for c in fauna.creatures_near(at, 3.0):
 			if c != creature:
 				fauna.player_hit(c, dmg * 0.4)
+
+const HEADSHOT := 2.0
+
+## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
+## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
+## for a kill.
+signal hit_marker(kind: String)
+
+func _mark(creature, npc, head: bool) -> void:
+	var dead := false
+	if creature != null:
+		dead = not is_instance_valid(creature) or creature.hp <= 0.0
+	elif npc != null:
+		dead = not is_instance_valid(npc) or float(npc.rec.get("hp", 1.0)) <= 0.0
+	var kind := "kill" if dead else ("head" if head else "hit")
+	hit_marker.emit(kind)
+	match kind:
+		"kill":
+			Audio.play("hit/marker", -4.0, 0.03, 0.8)
+		"head":
+			Audio.play("hit/marker", -3.0, 0.03, 1.8)
+		_:
+			Audio.play("hit/marker", -13.0, 0.05, 1.3)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float) -> void:
@@ -1509,6 +1565,8 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			if Game.give(it):
 				spilled += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 		o["st"]["loot"] = []
+		if o["st"].has("treasure"):
+			Game.finish_treasure(int(o["st"]["treasure"]))
 		if spilled > 0 and npcs and not Game.owns_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
