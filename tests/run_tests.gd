@@ -2865,6 +2865,26 @@ func test_no_double_floors() -> void:
 		var hits := ZFight.items(t)
 		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])
 
+## Outpost blocks come in several looks by where they stand, each a whole building with
+## its own paint and fittings, and a look's key still finds its type's rooms.
+func test_outpost_variants() -> void:
+	for t in KitBase.VARIANTS:
+		var keys := {}
+		for i in 60:
+			keys[ObjectLibrary.mesh_key({"t": t, "p": Vector3(i * 7.3, 0, i * 3.1)})] = true
+		check(keys.size() == int(KitBase.VARIANTS[t]), "%s comes in %d looks (%s)" % [t, KitBase.VARIANTS[t], keys.keys()])
+		var plain := ObjectLibrary.get_mesh(t)
+		var plain_v := 0
+		for i in plain.get_surface_count():
+			plain_v += (plain.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		for key: String in keys:
+			check(key.get_slice(Stronghold.VAR, 0) == t, "%s is still a %s" % [key, t])
+			var m := ObjectLibrary.get_mesh(key)
+			var n := 0
+			for i in m.get_surface_count():
+				n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+			check(n > plain_v, "%s has its own paint and fittings (%d vertices, plain %d)" % [key, n, plain_v])
+
 static func _species_named(name: String, era: int) -> Dictionary:
 	for sp in range(1, 4000):
 		var p := Creature.species(sp, era)
