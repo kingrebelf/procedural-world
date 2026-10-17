@@ -282,7 +282,11 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array) -> voi
 				_merlons(k, face_stone, -4.2, 4.2, 9.3, 4.05, side * PI / 2.0, ruined, r)
 			var fl: float = Interiors.BOX["castle_keep"][1]
 			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, fl * 0.5, 0)), Vector3(7.6, fl, 7.6))
-			k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.95, 0)), Vector3(7.6, 0.1, 7.6))
+			# The hall's ceiling: boards on five hewn beams (rough bark across the whole
+			# ceiling read as a tree trunk).
+			k.box("wood_floor", Transform3D.IDENTITY.translated(Vector3(0, 2.95, 0)), Vector3(7.6, 0.1, 7.6))
+			for j in 5:
+				k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, 2.79, -3.2 + j * 1.6)), Vector3(7.4, 0.22, 0.22))
 			k.box(face_stone, Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.6, 4.0, 8.6))
 			if ruined:
 				for n in 2:

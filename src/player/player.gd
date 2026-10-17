@@ -107,7 +107,7 @@ func _ready() -> void:
 	ray.add_exception(self)
 	camera.add_child(ray)
 	viewmodel = Viewmodel.new()
-	viewmodel.look = LOOK
+	viewmodel.look = Net.my_look()
 	camera.add_child(viewmodel)
 	hand_light = HandLight.new()
 	camera.add_child(hand_light)
@@ -121,7 +121,7 @@ func _ready() -> void:
 	traps.sprung.connect(func(blast: bool, at: Vector3): Audio.play_at("weapon/explosion" if blast else "hit/metal", at, 2.0))
 	if HumanModel.available():
 		body = HumanModel.new()
-		body.build(LOOK, Eras.MEDIEVAL, "")
+		body.build(Net.my_look(), Eras.MEDIEVAL, "")
 		body.rotation.y = PI
 		add_child(body)
 		body.set_ground(Callable(), [get_rid()])
