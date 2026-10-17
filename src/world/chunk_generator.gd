@@ -1265,11 +1265,14 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
-	# Caches: rare, contents rolled now and frozen forever.
+	# Caches: rare, contents rolled now and frozen forever. Out in the wilds only: a
+	# chest left lying in a town street or on the road would have been picked up long
+	# ago (towns keep theirs indoors, Interiors.stock).
 	r = WHash.rng(seed, cx, cz, 303)
 	var cache_x := r.randf_range(4, SIZE - 4) if r.randf() < 0.22 else -1.0
 	var cache_z := r.randf_range(4, SIZE - 4) if cache_x >= 0.0 else -1.0
-	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0):
+	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0) and not _near_settlement(x0 + cache_x, z0 + cache_z, sites, 6.0) \
+			and road_at(chunk, cache_x, cache_z) < 0.05 and not under_river(chunk, cache_x, cache_z):
 		var lx := cache_x
 		var lz := cache_z
 		var era := WorldField.dominant(weights_at(chunk, lx, lz))
