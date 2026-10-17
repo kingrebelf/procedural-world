@@ -444,7 +444,9 @@ static func _stone(part: String, ruined: bool, k: MeshKit, models: Array, v := 0
 					models.append(["village/Prop_Vine2", 180 * n, Basis(Vector3.UP, n * PI) * Vector3(-2.0, 4.0, 4.1), 1.0])
 				k.box("glow_violet", Transform3D.IDENTITY.translated(Vector3(1, 3.4, 4.12)), Vector3(1.0, 0.3, 0.04))
 			else:
-				k.box("glow_warm", Transform3D.IDENTITY.translated(Vector3(-1, 4.6, 3.9)), Vector3(0.6, 1.4, 0.04))
+				# Lamplight behind the hall's upper windows after dark (a dark pane by day).
+				for wx: float in [-1.0, 3.0]:
+					k.box("window_warm", Transform3D.IDENTITY.translated(Vector3(wx, 4.6, 3.9)), Vector3(0.6, 1.4, 0.04))
 
 ## Sci-fi bunker pieces from the outpost kit.
 static func _bunker(part: String, k: MeshKit, models: Array) -> void:

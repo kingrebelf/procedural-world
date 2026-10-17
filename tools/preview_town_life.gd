@@ -68,7 +68,8 @@ func _run() -> void:
 		d.merge(extra)
 		return d
 	# A cottage (6 x 6, door +z) and its yard, laid out as TownLife._yard would.
-	life._build([P.call("woodpile", Vector2(3.62, 0.0), PI * 0.5, {"len": 2.0, "roof": true}),
+	life._build([P.call("plinth", Vector2.ZERO, 0.0, {"w": 6.0, "d": 6.0, "door": 0.0}),
+		P.call("woodpile", Vector2(3.62, 0.0), PI * 0.5, {"len": 2.0, "roof": true}),
 		P.call("chopping", Vector2(4.7, 0.6), 0.4, {}),
 		P.call("garden", Vector2(0.3, -6.1), 0.0, {"hx": 2.3, "hz": 1.8}),
 		P.call("washing", Vector2(-5.0, -0.2), 0.0, {"len": 4.0}),

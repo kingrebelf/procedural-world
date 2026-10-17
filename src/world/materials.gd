@@ -237,6 +237,16 @@ static func _wind_foliage(kind: String, core: bool, back: Color, sway: float) ->
 	m.set_shader_parameter("uv_scale", 2.0 if kind == "leaf" and photo("leaves", "card") != null else 1.0)
 	return m
 
+static var _window_light := 0.0
+
+## How lit the lamplit windows are (0 by day .. 1 at night), set by the sky each frame.
+static func set_window_light(f: float) -> void:
+	if absf(f - _window_light) < 0.01:
+		return
+	_window_light = f
+	var m := get_mat("window_warm") as BaseMaterial3D
+	m.emission_energy_multiplier = 2.5 * f
+
 static func get_mat(name: String) -> Material:
 	_lock.lock()
 	var out := _get_mat(name)
@@ -428,6 +438,12 @@ static func _get_mat(name: String) -> Material:
 		"ash": m = _pbr(Color(0.3, 0.29, 0.28), 1.0, 0.0, "stone", 0.05, 2.0, 0.6)
 		"glow_red": m = _glow(Color(1.0, 0.15, 0.1), 5.0)
 		"glow_warm": m = _glow(Color(1.0, 0.65, 0.3), 2.5)
+		"window_warm":
+			# A lamplit window seen from outside: a dark pane by day, warm from dusk to dawn
+			# (set_window_light).
+			m = _glow(Color(1.0, 0.62, 0.3), 0.0)
+			m.albedo_color = Color(0.07, 0.06, 0.05)
+			m.emission_energy_multiplier = 2.5 * _window_light
 		"glow_white": m = _glow(Color(0.95, 0.97, 1.0), 3.0)
 		_:
 			m = _pbr(Color(1, 0, 1), 0.5, 0.0, "", 0, 1)

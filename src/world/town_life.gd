@@ -19,7 +19,7 @@ const ROUND := {"watchtower": 3.6, "well": 1.9, "market_stall": 2.0, "fruit_cart
 ## Crop kinds: [grass species list, row spacing, spacing along the row, ground wear].
 ## crop: [species, row gap, plant gap, soil wear, rows per strip, furrow between strips]
 const CROPS := {
-	"wheat": [["wheat"], 0.42, 0.34, 0.45, 7, 1.1],
+	"wheat": [["wheat"], 0.42, 0.34, 0.7, 6, 1.6],
 	"veg": [["cabbage", "leek"], 0.75, 0.42, 0.72],
 	"fallow": [[], 1.0, 1.0, 0.82],
 	"garden": [["cabbage", "leek", "cabbage"], 0.6, 0.38, 0.85],
@@ -302,9 +302,14 @@ static func _yard(ctx: Dictionary, h: Dictionary, r: RandomNumberGenerator, out:
 	# A lantern on the wall by the door.
 	if r.randf() < 0.65:
 		add.call("lantern", Vector2(-bs * 0.98, d * 0.5 + 0.1), 0.0, {"front": true, "y": 2.0})
-	# The ground before the door, trodden bare.
-	out["soil"].append({"p": frame_to_world(p, yaw, Vector2(r.randf_range(-0.3, 0.3), d * 0.5 + 1.1)), "yaw": yaw + r.randf_range(-0.15, 0.15),
-		"hx": w * 0.2 + 0.5, "hz": 0.95, "wear": 0.55})
+	# A course of rough footing stones where the walls meet the ground, a doorstep slab,
+	# and the ground before the door trodden bare.
+	var door_x := 0.0
+	if KitHouse.PLANS.has(t):
+		door_x = -w * 0.5 + 1.0 + 2.0 * int(int(KitHouse.PLANS[t][0]) / 2)
+	add.call("plinth", Vector2.ZERO, 0.0, {"w": w, "d": d, "door": door_x, "seed": r.randi()})
+	out["soil"].append({"p": frame_to_world(p, yaw, Vector2(door_x + r.randf_range(-0.2, 0.2), d * 0.5 + 1.3)), "yaw": yaw + r.randf_range(-0.15, 0.15),
+		"hx": 1.1 + r.randf_range(0.0, 0.5), "hz": 1.25, "wear": 0.95})
 	# A wattle fence round the back yard, open at the front; each side only where it fits,
 	# with a gap in the back for a gate.
 	if t != "townhouse" and r.randf() < 0.6:
@@ -647,7 +652,7 @@ static func crops(chunk: Dictionary, out: Dictionary, density: float, plans: Arr
 			si += 1
 			if strip > 0 and si % strip == 0:
 				bo0 += furrow
-				tone = r.randf_range(0.86, 1.1)
+				tone = r.randf_range(0.74, 1.16)
 		var na := int(a_len * 2.0 / gap)
 		for bi in offs.size():
 			var bo: float = offs[bi]
@@ -841,7 +846,7 @@ func _build(pieces: Array, base: float) -> void:
 		var r := RandomNumberGenerator.new()
 		r.seed = int(e.get("seed", WHash.str_hash(str(e.get("p", e.get("a", Vector2.ZERO))))))
 		var p2: Vector2 = e["p"] if e.has("p") else e["a"]
-		var gy := _ground(p2.x, p2.y) if e["k"] != "smoke" and e["k"] != "lantern" else oy
+		var gy := _ground(p2.x, p2.y) if e["k"] != "smoke" and e["k"] != "lantern" and e["k"] != "plinth" else oy
 		# Yard pieces on the house's flattened ground sit no lower than its plinth top.
 		var at := Vector3(p2.x - o2.x, gy - oy, p2.y - o2.y)
 		var xf := Transform3D(Basis(Vector3.UP, float(e.get("yaw", 0.0))), at)
@@ -861,6 +866,7 @@ func _build(pieces: Array, base: float) -> void:
 				else:
 					_fence(models, e["a"], e["b"], o2, oy, body)
 			"scarecrow": _scarecrow(k, xf, r)
+			"plinth": _plinth(k, xf, float(e["w"]), float(e["d"]), float(e["door"]), r, body)
 			"tree": _tree(root, e, at)
 			"torch_post": _torch_post(k, models, root, xf, body)
 			"smoke": _smoke(root, e, o2, oy)
@@ -1133,6 +1139,41 @@ func _wattle(k: MeshKit, a: Vector2, b: Vector2, o2: Vector2, oy: float, r: Rand
 			k.box("bark_w", px * Transform3D(bend, Vector3(0, 0.08 + j * (h - 0.08) / rows, off)),
 				Vector3(seg + 0.06, 0.062, 0.04), rod * r.randf_range(0.78, 1.12))
 		_box_shape(body, px * Transform3D.IDENTITY.translated(Vector3(0, h * 0.5, 0)), Vector3(seg, h, 0.1))
+
+## A house's footing: rough stones in a course round the foot of the walls (in the
+## house's own frame, its origin), open at the doorway, with a worn slab for a doorstep.
+static func _plinth(k: MeshKit, xf: Transform3D, w: float, d: float, door_x: float, r: RandomNumberGenerator, body: StaticBody3D) -> void:
+	var face := KitHouse.WALL_OUT + 0.06
+	var top := r.randf_range(0.5, 0.62) # above the house's origin (0.15 under the ground)
+	var base_tone := Color(0.78, 0.74, 0.68) * r.randf_range(0.85, 1.05)
+	# Each side runs corner to corner round the outside of the walls.
+	var sides := [[Vector3(-w * 0.5 - face, 0, d * 0.5 + face), Vector3(w * 0.5 + face, 0, d * 0.5 + face)],
+		[Vector3(w * 0.5 + face, 0, d * 0.5 + face), Vector3(w * 0.5 + face, 0, -d * 0.5 - face)],
+		[Vector3(w * 0.5 + face, 0, -d * 0.5 - face), Vector3(-w * 0.5 - face, 0, -d * 0.5 - face)],
+		[Vector3(-w * 0.5 - face, 0, -d * 0.5 - face), Vector3(-w * 0.5 - face, 0, d * 0.5 + face)]]
+	for si in 4:
+		var a: Vector3 = sides[si][0]
+		var b: Vector3 = sides[si][1]
+		var len := a.distance_to(b)
+		var dir := (b - a) / len
+		var yaw := atan2(-dir.z, dir.x)
+		var u := 0.0
+		while u < len - 0.05:
+			var sl := minf(r.randf_range(0.45, 0.95), len - u)
+			var mid := a + dir * (u + sl * 0.5)
+			var front := si == 0 and absf(mid.x - door_x) < 0.68 + sl * 0.5
+			if not front:
+				var h := top + r.randf_range(-0.06, 0.05)
+				var dep := r.randf_range(0.22, 0.3)
+				var bs := Basis(Vector3.UP, yaw + r.randf_range(-0.04, 0.04))
+				# (bs.z points out of the house on every side: they run round it clockwise.)
+				k.box("stone", xf * Transform3D(bs, mid + Vector3(0, (h - 0.45) * 0.5, 0) + bs.z * (dep * 0.5 - 0.12)),
+					Vector3(sl - 0.03, h + 0.45, dep), base_tone * r.randf_range(0.82, 1.12))
+			u += sl
+	# The doorstep: a slab before the doorway, its top just under the floor.
+	var step := xf * Transform3D(Basis(Vector3.UP, r.randf_range(-0.04, 0.04)), Vector3(door_x, 0.06, d * 0.5 + face + 0.32))
+	k.box("stone", step, Vector3(1.5, 0.24, 0.62), base_tone * 0.92)
+	_box_shape(body, step, Vector3(1.5, 0.24, 0.62))
 
 ## A scarecrow: a post and crossbar in an old shirt, a sack head and a straw hat.
 static func _scarecrow(k: MeshKit, xf: Transform3D, r: RandomNumberGenerator) -> void:
