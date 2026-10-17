@@ -202,7 +202,7 @@ static func warm_kits() -> void:
 		if f.ends_with(".jpg") or f.ends_with(".png"):
 			_kept.append(load("res://assets/textures/" + f))
 	for sh in ["res://src/world/foliage.gdshader", "res://src/world/ore.gdshader", "res://src/world/shaders/organic.gdshader",
-			"res://src/world/shaders/crystal.gdshader"]:
+			"res://src/world/shaders/crystal.gdshader", "res://src/world/metal.gdshader"]:
 		_kept.append(load(sh))
 
 ## Loads every piece mesh on the calling thread (the main thread, at world start), so
@@ -405,12 +405,23 @@ static func _tamed(m: Material) -> Material:
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
-		# Bare polished metal mirrors the dark ground and turned whole outposts black:
-		# the panels are painted plate, lighter, with a little sheen.
+		# Every kit material says metallic 1 and lets its texture (ORM blue) mark the metal.
+		# The kits paint their metal far too dark for metal (the sci-fi trims about 0.38,
+		# so it reflected 13% and outposts read black, then grey paint once tamed to 0.2):
+		# bare metal reflects 50-60%. So the metal stays metal, raised to that reflectance;
+		# the kits' other parts (wood, cloth, stone, metal 0 in the texture) keep the
+		# lighter albedo they had.
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-		c.metallic = 0.2
-		c.roughness = maxf(c.roughness, 0.55)
-		c.albedo_color = c.albedo_color * 1.45
+		var n := String(m.resource_name)
+		if n.begins_with("MI_Trim_01") or n.begins_with("MI_Trim_02"):
+			# Sci-fi hull trims, all metal: satin alloy (the texture's roughness, ~0.36).
+			c.albedo_color = c.albedo_color * 1.9
+		else:
+			c.albedo_color = c.albedo_color * 1.45
+			if not (n.begins_with("MI_Trim_Metal") or n.begins_with("MI_Trim_Props") or n == "MI_MetalOrnaments"):
+				# No metal in the texture: keep the old satin sheen, nothing else changes.
+				c.metallic = 0.2
+				c.roughness = maxf(c.roughness, 0.55)
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
 
@@ -448,9 +459,11 @@ static func _aged(m: Material, model := "") -> Material:
 	if out == null:
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
 		if metal:
-			c.albedo_color = Color(0.36, 0.35, 0.34)
-			c.metallic = 0.65
-			c.roughness = 1.0
+			# Blackened wrought iron: dark (about 23% reflectance against bright steel's
+			# 55%), but still metal, so it catches the light along its edges and curves.
+			c.albedo_color = Color(1.0, 0.98, 0.96)
+			c.metallic = 1.0
+			c.roughness = 0.8
 		else:
 			c.albedo_color = Color(0.68, 0.58, 0.52)
 			c.roughness = 1.0

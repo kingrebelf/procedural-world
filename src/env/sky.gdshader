@@ -34,6 +34,10 @@ uniform int cloud_steps = 28;
 uniform int cloud_light_steps = 4;
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
+// How much of the sky reflects and lights from it (1 in the open; Atmosphere lowers it
+// underground, so metal and gloss in a cave don't mirror the daylit sky). Only the
+// radiance pass: the sky you see never changes.
+global uniform float sky_reflect_g;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -331,7 +335,17 @@ void sky() {
 	// Below horizon: hazy toward the horizon colour, so the far edge of the land (seen from
 	// the air) melts into haze instead of a dark band.
 	vec3 below = mix(hor, ground_col * (0.2 + 0.8 * daylight), 0.4);
-	col = mix(col, below, smoothstep(0.0, -0.08, d.y));
-	COLOR = col;
+	float below_w = smoothstep(0.0, -0.08, d.y);
+	if (AT_CUBEMAP_PASS) {
+		// What metal and gloss reflect (and the sky light from below): the land under
+		// the horizon is daylit earth, a third as bright as the haze above it and warmer,
+		// with a soft horizon line between. A reflection that is the same pale haze above
+		// and below is what makes metal look like grey paint.
+		vec3 earth = vec3(0.3, 0.28, 0.2) * dot(hor, vec3(0.3333));
+		below = mix(hor * 0.85, earth, smoothstep(-0.005, -0.12, d.y));
+		below_w = smoothstep(0.0, -0.02, d.y);
+	}
+	col = mix(col, below, below_w);
+	COLOR = AT_CUBEMAP_PASS ? col * sky_reflect_g : col;
 	}
 }
