@@ -212,6 +212,38 @@ float layer(float amount, float lum, float mean, float noise) {
 	return smoothstep(0.35, 0.65, amount + (lum / max(mean, 0.001) - 1.0) * 0.25 * amount + (noise - 0.5) * 0.35);
 }
 
+#ifdef FAR_LAND
+// The nearest tree crown to p, on a jittered grid of 4.5 m cells of which a fraction `d`
+// hold a tree: x 1 inside a standing tree's crown, y the distance from its centre over
+// its radius, zw the offset to its centre (in cells); id a random number per tree.
+vec4 crown_at(vec2 p, float d, out float id) {
+	vec2 g = p / 4.5;
+	vec2 gi = floor(g);
+	float f1 = 9.0;
+	vec2 off = vec2(0.0);
+	float r = 1.0;
+	vec2 ci = gi;
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 c = gi + vec2(float(x), float(y));
+			float h = hash12(c);
+			vec2 o = c + 0.5 + (vec2(h, hash12(c + 17.3)) - 0.5) * 0.7 - g;
+			float dd = dot(o, o);
+			if (dd < f1) {
+				f1 = dd;
+				off = o;
+				r = h;
+				ci = c;
+			}
+		}
+	}
+	id = hash12(ci + 3.1);
+	float size = 0.36 + 0.22 * hash12(ci + 9.7);
+	float rad = sqrt(f1) / size;
+	return vec4(step(r, d) * (1.0 - smoothstep(0.85, 1.05, rad)), rad, off / size);
+}
+#endif
+
 void fragment() {
 #ifdef FAR_LAND
 	vec2 nm = (wpos.xz - near_rect.xy) * near_rect.zw;
@@ -474,47 +506,33 @@ void fragment() {
 	}
 
 #ifdef FAR_LAND
-	// Forest seen from afar: crowns a few metres across, in clumps, as dense as the
-	// chunks grow their trees. Side on, the trees behind close the gaps; far off the
+	// Forest seen from afar: one crown to a few metres, as many as the chunks grow
+	// trees there (in loose clumps), each lit as a dome and casting its shadow on the
+	// ground away from the sun. Side on, the trees behind close the gaps; far off the
 	// crowns blend into their mean.
 	float canopy = 0.0;
 	vec3 crown_n = vec3(0.0);
 	if (canopy_v.a > 0.004) {
 		vec3 vd = (CAMERA_POSITION_WORLD - wpos) / max(dist, 0.001);
 		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
-		float d = 1.0 - pow(1.0 - canopy_v.a, 1.0 + 4.0 * graze);
-		d = clamp(d + (fbm(p * 0.025 + 7.0) - 0.5) * 0.7 * canopy_v.a, 0.0, 1.0);
-		// The nearest crown, on a jittered 6 m grid.
-		vec2 g = p / 6.0;
-		vec2 gi = floor(g);
-		float f1 = 9.0;
-		vec2 off = vec2(0.0);
-		float r = 0.0;
-		vec2 ci = gi;
-		for (int y = -1; y <= 1; y++) {
-			for (int x = -1; x <= 1; x++) {
-				vec2 c = gi + vec2(float(x), float(y));
-				float h = hash12(c);
-				vec2 o = c + 0.5 + (vec2(h, hash12(c + 17.3)) - 0.5) * 0.8 - g;
-				float dd = dot(o, o);
-				if (dd < f1) {
-					f1 = dd;
-					off = o;
-					r = h;
-					ci = c;
-				}
-			}
-		}
-		float rad = sqrt(f1);
-		float detail = 1.0 - smoothstep(700.0, 2000.0, dist);
-		float here = step(r, d) * (1.0 - smoothstep(0.45, 0.75, rad));
-		canopy = mix(d, here, detail);
-		float dome = clamp(1.0 - rad / 0.75, 0.0, 1.0);
-		vec3 cc = pow(canopy_v.rgb, vec3(2.2)) * mix(0.55, 0.3 + 0.55 * dome, detail) * (0.85 + 0.3 * hash12(ci + 3.1));
+		float d = 1.0 - pow(1.0 - canopy_v.a, 1.0 + 2.5 * graze);
+		d = clamp(d + (fbm(p * 0.012 + 7.0) - 0.5) * 0.45 * canopy_v.a, 0.0, 1.0);
+		float detail = 1.0 - smoothstep(600.0, 1800.0, dist);
+		float id;
+		vec4 cr = crown_at(p, d, id);
+		float id2;
+		vec4 cs = crown_at(p + sun_dir_g.xz / max(sun_dir_g.y, 0.25) * 5.0, d, id2);
+		float lit = smoothstep(-0.05, 0.15, sun_dir_g.y);
+		// The ground between the trees, in their shadows (far off, on average).
+		col *= 1.0 - 0.5 * lit * mix(d * 0.6, cs.x * (1.0 - cr.x), detail);
+		canopy = mix(d * 0.85, cr.x, detail);
+		vec3 cc = pow(canopy_v.rgb, vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
+		// Darker at a crown's rim, where its leaves turn under.
+		cc *= mix(1.0, mix(1.0, 0.7, smoothstep(0.55, 1.0, cr.y)), detail);
 		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);
 		col = mix(col, cc, canopy);
 		snow *= 1.0 - canopy;
-		crown_n = -vec3(off.x, 0.0, off.y) * 0.9 * here * detail;
+		crown_n = -vec3(cr.z, 0.0, cr.w) * 2.2 * cr.x * detail;
 	}
 	// Rivers: still water reflecting the sky, on muddy banks.
 	float river = 1.0 - smoothstep(0.92, 1.08, river_v * 6.0);

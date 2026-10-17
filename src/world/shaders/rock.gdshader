@@ -41,6 +41,10 @@ void fragment() {
 	vec3 n = normalize(wn + (vec3(0.0, nx.y, nx.x) * bw.x + vec3(ny.x, 0.0, -ny.y) * bw.y + vec3(nz.x, nz.y, 0.0) * bw.z) * 1.1);
 	float lum = dot(t, LUM) / dot(ROCK_MEAN, LUM);
 	vec3 tint = pow(clamp(COLOR.rgb, 0.0, 1.0), vec3(2.2));
+	// Stone is seldom darker than basalt or bluer than slate: the darkest tints are lifted
+	// and the strongest calmed, so a dark boulder in a meadow reads as stone, not a hole.
+	float tl = dot(tint, LUM);
+	tint = mix(vec3(tl), tint, 0.65) * max(1.0, 0.11 / max(tl, 0.001));
 	// The tint's colour with the photo's light and shade, plus a little of its own hue.
 	vec3 own = t / max(dot(t, LUM), 0.001) * dot(tint, LUM);
 	vec3 col = mix(tint, own, 0.3) * clamp(mix(1.0, lum, 0.85), 0.3, 1.8);
@@ -50,8 +54,9 @@ void fragment() {
 	float moss = smoothstep(0.35, 0.65, COLOR.a * up * 1.3 - (lum - 1.0) * 0.35 + (dot(mt, LUM) - 0.12) * 1.5);
 	// moss_col is already linear (source_color); the grass photo gives it texture.
 	col = mix(col, moss_col * clamp(dot(mt, LUM) / 0.155, 0.4, 1.6), moss * step(0.01, COLOR.a));
-	// Contact shadow where the stone meets the ground.
-	col *= mix(0.55, 1.0, smoothstep(-0.05, 0.3, wp.y - base_y));
+	// Contact shadow where the stone's sides meet the ground (a low stone's top, open to
+	// the sky, stays lit).
+	col *= mix(0.55, 1.0, max(smoothstep(-0.05, 0.3, wp.y - base_y), smoothstep(0.35, 0.8, wn.y)));
 	ALBEDO = col * (1.0 - 0.42 * cloud_shadow(wp));
 	ROUGHNESS = mix(0.82, 0.95, moss);
 	SPECULAR = 0.35;
