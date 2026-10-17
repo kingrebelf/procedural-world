@@ -179,7 +179,7 @@ void sky() {
 		float ws = smoothstep(-0.08, 0.0, sg.y);
 		vec3 sunh = sg.y > -0.08 ? sg : normalize(moon_dir + vec3(0.0, 1e-5, 0.0));
 		vec3 scol = mix(vec3(1.0, 0.55, 0.32), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.35, sg.y)) * daylight * ws
-			+ vec3(0.55, 0.62, 0.78) * 0.3 * moon_lit;
+			+ vec3(0.55, 0.62, 0.78) * 0.14 * moon_lit;
 		vec3 amb = mix(mix(horizon_night, horizon_day, daylight), mix(zenith_night, zenith_day, daylight), 0.5) * 0.9 + vec3(0.02, 0.025, 0.035) * (0.35 + 0.65 * daylight)
 			+ vec3(0.02, 0.026, 0.04) * moon_lit;
 		// Flat-cloud quality skips the march entirely.
@@ -300,6 +300,12 @@ void sky() {
 	if (!AT_CUBEMAP_PASS && volumetric_clouds) {
 		// Volumetric clouds from the half-resolution pass.
 		col = col * (1.0 - HALF_RES_COLOR.a) + HALF_RES_COLOR.rgb;
+		// The moon through cloud: a bright corona close round it and a wide, faint
+		// aureole, strongest through thin cloud.
+		float ca = HALF_RES_COLOR.a;
+		float off = 1.0 - max(md, 0.0);
+		col += vec3(0.62, 0.68, 0.8) * moon_lit * (1.0 - daylight) * ca * (1.0 - 0.6 * ca)
+			* (exp(-off * 900.0) * 0.9 + exp(-off * 60.0) * 0.12);
 	} else if (d.y > 0.0) {
 		// Reflections and ambient light: a cheaper flat cloud deck.
 		// A curved deck (larger offset) keeps the projection from stretching into

@@ -342,8 +342,9 @@ func _update_time_of_day() -> void:
 	# moon it is held back more (a full moon read as dusk), on a moonless night it adapts
 	# further. Underground it adapts fully to the torch.
 	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(55.0, 105.0, moonlit), 60.0, maxf(daylight, underground))
-	# The eye loses colour in the dark (rod vision): a little less saturation at night.
-	env.adjustment_saturation = lerpf(0.98, 0.8, (1.0 - daylight) * (1.0 - underground))
+	# The eye loses colour in the dark (rod vision): FrameMend greys and blues the dim
+	# moonlit parts of the frame, leaving lamplight warm.
+	FrameMend.night = (1.0 - daylight) * (1.0 - underground)
 
 	var sky_tint: Color = _blend(Eras.SKY_TINT)
 	sky_mat.set_shader_parameter("daylight", daylight)
