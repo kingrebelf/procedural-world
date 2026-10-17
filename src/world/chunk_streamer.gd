@@ -245,10 +245,10 @@ func find_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
 ## Picks a plant find_under() found, if its chunk is still loaded.
 func pick_under(found: Dictionary) -> bool:
 	var node = found.get("node")
-	if not is_instance_valid(node):
+	if not is_instance_valid(node) or not is_instance_valid(found.get("mmi")):
 		return false
-	var mm: MultiMesh = found["mm"]
-	if mm.get_instance_transform(found["i"]).basis.get_scale().y < 0.01:
+	var buf: PackedFloat32Array = (found["mmi"] as MultiMeshInstance3D).get_meta("buf")
+	if Vector3(buf[int(found["i"]) * 12 + 1], buf[int(found["i"]) * 12 + 5], buf[int(found["i"]) * 12 + 9]).length() < 0.01:
 		return false
 	(node as ChunkNode).clear_under(found)
 	return true

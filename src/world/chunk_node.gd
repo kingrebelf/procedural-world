@@ -394,18 +394,19 @@ func find_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
 		var k: String = mmi.get_meta("key", "")
 		if not k.begins_with("under"):
 			continue
-		var mm: MultiMesh = mmi.multimesh
-		for i in mm.instance_count:
-			var t := mm.get_instance_transform(i)
-			var sc := t.basis.get_scale().y
+		var buf: PackedFloat32Array = mmi.get_meta("buf", PackedFloat32Array())
+		for i in buf.size() / 12:
+			var o := i * 12
+			var sc := Vector3(buf[o + 1], buf[o + 5], buf[o + 9]).length()
 			if sc < 0.01:
 				continue
-			var at := position + t.origin
+			var local := Vector3(buf[o + 3], buf[o + 7], buf[o + 11])
+			var at := position + local
 			var c := at + Vector3(0, 0.45 * sc, 0)
 			var d := Geometry3D.get_closest_point_to_segment(c, from, to).distance_to(c) - 0.3 * sc
 			if d < best_d:
 				best_d = d
-				best = {"key": k, "pos": at, "mm": mm, "i": i, "local": t.origin, "d": d}
+				best = {"key": k, "pos": at, "mm": mmi.multimesh, "mmi": mmi, "i": i, "local": local, "d": d}
 	return best
 
 ## Hides a plant find_under() found and remembers it in the chunk (it does not grow back).
@@ -413,6 +414,11 @@ func clear_under(best: Dictionary) -> void:
 	var mm: MultiMesh = best["mm"]
 	var o: Vector3 = best["local"]
 	mm.set_instance_transform(best["i"], Transform3D(Basis.from_scale(Vector3.ZERO), o))
+	var mmi: MultiMeshInstance3D = best["mmi"]
+	var buf: PackedFloat32Array = mmi.get_meta("buf")
+	for j in [0, 1, 2, 4, 5, 6, 8, 9, 10]:
+		buf[int(best["i"]) * 12 + j] = 0.0
+	mmi.set_meta("buf", buf)
 	var cl: PackedFloat32Array = data.get("cleared", PackedFloat32Array())
 	cl.append_array([o.x, o.z])
 	data["cleared"] = cl
@@ -546,6 +552,9 @@ func set_clutter(buffers: Dictionary) -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.set_meta("key", t)
+		# Kept on the CPU: reading transforms back from the renderer stalls (and headless
+		# servers have none to give).
+		mmi.set_meta("buf", buf)
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_set_range(mmi, 110.0 if t.begins_with("under") else 70.0)
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF

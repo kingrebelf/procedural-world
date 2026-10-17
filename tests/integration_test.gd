@@ -27,11 +27,12 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 		for mmi in c._clutter:
 			if not String(mmi.get_meta("key", "")).begins_with("under"):
 				continue
-			for i in mmi.multimesh.instance_count:
-				var t: Transform3D = mmi.multimesh.get_instance_transform(i)
-				var at := c.position + t.origin
+			var buf: PackedFloat32Array = mmi.get_meta("buf")
+			for i in buf.size() / 12:
+				var o := Vector3(buf[i * 12 + 3], buf[i * 12 + 7], buf[i * 12 + 11])
+				var at := c.position + o
 				# The nearest on gentle ground.
-				if t.basis.get_scale().y > 0.5 and ChunkGenerator.slope_at(c.data, t.origin.x, t.origin.z) < 0.4 \
+				if Vector3(buf[i * 12 + 1], buf[i * 12 + 5], buf[i * 12 + 9]).length() > 0.5 and ChunkGenerator.slope_at(c.data, o.x, o.z) < 0.4 \
 						and (plant == Vector3.INF or at.distance_to(player.global_position) < plant.distance_to(player.global_position)):
 					plant = at
 	check(plant != Vector3.INF, "a plant to pick by hand")
@@ -133,7 +134,8 @@ func _run() -> void:
 	for k in streamer.chunks:
 		for mmi in streamer.chunks[k]._clutter:
 			if String(mmi.get_meta("key", "")).begins_with("under") and mmi.multimesh.instance_count > 0:
-				plant = streamer.chunks[k].position + mmi.multimesh.get_instance_transform(0).origin
+				var b0: PackedFloat32Array = mmi.get_meta("buf")
+				plant = streamer.chunks[k].position + Vector3(b0[3], b0[7], b0[11])
 				break
 		if plant != Vector3.INF:
 			break
