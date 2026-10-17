@@ -17,8 +17,9 @@ extends RefCounted
 ##   stoop 0..1, limp (-1..1, sign = side), waddle 0..1, arms_out (rad), shoulder_in (m the shoulder joints move in, BodyPosture), girth {bone name: [sx, sy, sz] in character space or [g] across the
 ##   bone, pivot offset Vector3}, stature (model scale), pace (walk speed multiplier).
 
-## Jobs that build muscle, and jobs that don't.
-const STRONG_JOBS := ["smith", "guard", "hunter", "miller", "farmer", "warden", "miner", "lumberjack", "bandit", "pirate", "security officer", "dock worker", "mason"]
+## Jobs that build real muscle, jobs that keep people wiry, and jobs that don't.
+const STRONG_JOBS := ["smith", "guard", "miner", "lumberjack", "security officer", "dock worker", "mason"]
+const WIRY_JOBS := ["hunter", "miller", "farmer", "warden", "bandit", "pirate", "fisher", "sailor"]
 const SOFT_JOBS := ["scribe", "priest", "mystic", "merchant", "innkeeper", "bard", "runecarver", "herbalist", "engineer", "doctor", "medic"]
 ## Silver and white for greying hair.
 const GREY := Color(0.66, 0.65, 0.63)
@@ -40,9 +41,11 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	var w := clampf((build - 0.85) / 0.35, 0.0, 1.0) if build >= 0.8 else clampf(build, 0.0, 1.0)
 	# Middle age puts weight on; the very old get thinner.
 	w = clampf(w + 0.18 * smoothstep(32.0, 55.0, yrs) - 0.12 * smoothstep(68.0, 80.0, yrs), 0.0, 1.0)
-	var m := pow(_rnd(b, "muscle"), 1.4) * 0.6
+	var m := pow(_rnd(b, "muscle"), 1.8) * 0.5
 	if job in STRONG_JOBS:
-		m += 0.3
+		m += 0.35
+	elif job in WIRY_JOBS:
+		m += 0.12
 	elif job in SOFT_JOBS:
 		m -= 0.1
 	if fem:
@@ -61,18 +64,18 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 		"pelvis": [[1.0 + 0.24 * w + 0.07 * f - 0.03 * soft, 1.0, 1.0 + 0.3 * w + 0.04 * f], Vector3(0, 0, -0.02)],
 		"spine_01": [[0.97 + 0.48 * w - 0.03 * f, 1.0, 0.95 + 0.9 * w + 0.1 * old * (1.0 - w)], Vector3(0, 0, -0.08)],
 		"spine_02": [[0.95 + 0.4 * w - 0.05 * f, 1.0, 0.95 + 0.66 * w], Vector3(0, 0, -0.08)],
-		"spine_03": [[0.97 - 0.14 * soft + 0.18 * w - 0.05 * old, 1.0, 0.98 - 0.1 * soft + 0.26 * w], Vector3(0, 0, -0.09)],
-		"neck_01": [[1.0 - 0.18 * soft + 0.3 * w - 0.03 * f - 0.06 * old], Vector3.ZERO],
-		"clavicle": [[1.0 - 0.2 * soft + 0.14 * w], Vector3.ZERO],
-		"upperarm": [[(1.0 - 0.24 * soft + 0.36 * w) * thin], Vector3.ZERO],
-		"lowerarm": [[(1.0 - 0.14 * soft + 0.2 * w) * thin], Vector3.ZERO],
+		"spine_03": [[0.97 - 0.17 * soft + 0.18 * w - 0.05 * old, 1.0, 0.98 - 0.14 * soft + 0.26 * w], Vector3(0, 0, -0.09)],
+		"neck_01": [[1.0 - 0.22 * soft + 0.3 * w - 0.03 * f - 0.06 * old], Vector3.ZERO],
+		"clavicle": [[1.0 - 0.26 * soft + 0.14 * w], Vector3.ZERO],
+		"upperarm": [[(1.0 - 0.32 * soft + 0.36 * w) * thin], Vector3.ZERO],
+		"lowerarm": [[(1.0 - 0.2 * soft + 0.2 * w) * thin], Vector3.ZERO],
 		"thigh": [[(0.97 - 0.07 * soft + 0.36 * w + 0.05 * f) * thin], Vector3.ZERO],
 		"calf": [[(1.0 - 0.07 * soft + 0.2 * w) * thin], Vector3.ZERO],
 	}
 	# The old stoop (some much more than others); everyone slouches or stands tall a little.
 	var stoop := clampf(old * (0.45 + 0.75 * _rnd(b, "stoop")) + (_rnd(b, "slouch") - 0.4) * 0.25, -0.1, 1.0)
 	# The kit hero's shoulders are broad as a door; most people's are not.
-	var shoulder_in := (0.032 * (1.0 - f) + 0.012 * f) * soft * (1.0 - 0.4 * w)
+	var shoulder_in := (0.045 * (1.0 - f) + 0.02 * f) * soft * (1.0 - 0.4 * w)
 	# A few limp (more of the old); heavy builds sway and hold their arms off their sides.
 	var limp := 0.0
 	if known and _rnd(b, "limp") < 0.05 + 0.12 * old:

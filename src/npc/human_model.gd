@@ -148,8 +148,12 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 		elif mi.name == "Eyes":
 			mi.material_override = _eye_mat()
 		else:
-			mi.material_override = _hair_mat(1)
-			mi.set_instance_shader_parameter("hair_col", hair_col)
+			# Eyebrows: fine, sparse hairs, a shade darker than the hair.
+			mi.mesh = HairStrands.mesh("Eyebrows_%s" % fem, mi.mesh)
+			mi.material_override = HairStrands.material(1)
+			mi.set_instance_shader_parameter("hair_col", BodyShape.hair_color(b, age - 12 if age >= 0 else age).darkened(0.12))
+			mi.set_instance_shader_parameter("strands", 1.0)
+			mi.set_instance_shader_parameter("sparse", 0.42)
 			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.
@@ -171,6 +175,7 @@ func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	if _body and _body.skin:
 		BodyShape.apply_girth(_body.skin, skeleton, shape)
+		_body.set_instance_shader_parameter("tone", float(shape["muscle"]))
 	animator = HumanAnimator.new()
 	add_child(animator)
 	animator.setup(library(), scene, skeleton, self)
@@ -396,6 +401,16 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 	mi.mesh = k.commit(Materials.get_mat)
 	_headgear_node = _bone_attach("Head")
 	_headgear_node.add_child(mi)
+	# No hair through the crown of the hat.
+	var hb := skeleton.find_bone("Head")
+	if hb >= 0:
+		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + 0.13)
+
+## Hides hair above rest height `y` (model space; 99 for none): a hat or hood's crown.
+## Hair below it, hanging under a brim, still shows.
+func cap_hair(y: float) -> void:
+	for h in _hair:
+		(h as GeometryInstance3D).set_instance_shader_parameter("cap_y", y)
 
 ## Tools in hand for jobs that work with one.
 func _tool(era: int, job: String) -> void:

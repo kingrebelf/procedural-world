@@ -16,6 +16,10 @@ instance uniform float shell_depth = 0.006;
 // Thinning with age: 0 full, 1 the crown mostly bare.
 instance uniform float thin = 0.0;
 instance uniform float strands = 0.0;
+// Sparse hair (eyebrows): only the strands above this survive.
+instance uniform float sparse = 0.0;
+// Under a hat: hair above this rest height is hidden (HumanModel.cap_hair).
+instance uniform float cap_y = 99.0;
 
 varying vec4 rest;
 varying vec3 flow;
@@ -44,6 +48,8 @@ float vnoise3(vec3 p) {
 }
 
 void fragment() {
+	// Screen-space footprint, taken before any branch (derivatives need uniform flow).
+	float px = max(length(dFdx(rest.xyz)), length(dFdy(rest.xyz)));
 	vec3 t = texture(tex, UV).rgb;
 	float lum = clamp(dot(t, vec3(0.299, 0.587, 0.114)) / 0.56, 0.4, 1.6);
 	if (strands < 0.5 || dot(flow, flow) < 0.25) {
@@ -52,20 +58,29 @@ void fragment() {
 		ROUGHNESS = 0.55;
 		SPECULAR = 0.4;
 	} else {
+		if (rest.y > cap_y) {
+			discard;
+		}
 		vec3 f = normalize(flow);
 		// Position with the run along the strand squeezed out: noise in it streaks along f.
 		float along = dot(rest.xyz, f);
 		vec3 q = rest.xyz - f * along * 0.985;
-		float fine = vnoise3(q * 700.0) * 0.55 + vnoise3(q * 1700.0) * 0.45;
+		// Strands finer than a pixel fade to their average instead of sparkling.
+		float hi = 1.0 - smoothstep(0.5, 1.3, px * 1000.0);
+		float lo = 1.0 - smoothstep(0.5, 1.3, px * 420.0);
+		float fine = mix(0.5, vnoise3(q * 420.0), lo) * 0.55 + mix(0.5, vnoise3(q * 1000.0), hi) * 0.45;
 		fine = smoothstep(0.2, 0.8, fine);
-		float clump = vnoise3(q * 180.0 + vec3(3.1));
+		float clump = vnoise3(q * 140.0 + vec3(3.1));
 		float wave = vnoise3(rest.xyz * 55.0);
 		float s = fine * 0.75 + clump * 0.25;
 		float tip = rest.w;
 		float keep = 1.0;
 		if (shell > 0.0) {
-			// Fewer, finer strands further out, and fewer near the roots.
-			keep = step(0.42 + shell * 0.38 - tip * 0.12, s * (0.85 + 0.3 * clump));
+			// Fewer, finer strands further out, and fewer near the roots; once the strands
+			// are too fine to see, the shells give way to the smooth base layer.
+			keep = step(0.42 + shell * 0.38 - tip * 0.12, s * (0.85 + 0.3 * clump)) * step(0.2, lo);
+		} else if (sparse > 0.0) {
+			keep = step(sparse + 0.15 * tip, s);
 		} else if (thin > 0.0) {
 			// Thinning hair: the scalp shows between strands, most at the crown.
 			keep = step(thin * (1.0 - tip) * 0.85, s);

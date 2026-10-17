@@ -115,6 +115,9 @@ func _run() -> void:
 		if heads:
 			cam.position = Vector3(0, 1.62, 1.55)
 			cam.look_at(Vector3(0, 1.5, 0))
+		# Everyone looks at the camera: a level gaze, not the idle's downcast one.
+		for h in people:
+			h.look_at_target(cam.global_position, 0.8)
 		var t0 := Time.get_ticks_msec()
 		var frames := 0
 		while frames < (75 if walk else 12) or (not walk and Time.get_ticks_msec() - t0 < 900 and frames < 200):

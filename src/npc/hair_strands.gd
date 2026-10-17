@@ -23,6 +23,7 @@ static func mesh(style: String, src: Mesh) -> ArrayMesh:
 	var normals: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
 	var box := src.get_aabb()
 	var beard := style == "Hair_Beard"
+	var brows := style.begins_with("Eyebrows")
 	# The crown: the top of the head, a little behind the middle.
 	var crown := Vector3(box.get_center().x, box.end.y, box.get_center().z - box.size.z * 0.12)
 	var tangents := PackedFloat32Array()
@@ -35,7 +36,10 @@ static func mesh(style: String, src: Mesh) -> ArrayMesh:
 		var p := verts[i]
 		var n := normals[i].normalized()
 		var dir := Vector3.DOWN
-		if not beard:
+		if brows:
+			# Brow hairs run out from the middle of the face, a little upward.
+			dir = Vector3(signf(p.x - box.get_center().x), 0.15, 0.0).normalized()
+		elif not beard:
 			var out := p - crown
 			out.y = 0.0
 			# Near the crown hair runs outward; lower down it falls.
@@ -57,6 +61,8 @@ static func mesh(style: String, src: Mesh) -> ArrayMesh:
 		custom[i * 4 + 2] = p.z
 		# Toward the tips: 0 at the roots (crown, or the jaw for a beard), 1 at the ends.
 		custom[i * 4 + 3] = clampf((box.end.y - p.y) / maxf(box.size.y, 0.01), 0.0, 1.0)
+		if brows:
+			custom[i * 4 + 3] = clampf(absf(p.x - box.get_center().x) / maxf(box.size.x * 0.5, 0.01), 0.0, 1.0)
 	a[Mesh.ARRAY_TANGENT] = tangents
 	a[Mesh.ARRAY_CUSTOM0] = custom
 	a[Mesh.ARRAY_CUSTOM1] = combed
