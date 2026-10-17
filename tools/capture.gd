@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE]
+##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -13,6 +13,9 @@ var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _fi
 ## --hud=none hides the 2D layer, --hud=under keeps only the underwater overlay of it and
 ## --hud=nounder keeps all but that overlay: to tell whether an artefact is in the 3D image.
 var hud_mode := ""
+## --env=property=value sets a property of the world's Environment for this run, for A/B
+## looks (tonemapper, exposure, contrast) without touching the game.
+var env_sets: Array = []
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -24,6 +27,8 @@ func _ready() -> void:
 			only = a.substr(8).split(",")
 		if a.begins_with("--hud="):
 			hud_mode = a.substr(6)
+		if a.begins_with("--env=") and a.count("=") == 2:
+			env_sets.append(a.substr(6).split("="))
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -201,6 +206,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 func _run() -> void:
 	await _wait(5)
 	_apply_hud_mode()
+	for kv in env_sets:
+		var env: Environment = world.atmosphere.env
+		var v = str_to_var(kv[1])
+		env.set(kv[0], v if v != null else kv[1])
+		print("env ", kv[0], " = ", env.get(kv[0]))
 	var g := ChunkGenerator.new(Game.seed)
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
