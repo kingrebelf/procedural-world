@@ -1332,20 +1332,28 @@ func test_tool_grip() -> void:
 	root.add_child(h)
 	h.build(Player.LOOK, Eras.MEDIEVAL, "")
 	var sk := h.skeleton
-	var hole := HumanModel.fist_hole(sk)
-	var inv := sk.get_bone_global_rest(sk.find_bone("hand_r")).affine_inverse()
-	var up := (sk.get_bone_global_rest(sk.find_bone("Head")).origin - sk.get_bone_global_rest(sk.find_bone("pelvis")).origin).normalized()
-	var palm := (sk.get_bone_global_rest(sk.find_bone("hand_r")).basis.inverse() * -up).normalized()
-	var knuckle := inv * sk.get_bone_global_rest(sk.find_bone("middle_01_r")).origin
-	check(hole != Vector3.INF and (hole - knuckle).dot(palm) > 0.01, "the fist's hole is on the palm side of the knuckles (%s)" % [hole - knuckle])
-	check(hole.distance_to(knuckle) < 0.07, "and close to the hand (%.3f m)" % hole.distance_to(knuckle))
 	var prop := Viewmodel.prop_for("pickaxe_iron")
 	h.hold(prop)
-	check(h.gestures.grip_r == HumanModel.GRIP, "holding a tool curls the fingers")
-	var xf := HumanModel.grip_transform(sk, prop, 1.0)
-	var axis := xf.basis.y.normalized()
-	var off := hole - xf.origin
-	check((off - axis * off.dot(axis)).length() < 0.005, "the handle runs through the fist")
+	check(h.gestures.grip_r == HumanModel.GRIP and not h.gestures.grip_rot.is_empty(), "holding a tool closes the fingers")
+	# The handle lies on the palm side, and every finger ends wrapped round it.
+	var fr := HandGrip.frame(sk)
+	var axis := prop.transform.basis.y.normalized()
+	var c := prop.transform * HandGrip.handle_center(prop, HumanModel.grip_point(prop))
+	var r := HandGrip.handle_radius(prop, HumanModel.grip_point(prop))
+	check((c - Vector3(fr["mcp"])).dot(fr["palm"]) > 0.02, "the handle lies in the palm (%.3f m)" % (c - Vector3(fr["mcp"])).dot(fr["palm"]))
+	check(r > 0.01 and r < 0.03, "the handle is a hand's width round (r %.3f m)" % r)
+	var inv := sk.get_bone_global_rest(sk.find_bone("hand_r")).affine_inverse()
+	for f in HandGrip.FINGERS:
+		var ch := HandGrip._chain(sk, f)
+		var ax := HandGrip._flex_axes(sk, ch, inv, fr["palm"])
+		var ang := []
+		for j in 3:
+			ang.append((sk.get_bone_rest(ch[j]).basis.get_rotation_quaternion().inverse() * h.gestures.grip_rot[ch[j]]).get_angle())
+		var pts := HandGrip._fk(sk, ch, inv, ax, ang)
+		var d := INF
+		for j in 3:
+			d = minf(d, HandGrip._seg_line(pts[j], pts[j + 1], c, axis))
+		check(d > r and d < r + HandGrip.FINGER_R + 0.012, "the %s finger closes on the handle without passing into it (%.3f m from its middle)" % [f, d])
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()

@@ -172,6 +172,7 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	skeleton.add_child(gestures)
 	if _gripping:
 		gestures.grip_r = GRIP
+		gestures.grip_rot = _wrap(_work_tool)
 	_eyelids(b)
 	play("idle")
 	return self
@@ -381,49 +382,18 @@ func _tool(era: int, job: String) -> void:
 	_bone_attach("hand_r").add_child(t)
 	t.transform = grip_transform(skeleton, t)
 	_gripping = true
+	_work_tool = t
 
 ## How far each finger of a hand holding something curls (BodyLanguage finger order).
 const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
 var _gripping := false
-
-## Where the curled fingers of a gripping right hand leave room for a handle, in the hand's
-## own space: the middle of the loop the middle finger makes with the palm, worked out by
-## curling it the way BodyLanguage does.
-static func fist_hole(sk: Skeleton3D) -> Vector3:
-	var hb := sk.find_bone("hand_r")
-	var head := sk.find_bone("Head")
-	var pelvis := sk.find_bone("pelvis")
-	if hb < 0 or head < 0 or pelvis < 0 or sk.find_bone("middle_01_r") < 0:
-		return Vector3.INF
-	var toward := (sk.get_bone_global_rest(pelvis).origin - sk.get_bone_global_rest(head).origin).normalized()
-	var g := sk.get_bone_global_rest(hb)
-	var inv := g.affine_inverse()
-	var amounts := [0.55, 0.75, 0.6]
-	var cur := g
-	var pts: Array[Vector3] = []
-	for j in 3:
-		var b := sk.find_bone("middle_%02d_r" % (j + 1))
-		if b < 0:
-			break
-		var rest := sk.get_bone_global_rest(b)
-		var axis := rest.basis.y.normalized().cross(toward)
-		var local_axis := (rest.basis.orthonormalized().inverse() * axis.normalized()).normalized()
-		var lr := sk.get_bone_rest(b)
-		cur = cur * Transform3D(Basis(lr.basis.get_rotation_quaternion() * Quaternion(local_axis, float(GRIP[2]) * amounts[j] * 2.0)), lr.origin)
-		pts.append(inv * cur.origin)
-	var leaf := sk.find_bone("middle_04_leaf_r")
-	if leaf >= 0:
-		pts.append(inv * (cur * sk.get_bone_rest(leaf).origin))
-	var c := Vector3.ZERO
-	for p in pts:
-		c += p
-	return c / float(pts.size())
+var _work_tool: Node3D
 
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
-## pose: the shaft runs along the knuckles through the fist (the fingers curl round it,
-## GRIP), and the prop is held near the low end of its handle.
+## pose: the handle lies across the palm on a diagonal, touching it (HandGrip), and the
+## prop is held near the low end of its handle; the fingers then close round it.
 ## `aim` (hand space, optional) points the prop that way instead, tilted `tilt` of the way
-## from the knuckle line, for a first-person hold that reads well on screen.
+## from its line in the hand (the fingers no longer meet it: prefer aim_handle).
 ## `point` (hand space, optional) instead aims the prop's -Z that way, keeping +Y toward
 ## `aim`: a pistol's barrel follows the view.
 static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO) -> Transform3D:
@@ -431,24 +401,28 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 	var bi := sk.find_bone("index_01_r")
 	var bp := sk.find_bone("pinky_01_r")
 	var bm := sk.find_bone("middle_01_r")
-	if hb < 0 or bi < 0 or bp < 0 or bm < 0:
+	if hb < 0 or bi < 0 or bp < 0 or bm < 0 or sk.find_bone("thumb_01_r") < 0:
 		return Transform3D(Basis.from_euler(Vector3(0, 0, -PI * 0.5)), Vector3(0.08, 0.03, 0.0))
-	var inv := sk.get_bone_global_rest(hb).affine_inverse()
-	var i := inv * sk.get_bone_global_rest(bi).origin
-	var p := inv * sk.get_bone_global_rest(bp).origin
-	var m := inv * sk.get_bone_global_rest(bm).origin
-	var up := (i - p).normalized()
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var line := HandGrip.handle_line(sk, HandGrip.handle_radius(prop, grip) * scale)
+	var fr := HandGrip.frame(sk)
+	var up: Vector3 = line["axis"]
 	if aim != Vector3.ZERO:
 		if up.dot(aim) < 0.0:
 			up = -up
 		up = up.slerp(aim.normalized(), tilt).normalized()
-	var fwd := (m - up * m.dot(up)).normalized()
-	var side := fwd.cross(up).normalized()
-	var center := (i + p) * 0.5 + fwd * 0.035 + side * 0.02
-	var hole := fist_hole(sk)
-	if hole != Vector3.INF:
-		center = hole
-	# The prop's handle: its lowest point plus a hand's width, in the prop's own space.
+	var f: Vector3 = fr["fingers"]
+	var fwd := (f - up * f.dot(up)).normalized()
+	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
+	if point != Vector3.ZERO:
+		var z := -point.normalized()
+		var y := (aim - z * aim.dot(z)).normalized()
+		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
+	return Transform3D(basis, Vector3(line["center"]) - basis * grip)
+
+## Where the fist closes round a prop (prop space): its lowest point plus a hand's width
+## up the handle, or where the model says (a gun's grip).
+static func grip_point(prop: Node3D) -> Vector3:
 	var box := AABB()
 	var first := true
 	for mi in prop.find_children("*", "MeshInstance3D", true, false):
@@ -456,18 +430,12 @@ static func grip_transform(sk: Skeleton3D, prop: Node3D, scale := 0.8, aim := Ve
 		var b: AABB = xf * (mi as MeshInstance3D).mesh.get_aabb()
 		box = b if first else box.merge(b)
 		first = false
-	var grip := Vector3(0, box.position.y + minf(0.12, box.size.y * 0.25), 0)
-	# A model can say where the fist closes round it (a gun's grip).
+	var grip := Vector3(0, box.position.y + minf(0.12, box.size.y * 0.12), 0)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false):
 		var mesh := (mi as MeshInstance3D).mesh
 		if mesh and mesh.has_meta("grip"):
 			grip = _rel(prop, mi) * (mesh.get_meta("grip") as Vector3)
-	var basis := Basis(fwd * scale, up * scale, fwd.cross(up) * scale)
-	if point != Vector3.ZERO:
-		var z := -point.normalized()
-		var y := (aim - z * aim.dot(z)).normalized()
-		basis = Basis(y.cross(z) * scale, y * scale, z * scale)
-	return Transform3D(basis, center - basis * grip)
+	return grip
 
 static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 	var xf := Transform3D.IDENTITY
@@ -488,6 +456,8 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 		_held = null
 	if gestures:
 		gestures.grip_r = []
+		gestures.grip_rot = {}
+		gestures.hand_aim = {}
 	if prop == null or skeleton == null:
 		return
 	var ba := _bone_attach("hand_r")
@@ -496,8 +466,57 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 	_held = ba
 	if gestures:
 		gestures.grip_r = GRIP
+		gestures.grip_rot = _wrap(prop)
 	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+
+## The finger rotations that close the hand round the prop where it now sits: along its
+## handle (+Y) through its grip point, as measured in the hand.
+func _wrap(prop: Node3D) -> Dictionary:
+	if skeleton.find_bone("thumb_01_r") < 0 or skeleton.find_bone("index_01_r") < 0:
+		return {}
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var r := HandGrip.handle_radius(prop, grip_point(prop))
+	var axis := prop.transform.basis.y.normalized()
+	var center := prop.transform * grip
+	# The rest frame and the attachment's frame are the same bone's.
+	var t := _held_type(prop)
+	var pose := "" if not Viewmodel.pointed(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
+
+static func _held_type(prop: Node3D) -> String:
+	return String(prop.get_meta("item", ""))
+
+## Turns the wrist (over its animation) so what the hand holds points along `dir` (world),
+## `amount` of the way from where the animation has it; the grip itself stays closed round
+## the handle. Vector3.ZERO hands it back to the animation.
+func aim_handle(dir: Vector3, amount := 1.0) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if dir == Vector3.ZERO or _held == null or _held.get_child_count() == 0:
+		gestures.hand_aim = {}
+		return
+	var prop := _held.get_child(0) as Node3D
+	gestures.hand_aim = {"axis": prop.transform.basis.y.normalized(), "dir": (skeleton.global_basis.orthonormalized().inverse() * dir).normalized(), "w": amount}
+
+## Turns the right hand (over its animation) so what it holds points along `along` and
+## its palm faces `palm` (world directions, made square to `along`): a first-person hold
+## that shows the back of the hand and the thumb over the fingers.
+func aim_grip(along: Vector3, palm: Vector3, share := 0.5) -> void:
+	if gestures == null or skeleton == null or _held == null or _held.get_child_count() == 0:
+		return
+	var prop := _held.get_child(0) as Node3D
+	var grip := HandGrip.handle_center(prop, grip_point(prop))
+	var a: Vector3 = HandGrip.handle_line(skeleton, HandGrip.handle_radius(prop, grip))["axis"]
+	var n: Vector3 = HandGrip.frame(skeleton)["palm"]
+	n = (n - a * n.dot(a)).normalized()
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	var aw := (to_sk * along).normalized()
+	var nw := to_sk * palm
+	nw = (nw - aw * nw.dot(aw)).normalized()
+	gestures.hand_aim = {}
+	gestures.hand_share = share
+	gestures.hand_r = Basis(aw, nw, aw.cross(nw)) * Basis(a, n, a.cross(n)).inverse()
 
 ## Turns the right hand (over its animation) so its knuckle line, little finger to index,
 ## runs along `knuckles` and the back of the hand points the fingers along `fingers`
@@ -505,6 +524,7 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	if gestures == null or skeleton == null:
 		return
+	gestures.hand_share = 0.0
 	if knuckles == Vector3.ZERO:
 		gestures.hand_r = null
 		return
