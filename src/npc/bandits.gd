@@ -105,6 +105,10 @@ static func tier(era: int, zone: int) -> String:
 
 static func _member(r: RandomNumberGenerator, era: int, zone: int, i: int, band: String, camp: Vector2, cx: int, cz: int) -> Dictionary:
 	var p := NPCGen.person(r, era, i, cx, cz)
+	for _try in 8: # never a child
+		if not p.get("child", false):
+			break
+		p = NPCGen.person(r, era, i, cx, cz)
 	var leader := i == 0
 	var raider := era == Eras.SCIFI
 	p["id"] = "%s_%d" % [band, i]

@@ -79,6 +79,9 @@ var _site_cache: Dictionary = {}
 ## Eras a planet allows (empty = all three). Set by Planets.apply before any field of
 ## that planet is built; read on worker threads, never changed while a world is open.
 static var allowed_eras: Array = []
+## Height of the planet's snow line in metres (Planets.apply sets it; a copy here so
+## generation code needn't reach for Planets, which needs the running game).
+static var snow_line := 50.0
 
 func site_era(ix: int, iz: int) -> int:
 	var h := WHash.hash2(seed, ix, iz, 101)
@@ -314,10 +317,14 @@ static func look_bytes(lw: PackedFloat32Array, out: PackedByteArray, at: int) ->
 		var a := smoothstep(LF_FADE.x, LF_FADE.y, lw[lf])
 		var lk: Array = LANDFORM_LOOK[lf]
 		var gamt := float(lk[3])
+		var rock: Color = lk[0]
 		if lf == LF_CRATERS and Eras.theme == "human":
-			# A human world's craters are old and grassed over, bare dust only in patches.
+			# A human world's craters are old and grassed over, bare dust only in patches,
+			# and their rock long weathered to a pale grey (v16; older worlds keep theirs).
 			gamt *= 0.35
-		stone += (lk[0] as Color) * a * float(lk[1])
+			if terrain_v >= 16:
+				rock = Color(0.52, 0.5, 0.47)
+		stone += rock * a * float(lk[1])
 		sk += a * float(lk[1])
 		ground += (lk[2] as Color) * a * gamt
 		gk += a * gamt
@@ -469,6 +476,19 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_TERRACES:
 			# Hillsides stepped into flat terraces.
 			var base := h * 1.2 + 3.0
+			if terrain_v >= 17:
+				# v17: terraces as people cut them, not a staircase of even bands: their
+				# height and the steepness of the bank between them vary along the hill,
+				# the edges wander off the contour a little, and each tread ends in a low
+				# lip of earth at its outer edge.
+				var wob := _rwarp.get_noise_2d(x * 8.0, z * 8.0) * 1.1 + _hills.get_noise_2d(x * 3.0, z * 3.0) * 0.5
+				var step := 3.0 * (0.85 + 0.3 * (_mesa.get_noise_2d(x * 1.5, z * 1.5) * 0.5 + 0.5))
+				var riser := 0.32 + 0.2 * (_plate.get_noise_2d(x * 6.0, z * 6.0) * 0.5 + 0.5)
+				var hw := base + wob
+				var t := hw / step
+				var f := t - floorf(t)
+				var lip := 0.28 * smoothstep(1.0 - riser - 0.14, 1.0 - riser - 0.03, f) * (1.0 - smoothstep(1.0 - riser - 0.03, 1.0 - riser + 0.06, f))
+				return Vector3(base, 0.0, _steps(hw, step, riser) + lip - base)
 			if terrain_v >= 13:
 				# v13: deeper steps with wider banks between them, so a terrace edge spans a
 				# few metres of ground and reads as a bank, not a saw-tooth on the 1 m grid.
@@ -490,6 +510,9 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_CRATERS:
 			# Plains scarred by impact craters with raised rims, big ones with central peaks.
 			var base := c * 0.5 + 6.0 + _plate.get_noise_2d(x, z) * 7.0
+			if terrain_v >= 16:
+				var hr := _craters_v16(x, z)
+				return Vector3(base, hr.x, hr.y)
 			var holes := 0.0
 			var rough := 0.0
 			var cl := _cell(x, z, 120.0, 2203.0)
@@ -518,6 +541,99 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			var n := (_spires.get_noise_2d(x * 1.4 - 911.0, z * 1.4) + 1.0) * 0.5
 			return Vector3(base, 0.0, _steps(pow(n, 1.8) * 30.0, 3.5, 0.45))
 	return Vector3(h, 0.0, 0.0)
+
+# --- Craters (v16) --------------------------------------------------------------------
+## Impact craters as they are: a bowl whose walls steepen up to a sharp, raised crest
+## (higher in places, never a perfect circle), a steep outer flank, then the ejecta
+## blanket thrown out round it, lumpy and thinning with distance; the big ones
+## flat-floored with a central peak. Small fresh pits pock the plain between them.
+
+const CRATER_CELL := 120.0
+const CRATER_SALT := 2203.0
+
+## [bowl radius, how round (rim wobble), rim height, cell fade, blanket fade, q (distance
+## over radius)] of the big crater whose cell holds (x, z), or [] if that cell has none.
+func _crater_at(x: float, z: float) -> Array:
+	var cl := _cell(x, z, CRATER_CELL, CRATER_SALT)
+	if cl.y < 0.35:
+		return []
+	var t := (cl.y - 0.35) / 0.65
+	var r := 14.0 + 34.0 * t
+	var q := (cl.x + _detail.get_noise_2d(x * 0.25, z * 0.25) * r * 0.09) / r
+	var rim := (0.09 * r + 1.2) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 0.08 + 40.0, z * 0.08) + 1.0) * 0.5)
+	return [r, cl.y, rim, smoothstep(0.0, 8.0, cl.z), smoothstep(0.0, 28.0, cl.z), q]
+
+## (holes, rough) of the v16 crater field at (x, z).
+func _craters_v16(x: float, z: float) -> Vector2:
+	var holes := 0.0
+	var rough := 0.0
+	var cr := _crater_at(x, z)
+	if not cr.is_empty():
+		var r: float = cr[0]
+		var h: float = cr[2]
+		var fade: float = cr[3]
+		var q: float = cr[5]
+		if q < 1.0:
+			# The bowl: walls steepening to the crest, the big ones flat-floored.
+			var fq := 0.4 * smoothstep(28.0, 46.0, r)
+			var bq := clampf((q - fq) / (1.0 - fq), 0.0, 1.0)
+			holes = -0.25 * r * (1.0 - pow(bq, 2.2))
+			rough = h * pow(q, 8.0)
+		else:
+			# The outer flank (gentler than the inner wall, so it grasses over rather than
+			# showing bare rock), then the blanket of ejecta, lumpy and thinning.
+			var o := q - 1.0
+			var hum := lerpf(1.0, 0.55 + 0.9 * (_detail.get_noise_2d(x * 0.32 + 7.0, z * 0.32) + 1.0) * 0.5, smoothstep(0.0, 0.2, o))
+			rough = h * (0.5 * exp(-o / 0.2) + 0.5 * pow(1.0 + o / 0.55, -2.0) * hum * lerpf(1.0, float(cr[4]), smoothstep(0.0, 0.3, o)))
+		if r > 34.0:
+			rough += 0.11 * r * exp(-pow(q / 0.16, 2.0))
+		holes *= fade
+		rough *= fade
+	var sm := _cell(x, z, 30.0, 3301.0)
+	if sm.y >= 0.6:
+		var r := 3.0 + 6.0 * (sm.y - 0.6) / 0.4
+		var q := (sm.x + _detail.get_noise_2d(x * 0.9, z * 0.9) * r * 0.08) / r
+		var fade := smoothstep(0.0, 2.0, sm.z)
+		var h := 0.1 * r + 0.25
+		holes -= 0.28 * r * maxf(0.0, 1.0 - pow(q, 2.2)) * fade
+		rough += (h * pow(minf(q, 1.0), 6.0) if q < 1.0 else h * (0.6 * exp(-(q - 1.0) / 0.12) + 0.4 * pow(1.0 + (q - 1.0) / 0.5, -2.0))) * fade
+	return Vector2(holes, rough)
+
+## How much fresh crater spoil shows at (x, z), 0..1 (v16): broken rock along the crests
+## and the upper walls, and the ejecta blanket in rays of paler spoil round each crater.
+## The look's byte 11 (scaled by the landform's weight).
+## `grassed`: an old crater on a human world, long grown over, bare only where its steep
+## inner lip keeps crumbling.
+func crater_spoil(x: float, z: float, grassed := false) -> float:
+	if terrain_v < 16:
+		return 0.0
+	var cr := _crater_at(x, z)
+	if cr.is_empty():
+		return 0.0
+	var q: float = cr[5]
+	if grassed:
+		var lip := exp(-pow((q - 0.94) / 0.06, 2.0))
+		return clampf(lip * (0.55 + 0.6 * (_detail.get_noise_2d(x * 0.15 + 33.0, z * 0.15) + 1.0) * 0.5) * float(cr[4]), 0.0, 1.0)
+	var crest := exp(-pow((q - 1.0) / 0.13, 2.0))
+	# Rays: the direction out from the crater's middle, from the slope of the distance.
+	var d0 := _cell(x, z, CRATER_CELL, CRATER_SALT).x
+	var a := atan2(_cell(x, z + 0.5, CRATER_CELL, CRATER_SALT).x - d0, _cell(x + 0.5, z, CRATER_CELL, CRATER_SALT).x - d0)
+	var ray := smoothstep(0.4, 0.85, (_detail.get_noise_2d(cos(a) * 6.0 + float(cr[1]) * 400.0, sin(a) * 6.0) + 1.0) * 0.5)
+	var o := maxf(q - 1.0, 0.0)
+	var blanket := (pow(1.0 + o / 0.7, -2.0) if q >= 1.0 else smoothstep(0.7, 1.0, q)) * (0.35 + 0.65 * ray)
+	return clampf(maxf(crest, blanket * 0.85) * float(cr[4]), 0.0, 1.0)
+
+## (v16) How many loose boulders lie here in a crater field, as a factor on the rock
+## density: few on the swept floor, most heaped on the inner wall and crest, then thinning
+## over the blanket, always in clumps rather than an even sprinkle.
+func crater_rocks(x: float, z: float) -> float:
+	var cr := _crater_at(x, z)
+	var clump := smoothstep(0.42, 0.72, (_detail.get_noise_2d(x * 0.06 + 91.0, z * 0.06) + 1.0) * 0.5)
+	var k := 0.5
+	if not cr.is_empty():
+		var q: float = cr[5]
+		k = lerpf(0.1, 2.6, smoothstep(0.7, 0.95, q)) * (1.0 - smoothstep(1.1, 1.6, q)) + 0.6 * smoothstep(1.1, 1.6, q)
+	return k * (0.15 + 1.7 * clump)
 
 # --- Rivers -----------------------------------------------------------------
 ## Rivers follow the zero line of a low-frequency noise, so they wind for kilometres and

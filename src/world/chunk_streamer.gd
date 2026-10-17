@@ -146,6 +146,7 @@ func _run_job(job: Dictionary) -> void:
 		chunk = job["given"]
 		res["data"] = chunk
 		res["replace"] = true
+		TownLife.annotate(ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers()), chunk)
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)
 		for mk in res["objects"]:
@@ -153,6 +154,8 @@ func _run_job(job: Dictionary) -> void:
 	elif job["mode"] == "load":
 		var gen := ChunkGenerator.new(job["seed"], (job["store"] as WorldStore).has_rivers())
 		chunk = (job["store"] as WorldStore).get_or_create_chunk(gen, k.x, k.y)
+		# Village paths, gardens and fields: worked out afresh on every load, from the seed.
+		TownLife.annotate(gen, chunk)
 		res["data"] = chunk
 		res["objects"] = ChunkNode.build_object_buffers(chunk)
 		res["river"] = RiverMesh.build_river_arrays(chunk)
@@ -234,6 +237,10 @@ func _collect() -> void:
 				node.set_grass(res["grass"])
 				node.set_clutter(res["clutter"])
 				node.grass_built = true
+		if _regrow.has(k) and not _jobs.has(k):
+			_regrow.erase(k)
+			if chunks.has(k) and not _replacing.has(k):
+				refresh_grass(k)
 		if _replacing.has(k) and not _jobs.has(k):
 			if chunks.has(k):
 				_submit_replace(k)
@@ -340,11 +347,18 @@ func pick_under(found: Dictionary) -> bool:
 	(node as ChunkNode).clear_under(found)
 	return true
 
-## Regrows a chunk's grass in the background, e.g. after something was built on it.
+## Regrows a chunk's grass in the background, e.g. after something was built on it. A job
+## already running may have read the chunk before the change, so it runs again after.
 func refresh_grass(k: Vector2i) -> void:
 	var node: ChunkNode = chunks.get(k)
-	if node != null and node.has_grass() and not _jobs.has(k):
+	if node == null or not node.grass_built:
+		return
+	if _jobs.has(k):
+		_regrow[k] = true
+	else:
 		_submit(k, "grass")
+
+var _regrow: Dictionary = {} ## Vector2i -> true: grass to grow again once its running job is done
 
 func apply_settings(radius: int, grass: float, detail: float = 1.0) -> void:
 	if not is_equal_approx(detail, ChunkNode.detail_mult):

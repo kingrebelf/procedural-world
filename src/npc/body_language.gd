@@ -120,6 +120,19 @@ var grip_rot: Dictionary = {}
 ## {"axis": hand-space direction of what is held, "dir": skeleton-space direction to turn
 ## it to, "w": how far}: the wrist turns over its animation; {} for none.
 var hand_aim: Dictionary = {}
+## Empty hands hang relaxed: each finger a little more curled than the one before, the
+## thumb resting alongside, as a hand does when nothing is in it (first-person arms).
+var relaxed := false
+## The left hand reaching to hold something (a long gun's fore-end) in skeleton space:
+## {"at": where the wrist goes, "fingers": the way the fingers point, "palm": the way the
+## palm faces}; {} leaves the arm to its animation.
+var reach_l: Dictionary = {}
+## The right arm's elbow and shoulder bent so its wrist sits at {"at": skeleton-space
+## point} (a long gun pulled in to the shoulder); the hand's own turn and grip still come
+## from hand_r and grip_rot. {} for none.
+var reach_r: Dictionary = {}
+const SUPPORT_CURL := [0.45, 0.62, 0.68, 0.72, 0.76]
+const IDLE_HAND := [0.3, 0.45, 0.55, 0.63, 0.7]
 ## How much of hand_r's turn the forearm takes instead of the wrist (0..1).
 var hand_share := 0.0
 ## The right hand's orientation in skeleton space, overriding the animation's (a gun
@@ -138,6 +151,34 @@ func play(name: String) -> bool:
 
 func stop() -> void:
 	_len = minf(_len, _t + 0.3)
+
+## Rowing (a rower at the oars of a boat, BoatNode): arms and back follow the stroke
+## until stopped. `offset` shifts the stroke so the boat's oars (BoatNode) keep time.
+const ROW_PERIOD := 2.6
+const ROWING := {"seconds": 1.0e9, "row": true, "fingers": [0.6, 0.95, 0.95, 0.95, 0.95],
+	"r": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)},
+	"l": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)}}
+var row_offset := 0.0
+
+func row(on: bool, offset := 0.0) -> void:
+	row_offset = offset
+	if on and current() != "row":
+		_g = ROWING
+		_name = "row"
+		_t = 0.0
+		_len = ROWING["seconds"]
+	elif not on and _name == "row":
+		stop()
+
+## Where in the stroke a rower is (0..1): 0..0.4 the drive (blades in, pulling), the
+## rest the recovery.
+static func row_phase(offset: float) -> float:
+	return fmod(Time.get_ticks_msec() / 1000.0 / ROW_PERIOD + offset, 1.0)
+
+## How far through the pull the hands are: 0 reaching forward at the catch, 1 drawn in
+## at the finish.
+static func row_pull(ph: float) -> float:
+	return smoothstep(0.0, 0.4, ph) if ph < 0.4 else 1.0 - smoothstep(0.4, 1.0, ph)
 
 func current() -> String:
 	return _name if _t < _len else ""
@@ -163,6 +204,8 @@ func _process_modification() -> void:
 	var now := Time.get_ticks_msec()
 	var dt := clampf((now - _last) / 1000.0, 0.0, 0.1) if _last > 0 else 0.0
 	_last = now
+	if not reach_r.is_empty():
+		_reach(sk, "r", reach_r, false)
 	if hand_r != null and _bone("hand_r") >= 0:
 		var hb := _bone("hand_r")
 		var parent := sk.get_bone_parent(hb)
@@ -198,6 +241,14 @@ func _process_modification() -> void:
 	elif not grip_r.is_empty():
 		for i in 5:
 			_finger(sk, "r", i, float(grip_r[i]), 1.0)
+	elif relaxed:
+		for i in 5:
+			_finger(sk, "r", i, IDLE_HAND[i], 1.0)
+	if relaxed:
+		for i in 5:
+			_finger(sk, "l", i, IDLE_HAND[i], 1.0)
+	if not reach_l.is_empty():
+		_reach(sk, "l", reach_l)
 	_t += dt
 	var active := _t < _len
 	_w = move_toward(_w, 1.0 if active else 0.0, dt * 4.0)
@@ -206,6 +257,11 @@ func _process_modification() -> void:
 		return
 	var w := smoothstep(0.0, 1.0, _w)
 	var t := _t
+	if _g.has("row"):
+		# Leaning into the catch, back past upright at the finish.
+		var lean := lerpf(0.32, -0.2, row_pull(row_phase(row_offset))) * w
+		for n in ["spine_01", "spine_02", "spine_03"]:
+			_turn(sk, _bone(n), _frame.x, lean / 3.0)
 	if _g.has("bow"):
 		var b: float = _g["bow"] * w * minf(1.0, t * 2.0)
 		for n in ["spine_01", "spine_02", "spine_03"]:
@@ -237,6 +293,11 @@ func _arm(sk: Skeleton3D, side: String, p: Dictionary, w: float, t: float) -> vo
 		return (out * v.x + _frame.y * v.y + _frame.z * v.z).normalized()
 	var upper: Vector3 = p["upper"]
 	var fore: Vector3 = p["fore"]
+	if _g.has("row"):
+		# Arms long and low at the catch, elbows drawn back past the ribs at the finish.
+		var k := row_pull(row_phase(row_offset))
+		upper = Vector3(0.12, -0.3, 0.95).lerp(Vector3(0.45, -0.75, -0.45), k)
+		fore = Vector3(0.05, -0.1, 1.0).lerp(Vector3(-0.25, 0.0, 1.0), k)
 	if p.has("wave"):
 		fore = Vector3(fore.x + sin(t * 9.0) * float(p["wave"]), fore.y, fore.z)
 	if p.has("pump"):
@@ -262,6 +323,36 @@ func _arm(sk: Skeleton3D, side: String, p: Dictionary, w: float, t: float) -> vo
 	if _g.get("cross", false) and side == "r":
 		# Middle finger crossed over the index.
 		_turn(sk, _bone("middle_01_r"), _frame.y, -0.35 * w)
+
+## Two-bone reach: the shoulder stays, the elbow bends down and out in the plane that
+## puts the wrist on `r["at"]`, the hand turns to `r["fingers"]`/`r["palm"]` and the
+## fingers close round what it holds.
+func _reach(sk: Skeleton3D, side: String, r: Dictionary, hand := true) -> void:
+	var bu := _bone("upperarm_" + side)
+	var bl := _bone("lowerarm_" + side)
+	var bh := _bone("hand_" + side)
+	if bu < 0 or bl < 0 or bh < 0:
+		return
+	var l1 := sk.get_bone_global_rest(bu).origin.distance_to(sk.get_bone_global_rest(bl).origin)
+	var l2 := sk.get_bone_global_rest(bl).origin.distance_to(sk.get_bone_global_rest(bh).origin)
+	var s := sk.get_bone_global_pose(bu).origin
+	var at: Vector3 = r["at"]
+	var to := at - s
+	var d := clampf(to.length(), absf(l1 - l2) + 0.01, l1 + l2 - 0.002)
+	var u := to.normalized()
+	var out := _frame.x if side == "l" else -_frame.x
+	var pole := -_frame.y + out * 0.7
+	var pp := (pole - u * pole.dot(u)).normalized()
+	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
+	var elbow := s + (u * cos(a) + pp * sin(a)) * l1
+	var palm: Vector3 = r.get("palm", -_frame.y)
+	_aim(sk, bu, (elbow - s).normalized(), palm, 1.0)
+	_aim(sk, bl, (s + u * d - elbow).normalized(), palm, 1.0)
+	if not hand:
+		return
+	_aim(sk, bh, r["fingers"], palm, 1.0)
+	for i in 5:
+		_finger(sk, side, i, SUPPORT_CURL[i], 1.0)
 
 ## Turns a bone so it points along `dir` (skeleton space) with its palm side facing
 ## `palm`, blended by w over the animated pose.

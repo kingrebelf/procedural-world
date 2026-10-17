@@ -1,10 +1,11 @@
 shader_type spatial;
 // An animal's health bar under its name: faces you and keeps its size on screen like the
-// name above it, so the two never slide into each other with distance.
-render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+// name above it, so the two never slide into each other with distance. Solid (not
+// blended), so it moves with the animal under temporal anti-aliasing instead of trailing.
+render_mode unshaded, cull_disabled, shadows_disabled, fog_disabled;
 
 instance uniform float fill = 1.0;
-uniform vec4 back_color : source_color = vec4(0.0, 0.0, 0.0, 0.6);
+uniform vec4 back_color : source_color = vec4(0.06, 0.05, 0.05, 1.0);
 uniform vec4 fill_color : source_color = vec4(0.9, 0.2, 0.15, 1.0);
 
 void vertex() {
@@ -19,5 +20,4 @@ void vertex() {
 void fragment() {
 	vec4 c = UV.x <= fill ? fill_color : back_color;
 	ALBEDO = c.rgb;
-	ALPHA = c.a;
 }

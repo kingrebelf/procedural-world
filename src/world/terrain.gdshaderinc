@@ -7,6 +7,11 @@
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
 global uniform vec3 sun_light_g; // the sun's light reaching the ground (Atmosphere)
+global uniform float wind_strength;
+global uniform vec2 wind_dir;
+global uniform sampler2D water_map : filter_linear; // Water's depth map (metres)
+global uniform sampler2D water_murk : filter_linear; // how murky, over the same square (Water._murk)
+global uniform vec4 water_map_rect; // its origin x, z and size
 #include "res://src/world/noise2d.gdshaderinc"
 
 uniform vec3 grass_m : source_color = vec3(0.34, 0.42, 0.24);
@@ -47,6 +52,9 @@ uniform float snow_line = 40.0;
 // Human worlds dress sci-fi land as the wilds; there the blue vertex channel only says
 // where a road is paved (outpost streets and the roads of the tech era).
 uniform bool paved_roads = false;
+// Human worlds (v16 marks them, ZoneBorder.rings): radii from the origin where the road
+// surface changes, Medieval lands to Borderlands (x) and Borderlands to the frontier (y).
+uniform vec2 zone_rings = vec2(-1.0);
 // Linear-space mean colour of each texture (printed by tools/make_textures.py). Detail is
 // the texture's brightness relative to its mean, recoloured by the era palette and mixed
 // with some of the photo's own colour.
@@ -82,7 +90,11 @@ varying vec3 wnorm;
 varying vec4 stone_v;
 varying vec4 soil_v;
 varying vec2 form_v;
+varying vec2 scar_v; // (v16) x: scorched by a crash, y: fresh crater spoil
 varying vec4 cover_v;
+// Near a road up close: metres from its middle line (negative on its other side), and
+// 1 where that is known (the terrain's UV).
+varying vec2 road_v;
 #ifdef FAR_LAND
 // The forest seen from afar: crown colour (sRGB) and how densely the trees stand; and
 // the distance from a river's centre (in six half-widths: under 1/6 is water).
@@ -172,11 +184,15 @@ void vertex() {
 	stone_v = CUSTOM0;
 	soil_v = CUSTOM1;
 	form_v = CUSTOM2.xy;
+	scar_v = CUSTOM2.zw;
 	cover_v = CUSTOM3;
+	road_v = UV;
 #ifdef FAR_LAND
+	road_v = vec2(0.0);
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
 	river_v = CUSTOM2.w;
 	cover_v = vec4(0.0, 0.0, 0.0, CUSTOM3.a);
+	scar_v = vec2(0.0);
 #endif
 }
 
@@ -207,6 +223,13 @@ void fragment() {
 	w /= max(w.r + w.g + w.b, 0.001);
 	float slope = 1.0 - clamp(wnorm.y, 0.0, 1.0);
 	vec2 p = wpos.xz;
+	// A road's middle line: how far this point is from it in metres, to one side or the
+	// other, and which way that distance grows, for the wheel ruts.
+	float rd_known = smoothstep(0.9, 1.0, road_v.y);
+	float rd_m = road_v.x;
+	mat2 jm = mat2(vec2(dwx.x, dwy.x), vec2(dwx.z, dwy.z));
+	vec2 rd_dir = abs(determinant(jm)) > 1e-14 ? inverse(jm) * vec2(dFdx(road_v.x), dFdy(road_v.x)) : vec2(0.0);
+	rd_dir /= max(length(rd_dir), 1e-9);
 
 	// Multi-scale variation: macro patches, meso clumps, micro grain. On steep faces the
 	// ground plane squeezes a whole cliff into a few texels of x/z, which drew the grain
@@ -314,7 +337,16 @@ void fragment() {
 	float swathe = fbm(p * 0.035 + 21.0);
 	g *= mix(vec3(0.82, 0.9, 0.8), vec3(1.12, 1.08, 0.92), smoothstep(0.3, 0.7, swathe));
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
-	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
+	// Where the grass grows the ground between the tufts is short turf, with moss in the
+	// damp hollows and clumps of clover; bare earth only shows in small worn spots
+	// (fantasy and sci-fi soil keeps its broad patches).
+	float worn = smoothstep(0.62, 0.85, vnoise(p * 0.9 + 17.0) * 0.55 + micro * 0.45);
+	float bare = soil_mask * 0.7 * mix(1.0, worn, w.r);
+	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso));
+	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro);
+	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
+	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
+	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
 		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
@@ -364,41 +396,78 @@ void fragment() {
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
 	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
-	// Sand: wind ripples, long near-parallel ridges straight across the wind (only bending
-	// slowly over a whole dune field), each with a long gentle windward side and a short
-	// steep lee; finer ripples on them close up. The slip faces (steep lee slopes of the
-	// dunes themselves) are smooth, paler, freshly slipped sand.
+	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
+	// forking and dying out (sharp and close in some stretches, faint in others), with a
+	// long gentle windward side and a short steep lee; finer ones still close up, and
+	// here and there a low, wide swell of coarser sand. All of it fades out over the first
+	// forty metres or so, as real ripples do: a sand plain far off reads smooth. The slip
+	// faces (steep lee slopes of the dunes themselves) are smooth, paler, freshly slipped sand.
 	vec2 ripple = vec2(0.0);
 	if (form_v.x > 0.01) {
 		vec2 rd = normalize(vec2(0.8, 0.6) + (vec2(fbm(p * 0.004), fbm(p * 0.004 + 9.0)) - 0.5) * 0.7);
+		rd = rot2(rd, (fbm(p * 0.035 + 2.0) - 0.5) * 1.1);
 		float fp = max(length(gp.xy), length(gp.zw));
-		float ph = dot(p, rd) * 5.0 + fbm(p * 0.05) * 2.2;
-		float big = (cos(ph) + 0.5 * cos(2.0 * ph)) * (1.0 - smoothstep(0.12, 0.3, fp));
-		vec2 rd2 = rot2(rd, 0.2);
-		float ph2 = dot(p, rd2) * 21.0 + fbm(p * 0.25 + 3.0) * 3.0;
-		float fine = (cos(ph2) + 0.5 * cos(2.0 * ph2)) * (1.0 - smoothstep(0.025, 0.06, fp));
+		float near_f = 1.0 - smoothstep(10.0, 45.0, dist);
+		float strong = smoothstep(0.25, 0.75, fbm(p * 0.05 + 7.0));
+		float ph = dot(p, rd) * 22.0 + fbm(p * 0.13) * 7.0 + fbm(p * 0.5 + 4.0) * 1.5;
+		float mid = (cos(ph) + 0.4 * cos(2.0 * ph)) * (1.0 - smoothstep(0.025, 0.07, fp));
+		vec2 rd2 = rot2(rd, 0.35);
+		float ph2 = dot(p, rd2) * 70.0 + fbm(p * 0.45 + 3.0) * 6.0;
+		float fine = (cos(ph2) + 0.4 * cos(2.0 * ph2)) * (1.0 - smoothstep(0.008, 0.022, fp));
+		float swell = cos(dot(p, rd) * 3.4 + fbm(p * 0.03) * 4.0) * smoothstep(0.55, 0.8, fbm(p * 0.012 + 4.0)) * (1.0 - smoothstep(0.12, 0.35, fp));
 		float lee = smoothstep(0.3, 0.5, dot(wnorm.xz, rd));
-		ripple = (rd * big * 0.45 + rd2 * fine * 0.18) * form_v.x * (1.0 - far) * (1.0 - 0.85 * lee);
+		ripple = (rd * (mid * (0.05 + 0.17 * strong) + swell * 0.12) + rd2 * fine * 0.07) * form_v.x * near_f * (1.0 - 0.85 * lee);
+		// Coarser, darker grains gather in the troughs: a faint banding where they show.
+		ground *= 1.0 - 0.035 * max(-mid, 0.0) * strong * form_v.x * near_f;
 		ground *= 1.0 + 0.08 * lee * form_v.x;
 	}
 	vec2 tilt = vec2(0.0);
 	if (use_textures) {
 		vec2 tm = untiled_n(mud_nrm, p + 23.0, gp, MUD_TILE, meso, far);
-		tilt = mix(mix(mix(mix(tilt_g, tilt_s, soil_mask * 0.7), tilt_c, cov), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
+		tilt = mix(mix(mix(mix(tilt_g, tilt_s, bare), tilt_c, cov), tm, shore), tilt_r, rock_mask) * (1.0 - far * 0.7);
 	}
 	vec3 col = mix(ground, rock, rock_mask);
+
+	// (v16) Fresh crater spoil: paler broken rock and grit along the crests and the upper
+	// walls, and rays of it out across the blanket round each crater.
+	if (scar_v.y > 0.01) {
+		float a = smoothstep(0.15, 0.7, scar_v.y + (meso - 0.5) * 0.45 + (micro - 0.5) * 0.2);
+		vec3 sp = mix(rock, soil, 0.3) * 1.15 * (0.85 + 0.3 * micro);
+		if (use_textures) {
+			vec3 gt = untiled(gravel_tex, p + 131.0, gp, GRAVEL_TILE * 1.2, meso, far).rgb;
+			sp = recolor(gt, GRAVEL_MEAN, sp, 0.45);
+			tilt = mix(tilt, untiled_n(gravel_nrm, p + 131.0, gp, GRAVEL_TILE * 1.2, meso, far) * 1.2, a);
+		}
+		col = mix(col, sp, a * (1.0 - rock_mask * 0.4));
+	}
+	// (v16) Where a warship came down: sand and earth blackened along its trench and round
+	// the hull, and fused into dark glass in streaks where it burned hottest.
+	float glass = 0.0;
+	if (scar_v.x > 0.01) {
+		float burn = smoothstep(0.1, 0.6, scar_v.x + (meso - 0.5) * 0.5 + (micro - 0.5) * 0.15);
+		// Round the burn: churned earth and ash, grey-brown, not the land's bare red soil.
+		float ash = smoothstep(0.0, 0.12, scar_v.x) * (1.0 - burn);
+		col = mix(col, vec3(dot(col, LUM)) * vec3(0.95, 0.88, 0.8) * 0.85, ash * 0.75);
+		col = mix(col, col * vec3(0.2, 0.18, 0.17) + vec3(0.01), burn * 0.92);
+		// Only on the flat trench floor where the melt pooled; banks and walls stay soot.
+		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - smoothstep(0.08, 0.2, slope)) * (1.0 - rock_mask) * (1.0 - far * 0.5);
+		col = mix(col, vec3(0.02, 0.026, 0.024) + vec3(0.025, 0.035, 0.028) * micro, glass);
+		tilt *= 1.0 - glass * 0.35;
+	}
 
 	// Roads and village squares (vertex alpha): packed earth and gravel, pale flagstones
 	// in the fey lands, dark grit in sci-fi ones. Ragged at the edges like a worn track.
 	float road = 1.0 - COLOR.a;
 	if (road > 0.01) {
 		float edge = smoothstep(0.2, 0.65, road + (micro - 0.5) * 0.3 + (meso - 0.5) * 0.25);
-		vec3 rm = soil * vec3(0.86, 0.8, 0.7) * (0.82 + 0.3 * micro);
+		// Worn earth: trodden dry and dusty, paler and greyer than the soil beside it.
+		vec3 dusty = mix(vec3(dot(soil, LUM)), soil, 0.62) * vec3(1.08, 1.02, 0.93);
+		vec3 rm = dusty * (0.82 + 0.3 * micro);
 		if (use_textures) {
 			// Packed earth with drifts of trodden gravel, each edge following the stones.
 			vec3 gt = untiled(gravel_tex, p + 91.0, gp, GRAVEL_TILE, meso, far).rgb;
 			float a = layer(0.35 + 0.4 * fbm(p * 0.35 + 13.0), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro) * w.r;
-			rm = mix(rm, recolor(gt, GRAVEL_MEAN, soil * vec3(1.05, 1.0, 0.92) * 1.2, 0.55), a);
+			rm = mix(rm, recolor(gt, GRAVEL_MEAN, dusty * 1.15, 0.55), a);
 			tilt = mix(tilt, untiled_n(gravel_nrm, p + 91.0, gp, GRAVEL_TILE, meso, far), a * edge);
 		} else {
 			float stones = smoothstep(0.6, 0.85, vnoise(p * 2.3));
@@ -408,6 +477,65 @@ void fragment() {
 		vec3 rf = vec3(0.52, 0.5, 0.55) * (0.7 + 0.35 * micro) * (0.7 + 0.3 * flags);
 		vec3 rs = vec3(0.22, 0.2, 0.2) * (0.85 + 0.3 * micro);
 		vec3 rc = rm * w.r + rf * w.g + rs * w.b;
+		// Human worlds: the road changes where it crosses into the next zone (ZoneBorder),
+		// packed earth in the medieval lands, laid setts in the Borderlands, tarmac beyond.
+		float zr = length(p) + (meso - 0.5) * 1.5;
+		// (The setts start ragged over the first ten metres, a few loose ones lying ahead.)
+		float b1 = zone_rings.x > 0.0 ? smoothstep(zone_rings.x - 3.0, zone_rings.x + 10.0, zr) : 0.0;
+		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
+		vec2 dome = vec2(0.0);
+		if (b1 > 0.0 && b2 < 1.0) {
+			vec2 sq = p * vec2(2.3, 3.1);
+			float row = floor(sq.y);
+			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35;
+			vec2 cid = floor(sq);
+			vec2 f = fract(sq) - 0.5;
+			float joint = smoothstep(0.34, 0.47, max(abs(f.x), abs(f.y))) * (1.0 - far);
+			float hs = hash12(cid);
+			float hs2 = hash12(cid + 1.7);
+			// Old setts: each stone its own shade, some warm, some cool, sunk or tipped.
+			vec3 sett = mix(vec3(0.24, 0.23, 0.21), vec3(0.4, 0.37, 0.33), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
+			sett *= (0.78 + 0.22 * hs2) * (0.85 + 0.25 * micro);
+			// Mud trodden over the stones in drifts, and the joints packed with dirt and moss.
+			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2);
+			sett = mix(sett, rm * 0.8, dirt * 0.55);
+			float moss = smoothstep(0.42, 0.72, fbm(p * 0.21 + 41.0)) * (1.0 - dirt * 0.6);
+			vec3 fill = mix(rm * 0.6, vec3(0.13, 0.17, 0.07) * (0.8 + 0.4 * micro), moss * 0.75);
+			sett = mix(sett, fill, moss * 0.25 * hs2);
+			// Towards the edges stones are missing and the grass has crept in over them.
+			float in_road = smoothstep(0.3, 0.95, road + (meso - 0.5) * 0.35);
+			float keep = step(hash12(cid + 3.1), in_road * 1.35 - 0.1) * step(hash12(cid + 9.7), 0.97);
+			float laid = step(hash12(cid + 5.3), b1 * 1.1 - 0.05);
+			// Where the paving gives out, the odd sett lies loose and smaller in the dirt.
+			float loose = (1.0 - laid) * step(hash12(cid + 8.1), 0.3) * step(0.01, b1) * (1.0 - smoothstep(0.22, 0.3, max(abs(f.x), abs(f.y))));
+			keep *= max(laid, loose);
+			joint *= 1.0 - loose;
+			rc = mix(mix(rm * 0.85, fill, moss * 0.5), mix(sett, fill, joint), keep);
+			edge *= 1.0 - (1.0 - keep) * (1.0 - smoothstep(0.35, 0.8, in_road)) * 0.85;
+			vec2 tip = (vec2(hash12(cid + 4.2), hash12(cid + 6.6)) - 0.5) * 0.5;
+			dome = (f * 0.6 + tip) * (1.0 - joint) * keep * (1.0 - far);
+		}
+		paved = max(paved, b2);
+		// Wheel ruts in the earth roads: two tracks a cart's width apart, packed dark and
+		// smooth and sunk a few centimetres, and a strip of grass left between them.
+		float cart = edge * w.r * (1.0 - paved) * (1.0 - far) * rd_known * (1.0 - smoothstep(2.0, 3.0, abs(rd_m))) * (1.0 - b1);
+		vec2 rut_tilt = vec2(0.0);
+		if (cart > 0.01) {
+			// The track wanders a little within the road.
+			float sx = rd_m - (fbm(p * 0.09 + 5.0) - 0.5) * 0.5;
+			float off = abs(sx) - 0.8;
+			float hw = 0.24 + 0.06 * meso;
+			float t = clamp((abs(off) - hw * 0.35) / (hw * 0.65), 0.0, 1.0);
+			float rut = 1.0 - t * t * (3.0 - 2.0 * t);
+			// Packed smooth and darker (damp in the bottom), the loose gravel thrown out.
+			rc = mix(rc, rm * vec3(0.8, 0.78, 0.76) * (0.92 + 0.12 * micro), rut * cart * 0.8);
+			tilt = mix(tilt, tilt * 0.35, rut * cart);
+			// Its walls: the ground climbs 4 cm out of the rut.
+			rut_tilt = -rd_dir * sign(sx) * sign(off) * 0.04 * 6.0 * t * (1.0 - t) / (hw * 0.65) * cart;
+			// Between the ruts, where no wheel or hoof goes, a ragged strip of grass.
+			float crown = (1.0 - smoothstep(0.18, 0.4, abs(sx))) * smoothstep(0.35, 0.6, meso + (micro - 0.5) * 0.5);
+			rc = mix(rc, col * (0.75 + 0.3 * micro), crown * cart * 0.75);
+		}
 		if (paved > 0.01) {
 			// Asphalt: fine dark grit, greyer where it has worn and weathered.
 			vec3 asph = vec3(0.07, 0.07, 0.068);
@@ -422,6 +550,7 @@ void fragment() {
 		}
 		col = mix(col, rc, edge * (1.0 - rock_mask * 0.6));
 		tilt *= 1.0 - edge * mix(0.4, 0.85, paved);
+		tilt += rut_tilt + dome * edge;
 	}
 
 	// Snow on high ground (medieval and sci-fi peaks), thinning on steep faces.
@@ -434,7 +563,10 @@ void fragment() {
 		// hollows inside it, never one clean line.
 		float frayed = (fbm(p * 0.13 + 3.0) - 0.5) * 0.32 + (meso - 0.5) * 0.38;
 		snow = smoothstep(0.17, 0.7, cover_v.a + frayed + (micro - 0.5) * 0.14 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
-		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.55, 0.85, slope));
+		// Where the ground steepens the snow breaks up into streaks and ledges of white
+		// over the bare face, not one ruled line along the foot of the slope.
+		float crag = slope + (fbm(p * 0.3 + 8.0) - 0.5) * 0.4 + (micro - 0.5) * 0.12;
+		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.48, 0.82, crag));
 		// The map is per metre, so on a tall wall one triangle spans its snowy top and its
 		// foot: never let snow run down below the snow line's reach.
 		snow *= smoothstep(snow_line - 16.0, snow_line - 8.0, wpos.y + (macro - 0.5) * 8.0);
@@ -453,6 +585,8 @@ void fragment() {
 		float de = 0.7;
 		float d0 = fbm(p * 0.21 + 7.0);
 		vec2 drift = -vec2(fbm((p + vec2(de, 0.0)) * 0.21 + 7.0) - d0, fbm((p + vec2(0.0, de)) * 0.21 + 7.0) - d0) / de * 1.4;
+		// The hollows between the drifts hold a little blue shade even in full sun.
+		col *= mix(vec3(1.0), mix(vec3(0.86, 0.9, 0.97), vec3(1.0), smoothstep(0.3, 0.65, d0)), smoothstep(0.5, 0.9, snow) * (1.0 - far));
 		tilt = mix(tilt, untiled_n(snow_nrm, p + 41.0, gp, SNOW_TILE, meso, far) * 0.9 + rip + drift * (1.0 - far * 0.5), snow);
 		rock_n *= 1.0 - snow;
 		// Glints: here and there a crystal faces just right and flashes the sun back, a
@@ -497,6 +631,42 @@ void fragment() {
 		float caus = pow(1.0 - abs(c1 * 2.0 - 1.0), 7.0) + pow(1.0 - abs(c2 * 2.0 - 1.0), 7.0) * 0.7;
 		float lit = smoothstep(-0.05, 0.3, sun_dir_g.y) * (1.0 - cloud_shadow(wpos));
 		col *= 1.0 + caus * under * exp(wpos.y * 0.12) * lit * 1.4 * (1.0 - far);
+	}
+
+	// The water's edge on lake and sea shores: each wave runs up the beach in a thin sheet
+	// and slides back, leaving the ground dark and glossy up to the highest reach, with
+	// a lace of foam riding the front of the wash. Runs up fast, drains slowly.
+	float wet = 0.0;
+	float film = 0.0;
+	float swash = 0.0;
+	if (wpos.y > -0.3 && wpos.y < 1.3 && far < 0.99) {
+		// Surf needs fetch: a sheltered (murky) pond barely laps, a big lake or the sea breaks.
+		vec2 wuv = (p - water_map_rect.xy) / water_map_rect.z;
+		float sheltered = 0.5;
+		if (wuv.x > 0.01 && wuv.y > 0.01 && wuv.x < 0.99 && wuv.y < 0.99) {
+			sheltered = textureLod(water_murk, wuv, 0.0).r;
+			// ...and breaks on the shore the wind blows toward (as water.gdshader judges it).
+			vec2 du = vec2(12.0 / water_map_rect.z, 0.0);
+			vec2 dg = vec2(textureLod(water_map, wuv + du, 0.0).r - textureLod(water_map, wuv - du, 0.0).r,
+				textureLod(water_map, wuv + du.yx, 0.0).r - textureLod(water_map, wuv - du.yx, 0.0).r);
+			float exposed = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
+			sheltered = max(sheltered, 1.0 - exposed);
+		}
+		float reach = (0.12 + wind_strength * 0.45) * (1.0 - 0.75 * sheltered);
+		float ph = fract(TIME * 0.1 + vnoise(p * 0.025) * 2.0);
+		float up = ph < 0.3 ? smoothstep(0.0, 0.3, ph) : 1.0 - smoothstep(0.3, 1.0, ph);
+		float run = 0.02 + reach * up * (0.75 + 0.5 * vnoise(p * 0.12 + 3.0));
+		float ragged = (vnoise(p * 1.3) - 0.5) * 0.06;
+		wet = 1.0 - smoothstep(reach * 0.85, reach * 1.25 + 0.3, wpos.y + ragged * 2.0);
+		film = (1.0 - smoothstep(run - 0.03, run + 0.005, wpos.y + ragged)) * step(0.0, wpos.y + 0.1);
+		float lace = clamp(1.0 - abs((vnoise(p * 3.1 + TIME * 0.2) - 0.5) * 2.0 + (vnoise(p * 7.3) - 0.5)) * 2.4, 0.0, 1.0);
+		swash = (1.0 - smoothstep(0.0, 0.035, abs(wpos.y + ragged - run + 0.012))) * lace * (1.0 - smoothstep(0.35, 0.8, ph)) * step(0.01, wpos.y) * (1.0 - 0.8 * sheltered);
+		wet *= 1.0 - far;
+		film *= 1.0 - far;
+		swash *= 1.0 - far;
+		col *= mix(vec3(1.0), vec3(0.55, 0.53, 0.5), wet);
+		col *= mix(vec3(1.0), vec3(0.82, 0.88, 0.9), film);
+		col = mix(col, vec3(0.78, 0.8, 0.82), swash * 0.85);
 	}
 
 #ifdef FAR_LAND
@@ -551,13 +721,15 @@ void fragment() {
 
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
-	ROUGHNESS = mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow);
+	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
 	METALLIC = plates * 0.6;
-	SPECULAR = 0.4;
+	SPECULAR = mix(0.4, 0.5, glass);
 #ifdef FAR_LAND
 	ROUGHNESS = mix(mix(ROUGHNESS, 0.95, canopy), 0.06, river);
 	SPECULAR = mix(mix(0.4, 0.25, canopy), 0.5, river);
 #endif
+	ROUGHNESS = mix(mix(mix(ROUGHNESS, 0.3, wet), 0.04, film), 0.7, swash);
+	SPECULAR = mix(SPECULAR, 0.5, max(wet, film) * (1.0 - swash));
 
 	// Procedural detail normal from the noise gradient (world space -> view space).
 	float e = 0.15;

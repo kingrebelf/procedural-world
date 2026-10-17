@@ -150,6 +150,10 @@ func _load(site: Dictionary, id: String) -> void:
 	decor.setup(gen, streamer, site, data, Game.estates)
 	add_child(decor)
 	e["decor"] = decor
+	var life := TownLife.new()
+	life.setup(gen, streamer, site)
+	add_child(life)
+	e["life"] = life
 	# Where the town's work is done, and the anvils and crates people work at.
 	e["places"] = NPCRoles.places(gen, site, data)
 	var props := WorkProps.new()
@@ -235,6 +239,8 @@ func _unload(id: String) -> void:
 		n.queue_free()
 	if is_instance_valid(e.get("decor")):
 		e["decor"].queue_free()
+	if is_instance_valid(e.get("life")):
+		e["life"].queue_free()
 	if is_instance_valid(e.get("props")):
 		e["props"].queue_free()
 	settlements.erase(id)
@@ -311,6 +317,9 @@ func crew_of(b: BoatNode) -> Dictionary:
 func _decide_aboard(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
 	if n.talking:
 		return
+	if String(n.rec.get("faction", "folk")) == "pirate":
+		_decide_pirate(n, e, pp, t)
+		return
 	var rec := n.rec
 	var dist := n.global_position.distance_to(pp)
 	var ov = _overrides.get(rec["id"])
@@ -355,6 +364,7 @@ func _process(delta: float) -> void:
 	if send:
 		_mob_t = 1.0 / Net.MOB_HZ
 	var out: Array = []
+	var cam := get_viewport().get_camera_3d()
 	for e in settlements.values():
 		var held := runs(e)
 		if e.has("boat") and is_instance_valid(e["boat"]):
@@ -373,6 +383,8 @@ func _process(delta: float) -> void:
 					if n.decide_in <= 0.0:
 						n.decide_in = randf_range(1.5, 3.0)
 						_decide_aboard(n, e, bt[1], t)
+					if n.action == "attack" and n.attack_cd <= 0.0 and not n.talking:
+						_strike(n, bt, bt[1])
 				n.deck_step(delta, bt[1])
 				continue
 			if not held:
@@ -385,13 +397,20 @@ func _process(delta: float) -> void:
 			if n.decide_in <= 0.0:
 				n.decide_in = randf_range(1.2, 2.4)
 				_decide(n, e, tp, t, int(tg[0]))
-			n.step(delta, _ground, tp, e["nodes"])
+			# Out of sight and going about their day, people step a quarter as often
+			# (with the time skipped): nothing on screen changes.
+			n.lod_dt += delta
+			n.lod_tick += 1
+			if n.lod_tick % _step_every(n, cam) == 0:
+				n.step(n.lod_dt, _ground, tp, e["nodes"])
+				n.lod_dt = 0.0
 			if shared:
 				out.append(n.net_state())
 			if n.action == "attack" and n.attack_cd <= 0.0 and not n.talking:
 				_strike(n, tg, tp)
 	if not out.is_empty():
 		Net.send_mobs("n", out)
+	_pirate_tick(delta)
 	_stealth_t -= delta
 	if _stealth_t <= 0.0:
 		_stealth_t = 0.2
@@ -415,6 +434,16 @@ func _process(delta: float) -> void:
 					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
 				e["dirty"] = false
+
+## How many frames apart a person steps: every frame on screen, near you, or when busy
+## with you (talking, following, fleeing, fighting); every fourth frame otherwise.
+static func _step_every(n: NPC, cam: Camera3D) -> int:
+	if cam == null or n.talking or n.target_player or n.action == "flee" or n.action == "attack":
+		return 1
+	var p := n.global_position
+	if cam.global_position.distance_squared_to(p) < 144.0 or cam.is_position_in_frustum(p + Vector3.UP):
+		return 1
+	return 4
 
 ## What a person makes of the player at `pp`: you (peer 0), or online another player.
 func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dictionary:
@@ -590,6 +619,12 @@ func _give_gift(n: NPC) -> void:
 func instruct(n: NPC, action: String, seconds: float) -> void:
 	if action == "none" or action == "":
 		return
+	if String(n.rec.get("faction", "")) == "pirate":
+		if action == "attack":
+			_pirate_alert(_pirate_state(n), n)
+		elif action in ["flee", "leave", "go_home"]:
+			_pirate_leave(_pirate_state(n))
+		return
 	if n.settlement.has("band"):
 		# Outlaws answer to their band, not to instructions: a fight or a rout.
 		if action == "attack":
@@ -678,9 +713,9 @@ func begin_talk(n: NPC) -> void:
 	n.rec["met"] = int(n.rec.get("met", 0)) + 1
 	if int(n.rec["met"]) == 1:
 		NPCMind.remember(n.rec, "Met a traveller for the first time.")
-	if n.settlement.has("band"):
+	if n.settlement.has("band") or String(n.rec.get("faction", "")) == "pirate":
 		# They hold off while you talk (pay, bargain or bluff).
-		var be := _entry_of(n.settlement)
+		var be := _entry_of(n.settlement) if n.settlement.has("band") else _pirate_state(n)
 		if not be.is_empty() and float(be["demand_until"]) > 0.0:
 			be["demand_until"] = now() + 3600.0
 		return
@@ -688,8 +723,8 @@ func begin_talk(n: NPC) -> void:
 	mark_dirty(n.settlement)
 
 func end_talk(n: NPC) -> void:
-	if is_instance_valid(n) and n.settlement.has("band"):
-		var be := _entry_of(n.settlement)
+	if is_instance_valid(n) and (n.settlement.has("band") or String(n.rec.get("faction", "")) == "pirate"):
+		var be := _entry_of(n.settlement) if n.settlement.has("band") else _pirate_state(n)
 		if not be.is_empty() and float(be["demand_until"]) > now():
 			be["demand_until"] = now() + 4.0 # walked off without paying: last chance
 	if is_instance_valid(n):
@@ -710,6 +745,8 @@ func player_hit(n: NPC, damage: float) -> void:
 	if s.has("band"):
 		_bandit_hit(n, damage)
 		return
+	if String(rec.get("faction", "")) == "pirate":
+		_pirate_alert(_pirate_state(n), n)
 	NPCMind.change_rel(rec, -35)
 	rec["mood"] = "angry" if float(rec["traits"]["brave"]) > 0.5 else "afraid"
 	var e0 := _entry_of(s)
@@ -978,6 +1015,8 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 		_drop_node(n)
 		return
 	rec["hp"] = maxf(1.0, float(rec.get("hp", 100.0)) - dmg)
+	if String(rec.get("faction", "")) == "pirate":
+		_pirate_alert(_pirate_state(n), n)
 	if n.settlement.has("band"):
 		var be := _entry_of(n.settlement)
 		if not be.is_empty():
@@ -1121,6 +1160,21 @@ func _band_alert(e: Dictionary, by: NPC) -> void:
 
 ## You paid a band's toll (in a conversation): they leave you be.
 func pay_toll(n: NPC) -> int:
+	if String(n.rec.get("faction", "")) == "pirate":
+		var ps := _pirate_state(n)
+		if ps.is_empty() or ps["alert"] or ps["leaving"]:
+			return -1
+		var pamt := Pirates.toll(Game.money, int(ps["zone"]))
+		if pamt <= 0:
+			return 0
+		Game.add_money(-pamt)
+		NPCSocial.ensure(n.rec)
+		n.rec["purse"] = int(n.rec["purse"]) + pamt
+		ps["paid"] = true
+		ps["demand_until"] = 0.0
+		_bark(n, Pirates.PAID_LINES[randi() % Pirates.PAID_LINES.size()], 2.0)
+		get_tree().create_timer(4.0, false).timeout.connect(func(): _pirate_leave(ps))
+		return pamt
 	var e := _entry_of(n.settlement)
 	if e.is_empty() or not e.has("band") or e["alert"]:
 		return -1
@@ -1169,13 +1223,15 @@ func _bandit_hit(n: NPC, _damage: float) -> void:
 ## an outlaw with a bow, sling or gun, a shot from range when they can see you.
 func _strike(n: NPC, tg: Array, tp: Vector3) -> void:
 	var d := tp.distance_to(n.global_position)
-	var shoots := n.settlement.has("band") and Bandits.ranged(n.rec)
+	var shoots := (n.settlement.has("band") or String(n.rec.get("faction", "")) == "pirate") and Bandits.ranged(n.rec)
 	var dmg := (6.0 + float(n.rec["traits"]["brave"]) * 6.0) * NPCSocial.hit_mult(n.rec)
 	if shoots and d > 2.0:
-		if d > 20.0:
+		if d > (Pirates.SHOT_RANGE if n.boat != null else 20.0):
 			return
 		var eye := n.global_position + Vector3(0, 1.5, 0)
 		var q := PhysicsRayQueryParameters3D.create(eye, tp + Vector3(0, 1.2, 0), 1)
+		if n.boat != null and is_instance_valid(n.boat) and n.boat.body:
+			q.exclude = [n.boat.body.get_rid()] # their own gunwale doesn't block the shot
 		if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
 			return
 		n.attack_cd = 2.4
@@ -1195,3 +1251,160 @@ func _strike(n: NPC, tg: Array, tp: Vector3) -> void:
 		return
 	var took := Game.hurt(dmg, "Killed by %s" % n.rec["name"], func(back: float): player_hit(n, back))
 	Game.toast.emit("%s %s you (-%d)" % [n.rec["name"].split(" ")[0], verb, int(ceilf(took))])
+
+# --- Pirates ------------------------------------------------------------------------------------
+
+var _pirate_t := Pirates.CHECK_EVERY
+var _pirate_next := 0.0 ## no new pirates before this (now())
+var _pirates: Dictionary = {} ## boat instance id -> {boat, zone, era, alert, demand_until, let_go_until, paid, leaving}
+
+func _boats() -> BoatManager:
+	return get_tree().get_first_node_in_group("boat_manager") as BoatManager if is_inside_tree() else null
+
+## Now and then, while you are by big water, a pirate boat puts out for you; those already
+## out close in on you, and sail off when they are paid, beaten or left behind.
+func _pirate_tick(delta: float) -> void:
+	_pirate_t -= delta
+	if _pirate_t > 0.0 or player == null:
+		return
+	_pirate_t = 4.0
+	var bm := _boats()
+	if bm == null:
+		return
+	var pp := player.global_position
+	for id in _pirates.keys():
+		var st: Dictionary = _pirates[id]
+		var b = st["boat"]
+		if not is_instance_valid(b):
+			_pirates.erase(id)
+			continue
+		var crew := crew_of(b)
+		var alive := 0
+		for n in crew.get("nodes", []):
+			if is_instance_valid(n):
+				alive += 1
+		var d: float = b.global_position.distance_to(pp)
+		if (st["leaving"] or (alive == 0 and not crew.is_empty())) and d > 260.0:
+			bm.despawn(b)
+			_pirates.erase(id)
+			continue
+		if st["leaving"] or alive == 0:
+			continue
+		if d > 420.0:
+			_pirate_leave(st) # you got clean away
+			continue
+		# Close in to just off where you are (on the water, or the shore you stand on).
+		var goal := Vector2(pp.x, pp.z)
+		if bm.open_water(pp.x, pp.z) < 12.0:
+			var w := bm.big_water_near(pp, 20.0, 8.0, 50.0)
+			if w != Vector3.INF:
+				goal = Vector2(w.x, w.z)
+		var stand_off := 9.0 if st["alert"] else 7.0
+		if b.pos2().distance_to(goal) > stand_off + 4.0:
+			b.sail_to(goal)
+	_pirate_t = 4.0
+	if not _pirates.is_empty() or now() < _pirate_next or Net.is_client():
+		return
+	_pirate_next = now() + Pirates.CHECK_EVERY
+	if not Pirates.allowed(Vector2(pp.x, pp.z)) or randf() > Pirates.CHANCE:
+		return
+	if bm.big_water_near(pp, Pirates.MIN_OPEN, 0.0, 80.0) == Vector3.INF:
+		return # not by big water
+	var at := bm.big_water_near(pp, Pirates.MIN_OPEN, Pirates.SPAWN[0], Pirates.SPAWN[1])
+	if at == Vector3.INF:
+		return
+	spawn_pirates(at)
+
+## Puts a pirate boat out at `at`, coming for you. Returns the boat (or null).
+func spawn_pirates(at: Vector3) -> BoatNode:
+	var bm := _boats()
+	if bm == null or player == null:
+		return null
+	var pp := player.global_position
+	var zone := Eras.zone_level(at.x, at.z)
+	var era := WorldField.dominant(gen.field.era_weights(at.x, at.z))
+	era = Eras.SCIFI if era == Eras.SCIFI and (not Eras.themed() or Vector2(at.x, at.z).length() > Eras.FRONTIER) else Eras.MEDIEVAL
+	var kind := Pirates.boat_kind(era, zone)
+	var recs := Pirates.crew(era, zone, BoatModel.stations(kind).size(), Vector2(at.x, at.z))
+	var b := bm.spawn(kind, at, atan2(-(pp.x - at.x), -(pp.z - at.z)), "pirate", recs)
+	if b == null:
+		return null
+	_pirates[b.get_instance_id()] = {"boat": b, "zone": zone, "era": era, "alert": false, "demand_until": 0.0,
+		"let_go_until": 0.0, "paid": false, "leaving": false}
+	_pirate_next = now() + randf_range(Pirates.COOLDOWN[0], Pirates.COOLDOWN[1])
+	b.sail_to(Vector2(pp.x, pp.z))
+	return b
+
+func _pirate_state(n: NPC) -> Dictionary:
+	if n.boat == null or not is_instance_valid(n.boat):
+		return {}
+	var id: int = n.boat.get_instance_id()
+	if not _pirates.has(id):
+		# A pirate boat someone else put out: it fights the same way.
+		_pirates[id] = {"boat": n.boat, "zone": Eras.zone_level(n.global_position.x, n.global_position.z), "era": int(n.rec["era"]),
+			"alert": false, "demand_until": 0.0, "let_go_until": 0.0, "paid": false, "leaving": false}
+	return _pirates[id]
+
+## A pirate aboard: hails you and demands a toll, shoots from the deck once it comes to a
+## fight, and runs for it with the boat when paid off or beaten.
+func _decide_pirate(n: NPC, e: Dictionary, pp: Vector3, t: float) -> void:
+	var st := _pirate_state(n)
+	if st.is_empty():
+		return
+	var dist := n.global_position.distance_to(pp)
+	var era := 1 if int(st["era"]) == Eras.SCIFI else 0
+	n.action = "work"
+	n.target_player = false
+	if st["leaving"]:
+		return
+	if st["alert"]:
+		n.action = "attack"
+		n.target_player = dist < 60.0
+		return
+	if dist < 40.0 and float(st["demand_until"]) <= 0.0 and t > float(st["let_go_until"]) and not st["paid"]:
+		st["demand_until"] = t + Pirates.DEMAND_SECS
+		_bark(n, Pirates.HAILS[era][randi() % Pirates.HAILS[era].size()], dist)
+		n.act("fist")
+		Game.toast.emit("Pirates demand a toll. Talk to them to pay, get out of reach, or fight.")
+	if float(st["demand_until"]) > 0.0:
+		n.action = "confront"
+		n.target_player = true
+		if t > float(st["demand_until"]):
+			st["demand_until"] = 0.0
+			if dist < Pirates.LEAVE_R:
+				_pirate_alert(st, n)
+			else:
+				st["let_go_until"] = t + 120.0
+				_bark(n, ["Aye, run, coward!", "Next time, landlubber.", "Not worth the powder."][randi() % 3], dist)
+
+## The pirates open up on you.
+func _pirate_alert(st: Dictionary, by: NPC) -> void:
+	if st.is_empty() or st["alert"] or st["leaving"]:
+		return
+	st["alert"] = true
+	st["paid"] = false
+	st["demand_until"] = 0.0
+	var era := 1 if int(st["era"]) == Eras.SCIFI else 0
+	if is_instance_valid(by) and player:
+		_bark(by, Pirates.FIGHT_LINES[era][randi() % 3], by.global_position.distance_to(player.global_position))
+	var crew := crew_of(st["boat"])
+	for o in crew.get("nodes", []):
+		if is_instance_valid(o):
+			o.decide_in = 0.0
+
+## Paid off or beaten: the boat turns and sails away.
+func _pirate_leave(st: Dictionary) -> void:
+	st["leaving"] = true
+	st["alert"] = false
+	var bm := _boats()
+	var b = st["boat"]
+	if bm == null or not is_instance_valid(b) or player == null:
+		return
+	var away: Vector2 = (b.pos2() - Vector2(player.global_position.x, player.global_position.z)).normalized()
+	var far := bm.big_water_near(Vector3(b.pos2().x + away.x * 300.0, 0.0, b.pos2().y + away.y * 300.0), 60.0, 0.0, 150.0)
+	b.sail_to(Vector2(far.x, far.z) if far != Vector3.INF else b.pos2() + away * 300.0)
+	var crew := crew_of(b)
+	for o in crew.get("nodes", []):
+		if is_instance_valid(o):
+			o.action = "work"
+			o.target_player = false

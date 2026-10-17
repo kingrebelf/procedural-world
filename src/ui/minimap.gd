@@ -19,6 +19,9 @@ var _info: Label
 var _finds: Label
 var _zone := {}
 var _zone_t := 0.0
+var _zone_kind := "" ## the zone you were last told you are in
+var _zone_seen := ""
+var _zone_held := 0
 var _t := 0.0
 
 const MASK := """
@@ -109,6 +112,7 @@ func _process(delta: float) -> void:
 		_zone_t = 0.5
 		_zone = ZoneInfo.at(Game.seed, p.x, p.z)
 		_finds.text = _zone["finds"]
+		_crossing(_zone)
 
 ## World x, z to a point on the turned disc, and whether it falls inside the rim.
 func _place(x: float, z: float) -> Array:
@@ -226,3 +230,19 @@ func _edge_pin(q: Vector2, col: Color, dist: float) -> void:
 		var inward := (Vector2(DIAM, DIAM) * 0.5 - q).normalized() * 14.0
 		_over.draw_string_outline(font, q + inward + Vector2(-tw * 0.5, 4), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, 3, Color(0, 0, 0, 0.8))
 		_over.draw_string(font, q + inward + Vector2(-tw * 0.5, 4), s, HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.85))
+
+## Says so when you walk into another zone (once it holds for a second, so a line you
+## walk along doesn't chatter); not for the zone you start or arrive in.
+func _crossing(z: Dictionary) -> void:
+	var kind := String(z["kind"])
+	if kind != _zone_seen:
+		_zone_seen = kind
+		_zone_held = 0
+		return
+	_zone_held += 1
+	if _zone_held != 2 or kind == _zone_kind:
+		return
+	var first := _zone_kind == ""
+	_zone_kind = kind
+	if not first:
+		Game.toast.emit(ZoneInfo.entering(z))

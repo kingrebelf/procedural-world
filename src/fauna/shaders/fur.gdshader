@@ -30,12 +30,12 @@ uniform vec3 patch_col : source_color = vec3(0.9, 0.88, 0.84);
 uniform float socks = 0.0; // chance of pale (or dark) lower legs
 uniform vec3 sock_col : source_color = vec3(0.66, 0.63, 0.58);
 uniform float blaze = 0.0; // chance of a pale streak down the face
-uniform float vary = 0.12;
+uniform float vary = 0.12; // how much one animal's coat differs from the next
 uniform float phases = 0.0; // chance of a colour phase: darker or tawnier than most
 uniform vec3 phase_dark = vec3(0.55, 0.52, 0.5);
 uniform vec3 phase_warm = vec3(1.12, 0.98, 0.78);
 uniform vec3 other : source_color = vec3(0.5); // the coat this one meets
-uniform float blend = 0.0; // 1: blend into `other` near the seam // how much one animal's coat differs from the next
+uniform float blend = 0.0; // 1: blend into `other` near the seam
 uniform vec3 emit : source_color = vec3(0.0);
 uniform float emit_e = 0.0;
 instance uniform float seed = 0.0;
@@ -181,13 +181,22 @@ void fragment() {
 		float stretch = role == 1 ? 0.05 : 0.35;
 		float ck = role == 1 ? clump * 2.5 : clump * short_hair;
 		float sk = role == 1 ? strand * 3.0 : strand * 0.75 * short_hair;
-		float cl = n3(sc * vec3(1.0, 1.0, stretch * 1.5) / ck + so);
+		float cl;
+		float fi = 0.0;
+		if (role == 1) {
+			// Manes and tails: long fibres running the way the hair falls, from cells laid
+			// across it (so they read as strands on any side), gathered in wavy locks.
+			vec2 xs = sc.xy + vec2(sin(sc.z / (ck * 5.0)), cos(sc.z / (ck * 6.5))) * ck * 0.35;
+			cl = 1.0 - cells(vec3(xs / ck, 0.5) + so);
+			float d = cells(vec3(xs / sk, 1.5) + so.yzx);
+			fi = (1.0 - smoothstep(0.05, 0.55, d)) * (0.6 + 0.4 * h3(floor(vec3(xs / sk, 0.0)) + so));
+		} else {
+		cl = n3(sc * vec3(1.0, 1.0, stretch * 1.5) / ck + so);
 		// Single hairs as short strokes along the flow: staggered cells, each one hair
 		// with its own shade, in two crossing layers.
-		float fi = 0.0;
 		for (int layer = 0; layer < 2; layer++) {
 			vec2 hp = layer == 0 ? vec2(sc.x, sc.z) : vec2(sc.y + 0.37 * sk, sc.z + 2.1 * sk);
-			hp /= vec2(sk, sk * (role == 1 ? 14.0 : 5.0));
+			hp /= vec2(sk, sk * 5.0);
 			float col_i = floor(hp.x);
 			hp.y += h1(col_i + float(layer) * 17.0 + so.x);
 			vec2 cell = floor(hp);
@@ -196,6 +205,7 @@ void fragment() {
 			float off = 0.5 + (rn - 0.5) * 0.4;
 			float stroke = (1.0 - smoothstep(0.12, 0.38, abs(fr.x - off))) * smoothstep(0.0, 0.25, fr.y) * (1.0 - smoothstep(0.75, 1.0, fr.y));
 			fi = max(fi, stroke * (0.55 + 0.45 * rn));
+		}
 		}
 		float fc = 1.0 - smoothstep(ck * 0.4, ck * 1.6, px);
 		float ff = 1.0 - smoothstep(sk * 0.4, sk * 1.6, px);

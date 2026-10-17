@@ -3,7 +3,7 @@ shader_type spatial;
 // same size on a pebble and on a boulder ten times its size (object-space mapping
 // stretched it with the instance's scale). COLOR.rgb is the stone's tint (vertex colour
 // times instance colour, sRGB); COLOR.a how much moss grows on its top. Darker where it
-// meets the ground.
+// meets the ground. Up past the snow line, snow lies on it instead of moss.
 render_mode diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
 #include "res://src/world/noise2d.gdshaderinc"
@@ -18,6 +18,9 @@ uniform float tile = 1.6; // metres per repeat
 uniform float wobble = 0.07;
 uniform vec3 soil_col : source_color = vec3(0.2, 0.16, 0.11);
 uniform vec3 moss_col : source_color = vec3(0.24, 0.3, 0.12);
+// 0 for cave shells: no snow inside a mountain.
+uniform float snow_cover = 1.0;
+global uniform float snow_line_g;
 const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
 const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 
@@ -104,9 +107,23 @@ void fragment() {
 	float earth = (1.0 - smoothstep(tide - 0.08, tide + 0.04, above)) * (1.0 - smoothstep(0.55, 0.85, wn.y));
 	vec3 soil = mix(soil_col, mc * 0.7, step(0.01, COLOR.a) * 0.45) * clamp(dot(mt, LUM) / 0.155, 0.6, 1.3);
 	col = mix(col, soil, earth * 0.85);
-	col *= mix(0.55, 1.0, max(smoothstep(-0.05, 0.3, above), smoothstep(0.35, 0.8, wn.y)));
+	// Above the snow line: snow on its upward faces in place of the moss, thinning to
+	// streaks on the steeper ones, and banked up round its foot, as wind leaves it
+	// against anything that stands in the open.
+	float high = snow_cover * smoothstep(snow_line_g - 12.0, snow_line_g + 2.0, wp.y + (fbm(wp.xz * 0.07 + 3.0) - 0.5) * 10.0);
+	float snow = 0.0;
+	if (high > 0.0) {
+		float cap = smoothstep(0.35, 0.75, n.y + (patches - 0.5) * 0.6 + (fbm(wp.xz * 4.0 + wp.y + 1.0) - 0.5) * 0.3);
+		float bank = 1.0 - smoothstep(tide * 1.6 - 0.1, tide * 1.6 + 0.05, above);
+		snow = max(cap, bank * (1.0 - smoothstep(0.85, 1.0, abs(wn.y)))) * high;
+		vec3 sc = vec3(0.74) * mix(vec3(0.84, 0.91, 1.0), vec3(1.0), smoothstep(-0.1, 0.45, dot(n, sun_dir_g)));
+		col = mix(col, sc, snow);
+		moss *= 1.0 - snow;
+		earth *= 1.0 - snow;
+	}
+	col *= mix(0.55, 1.0, max(max(smoothstep(-0.05, 0.3, above), smoothstep(0.35, 0.8, wn.y)), snow * 0.6));
 	ALBEDO = col * (1.0 - 0.42 * cloud_shadow(wp));
-	ROUGHNESS = mix(0.82, 0.95, max(moss, earth));
+	ROUGHNESS = mix(mix(0.82, 0.95, max(moss, earth)), 0.62, snow);
 	SPECULAR = 0.35;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

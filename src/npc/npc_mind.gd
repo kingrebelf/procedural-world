@@ -91,6 +91,8 @@ static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictiona
 	var lines := PackedStringArray()
 	if settlement.has("boat"):
 		lines.append("You are %s. You are aboard %s, out on open water. %s" % [NPCGen.describe(npc), settlement["name"], BOAT_LIFE.get(npc["job"], "You work this boat with the others aboard.")])
+		if String(npc.get("faction", "")) == "pirate":
+			lines.append("You have hailed this traveller and want their money. If they agree to pay, take it with action \"pay_toll\" and sail off. If they refuse, insult or threaten you, use \"attack\". You can be bargained with, bluffed or frightened, in character.")
 	elif npc.has("band"):
 		lines.append("You are %s, an outlaw in a %s of %d camped out in the wilds, far from any town. You live by robbing travellers on the roads." % [NPCGen.describe(npc), String(settlement["name"]).to_lower(), (settlement["npcs"] as Array).size()])
 		lines.append("You have stopped this traveller and want their money. If they agree to pay, take it with action \"pay_toll\" and let them go. If they refuse, insult you or threaten you, use \"attack\" (unless you are scared of them: then \"flee\"). You can be bargained with, bluffed or frightened, in character.")
@@ -199,6 +201,7 @@ const BOAT_LIFE := {
 	"ship engineer": "You keep the engines, winches and pumps running.",
 	"medic": "You are the ship's medic.",
 	"pirate": "You are a pirate. You take what you want from anyone foolish enough to sail near.",
+	"pirate captain": "You captain a pirate crew. You take what you want from anyone foolish enough to sail near.",
 }
 const BOAT_PLACE := "Welcome aboard %s. Mind your footing, the deck moves."
 
@@ -211,7 +214,7 @@ const FAREWELL := [["Safe roads.", "Off with you, then.", "Gods keep you."], ["M
 
 ## Default suggestions for the player.
 static func default_options(npc: Dictionary) -> Array:
-	if npc.has("band"):
+	if npc.has("band") or String(npc.get("faction", "")) == "pirate":
 		return ["Fine, take it. (pay the toll)", "I'm not paying you anything.", "Who are you people?"]
 	var o := ["Who are you?", "What is this place?", "Any news?"]
 	if npc.has("shop_kind"):
@@ -280,7 +283,7 @@ static func builtin_reply(npc: Dictionary, settlement: Dictionary, text: String)
 	var r := int(npc.get("rel", 0))
 	var h := absi(hash(text + str(game_day())))
 	var out := {"say": "", "action": "none", "rel_change": 0, "remember": "", "options": default_options(npc)}
-	if npc.has("band"):
+	if npc.has("band") or String(npc.get("faction", "")) == "pirate":
 		return _outlaw_reply(npc, q, h)
 	if r <= -40:
 		out["say"] = ["Keep away from me.", "I've nothing to say to you.", "Leave, before I call the guard."][h % 3]
