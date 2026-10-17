@@ -667,6 +667,17 @@ func pull_in(at: Vector3) -> void:
 		return
 	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
 
+## Puts the right hand exactly at `xf` (world): the arm reaches the wrist there and the
+## hand turns to its basis. What it holds then lands where its own placement says.
+func set_hand(xf: Transform3D) -> void:
+	if gestures == null or skeleton == null:
+		return
+	var s := skeleton.global_transform.affine_inverse() * xf
+	gestures.hand_aim = {}
+	gestures.hand_share = 0.3
+	gestures.hand_r = s.basis.orthonormalized()
+	gestures.reach_r = {"at": s.origin}
+
 ## The right shoulder in world space.
 func shoulder_r() -> Vector3:
 	var b := skeleton.find_bone("upperarm_r")
