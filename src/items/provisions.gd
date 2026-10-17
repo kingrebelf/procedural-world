@@ -2127,6 +2127,14 @@ static func kit(name: String) -> Array:
 			out = [[model("health_potion"), Transform3D(Basis.from_scale(Vector3.ONE * 1.2), Vector3.ZERO)]]
 		"props/Potion_2":
 			out = [[model("potion_health_greater"), Transform3D(Basis.from_scale(Vector3.ONE * 1.5), Vector3.ZERO)]]
+		# Food left out on the tables of the houses you walk into (KitHouse): a loaf, a
+		# cheese with a wedge gone, a few apples. No kit model; these are the whole thing.
+		"props/Food_Bread":
+			out = [[model("bread"), Transform3D(Basis(Vector3.UP, 0.4), Vector3.ZERO)]]
+		"props/Food_Cheese":
+			out = [[model("cheese_wheel_small"), I]]
+		"props/Food_Apples":
+			out = _apples(name)
 		"props/Mug", "props/Barrel", "props/Chest_Wood", "props/Crate_Wooden", "props/Bag", "props/Barrel_Apples", "props/FarmCrate_Apple", "props/FarmCrate_Empty":
 			out = [[_prop(name), I]]
 			if name == "props/Barrel_Apples" or name == "props/FarmCrate_Apple":
@@ -2157,6 +2165,9 @@ static func _apples(name: String) -> Array:
 			for i in e[1]:
 				var a: float = TAU * (float(i) + r.randf() * 0.4) / float(e[1]) + float(e[0]) * 7.0
 				spots.append(Vector3(cos(a) * float(e[0]), float(e[2]), sin(a) * float(e[0])))
+	elif name == "props/Food_Apples":
+		# Three on the table and one on top of them.
+		spots = [Vector3(-0.042, 0.0, 0.0), Vector3(0.04, 0.0, 0.022), Vector3(-0.004, 0.0, 0.07), Vector3(0.0, 0.05, 0.03)]
 	else:
 		for ix in 8:
 			for iz in 4:

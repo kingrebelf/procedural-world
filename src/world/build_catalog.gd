@@ -192,6 +192,9 @@ static func warm_kits() -> void:
 	model_parts("ships/Striker")
 	# The gnome ring's toadstools (EasterEggs).
 	model_parts("nature/Mushroom_Common")
+	# Food on house tables (KitHouse, Provisions.kit).
+	for f in ["props/Food_Bread", "props/Food_Cheese", "props/Food_Apples"]:
+		model_parts(f)
 	for t in ShipPad.SHIPS:
 		model_parts("ships/" + ShipPad.SHIPS[t])
 	# Photo textures and shaders that materials built on worker threads use.
