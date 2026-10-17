@@ -1835,7 +1835,7 @@ func test_kit_flora() -> void:
 			if f["t"] != "oak":
 				continue
 			var p := Flora.species("oak", f["sp"])
-			if bool(p.get("autumn", false)) != stand:
+			if bool(p.get("autumn", false)) and not stand:
 				mixed += 1
 			elif stand:
 				var leaf: Color = p["leaf"]
@@ -1845,7 +1845,7 @@ func test_kit_flora() -> void:
 		if stand:
 			var high := Biome.fit_flora(bp, {"t": "oak", "sp": 0}, Biome.snow_line)
 			check(high.is_empty() or not bool(Flora.species(high["t"], high["sp"]).get("autumn", false)), "no turned leaves by the snow (region %d)" % i)
-	check(mixed <= 3, "a region's broadleaves have all turned or none have (%d odd ones)" % mixed)
+	check(mixed <= 3, "no lone autumn trees in a green region (%d odd ones)" % mixed)
 	check(turned > 25 and turned < 100, "about one region in five is in autumn colour (%d of 300)" % turned)
 	check(hues.size() >= 3 and browns > 0, "autumn runs red, orange and gold, with some browns (%d hue bands, %d brown)" % [hues.size(), browns])
 	# Each plant its own look, from where it stands: stable, varied, mostly healthy.

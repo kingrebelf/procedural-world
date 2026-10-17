@@ -94,9 +94,9 @@ static func _grass_tint(era: int, r: RandomNumberGenerator, lush: float) -> Colo
 			return Color.from_hsv(fposmod(hues[r.randi() % hues.size()] + r.randf_range(-0.03, 0.03), 1.0), r.randf_range(0.35, 0.65), r.randf_range(0.35, 0.55))
 	return Color.from_hsv(r.randf_range(0.0, 0.15), r.randf_range(0.1, 0.35), r.randf_range(0.28, 0.42))
 
-## Autumn comes by the stand, not tree by tree: about one region in five has turned (all
-## its broadleaf species in autumn colour, reds, golds and browns together), the rest are
-## green. Swaps species that don't fit for ones that do (its own hash, so the rest of the
+## Autumn comes by the stand, not tree by tree: about one region in five has turned (most
+## of its broadleaf species in autumn colour, reds, golds and browns together, a few still
+## green), the rest are green. Swaps species that don't fit for ones that do (its own hash, so the rest of the
 ## region's roll is unchanged).
 static func _stand(h: int, era: int, out: Dictionary) -> void:
 	var r := RandomNumberGenerator.new()
@@ -106,8 +106,10 @@ static func _stand(h: int, era: int, out: Dictionary) -> void:
 	for f in out["flora"]:
 		if f["t"] != "oak":
 			continue
+		# In a turned stand, a minor species may still be green (never the dominant one).
+		var want: bool = turned and (f == out["flora"][0] or r.randf() < 0.7)
 		for i in 24:
-			if bool(Flora.species("oak", f["sp"]).get("autumn", false)) == turned:
+			if bool(Flora.species("oak", f["sp"]).get("autumn", false)) == want:
 				break
 			f["sp"] = r.randi() & 0x7FFFFFFF
 

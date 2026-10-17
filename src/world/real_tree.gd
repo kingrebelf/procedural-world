@@ -653,6 +653,9 @@ static func _material(key: String) -> Material:
 		if kind == "bark_pine":
 			bm.set_shader_parameter("albedo", Color(0.8, 0.68, 0.6))
 		bm.set_shader_parameter("individual", near)
+		# The bark photos are dark: trunks read flat black in shade at their own value.
+		if kind != "bark_pine" and kind != "bark_birch":
+			bm.set_shader_parameter("albedo", Color(1.3, 1.25, 1.2))
 		bm.set_shader_parameter("moss_scale", 0.4 if kind == "bark_birch" else 1.0)
 		m = bm
 	_lock.lock()
