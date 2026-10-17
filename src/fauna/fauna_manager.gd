@@ -68,7 +68,7 @@ func _process(delta: float) -> void:
 				else:
 					c.follow(delta, g, Net.mob_state("f", c.id))
 				var fighting: bool = c.state == "chase" or c.hp < float(c.p["hp"])
-				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < TAG_RANGE and (fighting or c.p["plan"] != "bird")))
+				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < _tag_range(c, fighting) and (fighting or c.p["plan"] != "bird")))
 				# Only for animals you can actually see: not over a hill or behind a house
 				# (the walls hide the tag itself; this keeps a tag from peeking over them).
 				if near and c != spotted:
@@ -105,6 +105,11 @@ func _declutter(shown: Array, cam: Camera3D, spotted: Creature, lv: int) -> void
 				placed.append(sp)
 		c.update_tag(free, lv)
 
+## How far off an animal's tag shows: small ones sooner lose theirs, since a hare or a fox
+## out in a meadow is down in the grass well before 25 m. Anything fighting you keeps it.
+func _tag_range(c: Creature, fighting: bool) -> float:
+	return TAG_RANGE if fighting else TAG_RANGE * clampf(float(c.p["size"]) * 1.1, 0.4, 1.0)
+
 var _sight := {} ## creature instance id -> [seconds until checked again, could see it]
 
 func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
@@ -113,7 +118,8 @@ func _in_sight(c: Creature, eye: Vector3, delta: float) -> bool:
 	e[0] -= delta
 	if e[0] <= 0.0:
 		e[0] = randf_range(0.2, 0.3)
-		var to: Vector3 = c._tag.global_position if c._tag else c.global_position + Vector3(0, 1.0, 0)
+		# To the body, not the tag over it: a tag shouldn't show over a rise that hides the animal.
+		var to: Vector3 = c.global_position + Vector3(0, 0.1 + float(c.p["size"]) * 0.6, 0)
 		var q := PhysicsRayQueryParameters3D.create(eye, to)
 		q.collision_mask = 0xFFFFFFFF & ~2 # other animals don't block the view
 		if player is CollisionObject3D:
@@ -188,10 +194,15 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var fauna: Array = bp.get("fauna", [])
 	if fauna.is_empty():
 		return out
-	var sp: int = fauna[r.randi() % fauna.size()]
-	var p := Creature.species(sp, era)
+	var pick := r.randi()
 	var lx := r.randf_range(8, 56)
 	var lz := r.randf_range(8, 56)
+	# Each herd where its kind lives: the region's first species (from the roll) that
+	# suits the ground here, or none.
+	var sp := Creature.fits_habitat(fauna, pick, era, chunk, lx, lz)
+	if sp == 0:
+		return out
+	var p := Creature.species(sp, era)
 	for i in int(p["herd"]):
 		out.append({"id": "%d_%d_%d" % [cx, cz, i], "sp": sp, "era": era,
 			"lx": clampf(lx + r.randf_range(-5, 5), 0, 63.9), "lz": clampf(lz + r.randf_range(-5, 5), 0, 63.9)})

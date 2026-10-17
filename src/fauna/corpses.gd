@@ -58,7 +58,7 @@ func add_person(n: NPC) -> void:
 	if randf() < Treasure.PERSON_CHANCE:
 		inv.add(Treasure.make_map(maxi(int(rec["era"]), 0), Game.origin_here("looted", int(rec["era"]), k)))
 	var body := {"kind": "person", "era": int(rec["era"]), "yaw": n.rotation.y, "name": rec["name"],
-		"who": rec["id"], "body": (rec["body"] as Dictionary).duplicate(true), "job": rec["job"],
+		"who": rec["id"], "body": (rec["body"] as Dictionary).duplicate(true), "job": rec["job"], "age": int(rec.get("age", -1)),
 		"gear": (rec.get("gear", {}) as Dictionary).duplicate(true), "items": inv.to_data(), "purse": int(rec.get("purse", 0))}
 	# It is all on the body now, not with the record of who they were.
 	NPCSocial.lift_marks(rec, int(rec.get("purse", 0)))
@@ -297,8 +297,9 @@ func _dress(key: String, fresh := false, limp := false) -> void:
 	var h: HumanModel = node.get_meta("human") if node.has_meta("human") else null
 	if h == null:
 		h = HumanModel.new()
-		h.build(c["body"], int(c["era"]), String(c["job"]))
-		var s := float(c["body"].get("height", 1.0))
+		var age := int(c.get("age", -1))
+		h.build(c["body"], int(c["era"]), String(c["job"]), age)
+		var s := BodyShape.stature(c["body"], age)
 		h.scale = Vector3(s, s, s)
 		node.add_child(h)
 		node.set_meta("human", h)

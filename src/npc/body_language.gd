@@ -152,6 +152,34 @@ func play(name: String) -> bool:
 func stop() -> void:
 	_len = minf(_len, _t + 0.3)
 
+## Rowing (a rower at the oars of a boat, BoatNode): arms and back follow the stroke
+## until stopped. `offset` shifts the stroke so the boat's oars (BoatNode) keep time.
+const ROW_PERIOD := 2.6
+const ROWING := {"seconds": 1.0e9, "row": true, "fingers": [0.6, 0.95, 0.95, 0.95, 0.95],
+	"r": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)},
+	"l": {"upper": Vector3.ZERO, "fore": Vector3.ZERO, "palm": Vector3(0, -1, 0.2)}}
+var row_offset := 0.0
+
+func row(on: bool, offset := 0.0) -> void:
+	row_offset = offset
+	if on and current() != "row":
+		_g = ROWING
+		_name = "row"
+		_t = 0.0
+		_len = ROWING["seconds"]
+	elif not on and _name == "row":
+		stop()
+
+## Where in the stroke a rower is (0..1): 0..0.4 the drive (blades in, pulling), the
+## rest the recovery.
+static func row_phase(offset: float) -> float:
+	return fmod(Time.get_ticks_msec() / 1000.0 / ROW_PERIOD + offset, 1.0)
+
+## How far through the pull the hands are: 0 reaching forward at the catch, 1 drawn in
+## at the finish.
+static func row_pull(ph: float) -> float:
+	return smoothstep(0.0, 0.4, ph) if ph < 0.4 else 1.0 - smoothstep(0.4, 1.0, ph)
+
 func current() -> String:
 	return _name if _t < _len else ""
 
@@ -229,6 +257,11 @@ func _process_modification() -> void:
 		return
 	var w := smoothstep(0.0, 1.0, _w)
 	var t := _t
+	if _g.has("row"):
+		# Leaning into the catch, back past upright at the finish.
+		var lean := lerpf(0.32, -0.2, row_pull(row_phase(row_offset))) * w
+		for n in ["spine_01", "spine_02", "spine_03"]:
+			_turn(sk, _bone(n), _frame.x, lean / 3.0)
 	if _g.has("bow"):
 		var b: float = _g["bow"] * w * minf(1.0, t * 2.0)
 		for n in ["spine_01", "spine_02", "spine_03"]:
@@ -260,6 +293,11 @@ func _arm(sk: Skeleton3D, side: String, p: Dictionary, w: float, t: float) -> vo
 		return (out * v.x + _frame.y * v.y + _frame.z * v.z).normalized()
 	var upper: Vector3 = p["upper"]
 	var fore: Vector3 = p["fore"]
+	if _g.has("row"):
+		# Arms long and low at the catch, elbows drawn back past the ribs at the finish.
+		var k := row_pull(row_phase(row_offset))
+		upper = Vector3(0.12, -0.3, 0.95).lerp(Vector3(0.45, -0.75, -0.45), k)
+		fore = Vector3(0.05, -0.1, 1.0).lerp(Vector3(-0.25, 0.0, 1.0), k)
 	if p.has("wave"):
 		fore = Vector3(fore.x + sin(t * 9.0) * float(p["wave"]), fore.y, fore.z)
 	if p.has("pump"):

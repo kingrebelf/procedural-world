@@ -15,6 +15,8 @@ uniform float around = 16.0; // feathers round the body
 uniform float fringe = 0.25; // pale (+) or dark (-) edge on each feather
 uniform float bars = 0.0; // dark bars across flight feathers (kestrels)
 uniform float sheen = 0.0; // oily blue-green sheen on dark plumage
+uniform float tip_dark = 0.35; // flight feathers: how much darker the tips
+uniform float tip_round = 0.78; // flight feathers: where the rounded tip begins (0..1)
 uniform vec3 glow_col : source_color = vec3(0.3, 0.9, 1.0);
 uniform float glow = 0.0;
 global uniform float night_glow_g;
@@ -41,7 +43,7 @@ void fragment() {
 		float x = UV.x - 0.5;
 		float ax = abs(x);
 		// Rounded tips and a slightly ragged vane instead of a square-cut plank.
-		float tip_t = clamp((UV.y - 0.78) / 0.22, 0.0, 1.0);
+		float tip_t = clamp((UV.y - tip_round) / (1.0 - tip_round), 0.0, 1.0);
 		float half_w = 0.5 * sqrt(max(1.0 - tip_t * tip_t, 0.0)) - 0.03 * h2(vec2(floor(UV.y * 40.0), sign(x)));
 		if (ax > half_w) discard;
 		c = mix(col_a, col_b, smoothstep(0.0, 1.0, UV.y));
@@ -50,7 +52,7 @@ void fragment() {
 		c *= 0.94 + 0.12 * barbs * bf;
 		// Vanes are soft and slightly uneven, not printed.
 		c *= 0.9 + 0.2 * h2(vec2(floor(UV.y * 9.0 + ax * 4.0), sign(x)) + s);
-		c *= 1.0 - 0.35 * smoothstep(0.6, 1.0, UV.y); // darker tips
+		c *= 1.0 - tip_dark * smoothstep(0.6, 1.0, UV.y); // darker tips
 		if (bars > 0.0) {
 			float b = sin(UV.y * 31.4 + h1(s) * 6.28 + ax * 2.0);
 			c *= 1.0 - bars * smoothstep(0.55, 0.8, b);

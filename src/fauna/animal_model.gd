@@ -29,7 +29,7 @@ const VARIANTS := {
 ## The sci-fi kit's aliens: rigged, but with an idle loop only, so Creature moves them
 ## procedurally (see procedural()).
 const ALIEN_DIR := "res://assets/models/scifi/"
-const LOOPS := ["Idle", "Idle_2", "Walk", "Gallop", "Eating"]
+const LOOPS := ["Idle", "Idle_2", "Idle_Headlow", "Idle_2_HeadLow", "Walk", "Gallop", "Eating"]
 ## The kit's coat materials; everything else (eyes, hooves, horns) keeps its colour.
 const COAT := ["Main", "Main_Light", "Main_Dark", "Material", "Material.003", "Material.010",
 	"M_Alien_Orange", "M_Alien_Body_Blue"]
@@ -57,6 +57,10 @@ var _accum := 0.0
 var _tick := 0
 var _tilt := Vector2.ZERO
 static var _gait_cache := {}
+## This animal's own habits, so a herd doesn't move in lockstep: the idle it prefers
+## (head up or head low) and how briskly it idles and grazes.
+var _idle := "Idle"
+var _rate := 1.0
 
 static func path_of(kind: String) -> String:
 	if VARIANTS.has(kind):
@@ -133,6 +137,12 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null, seed := -1)
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
 	anim.animation_finished.connect(_on_finished)
+	var r := RandomNumberGenerator.new()
+	r.seed = seed
+	_rate = r.randf_range(0.85, 1.15)
+	for low in ["Idle_Headlow", "Idle_2_HeadLow"]:
+		if anim.has_animation(low) and r.randf() < 0.35:
+			_idle = low
 	play("Idle")
 	return self
 
@@ -160,6 +170,9 @@ func _skin(m: MeshInstance3D, kind: String, kit: String, tint, glow, box: AABB, 
 			m.set_surface_override_material(s, _hidden())
 			continue
 		var g = glow if glow != null and mn.contains("Light") else null
+		if m.mesh.surface_get_name(s) == AnimalSkin.LOCKS:
+			m.set_surface_override_material(s, AnimalSkin.lock_material(kind, cols[s]))
+			continue
 		var other = cols[with[s]] if s < with.size() and with[s] >= 0 else null
 		m.set_surface_override_material(s, AnimalSkin.material(kind, mn, cols[s], g, box, unit, other))
 	m.set_instance_shader_parameter("seed", float(absi(seed) % 65521))
@@ -284,6 +297,11 @@ func play(state: String, speed := 1.0) -> void:
 			var gallop := not is_nan(g) and _speed > w * (1.45 if _current == "Gallop" else 1.75)
 			state = "Gallop" if gallop else "Walk"
 			speed = clampf(_speed / g, 0.55, 2.4) if gallop else clampf(maxf(_speed, absf(_yaw_rate) * _wid * 0.5) / w, 0.35, 1.9)
+	var resting := state == "Idle" or state == "Eating"
+	if state == "Idle":
+		state = _idle
+	if resting:
+		speed *= _rate
 	if not anim.has_animation(state) and anim.has_animation("Alien_Idle"):
 		state = "Alien_Idle"
 		speed = clampf(speed, 0.8, 2.0)
@@ -292,6 +310,9 @@ func play(state: String, speed := 1.0) -> void:
 		return
 	_current = state
 	anim.play(state, 0.3)
+	# Each one picks up its idle or grazing loop at its own point in the cycle.
+	if resting:
+		anim.seek(randf() * anim.current_animation_length)
 
 ## Attack, hit reaction or death, then back to the loop (death holds its last frame).
 func play_once(state: String) -> void:

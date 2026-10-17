@@ -68,6 +68,7 @@ func setup(lib: AnimationLibrary, root: Node, sk: Skeleton3D, who: Node3D) -> vo
 	body = who
 	_idle_rate = randf_range(0.88, 1.12)
 	_tick = randi() % 8
+	_phase = randf() # a crowd never walks in step
 	for g in GAITS:
 		if lib.has_animation(g):
 			var a := lib.get_animation(g)
@@ -223,6 +224,11 @@ func end_shot() -> void:
 ## True while the feet should be fitted to the ground.
 func feet_free() -> bool:
 	return not (_state in NO_FEET)
+
+## Where the stride cycle is, 0..1 (the left foot lands at 0), and how much the body is
+## on the move (0 standing .. 1 walking or running), for BodyPosture's sway and limp.
+func stride() -> Vector2:
+	return Vector2(_phase, _move_w)
 
 ## How fast the body moves over the ground, metres a second.
 func ground_speed() -> float:

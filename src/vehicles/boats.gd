@@ -228,6 +228,11 @@ static func crew(world_seed: int, site: Dictionary) -> Dictionary:
 	var hostile := String(site.get("faction", "folk")) == "pirate"
 	for i in n:
 		var p := NPCGen.person(r, era, i, int(site["sx"]), int(site["sz"]))
+		# Crews are grown-ups: if the generator ever hands back a child, draw again.
+		for tries in 8:
+			if not bool(p.get("child", false)):
+				break
+			p = NPCGen.person(r, era, i, int(site["sx"]), int(site["sz"]))
 		p["job"] = "pirate" if hostile else String(jobs[i % jobs.size()])
 		p["boat"] = kind
 		p["station"] = i

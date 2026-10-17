@@ -21,6 +21,7 @@ varying vec3 col;
 varying vec3 plant_p;
 varying vec2 growth; // moss, lichen
 varying float seed;
+varying vec3 tone;
 
 void vertex() {
 	// Vertex and instance colours are authored as sRGB.
@@ -28,8 +29,11 @@ void vertex() {
 	plant_p = VERTEX;
 	growth = vec2(0.0);
 	seed = 0.0;
+	tone = vec3(1.0);
 	if (individual) {
 		vec4 r = plant_rand((MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz, 1u);
+		// Each trunk its own lit grey-brown: cool grey to warm brown, lighter or darker.
+		tone = mix(vec3(0.95, 0.97, 1.0), vec3(1.08, 0.97, 0.84), r.w) * (0.85 + 0.35 * fract(r.z * 5.3));
 		// From bare to furred with moss; lichen on about two thirds.
 		growth = vec2(r.x * moss_scale, smoothstep(0.35, 1.0, r.y));
 		seed = r.z * 97.0;
@@ -37,7 +41,7 @@ void vertex() {
 }
 
 void fragment() {
-	ALBEDO = texture(albedo_tex, UV).rgb * albedo * col;
+	ALBEDO = texture(albedo_tex, UV).rgb * albedo * col * tone;
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;
 		NORMAL_MAP_DEPTH = normal_scale;
