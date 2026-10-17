@@ -68,7 +68,10 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	var cz: int = chunk["cz"]
 	# Stronghold guards (see Stronghold.guards), stored in the chunk.
 	for g in chunk.get("guards", []):
-		out.append({"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]})
+		var h := {"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]}
+		if g.has("ly"):
+			h["ly"] = g["ly"] # a cave dweller, on the cave floor
+		out.append(h)
 	out.append_array(Creature.livestock_for(seed, chunk))
 	var r := WHash.rng(seed, cx, cz, 701)
 	if r.randf() > HERD_CHANCE:
@@ -94,14 +97,25 @@ func _spawn(cn: ChunkNode) -> Array:
 	for h in herds_for(Game.seed, cn.data, field):
 		if dead.has(h["id"]):
 			continue
-		var y := ChunkGenerator.height_at(cn.data, h["lx"], h["lz"])
+		var y: float = h.get("ly", ChunkGenerator.height_at(cn.data, h["lx"], h["lz"]))
 		if y < Water.LEVEL - 0.5:
 			continue
 		var c := Creature.new()
 		c.setup(h["id"], h["sp"], h["era"], cn.position + Vector3(h["lx"], y, h["lz"]), self)
+		if h.has("ly"):
+			c.underground = true
+			c.p["roam"] = 6.0
 		add_child(c)
 		list.append(c)
 	return list
+
+## The cave floor under a creature at world point p, or NAN inside rock or off the map.
+func cave_floor(p: Vector3) -> float:
+	var k := ChunkStreamer.chunk_of(p)
+	var cn := streamer.get_chunk(k)
+	if cn == null or not cn.data.has("cave"):
+		return NAN
+	return Caves.floor_below(cn.data["cave"], p + Vector3(0, 0.8, 0), 2.6)
 
 ## Melee aim help: the nearest live animal within reach and roughly in front of you.
 ## Animals are short and close when they attack, so a swing aimed level would pass over

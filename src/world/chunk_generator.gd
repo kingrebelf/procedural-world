@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 9 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals.
+const GEN_VERSION := 10 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves).
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -31,6 +31,8 @@ var outposts := false
 var walls := false
 ## v7: regions have landforms (WorldField.shape).
 var landforms := false
+## v10: caves are tunnel networks under the hills, not shells on the ground.
+var deep_caves := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
@@ -59,6 +61,7 @@ func _init(world_seed: int, with_rivers := false) -> void:
 	outposts = WorldField.terrain_v >= 5
 	walls = WorldField.terrain_v >= 6
 	landforms = WorldField.terrain_v >= 7
+	deep_caves = WorldField.terrain_v >= 10
 	if outposts:
 		road_reach = 26.0
 
@@ -652,6 +655,8 @@ func _place_cave(chunk: Dictionary, sites: Array) -> void:
 
 ## Inside a cave of this chunk (nothing grows there).
 static func in_cave(chunk: Dictionary, lx: float, lz: float) -> bool:
+	if Caves.near_hole(chunk, lx, lz, 2.0):
+		return true
 	for o in chunk["objects"]:
 		if o["t"] == "cave" and not o["st"].get("gone", false):
 			if Vector2(o["p"].x - lx, o["p"].z - lz).length() < Cave.dims(int(o["sp"])).x + 1.5:
@@ -820,6 +825,13 @@ func generate(cx: int, cz: int) -> Dictionary:
 		_place_bridges(chunk, roads)
 	if outposts and not roads.is_empty():
 		_place_viaducts(chunk, roads)
+	if deep_caves:
+		var cp := Caves.prims_near(self, x0 - 2.0, z0 - 2.0, x0 + SIZE + 2.0, z0 + SIZE + 2.0)
+		if not cp.is_empty():
+			chunk["cave"] = cp
+			var hole := Caves.hole_mask(cp, x0, z0, heights)
+			if not hole.is_empty():
+				chunk["hole"] = hole
 	_place_objects(chunk, sites)
 	return chunk
 
@@ -1028,7 +1040,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	if not portal.is_empty():
 		sites = sites + [portal]
 
-	if towns:
+	if deep_caves:
+		if chunk.has("cave"):
+			Caves.place(self, chunk)
+	elif towns:
 		_place_cave(chunk, sites)
 	# Ruins and landmarks before the wilds, so nothing grows inside them either.
 	# Alien ruins: rare, strange, very tough. Anywhere outside settlements.

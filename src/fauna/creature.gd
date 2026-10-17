@@ -24,6 +24,8 @@ var _flap := 0.7 ## wing beat amplitude, radians
 var _model: Node3D
 var _body: AnimatableBody3D
 var _bite_cd := 0.0
+## Lives in a cave: walks on the cave floor (FaunaManager.cave_floor), stopped by its walls.
+var underground := false
 var _flash := 0.0
 ## Drawn as a carcass (see Corpses): no hit box, no mind, lying where it fell. `fresh`
 ## plays the fall; otherwise it is already down.
@@ -405,8 +407,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		dir = dir.normalized()
 		pos += dir * _speed * delta
 		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), clampf(delta * 5.0, 0.0, 1.0))
-	var h: float = ground.call(pos.x, pos.z)
+	var h: float = manager.call("cave_floor", pos) if underground else ground.call(pos.x, pos.z)
 	if is_nan(h):
+		# A cave wall (or ground not loaded yet): stay put and wander somewhere else.
+		if underground and state == "wander":
+			_pick_wander()
 		return
 	if p["plan"] == "bird":
 		var alt: float = p["alt"] * (0.4 if state == "flee" else 1.0)

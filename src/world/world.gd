@@ -41,6 +41,7 @@ func _ready() -> void:
 		player.global_position = find_spawn()
 	streamer.set_target(player)
 	atmosphere.target = player
+	atmosphere.streamer = streamer
 	var water := Water.new()
 	water.name = "Water"
 	water.target = player

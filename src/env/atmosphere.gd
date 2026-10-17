@@ -23,6 +23,11 @@ var _wind_time := 0.0 ## wind phase; speeds up with the wind but never jumps
 var _gust := 0.0
 var _cloud_drift := Vector2.ZERO
 var _ground := 0.0 ## land height under the target, sampled with the era weights
+## Set by the world: lets the atmosphere see how deep under the ground the target is.
+var streamer: Node3D ## a ChunkStreamer (untyped: tests load this without the Game autoload)
+## 0 in the open .. 1 deep in a cave: daylight, sky light and haze fade out underground.
+var underground := 0.0
+var _under_target := 0.0
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -143,10 +148,24 @@ func _process(delta: float) -> void:
 			var ew := field.era_weights(p.x, p.z)
 			_ground = maxf(field.height(p.x, p.z, ew), 0.0)
 			_target_w = Eras.look(ew) # human worlds keep a natural sky over their outposts
+			_under_target = _depth_factor(p)
+		underground = move_toward(underground, _under_target, delta * 0.5)
 		for e in Eras.COUNT:
 			_w[e] = lerpf(_w[e], _target_w[e], clampf(delta * 0.8, 0.0, 1.0))
 	_update_time_of_day()
 	_update_wind(delta)
+
+## How far under the actual ground (the chunk's own heights, so cave mouths count) p is,
+## as 0..1: a few metres into a cave mouth is still lit, ten metres down is dark.
+func _depth_factor(p: Vector3) -> float:
+	if streamer == null:
+		return 0.0
+	var k := Vector2i(int(floor(p.x / ChunkGenerator.SIZE)), int(floor(p.z / ChunkGenerator.SIZE)))
+	var node = streamer.call("get_chunk", k)
+	if node == null or not (node.data as Dictionary).has("cave"):
+		return 0.0
+	var depth := ChunkGenerator.height_at(node.data, p.x - k.x * ChunkGenerator.SIZE, p.z - k.y * ChunkGenerator.SIZE) - p.y
+	return smoothstep(2.5, 10.0, depth)
 
 func _update_wind(delta: float) -> void:
 	# Weather drifts over in-game hours; gusts swell and die away over several seconds.
@@ -228,7 +247,14 @@ func _update_time_of_day() -> void:
 		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65)
 	else:
 		env.fog_sun_scatter = 0.12
-	env.ambient_light_energy = lerpf(0.2, 0.6, daylight)
+	env.ambient_light_energy = lerpf(0.2, 0.6, daylight) * lerpf(1.0, 0.05, underground)
+	if underground > 0.0:
+		var lit := 1.0 - underground
+		sun.light_energy *= lit
+		sun.visible = sun.visible and lit > 0.02
+		moon.light_energy *= lit
+		env.fog_density *= lerpf(1.0, 0.4, underground)
+		env.volumetric_fog_density *= lit
 	# Glowing plants and moss: a hint in the dark, not a lamp; you still want a torch.
 	var night_glow := 0.08 + 0.4 * (1.0 - daylight)
 	ChunkNode.ensure_shared()
