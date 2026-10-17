@@ -81,6 +81,11 @@ func _wait(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
 
+func _wait_ms(ms: int) -> void:
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < ms:
+		await get_tree().process_frame
+
 func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 	for i in 3000:
 		await get_tree().process_frame
@@ -961,6 +966,9 @@ func _space() -> void:
 	await _wait_loaded(p, world.streamer)
 	Game.day = 0.42
 	await _wait(settle_frames)
+	# Off the dark of space the eye takes seconds to adapt (auto exposure), and a fast GPU
+	# runs the settle frames in under one: wait it out by the clock.
+	await _wait_ms(6000)
 	await _snap("15_fey_moon")
 	Game.close_world()
 	get_tree().quit()

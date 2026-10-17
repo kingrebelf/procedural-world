@@ -218,6 +218,8 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 	l2.resize(c * 4)
 	var cc := PackedByteArray()
 	cc.resize(c * 4)
+	var sp := PackedByteArray()
+	sp.resize(c * 4)
 	var look := PackedByteArray()
 	look.resize(12)
 	var tv := int(job["terrain_v"])
@@ -263,24 +265,39 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			var rh := field.region_hash_at(x, z)
 			var trees := 0.0
 			var tint := Color(0, 0, 0)
-			var conifers := 0.0
+			var era_t := [0.0, 0.0, 0.0]
+			var era_key := [0, 0, 0]
 			for e in 3:
 				if w[e] < 0.05:
 					continue
 				var key := (rh & 0xFFFFFFF) * 4 + e
 				if not regions.has(key):
 					var bp := Biome.params(rh, e)
-					regions[key] = [float(bp["tree_density"]), canopy_colour(bp), conifer_share(bp)]
+					regions[key] = [float(bp["tree_density"]), canopy_colour(bp), species_mix(bp)]
 				var dens: float = regions[key][0]
 				var t := minf(Eras.TREE_DENSITY[e] * (0.25 + forest * 1.6) * dens * lt, 64.0)
 				if tv >= 4:
 					t += 40.0 * smoothstep(1.3, 2.2, dens) * (1.0 if e != Eras.SCIFI else 0.3) * minf(1.0, lt)
 				trees += t * w[e]
 				tint += (regions[key][1] as Color) * t * w[e]
-				conifers += float(regions[key][2]) * t * w[e]
+				era_t[e] = t * w[e]
+				era_key[e] = key
+			# Each grid point grows one species, picked by how common each is there (by a
+			# hash of the point, so every rebuild picks the same): the distant trees round
+			# it take its colour and form, so a mixed wood shows its mix.
+			var pick := [Color(0.3, 0.35, 0.2), FORM_BROADLEAF]
 			if trees > 0.01:
 				tint /= trees
-				conifers /= trees
+				var hv := hash(Vector2(x, z))
+				var r1 := float(hv & 0xFFFF) / 65536.0 * trees
+				var r2 := float((hv >> 16) & 0xFFFF) / 65536.0
+				for e in 3:
+					if era_t[e] <= 0.0:
+						continue
+					r1 -= era_t[e]
+					pick = pick_species(regions[era_key[e]][2], r2)
+					if r1 <= 0.0:
+						break
 			# No trees in the river or on its edge, nor in a settlement.
 			trees *= smoothstep(1.2 / WorldField.RIVER_REACH, 2.5 / WorldField.RIVER_REACH, wet)
 			if trees > 0.0:
@@ -290,8 +307,12 @@ static func build_rows(job: Dictionary, j0: int, j1: int) -> Dictionary:
 			cc[v * 4] = int(clampf(tint.r, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 1] = int(clampf(tint.g, 0.0, 1.0) * 255.0)
 			cc[v * 4 + 2] = int(clampf(tint.b, 0.0, 1.0) * 255.0)
-			cc[v * 4 + 3] = int(clampf(conifers, 0.0, 1.0) * 255.0)
-	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc}
+			var pc: Color = pick[0]
+			sp[v * 4] = int(clampf(pc.r, 0.0, 1.0) * 255.0)
+			sp[v * 4 + 1] = int(clampf(pc.g, 0.0, 1.0) * 255.0)
+			sp[v * 4 + 2] = int(clampf(pc.b, 0.0, 1.0) * 255.0)
+			sp[v * 4 + 3] = pick[1]
+	return {"hs": hs, "cols": cols, "l0": l0, "l1": l1, "l2": l2, "cc": cc, "sp": sp}
 
 ## How far (x, z) is inside a settlement (1 in its streets, 0 out in the wilds), where
 ## the chunks grow no trees.
@@ -316,19 +337,33 @@ static func river_level(field: WorldField, x: float, z: float) -> float:
 		lo = minf(lo, field.shape(x + o.x, z + o.y).x)
 	return lo - 0.4
 
-## The share of a region's trees that are conifers (pines: spires, not round crowns).
-static func conifer_share(bp: Dictionary) -> float:
-	var pines := 0.0
+## A region's trees to pick one from at random: [cumulative share, crown colour (sRGB),
+## form (FORM_*)] for each species, by how common it is there.
+static func species_mix(bp: Dictionary) -> Array:
 	var wt := 0.0
 	for f in bp["flora"]:
 		wt += float(f["w"])
-		if f["t"] == "pine":
-			pines += float(f["w"])
-	return pines / wt if wt > 0.0 else 0.0
+	var out := []
+	var acc := 0.0
+	for f in bp["flora"]:
+		acc += float(f["w"]) / maxf(wt, 0.0001)
+		var form := FORM_CONIFER if f["t"] == "pine" else FORM_BROADLEAF
+		if Flora.species(f["t"], f["sp"]).get("form", "") in ["dead", "snag"]:
+			form = FORM_BARE
+		out.append([acc, species_colour(f), form])
+	return out
+
+## The species of a mix (species_mix) at r (0..1): [crown colour, form].
+static func pick_species(mix: Array, r: float) -> Array:
+	for s in mix:
+		if r <= float(s[0]):
+			return [s[1], s[2]]
+	return [mix[-1][1], mix[-1][2]] if not mix.is_empty() else [Color(0.3, 0.35, 0.2), FORM_BROADLEAF]
 
 ## The forest over the fine grid's square, for the distant trees and the ground under
-## them (forest.gdshaderinc): crown colour and density, and ground height and conifer
-## share, one texel per grid point; and the square's rect for the shaders.
+## them (forest.gdshaderinc): the crown colour of the species growing at each grid point
+## and how densely trees stand, and the ground's height and that species' form (FORM_*),
+## one texel per point; and the square's rect for the shaders.
 static func forest_data(job: Dictionary, arr: Array) -> Array:
 	var ax := axis()
 	var n := ax.size()
@@ -337,21 +372,24 @@ static func forest_data(job: Dictionary, arr: Array) -> Array:
 	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var l2: PackedByteArray = arr[Mesh.ARRAY_CUSTOM2]
 	var cv: PackedByteArray = arr[Mesh.ARRAY_CUSTOM3]
-	var conif: PackedByteArray = job["conifers"]
+	var sp: PackedByteArray = job["species"]
 	var a := PackedByteArray()
 	a.resize(t * t * 4)
 	var b := PackedFloat32Array()
 	b.resize(t * t * 2)
+	var half := t / 2
 	for tj in t:
 		for ti in t:
 			var v := (k0 + tj) * n + k0 + ti
 			var o := tj * t + ti
-			a[o * 4] = cv[v * 4]
-			a[o * 4 + 1] = cv[v * 4 + 1]
-			a[o * 4 + 2] = cv[v * 4 + 2]
+			# Towards the square's edge each point's species fades to the mean colour the
+			# land beyond it paints.
+			var f := smoothstep(half * 0.75, float(half), float(maxi(absi(ti - half), absi(tj - half))))
+			for k in 3:
+				a[o * 4 + k] = int(lerpf(sp[v * 4 + k], cv[v * 4 + k], f))
 			a[o * 4 + 3] = l2[v * 4 + 2]
 			b[o * 2] = verts[v].y
-			b[o * 2 + 1] = conif[v] / 255.0
+			b[o * 2 + 1] = sp[v * 4 + 3] / 255.0
 	var origin: Vector2 = (job["center"] as Vector2) + Vector2.ONE * ax[k0]
 	return [Image.create_from_data(t, t, false, Image.FORMAT_RGBA8, a),
 		Image.create_from_data(t, t, false, Image.FORMAT_RGF, b.to_byte_array()),
@@ -363,27 +401,48 @@ static func canopy_colour(bp: Dictionary) -> Color:
 	var sum := Color(0, 0, 0)
 	var wt := 0.0
 	for f in bp["flora"]:
-		var p := Flora.species(f["t"], f["sp"])
-		var c := Color(0.3, 0.32, 0.25)
-		if p.has("leaf"):
-			var leaf: Color = p["leaf"]
-			if f["t"] == "pine":
-				c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.85, 0.3, 0.65), clampf(leaf.v * 1.9, 0.38, 0.62) * 0.7)
-			elif leaf.h < 0.13 or leaf.h > 0.92:
-				c = Color(0.62, 0.3, 0.12)
-			else:
-				c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.75, 0.25, 0.7), clampf(leaf.v, 0.35, 0.6))
-			if p.get("form", "") in ["dead", "snag"]:
-				c = Color(0.35, 0.3, 0.26)
-		elif p.has("cap_col"):
-			c = p["cap_col"]
-		elif p.has("paint"):
-			c = p["paint"]
-		elif p.has("bark"):
-			c = p["bark"]
-		sum += c * float(f["w"])
+		sum += species_colour(f) * float(f["w"])
 		wt += float(f["w"])
 	return sum / wt if wt > 0.0 else Color(0.3, 0.35, 0.2)
+
+## A distant tree's form, as forest_hgt.g holds it (over 255): a round crown, a conifer's
+## spire, or bare (dead) limbs.
+const FORM_BROADLEAF := 0
+const FORM_CONIFER := 255
+const FORM_BARE := 128
+
+## The mean colour of RealTree's leaf photos (sRGB, over their opaque texels).
+const LEAF_MEAN := {"oak": Color(0.353, 0.49, 0.224), "autumn": Color(0.812, 0.373, 0.184), "needle": Color(0.627, 0.722, 0.565)}
+
+## The colour a species' crown shows from afar (sRGB): for the trees RealTree draws, its
+## leaf photo under the species' tint, as a near tree's leaves are, so a distant tree
+## matches it.
+static func species_colour(f: Dictionary) -> Color:
+	var p := Flora.species(f["t"], f["sp"])
+	var c := Color(0.3, 0.32, 0.25)
+	if p.has("leaf"):
+		var leaf: Color = p["leaf"]
+		if RealTree.handles(f["t"]):
+			var look := ["needle", RealTree._needle_tint(p)] if f["t"] == "pine" else RealTree._leaf_look(p)
+			var m: Color = LEAF_MEAN[look[0]]
+			var tint: Color = look[1]
+			c = Color(m.srgb_to_linear().r * tint.srgb_to_linear().r, m.srgb_to_linear().g * tint.srgb_to_linear().g,
+				m.srgb_to_linear().b * tint.srgb_to_linear().b).linear_to_srgb()
+		elif f["t"] == "pine":
+			c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.85, 0.3, 0.65), clampf(leaf.v * 1.9, 0.38, 0.62) * 0.7)
+		elif leaf.h < 0.13 or leaf.h > 0.92:
+			c = Color(0.62, 0.3, 0.12)
+		else:
+			c = Color.from_hsv(leaf.h, clampf(leaf.s * 0.75, 0.25, 0.7), clampf(leaf.v, 0.35, 0.6))
+		if p.get("form", "") in ["dead", "snag"]:
+			c = Color(0.35, 0.3, 0.26)
+	elif p.has("cap_col"):
+		c = p["cap_col"]
+	elif p.has("paint"):
+		c = p["paint"]
+	elif p.has("bark"):
+		c = p["bark"]
+	return c
 
 ## The whole grid from its strips of rows (in order): normals, snow and triangles.
 static func finish_arrays(job: Dictionary, rows: Array) -> Array:
@@ -410,8 +469,9 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	norms.resize(n * n)
 	var cv := PackedByteArray()
 	cv.resize(n * n * 4)
-	var conif := PackedByteArray()
-	conif.resize(n * n)
+	var sp := PackedByteArray()
+	for r in rows:
+		sp.append_array(r["sp"])
 	for j in n:
 		for i in n:
 			var v := j * n + i
@@ -431,7 +491,6 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 			# water or on cliffs.
 			for b in 3:
 				cv[v * 4 + b] = cc[v * 4 + b]
-			conif[v] = cc[v * 4 + 3]
 			var dry := smoothstep(ChunkGenerator.WATER_LEVEL + 0.2, ChunkGenerator.WATER_LEVEL + 1.5, hs[v])
 			l2[v * 4 + 2] = int(float(l2[v * 4 + 2]) * dry * (1.0 - smoothstep(0.6, 0.9, Vector2(dx, dz).length())))
 	var idx := PackedInt32Array()
@@ -459,5 +518,5 @@ static func finish_arrays(job: Dictionary, rows: Array) -> Array:
 	arr[Mesh.ARRAY_CUSTOM1] = l1
 	arr[Mesh.ARRAY_CUSTOM2] = l2
 	arr[Mesh.ARRAY_CUSTOM3] = cv
-	job["conifers"] = conif
+	job["species"] = sp
 	return arr

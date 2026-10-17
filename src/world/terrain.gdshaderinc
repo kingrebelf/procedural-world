@@ -465,7 +465,10 @@ void fragment() {
 		float paint = smoothstep(TREE_BB_FROM, TREE_BB_TO, dist);
 		vec2 cell;
 		vec4 cr = crown_at(p, dg, cell);
-		float own = cr.x * (billboarded(cell, dist) ? 0.0 : 1.0);
+		// A crown of its own wears its species' colour (as its billboard does nearer);
+		// the forest as a whole, its mix. A dead tree has no crown to paint.
+		vec4 sp = in_forest_rect(fuv) ? tree_species(tree_of(cell).xy, cell) : vec4(fdat.rgb, 0.0);
+		float own = cr.x * (billboarded(cell, dist) ? 0.0 : 1.0) * (abs(sp.a - 0.5) < 0.25 ? 0.0 : 1.0);
 		vec2 cell2;
 		vec4 cs = crown_at(p + sun_dir_g.xz / max(sun_dir_g.y, 0.25) * 5.0, dr, cell2);
 		float bb_shadow = cs.x * (billboarded(cell2, dist) ? 1.0 : 0.0);
@@ -475,7 +478,7 @@ void fragment() {
 		col *= 1.0 - 0.5 * lit * clamp(shade, 0.0, 1.0);
 		canopy = mix(dg * 0.85 * paint, own, detail);
 		float id = hash12(cell + 3.1);
-		vec3 cc = pow(fdat.rgb, vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
+		vec3 cc = pow(mix(fdat.rgb, sp.rgb, detail), vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
 		// Darker at a crown's rim, where its leaves turn under.
 		cc *= mix(1.0, mix(1.0, 0.7, smoothstep(0.55, 1.0, cr.y)), detail);
 		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);

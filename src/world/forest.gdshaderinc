@@ -9,8 +9,9 @@
 uniform sampler2D near_mask : filter_nearest, repeat_disable;
 uniform vec4 near_rect = vec4(0.0, 0.0, 1.0, 1.0);
 // Over the square round where the distant land was built, one texel per 16 m grid point:
-// crown colour (sRGB) and how densely trees stand; and the ground's height and the share
-// of conifers. forest_rect: origin x/z, 1 / spacing, 1 / texels across.
+// the crown colour (sRGB) of the species that grows there and how densely trees stand;
+// and the ground's height and that species' form (0 a round crown, 1 a conifer, 0.5 bare
+// dead limbs). forest_rect: origin x/z, 1 / spacing, 1 / texels across.
 uniform sampler2D forest_tex : filter_linear, repeat_disable;
 uniform sampler2D forest_hgt : filter_linear, repeat_disable;
 uniform vec4 forest_rect = vec4(0.0, 0.0, 0.0625, 1.0);
@@ -42,6 +43,16 @@ float tree_density(float a, vec2 p) {
 vec3 tree_of(vec2 c) {
 	vec2 o = c + 0.5 + (vec2(hash12(c), hash12(c + 17.3)) - 0.5) * 0.7;
 	return vec3(o * TREE_CELL, 0.36 + 0.22 * hash12(c + 9.7));
+}
+
+// The species of the tree standing at `at` (cell c): its crown colour (sRGB) and form
+// (as forest_hgt.g). It takes a grid point's own species (no blend), from a point jittered round it,
+// so a mixed wood mixes tree by tree.
+vec4 tree_species(vec2 at, vec2 c) {
+	vec2 j = at + (vec2(hash12(c + 51.3), hash12(c + 77.1)) - 0.5) * 20.0;
+	ivec2 sz = textureSize(forest_tex, 0);
+	ivec2 t = clamp(ivec2(floor(forest_uv(j) * vec2(sz))), ivec2(0), sz - 1);
+	return vec4(texelFetch(forest_tex, t, 0).rgb, texelFetch(forest_hgt, t, 0).g);
 }
 
 // Whether the tree of cell c stands as a billboard rather than painted on the ground, at
