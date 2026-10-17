@@ -201,6 +201,8 @@ func _run() -> void:
 		await _room_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
+	if only.is_empty() or only.has("35") or only.has("36") or only.has("37") or only.has("38"):
+		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
 	var b := _find_border(g)
@@ -367,6 +369,40 @@ func _wonder_shots() -> void:
 		print("captured 32_atlas")
 		world.menus.close()
 		await _wait(5)
+
+## The nearest wonder of each kind, close up by day: 35 throne, 36 worldroot,
+## 37 dreadnought, 38 gate.
+func _wonder_types() -> void:
+	var g := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var found := {}
+	for r in 16:
+		for wz in range(-r, r + 1):
+			for wx in range(-r, r + 1):
+				if found.size() == WonderSite.TYPES.size() or maxi(absi(wx), absi(wz)) != r:
+					continue
+				var pick := WonderSite.cell_pick(g.seed, wx, wz)
+				if pick.is_empty():
+					continue
+				var k: Vector2i = pick[0]
+				var c := g.generate(k.x, k.y)
+				if c.has("wonder") and not found.has(c["wonder"]["t"]):
+					found[c["wonder"]["t"]] = c
+	for i in WonderSite.TYPES.size():
+		var t: String = WonderSite.TYPES[i]
+		if not found.has(t):
+			print("no ", t, " found")
+			continue
+		var ch: Dictionary = found[t]
+		var w: Dictionary = ch["wonder"]
+		var wc := Vector2(ch["cx"] * 64.0 + float(w["lx"]), ch["cz"] * 64.0 + float(w["lz"]))
+		var yaw := 0.0
+		for o in ch["objects"]:
+			if o["t"] == t:
+				yaw = o["r"]
+		var front := Vector2(0, 1).rotated(-yaw)
+		var h := ChunkGenerator.height_at(ch, w["lx"], w["lz"])
+		print("wonder ", t, " at ", wc)
+		await _shot("%d_%s" % [35 + i, t], wc + front * 24.0 + front.orthogonal() * 8.0, wc, 0.4, 3.0, h + 6.0)
 
 ## A starship on its launch pad, then in flight over the land.
 func _starship() -> void:

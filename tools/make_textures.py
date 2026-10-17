@@ -25,6 +25,16 @@ SOURCES = {
     "reddust": 3.0, "panels": 5.0, "rust": 4.0, "snow": 3.5,
     # From Ben's prompts (2026-10-17): sci-fi ground, stronghold stone.
     "regolith": 2.5, "castle_wall": 5.0, "dungeon_wall": 5.0, "flagstone": 5.0,
+    # Ben's wonder surfaces (2026-10-17, art/wonder_materials).
+    "titan_stone": 5.0, "titan_stone_glow": 5.0, "worldroot_bark": 5.0, "starfall_glass": 3.5,
+    "gate_ring_metal": 3.0, "void_stone": 3.0,
+}
+
+# Sources whose glowing parts get an emission map (<name>_emit.jpg): name -> (hue in
+# degrees or None for any bright pixel, hue tolerance, value threshold).
+EMIT = {
+    "titan_stone_glow": (24, 20, 0.78), "worldroot_bark": (165, 45, 0.45),
+    "gate_ring_metal": (205, 40, 0.4), "void_stone": (None, 0, 0.62), "starfall_glass": (None, 0, 0.8),
 }
 
 
@@ -91,6 +101,8 @@ def main(src_dir):
             Image.fromarray((det * 255).astype(np.uint8)).save(OUT / f"{name}_detail.jpg", quality=92)
         nrm = Image.fromarray(normal_from(lum, strength)).resize((512, 512), Image.LANCZOS)
         nrm.save(OUT / f"{name}_normal.png", optimize=True)
+        if name in EMIT:
+            Image.fromarray((emission(a, *EMIT[name]) * 255).astype(np.uint8)).save(OUT / f"{name}_emit.jpg", quality=90)
         lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
         print(name, size, "linear mean", lin.reshape(-1, 3).mean(0).round(4))
 
@@ -119,6 +131,20 @@ def make_fabrics(src_dir, size=512):
     if p.exists():
         Image.open(p).convert("RGB").resize((size, size), Image.LANCZOS).save(OUT / "embroidered_trim_albedo.jpg", quality=92)
         print("embroidered_trim albedo")
+
+
+def emission(a, hue, tol, thresh):
+    """The glowing parts of a texture in their own colour, black elsewhere: pixels bright
+    enough and, when `hue` is given, close enough to that hue and saturated."""
+    mx, mn = a.max(-1), a.min(-1)
+    sat = (mx - mn) / np.maximum(mx, 1e-3)
+    w = np.clip((mx - thresh) / 0.2, 0, 1)
+    if hue is not None:
+        r, g, b = a[..., 0], a[..., 1], a[..., 2]
+        h = np.degrees(np.arctan2(np.sqrt(3) * (g - b), 2 * r - g - b)) % 360
+        d = np.abs((h - hue + 180) % 360 - 180)
+        w *= np.clip((tol - d) / (tol * 0.5), 0, 1) * np.clip((sat - 0.25) / 0.25, 0, 1)
+    return (a * w[..., None]).clip(0, 1)
 
 
 def box_blur(a, r):
