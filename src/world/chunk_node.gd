@@ -21,6 +21,7 @@ var _body: StaticBody3D
 var _height_shape: CollisionShape3D
 var _mm: Dictionary = {} ## type -> MultiMeshInstance3D (or a node of rooms, _add_rooms)
 var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
+var _doors: Dictionary = {} ## object index -> DoorNode (doors move, so they aren't in a MultiMesh)
 var _grass: MultiMeshInstance3D
 var _clutter: Array = []
 var _cave: MeshInstance3D
@@ -224,7 +225,7 @@ static func build_object_buffers(chunk: Dictionary) -> Dictionary:
 	var by_key := {}
 	var seed: int = int(chunk.get("seed", 0)) ^ (int(chunk["cx"]) * 73856093) ^ (int(chunk["cz"]) * 19349663)
 	for o in chunk["objects"]:
-		if o["st"].get("gone", false):
+		if o["st"].get("gone", false) or Doors.is_door(o["t"]):
 			continue
 		var key := ObjectLibrary.mesh_key(o)
 		if not by_key.has(key):
@@ -532,6 +533,32 @@ func set_objects(buffers: Dictionary) -> void:
 			_set_range(mmi, 260.0)
 		add_child(mmi)
 		_mm[t] = mmi
+	_sync_doors()
+
+## A DoorNode for every door still standing, none for those taken down.
+func _sync_doors() -> void:
+	var have := {}
+	for o in data["objects"]:
+		if o["st"].get("gone", false) or not Doors.is_door(o["t"]):
+			continue
+		var i: int = o["i"]
+		have[i] = true
+		if not _doors.has(i):
+			var dn := DoorNode.new()
+			dn.setup(self, o)
+			add_child(dn)
+			dn.set_near(near)
+			_doors[i] = dn
+	for i in _doors.keys():
+		if not have.has(i):
+			_doors[i].queue_free()
+			_doors.erase(i)
+
+## A door's state changed (opened, shut, locked): move it and save the chunk.
+func door_changed(i: int) -> void:
+	if _doors.has(i):
+		_doors[i].refresh()
+	Game.mark_chunk_dirty(data)
 
 ## Furniture inside rooms (drawn only when you could see in) and their lamplit windows
 ## (only from further off), one node per room: a visibility range measures from the
@@ -643,6 +670,8 @@ func set_near(on: bool) -> void:
 		for o in data["objects"]:
 			if not o["st"].get("gone", false):
 				_add_obj_body(o)
+		for i in _doors:
+			_doors[i].set_near(true)
 	else:
 		if _body:
 			_body.queue_free()
@@ -652,6 +681,8 @@ func set_near(on: bool) -> void:
 		for i in _obj_bodies:
 			_obj_bodies[i].queue_free()
 		_obj_bodies.clear()
+		for i in _doors:
+			_doors[i].set_near(false)
 
 func _update_height_shape() -> void:
 	var hm := HeightMapShape3D.new()
@@ -670,6 +701,8 @@ func _update_height_shape() -> void:
 	_height_shape.position = Vector3(SIZE * 0.5, 0, SIZE * 0.5)
 
 func _add_obj_body(o: Dictionary) -> void:
+	if Doors.is_door(o["t"]):
+		return # its DoorNode has its own, moving with the leaves
 	var built := BuildCatalog.is_built(o["t"])
 	var sh: Array = BuildCatalog.shape(o["t"]) if built else ObjectLibrary.shape_of(o)
 	var b := StaticBody3D.new()

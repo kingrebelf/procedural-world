@@ -156,6 +156,68 @@ func _treasure(game, world, streamer: ChunkStreamer, player) -> Dictionary:
 	await _frames(5)
 	return {"key": cn.key, "id": 99, "open": int(h["id"])}
 
+## A door hung through the real builder in a doorway you built: it opens and shuts,
+## locks for its owner, needs picking when it's someone else's, and holds up its doorway.
+func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, here_key: Vector2i) -> void:
+	var dway := pc.add_built("wall_door", lp, 0.0, {"by": "you", "day": 0.0})
+	var dwp: Vector3 = pc.position + dway["p"]
+	game.give(ItemDB.make("door_wood", 1, 1.0, game.origin_here("crafted", -1, here_key)))
+	var di := -1
+	for i in Inventory.SIZE:
+		var sl = game.inventory.get_slot(i)
+		if sl != null and sl["type"] == "door_wood":
+			di = i
+	game.inventory.swap(di, 6)
+	player.select(6)
+	await _frames(3)
+	check(player.builder.piece_id() == "door_wood", "holding a door starts hanging it")
+	var miss: Dictionary = player.builder._door_target(dwp + Vector3(30, 1.6, 30), dwp + Vector3(34, 1.0, 34))
+	check(not miss["ok"], "a door won't hang without a doorway")
+	var tgt: Dictionary = player.builder._door_target(dwp + Vector3(0.3, 1.6, 4.0), dwp + Vector3(-0.2, 1.0, -3.0))
+	check(tgt["ok"] and (tgt["pos"] as Vector3).is_equal_approx(dwp), "aiming through a doorway hangs the door in it (%s)" % tgt)
+	player.builder._target = tgt
+	check(player.builder.place(), "the door is hung")
+	var dc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(dwp))
+	var door := {}
+	for o in dc.data["objects"]:
+		if o["t"] == "b:door_wood" and not o["st"].get("gone", false):
+			door = o
+	check(not door.is_empty() and Doors.is_mine(door) and not Doors.is_locked(door), "it's a door of yours, unlocked")
+	if door.is_empty():
+		return
+	var dn: DoorNode = dc._doors.get(door["i"])
+	check(dn != null and dn._bodies.size() == 1, "a hung door is drawn with a solid leaf")
+	var shut: Transform3D = dn._leaves[0].transform
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player.global_position = dwp + Vector3(0, 0.2, 2.0)
+	player._use_door()
+	check(Doors.is_open(door) and float(door["st"]["side"]) == 1.0, "interact opens it, away from you")
+	await _frames(150)
+	check(dn._amount > 0.99 and not dn._leaves[0].transform.is_equal_approx(shut), "the door swings open (%.2f)" % dn._amount)
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	await _frames(150)
+	check(not Doors.is_open(door) and dn._amount < 0.01, "and shut again")
+	player._crouched = true
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	player._crouched = false
+	check(Doors.is_locked(door) and Doors.can_open(door), "crouch and interact locks your door; you still open it")
+	# Someone else's: the lock needs picking.
+	door["st"]["owner"] = "player_42"
+	check(Player.lock_of(door) == 1 and not Player.is_own_piece(door), "a stranger's door is a novice lock, not yours to take down")
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	check(not Doors.is_open(door), "it stays shut on you")
+	player.use_door_after_lock(dc, door)
+	check(Doors.is_open(door) and not Doors.is_locked(door), "a picked lock opens the door")
+	door["st"]["owner"] = Doors.my_id()
+	check(not player.deconstruct(pc, dway) and not dway["st"].get("gone", false), "the doorway stays up while a door hangs in it")
+	check(player.deconstruct(dc, door) and door["st"].get("gone", false) and game.inventory.count("door_wood") == 1, "taking the door down returns it")
+	await _frames(2)
+	check(not dc._doors.has(door["i"]), "a door taken down is gone from the scene")
+	check(player.deconstruct(pc, dway), "then the doorway comes down")
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -348,6 +410,7 @@ func _run() -> void:
 	check(wall["st"].get("gone", false) and game.inventory.count("wall_stone") == 1, "taking a wall down returns it")
 	var fence := pc.add_built("fence", placed["p"] + Vector3(-3, 0, 0), 0.0, {"by": "you", "day": 0.0})
 	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
+	await _door_checks(game, streamer, player, pc, placed["p"] + Vector3(0, 0, -6), here_key)
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
