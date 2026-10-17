@@ -102,6 +102,11 @@ func _step() -> void:
 		_phase = 2
 		_task = WorkerThreadPool.add_task(_finish, true, "distant land")
 
+## Whether the distant land is built round `at` and not rebuilding (the capture tool
+## waits for it).
+func settled_at(at: Vector3) -> bool:
+	return _phase == 0 and Vector2(at.x, at.z).distance_to(_center) <= REBUILD
+
 ## The streamed terrain's settings (textures, snow line, paved roads) on the far look too.
 func _sync_material() -> void:
 	var src := ChunkNode.terrain_material

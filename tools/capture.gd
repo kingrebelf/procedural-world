@@ -96,7 +96,15 @@ func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 				if not streamer.chunks.has(c + Vector2i(dx, dz)):
 					ok = false
 		if ok:
-			return
+			break
+	# The distant land rebuilds round a new spot some seconds after the chunks are in:
+	# wait for it too, or a shot shows the far land (and its trees) built for elsewhere.
+	var far := get_tree().current_scene.get_node_or_null("FarLand") as FarLand if get_tree().current_scene else null
+	if far == null:
+		return
+	var t0 := Time.get_ticks_msec()
+	while not far.settled_at(p.global_position) and Time.get_ticks_msec() - t0 < 60000:
+		await get_tree().process_frame
 
 func _find_settlement(g: ChunkGenerator, era: int, min_size := 0) -> Dictionary:
 	for r in 40:
