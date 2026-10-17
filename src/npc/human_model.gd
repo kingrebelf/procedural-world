@@ -11,6 +11,9 @@ const ANIMS := "res://assets/models/anim/humans.res"
 const BODY := {false: "Superhero_Male_FullBody", true: "Superhero_Female_FullBody"}
 const HAIR_MALE := ["Hair_SimpleParted", "Hair_Buzzed", "Hair_Long", ""]
 const HAIR_FEMALE := ["Hair_Long", "Hair_Buns", "Hair_SimpleParted", "Hair_BuzzedFemale"]
+## Who wears a knitted wool jumper, and who dresses in velvet with gold-embroidered hems.
+const KNIT_JOBS := ["farmer", "hunter", "miller", "beekeeper", "warden", "lamplighter"]
+const TRIM_JOBS := ["priest", "bard", "mystic", "scribe", "runecarver", "innkeeper"]
 ## Dominant skin bone -> body region used by the clothing shader.
 const REGION_OF := {"Head": 0, "neck_01": 0, "spine_01": 1, "spine_02": 1, "spine_03": 1, "clavicle": 1,
 	"upperarm": 2, "lowerarm": 3, "hand": 4, "pelvis": 5, "root": 5, "thigh": 5, "calf": 6, "foot": 7, "ball": 7}
@@ -177,6 +180,10 @@ func _dress_up(b: Dictionary, era: int, job: String) -> void:
 	_clothes.material_override = Outfit.cloth_material()
 	for k in ["shirt_col", "pants_col", "boot_col", "accent_col"]:
 		_clothes.set_instance_shader_parameter(k, _body.get_instance_shader_parameter(k))
+	# Working folk in knitted jumpers; robes and capes in velvet with gold-embroidered hems.
+	_clothes.set_instance_shader_parameter("era", float(era))
+	_clothes.set_instance_shader_parameter("knit", 1.0 if job in KNIT_JOBS else 0.0)
+	_clothes.set_instance_shader_parameter("trim", 1.0 if _spec["cape"] or job in TRIM_JOBS else 0.0)
 
 ## Shows what this body wears: {slot: item} for any of Game.ARMOR_SLOTS. Armour is
 ## drawn on the body (Outfit), a shield on the left forearm, and a helmet hides the hair.
