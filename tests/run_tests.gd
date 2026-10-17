@@ -1535,7 +1535,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -3625,6 +3625,23 @@ func test_server_alliances() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	host.free()
 
+func test_tool_models() -> void:
+	# Every tool and weapon with a built model is a real shape (not the fallback box),
+	# of a believable size, and is an item the game knows.
+	for t in ToolModels.BUILD:
+		check(not ItemDB.def(t).is_empty(), "%s: modelled item exists" % t)
+		var m := ToolModels.build(t)
+		check(m != null and m.get_surface_count() > 0, "%s: model builds" % t)
+		if m == null:
+			continue
+		var n := 0
+		for i in m.get_surface_count():
+			n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(n > 24, "%s: more than a box (%d verts)" % [t, n])
+		var s := m.get_aabb().size
+		check(maxf(s.x, maxf(s.y, s.z)) > 0.04 and maxf(s.x, maxf(s.y, s.z)) < 2.5, "%s: believable size %s" % [t, s])
+	check(Viewmodel._strike_axis("tomahawk") == Vector3.FORWARD and Viewmodel._strike_axis("warpick") == Vector3.RIGHT, "new axes and picks swing edge first")
+
 # --- Lived-in villages ------------------------------------------------------------
 
 func _medieval_town(gen: ChunkGenerator) -> Dictionary:
@@ -4045,6 +4062,7 @@ func test_dreadnought_crash() -> void:
 	var burnt := 0
 	var felled := 0
 	var standing := 0
+	var snags := 0
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var nb := g.generate(k.x + d.x, k.y + d.y)
 		for o in nb["objects"]:
@@ -4053,6 +4071,7 @@ func test_dreadnought_crash() -> void:
 			elif o["t"] == WonderSite.TRUNK:
 				felled += 1
 			elif ObjectLibrary.kind(o["t"]) == "tree":
+				snags += int(o["st"].get("burnt", false) and String(Flora.species(o["t"], int(o["sp"]))["form"]) in ["dead", "snag"])
 				var wp: Vector3 = o["p"] + Vector3((k.x + d.x) * 64.0, 0, (k.y + d.y) * 64.0)
 				standing += int(WonderSite.blast(cr, wp.x, wp.z) > 0.95)
 		var lb: PackedByteArray = nb.get("look", PackedByteArray())
@@ -4081,6 +4100,7 @@ func test_dreadnought_crash() -> void:
 	for o in ch["objects"]:
 		if o["t"] == WonderSite.TRUNK:
 			felled += 1
+	check(snags > 0, "further out the trees stand burnt bare (%d)" % snags)
 	check(standing == 0, "no tree stands where the blast hit hardest (%d do)" % standing)
 	check(felled > 0 and ObjectLibrary.kind(WonderSite.TRUNK) == "structure" and WonderSite.trunk(5, 1).get_surface_count() > 0, "the trees it reached lie snapped and scorched (%d)" % felled)
 	for sp in range(1, 7):
