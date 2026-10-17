@@ -30,6 +30,11 @@ void fragment() {
 	bw /= bw.x + bw.y + bw.z;
 	vec3 q = wp / tile;
 	vec3 t = texture(rock_tex, q.zy).rgb * bw.x + texture(rock_tex, q.xz + 0.37).rgb * bw.y + texture(rock_tex, q.xy + 0.71).rgb * bw.z;
+	// A second, coarser scale over big faces (boulders, cave shells) so the repeat
+	// doesn't read as a pattern.
+	vec3 q2 = q * 0.23;
+	vec3 t2 = texture(rock_tex, q2.zy + 0.5).rgb * bw.x + texture(rock_tex, q2.xz + 0.13).rgb * bw.y + texture(rock_tex, q2.xy + 0.29).rgb * bw.z;
+	t = mix(t, t * dot(t2, LUM) / dot(ROCK_MEAN, LUM), 0.5);
 	vec3 nx = texture(rock_nrm, q.zy).xyz * 2.0 - 1.0;
 	vec3 ny = texture(rock_nrm, q.xz + 0.37).xyz * 2.0 - 1.0;
 	vec3 nz = texture(rock_nrm, q.xy + 0.71).xyz * 2.0 - 1.0;
@@ -43,7 +48,8 @@ void fragment() {
 	float up = smoothstep(0.35, 0.85, n.y);
 	vec3 mt = texture(moss_tex, wp.xz / 1.3).rgb;
 	float moss = smoothstep(0.35, 0.65, COLOR.a * up * 1.3 - (lum - 1.0) * 0.35 + (dot(mt, LUM) - 0.12) * 1.5);
-	col = mix(col, pow(moss_col, vec3(2.2)) * (0.6 + 2.8 * dot(mt, LUM)), moss * step(0.01, COLOR.a));
+	// moss_col is already linear (source_color); the grass photo gives it texture.
+	col = mix(col, moss_col * clamp(dot(mt, LUM) / 0.155, 0.4, 1.6), moss * step(0.01, COLOR.a));
 	// Contact shadow where the stone meets the ground.
 	col *= mix(0.55, 1.0, smoothstep(-0.05, 0.3, wp.y - base_y));
 	ALBEDO = col * (1.0 - 0.42 * cloud_shadow(wp));

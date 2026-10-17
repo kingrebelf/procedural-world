@@ -123,7 +123,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if not is_nan(look_y):
 		tgt_h = look_y
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
-	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 0})
+	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
@@ -246,11 +246,11 @@ func _run() -> void:
 	get_tree().quit()
 
 ## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
-## (scree and the cliff face) and the ground underfoot.
+## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
 func _ground_shots(g: ChunkGenerator) -> void:
 	var meadow := Vector2.ZERO
 	var cliff := Vector4.ZERO
-	for i in 8000:
+	for i in 12000:
 		var a := i * 0.37
 		var p := Vector2(cos(a), sin(a)) * (50.0 + i * 3.0)
 		if g.field.era_weights(p.x, p.y)[Eras.MEDIEVAL] < 0.9:
@@ -259,30 +259,45 @@ func _ground_shots(g: ChunkGenerator) -> void:
 		if h < 3.0:
 			continue
 		var flat := true
-		var steep := Vector2.ZERO
 		for k in 8:
 			var d := Vector2.from_angle(k * TAU / 8.0)
-			var near := g.field.height(p.x + d.x * 6.0, p.y + d.y * 6.0)
-			flat = flat and absf(near - h) < 0.9
-			var far := g.field.height(p.x + d.x * 18.0, p.y + d.y * 18.0)
-			if far - near > 7.0 and steep == Vector2.ZERO:
-				steep = d
+			flat = flat and absf(g.field.height(p.x + d.x * 6.0, p.y + d.y * 6.0) - h) < 0.9
 		if not flat:
 			continue
-		if meadow == Vector2.ZERO and steep == Vector2.ZERO:
-			meadow = p
-		if cliff == Vector4.ZERO and steep != Vector2.ZERO:
-			cliff = Vector4(p.x, p.y, p.x + steep.x * 18.0, p.y + steep.y * 18.0)
+		if meadow == Vector2.ZERO:
+			var open := true
+			for k in 8:
+				var d := Vector2.from_angle(k * TAU / 8.0)
+				open = open and absf(g.field.height(p.x + d.x * 30.0, p.y + d.y * 30.0) - h) < 4.0
+			if open:
+				meadow = p
+		if cliff == Vector4.ZERO:
+			# A wall, not a lone pillar: the ground rises steeply ahead across a broad
+			# front, and stays level behind for the camera.
+			for k in 16:
+				var d := Vector2.from_angle(k * TAU / 16.0)
+				var side := d.orthogonal()
+				var wall := true
+				for o in [-12.0, 0.0, 12.0]:
+					var q := p + side * o
+					wall = wall and g.field.height(q.x + d.x * 20.0, q.y + d.y * 20.0) - h > 8.0
+					wall = wall and absf(g.field.height(q.x + d.x * 4.0, q.y + d.y * 4.0) - h) < 1.2
+				var back := p - d * 18.0
+				wall = wall and absf(g.field.height(back.x, back.y) - h) < 2.0
+				if wall:
+					cliff = Vector4(p.x, p.y, d.x, d.y)
+					break
 		if meadow != Vector2.ZERO and cliff != Vector4.ZERO:
 			break
 	if meadow != Vector2.ZERO:
 		await _shot("50_meadow", meadow, meadow + Vector2(40, 25), 0.4, 1.7)
-		await _shot("52_ground", meadow, meadow + Vector2(6, 3), 0.42, 1.7, g.field.height(meadow.x, meadow.y) - 2.0)
 	if cliff != Vector4.ZERO:
 		var at := Vector2(cliff.x, cliff.y)
-		var to := Vector2(cliff.z, cliff.w)
-		# From further back and a little up, so a bush at the cliff foot doesn't fill the frame.
-		await _shot("51_cliff_scree", at - (to - at).normalized() * 16.0, to, 0.4, 3.0, g.field.height(to.x, to.y) - 4.0)
+		var d := Vector2(cliff.z, cliff.w)
+		var h := g.field.height(at.x, at.y)
+		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
+		# Standing at the cliff foot, looking down at the stones ahead.
+		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell
