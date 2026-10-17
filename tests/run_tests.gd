@@ -1302,6 +1302,7 @@ func test_levelling_and_attributes() -> void:
 	check(s.spend("oxy") and s.max_breath() > Stats.BASE_BREATH, "oxygen holds your breath longer")
 	var cap0 := s.carry_capacity()
 	check(s.spend("str") and s.carry_capacity() > cap0, "strength carries more")
+	check(is_equal_approx(s.carry_capacity() - cap0, Stats.CARRY_PER_STR), "each strength point adds %d kg" % int(Stats.CARRY_PER_STR))
 	check(s.spend("int") and s.xp_mult() > 1.0, "intellect learns faster")
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("stone", 10, 1.0, {}))
