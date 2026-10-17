@@ -304,16 +304,22 @@ func _ground_shots(g: ChunkGenerator) -> void:
 		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
 
 var _dry_chunks := {}
+var _dry_gen: ChunkGenerator
 
-## Whether a point is on land, above the sea and out of any river or lake.
-func _dry(g: ChunkGenerator, p: Vector2) -> bool:
+## Whether a point is on land, above the sea and out of any river or river-fed lake
+## (those sit above sea level). Built with the world's own rivers flag, as the game is.
+func _dry(_g: ChunkGenerator, p: Vector2) -> bool:
+	if _dry_gen == null:
+		_dry_gen = ChunkGenerator.new(Game.seed, Game.store.has_rivers())
 	var key := Vector2i(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
 	if not _dry_chunks.has(key):
-		_dry_chunks[key] = g.generate(key.x, key.y)
+		_dry_chunks[key] = _dry_gen.generate(key.x, key.y)
 	var c: Dictionary = _dry_chunks[key]
 	var lx := p.x - key.x * 64.0
 	var lz := p.y - key.y * 64.0
-	return ChunkGenerator.height_at(c, lx, lz) > ChunkGenerator.WATER_LEVEL + 1.5 and not ChunkGenerator.by_river(c, lx, lz)
+	var h := ChunkGenerator.height_at(c, lx, lz)
+	var rs := ChunkGenerator.river_surface(c, lx, lz)
+	return h > ChunkGenerator.WATER_LEVEL + 1.5 and not ChunkGenerator.by_river(c, lx, lz) and (is_nan(rs) or h > rs + 1.0)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell
