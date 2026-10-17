@@ -59,6 +59,27 @@ func test_memory_store_never_touches_disk() -> void:
 		s.save_chunk({"cx": 1000 + i, "cz": 0})
 	check(not s.has_chunk(4, -2) and s.has_chunk(1000 + WorldStore.MEM_LIMIT + 4, 0), "memory store drops the oldest chunks")
 
+## Crags set into cliffs never hang half in mid-air: most of every one's base is on rock.
+func test_crags_seated() -> void:
+	var g := ChunkGenerator.new(4242, true)
+	var total := 0
+	var hanging := 0
+	for cz in range(5, 8):
+		for cx in range(-6, -2):
+			var c := g.generate(cx, cz)
+			var out := ChunkNode.build_crag_buffers(c)
+			for k in out:
+				if not String(k).begins_with("stone:"):
+					continue
+				var buf: PackedFloat32Array = out[k]
+				for n in range(0, buf.size(), 16):
+					var b := Basis(Vector3(buf[n], buf[n + 4], buf[n + 8]), Vector3(buf[n + 1], buf[n + 5], buf[n + 9]), Vector3(buf[n + 2], buf[n + 6], buf[n + 10]))
+					total += 1
+					if ChunkNode._crag_hangs(c, b, Vector3(buf[n + 3], buf[n + 7], buf[n + 11]), b.x.length()) >= 3:
+						hanging += 1
+	check(total > 20, "cliffs carry crags (%d)" % total)
+	check(hanging == 0, "no crag hangs in mid-air (%d of %d)" % [hanging, total])
+
 func test_rivers() -> void:
 	var g := ChunkGenerator.new(4242, true)
 	# Find a chunk a river runs through, with its water above the sea.

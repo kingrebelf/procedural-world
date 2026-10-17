@@ -837,6 +837,16 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 		var b := Basis(Quaternion(Vector3.UP, up)) * Basis(Vector3.UP, turn) * Basis.from_euler(Vector3(tip.x, 0, tip.y))
 		b = b.scaled_local(Vector3(size, size * lerpf(flat, 1.0, rim), size * 0.8))
 		var p := Vector3(lx, y, lz) - nrm * size * lerpf(0.2, 0.12, rim)
+		# Never half in mid-air: where the face falls away under it (an upright block at a
+		# rim stood out over the drop, a big slab off a sheer face), it goes further into
+		# the hill until most of its base is on rock; failing that, it isn't there.
+		var inward := Vector3(-nrm.x, 0.0, -nrm.z).normalized()
+		var tries := 0
+		while _crag_hangs(chunk, b, p, size) >= 3 and tries < 4:
+			p += inward * size * 0.12
+			tries += 1
+		if tries == 4 and _crag_hangs(chunk, b, p, size) >= 3:
+			continue
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var tint := grey * w[Eras.MEDIEVAL] + Eras.GROUND[Eras.FANTASY][2] * w[Eras.FANTASY] + Eras.GROUND[Eras.SCIFI][2] * w[Eras.SCIFI]
 		# The landform's own rock (red sandstone, pale limestone...), as the face shows it.
@@ -852,6 +862,17 @@ static func build_crag_buffers(chunk: Dictionary) -> Dictionary:
 	if not solid.is_empty():
 		out["~crags"] = solid
 	return out
+
+## How many of eight points round a crag's base (basis `b` at `p`) stand clear of the
+## ground by more than a few percent of its size.
+static func _crag_hangs(chunk: Dictionary, b: Basis, p: Vector3, size: float) -> int:
+	var n := 0
+	for d in 8:
+		var a := TAU * d / 8.0
+		var w := p + b * (Vector3(cos(a), 0.06, sin(a)) * 0.42)
+		if w.y - ChunkGenerator.height_at(chunk, clampf(w.x, 0.0, SIZE - 0.01), clampf(w.z, 0.0, SIZE - 0.01)) > 0.15 * size:
+			n += 1
+	return n
 
 ## Harvests the undergrowth plant nearest the segment from..to (world space) within
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
