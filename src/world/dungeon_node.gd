@@ -954,10 +954,23 @@ func _build_parts() -> void:
 			var f: Array = FireFx.prop_flames([["props/Torch_Metal", rad_to_deg(yaw), p + Vector3(0, 1.9, 0), 1.0]])
 			_add_lamp(l["lv"], f[0][0] if not f.is_empty() else p + Vector3(0, 2.2, 0), 1.6, true)
 	# Candlelight on every treasury's hoard: the payoff is seen from its door.
-	for rm in pl["rooms"]:
-		if rm["kind"] == "vault" and _era != Eras.SCIFI:
+	# A hanging light over the middle of the room, and a low glow by each chest so
+	# the far wall doesn't sit in the dark.
+	for ri in pl["rooms"].size():
+		var rm: Dictionary = pl["rooms"][ri]
+		if rm["kind"] != "vault":
+			continue
+		var fy := Dungeon.floor_y(pl, rm["lv"])
+		var mid := (Dungeon.centre(pl, Vector2i(rm["x"], rm["z"])) + Dungeon.centre(pl, Vector2i(rm["x"] + rm["w"] - 1, rm["z"] + rm["d"] - 1))) * 0.5
+		_add_lamp(rm["lv"], Vector3(mid.x, fy + 2.3, mid.y), 1.5, false)
+		if _era != Eras.SCIFI:
 			var cc := Dungeon.centre(pl, Vector2i(rm["x"], rm["z"]))
-			_add_lamp(rm["lv"], Vector3(cc.x + 0.05, Dungeon.floor_y(pl, rm["lv"]) + 0.75, cc.y - 0.55), 1.1, false)
+			_add_lamp(rm["lv"], Vector3(cc.x + 0.05, fy + 0.75, cc.y - 0.55), 1.1, false)
+		for lt in pl["loot"]:
+			if int(lt["room"]) == ri:
+				var lp: Vector3 = lt["p"]
+				var to := Vector2(mid.x - lp.x, mid.y - lp.z).limit_length(0.9)
+				_add_lamp(rm["lv"], Vector3(lp.x + to.x, fy + 1.1, lp.z + to.y), 0.8, false)
 	for li in pl["locks"].size():
 		_seals.append(_make_seal(li))
 	for pi in pl["parts"].size():

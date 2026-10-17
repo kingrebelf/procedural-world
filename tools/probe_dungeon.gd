@@ -207,7 +207,7 @@ func _run() -> void:
 			var in_c: Vector2i = dr["a"] if inside else dr["a"] + Dungeon.DIRS[dr["d"]]
 			var o := _floor(lv, out_c)
 			var c := _floor(lv, in_c)
-			_stand(o + (c - o) * 0.3, c + Vector3(0, 0.3, 0), -0.3)
+			_stand(o + (c - o) * 0.3, c + Vector3(0, 0.6, 0), -0.12)
 			await _shot("8_treasury")
 			break
 
