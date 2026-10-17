@@ -22,14 +22,16 @@ const LANDMARKS := {
 }
 
 static func has(t: String) -> bool:
-	return TYPES.has(t) or LANDMARKS.has(t)
+	return TYPES.has(t) or LANDMARKS.has(t) or EasterEggs.has(t)
 
 static func unbreakable(t: String) -> bool:
-	return UNBREAKABLE.has(t) or LANDMARKS.has(t) or WonderSite.has(t) or t == WorldPortal.TYPE
+	return UNBREAKABLE.has(t) or LANDMARKS.has(t) or EasterEggs.has(t) or WonderSite.has(t) or t == WorldPortal.TYPE
 
 ## What using it does right now, for the floating prompt: {"verb", "h"} (h: how high the
 ## prompt floats), or {} when it has nothing more to give today.
 static func use_of(o: Dictionary, day: float) -> Dictionary:
+	if EasterEggs.has(o["t"]):
+		return EasterEggs.use_of(o, day)
 	var st: Dictionary = o["st"]
 	var fresh := int(st.get("day", -1)) < int(floor(day))
 	var lm: Dictionary = LANDMARKS.get(String(o["t"]), {})
@@ -61,6 +63,8 @@ static func use_of(o: Dictionary, day: float) -> Dictionary:
 
 ## A line for the look panel saying what it has done or will do.
 static func describe(o: Dictionary, day: float) -> String:
+	if EasterEggs.has(o["t"]):
+		return EasterEggs.describe(o, day)
 	var st: Dictionary = o["st"]
 	var fresh := int(st.get("day", -1)) < int(floor(day))
 	var lm: Dictionary = LANDMARKS.get(String(o["t"]), {})

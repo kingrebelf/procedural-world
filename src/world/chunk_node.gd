@@ -240,7 +240,7 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		var b := Basis(Vector3.UP, o["r"]).scaled(Vector3(s, sy, s))
 		var p: Vector3 = o["p"]
 		# Sink slightly so bases never float on slopes.
-		if not built:
+		if not built and not EasterEggs.floats(o["t"]):
 			p.y -= 0.15 * s
 		var tint := Color(1, 1, 1)
 		if organic:

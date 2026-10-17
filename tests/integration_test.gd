@@ -409,6 +409,7 @@ func _run() -> void:
 	await _walk_into_house(game, world, streamer, player)
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
+	await _easter_eggs(game, streamer, player)
 	await _audio_checks(world, player)
 	await _water_checks(streamer, player)
 
@@ -1162,6 +1163,68 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	for o in [ruin, beacon, pod, stone, crystal, star]:
 		if not o.is_empty():
 			rc.remove_object(o["i"])
+	await _frames(2)
+
+## Hidden finds: the sword won't come for a weak arm and comes once for a strong one (the
+## stone then stands empty), the bottle's letter is a treasure map and the bottle is gone,
+## the gnome ring only wakes after dark, and the tiny door gives once then answers daily.
+func _easter_eggs(game, streamer: ChunkStreamer, player) -> void:
+	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
+	var at := func(dx: float, dz: float) -> Vector3:
+		var lx := clampf(player.global_position.x - rc.position.x + dx, 4.0, 60.0)
+		var lz := clampf(player.global_position.z - rc.position.z + dz, 4.0, 60.0)
+		return Vector3(lx, ChunkGenerator.height_at(rc.data, lx, lz), lz)
+	_make_room(game)
+	var day0: float = game.day
+	var str0: int = game.stats.attrs["str"]
+	# Finds pay experience; put the levels back after so later checks start where they expect.
+	var stats0: Dictionary = game.stats.to_data()
+	var sword: Dictionary = rc.add_object("sword_stone", at.call(0.0, 12.0), 0.0, Eras.MEDIEVAL, {})
+	game.stats.attrs["str"] = 0
+	game.buffs.erase("strength")
+	var msg := WonderEffects.apply(sword, rc, player)
+	check(not sword["st"].get("drawn", false) and msg.contains("stronger arm"), "a weak arm can't draw the sword (%s)" % msg)
+	game.stats.attrs["str"] = EasterEggs.SWORD_STR
+	var swords0: int = game.inventory.count("sword_iron")
+	msg = WonderEffects.apply(sword, rc, player)
+	check(sword["st"].get("drawn", false) and game.inventory.count("sword_iron") == swords0 + 1, "a strong arm draws it (%s)" % msg)
+	var drawn := {}
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null and it["type"] == "sword_iron" and int(it.get("rarity", 0)) == 4:
+			drawn = it
+	check(not drawn.is_empty() and String(drawn["name"]) != "", "it is a named legendary blade (%s)" % drawn.get("name", ""))
+	check(Wonders.use_of(sword, game.day).is_empty() and ObjectLibrary.mesh_key(sword) == "sword_stone~drawn", "and the stone stands empty")
+	game.stats.attrs["str"] = str0
+	var bottle: Dictionary = rc.add_object("msg_bottle", at.call(4.0, 12.0), 0.0, Eras.MEDIEVAL, {})
+	var maps0: int = game.inventory.count("treasure_map")
+	var hunts0: int = game.treasure.size()
+	msg = WonderEffects.apply(bottle, rc, player)
+	await _frames(2)
+	check(bottle["st"].get("gone", false) and (game.inventory.count("treasure_map") > maps0 or game.treasure.size() > hunts0), "the bottle holds a treasure map and is gone (%s)" % msg)
+	var ring: Dictionary = rc.add_object("gnome_ring", at.call(-6.0, 12.0), 0.0, Eras.MEDIEVAL, {})
+	game.day = floor(day0) + 0.5
+	msg = WonderEffects.apply(ring, rc, player)
+	check(not ring["st"].get("used", false) and msg.contains("sun"), "the gnome ring sleeps by day (%s)" % msg)
+	game.day = floor(day0) + 0.95
+	msg = WonderEffects.apply(ring, rc, player)
+	check(ring["st"].get("used", false) and game.buffs.has("inspired"), "and wakes after dark (%s)" % msg)
+	var door: Dictionary = rc.add_object("tiny_door", at.call(-6.0, 6.0), 0.0, Eras.MEDIEVAL, {})
+	var money0: int = game.money
+	msg = WonderEffects.apply(door, rc, player)
+	check(game.money > money0 and EasterEggs.use_of(door, game.day).is_empty(), "the tiny door pays once (%s)" % msg)
+	game.day += 1.0
+	check(not EasterEggs.use_of(door, game.day).is_empty(), "and answers again the next day")
+	var camp: Dictionary = rc.add_object("lost_camp", at.call(8.0, 4.0), 0.0, Eras.MEDIEVAL, {})
+	msg = WonderEffects.apply(camp, rc, player)
+	check(camp["st"].get("used", false) and msg.contains("journal"), "the explorer's journal reads (%s)" % msg)
+	check(game.discovery.get("secrets", {}).size() >= 5, "the secrets you found are counted")
+	game.day = day0
+	game.stats.level = int(stats0["level"])
+	game.stats.xp = stats0["xp"]
+	game.stats.points = int(stats0["points"])
+	for o in [sword, ring, door, camp]:
+		rc.remove_object(o["i"])
 	await _frames(2)
 
 func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:

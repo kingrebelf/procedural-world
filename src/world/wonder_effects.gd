@@ -14,6 +14,8 @@ static var _gen_seed := 0
 ## Uses wonder `o` in `chunk`; returns the line to show. Call only when Wonders.use_of(o)
 ## offers something.
 static func apply(o: Dictionary, chunk: ChunkNode, player: Player) -> String:
+	if EasterEggs.has(o["t"]):
+		return EggEffects.apply(o, chunk, player)
 	var st: Dictionary = o["st"]
 	var today := int(floor(Game.day))
 	var wp: Vector3 = chunk.position + o["p"]
