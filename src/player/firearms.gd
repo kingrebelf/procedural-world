@@ -795,10 +795,19 @@ static func _revolver_build(k: MeshKit, barrel: float, frame: String, steel: Str
 static func _lever_rifle(k: MeshKit) -> Vector3:
 	var y := 0.03
 	var muzzle := -0.68
-	_box(k, "gun_case", Vector3(0, y - 0.012, -0.045), Vector3(0.026, 0.058, 0.13))
-	_box(k, "gun_case", Vector3(0, y + 0.012, 0.025), Vector3(0.02, 0.016, 0.02))
-	_box(k, "gun_bore", Vector3(0.013, y + 0.0, -0.05), Vector3(0.002, 0.014, 0.034)) # ejection gap
-	_box(k, "gun_blued", Vector3(0.0132, y - 0.018, -0.07), Vector3(0.0015, 0.012, 0.03)) # loading gate
+	# Receiver: tall and flat-sided at the front where the barrel and magazine enter,
+	# its belly sweeping up behind the lever into the upper tang.
+	_stock(k, "gun_case", [-0.112, -0.1, -0.06, -0.01, 0.012, 0.03, 0.05],
+		[y + 0.015, y + 0.0165, y + 0.0165, y + 0.0165, y + 0.0155, y + 0.0125, y + 0.0115], [y - 0.034, y - 0.04, y - 0.041, y - 0.04, y - 0.026, y + 0.003, y + 0.006],
+		[0.0128, 0.0132, 0.0132, 0.0132, 0.012, 0.009, 0.007], 20)
+	# Side plates over the toggle links, each held by one screw; the dust cover's track on
+	# top over the ejection port; the loading gate on the right.
+	for sd in [-1.0, 1.0]:
+		_block(k, "gun_case", Vector3(sd * 0.0128, y - 0.008, -0.03), Vector3(0.0018, 0.03, 0.056), 12)
+		_pin(k, "gun_blued", Vector3(sd * 0.0138 - 0.001, y - 0.008, -0.03), 0.0023, 0.002)
+	_block(k, "gun_blued", Vector3(0, y + 0.0172, -0.045), Vector3(0.0085, 0.002, 0.07), 10)
+	_box(k, "gun_bore", Vector3(0, y + 0.0172, -0.045), Vector3(0.0045, 0.0016, 0.064))
+	_block(k, "gun_blued", Vector3(0.0133, y - 0.026, -0.075), Vector3(0.0016, 0.011, 0.028), 10)
 	_barrel(k, "gun_blued", Vector3(0, y + 0.004, -0.11), -muzzle - 0.11, 0.0125, 0.0118, 0.0058, 8)
 	_tube(k, "gun_blued", Vector3(0, y - 0.019, -0.11), -muzzle - 0.13, 0.0085, 0.0085, 14)
 	_tube(k, "gun_blued", Vector3(0, y - 0.019, muzzle + 0.02), 0.01, 0.0087, 0.0087, 14)
@@ -825,8 +834,8 @@ static func _lever_rifle(k: MeshKit) -> Vector3:
 		Vector3(0, y - 0.044, 0.085), Vector3(0, y - 0.041, 0.06)], 0.009, 0.005)
 	_trigger(k, "gun_blued", Vector3(0, y - 0.041, 0.006), 0.016)
 	_hammer(k, "gun_case", Vector3(0, y + 0.012, 0.026), 0.026)
-	for p in [Vector3(-0.0135, y - 0.02, -0.02), Vector3(-0.0135, y - 0.02, -0.09), Vector3(-0.0135, y + 0.0, -0.1)]:
-		_pin(k, "gun_blued", p, 0.0024, 0.027)
+	for p in [Vector3(-0.0137, y - 0.03, 0.0), Vector3(-0.0137, y + 0.004, -0.1)]:
+		_pin(k, "gun_blued", p, 0.0022, 0.0274)
 	_fore = Vector3(0, y - 0.012, -0.24)
 	return Vector3(0, y - 0.018, 0.06)
 
