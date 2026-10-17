@@ -62,6 +62,7 @@ const ROLES := {
 static var enabled := true
 static var _shader: Shader
 static var _meshes := {} ## kit|mesh -> ArrayMesh
+static var _pending := {} ## kit|mesh -> WorkerThreadPool task id
 static var _mats := {}
 static var _lock := Mutex.new()
 static var _mat_lock := Mutex.new()
@@ -81,11 +82,10 @@ static func role_of(kind: String, mat_name: String) -> int:
 	return FUR
 
 ## Builds every kit model's refined meshes in the background, so the first sight of an
-## animal does not stall a frame.
+## animal does not stall a frame. The kit meshes are read here, on the calling thread
+## (reading a mesh back from the renderer off the main thread can stall); only the
+## arithmetic runs on worker threads.
 static func warm(kinds: Array) -> void:
-	WorkerThreadPool.add_task(_warm.bind(kinds), false, "AnimalSkin.warm")
-
-static func _warm(kinds: Array) -> void:
 	for k in kinds:
 		# Variants (a boar, a hare) share their base kit's mesh.
 		if not AnimalModel.available(k) or String(k).begins_with("Alien_") or AnimalModel.VARIANTS.has(k):
@@ -93,23 +93,57 @@ static func _warm(kinds: Array) -> void:
 		var s: Node3D = (load(AnimalModel.path_of(k)) as PackedScene).instantiate()
 		var sks := s.find_children("*", "Skeleton3D", true, false)
 		for mi in s.find_children("*", "MeshInstance3D", true, false):
-			mesh_for(k, (mi as MeshInstance3D).mesh as ArrayMesh, sks[0] if not sks.is_empty() else null)
+			var src := (mi as MeshInstance3D).mesh as ArrayMesh
+			var key := _key(k, src)
+			_lock.lock()
+			if not _meshes.has(key) and not _pending.has(key):
+				var data := _snapshot(k, src, sks[0] if not sks.is_empty() else null)
+				_pending[key] = WorkerThreadPool.add_task(_build.bind(key, data), false, "AnimalSkin " + key)
+			_lock.unlock()
 		s.free()
 
-## The refined mesh for kit model `kit` (cached).
+static func _build(key: String, data: Dictionary) -> void:
+	var m := refine(data)
+	_lock.lock()
+	_meshes[key] = m
+	_lock.unlock()
+
+static func _key(kit: String, src: ArrayMesh) -> String:
+	return "%s|%s|%d" % [kit, src.resource_name, src.get_surface_count()]
+
+## What refine() needs from a kit mesh, read out on the calling thread.
+static func _snapshot(kit: String, src: ArrayMesh, sk: Skeleton3D) -> Dictionary:
+	var roles := PackedInt32Array()
+	var arrays := []
+	var mats := []
+	var names := []
+	for s in src.get_surface_count():
+		var m := src.surface_get_material(s)
+		roles.append(role_of(kit, String(m.resource_name) if m else ""))
+		arrays.append(src.surface_get_arrays(s))
+		mats.append(m)
+		names.append(src.surface_get_name(s))
+	var bones := {}
+	if sk:
+		for b in sk.get_bone_count():
+			bones[sk.get_bone_name(b)] = sk.get_bone_global_rest(b).origin
+	return {"name": src.resource_name, "aabb": src.get_aabb(), "arrays": arrays, "mats": mats, "names": names,
+		"roles": roles, "bones": bones, "muscle": float(LOOKS.get(kit, {}).get("muscle", 0.5))}
+
+## The refined mesh for kit model `kit` (cached; waits for warm()'s job if one runs).
 static func mesh_for(kit: String, src: ArrayMesh, sk: Skeleton3D) -> ArrayMesh:
-	var key := "%s|%s|%d" % [kit, src.resource_name, src.get_surface_count()]
+	var key := _key(kit, src)
+	_lock.lock()
+	var job: int = _pending.get(key, -1)
+	_lock.unlock()
+	if job >= 0:
+		WorkerThreadPool.wait_for_task_completion(job)
+		_lock.lock()
+		_pending.erase(key)
+		_lock.unlock()
 	_lock.lock()
 	if not _meshes.has(key):
-		var roles := PackedInt32Array()
-		for s in src.get_surface_count():
-			var m := src.surface_get_material(s)
-			roles.append(role_of(kit, String(m.resource_name) if m else ""))
-		var bones := {}
-		if sk:
-			for b in sk.get_bone_count():
-				bones[sk.get_bone_name(b)] = sk.get_bone_global_rest(b).origin
-		_meshes[key] = refine(src, roles, bones, float(LOOKS.get(kit, {}).get("muscle", 0.5)))
+		_meshes[key] = refine(_snapshot(kit, src, sk))
 	var out: ArrayMesh = _meshes[key]
 	_lock.unlock()
 	return out
@@ -148,8 +182,11 @@ static func material(kind: String, mat_name: String, col: Color, glow, box: AABB
 ## Welds the kit mesh, smooths it with Loop subdivision (`LEVELS` rounds) where it is
 ## soft (fur, hair, skin), lays muscle on it, and writes each vertex's rest position
 ## into UV / UV2.x for the shader. The coarser rounds become the mesh's LODs.
-static func refine(src: ArrayMesh, roles: PackedInt32Array, bones: Dictionary, muscle: float) -> ArrayMesh:
-	var aabb := src.get_aabb()
+static func refine(data: Dictionary) -> ArrayMesh:
+	var aabb: AABB = data["aabb"]
+	var roles: PackedInt32Array = data["roles"]
+	var bones: Dictionary = data["bones"]
+	var muscle: float = data["muscle"]
 	var snap := maxf(aabb.get_longest_axis_size(), 0.001) * 1e-5
 	var pos := PackedVector3Array()
 	var bon := PackedInt32Array()
@@ -158,10 +195,10 @@ static func refine(src: ArrayMesh, roles: PackedInt32Array, bones: Dictionary, m
 	var tris := PackedInt32Array()
 	var tsurf := PackedInt32Array()
 	var weld := {}
-	var sc := src.get_surface_count()
+	var sc: int = (data["arrays"] as Array).size()
 	var has_col := false
 	for s in sc:
-		var a := src.surface_get_arrays(s)
+		var a: Array = data["arrays"][s]
 		var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
 		var b: PackedInt32Array = a[Mesh.ARRAY_BONES] if a[Mesh.ARRAY_BONES] != null else PackedInt32Array()
 		var w: PackedFloat32Array = a[Mesh.ARRAY_WEIGHTS] if a[Mesh.ARRAY_WEIGHTS] != null else PackedFloat32Array()
@@ -245,7 +282,7 @@ static func refine(src: ArrayMesh, roles: PackedInt32Array, bones: Dictionary, m
 		acc += errs[l]
 		lod_err[l] = acc
 	var out := ArrayMesh.new()
-	out.resource_name = src.resource_name
+	out.resource_name = data["name"]
 	for s in sc:
 		var local := {}
 		var lv := PackedVector3Array()
@@ -294,8 +331,8 @@ static func refine(src: ArrayMesh, roles: PackedInt32Array, bones: Dictionary, m
 		for l in levels:
 			lods[lod_err[l]] = lidx[levels - l]
 		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], lods)
-		out.surface_set_material(s, src.surface_get_material(s))
-		out.surface_set_name(s, src.surface_get_name(s))
+		out.surface_set_material(s, data["mats"][s])
+		out.surface_set_name(s, data["names"][s])
 	return out
 
 ## The surface of each triangle at a coarser level: each subdivision splits a triangle
