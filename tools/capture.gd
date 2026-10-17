@@ -614,6 +614,11 @@ func _wonder_view(wc: Vector2, front: Vector2, look_y: float) -> Vector2:
 			ball.exclude = [p.get_rid()]
 			if not space.intersect_shape(ball, 1).is_empty():
 				continue
+			# Open sky overhead: a sphere wholly inside a big rock touches none of its faces.
+			var up := PhysicsRayQueryParameters3D.create(eye + Vector3(0, 60, 0), eye)
+			up.exclude = [p.get_rid()]
+			if not space.intersect_ray(up).is_empty():
+				continue
 			var ray := PhysicsRayQueryParameters3D.create(eye, target)
 			ray.exclude = [p.get_rid()]
 			var hit := space.intersect_ray(ray)
