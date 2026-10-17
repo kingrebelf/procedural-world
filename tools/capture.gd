@@ -28,6 +28,10 @@ var vfog := 1.0
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
+## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
+## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
+var spin := 0.0
+var _spinning := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -53,6 +57,8 @@ func _ready() -> void:
 			FrameMend.mode = {"show": 1, "off": 2}.get(a.substr(7), 0)
 		if a.begins_with("--day="):
 			day_override = a.substr(6).to_float()
+		if a.begins_with("--spin="):
+			spin = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
 		# which effect an artefact comes from.
 		if a.begins_with("--set=") and a.count("=") == 2:
@@ -285,6 +291,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
+	_spinning = spin != 0.0
 	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
@@ -293,6 +300,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if before.is_valid():
 		await before.call()
 	var img := get_viewport().get_texture().get_image()
+	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " weights ", world.atmosphere._w)
 	_report_broken(world)
@@ -301,6 +309,11 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
+func _process(delta: float) -> void:
+	if _spinning and world and world.player:
+		world.player._yaw += deg_to_rad(spin) * delta
+		world.player._apply_look()
+
 func _report_broken(n: Node) -> void:
 	if n is Node3D and not (n as Node3D).global_transform.is_finite():
 		print("  non-finite transform: ", n.get_path(), " (", n.get_class(), ") ", (n as Node3D).transform)

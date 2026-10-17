@@ -92,9 +92,11 @@ func _ready() -> void:
 	we.camera_attributes = cam_attr
 	_cam_attr = cam_attr
 	# Mends stray bad pixels before the exposure reads the frame (FrameMend): one of them
-	# washed the whole view out white under MSAA.
+	# washed the whole view out white under MSAA. Then motion blur (CameraBlur), which must
+	# not spread such a pixel.
 	var comp := Compositor.new()
-	comp.compositor_effects = [FrameMend.new()]
+	_blur = CameraBlur.new()
+	comp.compositor_effects = [FrameMend.new(), _blur]
 	we.compositor = comp
 	add_child(we)
 
@@ -173,8 +175,12 @@ func apply_settings() -> void:
 	sky_mat.set_shader_parameter("cloud_light_steps", 3 if cq == 1 else 6)
 	var we := get_child(0) as WorldEnvironment
 	(we.camera_attributes as CameraAttributesPractical).auto_exposure_enabled = bool(Settings.get_value("auto_exposure"))
+	var mb := float(Settings.get_value("motion_blur_strength")) if Settings.get_value("motion_blur") else 0.0
+	CameraBlur.strength = mb
+	_blur.enabled = mb > 0.0
 
 var _cam_attr: CameraAttributesPractical
+var _blur: CameraBlur
 var _shafts: MeshInstance3D
 ## Scales the light shafts (tools try looks with it; 1 in the game).
 var shaft_boost := 1.0

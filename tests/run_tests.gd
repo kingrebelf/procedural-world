@@ -3530,3 +3530,39 @@ func test_boat_models() -> void:
 		"name": "Black Gull", "phase": 0.0, "yaw": 0.0, "loop": 0.0}
 	var crew := Boats.crew(1, site)
 	check(not crew["npcs"].is_empty() and crew["npcs"].all(func(p): return p["job"] == "pirate" and p["faction"] == "pirate" and int(p["rel"]) < 0), "pirate crews are hostile")
+
+func test_camera_feel() -> void:
+	# Head bob: still at rest, moves when walking, dips on landing, and is gone when off.
+	var hb := HeadBob.new()
+	for i in 30:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+	check(hb.offset.length() < 0.001 and hb.tilt.length() < 0.001, "head bob rests when standing")
+	var lo := 0.0
+	var hi := -1.0
+	for i in 120:
+		hb.step(1.0 / 60.0, 1.0, fmod(i / 60.0, 1.0), 1.0, true, false, 0.0, 0.0, 0.0)
+		lo = minf(lo, hb.offset.y)
+		hi = maxf(hi, hb.offset.y)
+	check(hi - lo > 0.01 and hi - lo < 0.05, "walking bobs the eye a little (%.3f m)" % (hi - lo))
+	hb.reset()
+	var dip := 0.0
+	hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 8.0, 0.0)
+	for i in 60:
+		hb.step(1.0 / 60.0, 1.0, 0.0, 0.0, true, false, 0.0, 0.0, 0.0)
+		dip = minf(dip, hb.offset.y)
+	check(dip < -0.02 and dip > -0.15 and absf(hb.offset.y) < 0.01, "a landing dips the eye and springs back (%.3f m)" % dip)
+	hb.reset()
+	for i in 60:
+		hb.step(1.0 / 60.0, 0.0, fmod(i / 60.0, 1.0), 1.8, true, false, 1.0, 6.0, 0.0)
+	check(hb.offset.length() < 0.0001 and hb.tilt.length() < 0.0001, "head bob off keeps the eye still")
+	# Motion blur: skips still frames and cuts, and scales with the shutter.
+	var old := CameraBlur.strength
+	CameraBlur.strength = 0.3
+	var a := Transform3D.IDENTITY
+	check(CameraBlur.shutter_scale(a, a, 1.0 / 60.0) == 0.0, "no blur while the camera holds still")
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 1.2), 1.0 / 60.0) == 0.0, "no blur across a camera cut")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0), 0.3), "the shutter is strength / 60 s")
+	check(is_equal_approx(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 120.0), 0.6), "the same shutter at a higher frame rate")
+	CameraBlur.strength = 0.0
+	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
+	CameraBlur.strength = old
