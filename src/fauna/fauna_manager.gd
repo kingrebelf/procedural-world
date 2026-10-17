@@ -24,7 +24,7 @@ func _ready() -> void:
 func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
 
-const TAG_RANGE := 28.0
+const TAG_RANGE := 25.0
 const SPAWN_BUDGET_USEC := 4000
 
 func _process(delta: float) -> void:
@@ -37,9 +37,11 @@ func _process(delta: float) -> void:
 	var pp := player.global_position
 	var g := Callable(self, "_ground")
 	var lv: int = Game.stats.level if Game.stats else 1
-	# Tags show within TAG_RANGE, or far out for the one you are looking at through
-	# binoculars.
+	# Tags show for ground animals within TAG_RANGE, for any animal fighting you or hurt,
+	# and for the one under the crosshair or in the binoculars; birds overhead go untagged.
 	var spotted: Creature = player.spotted if player.get("spotted") != null else null
+	if spotted == null and player.get("looking_at") != null and is_instance_valid(player.looking_at):
+		spotted = player.looking_at
 	var cam := get_viewport().get_camera_3d()
 	var eye: Vector3 = cam.global_position if cam else pp + Vector3(0, 1.6, 0)
 	var shown := []
@@ -61,9 +63,10 @@ func _process(delta: float) -> void:
 						out.append(c.net_state())
 				else:
 					c.follow(delta, g, Net.mob_state("f", c.id))
-				var near: bool = c._body != null and (c.global_position.distance_to(pp) < TAG_RANGE or c == spotted)
-				# Tags draw over everything (so grass doesn't hide them), so they only show
-				# for animals you can actually see: not through a wall or a hill.
+				var fighting: bool = c.state == "chase" or c.hp < float(c.p["hp"])
+				var near: bool = c._body != null and (c == spotted or (c.global_position.distance_to(pp) < TAG_RANGE and (fighting or c.p["plan"] != "bird")))
+				# Only for animals you can actually see: not over a hill or behind a house
+				# (the walls hide the tag itself; this keeps a tag from peeking over them).
 				if near and c != spotted:
 					near = _in_sight(c, eye, delta)
 				if near:

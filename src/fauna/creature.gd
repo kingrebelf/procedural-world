@@ -360,11 +360,10 @@ func _build_tag() -> void:
 	_tag_label.pixel_size = 0.0011
 	_tag_label.font_size = 26
 	_tag_label.outline_size = 8
-	_tag_label.no_depth_test = true
 	_tag_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_tag_label.offset = Vector2(0, 2)
-	# Drawn after the water (and its splash rings), so a lake behind or under the animal
-	# never covers its name.
+	# Depth-tested, so walls and roofs hide it, and drawn after the water (and its splash
+	# rings), so a lake behind or under the animal never covers its name.
 	_tag_label.render_priority = TAG_PRIORITY
 	_tag_label.outline_render_priority = TAG_PRIORITY - 1
 	_tag.add_child(_tag_label)

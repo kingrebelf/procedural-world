@@ -872,10 +872,15 @@ func _creature_info(cr: Creature) -> Dictionary:
 			"Distance %d m" % int(cr.global_position.distance_to(global_position))],
 		"hp": cr.hp / float(cr.p["hp"]), "icon": cr.p["drops"][0][0]}
 
+## The animal under the crosshair (or in the binoculars), whose tag FaunaManager shows
+## at any distance.
+var looking_at: Creature = null
+
 func _update_look_target() -> void:
 	var h := _hit_object()
 	if spotted != null and is_instance_valid(spotted):
 		h = {"creature": spotted}
+	looking_at = h["creature"] if h.has("creature") and is_instance_valid(h["creature"]) else null
 	var text := ""
 	var info := {}
 	if builder.active():
