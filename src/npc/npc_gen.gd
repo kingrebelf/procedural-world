@@ -99,6 +99,7 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 		p["work"] = c + Vector2(cos(ang), sin(ang)) * r.randf_range(5.0, 12.0)
 		p["work_yaw"] = r.randf() * TAU
 		npcs.append(p)
+	_children(world_seed, era, sx, sz, homes, npcs)
 	for p in npcs:
 		var h2: Vector2 = p["home"]
 		p["pos"] = Vector3(h2.x, gen.field.height(h2.x, h2.y), h2.y)
@@ -107,6 +108,44 @@ static func generate(world_seed: int, gen: ChunkGenerator, site: Dictionary, lay
 		"format": SETTLEMENT_FORMAT, "sx": sx, "sz": sz, "era": era, "center": c,
 		"name": name, "npcs": npcs, "rumors": [], "sim_day": -1.0,
 	}
+
+## Households: some homes have children (4 to 17), who take after a grown-up living
+## there. Rolled from their own random stream, so the grown-ups of every settlement are
+## the same as before children existed. A child has rec["child"] = true and job "child":
+## no trade, no shop, and nobody the player can hurt (NPCManager).
+static func _children(world_seed: int, era: int, sx: int, sz: int, homes: Array, npcs: Array) -> void:
+	if Eras.theme == "alien":
+		return
+	var r := WHash.rng(world_seed, sx, sz, 502)
+	var grown := npcs.size()
+	for h in homes:
+		if h["t"] == "camp" or r.randf() > 0.35:
+			continue
+		var parent: Dictionary = {}
+		for i in grown:
+			if (npcs[i]["home"] as Vector2).distance_to(h["p"]) < 0.5:
+				parent = npcs[i]
+				break
+		for k in (1 if r.randf() < 0.75 else 2):
+			var c := _person(r, era, npcs.size(), sx, sz)
+			c["child"] = true
+			c["job"] = "child"
+			c["age"] = r.randi_range(4, 17)
+			if not parent.is_empty():
+				# Their family's look and name.
+				var pb: Dictionary = parent["body"]
+				c["body"]["skin"] = pb["skin"]
+				if r.randf() < 0.7:
+					c["body"]["hair"] = pb["hair"]
+				var fam := String(parent["name"]).split(" ", true, 1)
+				if fam.size() == 2:
+					c["name"] = "%s %s" % [String(c["name"]).split(" ")[0], fam[1]]
+			c["home"] = h["p"]
+			var ang := r.randf() * TAU
+			# They play about near home.
+			c["work"] = (h["p"] as Vector2) + Vector2(cos(ang), sin(ang)) * r.randf_range(2.0, 6.0)
+			c["work_yaw"] = r.randf() * TAU
+			npcs.append(c)
 
 ## A new person of the settlement (shops hire newcomers when nobody fits).
 static func person(r: RandomNumberGenerator, era: int, idx: int, sx: int, sz: int) -> Dictionary:

@@ -993,6 +993,18 @@ func test_npc_generation_deterministic() -> void:
 		for k in ["friendly", "brave", "curious", "diligent", "greedy"]:
 			check(p["traits"][k] >= 0.0 and p["traits"][k] <= 1.0, "trait range")
 	check(ids.size() == a["npcs"].size(), "unique ids")
+	# Households: children live at a home, have no trade, and the grown-ups are the same
+	# people they were before children were added (their own random stream).
+	var kids := 0
+	var grown := 0
+	for p in a["npcs"]:
+		if p.get("child", false):
+			kids += 1
+			check(p["job"] == "child" and int(p["age"]) >= 4 and int(p["age"]) < BodyShape.ADULT, "a child is 4-17 with no trade")
+		else:
+			grown += 1
+			check(int(p["age"]) >= 18, "grown-ups are grown")
+	check(kids == 0 or a["npcs"][grown - 1].get("child", false) == false, "children come after the grown-ups")
 
 func test_decision_engine() -> void:
 	var fx := _npc_fixture()
@@ -1522,6 +1534,14 @@ func test_body_variety() -> void:
 		m["female"] = true
 		womens += BodyShape.beard(m, 45)
 	check(styles.size() == 6 and womens == 0, "men wear every facial hair style, from clean-shaven to a full beard; women none")
+	# Children: small, growing every year, with large heads, no beards and no grey.
+	check(BodyShape.stature(b, 4) < 0.6 and BodyShape.stature(b, 10) < BodyShape.stature(b, 14) and BodyShape.stature(b, 14) < BodyShape.stature(b, 30) * 1.0, "children are small and grow with age")
+	check(float(BodyShape.shape(b, 5)["head"]) > 1.2 and float(BodyShape.shape(b, 30)["head"]) == 1.0, "a small child's head is large for its body")
+	check(BodyShape.beard(b, 10) == 0 and BodyShape.child(30) == 0.0 and BodyShape.child(6) > 0.8, "children have no beards")
+	var grey := b.duplicate()
+	grey["hair"] = Color(0.6, 0.6, 0.6)
+	check(BodyShape.hair_color(grey, 8).s > 0.15, "no child has grey hair")
+	check(float(BodyShape.shape(b, 8, "child")["muscle"]) < 0.15 and float(BodyShape.shape(b, 8)["stoop"]) <= 0.05, "children are slight and stand straight")
 	if not HumanModel.available():
 		return
 	var a := HumanModel.new()
