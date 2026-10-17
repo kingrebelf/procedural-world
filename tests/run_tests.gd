@@ -5055,11 +5055,181 @@ func test_power_sun_and_wind() -> void:
 		check(made, "%s can be made" % id)
 		check(BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a mesh" % id)
 
+func _step(o: Dictionary, ins: Array, mem: Dictionary, ctx := {}) -> bool:
+	return bool(Signals.step(o, ins, mem, ctx)[0])
+
+func test_power_signals_gates_and_memory() -> void:
+	var g := _pw("logic_gate", 0)
+	var want := {"AND": [false, false, false, true], "OR": [false, true, true, true], "XOR": [false, true, true, false],
+		"NOT": [true, false, false, false], "NAND": [true, true, true, false], "NOR": [true, false, false, false], "XNOR": [true, false, false, true]}
+	for m in Signals.GATES.size():
+		g["st"]["m"] = m
+		var row: Array = want[Signals.GATES[m]]
+		var got := [_step(g, [false, false], {}), _step(g, [true, false], {}), _step(g, [false, true], {}), _step(g, [true, true], {})]
+		check(got == row, "%s gate truth table (%s)" % [Signals.GATES[m], str(got)])
+	# A toggle latch flips on each rising edge, not while held.
+	var l := _pw("logic_latch", 1)
+	var mem := {}
+	var seq := [[false], [true], [true], [false], [true], [false]]
+	var outs: Array = []
+	for ins in seq:
+		outs.append(_step(l, ins, mem))
+	check(outs == [false, true, true, true, false, false], "toggle latch flips on rising edges (%s)" % str(outs))
+	check(l["st"].get("lt", true) == false, "the latch keeps its state in st")
+	# Set / reset: the first wire in sets, the others reset.
+	l["st"]["m"] = 1
+	l["st"]["lt"] = false
+	mem = {}
+	check(_step(l, [true, false], mem), "set")
+	check(_step(l, [false, false], mem), "stays set")
+	check(not _step(l, [false, true], mem), "reset")
+	check(not _step(l, [true, true], mem), "reset wins a tie")
+	# A counter pulses every N rising edges.
+	var c := _pw("logic_counter", 2) # first setting: every 2
+	mem = {}
+	var hits := 0
+	for n in 6:
+		_step(c, [true], mem, {"now": n * 2.0})
+		if _step(c, [false], mem, {"now": n * 2.0 + 0.1}):
+			hits += 1
+	check(hits == 3, "a counter set to 2 fires on every second pulse (%d of 6)" % hits)
+	# A delay passes a change on after its time.
+	var d := _pw("logic_delay", 3)
+	d["st"]["a"] = 2 # 2 s
+	mem = {}
+	check(not _step(d, [true], mem, {"now": 0.0}), "delay: not yet")
+	check(not _step(d, [true], mem, {"now": 1.5}), "delay: still not")
+	check(_step(d, [true], mem, {"now": 2.1}), "delay: on after 2 s")
+	check(_step(d, [false], mem, {"now": 3.0}), "delay: holds on after the input drops")
+	check(not _step(d, [false], mem, {"now": 5.1}), "delay: off 2 s after")
+
+func test_power_signal_sources() -> void:
+	var lever := _pw("lever", 0)
+	check(not _step(lever, [], {}), "a new lever is off")
+	lever["st"]["on"] = true
+	check(_step(lever, [], {}), "a pulled lever is on")
+	var b := _pw("push_button", 1)
+	Signals.press(b, 3.0, 1440.0)
+	check(_step(b, [], {}, {"day": 3.0 + 0.5 / 1440.0}) and not _step(b, [], {}, {"day": 3.0 + 1.5 / 1440.0}), "a button is on for its 1 s pulse")
+	var t := _pw("logic_timer", 2) # on 1 s every 5 s
+	var on := 0
+	for n in 50:
+		if _step(t, [], {}, {"clock": 100.0 + n * 0.1}):
+			on += 1
+	check(on == 10, "timer on 1 s in every 5 (%d of 50 ticks)" % on)
+	var clk := _pw("logic_clock", 3) # dusk to dawn
+	check(_step(clk, [], {}, {"hour": 23.0}) and _step(clk, [], {}, {"hour": 2.0}) and not _step(clk, [], {}, {"hour": 12.0}), "a time switch set dusk to dawn wraps midnight")
+	var day := _pw("daylight_sensor", 4)
+	check(_step(day, [], {}, {"night": true}) and not _step(day, [], {}, {"night": false}), "a daylight sensor is on at night")
+	var ch := _pw("charge_sensor", 5)
+	ch["st"]["a"] = 2 # 50 %
+	check(_step(ch, [], {}, {"charge": 60.0}) and not _step(ch, [], {}, {"charge": 40.0}), "charge sensor on above its level")
+	ch["st"]["m"] = 1
+	check(_step(ch, [], {}, {"charge": 40.0}) and not _step(ch, [], {}, {"charge": -1.0}), "or below it, and off with no batteries")
+	var plate := _pw("pressure_plate", 6)
+	var seen := []
+	var near := func(r: float, who: String, cone: bool) -> bool:
+		seen.append([r, who, cone])
+		return true
+	check(_step(plate, [], {}, {"near": near}) and seen[0] == [Signals.PRESENCE, "anyone", false], "a plate asks who stands on it")
+	# Every setting cycles and reads back in words, with no text left blank.
+	for id in ["push_button", "pressure_plate", "motion_sensor", "daylight_sensor", "logic_timer", "logic_clock", "logic_gate", "logic_latch", "logic_counter", "logic_delay", "charge_sensor"]:
+		var o := _pw(id, 9)
+		var first := Signals.describe_setting(o)
+		var after := Signals.cycle(o, id == "push_button")
+		check(first != "" and after != "", "%s describes its setting (%s -> %s)" % [id, first, after])
+		check(Signals.verb(o, false) != "", "%s has a verb" % id)
+
+func test_power_signal_wiring() -> void:
+	var lever := _pw("lever", 0)
+	var lamp := _pw("lamp_wall", 1)
+	var relay := _pw("relay", 2)
+	var gate := _pw("logic_gate", 3)
+	check(Signals.link(lever, "0,0,0", lamp, "0,0,1"), "lever wired into a lamp")
+	check(not Signals.link(lever, "0,0,0", lamp, "0,0,1"), "not twice")
+	check(not Signals.link(lamp, "0,0,1", lever, "0,0,0"), "a lamp makes no signal")
+	check(not Signals.link(_pw("lever", 4), "0,0,4", lamp, "0,0,1"), "a lamp takes one signal")
+	check(lever["st"]["so"] == ["0,0,1"] and lamp["st"]["si"] == ["0,0,0"], "both ends know the wire")
+	for n in 4:
+		check(Signals.link(_pw("lever", 10 + n), "0,0,%d" % (10 + n), gate, "0,0,3"), "gate input %d" % n)
+	check(not Signals.link(_pw("lever", 20), "0,0,20", gate, "0,0,3"), "a gate takes 4 inputs")
+	check(Signals.link(gate, "0,0,3", relay, "0,0,2"), "gate into a relay")
+	check(Signals.max_in(_pw("windmill", 5)) == 1 and Signals.max_in(_pw("power_pole", 6)) == 0, "generators take a signal, poles don't")
+	check(Power.max_links(lever) == 0, "a lever takes no power cable")
+	# A consumer told off by its signal draws nothing; a generator told off makes nothing.
+	var gen := _pw("windmill", 7)
+	var r := Power.solve([{"id": "a", "o": gen, "f": 1.0, "en": false}, {"id": "b", "o": _pw("lamp_ceiling", 8), "f": 1.0}], {"wind": 1.0}, 1.0)
+	check(r["supply"] == 0.0 and r["demand"] > 0.0, "a windmill told off makes nothing")
+	r = Power.solve([{"id": "a", "o": _pw("windmill", 7), "f": 1.0}, {"id": "b", "o": _pw("lamp_ceiling", 8), "f": 1.0, "en": false}], {"wind": 1.0}, 1.0)
+	check(r["demand"] == 0.0 and not r["pieces"]["b"]["powered"], "a lamp told off draws nothing")
+
+func test_power_defences() -> void:
+	check(absf(Defences.to_segment(Vector3(1, 1, 0), Vector3.ZERO, Vector3(2, 0, 0)) - 1.0) < 0.001, "distance to a fence span")
+	check(Defences.to_segment(Vector3(5, 0, 0), Vector3.ZERO, Vector3(2, 0, 0)) > 2.9, "past the end of a span is measured to its end")
+	check(Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(0.5, 0, -3), 4.0, 0.8), "in the flame's cone")
+	check(not Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(3, 0, -1), 4.0, 0.8), "off to the side is out of it")
+	check(not Defences.in_cone(Vector3.ZERO, Vector3(0, 0, -1), Vector3(0, 0, -6), 4.0, 0.8), "and so is too far")
+	for id in ["auto_turret", "heavy_turret", "fence_post", "spike_trap", "flame_trap", "alarm_bell", "searchlight"]:
+		var o := _pw(id, 0)
+		check(Defences.is_defence(o) and int(Power.spec(o).get("prio", 0)) == 2, "%s is a defence, last to brown out" % id)
+		check(Signals.max_in(o) == 1, "%s can be armed by a signal" % id)
+		check(not Defences.lines(o, true).is_empty(), "%s describes itself" % id)
+	check(_pw("flame_trap", 0)["st"].has("fuel"), "a flame trap has a fuel store")
+	check(Defences.hostile_creature(null) == false and Defences.hostile_npc(null) == false, "nothing is no target")
+
 func test_fov_is_horizontal() -> void:
 	var gs = load("res://src/settings/graphics_settings.gd")
 	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
 	check(absf(gs.vertical_fov(121.28) - 90.0) < 0.05, "the old 90 tall is about 121 across")
 	check(is_equal_approx(float(gs.DEFAULTS["fov"]), 90.0), "the default view is 90 degrees across")
+
+func test_power_automation() -> void:
+	var belt := _pw("conveyor_belt", 0)
+	var rock := ItemDB.make("stone", 1, 1.0, {})
+	check(Automation.put(belt, rock) and not Automation.put(belt, rock.duplicate()), "a belt takes an item at its start, then not another right on top")
+	Automation.roll(belt, 0.3)
+	check(Automation.put(belt, rock.duplicate()), "once the first has moved on, the next goes on")
+	var ended := false
+	for n in 10:
+		ended = Automation.roll(belt, 0.1) or ended
+	check(ended and float(belt["st"]["q"][0][1]) == 1.0, "the front item reaches the end")
+	check(float(belt["st"]["q"][0][1]) - float(belt["st"]["q"][1][1]) >= Automation.GAP - 0.001, "items keep their gap")
+	check(Automation.take(belt)["type"] == "stone" and belt["st"]["q"].size() == 1, "an arm can take the front item off")
+	# A furnace smelts ore put in it and gives out only the ingots.
+	var fur := _pw("electric_furnace", 1)
+	check(not Automation.put(fur, ItemDB.make("planks", 1, 1.0, {})), "a furnace won't take planks")
+	for n in 4:
+		check(Automation.put(fur, ItemDB.make("iron_ore", 1, 1.0, {})), "a furnace takes iron ore")
+	var rng := RandomNumberGenerator.new()
+	check(Automation.work(fur, "", 10, {}, rng), "it smelts")
+	var inv := Storage.open(fur)
+	check(inv.count("iron_ingot") >= 1 and inv.count("iron_ore") < 4, "ore became ingots (%d ingots, %d ore)" % [inv.count("iron_ingot"), inv.count("iron_ore")])
+	check(Automation.take(fur)["type"] == "iron_ingot", "it lets go of the ingots, not the ore")
+	# A sawmill saws logs.
+	var saw := _pw("power_sawmill", 2)
+	Automation.put(saw, ItemDB.make("wood", 1, 1.0, {}))
+	check(Automation.work(saw, "", 10, {}, rng) and Storage.open(saw).count("planks") == 6, "a sawmill makes 6 planks a log")
+	# An auto-miner drills its vein for ever; with no vein it does nothing.
+	var miner := _pw("auto_miner", 3)
+	check(not Automation.work(miner, "", 10, {}, rng), "no vein, no ore")
+	for n in 3:
+		Automation.work(miner, "iron_vein", 10, {}, rng)
+	check(Storage.open(miner).count("iron_ore") == 3, "three cycles, three iron ore")
+	check(not Automation.put(miner, ItemDB.make("stone", 1, 1.0, {})), "nothing goes into a miner")
+	check(Automation.main_yield("rock") == "stone", "a quarry digs stone")
+	# An assembler picks a recipe it has the makings for.
+	var asm := _pw("assembler", 4)
+	check(Automation.next_recipe(asm) == "", "an empty assembler has nothing to make")
+	Automation.put(asm, ItemDB.make("copper_wire", 1, 1.0, {}))
+	Automation.put(asm, ItemDB.make("resin", 1, 1.0, {}))
+	var what := Automation.next_recipe(asm)
+	check(what != "" and Automation.work(asm, "", 10, {}, rng), "with wire and resin in it, it makes something (%s)" % what)
+	check(Automation.is_container("b:storage_chest") and Automation.is_container("b:conveyor_belt") and not Automation.is_container("b:robot_arm"), "chests and belts hold items, arms don't")
+	var wheel := _pw("water_wheel", 5)
+	var r := Power.solve([{"id": "w", "o": wheel, "f": 1.0}, {"id": "l", "o": _pw("lamp_ceiling", 6), "f": 1.0}], {}, 1.0)
+	check(is_equal_approx(float(r["supply"]), 600.0), "a water wheel in a river makes its full 600 W")
+	r = Power.solve([{"id": "w", "o": _pw("water_wheel", 5), "f": 0.0}], {}, 1.0)
+	check(float(r["supply"]) == 0.0, "and nothing on dry ground")
 
 
 func test_water_life() -> void:

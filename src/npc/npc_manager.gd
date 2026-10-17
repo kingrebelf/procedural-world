@@ -208,6 +208,14 @@ func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 	_by_id[rec["id"]] = n
 	return n
 
+## Where the people within `radius` of `at` stand (for sensors and pressure plates).
+func people_near(at: Vector3, radius: float) -> Array:
+	var out: Array = []
+	for n in _by_id.values():
+		if is_instance_valid(n) and (n as Node3D).global_position.distance_to(at) <= radius:
+			out.append((n as Node3D).global_position)
+	return out
+
 ## Whether this game runs the town's people (always, offline).
 func runs(e: Dictionary) -> bool:
 	return Net.holds(kind_of(e["data"]), _key2(e["data"]))

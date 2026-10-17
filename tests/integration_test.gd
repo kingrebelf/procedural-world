@@ -302,12 +302,182 @@ func _power_checks(game, world, player: Player, pc: ChunkNode, lp: Vector3) -> v
 	check(await wait.call(true), "closing it lights the lamp again")
 	grid.use_piece(pc, lamp, false)
 	check(await wait.call(false), "the lamp switches off on its own")
+	await _signal_checks(game, grid, player, pc, lp, gen, lamp, mk, lit, wait)
+	await _defence_checks(game, world, grid, player, pc, lp, gen, mk)
+	await _automation_checks(game, grid, player, pc, lp, gen, mk)
 	var before: int = game.inventory.count("copper_wire")
 	check(player.deconstruct(pc, sw) and sw["st"].get("gone", false), "the switch comes down")
 	check(game.inventory.count("copper_wire") > before and Power.links(gen).is_empty(), "its cables come down with it, as wire")
 	for o in [gen, lamp, far]:
 		player.deconstruct(pc, o)
-	for t in ["copper_wire", "gen_woodgas", "lamp_wall", "knife_switch"]:
+	for t in ["copper_wire", "signal_wire", "gen_woodgas", "lamp_wall", "knife_switch", "lever", "relay", "door_motor", "pressure_plate", "wall_door", "door_wood"]:
+		game.inventory.remove_type(t, game.inventory.count(t))
+
+## The logic layer: a lever works a lamp through a signal wire and a relay, a door motor
+## opens and shuts a door on the lever, and a pressure plate senses you on it.
+func _signal_checks(game, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Vector3, gen: Dictionary, lamp: Dictionary, mk: Callable, lit: Callable, wait: Callable) -> void:
+	_make_room(game, 6)
+	game.give(ItemDB.make("signal_wire", 12, 1.0, game.origin_here("crafted", -1, pc.key)))
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	grid.use_piece(pc, lamp, false) # back on
+	check(await wait.call(true), "the lamp is lit again before the signal test")
+	var lever: Dictionary = mk.call("lever", lp + Vector3(5, 1.4, 1))
+	var s0: int = game.inventory.count("signal_wire")
+	check(grid.connect_signal(pc, lever, pc, lamp) == "", "a signal wire runs from the lever into the lamp")
+	check(game.inventory.count("signal_wire") < s0, "it uses Signal Wire")
+	check(grid.connect_signal(pc, lamp, pc, lever) != "", "a lamp makes no signal to wire from")
+	check(await wait.call(false), "with the lever off, the lamp it is wired to goes dark")
+	grid.use_piece(pc, lever, false)
+	check(Power.is_on(lever) and await wait.call(true), "pulling the lever lights it")
+	grid.use_piece(pc, lever, false)
+	check(await wait.call(false), "and pushing it back puts it out")
+	check(" ".join(grid.describe(pc, lamp, false)).contains("Signal in: 1 wire"), "the lamp's look-at shows its signal wire")
+	# A door motor by a door, powered from the generator, worked by the same lever.
+	var dway: Dictionary = pc.add_built("wall_door", lp + Vector3(0, 0, 6), 0.0, {"by": "you", "day": 0.0})
+	var dst := {"by": "you", "day": 0.0}
+	Doors.init_state(dst)
+	var door: Dictionary = pc.add_built("door_wood", dway["p"], 0.0, dst)
+	var motor: Dictionary = mk.call("door_motor", dway["p"] + Vector3(1.4, 1.6, 0.1))
+	var why: String = grid.connect_pieces(pc, gen, pc, motor)
+	check(why == "", "the motor is cabled to the generator (%s)" % why)
+	check(grid.connect_signal(pc, lever, pc, motor) == "", "and wired to the lever")
+	check(not grid.door_by(pc.position + motor["p"]).is_empty(), "the motor finds the door beside it")
+	await _frames(30)
+	check(not Doors.is_open(door), "the door starts shut")
+	grid.use_piece(pc, lever, false)
+	var t0 := Time.get_ticks_msec()
+	while not Doors.is_open(door) and Time.get_ticks_msec() - t0 < 3000:
+		await process_frame
+	check(Doors.is_open(door), "pulling the lever, the motor opens the door")
+	grid.use_piece(pc, lever, false)
+	t0 = Time.get_ticks_msec()
+	while Doors.is_open(door) and Time.get_ticks_msec() - t0 < 3000:
+		await process_frame
+	check(not Doors.is_open(door), "and pushing it back shuts it")
+	# A pressure plate under your feet, wired through a relay in the lamp's line.
+	var plate: Dictionary = mk.call("pressure_plate", player.global_position - pc.position)
+	t0 = Time.get_ticks_msec()
+	while not grid._signal(PowerGrid.id_of(pc, plate)) and Time.get_ticks_msec() - t0 < 2000:
+		await process_frame
+	check(grid._signal(PowerGrid.id_of(pc, plate)), "standing on a pressure plate presses it (you %s, plate %s)" % [player.global_position, pc.position + plate["p"]])
+	var lamp2: Dictionary = mk.call("lamp_wall", lp + Vector3(2, 1.8, 3))
+	var relay: Dictionary = mk.call("relay", lp + Vector3(1, 1.5, 3))
+	why = grid.connect_pieces(pc, gen, pc, relay)
+	var why2: String = grid.connect_pieces(pc, relay, pc, lamp2)
+	check(why == "" and why2 == "", "a relay cabled in the line to a second lamp (%s / %s)" % [why, why2])
+	check(grid.connect_signal(pc, plate, pc, relay) == "", "the plate wired to the relay")
+	var lit2 := func() -> bool:
+		var pn: PowerNode = pc.power_node(lamp2["i"])
+		return pn != null and pn._lit
+	t0 = Time.get_ticks_msec()
+	while not lit2.call() and Time.get_ticks_msec() - t0 < 3000:
+		await process_frame
+	check(Power.is_on(relay) and lit2.call(), "the plate closes the relay and the lamp beyond it lights")
+	var sb: int = game.inventory.count("signal_wire")
+	check(player.deconstruct(pc, lever), "the lever comes down")
+	check(game.inventory.count("signal_wire") > sb and Signals.inputs(lamp).is_empty() and Signals.inputs(motor).is_empty(), "its signal wires come down with it, as Signal Wire")
+	for o in [plate, relay, lamp2, motor, door, dway]:
+		player.deconstruct(pc, o)
+
+## A powered turret loads ammo and shoots an attacking animal it can see, and leaves a
+## tame one alone; an alarm bell rings on its signal.
+func _defence_checks(game, world, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Vector3, gen: Dictionary, mk: Callable) -> void:
+	_make_room(game, 4)
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	game.give(ItemDB.make("wood", 6, 1.0, game.origin_here("crafted", -1, pc.key)))
+	grid.use_piece(pc, gen, false) # top the generator up
+	var tur: Dictionary = mk.call("auto_turret", lp + Vector3(-3, 0, -3))
+	var why: String = grid.connect_pieces(pc, gen, pc, tur)
+	check(why == "", "the turret is cabled to the generator (%s)" % why)
+	game.give(ItemDB.make("rifle_cartridges", 20, 1.0, game.origin_here("crafted", -1, pc.key)))
+	check(PowerGrid.verb(tur, false).begins_with("Load"), "with cartridges in the pack, Interact loads the turret")
+	grid.use_piece(pc, tur, false)
+	check(int(tur["st"].get("ammo", 0)) == 20 and game.inventory.count("rifle_cartridges") == 0, "it takes the cartridges (%d)" % int(tur["st"].get("ammo", 0)))
+	check(" ".join(grid.describe(pc, tur, false)).contains("Ammo: 20"), "its look-at shows the ammo")
+	# An animal held still in front of it: tame first, then attacking.
+	var sp := 0
+	while Creature.species(sp, Eras.MEDIEVAL)["kit"] == "":
+		sp += 1
+	var cr := Creature.new()
+	var tw: Vector3 = pc.position + tur["p"]
+	# Somewhere it can see 8 m off (the test's other pieces stand about).
+	var spot := tw + Vector3(0, 0, -8)
+	for a in 16:
+		var p := tw + Vector3(cos(a * TAU / 16.0), 0, sin(a * TAU / 16.0)) * 8.0
+		p.y = tw.y
+		if grid._clear(tw + Vector3(0, 1.3, 0), p + Vector3(0, 0.6, 0), null):
+			spot = p
+			break
+	cr.setup("test_turret_target", sp, Eras.MEDIEVAL, spot, world.fauna)
+	world.fauna.add_child(cr)
+	cr.p = cr.p.duplicate()
+	cr.p["temper"] = "tame"
+	cr.held_for = 1.0e6
+	var scan0: float = world.fauna._scan
+	world.fauna._scan = 1.0e9
+	world.fauna._herds[Vector2i(99998, 99998)] = [cr]
+	await _frames(3)
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 1500:
+		await process_frame
+	check(int(tur["st"]["ammo"]) == 20, "a turret leaves a tame animal alone")
+	cr.p["temper"] = "aggressive"
+	var hp0 := cr.hp
+	t0 = Time.get_ticks_msec()
+	while cr.hp >= hp0 and Time.get_ticks_msec() - t0 < 6000:
+		await process_frame
+	check(int(tur["st"]["ammo"]) < 20 and cr.hp < hp0, "it turns and shoots an attacking animal (ammo %d, hp %.0f -> %.0f)" % [int(tur["st"]["ammo"]), hp0, cr.hp])
+	world.fauna._herds.erase(Vector2i(99998, 99998))
+	world.fauna._scan = scan0
+	if is_instance_valid(cr):
+		cr.queue_free()
+	# The alarm bell rings while the signal wired into it is on.
+	var bell: Dictionary = mk.call("alarm_bell", lp + Vector3(-1, 1.6, -3))
+	var lever: Dictionary = mk.call("lever", lp + Vector3(-1, 1.2, -2))
+	game.give(ItemDB.make("signal_wire", 4, 1.0, game.origin_here("crafted", -1, pc.key)))
+	check(grid.connect_pieces(pc, gen, pc, bell) == "" and grid.connect_signal(pc, lever, pc, bell) == "", "a bell cabled in and wired to a lever")
+	grid.use_piece(pc, lever, false)
+	var bn: PowerNode = pc.power_node(bell["i"])
+	t0 = Time.get_ticks_msec()
+	while (bn == null or bn._ring <= 0.0) and Time.get_ticks_msec() - t0 < 2000:
+		await process_frame
+	check(bn != null and bn._ring > 0.0, "pulling the lever rings the bell")
+	for o in [tur, bell, lever]:
+		player.deconstruct(pc, o)
+	for t in ["auto_turret", "alarm_bell", "lever", "rifle_cartridges", "signal_wire"]:
+		game.inventory.remove_type(t, game.inventory.count(t))
+
+## A hopper tips stone onto two powered belts, which carry it into a chest.
+func _automation_checks(game, grid: PowerGrid, player: Player, pc: ChunkNode, lp: Vector3, gen: Dictionary, mk: Callable) -> void:
+	_make_room(game, 4)
+	game.give(ItemDB.make("copper_wire", 10, 1.0, game.origin_here("crafted", -1, pc.key)))
+	game.give(ItemDB.make("wood", 6, 1.0, game.origin_here("crafted", -1, pc.key)))
+	grid.use_piece(pc, gen, false)
+	var base := lp + Vector3(-6, 0, 2)
+	var hop: Dictionary = mk.call("hopper", base)
+	var b1: Dictionary = mk.call("conveyor_belt", base + Vector3(0, 0, 1))
+	var b2: Dictionary = mk.call("conveyor_belt", base + Vector3(0, 0, 2))
+	var chest: Dictionary = pc.add_built("storage_chest", base + Vector3(0, 0, 3), 0.0, {"by": "you", "day": 0.0})
+	var w1: String = grid.connect_pieces(pc, gen, pc, b1)
+	var w2: String = grid.connect_pieces(pc, b1, pc, b2)
+	check(w1 == "" and w2 == "", "the belts are cabled to the generator (%s / %s)" % [w1, w2])
+	var inv := Storage.open(hop)
+	inv.add(ItemDB.make("stone", 3, 1.0, {}))
+	Storage.save(hop, inv)
+	var t0 := Time.get_ticks_msec()
+	while Storage.open(chest).count("stone") < 3 and Time.get_ticks_msec() - t0 < 8000:
+		await process_frame
+	check(Storage.open(chest).count("stone") == 3, "the hopper's stone rides the belts into the chest (%d)" % Storage.open(chest).count("stone"))
+	check(" ".join(grid.describe(pc, b1, false)).contains("Carrying"), "a belt's look-at says what it carries")
+	var pn: PowerNode = pc.power_node(b1["i"])
+	check(pn != null and pn._belt != null, "a belt draws the items riding it")
+	for o in [b1, b2, hop]:
+		player.deconstruct(pc, o)
+	var cinv := Storage.open(chest)
+	cinv.remove_type("stone", 3)
+	Storage.save(chest, cinv)
+	player.deconstruct(pc, chest)
+	for t in ["conveyor_belt", "hopper", "storage_chest"]:
 		game.inventory.remove_type(t, game.inventory.count(t))
 
 func _frames(n: int) -> void:

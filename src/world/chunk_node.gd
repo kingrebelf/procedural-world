@@ -1713,7 +1713,7 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 		_add_obj_body(o)
 	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
-	if Power.is_power(t):
+	if Power.is_power(t) or Automation.is_container(t):
 		PowerGrid.changed(self)
 	if BuildCatalog.is_built(t):
 		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
@@ -1741,7 +1741,7 @@ func remove_object(i: int) -> void:
 		refresh_far()
 	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
-	if Power.is_power(o["t"]):
+	if Power.is_power(o["t"]) or Automation.is_container(o["t"]):
 		PowerGrid.changed(self)
 	if BuildCatalog.is_built(o["t"]):
 		var lp: Vector3 = o["p"]
