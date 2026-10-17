@@ -11,7 +11,7 @@ class_name GrassKit
 
 const SPECIES := ["turf", "meadow", "tall", "flowers_0", "flowers_1", "flowers_2", "flowers_3"]
 ## [thinning starts, all gone] in metres from the camera.
-const RANGE := {"turf": Vector2(12.0, 34.0), "meadow": Vector2(24.0, 92.0), "tall": Vector2(30.0, 100.0), "flowers": Vector2(18.0, 64.0)}
+const RANGE := {"turf": Vector2(18.0, 48.0), "meadow": Vector2(40.0, 110.0), "tall": Vector2(45.0, 115.0), "flowers": Vector2(30.0, 85.0)}
 ## Petal and centre colours (sRGB) of the wildflowers.
 const PETALS := [[Color(0.93, 0.93, 0.88), Color(0.95, 0.75, 0.15)], [Color(0.96, 0.8, 0.16), Color(0.85, 0.62, 0.1)],
 	[Color(0.42, 0.48, 0.86), Color(0.3, 0.28, 0.5)], [Color(0.82, 0.16, 0.1), Color(0.12, 0.1, 0.08)]]

@@ -293,7 +293,7 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 	bloom.fractal_octaves = 1
 	var x0 := float(chunk["cx"]) * SIZE
 	var z0 := float(chunk["cz"]) * SIZE
-	var count := int(12000 * density)
+	var count := int(16000 * density)
 	var has_cave := false
 	for o in chunk["objects"]:
 		if o["t"] == "cave":
@@ -447,7 +447,7 @@ static func _scatter_stones(chunk: Dictionary, density: float, cover: PackedByte
 	var has_cave := chunk.has("hole")
 	var solid := PackedFloat32Array()
 	var greys := [Color(0.56, 0.54, 0.5), Color(0.5, 0.47, 0.42), Color(0.62, 0.6, 0.57), Color(0.47, 0.46, 0.45)]
-	for n in int(20000 * density):
+	for n in int(28000 * density):
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
 		var cv := GroundCover.at(cover, lx, lz)
