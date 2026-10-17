@@ -149,8 +149,8 @@ const KIT := {
 	"sword_iron": ["props/Sword_Bronze", 0.85, Color(0.9, 0.92, 0.96)],
 	"sword_runic": ["props/Sword_Bronze", 0.85, Color(0.6, 0.75, 1.0)],
 	"pickaxe_plasma": ["scifi/Pistol_2", 0.34, null],
-	"dagger": ["props/Sword_Bronze", 0.5, Color(0.88, 0.9, 0.95)],
-	"skinning_knife": ["props/Sword_Bronze", 0.36, Color(0.78, 0.78, 0.74)],
+	"dagger": ["props/Sword_Bronze", 0.34, Color(0.88, 0.9, 0.95)],
+	"skinning_knife": ["props/Sword_Bronze", 0.24, Color(0.78, 0.78, 0.74)],
 	"battle_axe": ["props/Axe_Bronze", 1.15, Color(0.7, 0.72, 0.76)],
 }
 
@@ -243,13 +243,14 @@ static func model(t: String) -> ArrayMesh:
 	elif _forged(t) != null:
 		out = _forged(t)
 	elif t == "hammer" and ResourceLoader.exists("res://assets/models/props/Pickaxe_Bronze.gltf"):
-		# The pickaxe's wooden handle, shortened, with a squared iron head.
-		out = kit_mesh("props/Pickaxe_Bronze", Transform3D.IDENTITY.scaled(Vector3(0.6, 0.5, 0.6)), null, true)
+		# The pickaxe's wooden handle, cut down to a real hammer's 0.36 m, with a squared
+		# iron head about 0.2 m across: a round face one side, the claw the other.
+		out = kit_mesh("props/Pickaxe_Bronze", Transform3D.IDENTITY.scaled(Vector3(0.6, 0.3, 0.6)), null, true)
 		var k := MeshKit.new(3)
-		var hy := 0.25
-		k.box("metal", Transform3D.IDENTITY.translated(Vector3(0.02, hy, 0)), Vector3(0.17, 0.065, 0.065))
-		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.115, hy, 0)), 0.042, 0.042, 0.05, 10)
-		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.09, hy + 0.015, 0)), Vector3(0.07, 0.045, 0.05))
+		var hy := 0.18
+		k.box("metal", Transform3D.IDENTITY.translated(Vector3(0.01, hy, 0)), Vector3(0.12, 0.042, 0.04))
+		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.083, hy, 0)), 0.02, 0.02, 0.03, 12)
+		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.07, hy + 0.01, 0)), Vector3(0.06, 0.03, 0.036))
 		_append(out, k.commit(Materials.get_mat))
 	else:
 		var def := ItemDB.def(t)
@@ -258,6 +259,7 @@ static func model(t: String) -> ArrayMesh:
 		var k := MeshKit.new(3)
 		k.box("painted", Transform3D.IDENTITY, Vector3(0.12, 0.12, 0.12), def.get("color", Color.WHITE))
 		out = k.commit(Materials.get_mat)
+		out.set_meta("placeholder", true) # no model yet: a painted block
 	_models[t] = out
 	return out
 

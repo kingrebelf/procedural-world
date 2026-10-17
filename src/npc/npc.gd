@@ -85,8 +85,9 @@ func _ready() -> void:
 	_pace = BodyShape.pace(b, age)
 	if HumanModel.available():
 		_human = HumanModel.new()
-		_human.build(b, int(rec["era"]), String(rec["job"]), age)
+		# Scaled first: what the hands hold is sized against it (HumanModel.hold).
 		_human.scale = Vector3(_scale, _scale, _scale)
+		_human.build(b, int(rec["era"]), String(rec["job"]), age)
 		add_child(_human)
 		_model = _human
 		if manager and manager.has_method("ground"):
