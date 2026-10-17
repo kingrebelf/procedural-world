@@ -73,7 +73,7 @@ func close_talk() -> void:
 		_panel.queue_free()
 		_panel = null
 	player.ui_open = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Cursor.restore()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if npc != null and event.is_action_pressed("pause"):
@@ -104,7 +104,7 @@ func _process(_d: float) -> void:
 		if npc == null:
 			visible = false
 			player.ui_open = false
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			Cursor.restore()
 			if _panel:
 				_panel.queue_free()
 				_panel = null

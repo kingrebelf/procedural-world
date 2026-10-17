@@ -12,6 +12,8 @@ var _trader_chunk: ChunkNode
 var _store_obj: Dictionary ## the storage chest that is open
 var _store_chunk: ChunkNode
 var _store: Inventory
+var _backdrop: TextureRect ## darkens the world behind an open menu
+var _animate := false ## the next panel built fades and scales in
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -22,6 +24,24 @@ func _ready() -> void:
 	Game.inventory.changed.connect(_refresh)
 	Game.money_changed.connect(func(_m): _refresh())
 	Game.stats_changed.connect(func(): if _mode == "character": _refresh())
+	Game.equipment_changed.connect(func(): if _mode == "inventory" or _mode == "character": _refresh())
+	_backdrop = TextureRect.new()
+	var g := Gradient.new()
+	g.colors = PackedColorArray([Color(0, 0, 0, 0.25), Color(0, 0, 0, 0.72)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.1, 1.1)
+	gt.width = 128
+	gt.height = 128
+	_backdrop.texture = gt
+	_backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_backdrop.stretch_mode = TextureRect.STRETCH_SCALE
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	_backdrop.visible = false
+	add_child(_backdrop)
 
 func is_open() -> bool:
 	return _mode != ""
@@ -47,7 +67,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_toggle("map")
 	elif event.is_action_pressed("character"):
 		_toggle("character")
-	elif event is InputEventMouseButton and event.pressed and _mode == "" and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	elif event.is_action_pressed("mouse_toggle") and not event.is_echo():
+		# Free the pointer to click on things, or lock it to steer again. In a menu the
+		# pointer is free anyway; the choice applies once the menu closes.
+		Cursor.free = not Cursor.free
+		if _mode == "":
+			Cursor.restore()
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed and _mode == "" and not Cursor.free and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 func _toggle(m: String) -> void:
@@ -58,6 +85,7 @@ func _toggle(m: String) -> void:
 	get_viewport().set_input_as_handled()
 
 func open(m: String) -> void:
+	_animate = _mode == ""
 	_mode = m
 	_swap_from = -1
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -73,7 +101,8 @@ func close() -> void:
 	if _panel:
 		_panel.queue_free()
 		_panel = null
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_backdrop.visible = false
+	Cursor.restore()
 	if player:
 		player.ui_open = false
 	get_tree().paused = false
@@ -116,31 +145,95 @@ func _refresh() -> void:
 		"travel": _panel = _travel_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
+	_backdrop.visible = true
 	add_child(_panel)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 	_panel.reset_size()
-	_panel.position = (get_viewport_rect().size - _panel.get_combined_minimum_size()) * 0.5
+	_panel.position = ((get_viewport_rect().size - _panel.get_combined_minimum_size()) * 0.5).round()
+	if _animate:
+		_animate = false
+		_panel.pivot_offset = _panel.get_combined_minimum_size() * 0.5
+		_panel.modulate.a = 0.0
+		_panel.scale = Vector2(0.96, 0.96)
+		var tw := _panel.create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_panel, "modulate:a", 1.0, 0.14)
+		tw.tween_property(_panel, "scale", Vector2.ONE, 0.18)
 	if Game.using_pad:
 		UITheme.focus_first.call_deferred(_panel)
+
+## The main screens share one tab strip so you can hop between them.
+const TABS := [["inventory", "Inventory"], ["craft", "Crafting"], ["character", "Character"], ["map", "Atlas"]]
 
 func _shell(title: String, subtitle: String = "") -> Array:
 	var p := PanelContainer.new()
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 12)
+	v.add_theme_constant_override("separation", 10)
 	p.add_child(v)
 	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 14)
 	var tv := VBoxContainer.new()
-	tv.add_child(UITheme.title(title))
+	tv.add_theme_constant_override("separation", 0)
+	tv.add_child(UITheme.title(title, 32))
 	if subtitle != "":
 		tv.add_child(UITheme.label(subtitle, 15, UITheme.DIM))
 	h.add_child(tv)
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(sp)
-	h.add_child(UITheme.label("%d Marks" % Game.money, 22, UITheme.ACCENT))
-	h.add_child(UITheme.button("Close", close))
+	var mt := UITheme.money_tag(Game.money, 22)
+	mt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(mt)
+	h.add_child(_close_button())
 	v.add_child(h)
+	if TABS.any(func(t): return t[0] == _mode):
+		v.add_child(_tab_strip())
+	v.add_child(UITheme.divider())
 	return [p, v]
+
+func _tab_strip() -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	for t in TABS:
+		var m: String = t[0]
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+		var inner := HBoxContainer.new()
+		inner.add_theme_constant_override("separation", 8)
+		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inner.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		inner.alignment = BoxContainer.ALIGNMENT_CENTER
+		var l := UITheme.label(t[1], 17, UITheme.ACCENT if m == _mode else UITheme.DIM)
+		if UITheme.font("bold"):
+			l.add_theme_font_override("font", UITheme.font("bold"))
+		inner.add_child(l)
+		if not Game.using_pad:
+			var kc := UITheme.keycap(Bindings.key_name(m, false), 12)
+			kc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			inner.add_child(kc)
+		b.add_child(inner)
+		b.custom_minimum_size = Vector2(150, 38)
+		b.add_theme_stylebox_override("normal", UITheme.tex_sb("tab_on" if m == _mode else "tab"))
+		b.add_theme_stylebox_override("hover", UITheme.tex_sb("tab_on" if m == _mode else "hover"))
+		b.add_theme_stylebox_override("pressed", UITheme.tex_sb("tab_on"))
+		b.pressed.connect(func(): if m != _mode: open(m))
+		row.add_child(b)
+	return row
+
+## A square button with a drawn X.
+func _close_button() -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(40, 40)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.tooltip_text = "Close  [%s]" % Bindings.key_name("pause", Game.using_pad)
+	b.pressed.connect(close)
+	b.draw.connect(func():
+		var c := b.size * 0.5
+		var col := UITheme.ACCENT if b.is_hovered() else UITheme.TEXT
+		b.draw_line(c + Vector2(-7, -7), c + Vector2(7, 7), col, 2.5, true)
+		b.draw_line(c + Vector2(7, -7), c + Vector2(-7, 7), col, 2.5, true))
+	b.mouse_entered.connect(b.queue_redraw)
+	b.mouse_exited.connect(b.queue_redraw)
+	return b
 
 # --- Character -------------------------------------------------------------------
 
@@ -190,28 +283,13 @@ func _character_panel() -> Control:
 		d.add_child(UITheme.label(row[1], 16))
 	v.add_child(d)
 	v.add_child(HSeparator.new())
-	# Worn armour: use armour from the hotbar to put it on, click a slot to take it off.
-	v.add_child(UITheme.label("Worn armour (use armour from your hotbar to put it on, click to take off)", 14, UITheme.DIM))
+	# Worn armour: the same slots as the body in the Inventory; click one to take it off.
+	v.add_child(UITheme.heading("Worn armour"))
+	v.add_child(UITheme.label("Drag armour onto your body in the Inventory [%s], or right-click it there. Click a piece here to take it off." % Bindings.key_name("inventory", Game.using_pad), 14, UITheme.DIM))
 	var eq := HBoxContainer.new()
 	eq.add_theme_constant_override("separation", 8)
 	for where in Game.ARMOR_SLOTS:
-		var it = Game.equipment.get(where)
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(76, 76)
-		b.add_theme_font_size_override("font_size", 11)
-		if it != null:
-			b.icon = Icons.get_icon(it["type"])
-			b.expand_icon = true
-			b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			b.tooltip_text = UITheme.describe_item(it)
-			b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
-			b.pressed.connect(func():
-				if Game.unequip(where):
-					open("character"))
-		else:
-			b.text = where.capitalize()
-			b.disabled = true
-		eq.add_child(b)
+		eq.add_child(EquipSlot.new(where))
 	v.add_child(eq)
 	return s[0]
 
@@ -220,16 +298,16 @@ func _character_panel() -> Control:
 func _pause_panel() -> Control:
 	var s := _shell("Paused", Game.store.meta.get("name", "") if Game.store else "")
 	var v: VBoxContainer = s[1]
-	s[0].custom_minimum_size = Vector2(460, 0)
-	v.add_child(UITheme.button("Resume", close))
-	v.add_child(UITheme.button("Character", func(): open("character")))
-	v.add_child(UITheme.button("Map", func(): open("map")))
-	v.add_child(UITheme.button("Settings", func(): open("settings")))
-	v.add_child(UITheme.button("Save and quit to menu", func():
+	s[0].custom_minimum_size = Vector2(480, 0)
+	v.add_child(UITheme.big_button("Resume", close))
+	v.add_child(UITheme.big_button("Character", func(): open("character")))
+	v.add_child(UITheme.big_button("Atlas", func(): open("map")))
+	v.add_child(UITheme.big_button("Settings", func(): open("settings")))
+	v.add_child(UITheme.big_button("Save and quit to menu", func():
 		get_tree().paused = false
 		Game.close_world()
 		get_tree().change_scene_to_file("res://src/ui/main_menu.tscn")))
-	v.add_child(UITheme.button("Save and exit to desktop", func():
+	v.add_child(UITheme.big_button("Save and exit to desktop", func():
 		Game.close_world()
 		get_tree().quit()))
 	var meta := Game.store.meta if Game.store else {}
@@ -245,24 +323,49 @@ func _settings_panel() -> Control:
 
 # --- Inventory ----------------------------------------------------------------------
 
+const SLOT_PX := 68
+
+## Dresses a slot button: inset frame (in the item's rank colour), centred icon, and the
+## stack count in the corner.
+static func _style_slot(b: Button, it, px: int) -> void:
+	b.custom_minimum_size = Vector2(px, px)
+	b.focus_mode = Control.FOCUS_ALL if Game.using_pad else Control.FOCUS_NONE
+	b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it) if it != null else UITheme.tex_sb("slot"))
+	b.add_theme_stylebox_override("hover", UITheme.tex_sb("slot_hover"))
+	b.add_theme_stylebox_override("pressed", UITheme.tex_sb("slot_sel"))
+	b.add_theme_stylebox_override("disabled", UITheme.tex_sb("slot"))
+	b.add_theme_stylebox_override("focus", UITheme.tex_sb("slot_hover"))
+	if it == null:
+		return
+	var ic := UITheme.icon_rect(it["type"], px - 12)
+	ic.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ic.offset_left = 6
+	ic.offset_top = 6
+	ic.offset_right = -6
+	ic.offset_bottom = -6
+	b.add_child(ic)
+	if ItemDB.is_stackable(it["type"]):
+		var q := UITheme.label("%d" % it["qty"], 14)
+		q.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		q.add_theme_constant_override("outline_size", 4)
+		q.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		q.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		q.offset_left = -px
+		q.offset_top = -20
+		q.offset_right = -5
+		q.offset_bottom = -1
+		q.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(q)
+	b.tooltip_text = UITheme.describe_item(it)
+
 func _slot_button(i: int) -> Button:
 	var it = Game.inventory.get_slot(i)
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(76, 76)
-	b.add_theme_font_size_override("font_size", 12)
-	if it != null:
-		b.text = ("%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else ""
-		b.icon = Icons.get_icon(it["type"])
-		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		b.tooltip_text = UITheme.describe_item(it)
-		b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
+	_style_slot(b, it, SLOT_PX)
+	if it != null and Game.armor_slot_of(it) != "":
+		b.tooltip_text += "\nRight-click or drag onto your body to wear it"
 	if i == _swap_from:
-		b.add_theme_stylebox_override("normal", UITheme.sb(Color(0.25, 0.2, 0.1, 0.95), UITheme.ACCENT, 6, 2, 6))
-	if i < Inventory.HOTBAR:
-		b.add_theme_color_override("font_color", UITheme.ACCENT)
+		b.add_theme_stylebox_override("normal", UITheme.tex_sb("slot_sel"))
 	b.pressed.connect(func():
 		if _swap_from < 0:
 			if Game.inventory.get_slot(i) != null:
@@ -271,44 +374,122 @@ func _slot_button(i: int) -> Button:
 		else:
 			Game.inventory.swap(_swap_from, i)
 			_swap_from = -1)
+	# Right-click armour to put it on.
+	b.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT:
+			if Game.armor_slot_of(Game.inventory.get_slot(i)) != "":
+				_swap_from = -1
+				Game.equip(i))
 	# Drag and drop: drag any item onto another slot (or onto the hotbar row) to move,
-	# swap or merge it.
+	# swap or merge it, or armour onto your body to wear it.
 	b.set_drag_forwarding(func(_at):
 		if Game.inventory.get_slot(i) == null:
 			return null
-		var prev := TextureRect.new()
-		prev.texture = Icons.get_icon(Game.inventory.get_slot(i)["type"])
-		prev.custom_minimum_size = Vector2(56, 56)
-		prev.size = Vector2(56, 56)
-		prev.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		prev.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		b.set_drag_preview(prev)
+		b.set_drag_preview(_drag_preview(Game.inventory.get_slot(i)["type"]))
 		return {"inv_slot": i},
-		func(_at, d): return d is Dictionary and d.has("inv_slot"),
+		func(_at, d): return d is Dictionary and (d.has("inv_slot") or d.has("equip")),
 		func(_at, d):
 			_swap_from = -1
-			if d["inv_slot"] != i:
+			if d.has("equip"):
+				Game.unequip_to(d["equip"], i)
+			elif d["inv_slot"] != i:
 				Game.inventory.swap(d["inv_slot"], i))
 	return b
 
+static func _drag_preview(type: String) -> Control:
+	var prev := UITheme.icon_rect(type, 60)
+	prev.size = Vector2(60, 60)
+	prev.position = Vector2(-30, -30)
+	var holder := Control.new()
+	holder.add_child(prev)
+	return holder
+
 func _inventory_panel() -> Control:
-	var s := _shell("Inventory", "Drag items between slots, or click one and then another. Hover for where things came from.")
+	var s := _shell("Inventory", "Drag items between slots. Drag armour onto your body to wear it. Hover for details.")
 	var v: VBoxContainer = s[1]
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 22)
+	v.add_child(cols)
+	# Left: the body you dress.
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 8)
+	left.add_child(UITheme.heading("Equipment"))
+	var doll := Mannequin.new()
+	left.add_child(doll)
+	var arm := HBoxContainer.new()
+	arm.add_child(UITheme.label("Armour", 16, UITheme.DIM))
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	arm.add_child(gap)
+	arm.add_child(UITheme.label("%d" % int(Game.armor()), 18, UITheme.ACCENT))
+	arm.tooltip_text = "You take %d%% of incoming damage" % int(round(10000.0 / (100.0 + Game.armor())))
+	left.add_child(arm)
+	var kg := Game.inventory.weight()
+	var cap := Game.stats.carry_capacity()
+	var wrow := HBoxContainer.new()
+	wrow.add_child(UITheme.label("Weight", 16, UITheme.DIM))
+	var gap2 := Control.new()
+	gap2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrow.add_child(gap2)
+	wrow.add_child(UITheme.label("%.0f / %d kg" % [kg, int(cap)], 16, UITheme.BAD if kg > cap else UITheme.TEXT))
+	left.add_child(wrow)
+	var wb := ProgressBar.new()
+	wb.show_percentage = false
+	wb.custom_minimum_size = Vector2(0, 8)
+	wb.max_value = cap
+	wb.value = minf(kg, cap)
+	wb.add_theme_stylebox_override("fill", UITheme.bar_fill(UITheme.BAD if kg > cap else Color(0.75, 0.62, 0.35)))
+	left.add_child(wb)
+	cols.add_child(left)
+	var sep := VSeparator.new()
+	sep.add_theme_stylebox_override("separator", UITheme.sb(Color(1, 1, 1, 0.07), Color(0, 0, 0, 0), 0, 0, 0))
+	cols.add_child(sep)
+	# Right: the pack and the hotbar.
+	var right := VBoxContainer.new()
+	right.add_theme_constant_override("separation", 8)
+	right.add_child(UITheme.heading("Pack  ·  %d / %d slots" % [Inventory.SIZE - Inventory.HOTBAR - _free_in_pack(), Inventory.SIZE - Inventory.HOTBAR]))
 	var g := GridContainer.new()
 	g.columns = Inventory.HOTBAR
 	g.add_theme_constant_override("h_separation", 6)
 	g.add_theme_constant_override("v_separation", 6)
 	for i in range(Inventory.HOTBAR, Inventory.SIZE):
 		g.add_child(_slot_button(i))
-	v.add_child(g)
-	v.add_child(UITheme.label("HOTBAR  ·  keys 1 to 0, or hold LB on a controller", 13, UITheme.ACCENT))
+	right.add_child(g)
+	var sp := Control.new()
+	sp.custom_minimum_size = Vector2(0, 6)
+	right.add_child(sp)
+	right.add_child(UITheme.heading("Hotbar  ·  keys 1 to 0, or hold LB on a controller"))
 	var hb := GridContainer.new()
 	hb.columns = Inventory.HOTBAR
 	hb.add_theme_constant_override("h_separation", 6)
 	for i in Inventory.HOTBAR:
 		hb.add_child(_slot_button(i))
-	v.add_child(hb)
+	right.add_child(hb)
+	cols.add_child(right)
+	v.add_child(_hint_row([["Drag", "move or wear"], ["Right-click", "wear / take off"], ["Click, click", "swap two slots"]]))
 	return s[0]
+
+func _free_in_pack() -> int:
+	var n := 0
+	for i in range(Inventory.HOTBAR, Inventory.SIZE):
+		if Game.inventory.get_slot(i) == null:
+			n += 1
+	return n
+
+## A row of "[key] what it does" hints along the bottom of a panel.
+static func _hint_row(pairs: Array) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	row.alignment = BoxContainer.ALIGNMENT_END
+	for pr in pairs:
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 6)
+		var kc := UITheme.keycap(pr[0], 12)
+		kc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(kc)
+		h.add_child(UITheme.label(pr[1], 14, UITheme.DIM))
+		row.add_child(h)
+	return row
 
 # --- Crafting ------------------------------------------------------------------------
 
@@ -326,11 +507,7 @@ static func _recipe_tab(r: Dictionary) -> String:
 	return "Materials"
 
 static func _icon_rect(type: String, px: int) -> TextureRect:
-	var r := TextureRect.new()
-	r.texture = Icons.get_icon(type)
-	r.custom_minimum_size = Vector2(px, px)
-	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var r := UITheme.icon_rect(type, px)
 	r.tooltip_text = ItemDB.def(type).get("name", type)
 	r.mouse_filter = Control.MOUSE_FILTER_PASS
 	return r
@@ -386,7 +563,7 @@ func _craft_panel() -> Control:
 		var at_ok := Recipes.station_ok(r, stations)
 		var most := Recipes.max_crafts(Game.inventory, r) if at_ok else 0
 		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", UITheme.sb(Color(0.1, 0.11, 0.12, 0.85 if most > 0 else 0.5), Color(1, 1, 1, 0.08), 6, 1, 8))
+		card.add_theme_stylebox_override("panel", UITheme.tex_sb("tab" if most > 0 else "disabled", 10, 6))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		card.add_child(row)
@@ -470,17 +647,9 @@ func _storage_panel() -> Control:
 func _move_button(from: Inventory, i: int, to: Inventory) -> Button:
 	var it = from.get_slot(i)
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(60, 60)
-	b.add_theme_font_size_override("font_size", 12)
+	_style_slot(b, it, 60)
 	if it != null:
-		b.text = ("%d" % it["qty"]) if ItemDB.is_stackable(it["type"]) else ""
-		b.icon = Icons.get_icon(it["type"])
-		b.expand_icon = true
-		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
-		b.alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		b.tooltip_text = UITheme.describe_item(it) + "\n%.1f kg" % (ItemDB.weight(it["type"]) * it["qty"])
-		b.add_theme_stylebox_override("normal", UITheme.rarity_sb(it, Color(0.1, 0.11, 0.12, 0.9)))
 		b.pressed.connect(func():
 			if Storage.transfer(from, i, to) == 0:
 				Game.toast.emit("No room")
@@ -682,3 +851,107 @@ func _map_panel() -> Control:
 	return s[0]
 
 
+## One worn-armour slot. Drop matching armour from the pack on it to wear it, drag it back
+## out (or click / right-click it) to take it off. While armour is being dragged, the slot
+## it fits lights up.
+class EquipSlot extends Button:
+	const NAMES := {"head": "Head", "chest": "Chest", "hands": "Hands", "legs": "Legs", "feet": "Feet", "shield": "Off hand", "back": "Back"}
+	var where: String
+	var _glow := false
+
+	func _init(w: String, px := 64) -> void:
+		where = w
+		var it = Game.equipment.get(where)
+		GameMenus._style_slot(self, it, px)
+		if it == null:
+			var l := UITheme.label(NAMES.get(where, where.capitalize()).to_upper(), 11, Color(1, 1, 1, 0.28))
+			l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(l)
+			tooltip_text = "%s: nothing worn. Drag armour here." % NAMES.get(where, where)
+		else:
+			tooltip_text = "%s\nClick, right-click or drag out to take it off" % UITheme.describe_item(it)
+		pressed.connect(func(): Game.unequip(where))
+		gui_input.connect(func(e):
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT:
+				Game.unequip(where))
+
+	func _get_drag_data(_at: Vector2) -> Variant:
+		var it = Game.equipment.get(where)
+		if it == null:
+			return null
+		set_drag_preview(GameMenus._drag_preview(it["type"]))
+		return {"equip": where}
+
+	func _can_drop_data(_at: Vector2, d: Variant) -> bool:
+		return d is Dictionary and d.has("inv_slot") and Game.armor_slot_of(Game.inventory.get_slot(d["inv_slot"])) == where
+
+	func _drop_data(_at: Vector2, d: Variant) -> void:
+		Game.equip(d["inv_slot"])
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_DRAG_BEGIN:
+			var d = get_viewport().gui_get_drag_data()
+			_glow = d is Dictionary and d.has("inv_slot") and Game.armor_slot_of(Game.inventory.get_slot(d["inv_slot"])) == where
+			if _glow:
+				add_theme_stylebox_override("normal", UITheme.tex_sb("slot_sel"))
+		elif what == NOTIFICATION_DRAG_END and _glow:
+			_glow = false
+			add_theme_stylebox_override("normal", UITheme.rarity_sb(Game.equipment[where]) if Game.equipment.has(where) else UITheme.tex_sb("slot"))
+
+	func _process(_d: float) -> void:
+		if _glow:
+			modulate = Color(1, 1, 1).lerp(Color(1.5, 1.35, 1.0), 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008))
+		elif modulate != Color.WHITE:
+			modulate = Color.WHITE
+
+
+## A stylised figure with the armour slots placed on it: head, chest, hands, off hand,
+## legs and feet.
+class Mannequin extends Control:
+	const W := 300.0
+	const H := 440.0
+	const SLOT_AT := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122)}
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(W, H)
+		mouse_filter = Control.MOUSE_FILTER_PASS
+		for w in SLOT_AT:
+			if not Game.ARMOR_SLOTS.has(w):
+				continue
+			var e := EquipSlot.new(w, 64)
+			e.position = SLOT_AT[w] - Vector2(32, 32)
+			e.size = Vector2(64, 64)
+			add_child(e)
+
+	func _limb(a: Vector2, b: Vector2, r: float, c: Color) -> void:
+		draw_line(a, b, c, r * 2.0)
+		draw_circle(a, r, c)
+		draw_circle(b, r, c)
+
+	func _figure(grow: float, c: Color) -> void:
+		draw_circle(Vector2(150, 58), 30 + grow, c)
+		_limb(Vector2(150, 86), Vector2(150, 104), 10 + grow, c)
+		draw_colored_polygon(PackedVector2Array([Vector2(96 - grow, 104 - grow), Vector2(204 + grow, 104 - grow), Vector2(184 + grow, 232), Vector2(116 - grow, 232)]), c)
+		draw_colored_polygon(PackedVector2Array([Vector2(116 - grow, 226), Vector2(184 + grow, 226), Vector2(190 + grow, 266 + grow), Vector2(110 - grow, 266 + grow)]), c)
+		for sgn in [-1.0, 1.0]:
+			var x := func(v: float) -> float: return 150.0 + sgn * v
+			_limb(Vector2(x.call(50), 112), Vector2(x.call(80), 184), 13 + grow, c)
+			_limb(Vector2(x.call(80), 184), Vector2(x.call(100), 236), 11 + grow, c)
+			_limb(Vector2(x.call(22), 266), Vector2(x.call(26), 336), 17 + grow, c)
+			_limb(Vector2(x.call(26), 336), Vector2(x.call(28), 392), 14 + grow, c)
+
+	func _draw() -> void:
+		# Floor glow, a soft rim of gold, then the body.
+		for i in 6:
+			var k := 1.0 - i / 6.0
+			draw_set_transform(Vector2(150, 420), 0.0, Vector2(1.0, 0.22))
+			draw_circle(Vector2.ZERO, 40 + i * 14, Color(UITheme.ACCENT.r, UITheme.ACCENT.g, UITheme.ACCENT.b, 0.035 * k))
+		draw_set_transform(Vector2.ZERO)
+		_figure(3.0, Color(UITheme.ACCENT.r * 0.35, UITheme.ACCENT.g * 0.3, UITheme.ACCENT.b * 0.22, 1.0))
+		_figure(0.0, Color(0.13, 0.145, 0.17, 1.0))
+		# A faint top light on the shoulders and head.
+		draw_circle(Vector2(142, 48), 14, Color(1, 1, 1, 0.035))
+		draw_colored_polygon(PackedVector2Array([Vector2(100, 106), Vector2(200, 106), Vector2(196, 120), Vector2(104, 120)]), Color(1, 1, 1, 0.03))

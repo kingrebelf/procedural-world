@@ -343,6 +343,8 @@ func _run() -> void:
 	await _frames(5)
 	check(not player.third_person and player.camera.global_position.distance_to(player.head.global_position) < 0.05, "back to first person")
 
+	await _menu_checks(world, game, con)
+
 	# Dying: health hits zero, a pause, then you wake at the spawn with your pack.
 	var count_before: int = game.inventory.count("planks")
 	game.set_health(-5.0, "test")
@@ -379,6 +381,7 @@ func _run() -> void:
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")
+	check(game.equipment.has("head") and game.equipment["head"]["type"] == "helm_elven", "worn armour restored")
 	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
 	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
@@ -774,3 +777,49 @@ func _map_unit_checks() -> void:
 	# A circle across a page corner lifts the fog on every page it touches.
 	m.reveal(Vector2(0, 0), 40.0)
 	check(m.revealed(-5, -5) > 0.9 and m.revealed(5, 5) > 0.9 and m.revealed(-5, 5) > 0.9, "reveals cross page edges")
+
+## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
+func _menu_checks(world, game, con) -> void:
+	# Menus and the armour paper-doll: every screen builds, armour dropped on the body is
+	# worn, the old piece lands in the slot the new one came from, and dragging it out
+	# puts it in the chosen slot.
+	var menus: GameMenus = world.menus
+	for m in ["inventory", "craft", "character", "map", "pause"]:
+		menus.open(m)
+		await _frames(2)
+		check(menus._panel != null and is_instance_valid(menus._panel), "%s screen builds" % m)
+	menus.close()
+	con.run("give helm_iron 1")
+	con.run("give helm_elven 1")
+	var hi := -1
+	var he := -1
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null and it["type"] == "helm_iron": hi = i
+		if it != null and it["type"] == "helm_elven": he = i
+	check(hi >= 0 and he >= 0, "two helmets in the pack")
+	check(game.equip(hi) and game.equipment["head"]["type"] == "helm_iron" and game.inventory.get_slot(hi) == null, "drop a helmet on the head to wear it")
+	check(game.equip(he) and game.equipment["head"]["type"] == "helm_elven" and game.inventory.get_slot(he)["type"] == "helm_iron", "swapping helmets puts the old one where the new came from")
+	var empty := -1
+	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR, -1):
+		if game.inventory.get_slot(i) == null:
+			empty = i
+			break
+	check(game.unequip_to("head", empty) and game.inventory.get_slot(empty)["type"] == "helm_elven" and not game.equipment.has("head"), "dragging armour off the body drops it in that slot")
+	check(game.equip(empty) and game.equipment.has("head"), "wear it again")
+	menus.open("inventory")
+	await _frames(2)
+	var dolls := 0
+	for n in menus._panel.find_children("*", "", true, false):
+		if n is GameMenus.Mannequin:
+			dolls += 1
+	check(dolls == 1, "inventory shows the body")
+	menus.close()
+	# Mouse lock: the toggle frees the pointer, a menu keeps it free, closing restores it.
+	Cursor.free = true
+	Cursor.restore()
+	menus.open("inventory")
+	menus.close()
+	check(Cursor.free and not Cursor.locked(), "a freed pointer stays free after a menu closes")
+	Cursor.free = false
+	Cursor.restore()

@@ -298,7 +298,11 @@ func equip(slot_index: int) -> bool:
 	var where: String = ItemDB.def(it["type"])["slot"]
 	inventory.remove_at(slot_index, 1)
 	if equipment.has(where):
-		inventory.add(equipment[where])
+		# Whatever was worn there goes back into the slot the new piece came from.
+		if inventory.get_slot(slot_index) == null:
+			inventory.set_slot(slot_index, equipment[where])
+		else:
+			inventory.add(equipment[where])
 	equipment[where] = it
 	_player_dirty = true
 	equipment_changed.emit()
@@ -315,6 +319,29 @@ func unequip(where: String) -> bool:
 	_player_dirty = true
 	equipment_changed.emit()
 	return true
+
+## Takes armour off into a chosen pack slot. If that slot holds armour for the same
+## place, the two swap; if it holds something else, the armour goes to any free slot.
+func unequip_to(where: String, slot_index: int) -> bool:
+	if not equipment.has(where):
+		return false
+	var there = inventory.get_slot(slot_index)
+	if there == null:
+		var it: Dictionary = equipment[where]
+		equipment.erase(where)
+		inventory.set_slot(slot_index, it)
+		_player_dirty = true
+		equipment_changed.emit()
+		return true
+	if armor_slot_of(there) == where:
+		return equip(slot_index)
+	return unequip(where)
+
+## Where a piece of armour is worn ("head", "chest", ...), or "" if it isn't armour.
+static func armor_slot_of(it) -> String:
+	if it == null or ItemDB.def(it["type"]).get("kind", "") != "armor":
+		return ""
+	return String(ItemDB.def(it["type"]).get("slot", ""))
 
 ## Total armour worn.
 func armor() -> float:

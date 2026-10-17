@@ -204,6 +204,11 @@ func swap(a: int, b: int) -> void:
 	slots[b] = t
 	changed.emit()
 
+## Puts an item into an empty slot (or clears it with null).
+func set_slot(i: int, item) -> void:
+	slots[i] = item
+	changed.emit()
+
 func get_slot(i: int):
 	return slots[i]
 

@@ -43,6 +43,7 @@ const ACTIONS := {
 	"hotbar_next": ["Next hotbar slot", -1, "btn:14"],
 	"hotbar_pick": ["Hold to pick a hotbar slot with A/B/X/Y and the D-pad", -1, "btn:9"],
 	"pause": ["Pause", KEY_ESCAPE, "btn:6"],
+	"mouse_toggle": ["Free / lock the mouse pointer", KEY_ALT, ""],
 	"slot_1": ["Hotbar 1", KEY_1, ""],
 	"slot_2": ["Hotbar 2", KEY_2, ""],
 	"slot_3": ["Hotbar 3", KEY_3, ""],
