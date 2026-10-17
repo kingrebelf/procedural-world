@@ -4,6 +4,9 @@
 // edges of triangles under MSAA a shader can be run just outside them and divide by
 // nothing) with the average of their sound neighbours. One such pixel threw the eye's
 // exposure all the way open, washing the whole frame out white.
+// At night it also grades the dim parts of the frame as the dark-adapted eye sees them
+// (Purkinje shift): moonlit land loses its colour and shifts toward blue, while what a
+// window, a fire or a torch lights stays warm and saturated, so lamps stand out.
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -25,7 +28,15 @@ void main() {
 		return;
 	}
 	vec4 c = imageLoad(color_image, uv);
+	float night = params.reserved.y;
 	if (!bad(c.rgb)) {
+		if (night > 0.0) {
+			float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+			// Scene-linear, before exposure: moonlit ground sits well under 0.2, lamplight
+			// and the surfaces right by a flame well over 1.
+			float rod = night * (1.0 - smoothstep(0.2, 1.2, lum));
+			imageStore(color_image, uv, vec4(mix(c.rgb, lum * vec3(0.78, 0.9, 1.18), rod * 0.7), c.a));
+		}
 		return;
 	}
 	if (params.reserved.x > 0.5) {

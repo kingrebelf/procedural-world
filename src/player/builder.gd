@@ -243,8 +243,7 @@ func place() -> bool:
 		Game.markers.add(nm, pos.x, pos.z, Game.planet, "teleporter", {"key": str(chunk.key), "i": o["i"]})
 		Game.touch_player()
 		Game.toast.emit("%s linked. Mark it on the Atlas, travel from any other one." % nm)
-	# Clear grass and flowers growing through the new piece.
-	player.streamer.refresh_grass(chunk.key)
+	# (ChunkNode.add_object clears the grass and flowers under the new piece.)
 	return true
 
 ## Look-at panel contents while holding a piece.
@@ -268,6 +267,7 @@ func info() -> Dictionary:
 		match mode:
 			"free": lines.append("Place anywhere. %s turns it." % k.call("rotate_build"))
 			"wall": lines.append("Snaps to cell edges (%d m grid). Aim at a wall's end for the next one along, its middle to stack one on top. %s flips it." % [int(d["grid"]), k.call("rotate_build")])
+			"post": lines.append("Stands on the grid corner nearest your aim, where two walls meet. %s turns it." % k.call("rotate_build"))
 			"roof_v", "roof_c": lines.append("Aim at a wall top to roof the rooms beside it, or at a roof for the next one along. %s turns it." % k.call("rotate_build"))
 			_:
 				if d.get("ramp", false):

@@ -47,6 +47,9 @@ const FURNISH := {
 		["props/Table_Plate", 0, Vector3(1.7, T, 0.2), false],
 		["props/Table_Plate", 0, Vector3(1.7, T, 1.35), false],
 		["props/Table_Fork", 90, Vector3(1.7, T, 0.45), false],
+		["props/Food_Bread", 20, Vector3(1.7, T + 0.014, 0.2), false],
+		["props/Food_Cheese", 140, Vector3(1.7, T + 0.014, 1.35), false],
+		["props/Food_Apples", 0, Vector3(1.45, T, 0.85), false],
 		["props/Mug", 30, Vector3(2.0, T, 0.8), false],
 		["props/CandleStick_Triple", 90, Vector3(2.05, T, 1.95), false],
 		["props/Barrel", 0, Vector3(-2.2, F, 2.2), true],
@@ -86,6 +89,9 @@ const FURNISH := {
 		["props/Chalice", 0, Vector3(0.25, T, 0.4), false],
 		["props/Table_Plate", 0, Vector3(-0.25, T, -0.6), false],
 		["props/Table_Plate", 0, Vector3(0.25, T, -1.3), false],
+		["props/Food_Bread", -60, Vector3(-0.25, T + 0.014, -0.6), false],
+		["props/Food_Cheese", 30, Vector3(0.25, T + 0.014, -1.3), false],
+		["props/Food_Apples", 0, Vector3(0.22, T, 0.1), false],
 		["props/CandleStick_Triple", 90, Vector3(0, T, -0.1), false],
 		["props/Coin_Pile", 0, Vector3(-0.2, T, 1.1), false],
 		["props/Barrel_Holder", 0, Vector3(-1.6, F, -3.3), true],
@@ -229,6 +235,17 @@ static func interior(t: String) -> ArrayMesh:
 		k.cylinder("bark", Transform3D(b, Vector3(hx, FLOOR + 0.28, back + 0.4)) * I.translated(Vector3(0, -0.32, 0)), 0.06, 0.05, 0.64, 6)
 	# Embers under the flames (FireFx, Interiors.fires).
 	k.sphere("glow_red", I.translated(Vector3(hx, FLOOR + 0.22, back + 0.4)), 0.2, 5, 8, 0.3, 0.25)
+	# Signs of use: an iron pot keeping warm on the hearthstone, and split logs stacked
+	# in the corner between the hearth and the side wall.
+	var pot := I.translated(Vector3(hx + 0.5, FLOOR + 0.2, back + 0.78))
+	k.cylinder("iron", pot, 0.1, 0.12, 0.15, 12)
+	k.cylinder("iron", pot.translated(Vector3(0, 0.15, 0)), 0.125, 0.125, 0.012, 12)
+	var r := WHash.rng(WHash.str_hash(t + "~logs"), 0, 0, 7)
+	for row in 3:
+		for n in 2:
+			var lx := hx + 1.0 + n * 0.145 + (0.07 if row % 2 else 0.0) * (0.5 - n) + r.randf_range(-0.01, 0.01)
+			var lb := Basis(Vector3.UP, r.randf_range(-0.06, 0.06)) * Basis(Vector3.RIGHT, PI / 2)
+			k.cylinder("bark", Transform3D(lb, Vector3(lx, FLOOR + 0.065 + row * 0.12, back + 0.03)), 0.065, 0.06, 0.48, 7)
 	if t != "townhouse":
 		# A hanging on the plain stretch of back wall away from the hearth.
 		Interiors.tapestry(k, I.translated(Vector3(-1.8, 1.8, back + 0.02)))
@@ -249,7 +266,7 @@ static func sun_windows(t: String) -> Array:
 static func glow(t: String) -> ArrayMesh:
 	var k := MeshKit.new(WHash.str_hash(t + "~glow") & 0xFFFF)
 	for xf in _plan(t)["glows"]:
-		k.box("glow_warm", xf, Vector3(1.3, 1.6, 0.04))
+		k.box("window_warm", xf, Vector3(1.3, 1.6, 0.04))
 	return k.commit(Materials.get_mat)
 
 ## Collision you can walk into: floor, four walls with the doorway left open, the roof

@@ -25,6 +25,10 @@ var anim: AnimationTree
 var animator: HumanAnimator
 var ik: HumanIK
 var gestures: BodyLanguage
+var posture: BodyPosture
+## This person's BodyShape.shape(): age, weight, muscle, stoop and the girth of each body
+## bone, for anything that has to fit the body (garments, armour).
+var shape: Dictionary
 var _body: MeshInstance3D
 var _clothes: MeshInstance3D
 var _armour: MeshInstance3D
@@ -121,14 +125,16 @@ static func library() -> AnimationLibrary:
 		_lib = load(ANIMS)
 	return _lib
 
-## b: the persisted body record (NPCGen). Returns self for chaining.
-func build(b: Dictionary, era: int, job: String) -> HumanModel:
+## b: the persisted body record (NPCGen); `age` in years (-1 unknown: a young adult).
+## Returns self for chaining.
+func build(b: Dictionary, era: int, job: String, age := -1) -> HumanModel:
 	var fem: bool = b["female"]
 	_fem = fem
 	var scene: Node3D = (load(DIR + BODY[fem] + ".gltf") as PackedScene).instantiate()
 	add_child(scene)
 	skeleton = scene.find_children("*", "Skeleton3D", true, false)[0]
-	var hair_col: Color = b["hair"]
+	shape = BodyShape.shape(b, age, job)
+	var hair_col := BodyShape.hair_color(b, age)
 	for c in skeleton.get_children():
 		if not (c is MeshInstance3D):
 			continue
@@ -136,12 +142,18 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 		if String(mi.name).to_lower().begins_with("superhero"):
 			mi.mesh = _body_mesh(fem, mi)
 			mi.material_override = _body_mat(fem)
+			# This person's own copy: BodyShape reshapes its binds (clothes share it).
+			mi.skin = mi.skin.duplicate()
 			_body = mi
 		elif mi.name == "Eyes":
 			mi.material_override = _eye_mat()
 		else:
-			mi.material_override = _hair_mat(1)
-			mi.set_instance_shader_parameter("hair_col", hair_col)
+			# Eyebrows: fine, sparse hairs, a shade darker than the hair.
+			mi.mesh = HairStrands.mesh("Eyebrows_%s" % fem, mi.mesh)
+			mi.material_override = HairStrands.material(1)
+			mi.set_instance_shader_parameter("hair_col", BodyShape.hair_color(b, age - 12 if age >= 0 else age).darkened(0.12))
+			mi.set_instance_shader_parameter("strands", 1.0)
+			mi.set_instance_shader_parameter("sparse", 0.42)
 			_hair.append(mi)
 	_dress(b, era, job)
 	# Hair, unless a helmet or hood covers it.
@@ -149,19 +161,34 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	var style: String = styles[int(b["hair_style"]) % styles.size()]
 	if NPCGen.GUARD_JOBS.has(job):
 		style = "Hair_Buzzed" if not fem else "Hair_BuzzedFemale"
+	elif BodyShape.bald(b, age):
+		style = ""
 	_dress_up(era)
 	if style != "":
-		_add_hair(style, hair_col)
+		_add_hair(style, hair_col, BodyShape.thinning(b, age))
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
 		_add_hair("Hair_Beard", hair_col)
 	_headgear(era, job, b)
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		if not String(mi.name).contains("_shell"):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if _body and _body.skin:
+		BodyShape.apply_girth(_body.skin, skeleton, shape)
+		_body.set_instance_shader_parameter("tone", float(shape["muscle"]))
 	animator = HumanAnimator.new()
 	add_child(animator)
 	animator.setup(library(), scene, skeleton, self)
 	anim = animator.tree
+	# Posture before the feet are planted and the head turned (HumanIK).
+	posture = BodyPosture.new()
+	posture.stoop = float(shape["stoop"])
+	posture.shoulder_in = float(shape["shoulder_in"])
+	posture.arms_out = float(shape["arms_out"])
+	posture.waddle = float(shape["waddle"])
+	posture.limp = float(shape["limp"])
+	posture.animator = animator
+	skeleton.add_child(posture)
 	ik = HumanIK.new()
 	skeleton.add_child(ik)
 	animator.ik = ik
@@ -318,7 +345,9 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	_body.set_instance_shader_parameter("accent_col", accent)
 	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], 0.0, 0.0))
 
-func _add_hair(style: String, col: Color) -> void:
+## Hair as strands (HairStrands): the kit style combed, with shells for loose fibres;
+## `thin` lets the scalp show through at the crown.
+func _add_hair(style: String, col: Color, thin := 0.0) -> void:
 	var path := DIR + style + ".gltf"
 	if not ResourceLoader.exists(path):
 		return
@@ -332,10 +361,19 @@ func _add_hair(style: String, col: Color) -> void:
 		mi.skin = skin
 		mi.skeleton = NodePath("..")
 		var mat_name := mi.mesh.surface_get_material(0).resource_name if mi.mesh.surface_get_material(0) else ""
-		mi.material_override = _hair_mat(2 if mat_name.ends_with("2") else 1)
+		mi.mesh = HairStrands.mesh(style, mi.mesh)
+		mi.material_override = HairStrands.material(2 if mat_name.ends_with("2") else 1)
 		mi.set_instance_shader_parameter("hair_col", col)
+		mi.set_instance_shader_parameter("strands", 1.0)
+		mi.set_instance_shader_parameter("thin", thin)
+		var layers: Array = HairStrands.shells(mi, style)
+		for sh in layers:
+			sh.set_instance_shader_parameter("hair_col", col)
+			sh.set_instance_shader_parameter("strands", 1.0)
+			sh.set_instance_shader_parameter("thin", thin)
 		if style != "Hair_Beard":
 			_hair.append(mi)
+			_hair.append_array(layers)
 	src.free()
 
 func _bone_attach(bone: String) -> BoneAttachment3D:
@@ -348,21 +386,77 @@ func _headgear(era: int, job: String, b: Dictionary) -> void:
 	var k := MeshKit.new(7)
 	var I := Transform3D.IDENTITY
 	# Guards wear real armour instead (NPC.default_gear).
+	# Crowns are sized round the hair above the brim, so no hair pokes through.
+	var brim := 0.13
 	if era == Eras.MEDIEVAL and job in ["farmer", "hunter", "miller"]:
-		k.cylinder("thatch", I.translated(Vector3(0, 0.17, 0)), 0.095, 0.07, 0.09, 10)
-		k.cylinder("thatch", I.translated(Vector3(0, 0.15, 0)), 0.22, 0.22, 0.015, 14)
+		var fit := _hair_fit(0.0, 0.15, 0.095, 0.125, 0.24)
+		brim = fit.z
+		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), fit.x, fit.x * 0.75, fit.y + 0.02 - fit.z, 10)
+		k.cylinder("thatch", I.translated(Vector3(0, fit.z, 0)), 0.22, 0.22, 0.015, 14)
 	elif era == Eras.FANTASY and job in ["mystic", "warden", "herbalist"]:
 		# A soft felt hat whose point flops over, on a narrow brim.
 		var felt: Color = (b["cloth2"] as Color).darkened(0.25)
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
-		k.cylinder("cloth_w", I.translated(Vector3(0, 0.1, -0.02)), 0.115, 0.06, 0.16, 12, true, 0.0, 1, felt)
-		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, 0.25, -0.02)), 0.06, 0.0, 0.13, 10, true, 0.0, 1, felt)
+		var fit := _hair_fit(-0.02, 0.1, 0.115, 0.135, 0.25)
+		brim = fit.z
+		var top := fit.y + 0.01
+		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), 0.17, 0.17, 0.012, 16, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", I.translated(Vector3(0, fit.z, -0.02)), fit.x, fit.x * 0.52, top - fit.z, 12, true, 0.0, 1, felt)
+		k.cylinder("cloth_w", Transform3D(Basis(Vector3.RIGHT, -0.7), Vector3(0, top - 0.01, -0.02)), fit.x * 0.52, 0.0, 0.13, 10, true, 0.0, 1, felt)
 	else:
 		return
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(Materials.get_mat)
 	_headgear_node = _bone_attach("Head")
 	_headgear_node.add_child(mi)
+	# No hair through the crown of the hat: none above its brim.
+	var hb := skeleton.find_bone("Head")
+	if hb >= 0:
+		cap_hair(skeleton.get_bone_global_rest(hb).origin.y + brim)
+
+## Hides hair above rest height `y` (model space; 99 for none): a hat or hood's crown.
+## Hair below it, hanging under a brim, still shows.
+func cap_hair(y: float) -> void:
+	for h in _hair:
+		(h as GeometryInstance3D).set_instance_shader_parameter("cap_y", y)
+
+static var _hair_profiles: Dictionary = {}
+
+## Where a hat's crown sits on this head's hair: Vector3(radius about (0, cz) in head
+## space, top of the hair, crown base). The base starts at `y0` and rises (over buns
+## and full hair) until the hair above it fits within `r_max`, so no hair pokes through
+## the brim and the hat neither swamps the head nor sinks over the eyes.
+func _hair_fit(cz: float, y0: float, r_min: float, r_max: float, top_min: float) -> Vector3:
+	var prof: Array = []
+	prof.resize(40) # widest hair per centimetre of height, 0..0.4 m above the head bone
+	prof.fill(0.0)
+	var top := top_min
+	var head := skeleton.get_bone_global_rest(skeleton.find_bone("Head")).affine_inverse()
+	for mi: MeshInstance3D in _hair:
+		var key := "%d|%d|%.3f" % [mi.mesh.get_instance_id(), int(_fem), cz]
+		if not _hair_profiles.has(key):
+			var pr: Array = []
+			pr.resize(41)
+			pr.fill(0.0)
+			for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				var p := head * v
+				var i := clampi(int(p.y * 100.0), 0, 39)
+				if p.y > 0.0:
+					pr[i] = maxf(pr[i], Vector2(p.x, p.z - cz).length())
+					pr[40] = maxf(pr[40], p.y)
+			_hair_profiles[key] = pr
+		var pr: Array = _hair_profiles[key]
+		for i in 40:
+			prof[i] = maxf(prof[i], pr[i])
+		top = maxf(top, pr[40] + 0.01)
+	var base := y0
+	while base < top - 0.06:
+		var r := 0.0
+		for i in range(int(base * 100.0), 40):
+			r = maxf(r, prof[i])
+		if r + 0.012 <= r_max:
+			return Vector3(maxf(r_min, r + 0.012), top, base)
+		base += 0.01
+	return Vector3(r_max, top, base)
 
 ## Tools in hand for jobs that work with one.
 func _tool(era: int, job: String) -> void:
@@ -676,6 +770,8 @@ func freeze_for_ragdoll() -> void:
 		ik.active = false
 	if gestures:
 		gestures.active = false
+	if posture:
+		posture.active = false
 	_holding = true
 	_oneshot = true
 
@@ -729,6 +825,8 @@ func set_riding_camera() -> void:
 		ik.feet_on = false
 		ik.look_on = false
 		ik.breathe = false
+	if posture:
+		posture.active = false
 
 # --- Idle variety --------------------------------------------------------------------
 

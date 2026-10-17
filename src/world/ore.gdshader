@@ -13,6 +13,9 @@ uniform float tri_scale = 0.35;
 // Ben's ore photos already carry their veins: then the photo is the rock, in its own
 // colours, and its saturated parts (rust, gold, mineral) are the ore that shines.
 uniform bool photo_ore = false;
+// Close-up pieces (held ore): the mineral as small disseminated grains clustered in
+// patches with a rusty stain round them, instead of seams (which read as paint up close).
+uniform float grain_freq = 0.0;
 
 varying vec3 obj_pos;
 varying vec3 obj_nrm;
@@ -56,6 +59,19 @@ void fragment() {
 		ALBEDO = rock;
 		METALLIC = ore * ore_metal;
 		ROUGHNESS = mix(0.88, 0.45, ore);
+		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
+	} else if (grain_freq > 0.0) {
+		vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;
+		float patch = smoothstep(0.32, 0.55, noise(obj_pos * vein_freq * 0.35 + 7.3));
+		float gn = noise(obj_pos * grain_freq) * 0.7 + noise(obj_pos * grain_freq * 2.7) * 0.3;
+		float grain = smoothstep(0.62, 0.66, gn) * patch;
+		float stain = smoothstep(0.5, 0.66, gn) * patch * (1.0 - grain);
+		vec3 ore = mix(ore_col, ore_col2, step(0.6, noise(obj_pos * grain_freq * 0.5 + 3.0))) * (0.75 + 0.35 * noise(obj_pos * grain_freq * 4.0));
+		ore = mix(ore, stone, 0.25);
+		vec3 rust = stone * vec3(0.95, 0.72, 0.5);
+		ALBEDO = mix(mix(stone, rust, stain * 0.45), ore, grain);
+		METALLIC = grain * ore_metal;
+		ROUGHNESS = mix(0.9, mix(0.75, 0.3, ore_metal), grain);
 		NORMAL_MAP = tri(stone_nrm, p, obj_nrm).rgb;
 	} else {
 		vec3 stone = tri(stone_tex, p, obj_nrm).rgb * tint * 1.25;

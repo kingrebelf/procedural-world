@@ -10,7 +10,7 @@ const DIR := "res://assets/models/"
 
 ## id -> definition.
 ##   models: [[file under assets/models, yaw degrees, offset, scale]] merged in order.
-##   snap:   floor (cell centre), wall (cell edge), roof_v (grid corner), roof_c (cell centre
+##   snap:   floor (cell centre), wall (cell edge), post (grid corner), roof_v (grid corner), roof_c (cell centre
 ##           a storey up), door (in a doorway you built, see Doors), free (anywhere, turned
 ##           with the rotate key).
 ##   grid / storey: cell size and floor-to-floor height in metres.
@@ -30,9 +30,9 @@ const PIECES := {
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
 	"wall_stone": {"name": "Stone Wall", "models": [["village/Wall_UnevenBrick_Straight", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
-	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_window": {"name": "Window Wall", "models": [["village/Wall_Plaster_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
-	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0]],
+	"wall_window_stone": {"name": "Stone Window Wall", "models": [["village/Wall_UnevenBrick_Window_Wide_Round", 0, Vector3.ZERO, 1.0], ["village/Window_Wide_Round1", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 16.0, "era": 0},
 	"wall_door": {"name": "Doorway", "models": [["village/Wall_Plaster_Door_Round", 0, Vector3.ZERO, 1.0]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 10.0, "era": 0},
@@ -46,6 +46,11 @@ const PIECES := {
 	"roof_large": {"name": "Tiled Roof (6x6)", "models": [["village/Roof_RoundTiles_6x6", 0, Vector3.ZERO, 1.0],
 		["village/Roof_Front_Brick6", 0, Vector3(0, 0, 3), 1.0], ["village/Roof_Front_Brick6", 180, Vector3(0, 0, -3), 1.0]],
 		"snap": "roof_c", "span": 3, "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 16.0, "era": 0},
+	# Corner posts close the seam where two walls meet: a dressed stone quoin or a timber post.
+	"corner_stone": {"name": "Stone Corner", "models": [["village/Corner_Exterior_Brick", 0, Vector3(0.087, 0, -0.089), Vector3(1, 1.04, 1)]],
+		"snap": "post", "grid": 2.0, "storey": 3.12, "mat": "stone", "hp": 12.0, "era": 0},
+	"corner_timber": {"name": "Timber Corner Post", "models": [["village/Corner_Exterior_Wood", 0, Vector3.ZERO, Vector3(1, 1.04, 1)]],
+		"snap": "post", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 6.0, "era": 0},
 	"fence": {"name": "Wooden Fence", "models": [["village/Prop_WoodenFence_Single", 0, Vector3.ZERO, 0.97]],
 		"snap": "wall", "grid": 2.0, "storey": 3.12, "mat": "wood", "hp": 4.0, "era": 0},
 	# Sci-fi kit: 4 m cells, 5 m storeys. Its walls sit on a cell's -x edge; turn them
@@ -87,7 +92,13 @@ const PIECES := {
 	# Furniture and decor (Quaternius Fantasy Props, CC0). Purely for looks; some give light.
 	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"bench": {"name": "Bench", "models": [["props/Bench", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
-	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
+	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0],
+		# A bookcase in use: books, a stack, scrolls and a bottle or two on its shelves.
+		["props/BookGroup_Medium_1", 0, Vector3(0.0, 0.77, 0.02), 1.0], ["props/BookGroup_Small_1", 0, Vector3(-0.38, 1.15, 0.02), 1.0],
+		["props/Book_Stack_1", 20, Vector3(0.15, 1.15, 0.0), 1.0], ["props/Potion_1", 0, Vector3(0.5, 1.15, 0.0), 1.0],
+		["props/BookGroup_Medium_1", 180, Vector3(0.05, 1.53, -0.02), 1.0], ["props/Scroll_1", 10, Vector3(-0.3, 1.92, 0.0), 1.0],
+		["props/Scroll_1", -15, Vector3(-0.28, 1.98, 0.02), 1.0], ["props/BookGroup_Small_1", 180, Vector3(0.38, 1.92, 0.0), 1.0],
+		["props/Potion_2", 0, Vector3(0.02, 1.92, 0.0), 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"cabinet": {"name": "Cabinet", "models": [["props/Cabinet", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
 	"chair": {"name": "Chair", "models": [["props/Chair_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 4.0, "era": -1, "decor": true},
 	"table": {"name": "Long Table", "models": [["props/Table_Large", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
@@ -181,6 +192,9 @@ static func warm_kits() -> void:
 	model_parts("ships/Striker")
 	# The gnome ring's toadstools (EasterEggs).
 	model_parts("nature/Mushroom_Common")
+	# Food on house tables (KitHouse, Provisions.kit).
+	for f in ["props/Food_Bread", "props/Food_Cheese", "props/Food_Apples"]:
+		model_parts(f)
 	for t in ShipPad.SHIPS:
 		model_parts("ships/" + ShipPad.SHIPS[t])
 	# Photo textures and shaders that materials built on worker threads use.
@@ -210,6 +224,9 @@ static func mesh(id: String) -> ArrayMesh:
 	return m
 
 static func _xf(entry: Array) -> Transform3D:
+	# An optional sixth entry places the model by a whole transform (tilted or leaning).
+	if entry.size() > 5 and entry[5] is Transform3D:
+		return entry[5]
 	var sc = entry[3]
 	var s: Vector3 = sc if sc is Vector3 else Vector3.ONE * float(sc)
 	return Transform3D(Basis(Vector3.UP, deg_to_rad(float(entry[1]))) * Basis.from_scale(s), entry[2])
@@ -276,9 +293,16 @@ static func model_parts(name: String) -> Array:
 	if OS.get_thread_caller_id() != OS.get_main_thread_id():
 		push_warning("kit model read off the main thread: " + name)
 	var out: Array = []
-	var ps: PackedScene = load(DIR + name + ".gltf")
+	# Containers and drink (bottles, mugs, barrels, chests, crates) are built by Provisions.
+	var stand_in := Provisions.kit(name)
+	for e in stand_in:
+		var m: ArrayMesh = e[0]
+		for s in m.get_surface_count():
+			out.append([m.surface_get_material(s), m.surface_get_arrays(s), e[1]])
+	var ps: PackedScene = null if not stand_in.is_empty() else load(DIR + name + ".gltf")
 	if ps == null:
-		push_warning("missing kit model " + name)
+		if stand_in.is_empty():
+			push_warning("missing kit model " + name)
 	else:
 		var root := ps.instantiate()
 		for c in root.find_children("*", "MeshInstance3D", true, false):
@@ -288,7 +312,7 @@ static func model_parts(name: String) -> Array:
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
-				var mat: Material = _tamed(om if om != null else mi.mesh.surface_get_material(s))
+				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name)
 				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
 	_lock.lock()
@@ -414,6 +438,51 @@ static func _tamed(m: Material) -> Material:
 		c.albedo_color = c.albedo_color * 1.45
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
+
+static var _aged_mats := {}
+
+## The Fantasy Props kit's furniture and fittings as the real things look: its iron
+## straps, hinges, candle stands and lanterns are blackened wrought iron (not the light
+## painted grey the sci-fi taming above gives every metal), its timber oak darkened and
+## less orange with age and wax. Only furniture and props in the world; held tools keep
+## their own look (Viewmodel.kit_mesh tames them itself).
+static func _aged(m: Material, model := "") -> Material:
+	if not (m is BaseMaterial3D) or not m.resource_name.begins_with("MI_Trim_"):
+		return m
+	if model.contains("Candle") and m.resource_name == "MI_Trim_Props_Vertex":
+		# Candles and their drips are wax, cream and a little translucent (the kit tints
+		# the drips purple).
+		_lock.lock()
+		var wax = _aged_mats.get("wax")
+		if wax == null:
+			var w := StandardMaterial3D.new()
+			w.albedo_color = Color(0.93, 0.88, 0.76)
+			w.roughness = 0.5
+			w.subsurf_scatter_enabled = true
+			w.subsurf_scatter_strength = 0.5
+			_aged_mats["wax"] = w
+			wax = w
+		_lock.unlock()
+		return wax
+	var metal: bool = m.resource_name.begins_with("MI_Trim_Metal")
+	var wood: bool = m.resource_name == "MI_Trim_Furniture"
+	if not metal and not wood:
+		return m
+	_lock.lock()
+	var out = _aged_mats.get(m)
+	if out == null:
+		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+		if metal:
+			c.albedo_color = Color(0.36, 0.35, 0.34)
+			c.metallic = 0.65
+			c.roughness = 1.0
+		else:
+			c.albedo_color = Color(0.68, 0.58, 0.52)
+			c.roughness = 1.0
+		_aged_mats[m] = c
+		out = c
+	_lock.unlock()
+	return out
 
 static func _node_xf(n: Node3D, root: Node) -> Transform3D:
 	var xf := n.transform
@@ -596,7 +665,7 @@ static func snap(id: String, hit: Vector3, look_yaw: float, turn: int, anchor = 
 			return {"pos": cell, "yaw": yaw}
 		"roof_c":
 			return {"pos": cell, "yaw": turn * PI * 0.5}
-		"roof_v":
+		"roof_v", "post":
 			return {"pos": Vector3(roundf(hit.x / g) * g, y, roundf(hit.z / g) * g), "yaw": turn * PI * 0.5}
 		"wall":
 			var dx := hit.x - cell.x

@@ -771,7 +771,7 @@ const UNLOCK := {
 	# Medieval building and stations.
 	"wall_stone": 3, "roof_small": 2, "roof_large": 4, "stairs_wood": 2, "foundation": 2,
 	"forge": 3, "anvil": 5, "stable": 6, "storage_chest": 2, "bed": 2, "lantern": 2,
-	"wall_door_stone": 3, "wall_window_stone": 3, "door_wood": 2, "door_iron": 6, "door_bulkhead": 14,
+	"wall_door_stone": 3, "wall_window_stone": 3, "corner_stone": 3, "door_wood": 2, "door_iron": 6, "door_bulkhead": 14,
 	"metal_crate": 3, "cage": 4, "weapon_stand": 4, "market_stall": 5, "cart": 5, "horse": 7,
 	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
 	# Gunpowder is the first step out of the medieval age.
@@ -1021,7 +1021,7 @@ const DUNGEON_LOOT := [["gold_idol", "dungeon_key", "health_potion", "stamina_po
 const NAME_PARTS := ["Varn", "Esk", "Thal", "Orrin", "Myr", "Kael", "Sorr", "Ilsa", "Brand", "Quill", "Hale", "Nyx"]
 
 ## Value of each building piece and station as an item, in Marks.
-const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall_stone": 10, "wall_window": 9, "wall_window_stone": 10, "wall_door": 9, "wall_door_stone": 10,
+const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall_stone": 10, "wall_window": 9, "wall_window_stone": 10, "corner_stone": 5, "corner_timber": 3, "wall_door": 9, "wall_door_stone": 10,
 	"door_wood": 20, "door_iron": 70, "door_bulkhead": 220,
 	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
