@@ -57,16 +57,17 @@ static func photo(name: String, kind: String) -> Texture2D:
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
 ## Triplanar repeats per metre for each photo texture (object space).
 const PHOTO_SCALE := {"bark_oak": 0.9, "bark_birch": 0.7, "rock": 0.35, "cobble": 0.45, "planks": 0.5,
-	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.22, "dungeon_wall": 0.3, "flagstone": 0.3}
+	"thatch": 0.6, "plaster": 0.4, "rust": 0.5, "panels": 0.33, "castle_wall": 0.32, "dungeon_wall": 0.3, "flagstone": 0.3}
 const PHOTO_FOR := {"bark": "bark_oak", "stone": "rock", "cobble": "cobble", "birch": "bark_birch",
 	"planks": "planks", "thatch": "thatch", "plaster": "plaster", "rust": "rust", "metal": "panels",
 	"castle_stone": "castle_wall", "crypt_stone": "dungeon_wall", "flagstone": "flagstone"}
 ## Photos used in their own colours rather than as greyscale detail under the material colour.
 const PHOTO_COLOUR := ["cobble", "thatch", "rust", "castle_wall", "dungeon_wall", "flagstone"]
 ## Own-colour photos shot brighter than the stone really is, toned down to a believable
-## albedo (castle_wall averages 0.65 linear; dressed limestone is nearer 0.4), so sunlit
-## walls and tower roofs don't glare white (at 0.8 the tower roof still did).
-const PHOTO_TONE := {"castle_wall": 0.62}
+## albedo (castle_wall averages 0.65 linear), so sunlit walls and tower roofs don't glare
+## white, and the dressed stone sits with the castle's rubble walls (about 0.2) instead of
+## standing out pale against them.
+const PHOTO_TONE := {"castle_wall": 0.42}
 
 static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: float, tri_scale: float, normal_scale: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
