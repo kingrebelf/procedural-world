@@ -60,6 +60,7 @@ var swimming := false
 var underwater := false
 var breath := BREATH
 var _drown_t := 0.0
+var steps := Footsteps.new()
 ## Your character: one body for third person (and your shadow in first person), and the
 ## arms in the viewmodel for first person. V toggles the camera.
 const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
@@ -162,8 +163,12 @@ func yaw() -> float:
 	return _yaw
 
 func select(i: int) -> void:
+	var was := selected
 	selected = clampi(i, 0, Inventory.HOTBAR - 1)
 	_refresh_held()
+	var it = held_item()
+	if was != selected and it != null and ItemDB.def(it["type"]).get("kind", "") == "weapon":
+		Audio.play("weapon/draw", -10.0)
 	selected_changed.emit(selected)
 
 func held_item():
@@ -353,6 +358,8 @@ func _physics_process(delta: float) -> void:
 	var speed := (CROUCH if _crouched else (SPRINT if sprinting else WALK)) * speed_mult * Game.stats.speed_mult() * pack
 	var dir := (transform.basis * Vector3(input.x, 0, input.y)).normalized()
 	var hv := Vector3(velocity.x, 0, velocity.z)
+	var jumped := false
+	var landed_vy := 0.0
 
 	# Water: float with the chest at the surface; dive with crouch, rise with jump.
 	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
@@ -406,11 +413,16 @@ func _physics_process(delta: float) -> void:
 		if is_on_floor():
 			if jump_ok and Input.is_action_just_pressed("jump") and _tire(8.0):
 				velocity.y = JUMP
+				jumped = true
 		else:
 			velocity.y += (lift - _gravity) * delta
 		var was_air := not is_on_floor()
 		var vy := velocity.y
 		move_and_slide()
+		if was_air and is_on_floor():
+			landed_vy = -vy
+		if jetpack.firing:
+			Audio.hold_loop("jetpack", 0.7)
 		if was_air and is_on_floor() and vy < -11.0:
 			Game.set_health(Game.health - (absf(vy) - 11.0) * 6.0, "You fell to your death")
 	# Stamina: sprinting drains it; it refills after a moment's rest.
@@ -444,6 +456,8 @@ func _physics_process(delta: float) -> void:
 		bob = Vector3(cos(_bob_t * 0.5) * 0.03, absf(sin(_bob_t)) * 0.045, 0)
 	head.position = head.position.lerp(Vector3(0, eye, 0) + bob, clampf(delta * 12.0, 0.0, 1.0))
 	viewmodel.sway(delta, hv.length() / SPRINT)
+	if not fly:
+		steps.tick(self, delta, Vector2(velocity.x, velocity.z).length(), is_on_floor(), _crouched, landed_vy, jumped)
 	_animate_body(Vector2(velocity.x, velocity.z).length())
 
 	var looking := not ui_open and Input.is_action_pressed("use") and (Input.mouse_mode == Input.MOUSE_MODE_CAPTURED or Game.using_pad)
@@ -551,6 +565,14 @@ func _find_focus() -> Dictionary:
 					if o["st"].get("gone", false):
 						continue
 					var wp: Vector3 = c.position + o["p"]
+					if Lore.has(o["t"]) and wp.distance_squared_to(global_position) < 196.0:
+						# Terminals, books and the like inside rooms, each its own prompt.
+						for k in Lore.spots(o["t"]).size():
+							var at: Vector3 = c.position + Lore.anchor(o, k)
+							var sl := _focus_score(eye, fwd, at)
+							if sl < best_s and _can_see(eye, at):
+								best_s = sl
+								best = {"kind": "lore", "chunk": c, "i": o["i"], "spot": k, "pos": at + Vector3(0, 0.3, 0), "verb": Lore.verb(o, k)}
 					if wp.distance_squared_to(global_position) > 49.0:
 						continue
 					var use := _use_of(o)
@@ -560,6 +582,13 @@ func _find_focus() -> Dictionary:
 					if sc < best_s:
 						best_s = sc
 						best = {"kind": use["kind"], "chunk": c, "i": o["i"], "pos": wp + Vector3(0, use["h"] + 0.35, 0), "verb": _theft_verb(o, wp, use)}
+	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
+	if streamer and best.is_empty():
+		var got := streamer.find_under(eye, eye + fwd * (USE_RANGE - 1.0), 0.45)
+		if not got.is_empty():
+			var parts := String(got["key"]).split("#")
+			var pos: Vector3 = got["pos"]
+			best = {"kind": "plant", "found": got, "pos": pos + Vector3(0, 0.9, 0), "verb": Flora.under_verb(int(parts[1]), int(parts[2]))}
 	# A piece you built, right under the crosshair, can be taken down (or used, if a station).
 	if not best.get("kind", "") in ["npc", "vehicle"]:
 		var h := _hit_object()
@@ -576,6 +605,11 @@ func _find_focus() -> Dictionary:
 ## Crouched on foot: sneaking (people notice you less; Interact on someone picks their pocket).
 func sneaking() -> bool:
 	return _crouched and vehicle == null
+## True when nothing stands between the eye and `at` (a prop seen through a wall isn't).
+func _can_see(eye: Vector3, at: Vector3) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(eye, at, 1, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	return hit.is_empty() or (hit["position"] as Vector3).distance_to(eye) > eye.distance_to(at) - 0.75
 
 static func is_own_piece(o: Dictionary) -> bool:
 	return ObjectLibrary.kind(o["t"]) == "built" and not o["st"].get("gone", false) and String(o["st"].get("by", "you")) == "you"
@@ -803,6 +837,16 @@ func interact() -> void:
 					_use_object(focus["chunk"], focus["chunk"].get_object(focus["i"]))
 				_focus_t = 0.0
 				return
+			"plant":
+				_pick_plant(focus["found"])
+				_focus_t = 0.0
+				return
+			"lore":
+				if is_instance_valid(focus["chunk"]):
+					get_tree().call_group("lore_ui", "open_spot", focus["chunk"], focus["i"], focus["spot"])
+					used_tool.emit("interact")
+				_focus_t = 0.0
+				return
 	var h := _hit_object()
 	if h.has("npc") and is_instance_valid(h["npc"]):
 		get_tree().call_group("dialogue_ui", "open_pickpocket" if sneaking() else "open_with", h["npc"])
@@ -824,7 +868,7 @@ func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
 				Game.toast.emit("Sealed. %s still keeps this vault" % WonderSite.BOSSES[o["st"]["wonder"]][0])
 				return
 			var wp: Vector3 = chunk.position + o["p"]
-			var town: Dictionary = npcs.town_at(wp) if npcs else {}
+			var town: Dictionary = npcs.town_at(wp) if npcs and not Game.owns_house_at(wp) else {}
 			if not town.is_empty() and not _pick_lock(chunk, o, wp):
 				return
 			var loot: Array = o["st"]["loot"]
@@ -856,7 +900,7 @@ func _theft_verb(o: Dictionary, wp: Vector3, use: Dictionary) -> String:
 	if use["kind"] != "cache" or npcs == null or o["st"].has("wonder"):
 		return use["verb"]
 	var town := npcs.town_at(wp)
-	if town.is_empty():
+	if town.is_empty() or Game.owns_house_at(wp):
 		return use["verb"]
 	var lock := lock_of(o)
 	if lock > 0:
@@ -950,6 +994,7 @@ func use_held() -> void:
 	if it != null and BuildCatalog.is_piece_item(it["type"]):
 		_cooldown = 0.25
 		if builder.place():
+			Audio.play("hit/plank", -4.0)
 			used_tool.emit("build")
 			Game.add_xp(4.0, "Building")
 		return
@@ -975,15 +1020,18 @@ func use_held() -> void:
 			h = {"creature": c, "point": c.global_position}
 	if (h.is_empty() or (h.has("chunk") and not h.has("obj"))) and _harvest_under(h, q):
 		return
+	Audio.play("swing/whoosh", -10.0 if fresh else -14.0, 0.1)
 	if h.is_empty():
 		used_tool.emit("miss")
 		return
 	if h.has("creature") and is_instance_valid(h["creature"]) and fauna:
 		used_tool.emit("hit")
+		Audio.play_at("hit/flesh", h["point"], -2.0)
 		_strike(it, h["creature"], null, float(d.get("damage", 2)) * hq)
 		return
 	if h.has("npc") and is_instance_valid(h["npc"]) and npcs:
 		used_tool.emit("hit")
+		Audio.play_at("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0)
 		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq)
 		return
 	if h.has("obj"):
@@ -991,6 +1039,7 @@ func use_held() -> void:
 		var o: Dictionary = chunk.get_object(h["obj"])
 		var mat := Durability.material(o["t"])
 		used_tool.emit("chop" if mat == "wood" or mat == "fungus" else "mine")
+		Audio.play_at("hit/plank" if ObjectLibrary.kind(o["t"]) == "built" else Audio.hit_bank(mat), h.get("point", chunk.position + o["p"]), -1.0 if fresh else -5.0)
 		if d.get("build", false) and ObjectLibrary.kind(o["t"]) == "built":
 			# The builder's hammer takes your own pieces down in one blow.
 			damage_object(chunk, o, Durability.health_left(o) + 1.0, 1.0)
@@ -1000,6 +1049,7 @@ func use_held() -> void:
 		# Digging the ground itself: a persistent crater, and some stone.
 		used_tool.emit("dig")
 		var p: Vector3 = h["point"]
+		Audio.play_at("hit/dig", p, -2.0)
 		streamer.dig(p, 1.6 + d["dig"] * 0.6, 0.35 * d["dig"] * hq)
 		if randf() < 0.5:
 			var ck := ChunkStreamer.chunk_of(p)
@@ -1016,12 +1066,29 @@ func _harvest_under(h: Dictionary, q: float) -> bool:
 	if got.is_empty():
 		return false
 	used_tool.emit("chop")
+	Audio.play_at("harvest/rustle", got["pos"], 0.0, 0.15)
 	var parts := String(got["key"]).split("#")
 	var era := int(parts[2])
 	var ck := ChunkStreamer.chunk_of(got["pos"])
 	for y in Flora.under_yield(int(parts[1]), era, randf()):
 		Game.give(ItemDB.make(y[0], y[1], q, Game.origin_here("gathered", era, ck)))
 	return true
+
+## Picks a plant by hand (Interact): the same yield as cutting it, at plain quality.
+func _pick_plant(found: Dictionary) -> void:
+	if streamer == null or not streamer.pick_under(found):
+		return
+	used_tool.emit("interact")
+	if body:
+		body.play_once("interact")
+	var parts := String(found["key"]).split("#")
+	var era := int(parts[2])
+	var ck := ChunkStreamer.chunk_of(found["pos"])
+	var got: Array = []
+	for y in Flora.under_yield(int(parts[1]), era, randf()):
+		Game.give(ItemDB.make(y[0], y[1], 1.0, Game.origin_here("gathered", era, ck)))
+		got.append("%s x%d" % [ItemDB.def(y[0])["name"], y[1]])
+	Game.toast.emit("Picked: " + ", ".join(got))
 
 func _fire(it: Dictionary, d: Dictionary) -> void:
 	if not d.get("auto", false):
@@ -1035,6 +1102,7 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	if shots <= 0:
 		if Game.inventory.remove_type(ammo_t, 1) == 0:
 			Game.toast.emit("Needs a %s" % ItemDB.def(ammo_t)["name"])
+			Audio.ui("ui/error")
 			_cooldown = 0.6
 			return
 		shots = d.get("shots_per_ammo", 10)
@@ -1043,6 +1111,7 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	if body:
 		body.play_once("pistol", 0.4)
 	used_tool.emit("fire")
+	Audio.play("weapon/laser_big" if d.has("splash") else "weapon/laser", -6.0, 0.06)
 	var space := get_world_3d().direct_space_state
 	var from := camera.global_position
 	var to := from - camera.global_transform.basis.z * float(d.get("range", 60.0))
@@ -1051,25 +1120,30 @@ func _fire(it: Dictionary, d: Dictionary) -> void:
 	var end: Vector3 = hit.get("position", to)
 	viewmodel.tracer(end, String(d.get("tracer", "glow_cyan")))
 	if d.has("splash"):
+		Audio.play_at("weapon/explosion", end, 4.0)
 		_blast(end, float(d["splash"]), float(d.get("damage", 10)))
 		if hit.has("collider") and hit["collider"].has_meta("obj"):
 			var bc: ChunkNode = hit["collider"].get_meta("chunk")
 			damage_object(bc, bc.get_object(hit["collider"].get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
 		return
 	if hit.has("collider") and hit["collider"].has_meta("creature") and fauna:
+		Audio.play_at("hit/flesh", end, -4.0)
 		_strike(it, hit["collider"].get_meta("creature"), null, float(d.get("damage", 10)) * it.get("quality", 1.0))
 		return
 	if hit.has("collider") and hit["collider"].has_meta("npc") and npcs:
+		Audio.play_at("hit/flesh", end, -4.0)
 		_strike(it, null, hit["collider"].get_meta("npc"), float(d.get("damage", 10)) * it.get("quality", 1.0))
 		return
 	if hit.has("collider") and hit["collider"].has_meta("obj"):
 		var chunk: ChunkNode = hit["collider"].get_meta("chunk")
 		var o: Dictionary = chunk.get_object(hit["collider"].get_meta("obj"))
+		Audio.play_at(Audio.hit_bank(Durability.material(o["t"])), end, -6.0)
 		damage_object(chunk, o, Durability.power({"mine": 0.6, "chop": 0.6, "damage": d.get("damage", 10)}, Durability.material(o["t"])), 0.8)
 
 ## A hit on a creature or person, with the held item's abilities: critical strikes,
 ## life drain and arcs of lightning to whatever stands close by.
 func _strike(it, creature, npc, dmg: float) -> void:
+	Audio.combat()
 	if Rarity.has_affix(it, "keen") and randf() < 0.2:
 		dmg *= 2.0
 		Game.toast.emit("Critical hit!")
@@ -1151,7 +1225,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			if Game.give(it):
 				spilled += int(ItemDB.def(it["type"]).get("value", 1)) * int(it.get("qty", 1))
 		o["st"]["loot"] = []
-		if spilled > 0 and npcs:
+		if spilled > 0 and npcs and not Game.owns_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
 		if k == "structure" or k == "trader":
@@ -1171,7 +1245,7 @@ static func _focus_key(f: Dictionary) -> String:
 	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
 		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
 	if f.has("chunk") and is_instance_valid(f["chunk"]):
-		return "%s:%d" % [(f["chunk"] as ChunkNode).key, int(f["i"])]
+		return "%s:%d%s" % [(f["chunk"] as ChunkNode).key, int(f["i"]), (":%d" % int(f["spot"])) if f.has("spot") else ""]
 	return ""
 
 ## Sets the held vehicle down a few steps ahead.
@@ -1270,6 +1344,7 @@ func _ride(delta: float) -> void:
 		body.rotation = Vector3(0, PI + wrapf(v.rotation.y - _yaw, -PI, PI), 0)
 		body.play("sit")
 	head.position = head.position.lerp(Vector3(0, SIT_HIPS + 0.62, 0), clampf(delta * 10.0, 0.0, 1.0))
+	steps.ride(v, delta)
 	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
 	if underwater:

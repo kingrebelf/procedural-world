@@ -21,7 +21,7 @@ static func decide(npc: Dictionary, per: Dictionary) -> Dictionary:
 	var rel: float = float(npc.get("rel", 0)) / 100.0
 	var pd: float = per.get("player_dist", INF)
 	var guard: bool = NPCGen.GUARD_JOBS.has(npc["job"])
-	var trader: bool = npc["job"] == "trader"
+	var trader: bool = npc["job"] == "trader" or npc.has("shop_kind")
 	var energy: float = npc.get("energy", 1.0)
 	var social: float = npc.get("social", 0.5)
 	var noise: float = per.get("noise", 0.5)

@@ -950,6 +950,50 @@ func test_speech_to_text_request() -> void:
 	check(svc.parse_transcription(200, "{\"text\": \" hello there \"}")["text"] == "hello there", "transcription parsed")
 	check(not svc.parse_transcription(401, "{\"error\": {\"message\": \"bad key\"}}")["ok"], "errors reported")
 
+func test_voice_and_quick_replies() -> void:
+	var rec := {"id": "q1", "name": "Edda Thorne", "job": "farmer", "era": 0, "rel": 30, "mood": "calm", "age": 40,
+		"body": {"female": true}, "traits": {"friendly": 0.8, "brave": 0.5, "curious": 0.6, "diligent": 0.6, "greedy": 0.2}}
+	check(Interject.pick_local(rec, "Can you dance for me?") == "yes", "a request they'd do gets a quick yes")
+	var cross := rec.duplicate(true)
+	cross["mood"] = "angry"
+	check(Interject.pick_local(cross, "Can you dance for me?") == "no", "an angry person refuses at once")
+	check(Interject.pick_local(rec, "What do you think about the old ruins up on the hill?") == "think", "a real question gets a thinking pause")
+	check(Interject.pick_local(rec, "hello") == "greet", "greeting")
+	check(Interject.pick_local(rec, "thank you") == "thanks", "thanks")
+	check(Interject.pick_local(rec, "you are an idiot") == "offended", "rudeness")
+	var shy := rec.duplicate(true)
+	shy["traits"] = {"friendly": 0.1, "brave": 0.5, "curious": 0.1, "diligent": 0.5, "greedy": 0.5}
+	check(Interject.pick_local(shy, "nice weather") == "none", "quiet people just wait")
+	check(Interject.line(rec, "think") == Interject.line(rec, "think"), "each person keeps their phrasing")
+	check(Interject.line(rec, "none") == "", "silence says nothing")
+	check(Interject.parse_pick("{\"pick\": \"no\"}") == "no", "service pick parsed")
+	check(Interject.parse_pick("{\"pick\": \"sing a song\"}") == "", "only pre-approved kinds are accepted")
+	check(Interject.request_body(rec, "hi", "greet")["lines"]["think"] == Interject.line(rec, "think"), "service sees the actual lines")
+	var svc = load("res://src/ai/ai_service.gd")
+	var req: Dictionary = svc.build_speech({"url": "https://api.openai.com/v1/audio/speech", "key": "k", "model": "gpt-4o-mini-tts"}, "Hello.", {"voice": "coral", "instructions": "Scottish", "speed": 1.1})
+	var body = JSON.parse_string(req["body"])
+	check(body["voice"] == "coral" and body["instructions"] == "Scottish" and body["response_format"] == "pcm", "speech request for gpt-4o-mini-tts")
+	check(not body.has("speed"), "no speed with directions")
+	check(req["headers"].has("Authorization: Bearer k"), "voice key sent")
+	body = JSON.parse_string(svc.build_speech({"url": "http://127.0.0.1:8880/v1/audio/speech", "key": "", "model": "kokoro"}, "Hi", {"voice": "bf_emma", "instructions": "x", "speed": 1.1})["body"])
+	check(not body.has("instructions") and is_equal_approx(float(body["speed"]), 1.1), "kokoro gets speed, not directions")
+	var pcm := PackedByteArray()
+	pcm.resize(4800)
+	var a: AudioStream = svc.audio_from_bytes(pcm)
+	check(a is AudioStreamWAV and (a as AudioStreamWAV).mix_rate == 24000, "raw PCM plays at 24 kHz")
+	var wav := Microphone.wav_bytes(pcm, 16000)
+	wav.encode_u32(40, 0xFFFFFFFF) # streamed WAVs carry bogus sizes
+	a = svc.audio_from_bytes(wav)
+	check(a is AudioStreamWAV and (a as AudioStreamWAV).mix_rate == 16000 and (a as AudioStreamWAV).data.size() == 4800, "WAV with a bogus size")
+	check(svc.parse_windows_stt("junk\nOK: hello there\n")["text"] == "hello there", "Windows recogniser output")
+	check(not svc.parse_windows_stt("ERR:no recogniser")["ok"], "Windows recogniser error")
+	check(not svc.parse_windows_stt("OK:")["ok"], "Windows recogniser heard nothing")
+	var loud := PackedByteArray()
+	loud.resize(800)
+	check(Microphone.peak(loud) == 0.0, "silence has no peak")
+	loud.encode_s16(400, -16384)
+	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
+
 func test_outfits() -> void:
 	if not HumanModel.available():
 		return
@@ -1483,6 +1527,60 @@ func test_scenery_meshes() -> void:
 	for kind in ["dome", "flat", "cone", "bell", "funnel", "shelf"]:
 		check(HiFlora._cap_profile(kind, 0.1)[0].size() > 3, "mushroom cap '%s' has a profile" % kind)
 
+## Landing pads: each ship stands on its struts within its pad, collides as a box you
+## walk round, and can be salvaged; outposts beyond hamlets get one.
+func test_ship_pads() -> void:
+	for t in ShipPad.SHIPS:
+		var m := ObjectLibrary.get_mesh(t)
+		check(m != null and m.get_surface_count() >= 2, "%s builds" % t)
+		var box := m.get_aabb()
+		check(box.size.x <= ShipPad.PAD + 0.6 and box.size.z <= ShipPad.PAD + 0.6, "%s fits its pad (%s)" % [t, box.size])
+		check(box.end.y > ShipPad.STRUTS + 1.5, "%s stands up off the pad (%.1f m)" % [t, box.end.y])
+		check(ObjectLibrary.shape_of({"t": t, "st": {}})[0] is BoxShape3D, "%s collides" % t)
+		check(Durability.total_items({"t": t, "s": 1.0, "e": Eras.SCIFI, "st": {}}) > 0, "%s can be salvaged" % t)
+		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t).begins_with("Landed "), "%s is a structure (%s)" % [t, ObjectLibrary.label(t)])
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var pads := 0
+	var outposts := 0
+	for sz in range(-14, 15):
+		for sx in range(-14, 15):
+			var st := g.settlement_at(sx, sz)
+			if st.is_empty() or st["era"] != Eras.SCIFI or int(st["size"]) < 1:
+				continue
+			outposts += 1
+			for it in g.settlement_layout(st):
+				if ShipPad.has(it["t"]):
+					pads += 1
+	check(outposts > 0 and pads == outposts, "each outpost beyond a hamlet has a landing pad (%d of %d)" % [pads, outposts])
+
+## Livestock: a village's houses have cows, horses and dogs about them, real kit animals
+## that keep near and don't run from you; open country has none.
+func test_village_livestock() -> void:
+	var houses := []
+	for i in 3:
+		houses.append({"i": i, "t": "cottage", "e": Eras.MEDIEVAL, "p": Vector3(20 + i * 9, 4, 30), "r": 0.0, "s": 1.0, "st": {}})
+	var village := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": houses}
+	var stock := []
+	for h in Creature.livestock_for(9, village):
+		stock.append(h)
+	check(stock.size() >= 3, "a village has livestock (%d)" % stock.size())
+	var near := true
+	var names := []
+	for h in stock:
+		var p := Creature.species(h["sp"], h["era"])
+		names.append(p["name"])
+		check(AnimalModel.available(p["kit"]) and p["temper"] == "tame", "%s is a tame kit animal (%s)" % [p["name"], p["kit"]])
+		var best := INF
+		for o in houses:
+			best = minf(best, Vector2(o["p"].x - h["lx"], o["p"].z - h["lz"]).length())
+		near = near and best < 10.0
+	check(near, "livestock stand by the houses (%s)" % [names])
+	check(var_to_bytes(Creature.livestock_for(9, village)) == var_to_bytes(Creature.livestock_for(9, village)), "the same animals every time")
+	var wild := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": [houses[0]]}
+	check(Creature.livestock_for(9, wild).is_empty(), "a lone house keeps no livestock")
+	check(Creature.species(-201, Eras.FANTASY)["name"] == "Moon Mare", "fantasy villages keep their own breeds")
+
 func test_town_walls() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)
@@ -1647,3 +1745,64 @@ func test_wonder_meshes() -> void:
 	var solid := WonderSite.build("w_gate", true)
 	check(solid.get_surface_count() < WonderSite.build("w_gate").get_surface_count(), "the gate's collision leaves out its light and portal")
 
+
+## Nothing grows through a floor: trees, rocks, caches and markers keep out of every
+## building's ground plan, including a neighbour chunk's building reaching in.
+func test_keep_out() -> void:
+	var plan := [ChunkGenerator._plan(10.0, 10.0, PI / 2.0, Vector2(-1, -3), Vector2(1, 3))]
+	check(ChunkGenerator.kept_out(plan, 12.5, 10.0, 0.0), "a turned plan covers its long side")
+	check(not ChunkGenerator.kept_out(plan, 10.0, 7.5, 0.0), "and not past its short side")
+	check(ChunkGenerator.kept_out(plan, 10.0, 8.8, 0.3), "a margin widens it")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var picked := {}
+	for sz in range(-10, 11):
+		for sx in range(-10, 11):
+			var st := g.settlement_at(sx, sz)
+			if not st.is_empty() and not picked.has(st["era"]) and int(st["size"]) >= 1:
+				picked[st["era"]] = st
+	check(picked.size() >= 2, "settlements of several eras to look at (%d)" % picked.size())
+	var reach := 0
+	var inside: Array = []
+	var looked := 0
+	for st in picked.values():
+		var c: Vector2 = st["center"]
+		var ccx := int(floor(c.x / ChunkGenerator.SIZE))
+		var ccz := int(floor(c.y / ChunkGenerator.SIZE))
+		for dz in range(-1, 2):
+			for dx in range(-1, 2):
+				var ch := g.generate(ccx + dx, ccz + dz)
+				var plans := ChunkGenerator.keep_out(ch)
+				reach += (ch["keep_out"] as PackedFloat32Array).size() / 7
+				for o in ch["objects"]:
+					var k := ObjectLibrary.kind(o["t"])
+					if k == "tree" or k == "rock" or k == "ore" or k == "marker" or (k == "cache" and not o["st"].has("landmark")):
+						looked += 1
+						if ChunkGenerator.kept_out(plans, o["p"].x, o["p"].z, 0.3):
+							var by := "a neighbour"
+							for b in ch["objects"]:
+								if ObjectLibrary.keeps_out(b["t"]):
+									var f := ObjectLibrary.footprint(b)
+									if ChunkGenerator.kept_out([ChunkGenerator._plan(b["p"].x, b["p"].z, b["r"], f.position, f.end)], o["p"].x, o["p"].z, 0.3):
+										by = b["t"]
+							inside.append("%s in %s at (%.1f, %.1f)" % [o["t"], by, o["p"].x, o["p"].z])
+				if dx == 0 and dz == 0:
+					var again := ch.duplicate()
+					again.erase("keep_out")
+					check(g.fill_keep_out(again) and again["keep_out"] == ch["keep_out"], "chunks saved before keep the same plans when loaded (%d)" % (ch["keep_out"] as PackedFloat32Array).size())
+	check(looked > 20 and inside.is_empty(), "nothing wild stands inside a building (%d looked at, %s)" % [looked, inside])
+	check(reach > 0, "buildings reaching in from the next chunk are kept out too (%d)" % reach)
+
+## Floors drawn twice at one height flicker: the sci-fi blocks' foundations sit under
+## their floor tiles, and plates and forks sit on the table rather than in it.
+func test_no_double_floors() -> void:
+	for t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]:
+		var low: Array = []
+		for f in ZFight.find(t):
+			var y := float(f.get_slice(" at y ", 1).get_slice(" ", 0))
+			if y < 0.5:
+				low.append(f)
+		check(low.is_empty(), "%s has one floor (%s)" % [t, low])
+	for t in KitHouse.FURNISH.keys() + Interiors.FURNISH.keys():
+		var hits := ZFight.items(t)
+		check(hits.is_empty(), "%s's furniture doesn't sink into each other (%s)" % [t, hits])

@@ -7,7 +7,7 @@ extends Node3D
 const DIR := "res://assets/models/animals/"
 ## Kit model -> height in metres (to the top of the head or antlers).
 const HEIGHT := {"Wolf": 0.9, "Stag": 2.1, "Deer": 1.5, "Fox": 0.5, "Bull": 1.8, "Horse": 1.75,
-	"Alpaca": 1.8, "Donkey": 1.35,
+	"Alpaca": 1.8, "Donkey": 1.35, "Cow": 1.5, "Horse_White": 1.75, "Husky": 0.72, "ShibaInu": 0.6,
 	"Alien_Scolitex": 1.3, "Alien_Oculichrysalis": 0.9, "Alien_Cyclop": 1.1}
 ## The sci-fi kit's aliens: rigged, but with an idle loop only, so Creature moves them
 ## procedurally (see procedural()).

@@ -23,6 +23,7 @@ var _mic: Microphone
 var _mic_btn: Button
 var _extra: Control ## the Give / Ask drawer, when open
 var _body: VBoxContainer
+var _join_btn: Button
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -48,8 +49,11 @@ func open_with(n: NPC) -> void:
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var first: String = NPCMind.bark(n.rec, "greet") if int(n.rec.get("rel", 0)) > -40 else "What do you want?"
+	if n.rec.has("shop_kind") and int(n.rec.get("rel", 0)) > -40:
+		first = TownShops.greeting(n.rec, _shop())
 	_add_line(n.rec["name"].split(" ")[0], first, UITheme.ACCENT)
-	Voice.speak(n.rec, first)
+	Voice.speak(n.rec, first, 0.0, true, n)
+	Voice.prefetch(n.rec, ["think", "yes", "no", "maybe"].map(func(k): return Interject.line(n.rec, k)))
 	if int(n.rec.get("rel", 0)) > 10:
 		n.act("wave")
 	elif NPCSocial.overdue(n.rec):
@@ -57,7 +61,8 @@ func open_with(n: NPC) -> void:
 	_history.append({"role": "user", "content": "(The traveller walks up to you.)"})
 	_history.append({"role": "assistant", "content": JSON.stringify({"say": first})})
 	_set_options(NPCMind.default_options(n.rec))
-	_entry.grab_focus()
+	# The text box waits for Enter or a click, so the voice key always works.
+	_status.text = "Hold %s to talk, or press Enter to type." % _voice_key()
 
 func close_talk() -> void:
 	if npc == null:
@@ -84,6 +89,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		close_talk()
 		get_viewport().set_input_as_handled()
 		return
+	if npc != null and event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+		_entry.grab_focus()
+		get_viewport().set_input_as_handled()
+		return
 	# Hold the voice key to speak to whoever you are looking at (or are talking to).
 	if InputMap.has_action("voice") and event.is_action("voice") and not event.is_echo():
 		if event.is_pressed():
@@ -91,7 +100,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				var f: Dictionary = player.focus if "focus" in player else {}
 				if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")):
 					open_with(f["npc"])
-					_entry.release_focus() # so the key isn't typed, and its release reaches us
 			if npc != null:
 				_mic_start()
 		get_viewport().set_input_as_handled()
@@ -105,6 +113,8 @@ func _input(event: InputEvent) -> void:
 func _process(_d: float) -> void:
 	if _pick_npc != null and (not is_instance_valid(_pick_npc) or _pick_npc.global_position.distance_to(player.global_position) > 2.8 or _pick_npc.action in ["flee", "attack", "confront"]):
 		close_pickpocket()
+	if _mic.recording and _mic_btn:
+		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
 	if npc != null and (not is_instance_valid(npc) or npc.global_position.distance_to(player.global_position) > 8.0):
 		npc = null if not is_instance_valid(npc) else npc
 		if npc == null:
@@ -137,7 +147,7 @@ func _build() -> void:
 	var head := HBoxContainer.new()
 	var tv := VBoxContainer.new()
 	tv.add_child(UITheme.title(npc.rec["name"], 24))
-	var who := "%s of %s" % [npc.rec["job"].capitalize(), npc.settlement["name"]]
+	var who := _who()
 	tv.add_child(UITheme.label("%s    %s" % [who, _relation_text()], 14, UITheme.DIM))
 	head.add_child(tv)
 	var sp := Control.new()
@@ -150,7 +160,14 @@ func _build() -> void:
 		pay.disabled = Game.money < owe
 		pay.tooltip_text = "Settle what you owe %s and the guards stand down." % npc.settlement["name"]
 		head.add_child(pay)
-	head.add_child(UITheme.button("Trade", _open_trade))
+	var kind: String = npc.rec.get("shop_kind", "")
+	if kind == "land":
+		head.add_child(UITheme.button("Houses", _show_houses))
+	else:
+		head.add_child(UITheme.button("Trade", _open_trade))
+	if TownShops.is_guild(kind) and not Game.guilds.has(kind):
+		_join_btn = UITheme.button("Join", _join_guild)
+		head.add_child(_join_btn)
 	head.add_child(UITheme.button("Give", _show_give))
 	head.add_child(UITheme.button("Ask", _show_ask))
 	head.add_child(UITheme.button("Goodbye", close_talk))
@@ -209,16 +226,28 @@ func _send(text: String) -> void:
 	if text == "" or _busy or npc == null:
 		return
 	_entry.text = ""
+	_entry.release_focus() # back to the voice key
 	_add_line("You", text, UITheme.ACCENT_2)
 	_history.append({"role": "user", "content": text})
 	var n := npc
 	var d: Dictionary
+	var quick := ""
 	if AI.dialogue_enabled():
 		_busy = true
 		_status.text = "%s is thinking..." % n.rec["name"].split(" ")[0]
 		var held = player.held_item()
 		var ctx := {"held": ItemDB.display_name(held) if held != null else ""}
-		var r: Dictionary = await AI.chat_json(NPCMind.system_prompt(n.rec, n.settlement, ctx), _history.slice(-12))
+		var msgs := _history.slice(-12)
+		if AI.get_value("quick_replies"):
+			quick = await _quick_reply(n, text)
+			if npc != n:
+				_busy = false
+				return
+			if quick != "":
+				# The model hears what was already said, so its answer carries on from it.
+				msgs = msgs.duplicate(true)
+				msgs[-1] = {"role": "user", "content": text + Interject.note_for_model(quick)}
+		var r: Dictionary = await AI.chat_json(NPCMind.system_prompt(n.rec, n.settlement, ctx), msgs)
 		_busy = false
 		if npc != n:
 			return
@@ -231,14 +260,19 @@ func _send(text: String) -> void:
 	else:
 		d = NPCMind.builtin_reply(n.rec, n.settlement, text)
 	var say := String(d.get("say", "...")).strip_edges().left(600)
+	var said := quick.to_lower().trim_suffix("...").trim_suffix(".")
+	if quick != "" and say.to_lower().begins_with(said):
+		say = say.substr(said.length()).lstrip(".!,; ").strip_edges() # don't say it twice
+		if say == "":
+			say = "..."
 	var doing := NPCMind.reply_do(d)
-	var mem := {"say": say}
+	var mem := {"say": (quick + " " + say) if quick != "" else say}
 	if doing != "":
 		mem["do"] = doing
 	_history.append({"role": "assistant", "content": JSON.stringify(mem)})
 	_add_line(n.rec["name"].split(" ")[0], say + ("  [i](%s)[/i]" % doing.replace("_", " ") if doing != "" else ""), UITheme.ACCENT)
 	n.say(say, 6.0)
-	Voice.speak(n.rec, say)
+	Voice.speak(n.rec, say, 0.0, true, n, quick != "")
 	var action := NPCMind.apply_reply(n.rec, n.settlement, d)
 	var opts := NPCMind.clean_options(d)
 	_set_options(opts if not opts.is_empty() else NPCMind.default_options(n.rec))
@@ -277,6 +311,10 @@ func _act(action: String, d: Dictionary = {}) -> void:
 			npc.act("beckon")
 		"trade":
 			_open_trade()
+		"join_guild":
+			_join_guild()
+		"buy_house":
+			_show_houses()
 		"follow":
 			manager.instruct(npc, "follow", 1800.0)
 			Game.toast.emit("%s is following you" % npc.rec["name"].split(" ")[0])
@@ -437,7 +475,38 @@ func _try_pick(idx: int, marks: int) -> void:
 	n.decide_in = 0.0
 	manager.mark_dirty(n.settlement)
 
+func _who() -> String:
+	if npc.rec.has("shop_kind"):
+		var t: String = npc.rec.get("shop_title", "")
+		var lbl: String = npc.rec.get("shop_label", "")
+		if npc.rec["shop_kind"] == "land" or t == "":
+			return "%s of %s, %s" % [npc.rec["job"].capitalize(), lbl if lbl != "" else "town", npc.settlement["name"]]
+		return "%s of %s, %s" % [npc.rec["job"].capitalize(), t, npc.settlement["name"]]
+	return "%s of %s" % [npc.rec["job"].capitalize(), npc.settlement["name"]]
+
+## The shop this person keeps (TownShops plan entry), or {}.
+func _shop() -> Dictionary:
+	var site := manager.site_of(npc)
+	return {} if site.is_empty() else TownShops.shop_of(manager.gen, site, npc.rec)
+
 func _open_trade() -> void:
+	if npc.rec.has("shop_kind"):
+		var kind: String = npc.rec["shop_kind"]
+		var first: String = npc.rec["name"].split(" ")[0]
+		if int(npc.rec.get("rel", 0)) <= -40:
+			_add_line(first, "Get out of my shop.", UITheme.ACCENT)
+			return
+		if kind == "land":
+			_show_houses()
+			return
+		if TownShops.is_guild(kind) and not Game.guilds.has(kind):
+			_add_line(first, "Guild goods are for members. %s" % TownShops.pitch(npc.rec), UITheme.ACCENT)
+			return
+		var st := TownShops.trade_state(npc.rec, _shop(), Game.guilds)
+		manager.mark_dirty(npc.settlement)
+		close_talk()
+		menus.open_trader(st, null)
+		return
 	if npc.rec["job"] != "trader" or not npc.rec.has("stall"):
 		# Anyone else trades the goods of their own work, from their own purse.
 		if int(npc.rec.get("rel", 0)) <= -40:
@@ -455,6 +524,82 @@ func _open_trade() -> void:
 	Economy.tick(s[0], Game.day)
 	close_talk()
 	menus.open_trader(s[0], s[1])
+
+# --- Guilds and houses ---------------------------------------------------------------------------
+
+func _join_guild() -> void:
+	var kind: String = npc.rec.get("shop_kind", "")
+	if not TownShops.is_guild(kind):
+		return
+	var first: String = npc.rec["name"].split(" ")[0]
+	var g: Dictionary = TownShops.GUILDS[kind]
+	if Game.guilds.has(kind):
+		_add_line(first, "You're already one of us.", UITheme.ACCENT)
+		return
+	var fee := TownShops.fee(kind, npc.rec)
+	if int(npc.rec.get("rel", 0)) <= -30:
+		_add_line(first, "We don't take your sort.", UITheme.ACCENT)
+		return
+	if Game.money < fee:
+		_add_line(first, "Membership is %d Marks. Come back when you have it." % fee, UITheme.ACCENT)
+		return
+	Game.add_money(-fee)
+	npc.rec["purse"] = int(npc.rec["purse"]) + fee
+	Game.join_guild(kind, npc.settlement["name"])
+	NPCMind.change_rel(npc.rec, 8)
+	NPCMind.remember(npc.rec, "The traveller joined the %s." % g["label"])
+	var line := "Welcome to the %s. %s" % [g["label"], g["perk"]]
+	_reaction("(You pay %d Marks and join the %s.)" % [fee, g["label"]], line, "cheer")
+	Game.toast.emit("Joined the %s" % g["label"])
+	if is_instance_valid(_join_btn):
+		_join_btn.queue_free()
+
+## The land seller's houses: each with where it is and what it costs.
+func _show_houses() -> void:
+	if npc == null or npc.rec.get("shop_kind", "") != "land":
+		return
+	var site := manager.site_of(npc)
+	if site.is_empty():
+		return
+	var houses := TownShops.for_sale(manager.gen, site, Game.estates)
+	var v := _drawer("Houses for sale in %s   ·   you have %d Marks" % [npc.settlement["name"], Game.money])
+	if houses.is_empty():
+		v.add_child(UITheme.label("Nothing is for sale here just now.", 15, UITheme.DIM))
+		return
+	var note := UITheme.label("A house of your own is where you wake if you fall, and has a sign over the door with your name.", 13, UITheme.DIM)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(note)
+	var sc := ScrollContainer.new()
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(list)
+	v.add_child(sc)
+	for h in houses:
+		var cost := TownShops.price(h, npc.rec)
+		var row := HBoxContainer.new()
+		var l := UITheme.label(TownShops.where(h, site["center"]), 15)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var hh: Dictionary = h
+		var b := UITheme.button("Buy for %d" % cost, func(): _buy_house(hh, cost))
+		b.disabled = Game.money < cost
+		row.add_child(b)
+		list.add_child(row)
+
+func _buy_house(h: Dictionary, cost: int) -> void:
+	if npc == null or Game.money < cost:
+		return
+	var site := manager.site_of(npc)
+	Game.add_money(-cost)
+	npc.rec["purse"] = int(npc.rec["purse"]) + cost
+	Game.buy_house(TownShops.estate(h, npc.settlement["name"], Game.planet))
+	manager.houses_changed(site)
+	NPCMind.change_rel(npc.rec, 10)
+	NPCMind.remember(npc.rec, "Sold the traveller a %s in town." % String(h["t"]).replace("_", " "))
+	_close_extra()
+	_reaction("(You pay %d Marks for the deed.)" % cost, "It's yours. Your name goes over the door today. Welcome home.", "bow")
+	Game.toast.emit("You own a house in %s" % npc.settlement["name"])
 
 # --- Giving and asking --------------------------------------------------------------------------
 
@@ -553,7 +698,7 @@ func _reaction(note: String, line: String, doing: String) -> void:
 	if line != "":
 		_add_line(npc.rec["name"].split(" ")[0], line, UITheme.ACCENT)
 		npc.say(line, 5.0)
-		Voice.speak(npc.rec, line)
+		Voice.speak(npc.rec, line, 0.0, true, npc)
 		_history.append({"role": "assistant", "content": JSON.stringify({"say": line})})
 	npc.act(doing)
 	_panel_header_refresh()
@@ -564,7 +709,7 @@ func _panel_header_refresh() -> void:
 		var head := _body.get_child(0)
 		var tv := head.get_child(0)
 		if tv.get_child_count() > 1:
-			(tv.get_child(1) as Label).text = "%s of %s    %s" % [npc.rec["job"].capitalize(), npc.settlement["name"], _relation_text()]
+			(tv.get_child(1) as Label).text = "%s    %s" % [_who(), _relation_text()]
 
 ## Ask them to do things. They decide by personality (and the model, if connected).
 const ASKS := [
@@ -602,18 +747,40 @@ func _voice_key() -> String:
 	var ev := InputMap.action_get_events("voice") if InputMap.has_action("voice") else []
 	return ev[0].as_text().split(" ")[0] if not ev.is_empty() else "B"
 
+## Says the instant answer for `text` ("Yes.", "Hmm, let me think...") with a fitting
+## gesture, and returns it ("" when they just wait for the model).
+func _quick_reply(n: NPC, text: String) -> String:
+	var kind: String = await AI.interject(n.rec, text)
+	if npc != n:
+		return ""
+	var line := Interject.line(n.rec, kind)
+	if line == "":
+		return ""
+	_add_line(n.rec["name"].split(" ")[0], line, UITheme.ACCENT)
+	n.say(line, 2.5)
+	Voice.speak(n.rec, line, 0.0, true, n)
+	n.act(Interject.GESTURE.get(kind, ""))
+	return line
+
+## A voice problem: in the status line and in the conversation, where it can't be missed.
+func _problem(text: String) -> void:
+	_status.text = text
+	_log.append_text("[color=#ff9a80][i]%s[/i][/color]\n" % text.replace("[", "("))
+
 func _mic_start() -> void:
-	if npc == null or _busy:
+	if npc == null or _busy or _mic.recording:
 		return
-	if not AI.stt_enabled():
-		_status.text = "Speech-to-text isn't set up. In Settings > AI, use an OpenAI-compatible provider, or set a speech-to-text server."
+	if not AI.stt_enabled() and OS.get_name() != "Windows":
+		_problem("Speech-to-text isn't set up. In Settings > AI, set a speech-to-text server (or use the OpenAI provider).")
 		return
 	if not _mic.start():
-		_status.text = "No microphone input available (check your OS microphone permission)."
+		_problem("No microphone input available (check your OS microphone permission).")
 		return
-	_status.text = "Listening... release to send."
+	Voice.hush() # don't talk over you
+	npc.act("tilt")
+	_status.text = "Listening... release %s to send." % _voice_key()
 	if _mic_btn:
-		_mic_btn.text = "Listening..."
+		_mic_btn.text = "Listening |"
 
 func _mic_stop() -> void:
 	if _mic_btn:
@@ -622,14 +789,20 @@ func _mic_stop() -> void:
 		return
 	var wav := _mic.stop()
 	if wav.is_empty():
-		_status.text = _mode_text()
+		_status.text = "Too short. Hold %s while you speak." % _voice_key()
+		return
+	if _mic.last_peak < 0.004:
+		_problem("Your microphone sent only silence. Check that apps may use the microphone (Windows: Settings > Privacy & security > Microphone) and that your mic is the default input device (now: %s)." % Microphone.device())
 		return
 	_status.text = "Understanding what you said..."
 	var r: Dictionary = await AI.transcribe(wav)
 	if npc == null:
 		return
 	if not r["ok"] or String(r["text"]).strip_edges() == "":
-		_status.text = "Couldn't make that out (%s)." % (r["error"] if r["error"] != "" else "silence")
+		var why := "Couldn't make that out (%s)." % (r["error"] if r["error"] != "" else "silence")
+		if r.get("via", "") == "windows" and not AI.stt_enabled():
+			why += " For better recognition, set a speech-to-text server in Settings > AI."
+		_problem(why)
 		return
 	_status.text = _mode_text()
 	_send(r["text"])

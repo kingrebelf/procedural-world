@@ -156,8 +156,11 @@ static func warm_kits() -> void:
 					_kept.append(r)
 				if f.ends_with(".gltf") and sub != "nature":
 					model_parts(sub + "/" + f.get_basename())
-	# The wrecked starship landmark (Landmark) is built from the ship kit in chunk jobs.
+	# The wrecked starship landmark (Landmark) and the ships on outpost landing pads
+	# (ShipPad) are built from the ship kit in chunk jobs.
 	model_parts("ships/Striker")
+	for t in ShipPad.SHIPS:
+		model_parts("ships/" + ShipPad.SHIPS[t])
 	# Photo textures and shaders that materials built on worker threads use.
 	for f in ResourceLoader.list_directory("res://assets/textures"):
 		if f.ends_with(".jpg") or f.ends_with(".png"):

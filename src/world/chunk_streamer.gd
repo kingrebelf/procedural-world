@@ -223,6 +223,36 @@ func harvest_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
 				return got
 	return {}
 
+## The undergrowth plant nearest the segment from..to in any loaded chunk, left standing:
+## find_under()'s result plus "node", or {}. pick_under() then picks it.
+func find_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
+	var lo := Vector3(minf(from.x, to.x), 0, minf(from.z, to.z)) - Vector3(reach + 1, 0, reach + 1)
+	var hi := Vector3(maxf(from.x, to.x), 0, maxf(from.z, to.z)) + Vector3(reach + 1, 0, reach + 1)
+	var c0 := chunk_of(lo)
+	var c1 := chunk_of(hi)
+	var best := {}
+	for cz in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var node: ChunkNode = chunks.get(Vector2i(cx, cz))
+			if node == null:
+				continue
+			var got := node.find_under(from, to, reach)
+			if not got.is_empty() and (best.is_empty() or float(got["d"]) < float(best["d"])):
+				got["node"] = node
+				best = got
+	return best
+
+## Picks a plant find_under() found, if its chunk is still loaded.
+func pick_under(found: Dictionary) -> bool:
+	var node = found.get("node")
+	if not is_instance_valid(node) or not is_instance_valid(found.get("mmi")):
+		return false
+	var buf: PackedFloat32Array = (found["mmi"] as MultiMeshInstance3D).get_meta("buf")
+	if Vector3(buf[int(found["i"]) * 12 + 1], buf[int(found["i"]) * 12 + 5], buf[int(found["i"]) * 12 + 9]).length() < 0.01:
+		return false
+	(node as ChunkNode).clear_under(found)
+	return true
+
 ## Regrows a chunk's grass in the background, e.g. after something was built on it.
 func refresh_grass(k: Vector2i) -> void:
 	var node: ChunkNode = chunks.get(k)

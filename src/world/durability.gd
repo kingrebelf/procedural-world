@@ -72,6 +72,8 @@ static func entry(t: String) -> Array:
 		# Taking down something you built hands the piece back.
 		var d := BuildCatalog.def(BuildCatalog.id_of(t))
 		return [d.get("mat", "wood"), float(d.get("hp", 10.0)), [[BuildCatalog.id_of(t), 1]]]
+	if ShipPad.has(t):
+		return ShipPad.SALVAGE
 	return TABLE.get(t, ["stone", 20.0, [["stone", 3]]])
 
 static func material(t: String) -> String:

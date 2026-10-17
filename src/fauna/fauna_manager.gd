@@ -68,6 +68,7 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 	# Stronghold guards (see Stronghold.guards), stored in the chunk.
 	for g in chunk.get("guards", []):
 		out.append({"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]})
+	out.append_array(Creature.livestock_for(seed, chunk))
 	var r := WHash.rng(seed, cx, cz, 701)
 	if r.randf() > HERD_CHANCE:
 		return out

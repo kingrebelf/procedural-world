@@ -808,6 +808,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 		"region": field.region_name_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 		"objects": [],
 		"biome": field.region_hash_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
+		"keep_out": PackedFloat32Array(),
 	}
 	if has_river:
 		chunk["river"] = river
@@ -821,6 +822,76 @@ func generate(cx: int, cz: int) -> Dictionary:
 		_place_viaducts(chunk, roads)
 	_place_objects(chunk, sites)
 	return chunk
+
+## Ground plans nothing should grow through or stand in: this chunk's own buildings and
+## those reaching in from its neighbours (chunk "keep_out", see _reach_in). Each is
+## [lx, lz, cos yaw, sin yaw, x0, z0, x1, z1, radius] for kept_out().
+static func keep_out(chunk: Dictionary) -> Array:
+	var out: Array = []
+	for o in chunk["objects"]:
+		if not ObjectLibrary.keeps_out(o["t"]) or o["st"].get("gone", false):
+			continue
+		var f := ObjectLibrary.footprint(o)
+		var s: float = o["s"]
+		out.append(_plan(o["p"].x, o["p"].z, o["r"], f.position * s, f.end * s))
+	var ko: PackedFloat32Array = chunk.get("keep_out", PackedFloat32Array())
+	for i in range(0, ko.size() - 6, 7):
+		out.append(_plan(ko[i], ko[i + 1], ko[i + 2], Vector2(ko[i + 3], ko[i + 4]), Vector2(ko[i + 5], ko[i + 6])))
+	return out
+
+static func _plan(lx: float, lz: float, yaw: float, a: Vector2, b: Vector2) -> PackedFloat32Array:
+	var rad := Vector2(maxf(absf(a.x), absf(b.x)), maxf(absf(a.y), absf(b.y))).length()
+	return PackedFloat32Array([lx, lz, cos(yaw), sin(yaw), a.x, a.y, b.x, b.y, rad])
+
+## Whether (lx, lz) lies within `margin` of one of the ground plans from keep_out().
+static func kept_out(plans: Array, lx: float, lz: float, margin: float) -> bool:
+	for q: PackedFloat32Array in plans:
+		var dx := lx - q[0]
+		var dz := lz - q[1]
+		var reach := q[8] + margin
+		if dx * dx + dz * dz > reach * reach:
+			continue
+		# Into the building's frame (Basis(UP, yaw) takes its x, z to x c + z s, -x s + z c).
+		var x := dx * q[2] - dz * q[3]
+		var z := dx * q[3] + dz * q[2]
+		if x > q[4] - margin and x < q[6] + margin and z > q[5] - margin and z < q[7] + margin:
+			return true
+	return false
+
+## Records a building standing outside this chunk whose ground plan reaches into it.
+func _reach_in(chunk: Dictionary, t: String, p: Vector2, yaw: float, x0: float, z0: float) -> void:
+	if not ObjectLibrary.keeps_out(t):
+		return
+	var f := ObjectLibrary.footprint({"t": t})
+	var lx := p.x - x0
+	var lz := p.y - z0
+	var rad := Vector2(maxf(absf(f.position.x), absf(f.end.x)), maxf(absf(f.position.y), absf(f.end.y))).length()
+	if lx < -rad or lz < -rad or lx > SIZE + rad or lz > SIZE + rad:
+		return
+	var ko: PackedFloat32Array = chunk.get("keep_out", PackedFloat32Array())
+	ko.append_array([lx, lz, yaw, f.position.x, f.position.y, f.end.x, f.end.y])
+	chunk["keep_out"] = ko
+
+static func _inside(p: Vector2, x0: float, z0: float) -> bool:
+	return p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE
+
+## Chunks saved before ground plans were kept: works out which neighbouring buildings
+## reach in. Returns whether it added them (the chunk then wants saving).
+func fill_keep_out(chunk: Dictionary) -> bool:
+	if chunk.has("keep_out"):
+		return false
+	chunk["keep_out"] = PackedFloat32Array()
+	var x0 := float(int(chunk["cx"]) * SIZE)
+	var z0 := float(int(chunk["cz"]) * SIZE)
+	for s in settlements_near(x0, z0, x0 + SIZE, z0 + SIZE):
+		for it in settlement_layout(s):
+			if not _inside(it["p"], x0, z0):
+				_reach_in(chunk, it["t"], it["p"], it["yaw"], x0, z0)
+	for f in forts_near(x0, z0, x0 + SIZE, z0 + SIZE):
+		for it in Stronghold.layout(self, f):
+			if not _inside(it["p"], x0, z0):
+				_reach_in(chunk, it["t"], it["p"], it["yaw"], x0, z0)
+	return true
 
 static func _crowds_tree(chunk: Dictionary, lx: float, lz: float, gap: float) -> bool:
 	for o in chunk["objects"]:
@@ -955,6 +1026,26 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 
 	if towns:
 		_place_cave(chunk, sites)
+	# Ruins and landmarks before the wilds, so nothing grows inside them either.
+	# Alien ruins: rare, strange, very tough. Anywhere outside settlements.
+	var rr := WHash.rng(seed, cx, cz, 305)
+	if rr.randf() < 0.035:
+		var lx := rr.randf_range(10, SIZE - 10)
+		var lz := rr.randf_range(10, SIZE - 10)
+		var sp := rr.randi() & 0x7FFFFFFF
+		var yaw := rr.randf() * TAU
+		var ok := not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) or road_at(chunk, lx, lz) > 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
+		if outposts:
+			# v5: away from settlements and roads, on dry, fairly level ground.
+			ok = not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) and road_at(chunk, lx, lz) <= 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
+		if ok:
+			var era := WorldField.dominant(weights_at(chunk, lx, lz))
+			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
+	if landforms:
+		_place_landmark(chunk, sites, origin)
+
+	# Nothing grows or lies inside a building (or a neighbour's reaching in).
+	var plans := keep_out(chunk)
 
 	# Vegetation: jittered candidates, era picked by sampling local weights so
 	# transition bands get a natural, dithered mix of both sides. Each region's biome
@@ -978,7 +1069,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
-		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz):
+		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
 		var f := Biome.pick_flora(bp, pick)
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
@@ -1002,7 +1093,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var dense := smoothstep(1.3, 2.2, float(bp["tree_density"])) * (1.0 if era != Eras.SCIFI else 0.3)
 			if landforms:
 				dense *= minf(1.0, WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)])
-			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2):
+			if roll >= dense * 0.85 or slope_at(chunk, lx, lz) > 0.7 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.6 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.05 or in_cave(chunk, lx, lz) or _crowds_tree(chunk, lx, lz, 2.2) or kept_out(plans, lx, lz, 1.0):
 				continue
 			var f := Biome.pick_flora(bp, pick)
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
@@ -1027,7 +1118,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		if landforms:
 			rd *= WorldField.LANDFORM_ROCKS[field.landform_at(x0 + lx, z0 + lz)]
 		var rocks: Array = bp["rocks"]
-		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8):
+		if _crowds_tree(chunk, lx, lz, 1.2 * sc + 0.8) or kept_out(plans, lx, lz, sc + 0.4):
 			# A boulder grown into a trunk makes chopping and mining ambiguous.
 			continue
 		if roll < rd / 16.0:
@@ -1035,35 +1126,19 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		elif roll < (rd + Eras.ORE_DENSITY[era]) / 16.0:
 			_add(chunk, Eras.ORE_TYPES[era], era, lx, lz, yaw, sc * 0.8, {"left": left + 2, "progress": 0.0}, bp["ore_species"], variant)
 
-	# Alien ruins: rare, strange, very tough. Anywhere outside settlements.
-	r = WHash.rng(seed, cx, cz, 305)
-	if r.randf() < 0.035:
-		var lx := r.randf_range(10, SIZE - 10)
-		var lz := r.randf_range(10, SIZE - 10)
-		var sp := r.randi() & 0x7FFFFFFF
-		var yaw := r.randf() * TAU
-		var ok := not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) or road_at(chunk, lx, lz) > 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
-		if outposts:
-			# v5: away from settlements and roads, on dry, fairly level ground.
-			ok = not _near_settlement(x0 + lx, z0 + lz, sites, 34.0) and road_at(chunk, lx, lz) <= 0.0 and height_at(chunk, lx, lz) > WATER_LEVEL + 0.5 and not by_river(chunk, lx, lz) and slope_at(chunk, lx, lz) < 0.4
-		if ok:
-			var era := WorldField.dominant(weights_at(chunk, lx, lz))
-			_add(chunk, "alien_ruin", era, lx, lz, yaw, 1.0, {}, sp, 0)
-
 	# Caches: rare, contents rolled now and frozen forever.
 	r = WHash.rng(seed, cx, cz, 303)
-	if r.randf() < 0.22:
-		var lx := r.randf_range(4, SIZE - 4)
-		var lz := r.randf_range(4, SIZE - 4)
+	var cache_x := r.randf_range(4, SIZE - 4) if r.randf() < 0.22 else -1.0
+	var cache_z := r.randf_range(4, SIZE - 4) if cache_x >= 0.0 else -1.0
+	if cache_x >= 0.0 and not kept_out(plans, cache_x, cache_z, 1.0):
+		var lx := cache_x
+		var lz := cache_z
 		var era := WorldField.dominant(weights_at(chunk, lx, lz))
 		var o := origin.duplicate()
 		o["era"] = era
 		o["how"] = "found"
 		var loot := ItemDB.roll_loot(era, r, o)
 		_add(chunk, Eras.CACHE_TYPES[era], era, lx, lz, r.randf() * TAU, 1.0, {"loot": loot, "opened": false})
-
-	if landforms:
-		_place_landmark(chunk, sites, origin)
 
 	# Threshold markers inside transition bands make crossings read as intentional.
 	r = WHash.rng(seed, cx, cz, 304)
@@ -1075,7 +1150,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var era := _pick_era(w, r.randf())
 		var yaw := r.randf() * TAU
 		var sc := r.randf_range(0.8, 1.4)
-		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5:
+		if top < 0.72 and r.randf() < 0.55 and slope_at(chunk, lx, lz) < 0.5 and not kept_out(plans, lx, lz, 0.8):
 			_add(chunk, Eras.MARKER_TYPES[era], era, lx, lz, yaw, sc)
 
 ## Strongholds whose flat ground reaches into this rectangle (v5 worlds).
@@ -1103,6 +1178,8 @@ func _place_fort(chunk: Dictionary, f: Dictionary, x0: float, z0: float) -> void
 		var p: Vector2 = it["p"]
 		if p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE:
 			_add(chunk, it["t"], era, p.x - x0, p.y - z0, it["yaw"], 1.0, it["st"])
+		else:
+			_reach_in(chunk, it["t"], p, it["yaw"], x0, z0)
 	for g in Stronghold.guards(f):
 		var p: Vector2 = g["p"]
 		if p.x >= x0 and p.x < x0 + SIZE and p.y >= z0 and p.y < z0 + SIZE:
@@ -1226,6 +1303,7 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 	if size >= 1:
 		outer.append("solar_farm")
 		outer.append("depot")
+		outer.append(ShipPad.pick(r))
 	if size >= 2:
 		outer.append("solar_farm")
 	for n in lots.size():
@@ -1407,3 +1485,5 @@ func _place_settlement(chunk: Dictionary, s: Dictionary, x0: float, z0: float) -
 					if l.get("origin") is Dictionary:
 						l["origin"]["chunk"] = Vector2i(int(chunk["cx"]), int(chunk["cz"]))
 			_add(chunk, it["t"], era, p.x - x0, p.y - z0, it["yaw"], 1.0, it["st"])
+		else:
+			_reach_in(chunk, it["t"], p, it["yaw"], x0, z0)

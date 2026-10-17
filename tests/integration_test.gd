@@ -16,6 +16,45 @@ func check(c: bool, m: String) -> void:
 func _initialize() -> void:
 	_run.call_deferred()
 
+## Walk up to a fern or flower and pick it with Interact, no tool needed.
+func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
+	# The chest just opened is still showing its loot.
+	player.get_tree().call_group("trade_ui", "close")
+	await _frames(2)
+	var plant := Vector3.INF
+	for k in streamer.chunks:
+		var c: ChunkNode = streamer.chunks[k]
+		for mmi in c._clutter:
+			if not String(mmi.get_meta("key", "")).begins_with("under"):
+				continue
+			var buf: PackedFloat32Array = mmi.get_meta("buf")
+			for i in buf.size() / 12:
+				var o := Vector3(buf[i * 12 + 3], buf[i * 12 + 7], buf[i * 12 + 11])
+				var at := c.position + o
+				# The nearest on gentle ground.
+				if Vector3(buf[i * 12 + 1], buf[i * 12 + 5], buf[i * 12 + 9]).length() > 0.5 and ChunkGenerator.slope_at(c.data, o.x, o.z) < 0.4 \
+						and (plant == Vector3.INF or at.distance_to(player.global_position) < plant.distance_to(player.global_position)):
+					plant = at
+	check(plant != Vector3.INF, "a plant to pick by hand")
+	if plant == Vector3.INF:
+		return
+	var pc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(plant))
+	var stand := plant + Vector3(1.4, 0, 0)
+	stand.y = ChunkGenerator.height_at(pc.data, stand.x - pc.position.x, stand.z - pc.position.z) + 0.1
+	player.set_state({"pos": stand, "yaw": PI / 2.0, "pitch": -0.75, "slot": 0})
+	for i in 300:
+		await _frames(1)
+		if streamer.is_ready_at(stand):
+			break
+	player.global_position = stand
+	await _frames(20)
+	check(player.focus.get("kind", "") == "plant", "looking at a plant offers to pick it (%s)" % player.focus.get("verb", "nothing"))
+	var fiber: int = game.inventory.count("fiber")
+	player.interact()
+	check(game.inventory.count("fiber") > fiber, "picking it by hand gives fiber (%d -> %d)" % [fiber, game.inventory.count("fiber")])
+	await _frames(15)
+	check(player.focus.get("found", {}).get("pos", Vector3.INF) != plant, "a picked plant is gone")
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -95,7 +134,8 @@ func _run() -> void:
 	for k in streamer.chunks:
 		for mmi in streamer.chunks[k]._clutter:
 			if String(mmi.get_meta("key", "")).begins_with("under") and mmi.multimesh.instance_count > 0:
-				plant = streamer.chunks[k].position + mmi.multimesh.get_instance_transform(0).origin
+				var b0: PackedFloat32Array = mmi.get_meta("buf")
+				plant = streamer.chunks[k].position + Vector3(b0[3], b0[7], b0[11])
 				break
 		if plant != Vector3.INF:
 			break
@@ -145,9 +185,11 @@ func _run() -> void:
 		looted = {"key": c.key, "i": o["i"]}
 	check(not looted.is_empty(), "found a chest to loot")
 
+	await _pick_by_hand(game, streamer, player)
 	await _walk_into_house(game, world, streamer, player)
 	await _rooms(game, streamer, player)
 	await _relics(game, streamer, player)
+	await _audio_checks(world, player)
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
@@ -449,6 +491,44 @@ func _run() -> void:
 ## Relics and markers are used, not broken: a xenolith circle wakes once with gifts and
 ## then restores you once a day, a beacon calls down a supply pod and marks a settlement,
 ## runes are read once, a crystal recharges your flashlight.
+## Sound: every bank the game plays has files, the ambience sampler knows where you
+## are, footsteps find a surface, and the buses follow the volume settings.
+func _audio_checks(world, player) -> void:
+	var audio = root.get_node("/root/Audio")
+	var banks := ["step/grass", "step/stone", "step/wood", "step/snow", "step/gravel", "step/metal", "hit/wood",
+		"hit/stone", "hit/metal", "hit/crystal", "hit/soft", "hit/flesh", "hit/heavy", "hit/dig", "hit/plank",
+		"harvest/rustle", "swing/whoosh", "water/splash", "item/pickup", "item/coins", "item/equip",
+		"weapon/laser", "weapon/laser_big", "weapon/explosion", "weapon/draw", "ui/click", "ui/hover", "ui/open",
+		"ui/close", "ui/tab", "ui/toggle", "ui/tick", "ui/error", "jingle/level_up", "jingle/discovery", "jingle/death"]
+	var empty: Array = []
+	for b in banks:
+		if audio.bank(b).is_empty():
+			empty.append(b)
+	check(empty.is_empty(), "every sound bank has files %s" % [empty])
+	for id in audio.LAYERS:
+		check(audio._layers[id].stream != null, "ambience layer %s loads" % id)
+	for m in audio.MOODS:
+		for t in audio.MOODS[m]:
+			check(ResourceLoader.exists("res://assets/audio/music/%s.ogg" % t), "music %s exists" % t)
+	await _frames(30)
+	check(audio.env.get("where", "") == "world", "ambience sampler sees the world (%s)" % audio.env.get("where", ""))
+	var on := 0
+	for id in audio._layer_target:
+		if audio._layer_target[id] > 0.0:
+			on += 1
+	check(on > 0, "some ambience is playing outdoors (%d layers)" % on)
+	var surf: String = player.steps.surface(player)
+	check(surf in ["grass", "stone", "wood", "snow", "gravel", "metal", "sand", "wade"], "footstep surface under the player: %s" % surf)
+	audio.combat()
+	check(audio._want_mood() == "combat", "a fight brings in battle music")
+	audio._combat_t = -100.0
+	var s = root.get_node("/root/Settings")
+	var old: float = s.get_value("music_volume")
+	s.set_value("music_volume", 0.0)
+	check(AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music slider at zero mutes the music bus")
+	s.set_value("music_volume", old)
+	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
+
 func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var rc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(player.global_position))
 	var at := func(dx: float, dz: float) -> Vector3:
@@ -568,7 +648,7 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	check(lit, "the hearth lights the room")
 	var room := false
 	for mmi in hc.get_children():
-		room = room or (mmi is MultiMeshInstance3D and String(mmi.name).ends_with("~in"))
+		room = room or (String(mmi.name).begins_with("Rooms_") and String(mmi.name).ends_with("_in") and mmi.get_child_count() > 0)
 	check(room, "the room is furnished")
 	# The house's chest: walk up to it and open it.
 	var chest := {}
@@ -679,12 +759,62 @@ func _rooms(game, streamer: ChunkStreamer, player) -> void:
 		check(lit, "the %s is lit inside" % t)
 		var cache: Dictionary = rc.data["objects"][rc.data["objects"].size() - 1]
 		check(cache["st"].get("inside", "") == t, "the %s is stocked" % t)
+		if Lore.has(t):
+			await _use_lore(game, player, rc, room)
 		if Interiors.TOWER.has(t):
 			await _climb(player, w, t)
 		await _open_inside(player, rc, cache)
 		rc.remove_object(cache["i"])
 		rc.remove_object(room["i"])
 		await _frames(2)
+
+## The room's first readable prop (a terminal, bookcase, book...): look at it, Interact
+## opens its page, and everything every room can show reads without loose placeholders.
+func _use_lore(game, player, rc: ChunkNode, room: Dictionary) -> void:
+	var at: Vector3 = rc.position + Lore.anchor(room, 0)
+	var ctr: Vector3 = rc.position + room["p"]
+	var d := Vector3(ctr.x - at.x, 0, ctr.z - at.z).normalized()
+	var stand: Vector3 = at + d * 1.5
+	stand.y = player.global_position.y
+	var to: Vector3 = at - (stand + Vector3(0, 1.6, 0))
+	player.set_state({"pos": stand, "yaw": atan2(-to.x, -to.z), "pitch": atan2(to.y, Vector2(to.x, to.z).length()), "slot": 0})
+	player.velocity = Vector3.ZERO
+	await _frames(30)
+	var eye: Vector3 = player.head.global_position
+	check(player.focus.get("kind", "") == "lore", "looking at the %s's %s offers to use it (focus: %s; score %.2f, in sight %s, %.2f m)" % [room["t"], Lore.spots(room["t"])[0][0],
+		player.focus.get("verb", "nothing"), player._focus_score(eye, -player.camera.global_transform.basis.z, at), player._can_see(eye, at), eye.distance_to(at)])
+	if player.focus.get("kind", "") == "lore":
+		player.interact()
+		await _frames(3)
+		var ui = player.get_tree().get_first_node_in_group("lore_ui")
+		check(ui != null and ui.is_open(), "Interact opens the %s's page" % room["t"])
+		if ui != null and ui.is_open():
+			check(String(ui._body.text).length() > 40, "the page has something to read")
+			ui.close()
+			await _frames(2)
+		check(not player.ui_open, "stepping away gives the controls back")
+	if room["t"] != "ops_tower":
+		return
+	# Reading everything gives XP and marks the atlas; later checks count on neither.
+	var stats: Dictionary = game.stats.to_data()
+	var marks: Dictionary = game.markers.to_data()
+	var loose: Array = []
+	var types: Array = Interiors.FURNISH.keys() + KitHouse.FURNISH.keys()
+	for t in types:
+		for era in Eras.COUNT:
+			var o := {"t": t, "e": era, "p": room["p"], "r": 0.0, "s": 1.0, "i": 9000 + era, "st": {}}
+			for k in Lore.spots(t).size():
+				var e: Dictionary = Lore.read(o, rc, k, player.npcs)
+				for pg in e["pages"]:
+					if String(pg["text"]).contains("{") or String(pg["text"]).strip_edges() == "":
+						loose.append("%s/%d/%d" % [t, era, k])
+				for pg in e["pages"]:
+					for a in pg.get("actions", []):
+						if Lore.act(o, rc, k, a[0], player) == "":
+							loose.append("%s/%d/%d action %s" % [t, era, k, a[0]])
+	check(loose.is_empty(), "every readable prop reads cleanly in every era (%s)" % ", ".join(loose.slice(0, 6)))
+	game.stats = Stats.from_data(stats)
+	game.markers = Markers.from_data(marks)
 
 ## Climbs a tower's stair from the corner at its foot, flight by flight, turning on each
 ## landing, and walks out through the hatch onto the roof.

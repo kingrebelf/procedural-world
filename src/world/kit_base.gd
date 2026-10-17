@@ -100,23 +100,25 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array) -> voi
 		for cx in [-w / 2, w / 2]:
 			for cz in [-d / 2, d / 2]:
 				models.append(["scifi/Column_Pipes", 0, Vector3(cx, y, cz), 1.0])
+		# Slabs stand a little proud of the wall and column tops under them, and the
+		# foundation a little below the floor tiles on it: faces at one height flicker.
 		if s > 0:
-			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, y - 0.1, 0)), Vector3(w - 0.4, 0.2, d - 0.4))
+			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, y - 0.08, 0)), Vector3(w - 0.4, 0.2, d - 0.4))
 	var top := storeys * STOREY
 	# Roof: a slab capped by plate tiles, with vents and fans on top.
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, top - 0.25, 0)), Vector3(w + 0.6, 0.5, d + 0.6))
+	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, top - 0.23, 0)), Vector3(w + 0.6, 0.5, d + 0.6))
 	for i in nx:
 		for j in nz:
-			models.append(["scifi/Platform_Squares", 0, Vector3(-w / 2 + 2 + i * 4, top + 0.01, -d / 2 + 2 + j * 4), 1.0])
-	models.append(["scifi/Prop_Fan_Small", 0, Vector3(-w / 2 + 2, top, -d / 2 + 2), 1.0])
-	models.append(["scifi/Prop_Vent_Big", 90, Vector3(w / 2 - 1.6, top + 0.07, 0.5), 1.0])
+			models.append(["scifi/Platform_Squares", 0, Vector3(-w / 2 + 2 + i * 4, top + 0.04, -d / 2 + 2 + j * 4), 1.0])
+	models.append(["scifi/Prop_Fan_Small", 0, Vector3(-w / 2 + 2, top + 0.04, -d / 2 + 2), 1.0])
+	models.append(["scifi/Prop_Vent_Big", 90, Vector3(w / 2 - 1.6, top + 0.1, 0.5), 1.0])
 	if storeys > 1:
 		var b := Basis(Vector3(1, 0, 0), -0.9)
 		k.cylinder("metal", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top, -d / 2 + 1.2)), 0.08, 0.05, 4.0, 6)
 		k.sphere("panel", Transform3D(b, Vector3(w / 2 - 1.2, top + 2.6, -d / 2 + 1.5)), 1.1, 6, 14, 0.0, 0.35, Color.WHITE, true)
 		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top + 4.1, -d / 2 + 1.2)), 0.12, 4, 6)
 	# Foundation pad, and a lit step out of the door.
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.6, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
+	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.62, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
 	models.append(["scifi/Platform_DarkPlates", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.03, d / 2 + 2.0), Vector3(1, 1, 0.5)])
 	models.append(["scifi/Prop_Light_Floor", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.04, d / 2 + 2.9), 1.0])
 

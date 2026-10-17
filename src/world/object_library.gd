@@ -26,6 +26,9 @@ const KIND := {
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
 	"w_column": "structure", "w_crystal": "structure", "w_pylon": "structure", "w_obelisk": "structure",
+	"pad_bob": "structure", "pad_challenger": "structure", "pad_dispatcher": "structure", "pad_executioner": "structure",
+	"pad_imperial": "structure", "pad_insurgent": "structure", "pad_omen": "structure", "pad_pancake": "structure",
+	"pad_spitfire": "structure", "pad_zenith": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -71,6 +74,8 @@ static func label(t: String) -> String:
 		return Landmark.LABELS[t]
 	if WonderSite.has(t):
 		return WonderSite.label(t)
+	if ShipPad.has(t):
+		return ShipPad.label(t)
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -129,6 +134,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return Landmark.build(key)
 	if WonderSite.has(key):
 		return WonderSite.build(key)
+	if ShipPad.has(key):
+		return ShipPad.build(key)
 	if key.ends_with("~solid") and WonderSite.has(key.trim_suffix("~solid")):
 		return WonderSite.build(key.trim_suffix("~solid"), true)
 	if TOWN_PROPS.has(key):
@@ -318,6 +325,29 @@ static func shape_of(o: Dictionary) -> Array:
 	_lock.unlock()
 	return out
 
+static var _foot: Dictionary = {}
+
+## A building's ground plan (local x/z, unscaled): the box its mesh fills, so grass,
+## flowers and trees keep out of it. Thread-safe like get_mesh.
+static func footprint(o: Dictionary) -> Rect2:
+	var key := mesh_key(o)
+	_lock.lock()
+	var f = _foot.get(key)
+	_lock.unlock()
+	if f == null:
+		var a := get_mesh(key).get_aabb()
+		f = Rect2(a.position.x, a.position.z, a.size.x, a.size.z)
+		_lock.lock()
+		_foot[key] = f
+		_lock.unlock()
+	return f
+
+## Whether nothing should grow inside type t: buildings, stalls, traders and anything
+## the player built, but not bridges (the ground under them is open) or caves.
+static func keeps_out(t: String) -> bool:
+	var k := kind(t)
+	return (k == "structure" or k == "trader" or k == "built") and t != "bridge" and t != "cave"
+
 ## Collision: [shape, local offset].
 static func get_shape(t: String) -> Array:
 	if _shapes.has(t):
@@ -327,6 +357,9 @@ static func get_shape(t: String) -> Array:
 		return _shapes[t]
 	if Interiors.has(t):
 		_shapes[t] = Interiors.shape(t)
+		return _shapes[t]
+	if ShipPad.has(t):
+		_shapes[t] = ShipPad.shape(t)
 		return _shapes[t]
 	var s: Shape3D
 	var off := Vector3.ZERO

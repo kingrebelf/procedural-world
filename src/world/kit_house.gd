@@ -34,7 +34,8 @@ const DOORWAY := [0.62, 2.4]
 ## Kit props face +z; against the back wall yaw 0, the left wall 90, the right wall -90.
 ## Solid pieces get a collision box; chairs, benches and small things do not.
 const F := FLOOR
-const T := FLOOR + 0.81 ## top of Table_Large
+## On Table_Large: its top is at 0.815, and a plate or fork any lower shows through it.
+const T := FLOOR + 0.818
 const FURNISH := {
 	"cottage": [
 		["props/Bed_Twin1", 0, Vector3(-1.6, F, -1.45), true],

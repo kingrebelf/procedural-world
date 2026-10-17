@@ -19,7 +19,7 @@ var near := false
 var _terrain: MeshInstance3D
 var _body: StaticBody3D
 var _height_shape: CollisionShape3D
-var _mm: Dictionary = {} ## type -> MultiMeshInstance3D
+var _mm: Dictionary = {} ## type -> MultiMeshInstance3D (or a node of rooms, _add_rooms)
 var _obj_bodies: Dictionary = {} ## object index -> StaticBody3D
 var _grass: MultiMeshInstance3D
 var _clutter: Array = []
@@ -272,11 +272,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 	for o in chunk["objects"]:
 		if o["t"] == "cave":
 			has_cave = true
-	var blocked: Array = []
-	for o in chunk["objects"]:
-		var k: String = ObjectLibrary.kind(o["t"])
-		if (k == "structure" or k == "trader" or k == "built") and not o["st"].get("gone", false):
-			blocked.append(Vector2(o["p"].x, o["p"].z))
+	var plans := ChunkGenerator.keep_out(chunk)
 	for n in count:
 		var lx := r.randf() * SIZE
 		var lz := r.randf() * SIZE
@@ -291,12 +287,7 @@ static func build_grass_buffer(chunk: Dictionary, density: float) -> PackedFloat
 			continue
 		if pick > dens * ChunkGenerator.cover_at(chunk, lx, lz):
 			continue
-		var skip := false
-		for b in blocked:
-			if b.distance_squared_to(Vector2(lx, lz)) < 20.0:
-				skip = true
-				break
-		if skip:
+		if ChunkGenerator.kept_out(plans, lx, lz, 0.2):
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
 		if y < 0.15 or ChunkGenerator.under_river(chunk, lx, lz):
@@ -322,6 +313,8 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 	if density <= 0.0:
 		return out
 	var r := WHash.rng(int(chunk.get("seed", 0)), chunk["cx"], chunk["cz"], 902)
+	# Nothing grows up through a floor.
+	var plans := ChunkGenerator.keep_out(chunk)
 	# Kit patches are heavier than the old procedural ones, so fewer of them.
 	for n in int(600 * density):
 		var lx := r.randf() * SIZE
@@ -340,7 +333,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 		if ChunkGenerator.slope_at(chunk, lx, lz) > 0.6:
 			continue
 		var y := ChunkGenerator.height_at(chunk, lx, lz)
-		if y < 0.2 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.3:
+		if y < 0.2 or ChunkGenerator.under_river(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.3 or ChunkGenerator.kept_out(plans, lx, lz, 0.3):
 			continue
 		var key := "clutter_%d" % era
 		if not out.has(key):
@@ -371,7 +364,7 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 			if (sc - 0.6) / 0.9 > ChunkGenerator.cover_at(chunk, lx, lz):
 				continue
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
-			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz):
+			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
 			var key := "under#%d#%d" % [unders[pick % unders.size()], era]
 			if not out.has(key):
@@ -386,34 +379,50 @@ static func build_clutter_buffers(chunk: Dictionary, density: float) -> Dictiona
 ## `reach` of it: hides it, remembers it in the chunk (it does not grow back), and
 ## returns {"key": mesh key, "pos": world position}, or {} when nothing is there.
 func harvest_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
+	var best := find_under(from, to, reach)
+	if best.is_empty():
+		return {}
+	clear_under(best)
+	return {"key": best["key"], "pos": best["pos"]}
+
+## The undergrowth plant nearest the segment from..to within `reach`, left standing:
+## {"key", "pos" (world), "mm", "i", "local", "d"} or {}. clear_under() picks it.
+func find_under(from: Vector3, to: Vector3, reach: float) -> Dictionary:
 	var best := {}
 	var best_d := reach
 	for mmi in _clutter:
 		var k: String = mmi.get_meta("key", "")
 		if not k.begins_with("under"):
 			continue
-		var mm: MultiMesh = mmi.multimesh
-		for i in mm.instance_count:
-			var t := mm.get_instance_transform(i)
-			var sc := t.basis.get_scale().y
+		var buf: PackedFloat32Array = mmi.get_meta("buf", PackedFloat32Array())
+		for i in buf.size() / 12:
+			var o := i * 12
+			var sc := Vector3(buf[o + 1], buf[o + 5], buf[o + 9]).length()
 			if sc < 0.01:
 				continue
-			var at := position + t.origin
+			var local := Vector3(buf[o + 3], buf[o + 7], buf[o + 11])
+			var at := position + local
 			var c := at + Vector3(0, 0.45 * sc, 0)
 			var d := Geometry3D.get_closest_point_to_segment(c, from, to).distance_to(c) - 0.3 * sc
 			if d < best_d:
 				best_d = d
-				best = {"key": k, "pos": at, "mm": mm, "i": i, "local": t.origin}
-	if best.is_empty():
-		return {}
+				best = {"key": k, "pos": at, "mm": mmi.multimesh, "mmi": mmi, "i": i, "local": local, "d": d}
+	return best
+
+## Hides a plant find_under() found and remembers it in the chunk (it does not grow back).
+func clear_under(best: Dictionary) -> void:
 	var mm: MultiMesh = best["mm"]
 	var o: Vector3 = best["local"]
 	mm.set_instance_transform(best["i"], Transform3D(Basis.from_scale(Vector3.ZERO), o))
+	var mmi: MultiMeshInstance3D = best["mmi"]
+	var buf: PackedFloat32Array = mmi.get_meta("buf")
+	for j in [0, 1, 2, 4, 5, 6, 8, 9, 10]:
+		buf[int(best["i"]) * 12 + j] = 0.0
+	mmi.set_meta("buf", buf)
 	var cl: PackedFloat32Array = data.get("cleared", PackedFloat32Array())
 	cl.append_array([o.x, o.z])
 	data["cleared"] = cl
 	Game.mark_chunk_dirty(data)
-	return {"key": best["key"], "pos": best["pos"]}
 
 var _river: MeshInstance3D
 
@@ -458,6 +467,9 @@ func set_objects(buffers: Dictionary) -> void:
 	_mm.clear()
 	for t in buffers:
 		var buf: PackedFloat32Array = buffers[t]
+		if t.ends_with("~in") or t.ends_with("~glow"):
+			_add_rooms(t, buf)
+			continue
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
@@ -468,23 +480,38 @@ func set_objects(buffers: Dictionary) -> void:
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
 		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if t.ends_with("~in"):
-			# Furniture inside houses: only when you could see in.
-			mmi.visibility_range_end = 60.0
-			mmi.visibility_range_end_margin = 8.0
-			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif t.ends_with("~glow"):
-			mmi.visibility_range_begin = 52.0
-			mmi.visibility_range_begin_margin = 8.0
-			mmi.visibility_range_end = 900.0
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		elif k == "structure" or k == "tree" or k == "built":
+		if k == "structure" or k == "tree" or k == "built":
 			mmi.visibility_range_end = 900.0
 		else:
 			_set_range(mmi, 260.0)
 		add_child(mmi)
 		_mm[t] = mmi
+
+## Furniture inside rooms (drawn only when you could see in) and their lamplit windows
+## (only from further off), one node per room: a visibility range measures from the
+## middle of what it draws, and a multimesh's middle is somewhere in the chunk, so the
+## furniture of a house far from it faded out while you stood inside.
+func _add_rooms(t: String, buf: PackedFloat32Array) -> void:
+	var holder := Node3D.new()
+	holder.name = "Rooms_" + t.replace("#", "_").replace("~", "_")
+	var mesh := ObjectLibrary.get_mesh(t)
+	for i in buf.size() / 16:
+		var o := i * 16
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.transform = Transform3D(Basis(Vector3(buf[o], buf[o + 4], buf[o + 8]), Vector3(buf[o + 1], buf[o + 5], buf[o + 9]),
+			Vector3(buf[o + 2], buf[o + 6], buf[o + 10])), Vector3(buf[o + 3], buf[o + 7], buf[o + 11]))
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if t.ends_with("~in"):
+			mi.visibility_range_end = 60.0
+		else:
+			mi.visibility_range_begin = 52.0
+			mi.visibility_range_begin_margin = 8.0
+			mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+			mi.visibility_range_end = 900.0
+		holder.add_child(mi)
+	add_child(holder)
+	_mm[t] = holder
 
 func set_grass(buf: PackedFloat32Array) -> void:
 	if _grass != null:
@@ -525,6 +552,9 @@ func set_clutter(buffers: Dictionary) -> void:
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.set_meta("key", t)
+		# Kept on the CPU: reading transforms back from the renderer stalls (and headless
+		# servers have none to give).
+		mmi.set_meta("buf", buf)
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_set_range(mmi, 110.0 if t.begins_with("under") else 70.0)
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
