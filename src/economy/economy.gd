@@ -13,7 +13,8 @@ const SELL_SPREAD := 1.35 ## Traders sell at this multiple of what they pay.
 const RESTOCK_DAYS := 3.0
 
 const STOCK_POOLS := [
-	["bread", "iron_ingot", "planks", "pickaxe_iron", "axe_iron", "sword_iron", "wood", "iron_ore"],
+	["bread", "iron_ingot", "planks", "pickaxe_iron", "axe_iron", "sword_iron", "wood", "iron_ore", "rope", "cloth", "salt",
+		"candle", "copper_ingot", "bronze_ingot", "potion_health_minor", "bandage_linen", "travel_bread", "mead", "shortbow", "arrow"],
 	["glowberry", "aether_crystal", "glowroot", "mythril_ingot", "pickaxe_mythril", "sword_runic", "axe_mythril"],
 	["ration_pack", "power_cell", "circuitry", "alloy_plate", "pulse_pistol", "pickaxe_plasma", "alloy_scrap"],
 ]

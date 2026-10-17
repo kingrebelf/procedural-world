@@ -156,6 +156,107 @@ func _treasure(game, world, streamer: ChunkStreamer, player) -> Dictionary:
 	await _frames(5)
 	return {"key": cn.key, "id": 99, "open": int(h["id"])}
 
+## Looting fills the pack with the item packs' odds and ends; set them aside so the items
+## the test gives next have room; if that leaves fewer than `n` slots free, clear the last
+## slots (whatever was looted lately) too.
+func _make_room(game, n := 0) -> void:
+	var loot := {}
+	for sh in Icons.MORE_SHEETS.slice(1):
+		for t in sh[1]:
+			loot[t] = true
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null and loot.has(it["type"]):
+			game.inventory.set_slot(i, null)
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= n:
+			break
+		game.inventory.set_slot(i, null)
+
+## What is in the pack, for a failure message.
+func _pack_list(game) -> String:
+	var out: PackedStringArray = []
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null:
+			out.append("%s x%d" % [it["type"], int(it["qty"])])
+	return ", ".join(out)
+
+## A door hung through the real builder in a doorway you built: it opens and shuts,
+## locks for its owner, needs picking when it's someone else's, and holds up its doorway.
+func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, here_key: Vector2i) -> void:
+	var back := {"pos": player.global_position, "yaw": player.yaw(), "pitch": -0.75, "slot": player.selected}
+	_make_room(game, 3)
+	var dway := pc.add_built("wall_door", lp, 0.0, {"by": "you", "day": 0.0})
+	var dwp: Vector3 = pc.position + dway["p"]
+	game.give(ItemDB.make("door_wood", 1, 1.0, game.origin_here("crafted", -1, here_key)))
+	var di := -1
+	for i in Inventory.SIZE:
+		var sl = game.inventory.get_slot(i)
+		if sl != null and sl["type"] == "door_wood":
+			di = i
+	game.inventory.swap(di, 6)
+	player.select(6)
+	await _frames(3)
+	check(player.builder.piece_id() == "door_wood", "holding a door starts hanging it")
+	var miss: Dictionary = player.builder._door_target(dwp + Vector3(30, 1.6, 30), dwp + Vector3(34, 1.0, 34))
+	check(not miss["ok"], "a door won't hang without a doorway")
+	var tgt: Dictionary = player.builder._door_target(dwp + Vector3(0.3, 1.6, 4.0), dwp + Vector3(-0.2, 1.0, -3.0))
+	check(tgt["ok"] and (tgt["pos"] as Vector3).is_equal_approx(dwp), "aiming through a doorway hangs the door in it (%s)" % tgt)
+	player.builder._target = tgt
+	check(player.builder.place(), "the door is hung")
+	var dc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(dwp))
+	var door := {}
+	for o in dc.data["objects"]:
+		if o["t"] == "b:door_wood" and not o["st"].get("gone", false):
+			door = o
+	check(not door.is_empty() and Doors.is_mine(door) and not Doors.is_locked(door), "it's a door of yours, unlocked")
+	if door.is_empty():
+		return
+	var dn: DoorNode = dc._doors.get(door["i"])
+	check(dn != null and dn._bodies.size() == 1, "a hung door is drawn with a solid leaf")
+	var shut: Transform3D = dn._leaves[0].transform
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player.global_position = dwp + Vector3(0, 0.2, 2.0)
+	player._use_door()
+	check(Doors.is_open(door) and float(door["st"]["side"]) == 1.0, "interact opens it, away from you")
+	await _frames(150)
+	check(dn._amount > 0.99 and not dn._leaves[0].transform.is_equal_approx(shut), "the door swings open (%.2f)" % dn._amount)
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	await _frames(150)
+	check(not Doors.is_open(door) and dn._amount < 0.01, "and shut again")
+	player._crouched = true
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	player._crouched = false
+	check(Doors.is_locked(door) and Doors.can_open(door), "crouch and interact locks your door; you still open it")
+	# Someone else's: the lock needs picking.
+	door["st"]["owner"] = "player_42"
+	check(Player.lock_of(door) == 1 and not Player.is_own_piece(door), "a stranger's door is a novice lock, not yours to take down")
+	player.focus = {"kind": "door", "chunk": dc, "i": door["i"], "pos": dwp + Vector3(0, 1.5, 0), "verb": ""}
+	player._use_door()
+	check(not Doors.is_open(door), "it stays shut on you")
+	# (With lockpicks in the pack that opened the minigame; leave it, and keep townsfolk
+	# out of this, so a bounty doesn't set the guards on the rest of the run.)
+	player.get_tree().call_group("lockpick_ui", "close_lock")
+	var npcs = player.npcs
+	player.npcs = null
+	player.use_door_after_lock(dc, door)
+	player.npcs = npcs
+	check(Doors.is_open(door) and not Doors.is_locked(door), "a picked lock opens the door")
+	door["st"]["owner"] = Doors.my_id()
+	check(not player.deconstruct(pc, dway) and not dway["st"].get("gone", false), "the doorway stays up while a door hangs in it")
+	check(player.deconstruct(dc, door) and door["st"].get("gone", false) and game.inventory.count("door_wood") == 1, "taking the door down returns it")
+	await _frames(2)
+	check(not dc._doors.has(door["i"]), "a door taken down is gone from the scene")
+	check(player.deconstruct(pc, dway), "then the doorway comes down")
+	# Leave the pack as it was: later checks need its free slots.
+	game.inventory.remove_type("door_wood", 1)
+	game.inventory.remove_type("wall_door", 1)
+	player.set_state(back)
+	await _frames(2)
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -232,6 +333,7 @@ func _run() -> void:
 				felled = {"key": k, "i": o["i"], "t": o["t"]}
 				c.remove_object(o["i"])
 				game.give(ItemDB.make(ObjectLibrary.YIELD[o["t"]], 5, 1.0, game.origin_here("gathered", o["e"], k)))
+				check(game.inventory.count(ObjectLibrary.YIELD[o["t"]]) >= 5, "harvested %s goes in the pack" % ObjectLibrary.YIELD[o["t"]])
 				break
 		if not felled.is_empty():
 			break
@@ -312,6 +414,7 @@ func _run() -> void:
 
 	# Build: aim at the ground and place a foundation through the real builder, then a
 	# workbench next to it, and take a wall down for a refund.
+	_make_room(game)
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
 	var fi := -1
 	for i in Inventory.SIZE:
@@ -343,11 +446,13 @@ func _run() -> void:
 	check(is_equal_approx(fmod(absf(fwp.x), 2.0), 1.0) and is_equal_approx(fmod(absf(fwp.z), 2.0), 1.0), "foundation sits on the 2 m grid (%s)" % fwp)
 	var wb := pc.add_built("workbench", placed["p"] + Vector3(3, 0, 0), 0.0, {"by": "you", "day": 0.0})
 	check(BuildCatalog.stations_near(streamer, fwp).has("workbench"), "workbench counts as a nearby station")
+	_make_room(game, 3)
 	var wall := pc.add_built("wall_stone", placed["p"] + Vector3(0, 0, 1), 0.0, {"by": "you", "day": 0.0})
 	player.damage_object(pc, wall, 1000.0, 1.0)
 	check(wall["st"].get("gone", false) and game.inventory.count("wall_stone") == 1, "taking a wall down returns it")
 	var fence := pc.add_built("fence", placed["p"] + Vector3(-3, 0, 0), 0.0, {"by": "you", "day": 0.0})
 	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
+	await _door_checks(game, streamer, player, pc, placed["p"] + Vector3(0, 0, -6), here_key)
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
@@ -410,6 +515,7 @@ func _run() -> void:
 	await _corpses(game, world, player, kc)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
+	_make_room(game)
 	game.inventory.add(ItemDB.make("speeder", 1, 1.0, {}))
 	var vslot := -1
 	for i in game.inventory.slots.size():
@@ -422,22 +528,23 @@ func _run() -> void:
 	player.select(vslot)
 	check(player.deploy_vehicle() and game.vehicles.size() == 1 and game.inventory.count("speeder") == 0, "a speeder sets down from the pack")
 	await _frames(5)
-	var sp: Vehicle = world.vehicles.nodes.get(int(game.vehicles[0]["id"]))
+	var sp: Vehicle = world.vehicles.nodes.get(int(game.vehicles[0]["id"])) if not game.vehicles.is_empty() else null
 	check(sp != null, "the speeder is in the world")
-	player.mount(sp)
-	var v0: Vector3 = sp.global_position
-	Input.action_press("move_forward")
-	for i in 120:
-		await physics_frame
-	Input.action_release("move_forward")
-	var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
-	check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
-	check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
-	check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
-	check(player.get_state()["riding"] == int(sp.rec["id"]), "riding is saved")
-	player.dismount()
-	check(player.vehicle == null and sp.rider == null, "getting off")
-	check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
+	if sp != null:
+		player.mount(sp)
+		var v0: Vector3 = sp.global_position
+		Input.action_press("move_forward")
+		for i in 120:
+			await physics_frame
+		Input.action_release("move_forward")
+		var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
+		check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
+		check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
+		check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
+		check(player.get_state()["riding"] == int(sp.rec["id"]), "riding is saved")
+		player.dismount()
+		check(player.vehicle == null and sp.rider == null, "getting off")
+		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
 	# A starship climbs where you look, won't let you step out in mid-air, and lands.
 	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
 	for i in 30:
@@ -484,6 +591,7 @@ func _run() -> void:
 	check(player.global_position.y > y0 + 1.0, "fly mode rises (%.1f -> %.1f)" % [y0, player.global_position.y])
 	con.run("fly")
 	check(not player.fly and not player._shape.disabled, "fly off restores collision")
+	_make_room(game)
 	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
 	await _frames(60)
 
@@ -504,15 +612,9 @@ func _run() -> void:
 
 	await _menu_checks(world, game, con)
 
-	# Dying: health hits zero, a pause, then you wake at the spawn with your pack.
-	var count_before: int = game.inventory.count("planks")
-	game.set_health(-5.0, "test")
-	check(game.dead and player.ui_open, "zero health kills you")
-	await create_timer(4.6).timeout
-	await _frames(30)
-	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
-	check(game.inventory.count("planks") == count_before, "dying keeps your pack")
-	await _frames(60)
+	# Dying: health hits zero, everything you carry drops in a bag where you fell, a
+	# pause, then you wake at the spawn with an empty pack and the bag on your map.
+	await _death_bag(game, world, player)
 
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
@@ -551,7 +653,7 @@ func _run() -> void:
 	check(game.money == money_before, "money identical after reload")
 	check(game.equipment.has("head") and game.equipment["head"]["type"] == "helm_elven", "worn armour restored")
 	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
-	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested wood is in the pack")
+	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested %s is in the pack (%d, pack %s)" % [ObjectLibrary.YIELD[felled["t"]], game.inventory.count(ObjectLibrary.YIELD[felled["t"]]), _pack_list(game)])
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")
 	check(absf(game.map.revealed(pos_before.x, pos_before.z) - map_seen) < 0.01 and map_seen > 0.9, "the atlas remembers where the fog lifted")
@@ -669,12 +771,87 @@ func _audio_checks(world, player) -> void:
 	s.set_value("music_volume", old)
 	check(not AudioServer.is_bus_mute(AudioServer.get_bus_index("Music")), "music bus back on")
 
+## Death: your pack, armour and purse drop in a bag where you fell, saved with its chunk
+## and marked on your map; taking it all back puts your armour on again and clears the mark.
+func _death_bag(game, world, player) -> void:
+	var count_before: int = game.inventory.count("planks")
+	var items_before := 0
+	for it in game.inventory.slots:
+		if it != null:
+			items_before += 1
+	var money_before: int = game.money
+	var worn_before: Dictionary = game.equipment.duplicate(true)
+	var at: Vector3 = player.global_position
+	game.set_health(-5.0, "test")
+	check(game.dead and player.ui_open, "zero health kills you")
+	check(game.inventory.free_slots() == game.inventory.capacity and game.equipment.is_empty() and game.money == 0, "dying empties your pack, armour and purse")
+	await _frames(3)
+	var bag := {}
+	for b in world.corpses.near(at, 40.0):
+		if DeathBag.is_bag(b["rec"]):
+			bag = b
+	check(not bag.is_empty() and Vector2(bag["pos"].x, bag["pos"].z).distance_to(Vector2(at.x, at.z)) < 6.0, "a bag lies where you fell")
+	if bag.is_empty():
+		print("  no bag drawn; shown: %s" % [world.corpses._shown.keys()])
+	var marks: Array = game.markers.on_planet(game.planet, "death")
+	check(marks.size() == 1 and Vector2(marks[0]["x"], marks[0]["z"]).distance_to(Vector2(at.x, at.z)) < 6.0, "the map marks where you died")
+	if bag.is_empty():
+		return
+	check(DeathBag.is_mine(bag["rec"], game.my_id()) and Corpses.use_of(bag["rec"])[1] == "Open your bag", "it is your bag")
+	var e: Dictionary = world.corpses._shown[bag["key"]]
+	var saved = game.store.load_chunk(int(e["cn"].data["cx"]), int(e["cn"].data["cz"]))
+	check(saved is Dictionary and saved.get("corpses", {}).has(e["id"]), "the bag is saved with its chunk at once")
+	await create_timer(4.6).timeout
+	await _frames(30)
+	check(not game.dead and game.health == game.max_health() and not player.ui_open, "you get back up with full health")
+	# Back to the bag: open it and take everything.
+	var bag_at: Vector3 = bag["pos"]
+	player.global_position = bag_at + Vector3(1.5, 1.0, 0)
+	bag = {}
+	# (Up to half a minute: the ground there has to stream back in first.)
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 30000:
+		world.corpses._scan = 0.0
+		await _frames(5)
+		for b in world.corpses.near(bag_at, 2.0):
+			if DeathBag.is_bag(b["rec"]):
+				bag = b
+		if not bag.is_empty():
+			break
+	check(not bag.is_empty(), "the bag is still there when you come back")
+	if bag.is_empty():
+		var bk := ChunkStreamer.chunk_of(bag_at)
+		var bcn: ChunkNode = world.streamer.get_chunk(bk)
+		print("  bag chunk %s loaded: %s, corpses there: %s, shown: %s" % [bk, bcn != null, bcn.data.get("corpses", {}).keys() if bcn else [], world.corpses._shown.keys()])
+		return
+	var menus = world.menus
+	menus.open_corpse(world.corpses, bag["key"])
+	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
+	var m: int = menus._take_purse()
+	Storage.transfer_all(menus._store, game.inventory)
+	menus._corpse_changed(m)
+	if menus._mode != "":
+		menus.close()
+	var items_after := 0
+	for it in game.inventory.slots:
+		if it != null:
+			items_after += 1
+	check(game.inventory.count("planks") == count_before and items_after == items_before, "everything comes back out of the bag (%d of %d slots)" % [items_after, items_before])
+	check(game.money == money_before, "the purse comes back")
+	check(game.equipment.keys().size() == worn_before.keys().size(), "your armour goes back on (%d pieces)" % worn_before.size())
+	world.corpses._scan = 0.0
+	await _frames(3)
+	check(world.corpses.record(bag["key"]).is_empty() and game.markers.on_planet(game.planet, "death").is_empty(), "the emptied bag and its marker are gone")
+	await _frames(60)
+
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
 ## butchered for meat, hide and bone; a dead person's body holds their gear and purse.
 func _corpses(game, world, player, kc: Creature) -> void:
+	_make_room(game)
 	var label := kc.label()
 	var at := kc.global_position
 	kc.hp = 1.0
+	Ragdoll.mark_hit(kc, at + Vector3(0, 0.8, 0), Vector3(1, 0.1, 0), 40.0)
 	world.fauna.player_hit(kc, 10.0)
 	await _frames(3)
 	check(not is_instance_valid(kc), "the killed animal stops being a live creature")
@@ -690,11 +867,39 @@ func _corpses(game, world, player, kc: Creature) -> void:
 	check(cr is Creature and cr.as_corpse and cr._body == null, "the carcass is drawn, with no hit box")
 	if cr is Creature and cr._kit != null and not cr._kit.procedural():
 		check(cr._kit._current == "Death", "a kit carcass lies in its death pose")
+	if cr is Creature and cr._kit != null and not cr._kit.procedural():
+		# It falls limp, comes to rest, and the pose it lies in is kept with it. (The
+		# rest of the pack can't hurt you while you watch: later checks need your gear.)
+		var god: bool = game.cheats["god"]
+		game.cheats["god"] = true
+		for i in 900:
+			if world.corpses.record(key).has("rag"):
+				break
+			await physics_frame
+		game.cheats["god"] = god
+		var rag = world.corpses.record(key).get("rag")
+		var sk: Skeleton3D = cr._kit.skeleton()
+		check(rag is PackedFloat32Array and rag.size() == sk.get_bone_count() * 7, "the carcass falls as a ragdoll and keeps the pose it settled in")
+		check(world.corpses.record(key).get("c") is Vector3, "the carcass remembers where its body came to rest")
+		if rag is PackedFloat32Array:
+			world.corpses._hide(key)
+			world.corpses._scan = 0.0
+			await _frames(3)
+			var again = world.corpses._shown.get(key, {}).get("node")
+			var sk2: Skeleton3D = again._kit.skeleton() if again is Creature and again._kit else null
+			var back := Ragdoll.snapshot(sk2) if sk2 else PackedFloat32Array()
+			var same: bool = back.size() == rag.size()
+			for i in back.size():
+				same = same and absf(back[i] - rag[i]) < 0.0001
+			check(same, "drawn again, the carcass lies exactly as it fell")
+			cr = again
 	check(Corpses.use_of(found["rec"])[0] == "carcass", "a fresh carcass is held to butcher")
 	var cn: ChunkNode = world.corpses._shown[key]["cn"]
 	game.flush_chunks()
 	var saved = game.store.load_chunk(int(cn.data["cx"]), int(cn.data["cz"]))
 	check(saved is Dictionary and saved.get("corpses", {}).has(world.corpses._shown[key]["id"]), "the carcass is saved with its chunk")
+	# What the hunt and the guard's body hand over, and the speeder after, need room.
+	_make_room(game, 14)
 	var bone0: int = game.inventory.count("bone")
 	world.corpses.butcher(key, ItemDB.make("skinning_knife", 1, 1.0, {}))
 	check(game.inventory.count("bone") > bone0, "butchering gives bone")
@@ -744,6 +949,7 @@ func _corpses(game, world, player, kc: Creature) -> void:
 ## Guns: a shot flies to an animal that has walked away from where it spawned and hurts
 ## it; the magazine empties and a reload takes a fresh power cell.
 func _guns(game, world, player, kc: Creature, slot: int) -> void:
+	_make_room(game)
 	var cells0: int = game.inventory.count("power_cell")
 	game.give(ItemDB.make("power_cell", 2, 1.0, {}))
 	var gun := ItemDB.make("pulse_pistol", 1, 1.0, {})
@@ -861,6 +1067,7 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var stone: Dictionary = rc.add_object("standing_stone", at.call(-10.0, -12.0), 0.0, Eras.MEDIEVAL, {})
 	msg = WonderEffects.apply(stone, rc, player)
 	check(stone["st"].get("read", false) and Wonders.use_of(stone, game.day).is_empty(), "runes are read once (%s)" % msg)
+	_make_room(game)
 	game.give(ItemDB.make("flashlight_dead", 1, 1.0, {}))
 	var crystal: Dictionary = rc.add_object("crystal_shard", at.call(-10.0, 0.0), 0.0, Eras.FANTASY, {})
 	msg = WonderEffects.apply(crystal, rc, player)
@@ -1175,7 +1382,7 @@ func _check_landform_mesh() -> void:
 		check(c0.size() == verts.size() * 4 and c2.size() == verts.size() * 4 and pale > verts.size() / 2,
 			"karst terrain at LOD %d is pale limestone (%d of %d vertices)" % [step, pale, verts.size()])
 		var m := ArrayMesh.new()
-		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, ChunkNode.LOOK_FORMAT)
+		m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, ChunkNode.LOOK_FORMAT | ChunkNode.COVER_FORMAT)
 		check(m.get_surface_count() == 1 and m.surface_get_format(0) & Mesh.ARRAY_FORMAT_CUSTOM0, "the LOD %d mesh takes the look" % step)
 
 ## The nearest level spot near `from` with nothing standing within 5 m, to stand on.
@@ -1300,6 +1507,31 @@ func _menu_checks(world, game, con) -> void:
 			dolls += 1
 	check(dolls == 1, "inventory shows the body")
 	menus.close()
+	# Pack A items: a ring raises stamina, an elixir and a scroll last a while, a salve
+	# heals over time.
+	var find := func(t: String) -> int:
+		for i in Inventory.SIZE:
+			var it = game.inventory.get_slot(i)
+			if it != null and it["type"] == t:
+				return i
+		return -1
+	var st0: float = game.stats.max_stamina()
+	con.run("give ring_silver 1")
+	check(game.equip(find.call("ring_silver")) and game.equipment.has("ring") and game.stats.max_stamina() > st0, "a silver ring on a finger raises stamina")
+	var dm0: float = game.stats.damage_mult()
+	con.run("give elixir_strength 1")
+	world.player.consume(find.call("elixir_strength"))
+	check(game.has_buff("strength") and game.stats.damage_mult() > dm0 and find.call("elixir_strength") < 0, "an elixir of strength is drunk and makes you stronger")
+	var ar0: float = game.armor()
+	con.run("give scroll_blue 1")
+	world.player.consume(find.call("scroll_blue"))
+	check(game.has_buff("warded") and game.armor() > ar0, "a scroll of warding adds armour")
+	game.set_health(40.0)
+	con.run("give salve 1")
+	world.player.consume(find.call("salve"))
+	check(game.health > 40.0 and game.regen_left > 0.0, "a salve heals now and over time")
+	game.save_player()
+	check(game.store.load_player().get("buffs", {}).has("strength"), "timed effects are saved")
 	# Mouse lock: the toggle frees the pointer, a menu keeps it free, closing restores it.
 	Cursor.free = true
 	Cursor.restore()

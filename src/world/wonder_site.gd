@@ -185,7 +185,8 @@ static func _level(g: ChunkGenerator, chunk: Dictionary, c: Vector2, h: float) -
 ## `n` pieces of gear of at least rank `floor`, from everything the era has.
 static func treasure(era: int, r: RandomNumberGenerator, origin: Dictionary, floor_rank: int, n: int) -> Array:
 	var out: Array = []
-	var pool: Array = ItemDB.GEAR_LOOT[era]
+	# Wonders keep only gear worth the trip: no cloth caps or stone axes.
+	var pool: Array = ItemDB.GEAR_LOOT[era].filter(func(t): return int(ItemDB.def(t).get("value", 0)) >= 40)
 	for i in n:
 		var it := ItemDB.make(pool[r.randi() % pool.size()], 1, r.randf_range(1.2, 1.5), origin)
 		var rank := maxi(floor_rank, Rarity.roll(r, 1.0))
@@ -220,7 +221,8 @@ static var _beams := {}
 ## become carved stone, gold and plain glinting glass (Ben: nothing glows on human worlds).
 const CALM := "@calm"
 const CALM_MATS := {"titan_glow": "titan_stone", "starfall_glass": "starfall_glass_dull",
-	"void_stone": "void_stone_dull", "glow_violet": "gold", "glow_red": "gold", "glow_teal": "gold"}
+	"void_stone": "void_stone_dull", "glow_violet": "gold", "glow_red": "gold", "glow_teal": "gold",
+	"glow_warm": "gold", "glow_cyan": "panel", "crystal": "glass", "crystal_violet": "glass"}
 static var _portal: Material
 
 ## The mesh of a wonder piece. `solid` leaves out the light (for collision).

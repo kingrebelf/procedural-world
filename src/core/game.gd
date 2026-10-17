@@ -39,8 +39,13 @@ var player: Node3D ## Set by the player when it spawns.
 var pending_player_state = null
 ## Armour you are wearing, by slot (ARMOR_SLOTS); saved with the player.
 var equipment: Dictionary = {}
-const ARMOR_SLOTS := ["head", "chest", "hands", "legs", "feet", "shield", "back"]
+const ARMOR_SLOTS := ["head", "chest", "hands", "legs", "feet", "shield", "back", "ring", "neck"]
 signal equipment_changed
+## Timed effects from food, potions and scrolls: id -> seconds left (Effects.BUFFS).
+var buffs: Dictionary = {}
+## Health still to come back from a meal or a salve, a little each second.
+var regen_left := 0.0
+signal buffs_changed
 
 ## Your vehicles out in the world (VehicleManager); saved with the player.
 var vehicles: Array = []
@@ -62,6 +67,7 @@ var _autosave_timer := 0.0
 var _current_region := ""
 
 func _ready() -> void:
+	equipment_changed.connect(refresh_bonus)
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	inventory.changed.connect(_on_inventory_changed)
@@ -113,6 +119,8 @@ func _begin(fresh: bool) -> void:
 	guilds = {}
 	estates = []
 	treasure = []
+	buffs = {}
+	regen_left = 0.0
 	var p = store.load_player()
 	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
 	if p is Dictionary:
@@ -133,6 +141,13 @@ func _begin(fresh: bool) -> void:
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
 		treasure = (p.get("treasure", []) as Array).duplicate(true)
+		var bf = p.get("buffs", {})
+		if bf is Dictionary:
+			for id in bf:
+				if Effects.BUFFS.has(id):
+					buffs[id] = float(bf[id])
+		regen_left = float(p.get("regen", 0.0))
+		refresh_bonus()
 		pending_player_state = p
 	else:
 		money = 50
@@ -324,7 +339,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "treasure": treasure}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -342,6 +357,7 @@ func _process(delta: float) -> void:
 			day = floorf(day) + time_lock
 		else:
 			day += delta / day_seconds
+		_tick_effects(delta)
 		map.process(delta, player)
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
 	if not _dirty_chunks.is_empty():
@@ -425,9 +441,65 @@ func set_health(h: float, cause: String = "") -> void:
 		dead = true
 		died.emit(cause if cause != "" else "You died")
 
+## Who you are: the owner id on what you leave in the world, such as the bag you drop
+## when you die. Net's (the multiplayer layer) once it is there, "solo" offline.
+func my_id() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.my_id()) if net and net.has_method("my_id") else "solo"
+
+## Your name as other players see it ("" offline).
+func my_name() -> String:
+	var net := get_node_or_null("/root/Net")
+	return String(net.player_name(my_id())) if net and net.has_method("player_name") and net.has_method("online") and net.online() else ""
+
+## A server option (Net.option), or `fallback` offline or before Net exists.
+func server_option(key: String, fallback):
+	var net := get_node_or_null("/root/Net")
+	if net and net.has_method("option"):
+		var v = net.option(key)
+		return fallback if v == null else v
+	return fallback
+
+## Everything you carry, wear and have in your purse, packed into a bag record
+## (DeathBag.make) and taken off you: you have just died.
+func pack_death_bag() -> Dictionary:
+	var bag := DeathBag.make(my_id(), my_name(), inventory, equipment, money, Time.get_unix_time_from_system())
+	for i in inventory.capacity:
+		inventory.slots[i] = null
+	inventory.changed.emit()
+	equipment = {}
+	equipment_changed.emit()
+	money = 0
+	money_changed.emit(money)
+	_player_dirty = true
+	return bag
+
+## Puts armour from your dropped bag back on: `worn` is slot -> the uid of the piece worn
+## there, and entries are dropped once that piece is on again (or the slot is taken).
+func rewear(worn: Dictionary) -> void:
+	var on := 0
+	for slot in worn.keys():
+		if equipment.has(slot):
+			worn.erase(slot)
+			continue
+		for i in inventory.capacity:
+			var it = inventory.get_slot(i)
+			if it is Dictionary and int(it.get("uid", 0)) == int(worn[slot]) and armor_slot_of(it) == slot:
+				equipment[slot] = inventory.remove_at(i, 1)
+				worn.erase(slot)
+				on += 1
+				break
+	if on > 0:
+		_player_dirty = true
+		equipment_changed.emit()
+		toast.emit("You put your armour back on")
+
 ## Back on your feet after dying: full health and stamina. You keep your pack.
 func revive() -> void:
 	dead = false
+	buffs = {}
+	regen_left = 0.0
+	stats.bonus = Effects.bonus(equipment, buffs)
 	health = stats.max_health()
 	stamina = stats.max_stamina()
 	_player_dirty = true
@@ -487,13 +559,61 @@ static func armor_slot_of(it) -> String:
 		return ""
 	return String(ItemDB.def(it["type"]).get("slot", ""))
 
-## Total armour worn.
+## Total armour worn (and any warding).
 func armor() -> float:
-	var a := 0.0
+	var a := float(stats.bonus.get("armor", 0.0))
 	for k in equipment:
 		var it: Dictionary = equipment[k]
 		a += float(ItemDB.stats(it).get("armor", 0.0)) * float(it.get("quality", 1.0))
 	return a
+
+## Recomputes what worn trinkets and timed effects add to your stats.
+func refresh_bonus() -> void:
+	stats.bonus = Effects.bonus(equipment, buffs)
+	health = minf(health, stats.max_health())
+	stamina = minf(stamina, stats.max_stamina())
+	stats_changed.emit()
+	buffs_changed.emit()
+
+## Starts (or renews, never shortens) a timed effect.
+func add_buff(id: String, secs: float) -> void:
+	if id == "poison" and buffs.has("immune"):
+		return
+	buffs[id] = maxf(float(buffs.get(id, 0.0)), secs)
+	_player_dirty = true
+	refresh_bonus()
+
+func has_buff(id: String) -> bool:
+	return buffs.has(id)
+
+## Clears every harmful effect (poison).
+func cure() -> void:
+	for id in buffs.keys():
+		if Effects.BUFFS.get(id, {}).get("bad", false):
+			buffs.erase(id)
+	refresh_bonus()
+
+func _tick_effects(delta: float) -> void:
+	if player == null or dead:
+		return
+	if not buffs.is_empty():
+		var hurt_by := Effects.damage_per_sec(buffs)
+		if hurt_by > 0.0:
+			set_health(health - hurt_by * delta, "Poison took you")
+		var gone := Effects.tick(buffs, delta)
+		if not gone.is_empty():
+			_player_dirty = true
+			refresh_bonus()
+			for id in gone:
+				if not Effects.BUFFS[id].get("hidden", false):
+					toast.emit("%s wore off" % Effects.BUFFS[id]["name"])
+	var heal := 0.0
+	if regen_left > 0.0:
+		heal = minf(regen_left, Effects.REGEN_RATE * delta)
+		regen_left -= heal
+	heal += float(stats.bonus.get("regen", 0.0)) * delta
+	if heal > 0.0 and health < stats.max_health():
+		set_health(health + heal)
 
 func wearing_affix(id: String) -> bool:
 	for k in equipment:

@@ -418,7 +418,8 @@ static func _crystal_cluster(sp: int, r: RandomNumberGenerator) -> ArrayMesh:
 	var hue := r.randf_range(0.45, 0.62) if r.randf() < 0.7 else r.randf_range(0.72, 0.9)
 	var tint := Color.from_hsv(hue, 0.55, 0.95)
 	g.add_mat("shard", crystal(tint, tint.lerp(Color.WHITE, 0.6), 1.2))
-	g.add_mat("rock", Materials.get_mat("stone_dark"))
+	# Ben's aether rock photo: dark stone shot through with blue mineral.
+	g.add_mat("rock", KitFlora._ore_material("aether"))
 	var rock := PackedVector2Array([Vector2(0, 0.55), Vector2(0.45, 0.5), Vector2(0.85, 0.3), Vector2(1.05, 0.05), Vector2(1.0, -0.3)])
 	g.lathe("rock", rock, 14, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 0.8)), Vector3.ZERO), Vector2.ZERO, Color.WHITE, 0.22, r.randi() % 100)
 	var n := r.randi_range(7, 14)

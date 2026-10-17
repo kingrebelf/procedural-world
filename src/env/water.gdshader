@@ -84,7 +84,15 @@ void fragment() {
 	float k = 1.0 - exp(-water_depth / clarity);
 	vec2 refr_uv = SCREEN_UV + nw.xz * 0.02 * k;
 	vec3 under = textureLod(screen_tex, refr_uv, 1.0).rgb;
-	vec3 col = mix(under * shallow * 2.2, deep, k);
+	// What lies under the water is already lit, so it is seen through (emission), dimmed
+	// as the water swallows red first, then green: clear and sandy in the shallows,
+	// green-blue then dark further out. Lighting it again as albedo made lakes glare cyan.
+	vec3 absorb = vec3(0.4, 0.14, 0.17) * (4.0 / clarity);
+	vec3 trans = exp(-absorb * water_depth * 1.5);
+	vec3 tint = mix(vec3(1.0), shallow / max(max(shallow.r, shallow.g), max(shallow.b, 0.01)), 0.3);
+	vec3 seen = under * trans * tint;
+	// The water's own colour, from light scattered inside it: shows where it is deep.
+	vec3 col = deep * (1.0 - trans.g) * 1.6;
 	// Light passing through the thin tops of waves turns them a brighter green-blue,
 	// most when you look toward a low sun.
 	vec3 vdir = normalize((inverse(VIEW_MATRIX) * vec4(VIEW, 0.0)).xyz);
@@ -92,12 +100,18 @@ void fragment() {
 	float tip = smoothstep(0.15, 0.9, crest) * clamp(amp * 3.0, 0.0, 1.0);
 	col += vec3(0.04, 0.16, 0.13) * tip * (0.35 + 1.2 * back) * smoothstep(-0.05, 0.2, sun_dir_g.y);
 	col *= 1.0 - 0.3 * cloud_shadow(wpos);
-	// Shore foam and wind whitecaps on wave crests.
-	float shore = 1.0 - smoothstep(0.0, 0.6 + amp, water_depth);
+	// Foam: a broken line where the water meets the shore (not over every shallow flat),
+	// and whitecaps on wave crests in a strong wind.
 	float foam_n = smoothstep(0.1, 0.35, n2(wpos.xz * 1.7 + t * 0.3));
+	float shore = (1.0 - smoothstep(0.0, 0.12 + amp * 0.5, water_depth)) * (0.4 + 0.6 * smoothstep(0.0, 0.3, n2(wpos.xz * 0.9 - t * 0.2) + 0.15));
 	float caps = smoothstep(0.55, 0.95, crest) * smoothstep(0.45, 0.85, wind_strength) * foam_n;
-	float foam = max(shore * 0.5 * (0.5 + 0.5 * sin(t * 1.5 + wpos.x * 0.8 + wpos.z * 0.5)), caps);
-	col = mix(col, vec3(0.88, 0.92, 0.95), foam);
+	float foam = max(shore * 0.55 * (0.6 + 0.4 * sin(t * 1.5 + wpos.x * 0.8 + wpos.z * 0.5)), caps);
+	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
+	seen *= 1.0 - foam;
+	// Looking across the water you see more reflection and less of what lies beneath.
+	float ndv = clamp(dot(nw, vdir), 0.0, 1.0); // vdir points back at the eye
+	float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+	seen *= 1.0 - fres;
 	if (!FRONT_FACING) {
 		// Seen from below: Snell's window. Looking up steeply you see the bright, rippling
 		// sky through the surface; at shallower angles it mirrors the dim water below.
@@ -115,7 +129,7 @@ void fragment() {
 		ALBEDO = col;
 		ROUGHNESS = 0.03 + wind_strength * 0.08 + foam * 0.6;
 		METALLIC = 0.0;
-		SPECULAR = 0.6;
-		EMISSION = glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
+		SPECULAR = 0.5;
+		EMISSION = seen + glow * glow_amount * (0.15 + 0.6 * smoothstep(0.1, 0.3, h)) * (1.0 - k * 0.5);
 	}
 }

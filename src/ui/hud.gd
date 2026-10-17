@@ -31,6 +31,7 @@ var _xp_pop: Label
 var _xp_pop_n := 0.0
 var _xp_tw: Tween
 var _money: Label
+var _buffs: Label
 var _weight: Label
 var _xp_flash: Label ## "+N XP" that pops up under the crosshair
 var _flash_tw: Tween
@@ -181,6 +182,11 @@ func _ready() -> void:
 	var xb := _bar(vit, "XP", Color(0.92, 0.72, 0.28), 7, "xp")
 	_xp = xb[0]
 	_xp_val = xb[1]
+	# Timed effects from food, potions and scrolls, with the time each has left.
+	_buffs = UITheme.label("", 12, UITheme.DIM)
+	_buffs.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_buffs.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vit.add_child(_buffs)
 	var bottom := HBoxContainer.new()
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pv.add_child(bottom)
@@ -545,7 +551,8 @@ func show_death(cause: String) -> void:
 	var c := UITheme.label(cause, 22)
 	c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(c)
-	var w := UITheme.label("You keep everything you carry, but lose a quarter of your progress to the next level.", 16, UITheme.DIM)
+	var keep: bool = Game.server_option("death_penalty", "bag") == "keep"
+	var w := UITheme.label(("You keep everything you carry, but" if keep else "Everything you carried is in a bag where you fell, marked on your map. Anyone who finds it can take it.\nYou also") + " lose a quarter of your progress to the next level.", 16, UITheme.DIM)
 	w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(w)
 	_death.add_child(v)
@@ -863,6 +870,16 @@ void fragment() {
 	COLOR = vec4(0.0, 0.0, 0.0, amount * mix(1.0, 0.45 * rim, inside));
 }"""
 
+func _update_buffs() -> void:
+	var parts: PackedStringArray = []
+	for id in Game.buffs:
+		var b: Dictionary = Effects.BUFFS.get(id, {})
+		if not b.is_empty() and not b.get("hidden", false):
+			parts.append("%s %s" % [b["name"], Effects.clock(float(Game.buffs[id]))])
+	_buffs.text = "   ".join(parts)
+	_buffs.visible = not parts.is_empty()
+	_buffs.add_theme_color_override("font_color", Color(0.95, 0.5, 0.45) if Game.has_buff("poison") else UITheme.ACCENT)
+
 func _process(_d: float) -> void:
 	if player == null:
 		return
@@ -898,6 +915,7 @@ func _process(_d: float) -> void:
 	# Unspent attribute points glow slowly until spent.
 	_pulse += _d
 	_points.modulate.a = 0.45 + 0.55 * (0.5 + 0.5 * sin(_pulse * 2.6)) if Game.stats.points > 0 else 1.0
+	_update_buffs()
 	var kg := Game.inventory.weight()
 	var cap := Game.stats.carry_capacity()
 	_weight.text = "Pack %.0f / %d kg%s" % [kg, int(cap), "  OVERLOADED" if kg > cap else ""]

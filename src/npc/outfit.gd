@@ -368,7 +368,10 @@ static func look_of(item: Dictionary) -> Dictionary:
 	var d := ItemDB.def(t)
 	var col: Color = d.get("color", Color(0.55, 0.55, 0.58))
 	var style := STYLE_PLATE
-	if t.contains("leather") or t.contains("elven") and t.contains("boots"):
+	var looks := {"cloth": STYLE_CLOTH, "leather": STYLE_LEATHER, "mail": STYLE_MAIL, "plate": STYLE_PLATE}
+	if looks.has(String(d.get("look", ""))):
+		style = looks[d["look"]]
+	elif t.contains("leather") or t.contains("elven") and t.contains("boots"):
 		style = STYLE_LEATHER
 	elif t.contains("mail"):
 		style = STYLE_MAIL
@@ -386,7 +389,7 @@ static func _piece(s: Dictionary, o: Dictionary, slot: String, style: int, col: 
 	var waist: float = s["waist"]
 	var sx: float = s["shoulder_x"]
 	var head: Vector3 = s["head"]
-	var thick := 0.022 if style != STYLE_LEATHER else 0.014
+	var thick := 0.022 if style != STYLE_LEATHER and style != STYLE_CLOTH else 0.014
 	match slot:
 		"chest":
 			_shell(s, o, 1, c, func(_i, p: Vector3, r: int) -> float:

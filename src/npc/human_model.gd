@@ -4,7 +4,8 @@ extends Node3D
 ## dressed by human.gdshader (shirt, trousers, boots, robe, era trims, all per person
 ## through instance uniforms), a hairstyle bound to the same skeleton, era headgear and a
 ## work tool in hand, animated with the Universal Animation Library (baked into
-## assets/models/anim/humans.res by tools/bake_anims.gd).
+## assets/models/anim/humans.res by tools/bake_anims.gd) through HumanAnimator (gaits
+## matched to the ground speed, layers) and HumanIK (feet on the ground, looking, leaning).
 
 const DIR := "res://assets/models/people/"
 const ANIMS := "res://assets/models/anim/humans.res"
@@ -23,7 +24,9 @@ static var _lib: AnimationLibrary
 static var _mats := {}
 
 var skeleton: Skeleton3D
-var anim: AnimationPlayer
+var anim: AnimationTree
+var animator: HumanAnimator
+var ik: HumanIK
 var gestures: BodyLanguage
 var _body: MeshInstance3D
 var _clothes: MeshInstance3D
@@ -158,10 +161,13 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	_tool(era, job)
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	anim = AnimationPlayer.new()
-	scene.add_child(anim)
-	anim.add_animation_library("", library())
-	anim.animation_finished.connect(func(_n): _end_shot())
+	animator = HumanAnimator.new()
+	add_child(animator)
+	animator.setup(library(), scene, skeleton, self)
+	anim = animator.tree
+	ik = HumanIK.new()
+	skeleton.add_child(ik)
+	animator.ik = ik
 	gestures = BodyLanguage.new()
 	skeleton.add_child(gestures)
 	if _gripping:
@@ -237,6 +243,10 @@ func _shield_mesh(item: Dictionary) -> Node3D:
 			k.cylinder("glow_cyan", I.translated(Vector3(0, 0.012, 0)), 0.22, 0.22, 0.01, 6, true, 0.0, 1, col)
 		Outfit.STYLE_CRYSTAL:
 			k.cylinder("crystal@2", I, 0.28, 0.28, 0.025, 14, true, 0.0, 1, col)
+		Outfit.STYLE_PLATE:
+			# Bronze and steel: a beaten metal disc with a raised boss.
+			k.cylinder("iron", I, 0.31, 0.31, 0.022, 20, true, 0.0, 1, col)
+			k.cylinder("iron", I.translated(Vector3(0, 0.016, 0)), 0.08, 0.06, 0.035, 12, true, 0.0, 1, col.lightened(0.15))
 		_:
 			k.cylinder("planks", I, 0.3, 0.3, 0.03, 16, true, 0.0, 1, col)
 			k.cylinder("iron", I.translated(Vector3(0, 0.018, 0)), 0.07, 0.07, 0.03, 10)
@@ -571,54 +581,63 @@ func set_shadow_only(on: bool) -> void:
 	for mi in find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
-## Plays a looping state, cross-fading. Ignored while a one-shot (hit, attack) runs.
+## Plays a looping state, cross-fading. Walk, jog and sprint all mean "on the move": the
+## gait and its pace follow how fast the body really moves (HumanAnimator), so `speed`
+## only sets the pace of other states. Ignored while posed (pose()).
 func play(state: String, speed := 1.0) -> void:
-	if anim == null or _oneshot:
+	if animator == null or _holding:
 		return
-	anim.speed_scale = speed
-	if state == _current:
-		return
-	if not anim.has_animation(state):
+	if not anim.has_animation(state) and not state in HumanAnimator.GAITS:
 		state = "idle"
 	_current = state
-	anim.play(state, 0.25)
+	if state == "idle" and not _oneshot:
+		_idle_variety()
+	else:
+		_idle_alt = ""
+	animator.set_state(_idle_alt if state == "idle" and _idle_alt != "" else state, speed)
 
 ## Plays an action once, then returns to the looping state. `dur` (optional) fits the
 ## action into that many seconds, sped up at most 2.2x. Looping clips (chopping) are
-## played for one cycle, so a single swing never keeps going.
+## played for one cycle, so a single swing never keeps going. On the move it plays over
+## the upper body and the legs keep walking.
 func play_once(state: String, dur := 0.0) -> void:
-	if anim == null or not anim.has_animation(state):
+	if animator == null or not anim.has_animation(state):
 		return
 	var a := anim.get_animation(state)
 	var speed := clampf(a.length / dur, 1.0, 2.2) if dur > 0.0 else 1.0
 	_oneshot = true
-	_current = state
 	_shot += 1
 	var my := _shot
-	anim.speed_scale = speed
-	anim.play(state, 0.1)
-	if a.loop_mode != Animation.LOOP_NONE or dur > 0.0:
-		get_tree().create_timer(a.length / speed, false).timeout.connect(func():
-			if my == _shot and is_instance_valid(self):
-				_end_shot())
+	animator.shot(state, speed)
+	if not is_inside_tree():
+		return
+	get_tree().create_timer(maxf(a.length / speed - 0.05, 0.05), false).timeout.connect(func():
+		if my == _shot and is_instance_valid(self):
+			if a.loop_mode != Animation.LOOP_NONE:
+				animator.end_shot()
+			_end_shot())
 
 var _shot := 0
 var _holding := false
 
 ## Plays an action once and stays in its last pose (playing dead) until release().
-func pose(state: String) -> void:
-	if anim == null or not anim.has_animation(state):
+## `at_end` skips straight to the final pose (a body found already lying there).
+func pose(state: String, at_end := false) -> void:
+	if animator == null or not anim.has_animation(state):
 		return
 	_oneshot = true
 	_holding = true
 	_current = state
 	_shot += 1
-	anim.speed_scale = 1.0
-	anim.play(state, 0.15)
+	animator.end_shot()
+	animator.set_state(state, 1.0, at_end)
+	if at_end:
+		advance(0.5)
 
 func release() -> void:
 	if _holding:
 		_holding = false
+		animator.set_state("idle")
 		_end_shot()
 
 ## True while a one-shot action (swing, shot, hit) is playing.
@@ -629,7 +648,114 @@ func _end_shot() -> void:
 	if _holding:
 		return
 	_oneshot = false
-	_current = "" # the next play() call picks the loop back up
+
+## Stops animating and holds the pose it is in, for a ragdoll (or a saved pose) to take
+## over the bones.
+func freeze_for_ragdoll() -> void:
+	if animator:
+		animator.set_process(false)
+		animator.tree.active = false
+	if ik:
+		ik.active = false
+	if gestures:
+		gestures.active = false
+	_holding = true
+	_oneshot = true
+
+## Settles the animation `dt` seconds on at once (a pose wanted this frame).
+func advance(dt: float) -> void:
+	if animator:
+		animator.update(dt)
+
+## A pose for the arms and chest held whatever the legs do ("" for none): a sword or gun
+## held ready while running.
+func set_upper(state: String) -> void:
+	if animator:
+		animator.set_upper(state)
+
+## The ground under the feet, for planting them: Callable(x, z) -> height (NAN unknown).
+## Without one, feet find the ground with rays (`exclude`: bodies they must not stand on).
+func set_ground(ground: Callable, exclude: Array[RID] = []) -> void:
+	if ik:
+		ik.ground = ground
+		ik.ray_exclude = exclude
+
+## Turns head, neck and chest toward world point `p` (INF to stop), `amount` 0..1.
+func look_at_target(p: Vector3, amount := 1.0) -> void:
+	_look = p
+	_look_w = amount if p != Vector3.INF else 0.0
+	_apply_look()
+
+var _look := Vector3.INF
+var _look_w := 0.0
+
+## Someone or something to look at wins over an idle glance.
+func _apply_look() -> void:
+	if ik == null:
+		return
+	if _look_w > 0.0:
+		ik.look_target = _look
+		ik.look_weight = _look_w
+	elif _glance != Vector3.INF:
+		ik.look_target = _glance
+		ik.look_weight = 0.5
+	else:
+		ik.look_target = Vector3.INF
+		ik.look_weight = 0.0
+
+## First-person arms ride the camera: no walking legs, no level of detail.
+func set_riding_camera() -> void:
+	if animator:
+		animator.locomotion = false
+		animator.lod = false
+	if ik:
+		ik.feet_on = false
+		ik.look_on = false
+		ik.breathe = false
+
+# --- Idle variety --------------------------------------------------------------------
+
+var _idle_t := 0.0
+var _idle_alt := ""
+var _idle_alt_t := 0.0
+var _glance_t := 0.0
+var _glance := Vector3.INF
+var _last_idle_ms := 0
+
+## Standing about, people don't loop one idle: now and then they fold their arms, put
+## their hands on their hips, or glance at something nearby.
+func _idle_variety() -> void:
+	var now := Time.get_ticks_msec()
+	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
+	_last_idle_ms = now
+	if _idle_t <= 0.0:
+		_idle_t = randf_range(6.0, 16.0)
+	_idle_t -= dt
+	if _idle_alt != "":
+		_idle_alt_t -= dt
+		if _idle_alt_t <= 0.0:
+			_idle_alt = ""
+	if _glance != Vector3.INF:
+		_glance_t -= dt
+		if _glance_t <= 0.0:
+			_glance = Vector3.INF
+			_apply_look()
+	if _idle_t > 0.0:
+		return
+	var r := randf()
+	if r < 0.5:
+		# A glance: somewhere off to one side, at about eye height.
+		var a := randf_range(-1.1, 1.1)
+		var fwd := global_basis.z.normalized()
+		var side := fwd.rotated(Vector3.UP, a)
+		_glance = global_position + side * randf_range(4.0, 12.0) + Vector3.UP * randf_range(0.6, 2.0)
+		_glance_t = randf_range(1.2, 3.0)
+		_apply_look()
+	elif r < 0.72 and not _gripping and _held == null and anim.has_animation("fold_arms"):
+		_idle_alt = "fold_arms"
+		_idle_alt_t = randf_range(5.0, 11.0)
+	elif r < 0.85 and not _gripping and _held == null:
+		gesture("hips")
 
 func set_flash(v: float) -> void:
 	if _body:
@@ -642,14 +768,6 @@ func set_flash(v: float) -> void:
 			if m:
 				m.set_instance_shader_parameter("flash", v)
 
-## Head turn toward a world point, applied after the animation each frame.
+## Head turn toward a world point (see look_at_target).
 func look_at_point(p: Vector3, amount: float) -> void:
-	if skeleton == null:
-		return
-	var hb := skeleton.find_bone("Head")
-	if hb < 0:
-		return
-	var local := global_transform.affine_inverse() * p
-	var yaw := clampf(atan2(local.x, local.z), -1.0, 1.0) * amount
-	var pose := skeleton.get_bone_pose_rotation(hb)
-	skeleton.set_bone_pose_rotation(hb, Quaternion(Vector3.UP, yaw) * pose)
+	look_at_target(p, amount)

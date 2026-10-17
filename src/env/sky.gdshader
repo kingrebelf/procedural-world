@@ -198,6 +198,8 @@ void sky() {
 	col += sunset * pow(sd, 8.0) * low * 0.8 * (1.0 - up * 0.6) * smoothstep(-0.25, 0.05, sun_h);
 	float az = dot(normalize(d.xz + vec2(0.0001)), normalize(sun.xz + vec2(0.0001))) * 0.5 + 0.5;
 	col += sunset * low * 0.22 * pow(1.0 - up, 3.0) * az * az * daylight;
+	// Opposite the low sun, a rosy band just above the horizon (the belt of Venus).
+	col += vec3(0.85, 0.5, 0.58) * low * 0.25 * pow(1.0 - up, 5.0) * (1.0 - az) * (1.0 - az) * daylight;
 
 	// Sun disc and halo.
 	if (LIGHT0_ENABLED) {

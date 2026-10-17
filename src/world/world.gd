@@ -142,10 +142,26 @@ func _apply_settings() -> void:
 	streamer.apply_settings(int(Settings.get_value("view_distance")), float(Settings.get_value("grass_density")),
 		float(Settings.get_value("detail_distance")))
 
-## Death: a few seconds of "You died", then you wake at the world's spawn point with your
-## pack intact, minus some of the progress toward your next level.
+## Death: everything you carry drops in a bag where you fell (marked on your map), a few
+## seconds of "You died", then you wake at your house or the world's spawn point, empty
+## handed and short some of the progress toward your next level.
 func _on_died(cause: String) -> void:
 	player.dismount(true)
+	# A server can let players keep their things ("keep"); otherwise they drop in a bag.
+	var dropped: bool = Game.server_option("death_penalty", "bag") != "keep"
+	var bag := Game.pack_death_bag() if dropped else {}
+	dropped = dropped and CorpseLoot.has_any(bag)
+	if dropped and corpses.drop_bag(player.global_position, bag) == "":
+		# Nowhere loaded to leave it (should not happen): keep it all instead.
+		var inv := Inventory.new(DeathBag.SLOTS)
+		inv.from_data(bag["items"])
+		Storage.transfer_all(inv, Game.inventory)
+		Game.add_money(int(bag["purse"]))
+		Game.rewear(bag["worn"])
+		dropped = false
+	# Saved at once: the bag on its ground, your empty pack and the marker.
+	Game.flush_chunks()
+	Game.save_player()
 	player.ui_open = true
 	player.velocity = Vector3.ZERO
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -171,7 +187,7 @@ func _on_died(cause: String) -> void:
 	hud.hide_death()
 	player.ui_open = false
 	Cursor.restore()
-	Game.toast.emit("You wake at your house. Your pack is safe." if home is Vector2 else "You wake where you first arrived. Your pack is safe.")
+	Game.toast.emit(("You wake at your house." if home is Vector2 else "You wake where you first arrived.") + (" Your things are in a bag where you fell, marked on your map." if dropped else ""))
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:

@@ -96,6 +96,8 @@ static func build(sp: int) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for k in vs.size():
+		# Grey stone with some moss on top (StoneKit's rock material reads the colour).
+		st.set_color(Color(0.52, 0.5, 0.47, 0.35))
 		st.set_normal(ns[k])
 		st.set_uv(Vector2(vs[k].x + vs[k].z, vs[k].y) * 0.5)
 		st.add_vertex(vs[k])
@@ -104,7 +106,7 @@ static func build(sp: int) -> ArrayMesh:
 	st.generate_tangents()
 	var out := ArrayMesh.new()
 	st.commit(out)
-	out.surface_set_material(0, Materials.get_mat("stone"))
+	out.surface_set_material(0, StoneKit.material())
 	return out
 
 static func shape(sp: int) -> Array:

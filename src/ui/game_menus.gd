@@ -130,9 +130,12 @@ func open_corpse(corpses: Corpses, key: String) -> void:
 	var c := corpses.record(key)
 	if c.is_empty():
 		return
+	if DeathBag.is_bag(c) and not DeathBag.can_take(c, Game.my_id()):
+		Game.toast.emit("You can't open that bag")
+		return
 	_corpses = corpses
 	_corpse_key = key
-	_store = Inventory.new(CorpseLoot.SLOTS)
+	_store = Inventory.new(Corpses.slots_of(c))
 	if c.get("items") is Dictionary:
 		_store.from_data(c["items"])
 	open("corpse")
@@ -455,12 +458,17 @@ func _slot_button(i: int) -> Button:
 		else:
 			Game.inventory.swap(_swap_from, i)
 			_swap_from = -1)
-	# Right-click armour to put it on.
+	# Right-click armour to put it on, and food, potions, scrolls and the like to use them.
 	b.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT:
-			if Game.armor_slot_of(Game.inventory.get_slot(i)) != "":
+			var there = Game.inventory.get_slot(i)
+			if Game.armor_slot_of(there) != "":
 				_swap_from = -1
-				Game.equip(i))
+				Game.equip(i)
+			elif there != null and player and ItemDB.def(there["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
+				_swap_from = -1
+				player.consume(i)
+				_refresh())
 	# Drag and drop: drag any item onto another slot (or onto the hotbar row) to move,
 	# swap or merge it, or armour onto your body to wear it.
 	b.set_drag_forwarding(func(_at):
@@ -718,7 +726,10 @@ func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 			status = "Unlocks at level %d" % Recipes.unlock_level(r["out"])
 		elif not at_ok:
 			status = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
-		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked else UITheme.DIM)))
+		var no_tools := Recipes.missing_tools(Game.inventory, r)
+		if unlocked and at_ok and not no_tools.is_empty():
+			status = "Needs %s in your pack" % ", ".join(no_tools.map(func(t): return ItemDB.def(t)["name"]))
+		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked or not no_tools.is_empty() else UITheme.DIM)))
 		row.add_child(name_box)
 		var ins := HBoxContainer.new()
 		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -731,6 +742,14 @@ func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 			chip.add_child(_icon_rect(t, 30))
 			chip.add_child(UITheme.label("%d/%d" % [have, need], 15, UITheme.TEXT if have >= need else Color(0.9, 0.45, 0.4)))
 			chip.tooltip_text = ItemDB.def(t)["name"]
+			ins.add_child(chip)
+		# Tools the recipe needs but does not use up.
+		for t in r.get("tools", []):
+			var chip := HBoxContainer.new()
+			chip.add_theme_constant_override("separation", 4)
+			chip.add_child(_icon_rect(t, 30))
+			chip.add_child(UITheme.label("tool", 13, UITheme.DIM if Game.inventory.count(t) > 0 else Color(0.9, 0.45, 0.4)))
+			chip.tooltip_text = "%s (not used up)" % ItemDB.def(t)["name"]
 			ins.add_child(chip)
 		row.add_child(ins)
 		for n in CRAFT_AMOUNTS:
@@ -803,10 +822,13 @@ func _corpse_changed(marks := 0) -> void:
 		return
 	var before := 0
 	if c.get("items") is Dictionary:
-		var old := Inventory.new(CorpseLoot.SLOTS)
+		var old := Inventory.new(Corpses.slots_of(c))
 		old.from_data(c["items"])
 		before = _worth(old)
 	c["items"] = _store.to_data()
+	if DeathBag.is_mine(c, Game.my_id()) and not (c.get("worn", {}) as Dictionary).is_empty():
+		# Your own armour goes back on as you take it.
+		Game.rewear(c["worn"])
 	_corpses.took_from(_corpse_key, maxi(0, before - _worth(_store)) + marks)
 	if not CorpseLoot.has_any(c) and c["kind"] == "animal":
 		close()
@@ -824,13 +846,16 @@ func _take_purse() -> int:
 func _corpse_panel() -> Control:
 	var c := _corpses.record(_corpse_key) if is_instance_valid(_corpses) else {}
 	var person: bool = c.get("kind", "") == "person"
+	var bag := DeathBag.is_bag(c)
 	var title := ("%s (dead)" % c.get("name", "Someone")) if person else "%s carcass" % c.get("name", "Animal")
+	if bag:
+		title = DeathBag.title(c, Game.my_id())
 	var kg := Game.inventory.weight()
 	var s := _shell(title, "Click an item to take it. Your pack: %.0f / %d kg." % [kg, int(Game.stats.carry_capacity())])
 	var v: VBoxContainer = s[1]
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 10)
-	bar.add_child(UITheme.label("ON THE BODY" if person else "LEFT ON THE CARCASS", 15, UITheme.ACCENT))
+	bar.add_child(UITheme.label("IN THE BAG" if bag else "ON THE BODY" if person else "LEFT ON THE CARCASS", 15, UITheme.ACCENT))
 	var sp := Control.new()
 	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(sp)
@@ -850,7 +875,7 @@ func _corpse_panel() -> Control:
 	for i in _store.capacity:
 		g.add_child(_move_button(_store, i, Game.inventory))
 	v.add_child(g)
-	if person and _store.free_slots() == _store.capacity and purse <= 0:
+	if (person or bag) and _store.free_slots() == _store.capacity and purse <= 0:
 		v.add_child(UITheme.label("Nothing left on them.", 15, UITheme.DIM))
 	return s[0]
 
@@ -1256,7 +1281,7 @@ func _map_finder(side: VBoxContainer, me: Vector2) -> void:
 ## out (or click / right-click it) to take it off. While armour is being dragged, the slot
 ## it fits lights up.
 class EquipSlot extends Button:
-	const NAMES := {"head": "Head", "chest": "Chest", "hands": "Hands", "legs": "Legs", "feet": "Feet", "shield": "Off hand", "back": "Back"}
+	const NAMES := {"head": "Head", "chest": "Chest", "hands": "Hands", "legs": "Legs", "feet": "Feet", "shield": "Off hand", "back": "Back", "ring": "Ring", "neck": "Neck"}
 	var where: String
 	var _glow := false
 
@@ -1315,8 +1340,8 @@ class Mannequin extends Control:
 	const W := 300.0
 	const H := 460.0
 	## Slot centres. With the slate figure they sit on its head, chest, hands, legs and feet.
-	const SLOT_AT := {"head": Vector2(150, 50), "chest": Vector2(150, 140), "hands": Vector2(78, 232), "shield": Vector2(222, 232), "legs": Vector2(150, 298), "feet": Vector2(150, 388), "back": Vector2(236, 96)}
-	const SLOT_AT_DRAWN := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122)}
+	const SLOT_AT := {"head": Vector2(150, 50), "chest": Vector2(150, 140), "hands": Vector2(78, 232), "shield": Vector2(222, 232), "legs": Vector2(150, 298), "feet": Vector2(150, 388), "back": Vector2(236, 96), "neck": Vector2(64, 96), "ring": Vector2(64, 162)}
+	const SLOT_AT_DRAWN := {"head": Vector2(150, 58), "chest": Vector2(150, 160), "hands": Vector2(44, 252), "shield": Vector2(256, 252), "legs": Vector2(150, 296), "feet": Vector2(150, 396), "back": Vector2(256, 122), "neck": Vector2(44, 110), "ring": Vector2(44, 180)}
 	var _doll: Texture2D
 
 	func _init() -> void:

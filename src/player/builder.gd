@@ -57,7 +57,9 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed("build_lower"):
 		_lift -= 1
 	elif event.is_action_pressed("build_snap"):
-		if BuildCatalog.def(_id).get("snap") == "free":
+		if BuildCatalog.def(_id).get("snap") == "door":
+			Game.toast.emit("Doors always hang in a doorway")
+		elif BuildCatalog.def(_id).get("snap") == "free":
 			Game.toast.emit("This piece already places freely")
 		else:
 			_free = not _free
@@ -103,6 +105,8 @@ func _find_target() -> Dictionary:
 		return {}
 	var p: Vector3 = hit["position"]
 	var n: Vector3 = hit["normal"]
+	if Doors.is_door_piece(_id):
+		return _door_target(from, p)
 	var col: Object = hit.get("collider")
 	var anchor = null
 	var hit_mode := ""
@@ -131,12 +135,26 @@ func _find_target() -> Dictionary:
 		ok = false
 	return {"pos": pos, "yaw": s["yaw"], "ok": ok}
 
+## A door hangs in the doorway you aim at (or through), at its spot and facing; the
+## rotate key hangs it the other way round. Red, at the aim, when there's no doorway.
+func _door_target(from: Vector3, p: Vector3) -> Dictionary:
+	var dw := Doors.doorway_near(player.streamer, _id, from, p)
+	if dw.is_empty():
+		return {"pos": p, "yaw": player.yaw() + PI, "ok": false, "why": "doorway"}
+	var pos: Vector3 = dw["pos"]
+	var yaw: float = dw["yaw"] + (PI if _turn % 2 else 0.0)
+	var ok := pos.distance_to(from) <= REACH + 2.0 and not BuildCatalog.occupied(player.streamer, _id, pos, yaw)
+	return {"pos": pos, "yaw": yaw, "ok": ok}
+
 ## Places the held piece at the ghost. Returns true when something was built.
 func place() -> bool:
 	if _id == "" or _target.is_empty():
 		return false
 	if not _target["ok"]:
-		Game.toast.emit("Can't build there")
+		if _target.get("why", "") == "doorway":
+			Game.toast.emit("Hang a %s in a doorway you've built" % String(BuildCatalog.def(_id)["name"]).to_lower())
+		else:
+			Game.toast.emit("Can't build there")
 		return false
 	var pos: Vector3 = _target["pos"]
 	var chunk: ChunkNode = player.streamer.get_chunk(ChunkStreamer.chunk_of(pos))
@@ -150,7 +168,10 @@ func place() -> bool:
 		Game.toast.emit("You can build a %s from level %d" % [String(BuildCatalog.def(_id)["name"]).to_lower(), need])
 		return false
 	Game.inventory.remove_at(player.selected, 1)
-	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], {"by": "you", "day": snappedf(Game.day, 0.01)})
+	var st := {"by": "you", "day": snappedf(Game.day, 0.01)}
+	if Doors.is_door_piece(_id):
+		Doors.init_state(st)
+	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], st)
 	if BuildCatalog.def(_id).get("teleporter", false):
 		var n := Game.markers.count_kind("teleporter") + 1
 		var nm := "%s %d" % [String(BuildCatalog.def(_id)["name"]), n]
@@ -168,6 +189,15 @@ func info() -> Dictionary:
 	var lines: Array = []
 	var k := func(a: String) -> String: return "[%s]" % Player._key(a)
 	var mode := String(d.get("snap", "free"))
+	if mode == "door":
+		var fit: Array = []
+		for f in d["door"]["fits"]:
+			fit.append(String(BuildCatalog.def(f)["name"]).to_lower())
+		lines.append("Hangs in a %s you've built. %s hangs it the other way round." % [" or ".join(fit), k.call("rotate_build")])
+		lines.append("Once it's up: [%s] opens it, crouch and [%s] locks it." % [Player._key("interact"), Player._key("interact")])
+		if not _target.is_empty() and not _target["ok"]:
+			lines.append("No free doorway there." if _target.get("why", "") == "doorway" else "A door already hangs there, or it's out of reach.")
+		return {"title": d.get("name", _id), "sub": "Building  ·  [%s] place" % Player._key("use"), "lines": lines, "icon": _id}
 	if _free:
 		lines.append("Grid off: places exactly where you aim. %s turns it 15 degrees." % k.call("rotate_build"))
 	else:

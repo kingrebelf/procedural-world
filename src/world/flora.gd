@@ -158,6 +158,8 @@ static func under_yield(sp: int, era: int, roll: float) -> Array:
 	var out: Array = [["fiber", 2 if form == "bush" or form == "reeds" or form == "tendrils" else 1]]
 	if (form == "bush" and roll < 0.35) or form == "glowbulbs" and roll < 0.5:
 		out.append(["glowberry" if era != Eras.MEDIEVAL else "wild_berries", 1 + int(roll * 6.0) % 2])
+	if era == Eras.MEDIEVAL:
+		out.append_array(Byproducts.of_plant(form, sp, roll))
 	return out
 
 ## Undergrowth (ferns, bushes, flowers, reeds, glow-bulbs, xeno tendrils). No collision,
@@ -413,7 +415,11 @@ static func _rock(k: MeshKit, t: String, p: Dictionary, r: RandomNumberGenerator
 	var sq: float = p["squash"]
 	var rough: float = p["rough"]
 	var shape: String = p["shape"]
+	if t == "alloy_scrap":
+		shape = "none" # the scrap heap is its own mound, no boulder poking through it
 	match shape:
+		"none":
+			pass
 		"slab":
 			k.sphere("stone_w", Transform3D(Basis(Vector3(1, 0, 0), r.randf_range(-0.3, 0.3)), Vector3(0, 0.3, 0)), 1.1, 8, 12, rough, 0.35, col)
 		"spire":
@@ -441,12 +447,13 @@ static func _rock(k: MeshKit, t: String, p: Dictionary, r: RandomNumberGenerator
 				k.crystal(mat, Transform3D(b, Vector3(cos(a) * 0.35, 0.2, sin(a) * 0.35)), r.randf_range(0.12, 0.26), r.randf_range(0.8, 2.4))
 		"alloy_scrap":
 			# A heap of wrecked machinery (Ben's scrap photos) with burnt plates stuck in it.
-			k.sphere("scrap_pile", I.translated(Vector3(0, 0.2, 0)), 1.25, 8, 14, 0.35, 0.5, Color(0.95, 0.93, 0.9).darkened(r.randf() * 0.2))
+			k.sphere("scrap_pile", I.translated(Vector3(0, 0.05, 0)), 1.25, 8, 14, 0.35, 0.55, Color(0.95, 0.93, 0.9).darkened(r.randf() * 0.2), true)
 			for n in 7:
 				var b := Basis.from_euler(Vector3(r.randf_range(-0.6, 0.6), r.randf() * TAU, r.randf_range(-0.6, 0.6)))
 				var pos := Vector3(r.randf_range(-0.9, 0.9), r.randf_range(0.3, 0.9), r.randf_range(-0.9, 0.9))
 				k.box("scrap_plate", Transform3D(b, pos), Vector3(r.randf_range(0.3, 1.2), r.randf_range(0.05, 0.3), r.randf_range(0.3, 1.0)), Color.from_hsv(r.randf(), r.randf_range(0, 0.15), r.randf_range(0.7, 1.0)))
-			k.box("glow@%d" % int(p["glow"]), Transform3D(Basis(Vector3.UP, r.randf()), Vector3(0.2, 0.95, 0.1)), Vector3(0.4, 0.05, 0.05))
+			# A bent bar on top (it used to glow; nothing glows on human worlds).
+			k.box("scrap_plate", Transform3D(Basis(Vector3.UP, r.randf()), Vector3(0.2, 0.85, 0.1)), Vector3(0.6, 0.05, 0.05), Color(0.8, 0.78, 0.75))
 
 static func _alien(k: MeshKit, p: Dictionary, r: RandomNumberGenerator) -> void:
 	var I := Transform3D.IDENTITY

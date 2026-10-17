@@ -10,14 +10,18 @@ class_name NPCSocial
 
 ## What each trade has to sell.
 const JOB_GOODS := {
-	"farmer": ["bread", "wild_berries", "fiber"], "smith": ["iron_ingot", "lockpick", "sword_iron", "pickaxe_iron", "hammer", "helm_iron"],
-	"guard": ["sword_iron", "shield_wood", "crossbow", "bolt"], "innkeeper": ["bread", "cooked_meat", "health_potion"],
-	"hunter": ["hide", "raw_meat", "longbow", "arrow", "dagger"], "priest": ["health_potion", "silver_chalice"],
-	"weaver": ["fiber", "boots_leather", "gloves_leather"], "miller": ["bread", "planks"],
-	"herbalist": ["glowberry", "glowroot", "health_potion", "stamina_potion"], "warden": ["longbow", "arrow", "boots_elven", "spear"],
-	"runecarver": ["rune_tablet", "bracers_rune", "aether_crystal"], "bard": ["glowberry", "moonpearl"],
-	"mystic": ["aether_crystal", "moonpearl", "stamina_potion"], "beekeeper": ["glowberry", "wild_berries"],
-	"lamplighter": ["torch", "glowroot"], "scribe": ["rune_tablet", "binoculars"],
+	"farmer": ["bread", "wild_berries", "fiber", "apple", "potato", "carrot", "onion", "cabbage", "wheat", "egg", "milk", "pumpkin", "corn", "pear", "grapes"],
+	"smith": ["iron_ingot", "lockpick", "sword_iron", "pickaxe_iron", "hammer", "helm_iron", "iron_nails", "coal", "tongs", "bronze_ingot", "steel_ingot"],
+	"guard": ["sword_iron", "shield_wood", "crossbow", "bolt", "bandage_linen", "falchion", "shield_kite"], "innkeeper": ["bread", "cooked_meat", "health_potion", "mead", "wine", "ham", "sausage"],
+	"hunter": ["hide", "raw_meat", "longbow", "arrow", "dagger", "fur_pelt", "shortbow", "broadhead_arrows", "skinning_knife", "salted_meat"],
+	"priest": ["health_potion", "silver_chalice", "holy_water", "candle", "amulet_saint", "book_leather"],
+	"weaver": ["fiber", "boots_leather", "gloves_leather", "cloth", "wool", "flax", "rope", "tunic_padded", "trousers_wool"],
+	"miller": ["bread", "planks", "flour", "wheat"],
+	"herbalist": ["glowberry", "glowroot", "health_potion", "stamina_potion", "herb_red", "herb_blue", "herb_yellow", "herb_mint", "salve", "potion_health_minor"], "warden": ["longbow", "arrow", "boots_elven", "spear"],
+	"runecarver": ["rune_tablet", "bracers_rune", "aether_crystal"], "bard": ["glowberry", "moonpearl", "lute", "flute", "wine", "dice"],
+	"mystic": ["aether_crystal", "moonpearl", "stamina_potion"], "beekeeper": ["glowberry", "wild_berries", "honey", "beeswax", "candle", "mead"],
+	"lamplighter": ["torch", "glowroot", "lamp_oil", "candle", "hand_lantern", "tinderbox"],
+	"scribe": ["rune_tablet", "binoculars", "scroll_plain", "quill_ink", "book_leather", "letter_sealed"],
 	"engineer": ["circuitry", "lockpick", "power_cell", "alloy_plate"], "medic": ["health_potion", "ration_pack", "stamina_potion"],
 	"scavenger": ["alloy_scrap", "lockpick", "scrap_pistol", "data_core"], "pilot": ["power_cell", "flashlight", "ration_pack"],
 	"security officer": ["pulse_pistol", "rounds", "helm_visor"], "data broker": ["data_core", "circuitry"],
@@ -215,7 +219,8 @@ static func gift_for(rec: Dictionary) -> Dictionary:
 # --- Pockets --------------------------------------------------------------------------------
 
 ## Small things anyone might carry, by era, besides the goods of their trade.
-const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion", "lockpick"],
+const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_chalice", "health_potion", "lockpick", "apple",
+		"candle", "dice", "bandage_linen", "letter_sealed", "sausage"],
 	["glowberry", "bread", "moonpearl", "rune_tablet", "health_potion", "aether_crystal"],
 	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick"]]
 const POCKETS_EVERY := 3 ## days before their pockets fill again

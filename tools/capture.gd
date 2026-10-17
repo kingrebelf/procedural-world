@@ -8,6 +8,7 @@ var world: Node3D
 var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
+var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -18,6 +19,8 @@ func _ready() -> void:
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
 	DirAccess.make_dir_recursive_absolute(out_dir)
+	# Nothing may kill the photographer (castle hounds did, mid-tour).
+	Game.cheats["god"] = true
 	_run.call_deferred()
 
 func _wait(n: int) -> void:
@@ -66,18 +69,34 @@ func _find_border(g: ChunkGenerator) -> Vector2:
 			return p
 	return Vector2.ZERO
 
+## A beach on open water: dry land just above the lake with a wide fan of deep water in
+## front of it, so the shot looks out over the lake rather than at the far wall of a river
+## canyon or a narrow inlet. Sets `shore_out` to the way the water lies.
 func _find_shore(g: ChunkGenerator) -> Vector2:
 	for i in 6000:
 		var a := i * 0.37
 		var p := Vector2(cos(a), sin(a)) * (60.0 + i * 5.0)
-		if g.field.height(p.x, p.y) < Water.LEVEL - 4.0:
-			# Walk back toward the origin until we reach dry land a little above the water.
-			var dir := -p.normalized()
-			for k in 80:
-				var q := p + dir * (k * 3.0)
-				if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
+		if g.field.height(p.x, p.y) >= Water.LEVEL - 4.0 or g.field.river_t(p.x, p.y) < 3.0:
+			continue
+		# Walk back toward the origin until we reach dry land a little above the water.
+		var dir := -p.normalized()
+		for k in 80:
+			var q := p + dir * (k * 3.0)
+			if g.field.height(q.x, q.y) > Water.LEVEL + 0.6:
+				if _open_water(g, q, -dir):
+					shore_out = -dir
 					return q
+				break
 	return Vector2.ZERO
+
+func _open_water(g: ChunkGenerator, q: Vector2, out: Vector2) -> bool:
+	var side := Vector2(-out.y, out.x)
+	for d in [20.0, 40.0, 70.0, 110.0, 160.0]:
+		for s in [-0.6, 0.0, 0.6]:
+			var w: Vector2 = q + out * d + side * (d * s)
+			if g.field.height(w.x, w.y) > Water.LEVEL - 1.0:
+				return false
+	return true
 
 ## A spot on a river bank, with a point mid-river to look at (Vector4: at.xy, look.zw).
 func _find_river(g: ChunkGenerator) -> Vector4:
@@ -123,7 +142,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if not is_nan(look_y):
 		tgt_h = look_y
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
-	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 0})
+	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.5), "slot": 0})
 	world.atmosphere._target_w = world.atmosphere.field.era_weights(at.x, at.y)
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _wait(settle_frames)
@@ -142,6 +161,8 @@ func _run() -> void:
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
 		await _cave_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
+	if only.is_empty() or only.has("43") or only.has("44"):
+		await _forest_shots(g)
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	var fan := _find_settlement(g, Eras.FANTASY)
 	var sci := _find_settlement(g, Eras.SCIFI)
@@ -156,8 +177,10 @@ func _run() -> void:
 			await _shot("01_medieval_town", tc + Vector2.from_angle(ways[0]) * 100.0, tc, 0.40, 18.0, float(town["target_h"]) + 4.0)
 		else:
 			await _shot("01_medieval_town", c + Vector2(44, 30), c, 0.40)
+	# Human worlds have no wildwood (the fantasy era is alien-only), so there's nothing to frame.
 	var f := _find_era(g, Eras.FANTASY, 0.995)
-	await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
+	if f != Vector2.ZERO:
+		await _shot("02_fantasy_wildwood", f, f + Vector2(60, 30), 0.36)
 	if not sci.is_empty():
 		var c: Vector2 = sci["center"]
 		var big := _find_settlement(g, Eras.SCIFI, 1) if g.outposts else {}
@@ -180,32 +203,45 @@ func _run() -> void:
 			var out := Vector2(0, 46).rotated(-float(best["yaw"]))
 			await _shot("11_stronghold", fc + out + out.orthogonal() * 0.5, fc, 0.45, 9.0)
 	if g.outposts and (only.is_empty() or only.has("16")):
-		# The nearest viaduct, from the side.
+		# The nearest tall viaduct (deck well above the valley under it), from the side.
 		var best_d := INF
 		var vm := Vector2.ZERO
 		var vd := Vector2.ZERO
 		var deck := 0.0
-		for rd in g.roads_near(-900.0, -900.0, 900.0, 900.0):
-			var pts: PackedVector2Array = rd["pts"]
-			var ar: PackedByteArray = rd["air"]
-			var lv: PackedFloat32Array = rd["level"]
-			for i in range(2, pts.size() - 2):
-				if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d:
-					best_d = pts[i].length()
-					vm = pts[i]
-					vd = (pts[i + 1] - pts[i - 1]).normalized()
-					deck = lv[i]
+		for need in [8.0, 3.0]:
+			for rd in g.roads_near(-1500.0, -1500.0, 1500.0, 1500.0):
+				var pts: PackedVector2Array = rd["pts"]
+				var ar: PackedByteArray = rd["air"]
+				var lv: PackedFloat32Array = rd["level"]
+				for i in range(2, pts.size() - 2):
+					if ar[i] == 1 and ar[i - 1] == 1 and ar[i + 1] == 1 and pts[i].length() < best_d \
+							and lv[i] - g.field.height(pts[i].x, pts[i].y) > need:
+						best_d = pts[i].length()
+						vm = pts[i]
+						vd = (pts[i + 1] - pts[i - 1]).normalized()
+						deck = lv[i]
+			if best_d < INF:
+				break
 		if best_d < INF:
-			# Stand on whichever side the ground falls away, level with the deck.
+			# Stand level with the deck, off to one side, where no hill hides the arches:
+			# the first spot whose sight line to the middle of the span clears the ground.
 			var cam := vm + vd.orthogonal() * 48.0
-			var low := INF
-			for side in [-1.0, 1.0]:
-				for dist in [40.0, 55.0, 70.0]:
+			var found := false
+			for dist in [45.0, 60.0, 75.0, 90.0]:
+				for side in [-1.0, 1.0]:
 					var c: Vector2 = vm + vd.orthogonal() * dist * side + vd * 14.0
-					var h := g.field.height(c.x, c.y)
-					if h < low:
-						low = h
+					var eye := maxf(deck + 2.0, g.field.height(c.x, c.y) + 2.0)
+					var clear := true
+					for k in range(1, 10):
+						var fr := k / 10.0
+						var q := c.lerp(vm, fr)
+						if g.field.height(q.x, q.y) > lerpf(eye, deck - 4.0, fr) - 0.5:
+							clear = false
+							break
+					if clear and not found:
 						cam = c
+						found = true
+			var low := g.field.height(cam.x, cam.y)
 			await _shot("16_viaduct", cam, vm, 0.4, clampf(deck - low + 2.0, 2.0, 30.0), deck - 4.0)
 	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
@@ -215,6 +251,8 @@ func _run() -> void:
 		await _wonder_types()
 	if g.landforms:
 		await _landform_shots(g)
+	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
+		await _ground_shots(g)
 	var b := _find_border(g)
 	await _shot("04_era_border", b + Vector2(-25, -25), b + Vector2(40, 40), 0.45, 6.0)
 	if not fan.is_empty():
@@ -222,12 +260,14 @@ func _run() -> void:
 		await _shot("05_fantasy_village_night", c + Vector2(40, -34), c, 0.93)
 	if not med.is_empty():
 		var c: Vector2 = med["center"]
-		await _shot("06_medieval_sunset", c + Vector2(-50, 14), c, 0.735)
+		# Half turned toward the low sun (west-south-west at this hour), so the light rakes
+		# across the houses and their shadows reach toward you.
+		await _shot("06_medieval_sunset", c + Vector2(24, -50), c, 0.735)
 	# Midnight, looking as far up as a player can: the stars and the Milky Way.
 	await _shot("39_night_sky", Vector2(8, 8), Vector2(208, 108), 0.0, 1.7, 400.0)
 	var shore := _find_shore(g)
 	if shore != Vector2.ZERO:
-		await _shot("07_lake_day", shore, shore + shore.normalized() * 60.0, 0.42, 2.5)
+		await _shot("07_lake_day", shore, shore + shore_out * 60.0, 0.42, 2.5)
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0)
@@ -242,6 +282,82 @@ func _run() -> void:
 		return
 	Game.close_world()
 	get_tree().quit()
+
+## Grass and ground cover up close: a medieval meadow at eye level, the foot of a cliff
+## (scree and the cliff face, from far enough back to see both) and the scree underfoot.
+func _ground_shots(g: ChunkGenerator) -> void:
+	var meadow := Vector2.ZERO
+	var cliff := Vector4.ZERO
+	for i in 12000:
+		var a := i * 0.37
+		var p := Vector2(cos(a), sin(a)) * (50.0 + i * 3.0)
+		if g.field.era_weights(p.x, p.y)[Eras.MEDIEVAL] < 0.9:
+			continue
+		var h := g.field.height(p.x, p.y)
+		if h < 3.0:
+			continue
+		var flat := true
+		for k in 8:
+			var d := Vector2.from_angle(k * TAU / 8.0)
+			flat = flat and absf(g.field.height(p.x + d.x * 6.0, p.y + d.y * 6.0) - h) < 0.9
+		if not flat:
+			continue
+		if meadow == Vector2.ZERO:
+			var open := true
+			for k in 8:
+				var d := Vector2.from_angle(k * TAU / 8.0)
+				open = open and absf(g.field.height(p.x + d.x * 30.0, p.y + d.y * 30.0) - h) < 4.0
+			if open:
+				meadow = p
+		if cliff == Vector4.ZERO:
+			# A wall, not a lone pillar: the ground rises steeply ahead across a broad
+			# front, and stays level behind for the camera.
+			for k in 16:
+				var d := Vector2.from_angle(k * TAU / 16.0)
+				var side := d.orthogonal()
+				var wall := true
+				for o: float in [-12.0, 0.0, 12.0]:
+					var q: Vector2 = p + side * o
+					wall = wall and g.field.height(q.x + d.x * 20.0, q.y + d.y * 20.0) - h > 8.0
+					wall = wall and absf(g.field.height(q.x + d.x * 4.0, q.y + d.y * 4.0) - h) < 1.2
+				var back := p - d * 18.0
+				wall = wall and absf(g.field.height(back.x, back.y) - h) < 2.0
+				# On dry ground: no lake or river where the camera stands or looks.
+				if wall:
+					for t in 5:
+						wall = wall and _dry(g, back.lerp(p + d * 3.0, t / 4.0))
+				if wall:
+					cliff = Vector4(p.x, p.y, d.x, d.y)
+					break
+		if meadow != Vector2.ZERO and cliff != Vector4.ZERO:
+			break
+	if meadow != Vector2.ZERO:
+		await _shot("50_meadow", meadow, meadow + Vector2(40, 25), 0.4, 1.7)
+	if cliff != Vector4.ZERO:
+		var at := Vector2(cliff.x, cliff.y)
+		var d := Vector2(cliff.z, cliff.w)
+		var h := g.field.height(at.x, at.y)
+		await _shot("51_cliff_scree", at - d * 18.0, at + d * 12.0, 0.4, 2.2, h + 5.0)
+		# Standing at the cliff foot, looking down at the stones ahead.
+		await _shot("52_ground", at, at + d * 3.0, 0.42, 1.7, h - 1.2)
+
+var _dry_chunks := {}
+var _dry_gen: ChunkGenerator
+
+## Whether a point is on land, above the sea and out of any river or river-fed lake
+## (those sit above sea level). Built with the world's own rivers flag, as the game is.
+func _dry(_g: ChunkGenerator, p: Vector2) -> bool:
+	if _dry_gen == null:
+		_dry_gen = ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+	var key := Vector2i(int(floor(p.x / 64.0)), int(floor(p.y / 64.0)))
+	if not _dry_chunks.has(key):
+		_dry_chunks[key] = _dry_gen.generate(key.x, key.y)
+	var c: Dictionary = _dry_chunks[key]
+	var lx := p.x - key.x * 64.0
+	var lz := p.y - key.y * 64.0
+	var h := ChunkGenerator.height_at(c, lx, lz)
+	var rs := ChunkGenerator.river_surface(c, lx, lz)
+	return h > ChunkGenerator.WATER_LEVEL + 1.5 and not ChunkGenerator.by_river(c, lx, lz) and (is_nan(rs) or h > rs + 1.0)
 
 ## Inside walk-in rooms, from just within the door: an outpost block, the nearest
 ## stronghold's keep, and a mushroom house at night. Then up a stone tower's stairwell
@@ -472,16 +588,20 @@ func _starship() -> void:
 
 ## Under the lake looking back up the shelf to the shore, and a splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
-	var out := shore.normalized()
-	var deep := shore
+	var out := shore_out
+	var deep := Vector2.INF
 	for k in 60:
-		deep = shore + out * (k * 3.0)
-		if g.field.height(deep.x, deep.y) < Water.LEVEL - 9.0:
+		var q := shore + out * (k * 3.0)
+		if g.field.height(q.x, q.y) < Water.LEVEL - 9.0:
+			deep = q
 			break
-	var p: Player = world.player
-	p.underwater = true
-	await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
-	p.underwater = false
+	# (Only where the lake is deep enough to stand under: anywhere else this would be dry
+	# land seen through the underwater look.)
+	if deep != Vector2.INF:
+		var p: Player = world.player
+		p.underwater = true
+		await _shot("35_underwater", deep, shore, 0.45, 4.0, Water.LEVEL + 1.0)
+		p.underwater = false
 	var spot := shore + out * 9.0
 	var burst := func() -> void:
 		for i in 3:
@@ -708,3 +828,71 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## The densest woodland near spawn: a close look under the trees (44) and an overlook from
+## a rise like the one players stand on (43), each followed by a draw-call breakdown so
+## foliage batching can be compared before and after.
+func _forest_shots(g: ChunkGenerator) -> void:
+	var sp3 := Planets.spawn_point(Game.seed, Game.store.has_rivers())
+	# Coarse pass every third chunk out to ~1 km (any seed has woods somewhere in that), then
+	# the chunks around the best one.
+	var c0 := Vector2i(int(floor(sp3.x / 64.0)), int(floor(sp3.z / 64.0)))
+	var counts := {}
+	var count := func(k: Vector2i) -> int:
+		if not counts.has(k):
+			var n := 0
+			for o in g.generate(k.x, k.y)["objects"]:
+				if ObjectLibrary.kind(o["t"]) == "tree":
+					n += 1
+			counts[k] = n
+		return counts[k]
+	var top := c0
+	for dz in range(-15, 16, 3):
+		for dx in range(-15, 16, 3):
+			if count.call(c0 + Vector2i(dx, dz)) > count.call(top):
+				top = c0 + Vector2i(dx, dz)
+	var around := top
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if count.call(around + Vector2i(dx, dz)) > count.call(top):
+				top = around + Vector2i(dx, dz)
+	var best := Vector2(top.x * 64.0 + 32.0, top.y * 64.0 + 32.0)
+	var most: int = count.call(top)
+	print("forest chunk ", best, " trees ", most)
+	await _shot("44_forest_close", best + Vector2(-14, -10), best + Vector2(20, 18), 0.4, 1.7, NAN, _draw_stats)
+	await _shot("43_forest_overlook", best + Vector2(-90, -70), best, 0.4, 28.0, NAN, _draw_stats)
+
+func _draw_stats() -> void:
+	var count := func() -> float:
+		var tot := 0.0
+		for i in 20:
+			await get_tree().process_frame
+			tot += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		return tot / 20.0
+	var base: float = await count.call()
+	var hidden: Array = []
+	for c in world.streamer.chunks.values():
+		for ch in c.get_children():
+			if ch is GeometryInstance3D and ch.visible and (String(ch.name).begins_with("MM_oak") or String(ch.name).begins_with("MM_pine") \
+					or String(ch.name).begins_with("Trees") or (ch.has_meta("key") and String(ch.get_meta("key")).begins_with("under"))):
+				ch.visible = false
+				hidden.append(ch)
+	var without: float = await count.call()
+	for ch in hidden:
+		ch.visible = true
+	# Let the restored trees draw again before the shot is saved (the frame grabbed right
+	# after this returns was still rendered without them).
+	for i in 8:
+		await get_tree().process_frame
+	print("DRAWS total %d  trees+bushes %d  (%d nodes)" % [int(base), int(base - without), hidden.size()])
+	var here: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(world.player.global_position))
+	if here:
+		var trees := 0
+		for o in here.data["objects"]:
+			if ObjectLibrary.kind(o["t"]) == "tree" and not o["st"].get("gone", false):
+				trees += 1
+		var mms := []
+		for ch in here.get_children():
+			if ch is MultiMeshInstance3D:
+				mms.append("%s x%d vis_end %.0f" % [ch.name, (ch as MultiMeshInstance3D).multimesh.instance_count, ch.visibility_range_end])
+		print("chunk ", here.key, " standing trees ", trees, " pos ", world.player.global_position, " ", mms)
