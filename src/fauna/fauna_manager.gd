@@ -15,8 +15,11 @@ var field: WorldField
 var _herds: Dictionary = {} ## Vector2i chunk -> Array[Creature]
 var _scan := 0.0
 
+var _mob_t := 0.0
+
 func _ready() -> void:
 	field = WorldField.new(Game.seed)
+	Net.mob_hit.connect(_on_mob_hit)
 
 func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
@@ -39,10 +42,24 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	var eye: Vector3 = cam.global_position if cam else pp + Vector3(0, 1.6, 0)
 	var shown := []
+	_mob_t -= delta
+	var send := _mob_t <= 0.0
+	if send:
+		_mob_t = 1.0 / Net.MOB_HZ
+	var out: Array = []
 	for k in _herds:
+		# On a server one player runs each chunk's animals; the others see them (Net.holds).
+		var held := Net.holds("f", k)
+		var shared := send and held and Net.shared("f", k)
 		for c in _herds[k]:
 			if is_instance_valid(c):
-				c.step(delta, g, pp)
+				if held:
+					# They notice, chase and flee from whichever player is nearest.
+					c.step(delta, g, Net.nearest_player(c.global_position, pp)[1])
+					if shared:
+						out.append(c.net_state())
+				else:
+					c.follow(delta, g, Net.mob_state("f", c.id))
 				var near: bool = c._body != null and (c.global_position.distance_to(pp) < TAG_RANGE or c == spotted)
 				# Tags draw over everything (so grass doesn't hide them), so they only show
 				# for animals you can actually see: not through a wall or a hill.
@@ -52,6 +69,8 @@ func _process(delta: float) -> void:
 					shown.append(c)
 				else:
 					c.update_tag(false, lv)
+	if not out.is_empty():
+		Net.send_mobs("f", out)
 	_declutter(shown, cam, spotted, lv)
 
 ## Shows the tags of these animals, nearest (and the one you are spotting) first, but not
@@ -100,12 +119,24 @@ func _refresh() -> void:
 		if not is_instance_id_valid(id):
 			_sight.erase(id)
 	var pc := ChunkStreamer.chunk_of(player.global_position)
+	var gone: Array = []
+	var added: Array = []
 	for k in _herds.keys():
 		if absi(k.x - pc.x) > RADIUS + 1 or absi(k.y - pc.y) > RADIUS + 1:
 			for c in _herds[k]:
 				if is_instance_valid(c):
 					c.queue_free()
 			_herds.erase(k)
+			gone.append(k)
+			continue
+		# Killed by another player (their kill reached this chunk's data).
+		var cn := streamer.get_chunk(k)
+		var dead: Dictionary = cn.data.get("fauna_dead", {}) if cn != null else {}
+		if not dead.is_empty():
+			for c in _herds[k].duplicate():
+				if is_instance_valid(c) and dead.has(c.id):
+					_herds[k].erase(c)
+					c.die()
 	for dz in range(-RADIUS, RADIUS + 1):
 		for dx in range(-RADIUS, RADIUS + 1):
 			var k := pc + Vector2i(dx, dz)
@@ -115,6 +146,9 @@ func _refresh() -> void:
 			if cn == null:
 				continue
 			_herds[k] = _spawn(cn)
+			added.append([k, Vector2((k.x + 0.5) * ChunkGenerator.SIZE, (k.y + 0.5) * ChunkGenerator.SIZE)])
+	if not gone.is_empty() or not added.is_empty():
+		Net.watch("f", added, gone)
 
 ## Herd composition for a chunk. Deterministic, so the same animals are always here.
 static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
@@ -157,6 +191,7 @@ func _spawn(cn: ChunkNode) -> Array:
 			continue
 		var c := Creature.new()
 		c.setup(h["id"], h["sp"], h["era"], cn.position + Vector3(h["lx"], y, h["lz"]), self)
+		c.chunk = Vector2i(int(cn.data["cx"]), int(cn.data["cz"]))
 		if h.has("ly"):
 			c.underground = true
 			c.p["roam"] = 6.0
@@ -205,15 +240,23 @@ func melee_target(eye: Vector3, fwd: Vector3, reach: float) -> Creature:
 
 func creature_bites(c: Creature) -> void:
 	var dmg := c.bite_damage()
+	var tg: Array = Net.nearest_player(c.global_position, player.global_position)
+	if int(tg[0]) != 0:
+		Net.hurt_player(int(tg[0]), dmg, "Killed by a %s" % c.label(), false)
+		return
 	var took := Game.hurt(dmg, "Killed by a %s" % c.label(), func(back: float): player_hit(c, back))
 	Game.toast.emit("%s bites you (-%d)" % [c.label(), int(ceilf(took))])
 
 ## The player hit an animal. Kills are permanent and leave a carcass to butcher.
 func player_hit(c: Creature, dmg: float) -> void:
+	var held := Net.holds("f", c.chunk)
+	if not held:
+		# Someone else runs it: they feel the blow; a killing blow is yours (the kill,
+		# the carcass and the XP), and they let it go.
+		Net.hit_mob("f", c.chunk, c.id, dmg, c.hp - dmg <= 0.0)
 	if not c.hurt(dmg):
 		return
-	var parts := c.id.split("_")
-	var k := Vector2i(parts[0].to_int(), parts[1].to_int())
+	var k := c.chunk
 	var cn := streamer.get_chunk(k)
 	if cn != null:
 		if not cn.data.has("fauna_dead"):
@@ -238,3 +281,19 @@ func player_hit(c: Creature, dmg: float) -> void:
 	if _herds.has(k):
 		_herds[k].erase(c)
 	c.die()
+
+## Another player hit one of the animals you run (killed: their blow killed it, and
+## their game keeps the kill and the carcass).
+func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int) -> void:
+	if kind != "f":
+		return
+	for k in _herds:
+		for c in _herds[k]:
+			if is_instance_valid(c) and c.id == id:
+				if killed:
+					_herds[k].erase(c)
+					c.die()
+				else:
+					c.hurt(dmg)
+					c.hp = maxf(c.hp, 1.0)
+				return

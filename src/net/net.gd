@@ -12,12 +12,17 @@ signal chat(from: String, text: String, kind: String) ## kind: chat, server, joi
 signal players_changed
 signal peer_state(peer: int) ## another player's position or look changed
 signal options_changed
+signal mob_hit(kind: String, id: String, dmg: float, killed: bool, from_peer: int) ## you run it; someone else hit it
+signal mob_said(id: String, text: String, secs: float)
+signal mob_talk(id: String, on: bool) ## someone else is talking with a person you run
+signal town_pushed(sx: int, sz: int) ## someone else's save of a loaded town was merged into it
 
 const DEFAULT_PORT := 24600
 const STATE_HZ := 15.0
 const CH_STATE := 1 ## unreliable movement
 const CH_DATA := 2 ## chunks and settlements, so big transfers don't hold up chat
 const PRUNE_RADIUS := 12 ## chunks a client keeps cached around itself (the server pushes edits within PUSH_RADIUS)
+const MOB_HZ := 10.0 ## updates a second of the people and animals you run, for others
 
 enum Mode {OFFLINE, CLIENT, SERVER}
 var mode := Mode.OFFLINE
@@ -36,6 +41,12 @@ var _state_t := 0.0
 var _prune_t := 0.0
 var _last_look := {}
 var _leaving := false
+## Who runs each town ("t") and each chunk's animals ("f") you have loaded:
+## "kind:planet:x:z" -> [holder peer, how many players have it loaded]
+var holders: Dictionary = {}
+## Puppets' latest state from whoever runs them: kind -> id -> [msec, state Array]
+var mobs: Dictionary = {"f": {}, "n": {}}
+var _watch_out: Dictionary = {} ## kind:planet -> [adds, removes] waiting to be sent
 
 # --- Server ---
 var host: Object ## ServerHost while this process is a dedicated server
@@ -89,6 +100,110 @@ func may_hurt(pid: String) -> bool:
 ## Alliances arrive in a later stage; until then nobody is allied.
 func allied(_pid: String) -> bool:
 	return false
+
+## Whether this game runs a town ("t", key = settlement sx, sz) or a chunk's animals
+## ("f", key = chunk): always offline; online when the server made you its holder.
+func holds(kind: String, k: Vector2i) -> bool:
+	if mode != Mode.CLIENT:
+		return true
+	var h = holders.get("%s:%d:%d:%d" % [kind, Game.planet, k.x, k.y])
+	return h != null and int(h[0]) == multiplayer.get_unique_id()
+
+## Whether anyone else has it loaded too (so its updates are worth sending).
+func shared(kind: String, k: Vector2i) -> bool:
+	var h = holders.get("%s:%d:%d:%d" % [kind, Game.planet, k.x, k.y])
+	return mode == Mode.CLIENT and h != null and int(h[1]) > 1
+
+## Tells the server you loaded (adds: [[key Vector2i, centre Vector2], ...]) or let go of
+## (removes: [key, ...]) towns or animal chunks. Sent in a batch each frame.
+func watch(kind: String, adds: Array, removes: Array) -> void:
+	if mode != Mode.CLIENT:
+		return
+	var q: String = "%s:%d" % [kind, Game.planet]
+	var e: Array = _watch_out.get(q, [[], []])
+	for a in adds:
+		e[0].append(a)
+		e[1].erase(a[0])
+	for r in removes:
+		e[1].append(r)
+		holders.erase("%s:%d:%d:%d" % [kind, Game.planet, r.x, r.y])
+	_watch_out[q] = e
+
+func _send_watch() -> void:
+	for q in _watch_out:
+		var parts: PackedStringArray = q.split(":")
+		var e: Array = _watch_out[q]
+		s_watch.rpc_id(1, parts[0], int(parts[1]), e[0], e[1])
+	_watch_out.clear()
+
+## The latest state of a puppet you don't run, or [] (none yet, or stale).
+func mob_state(kind: String, id: String) -> Array:
+	var e = mobs[kind].get(id)
+	if e == null or Time.get_ticks_msec() - int(e[0]) > 3000:
+		return []
+	return e[1]
+
+## Sends the states of the people ("n") or animals ("f") you run to players near.
+func send_mobs(kind: String, list: Array) -> void:
+	if mode == Mode.CLIENT and not list.is_empty():
+		s_mobs.rpc_id(1, Game.planet, kind, list)
+
+func send_mob_say(id: String, text: String, secs: float) -> void:
+	if mode == Mode.CLIENT:
+		s_mob_say.rpc_id(1, Game.planet, id, text, secs)
+
+## You hit a person or animal someone else runs: they apply it (killed: your blow killed it).
+func hit_mob(kind: String, k: Vector2i, id: String, dmg: float, killed: bool) -> void:
+	if mode == Mode.CLIENT:
+		s_mob_hit.rpc_id(1, kind, Game.planet, k, id, dmg, killed)
+
+## You started (or ended) talking with a person someone else runs: they stand still for it.
+func talk_mob(k: Vector2i, id: String, on: bool) -> void:
+	if mode == Mode.CLIENT:
+		s_mob_talk.rpc_id(1, Game.planet, k, id, on)
+
+## An animal or person you run hurt another player (pvp false), or you did (pvp true).
+func hurt_player(peer: int, dmg: float, cause: String, pvp: bool) -> void:
+	if mode == Mode.CLIENT and peers.has(peer):
+		s_hurt.rpc_id(1, peer, dmg, cause, pvp)
+
+var _ai_seq := 0
+var _ai_replies: Dictionary = {}
+
+## Asks the server's villager model (AI.chat, when this game has none of its own).
+## Returns AI.chat's {ok, text, error}.
+func ai_chat(system: String, messages: Array, background: bool) -> Dictionary:
+	if mode != Mode.CLIENT:
+		return {"ok": false, "text": "", "error": "Not on a server"}
+	_ai_seq += 1
+	var id := _ai_seq
+	s_ai.rpc_id(1, id, system, messages, background)
+	var t0 := Time.get_ticks_msec()
+	while not _ai_replies.has(id):
+		if mode != Mode.CLIENT or Time.get_ticks_msec() - t0 > 90000:
+			return {"ok": false, "text": "", "error": "The server's AI didn't answer"}
+		await get_tree().process_frame
+	var r: Dictionary = _ai_replies[id]
+	_ai_replies.erase(id)
+	return {"ok": bool(r.get("ok", false)), "text": String(r.get("text", "")), "error": String(r.get("error", ""))}
+
+## The nearest player to `at` among you (peer 0, at `me`) and the others on this planet
+## within `radius`: [peer, position], or [0, me].
+func nearest_player(at: Vector3, me: Vector3, radius := 200.0) -> Array:
+	var best := [0, me]
+	var bd := at.distance_to(me)
+	if mode != Mode.CLIENT:
+		return best
+	var now := Time.get_ticks_msec()
+	for peer in peers:
+		var r: Dictionary = peers[peer]
+		if int(r["planet"]) != Game.planet or now - int(r.get("t", 0)) > 5000 or r.get("dead", false):
+			continue
+		var d := at.distance_to(r["pos"])
+		if d < bd and d < radius:
+			bd = d
+			best = [peer, r["pos"]]
+	return best
 
 func player_name(pid: String) -> String:
 	if pid == my_id():
@@ -176,6 +291,8 @@ func _on_connected() -> void:
 	my_name = str(w["name"])
 	is_admin = false
 	peers.clear()
+	holders.clear()
+	mobs = {"f": {}, "n": {}}
 	var meta: Dictionary = w["meta"]
 	store = RemoteStore.new("user://servers".path_join(str(w.get("uid", "server")).validate_filename()), meta)
 	store.net = self
@@ -210,6 +327,9 @@ func leave(reason: String = "") -> void:
 	store = null
 	_close_peer()
 	peers.clear()
+	holders.clear()
+	mobs = {"f": {}, "n": {}}
+	_watch_out.clear()
 	_leaving = false
 	if was_in:
 		last_reason = reason
@@ -281,6 +401,8 @@ func _process(delta: float) -> void:
 		if req[0] == "chunk":
 			var k: Vector3i = req[1]
 			s_chunk_req.rpc_id(1, k.x, k.y, k.z)
+	if not _watch_out.is_empty():
+		_send_watch()
 	var pl = Game.player
 	if pl == null or not is_instance_valid(pl) or not pl.is_inside_tree():
 		return
@@ -304,14 +426,38 @@ func _send_state(pl: Node3D) -> void:
 		speed = body.animator._state_speed if body.animator else 1.0
 		shot = body._shot if body.busy() else 0
 	var pos: Vector3 = pl.global_position
-	if pl.get("vehicle") != null and is_instance_valid(pl.vehicle):
-		anim = "sit"
-	s_state.rpc_id(1, Game.planet, pos, pl.yaw(), float(pl.get("_pitch")), anim, speed, shot)
+	var yaw: float = pl.yaw()
+	var riding = pl.get("vehicle")
+	if riding != null and is_instance_valid(riding):
+		# Riding: where the vehicle is, so others draw it under you.
+		anim = "ride:" + String(riding.kind)
+		pos = riding.global_position
+		yaw = riding.rotation.y
+	s_state.rpc_id(1, Game.planet, pos, yaw, float(pl.get("_pitch")), anim, speed, shot)
 	var it = Game.inventory.get_slot(pl.selected) if Game.inventory else null
-	var look := {"equip": Game.equipment, "held": it if it != null else {}}
+	var look := {"equip": Game.equipment, "held": it if it != null else {}, "wanted": _wanted(), "veh": _parked(riding)}
 	if look != _last_look:
 		_last_look = look.duplicate(true)
 		s_look.rpc_id(1, look)
+
+## Where you are wanted (settlement id -> stars), so townsfolk others run know too.
+func _wanted() -> Dictionary:
+	var out := {}
+	if Game.crime:
+		for sid in Game.crime.bounty:
+			var st: int = Game.crime.stars(sid, Game.day)
+			if st > 0:
+				out[sid] = st
+	return out
+
+## Your parked vehicles, for others to see: [[kind, pos, yaw, planet], ...].
+func _parked(riding) -> Array:
+	var out: Array = []
+	for r in Game.vehicles:
+		if riding != null and is_instance_valid(riding) and riding.rec == r:
+			continue
+		out.append([String(r["kind"]), r["pos"], float(r.get("yaw", 0.0)), int(r.get("planet", 0))])
+	return out
 
 ## Forgets cached chunks far from you; the server only sends edits to players near them.
 func _prune(pl: Node3D) -> void:
@@ -413,6 +559,42 @@ func s_admin(cmd: String) -> void:
 	if host:
 		host.admin_from(_sender(), cmd)
 
+# Same channel as town saves, so a holder's last save arrives before it lets go.
+@rpc("any_peer", "call_remote", "reliable", CH_DATA)
+func s_watch(kind: String, p: int, adds: Array, removes: Array) -> void:
+	if host:
+		host.watch(_sender(), kind, p, adds, removes)
+
+@rpc("any_peer", "call_remote", "unreliable_ordered", CH_STATE)
+func s_mobs(p: int, kind: String, list: Array) -> void:
+	if host:
+		host.mobs(_sender(), p, kind, list)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_mob_say(p: int, id: String, text: String, secs: float) -> void:
+	if host:
+		host.mob_say(_sender(), p, id, text, secs)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_mob_hit(kind: String, p: int, k: Vector2i, id: String, dmg: float, killed: bool) -> void:
+	if host:
+		host.mob_hit(_sender(), kind, p, k, id, dmg, killed)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_mob_talk(p: int, k: Vector2i, id: String, on: bool) -> void:
+	if host:
+		host.mob_talk(_sender(), p, k, id, on)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_ai(id: int, system: String, messages: Array, background: bool) -> void:
+	if host:
+		host.ai_chat(_sender(), id, system, messages, background)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_hurt(target: int, dmg: float, cause: String, pvp: bool) -> void:
+	if host:
+		host.hurt_player(_sender(), target, dmg, cause, pvp)
+
 # --- Server -> client ---------------------------------------------------------------------
 
 @rpc("authority", "call_remote", "reliable", CH_DATA)
@@ -429,12 +611,79 @@ func c_chunk(p: int, data: PackedByteArray, pushed: bool) -> void:
 			w.replace_chunk(c)
 
 @rpc("authority", "call_remote", "reliable", CH_DATA)
-func c_town(p: int, data: PackedByteArray) -> void:
+func c_town(p: int, data: PackedByteArray, pushed: bool) -> void:
 	if store == null:
 		return
 	var s = NetPack.unpack(data)
-	if s is Dictionary and s.has("sx") and s.has("sz"):
-		store.deliver_town(p, s)
+	if s is Dictionary and s.has("sx") and s.has("sz") and s.get("npcs") is Array:
+		if store.deliver_town(p, s, pushed) and p == Game.planet:
+			town_pushed.emit(int(s["sx"]), int(s["sz"]))
+
+## Your save was kept as it was: the copy you have is now revision `rev`.
+@rpc("authority", "call_remote", "reliable", CH_DATA)
+func c_rev(kind: String, p: int, k: Vector2i, base_rev: int, rev: int) -> void:
+	if store == null:
+		return
+	if kind == "t":
+		store.town_acked(p, k, base_rev, rev)
+		return
+	store.chunk_acked(p, k, base_rev, rev)
+	if p == Game.planet:
+		var w = Game.player.get("streamer") if Game.player != null and is_instance_valid(Game.player) else null
+		var cn = w.get_chunk(k) if w is ChunkStreamer else null
+		if cn != null and int(cn.data.get("_rev", -1)) == base_rev:
+			cn.data["_rev"] = rev
+
+@rpc("authority", "call_remote", "reliable", CH_DATA)
+func c_hold(kind: String, p: int, k: Vector2i, holder: int, count: int) -> void:
+	holders["%s:%d:%d:%d" % [kind, p, k.x, k.y]] = [holder, count]
+
+@rpc("authority", "call_remote", "unreliable_ordered", CH_STATE)
+func c_mobs(_peer: int, p: int, kind: String, list: Array) -> void:
+	if p != Game.planet or not mobs.has(kind):
+		return
+	var now := Time.get_ticks_msec()
+	var m: Dictionary = mobs[kind]
+	for st in list:
+		if st is Array and st.size() > 1 and st[0] is String:
+			m[st[0]] = [now, st]
+	if now - _mob_sweep > 5000:
+		_mob_sweep = now
+		for id in m.keys():
+			if now - int(m[id][0]) > 10000:
+				m.erase(id)
+
+var _mob_sweep := 0
+
+@rpc("authority", "call_remote", "reliable")
+func c_mob_say(p: int, id: String, text: String, secs: float) -> void:
+	if p == Game.planet:
+		mob_said.emit(id, text, secs)
+
+@rpc("authority", "call_remote", "reliable")
+func c_mob_hit(kind: String, p: int, id: String, dmg: float, killed: bool, from_peer: int) -> void:
+	if p == Game.planet:
+		mob_hit.emit(kind, id, dmg, killed, from_peer)
+
+@rpc("authority", "call_remote", "reliable")
+func c_mob_talk(p: int, id: String, on: bool) -> void:
+	if p == Game.planet:
+		mob_talk.emit(id, on)
+
+@rpc("authority", "call_remote", "reliable")
+func c_ai(id: int, r: Dictionary) -> void:
+	_ai_replies[id] = r
+
+## Someone else hurt you: another player (by_name), or an animal or person they run.
+@rpc("authority", "call_remote", "reliable")
+func c_hurt(dmg: float, cause: String, by_name: String, _from_peer: int) -> void:
+	if Game.store == null or Game.health <= 0.0:
+		return
+	var took := Game.hurt(dmg, cause)
+	if by_name != "":
+		Game.toast.emit("%s hits you (-%d)" % [by_name, int(ceilf(took))])
+	else:
+		Game.toast.emit("%s (-%d)" % [cause.replace("Killed by ", "Hit by "), int(ceilf(took))])
 
 @rpc("authority", "call_remote", "unreliable_ordered", CH_STATE)
 func c_state(peer: int, p: int, pos: Vector3, yaw: float, pitch: float, anim: String, speed: float, shot: int) -> void:
@@ -456,6 +705,8 @@ func c_look(peer: int, look: Dictionary) -> void:
 	if peers.has(peer):
 		peers[peer]["equip"] = look.get("equip", {})
 		peers[peer]["held"] = look.get("held", {})
+		peers[peer]["wanted"] = look.get("wanted", {})
+		peers[peer]["veh"] = look.get("veh", [])
 		peers[peer]["look_v"] = int(peers[peer].get("look_v", 0)) + 1
 		peer_state.emit(peer)
 
@@ -478,7 +729,8 @@ func _add_peer(r: Dictionary) -> void:
 		return
 	peers[peer] = {"pid": str(r.get("pid", "")), "name": str(r.get("name", "")), "planet": int(r.get("planet", 0)),
 		"pos": r.get("pos", Vector3.ZERO), "yaw": 0.0, "pitch": 0.0, "anim": "idle", "speed": 1.0, "shot": 0,
-		"equip": r.get("equip", {}), "held": r.get("held", {}), "look_v": 0, "t": Time.get_ticks_msec()}
+		"equip": r.get("equip", {}), "held": r.get("held", {}), "wanted": r.get("wanted", {}), "veh": r.get("veh", []),
+		"look_v": 0, "t": Time.get_ticks_msec()}
 
 @rpc("authority", "call_remote", "reliable")
 func c_left(peer: int) -> void:

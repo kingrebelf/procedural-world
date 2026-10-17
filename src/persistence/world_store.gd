@@ -227,6 +227,10 @@ func save_settlement(s: Dictionary) -> bool:
 func prefetch_settlement(_site: Dictionary) -> bool:
 	return true
 
+## A settlement walked away from (a server's RemoteStore drops its copy; here it stays on disk).
+func forget_settlement(_sx: int, _sz: int) -> void:
+	pass
+
 ## Same rule as chunks: people are created the first time their settlement is seen,
 ## saved at once, and from then on only ever loaded.
 func get_or_create_settlement(gen: ChunkGenerator, site: Dictionary) -> Dictionary:

@@ -110,7 +110,16 @@ func use_provider(id: String) -> void:
 	save_config()
 
 func enabled() -> bool:
+	return _local() or _server()
+
+## A model set up on this machine.
+func _local() -> bool:
 	return cfg["provider"] != "off" and cfg["format"] != "" and String(cfg["base_url"]) != ""
+
+## On a server that lends its villagers' model to players who have none (server.cfg [ai]).
+func _server() -> bool:
+	var net = get_node_or_null("/root/Net")
+	return net != null and net.is_client() and bool(net.info.get("ai", false))
 
 func dialogue_enabled() -> bool:
 	return enabled() and bool(cfg["dialogue"])
@@ -122,6 +131,8 @@ func decide_enabled() -> bool:
 	return String(cfg["decide_url"]).strip_edges() != ""
 
 func provider_label() -> String:
+	if not _local() and _server():
+		return "the server's AI"
 	return PRESETS.get(cfg["provider"], PRESETS["off"])["label"]
 
 # --- Rate limiting ---------------------------------------------------------------------
@@ -230,6 +241,8 @@ static func extract_json(text: String):
 func chat(system: String, messages: Array, background: bool = false) -> Dictionary:
 	if not enabled():
 		return {"ok": false, "text": "", "error": "AI is off"}
+	if not _local():
+		return await get_node("/root/Net").ai_chat(system, messages, background)
 	if background and not has_budget(3):
 		return {"ok": false, "text": "", "error": "Rate limited"}
 	while _active >= MAX_CONCURRENT:

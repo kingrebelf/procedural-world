@@ -5,7 +5,7 @@ extends RefCounted
 
 const FILE := "server.cfg"
 ## Bumped whenever the network messages change; client and server must match.
-const PROTOCOL := 1
+const PROTOCOL := 2
 
 ## [options] keys, their defaults, and what the admin console accepts.
 const OPTIONS := {
@@ -33,6 +33,14 @@ var data_dir := "" ## where worlds live; empty = next to the executable
 var lan_discovery := true
 var options: Dictionary = OPTIONS.duplicate()
 var path := ""
+## [ai]: the language model the server's villagers think and talk with, for players
+## whose own game has none set up (same keys as the game's AI settings).
+const _AI := preload("res://src/ai/ai_service.gd")
+const AI_KEYS := {"provider": "off", "base_url": "", "model": "", "api_key": "", "format": "", "max_rpm": 30}
+var ai: Dictionary = AI_KEYS.duplicate()
+
+func ai_on() -> bool:
+	return String(ai["provider"]) != "off" and String(ai["base_url"]) != ""
 
 ## Reads server.cfg (making a commented one if there is none) and then the flags.
 static func load_from(args: PackedStringArray, base_dir: String) -> ServerConfig:
@@ -70,6 +78,9 @@ func read_file(p: String) -> void:
 	for k in OPTIONS:
 		if cf.has_section_key("options", k):
 			set_option(k, str(cf.get_value("options", k)))
+	for k in AI_KEYS:
+		if cf.has_section_key("ai", k):
+			ai[k] = int(cf.get_value("ai", k)) if k == "max_rpm" else str(cf.get_value("ai", k))
 
 ## Saves the current settings (the admin console's changes survive a restart).
 func write_file(p: String = "") -> bool:
@@ -113,6 +124,18 @@ func write_file(p: String = "") -> bool:
 		"building=%s" % str(options["building"]).to_lower(),
 		"alliances=%s" % str(options["alliances"]).to_lower(),
 		"max_alliance=%d" % int(options["max_alliance"]),
+		"",
+		"[ai]",
+		"",
+		"; Villagers' language model on the server, for players whose game has none set up.",
+		"; provider: off, ollama, lmstudio, strata, anthropic, openai, openrouter or custom.",
+		"provider=%s" % _q(ai["provider"]),
+		"; Leave empty for the provider's usual address and model.",
+		"base_url=%s" % _q(ai["base_url"]),
+		"model=%s" % _q(ai["model"]),
+		"api_key=%s" % _q(ai["api_key"]),
+		"; Requests a minute across all players.",
+		"max_rpm=%d" % int(ai["max_rpm"]),
 		"",
 	])
 	var f := FileAccess.open(p, FileAccess.WRITE)
@@ -191,4 +214,13 @@ func set_option(k: String, v: String) -> String:
 func info(players: int) -> Dictionary:
 	return {"name": name, "description": description, "players": players, "max_players": max_players,
 		"password": password != "", "version": ProjectSettings.get_setting("application/config/version", ""),
-		"protocol": PROTOCOL, "options": options.duplicate()}
+		"protocol": PROTOCOL, "options": options.duplicate(), "ai": ai_on()}
+
+## The AI settings (the AI autoload's cfg keys) this server's [ai] section comes to.
+func ai_settings() -> Dictionary:
+	var pr: Dictionary = _AI.PRESETS.get(String(ai["provider"]), _AI.PRESETS["custom"])
+	var out := {"provider": ai["provider"], "format": String(ai["format"]) if String(ai["format"]) != "" else String(pr["format"]),
+		"base_url": String(ai["base_url"]) if String(ai["base_url"]) != "" else String(pr["base_url"]),
+		"model": String(ai["model"]) if String(ai["model"]) != "" else String(pr["model"]),
+		"api_key": ai["api_key"], "max_rpm": int(ai["max_rpm"])}
+	return out

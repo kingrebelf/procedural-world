@@ -516,6 +516,8 @@ func _hit_object() -> Dictionary:
 		out["vehicle"] = col.get_meta("vehicle")
 	if col and col.has_meta("creature"):
 		out["creature"] = col.get_meta("creature")
+	if col and col.has_meta("remote_player"):
+		out["rplayer"] = int(col.get_meta("remote_player"))
 	if col and col.has_meta("chunk"):
 		out["chunk"] = col.get_meta("chunk")
 		if col.has_meta("obj"):
@@ -1362,6 +1364,10 @@ func use_held() -> void:
 		Audio.play_at("hit/flesh", h["point"] if h.has("point") else (h["npc"] as Node3D).global_position, -2.0)
 		_strike(it, null, h["npc"], float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
 		return
+	if h.has("rplayer"):
+		used_tool.emit("hit")
+		_pvp_hit(it, int(h["rplayer"]), float(d.get("damage", 2)) * hq, false, h.get("point", Vector3.INF))
+		return
 	if h.has("obj"):
 		var chunk: ChunkNode = h["chunk"]
 		var o: Dictionary = chunk.get_object(h["obj"])
@@ -1573,6 +1579,9 @@ func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
 			if float(n.rec.get("hp", 1.0)) <= 0.0 or gunplay._beam_ticks % 3 == 1:
 				_mark(null, n, false)
 		return "npc"
+	if col.has_meta("remote_player"):
+		_pvp_hit(it, int(col.get_meta("remote_player")), dmg, false, hit.get("position", Vector3.INF), gunplay._beam_ticks % 3 == 1)
+		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
 		var o: Dictionary = chunk.get_object(col.get_meta("obj"))
@@ -1613,6 +1622,11 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 		var n = col.get_meta("npc")
 		if is_instance_valid(n):
 			_strike(it, null, n, float(d.get("damage", 10)) * q, n.is_head(at), at)
+		return "npc"
+	if col.has_meta("remote_player"):
+		var rp = col.get_meta("remote_player_node") if col.has_meta("remote_player_node") else null
+		var head: bool = rp != null and is_instance_valid(rp) and at.y - (rp as Node3D).global_position.y > 1.45
+		_pvp_hit(it, int(col.get_meta("remote_player")), float(d.get("damage", 10)) * q, head, at)
 		return "npc"
 	if col.has_meta("obj"):
 		var chunk: ChunkNode = col.get_meta("chunk")
@@ -1658,6 +1672,30 @@ func _strike(it, creature, npc, dmg: float, head := false, point := Vector3.INF)
 
 const HEADSHOT := 2.0
 
+## A hit on another player (multiplayer): sent to them through the server, which lets
+## it through only with PvP on (and never between allies).
+func _pvp_hit(it, peer: int, dmg: float, head := false, _point := Vector3.INF, marker := true) -> void:
+	var rec: Dictionary = Net.peers.get(peer, {})
+	if rec.is_empty():
+		return
+	if not Net.may_hurt(String(rec["pid"])):
+		if Time.get_ticks_msec() - _pvp_note > 8000:
+			_pvp_note = Time.get_ticks_msec()
+			Game.toast.emit("PvP is off on this server" if not bool(Net.option("pvp")) else "%s is your ally" % rec["name"])
+		return
+	Audio.combat()
+	if Rarity.has_affix(it, "keen") and randf() < 0.2:
+		dmg *= 2.0
+		Game.toast.emit("Critical hit!")
+	if head:
+		dmg *= HEADSHOT
+	Net.hurt_player(peer, dmg, "", true)
+	if marker:
+		hit_marker.emit("head" if head else "hit")
+		Audio.play("hit/marker", -3.0 if head else -13.0, 0.05, 1.8 if head else 1.3)
+
+var _pvp_note := -99999
+
 ## Remembers a blow on `target` for its ragdoll, should it die of it: from your eyes
 ## through the point struck, harder the more it hurt.
 func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> void:
@@ -1701,6 +1739,11 @@ func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:
 	var tw := fx.create_tween()
 	tw.tween_property(fx, "scale", Vector3.ONE * radius * 2.0, 0.25)
 	tw.tween_callback(fx.queue_free)
+	var others = get_tree().get_first_node_in_group("remote_players")
+	if others != null:
+		for rp in others.near(at, radius):
+			var f := 1.0 - 0.6 * clampf((rp.global_position as Vector3).distance_to(at) / radius, 0.0, 1.0)
+			_pvp_hit(null, rp.peer, dmg * f, false, at)
 	if fauna == null:
 		return
 	for c in fauna.creatures_near(at, radius):

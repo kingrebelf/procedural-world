@@ -1,6 +1,12 @@
 extends SceneTree
-## The second player in tests/net_test.gd: joins as Bob, fetches one chunk, says
-## "ready", and says "got 4242" when the other player's edit to it is pushed to him.
+## The second player in tests/net_test.gd: joins as Bob and stands in one chunk.
+##   - says "ready" once he has the chunk, and "got 4242" when the other player's edit to
+##     it is pushed to him; then saves an edit of his own made from his older copy (the
+##     server must merge it, not let it undo the other player's);
+##   - asks to see the animals around him and says "mobs N" once someone else runs them,
+##     then hits one ("hit <id>") so whoever runs it feels it;
+##   - says "hurt <health>" whenever another player hurts him;
+##   - leaves when the other player says "bye".
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -25,6 +31,8 @@ func _run() -> void:
 	if not ok[0]:
 		quit(3)
 		return
+	var bye := [false]
+	net.chat.connect(func(from, text, _k): if text == "bye": bye[0] = true)
 	var cx := int(_arg("cx", "0"))
 	var cz := int(_arg("cz", "0"))
 	var store = game.store
@@ -36,12 +44,39 @@ func _run() -> void:
 		if store.load_chunk(cx, cz) != null:
 			break
 		await process_frame
+	var stale: Dictionary = store.load_chunk(cx, cz).duplicate(true)
+	# The animals around: someone else already runs them.
+	var adds: Array = []
+	for dz in range(-2, 3):
+		for dx in range(-2, 3):
+			adds.append([Vector2i(cx + dx, cz + dz), Vector2((cx + dx + 0.5) * 64.0, (cz + dz + 0.5) * 64.0)])
+	net.s_watch.rpc_id(1, "f", 0, adds, [])
 	net.say("ready")
-	for i in 3600:
+	var got := false
+	var told_mobs := false
+	var hp: float = game.health
+	for i in 20000:
 		net.s_state.rpc_id(1, 0, pos, float(i) * 0.01, 0.0, "idle", 1.0, 0)
 		var c = store.load_chunk(cx, cz)
-		if c is Dictionary and int(c.get("net_test", 0)) == 4242:
+		if not got and c is Dictionary and int(c.get("net_test", 0)) == 4242:
+			got = true
 			net.say("got 4242")
+			# An edit from the copy Bob had before: the server merges it with the other's.
+			stale["bob_mark"] = 7
+			net.s_chunk_save.rpc_id(1, 0, NetPack.pack(stale))
+		if not told_mobs and net.mobs["f"].size() > 0:
+			told_mobs = true
+			net.say("mobs %d" % net.mobs["f"].size())
+			for id in net.mobs["f"]:
+				var parts: PackedStringArray = String(id).split("_")
+				if parts.size() == 3 and parts[0].is_valid_int():
+					net.s_mob_hit.rpc_id(1, "f", 0, Vector2i(parts[0].to_int(), parts[1].to_int()), id, 1.0, false)
+					net.say("hit %s" % id)
+					break
+		if game.health < hp - 0.01:
+			hp = game.health
+			net.say("hurt %d" % int(hp))
+		if bye[0]:
 			for j in 30:
 				await process_frame
 			quit(0)
