@@ -177,8 +177,8 @@ static func _build(t: String) -> ArrayMesh:
 			_nails(k, r)
 			var nm := k.commit(mat)
 			# Pinched near the bottom, so most of the handful shows above the fingers.
-			nm.set_meta("grip", Vector3(0, 0.006, 0))
-			nm.set_meta("grip_r", 0.008)
+			nm.set_meta("grip", Vector3(0, 0.012, 0))
+			nm.set_meta("grip_r", 0.014)
 			return nm
 		"gears": _gears(k)
 		"spring": _spring(k)
@@ -1007,16 +1007,16 @@ static func _bundle(k: MeshKit, r: RandomNumberGenerator, col: Color, heads: boo
 static func _nails(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# A small handful of hand-forged nails held together: square shanks tapering to a
 	# chisel point, flat hammered heads, dark iron with rust towards the points.
-	for i in 7:
-		var lay := Basis(Vector3.UP, r.randf_range(-0.5, 0.5)) * Basis(Vector3.FORWARD, r.randf_range(-0.35, 0.35))
-		var at := Vector3(r.randf_range(-0.006, 0.006), 0.025, r.randf_range(-0.006, 0.006))
+	for i in 12:
+		var lay := Basis(Vector3.UP, r.randf_range(-0.6, 0.6)) * Basis(Vector3.FORWARD, r.randf_range(-0.4, 0.4))
+		var at := Vector3(r.randf_range(-0.012, 0.012), 0.045, r.randf_range(-0.01, 0.01))
 		var xf := Transform3D(lay, at)
-		var l := r.randf_range(0.045, 0.06)
+		var l := r.randf_range(0.075, 0.095)
 		var rust := Color(0.42, 0.4, 0.38).lerp(Color(0.45, 0.24, 0.12), r.randf_range(0.0, 0.5))
 		var flip := 1.0 if i % 3 != 0 else -1.0
 		var fb := Basis(Vector3.RIGHT, 0.0 if flip > 0.0 else PI)
-		k.cylinder("im:metal@0.7", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5, 0)), 0.0022, 0.0005, l, 4, false, 0.0, 1, rust)
-		k.cylinder("im:metal@0.6", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5 - 0.0018, 0)), 0.0045, 0.0042, 0.0018, 7, true, 0.0, 1, Color(0.36, 0.34, 0.32))
+		k.cylinder("im:metal@0.7", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5, 0)), 0.003, 0.0006, l, 4, false, 0.0, 1, rust)
+		k.cylinder("im:metal@0.6", xf * Transform3D(fb, Vector3.ZERO).translated_local(Vector3(0, -l * 0.5 - 0.0018, 0)), 0.006, 0.0055, 0.0022, 7, true, 0.0, 1, Color(0.36, 0.34, 0.32))
 
 static func _gear(k: MeshKit, xf: Transform3D, rad: float, th: float, teeth: int, col: Color) -> void:
 	k.cylinder("im:metal@0.35", xf, rad, rad, th, 32, true, 0.0, 1, col)
