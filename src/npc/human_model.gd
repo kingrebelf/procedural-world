@@ -12,9 +12,6 @@ const ANIMS := "res://assets/models/anim/humans.res"
 const BODY := {false: "Superhero_Male_FullBody", true: "Superhero_Female_FullBody"}
 const HAIR_MALE := ["Hair_SimpleParted", "Hair_Buzzed", "Hair_Long", ""]
 const HAIR_FEMALE := ["Hair_Long", "Hair_Buns", "Hair_SimpleParted", "Hair_BuzzedFemale"]
-## Who wears a knitted wool jumper, and who dresses in velvet with gold-embroidered hems.
-const KNIT_JOBS := ["farmer", "hunter", "miller", "beekeeper", "warden", "lamplighter"]
-const TRIM_JOBS := ["priest", "bard", "mystic", "scribe", "runecarver", "innkeeper"]
 ## Dominant skin bone -> body region used by the clothing shader.
 const REGION_OF := {"Head": 0, "neck_01": 0, "spine_01": 1, "spine_02": 1, "spine_03": 1, "clavicle": 1,
 	"upperarm": 2, "lowerarm": 3, "hand": 4, "pelvis": 5, "root": 5, "thigh": 5, "calf": 6, "foot": 7, "ball": 7}
@@ -35,7 +32,7 @@ var _shield: Node3D
 var _hair: Array = [] ## hair meshes, hidden under a helmet (beards stay)
 var _headgear_node: Node3D
 var _fem := false
-var _spec: Dictionary
+var _wardrobe: Dictionary ## Outfit.wardrobe(): the cut and colours of this person's clothes
 var _current := ""
 var _oneshot := false
 
@@ -152,7 +149,7 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	var style: String = styles[int(b["hair_style"]) % styles.size()]
 	if NPCGen.GUARD_JOBS.has(job):
 		style = "Hair_Buzzed" if not fem else "Hair_BuzzedFemale"
-	_dress_up(b, era, job)
+	_dress_up(era)
 	if style != "":
 		_add_hair(style, hair_col)
 	if not fem and int(b["hair_style"]) % 2 == 1 and era != Eras.SCIFI:
@@ -177,23 +174,24 @@ func build(b: Dictionary, era: int, job: String) -> HumanModel:
 	return self
 
 ## Real garments over the painted body (Outfit), in this person's colours.
-func _dress_up(b: Dictionary, era: int, job: String) -> void:
+func _dress_up(era: int) -> void:
 	if _body == null or _body.skin == null:
 		return
-	_spec = Outfit.spec_for(b, era, job)
 	_clothes = MeshInstance3D.new()
 	_clothes.name = "Clothes"
-	_clothes.mesh = Outfit.clothes(_fem, _body.mesh, _body.skin, skeleton, _spec)
+	_clothes.mesh = Outfit.clothes(_fem, _body.mesh, _body.skin, skeleton, _wardrobe["spec"])
 	_clothes.skin = _body.skin
 	skeleton.add_child(_clothes)
 	_clothes.skeleton = NodePath("..")
 	_clothes.material_override = Outfit.cloth_material()
-	for k in ["shirt_col", "pants_col", "boot_col", "accent_col"]:
-		_clothes.set_instance_shader_parameter(k, _body.get_instance_shader_parameter(k))
-	# Working folk in knitted jumpers; robes and capes in velvet with gold-embroidered hems.
+	var cols: Dictionary = _wardrobe["cols"]
+	var slots := {"shirt_col": Outfit.PART_SHIRT, "pants_col": Outfit.PART_PANTS, "boot_col": Outfit.PART_BOOTS, "skirt_col": Outfit.PART_SKIRT,
+		"cape_col": Outfit.PART_CAPE, "vest_col": Outfit.PART_TRIM, "apron_col": Outfit.PART_APRON}
+	for k in slots:
+		_clothes.set_instance_shader_parameter(k, cols[slots[k]])
+	_clothes.set_instance_shader_parameter("accent_col", _body.get_instance_shader_parameter("accent_col"))
 	_clothes.set_instance_shader_parameter("era", float(era))
-	_clothes.set_instance_shader_parameter("knit", 1.0 if job in KNIT_JOBS else 0.0)
-	_clothes.set_instance_shader_parameter("trim", 1.0 if _spec["cape"] or job in TRIM_JOBS else 0.0)
+	_clothes.set_instance_shader_parameter("trim", 1.0 if _wardrobe["trim"] else 0.0)
 
 ## Shows what this body wears: {slot: item} for any of Game.ARMOR_SLOTS. Armour is
 ## drawn on the body (Outfit), a shield on the left forearm, and a helmet hides the hair.
@@ -296,33 +294,25 @@ func gesture(name: String) -> bool:
 	return gestures != null and gestures.play(name)
 
 func _dress(b: Dictionary, era: int, job: String) -> void:
-	var cloth: Color = b["cloth"]
-	var cloth2: Color = b["cloth2"]
-	var boots := Color(0.22, 0.15, 0.1) if era != Eras.SCIFI else Color(0.14, 0.15, 0.17)
-	var fem: bool = b["female"]
-	var sleeves := 2.0
-	var hem := 0.0
+	_wardrobe = Outfit.wardrobe(b, era, job)
+	var sp: Dictionary = _wardrobe["spec"]
+	var cols: Dictionary = _wardrobe["cols"]
 	var accent := Color(0, 0, 0, 0)
-	match era:
-		Eras.MEDIEVAL:
-			sleeves = 1.0 if job in ["farmer", "smith", "miller", "hunter"] else 2.0
-			if fem or job == "priest":
-				hem = 0.12
-		Eras.FANTASY:
-			hem = 0.45 if job in ["mystic", "scribe", "runecarver", "herbalist"] else 0.0
-			if fem:
-				hem = maxf(hem, 0.3)
-			accent = Color(0.4, 1.0, 0.7, 0.0)
-		Eras.SCIFI:
-			# Glowing seams are alien fashion; human outposts wear plain work clothes.
-			accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
-			cloth2 = cloth.darkened(0.25)
+	if era == Eras.SCIFI:
+		# Glowing seams are alien fashion; human outposts wear plain work clothes.
+		accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
+	# The body under the garments is painted in the same colours, and drawn a little
+	# inside them (human.gdshader), so nothing shows through where they bend.
+	var shirt: Color = cols[Outfit.PART_SHIRT]
+	var pants: Color = cols[Outfit.PART_PANTS]
+	var boots: Color = cols[Outfit.PART_BOOTS]
+	var hem: float = sp["hem"]
 	_body.set_instance_shader_parameter("skin_col", b["skin"])
-	_body.set_instance_shader_parameter("shirt_col", cloth)
-	_body.set_instance_shader_parameter("pants_col", cloth2)
-	_body.set_instance_shader_parameter("boot_col", boots)
+	_body.set_instance_shader_parameter("shirt_col", Color(shirt.r, shirt.g, shirt.b))
+	_body.set_instance_shader_parameter("pants_col", Color(pants.r, pants.g, pants.b))
+	_body.set_instance_shader_parameter("boot_col", Color(boots.r, boots.g, boots.b))
 	_body.set_instance_shader_parameter("accent_col", accent)
-	_body.set_instance_shader_parameter("cut", Vector4(sleeves, 0.38 if era != Eras.FANTASY else 0.2, hem, 0.0))
+	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], hem if hem > 0.0 and hem < 0.45 else 0.0, 0.0))
 
 func _add_hair(style: String, col: Color) -> void:
 	var path := DIR + style + ".gltf"
