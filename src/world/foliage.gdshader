@@ -50,7 +50,7 @@ void vertex() {
 	// (multiplying it by that made bushes thrash as if in a gale).
 	VERTEX += NORMAL * flutter * min(h * 0.3, 1.0) * min(sway, 1.0);
 	// Vertex and instance colours are authored as sRGB; shading happens in linear space.
-	inst_col = pow(COLOR.rgb, vec3(2.2));
+	inst_col = pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2));
 	crown_n = (MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 }
 

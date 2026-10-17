@@ -223,7 +223,7 @@ void fragment() {
 	vec3 grass = grass_m * w.r + grass_f * w.g + grass_s * w.b;
 	vec3 soil = soil_m * w.r + soil_f * w.g + soil_s * w.b;
 	vec3 rock = rock_m * w.r + rock_f * w.g + rock_s * w.b;
-	rock = mix(rock, pow(stone_v.rgb, vec3(2.2)), stone_v.a);
+	rock = mix(rock, pow(max(stone_v.rgb, vec3(0.0)), vec3(2.2)), stone_v.a);
 
 	float dist = length(wpos - CAMERA_POSITION_WORLD);
 	float far = smoothstep(25.0, 140.0, dist);
@@ -315,7 +315,7 @@ void fragment() {
 	vec3 ground = mix(g * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), soil_mask * 0.7);
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
-		vec3 own = pow(soil_v.rgb, vec3(2.2));
+		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
 		float lm = dot(soil, LUM) / max(dot(soil_m * w.r + soil_f * w.g + soil_s * w.b, LUM), 0.001);
 		own *= clamp(mix(1.0, lm, 0.6), 0.6, 1.4) * (0.86 + 0.28 * meso) * (0.94 + 0.12 * micro);
 		ground = mix(ground, own, soil_v.a);
@@ -354,7 +354,7 @@ void fragment() {
 	if (use_textures && grit > 0.01) {
 		vec3 gt = untiled(gravel_tex, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far).rgb;
 		float a = layer(grit * (0.3 + 0.45 * fbm(p * 0.07 + 5.0)), dot(gt, LUM), dot(GRAVEL_MEAN, LUM), micro);
-		ground = mix(ground, recolor(gt, GRAVEL_MEAN, pow(soil_v.rgb, vec3(2.2)) * 1.05, 0.6), a);
+		ground = mix(ground, recolor(gt, GRAVEL_MEAN, pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2)) * 1.05, 0.6), a);
 		tilt_c = mix(tilt_c, untiled_n(gravel_nrm, p + 23.0, gp, GRAVEL_TILE * 1.4, meso, far), a);
 		cov = max(cov, a);
 	}
@@ -496,7 +496,7 @@ void fragment() {
 		float graze = 1.0 - clamp(dot(wnorm, vd), 0.0, 1.0);
 		float dr = tree_density(fdat.a, p);
 		// Side on, the trees behind close the gaps.
-		float dg = 1.0 - pow(1.0 - dr, 1.0 + 2.5 * graze);
+		float dg = 1.0 - pow(max(1.0 - dr, 0.0), 1.0 + 2.5 * graze);
 		float detail = (1.0 - smoothstep(600.0, 1800.0, dist)) * smoothstep(0.12, 0.35, 1.0 - graze);
 		float paint = smoothstep(TREE_BB_FROM, TREE_BB_TO, dist);
 		vec2 cell;
@@ -515,7 +515,7 @@ void fragment() {
 		col *= 1.0 - 0.5 * lit * clamp(shade, 0.0, 1.0);
 		canopy = mix(dg * 0.85 * paint, own, detail);
 		float id = hash12(cell + 3.1);
-		vec3 cc = pow(mix(fdat.rgb, sp.rgb, detail), vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
+		vec3 cc = pow(max(mix(fdat.rgb, sp.rgb, detail), vec3(0.0)), vec3(2.2)) * (0.8 + 0.4 * (id - 0.5) * detail);
 		// Darker at a crown's rim, where its leaves turn under.
 		cc *= mix(1.0, mix(1.0, 0.7, smoothstep(0.55, 1.0, cr.y)), detail);
 		cc = mix(cc, vec3(0.75, 0.78, 0.82), cover_v.a * 0.35);

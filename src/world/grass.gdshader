@@ -37,7 +37,7 @@ void vertex() {
 	VERTEX.y -= abs(bend) * 0.3;
 	glow = max(INSTANCE_CUSTOM.a, 0.0);
 	// Tints are authored as sRGB colours; shading happens in linear space.
-	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
+	tint = pow(max(INSTANCE_CUSTOM.rgb, vec3(0.0)), vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
 	shade = 1.0 - 0.42 * cloud_shadow(wp);
 	// Thin out with distance: each clump has its own cut-off, so the field thins evenly
 	// instead of a hard edge; the clumps that remain grow a little to keep the cover.
@@ -50,7 +50,7 @@ void vertex() {
 
 void fragment() {
 	bool own = COLOR.a < 0.5;
-	vec3 base = own ? pow(COLOR.rgb, vec3(2.2)) * shade : tint * COLOR.rgb / SHADE_SCALE;
+	vec3 base = own ? pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2)) * shade : tint * COLOR.rgb / SHADE_SCALE;
 	ALBEDO = own ? base : mix(base * 0.35, base * 1.05, UV.y);
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.3;
