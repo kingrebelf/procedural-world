@@ -107,10 +107,81 @@ func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: flo
 	# Dust: a strong dry wind over sand and badlands.
 	var dust: float = LF_DUST[lf] * smoothstep(0.45, 0.8, wind) * (1.0 - smoothstep(0.3, 0.5, hum))
 	cover = maxf(cover, dust * 0.5)
+	# A great storm passing (rare, named): a day of gale, downpour and hail.
+	var g := great(hours, x, z)
+	var gs: float = g["s"] * clampf(LF_MOIST[lf], 0.5, 1.0)
+	var hail := 0.0
+	if gs > 0.0:
+		cover = maxf(cover, smoothstep(0.0, 0.45, gs))
+		precip = maxf(precip, gs * 0.95)
+		temp -= gs * 3.0
+		snow = smoothstep(1.5, -1.0, temp)
+		storm = maxf(storm, smoothstep(0.3, 0.8, gs) * smoothstep(-2.0, 6.0, temp))
+		wind = maxf(wind, 0.35 + 0.62 * gs)
+		mist *= 1.0 - gs
+		dust *= 1.0 - gs
+		# Hail comes in bursts at the storm's heart while it is still warm enough to rain.
+		var burst := _showers.get_noise_2d(hours * 3.0, 77.0)
+		hail = smoothstep(0.6, 0.85, gs) * smoothstep(-1.0, 3.0, temp) * smoothstep(-0.1, 0.25, burst)
+	# A fog bank: on a calm cold morning now and then the sea and lake fog rolls inland
+	# over the low ground and lies there half the day.
+	var bank := fog_bank(hours, x, z) * calm * (1.0 - smoothstep(10.0, 45.0, ground)) * (1.0 - precip)
+	mist = maxf(mist, bank)
 	var ang := _veer.get_noise_1d(t * 0.05 + 300.0) * 1.4
 	var wd := prevailing.rotated(ang)
 	return {"cover": cover, "precip": precip, "snow": snow, "storm": storm, "mist": mist, "dust": dust,
-		"wind": wind, "temp": temp, "wind_dir": wd}
+		"wind": wind, "temp": temp, "wind_dir": wd, "hail": hail, "great": g["name"] if gs > 0.2 else "", "bank": bank}
+
+# --- Great storms (plans/story.md) ---------------------------------------------------------
+
+const GREAT_CELL := 16000.0 ## metres; each cell may brew one great storm a period
+const GREAT_PERIOD := 8.0 ## game days
+const GREAT_RADIUS := 9000.0
+const GREAT_SPEED := 1200.0 ## metres per game hour: it takes most of a day to pass over
+## Great storms are remembered by name, the way old folk remember hard winters.
+const STORM_NAMES := ["Morwen", "the Harrower", "Old Tamsin", "the Grey Widow", "Corrigan", "the Long Wind",
+	"Brannoc", "the Drowner", "Ysolde", "the Hammer", "Gwenna", "the Iron Sky"]
+
+## How hard a great storm blows at (x, z) at game hour `hours`: {"s": 0..1, "name"}.
+## Each cell of the world may brew one each period; it crosses the cell on the prevailing
+## wind. They come oftener out toward the gate lands (zone 25 and up, plans/story.md).
+func great(hours: float, x: float, z: float) -> Dictionary:
+	var best := {"s": 0.0, "name": ""}
+	var k0 := floori(hours / 24.0 / GREAT_PERIOD)
+	var gx := floori(x / GREAT_CELL)
+	var gz := floori(z / GREAT_CELL)
+	var span := (GREAT_RADIUS * 2.0 + GREAT_CELL) / GREAT_SPEED
+	var side := Vector2(-prevailing.y, prevailing.x)
+	for k in [k0 - 1, k0]:
+		for i in 9:
+			var cx: int = gx + i % 3 - 1
+			var cz: int = gz + floori(i / 3.0) - 1
+			var h := WHash.hash2(seed ^ (int(k) * 92821), cx, cz, 620)
+			var centre := Vector2((cx + 0.5) * GREAT_CELL, (cz + 0.5) * GREAT_CELL)
+			var zone := float(Eras.zone_level(centre.x, centre.y))
+			if WHash.to_unit(h) > 0.3 + 0.35 * smoothstep(25.0, 45.0, zone):
+				continue
+			var t := hours - (float(k) + WHash.unit2(h, 1, 0, 621) * 0.7) * GREAT_PERIOD * 24.0
+			if t < 0.0 or t > span:
+				continue
+			var c := centre + prevailing * GREAT_SPEED * (t - span * 0.5) + side * (WHash.unit2(h, 2, 0, 621) - 0.5) * GREAT_CELL * 0.6
+			var s := (1.0 - smoothstep(GREAT_RADIUS * 0.3, GREAT_RADIUS, Vector2(x, z).distance_to(c))) \
+				* smoothstep(0.0, 3.0, t) * (1.0 - smoothstep(span - 3.0, span, t))
+			if s > float(best["s"]):
+				best = {"s": s, "name": STORM_NAMES[absi(h) % STORM_NAMES.size()]}
+	return best
+
+## A fog bank over (x, z) on the morning of game hour `hours`, 0..1 (before the calm and
+## the lie of the land are counted): banks a few kilometres across on about one morning
+## in six, thickest at dawn and burning off by early afternoon.
+func fog_bank(hours: float, x: float, z: float) -> float:
+	var d := floori(hours / 24.0)
+	var tod := hours / 24.0 - d
+	var morning := smoothstep(0.12, 0.22, tod) * (1.0 - smoothstep(0.42, 0.55, tod))
+	if morning <= 0.0 or WHash.unit2(seed, d, 0, 630) > 0.17:
+		return 0.0
+	var n := _veer.get_noise_2d(x * 0.00025 + float(d) * 31.7, z * 0.00025)
+	return smoothstep(0.0, 0.3, n) * morning
 
 # --- Starfall nights (Starfall, plans/story.md) ------------------------------------------
 

@@ -18,10 +18,10 @@ extends Node3D
 ## Sound (rain, rain on the roof, thunder) is played by the Audio autoload from `rain`,
 ## `snow`, `storm` and the strikes.
 
-enum Kind { CLEAR, FAIR, CLOUDY, OVERCAST, MIST, DRIZZLE, RAIN, STORM, SNOW, BLIZZARD, DUST }
-const NAMES := ["Clear", "Fair", "Cloudy", "Overcast", "Mist", "Drizzle", "Rain", "Thunderstorm", "Snow", "Blizzard", "Dust storm"]
+enum Kind { CLEAR, FAIR, CLOUDY, OVERCAST, MIST, DRIZZLE, RAIN, STORM, SNOW, BLIZZARD, DUST, HAIL }
+const NAMES := ["Clear", "Fair", "Cloudy", "Overcast", "Mist", "Drizzle", "Rain", "Thunderstorm", "Snow", "Blizzard", "Dust storm", "Hail"]
 ## Console and capture names for forcing a weather.
-const KEYS := ["clear", "fair", "cloudy", "overcast", "mist", "drizzle", "rain", "storm", "snow", "blizzard", "dust"]
+const KEYS := ["clear", "fair", "cloudy", "overcast", "mist", "drizzle", "rain", "storm", "snow", "blizzard", "dust", "hail"]
 ## What each forced weather sets (Climate.at's keys). temp only matters for snow.
 const PRESETS := {
 	Kind.CLEAR: {"cover": 0.05, "precip": 0.0, "snow": 0.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 0.15},
@@ -35,6 +35,7 @@ const PRESETS := {
 	Kind.SNOW: {"cover": 1.0, "precip": 0.6, "snow": 1.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 0.2, "temp": -3.0},
 	Kind.BLIZZARD: {"cover": 1.0, "precip": 1.0, "snow": 1.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 1.0, "temp": -9.0},
 	Kind.DUST: {"cover": 0.55, "precip": 0.0, "snow": 0.0, "storm": 0.0, "mist": 0.0, "dust": 1.0, "wind": 0.9},
+	Kind.HAIL: {"cover": 1.0, "precip": 0.9, "snow": 0.0, "storm": 0.8, "mist": 0.0, "dust": 0.0, "wind": 0.9, "hail": 1.0},
 }
 
 ## The weather over the player right now, for HUD, sound and NPCs (null outside a world).
@@ -61,6 +62,9 @@ var temp := 12.0
 var wet := 0.0
 var puddles := 0.0
 var snow_cover := 0.0
+var hail := 0.0 ## hail falling with the rain, 0..1
+## The great storm blowing here, by name, or "" (Climate.great).
+var great_name := ""
 var kind := Kind.FAIR
 
 var _target := {}
@@ -162,12 +166,15 @@ func describe() -> String:
 		s = "Heavy rain"
 	elif kind == Kind.SNOW and precip < 0.4:
 		s = "Light snow"
+	if great_name != "" and kind in [Kind.RAIN, Kind.STORM, Kind.HAIL]:
+		# "Great storm Morwen", "Great storm, the Harrower"
+		s = ("Great storm, %s" if great_name.begins_with("the ") else "Great storm %s") % great_name
 	return s
 
 ## The status icon for this weather (UITheme.status_icon), or "" for a plain sky.
 func icon() -> String:
 	match kind:
-		Kind.DRIZZLE, Kind.RAIN: return "rain"
+		Kind.DRIZZLE, Kind.RAIN, Kind.HAIL: return "rain"
 		Kind.STORM: return "storm"
 		Kind.SNOW, Kind.BLIZZARD: return "snow"
 		Kind.MIST, Kind.DUST: return "fog"
@@ -198,13 +205,14 @@ func _sample(p: Vector3) -> Dictionary:
 	var c := climate.at(Climate.hours_of(Game.day), p.x, p.z, ground, lf, Planets.snow_line)
 	if forced >= 0:
 		var pr: Dictionary = PRESETS[forced]
+		c["hail"] = 0.0
 		for k in pr:
 			c[k] = pr[k]
 		if not pr.has("temp"):
 			c["temp"] = maxf(float(c["temp"]), 6.0)
 	elif not _enabled:
 		# Weather off: fair skies, the clouds still come and go.
-		for k in ["precip", "storm", "mist", "dust"]:
+		for k in ["precip", "storm", "mist", "dust", "hail"]:
 			c[k] = 0.0
 		c["cover"] = minf(float(c["cover"]), 0.55)
 		c["wind"] = minf(float(c["wind"]), 0.5)
@@ -221,6 +229,8 @@ func _ease(delta: float, jump: bool) -> void:
 	storm = _toward(storm, _target["storm"], k, delta, 25.0)
 	mist = _toward(mist, _target["mist"], k, delta, 40.0)
 	dust = _toward(dust, _target["dust"], k, delta, 20.0)
+	hail = _toward(hail, float(_target.get("hail", 0.0)), k, delta, 8.0)
+	great_name = String(_target.get("great", ""))
 	wind = _toward(wind, _target["wind"], k, delta, 15.0)
 	temp = _toward(temp, _target["temp"], k, delta, 30.0)
 	var wd: Vector2 = _target["wind_dir"]
@@ -250,7 +260,7 @@ func _ground(delta: float, jump: bool) -> void:
 	wet = clampf(wet + delta * (rain / 40.0 - dry / 360.0), 0.0, 1.0)
 	puddles = clampf(puddles + delta * ((rain - 0.25) / 150.0 - dry / 900.0 * (1.0 if rain < 0.25 else 0.0)), 0.0, 1.0)
 	var melt := maxf(temp - 0.5, 0.0) * (1.0 + sun * 2.0)
-	snow_cover = clampf(snow_cover + delta * (falling / 180.0 - melt / 900.0), 0.0, 1.0)
+	snow_cover = clampf(snow_cover + delta * ((falling + hail * 0.5) / 180.0 - melt / (900.0 if hail < 0.05 else 3000.0)), 0.0, 1.0)
 	# Melting snow leaves the ground wet.
 	if melt > 0.0 and snow_cover > 0.0:
 		wet = minf(1.0, wet + delta * snow_cover * 0.01)
@@ -259,6 +269,8 @@ func _classify() -> int:
 	if dust > 0.4:
 		return Kind.DUST
 	if precip > 0.12:
+		if hail > 0.3 and snow < 0.5:
+			return Kind.HAIL
 		if snow > 0.5:
 			return Kind.BLIZZARD if wind > 0.7 and precip > 0.6 else Kind.SNOW
 		if storm > 0.4:
@@ -450,15 +462,20 @@ func _precipitation(p: Vector3) -> void:
 	# Snow drifts down at about a metre a second and goes where the wind takes it; dust
 	# streams along it, barely falling.
 	var snowing := flakes > 0.01
+	# Hail (with the rain, in a great storm's heart) takes the flakes' place: hard white
+	# pellets coming down fast and straight.
+	var hailing := hail * open > 0.02 and not snowing
 	var fl := Vector3(0.0, -1.1, 0.0) + w3 * 9.0 if snowing else Vector3(0.0, -0.25, 0.0) + w3 * 14.0
+	if hailing:
+		fl = Vector3(0.0, -15.0, 0.0) + w3 * 6.0
 	_flake_proc.set_shader_parameter("fall", fl)
-	_flake_proc.set_shader_parameter("sway", 0.5 if snowing else 1.2)
-	_flake_proc.set_shader_parameter("density", clampf((flakes if snowing else specks * 0.8) * 1.1, 0.0, 1.0))
-	var fc := Color(lum, lum, lum * 1.03) if snowing else Color(0.7, 0.55, 0.38) * lum
-	_flake_mat.set_shader_parameter("tint", fc)
-	_flake_mat.set_shader_parameter("thick", 0.014 if snowing else 0.006)
-	_flake_mat.set_shader_parameter("opacity", 0.85 if snowing else 0.45)
-	_show(_flakes, snowing or specks > 0.02, at, fl)
+	_flake_proc.set_shader_parameter("sway", 0.0 if hailing else 0.5 if snowing else 1.2)
+	_flake_proc.set_shader_parameter("density", clampf((hail * open * 0.7 if hailing else flakes if snowing else specks * 0.8) * 1.1, 0.0, 1.0))
+	var fc := Color(lum, lum, lum * 1.03) if snowing or hailing else Color(0.7, 0.55, 0.38) * lum
+	_flake_mat.set_shader_parameter("tint", fc * (1.25 if hailing else 1.0))
+	_flake_mat.set_shader_parameter("thick", 0.011 if hailing else 0.014 if snowing else 0.006)
+	_flake_mat.set_shader_parameter("opacity", 0.95 if hailing else 0.85 if snowing else 0.45)
+	_show(_flakes, snowing or hailing or specks > 0.02, at, fl)
 	_field.visible = _rain.visible or _flakes.visible
 
 func _show(gp: GPUParticles3D, on: bool, at: Vector3, fall: Vector3) -> void:

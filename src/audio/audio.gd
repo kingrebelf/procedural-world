@@ -20,7 +20,7 @@ const LAYERS := {
 	"wind": ["wind", 0.55], "wind_strong": ["wind_strong", 0.6], "birds": ["birds", 0.5],
 	"crickets": ["crickets", 0.45], "water": ["water", 0.6], "surf": ["surf", 0.6],
 	"fantasy": ["fantasy", 0.4], "scifi": ["scifi", 0.35], "cave": ["dungeon", 0.7],
-	"rain": ["rain", 0.65], "rain_roof": ["rain_roof", 0.7],
+	"rain": ["rain", 0.65], "rain_roof": ["rain_roof", 0.7], "hail": ["hail", 0.75],
 }
 
 ## Music by mood; a mood picks one of its tracks each time it plays.
@@ -388,6 +388,7 @@ func _sample_env() -> Dictionary:
 	e["wind"] = float(atm.wind_strength)
 	var wx: Weather = atm.get("weather")
 	e["rain"] = wx.precip * (1.0 - wx.snow) if wx != null else 0.0
+	e["hail"] = wx.hail if wx != null else 0.0
 	e["underwater"] = bool(pl.get("underwater"))
 	e["swimming"] = bool(pl.get("swimming"))
 	var era := WorldField.dominant(w)
@@ -481,6 +482,8 @@ func _set_targets(e: Dictionary) -> void:
 	var rain := clampf(float(e.get("rain", 0.0)) * 1.2, 0.0, 1.0)
 	_layer_target["rain"] = rain * (0.35 if inside else 1.0)
 	_layer_target["rain_roof"] = rain if inside else 0.0
+	# Hail rattles all round you, muffled a little indoors.
+	_layer_target["hail"] = clampf(float(e.get("hail", 0.0)) * 1.3, 0.0, 1.0) * (0.6 if inside else 1.0)
 	_layer_target["birds"] *= 1.0 - smoothstep(0.1, 0.4, rain)
 	_layer_target["crickets"] *= 1.0 - smoothstep(0.1, 0.4, rain)
 	if e["underwater"]:

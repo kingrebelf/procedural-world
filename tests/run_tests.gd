@@ -4253,3 +4253,27 @@ func test_starfall() -> void:
 	check(Climate.starfall_radiant(4242, n0).y > 0.4, "the stars fall from high in the sky")
 	check(Landmark.has("star_iron") and Wonders.LANDMARKS.has("star_iron") and ObjectLibrary.kind("star_iron") == "structure",
 		"a fallen fragment is a landmark you can pry at")
+
+func test_great_storms() -> void:
+	var c := Climate.new(4242)
+	var seen := {}
+	var strong := 0
+	var hail := 0
+	var banks := 0
+	# Walk one spot through 80 days, a sample every game hour.
+	for i in 80 * 24:
+		var w := c.at(float(i), 500.0, -300.0, 12.0, WorldField.LF_NONE, 50.0)
+		if w["great"] != "":
+			seen[w["great"]] = true
+			strong += 1
+			check(float(w["wind"]) > 0.45 and float(w["cover"]) > 0.4, "a great storm blows hard under thick cloud")
+		if float(w["hail"]) > 0.3:
+			hail += 1
+		if float(w["bank"]) > 0.3:
+			banks += 1
+	check(not seen.is_empty(), "great storms come by within 80 days (%d hours of one)" % strong)
+	check(strong < 80 * 24 / 6, "great storms are rare (%d hours of 1920)" % strong)
+	check(hail > 0, "great storms bring hail")
+	check(banks > 0, "fog banks roll in on some mornings")
+	var g := c.great(1000.0, 500.0, -300.0)
+	check(g == c.great(1000.0, 500.0, -300.0), "the same great storm for everyone")

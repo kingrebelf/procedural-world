@@ -283,7 +283,7 @@ func _impact(at: Vector3, fall_id: int, roll: int, cam: Vector3) -> void:
 	var lp := at - node.position
 	lp.y = ChunkGenerator.height_at(node.data, lp.x, lp.z) - 0.25
 	node.add_object("star_iron", lp, float(roll % 628) * 0.01, int(node.data.get("era", 0)),
-		{"fall": fall_id, "ship": roll % Climate.SHIPS.size(), "day": -1})
+		{"fall": fall_id, "ship": absi(roll) % Climate.SHIPS.size(), "day": -1})
 	if d < 700.0 and Game.player != null:
 		var here := Vector2(Game.player.global_position.x, Game.player.global_position.z)
 		Game.toast.emit("A star fell %d m to the %s" % [int(round(d / 10.0)) * 10, Wonders.compass(here, Vector2(at.x, at.z))])

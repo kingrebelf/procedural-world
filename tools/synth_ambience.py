@@ -335,6 +335,24 @@ def thunder(var, near):
     return norm(out, 0.85 if near else 0.7)
 
 
+def hail(sec):
+    """Hail: hard pellets clattering on ground, stone and wood, each a sharp knock with a
+    little ring, dense and uneven, over a rough hiss of the rain coming with it."""
+    n = int(sec * SR)
+    hiss = shaped_noise(n, 900, 12000, tilt=-0.25) * 0.25
+    knocks = np.zeros((n, 2))
+    for _ in range(int(sec * 420)):
+        d = rng.uniform(0.004, 0.018)
+        m = int(d * SR)
+        t = np.arange(m) / SR
+        f0 = rng.uniform(1200, 4200)
+        ev = (np.sin(2 * np.pi * f0 * t) * 0.5 + rng.standard_normal(m)) * np.exp(-t / (d * 0.18))
+        ev = np.diff(ev, prepend=0.0)
+        place(knocks, ev, int(rng.integers(n)), rng.uniform(0.03, 0.22), rng.uniform(-0.95, 0.95))
+    x = hiss * slow_mod(n, 7, 0.3)[:, None] + knocks * slow_mod(n, 9, 0.5)[:, None]
+    return norm(x, 0.6)
+
+
 def weather(out):
     global rng
     rng = np.random.default_rng(2718)  # its own seed: the other sounds stay as they are
@@ -345,6 +363,8 @@ def weather(out):
     for i in range(3):
         write_ogg(os.path.join(sfx, "thunder_near_%d.ogg" % i), thunder(i, True), 2)
         write_ogg(os.path.join(sfx, "thunder_far_%d.ogg" % i), thunder(i, False), 1)
+    # (After the others, so adding it left their random draws, and so them, unchanged.)
+    write_ogg(os.path.join(amb, "hail.ogg"), hail(16), 2)
 
 
 def write_ogg(path, data, q):
