@@ -29,7 +29,6 @@ var _job: Dictionary = {}
 var _rows: Array = []
 var _row := 0
 var _strip: Dictionary = {}
-var _held := 0.0
 var _arrays: Array = []
 var _built_at := Vector2.ZERO
 var _mask_img: Image
@@ -70,7 +69,7 @@ func _process(delta: float) -> void:
 			_show()
 			_phase = 0
 	if _task < 0:
-		_step(delta)
+		_step()
 	_update_mask()
 	_sync_t -= delta
 	if _sync_t <= 0.0:
@@ -78,8 +77,10 @@ func _process(delta: float) -> void:
 		_sync_material()
 
 ## Starts a build once you have gone far enough (and the ground under you is in), then
-## feeds it to the workers a strip at a time, between the chunk jobs.
-func _step(delta: float) -> void:
+## feeds it to the workers a strip at a time. The strips go in as high-priority tasks:
+## the chunk jobs run as low-priority ones, on threads of their own, so the distant land
+## never holds up the ground streaming in round you.
+func _step() -> void:
 	if _phase == 0:
 		var p := Vector2(target.global_position.x, target.global_position.z)
 		if p.distance_to(_center) <= REBUILD or not streamer.is_ready_at(target.global_position):
@@ -88,17 +89,12 @@ func _step(delta: float) -> void:
 		_job = _job_inputs(_center)
 		_rows = []
 		_row = 0
-		_held = 0.0
 		_phase = 1
-	if _phase == 1 and _row < grid_n():
-		if streamer.busy() >= 2 and _held < 2.0:
-			_held += delta
-			return
-		_held = 0.0
-		_task = WorkerThreadPool.add_task(_build_strip.bind(_row), false, "distant land")
+	if _phase == 1 and _row < int(_job["n"]):
+		_task = WorkerThreadPool.add_task(_build_strip.bind(_row), true, "distant land")
 	elif _phase == 1:
 		_phase = 2
-		_task = WorkerThreadPool.add_task(_finish, false, "distant land")
+		_task = WorkerThreadPool.add_task(_finish, true, "distant land")
 
 ## The streamed terrain's settings (textures, snow line, paved roads) on the far look too.
 func _sync_material() -> void:
@@ -138,11 +134,11 @@ func _job_inputs(center: Vector2) -> Dictionary:
 	return {"center": center, "seed": sd, "terrain_v": WorldField.terrain_v,
 		"human": Eras.theme == "human", "snow_line": Planets.snow_line,
 		"rivers": st.has_rivers() if st else true,
-		"field": WorldField.new(sd)}
+		"field": WorldField.new(sd), "n": grid_n()}
 
 ## On a worker, one at a time: the main thread reads the results once each task is done.
 func _build_strip(j0: int) -> void:
-	_strip = build_rows(_job, j0, mini(j0 + STRIP, grid_n()))
+	_strip = build_rows(_job, j0, mini(j0 + STRIP, int(_job["n"])))
 
 func _finish() -> void:
 	_arrays = finish_arrays(_job, _rows)
