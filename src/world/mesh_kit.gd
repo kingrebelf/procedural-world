@@ -87,6 +87,153 @@ func box(mat: String, xf: Transform3D, size: Vector3, color := Color.WHITE) -> v
 	quad(mat, xf, p[0], p[1], p[5], p[4], color) # -y
 	_uv_fn = Callable()
 
+## A box with its twelve edges chamfered by `bevel` (capped to a third of its thinnest
+## side): hand-worked timber, dressed stone and pressed panels never meet at a knife
+## edge, and the narrow slanted face along each edge catches the light. 44 triangles.
+func bevel_box(mat: String, xf: Transform3D, size: Vector3, bevel := 0.02, color := Color.WHITE) -> void:
+	var c := minf(bevel, minf(size.x, minf(size.y, size.z)) / 3.0)
+	if c < 0.004:
+		box(mat, xf, size, color)
+		return
+	var h := size * 0.5
+	var i := h - Vector3.ONE * c
+	if GRAIN.has(mat):
+		_uv_fn = _box_grain(xf, size)
+	# The six faces, inset by the chamfer.
+	for a in 3:
+		var u := (a + 1) % 3
+		var v := (a + 2) % 3
+		for s in [-1.0, 1.0]:
+			var n := Vector3.ZERO
+			n[a] = s
+			var pts: Array = []
+			for q in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+				var p := Vector3.ZERO
+				p[a] = s * h[a]
+				p[u] = q.x * i[u]
+				p[v] = q.y * i[v]
+				pts.append(p)
+			_quad_n(mat, xf, pts, n, color)
+	# The twelve chamfers, one along each edge.
+	for a in 3:
+		var u := (a + 1) % 3
+		var v := (a + 2) % 3
+		for su in [-1.0, 1.0]:
+			for sv in [-1.0, 1.0]:
+				var n := Vector3.ZERO
+				n[u] = su
+				n[v] = sv
+				var pts: Array = []
+				for e in [[-1.0, true], [1.0, true], [1.0, false], [-1.0, false]]:
+					var p := Vector3.ZERO
+					p[a] = e[0] * i[a]
+					p[u] = su * (h[u] if e[1] else i[u])
+					p[v] = sv * (i[v] if e[1] else h[v])
+					pts.append(p)
+				_quad_n(mat, xf, pts, n.normalized(), color)
+	# The eight corners.
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				var n := Vector3(sx, sy, sz).normalized()
+				var a := Vector3(sx * h.x, sy * i.y, sz * i.z)
+				var b := Vector3(sx * i.x, sy * h.y, sz * i.z)
+				var d := Vector3(sx * i.x, sy * i.y, sz * h.z)
+				_tri_n(mat, xf, a, b, d, n, n, n, color)
+	_uv_fn = Callable()
+
+## A triangle facing `n` whichever order its corners come in.
+func _tri_n(mat: String, xf: Transform3D, a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb_: Vector3, nc: Vector3, color := Color.WHITE) -> void:
+	if (b - a).cross(c - a).dot(na + nb_ + nc) < 0.0:
+		tri(mat, xf, a, c, b, na, nc, nb_, color)
+	else:
+		tri(mat, xf, a, b, c, na, nb_, nc, color)
+
+## A flat quad (corners in order round it) facing `n`.
+func _quad_n(mat: String, xf: Transform3D, p: Array, n: Vector3, color := Color.WHITE) -> void:
+	_tri_n(mat, xf, p[0], p[1], p[2], n, n, n, color)
+	_tri_n(mat, xf, p[0], p[2], p[3], n, n, n, color)
+
+## A moulding: `profile` swept along `path`. A profile point (s, f) sits at
+## path point + side * s + face * f, where `sides` holds each path point's side
+## direction (perpendicular to the run) and `face` is shared by the whole run: for a
+## skirting board, side points into the room and face is up; for a door casing, side
+## points away from the opening and face out of the wall. Only the profile's visible
+## faces are given, wall to wall, with the solid on the right going along it (seen
+## along the run); joints between runs are mitred (pass the bisected side, longer by
+## 1 / cos of half the turn), facets meeting at under 40 degrees are shaded smooth,
+## and open ends get a cap closed against the wall's corner (s, f) = (0, 0). Wood
+## grain and photo textures run along the path.
+func sweep(mat: String, xf: Transform3D, path: PackedVector3Array, sides: PackedVector3Array, face: Vector3, profile: PackedVector2Array, closed := false, caps := true, color := Color.WHITE) -> void:
+	var st := _tool(mat)
+	var nb := xf.basis.inverse().transposed()
+	var np := profile.size()
+	var pick := _grain_pick(xf.translated(path[0])) if GRAIN.has(mat) else Vector2.ZERO
+	# Each profile facet's outward normal in (side, face) terms, and where it starts
+	# along the profile (for the texture across it).
+	var fn: Array = []
+	var arc := PackedFloat32Array([0.0])
+	for j in np - 1:
+		var d := profile[j + 1] - profile[j]
+		fn.append(Vector2(-d.y, d.x).normalized())
+		arc.append(arc[j] + d.length())
+	var su := minf(GRAIN_SCALE, BOARD_SPAN / maxf(arc[np - 1], 0.001)) if GRAIN.has(mat) else GRAIN_SCALE
+	var smooth := func(j: int, end: int) -> Vector2:
+		# The normal at facet j's start (end 0) or end (end 1).
+		var other := j - 1 if end == 0 else j + 1
+		if other < 0 or other >= np - 1 or (fn[j] as Vector2).dot(fn[other]) < 0.766:
+			return fn[j]
+		return ((fn[j] as Vector2) + (fn[other] as Vector2)).normalized()
+	var runs := path.size() if closed else path.size() - 1
+	var along := 0.0
+	for k in runs:
+		var k2 := (k + 1) % path.size()
+		var p0 := path[k]
+		var p1 := path[k2]
+		var s0 := sides[k]
+		var s1 := sides[k2]
+		var run := p0.distance_to(p1)
+		var dir := (p1 - p0) / maxf(run, 0.0001)
+		# The side direction square to this run, for the normals.
+		var sq := (s0 - dir * s0.dot(dir)).normalized()
+		for j in np - 1:
+			var a := profile[j]
+			var b := profile[j + 1]
+			var na2: Vector2 = smooth.call(j, 0)
+			var nb2: Vector2 = smooth.call(j, 1)
+			var na := sq * na2.x + face * na2.y
+			var nbv := sq * nb2.x + face * nb2.y
+			var q := [p0 + s0 * a.x + face * a.y, p1 + s1 * a.x + face * a.y, p1 + s1 * b.x + face * b.y, p0 + s0 * b.x + face * b.y]
+			var uv := [Vector2(pick.x + arc[j] * su, along * GRAIN_SCALE + pick.y), Vector2(pick.x + arc[j] * su, (along + run) * GRAIN_SCALE + pick.y),
+				Vector2(pick.x + arc[j + 1] * su, (along + run) * GRAIN_SCALE + pick.y), Vector2(pick.x + arc[j + 1] * su, along * GRAIN_SCALE + pick.y)]
+			var ns := [na, na, nbv, nbv]
+			var flip: bool = ((q[1] as Vector3) - (q[0] as Vector3)).cross((q[2] as Vector3) - (q[0] as Vector3)).dot(na + nbv) < 0.0
+			for idx in ([0, 2, 1, 0, 3, 2] if not flip else [0, 1, 2, 0, 2, 3]):
+				st.set_normal((nb * (ns[idx] as Vector3)).normalized())
+				st.set_color(color)
+				st.set_uv(uv[idx])
+				st.add_vertex(xf * (q[idx] as Vector3))
+		along += run
+	if closed or not caps:
+		return
+	# End caps: the profile closed against the wall's corner.
+	var poly := PackedVector2Array(profile)
+	if not poly[0].is_zero_approx() and not poly[np - 1].is_zero_approx():
+		poly.append(Vector2.ZERO)
+	var tris := Geometry2D.triangulate_polygon(poly)
+	if tris.is_empty():
+		return
+	for e in [[0, 1], [path.size() - 1, path.size() - 2]]:
+		var p := path[e[0]]
+		var s := sides[e[0]]
+		var n := (p - path[e[1]]).normalized()
+		for t in range(0, tris.size(), 3):
+			var c: Array = []
+			for m in 3:
+				var q2 := poly[tris[t + m]]
+				c.append(p + s * q2.x + face * q2.y)
+			_tri_n(mat, xf, c[0], c[1], c[2], n, n, n, color)
+
 ## Which board of the grain photo a piece shows and how far along it starts, picked from
 ## where the piece is so neighbouring beams differ.
 func _grain_pick(xf: Transform3D) -> Vector2:
@@ -230,14 +377,21 @@ func crystal(mat: String, xf: Transform3D, radius: float, h: float, sides: int =
 		tri(mat, xf, t0, apex, t1, n, n, n, color)
 
 ## Commits every bucket as a surface of `into` (or of a new mesh).
-func commit(materials: Callable, into: ArrayMesh = null) -> ArrayMesh:
+## `tint`, if given, is called as tint(material name, arrays) on each surface before it is
+## added, to colour its vertices.
+func commit(materials: Callable, into: ArrayMesh = null, tint := Callable()) -> ArrayMesh:
 	var mesh := into if into != null else ArrayMesh.new()
 	var names := _st.keys()
 	names.sort()
 	for name in names:
 		var st: SurfaceTool = _st[name]
 		st.generate_tangents()
-		st.commit(mesh)
+		if tint.is_valid():
+			var arrays := st.commit_to_arrays()
+			tint.call(name, arrays)
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		else:
+			st.commit(mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, materials.call(name))
 		mesh.surface_set_name(mesh.get_surface_count() - 1, name)
 	return mesh

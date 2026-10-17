@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 17 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips.
+const GEN_VERSION := 19 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins).
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -844,6 +844,8 @@ func generate(cx: int, cz: int) -> Dictionary:
 		"biome": field.region_hash_at(x0 + SIZE * 0.5, z0 + SIZE * 0.5),
 		"keep_out": PackedFloat32Array(),
 	}
+	if WorldField.terrain_v >= WorldField.CLIMATE_V:
+		_biome_mix(chunk, x0, z0)
 	if has_river:
 		chunk["river"] = river
 	if not look.is_empty():
@@ -1009,6 +1011,86 @@ static func _look_lerp(lb: PackedByteArray, lx: float, lz: float, b: int) -> flo
 	return lerpf(lerpf(lb[k], lb[k + LOOK_BYTES], fx), lerpf(lb[k2], lb[k2 + LOOK_BYTES], fx), fz) / 255.0
 
 ## How much of the ground here is loose wind-blown sand (1 deep in dunes, 0 elsewhere).
+## v18: how the regions meet over a chunk, so its grass and undergrowth blend from one
+## region's into the next as its trees do: "biomes" the hashes of the regions present,
+## "biome_mix" a MIX_N x MIX_N grid (every 8 m, both edges included so neighbouring
+## chunks agree) of [the nearest region's index, the next's, the next's share * 510].
+const MIX_N := 9
+
+func _biome_mix(chunk: Dictionary, x0: float, z0: float) -> void:
+	var hashes: Array = []
+	var mix := PackedByteArray()
+	mix.resize(MIX_N * MIX_N * 3)
+	var step := SIZE / (MIX_N - 1)
+	for j in MIX_N:
+		for i in MIX_N:
+			var b := field.region_blend(x0 + i * step, z0 + j * step)
+			var k := (j * MIX_N + i) * 3
+			for n in 2:
+				var at := hashes.find(b[n])
+				if at < 0:
+					at = hashes.size()
+					hashes.append(b[n])
+				mix[k + n] = at
+			mix[k + 2] = int(round(float(b[2]) * 510.0))
+	chunk["biomes"] = hashes
+	chunk["biome_mix"] = mix
+
+## The region whose plants grow at (lx, lz) in a chunk: chunk["biome"] in chunks made
+## before v18; after, near a region's edge now and then the neighbour's (u: a uniform
+## roll), the more often the nearer the edge.
+static func biome_pick(chunk: Dictionary, lx: float, lz: float, u: float) -> int:
+	var mix: PackedByteArray = chunk.get("biome_mix", PackedByteArray())
+	if mix.is_empty():
+		return chunk["biome"]
+	var step := SIZE / (MIX_N - 1)
+	var k := (clampi(int(round(lz / step)), 0, MIX_N - 1) * MIX_N + clampi(int(round(lx / step)), 0, MIX_N - 1)) * 3
+	var hs: Array = chunk["biomes"]
+	return hs[mix[k + 1]] if u < mix[k + 2] / 510.0 else hs[mix[k]]
+
+## A chunk's regions' Biome.params `keys` blended at each point of its biome_mix grid:
+## MIX_N * MIX_N rows of floats (a colour takes three, r g b), for sampling with
+## mix_sample. Empty for chunks made before v18.
+static func biome_mix_grid(chunk: Dictionary, era: int, keys: Array) -> Array:
+	var mix: PackedByteArray = chunk.get("biome_mix", PackedByteArray())
+	if mix.is_empty():
+		return []
+	var hs: Array = chunk["biomes"]
+	var per: Array = []
+	for h in hs:
+		var bp := Biome.params(h, era)
+		var vals: Array = []
+		for key in keys:
+			var v = bp[key]
+			if v is Color:
+				vals.append_array([v.r, v.g, v.b])
+			else:
+				vals.append(float(v))
+		per.append(vals)
+	var out: Array = []
+	for c in MIX_N * MIX_N:
+		var a: Array = per[mix[c * 3]]
+		var b: Array = per[mix[c * 3 + 1]]
+		var t := mix[c * 3 + 2] / 510.0
+		var row: Array = []
+		for n in a.size():
+			row.append(lerpf(a[n], b[n], t))
+		out.append(row)
+	return out
+
+## Value n of a biome_mix_grid at (lx, lz), bilinear between its points.
+static func mix_sample(grid: Array, lx: float, lz: float, n: int) -> float:
+	var step := SIZE / (MIX_N - 1)
+	var fx := clampf(lx / step, 0.0, MIX_N - 1.001)
+	var fz := clampf(lz / step, 0.0, MIX_N - 1.001)
+	var i := int(fx)
+	var j := int(fz)
+	var tx := fx - i
+	var tz := fz - j
+	var a := lerpf(grid[j * MIX_N + i][n], grid[j * MIX_N + i + 1][n], tx)
+	var b := lerpf(grid[(j + 1) * MIX_N + i][n], grid[(j + 1) * MIX_N + i + 1][n], tx)
+	return lerpf(a, b, tz)
+
 static func sand_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
@@ -1096,9 +1178,18 @@ func _pick_era(w: PackedFloat32Array, r: float) -> int:
 
 func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: float, scale: float, st: Dictionary = {}, sp: int = 0, v: int = 0) -> void:
 	var objs: Array = chunk["objects"]
+	var y := height_at(chunk, lx, lz)
+	if type == "rock" or type in Eras.ORE_TYPES:
+		# A boulder on a slope settles to its low side. Set by the ground under its middle,
+		# its downhill edge stood clear of the ground (on a lake bed, water showed under it).
+		var lo := y
+		for k in 8:
+			var a := TAU * k / 8.0
+			lo = minf(lo, height_at(chunk, clampf(lx + cos(a) * 0.8 * scale, 0.0, SIZE - 0.01), clampf(lz + sin(a) * 0.8 * scale, 0.0, SIZE - 0.01)))
+		y = minf(y, lo + 0.05 * scale)
 	var o := {
 		"i": objs.size(), "t": type, "e": era,
-		"p": Vector3(lx, height_at(chunk, lx, lz), lz),
+		"p": Vector3(lx, y, lz),
 		"r": yaw, "s": scale, "st": st,
 	}
 	if sp != 0:
@@ -1191,13 +1282,14 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 		var p: float = Eras.TREE_DENSITY[era] / candidates * (0.25 + forest * 1.6) * float(bp["tree_density"])
 		if landforms:
 			p *= WorldField.LANDFORM_TREES[field.landform_at(x0 + lx, z0 + lz)]
-		# No tree takes root in loose dune sand.
-		p *= 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
+		# No tree takes root in loose dune sand, but for a palm on its beach or oasis.
+		var loose := 1.0 - smoothstep(0.15, 0.45, sand_at(chunk, lx, lz))
 		if roll >= p or slope_at(chunk, lx, lz) > 0.75 or height_at(chunk, lx, lz) < WATER_LEVEL + 0.4 or by_river(chunk, lx, lz) or _near_settlement(x0 + lx, z0 + lz, sites, 6.0) or road_at(chunk, lx, lz) > 0.15 or in_cave(chunk, lx, lz) or kept_out(plans, lx, lz, 1.0):
 			continue
 		var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
-		if f.is_empty():
+		if f.is_empty() or (roll >= p * loose and f["t"] != "palm"):
 			continue
+		f = _mixed_flora(f, era, x0 + lx, z0 + lz, pick, height_at(chunk, lx, lz))
 		_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# v4: old-growth forests in the densest regions, close enough to darken the floor.
@@ -1225,6 +1317,7 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			var f := Biome.fit_flora(bp, Biome.by_altitude(bp, Biome.pick_flora(bp, pick), height_at(chunk, lx, lz), pick), height_at(chunk, lx, lz))
 			if f.is_empty():
 				continue
+			f = _mixed_flora(f, era, x0 + lx, z0 + lz, pick, height_at(chunk, lx, lz))
 			_add(chunk, f["t"], era, lx, lz, yaw, sc, {"hp": hp, "yield": yield_}, f["sp"], variant)
 
 	# Rocks and ore, shaped by the region's geology.
@@ -1250,7 +1343,8 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			rd *= WorldField.LANDFORM_ROCKS[lf]
 			if lf == WorldField.LF_CRATERS and WorldField.terrain_v >= 16:
 				rd *= field.crater_rocks(x0 + lx, z0 + lz)
-		var rocks: Array = bp["rocks"]
+		# v18: near a region's edge a boulder is now and then of the neighbour's stone.
+		var rocks: Array = Biome.params(field.region_hash_mixed(x0 + lx, z0 + lz), era)["rocks"] if mix_species else bp["rocks"]
 		# Dunes bury their stones: no boulders on open sand. Nor one perched on the lip
 		# of a drop, half of it hanging over thin air.
 		if sand_at(chunk, lx, lz) > 0.4 or _on_edge(chunk, lx, lz, sc):
@@ -1391,8 +1485,20 @@ func settlement_layout(s: Dictionary) -> Array:
 		var cx := int(floor(c.x / SIZE))
 		var cz := int(floor(c.y / SIZE))
 		var o := {"chunk": Vector2i(cx, cz), "era": era, "how": "found"}
-		items.append({"t": Eras.CACHE_TYPES[era], "p": c + Vector2(r.randf_range(-9, 9), r.randf_range(-9, 9)),
-			"yaw": r.randf() * TAU, "st": {"loot": ItemDB.roll_loot(era, r, o), "opened": false}})
+		var at := c + Vector2(r.randf_range(-9, 9), r.randf_range(-9, 9))
+		var cyaw := r.randf() * TAU
+		var loot := ItemDB.roll_loot(era, r, o)
+		# Not left out in the middle of the square: set by a house's door, against its
+		# front wall beside the doorstep, where someone put it down (reviewer item 160).
+		var homes: Array = items.filter(func(it): return KitHouse.has(it["t"]))
+		if not homes.is_empty():
+			var h: Dictionary = homes[r.randi() % homes.size()]
+			var hd := KitHouse.size_of(h["t"])
+			var side := -1.0 if r.randf() < 0.5 else 1.0
+			var off := Vector2(side * minf(1.6, hd.x * 0.5 - 0.6), hd.z * 0.5 + 0.55)
+			at = (h["p"] as Vector2) + off.rotated(-float(h["yaw"]))
+			cyaw = float(h["yaw"]) + PI * 0.5 + r.randf_range(-0.2, 0.2)
+		items.append({"t": Eras.CACHE_TYPES[era], "p": at, "yaw": cyaw, "st": {"loot": loot, "opened": false}})
 	return items
 
 ## Rings of buildings per size: [min count, max count, min radius, max radius].
@@ -1422,6 +1528,23 @@ func _town_rings(s: Dictionary, r: RandomNumberGenerator, kit: Array, items: Arr
 				continue
 			var p := c + Vector2(cos(ang), sin(ang)) * rad
 			items.append({"t": t, "p": p, "yaw": atan2(c.x - p.x, c.y - p.y), "st": {}})
+
+## Near a region's edge, plants and stones of the neighbouring region mix in (v18). Only
+## which species a tree or boulder is changes, never where it stands or whether it does,
+## so a chunk's objects keep their places and indices with this on or off.
+var mix_species := true
+
+## The species a tree picked from its own region's flora as `f` takes: near the edge, now
+## and then the neighbour's pick by the same roll (its own if the neighbour has none).
+func _mixed_flora(f: Dictionary, era: int, x: float, z: float, pick: float, y: float) -> Dictionary:
+	if not mix_species or WorldField.terrain_v < WorldField.CLIMATE_V:
+		return f
+	var h := field.region_hash_mixed(x, z)
+	if h == field.region_hash_at(x, z):
+		return f
+	var nb := Biome.params(h, era)
+	var g := Biome.fit_flora(nb, Biome.by_altitude(nb, Biome.pick_flora(nb, pick), y, pick), y)
+	return f if g.is_empty() else g
 
 ## Sci-fi outposts sit on a street grid: a main street carrying the first road through
 ## town and a cross street, buildings on square lots facing the nearer street, fenced

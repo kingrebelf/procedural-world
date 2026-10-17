@@ -37,17 +37,6 @@ void vertex() {
 	rest = CUSTOM0.xyz;
 	rest_pos = vec3(CUSTOM0.w, CUSTOM0.y, CUSTOM0.z);
 	rest_n = CUSTOM1.xyz;
-	// Loose cloth (skirts, capes, aprons) ripples a little toward its hem, out of step from
-	// one person to the next, so it never hangs as a rigid tube.
-	int part = int(CUSTOM0.x + 0.5);
-	if (part == 5 || part == 6 || part == 8) {
-		float hang = part == 6 ? UV.y / 3.0 : UV.y / 2.0;
-		vec3 wp = NODE_POSITION_WORLD;
-		float ph = wp.x * 1.7 + wp.z * 2.3;
-		float around = UV.x * (part == 6 ? 3.0 : 2.1);
-		float wave = sin(TIME * 1.9 + around * 6.2832 + ph) * 0.6 + sin(TIME * 3.3 - around * 12.566 + ph * 1.3) * 0.4;
-		VERTEX += NORMAL * wave * 0.014 * hang * hang;
-	}
 }
 
 float hash(vec2 p) {

@@ -109,9 +109,11 @@ func _initialize() -> void:
 	var last: Vector3 = spots[-1]
 	var mid := (first + last) * 0.5
 	var width: float = last.x - first.x + 3.0
+	# The second close-up looks at the third animal, or the last if there are fewer.
+	var third: Vector3 = spots[mini(2, spots.size() - 1)]
 	for shot in [["row", mid + Vector3(0, width * 0.16, width * 1.25), mid + Vector3(0, 0.6, 0)],
 			["close", spots[0] + Vector3(-1.2, 1.2, 2.6), spots[0] + Vector3(0.2, 0.9, 0)],
-			["close2", spots[2] + Vector3(1.0, 1.4, 3.0), spots[2] + Vector3(0, 1.0, 0)]]:
+			["close2", third + Vector3(1.0, 1.4, 3.0), third + Vector3(0, 1.0, 0)]]:
 		cam.position = shot[1]
 		cam.look_at(shot[2])
 		for f in 12:

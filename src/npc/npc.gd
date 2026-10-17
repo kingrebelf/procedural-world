@@ -32,6 +32,14 @@ var upper_anim := ""
 ## An archer or gunner holds off this far from whoever they attack (0: up close).
 var keep_off := 0.0
 
+## The way they are walking: waypoints round ground too steep to walk (WalkGrid), the one
+## they head for, the goal it was planned to and when they may plan again.
+var _route := PackedVector2Array()
+var _route_i := 0
+var _route_goal := Vector2.INF
+var _route_reached := true
+var _route_wait := 0.0
+
 var _body: AnimatableBody3D
 var _model: Node3D
 var _human: HumanModel ## the kit character, when its assets are present
@@ -87,8 +95,9 @@ func _ready() -> void:
 	_pace = BodyShape.pace(b, age)
 	if HumanModel.available():
 		_human = HumanModel.new()
-		_human.build(b, int(rec["era"]), String(rec["job"]), age)
+		# Scaled first: what the hands hold is sized against it (HumanModel.hold).
 		_human.scale = Vector3(_scale, _scale, _scale)
+		_human.build(b, int(rec["era"]), String(rec["job"]), age)
 		add_child(_human)
 		_model = _human
 		if manager and manager.has_method("ground"):
@@ -234,7 +243,7 @@ func _update_perform(delta: float) -> void:
 		if perform_t <= 0.0 and _human:
 			_human.play_once("jump_land")
 	if perform == "sit" and _human:
-		if _stool == null and not _human.busy():
+		if _stool == null and not _human.busy() and not (manager.has_method("bench_under") and manager.bench_under(self)):
 			_stool = _make_stool()
 	if perform_t <= 0.0:
 		_end_perform()
@@ -247,10 +256,11 @@ func _make_stool() -> Node3D:
 	if int(rec["era"]) == Eras.SCIFI:
 		k.box("panel", I.translated(Vector3(0, seat * 0.5 - 0.02, 0)), Vector3(0.42, seat - 0.04, 0.42))
 	else:
-		k.cylinder("planks", I.translated(Vector3(0, seat - 0.035, 0)), 0.2, 0.2, 0.05, 12)
+		# Wide enough, and the legs splayed enough, to show past a skirt.
+		k.cylinder("planks", I.translated(Vector3(0, seat - 0.035, 0)), 0.23, 0.23, 0.05, 12)
 		for i in 3:
 			var a := TAU * i / 3.0
-			k.cylinder("planks", I.translated(Vector3(cos(a) * 0.12, (seat - 0.06) * 0.5, sin(a) * 0.12)), 0.025, 0.02, seat - 0.06, 6)
+			k.cylinder("planks", Transform3D(Basis(Vector3(-sin(a), 0, cos(a)), 0.22), Vector3(cos(a) * 0.17, (seat - 0.06) * 0.5, sin(a) * 0.17)), 0.028, 0.022, seat - 0.04, 6)
 	var mi := MeshInstance3D.new()
 	mi.mesh = k.commit(Materials.get_mat)
 	add_child(mi)
@@ -323,8 +333,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		_end_perform()
 	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
 	var stay := perform != "" and perform != "zombie"
-	if not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at:
-		var dir := (goal - p2).normalized()
+	_route_wait -= delta
+	var go := not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at
+	var aim := _aim(p2, goal) if go else goal
+	if go and p2.distance_to(aim) > 0.05:
+		var dir := (aim - p2).normalized()
 		# Keep a little personal space.
 		for o in others:
 			if o == self:
@@ -381,6 +394,53 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_model.visible = not indoors
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
 	_animate(delta, moving, run, player_pos)
+
+## Where to head for next on the way to `goal`: straight there when nothing on the way is
+## too steep, else along a route round it (planned again when the goal moves on or the
+## route runs out). Where they are now when they must wait (for a route, or at the end of
+## one that can't get any nearer).
+func _aim(p2: Vector2, goal: Vector2) -> Vector2:
+	var walk: WalkGrid = manager.get("walk") if manager else null
+	if walk == null:
+		return goal
+	var moved := _route_goal == Vector2.INF or goal.distance_to(_route_goal) > maxf(2.0, p2.distance_to(goal) * 0.15)
+	var done := _route_i >= _route.size()
+	if (moved or done) and _route_wait <= 0.0:
+		_route_wait = 0.4
+		if walk.clear(p2, goal, WalkGrid.PERSON):
+			_set_route(PackedVector2Array([goal]), goal, true)
+		else:
+			var r := walk.route(p2, goal, WalkGrid.PERSON)
+			if not r.is_empty() and not r["reached"]:
+				# No walk there: a scramble up a steep bank will do, but not a cliff.
+				var up := walk.route(p2, goal, WalkGrid.SCRAMBLE)
+				if not up.is_empty() and up["reached"]:
+					r = up
+			if not r.is_empty():
+				_set_route(r["pts"], goal, r["reached"])
+				if not r["reached"]:
+					# Nowhere nearer to be got to: try again in a while (the way may open).
+					_route_wait = 3.0
+	while _route_i < _route.size() - 1 and p2.distance_to(_route[_route_i]) < 1.2:
+		_route_i += 1
+	if _route_i >= _route.size():
+		return p2
+	if _route_i < _route.size() - 1:
+		return _route[_route_i]
+	# The last leg: to the goal itself (it may have moved on a little since), or to the
+	# nearest place to it they can get to, where they wait.
+	if _route_reached:
+		return goal
+	if p2.distance_to(_route[_route_i]) < 0.6:
+		_route_i += 1
+		return p2
+	return _route[_route_i]
+
+func _set_route(pts: PackedVector2Array, goal: Vector2, reached: bool) -> void:
+	_route = pts
+	_route_i = 0
+	_route_goal = goal
+	_route_reached = reached
 
 ## Whether they have got to where their duty is done.
 func at_work() -> bool:
@@ -540,6 +600,9 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 	if moving and (NPCGen.GUARD_JOBS.has(rec["job"]) or rec.has("band")) and action in ["confront", "attack"]:
 		up = "pistol_idle" if keep_off > 0.0 else "sword_idle"
 	_human.set_upper(up)
+	# Day visitors standing about (MarketCrowd) are a background crowd: animated a little
+	# less often unless you are close.
+	_human.animator.calm = rec.has("visit") and not moving and not talking and _speech_t <= 0.0 and (perform == "" or perform == "sit")
 	if action == "attack" and attack_cd > 1.3 and not rec.has("band"):
 		_human.play_once("sword" if NPCGen.GUARD_JOBS.has(rec["job"]) else "punch")
 	if perform != "":

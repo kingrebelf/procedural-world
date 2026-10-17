@@ -38,11 +38,14 @@ func _exit_tree() -> void:
 	if _task >= 0:
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
+	if _wake_tex:
+		Water.set_boat_wakes(null, Callable())
 
 func now_t() -> float:
 	return Boats.world_time(Game.day, Game.day_seconds)
 
 func _process(delta: float) -> void:
+	_feed_wakes()
 	if player == null or field() == null:
 		return
 	_scan_t -= delta
@@ -208,3 +211,86 @@ func despawn(b: BoatNode) -> void:
 		if boats[key] == b:
 			_remove(key)
 			return
+
+## The Kelvin waves of the boats under way nearest the view, at most 8: an 8x2 float
+## texture the water shaders read (water_wakes.gdshaderinc, through wake(p)), and wake_at()
+## answering the same heights so hulls and swimmers ride them (Water.set_boat_wakes).
+const WAKE_SLOTS := 8
+var _wake_img: Image
+var _wake_tex: ImageTexture
+var _wakes: Array = [] ## [Vector4 bow x, z, heading x, z; Vector4 speed, length, half-beam, strength]
+var _wakes_live := false
+
+func _feed_wakes() -> void:
+	var cam := get_viewport().get_camera_3d()
+	var found: Array = [] # [distance, info]
+	if cam:
+		var cp := Vector2(cam.global_position.x, cam.global_position.z)
+		for b in boats.values():
+			if not is_instance_valid(b):
+				continue
+			var info: Array = (b as BoatNode).wake_info()
+			if info.is_empty():
+				continue
+			var a: Vector4 = info[0]
+			var dist := Vector2(a.x, a.y).distance_to(cp)
+			if dist < 500.0:
+				found.append([dist, info])
+	found.sort_custom(func(p, q): return p[0] < q[0])
+	if found.is_empty() and not _wakes_live:
+		return
+	_wakes_live = not found.is_empty()
+	if _wake_img == null:
+		_wake_img = Image.create_empty(WAKE_SLOTS, 2, false, Image.FORMAT_RGBAF)
+	_wakes.clear()
+	for i in WAKE_SLOTS:
+		var a := Vector4.ZERO
+		var b := Vector4.ZERO
+		if i < found.size():
+			a = found[i][1][0]
+			b = found[i][1][1]
+			_wakes.append([a, b])
+		_wake_img.set_pixel(i, 0, Color(a.x, a.y, a.z, a.w))
+		_wake_img.set_pixel(i, 1, Color(b.x, b.y, b.z, b.w))
+	if _wake_tex == null:
+		_wake_tex = ImageTexture.create_from_image(_wake_img)
+		Water.set_boat_wakes(_wake_tex, wake_at)
+	else:
+		_wake_tex.update(_wake_img)
+
+## How far the boats' wakes lift the water at (x, z): the same sum as wake_height() in
+## water_wakes.gdshaderinc (keep them in step).
+func wake_at(x: float, z: float) -> float:
+	var h := 0.0
+	var p := Vector2(x, z)
+	for w in _wakes:
+		var a: Vector4 = w[0]
+		var b: Vector4 = w[1]
+		if b.w <= 0.001:
+			continue
+		var f := Vector2(a.z, a.w)
+		var d := p - Vector2(a.x, a.y)
+		var bx := -d.dot(f)
+		var ay := absf(d.dot(Vector2(-f.y, f.x)))
+		var v := maxf(b.x, 0.3)
+		var L := b.y
+		var beam := b.z
+		var reach := 25.0 + 3.0 * L
+		if bx < -L * 0.4 or bx > reach or ay > beam + maxf(bx, 0.0) * 0.4 + 6.0:
+			continue
+		var k0 := 9.8 / (v * v)
+		var A := clampf(0.065 * v * sqrt(L) / 3.0, 0.0, 0.4) * b.w
+		var decay := 1.0 / sqrt(1.0 + maxf(bx, 0.0) / maxf(L * 0.5, 1.0)) * (1.0 - smoothstep(reach * 0.6, reach, bx))
+		var wedge := maxf(bx, 0.0) * 0.354 + beam * 0.6
+		var inside := 1.0 - smoothstep(wedge * 0.7, wedge * 1.05, ay)
+		var trans := cos(k0 * (bx + ay * ay / maxf(2.0 * bx + L, 1.0)) - 1.2) * inside * smoothstep(-L * 0.2, L * 0.4, bx)
+		var q := ay - wedge
+		var wq := 0.6 + maxf(bx, 0.0) * 0.08 + beam * 0.4
+		var cusp := exp(-(q * q) / (wq * wq)) * smoothstep(-L * 0.3, L * 0.2, bx)
+		var div := cos(k0 * 1.7 * (bx * 0.574 + ay * 0.819)) * cusp
+		var ux := (bx - L * 0.08) / (L * 0.18)
+		var uy := (ay - beam * 1.15) / (beam * 0.8 + 0.4)
+		var bow := exp(-(ux * ux + uy * uy)) * 1.3 - exp(-pow((bx - L * 0.5) / (L * 0.35), 2.0) - uy * uy) * 0.45
+		var hull := (1.0 - smoothstep(beam * 0.85, beam * 1.2, ay)) * smoothstep(-L * 0.06, L * 0.02, bx) * (1.0 - smoothstep(L * 0.95, L * 1.08, bx))
+		h += A * (trans * 0.55 * decay + div * 0.8 * decay + bow) * (1.0 - hull)
+	return clampf(h, -Water.WAKE_MAX, Water.WAKE_MAX)

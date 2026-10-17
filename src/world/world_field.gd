@@ -24,6 +24,9 @@ var _mesa: FastNoiseLite
 var _cell_d: FastNoiseLite
 var _cell_v: FastNoiseLite
 var _cell_e: FastNoiseLite
+var _warmth: FastNoiseLite
+var _wetness: FastNoiseLite
+var _tcell: FastNoiseLite
 var _wind := Vector2.RIGHT
 
 ## Terrain generation in force. Worlds created before v4 keep the older shapes, so chunks
@@ -51,6 +54,11 @@ func _init(world_seed: int) -> void:
 	_cell_d = _cellular(14, FastNoiseLite.RETURN_DISTANCE)
 	_cell_v = _cellular(14, FastNoiseLite.RETURN_CELL_VALUE)
 	_cell_e = _cellular(14, FastNoiseLite.RETURN_DISTANCE2_SUB)
+	_warmth = _noise(15, 1.0 / 7500.0, 3, FastNoiseLite.FRACTAL_FBM)
+	_wetness = _noise(16, 1.0 / 3200.0, 2, FastNoiseLite.FRACTAL_FBM)
+	# Where rock towers stand (v19): the distance to the nearest, its points kept
+	# further apart than the pattern above's.
+	_tcell = _cellular(17, FastNoiseLite.RETURN_DISTANCE, TOWER_JITTER)
 	_wind = Vector2.RIGHT.rotated(WHash.unit2(seed, 0, 0, 106) * TAU)
 
 func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite:
@@ -62,13 +70,13 @@ func _noise(salt: int, freq: float, octaves: int, fractal: int) -> FastNoiseLite
 	n.fractal_octaves = octaves
 	return n
 
-func _cellular(salt: int, ret: int) -> FastNoiseLite:
+func _cellular(salt: int, ret: int, jitter := 0.85) -> FastNoiseLite:
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_CELLULAR
 	n.seed = WHash.hash2(seed, salt, 0, 1) & 0x7FFFFFFF
 	n.frequency = 1.0 / CELL
 	n.fractal_type = FastNoiseLite.FRACTAL_NONE
-	n.cellular_jitter = 0.85
+	n.cellular_jitter = jitter
 	n.cellular_return_type = ret
 	return n
 
@@ -102,7 +110,9 @@ func _site(ix: int, iz: int) -> Array:
 	if s == null:
 		if _site_cache.size() > 4096:
 			_site_cache.clear()
-		s = [site_pos(ix, iz), site_era(ix, iz), site_landform(ix, iz)]
+		var pos := site_pos(ix, iz)
+		var lf := site_landform(ix, iz)
+		s = [pos, site_era(ix, iz), lf, _site_climate(pos, lf)]
 		_site_cache[k] = s
 	return s
 
@@ -175,10 +185,137 @@ func region_site_at(x: float, z: float) -> Vector2i:
 				best = Vector2i(cx + ox, cz + oz)
 	return best
 
-## Stable hash of the region containing (x, z); seeds its biome (see Biome).
+## Stable hash of the region containing (x, z); seeds its biome (see Biome). From v18 its
+## low four bits are the region's climate (CLIMATE_BITS), so everything that has a
+## region's hash (a saved chunk's "biome" too) knows how warm and wet it is.
 func region_hash_at(x: float, z: float) -> int:
 	var s := region_site_at(x, z)
-	return WHash.hash2(seed, s.x, s.y, 104)
+	return _site_hash(s.x, s.y)
+
+func _site_hash(ix: int, iz: int) -> int:
+	var h := WHash.hash2(seed, ix, iz, 104)
+	if terrain_v >= CLIMATE_V:
+		h = (h & ~0xF) | int(_site(ix, iz)[3])
+	return h
+
+## How far either side of the line where two regions meet their plants mix (v18): tens of
+## metres of mixed woods and grass between one region and the next, never a hard line.
+const BLEND := 80.0
+
+## The two regions nearest (x, z) and how far into the band between them it is: [the
+## nearest's hash, the next's hash, the next's share (0 deep in the nearest, 0.5 right
+## on the line between them)].
+func region_blend(x: float, z: float) -> Array:
+	var px := x + _warp.get_noise_2d(x, z) * WARP_AMP
+	var pz := z + _warp.get_noise_2d(z + 913.0, x - 377.0) * WARP_AMP
+	var cx := int(floor(px / ERA_CELL))
+	var cz := int(floor(pz / ERA_CELL))
+	var p := Vector2(px, pz)
+	var best := Vector2i.ZERO
+	var next := Vector2i.ZERO
+	var d1 := INF
+	var d2 := INF
+	for oz in range(-1, 2):
+		for ox in range(-1, 2):
+			var d := p.distance_squared_to(_site(cx + ox, cz + oz)[0])
+			if d < d1:
+				d2 = d1
+				next = best
+				d1 = d
+				best = Vector2i(cx + ox, cz + oz)
+			elif d < d2:
+				d2 = d
+				next = Vector2i(cx + ox, cz + oz)
+	# Distance to the bisector between the two sites.
+	var gap := (_site(best.x, best.y)[0] as Vector2).distance_to(_site(next.x, next.y)[0])
+	var edge := (d2 - d1) / maxf(2.0 * gap, 0.001)
+	return [_site_hash(best.x, best.y), _site_hash(next.x, next.y), 0.5 * (1.0 - smoothstep(0.0, BLEND, edge))]
+
+## The region whose plants grow at (x, z): the nearest, but near an edge now and then the
+## neighbour's, the more often the nearer the edge (v18; before, always the nearest).
+## `b`: region_blend(x, z) when the caller has it already.
+func region_hash_mixed(x: float, z: float, b: Array = []) -> int:
+	if terrain_v < CLIMATE_V:
+		return region_hash_at(x, z)
+	if b.is_empty():
+		b = region_blend(x, z)
+	if float(b[2]) <= 0.0:
+		return b[0]
+	return b[1] if WHash.unit2(seed, int(floor(x * 2.0)), int(floor(z * 2.0)), 109) < float(b[2]) else b[0]
+
+# --- Climate (v18) ------------------------------------------------------------
+## How warm and how wet the land is, from two slow noises several kilometres across over
+## the planet's own warmth (a world with a high snow line is a warm one): hot belts where
+## palms and jungle grow, dry ones of savanna and desert, cold uplands of spruce and
+## birch. The land round the spawn is kept temperate, the woods and meadows a medieval
+## start expects; the tropics lie a few kilometres out.
+
+const CLIMATE_V := 18
+## Each region's climate in its hash's low bits: warmth level * 4 + wetness level, each 0..3.
+const CLIMATE_BITS := 0xF
+## Where warmth (0..1) passes from cold to cool, cool to temperate, temperate to hot: most
+## land temperate, a hot belt or two, cold uplands about as common.
+const WARM_LEVELS := [0.2, 0.36, 0.68]
+## How much wetter (or drier) each landform's climate is: dunes and badlands are deserts,
+## lakes are damp.
+const LF_WET := [0.0, 0.05, 0.0, 0.0, -0.05, 0.05, 0.0, 0.15, -0.5, -0.2, -0.3]
+
+## (warmth, wetness), each 0..1, at (x, z): 0.5 is a temperate, middling place.
+## Continuous (the eventual blend of biomes and the weather can both read it).
+func climate_at(x: float, z: float) -> Vector2:
+	if terrain_v < CLIMATE_V:
+		return Vector2(0.5, 0.5)
+	var warm := 0.5 + _warmth.get_noise_2d(x, z) * 1.1 + clampf((snow_line - 50.0) / 80.0, -0.6, 0.2)
+	var wet := 0.5 + _wetness.get_noise_2d(x, z) * 0.9
+	var home := 1.0 - smoothstep(1100.0, 2600.0, Vector2(x, z).length())
+	warm = lerpf(warm, clampf(warm, 0.4, 0.62), home)
+	return Vector2(clampf(warm, 0.0, 1.0), clampf(wet, 0.0, 1.0))
+
+## A region's climate as CLIMATE_BITS: its site's climate, its landform's dryness or damp.
+func _site_climate(pos: Vector2, lf: int) -> int:
+	if terrain_v < CLIMATE_V:
+		return 0
+	var c := climate_at(pos.x, pos.y)
+	c.y = clampf(c.y + LF_WET[lf], 0.0, 1.0)
+	var warm := 0
+	for t in WARM_LEVELS:
+		if c.x >= t:
+			warm += 1
+	return warm * 4 + clampi(int(c.y * 4.0), 0, 3)
+
+## The climate of a region from its hash (region_hash_at): (warmth, wetness) levels 0..3,
+## or (-1, -1) in worlds made before climates (all temperate, as they always were).
+static func region_climate(h: int) -> Vector2i:
+	if terrain_v < CLIMATE_V:
+		return Vector2i(-1, -1)
+	return Vector2i((h & CLIMATE_BITS) >> 2, h & 3)
+
+## How a region's climate shows on its ground (v18), as the terrain shader reads it
+## (UV2): x how sun-bleached and dry the grass is (the savanna's straw, the dry plains
+## of the desert's edge), y how lush (+, the wet tropics) or cold and dun (-, the uplands
+## of spruce). (0, 0) is the temperate ground every world had before climates.
+static func ground_look(h: int) -> Vector2:
+	var c := region_climate(h)
+	if c.x < 0:
+		return Vector2.ZERO
+	var dry := 0.0
+	var lush := 0.0
+	if c.x == 3:
+		dry = [1.0, 0.8, 0.0, 0.0][c.y]
+		lush = [0.0, 0.0, 0.55, 1.0][c.y]
+	elif c.x == 2 and c.y == 0:
+		dry = 0.3
+	var cold: float = [1.0, 0.4, 0.0, 0.0][c.x]
+	return Vector2(dry, lush - cold)
+
+## The ground's climate look at (x, z): the nearest region's, blended into the next one's
+## across the band where they meet, as their plants are (region_blend).
+func ground_look_at(x: float, z: float, b: Array = []) -> Vector2:
+	if terrain_v < CLIMATE_V:
+		return Vector2.ZERO
+	if b.is_empty():
+		b = region_blend(x, z)
+	return ground_look(b[0]).lerp(ground_look(b[1]), float(b[2]))
 
 ## Name of the region containing (x, z): stable per Voronoi site.
 func region_name_at(x: float, z: float) -> String:
@@ -381,6 +518,107 @@ static func _steps(h: float, step: float, riser := 0.25) -> float:
 	var f := floorf(t)
 	return (f + smoothstep(1.0 - riser, 1.0, t - f)) * step
 
+# --- Rock towers (v19) ----------------------------------------------------------
+## From v19 karst towers and rock needles stand the way real ones do. Before it each
+## tower took its size from its Voronoi cell and was cut off where the cell ended, so
+## a tall tower crowded by a neighbour became a thin sheer fin as tall as a thirty-
+## storey block, and lone needles rose three times as tall as they were wide straight
+## out of flat grass. Now:
+##  - a tower's height and width come from smooth fields, not from its cell, and each
+##    point of land takes the highest of the towers round it, so two that crowd each
+##    other merge into one massif with a saddle between their tops, never a cut;
+##  - no tower is taller than TOWER_ASPECT (karst) or NEEDLE_ASPECT times its width at
+##    the foot, and none rises more than about 50 m over the valley floor;
+##  - towers grow in clusters, tallest in the heart of one and dwindling to knolls at
+##    its edges, with open valleys between clusters; never one needle alone on a plain;
+##  - lakes and bays among them stay open water;
+##  - each stands in an apron of fallen rock (talus at about the angle of repose), its
+##    walls jointed and ledged, its top broken.
+const TOWERS_V := 19
+const TOWER_JITTER := 0.6
+const TOWER_ASPECT := 1.4
+const NEEDLE_ASPECT := 2.0
+
+## Distance in metres to the nearest tower on a pattern of towers `size` metres apart
+## (v19). Its points stand at least two fifths of `size` apart.
+func _tower_d(x: float, z: float, size: float, off: float) -> float:
+	var k := CELL / size
+	return (_tcell.get_noise_2d(x * k + off, z * k - off * 0.61) + 1.0) * size
+
+## How much a cluster of towers grows at (x, z), 0..1: patches a couple of hundred
+## metres across, so a tower's top barely tilts with it.
+func _tower_mass(x: float, z: float, off: float) -> float:
+	return smoothstep(-0.35, 0.3, _hills.get_noise_2d(x * 0.7 + off, z * 0.7 - off * 0.37))
+
+## How big the towers round (x, z) are, 0..1: neighbours differ, but one tower is all
+## of a piece (features about 140 m across).
+func _tower_size(x: float, z: float, off: float) -> float:
+	return clampf((_mesa.get_noise_2d(x * 1.3 + off, z * 1.3 + off * 0.5) + 0.6) / 1.2, 0.0, 1.0)
+
+## Towers dwindle where the valley floor `base` dips under the water (sea level is 0),
+## so lakes and bays stay open water that boats can cross.
+static func _tower_dry(base: float) -> float:
+	return smoothstep(-1.5, 2.5, base)
+
+## A tower's apron of fallen rock out to `reach` times its radius: a concave skirt a
+## fifth of its height at the foot of the wall.
+static func _talus(tall: float, q: float, reach: float) -> float:
+	return 0.22 * tall * pow(clampf((reach - q) / (reach - 0.75), 0.0, 1.0), 1.6)
+
+func _karst_v19(x: float, z: float, base: float) -> float:
+	var d := _tower_d(x, z, 50.0, 0.0)
+	var s := _tower_size(x, z, 0.0)
+	var m := _tower_mass(x, z, 0.0)
+	var r := 10.0 + 8.0 * s
+	var tall := minf(24.0 + 30.0 * s, TOWER_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.55 + 0.45 * m) * _tower_dry(base)
+	if tall < 0.5 or d > r * 2.0:
+		return 0.0
+	# Weathered limestone: vertical joints flute the walls, bedding planes step them in
+	# ledges, the crown is broken and none stands quite straight. The warps scale with
+	# the tower, so a small one isn't eaten away.
+	var w := r / 18.0
+	var lean := _moss.get_noise_2d(x * 0.7 + 300.0, z * 0.7) * 2.0 * w
+	var joints := (absf(_detail.get_noise_2d(x * 1.3 + 70.0, z * 1.3)) - 0.25) * 2.4 * w
+	var q := (d + _detail.get_noise_2d(x * 0.5, z * 0.5) * 2.0 * w) / r
+	var qf := maxf(q + (lean + joints) / r, 0.0)
+	var body := tall * (1.0 - pow(minf(qf, 1.0), 2.6))
+	var crown := _detail.get_noise_2d(x * 0.35 + 11.0, z * 0.35) * 0.08 * tall
+	var tier := 5.0 + 4.0 * (_mesa.get_noise_2d(x * 0.9 - 70.0, z * 0.9) + 1.0) * 0.5
+	var stepped := _steps(body + crown + _detail.get_noise_2d(x * 0.8 + 5.0, z * 0.8) * 1.2, tier, 0.35)
+	var tower := maxf(lerpf(body, stepped, 0.75), 0.0)
+	return maxf(tower, _talus(tall, q, 2.0) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 1.7 - 40.0, z * 1.7) + 1.0) * 0.5))
+
+func _needles_v19(x: float, z: float, base: float) -> float:
+	var d := _tower_d(x, z, 40.0, 517.0)
+	var s := _tower_size(x, z, 517.0)
+	var m := _tower_mass(x, z, 517.0)
+	var r := 7.0 + 5.0 * s
+	var tall := minf(20.0 + 30.0 * s, NEEDLE_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.5 + 0.5 * m) * _tower_dry(base)
+	if tall < 0.5:
+		return 0.0
+	var w := r / 12.0
+	var bumps := _detail.get_noise_2d(x, z) * 1.0 + _moss.get_noise_2d(x * 0.7, z * 0.7) * 2.0
+	var spike := 0.0
+	if d < r * 2.1:
+		# Fluted sides, a body narrowing in tilted, ledged tiers and a broken tip.
+		var q := maxf((d + bumps * w) / r, 0.0)
+		var qf := maxf(q + (absf(_detail.get_noise_2d(x * 1.6 + 40.0, z * 1.6)) - 0.3) * 3.0 * w / r, 0.0)
+		var body := tall * pow(maxf(0.0, 1.0 - qf), 1.15)
+		var tier := 4.0 + 4.0 * (_mesa.get_noise_2d(x * 0.9 + 333.0, z * 0.9) + 1.0) * 0.5
+		var warped := body + _detail.get_noise_2d(x * 0.9 + 17.0, z * 0.9) * 2.0
+		spike = lerpf(body, _steps(warped, tier, 0.4), 0.8)
+		spike = minf(spike, tall * (0.84 + 0.1 * _detail.get_noise_2d(x * 0.2 - 60.0, z * 0.2)))
+		spike = maxf(spike, _talus(tall, q, 2.1) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 1.7 + 90.0, z * 1.7) + 1.0) * 0.5))
+	# Lesser spires crowd round the feet of the big ones.
+	var near := 1.0 - smoothstep(r * 1.2, r * 2.6, d)
+	if near > 0.0:
+		var d2 := _tower_d(x, z, 17.0, 2203.0)
+		var r2 := 3.5 + 2.5 * _tower_size(x, z, 2203.0)
+		var q2 := maxf((d2 + bumps * 0.4) / r2, 0.0)
+		var tall2 := minf(0.45 * tall, NEEDLE_ASPECT * 2.0 * r2) * near
+		spike = maxf(spike, maxf(tall2 * pow(maxf(0.0, 1.0 - q2), 1.3), _talus(tall2, q2, 1.8)))
+	return spike
+
 ## (base, holes, rough) of one landform; c is the continental height, h the land the
 ## era alone would have.
 func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
@@ -389,6 +627,8 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			# Limestone towers with sheer sides and rounded, wooded tops over flat green
 			# valley floors (Guilin, Zhangjiajie).
 			var base := c * 0.55 + 3.0 + _moss.get_noise_2d(x, z) * 2.5
+			if terrain_v >= TOWERS_V:
+				return Vector3(base, 0.0, _karst_v19(x, z, base))
 			var cl := _cell(x, z, 42.0, 0.0)
 			if cl.y < 0.42:
 				return Vector3(base, 0.0, 0.0)
@@ -415,6 +655,8 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 		LF_NEEDLES:
 			# Thin pointed rock needles.
 			var base := c * 0.7 + _moss.get_noise_2d(x, z) * 3.0 - 3.0
+			if terrain_v >= TOWERS_V:
+				return Vector3(base, 0.0, _needles_v19(x, z, base))
 			var cl := _cell(x, z, 34.0, 517.0)
 			if cl.y < 0.5:
 				return Vector3(base, 0.0, 0.0)

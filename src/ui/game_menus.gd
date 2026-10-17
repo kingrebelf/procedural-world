@@ -352,6 +352,7 @@ func _character_panel() -> Control:
 	var w := Game.crime.worst(Game.day)
 	if not w.is_empty():
 		v.add_child(UITheme.label("Wanted in %s (%d of %d stars)  ·  %d Marks bounty. Pay a guard there, or lie low and it cools off." % [w["name"], w["stars"], Crime.MAX_STARS, w["b"]], 16, Color(0.95, 0.45, 0.38)))
+	_standing_rows(v)
 	v.add_child(HSeparator.new())
 	var d := GridContainer.new()
 	d.columns = 4
@@ -1064,6 +1065,7 @@ func _trade_panel() -> Control:
 				st["stock"][t] -= 1
 				if st.has("purse"):
 					st["purse"] = int(st["purse"]) + price
+				Game.traded.emit(price)
 				if _trader_chunk:
 					Game.mark_chunk_dirty(_trader_chunk.data)
 				_refresh())
@@ -1097,6 +1099,32 @@ func _trade_panel() -> Control:
 	h.add_child(sell_sc)
 	return s[0]
 
+## How the towns of this world think of you: the ones you've been to, best first, with
+## any pass you hold through their gates.
+func _standing_rows(v: VBoxContainer) -> void:
+	var pre := "%d:" % Game.planet
+	var rows: Array = []
+	for sid in Game.standing.towns:
+		var t: Dictionary = Game.standing.towns[sid]
+		if String(sid).begins_with(pre) and String(t.get("name", "")) != "":
+			rows.append([Game.town_standing(sid), sid])
+	if rows.is_empty():
+		return
+	rows.sort_custom(func(a, b): return a[0] > b[0])
+	v.add_child(UITheme.label("Standing", 18, UITheme.ACCENT))
+	var g := GridContainer.new()
+	g.columns = 3
+	g.add_theme_constant_override("h_separation", 24)
+	for r in rows.slice(0, 8):
+		var sid: String = r[1]
+		var tier := Game.town_tier(sid)
+		g.add_child(UITheme.label(String(Game.standing.towns[sid]["name"]), 16))
+		g.add_child(UITheme.label("%s (%d)" % [tier, r[0]], 16, Standing.tier_color(tier)))
+		var ps := Game.standing.pass_of(sid, Game.day)
+		var how: String = {"toll": "toll paid", "bribe": "bribed", "vouched": "vouched for"}.get(String(ps.get("how", "")), "")
+		g.add_child(UITheme.label("Gate pass, %s: %.1f days left" % [how, float(ps["until"]) - Game.day] if not ps.is_empty() else "", 15, UITheme.DIM))
+	v.add_child(g)
+
 func _sell(idx: int, qty: int) -> void:
 	var it = Game.inventory.get_slot(idx)
 	if it == null:
@@ -1120,6 +1148,7 @@ func _sell(idx: int, qty: int) -> void:
 	Game.inventory.remove_at(idx, n)
 	Game.add_money(total)
 	Game.toast.emit("Sold for %d Marks" % total)
+	Game.traded.emit(total)
 	if _trader_chunk:
 		Game.mark_chunk_dirty(_trader_chunk.data)
 	_refresh()
@@ -1308,6 +1337,26 @@ func _map_filters(side: VBoxContainer) -> void:
 		cb.toggled.connect(func(on): Game.map.set_shown(cat, on))
 		grid.add_child(cb)
 	side.add_child(grid)
+	# The overlay painted over the land, one at a time (also the map overlay key).
+	side.add_child(UITheme.label("Map overlay", 18, UITheme.ACCENT))
+	var lg := GridContainer.new()
+	lg.columns = 2
+	var group := ButtonGroup.new()
+	for i in MapLayers.COUNT:
+		var rb := CheckBox.new()
+		rb.text = MapLayers.NAMES[i]
+		rb.button_group = group
+		rb.add_theme_font_size_override("font_size", 14)
+		rb.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+		rb.button_pressed = Game.map.layer == i
+		# Ticks like the filters above (the default radio rings barely show on the panel).
+		for ic in [["radio_checked", "checked"], ["radio_unchecked", "unchecked"]]:
+			rb.add_theme_icon_override(ic[0], ThemeDB.get_default_theme().get_icon(ic[1], "CheckBox"))
+		for st in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			rb.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		rb.toggled.connect(func(on): if on: Game.map.set_layer(i))
+		lg.add_child(rb)
+	side.add_child(lg)
 
 static var _find := "ore_iron_vein"
 

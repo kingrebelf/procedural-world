@@ -31,6 +31,8 @@ var _mat_bad: StandardMaterial3D
 var _near: Array = []
 var _near_t := 0.0
 var _near_at := Vector3.INF
+var _trees: Array = []
+var _trees_t := -2.0
 
 func _ready() -> void:
 	_mat_ok = _ghost_mat(Color(0.35, 1.0, 0.45, 0.38))
@@ -117,6 +119,14 @@ func near_pieces() -> Array:
 		_near_at = here
 	return _near
 
+## Wild trees near you (BuildCatalog.trees_near), refreshed with near_pieces().
+func near_trees() -> Array:
+	near_pieces()
+	if _trees_t != _near_t:
+		_trees = BuildCatalog.trees_near(player.streamer, _near_at, NEAR_RADIUS)
+		_trees_t = _near_t
+	return _trees
+
 func _forget_near() -> void:
 	_near_t = -1.0
 
@@ -132,6 +142,8 @@ func _find_target() -> Dictionary:
 	var n: Vector3 = hit["normal"]
 	if Doors.is_door_piece(_id):
 		return _door_target(from, p)
+	if BuildCatalog.def(_id).has("mount"):
+		return _mount_target(from, p, n)
 	var near := near_pieces()
 	var col: Object = hit.get("collider")
 	var anchor = null
@@ -169,6 +181,8 @@ func _find_target() -> Dictionary:
 		why = "unloaded"
 	if why == "" and _in_the_way(pos, s["yaw"]):
 		why = "player"
+	if why == "" and BuildCatalog.tree_in_way(near_trees(), BuildCatalog.world_aabb(_id, pos, s["yaw"]).grow(-0.05)):
+		why = "tree"
 	if why == "" and Game.stats.level < Recipes.unlock_level(_id):
 		why = "level"
 	return {"pos": pos, "yaw": s["yaw"], "ok": why == "", "why": why}
@@ -204,6 +218,30 @@ func _door_target(from: Vector3, p: Vector3) -> Dictionary:
 		why = "level"
 	return {"pos": pos, "yaw": yaw, "ok": why == "", "why": why}
 
+## A lamp, switch or box fixed to what you aim at: a wall (standing out of it along its
+## local +z) or a ceiling (hanging down from it). Red when the surface faces the wrong way.
+func _mount_target(from: Vector3, p: Vector3, n: Vector3) -> Dictionary:
+	var mount := String(BuildCatalog.def(_id)["mount"])
+	var why := ""
+	var yaw := 0.0
+	if mount == "ceiling":
+		yaw = snappedf(player.yaw() + PI, PI / 12.0) + _turn * PI * 0.5
+		if n.y > -0.6:
+			why = "ceiling"
+	else:
+		yaw = atan2(n.x, n.z)
+		if absf(n.y) > 0.45:
+			why = "wall"
+	if why == "" and p.distance_to(from) > REACH + 2.0:
+		why = "reach"
+	elif why == "" and player.streamer and player.streamer.get_chunk(ChunkStreamer.chunk_of(p)) == null:
+		why = "unloaded"
+	elif why == "" and BuildCatalog.occupied_in(near_pieces(), _id, p, yaw):
+		why = "occupied"
+	elif why == "" and Game.stats.level < Recipes.unlock_level(_id):
+		why = "level"
+	return {"pos": p, "yaw": yaw, "ok": why == "", "why": why}
+
 ## Places the held piece at the ghost. Returns true when something was built.
 func place() -> bool:
 	if _id == "" or _target.is_empty():
@@ -230,6 +268,7 @@ func place() -> bool:
 	var st := {"by": "you", "day": snappedf(Game.day, 0.01), "owner": Doors.my_id(), "owner_name": Doors.my_name()}
 	if Doors.is_door_piece(_id):
 		Doors.init_state(st)
+	Power.init_state(_id, st)
 	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], st)
 	_forget_near()
 	# A low floor put down where you stand lifts you onto it.
@@ -261,7 +300,9 @@ func info() -> Dictionary:
 		if not _target.is_empty() and not _target["ok"]:
 			lines.append("No free doorway there." if _target.get("why", "") == "doorway" else "A door already hangs there, or it's out of reach.")
 		return {"title": d.get("name", _id), "sub": "Building  ·  [%s] place" % Player._key("use"), "lines": lines, "icon": _id}
-	if _free:
+	if d.has("mount"):
+		lines.append("Hangs from a ceiling you aim at. %s turns it." % k.call("rotate_build") if d["mount"] == "ceiling" else "Fixes to a wall you aim at.")
+	elif _free:
 		lines.append("Grid off: places exactly where you aim. %s turns it 15 degrees." % k.call("rotate_build"))
 	else:
 		match mode:
@@ -277,6 +318,8 @@ func info() -> Dictionary:
 	if mode != "free":
 		var by := ("%+.2f m" % (_lift * 0.25)) if _free else ("%+d storey" % _lift)
 		lines.append("%s raise  %s lower (%s)   %s grid %s" % [k.call("build_raise"), k.call("build_lower"), by, k.call("build_snap"), "on" if _free else "off"])
+	if d.has("power"):
+		lines.append_array(power_lines(d["power"]))
 	if d.has("station"):
 		lines.append("Crafting station: recipes that need a %s work within %d m." % [d["name"], int(BuildCatalog.STATION_RANGE)])
 	if not _target.is_empty() and not _target["ok"]:
@@ -288,10 +331,33 @@ func why_text(why: String) -> String:
 	var nm := String(BuildCatalog.def(_id).get("name", _id)).to_lower()
 	match why:
 		"doorway": return "Hang a %s in a doorway you've built" % nm
+		"ceiling": return "Aim at a ceiling to hang the %s from" % nm
+		"wall": return "Aim at a wall to fix the %s to" % nm
 		"door_there": return "A door already hangs there"
 		"occupied": return "Something already fills that spot"
 		"reach": return "Too far away: move closer"
 		"unloaded": return "Can't build out there yet"
 		"player": return "You're standing where it would go"
+		"tree": return "A tree is in the way: fell it first"
 		"level": return "You can build a %s from level %d" % [nm, Recipes.unlock_level(_id)]
 	return "Can't build there"
+
+## What a powered piece does, for the look-at panel while you hold it.
+static func power_lines(s: Dictionary) -> Array:
+	var out: Array = []
+	match String(s.get("role", "")):
+		"gen":
+			match String(s.get("source", "")):
+				"fuel":
+					var names: Array = []
+					for t in (s.get("fuel", {}) as Dictionary).keys().slice(0, 4):
+						names.append(String(ItemDB.def(t).get("name", t)).to_lower())
+					out.append("Makes up to %s, burning %s" % [Power.watts(float(s["watts"])), ", ".join(names)])
+				"wind": out.append("Makes up to %s in a fresh wind; more on high, open ground" % Power.watts(float(s["watts"])))
+				"sun": out.append("Makes up to %s facing the sun (its face is the side away from you as you place it)" % Power.watts(float(s["watts"])))
+		"store": out.append("Stores %s, charging or giving up to %s" % [Power.energy(float(s["store"])), Power.watts(float(s.get("rate", s["store"])))])
+		"use": out.append("Draws %s" % Power.watts(float(s["watts"])))
+		"switch": out.append("Cuts or joins the line through it")
+		"node": out.append("Joins up to %d cables; poles carry them far" % int(s.get("links", 4)))
+	out.append("String Copper Wire to it to join it to the rest (%d m a cable at most)" % int(Power.MAX_CABLE))
+	return out

@@ -26,6 +26,8 @@ var _body: AnimatableBody3D
 var _bite_cd := 0.0
 ## Lives in a cave: walks on the cave floor (FaunaManager.cave_floor), stopped by its walls.
 var underground := false
+## A dungeon's guard: sees you only on its own floor and chases by the passages.
+var in_dungeon := false
 var chunk := Vector2i.ZERO ## the chunk whose herd it belongs to (FaunaManager)
 var bites := 0 ## bites so far, so players who don't run it see each one
 var _seen_bites := -1
@@ -436,7 +438,11 @@ func _pick_wander() -> void:
 	for i in 6:
 		var a := randf() * TAU
 		_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(minf(3.0, roam * 0.3), roam)
-		if underground or p["plan"] == "bird" or not blocked(_target.x, _target.z):
+		if underground or p["plan"] == "bird":
+			return
+		# Somewhere it can walk to straight: not over a cliff or up a crag.
+		var w := _walk()
+		if not blocked(_target.x, _target.z) and (w == null or w.clear(Vector2(global_position.x, global_position.z), Vector2(_target.x, _target.z), WalkGrid.ANIMAL)):
 			return
 
 ## True where a walking animal can't stand: in the sea, a lake or a river, or inside a
@@ -477,6 +483,8 @@ func _steer_cached(pos: Vector3, dir: Vector3) -> Vector3:
 func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
 	var wet_here := blocked_wet(pos.x, pos.z)
+	var w := _walk()
+	var steep_here: float = w.grade(pos.x, pos.z) if w else NAN
 	for turn in [0.0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]:
 		var d: Vector3 = dir.rotated(Vector3.UP, turn)
 		var ahead := pos + d * reach
@@ -485,10 +493,22 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 			return d
 		if not wet_here and blocked_wet(ahead.x, ahead.z):
 			continue
+		if w and _too_steep(w, pos + d * maxf(reach, WalkGrid.CELL), steep_here):
+			continue
 		if solid_at(Vector3(ahead.x, h, ahead.z)):
 			continue
 		return d
 	return Vector3.ZERO
+
+## The ground ahead is a cliff or a bank too steep to take, and no gentler than where it
+## stands (so one on a slope already can still get off it).
+func _too_steep(w: WalkGrid, ahead: Vector3, here: float) -> bool:
+	var g := w.grade(ahead.x, ahead.z)
+	return not is_nan(g) and g > WalkGrid.ANIMAL and (is_nan(here) or g > here)
+
+func _walk() -> WalkGrid:
+	var npcs = manager.get("npcs") if manager else null
+	return npcs.walk if npcs else null
 
 func blocked_wet(x: float, z: float) -> bool:
 	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
@@ -559,7 +579,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 			state = "alert"
 			if _alert_t > randf_range(4.0, 9.0):
 				state = "flee"
-		elif t == "aggressive" and d < 16.0:
+		elif t == "aggressive" and d < 16.0 and (not in_dungeon or _dungeon_sees(player_pos, d)):
 			state = "chase"
 		elif state == "flee" and d > 26.0 or state == "chase" and d > 30.0 or state == "alert":
 			state = "wander"
@@ -597,6 +617,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		"chase":
 			want = float(p["speed"]) * 1.6
 			goal = player_pos
+			if in_dungeon:
+				goal = _dungeon_goal(player_pos)
+				if goal == Vector3.INF:
+					goal = global_position
+					want = 0.0
 			if d < 1.2 + float(p["size"]) * 0.5:
 				want = 0.0
 				if _bite_cd <= 0.0:
@@ -625,7 +650,16 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 					_pick_wander()
 		pos += dir * _speed * delta
 		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), clampf(delta * 5.0, 0.0, 1.0))
-	var h: float = manager.call("cave_floor", pos) if underground else ground.call(pos.x, pos.z)
+	var h: float = manager.call("cave_floor", pos, global_position) if underground else ground.call(pos.x, pos.z)
+	if is_nan(h) and in_dungeon:
+		# Along the wall instead of into it, a jamb or corner in the way.
+		var here := global_position
+		for slide in [Vector3(pos.x, pos.y, here.z), Vector3(here.x, pos.y, pos.z)]:
+			if (slide - here).length_squared() > 1e-6:
+				h = manager.call("cave_floor", slide, here)
+				if not is_nan(h):
+					pos = slide
+					break
 	if is_nan(h):
 		# A cave wall (or ground not loaded yet): stay put and wander somewhere else.
 		if underground and state == "wander":
@@ -637,9 +671,30 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		if state == "wander":
 			_speed = maxf(_speed, 2.5)
 	else:
-		pos.y = maxf(h, Water.LEVEL - 0.6)
+		pos.y = h if underground else maxf(h, Water.LEVEL - 0.6)
 	global_position = pos
 	_animate(delta)
+
+## In a dungeon, a guard notices you on its own floor: close by, or in plain sight.
+func _dungeon_sees(at: Vector3, d: float) -> bool:
+	if absf(at.y - global_position.y) > 2.5:
+		return false
+	if d < 7.0:
+		return true
+	var eye := global_position + Vector3(0, 0.8, 0)
+	var q := PhysicsRayQueryParameters3D.create(eye, at + Vector3(0, 1.2, 0), 1)
+	return get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+
+## Where to run next to get at you by the passages, re-asked every think.
+var _dg_goal := Vector3.INF
+var _dg_t := 0.0
+func _dungeon_goal(at: Vector3) -> Vector3:
+	_dg_t -= get_process_delta_time()
+	if _dg_t <= 0.0 or _dg_goal == Vector3.INF or Vector2(global_position.x - _dg_goal.x, global_position.z - _dg_goal.z).length() < 0.6:
+		_dg_t = 0.4
+		var a := Dungeon.around(global_position)
+		_dg_goal = a["node"].toward(global_position, at) if not a.is_empty() else Vector3.INF
+	return _dg_goal
 
 func _bite_anim() -> void:
 	if _kit:

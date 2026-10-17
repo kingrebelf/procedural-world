@@ -28,7 +28,7 @@ const LOOKS := {
 		"belly": 0.15, "dorsal": 0.08, "patches": 0.55, "patch_col": Color(0.74, 0.72, 0.67), "socks": 0.3, "sock_col": Color(0.68, 0.65, 0.6), "blaze": 0.35},
 	"Bull": {"vary": 0.22, "strand": 0.003, "clump": 0.022, "fur": 0.55, "muscle": 1.4, "legs_y": 0.34, "back_y": 0.7,
 		"belly": 0.08, "dorsal": 0.1, "patches": 0.2, "patch_col": Color(0.3, 0.2, 0.12), "blaze": 0.2},
-	"Horse": {"vary": 0.2, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
+	"Horse": {"vary": 0.2, "dapple": 0.35, "strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.1, "dorsal": 0.1, "socks": 0.45, "sock_col": Color(0.66, 0.63, 0.58), "blaze": 0.5, "spots": 0.15, "spot_col": Color(0.5, 0.36, 0.24), "spot_size": 0.06},
 	"Horse_White": {"strand": 0.002, "clump": 0.014, "fur": 0.45, "muscle": 1.3, "legs_y": 0.42, "back_y": 0.66,
 		"belly": 0.05, "dorsal": 0.05, "spots": 0.7, "spot_col": Color(0.3, 0.3, 0.3), "spot_size": 0.07},
@@ -395,13 +395,23 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		cdf.append(area)
 	if ids.is_empty() or area <= 0.0:
 		return {}
+	# A tail's hairs all fall from the dock to end together in a soft band below its
+	# lowest point, rather than starting and stopping all down its length.
+	var tail_end := INF
+	for t in ids:
+		for c in 3:
+			var tp := pos[tris[t * 3 + c]]
+			if tp.z < cz:
+				tail_end = minf(tail_end, tp.y)
+	tail_end -= ht * 0.1
 	var w := ht * 0.011
-	var count := clampi(int(area / (w * w * 6.0)), 40, 360)
+	var count := clampi(int(area / (w * w * 4.0)), 40, 540)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed
 	var rows := 6
 	var v := PackedVector3Array()
 	var n := PackedVector3Array()
+	var tg := PackedFloat32Array()
 	var uv := PackedVector2Array()
 	var uv2 := PackedVector2Array()
 	var lb := PackedInt32Array()
@@ -431,14 +441,19 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 		var g0 := tris[t * 3 + near]
 		# A tail (behind the body's middle) hangs long; a mane falls short to one side.
 		var tail := p.z < cz
-		var length := ht * (r.randf_range(0.09, 0.17) if tail else r.randf_range(0.05, 0.09))
+		var length := ht * r.randf_range(0.05, 0.09)
+		if tail:
+			length = maxf(p.y - tail_end + ht * r.randf_range(-0.04, 0.02), ht * 0.06)
 		var side := signf(p.x - cx) if absf(p.x - cx) > w * 0.5 else (1.0 if r.randf() < 0.5 else -1.0)
-		var d0 := (sn * (0.2 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.1 if tail else 0.35), 0, -0.12)).normalized()
+		var d0 := (sn * (0.08 if tail else 0.55) + Vector3(0, -0.8, 0) + Vector3(side * (0.03 if tail else 0.35), 0, -0.12)).normalized()
 		var hang := Vector3(side * 0.05, -1.0, -0.12).normalized()
+		if tail:
+			# A tail's hairs gather in toward its middle as they fall.
+			hang = Vector3(clampf((cx - p.x) / (ht * 0.05), -1.0, 1.0) * 0.1, -1.0, -0.12).normalized()
 		var wave := r.randf() * TAU
-		var lw0 := w * r.randf_range(0.7, 1.3)
+		var lw0 := w * r.randf_range(0.6, 1.1) * (1.1 if tail else 1.0)
 		var lid := r.randf()
-		var q := p - sn * w * 0.3
+		var q := p - sn * w * (0.6 if tail else 0.3)
 		var base := v.size()
 		var dir := d0
 		for j in rows:
@@ -455,6 +470,8 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 			for e in 2:
 				v.append(c + across * hw * (1.0 if e == 1 else -1.0))
 				n.append(sn)
+				# The tangent runs down the lock, for lighting it as hair (hair_lock.gdshader).
+				tg.append_array(PackedFloat32Array([dir.x, dir.y, dir.z, 1.0]))
 				uv.append(Vector2(float(e), u))
 				uv2.append(Vector2(lid, 0.0))
 				for m in 4:
@@ -472,6 +489,7 @@ static func _locks(pos: PackedVector3Array, nrm: PackedVector3Array, bon: Packed
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = v
 	arr[Mesh.ARRAY_NORMAL] = n
+	arr[Mesh.ARRAY_TANGENT] = tg
 	arr[Mesh.ARRAY_TEX_UV] = uv
 	arr[Mesh.ARRAY_TEX_UV2] = uv2
 	arr[Mesh.ARRAY_BONES] = lb

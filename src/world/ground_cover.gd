@@ -126,6 +126,11 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 			var rise := clampf(smoothstep(0.12, 0.45, grad[k]) + clampf((h - 18.0) * 0.01, 0.0, 0.5), 0.0, 1.0)
 			var patch := smoothstep(0.4, 0.55, nb + clampf((h - 18.0) * 0.006, 0.0, 0.12) + ns * 0.08) * lerpf(0.25, 1.0, rise)
 			scree = maxf(scree * (1.0 - 0.85 * settled[k]), patch * (1.0 - settled[k])) * flat
+			# Steep banks short of a cliff: the turf slips and tears in places, showing
+			# stony soil in torn patches, more of them toward the foot of a rock
+			# cut (a bank green right up to the face read as a carpet laid over it).
+			var bank := smoothstep(0.42, 0.9, grad[k]) * smoothstep(0.05, 0.4, ns * 0.65 + nb * 0.45 + 0.1 + 0.35 * foot[k])
+			scree = maxf(scree, bank * (1.0 - settled[k]) * (0.45 + 0.55 * flat))
 			if not grassed.is_empty() and not lb.is_empty():
 				var gw := _look_cell(grassed, i, j, 1, 0)
 				if gw > 0.0:
@@ -140,8 +145,8 @@ static func build(chunk: Dictionary) -> PackedByteArray:
 					# Gravel bars here and there along the bank, of varying width, with grass,
 					# mud and reeds coming down to the water between them (an even grey strip
 					# both sides read as a concrete channel).
-					var reach := 1.15 + 1.6 * (nb * 0.5 + 0.5) + 0.4 * ns
-					gravel = (1.0 - smoothstep(1.05, reach, rv[rk + 1])) * rv[rk + 2] * smoothstep(-0.25, 0.2, nb * 0.8 + ns * 0.6)
+					var reach := 1.1 + 1.2 * (nb * 0.5 + 0.5) + 0.3 * ns
+					gravel = (1.0 - smoothstep(1.05, reach, rv[rk + 1])) * rv[rk + 2] * smoothstep(-0.05, 0.35, nb * 0.8 + ns * 0.6)
 			var shore := 1.0 - smoothstep(0.5, 1.6, h - ChunkGenerator.WATER_LEVEL)
 			gravel = maxf(gravel, shore * smoothstep(-0.15, 0.2, nb + ns * 0.3))
 			gravel = maxf(gravel, smoothstep(0.5, 0.62, -nb + ns * 0.1) * 0.9 * (1.0 - settled[k]))

@@ -120,18 +120,22 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 	off.resize(v.size())
 	for i in v.size():
 		off[i] = pick.call(i, v[i], reg[i])
+	var keep := PackedInt32Array()
+	for t in range(0, idx.size(), 3):
+		if off[idx[t]] >= 0.0 and off[idx[t + 1]] >= 0.0 and off[idx[t + 2]] >= 0.0:
+			keep.append(t)
+	if slack > 0:
+		keep = _trim_teeth(v, idx, keep)
 	# A sleeve rides on the forearm, not the hand: weight on the hand moves to the forearm,
 	# or a turned wrist drags the cuff's edge out into shards over the hand.
 	var to_arm: Dictionary = s["to_arm"] if part == PART_SHIRT else {}
 	var remap := {}
 	var ov: PackedVector3Array = o["v"]
 	var base := ov.size()
-	for t in range(0, idx.size(), 3):
+	for t in keep:
 		var a := idx[t]
 		var b := idx[t + 1]
 		var c := idx[t + 2]
-		if off[a] < 0.0 or off[b] < 0.0 or off[c] < 0.0:
-			continue
 		for k in [a, b, c]:
 			if not remap.has(k):
 				remap[k] = base + remap.size()
@@ -154,6 +158,45 @@ static func _shell(s: Dictionary, o: Dictionary, part: int, col: Color, pick: Ca
 			o["i"].append(remap[k])
 	if slack > 0 and remap.size() > 0:
 		_slacken(s, o, base, remap, off, slack, rim)
+
+## Drops the triangles that stick out of a cut edge as teeth (two of their three sides on
+## the edge), a few times over, so hems and cuffs start from a run of whole edges rather
+## than a sawtooth that smoothing can only blunt. Vertices are welded by rest position.
+static func _trim_teeth(v: PackedVector3Array, idx: PackedInt32Array, keep: PackedInt32Array) -> PackedInt32Array:
+	var weld := {}
+	var key := func(i: int) -> int:
+		var p := v[i]
+		var k := Vector3i(roundi(p.x * 20000.0), roundi(p.y * 20000.0), roundi(p.z * 20000.0))
+		if not weld.has(k):
+			weld[k] = weld.size()
+		return weld[k]
+	var wk := {}
+	for t in keep:
+		for e in 3:
+			if not wk.has(idx[t + e]):
+				wk[idx[t + e]] = key.call(idx[t + e])
+	for _round in 3:
+		var count := {}
+		for t in keep:
+			for e in 3:
+				var a: int = wk[idx[t + e]]
+				var b: int = wk[idx[t + (e + 1) % 3]]
+				var ek := Vector2i(mini(a, b), maxi(a, b))
+				count[ek] = int(count.get(ek, 0)) + 1
+		var out := PackedInt32Array()
+		for t in keep:
+			var open := 0
+			for e in 3:
+				var a: int = wk[idx[t + e]]
+				var b: int = wk[idx[t + (e + 1) % 3]]
+				if int(count[Vector2i(mini(a, b), maxi(a, b))]) == 1:
+					open += 1
+			if open < 2:
+				out.append(t)
+		if out.size() == keep.size():
+			break
+		keep = out
+	return keep
 
 ## Lets a shell hang loose: Laplacian smoothing over its surface (vertices split at UV seams
 ## move together), each pass pushed back out to at least its distance off the skin.
@@ -196,10 +239,16 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 	# The cut edges (hems, cuffs, necklines) stay snug on the body, as if hemmed or tucked.
 	var pinned := PackedByteArray()
 	pinned.resize(g)
+	var along: Array = [] # each cut-edge vertex's neighbours along the cut
+	along.resize(g)
 	for ek in edges:
 		if int(edges[ek]) == 1:
 			pinned[ek.x] = 1
 			pinned[ek.y] = 1
+			for e in [[ek.x, ek.y], [ek.y, ek.x]]:
+				if along[e[0]] == null:
+					along[e[0]] = []
+				along[e[0]].append(e[1])
 	var pos := PackedVector3Array()
 	pos.resize(g)
 	var rest := PackedVector3Array()
@@ -218,12 +267,20 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 		var nxt := pos.duplicate()
 		for i in g:
 			var ns: Dictionary = nbrs[i]
-			if pinned[i] == 1 or ns.size() < 3:
-				continue
 			var avg := Vector3.ZERO
-			for j in ns:
-				avg += pos[j]
-			avg /= ns.size()
+			if pinned[i] == 1:
+				# A cut edge is smoothed only along itself (a few passes), so the sawtooth of
+				# whole triangles becomes a clean hem line without the hem riding up.
+				var al = along[i]
+				if it >= 30 or al == null or al.size() != 2:
+					continue
+				avg = (pos[al[0]] + pos[al[1]]) * 0.5
+			elif ns.size() < 3:
+				continue
+			else:
+				for j in ns:
+					avg += pos[j]
+				avg /= ns.size()
 			var p := pos[i].lerp(avg, 0.55)
 			var d := (p - rest[i]).dot(nrm[i])
 			if d < dmin[i]:
@@ -248,7 +305,7 @@ static func _slacken(s: Dictionary, o: Dictionary, base: int, remap: Dictionary,
 		fn[i] = fn[i].normalized() if fn[i].dot(nrm[i]) > 0.0 else (fn[i] * -1.0).normalized()
 		if fn[i] == Vector3.ZERO:
 			fn[i] = nrm[i]
-	for it in 3:
+	for it in 10:
 		var nxt := fn.duplicate()
 		for i in g:
 			var sum := fn[i]
@@ -336,10 +393,14 @@ static func _vert(s: Dictionary, o: Dictionary, p: Vector3, n: Vector3, uv: Vect
 ## waist, then by the thigh on its own side (the calf too, below the knee), so a stride or
 ## a seat takes the cloth over that leg along with it instead of the leg passing through.
 ## Only a narrow strip down the middle blends the two legs.
-static func _leg_weights(s: Dictionary, p: Vector3, top: float) -> Dictionary:
+## `soft` (0..1) loosens a long skirt below the knee: there it lags the calves, so a
+## stride swings the hem rather than kicking it back as one wedge.
+static func _leg_weights(s: Dictionary, p: Vector3, top: float, soft := 0.0) -> Dictionary:
 	var legs := smoothstep(0.0, top - float(s["crotch"]) + 0.03, top - p.y)
 	var side := smoothstep(-0.05, 0.05, p.x * float(s["lx"]))
 	var calf := clampf((float(s["knee"]) + 0.04 - p.y) / 0.3, 0.0, 1.0) * 0.7
+	var f := soft * smoothstep(float(s["knee"]) + 0.1, float(s["knee"]) - 0.25, p.y)
+	calf *= 1.0 - f * 0.4
 	return {"pelvis": 1.0 - legs,
 		"thigh_l": legs * side * (1.0 - calf), "calf_l": legs * side * calf,
 		"thigh_r": legs * (1.0 - side) * (1.0 - calf), "calf_r": legs * (1.0 - side) * calf}
@@ -357,8 +418,10 @@ static func _hang(s: Dictionary, top: float, hem: float, flare: float, extra: fl
 	for ri in rings + 1:
 		var y := lerpf(top, hem, float(ri) / rings)
 		var m := _measure(s, y)
-		rx = maxf(rx, float(m["rx"]) * 1.03 + 0.016)
-		front = maxf(front, float(m["cz"]) + float(m["rz"]) * 1.06 + 0.018)
+		# Snug at the waistband, easing out to clear the hips below it.
+		var ease := lerpf(0.008, 0.016, smoothstep(0.0, 0.08, top - y))
+		rx = maxf(rx, float(m["rx"]) * 1.03 + ease)
+		front = maxf(front, float(m["cz"]) + float(m["rz"]) * 1.06 + ease + 0.002)
 		back = minf(back, float(m["back"]) - 0.02)
 		rz = maxf(rz, (front - back) * 0.5)
 		var drop := top - y
@@ -370,9 +433,10 @@ static func _hang(s: Dictionary, top: float, hem: float, flare: float, extra: fl
 ## A loose skirt, robe, tunic hem or apron from `top` down to `hem` (rest heights). `arc`
 ## is how much of the way round it goes, centred on the front (1 = all the way), or on the
 ## back for an open coat (`behind`).
-static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: float, part: int, col: Color, arc := 1.0, extra := 0.0, ring_top := -1.0, behind := false) -> void:
-	var segs := 28 if arc >= 1.0 else maxi(6, int(28 * arc))
+static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: float, part: int, col: Color, arc := 1.0, extra := 0.0, ring_top := -1.0, behind := false, slit := false) -> void:
+	var segs := 56 if arc >= 1.0 else maxi(8, int(56 * arc))
 	var hang := _hang(s, ring_top if ring_top > 0.0 else top, hem, flare, extra)
+	var soft := 0.0 if slit else smoothstep(float(s["knee"]) - 0.1, float(s["knee"]) - 0.3, hem)
 	var base: int = o["v"].size()
 	var rows := 0
 	for h in hang:
@@ -382,22 +446,176 @@ static func _skirt(s: Dictionary, o: Dictionary, top: float, hem: float, flare: 
 		var k := clampf((top - y) / maxf(top - hem, 0.01), 0.0, 1.0)
 		var rx: float = h["rx"]
 		var rz: float = h["rz"]
+		# Gathered at the waist: soft pleats that open out toward the hem, so the cloth
+		# reads as fabric falling in folds rather than a drum.
+		var amp := lerpf(0.003, 0.016, sqrt(k))
 		for si in segs + 1:
 			var ang := lerpf(-PI * arc, PI * arc, float(si) / segs) + (PI if behind else 0.0)
-			var p := Vector3(sin(ang) * rx, y, float(h["cz"]) + cos(ang) * rz)
-			_vert(s, o, p, Vector3(sin(ang) / rx, 0.12 * k, cos(ang) / rz), Vector2(float(si) / segs * 3.0 * arc, k * 2.0), _leg_weights(s, p, top), part, col)
+			var pleat := 1.0 + amp * sin(ang * 14.0) / maxf(rx, 0.05)
+			var p := Vector3(sin(ang) * rx * pleat, y, float(h["cz"]) + cos(ang) * rz * pleat)
+			# A long skirt has room behind the calves, for a knee bent back or a heel lifted.
+			p.z -= soft * 0.045 * maxf(0.0, -cos(ang)) * smoothstep(float(s["knee"]) + 0.08, float(s["knee"]) - 0.15, y)
+			var n := Vector3(sin(ang) / rx, 0.12 * k, cos(ang) / rz).rotated(Vector3.UP, -atan(amp * 14.0 * cos(ang * 14.0) / maxf(rx, 0.05)))
+			# Either side of a slit, the cloth goes wholly with the leg on its side.
+			var wp := p
+			if slit and y < float(s["crotch"]):
+				wp.x = signf(sin(ang)) * maxf(absf(p.x), 0.06)
+			_vert(s, o, p, n, Vector2(float(si) / segs * 3.0 * arc, k * 2.0), _leg_weights(s, wp, top, soft), part, col)
 		rows += 1
 	for ri in rows - 1:
+		var below: bool = float(o["v"][base + (ri + 1) * (segs + 1)].y) < float(s["crotch"])
 		for si in segs:
+			# A slit up the front to the crotch, so each half hangs from its own leg
+			# instead of a panel stretched between them.
+			if slit and below and absf(lerpf(-PI * arc, PI * arc, (si + 0.5) / segs)) < 0.12:
+				continue
 			var a := base + ri * (segs + 1) + si
 			var b := a + segs + 1
 			o["i"].append_array([a, b, a + 1, a + 1, b, b + 1])
 
+## A shirt's neckband: a short ring from y0 to y1 that follows the neck's own outline,
+## `off` clear of the skin, so the neckline reads as a hemmed edge rather than cut cloth.
+static func _neckband(s: Dictionary, o: Dictionary, y0: float, y1: float, off: float) -> void:
+	var v: PackedVector3Array = s["v"]
+	var reg: PackedInt32Array = s["r"]
+	var near := PackedVector3Array()
+	for i in v.size():
+		if reg[i] == 0 and v[i].y > y0 - 0.03 and v[i].y < y1 + 0.03:
+			near.append(v[i])
+	if near.is_empty():
+		return
+	var cz := 0.0
+	for q in near:
+		cz += q.z
+	cz /= near.size()
+	var segs := 28
+	var base: int = o["v"].size()
+	for ri in 2:
+		var y := y0 if ri == 0 else y1
+		var radii: Array = []
+		for si in segs:
+			var ang := TAU * si / segs
+			var r := 0.04
+			for q in near:
+				if absf(q.y - y) < 0.025:
+					var d := Vector2(q.x, q.z - cz)
+					if absf(angle_difference(atan2(d.x, d.y), ang)) < 0.25:
+						r = maxf(r, d.length())
+			radii.append(r)
+		for it in 2:
+			var sm: Array = []
+			for si in segs:
+				sm.append(maxf(radii[si], (radii[(si + segs - 1) % segs] + radii[si] * 2.0 + radii[(si + 1) % segs]) * 0.25))
+			radii = sm
+		for si in segs + 1:
+			var ang := TAU * si / segs
+			var rr: float = radii[si % segs] + off
+			var p := Vector3(sin(ang) * rr, y, cz + cos(ang) * rr)
+			_vert(s, o, p, Vector3(sin(ang), 0, cos(ang)), Vector2(float(si) / segs * 4.0, ri * 0.1), {"spine_03": 1.0 - ri * 0.6, "neck_01": ri * 0.6}, PART_SHIRT, Color.WHITE)
+	for si in segs:
+		var a := base + si
+		var b := a + segs + 1
+		o["i"].append_array([a, a + 1, b, a + 1, b + 1, b])
+
+## An apron's bib: a straight-sided panel laid over the front of the torso from `bottom`
+## to the neck, `off` clear of the skin, with its edges turned in so it has thickness.
+static func _bib(s: Dictionary, o: Dictionary, bottom: float, off: float, col: Color) -> void:
+	var neck: float = s["neck"]
+	var sy: float = s["shoulder_y"]
+	var v: PackedVector3Array = s["v"]
+	var reg: PackedInt32Array = s["r"]
+	var cols := 8
+	var rows := maxi(4, int((neck - bottom) / 0.035))
+	var front := PackedInt32Array()
+	for i in v.size():
+		if (reg[i] == 1 or reg[i] == 5 or reg[i] == 0) and v[i].z > 0.0 and v[i].y > bottom - 0.03 and v[i].y < neck + 0.03 and absf(v[i].x) < 0.24:
+			front.append(i)
+	var grid: Array = []
+	var near: Array = [] # the skin vertex under each grid point, whose skinning it borrows
+	for ri in rows + 1:
+		var y := lerpf(bottom, neck - 0.01, float(ri) / rows)
+		# Wide over the chest (a smith's bib covers it, not a strip of it), narrowing to the neck.
+		var half := lerpf(0.175, 0.095, smoothstep(sy - 0.08, neck, y))
+		var row: Array = []
+		for ci in cols + 1:
+			var x := lerpf(-half, half, float(ci) / cols)
+			# The body's front at (x, y): the furthest-forward skin near that point.
+			var z := -INF
+			var best := -1
+			var bd := INF
+			for i in front:
+				var q := v[i]
+				if absf(q.x - x) < 0.035 and absf(q.y - y) < 0.035:
+					z = maxf(z, q.z)
+				var d := Vector2(q.x - x, q.y - y).length_squared()
+				if d < bd:
+					bd = d
+					best = i
+			row.append(Vector3(x, y, (z if z > -INF else 0.1) + off))
+			near.append(best)
+		grid.append(row)
+	# Bridge the hollow under the chest: each column hangs no further back than the line
+	# between the rows above and below it.
+	for it in 4:
+		for ri in range(1, rows):
+			for ci in cols + 1:
+				var p: Vector3 = grid[ri][ci]
+				p.z = maxf(p.z, (grid[ri - 1][ci].z + grid[ri + 1][ci].z) * 0.5)
+				grid[ri][ci] = p
+	var base: int = o["v"].size()
+	var per: int = s["per"]
+	var bones: PackedInt32Array = s["b"]
+	var wts: PackedFloat32Array = s["w"]
+	for ri in rows + 1:
+		for ci in cols + 1:
+			var p: Vector3 = grid[ri][ci]
+			var u := clampf((p.y - float(s["waist"])) / (sy - float(s["waist"])), 0.0, 1.0)
+			var wb := {"spine_03": u, "spine_02": 1.0 - absf(u - 0.5) * 2.0, "spine_01": 1.0 - u}
+			_vert(s, o, p, Vector3(0, 0, 1), Vector2(float(ci) / cols, float(ri) / rows), wb, PART_APRON, col)
+			# Skinned like the chest beneath it, so a twist or a lean of the torso carries the
+			# bib with the shirt instead of sliding it off to one side.
+			var k: int = near[ri * (cols + 1) + ci]
+			if k >= 0:
+				var at: int = o["b"].size() - per
+				for j in per:
+					o["b"][at + j] = bones[k * per + j]
+					o["w"][at + j] = wts[k * per + j]
+	for ri in rows:
+		for ci in cols:
+			var a := base + ri * (cols + 1) + ci
+			var b := a + cols + 1
+			o["i"].append_array([a, a + 1, b, a + 1, b + 1, b])
+	# The turned edge down each side and along the top.
+	var edge: Array = []
+	for ri in rows + 1:
+		edge.append([ri, 0])
+	for ci in range(1, cols + 1):
+		edge.append([rows, ci])
+	for ri in range(rows - 1, -1, -1):
+		edge.append([ri, cols])
+	for e in edge.size() - 1:
+		var b0: int = o["v"].size()
+		for pr in [edge[e], edge[e + 1]]:
+			var src: int = base + int(pr[0]) * (cols + 1) + int(pr[1])
+			var p: Vector3 = o["v"][src]
+			for d in [0.0, off - 0.008]:
+				var q := p - Vector3(0, 0, d)
+				o["v"].append(q)
+				o["n"].append(Vector3(signf(p.x), 0, 0.2).normalized())
+				o["uv"].append(o["uv"][src])
+				for j in per:
+					o["b"].append(o["b"][src * per + j])
+					o["w"].append(o["w"][src * per + j])
+				o["c"].append_array([float(PART_APRON), q.y, q.z, q.x])
+				o["rn"].append_array([0.0, 0.0, 1.0])
+				o["col"].append(col)
+		o["i"].append_array([b0, b0 + 2, b0 + 1, b0 + 1, b0 + 2, b0 + 3])
+
 ## A cape from the shoulders to `hem`, hanging clear of the back and the legs.
-static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color) -> void:
+static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color, clear := 0.0, over := 0.0) -> void:
 	var top: float = s["shoulder_y"] + 0.02
 	var waist: float = s["waist"]
-	var cols := 14
+	var cols := 36
 	var rows := maxi(3, int((top - hem) / 0.06))
 	var base: int = o["v"].size()
 	# It wraps the back as a curve (the upper back's own depth), draping a little fuller
@@ -410,17 +628,23 @@ static func _cape(s: Dictionary, o: Dictionary, hem: float, col: Color) -> void:
 		var y := lerpf(top, hem, k)
 		var m := _measure(s, y, 0.03)
 		rz_back = minf(rz_back, float(m["back"]))
-		var depth := maxf(cz - rz_back, 0.1) + 0.035 + 0.05 * k
-		var wide := float(s["shoulder_x"]) * lerpf(1.02, 1.35, k) + 0.02
+		# Below the waist it also clears a tunic or skirt hanging under it.
+		var depth := maxf(cz - rz_back, 0.1) + 0.035 + over + 0.07 * k + clear * smoothstep(waist + 0.05, waist - 0.1, y)
+		var wide := float(s["shoulder_x"]) * lerpf(1.02, 1.45, k) + 0.02
 		var arc := deg_to_rad(lerpf(88.0, 74.0, k))
 		for ci in cols + 1:
 			var u2 := float(ci) / cols
 			var t := lerpf(-arc, arc, u2)
-			# Soft vertical folds down the cape.
-			var fold := sin(u2 * TAU * 3.0) * 0.012 * k
+			# Vertical folds hanging from the shoulders, deepening toward the hem, shaded by
+			# their own slope so the cape reads as heavy cloth rather than a board.
+			var amp := 0.006 + 0.034 * k
+			var fold := sin(u2 * TAU * 4.5 + 0.7) * amp
 			var out := Vector3(sin(t) * wide, 0.0, -cos(t) * depth)
 			var nrm := Vector3(sin(t) / wide, 0.0, -cos(t) / depth).normalized()
+			var tan := Vector3(cos(t) * wide, 0.0, sin(t) * depth)
+			var slope := cos(u2 * TAU * 4.5 + 0.7) * amp * TAU * 4.5 / maxf(tan.length() * 2.0 * arc, 0.01)
 			var p := Vector3(out.x, y, cz + out.z) + nrm * fold
+			nrm = (nrm - tan.normalized() * slope).normalized()
 			var wb := {}
 			if y > waist:
 				var u := clampf((y - waist) / (top - waist), 0.0, 1.0)
@@ -584,6 +808,8 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 		cols[PART_PANTS] = fab.call(b.get("cloth2", Color(0.3, 0.28, 0.25)), FAB_WOOL)
 		sp["vest"] = 1
 		cols[PART_TRIM] = fab.call(pick.call(HIDE), FAB_LEATHER)
+	elif is_child(b, job):
+		_child(sp, cols, era, fem, pick, fab, chance)
 	elif era == Eras.SCIFI:
 		_scifi(sp, cols, role, fem, pick, fab, chance)
 	else:
@@ -678,7 +904,7 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 			sp["bib"] = true
 			cols[PART_APRON] = fab.call(pick.call(HIDE), FAB_LEATHER)
 		elif role in ["host", "worker"] and (fem or role == "host" or job == "miller") and chance.call(0.65):
-			sp["apron"] = maxf(float(sp["hem"]) + 0.16, 0.36) if sp["hem"] > 0.0 else 0.45
+			sp["apron"] = maxf(float(sp["hem"]) + 0.16, 0.36) if sp["hem"] > 0.0 else 0.56
 			sp["bib"] = chance.call(0.35)
 			cols[PART_APRON] = fab.call(pick.call(UNDYED), FAB_LINEN)
 		if role == "hunter" and chance.call(0.35):
@@ -694,13 +920,57 @@ static func wardrobe(b: Dictionary, era: int, job: String) -> Dictionary:
 			var c: Color = cols[part]
 			var d: Color = c.darkened(0.45) if skin.v > 0.45 else c.lerp(Color(0.25, 0.33, 0.45), 0.7)
 			cols[part] = Color(d.r, d.g, d.b, c.a)
-	if sp["belt"] and job != "" and role != "cleric" and chance.call(0.55):
+	if sp["belt"] and job != "" and role != "cleric" and not is_child(b, job) and chance.call(0.55):
 		sp["pouch"] = 1 if chance.call(0.5) else -1
 	for part in [PART_SKIRT, PART_TRIM, PART_APRON, PART_CAPE]:
 		if not cols.has(part):
 			cols[part] = cols.get(PART_SHIRT, Color(0.5, 0.4, 0.3, 0.0))
 	cols[PART_BOOTS] = fab.call(pick.call(BOOTS) if era != Eras.SCIFI else pick.call([Color(0.14, 0.15, 0.17), Color(0.3, 0.24, 0.17)]), FAB_LEATHER)
-	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim}
+	# "child" tells HumanModel these clothes were cut for a child, so it keeps them.
+	return {"spec": sp, "cols": cols, "knit": knit, "trim": trim, "child": is_child(b, job)}
+
+## Whether this person is a child or a teenager (they dress as one, never in adult gear).
+static func is_child(b: Dictionary, job: String) -> bool:
+	return job == "child" or bool(b.get("child", false)) or int(b.get("age", 30)) < 18
+
+## Children and teens: plain, modest everyday clothes with high necklines. Girls wear a
+## long kirtle or a smock over a skirt, boys a long tunic over hose or a shirt and
+## trousers; no bodices, aprons, capes, pouches or anything of a trade. Out in the
+## sci-fi reaches, a plain shirt and trousers or a one-piece suit.
+static func _child(sp: Dictionary, cols: Dictionary, era: int, fem: bool, pick: Callable, fab: Callable, chance: Callable) -> void:
+	sp["boot_h"] = 0.26 if chance.call(0.6) else 0.32
+	if era == Eras.SCIFI:
+		sp["boot_h"] = 0.32
+		var main: Color = pick.call(UTILITY + DYED.slice(2, 6) + EARTH.slice(0, 4))
+		var suit: bool = chance.call(0.3)
+		cols[PART_SHIRT] = fab.call(main, FAB_CANVAS if suit else FAB_LINEN)
+		cols[PART_PANTS] = fab.call(main if suit else pick.call(UTILITY + [Color(0.24, 0.26, 0.3)]), FAB_CANVAS)
+		sp["sleeves"] = 1 if chance.call(0.5) else 2
+		sp["belt"] = false
+		return
+	var everyday: Array = (FAIR if era == Eras.FANTASY else DYED) + EARTH + UNDYED
+	var top: Color = pick.call(everyday)
+	sp["sleeves"] = 2 if chance.call(0.7) else 1
+	sp["belt"] = chance.call(0.6)
+	if fem:
+		# A kirtle all of one colour, or a linen smock over a coloured skirt; long, but
+		# shorter on the little ones so they can run.
+		sp["hem"] = [0.14, 0.2, 0.26][int(chance.call(0.5)) + int(chance.call(0.5))]
+		sp["flare"] = [0.06, 0.09][int(chance.call(0.5))]
+		var smock: bool = chance.call(0.45)
+		cols[PART_SHIRT] = fab.call(pick.call(UNDYED) if smock else top, FAB_LINEN if smock else FAB_WOOL)
+		cols[PART_SKIRT] = fab.call(top, FAB_WOOL if chance.call(0.6) else FAB_LINEN)
+		cols[PART_PANTS] = fab.call(pick.call(LEGWEAR), FAB_WOOL)
+	else:
+		cols[PART_PANTS] = fab.call(pick.call(LEGWEAR), FAB_WOOL)
+		if chance.call(0.6):
+			# A long tunic over hose.
+			cols[PART_SHIRT] = fab.call(top, FAB_WOOL if chance.call(0.5) else FAB_LINEN)
+			sp["hem"] = [0.6, 0.66][int(chance.call(0.5))]
+			sp["flare"] = 0.1
+			cols[PART_SKIRT] = cols[PART_SHIRT]
+		else:
+			cols[PART_SHIRT] = fab.call(pick.call(UNDYED) if chance.call(0.6) else top, FAB_LINEN)
 
 ## Whether cloth of colour `c` could pass for bare skin of tone `skin`.
 static func _near(c: Color, skin: Color) -> bool:
@@ -762,7 +1032,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	# Work clothes (sci-fi) are cut roomier than linen and wool, with pockets.
 	var fit: float = sp.get("fit", 1.0)
 	var vest_kind: int = sp["vest"]
-	var t_shirt := 0.009 * fit
+	var t_shirt := 0.012 * fit
 	var t_pants := 0.007 * fit * fit # work trousers hang loose round the legs
 	# Shirt: the torso down to the hips, sleeves to the elbow or the wrist with a cuff.
 	_shell(s, o, PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
@@ -776,16 +1046,20 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 			return t_shirt + (0.006 if absf(p.x) > shoulder_x + 0.42 else 0.0)
 		if r == 0 and p.y < s["neck"] + 0.02:
 			return 0.006
-		return -1.0, 60)
+		return -1.0, 60, 0.005)
 	# Trousers down into the boots; under a long skirt, hose on the shins (a lifted hem).
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if hem > 0.0 and hem < 0.45 and p.y > float(s["knee"]) - 0.06:
 			return -1.0 # under a long skirt, hose only on the shins
-		if r == 5 and p.y <= waist - 0.03:
-			return t_pants
-		if r == 6 and p.y > boot_h - 0.03:
-			return t_pants
+		if (r == 5 and p.y <= waist - 0.03) or (r == 6 and p.y > boot_h - 0.03):
+			if fit <= 1.0:
+				return t_pants
+			# Work trousers hang straight from the seat: close over the thigh's bulk,
+			# roomier from the knee down, rather than ballooning like jodhpurs.
+			return lerpf(0.01, 0.022, clampf((float(s["knee"]) + 0.12 - p.y) / 0.25, 0.0, 1.0))
 		return -1.0, 30)
+	if fit <= 1.0:
+		_neckband(s, o, float(s["neck"]) - 0.006, float(s["neck"]) + 0.024, t_shirt * 0.5 + 0.006)
 	if fit > 1.0:
 		# A stand-up jacket collar.
 		var neck_y: float = float(s["neck"]) - 0.035
@@ -800,15 +1074,15 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 				_vert(s, o, p, Vector3(sin(ang), 0, cos(ang)), Vector2(float(si) / 24.0 * 4.0, ri * 0.2), {"spine_03": 1.0 - ri * 0.5, "neck_01": ri * 0.5}, PART_SHIRT, Color.WHITE)
 		for si in 24:
 			o["i"].append_array([nb + si, nb + si + 1, nb + 25 + si, nb + si + 1, nb + 26 + si, nb + 25 + si])
-		# Cargo pockets on the outside of each thigh and two on the chest.
+		# Cargo pockets on the outside of each thigh, and two on a man's chest.
 		var knee: float = s["knee"]
 		var crotch: float = s["crotch"]
 		_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 			if r == 5 and p.y > knee + 0.1 and p.y < crotch - 0.06 and absf(p.x) > 0.13 and absf(p.z + 0.03) < 0.06:
-				return t_pants + 0.012
-			return -1.0)
+				return 0.024
+			return -1.0, 8, 0.012)
 		_shell(s, o, PART_TRIM if vest_kind > 0 else PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-			if r == 1 and p.y > float(s["shoulder_y"]) - 0.2 and p.y < float(s["shoulder_y"]) - 0.09 and absf(p.x) > 0.04 and absf(p.x) < 0.13 and p.z > 0.0:
+			if not fem and r == 1 and p.y > float(s["shoulder_y"]) - 0.2 and p.y < float(s["shoulder_y"]) - 0.09 and absf(p.x) > 0.04 and absf(p.x) < 0.13 and p.z > 0.0:
 				return t_shirt + (0.03 if vest_kind > 0 else 0.01)
 			return -1.0)
 	# Boots (or low shoes) with a thicker turned-over top, and a roomy toe so they read
@@ -822,7 +1096,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	var vest: int = vest_kind
 	if vest > 0:
 		# A bodice or jerkin (1), a padded sci-fi vest (2) or a gambeson (3) over the shirt.
-		var vt := 0.016 if vest == 1 else 0.02
+		var vt := t_shirt + (0.012 if vest == 1 else 0.014)
 		var low := waist - (0.08 if vest == 3 else 0.02)
 		_shell(s, o, PART_TRIM, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 			if vest == 1 and not fem and p.z > 0.0 and absf(p.x) < 0.035 + 0.25 * maxf(0.0, p.y - float(s["shoulder_y"]) + 0.12):
@@ -843,21 +1117,27 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	if apron > 0.0:
 		# Over the skirt it hangs from the same waist a little further out; over trousers
 		# it falls from the hips like a skirt of its own.
-		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.04, PART_APRON, Color.WHITE, 0.36, 0.012 if hem > 0.0 else 0.006)
+		_skirt(s, o, top, apron, sp["flare"] if hem > 0.0 else 0.0, PART_APRON, Color.WHITE, 0.3 if hem > 0.0 else 0.25, 0.026 if hem > 0.0 else 0.006, -1.0, false, hem <= 0.0)
 		if sp["bib"]:
-			# The bib: the front of the chest and belly, skinned like the shirt under it.
-			var bib_top: float = float(s["shoulder_y"]) - 0.1
-			_shell(s, o, PART_APRON, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-				if (r == 1 or r == 5) and p.y > waist - 0.05 and p.y < bib_top and p.z > -0.02 and absf(p.x) < 0.13:
-					return 0.03 if vest > 0 else 0.02
-				return -1.0)
+			# The bib: a panel up the front of the belly and chest, narrowing to where it ties
+			# at the neck.
+			_bib(s, o, waist - 0.05, (0.036 if vest > 0 else 0.028) + t_shirt, Color.WHITE)
 	if sp["belt"]:
 		var loose := hem > 0.0 or apron > 0.0 or vest == 3
-		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.034 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
+		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.026 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
 		if sp.get("pouch", 0) != 0:
 			_pouch(s, o, waist - 0.035, float(sp["pouch"]))
 	if sp["cape"] > 0.0:
-		_cape(s, o, sp["cape"], Color.WHITE)
+		_cape(s, o, sp["cape"], Color.WHITE, (0.03 + float(sp["flare"]) * 0.5) if hem > 0.0 or apron > 0.0 else 0.0, 0.022 if vest_kind == 3 else (0.012 if vest_kind > 0 else 0.0))
+		# A mantle over the shoulders that the cape hangs from, so it wraps the shoulder
+		# line instead of starting at a straight edge behind them.
+		var sy: float = s["shoulder_y"]
+		var neck_y: float = s["neck"]
+		_shell(s, o, PART_CAPE, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
+			if (r == 1 and p.y > sy - 0.1 and p.y < neck_y + 0.01) or (r == 2 and p.y > sy - 0.05 and absf(p.x) < shoulder_x + 0.09):
+				# Over a jerkin or gambeson it clears that, not just the shirt.
+				return t_shirt + (0.042 if vest_kind == 3 else (0.032 if vest_kind > 0 else 0.014))
+			return -1.0, 30, 0.01)
 	var m := _commit(s, o)
 	_cache[key] = m
 	return m

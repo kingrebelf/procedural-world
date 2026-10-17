@@ -380,6 +380,13 @@ const ITEMS := {
 	"rubber": {"name": "Rubber", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "resource", "color": Color(0.12, 0.12, 0.12)},
 	"steel_sheet": {"name": "Steel Sheet", "era": Eras.SCIFI, "value": 18, "stack": true, "kind": "resource", "color": Color(0.62, 0.64, 0.68)},
 	"copper_wire": {"name": "Copper Wire", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.8, 0.45, 0.25)},
+	# Parts for the power system (Power).
+	"light_bulb": {"name": "Light Bulb", "era": ANY, "value": 6, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.92, 0.9, 0.82)},
+	"electric_motor": {"name": "Electric Motor", "era": ANY, "value": 45, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.3, 0.33, 0.3)},
+	"insulator": {"name": "Ceramic Insulator", "era": ANY, "value": 3, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.92, 0.9, 0.86)},
+	"battery_cell": {"name": "Lead-acid Cell", "era": ANY, "value": 14, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.4, 0.5, 0.42)},
+	"signal_wire": {"name": "Signal Wire", "era": ANY, "value": 3, "stack": true, "kind": "component", "cat": "Power", "color": Color(0.62, 0.18, 0.12)},
+	"multimeter": {"name": "Multimeter", "era": ANY, "value": 40, "stack": false, "kind": "tool", "cat": "Power", "damage": 2, "range": 2.0, "color": Color(0.75, 0.6, 0.3)},
 	"glass_pane": {"name": "Glass Pane", "era": Eras.SCIFI, "value": 8, "stack": true, "kind": "resource", "color": Color(0.75, 0.85, 0.88)},
 	"pocket_watch": {"name": "Pocket Watch", "era": Eras.SCIFI, "value": 150, "stack": false, "kind": "armor", "slot": "neck", "armor": 1, "bonus": {"xp": 0.05, "stamina_regen": 0.1}, "color": Color(0.85, 0.7, 0.35)},
 	"compass": {"name": "Compass", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "armor", "slot": "neck", "armor": 0, "bonus": {"speed": 0.03}, "color": Color(0.8, 0.62, 0.3)},
@@ -782,6 +789,17 @@ const UNLOCK := {
 	"helm_visor": 11, "exo_chest": 13, "exo_legs": 12, "mag_boots": 11, "gauntlets_power": 11,
 	"shield_emitter": 14, "vehicle_bay": 14, "speeder": 15, "rover": 15, "teleporter": 18,
 	"storage_crate": 11, "launch_pad": 30, "ship": SHIP_LEVEL,
+	# Power (Power, PowerGrid): early-industrial first, past the medieval heartland.
+	"gen_woodgas": 10, "windmill": 10, "battery_bank": 10, "power_pole": 10, "junction_box": 10, "knife_switch": 10,
+	"lamp_ceiling": 10, "lamp_wall": 10, "multimeter": 10, "light_bulb": 10, "electric_motor": 10, "insulator": 10,
+	"battery_cell": 10, "gen_diesel": 12, "floodlight": 12, "street_lamp": 12, "solar_array": 14,
+	"signal_wire": 10, "lever": 10, "push_button": 10, "pressure_plate": 10, "relay": 10, "logic_gate": 11,
+	"daylight_sensor": 11, "logic_timer": 11, "logic_clock": 11, "logic_latch": 12, "logic_counter": 12,
+	"logic_delay": 12, "charge_sensor": 12, "motion_sensor": 13, "door_motor": 13,
+	"alarm_bell": 10, "spike_trap": 11, "fence_post": 12, "searchlight": 13, "auto_turret": 14, "flame_trap": 15,
+	"heavy_turret": 18,
+	"conveyor_belt": 12, "hopper": 11, "robot_arm": 13, "auto_miner": 13, "quarry_drill": 16, "electric_furnace": 14,
+	"power_sawmill": 12, "assembler": 15, "water_wheel": 10, "steam_engine": 12,
 	# The medieval age, step by step: stone and hide, then bronze (forge), iron and
 	# studded leather (anvil), then steel, and the finest work last.
 	"shortbow": 2, "javelin": 2, "sickle": 2, "saw": 2, "shovel": 2, "lamp_oil": 2, "quill_ink": 2, "antidote": 2,
@@ -840,7 +858,7 @@ const UNLOCK := {
 	"silicon_crystal": 25, "rare_earth": 30, "titanium_ingot": 25, "carbon_fiber": 30, "polymer": 25, "graphene": 36,
 	"ceramic_plate": 25, "nanotube_spool": 36, "microchip": 25, "servo": 25, "optic_lens": 25, "wiring_loom": 25,
 	"coolant": 25, "superconductor": 40, "fuel_rod": 42, "circuit_board": 25, "processor": 30, "hull_patch": 25,
-	"sensor_module": 30, "gyroscope": 30, "thruster_part": 36, "antenna": 25, "solar_panel": 30, "magnet": 25,
+	"sensor_module": 30, "gyroscope": 30, "thruster_part": 36, "antenna": 25, "solar_panel": 14, "magnet": 25,
 	"nanopaste": 36, "quantum_chip": 45, "ration_bar": 25, "protein_pack": 25, "nutri_paste": 25, "freeze_meal": 25,
 	"hydro_greens": 25, "space_coffee": 25, "energy_drink": 25, "water_pouch": 25, "synth_steak": 25, "noodles": 25,
 	"fruit_cube": 25, "algae_bar": 25, "medkit_mil": 33, "stimpack": 30, "trauma_kit": 30, "antirad": 30, "cryo_vial": 30,
@@ -1025,7 +1043,15 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"door_wood": 20, "door_iron": 70, "door_bulkhead": 220,
 	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
-	"vehicle_bay": 260, "stable": 90, "launch_pad": 420}
+	"vehicle_bay": 260, "stable": 90, "launch_pad": 420,
+	"gen_woodgas": 240, "gen_diesel": 420, "windmill": 200, "solar_array": 260, "battery_bank": 150, "power_pole": 20, "junction_box": 18,
+	"knife_switch": 14, "lamp_ceiling": 20, "lamp_wall": 18, "floodlight": 60, "street_lamp": 55,
+	"lever": 10, "push_button": 8, "pressure_plate": 22, "motion_sensor": 40, "daylight_sensor": 24, "logic_timer": 26,
+	"logic_clock": 34, "logic_gate": 24, "logic_latch": 22, "logic_counter": 26, "logic_delay": 24, "relay": 20,
+	"charge_sensor": 30, "door_motor": 70, "auto_turret": 260, "heavy_turret": 520, "fence_post": 18, "spike_trap": 70,
+	"flame_trap": 120, "alarm_bell": 40, "searchlight": 140, "conveyor_belt": 16, "hopper": 30, "robot_arm": 90,
+	"auto_miner": 220, "quarry_drill": 380, "electric_furnace": 260, "power_sawmill": 160, "assembler": 300,
+	"water_wheel": 120, "steam_engine": 280}
 
 ## Weight of one item in kg, where it differs from the default for its kind.
 const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "aether_crystal": 0.8, "alloy_scrap": 1.5,
@@ -1160,7 +1186,7 @@ static var _piece_defs := {}
 ## any ranged weapon fires (its "ammo") under Ammo, anything with a "fuel" key under Fuel,
 ## and furniture that gives light under Lights. New items need nothing more than a kind.
 const CRAFT_TABS := ["Materials", "Tools", "Weapons", "Ammo", "Armour", "Fuel", "Food", "Medicine", "Lights",
-	"Vehicles", "Stations", "Building", "Furniture"]
+	"Vehicles", "Stations", "Building", "Furniture", "Power"]
 const KIND_TAB := {"resource": "Materials", "material": "Materials", "ore": "Materials", "ingot": "Materials",
 	"component": "Materials", "treasure": "Materials", "valuable": "Materials", "relic": "Materials",
 	"tool": "Tools", "gadget": "Tools", "instrument": "Tools", "key": "Tools", "scroll": "Tools",
@@ -1169,7 +1195,7 @@ const KIND_TAB := {"resource": "Materials", "material": "Materials", "ore": "Mat
 	"food": "Food", "drink": "Food", "ingredient": "Food", "crop": "Food",
 	"medicine": "Medicine", "potion": "Medicine", "herb": "Medicine", "consumable": "Medicine",
 	"light": "Lights", "vehicle": "Vehicles", "station": "Stations", "placeable": "Building", "camp": "Building",
-	"decor": "Furniture"}
+	"decor": "Furniture", "power": "Power"}
 
 static var _ammo_types := {}
 
@@ -1221,7 +1247,7 @@ static func def(type: String) -> Dictionary:
 				"stone": c = Color(0.55, 0.55, 0.55)
 				"metal": c = Color(0.7, 0.72, 0.76)
 			_piece_defs[type] = {"name": b["name"], "era": int(b.get("era", ANY)), "value": PIECE_VALUE.get(type, 10), "stack": true,
-				"kind": "station" if b.has("station") or b.has("storage") or b.has("teleporter") else ("decor" if b.has("decor") else "placeable"), "color": c, "place": true}
+				"kind": "power" if b.has("power") else ("station" if b.has("station") or b.has("storage") or b.has("teleporter") else ("decor" if b.has("decor") else "placeable")), "color": c, "place": true}
 		return _piece_defs[type]
 	return {}
 

@@ -31,12 +31,16 @@ var _think_t := 0.0
 var _deciding := false
 var _thinking := false
 var _ground := Callable(self, "ground")
+## How steep the loaded land is, for routes that go round cliffs (people and animals).
+var walk := WalkGrid.new(Callable(self, "_chunk_data"))
 var _stealth_t := 0.0
 var _mob_t := 0.0
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
 var watched := false
+## The watch on walled towns' gates, and towns' standing (GateWatch).
+var gates: GateWatch
 
 func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
@@ -46,6 +50,9 @@ func _ready() -> void:
 	Net.mob_said.connect(_on_mob_said)
 	Net.town_pushed.connect(_on_town_pushed)
 	Net.mob_talk.connect(_on_mob_talk)
+	gates = GateWatch.new()
+	gates.manager = self
+	add_child(gates)
 
 func _exit_tree() -> void:
 	save_all()
@@ -61,6 +68,10 @@ func ground(x: float, z: float) -> float:
 	if c == null:
 		return NAN
 	return ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE)
+
+func _chunk_data(k: Vector2i) -> Dictionary:
+	var c := streamer.get_chunk(k) if streamer else null
+	return c.data if c else {}
 
 func all_nodes() -> Array:
 	var out: Array = []
@@ -123,6 +134,9 @@ func _scan() -> void:
 	for b in Bandits.near(gen, Vector2(p.x, p.z), LOAD_R, Game.day):
 		if not settlements.has(String(b["id"])):
 			_load_band(b)
+	for e in settlements.values():
+		if e.has("places") and not e["data"].has("band"):
+			_crowd(e, p)
 	for id in settlements.keys():
 		var e: Dictionary = settlements[id]
 		if e.has("boat"):
@@ -194,6 +208,14 @@ func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 	_by_id[rec["id"]] = n
 	return n
 
+## Where the people within `radius` of `at` stand (for sensors and pressure plates).
+func people_near(at: Vector3, radius: float) -> Array:
+	var out: Array = []
+	for n in _by_id.values():
+		if is_instance_valid(n) and (n as Node3D).global_position.distance_to(at) <= radius:
+			out.append((n as Node3D).global_position)
+	return out
+
 ## Whether this game runs the town's people (always, offline).
 func runs(e: Dictionary) -> bool:
 	return Net.holds(kind_of(e["data"]), _key2(e["data"]))
@@ -227,12 +249,14 @@ func _unload(id: String) -> void:
 			e["decor"].queue_free()
 		settlements.erase(id)
 		return
-	if (runs(e) or e["dirty"]) and not e.get("transient", false):
+	# (At quit the store can go before the towns do: then there's nothing to save into.)
+	if (runs(e) or e["dirty"]) and not e.get("transient", false) and Game.store != null:
 		if runs(e):
 			e["data"]["sim_day"] = Game.day
 		Game.store.save_settlement(e["data"])
 	Net.watch("t", [], [k])
-	Game.store.forget_settlement(k.x, k.y)
+	if Game.store != null:
+		Game.store.forget_settlement(k.x, k.y)
 	_arriving = _arriving.filter(func(a: Array) -> bool: return a[0] != id)
 	for n in e["nodes"]:
 		_by_id.erase(n.rec["id"])
@@ -486,6 +510,18 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 	n.face_to = Vector2.INF
 	if n.action == "socialize":
 		_find_company(n, e, pp)
+	# Sitting down: on a bench by someone's door if one is free nearby.
+	var sits: bool = n.action == "sit" or n.action == "work" and String(n.duty.get("perform", "")) == "sit"
+	if sits and not n.is_performing():
+		var spot := _bench_spot(n, e, n.duty.get("target", n.target) if n.action == "work" else Vector2(n.global_position.x, n.global_position.z))
+		if not spot.is_empty():
+			n.target = spot[0]
+			n.face_to = spot[1]
+			if n.action == "work":
+				n.duty["target"] = spot[0]
+				n.duty["face"] = INF
+	elif not sits and not n.is_performing():
+		_free_bench(n, e)
 	var dist: float = per["player_dist"]
 	if n.action != prev:
 		# Ambient performances end when the person moves on to something else.
@@ -523,14 +559,15 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		if n.action == "dance" and here:
 			n.act("dance", randf_range(15.0, 30.0))
 			n.ambient = true
-		elif n.action == "sit":
-			n.act("sit", randf_range(20.0, 45.0))
-			n.ambient = true
+		elif n.action == "sit" and (not n.has_meta("bench_i") or Vector2(n.global_position.x, n.global_position.z).distance_to(n.target) < 0.9):
+			_sit(n, randf_range(20.0, 45.0))
 	# At work: a meal sat down, a tune in the square, a prayer now and then, and a word
 	# about it for anyone passing.
 	if n.action == "work" and not n.duty.is_empty() and n.at_work():
 		var perf := String(n.duty.get("perform", ""))
-		if perf != "" and not n.is_performing():
+		if perf == "sit" and not n.is_performing():
+			_sit(n, randf_range(25.0, 50.0))
+		elif perf != "" and not n.is_performing():
 			n.act(perf, randf_range(25.0, 50.0))
 			n.ambient = true
 		elif String(n.duty.get("gesture", "")) != "" and not n.is_performing() and randf() < 0.12:
@@ -676,7 +713,7 @@ func _background_think(pp: Vector3) -> void:
 		if not runs(e) or e["data"].has("band"):
 			continue
 		for n in e["nodes"]:
-			if n.talking or n.is_hidden() or n.think_at > t:
+			if n.talking or n.is_hidden() or n.think_at > t or n.rec.has("visit"):
 				continue
 			if n.global_position.distance_to(pp) < THINK_RANGE:
 				pick = n
@@ -719,7 +756,8 @@ func begin_talk(n: NPC) -> void:
 		if not be.is_empty() and float(be["demand_until"]) > 0.0:
 			be["demand_until"] = now() + 3600.0
 		return
-	Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
+	if not n.rec.has("visit"): # day visitors aren't anyone you'd find here again
+		Game.map.note_person(n.rec, String(n.settlement.get("name", "")))
 	mark_dirty(n.settlement)
 
 func end_talk(n: NPC) -> void:
@@ -736,6 +774,10 @@ func end_talk(n: NPC) -> void:
 ## The player struck an NPC. Everyone remembers.
 func player_hit(n: NPC, damage: float) -> void:
 	var rec := n.rec
+	if rec.get("child", false):
+		# Children can't be hurt by the player: the blow is pulled.
+		n.say(NPCMind.bark(rec, "hurt"), 2.0)
+		return
 	var s := n.settlement
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
@@ -910,7 +952,10 @@ func witnesses(pos: Vector3, extra: Array = []) -> Array:
 ## kind: a Crime.FINES key; worth: Marks taken. Returns true if you were seen.
 ## Other systems (shops, stalls) call this when you take what isn't yours.
 func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_by: NPC = null) -> bool:
-	var e := town_at(pos)
+	# Whoever caught you tells their own town; otherwise it's the town whose ground it is.
+	var e := _entry_of(caught_by.settlement) if caught_by != null and not caught_by.settlement.has("band") else {}
+	if e.is_empty() or not e.has("sid"):
+		e = town_at(pos)
 	if e.is_empty():
 		return false
 	var seen := witnesses(pos, [caught_by] if caught_by != null else [])
@@ -918,19 +963,22 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "vandalism": "Vandalism"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
 		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"],
-		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"]}.get(kind, ["Guards!"])
+		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"],
+		"trespass": ["You've no leave to be here! Guards!", "Intruder! Guards!", "Oi! Who let you in?"],
+		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
 		if not is_instance_valid(n):
 			continue
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
-			"lockpick": "breaking into a chest", "vandalism": "smashing down a door"}.get(kind, "committing a crime"))
+			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave",
+			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch"}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
 			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
@@ -941,7 +989,8 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 	for n in e["nodes"]:
 		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
 			n.decide_in = 0.0
-	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest"}.get(kind, "breaking the law"))
+	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest",
+		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch"}.get(kind, "breaking the law"))
 	e["dirty"] = true
 	return true
 
@@ -1009,6 +1058,8 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 	if n == null or not is_instance_valid(n):
 		return
 	var rec: Dictionary = n.rec
+	if rec.get("child", false):
+		return # nobody hurts children (player_hit refuses it where they are run too)
 	if killed:
 		rec["dead"] = true
 		rec["hp"] = 0.0
@@ -1060,6 +1111,103 @@ func _on_town_pushed(sx: int, sz: int) -> void:
 			_add_node(e, rec)
 
 # --- Outlaws -----------------------------------------------------------------------------------
+
+# --- Benches ---------------------------------------------------------------------------
+
+## Where someone about to sit down sits: [spot, a point they face] on a free bench by a
+## door within 25 m of `near` (held for them while they use it), or [] (they sit on the
+## stool they carry).
+func _bench_spot(n: NPC, e: Dictionary, near: Vector2) -> Array:
+	var benches: Array = e.get("places", {}).get("benches", [])
+	if benches.is_empty():
+		return []
+	var taken: Dictionary = e.get_or_add("benches_taken", {})
+	var bi := int(n.get_meta("bench_i", -1))
+	if bi < 0:
+		var bd := 25.0
+		for i in benches.size():
+			var o = taken.get(i)
+			if o != null and is_instance_valid(o) and o != n and int(o.get_meta("bench_i", -1)) == i:
+				continue
+			var d := near.distance_to(benches[i][0])
+			if d < bd:
+				bd = d
+				bi = i
+		if bi < 0:
+			return []
+		taken[bi] = n
+		n.set_meta("bench_i", bi)
+	var b: Array = benches[bi]
+	var front := Vector2(sin(float(b[1])), cos(float(b[1])))
+	# Feet a little out from the bench, so the hips land on the seat.
+	return [(b[0] as Vector2) + front * 0.32, (b[0] as Vector2) + front * 4.0]
+
+func _free_bench(n: NPC, e: Dictionary) -> void:
+	if not n.has_meta("bench_i"):
+		return
+	var taken: Dictionary = e.get("benches_taken", {})
+	if taken.get(int(n.get_meta("bench_i"))) == n:
+		taken.erase(int(n.get_meta("bench_i")))
+	n.remove_meta("bench_i")
+
+## Whether someone sitting here is on a bench (so they don't bring out a stool too).
+func bench_under(n: NPC) -> bool:
+	var e := _entry_of(n.settlement)
+	var p := Vector2(n.global_position.x, n.global_position.z)
+	for b in e.get("places", {}).get("benches", []):
+		if p.distance_to(b[0]) < 0.7:
+			return true
+	return false
+
+## Sit down: on the bench they went to, else on their own stool.
+func _sit(n: NPC, secs: float) -> void:
+	if n.has_meta("bench_i"):
+		var at: Vector2 = n.duty.get("target", n.target) if n.action == "work" else n.target
+		n.global_position = Vector3(at.x, n.global_position.y, at.y)
+		n.rotation.y = atan2(n.face_to.x - n.global_position.x, n.face_to.y - n.global_position.z)
+	n.act("sit", secs)
+	n.ambient = true
+
+# --- Market crowd -------------------------------------------------------------------------
+
+var _crowd_dead: Dictionary = {} ## day visitors killed this session (so they don't come back)
+
+## Day visitors (MarketCrowd) come into a town and go home again by the clock, while
+## someone is near enough to see them.
+func _crowd(e: Dictionary, p: Vector3) -> void:
+	var places: Dictionary = e["places"]
+	var day := NPCMind.day_num()
+	if int(e.get("crowd_day", -1)) != day:
+		for n in e["nodes"].duplicate():
+			if is_instance_valid(n) and n.rec.has("visit"):
+				_drop_node(n)
+		e["crowd_day"] = day
+		e["crowd"] = MarketCrowd.roster(e["site"], int(e["data"]["era"]), day, places["gates"])
+	var hour := NPCMind.hour_now()
+	var c: Vector2 = e["data"]["center"]
+	var c3 := Vector3(c.x, p.y, c.y)
+	var near: bool = c3.distance_to(Net.nearest_player(c3, p)[1]) < MarketCrowd.NEAR
+	for rec in e["crowd"]:
+		var id: String = rec["id"]
+		if rec.get("dead", false):
+			_crowd_dead[id] = true
+		var n = _by_id.get(id)
+		var want: bool = near and MarketCrowd.here(rec, hour) and not _crowd_dead.has(id)
+		if want and n == null:
+			# Just come in by the road, or (arriving to find them already here) about
+			# their business.
+			var at: Vector2 = rec["home"]
+			if hour - float(rec["visit"][0]) > 0.15:
+				var d := NPCRoles.duty_at(rec, places, hour, now())
+				if not d.is_empty():
+					at = d["target"]
+			rec["pos"] = Vector3(at.x, gen.field.height(at.x, at.y), at.y)
+			_add_node(e, rec)
+		elif n != null and is_instance_valid(n) and not n.talking:
+			# Gone home: out of the road at the end of their day, or out of everyone's sight.
+			var leaving := hour >= float(rec["visit"][1]) - MarketCrowd.LEAVE
+			if not want or leaving and Vector2(n.global_position.x, n.global_position.z).distance_to(rec["home"]) < 2.0:
+				_drop_node(n)
 
 var _band_kills: Dictionary = {} ## outlaws killed this session (also kept in their camp's chunk)
 
@@ -1212,6 +1360,7 @@ func _bandit_hit(n: NPC, _damage: float) -> void:
 		e["nodes"].erase(n)
 	_by_id.erase(rec["id"])
 	Game.add_xp(20.0 + 6.0 * NPCSocial.level(rec), "Outlaw slain")
+	gates.outlaw_slain(n.global_position)
 	Game.toast.emit("%s is dead" % rec["name"])
 	if not e.is_empty() and e["nodes"].is_empty():
 		Game.add_xp(40.0 + 10.0 * float(e["band"]["zone"]), "Broke a %s" % String(e["band"]["name"]).to_lower())

@@ -101,6 +101,8 @@ varying vec2 road_v;
 varying vec4 canopy_v;
 varying float river_v;
 #endif
+// (v18) The climate on the ground (UV2): x how dry, y how lush (+) or cold (-).
+varying vec2 clim_v;
 
 float hash13(vec3 p3) {
 	p3 = fract(p3 * 0.1031);
@@ -114,6 +116,32 @@ float vnoise3(vec3 p) {
 	f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(mix(hash13(i), hash13(i + vec3(1, 0, 0)), f.x), mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x), f.y),
 		mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x), mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+// Value noise with its gradient: (value, d/dx, d/dy, d/dz), from the same lattice as
+// vnoise3, so a relief can tilt the normal without sampling around the point.
+vec4 vnoise3d(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	vec3 u = f * f * (3.0 - 2.0 * f);
+	vec3 du = 6.0 * f * (1.0 - f);
+	float a = hash13(i);
+	float b = hash13(i + vec3(1, 0, 0));
+	float c = hash13(i + vec3(0, 1, 0));
+	float d = hash13(i + vec3(1, 1, 0));
+	float e = hash13(i + vec3(0, 0, 1));
+	float f1 = hash13(i + vec3(1, 0, 1));
+	float g = hash13(i + vec3(0, 1, 1));
+	float h = hash13(i + vec3(1, 1, 1));
+	float k1 = b - a;
+	float k2 = c - a;
+	float k3 = e - a;
+	float k4 = a - b - c + d;
+	float k5 = a - c - e + g;
+	float k6 = a - b - e + f1;
+	float k7 = -a + b + c - d + e - f1 - g + h;
+	return vec4(a + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z,
+		du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z, k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x, k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y));
 }
 
 // Cracked rock: ridged 3D noise gives crevices on cliffs from any direction.
@@ -187,6 +215,7 @@ void vertex() {
 	scar_v = CUSTOM2.zw;
 	cover_v = CUSTOM3;
 	road_v = UV;
+	clim_v = UV2;
 #ifdef FAR_LAND
 	road_v = vec2(0.0);
 	canopy_v = vec4(CUSTOM3.rgb, CUSTOM2.z);
@@ -254,8 +283,13 @@ void fragment() {
 	vec2 tilt_s = vec2(0.0);
 	vec2 tilt_r = vec2(0.0);
 	vec3 rock_n = vec3(0.0); // world-space tilt of rock faces
+	float rock_hi = 0.5; // how proud the rock's surface stands here (its photo's light and dark)
 	vec3 mud_d = vec3(1.0);
 	float moss_glow = 0.0;
+	// The rock's bedding wanders and dips across a face instead of running dead level,
+	// like courses of masonry; the photo's layers and the ledges below both follow it.
+	float dip = (fbm(vec2(wpos.x + wpos.z, wpos.x - wpos.z) * 0.012 + 3.0) - 0.5) * 14.0
+		+ (wpos.x * 0.6 - wpos.z * 0.4) * 0.12;
 	if (use_textures) {
 		// Ground: planar world mapping, one texture pair per era, skipped where absent.
 		vec3 gm = vec3(0.0), gs = vec3(0.0);
@@ -289,10 +323,6 @@ void fragment() {
 		vec3 bw = pow(abs(wnorm), vec3(4.0));
 		bw /= bw.x + bw.y + bw.z;
 		vec3 rp = wpos / ROCK_TILE;
-		// The layers wander and dip across a face instead of running dead level, like
-		// courses of masonry.
-		float dip = (fbm(vec2(wpos.x + wpos.z, wpos.x - wpos.z) * 0.012 + 3.0) - 0.5) * 14.0
-			+ (wpos.x * 0.6 - wpos.z * 0.4) * 0.12;
 		vec2 cx = vec2(wpos.z, -wpos.y + dip) / CLIFF_TILE;
 		vec2 cz = vec2(wpos.x, -wpos.y + dip) / CLIFF_TILE;
 		float cm = smoothstep(0.3, 0.7, vnoise3(wpos * 0.06));
@@ -300,6 +330,7 @@ void fragment() {
 			+ texture(rock_tex, rp.xz * 0.8 + 0.5).rgb * bw.y
 			+ mix(texture(cliff_tex, cz).rgb, texture(cliff_tex, cz * 0.43 + 0.31).rgb, cm) * bw.z;
 		vec3 rmean = mix(CLIFF_MEAN, ROCK_MEAN, bw.y);
+		rock_hi = clamp(dot(rt, LUM) / dot(rmean, LUM) * 0.5, 0.0, 1.0);
 		rock = recolor(rt, rmean, rock, 0.5 - 0.3 * stone_v.a) * (0.85 + 0.3 * fbm(vec2(wpos.y * 0.9, (wpos.x + wpos.z) * 0.05)));
 		// Rain streaks down the faces, dark stains and paler washed ones, and broad
 		// tones over a whole crag, so a tall face isn't one repeat stacked on another.
@@ -330,8 +361,19 @@ void fragment() {
 
 	// Grass: lush and dry patches, darker in hollows, and broad swathes of deeper and
 	// paler green so distant meadows are never one flat colour.
+	// The climate (v18, WorldField.ground_look): in the hot dry belts the grass is bleached
+	// to straw with red earth between the tufts; in the wet tropics a deep, lush green; in
+	// the cold uplands a dun olive.
+	float c_dry = clamp(clim_v.x, 0.0, 1.0) * w.r;
+	float c_lush = clamp(clim_v.y, 0.0, 1.0) * w.r;
+	float c_cold = clamp(-clim_v.y, 0.0, 1.0) * w.r;
 	float dry = smoothstep(0.42, 0.7, fbm(p * 0.006 + 7.0));
+	dry = mix(dry, 0.7 + 0.3 * dry, c_dry);
 	vec3 g = mix(grass, grass * vec3(1.35, 1.15, 0.6), dry * 0.7 * w.r);
+	g = mix(g, vec3(dot(g, LUM)) * vec3(1.5, 1.22, 0.6) * 1.1, c_dry * (0.5 + 0.3 * meso));
+	g = mix(g, g * vec3(0.78, 1.06, 0.72), c_lush * 0.55);
+	g = mix(g, vec3(dot(g, LUM)) * vec3(1.1, 1.03, 0.8), c_cold * 0.45);
+	soil = mix(soil, soil * vec3(1.18, 0.9, 0.7), c_dry * 0.6);
 	float swathe = fbm(p * 0.035 + 21.0);
 	g *= mix(vec3(0.82, 0.9, 0.8), vec3(1.12, 1.08, 0.92), smoothstep(0.3, 0.7, swathe));
 	float soil_mask = smoothstep(0.45, 0.75, macro + (meso - 0.5) * 0.4);
@@ -340,11 +382,33 @@ void fragment() {
 	// (fantasy and sci-fi soil keeps its broad patches).
 	float worn = smoothstep(0.62, 0.85, vnoise(p * 0.9 + 17.0) * 0.55 + micro * 0.45);
 	float bare = soil_mask * 0.7 * mix(1.0, worn, w.r);
-	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso));
-	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro);
+	bare = max(bare, c_dry * 0.6 * smoothstep(0.5, 0.75, vnoise(p * 0.45 + 41.0) * 0.65 + micro * 0.35));
+	float moss = smoothstep(0.35, 0.6, vnoise(p * 0.55 + 9.0)) * (1.0 - smoothstep(0.3, 0.6, meso)) * (1.0 - c_dry);
+	float clover = smoothstep(0.6, 0.8, vnoise(p * 1.7 + 3.0)) * (0.6 + 0.4 * micro) * (1.0 - c_dry * 0.8);
 	vec3 turf = mix(g, g * vec3(0.7, 0.88, 0.6), moss * 0.55 * w.r);
 	turf = mix(turf, g * vec3(0.9, 1.12, 1.02), clover * 0.45 * w.r);
 	vec3 ground = mix(turf * (0.78 + 0.44 * meso), soil * (0.85 + 0.3 * micro), bare);
+	// Tussocks: the sward grows in clumps a stride or two across, darker between them, so
+	// a meadow or a grassy bank seen from across the valley isn't one smooth baize. (They
+	// average out further off, where they would only shimmer.)
+	float near_g = 1.0 - smoothstep(60.0, 160.0, dist);
+	float tuss = mix(0.5, vnoise(p * 0.7 + 5.0) * 0.6 + vnoise(p * 2.3 + 13.0) * 0.4, near_g);
+	ground *= mix(1.0, 0.84 + 0.32 * tuss, w.r * (1.0 - bare));
+	// Terracettes: on steep pasture, grazing beasts tread level paths along the contours,
+	// lines of short pale turf with little bare-earth risers below them, here and there
+	// across a bank rather than over every hillside.
+	float stg = smoothstep(0.06, 0.14, slope) * (1.0 - smoothstep(0.26, 0.36, slope)) * w.r;
+	if (stg > 0.01) {
+		float tfade = 1.0 - smoothstep(110.0, 240.0, dist);
+		float patch = smoothstep(0.42, 0.62, fbm(p * 0.025 + 31.0));
+		float ph = wpos.y / 0.62 + (fbm(p * 0.07 + 5.0) - 0.5) * 2.6 + (vnoise(p * 0.35) - 0.5) * 0.5;
+		float sp = fract(ph);
+		float riser = smoothstep(0.7, 0.84, sp) * (1.0 - smoothstep(0.92, 1.0, sp));
+		float tread = 1.0 - smoothstep(0.0, 0.5, sp);
+		float k = stg * patch * tfade;
+		ground = mix(ground, mix(soil, ground * 0.7, 0.45), riser * 0.6 * k);
+		ground *= 1.0 + 0.1 * tread * k;
+	}
 	// A landform's own ground (sand, dust, clay) keeps the texture's light and shade.
 	if (soil_v.a > 0.01) {
 		vec3 own = pow(max(soil_v.rgb, vec3(0.0)), vec3(2.2));
@@ -393,7 +457,38 @@ void fragment() {
 	// Shoreline: wet sand/mud near the water level.
 	float shore = 1.0 - smoothstep(0.2, 1.6, wpos.y);
 	ground = mix(ground, mix(vec3(0.42, 0.38, 0.3), vec3(0.18, 0.16, 0.13), smoothstep(0.6, -0.2, wpos.y)) * mud_d, shore);
-	float rock_mask = smoothstep(0.32, 0.52, slope + (meso - 0.5) * 0.18) * (1.0 - form_v.x);
+	// Lake and pond beds: soft olive-brown silt where the water is murky (Water's murk
+	// map), mottled, with drifts of dark rotting leaves; clear open water keeps its sand.
+	if (wpos.y < 0.0) {
+		vec2 muv = (p - water_map_rect.xy) / water_map_rect.z;
+		float murk = 0.0;
+		if (muv.x > 0.01 && muv.y > 0.01 && muv.x < 0.99 && muv.y < 0.99) {
+			murk = textureLod(water_murk, muv, 0.0).r;
+		}
+		float bed = murk * smoothstep(0.0, -0.8, wpos.y);
+		if (bed > 0.001) {
+			float mott = vnoise(p * 0.35) * 0.6 + vnoise(p * 2.1) * 0.4;
+			vec3 silt = mix(vec3(0.12, 0.11, 0.065), vec3(0.21, 0.18, 0.1), mott);
+			float litter = smoothstep(0.68, 0.78, vnoise(p * 4.7 + 7.0)) * (1.0 - far);
+			silt = mix(silt, vec3(0.17, 0.1, 0.05), litter * 0.7);
+			ground = mix(ground, silt * mix(vec3(1.0), mud_d, 0.6), bed);
+		}
+	}
+	// Where the slope turns to rock: up close by the rock's own relief, so its proud faces
+	// come through first and grass and soil fill the low places between them in a crisp,
+	// ragged edge (a straight slope blend smeared a soft green fog over the cliff foot);
+	// far off, the plain blend. Grass holds on in tufts and turfs a metre or so across,
+	// not in grains (the fine grain sprinkled a wide speckled band where a face eased off).
+	float tufts = vnoise(p * 0.9 + 7.7) * 0.6 + vnoise(p * 2.1 + 3.3) * 0.4;
+	if (steep > 0.01) {
+		tufts = mix(tufts, vnoise3(wpos * 0.9 + 7.7) * 0.6 + vnoise3(wpos * 2.1 + 3.3) * 0.4, steep);
+	}
+	float rock_at = (slope + (meso - 0.5) * 0.18 - 0.32) / 0.2;
+	// The photo's own light and dark sets the edge only close by: a few metres off, its
+	// little bright knobs read as white specks sprinkled through the grass.
+	float proud_k = mix(0.5, 0.12, smoothstep(6.0, 25.0, dist));
+	float rock_mask = mix(smoothstep(0.44, 0.56, rock_at + (rock_hi - 0.5) * proud_k + (tufts - 0.5) * 0.6 + (micro - 0.5) * 0.06),
+		smoothstep(0.0, 1.0, rock_at), far) * (1.0 - form_v.x);
 	// Sand: wind ripples about a foot apart, straight across the wind but wavering,
 	// forking and dying out (sharp and close in some stretches, faint in others), with a
 	// long gentle windward side and a short steep lee; finer ones still close up, and
@@ -443,6 +538,9 @@ void fragment() {
 	float glass = 0.0;
 	if (scar_v.x > 0.01) {
 		float burn = smoothstep(0.1, 0.6, scar_v.x + (meso - 0.5) * 0.5 + (micro - 0.5) * 0.15);
+		// Round the burn: churned earth and ash, grey-brown, not the land's bare red soil.
+		float ash = smoothstep(0.0, 0.12, scar_v.x) * (1.0 - burn);
+		col = mix(col, vec3(dot(col, LUM)) * vec3(0.95, 0.88, 0.8) * 0.85, ash * 0.75);
 		col = mix(col, col * vec3(0.2, 0.18, 0.17) + vec3(0.01), burn * 0.92);
 		// Only on the flat trench floor where the melt pooled; banks and walls stay soot.
 		glass = smoothstep(0.6, 0.78, scar_v.x + (fbm(p * vec2(0.09, 0.2) + 17.0) - 0.5) * 0.7) * (1.0 - smoothstep(0.08, 0.2, slope)) * (1.0 - rock_mask) * (1.0 - far * 0.5);
@@ -480,19 +578,26 @@ void fragment() {
 		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
 		vec2 dome = vec2(0.0);
 		if (b1 > 0.0 && b2 < 1.0) {
-			vec2 sq = p * vec2(2.3, 3.1);
+			// Small hand-cut stones (about 25 by 20 cm) in rows that wander, never a grid:
+			// the rows bow and drift, and each stone is its own size and rounded at the
+			// corners.
+			vec2 sq = p * vec2(3.9, 4.8) + vec2(vnoise(p * 0.9) - 0.5, vnoise(p * 0.7 + 5.0) - 0.5) * 0.9;
 			float row = floor(sq.y);
-			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35;
+			sq.x += row * 0.5 + hash12(vec2(row, 7.0)) * 0.35 + (vnoise(vec2(p.x * 0.5, row)) - 0.5) * 0.6;
 			vec2 cid = floor(sq);
 			vec2 f = fract(sq) - 0.5;
-			float joint = smoothstep(0.34, 0.47, max(abs(f.x), abs(f.y))) * (1.0 - far);
 			float hs = hash12(cid);
 			float hs2 = hash12(cid + 1.7);
-			// Old setts: each stone its own shade, some warm, some cool, sunk or tipped.
-			vec3 sett = mix(vec3(0.24, 0.23, 0.21), vec3(0.4, 0.37, 0.33), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
+			vec2 af = abs(f) / (vec2(0.42, 0.42) + vec2(hs, hs2) * 0.08);
+			float rr = pow(pow(af.x, 4.0) + pow(af.y, 4.0), 0.25);
+			float joint = smoothstep(0.8, 1.02, rr) * (1.0 - far);
+			// Old setts: dark, each stone its own shade, some warm, some cool, sunk or tipped.
+			vec3 sett = mix(vec3(0.15, 0.145, 0.135), vec3(0.3, 0.28, 0.25), hs) * mix(vec3(1.04, 1.0, 0.94), vec3(0.95, 0.98, 1.03), hs2);
 			sett *= (0.78 + 0.22 * hs2) * (0.85 + 0.25 * micro);
-			// Mud trodden over the stones in drifts, and the joints packed with dirt and moss.
-			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2);
+			// Mud trodden over the stones in drifts, thickest down the middle where feet
+			// and wheels go, and the joints packed with dirt and moss.
+			float tread = smoothstep(0.55, 0.95, road) * (0.6 + 0.4 * fbm(p * 0.3 + 2.0));
+			float dirt = smoothstep(0.48, 0.8, fbm(p * 0.09 + 5.0) + (micro - 0.5) * 0.2 + tread * 0.25);
 			sett = mix(sett, rm * 0.8, dirt * 0.55);
 			float moss = smoothstep(0.42, 0.72, fbm(p * 0.21 + 41.0)) * (1.0 - dirt * 0.6);
 			vec3 fill = mix(rm * 0.6, vec3(0.13, 0.17, 0.07) * (0.8 + 0.4 * micro), moss * 0.75);
@@ -714,6 +819,36 @@ void fragment() {
 	snow *= 1.0 - river;
 #endif
 
+	// Faces: relief at the size of the rock itself, in metres, rather than a skin of
+	// little blobs (which, with the photo's own bump, read as wrinkled hide). Rain cuts
+	// rills down any steep face, earth or stone; rock also has fracture lines, bedding
+	// ledges (each bed jutting at its foot and leaning back above) and, on a mountain
+	// side, gullies tens of metres apart, darker where they gather the wet. Each eases
+	// off once a pixel spans a good part of it, so none of them crawls in the distance.
+	vec3 face_gr = vec3(0.0);
+	if (steep > 0.01) {
+		float fw = length(fwidth(wpos));
+		vec4 rl = vnoise3d(wpos * vec3(0.55, 0.045, 0.55) + 13.0);
+		vec3 gr = sign(rl.x - 0.5) * 0.5 * rl.yzw * vec3(0.55, 0.045, 0.55) * (1.0 - smoothstep(0.3, 0.9, fw));
+		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
+		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
+		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask * (1.0 - smoothstep(0.8, 2.5, fw));
+		vec4 gl = vnoise3d(wpos * vec3(0.05, 0.005, 0.05) + 31.0);
+		float gully = (1.0 - smoothstep(0.0, 0.12, abs(gl.x - 0.5))) * rock_mask * steep * (1.0 - smoothstep(4.0, 12.0, fw));
+		gr += sign(gl.x - 0.5) * 3.0 * gl.yzw * vec3(0.05, 0.005, 0.05) * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
+		col *= 1.0 - 0.18 * gully * (1.0 - snow);
+		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
+		float bf = fract(bed);
+		float foot = smoothstep(0.0, 0.2, bf);
+		float dfoot = bf < 0.2 ? 150.0 * bf * (1.0 - bf * 5.0) : 0.0;
+		// Some beds stand proud along a stretch and fade back into the face elsewhere.
+		float proud = smoothstep(0.3, 0.7, vnoise(vec2((wpos.x - wpos.z) * 0.07, floor(bed) * 1.7)));
+		proud *= 0.3 * rock_mask * (1.0 + form_v.y) * (1.0 - smoothstep(0.1, 0.4, fwidth(bed)));
+		gr.y += proud * (dfoot * (1.0 - bf) - foot) / 2.3;
+		gr -= dot(gr, wnorm) * wnorm;
+		face_gr = gr * steep * (1.0 - snow * 0.8);
+	}
+
 	// Cloud shadows drifting over the land.
 	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
 	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
@@ -735,19 +870,10 @@ void fragment() {
 	vec3 dn = normalize(vec3(-(hx - h0) / e * detail_strength * rs, 1.0, -(hz - h0) / e * detail_strength * rs));
 	float proc = use_textures ? 0.35 : 1.0;
 	vec3 bump = vec3(dn.x, 0.0, dn.z) * proc * (1.0 - steep) * (1.0 - snow * 0.7);
-	if (steep > 0.01) {
-		// Faces: the gradient of 3D noise, kept in the plane of the face.
-		float e3 = 0.2;
-		vec3 q = wpos * 0.9;
-		float g0 = vnoise3(q) + vnoise3(q * 2.3) * 0.5;
-		vec3 gr = vec3(vnoise3(q + vec3(e3, 0, 0)) + vnoise3((q + vec3(e3, 0, 0)) * 2.3) * 0.5,
-			vnoise3(q + vec3(0, e3, 0)) + vnoise3((q + vec3(0, e3, 0)) * 2.3) * 0.5,
-			vnoise3(q + vec3(0, 0, e3)) + vnoise3((q + vec3(0, 0, e3)) * 2.3) * 0.5) - g0;
-		gr /= e3;
-		gr -= dot(gr, wnorm) * wnorm;
-		bump -= gr * detail_strength * 0.3 * steep * proc;
-	}
-	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * 0.55 + vec3(ripple.x, 0.0, ripple.y));
+	bump -= face_gr;
+	// The photo's fine bump fades with distance, where it only adds crawling grain.
+	float rock_bump = mix(0.42, 0.14, smoothstep(6.0, 45.0, dist));
+	vec3 n = normalize(wnorm + bump * (1.0 - plates * 0.8) + vec3(tilt.x, 0.0, tilt.y) * 0.9 * (1.0 - rock_mask * steep) + rock_n * rock_mask * rock_bump + vec3(ripple.x, 0.0, ripple.y));
 #ifdef FAR_LAND
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
 	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), river));

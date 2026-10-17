@@ -77,6 +77,44 @@ static func species(t: String, sp: int) -> Dictionary:
 				"leaf": Color.from_hsv(r.randf_range(0.28, 0.38) if form != "larch" else r.randf_range(0.14, 0.2), r.randf_range(0.35, 0.6), r.randf_range(0.18, 0.34)),
 				"bark": Color.from_hsv(r.randf_range(0.03, 0.09), r.randf_range(0.3, 0.55), r.randf_range(0.2, 0.38)),
 			}
+		"palm":
+			# Coconut palms lean and curve, royal palms stand straight and smooth on a green
+			# crownshaft, date palms are stout with stiff fronds, palmettos are a clump of
+			# short stems, bananas a soft trunk of leaf bases under great paddle leaves.
+			var forms := ["coconut", "royal", "date", "palmetto", "banana"]
+			var form: String = forms[r.randi() % forms.size()]
+			var nouns := {"coconut": "Coconut Palm", "royal": "Royal Palm", "date": "Date Palm", "palmetto": "Palmetto", "banana": "Banana"}
+			var height: float = {"coconut": r.randf_range(8.0, 16.0), "royal": r.randf_range(10.0, 18.0), "date": r.randf_range(6.0, 12.0),
+				"palmetto": r.randf_range(1.6, 3.2), "banana": r.randf_range(3.0, 5.5)}[form]
+			var hue := r.randf_range(0.2, 0.3) if form != "date" else r.randf_range(0.2, 0.26)
+			return {
+				"form": form, "noun": nouns[form], "height": height,
+				"girth": {"coconut": 0.17, "royal": 0.26, "date": 0.3, "palmetto": 0.08, "banana": 0.16}[form] * r.randf_range(0.85, 1.15),
+				"fronds": {"coconut": r.randi_range(16, 24), "royal": r.randi_range(14, 20), "date": r.randi_range(22, 32), "palmetto": r.randi_range(7, 11), "banana": r.randi_range(9, 13)}[form],
+				"frond_len": {"coconut": r.randf_range(3.6, 5.2), "royal": r.randf_range(3.2, 4.4), "date": r.randf_range(3.0, 4.2), "palmetto": r.randf_range(1.1, 1.7), "banana": r.randf_range(2.0, 3.0)}[form],
+				"lean": r.randf_range(0.08, 0.3) if form == "coconut" else r.randf_range(0.0, 0.05),
+				"droop": r.randf_range(0.6, 1.1) if form != "date" else r.randf_range(0.25, 0.5),
+				"stems": r.randi_range(3, 6) if form == "palmetto" else 1,
+				"leaf": Color.from_hsv(hue, r.randf_range(0.5, 0.75), r.randf_range(0.36, 0.5) if form != "date" else r.randf_range(0.32, 0.42)),
+				"bark": Color.from_hsv(r.randf_range(0.06, 0.1), r.randf_range(0.12, 0.3), r.randf_range(0.42, 0.62)) if form != "banana" else Color.from_hsv(r.randf_range(0.18, 0.24), 0.35, 0.45),
+			}
+		"tropic":
+			# Broadleaf trees of the warm lands: acacia spreading a flat top over the
+			# savanna, a dense dark fig, and the rainforest's emergents rising clear of the
+			# canopy on tall buttressed trunks.
+			var forms := ["umbrella", "fig", "emergent"]
+			var form: String = forms[r.randi() % forms.size()]
+			var nouns := {"umbrella": "Acacia", "fig": "Fig", "emergent": "Kapok"}
+			var height: float = {"umbrella": r.randf_range(5.0, 9.0), "fig": r.randf_range(8.0, 14.0), "emergent": r.randf_range(16.0, 24.0)}[form]
+			return {
+				"form": form, "noun": nouns[form], "height": height,
+				"girth": r.randf_range(0.22, 0.4) * (1.5 if form == "emergent" else (1.2 if form == "fig" else 0.8)),
+				"crown": r.randf_range(1.9, 2.8) * (1.15 if form == "umbrella" else 1.0),
+				"branches": r.randi_range(3, 6),
+				"leaf": Color.from_hsv(r.randf_range(0.2, 0.3), r.randf_range(0.5, 0.75) if form != "umbrella" else r.randf_range(0.35, 0.55), r.randf_range(0.3, 0.45) if form == "fig" else r.randf_range(0.38, 0.55)),
+				"bark": Color.from_hsv(r.randf_range(0.06, 0.1), r.randf_range(0.15, 0.4), r.randf_range(0.3, 0.55) if form == "emergent" else r.randf_range(0.22, 0.4)),
+				"card": r.randf_range(0.9, 1.3) * (0.8 if form == "umbrella" else 1.0), "lean": r.randf_range(0.0, 0.1),
+			}
 		"glowcap":
 			var caps := ["dome", "flat", "cone", "bell", "funnel", "shelf"]
 			var cap: String = caps[r.randi() % caps.size()]
@@ -148,9 +186,15 @@ static func build(k: MeshKit, t: String, sp: int, v: int) -> bool:
 
 const UNDER_FORMS := [["fern", "bush", "flowers", "reeds"], ["fern", "bush", "glowbulbs", "fronds"], ["tendrils", "bush", "glowbulbs", "reeds"]]
 
+## Undergrowth species of the wet tropics carry this flag (above the 31 random bits): big
+## fronds, ferns and bushes under the palms instead of the woodland's flowers and reeds
+## (no flower mats: the big petals read as alien in the jungle shade).
+const TROPIC_UNDER := 1 << 32
+const TROPIC_UNDER_FORMS := ["fronds", "fern", "bush", "fronds", "fern"]
+
 ## Which undergrowth form species `sp` takes in `era` (the same pick build_under makes).
 static func under_form(sp: int, era: int) -> String:
-	var forms: Array = UNDER_FORMS[era]
+	var forms: Array = TROPIC_UNDER_FORMS if sp & TROPIC_UNDER else UNDER_FORMS[era]
 	return forms[_rng(sp, 5).randi() % forms.size()]
 
 ## True when the player harvested the undergrowth near (lx, lz) in this chunk.
@@ -184,6 +228,8 @@ static func build_under(k: MeshKit, sp: int, era: int) -> void:
 	var r := _rng(sp, 5)
 	var forms: Array = UNDER_FORMS[era]
 	var form: String = forms[r.randi() % forms.size()]
+	if sp & TROPIC_UNDER:
+		form = under_form(sp, era)
 	var hue := r.randf()
 	var leaf := Color.from_hsv(r.randf_range(0.17, 0.33), r.randf_range(0.4, 0.75), r.randf_range(0.3, 0.55))
 	if era == Eras.FANTASY:
@@ -211,6 +257,8 @@ static func build_under(k: MeshKit, sp: int, era: int) -> void:
 				for i in 8:
 					var d := Vector3(r.randf_range(-1, 1), r.randf_range(0.2, 1), r.randf_range(-1, 1)).normalized()
 					k.sphere(berry, I.translated(Vector3(0, rad * 0.7, 0) + d * rad * 0.9), 0.04, 3, 5, 0.0, 1.0, Color.from_hsv(hue, 0.8, 0.8))
+		"flowers" when era == Eras.MEDIEVAL:
+			_wildflowers(k, r)
 		"flowers":
 			for i in r.randi_range(5, 12):
 				var pos := Vector3(r.randf_range(-0.6, 0.6), 0, r.randf_range(-0.6, 0.6))
@@ -241,6 +289,45 @@ static func _limb(k: MeshKit, mat: String, from: Vector3, dir: Vector3, length: 
 		b = Basis(axis.normalized(), Vector3.UP.angle_to(dir))
 	k.cylinder(mat, Transform3D(b, from), r0, r1, length, segs, false, 0.08, 2, col)
 	return from + dir * length
+
+## Wild flower colours (sRGB) and how common each is: mostly white, yellow, blue and
+## violet; pink less often; red the odd poppy.
+const WILD := [[Color(0.94, 0.93, 0.88), 3.0], [Color(0.95, 0.82, 0.22), 3.0], [Color(0.45, 0.52, 0.86), 2.0],
+	[Color(0.62, 0.48, 0.8), 1.6], [Color(0.9, 0.62, 0.74), 1.0], [Color(0.8, 0.22, 0.14), 0.4]]
+
+static func _wild_colour(r: RandomNumberGenerator) -> Color:
+	var total := 0.0
+	for w in WILD:
+		total += float(w[1])
+	var u := r.randf() * total
+	for w in WILD:
+		u -= float(w[1])
+		if u <= 0.0:
+			return w[0]
+	return WILD[0][0]
+
+## A patch of meadow flowers, low and small: a rosette of leaves at the ground, thin
+## stems, and small blooms of the species' colour with a few of another among them, so
+## a drift of them reads as a mixed meadow rather than one bright clump.
+static func _wildflowers(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var I := Transform3D.IDENTITY
+	var main := _wild_colour(r)
+	var other := _wild_colour(r)
+	var leaf := Color.from_hsv(r.randf_range(0.22, 0.3), r.randf_range(0.4, 0.55), r.randf_range(0.32, 0.42))
+	var tall := r.randf_range(0.14, 0.32)
+	for i in r.randi_range(7, 14):
+		var pos := Vector3(r.randf_range(-0.35, 0.35), 0, r.randf_range(-0.35, 0.35))
+		var h := tall * r.randf_range(0.6, 1.2)
+		var lean := Vector3(r.randf_range(-0.12, 0.12), 0, r.randf_range(-0.12, 0.12))
+		var up := (Vector3.UP + lean).normalized()
+		var side := up.cross(Vector3.FORWARD).normalized()
+		k.cylinder("leaf_core_w", Transform3D(Basis(side, up, side.cross(up)), pos), 0.004, 0.003, h, 3, false, 0.0, 1, leaf)
+		var a := r.randf() * TAU
+		var lb := Basis(Vector3.UP, a).rotated(Vector3(cos(a), 0, -sin(a)), r.randf_range(0.9, 1.3))
+		k.card("leaf_card_w", I, pos + Vector3(0, 0.03, 0), lb, 0.05, 0.12, Vector3.UP * 0.6, _jit(leaf, r, 0.1))
+		var col := main if r.randf() < 0.8 else other
+		col = Color(col.r * r.randf_range(0.9, 1.05), col.g * r.randf_range(0.9, 1.05), col.b * r.randf_range(0.9, 1.05))
+		k.sphere("petal_w", I.translated(pos + up * h), r.randf_range(0.014, 0.026), 3, 6, 0.0, 0.35, col)
 
 static func _jit(c: Color, r: RandomNumberGenerator, amt: float) -> Color:
 	var f := r.randf_range(1.0 - amt, 1.0 + amt)

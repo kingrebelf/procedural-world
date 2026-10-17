@@ -20,6 +20,8 @@ const FROM := {
 	"crystal_tree": [["crystal_thread", 0.06, 50], ["fruit_alien", 0.08, 50]],
 	"standing_stone": [["flint", 0.1, 1]],
 	"pine": [["resin", 0.15, 1]],
+	"palm": [["fiber", 0.3, 1]],
+	"tropic": [["resin", 0.08, 1], ["egg", 0.02, 1]],
 	"oak": [["honey", 0.025, 1], ["beeswax", 0.025, 1], ["egg", 0.02, 1]],
 }
 ## Each spadeful of earth: [[item, chance]], scaled by how good the tool is at digging.
