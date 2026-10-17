@@ -390,6 +390,10 @@ static func interior(t: String) -> ArrayMesh:
 		var rs: Vector2 = rug[2]
 		k.box(rug[0], I.translated(Vector3(rc.x, rc.y + 0.006, rc.z)), Vector3(rs.x, 0.012, rs.y))
 	match t:
+		"castle_keep":
+			# Dressed stone flags over the boards, and a tapestry on the east wall.
+			k.box("stone_floor", I.translated(Vector3(0, _F_KEEP + 0.004, 0)), Vector3(7.3, 0.008, 7.3))
+			tapestry(k, Transform3D(Basis(Vector3.UP, -PI / 2), Vector3(3.69 - 0.02, 1.8, -1.8)))
 		"crypt_keep":
 			# Stone flags over the boards, and runes glowing over the wall tombs.
 			k.box("flagstone", I.translated(Vector3(0, _F_KEEP + 0.004, 0)), Vector3(7.3, 0.008, 7.3))
@@ -782,13 +786,20 @@ static func _ring_trim(k: MeshKit, models: Array, wall: String, rb: float, rt: f
 	var zi := sqrt(maxf(pow(r_at.call(fl) - th, 2) - hw * hw, 0.01))
 	models.append(["village/Door_1_Round", 100.0, Vector3(-hw + 0.05, fl - 0.03, zi - 0.06), 1.0])
 
+## A woven hanging on a wall, on a timber rod: `xf` puts its middle on the wall, facing
+## out along +Z. Its material repeats every 1.2 m in the room's own space, so a hanging
+## whose middle sits on an odd multiple of 0.6 m (across and up) shows the picture once.
+static func tapestry(k: MeshKit, xf: Transform3D) -> void:
+	k.box("tapestry", xf, Vector3(1.2, 1.2, 0.02))
+	k.cylinder("timber", xf * Transform3D(Basis(Vector3(0, 0, 1), PI / 2), Vector3(0, 0.64, 0.03)) * Transform3D.IDENTITY.translated(Vector3(0, -0.725, 0)), 0.025, 0.025, 1.45, 6)
+
 static func _mushroom_house(k: MeshKit, models: Array) -> void:
 	var p: Array = ROUND["mushroom_house"]
 	var I := Transform3D.IDENTITY
 	_draw_quads(k, "stem", "planks", _ring_quads(p[0], p[1], p[2], p[3], p[4], p[9], p[8][2], p[8][1]))
 	_ring_trim(k, models, "stem", p[0], p[1], p[2], p[3], p[4], p[9], p[8], p[5])
 	# Planked floor, and gills under the cap vaulting over the room.
-	k.cylinder("planks", I.translated(Vector3(0, -0.2, 0)), 2.5, 2.5, 0.2 + p[5], 20)
+	k.cylinder("wood_floor", I.translated(Vector3(0, -0.2, 0)), 2.5, 2.5, 0.2 + p[5], 20)
 	var ce: float = p[6]
 	for s in 20:
 		var a0 := TAU * s / 20
@@ -809,7 +820,7 @@ static func _watchtower(k: MeshKit, models: Array) -> void:
 	var I := Transform3D.IDENTITY
 	_draw_quads(k, "cobble", "stone", _ring_quads(p[0], p[1], p[2], p[3], p[4], p[9], p[8][2], p[8][1]))
 	_ring_trim(k, models, "stone", p[0], p[1], p[2], p[3], p[4], p[9], p[8], p[5])
-	k.cylinder("planks", I.translated(Vector3(0, -0.2, 0)), 1.95, 1.95, 0.2 + p[5], 16)
+	k.cylinder("wood_floor", I.translated(Vector3(0, -0.2, 0)), 1.95, 1.95, 0.2 + p[5], 16)
 	# The boarded ceiling of the guard room.
 	k.cylinder("planks", I.translated(Vector3(0, p[6], 0)), 1.95, 1.95, 0.12, 16)
 	k.cylinder("stone", I.translated(Vector3(0, 12.0, 0)), 2.4, 2.4, 0.5, 16)
@@ -887,14 +898,14 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 			for x in [-0.38, 0.38]:
 				k.box("glow_cyan", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(x, 0.83, 0.12)), Vector3(0.6, 0.01, 0.32))
 			k.box("metal_dark", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
-			k.box("glow_cyan", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
+			k.box("screen", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
 		"@desk":
 			k.box("metal", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8))
 			for x in [-0.85, 0.85]:
 				k.box("metal_dark", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
 			k.box("metal_dark", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72))
 			k.box("metal_dark", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
-			k.box("glow_cyan", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
+			k.box("screen", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
 		"@chair":
 			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.25, 0.25, 0.03, 8)
 			k.cylinder("metal", at.call(Vector3(0, 0.03, 0)), 0.04, 0.04, 0.43, 6)

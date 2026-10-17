@@ -118,7 +118,7 @@ static func _building(t: String, k: MeshKit, models: Array, glows: Array) -> voi
 		k.sphere("panel", Transform3D(b, Vector3(w / 2 - 1.2, top + 2.6, -d / 2 + 1.5)), 1.1, 6, 14, 0.0, 0.35, Color.WHITE, true)
 		k.sphere("glow_red", Transform3D.IDENTITY.translated(Vector3(w / 2 - 1.2, top + 4.1, -d / 2 + 1.2)), 0.12, 4, 6)
 	# Foundation pad, and a lit step out of the door.
-	k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.62, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
+	k.box("scifi_floor", Transform3D.IDENTITY.translated(Vector3(0, FLOOR - 0.62, 0)), Vector3(w + 1.4, 1.2, d + 1.4))
 	models.append(["scifi/Platform_DarkPlates", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.03, d / 2 + 2.0), Vector3(1, 1, 0.5)])
 	models.append(["scifi/Prop_Light_Floor", 0, Vector3(-w / 2 + 2 + door_i * 4, 0.04, d / 2 + 2.9), 1.0])
 

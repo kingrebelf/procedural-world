@@ -28,6 +28,10 @@ SOURCES = {
     # Ben's wonder surfaces (2026-10-17, art/wonder_materials).
     "titan_stone": 5.0, "titan_stone_glow": 5.0, "worldroot_bark": 5.0, "starfall_glass": 3.5,
     "gate_ring_metal": 3.0, "void_stone": 3.0,
+    # Ben's interior and sci-fi sheets (2026-10-17).
+    "wood_floor": 4.0, "stone_floor": 5.0, "tapestry": 1.5, "bookshelf": 3.0, "wallpaper": 1.5,
+    "hearth_brick": 5.0, "scifi_floor": 4.0, "scifi_panels": 4.0, "scifi_lights": 4.0, "hazard": 3.0,
+    "alien_hull": 4.0, "screen": 1.0,
 }
 
 # Sources whose glowing parts get an emission map (<name>_emit.jpg): name -> (hue in
@@ -35,6 +39,7 @@ SOURCES = {
 EMIT = {
     "titan_stone_glow": (24, 20, 0.78), "worldroot_bark": (165, 45, 0.45),
     "gate_ring_metal": (205, 40, 0.4), "void_stone": (None, 0, 0.62), "starfall_glass": (None, 0, 0.8),
+    "scifi_lights": (190, 30, 0.45), "alien_hull": (280, 40, 0.25), "screen": (None, 0, 0.05),
 }
 
 

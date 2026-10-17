@@ -302,13 +302,13 @@ static func _bunker(part: String, k: MeshKit, models: Array) -> void:
 					var at := b * Vector3(x, 0, -0.4)
 					models.append(["scifi/WallBand_Straight", face + 90.0, at, 1.0])
 					models.append(["scifi/TopCables_Straight", face + 90.0, at, 1.0])
-			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 2.5, 0)), Vector3(8.0, 5.0, 2.4))
+			k.box("scifi_panels", Transform3D.IDENTITY.translated(Vector3(0, 2.5, 0)), Vector3(8.0, 5.0, 2.4))
 			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 5.05, 0)), Vector3(8.0, 0.1, 3.4))
 			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, -2.0, 0)), Vector3(8.2, 4.0, 3.4))
 			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 4.6, 1.75)), Vector3(6.0, 0.06, 0.04))
 		"tower":
 			models.append(["scifi/Column_Large_Straight", 0, Vector3(0, 0, 0), 1.2])
-			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 6.0, 0)), Vector3(6.0, 12.0, 6.0))
+			k.box("scifi_lights", Transform3D.IDENTITY.translated(Vector3(0, 6.0, 0)), Vector3(6.0, 12.0, 6.0))
 			k.box("panel", Transform3D.IDENTITY.translated(Vector3(0, 12.3, 0)), Vector3(7.0, 0.6, 7.0))
 			k.box("glass", Transform3D.IDENTITY.translated(Vector3(0, 10.5, 3.02)), Vector3(4.0, 1.0, 0.04))
 			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 13.0, 0)), Vector3(0.3, 0.3, 0.3))
@@ -319,8 +319,8 @@ static func _bunker(part: String, k: MeshKit, models: Array) -> void:
 		"gate":
 			for x in [-3.0, 3.0]:
 				models.append(["scifi/Column_Pipes", 0, Vector3(x, 0, 0), 1.0])
-				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, 2.52, 0)), Vector3(2.0, 5.04, 3.2))
+				k.box("scifi_panels", Transform3D.IDENTITY.translated(Vector3(x, 2.52, 0)), Vector3(2.0, 5.04, 3.2))
 				k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(x, -2.0, 0)), Vector3(2.2, 4.0, 3.4))
 			models.append(["scifi/Door_Frame_Square", 0, Vector3(0, 0, 1.0), 0.85])
-			k.box("metal_dark", Transform3D.IDENTITY.translated(Vector3(0, 4.7, 0)), Vector3(4.0, 0.6, 3.2))
+			k.box("hazard", Transform3D.IDENTITY.translated(Vector3(0, 4.7, 0)), Vector3(4.0, 0.6, 3.2))
 			k.box("glow_red", Transform3D.IDENTITY.translated(Vector3(0, 4.5, 1.62)), Vector3(3.0, 0.08, 0.04))
