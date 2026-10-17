@@ -109,6 +109,9 @@ func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: flo
 	var calm := 1.0 - smoothstep(0.2, 0.45, wind)
 	var mist := clampf((smoothstep(0.38, 0.62, hum) * dawn * calm + smoothstep(0.55, 0.75, hum) * smoothstep(1.2, 1.5, LF_MIST[lf]) * 0.35 * calm)
 		* LF_MIST[lf] * (1.0 - precip * 0.6), 0.0, 1.0)
+	# Bogs and swamps (wet belts, low ground) breed mist far oftener, even by day.
+	var bog := smoothstep(0.62, 0.8, belt.y) * (1.0 - smoothstep(6.0, 22.0, ground))
+	mist = clampf(mist * (1.0 + 2.0 * bog) + bog * calm * 0.35 * smoothstep(0.45, 0.7, hum), 0.0, 1.0)
 	# Dust: a strong dry wind over sand and badlands.
 	var dust: float = LF_DUST[lf] * smoothstep(0.45, 0.8, wind) * (1.0 - smoothstep(0.3, 0.5, hum))
 	cover = maxf(cover, dust * 0.5)

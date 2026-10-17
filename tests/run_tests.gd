@@ -5065,3 +5065,13 @@ func test_climate_belts() -> void:
 	check(snow_tropic == 0, "it never snows on low ground in the tropics")
 	check(snow_cold > snow_tropic, "the cold belts get snow (%d of 1500)" % snow_cold)
 	check(rain_wet > rain_dry * 2, "wet lands rain much oftener than dry ones (%d vs %d)" % [rain_wet, rain_dry])
+
+func test_bog_mist() -> void:
+	var c := Climate.new(4242)
+	var bog := 0.0
+	var dry := 0.0
+	for i in 1500:
+		var h := float(i) * 1.3
+		bog += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.9))["mist"])
+		dry += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.5))["mist"])
+	check(bog > dry * 1.5, "bogs lie under mist far oftener (%.0f vs %.0f)" % [bog, dry])
