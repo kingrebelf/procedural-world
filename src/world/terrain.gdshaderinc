@@ -428,12 +428,17 @@ void fragment() {
 	float snow = 0.0;
 	if (use_textures && cover_v.a > 0.01 && wpos.y > snow_line - 20.0) {
 		float under = dot(col, LUM) / max(dot(col, LUM) + 0.05, 0.001);
-		snow = smoothstep(0.25, 0.6, cover_v.a + (meso - 0.5) * 0.3 + (micro - 0.5) * 0.12 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
+		// A wide, ragged edge: patches and tongues of snow out into the grass, bare
+		// hollows inside it, never one clean line.
+		float frayed = (fbm(p * 0.13 + 3.0) - 0.5) * 0.32 + (meso - 0.5) * 0.38;
+		snow = smoothstep(0.17, 0.7, cover_v.a + frayed + (micro - 0.5) * 0.14 - (under - 0.5) * 0.15 * (1.0 - cover_v.a));
 		snow *= (1.0 - w.g) * (1.0 - smoothstep(0.55, 0.85, slope));
 		// The map is per metre, so on a tall wall one triangle spans its snowy top and its
 		// foot: never let snow run down below the snow line's reach.
 		snow *= smoothstep(snow_line - 16.0, snow_line - 8.0, wpos.y + (macro - 0.5) * 8.0);
 		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb;
+		// Snow turned from the sun takes the blue of the sky that lights it.
+		st *= mix(vec3(0.84, 0.91, 1.0), vec3(1.0), smoothstep(-0.1, 0.45, dot(wnorm, sun_dir_g)));
 		// Thin snow lets the ground show as a grey-blue dusting before it closes over.
 		vec3 dust = mix(col, st * vec3(0.86, 0.9, 0.96), 0.6);
 		// (A little under real snow's brightness, so its relief still shows in full sun.)
