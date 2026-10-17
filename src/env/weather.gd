@@ -31,7 +31,7 @@ const PRESETS := {
 	Kind.MIST: {"cover": 0.6, "precip": 0.0, "snow": 0.0, "storm": 0.0, "mist": 1.0, "dust": 0.0, "wind": 0.05},
 	Kind.DRIZZLE: {"cover": 0.95, "precip": 0.25, "snow": 0.0, "storm": 0.0, "mist": 0.2, "dust": 0.0, "wind": 0.25},
 	Kind.RAIN: {"cover": 1.0, "precip": 0.75, "snow": 0.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 0.45},
-	Kind.STORM: {"cover": 1.0, "precip": 1.0, "snow": 0.0, "storm": 1.0, "mist": 0.0, "dust": 0.0, "wind": 0.8},
+	Kind.STORM: {"cover": 1.0, "precip": 1.0, "snow": 0.0, "storm": 1.0, "mist": 0.0, "dust": 0.0, "wind": 0.95},
 	Kind.SNOW: {"cover": 1.0, "precip": 0.6, "snow": 1.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 0.2, "temp": -3.0},
 	Kind.BLIZZARD: {"cover": 1.0, "precip": 1.0, "snow": 1.0, "storm": 0.0, "mist": 0.0, "dust": 0.0, "wind": 1.0, "temp": -9.0},
 	Kind.DUST: {"cover": 0.55, "precip": 0.0, "snow": 0.0, "storm": 0.0, "mist": 0.0, "dust": 1.0, "wind": 0.9},
@@ -277,7 +277,8 @@ func _light() -> void:
 	var env := atmosphere.env
 	var sky := atmosphere.sky_mat
 	var oc := smoothstep(0.6, 1.0, cover)
-	var gloom := clampf(oc * 0.55 + storm * 0.45 + precip * 0.2, 0.0, 1.0)
+	# Mist scatters a dawn's colour too: a soft grey-pink instead of a red sky over black land.
+	var gloom := clampf(maxf(oc * 0.55 + storm * 0.45 + precip * 0.2, mist * 0.6), 0.0, 1.0)
 	sky.set_shader_parameter("storm", gloom)
 	sky.set_shader_parameter("dust", dust)
 	var sun := atmosphere.sun
@@ -299,6 +300,9 @@ func _light() -> void:
 	env.fog_aerial_perspective = AERIAL * (1.0 - k * 0.7)
 	if thick > 0.0:
 		var grey := Color(0.52, 0.55, 0.58) * lerpf(0.06, 1.0, daylight)
+		# Mist in a low sun glows a pale rose; it lifts the land instead of burying it.
+		var low := 1.0 - smoothstep(0.05, 0.35, Atmosphere.sun_dir.y)
+		grey = grey.lerp(Color(0.62, 0.55, 0.56) * lerpf(0.25, 1.0, daylight), mist * low)
 		var want := grey
 		if dust > 0.0:
 			want = grey.lerp(Color(0.62, 0.47, 0.3) * lerpf(0.08, 1.0, daylight), dust / maxf(dust + rain + mist, 0.001))

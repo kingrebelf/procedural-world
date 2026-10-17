@@ -39,7 +39,7 @@ void vertex() {
 		world = c + (INV_VIEW_MATRIX[0].xyz * VERTEX.x + INV_VIEW_MATRIX[1].xyz * VERTEX.y) * w;
 	}
 	// Not right in your face, and gone softly before the far side of the box.
-	fade *= smoothstep(0.3, 1.2, d) * (1.0 - smoothstep(reach * 0.7, reach * 0.98, length(to.xz)));
+	fade *= smoothstep(1.0, 3.0, d) * (1.0 - smoothstep(reach * 0.7, reach * 0.98, length(to.xz)));
 	VERTEX = (VIEW_MATRIX * vec4(world, 1.0)).xyz;
 	if (INSTANCE_CUSTOM.z < 0.5) {
 		VERTEX = vec3(0.0, 0.0, 1.0); // behind the camera: dropped
