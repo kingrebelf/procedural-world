@@ -543,7 +543,9 @@ func _run() -> void:
 		check(not tch.is_empty() and tch["st"]["opened"] and not Treasure.covered(tc, tch), "the dug-up chest stays dug up and empty")
 		var th: Dictionary = game.hunt(tre["open"])
 		check(not th.is_empty() and not th["found"] and not (th["loot"] as Array).is_empty() and game.hunt(tre["id"])["found"], "hunts are saved, found or not, with what's buried")
-		check(game.markers.count_kind("treasure") == 1, "the open hunt keeps its X")
+		# (Only that hunt's X: a body searched since may have carried a map of its own.)
+		var xs: Array = game.markers.list.filter(func(mk): return mk["kind"] == "treasure" and int(mk.get("hunt", -1)) == int(tre["open"]))
+		check(xs.size() == 1, "the open hunt keeps its X")
 	var inv_after := var_to_bytes(game.inventory.to_data())
 	check(inv_after == inv_before, "inventory bit-for-bit identical after reload")
 	check(game.money == money_before, "money identical after reload")
@@ -1266,6 +1268,12 @@ func _menu_checks(world, game, con) -> void:
 	menus.close()
 	game.markers.remove(edit_pin["id"])
 	AtlasView.selected = -1
+	# What the test has looted so far can fill the pack: two helmets and a slot to drag
+	# one into need room.
+	for i in range(Inventory.SIZE - 1, -1, -1):
+		if game.inventory.free_slots() >= 3:
+			break
+		game.inventory.set_slot(i, null)
 	con.run("give helm_iron 1")
 	con.run("give helm_elven 1")
 	var hi := -1
