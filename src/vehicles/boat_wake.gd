@@ -41,19 +41,23 @@ static func make(kind: String) -> BoatWake:
 
 ## Called every physics frame with where her stern is, which way she heads, her speed in
 ## m/s and `strength` 0..1 (how much wake that speed makes for her).
-func feed(stern: Vector2, heading: Vector2, speed: float, strength: float, delta: float) -> void:
+## `ago`: seconds in the past this sample is from (BoatNode.prime_wake replays her course).
+func feed(stern: Vector2, heading: Vector2, speed: float, strength: float, delta: float, ago := 0.0) -> void:
 	global_transform = Transform3D.IDENTITY
 	var now := Time.get_ticks_msec() / 1000.0
+	var born := now - ago
 	# A jump (put back on her loop, or teleported) starts a fresh track.
 	if not _pts.is_empty() and (_pts[0][0] as Vector2).distance_to(stern) > STEP * 8.0:
 		_pts.clear()
-	_head = [stern, heading, strength, speed, now]
+	_head = [stern, heading, strength, speed, born]
 	if speed > 0.05 and (_pts.is_empty() or (_pts[0][0] as Vector2).distance_to(stern) >= STEP):
 		_pts.push_front(_head.duplicate())
 		if _pts.size() > MAX:
 			_pts.resize(MAX)
 	while not _pts.is_empty() and now - float(_pts[-1][4]) > LIFE:
 		_pts.pop_back()
+	if ago > 0.0:
+		return # still replaying the past: build once it reaches now
 	_rebuild -= delta
 	if _rebuild <= 0.0:
 		_rebuild = 0.05

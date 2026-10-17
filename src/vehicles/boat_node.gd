@@ -80,6 +80,27 @@ func _ready() -> void:
 		_yaw = float(site.get("yaw", 0.0))
 	_place(0.0)
 	_water.follow(_pos2, _yaw, 0.0)
+	if float(d["moves"]) > 0.0 and not site.has("spawned"):
+		prime_wake()
+
+## Lays down the wake she'd have left over the last minute of her loop, so a boat that
+## comes into view under way already has a track behind her.
+func prime_wake() -> void:
+	var d: Dictionary = Boats.KINDS[kind]
+	var L := float(d["len"])
+	var prev: Vector2 = Boats.pose_at(site, route_t - BoatWake.LIFE - 0.5)[0]
+	var ago := BoatWake.LIFE
+	while ago >= 0.0:
+		var pose := Boats.pose_at(site, route_t - ago)
+		var p: Vector2 = pose[0]
+		var v := p.distance_to(prev) / 0.5
+		prev = p
+		var fwd := Vector2(-sin(float(pose[1])), -cos(float(pose[1])))
+		_trail.feed(p - fwd * L * 0.45, fwd, v, _wake_strength(v, L), 0.5, ago)
+		ago -= 0.5
+
+static func _wake_strength(v: float, L: float) -> float:
+	return clampf(pow(v / 4.0, 0.7), 0.0, 1.0) * clampf(0.45 + L / 16.0, 0.45, 1.0)
 
 func _physics_process(delta: float) -> void:
 	var d: Dictionary = Boats.KINDS[kind]
@@ -109,7 +130,7 @@ func _physics_process(delta: float) -> void:
 	_water.follow(_pos2, _yaw, clampf(pow(speed / 4.0, 0.7), 0.0, 1.0))
 	var fwd := Vector2(-sin(_yaw), -cos(_yaw))
 	var L := float(d["len"])
-	_trail.feed(_pos2 - fwd * L * 0.45, fwd, speed, clampf(pow(speed / 4.0, 0.7), 0.0, 1.0) * clampf(0.45 + L / 16.0, 0.45, 1.0), delta)
+	_trail.feed(_pos2 - fwd * L * 0.45, fwd, speed, _wake_strength(speed, L), delta)
 	if not _oars.is_empty():
 		rowing = move_toward(rowing, 1.0 if speed > 0.3 else 0.0, delta * 0.8)
 		_row()
