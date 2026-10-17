@@ -308,7 +308,11 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	var boots: Color = cols[Outfit.PART_BOOTS]
 	_body.set_instance_shader_parameter("skin_col", b["skin"])
 	_body.set_instance_shader_parameter("shirt_col", Color(shirt.r, shirt.g, shirt.b))
-	_body.set_instance_shader_parameter("pants_col", Color(pants.r, pants.g, pants.b))
+	# Under a long skirt the thighs take the skirt's colour, so a knee lifted against it
+	# doesn't show through as a different colour.
+	var long_skirt: bool = float(sp["hem"]) > 0.0 and float(sp["hem"]) < 0.45
+	var legs: Color = cols[Outfit.PART_SKIRT] if long_skirt else pants
+	_body.set_instance_shader_parameter("pants_col", Color(legs.r, legs.g, legs.b))
 	_body.set_instance_shader_parameter("boot_col", Color(boots.r, boots.g, boots.b))
 	_body.set_instance_shader_parameter("accent_col", accent)
 	_body.set_instance_shader_parameter("cut", Vector4(sp["sleeves"], sp["boot_h"], 0.0, 0.0))

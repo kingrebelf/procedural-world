@@ -543,7 +543,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 	var fit: float = sp.get("fit", 1.0)
 	var vest_kind: int = sp["vest"]
 	var t_shirt := 0.009 * fit
-	var t_pants := 0.007 * fit
+	var t_pants := 0.007 * fit * fit # work trousers hang loose round the legs
 	# Shirt: the torso down to the hips, sleeves to the elbow or the wrist with a cuff.
 	_shell(s, o, PART_SHIRT, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
 		if r == 1:
@@ -557,14 +557,29 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 		if r == 0 and p.y < s["neck"] + 0.02:
 			return 0.006
 		return -1.0)
-	# Trousers or hose down into the boots, under a skirt too (a lifted hem shows hose).
+	# Trousers down into the boots; under a long skirt, hose on the shins (a lifted hem).
 	_shell(s, o, PART_PANTS, Color.WHITE, func(_i, p: Vector3, r: int) -> float:
-		if r == 5 and p.y <= (waist - 0.03 if hem <= 0.0 else float(s["crotch"]) - 0.05):
+		if hem > 0.0 and hem < 0.45 and p.y > float(s["knee"]) - 0.06:
+			return -1.0 # under a long skirt, hose only on the shins
+		if r == 5 and p.y <= waist - 0.03:
 			return t_pants
 		if r == 6 and p.y > boot_h - 0.03:
 			return t_pants
 		return -1.0)
 	if fit > 1.0:
+		# A stand-up jacket collar.
+		var neck_y: float = float(s["neck"]) - 0.035
+		var nb: int = o["v"].size()
+		for ri in 2:
+			var yy := neck_y + ri * 0.045
+			var m := _measure(s, neck_y - 0.02, 0.02)
+			var rr := maxf(float(m["rx"]) * 0.42, 0.065) + t_shirt + 0.008 - ri * 0.004
+			for si in 25:
+				var ang := TAU * si / 24
+				var p := Vector3(sin(ang) * rr, yy, float(m["cz"]) - 0.01 + cos(ang) * rr * 0.95)
+				_vert(s, o, p, Vector3(sin(ang), 0, cos(ang)), Vector2(float(si) / 24.0 * 4.0, ri * 0.2), {"spine_03": 1.0 - ri * 0.5, "neck_01": ri * 0.5}, PART_SHIRT, Color.WHITE)
+		for si in 24:
+			o["i"].append_array([nb + si, nb + si + 1, nb + 25 + si, nb + si + 1, nb + 26 + si, nb + 25 + si])
 		# Cargo pockets on the outside of each thigh and two on the chest.
 		var knee: float = s["knee"]
 		var crotch: float = s["crotch"]
@@ -613,7 +628,7 @@ static func clothes(fem: bool, body: ArrayMesh, skin: Skin, sk: Skeleton3D, sp: 
 				return -1.0)
 	if sp["belt"]:
 		var loose := hem > 0.0 or apron > 0.0 or vest == 3
-		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04, 0.034 if loose else 0.014)
+		_belt(s, o, waist - 0.035, Color.WHITE, PART_BELT, 0.04 if fit <= 1.0 else 0.05, 0.034 if loose else maxf(0.014, maxf(t_pants, t_shirt) + 0.008))
 	if sp["cape"] > 0.0:
 		_cape(s, o, sp["cape"], Color.WHITE)
 	var m := _commit(s, o)
