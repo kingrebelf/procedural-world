@@ -499,6 +499,15 @@ func _tool(job: String) -> void:
 ## How far each finger of a hand holding something curls (BodyLanguage finger order).
 const GRIP := [1.0, 0.95, 0.95, 0.95, 0.95]
 
+## Shows or puts away the tool of their trade (a farmer's hoe has no business in the
+## market square); the hand opens when it is away.
+func show_tool(on: bool) -> void:
+	if _work_tool == null or _work_tool.visible == on:
+		return
+	_work_tool.visible = on
+	if gestures:
+		gestures.grip_r = GRIP if on else []
+
 ## Where a held prop goes in the right hand's space, worked out from the hand's own rest
 ## pose: the handle lies across the palm on a diagonal, touching it (HandGrip), and the
 ## prop is held near the low end of its handle; the fingers then close round it.

@@ -36,6 +36,10 @@ var _body: AnimatableBody3D
 var _model: Node3D
 var _human: HumanModel ## the kit character, when its assets are present
 ## What each job looks like while working at its spot.
+## Jobs whose tool in hand (a pickaxe standing in for a hoe) belongs only in the fields,
+## and the duties done there.
+const FIELD_TOOL_JOBS := ["farmer", "beekeeper", "hydroponics tech"]
+const FIELD_DUTIES := ["till", "harvest", "bees", "grow"]
 const WORK_ANIM := {"farmer": "harvest", "smith": "fix", "guard": "sword_idle", "innkeeper": "interact",
 	"hunter": "chop", "priest": "fold_arms", "weaver": "interact", "miller": "carry", "herbalist": "harvest",
 	"warden": "sword_idle", "runecarver": "fix", "bard": "dance", "mystic": "spell", "beekeeper": "plant",
@@ -377,6 +381,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		elif p2.distance_to(rec["work"]) < 1.5:
 			work_anim = WORK_ANIM.get(rec["job"], "interact")
 	rec["yaw"] = rotation.y
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		# The hoe comes out in the fields and nowhere else.
+		_human.show_tool(action == "work" and FIELD_DUTIES.has(String(duty.get("duty", ""))))
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
 	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
@@ -473,6 +480,8 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 	if st.size() >= 14:
 		work_anim = String(st[12])
 		upper_anim = String(st[13])
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		_human.show_tool(action == "work" and work_anim in ["plant", "harvest"])
 	if _seen_acts < 0:
 		_seen_acts = int(st[8]) # what they did before you came is over
 	elif int(st[8]) != _seen_acts:
