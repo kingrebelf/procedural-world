@@ -10,7 +10,7 @@ var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
 var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
-## --hud=none hides the 2D layer, --hud=under keeps only the underwater overlay of it and
+## --hud=none hides the 2D layer (and the animals' name tags), --hud=under keeps only the underwater overlay of it and
 ## --hud=nounder keeps all but that overlay: to tell whether an artefact is in the 3D image.
 var hud_mode := ""
 ## --env=property=value sets a property of the world's Environment for this run, for A/B
@@ -72,6 +72,8 @@ func _apply_hud_mode() -> void:
 	var layer := hud.get_parent() as CanvasLayer
 	if hud_mode == "none":
 		layer.visible = false
+		if world.fauna:
+			world.fauna.show_tags = false
 		return
 	# Hidden children move under one hidden holder: the HUD shows and hides them every
 	# frame, which can't override a hidden parent.

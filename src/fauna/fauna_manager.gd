@@ -27,6 +27,8 @@ func _ground(x: float, z: float) -> float:
 	return npcs.ground(x, z) if npcs else NAN
 
 const TAG_RANGE := 25.0
+## Off for pictures without a HUD (the capture tool's --hud=none).
+var show_tags := true
 const SPAWN_BUDGET_USEC := 4000
 
 func _process(delta: float) -> void:
@@ -66,7 +68,7 @@ func _process(delta: float) -> void:
 				else:
 					c.follow(delta, g, Net.mob_state("f", c.id))
 				var fighting: bool = c.state == "chase" or c.hp < float(c.p["hp"])
-				var near: bool = c._body != null and (c == spotted or (c.global_position.distance_to(pp) < TAG_RANGE and (fighting or c.p["plan"] != "bird")))
+				var near: bool = show_tags and c._body != null and (c == spotted or (c.global_position.distance_to(pp) < TAG_RANGE and (fighting or c.p["plan"] != "bird")))
 				# Only for animals you can actually see: not over a hill or behind a house
 				# (the walls hide the tag itself; this keeps a tag from peeking over them).
 				if near and c != spotted:
