@@ -32,8 +32,8 @@ static func mat(name: String) -> Material:
 			m.uv1_scale = Vector3(18.0, 3.0, 1.0)
 		"it_iron":
 			# Forged and blackened: dark, hammer-marked, rough where it wasn't ground.
-			m.albedo_color = Color(0.36, 0.36, 0.37)
-			m.metallic = 0.55
+			m.albedo_color = Color(0.45, 0.45, 0.46)
+			m.metallic = 0.45
 			m.roughness = 0.58
 			m.albedo_texture = _noise("hammered", 0.05, Vector2.ONE, Color(0.7, 0.7, 0.7), Color(1, 1, 1), true)
 			m.normal_enabled = true
@@ -748,6 +748,9 @@ const BUILD := {
 	"grav_hammer": "_grav_hammer", "ion_scythe": "_ion_scythe", "worldbreaker": "_worldbreaker",
 	"phase_daggers": "_phase_daggers", "plasma_whip": "_plasma_whip", "crystal_bow": "_crystal_bow",
 	"eclipse_bow": "_eclipse_bow", "nova_staff": "_nova_staff", "void_grenade": "_void_grenade",
+	"pickaxe_iron": "_pickaxe_iron", "pickaxe_mythril": "_pickaxe_mythril", "axe_iron": "_axe_iron",
+	"axe_mythril": "_axe_mythril", "battle_axe": "_battle_axe", "hammer": "_hammer", "sword_iron": "_sword_iron",
+	"sword_runic": "_sword_runic", "dagger": "_dagger", "skinning_knife": "_skinning_knife",
 	"acid_pod": "_acid_pod", "star_charge": "_star_charge", "gravity_well": "_gravity_well",
 	"singularity_orb": "_singularity_orb", "swarm_hive": "_swarm_hive", "shard_gauntlet": "_shard_gauntlet",
 }
@@ -827,6 +830,77 @@ static func _bronze_axe(k: MeshKit):
 static func _pickaxe_bronze(k: MeshKit):
 	haft(k, -0.02, 0.65, 0.017, 0.016, ASH)
 	pick_head(k, "it_bronze", 0.6, 0.2, 0.12, 0.016, Color.WHITE, true)
+
+## Mythril reads as a pale, faintly blue steel: polished, never glowing.
+const MYTHRIL := Color(0.8, 0.88, 1.0)
+
+static func _pickaxe_iron(k: MeshKit):
+	haft(k, -0.02, 0.66, 0.017, 0.016, HICKORY)
+	pick_head(k, "it_iron", 0.61, 0.23, 0.21, 0.017)
+	_wedge(k, 0.61, 0.017)
+
+static func _pickaxe_mythril(k: MeshKit):
+	haft(k, -0.02, 0.68, 0.017, 0.016, WALNUT)
+	wrap_grip(k, 0.02, 0.2, 0.017, Color(0.22, 0.16, 0.12))
+	pick_head(k, "it_steel", 0.63, 0.25, 0.22, 0.017, MYTHRIL)
+	_wedge(k, 0.63, 0.017)
+
+static func _axe_iron(k: MeshKit):
+	haft(k, -0.02, 0.6, 0.017, 0.015, HICKORY)
+	axe_head(k, "it_iron", 0.54, 0.12, 0.085, 0.02, 0.026)
+	_wedge(k, 0.54, 0.015)
+
+static func _axe_mythril(k: MeshKit):
+	haft(k, -0.02, 0.62, 0.017, 0.015, WALNUT)
+	wrap_grip(k, 0.02, 0.18, 0.017, Color(0.22, 0.16, 0.12))
+	axe_head(k, "it_steel", 0.56, 0.13, 0.09, 0.03, 0.024, MYTHRIL)
+	_wedge(k, 0.56, 0.015)
+
+static func _battle_axe(k: MeshKit):
+	# A long bearded war axe: an ash haft with a leather grip, a spike behind the head and
+	# iron straps (langets) running down the haft from it.
+	haft(k, -0.02, 0.86, 0.019, 0.017, ASH)
+	wrap_grip(k, 0.02, 0.26, 0.019, Color(0.3, 0.19, 0.11))
+	axe_head(k, "it_steel", 0.78, 0.17, 0.11, 0.07, 0.024, Color.WHITE, 0.019)
+	k.cylinder("it_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.79, 0.055)), 0.011, 0.001, 0.07, 6)
+	for x in [-1.0, 1.0]:
+		k.box("it_iron", Transform3D.IDENTITY.translated(Vector3(x * 0.018, 0.69, 0)), Vector3(0.003, 0.12, 0.012))
+		for y in [0.65, 0.72]:
+			k.cylinder("it_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x * 0.02, y, 0)), 0.003, 0.003, 0.003, 6)
+	return Vector3(0, 0.12, 0)
+
+static func _hammer(k: MeshKit):
+	# A claw hammer: a hickory handle with a swelling at the butt, a round steel face to +X
+	# and a split claw curving down to -X.
+	haft(k, -0.02, 0.33, 0.016, 0.013, HICKORY)
+	hammer_head(k, "it_iron", 0.315, 0.035, 0.015)
+	lathe(k, "it_steel", Transform3D(Basis(Vector3(0, 0, 1), -PI * 0.5), Vector3(0.035, 0.315, 0)), [Vector2(0.0, 0.0), Vector2(0.016, 0.0), Vector2(0.015, 0.012), Vector2(0.0, 0.013)], 12)
+	for z in [-1.0, 1.0]:
+		var st := []
+		for i in 7:
+			var f := float(i) / 6.0
+			var a := f * 0.9
+			var w := lerpf(0.011, 0.004, f)
+			st.append(_at(Vector3(-0.035 - sin(a) * 0.07, 0.315 - (1.0 - cos(a)) * 0.07, z * 0.0055), Vector3(0, 0, 1), Vector3(-cos(a), sin(a), 0), sec_rect(0.0045, w, 0.3)))
+		sweep(k, "it_iron", Transform3D.IDENTITY, st, true)
+	_wedge(k, 0.315, 0.013)
+	return Vector3(0, 0.07, 0)
+
+static func _sword_iron(k: MeshKit):
+	sword(k, {"len": 0.72, "w": 0.024, "t": 0.006, "cross": 0.1, "grip": 0.12, "guard": "it_iron", "pommel": 0.024})
+
+static func _sword_runic(k: MeshKit):
+	sword(k, {"len": 0.78, "w": 0.024, "t": 0.006, "cross": 0.11, "droop": 0.01, "grip": 0.13, "col": MYTHRIL, "guard": "it_brass", "pommel": 0.025, "wrap_col": Color(0.12, 0.14, 0.24), "wrap_m": "it_cloth"})
+
+static func _dagger(k: MeshKit):
+	sword(k, {"len": 0.24, "w": 0.018, "t": 0.005, "tip": 0.35, "cross": 0.05, "grip": 0.095, "pommel": 0.017})
+
+static func _skinning_knife(k: MeshKit):
+	sword(k, {"len": 0.13, "w": 0.018, "t": 0.004, "single": true, "belly": 0.45, "tip": 0.3, "grip": 0.1, "wrap": false, "wood": Color(0.42, 0.3, 0.2), "pommel": 0.013, "wheel": false})
+
+## A steel wedge driven into the top of a haft through the head's eye.
+static func _wedge(k: MeshKit, y: float, r: float) -> void:
+	k.box("it_steel", Transform3D.IDENTITY.translated(Vector3(0, y + r * 1.5 + 0.004, 0)), Vector3(0.003, 0.008, r * 1.9))
 
 static func _pickaxe_steel(k: MeshKit):
 	haft(k, -0.02, 0.68, 0.017, 0.016, HICKORY)
@@ -1004,13 +1078,14 @@ static func _shovel(k: MeshKit):
 		st.append(_at(Vector3(cos(a) * 0.055, 0.88 + sin(a) * 0.07, 0), Vector3(0, 0, 1), Vector3(cos(a), sin(a), 0), sec_round(0.011, 0.011, 8)))
 	sweep(k, "it_wood", Transform3D.IDENTITY, st, false, ASH)
 	k.cylinder("it_wood", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.06, 0.885, 0)), 0.013, 0.013, 0.12, 8, true, 0.0, 1, ASH)
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.019, -0.16), Vector2(0.02, -0.08), Vector2(0.03, -0.2)], 10)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.02, -0.08), Vector2(0.019, -0.15), Vector2(0.03, -0.2)], 10)
 	plate(k, "it_iron", 6, 8, func(u, v):
 		var x: float = (u - 0.5) * 0.22 * (1.0 - 0.25 * v * v)
 		var y: float = -0.2 - v * 0.27 - 0.03 * (1.0 - pow(2.0 * u - 1.0, 2.0)) * v
 		var z := 0.02 * pow(2.0 * u - 1.0, 2.0) - 0.01
 		return Vector3(x, y, z), 0.003)
-	return Vector3(0, 0.82, 0)
+	# Held by the shaft a hand's width above the socket; Viewmodel holds it blade up.
+	return Vector3(0, 0.12, 0)
 
 static func _hoe(k: MeshKit):
 	pole(k, -0.2, 1.05, 0.016, 0.015, ASH)
