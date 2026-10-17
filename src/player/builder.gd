@@ -1,14 +1,23 @@
 class_name Builder
 extends Node
 ## Placing building pieces and crafting stations. While a piece is in the selected hotbar
-## slot, a see-through ghost shows where it will go: green when it fits, red when not.
-## Pieces snap to a grid, and to the storeys of whatever you have already built nearby.
-## Use places it; the rotate key turns it (or flips a wall). Raise and lower move it a
-## storey at a time (a quarter metre with the grid off), and the grid can be switched off
-## for free placement. Floors and roofs aimed at a wall sit on top of it.
+## slot, a see-through ghost shows where it will go: green when it fits, red when not
+## (and the look-at panel says why). Pieces snap to a grid, and to the storeys of whatever
+## you have already built nearby; aimed at a piece of the same kind they carry it on: the
+## next wall along or on top, the next floor tile over, the next roof edge to edge (see
+## BuildCatalog.candidates). Use places it; the rotate key turns it (sprint + rotate turns
+## it back, or flips a wall). Raise and lower move it a storey at a time (a quarter metre
+## with the grid off), and the grid can be switched off for free placement.
 
 const REACH := 9.0
 const ANCHOR_RADIUS := 10.0
+## Built pieces around you are gathered this often (and right after you place one), not
+## every frame: a chunk can hold hundreds of objects.
+const NEAR_EVERY := 0.25
+const NEAR_RADIUS := REACH + 6.0
+## A floor whose top is no higher than this over your feet can go down where you stand:
+## it lifts you onto it.
+const STEP_UP := 0.45
 
 var player: Player
 var _ghost: MeshInstance3D
@@ -19,6 +28,9 @@ var _free := false
 var _target := {}
 var _mat_ok: StandardMaterial3D
 var _mat_bad: StandardMaterial3D
+var _near: Array = []
+var _near_t := 0.0
+var _near_at := Vector3.INF
 
 func _ready() -> void:
 	_mat_ok = _ghost_mat(Color(0.35, 1.0, 0.45, 0.38))
@@ -51,7 +63,7 @@ func _input(event: InputEvent) -> void:
 		return
 	var took := true
 	if event.is_action_pressed("rotate_build"):
-		_turn = (_turn + 1) % (24 if _free else 4)
+		_turn = posmod(_turn + (-1 if Input.is_action_pressed("sprint") else 1), 24 if _free else 4)
 	elif event.is_action_pressed("build_raise"):
 		_lift += 1
 	elif event.is_action_pressed("build_lower"):
@@ -95,6 +107,19 @@ func update() -> void:
 	_ghost.global_transform = Transform3D(Basis(Vector3.UP, _target["yaw"]), _target["pos"])
 	_ghost.material_override = _mat_ok if _target["ok"] else _mat_bad
 
+## Built pieces near you (BuildCatalog.built_near), refreshed every NEAR_EVERY seconds.
+func near_pieces() -> Array:
+	var now := Time.get_ticks_msec() / 1000.0
+	var here := player.global_position
+	if now - _near_t > NEAR_EVERY or here.distance_to(_near_at) > 2.0:
+		_near = BuildCatalog.built_near(player.streamer, here, NEAR_RADIUS)
+		_near_t = now
+		_near_at = here
+	return _near
+
+func _forget_near() -> void:
+	_near_t = -1.0
+
 func _find_target() -> Dictionary:
 	var cam := player.camera
 	var from := cam.global_position
@@ -107,33 +132,60 @@ func _find_target() -> Dictionary:
 	var n: Vector3 = hit["normal"]
 	if Doors.is_door_piece(_id):
 		return _door_target(from, p)
+	var near := near_pieces()
 	var col: Object = hit.get("collider")
 	var anchor = null
-	var hit_mode := ""
+	var ctx := {"lift": _lift, "free": _free, "normal": n, "eye": from, "near": near}
 	var on_ground := not (col != null and col.has_meta("obj"))
 	if col != null and col.has_meta("obj"):
 		var c: ChunkNode = col.get_meta("chunk")
 		var o: Dictionary = c.get_object(col.get_meta("obj"))
 		if BuildCatalog.is_built(o["t"]):
-			hit_mode = String(BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("snap", "free"))
-			if hit_mode != "free":
+			var hid := BuildCatalog.id_of(o["t"])
+			ctx["hit_mode"] = String(BuildCatalog.def(hid).get("snap", "free"))
+			if ctx["hit_mode"] != "free":
 				anchor = c.position + o["p"]
+				ctx["hit_pos"] = anchor
+				ctx["hit_yaw"] = float(o["r"])
+				ctx["hit_id"] = hid
 	if anchor == null:
-		anchor = BuildCatalog.nearest_piece(player.streamer, p, ANCHOR_RADIUS)
+		anchor = BuildCatalog.nearest_in(near, p, ANCHOR_RADIUS)
 	# Nudge off the surface we hit, so the cell is the one we are looking from.
 	var probe := p + n * 0.05
-	var s := BuildCatalog.snap(_id, probe, player.yaw(), _turn, anchor, on_ground, {"hit_mode": hit_mode, "lift": _lift, "free": _free})
+	var list := BuildCatalog.candidates(_id, probe, player.yaw(), _turn, anchor, on_ground, ctx)
+	var s: Dictionary = list[0]
+	var why := "occupied"
+	for e in list:
+		if not BuildCatalog.occupied_in(near, _id, e["pos"], e["yaw"]):
+			s = e
+			why = ""
+			break
 	var pos: Vector3 = s["pos"]
 	if anchor == null and _id == "foundation" and not _free:
 		pos.y = p.y + 0.12 + _lift * float(BuildCatalog.def(_id)["storey"])
-	var ok := pos.distance_to(from) <= REACH + 2.0
-	if ok and BuildCatalog.occupied(player.streamer, _id, pos, s["yaw"]):
-		ok = false
-	if ok and BuildCatalog.def(_id).get("snap") == "free" and Vector2(pos.x - player.global_position.x, pos.z - player.global_position.z).length() < 0.7:
-		ok = false
-	if ok and player.streamer and player.streamer.get_chunk(ChunkStreamer.chunk_of(pos)) == null:
-		ok = false
-	return {"pos": pos, "yaw": s["yaw"], "ok": ok}
+	if why == "" and pos.distance_to(from) > REACH + 2.0:
+		why = "reach"
+	if why == "" and player.streamer and player.streamer.get_chunk(ChunkStreamer.chunk_of(pos)) == null:
+		why = "unloaded"
+	if why == "" and _in_the_way(pos, s["yaw"]):
+		why = "player"
+	if why == "" and Game.stats.level < Recipes.unlock_level(_id):
+		why = "level"
+	return {"pos": pos, "yaw": s["yaw"], "ok": why == "", "why": why}
+
+## Your own body box, feet to head.
+func _body_box() -> AABB:
+	var f := player.global_position
+	return AABB(f + Vector3(-0.35, 0.0, -0.35), Vector3(0.7, 1.8, 0.7))
+
+## True when the piece would close round you. A floor low enough to step onto doesn't
+## count: placing it lifts you on top.
+func _in_the_way(pos: Vector3, yaw: float) -> bool:
+	var box := BuildCatalog.world_aabb(_id, pos, yaw).grow(-0.05)
+	var body := _body_box()
+	if not box.intersects(body):
+		return false
+	return box.end.y > body.position.y + STEP_UP or BuildCatalog.def(_id).get("snap") == "free"
 
 ## A door hangs in the doorway you aim at (or through), at its spot and facing; the
 ## rotate key hangs it the other way round. Red, at the aim, when there's no doorway.
@@ -143,8 +195,14 @@ func _door_target(from: Vector3, p: Vector3) -> Dictionary:
 		return {"pos": p, "yaw": player.yaw() + PI, "ok": false, "why": "doorway"}
 	var pos: Vector3 = dw["pos"]
 	var yaw: float = dw["yaw"] + (PI if _turn % 2 else 0.0)
-	var ok := pos.distance_to(from) <= REACH + 2.0 and not BuildCatalog.occupied(player.streamer, _id, pos, yaw)
-	return {"pos": pos, "yaw": yaw, "ok": ok}
+	var why := ""
+	if pos.distance_to(from) > REACH + 2.0:
+		why = "reach"
+	elif BuildCatalog.occupied_in(near_pieces(), _id, pos, yaw):
+		why = "door_there"
+	elif Game.stats.level < Recipes.unlock_level(_id):
+		why = "level"
+	return {"pos": pos, "yaw": yaw, "ok": why == "", "why": why}
 
 ## Places the held piece at the ghost. Returns true when something was built.
 func place() -> bool:
@@ -154,10 +212,7 @@ func place() -> bool:
 		Game.toast.emit("Building is turned off on this server")
 		return false
 	if not _target["ok"]:
-		if _target.get("why", "") == "doorway":
-			Game.toast.emit("Hang a %s in a doorway you've built" % String(BuildCatalog.def(_id)["name"]).to_lower())
-		else:
-			Game.toast.emit("Can't build there")
+		Game.toast.emit(why_text(String(_target.get("why", ""))))
 		return false
 	var pos: Vector3 = _target["pos"]
 	var chunk: ChunkNode = player.streamer.get_chunk(ChunkStreamer.chunk_of(pos))
@@ -171,10 +226,16 @@ func place() -> bool:
 		Game.toast.emit("You can build a %s from level %d" % [String(BuildCatalog.def(_id)["name"]).to_lower(), need])
 		return false
 	Game.inventory.remove_at(player.selected, 1)
-	var st := {"by": "you", "day": snappedf(Game.day, 0.01)}
+	# Whose it is: only they (and, on a server, their allies) may take it down.
+	var st := {"by": "you", "day": snappedf(Game.day, 0.01), "owner": Doors.my_id(), "owner_name": Doors.my_name()}
 	if Doors.is_door_piece(_id):
 		Doors.init_state(st)
 	var o := chunk.add_built(_id, pos - chunk.position, _target["yaw"], st)
+	_forget_near()
+	# A low floor put down where you stand lifts you onto it.
+	var box := BuildCatalog.world_aabb(_id, pos, _target["yaw"])
+	if BuildCatalog.def(_id).get("snap") == "floor" and not BuildCatalog.def(_id).get("ramp", false) and box.grow(-0.05).intersects(_body_box()):
+		player.global_position.y = box.end.y + 0.02
 	if BuildCatalog.def(_id).get("teleporter", false):
 		var n := Game.markers.count_kind("teleporter") + 1
 		var nm := "%s %d" % [String(BuildCatalog.def(_id)["name"]), n]
@@ -206,13 +267,31 @@ func info() -> Dictionary:
 	else:
 		match mode:
 			"free": lines.append("Place anywhere. %s turns it." % k.call("rotate_build"))
-			"wall": lines.append("Snaps to cell edges (%d m grid). %s flips it." % [int(d["grid"]), k.call("rotate_build")])
-			_: lines.append("Snaps to a %d m grid and to storeys you've built; aim at a wall to sit on top of it. %s turns it." % [int(d["grid"]), k.call("rotate_build")])
+			"wall": lines.append("Snaps to cell edges (%d m grid). Aim at a wall's end for the next one along, its middle to stack one on top. %s flips it." % [int(d["grid"]), k.call("rotate_build")])
+			"roof_v", "roof_c": lines.append("Aim at a wall top to roof the rooms beside it, or at a roof for the next one along. %s turns it." % k.call("rotate_build"))
+			_:
+				if d.get("ramp", false):
+					lines.append("Climbs away from you from the cell you aim at, up one storey. %s turns it." % k.call("rotate_build"))
+				else:
+					lines.append("Snaps to a %d m grid. Aim at a floor's edge for the next tile over, at a wall for the floor above. %s turns it." % [int(d["grid"]), k.call("rotate_build")])
 	if mode != "free":
 		var by := ("%+.2f m" % (_lift * 0.25)) if _free else ("%+d storey" % _lift)
 		lines.append("%s raise  %s lower (%s)   %s grid %s" % [k.call("build_raise"), k.call("build_lower"), by, k.call("build_snap"), "on" if _free else "off"])
 	if d.has("station"):
 		lines.append("Crafting station: recipes that need a %s work within %d m." % [d["name"], int(BuildCatalog.STATION_RANGE)])
 	if not _target.is_empty() and not _target["ok"]:
-		lines.append("Something is already there, or it's out of reach.")
+		lines.append(why_text(String(_target.get("why", ""))))
 	return {"title": d.get("name", _id), "sub": "Building  ·  [%s] place" % Player._key("use"), "lines": lines, "icon": _id}
+
+## Why the ghost is red, in words.
+func why_text(why: String) -> String:
+	var nm := String(BuildCatalog.def(_id).get("name", _id)).to_lower()
+	match why:
+		"doorway": return "Hang a %s in a doorway you've built" % nm
+		"door_there": return "A door already hangs there"
+		"occupied": return "Something already fills that spot"
+		"reach": return "Too far away: move closer"
+		"unloaded": return "Can't build out there yet"
+		"player": return "You're standing where it would go"
+		"level": return "You can build a %s from level %d" % [nm, Recipes.unlock_level(_id)]
+	return "Can't build there"

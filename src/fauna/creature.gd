@@ -360,11 +360,10 @@ func _build_tag() -> void:
 	_tag_label.pixel_size = 0.0011
 	_tag_label.font_size = 26
 	_tag_label.outline_size = 8
-	_tag_label.no_depth_test = true
 	_tag_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_tag_label.offset = Vector2(0, 2)
-	# Drawn after the water (and its splash rings), so a lake behind or under the animal
-	# never covers its name.
+	# Depth-tested, so walls and roofs hide it, and drawn after the water (and its splash
+	# rings), so a lake behind or under the animal never covers its name.
 	_tag_label.render_priority = TAG_PRIORITY
 	_tag_label.outline_render_priority = TAG_PRIORITY - 1
 	_tag.add_child(_tag_label)
@@ -402,6 +401,25 @@ func blocked(x: float, z: float) -> bool:
 		return true
 	return solid_at(Vector3(x, h, z))
 
+## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
+## goal has swung round: same path, a tenth of the ground probes and rays.
+var _steer_at := Vector3.INF
+var _steer_from := Vector3.ZERO
+var _steer_turn := 0.0
+
+func _steer_cached(pos: Vector3, dir: Vector3) -> Vector3:
+	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
+	if pos.distance_squared_to(_steer_at) < reach * reach * 0.0625 and dir.dot(_steer_from) > 0.995:
+		return dir.rotated(Vector3.UP, _steer_turn)
+	var d := _steer(pos, dir)
+	if d == Vector3.ZERO:
+		_steer_at = Vector3.INF
+		return d
+	_steer_at = pos
+	_steer_from = dir
+	_steer_turn = dir.signed_angle_to(d, Vector3.UP)
+	return d
+
 ## The way to walk from `pos` heading `dir`: straight on if the ground ahead is clear,
 ## else the nearest clear bearing to either side, or ZERO if none is. An animal already
 ## in the water (chased in, or swimming) may keep going until it is out.
@@ -423,7 +441,16 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 
 func blocked_wet(x: float, z: float) -> bool:
 	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
-	return not is_nan(h) and (h < Water.LEVEL + 0.15 or h < Water.surface_height(x, z, 0.0) + 0.05)
+	if is_nan(h):
+		return false
+	if h < Water.LEVEL + 0.15:
+		return true
+	if h >= Water.wave_top() + 0.05:
+		# Above any wave: only a river can be over it (skips the wave sums, most of the
+		# animals' per-frame cost).
+		var r := Water.river_surface(x, z)
+		return not is_nan(r) and h < r + 0.05
+	return h < Water.surface_height(x, z, 0.0) + 0.05
 
 ## Spawned (or pushed) inside a rock or out in the water: move to the nearest clear
 ## ground within a few metres, and make it the animal's new home.
@@ -539,7 +566,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	if dir.length() > 0.05 and _speed > 0.01:
 		dir = dir.normalized()
 		if walks:
-			dir = _steer(pos, dir)
+			dir = _steer_cached(pos, dir)
 			if dir == Vector3.ZERO:
 				# Hemmed in by rock or water this way: stop and go somewhere else.
 				_speed = 0.0
@@ -736,7 +763,7 @@ func _build() -> void:
 		# Medieval animals keep the kit's natural coats; others take the species' colours.
 		var tint = p.get("tint", null if era == Eras.MEDIEVAL else p["col"])
 		var glow = Color.from_hsv(float(p["glow"]) / 12.0, 0.7, 1.0) if p["has_glow"] else null
-		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow)
+		_kit = AnimalModel.new().build(p["kit"], p["kit_scale"], tint, glow, id.hash())
 		_model.add_child(_kit)
 		return
 	var sz: float = p["size"]
@@ -764,6 +791,7 @@ func _build() -> void:
 			_flap = {"Scout Drone": 0.06, "Drift Jelly": 0.3, "Glowmoth": 0.9}.get(String(p["name"]), 0.7)
 			var bmi := MeshInstance3D.new()
 			bmi.mesh = bm["body"]
+			bmi.set_instance_shader_parameter("seed", float(absi(id.hash()) % 65521))
 			_model.add_child(bmi)
 			var at: Vector3 = bm["wing_at"]
 			for side in [-1.0, 1.0]:
@@ -775,6 +803,7 @@ func _build() -> void:
 				# The left wing is the right one mirrored.
 				wmi.scale = Vector3(side, 1, 1)
 				w.add_child(wmi)
+				wmi.set_instance_shader_parameter("seed", float(absi(id.hash()) % 65521))
 				_wings.append(w)
 		_:
 			var leg_l: float = 0.55 * float(p["leg"])

@@ -10,7 +10,7 @@ var out_dir := "user://captures"
 var settle_frames := 150
 var only: PackedStringArray = [] ## --shots=01,07 limits the tour to those shots
 var shore_out := Vector2.ZERO ## which way the open lake lies from the beach _find_shore picked
-## --hud=none hides the 2D layer, --hud=under keeps only the underwater overlay of it and
+## --hud=none hides the 2D layer (and the animals' name tags), --hud=under keeps only the underwater overlay of it and
 ## --hud=nounder keeps all but that overlay: to tell whether an artefact is in the 3D image.
 var hud_mode := ""
 ## --env=property=value sets a property of the world's Environment for this run, for A/B
@@ -72,6 +72,8 @@ func _apply_hud_mode() -> void:
 	var layer := hud.get_parent() as CanvasLayer
 	if hud_mode == "none":
 		layer.visible = false
+		if world.fauna:
+			world.fauna.show_tags = false
 		return
 	# Hidden children move under one hidden holder: the HUD shows and hides them every
 	# frame, which can't override a hidden parent.
@@ -449,6 +451,8 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
+	if only.is_empty() or ["65", "66", "67", "68", "69"].any(func(n): return only.has(n)):
+		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
 		await _ground_shots(g)
 	if not ZoneBorder.rings().is_empty() and WorldField.terrain_v >= 16 and (only.is_empty() or only.has("04") or only.has("73")):
@@ -492,6 +496,8 @@ func _run() -> void:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36")):
 		await _water_shots(g, shore)
+	if only.is_empty() or only.has("59") or only.has("60"):
+		await _player_house()
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
 	if only.is_empty() or only.has("11") or only.has("12"):
@@ -1239,6 +1245,88 @@ func _flat_spot(vm: VehicleManager, from: Vector3) -> Vector3:
 			best = Vector3(q.x, g.field.height(q.x, q.y) + 1.0, q.y)
 	return best
 
+## A two-storey house of player pieces, put together with the builder's own snapping
+## (BuildCatalog.snap / candidates): foundations on the ground, walls stacked a storey
+## up, an upper floor, stairs and a roof found by aiming at a wall top. 59 from outside,
+## 60 inside looking at the stairs: walls should meet without seams or z-fighting.
+func _player_house() -> void:
+	var p: Player = world.player
+	var streamer: ChunkStreamer = world.streamer
+	var g0 := ChunkGenerator.new(Game.seed)
+	var m2 := _find_era(g0, Eras.MEDIEVAL, 0.95)
+	var at := Vector3(m2.x + 30.0, 0, m2.y + 30.0)
+	p.set_physics_process(false)
+	p.global_position = at
+	await _wait_loaded(p, streamer)
+	at = _flat_spot(world.vehicles, at)
+	p.global_position = at
+	await _wait_loaded(p, streamer)
+	var ground := func(x: float, z: float) -> float:
+		var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(x, 0, z)))
+		return ChunkGenerator.height_at(c.data, x - c.position.x, z - c.position.z) if c else at.y
+	var cx := floorf(at.x / 2.0) * 2.0 + 1.0
+	var cz := floorf(at.z / 2.0) * 2.0 + 1.0
+	_clear_trees(streamer, Vector3(cx, ground.call(cx, cz), cz), 16.0)
+	var put := func(id: String, s: Dictionary) -> void:
+		var pos: Vector3 = s["pos"]
+		var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(pos))
+		if c and not BuildCatalog.occupied(streamer, id, pos, s["yaw"]):
+			c.add_built(id, pos - c.position, s["yaw"], {"by": "you", "day": 0.0})
+	# The first foundation as the builder sets one on open ground; the rest join its storey.
+	var base := Vector3(cx, float(ground.call(cx, cz)) + 0.12, cz)
+	for j in range(-1, 2):
+		for i in range(-1, 2):
+			var q := Vector3(cx + i * 2.0, 0, cz + j * 2.0)
+			q.y = ground.call(q.x, q.z)
+			put.call("foundation", BuildCatalog.snap("foundation", q, 0.0, 0, base, true))
+	var storey := float(BuildCatalog.def("wall_stone")["storey"])
+	# Walls round both storeys, aimed at from inside each edge: stone below with a doorway
+	# and windows at the front, timber above.
+	for k in 2:
+		for e in 12:
+			var side := e / 3
+			var along := (e % 3 - 1) * 2.0
+			var out: Vector3 = [Vector3(0, 0, 1), Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(-1, 0, 0)][side]
+			var hit := Vector3(cx, base.y + k * storey + 1.0, cz) + out * 2.9 + Vector3(out.z, 0, out.x) * along
+			var id := "wall_stone" if k == 0 else "wall_plaster"
+			if side == 0 and e % 3 == 1:
+				id = "wall_door_stone" if k == 0 else "wall_window"
+			elif e % 3 != 1 and side < 2:
+				id = "wall_window" if k == 1 else ("wall_window_stone" if side == 0 else id)
+			var near_now := BuildCatalog.built_near(streamer, hit, 4.0)
+			put.call(id, BuildCatalog.snap(id, hit, 0.0, 0, base, false, {"hit_mode": "floor", "near": near_now}))
+	# Stairs from the front left cell, climbing toward the back; the upper floor leaves
+	# their two cells open.
+	put.call("stairs_wood", BuildCatalog.snap("stairs_wood", Vector3(cx - 2.0, base.y + 0.02, cz + 2.0), 0.0, 0, base, false, {"hit_mode": "floor"}))
+	for j in range(-1, 2):
+		for i in range(-1, 2):
+			if i == -1 and j >= 0:
+				continue
+			put.call("floor_wood", BuildCatalog.snap("floor_wood", Vector3(cx + i * 2.0, base.y + storey + 0.02, cz + j * 2.0), 0.0, 0, base, false, {"hit_mode": "floor"}))
+	# The roof: aim at the top of the front wall, as a player on the ground would.
+	var wall_top := Vector3(cx, base.y + 2.0 * storey - 0.05, cz + 3.0)
+	var near := BuildCatalog.built_near(streamer, Vector3(cx, base.y, cz), 14.0)
+	var ctx := {"hit_mode": "wall", "hit_pos": Vector3(cx, base.y + storey, cz + 3.0), "hit_yaw": 0.0, "hit_id": "wall_window",
+		"normal": Vector3.UP, "eye": Vector3(cx - 4.0, base.y + 1.7, cz + 12.0), "near": near}
+	for s in BuildCatalog.candidates("roof_large", wall_top, 0.0, 0, ctx["hit_pos"], false, ctx):
+		if not BuildCatalog.occupied_in(near, "roof_large", s["pos"], s["yaw"]):
+			print("house: roof at ", s["pos"], " (house middle ", Vector3(cx, base.y + 2.0 * storey, cz), ")")
+			put.call("roof_large", s)
+			break
+	# Furnished a little.
+	var fl := base.y + 0.01
+	put.call("table", {"pos": Vector3(cx + 1.0, fl, cz - 1.0), "yaw": 0.0})
+	put.call("chair", {"pos": Vector3(cx + 1.0, fl, cz + 0.2), "yaw": PI})
+	put.call("bookcase", {"pos": Vector3(cx + 2.4, fl, cz + 2.0), "yaw": -PI * 0.5})
+	put.call("candle_stand", {"pos": Vector3(cx - 0.6, fl, cz - 2.3), "yaw": 0.0})
+	put.call("bed", {"pos": Vector3(cx + 1.6, fl + storey, cz - 1.6), "yaw": 0.0})
+	print("house: built at ", base)
+	var cam := Vector2(cx - 9.0, cz + 12.0)
+	await _shot("59_player_house", cam, Vector2(cx, cz), 0.42, 2.2, base.y + 3.0)
+	# On the ground floor (the player's feet on it), looking across at the stairs.
+	var inside := Vector2(cx + 1.6, cz + 2.4)
+	await _shot("60_player_house_inside", inside, Vector2(cx - 2.0, cz - 1.5), 0.45, base.y + 0.02 - float(ground.call(inside.x, inside.y)), base.y + 1.7)
+
 ## The vehicle bay and stable with a speeder, a rover and a horse in front, then riding.
 func _vehicles() -> void:
 	var p: Player = world.player
@@ -1355,6 +1443,42 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## Boats (65-69): a cog at anchor and a research vessel seen from the water, the cog's
+## deck and the vessel's bridge from aboard, and a small working boat with its crew.
+func _boat_shots(g: ChunkGenerator) -> void:
+	var best := {}
+	for r in 12:
+		for cz in range(-r, r + 1):
+			for cx in range(-r, r + 1):
+				if maxi(absi(cx), absi(cz)) != r:
+					continue
+				var s := Boats.plan(g.field, cx, cz)
+				if s.is_empty():
+					continue
+				var key: String = "small" if s["boat"] in ["fishing_boat", "launch", "rowboat"] else s["boat"]
+				if not best.has(key):
+					best[key] = s
+	# [name, eye (boat-local; y is above the water), look at (boat-local)].
+	var views := {
+		"cog": [["65_boat_cog", Vector3(26.0, 2.2, 16.0), Vector3(0, 5.0, 0)], ["66_cog_deck", Vector3(1.8, 1.6, -4.5), Vector3(0, 2.2, 6.0)]],
+		"research_vessel": [["67_boat_vessel", Vector3(30.0, 2.2, -18.0), Vector3(0, 5.0, 0)], ["68_vessel_bridge", Vector3(1.2, 4.67, 0.9), Vector3(0, 4.3, -3.5)]],
+		"small": [["69_boat_small", Vector3(9.0, 1.6, 6.0), Vector3(0, 1.0, 0)]],
+	}
+	for key in views:
+		if not best.has(key):
+			print("no %s near spawn for the boat shots" % key)
+			continue
+		var bc: Vector2 = best[key]["center"]
+		world.player.set_physics_process(false)
+		world.player.global_position = Vector3(bc.x + 20.0, 3.0, bc.y)
+		var b: BoatNode = world.boats.put(best[key], true)
+		for v in views[key]:
+			if not only.is_empty() and not only.has(String(v[0]).substr(0, 2)):
+				continue
+			var eye: Vector3 = b.to_global(v[1])
+			eye.y = maxf(eye.y, (v[1] as Vector3).y)
+			await _abs_shot(v[0], eye, b.to_global(v[2]), 0.42, false)
 
 ## The nearest of each hidden find (EasterEggs), seen up close from in front (53-57).
 func _egg_shots(g: ChunkGenerator) -> void:

@@ -237,7 +237,7 @@ func get_or_create_settlement(gen: ChunkGenerator, site: Dictionary) -> Dictiona
 	var s = load_settlement(site["sx"], site["sz"])
 	if s is Dictionary:
 		return s
-	s = NPCGen.generate(gen.seed, gen, site, gen.settlement_layout(site))
+	s = NPCGen.create(gen, site)
 	s["created"] = Time.get_unix_time_from_system()
 	save_settlement(s)
 	return s

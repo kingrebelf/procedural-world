@@ -56,8 +56,15 @@ func _process(delta: float) -> void:
 		_wind = atmosphere.wind_strength
 		_dir = atmosphere.wind_dir
 	_depth_timer -= delta
-	if _depth_timer <= 0.0 and streamer != null:
+	if _depth_timer <= 0.0 and streamer != null and _depth_row < 0:
 		_depth_timer = 1.5
+		# Only when the sheet moved or ground came or went (a dig is caught within 15 s).
+		var sig := "%s %d %d" % [position, streamer.chunks.size(), Time.get_ticks_msec() / 15000]
+		if sig != _depth_sig:
+			_depth_sig = sig
+			_depth_row = 0
+			_depth_next_origin = Vector2(position.x, position.z) - Vector2(SIZE, SIZE) * 0.5
+	if _depth_row >= 0 and streamer != null:
 		_update_depth()
 
 ## The water sheet: 8 m squares across the middle SIZE metres, then squares growing
@@ -102,19 +109,38 @@ static func _sheet() -> ArrayMesh:
 
 ## Water depth map around the player (metres below sea level, 0 on land), so the shader
 ## can grow waves over deep water and calm them in the shallows.
+## The depth map is built a few rows a frame into a second buffer and swapped in whole:
+## all 16k samples at once froze the game for 30-40 ms every 1.5 s.
+const DEPTH_ROWS_PER_FRAME := 6
+var _depth_row := -1 ## next row of the map being built, -1 while idle
+var _depth_next := PackedFloat32Array()
+var _depth_next_origin := Vector2.ZERO
+var _depth_sig := ""
+
 func _update_depth() -> void:
-	_depth_origin = Vector2(position.x, position.z) - Vector2(SIZE, SIZE) * 0.5
+	if _depth_next.size() != DEPTH_RES * DEPTH_RES:
+		_depth_next.resize(DEPTH_RES * DEPTH_RES)
 	var step := SIZE / DEPTH_RES
-	for j in DEPTH_RES:
+	var last := Vector2i(1 << 30, 0)
+	var c: ChunkNode = null
+	for j in range(_depth_row, mini(_depth_row + DEPTH_ROWS_PER_FRAME, DEPTH_RES)):
 		for i in DEPTH_RES:
-			var x := _depth_origin.x + (i + 0.5) * step
-			var z := _depth_origin.y + (j + 0.5) * step
+			var x := _depth_next_origin.x + (i + 0.5) * step
+			var z := _depth_next_origin.y + (j + 0.5) * step
 			var k := ChunkStreamer.chunk_of(Vector3(x, 0, z))
-			var c := streamer.get_chunk(k)
+			if k != last:
+				last = k
+				c = streamer.get_chunk(k)
 			var d := 12.0
 			if c != null:
 				d = clampf(LEVEL - ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE), 0.0, 40.0)
-			_depth_img.set_pixel(i, j, Color(d, 0, 0))
+			_depth_next[j * DEPTH_RES + i] = d
+	_depth_row += DEPTH_ROWS_PER_FRAME
+	if _depth_row < DEPTH_RES:
+		return
+	_depth_row = -1
+	_depth_img = Image.create_from_data(DEPTH_RES, DEPTH_RES, false, Image.FORMAT_RF, _depth_next.to_byte_array())
+	_depth_origin = _depth_next_origin
 	_depth_tex.update(_depth_img)
 	_mat.set_shader_parameter("depth_origin", _depth_origin)
 	_mat.set_shader_parameter("depth_size", SIZE)
@@ -208,6 +234,19 @@ func current_at(x: float, z: float) -> Vector2:
 		return Vector2.ZERO
 	var speed := clampf(0.6 + g.length() * 30.0, 0.6, MAX_CURRENT) * (1.0 - smoothstep(0.35, 1.05, here.y) * 0.85)
 	return -g.normalized() * speed
+
+## The highest the sea's waves reach right now (surface_height never goes above it,
+## rivers aside).
+static func wave_top() -> float:
+	return LEVEL + amplitude(14.0)
+
+## A river's surface at (x, z) where it runs above the sea, else NAN.
+static func river_surface(x: float, z: float) -> float:
+	if _river_lookup.is_valid():
+		var r: float = _river_lookup.call(x, z)
+		if not is_nan(r) and r > LEVEL:
+			return r
+	return NAN
 
 ## Height of the water surface at (x, z) and time t: a river where there is one, else the
 ## sea (whose waves must match water.gdshader).

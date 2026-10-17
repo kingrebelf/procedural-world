@@ -79,7 +79,7 @@ void fragment() {
 	vec3 col = deep * (1.0 - trans.g) * 1.6;
 	// Foam streaks where the current runs fast, and a thin line at the banks.
 	float streak = smoothstep(0.18, 0.4, mix(h0, h1, w)) * length(flow) * 0.35;
-	float bank = 1.0 - smoothstep(0.0, 0.15, water_depth);
+	float bank = (1.0 - smoothstep(0.0, 0.15, water_depth)) * smoothstep(1.0, 2.0, -world.z);
 	float foam = clamp(streak + bank * 0.4, 0.0, 0.8);
 	col = mix(col, vec3(0.8, 0.84, 0.86), foam);
 	vec3 vdir = normalize((inverse(VIEW_MATRIX) * vec4(VIEW, 0.0)).xyz); // back toward the eye
