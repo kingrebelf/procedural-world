@@ -112,6 +112,12 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if current == self:
 		current = null
+	# Unhook the splashes and stop the particles before the nodes go, so the renderer
+	# never steps a rain system whose sub-emitter has already been freed.
+	_rain.sub_emitter = NodePath()
+	for gp in [_rain, _flakes, _splash]:
+		gp.emitting = false
+	set_process(false)
 
 func _apply_settings() -> void:
 	_enabled = bool(Settings.get_value("weather"))
@@ -159,7 +165,7 @@ func icon() -> String:
 	return ""
 
 func _process(delta: float) -> void:
-	if atmosphere == null or atmosphere.target == null:
+	if atmosphere == null or not is_instance_valid(atmosphere.target) or not is_inside_tree():
 		return
 	var p := atmosphere.target.global_position
 	_sample_t -= delta
@@ -548,4 +554,5 @@ func _strike(at: Vector3, h: int) -> void:
 	var near := d < 1200.0
 	var vol := linear_to_db(clampf(1.4 / (1.0 + d / 900.0), 0.05, 1.0))
 	get_tree().create_timer(delay).timeout.connect(func():
-		Audio.play("weather/thunder_near" if near else "weather/thunder_far", vol, 0.12, 1.0, "Ambience"))
+		if is_instance_valid(self) and is_inside_tree():
+			Audio.play("weather/thunder_near" if near else "weather/thunder_far", vol, 0.12, 1.0, "Ambience"))
