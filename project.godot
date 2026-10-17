@@ -97,3 +97,19 @@ wind_time={
 "type": "float",
 "value": 0.0
 }
+weather_wet_g={
+"type": "float",
+"value": 0.0
+}
+weather_puddle_g={
+"type": "float",
+"value": 0.0
+}
+weather_snow_g={
+"type": "float",
+"value": 0.0
+}
+weather_rain_g={
+"type": "float",
+"value": 0.0
+}

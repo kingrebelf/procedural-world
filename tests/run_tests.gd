@@ -4187,3 +4187,49 @@ func test_camera_feel() -> void:
 	CameraBlur.strength = 0.0
 	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
 	CameraBlur.strength = old
+
+# --- Weather -----------------------------------------------------------------------
+
+func test_climate() -> void:
+	var a := Climate.new(4242)
+	var b := Climate.new(4242)
+	check(a.at(37.5, 120.0, -80.0, 12.0, WorldField.LF_NONE, 50.0) == b.at(37.5, 120.0, -80.0, 12.0, WorldField.LF_NONE, 50.0),
+		"the same world, place and hour have the same weather (every player on a server agrees)")
+	var keys := ["cover", "precip", "snow", "storm", "mist", "dust", "wind"]
+	var wet := {WorldField.LF_NONE: 0, WorldField.LF_DUNES: 0}
+	var snowed_low := 0
+	var snowed_high := 0
+	var dust_green := 0
+	var changes := 0
+	var last := -1
+	for i in 2000:
+		var h := i * 0.5
+		for lf in wet:
+			var c := a.at(h, 300.0, -200.0, 8.0, lf, 50.0)
+			for k in keys:
+				check(float(c[k]) >= 0.0 and float(c[k]) <= 1.0, "%s stays within 0..1" % k)
+			if float(c["precip"]) > 0.5:
+				wet[lf] += 1
+			if lf == WorldField.LF_NONE:
+				if float(c["dust"]) > 0.05:
+					dust_green += 1
+				var raining := 1 if float(c["precip"]) > 0.3 else 0
+				if raining != last:
+					changes += 1
+				last = raining
+				if float(c["precip"]) > 0.3 and float(c["snow"]) > 0.5:
+					snowed_low += 1
+		var hi := a.at(h, 300.0, -200.0, 85.0, WorldField.LF_NONE, 50.0)
+		if float(hi["precip"]) > 0.3 and float(hi["snow"]) > 0.5:
+			snowed_high += 1
+	check(wet[WorldField.LF_NONE] > 40 and wet[WorldField.LF_NONE] < 800, "it rains some of the time, not all of it (%d / 2000)" % wet[WorldField.LF_NONE])
+	check(wet[WorldField.LF_DUNES] * 4 < wet[WorldField.LF_NONE], "deserts are much drier (%d vs %d)" % [wet[WorldField.LF_DUNES], wet[WorldField.LF_NONE]])
+	check(snowed_high > snowed_low * 3 and snowed_high > 0, "it snows on the peaks far more than in the lowlands (%d vs %d)" % [snowed_high, snowed_low])
+	check(dust_green == 0, "no dust storms on green land")
+	check(changes >= 4 and changes < 400, "rain comes and goes in spells (%d changes)" % changes)
+	# Fronts travel: the weather here now is the weather upwind a little earlier.
+	var up := a.prevailing * -Climate.FRONT_SPEED
+	var now := a.at(50.0, 0.0, 0.0, 8.0, WorldField.LF_NONE, 50.0)
+	var then := a.at(49.0, up.x, up.y, 8.0, WorldField.LF_NONE, 50.0)
+	check(absf(float(now["cover"]) - float(then["cover"])) < 0.25, "a front passing upwind an hour ago is over you now")
+	check(Climate.base_temp(6.0) < 0.0 and Climate.base_temp(50.0) > 10.0, "frozen worlds are cold")
