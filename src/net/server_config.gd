@@ -5,7 +5,7 @@ extends RefCounted
 
 const FILE := "server.cfg"
 ## Bumped whenever the network messages change; client and server must match.
-const PROTOCOL := 2
+const PROTOCOL := 3
 
 ## [options] keys, their defaults, and what the admin console accepts.
 const OPTIONS := {

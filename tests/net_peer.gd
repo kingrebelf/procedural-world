@@ -6,6 +6,7 @@ extends SceneTree
 ##   - asks to see the animals around him and says "mobs N" once someone else runs them,
 ##     then hits one ("hit <id>") so whoever runs it feels it;
 ##   - says "hurt <health>" whenever another player hurts him;
+##   - accepts an alliance invitation and says "ally <name>";
 ##   - leaves when the other player says "bye".
 
 func _initialize() -> void:
@@ -33,6 +34,12 @@ func _run() -> void:
 		return
 	var bye := [false]
 	net.chat.connect(func(from, text, _k): if text == "bye": bye[0] = true)
+	# Accepts any alliance invitation, and says which alliance he is in.
+	net.alliance_changed.connect(func():
+		if net.alliance.is_empty() and not net.ally_invites.is_empty():
+			net.ally("accept", String(net.ally_invites[0]["id"]))
+		elif not net.alliance.is_empty():
+			net.say("ally %s" % net.alliance["name"]))
 	var cx := int(_arg("cx", "0"))
 	var cz := int(_arg("cz", "0"))
 	var store = game.store

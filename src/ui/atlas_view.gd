@@ -121,6 +121,9 @@ func _things() -> Array:
 		out.append(["wonder", _canvas.to_local_px(w["x"], w["z"]), WonderSite.label(w["t"]) if w.get("found", false) else "Something powerful", w])
 	for mk in Game.markers.on_planet(Game.planet) if Game.map.shows("marker") else []:
 		out.append(["marker", _canvas.to_local_px(mk["x"], mk["z"]), mk["name"], mk])
+	for al in Net.allies_where():
+		if int(al[2]) == Game.planet:
+			out.append(["ally", _canvas.to_local_px(al[3].x, al[3].z), al[1], al])
 	return out
 
 func _draw_icons() -> void:
@@ -138,6 +141,9 @@ func _draw_icons() -> void:
 					_icons.draw_arc(p, 15.0 + sin(_t * 5.0) * 1.5, 0, TAU, 24, UITheme.ACCENT, 2.0, true)
 				MapCanvas.draw_marker(_icons, th[3], p, 9.0)
 				_label(font, p + Vector2(12, 5), th[2], 13, Color(1, 1, 1, 0.9))
+			"ally":
+				MapCanvas.draw_ally(_icons, p, 6.0)
+				_label(font, p + Vector2(10, 5), th[2], 13, Color(0.7, 1.0, 0.72, 0.95))
 			"ore":
 				MapCanvas.draw_ore(_icons, th[3], p, 6.5)
 			"npc":

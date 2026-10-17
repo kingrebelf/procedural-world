@@ -3067,3 +3067,47 @@ func test_easter_eggs() -> void:
 	WorldField.terrain_v = keep_tv
 	Eras.theme = keep_theme
 	WorldField.allowed_eras = keep_eras
+
+func test_server_alliances() -> void:
+	var host := Node.new()
+	host.set_script(load("res://tests/fake_host.gd"))
+	host.pids = ["p1", "p2", "p3", "p4"]
+	for i in 4:
+		host.online[i + 1] = {"pid": host.pids[i], "planet": 0, "pos": Vector3(i * 10, 0, 0)}
+	var path := "user://test_alliances_%d.dat" % Time.get_ticks_usec()
+	var al := ServerAlliances.new(host, path)
+	check(al.command("p1", "Ann", "invite", "p2") != "", "you can't invite without an alliance")
+	check(al.command("p1", "Ann", "create", "x") != "", "a name needs two letters")
+	check(al.command("p1", "Ann", "create", "Iron [Wolves]") == "", "anyone can found an alliance")
+	var id := al.of("p1")
+	check(id != "" and al.list[id]["name"] == "Iron Wolves" and al.list[id]["leader"] == "p1", "named, with its founder leading (%s)" % al.list.get(id))
+	check(al.command("p2", "Bob", "create", "iron wolves") != "", "names are unique")
+	check(al.command("p2", "Bob", "accept", id) != "", "you can't join uninvited")
+	check(al.command("p1", "Ann", "invite", "p2") == "" and host.views["p2"][1].size() == 1, "an invitation reaches them")
+	check(not al.allied("p1", "p2"), "an invitation alone doesn't ally you")
+	check(al.command("p2", "Bob", "accept", id) == "" and al.allied("p1", "p2") and al.allied("p2", "p1"), "accepting allies you both ways")
+	check(host.views["p1"][0]["members"].has("p2") and host.views["p2"][0]["name"] == "Iron Wolves", "both are told")
+	check(not al.allied("p1", "p1") and not al.allied("p1", "p3"), "nobody else is allied")
+	al.command("p2", "Bob", "invite", "p3")
+	al.command("p3", "Cat", "accept", id)
+	check(al.command("p1", "Ann", "invite", "p4") != "", "an alliance is capped at max_alliance")
+	check(al.command("p2", "Bob", "kick", "p3") != "", "only the leader removes members")
+	al.command("p2", "Bob", "chat", "hello")
+	check(host.chats.size() == 3 and host.chats.all(func(c): return c[1] == "Bob" and c[2] == "hello"), "alliance chat reaches every member")
+	al.set_homes("p2", [[0, 10.0, 20.0]])
+	check(host.views["p1"][0]["homes"].get("p2", []) == [[0, 10.0, 20.0]] and not host.views["p2"][0]["homes"].has("p2"), "allies are told which houses each other owns")
+	var at := al.positions()
+	check(at["p1"].size() == 2 and not at["p1"].any(func(e): return e[0] == "p1"), "members are told where their allies are")
+	# Saved, and loaded on restart.
+	var al2 := ServerAlliances.new(host, path)
+	check(al2.allied("p1", "p3") and al2.list[id]["members"].size() == 3, "alliances survive a restart")
+	check(al.command("p1", "Ann", "kick", "p3") == "" and not al.allied("p1", "p3") and host.views["p3"][0].is_empty(), "the leader can remove a member")
+	al.command("p1", "Ann", "leave", "")
+	check(al.list[id]["leader"] == "p2" and not al.allied("p1", "p2"), "leadership passes on when the leader leaves")
+	host.opts["alliances"] = false
+	check(not al.allied("p2", "p2") and al.command("p2", "Bob", "invite", "p1") != "", "with alliances off nobody is allied")
+	host.opts["alliances"] = true
+	al.command("p2", "Bob", "leave", "")
+	check(not al.list.has(id), "an alliance ends with its last member")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	host.free()

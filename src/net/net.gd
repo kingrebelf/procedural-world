@@ -16,6 +16,7 @@ signal mob_hit(kind: String, id: String, dmg: float, killed: bool, from_peer: in
 signal mob_said(id: String, text: String, secs: float)
 signal mob_talk(id: String, on: bool) ## someone else is talking with a person you run
 signal town_pushed(sx: int, sz: int) ## someone else's save of a loaded town was merged into it
+signal alliance_changed
 
 const DEFAULT_PORT := 24600
 const STATE_HZ := 15.0
@@ -47,6 +48,11 @@ var holders: Dictionary = {}
 ## Puppets' latest state from whoever runs them: kind -> id -> [msec, state Array]
 var mobs: Dictionary = {"f": {}, "n": {}}
 var _watch_out: Dictionary = {} ## kind:planet -> [adds, removes] waiting to be sent
+
+# Alliances (stage 4): yours, invitations to others, and where your allies are.
+var alliance: Dictionary = {} ## {id, name, leader: pid, members: {pid: name}} or {}
+var ally_invites: Array = [] ## [{id, name, from}]
+var allies_at: Dictionary = {} ## pid -> [planet, pos, msec]: allies anywhere, for the map
 
 # --- Server ---
 var host: Object ## ServerHost while this process is a dedicated server
@@ -97,9 +103,45 @@ func may_access(owner_id: String) -> bool:
 func may_hurt(pid: String) -> bool:
 	return mode == Mode.CLIENT and bool(option("pvp")) and pid != my_pid and not allied(pid)
 
-## Alliances arrive in a later stage; until then nobody is allied.
-func allied(_pid: String) -> bool:
+## Whether `pid` is in your alliance (never offline, or with alliances off).
+func allied(pid: String) -> bool:
+	return mode == Mode.CLIENT and pid != my_pid and bool(option("alliances")) \
+		and (alliance.get("members", {}) as Dictionary).has(pid)
+
+## An alliance command: create <name>, invite <pid>, accept/decline <id>, leave,
+## kick/lead <pid>, chat <text>. The server answers in chat and with c_alliance.
+func ally(cmd: String, arg := "") -> void:
+	if mode == Mode.CLIENT:
+		s_ally.rpc_id(1, cmd, arg)
+
+## Whether `at` (on `planet`) is in a house one of your allies owns: what is inside is
+## theirs to share with you, so taking it isn't stealing.
+func ally_home_at(at: Vector3, planet: int) -> bool:
+	var hs: Dictionary = alliance.get("homes", {})
+	for pid in hs:
+		if allied(pid):
+			for h in hs[pid]:
+				if int(h[0]) == planet and Vector2(float(h[1]), float(h[2])).distance_to(Vector2(at.x, at.z)) < 7.0:
+					return true
 	return false
+
+## Your allies online with where they are (any distance): [[pid, name, planet, pos], ...].
+func allies_where() -> Array:
+	var out: Array = []
+	var now := Time.get_ticks_msec()
+	for pid in alliance.get("members", {}):
+		if pid == my_pid:
+			continue
+		var at = null
+		for peer in peers:
+			var r: Dictionary = peers[peer]
+			if r["pid"] == pid and now - int(r.get("t", 0)) < 3000:
+				at = [int(r["planet"]), r["pos"]] # near: its live position
+		if at == null and allies_at.has(pid) and now - int(allies_at[pid][2]) < 8000:
+			at = allies_at[pid]
+		if at != null:
+			out.append([pid, String(alliance["members"][pid]), int(at[0]), at[1]])
+	return out
 
 ## Whether this game runs a town ("t", key = settlement sx, sz) or a chunk's animals
 ## ("f", key = chunk): always offline; online when the server made you its holder.
@@ -292,6 +334,9 @@ func _on_connected() -> void:
 	is_admin = false
 	peers.clear()
 	holders.clear()
+	alliance = {}
+	ally_invites = []
+	allies_at.clear()
 	mobs = {"f": {}, "n": {}}
 	var meta: Dictionary = w["meta"]
 	store = RemoteStore.new("user://servers".path_join(str(w.get("uid", "server")).validate_filename()), meta)
@@ -555,6 +600,24 @@ func s_chat(text: String) -> void:
 		host.chat(_sender(), text)
 
 @rpc("any_peer", "call_remote", "reliable")
+func s_ally(cmd: String, arg: String) -> void:
+	if host:
+		host.ally(_sender(), cmd, arg)
+
+@rpc("authority", "call_remote", "reliable")
+func c_alliance(mine: Dictionary, invites: Array) -> void:
+	alliance = mine
+	ally_invites = invites
+	alliance_changed.emit()
+
+@rpc("authority", "call_remote", "unreliable_ordered", CH_STATE)
+func c_allies_at(list: Array) -> void:
+	var now := Time.get_ticks_msec()
+	for e in list:
+		if e is Array and e.size() == 3 and e[2] is Vector3:
+			allies_at[String(e[0])] = [int(e[1]), e[2], now]
+
+@rpc("any_peer", "call_remote", "reliable")
 func s_admin(cmd: String) -> void:
 	if host:
 		host.admin_from(_sender(), cmd)
@@ -753,7 +816,7 @@ func c_options(o: Dictionary, server_info: Dictionary) -> void:
 @rpc("authority", "call_remote", "reliable")
 func c_chat(from: String, text: String, kind: String) -> void:
 	chat.emit(from, text, kind)
-	if kind != "chat":
+	if kind != "chat" and not (kind == "ally" and from != ""):
 		Game.toast.emit(text if from == "" else "%s: %s" % [from, text])
 
 @rpc("authority", "call_remote", "reliable")

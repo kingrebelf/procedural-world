@@ -223,6 +223,14 @@ func owns_house_at(at: Vector3) -> bool:
 			return true
 	return false
 
+## Whether what is in the house at `at` is yours to take: one you bought, or (online)
+## one an ally bought.
+func may_use_house_at(at: Vector3) -> bool:
+	if owns_house_at(at):
+		return true
+	var net := get_node_or_null("/root/Net")
+	return net != null and net.has_method("ally_home_at") and bool(net.ally_home_at(at, planet))
+
 ## Steps through the world portal at `from` (on this world) to world `n`: you come out
 ## beside a portal there (WorldPortal.arrival), and the portal you used is where you
 ## come back out on this world.
