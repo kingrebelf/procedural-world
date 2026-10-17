@@ -314,10 +314,14 @@ static func look_bytes(lw: PackedFloat32Array, out: PackedByteArray, at: int) ->
 		var a := smoothstep(LF_FADE.x, LF_FADE.y, lw[lf])
 		var lk: Array = LANDFORM_LOOK[lf]
 		var gamt := float(lk[3])
+		var rock: Color = lk[0]
 		if lf == LF_CRATERS and Eras.theme == "human":
-			# A human world's craters are old and grassed over, bare dust only in patches.
+			# A human world's craters are old and grassed over, bare dust only in patches,
+			# and their rock long weathered to a pale grey (v16; older worlds keep theirs).
 			gamt *= 0.35
-		stone += (lk[0] as Color) * a * float(lk[1])
+			if terrain_v >= 16:
+				rock = Color(0.52, 0.5, 0.47)
+		stone += rock * a * float(lk[1])
 		sk += a * float(lk[1])
 		ground += (lk[2] as Color) * a * gamt
 		gk += a * gamt

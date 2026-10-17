@@ -800,6 +800,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var center_w := field.era_weights(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
 	# v7: what the landforms do to the colour of rock and ground, on the 4 m grid.
 	var look := PackedByteArray()
+	var grassed := PackedByteArray() # v16 human worlds: how much of each look cell is old grassed crater
 	if landforms:
 		var any := false
 		look.resize(CN * CN * LOOK_BYTES)
@@ -812,6 +813,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var lf := smoothstep(WorldField.LF_FADE.x, WorldField.LF_FADE.y, lc)
 				var sp := field.crater_spoil(x0 + (c % CN) * STEP, z0 + (c / CN) * STEP, Eras.theme == "human") * lf
 				look[c * LOOK_BYTES + 11] = int(round(sp * 255.0))
+				if Eras.theme == "human":
+					if grassed.is_empty():
+						grassed.resize(CN * CN)
+					grassed[c] = int(round(lf * 255.0))
 
 			any = any or look[c * LOOK_BYTES + 3] > 0 or look[c * LOOK_BYTES + 7] > 0 or look[c * LOOK_BYTES + 9] > 0 or look[c * LOOK_BYTES + 11] > 0
 		if not any:
@@ -830,10 +835,13 @@ func generate(cx: int, cz: int) -> Dictionary:
 		chunk["river"] = river
 	if not look.is_empty():
 		chunk["look"] = look
+	if not grassed.is_empty():
+		chunk["grassed"] = grassed
 	if any_road:
 		chunk["road"] = road_mask
 	# v16: the trench a crashed dreadnought nearby ploughed, and its wreckage.
-	for cr in WonderSite.crashes_near(self, cx, cz):
+	var near := WonderSite.crashes_near(self, cx, cz)
+	for cr in near:
 		WonderSite.scar(self, chunk, cr)
 		WonderSite.strew(self, chunk, cr)
 	if has_river and not roads.is_empty():
@@ -848,6 +856,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 			if not hole.is_empty():
 				chunk["hole"] = hole
 	_place_objects(chunk, sites)
+	# v16: trees a crash's blast reached lie snapped and scorched.
+	if chunk.has("wonder") and chunk["wonder"].has("crash"):
+		near.append(chunk["wonder"]["crash"])
+	WonderSite.fell(self, chunk, near)
 	return chunk
 
 ## Ground plans nothing should grow through or stand in: this chunk's own buildings and
@@ -943,9 +955,21 @@ static func cover_at(chunk: Dictionary, lx: float, lz: float) -> float:
 	var lb: PackedByteArray = chunk.get("look", PackedByteArray())
 	if lb.is_empty():
 		return 1.0
-	var i := clampi(int(round(lx / LOOK_STEP)), 0, LOOK_N - 1)
-	var j := clampi(int(round(lz / LOOK_STEP)), 0, LOOK_N - 1)
-	var k := (j * LOOK_N + i) * LOOK_BYTES
+	# Blended between the four look cells round the point (the nearest one alone left
+	# bare ground in 4 m squares).
+	var gx := clampf(lx / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var gz := clampf(lz / LOOK_STEP, 0.0, LOOK_N - 1.001)
+	var i := int(gx)
+	var j := int(gz)
+	var fx := gx - i
+	var fz := gz - j
+	var c00 := _cover_cell(lb, (j * LOOK_N + i) * LOOK_BYTES)
+	var c10 := _cover_cell(lb, (j * LOOK_N + i + 1) * LOOK_BYTES)
+	var c01 := _cover_cell(lb, ((j + 1) * LOOK_N + i) * LOOK_BYTES)
+	var c11 := _cover_cell(lb, ((j + 1) * LOOK_N + i + 1) * LOOK_BYTES)
+	return lerpf(lerpf(c00, c10, fx), lerpf(c01, c11, fx), fz)
+
+static func _cover_cell(lb: PackedByteArray, k: int) -> float:
 	# (v16: scorched ground and fresh crater spoil grow little either.)
 	return 1.0 - maxf(maxf(lb[k + 8] / 255.0, lb[k + 7] / 255.0 * 0.7), maxf(lb[k + 10] / 255.0 * 0.95, lb[k + 11] / 255.0 * 0.6))
 

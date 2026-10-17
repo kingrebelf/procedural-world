@@ -429,7 +429,8 @@ void fragment() {
 		// Human worlds: the road changes where it crosses into the next zone (ZoneBorder),
 		// packed earth in the medieval lands, laid setts in the Borderlands, tarmac beyond.
 		float zr = length(p) + (meso - 0.5) * 1.5;
-		float b1 = zone_rings.x > 0.0 ? step(zone_rings.x, zr) : 0.0;
+		// (The setts start ragged over the first ten metres, a few loose ones lying ahead.)
+		float b1 = zone_rings.x > 0.0 ? smoothstep(zone_rings.x - 3.0, zone_rings.x + 10.0, zr) : 0.0;
 		float b2 = zone_rings.y > 0.0 ? step(zone_rings.y, zr) : 0.0;
 		vec2 dome = vec2(0.0);
 		if (b1 > 0.0 && b2 < 1.0) {
@@ -453,6 +454,11 @@ void fragment() {
 			// Towards the edges stones are missing and the grass has crept in over them.
 			float in_road = smoothstep(0.3, 0.95, road + (meso - 0.5) * 0.35);
 			float keep = step(hash12(cid + 3.1), in_road * 1.35 - 0.1) * step(hash12(cid + 9.7), 0.97);
+			float laid = step(hash12(cid + 5.3), b1 * 1.1 - 0.05);
+			// Where the paving gives out, the odd sett lies loose and smaller in the dirt.
+			float loose = (1.0 - laid) * step(hash12(cid + 8.1), 0.3) * step(0.01, b1) * (1.0 - smoothstep(0.22, 0.3, max(abs(f.x), abs(f.y))));
+			keep *= max(laid, loose);
+			joint *= 1.0 - loose;
 			rc = mix(mix(rm * 0.85, fill, moss * 0.5), mix(sett, fill, joint), keep);
 			edge *= 1.0 - (1.0 - keep) * (1.0 - smoothstep(0.35, 0.8, in_road)) * 0.85;
 			vec2 tip = (vec2(hash12(cid + 4.2), hash12(cid + 6.6)) - 0.5) * 0.5;

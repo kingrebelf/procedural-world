@@ -3280,6 +3280,30 @@ func test_crater_rims() -> void:
 			check(f.crater_spoil(p.x, p.y) > 0.6, "fresh spoil shows on the crest")
 			tested += 1
 	check(tested > 0, "found big craters to check")
+	# Old craters on a human world are grassed over: stony only along the inner lip.
+	var g := ChunkGenerator.new(4242, true)
+	var bare := 0
+	var grassy := 0
+	var lip_scree := 0.0
+	var lips := 0
+	for kz in range(25, 28):
+		for kx in range(25, 28):
+			var ch := g.generate(kx, kz)
+			if not ch.has("grassed"):
+				continue
+			var cov := GroundCover.build(ch)
+			for vj in ChunkGenerator.RES:
+				for vi in ChunkGenerator.RES:
+					var gw := GroundCover._look_cell(ch["grassed"], vi, vj, 1, 0)
+					var sp := GroundCover._look_cell(ch["look"], vi, vj, ChunkGenerator.LOOK_BYTES, 11)
+					var sc := cov[(vj * ChunkGenerator.RES + vi) * 4] / 255.0
+					if gw > 0.95 and sp < 0.01:
+						grassy += 1
+						bare += int(sc > 0.1)
+					elif gw > 0.95 and sp > 0.4:
+						lips += 1
+						lip_scree += sc
+	check(grassy > 500 and bare < grassy * 0.01, "an old crater field is grassed, not scree (%d of %d bare)" % [bare, grassy])
 	WorldField.terrain_v = 15
 	check(f.crater_spoil(5000, -3000) == 0.0, "older worlds keep their craters")
 	_restore_world(was)
@@ -3336,11 +3360,18 @@ func test_dreadnought_crash() -> void:
 	var bad := 0
 	var bits := 0
 	var burnt := 0
+	var felled := 0
+	var standing := 0
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var nb := g.generate(k.x + d.x, k.y + d.y)
 		for o in nb["objects"]:
 			if o["t"] == WonderSite.DEBRIS:
 				bits += 1
+			elif o["t"] == WonderSite.TRUNK:
+				felled += 1
+			elif ObjectLibrary.kind(o["t"]) == "tree":
+				var wp: Vector3 = o["p"] + Vector3((k.x + d.x) * 64.0, 0, (k.y + d.y) * 64.0)
+				standing += int(WonderSite.blast(cr, wp.x, wp.z) > 0.95)
 		var lb: PackedByteArray = nb.get("look", PackedByteArray())
 		for i in range(10, lb.size(), ChunkGenerator.LOOK_BYTES):
 			burnt += int(lb[i] > 40)
@@ -3364,6 +3395,11 @@ func test_dreadnought_crash() -> void:
 				bad += 1
 	check(bad == 0, "the trench's chunks meet the wonder's (%d bad edge points)" % bad)
 	check(bits > 0 and burnt > 0, "wreckage (%d) and scorched ground (%d) reach the chunks round it" % [bits, burnt])
+	for o in ch["objects"]:
+		if o["t"] == WonderSite.TRUNK:
+			felled += 1
+	check(standing == 0, "no tree stands where the blast hit hardest (%d do)" % standing)
+	check(felled > 0 and ObjectLibrary.kind(WonderSite.TRUNK) == "structure" and WonderSite.trunk(5, 1).get_surface_count() > 0, "the trees it reached lie snapped and scorched (%d)" % felled)
 	for sp in range(1, 7):
 		check(WonderSite.debris(sp, 1).get_surface_count() > 0, "wreckage kind %d has a mesh" % sp)
 	_restore_world(was)

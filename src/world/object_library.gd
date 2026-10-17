@@ -65,7 +65,7 @@ const LABEL := {
 static func kind(t: String) -> String:
 	if BuildCatalog.is_built(t):
 		return "built"
-	if EasterEggs.has(t) or ZoneBorder.has(t) or t == WonderSite.DEBRIS:
+	if EasterEggs.has(t) or ZoneBorder.has(t) or t == WonderSite.DEBRIS or t == WonderSite.TRUNK:
 		return "structure"
 	return KIND.get(t, "marker")
 
@@ -86,6 +86,8 @@ static func label(t: String) -> String:
 		return ZoneBorder.LABELS[t]
 	if t == WonderSite.DEBRIS:
 		return "Dreadnought Wreckage"
+	if t == WonderSite.TRUNK:
+		return "Charred Trunk"
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -168,6 +170,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			return Caves.build_glow(int(parts[1]), int(parts[2]), parts[0] == "cave_glow")
 		if parts[0] == WonderSite.DEBRIS:
 			return WonderSite.debris(int(parts[1]), int(parts[2]))
+		if parts[0] == WonderSite.TRUNK:
+			return WonderSite.trunk(int(parts[1]), int(parts[2]))
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
@@ -306,7 +310,7 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = ps
 			_lock.unlock()
 		return ps
-	if (t == "alien_ruin" or t == WonderSite.DEBRIS) and sp != 0:
+	if (t == "alien_ruin" or t == WonderSite.DEBRIS or t == WonderSite.TRUNK) and sp != 0:
 		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
 		# core, instead of into a box around the whole thing.
 		var rk := mesh_key(o)
