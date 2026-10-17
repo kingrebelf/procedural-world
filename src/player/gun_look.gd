@@ -140,7 +140,7 @@ static func mat(name: String) -> Material:
 		# the bright steel in places.
 		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
 		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
-		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.11, 0.11, 0.115), 0.25, 0.45)
+		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.45)
 		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.3, 1.0)
 		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
@@ -224,7 +224,8 @@ static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: fl
 	var g := Gradient.new()
 	var edge := clampf(1.0 - wear, 0.05, 0.98)
 	g.offsets = PackedFloat32Array([0.0, 0.45, edge - 0.03, edge, 1.0])
-	g.colors = PackedColorArray([c * 0.8, c, c * 1.12, wear_c, wear_c])
+	# A clean finish varies only a little; the wear is where it shows through.
+	g.colors = PackedColorArray([c * 0.93, c, c * 1.05, wear_c, wear_c])
 	var t := NoiseTexture2D.new()
 	t.seamless = true
 	t.noise = _wear_noise
@@ -237,7 +238,7 @@ static func finish(c: Color, rough: float, metal: float, wear_c: Color, wear: fl
 	# Strong contrast: matt where the finish is fresh, glossy where hands have polished
 	# it, so highlights break up across the steel.
 	rg.offsets = PackedFloat32Array([0.0, 1.0])
-	rg.colors = PackedColorArray([Color(1, 1, 1), Color(0.25, 0.25, 0.25)])
+	rg.colors = PackedColorArray([Color(1, 1, 1), Color(0.4, 0.4, 0.4)])
 	r.color_ramp = rg
 	m.roughness_texture = r
 	m.roughness = minf(rough * 1.6, 1.0)

@@ -4,8 +4,10 @@ class_name Firearms
 ## weapons. Each is built from parts at its real size and in its real materials (walnut,
 ## blued, case-hardened or worn steel, brass, polymer, rubber, glass). Like GunLook's
 ## guns they point along -Z; the mesh's "grip" meta is where the right fist closes (the
-## pistol grip or the wrist of the stock) and "fore" where a second hand would hold the
-## fore-end of a long gun.
+## pistol grip or the wrist of the stock), "grip_r" how thick that is, "fore" where a
+## second hand would hold the fore-end of a long gun, "butt" where its stock sits in the
+## shoulder, and "sight" the point the eye looks along the sights from (rear notch or
+## an optic's eyepiece).
 ##
 ## Nothing made by people glows: lenses are dark glass, energy cells are metal. Only the
 ## alien (Fantasy era) weapons keep a faint light in their glands and crystals.
@@ -41,9 +43,36 @@ static func model(t: String) -> ArrayMesh:
 	out.set_meta("grip_r", _grip_r)
 	if _fore != Vector3.INF:
 		out.set_meta("fore", _fore)
+		var butt := _butt_point(out)
+		if butt != Vector3.INF:
+			out.set_meta("butt", butt)
+	# A front sight alone (open-sighted guns aimed down the barrel): the eye looks along
+	# its height from just over the grip.
+	if _sight == Vector3.INF and _front != Vector3.INF:
+		_sight = Vector3(0, _front.y, grip.z - 0.04)
+	if _sight != Vector3.INF:
+		out.set_meta("sight", _sight)
+	_front = Vector3.INF
 	_fore = Vector3.INF
+	_sight = Vector3.INF
+	_optic = false
 	_grip_r = WRIST_R
 	return out
+
+## Where a shouldered gun's stock meets the shoulder: the middle of its rear face (the
+## last 1.5 cm of the mesh). INF when the back end is not a stock (a crank, a pistol).
+static func _butt_point(mesh: ArrayMesh) -> Vector3:
+	var back := mesh.get_aabb().end.z
+	var lo := INF
+	var hi := -INF
+	for i in mesh.get_surface_count():
+		for v in mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+			if v.z > back - 0.015:
+				lo = minf(lo, v.y)
+				hi = maxf(hi, v.y)
+	if hi - lo < 0.06:
+		return Vector3.INF
+	return Vector3(0, (lo + hi) * 0.5, back)
 
 ## Where the second hand goes on the gun being built (set by the builder).
 static var _fore := Vector3.INF
@@ -51,6 +80,11 @@ static var _fore := Vector3.INF
 ## a stock's wrist unless the builder made a pistol grip, a riser or a bar.
 const WRIST_R := 0.016
 static var _grip_r := WRIST_R
+## The eye's line along the gun ("sight" meta): the notch of the rear sight, or the
+## middle of an optic's eyepiece; set by the sight builders, optics winning.
+static var _sight := Vector3.INF
+static var _optic := false
+static var _front := Vector3.INF ## the front sight's tip, when there is no rear sight
 
 # --- Materials -----------------------------------------------------------------------
 
@@ -208,9 +242,52 @@ static func _bore(k: MeshKit, at: Vector3, r: float) -> void:
 static func _tube(k: MeshKit, m: String, at: Vector3, len: float, r0: float, r1 := -1.0, segs := 16) -> void:
 	k.cylinder(m, GunLook._z(at), r0, r0 if r1 < 0.0 else r1, len, segs)
 
-## A box centred at `at`.
+## A box centred at `at`, its edges and corners rounded off a little as a machined or
+## moulded part's are, so they catch a thin highlight instead of meeting in a hard line.
 static func _box(k: MeshKit, m: String, at: Vector3, size: Vector3, tilt := 0.0) -> void:
-	k.box(m, Transform3D(Basis(Vector3.RIGHT, tilt), at), size)
+	var r := clampf(minf(size.x, minf(size.y, size.z)) * 0.18, 0.0002, 0.0015)
+	_rounded_box(k, m, Transform3D(Basis(Vector3.RIGHT, tilt), at), size * 0.5, r)
+
+## Each face of a box of half size `h` sampled across, then pulled onto the rounded box
+## of edge radius r: a point's nearest point on the inner box (half size h - r), pushed
+## out by r along the way to it. Four steps round each edge.
+static func _rounded_box(k: MeshKit, m: String, xf: Transform3D, h: Vector3, r: float) -> void:
+	var a := h - Vector3.ONE * r
+	# Samples along each axis: the rounded band at each end, the flat face between.
+	var ax: Array = []
+	for i in 3:
+		ax.append([-a[i] - r, -a[i] - r * 0.5, -a[i], a[i], a[i] + r * 0.5, a[i] + r])
+	for f in 6:
+		var n := f / 2 # the axis the face looks along
+		var sg := 1.0 if f % 2 == 0 else -1.0
+		var u := (n + 1) % 3
+		var v := (n + 2) % 3
+		var grid: Array = []
+		for i in 6:
+			var row: Array = []
+			for j in 6:
+				var q := Vector3.ZERO
+				q[n] = sg * (a[n] + r)
+				q[u] = ax[u][i]
+				q[v] = ax[v][j]
+				var c := q.clamp(-a, a)
+				var d := (q - c).normalized()
+				row.append([c + d * r, d])
+			grid.append(row)
+		for i in 5:
+			for j in 5:
+				var p0: Array = grid[i][j]
+				var p1: Array = grid[i + 1][j]
+				var p2: Array = grid[i + 1][j + 1]
+				var p3: Array = grid[i][j + 1]
+				var out := Vector3.ZERO
+				out[n] = sg
+				if (p1[0] - p0[0]).cross(p2[0] - p0[0]).dot(out) > 0.0:
+					k.tri(m, xf, p0[0], p1[0], p2[0], p0[1], p1[1], p2[1])
+					k.tri(m, xf, p0[0], p2[0], p3[0], p0[1], p2[1], p3[1])
+				else:
+					k.tri(m, xf, p0[0], p2[0], p1[0], p0[1], p2[1], p1[1])
+					k.tri(m, xf, p0[0], p3[0], p2[0], p0[1], p3[1], p2[1])
 
 ## A small pin or screw head across the gun (along X), centred at `at`.
 static func _pin(k: MeshKit, m: String, at: Vector3, r: float, len: float) -> void:
@@ -309,11 +386,14 @@ static func _butt(k: MeshKit, m: String, z: float, y_top: float, y_bot: float, w
 
 ## Front sight: a blade on a ramp.
 static func _front_sight(k: MeshKit, m: String, at: Vector3, h := 0.008) -> void:
+	_front = at + Vector3(0, h, 0)
 	_box(k, m, at + Vector3(0, h * 0.25, 0), Vector3(0.006, h * 0.5, 0.014))
 	_box(k, m, at + Vector3(0, h * 0.7, 0), Vector3(0.0022, h * 0.6, 0.005))
 
 ## Rear sight: a notched leaf.
 static func _rear_sight(k: MeshKit, m: String, at: Vector3, w := 0.014, h := 0.007) -> void:
+	if not _optic:
+		_sight = at + Vector3(0, h * 0.6, 0)
 	_box(k, m, at + Vector3(0, h * 0.2, 0), Vector3(w, h * 0.4, 0.01))
 	for s in [-1.0, 1.0]:
 		_box(k, m, at + Vector3(s * w * 0.3, h * 0.7, 0.002), Vector3(w * 0.38, h * 0.6, 0.003))
@@ -331,6 +411,8 @@ static func _rail(k: MeshKit, m: String, y: float, z0: float, z1: float, w := 0.
 static func _scope(k: MeshKit, y: float, z_eye: float, z_obj: float, r: float, obj_r: float, base_y: float, rings_z: Array) -> void:
 	var m := "gun_alloy"
 	var len := z_eye - z_obj
+	_sight = Vector3(0, y, z_eye)
+	_optic = true
 	# Ocular: eyepiece housing and rubber ring.
 	_tube(k, "gun_rubber", Vector3(0, y, z_eye + 0.008), 0.008, r * 1.55, r * 1.6)
 	_tube(k, m, Vector3(0, y, z_eye), 0.05, r * 1.6, r * 1.35)
@@ -358,6 +440,8 @@ static func _scope(k: MeshKit, y: float, z_eye: float, z_obj: float, r: float, o
 ## A reflex sight on `base`. Rifles get a tube sight (a short sealed tube on a riser,
 ## caps on the turrets); pistols a small open hood. The lens is dark glass, unlit.
 static func _red_dot(k: MeshKit, base: Vector3, tube := false) -> void:
+	_sight = base + (Vector3(0, 0.032, 0.03) if tube else Vector3(0, 0.0115, 0.0))
+	_optic = true
 	if tube:
 		_box(k, "gun_alloy", base + Vector3(0, 0.008, 0), Vector3(0.022, 0.016, 0.03))
 		var c := base + Vector3(0, 0.032, 0.03)
