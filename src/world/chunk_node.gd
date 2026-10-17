@@ -997,7 +997,7 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.light_energy = l[2]
 		hl.omni_range = l[3]
 		hl.omni_attenuation = 1.4
-		hl.shadow_enabled = false
+		_cast_shadows(hl)
 		hl.distance_fade_enabled = true
 		hl.distance_fade_begin = 40.0
 		hl.distance_fade_length = 15.0
@@ -1034,7 +1034,10 @@ func _add_obj_body(o: Dictionary) -> void:
 			l.light_energy = 1.6
 			l.omni_range = 7.0
 			l.position = Vector3(0, 1.0, 0)
-			l.shadow_enabled = false
+			_cast_shadows(l)
+			l.distance_fade_enabled = true
+			l.distance_fade_begin = 40.0
+			l.distance_fade_length = 15.0
 			b.add_child(l)
 	b.position = o["p"]
 	b.rotation.y = o["r"]
@@ -1042,6 +1045,15 @@ func _add_obj_body(o: Dictionary) -> void:
 	b.scale = Vector3(s, s, s)
 	add_child(b)
 	_obj_bodies[o["i"]] = b
+
+## Room lights, fires and lamps cast shadows near you: furniture and beams throw them, and
+## the light stays inside its walls instead of shining out through them.
+static func _cast_shadows(l: OmniLight3D) -> void:
+	l.shadow_enabled = true
+	l.shadow_bias = 0.04
+	l.shadow_normal_bias = 1.2
+	l.shadow_blur = 1.5
+	l.distance_fade_shadow = 24.0
 
 ## Adds something the player built. It becomes an ordinary object of this chunk, saved
 ## in its snapshot. `lp` is the chunk-local position.
