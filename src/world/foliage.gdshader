@@ -20,6 +20,12 @@ uniform float sway = 1.0;
 // so the crown normal is passed through unflipped instead.
 uniform bool crown_normals = false;
 uniform float alpha_cut = 0.45;
+// Darkens a card toward its stem (UV.x 0, the spruce bough's trunk end): the inside of a
+// dense crown, where the light doesn't reach.
+uniform float stem_shade = 0.0;
+// How far crown normals lean toward the sky. Conifer boughs are flat layers, each lit on
+// top; a narrow spire's outward normals left its lower half facing the ground, black.
+uniform float crown_up = 0.2;
 
 varying vec3 inst_col;
 varying vec3 crown_n;
@@ -59,12 +65,12 @@ void fragment() {
 	if (!is_core && tex.a < alpha_cut) {
 		discard;
 	}
-	ALBEDO = tex.rgb * albedo * inst_col;
+	ALBEDO = tex.rgb * albedo * inst_col * mix(1.0 - stem_shade, 1.0, smoothstep(0.05, 0.75, UV.x));
 	// Bend normals toward the sky: cards facing the ground otherwise render near black.
 	vec3 up_v = (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
 	// The core's underside would otherwise go black in its own shadow.
 	if (crown_normals) {
-		NORMAL = normalize(mix(normalize(crown_n), up_v, 0.2));
+		NORMAL = normalize(mix(normalize(crown_n), up_v, crown_up));
 	} else {
 		NORMAL = normalize(mix(NORMAL, up_v, is_core ? 0.8 : 0.55));
 	}
