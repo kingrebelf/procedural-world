@@ -261,6 +261,10 @@ func _depth_factor(p: Vector3) -> float:
 	if streamer == null:
 		return 0.0
 	var k := Vector2i(int(floor(p.x / ChunkGenerator.SIZE)), int(floor(p.z / ChunkGenerator.SIZE)))
+	var dg := Dungeon.around(p)
+	if not dg.is_empty():
+		# Down a dungeon's stairs: dark as a cave from the first landing on.
+		return smoothstep(2.0, 6.0, float(dg["pl"]["y0"]) - p.y)
 	var node = streamer.call("get_chunk", k)
 	if node == null or not (node.data as Dictionary).has("cave"):
 		return 0.0

@@ -67,6 +67,8 @@ func _process(delta: float) -> void:
 	if target:
 		var p := target.global_position
 		position = Vector3(snappedf(p.x, 32.0), LEVEL, snappedf(p.z, 32.0))
+		# Down in a dungeon the sea's sheet would cut through the rooms: none is in sight.
+		visible = Dungeon.around(p).is_empty()
 	if atmosphere:
 		var w := atmosphere.current_weights()
 		_mat.set_shader_parameter("shallow", Color(0.16, 0.36, 0.38) * w[0] + Color(0.1, 0.45, 0.5) * w[1] + Color(0.12, 0.28, 0.36) * w[2])
@@ -329,6 +331,8 @@ static func surface_height(x: float, z: float, t: float) -> float:
 		var r: float = _river_lookup.call(x, z)
 		if not is_nan(r) and r > LEVEL:
 			return r
+	if Dungeon.covers(x, z):
+		return -1000.0 # dry rooms under a fort, though they go below the sea's level
 	var depth: float = _depth_lookup.call(x, z) if _depth_lookup.is_valid() else 12.0
 	var a := amplitude(depth)
 	var d := _dir.normalized()

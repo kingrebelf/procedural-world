@@ -183,6 +183,8 @@ static func herds_for(seed: int, chunk: Dictionary, field: WorldField) -> Array:
 		var h := {"id": g["id"], "sp": -int(g["tier"]), "era": int(g["era"]), "lx": g["lx"], "lz": g["lz"]}
 		if g.has("ly"):
 			h["ly"] = g["ly"] # a cave dweller, on the cave floor
+		if g.has("dg"):
+			h["dg"] = g["dg"] # kept in a dungeon (Dungeon)
 		out.append(h)
 	out.append_array(Creature.livestock_for(seed, chunk))
 	var r := WHash.rng(seed, cx, cz, 701)
@@ -215,7 +217,7 @@ func _spawn(cn: ChunkNode) -> Array:
 		if dead.has(h["id"]):
 			continue
 		var y: float = h.get("ly", ChunkGenerator.height_at(cn.data, h["lx"], h["lz"]))
-		if y < Water.LEVEL - 0.5:
+		if y < Water.LEVEL - 0.5 and not h.has("ly"):
 			continue
 		var c := Creature.new()
 		c.setup(h["id"], h["sp"], h["era"], cn.position + Vector3(h["lx"], y, h["lz"]), self)
@@ -223,12 +225,17 @@ func _spawn(cn: ChunkNode) -> Array:
 		if h.has("ly"):
 			c.underground = true
 			c.p["roam"] = 6.0
+			c.in_dungeon = h.has("dg")
 		add_child(c)
 		list.append(c)
 	return list
 
 ## The cave floor under a creature at world point p, or NAN inside rock or off the map.
-func cave_floor(p: Vector3) -> float:
+func cave_floor(p: Vector3, from := Vector3.INF) -> float:
+	# Dungeon rooms and passages (built only near you; NAN until then, so guards wait).
+	var dg = Dungeon.walk_floor(p, p if from == Vector3.INF else from)
+	if dg != null:
+		return dg
 	var k := ChunkStreamer.chunk_of(p)
 	var cn := streamer.get_chunk(k)
 	if cn == null or not cn.data.has("cave"):

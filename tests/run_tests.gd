@@ -2670,7 +2670,7 @@ func test_strongholds() -> void:
 		kinds[it["t"]] = int(kinds.get(it["t"], 0)) + 1
 	var pc: Array = Stronghold.PIECES[found["era"]]
 	check(kinds.get(pc[1], 0) == 4 and kinds.get(pc[2], 0) == 1 and kinds.get(pc[3], 0) == 1 and kinds.get(pc[0], 0) == 11, "four towers, a gate, a keep and eleven walls (%s)" % [kinds])
-	check(Stronghold.guards(found).size() == 1 + int(found["tier"]) * 2, "guards scale with the tier")
+	check(Stronghold.guards(found).size() == Stronghold.sentries(found), "sentries keep the gate")
 	# The chunk at the centre holds pieces and is flat across the courtyard.
 	var c: Vector2 = found["center"]
 	var ch := g.generate(int(floor(c.x / ChunkGenerator.SIZE)), int(floor(c.y / ChunkGenerator.SIZE)))
@@ -2684,6 +2684,86 @@ func test_strongholds() -> void:
 	check(absf(ChunkGenerator.height_at(ch, lx, lz) - float(found["target_h"])) < 0.6, "the courtyard is levelled")
 	var sp := Creature.guard_species(found["era"], 3)
 	check(sp["temper"] == "aggressive" and float(sp["hp"]) > 120.0, "dread guards are tough (%s hp)" % sp["hp"])
+
+func test_dungeons() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var forts: Array = []
+	for cz in range(-8, 8):
+		for cx in range(-8, 8):
+			var f := Stronghold.at_cell(g, cx, cz)
+			if not f.is_empty():
+				forts.append(f)
+	check(forts.size() >= 3, "a few strongholds to dig under (%d)" % forts.size())
+	var big := 0
+	for f in forts.slice(0, 6):
+		var pl := Dungeon.plan(g, f)
+		Dungeon._cache.clear()
+		var again := Dungeon.plan(g, f)
+		check(again["rooms"].size() == pl["rooms"].size() and again["locks"].size() == pl["locks"].size()
+			and again["parts"].size() == pl["parts"].size(), "a dungeon's plan is the same every time")
+		if pl["levels"].is_empty():
+			continue
+		var rooms := Dungeon.room_count(pl)
+		if pl["levels"].size() >= 2:
+			big += 1
+		check(rooms >= 4, "a dungeon has rooms to explore (%d)" % rooms)
+		# Every seal can be opened in turn: its parts and its door are reachable with the
+		# seals before it open, and nothing is left behind once all are.
+		for li in pl["locks"].size():
+			var seen := Dungeon._reach(pl, func(x: int) -> bool: return x < li)
+			var lk: Dictionary = pl["locks"][li]
+			var fr: Array = Dungeon.front_of(pl, li)
+			check(seen.has(Dungeon._key(lk["lv"], fr[0])), "seal %d of %s can be reached" % [li, pl["id"]])
+			for pi in lk["parts"]:
+				var p: Dictionary = pl["parts"][pi]
+				var c := Dungeon.cell_at(pl, Vector2(p["p"].x, p["p"].z))
+				check(seen.has(Dungeon._key(p["lv"], c)), "the %s for seal %d of %s is on the near side" % [p["kind"], li, pl["id"]])
+			check(String(lk.get("hint", "")) != "" and String(lk.get("sealed", "")) != "", "seal %d says how it opens" % li)
+		var all := Dungeon._reach(pl, func(_x: int) -> bool: return true)
+		for ri in pl["rooms"].size():
+			var rm: Dictionary = pl["rooms"][ri]
+			if rm["kind"] == "gone":
+				continue
+			var any := false
+			for q in Dungeon._cells(rm):
+				any = any or all.has(Dungeon._key(rm["lv"], q))
+			check(any, "room %d of %s can be reached" % [ri, pl["id"]])
+		# Everything walkable lies under the courtyard's ground, with earth over it.
+		for lv in pl["levels"].size():
+			check(Dungeon.floor_y(pl, lv) + Dungeon.HALL_H < float(pl["y0"]) - 1.0, "level %d is underground" % lv)
+	check(big > 0, "some dungeons go more than one level down")
+	# Stocking: the centre chunk gets the dungeon's state, its chests and guards, and the
+	# mouth is opened in the ground, once.
+	var f: Dictionary = forts[0]
+	var pl := Dungeon.plan(g, f)
+	var k: Vector2i = pl["chunk"]
+	var ch := g.generate(k.x, k.y)
+	ch.erase("dg_v")
+	var before: int = ch["objects"].size()
+	check(Dungeon.stock(g, ch), "a fort's chunk is stocked")
+	check(ch.has("dgn"), "the centre chunk keeps the dungeon's state")
+	var m := Dungeon.mouth(pl)
+	var mw := Dungeon.to_world(pl, Vector3(m.x, 0, m.y - 2.0))
+	var mk := ChunkStreamer.chunk_of(mw)
+	var mc := ch if mk == k else g.generate(mk.x, mk.y)
+	if mk != k:
+		Dungeon.stock(g, mc)
+	var mh: PackedByteArray = mc.get("hole", PackedByteArray())
+	var hi := clampi(roundi(mw.x - mk.x * ChunkGenerator.SIZE), 0, ChunkGenerator.RES - 1)
+	var hj := clampi(roundi(mw.z - mk.y * ChunkGenerator.SIZE), 0, ChunkGenerator.RES - 1)
+	check(not mh.is_empty() and mh[hj * ChunkGenerator.RES + hi] != 0, "the stair's mouth is open in the ground")
+	var n: int = ch["objects"].size()
+	check(not Dungeon.stock(g, ch) and ch["objects"].size() == n, "stocked only once")
+	var dg := 0
+	for o in ch["objects"].slice(before):
+		if String(o["st"].get("dg", "")) == String(pl["id"]):
+			dg += 1
+	var guards := 0
+	for gd in ch.get("guards", []):
+		if gd.has("dg"):
+			guards += 1
+	check(dg + guards > 0 or pl["loot"].is_empty(), "the dungeon's chests and guards land in their chunks")
 
 func test_wonder_sites() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION

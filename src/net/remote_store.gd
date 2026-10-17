@@ -86,6 +86,7 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 		OS.delay_msec(8)
 	var g := gen.generate(cx, cz)
 	Interiors.stock(g)
+	Dungeon.stock(gen, g)
 	return g
 
 ## Main thread (Net): a chunk from the server, asked for or pushed after someone's edit.
