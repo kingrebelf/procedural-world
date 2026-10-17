@@ -402,9 +402,6 @@ func blocked(x: float, z: float) -> bool:
 		return true
 	return solid_at(Vector3(x, h, z))
 
-## The way to walk from `pos` heading `dir`: straight on if the ground ahead is clear,
-## else the nearest clear bearing to either side, or ZERO if none is. An animal already
-## in the water (chased in, or swimming) may keep going until it is out.
 ## _steer, looked again only once the animal has gone a quarter of its look-ahead or its
 ## goal has swung round: same path, a tenth of the ground probes and rays.
 var _steer_at := Vector3.INF
@@ -424,6 +421,9 @@ func _steer_cached(pos: Vector3, dir: Vector3) -> Vector3:
 	_steer_turn = dir.signed_angle_to(d, Vector3.UP)
 	return d
 
+## The way to walk from `pos` heading `dir`: straight on if the ground ahead is clear,
+## else the nearest clear bearing to either side, or ZERO if none is. An animal already
+## in the water (chased in, or swimming) may keep going until it is out.
 func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
 	var wet_here := blocked_wet(pos.x, pos.z)
