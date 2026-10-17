@@ -808,7 +808,9 @@ func _death_bag(game, world, player) -> void:
 	var bag_at: Vector3 = bag["pos"]
 	player.global_position = bag_at + Vector3(1.5, 1.0, 0)
 	bag = {}
-	for i in 40:
+	# (Up to half a minute: the ground there has to stream back in first.)
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < 30000:
 		world.corpses._scan = 0.0
 		await _frames(5)
 		for b in world.corpses.near(bag_at, 2.0):
@@ -818,6 +820,9 @@ func _death_bag(game, world, player) -> void:
 			break
 	check(not bag.is_empty(), "the bag is still there when you come back")
 	if bag.is_empty():
+		var bk := ChunkStreamer.chunk_of(bag_at)
+		var bcn: ChunkNode = world.streamer.get_chunk(bk)
+		print("  bag chunk %s loaded: %s, corpses there: %s, shown: %s" % [bk, bcn != null, bcn.data.get("corpses", {}).keys() if bcn else [], world.corpses._shown.keys()])
 		return
 	var menus = world.menus
 	menus.open_corpse(world.corpses, bag["key"])
