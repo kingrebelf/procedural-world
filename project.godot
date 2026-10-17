@@ -23,6 +23,7 @@ Settings="*res://src/settings/graphics_settings.gd"
 AI="*res://src/ai/ai_service.gd"
 Game="*res://src/core/game.gd"
 Audio="*res://src/audio/audio.gd"
+Net="*res://src/net/net.gd"
 
 [display]
 

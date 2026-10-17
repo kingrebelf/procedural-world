@@ -36,7 +36,10 @@ jobs:
       - name: Run end-to-end persistence test
         run: timeout 900 godot --headless --path . --script res://tests/integration_test.gd
 
-      - name: Build games and installer
+      - name: Run dedicated server test
+        run: timeout 900 godot --headless --path . --script res://tests/net_test.gd
+
+      - name: Build games, installer and servers
         run: ./tools/build.sh
 
       - uses: actions/upload-artifact@v4
@@ -60,5 +63,5 @@ jobs:
           else
             gh release create "$VERSION" build/*.exe build/*.zip build/*.tar.gz --target "$GITHUB_SHA" \
               --title "Procedural World $VERSION" --prerelease \
-              --notes "Early vertical slice. Windows: run the Setup.exe (or unzip the portable build). Linux: extract the tarball. See README for controls and the roadmap for what is next."
+              --notes "Early vertical slice. Windows: run the Setup.exe (or unzip the portable build). Linux: extract the tarball. Dedicated server (Linux, Windows, macOS): the ProceduralWorldServer packages, see docs/SERVER.md. See README for controls and the roadmap for what is next."
           fi

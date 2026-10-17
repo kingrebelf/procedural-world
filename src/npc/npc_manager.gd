@@ -96,6 +96,8 @@ func _scan() -> void:
 		var id := NPCGen.settlement_id(site["sx"], site["sz"])
 		if settlements.has(id) or c.distance_to(Vector2(p.x, p.z)) > LOAD_R:
 			continue
+		if not Game.store.prefetch_settlement(site):
+			continue # on a server: its people are on their way
 		_load(site, id)
 	for id in settlements.keys():
 		var e: Dictionary = settlements[id]

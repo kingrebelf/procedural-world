@@ -16,7 +16,10 @@ const HELP := """Commands:
   tp <x> <z>     teleport
   items          list item ids
   bench          performance test: what each graphics feature costs on this PC
+  server <cmd>   on a server: run a server command (admins)
   clear          clear this log"""
+
+const SERVER_CHEATS := ["fly", "noclip", "god", "speed", "heal", "give", "xp", "level", "money", "time", "tp"]
 
 var player: Player
 var _log: RichTextLabel
@@ -100,6 +103,13 @@ func _submit(text: String) -> void:
 func run(text: String) -> String:
 	var a := text.split(" ", false)
 	var cmd := a[0].to_lower()
+	if Net.is_client():
+		# On a server, cheats are for its admins (signed in with /admin <password> in chat).
+		if cmd in SERVER_CHEATS and not Net.is_admin:
+			return "Cheats are off on servers. Admins: type /admin <password> in chat first."
+		if cmd == "server":
+			Net.admin(text.substr(a[0].length()).strip_edges())
+			return "Sent to the server (replies show in chat)"
 	match cmd:
 		"help", "?":
 			return HELP
