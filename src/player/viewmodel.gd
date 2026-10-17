@@ -36,6 +36,26 @@ const BINO_REST := Vector3(0.0, -0.04, 0.02)
 ## sight line and the butt clears the corner of the screen.
 const CROSSBOW_REST := Vector3(0.06, -0.06, -0.12)
 const TOOL_AIM := Vector3(-0.1, 0.9, -0.85)
+## A bow stands out at arm's length, low, its top canted in toward the middle of the view,
+## so most of the stave is below the frame and the upper limb crosses it.
+const BOW_REST := Vector3(-0.02, -0.1, -0.06)
+const BOW_AIM := Vector3(-0.45, 1.0, -0.3)
+## Anything else you carry (food, a bottle, an ingot, a gauge) is held up nearer the middle
+## of the view to be looked at: upright in a loose fist, the back of the hand turned out a
+## little, and its face (+Z of the model) turned to your eye.
+## The support hand under a fore-end: palm up and a little in, fingers across to the right
+## and a little ahead.
+## Where the right wrist sits from the eye holding a long gun: just right of and below the
+## line of sight, so the barrel runs nearly straight ahead on screen and the stock comes
+## back to the shoulder.
+const LONG_YAW := -0.9
+const LONG_REST := Vector3(-0.06, 0.0, -0.16)
+const LONG_WRIST := Vector3(0.18, -0.17, -0.2)
+const SUPPORT_PALM := Vector3(0.25, 1.0, 0.0)
+const SUPPORT_FINGERS := Vector3(1.0, -0.1, -0.45)
+const CARRY_REST := Vector3(-0.09, 0.06, 0.1)
+const CARRY_AIM := Vector3(-0.15, 1.0, -0.25)
+const CARRY_PALM := Vector3(-1.0, 0.0, 0.2)
 ## Which way the palm of a hand holding a tool faces: ahead and a little out, so you see
 ## the back of the hand and its knuckles, the handle coming out of the top of the fist.
 const TOOL_PALM := Vector3(0.4, -0.2, -1.0)
@@ -134,6 +154,24 @@ static func aura_for(it) -> Material:
 
 ## Held like a gun: the item points along the view instead of being raised.
 const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars"]
+
+## Bows are held like a tool, fist closed round the middle of the stave, not like a gun.
+## Every bow model (ToolModels, Firearms, the forged longbow) runs its stave along +Y with
+## the riser at its "grip" and the string on the +Z side.
+const BOWS := ["shortbow", "longbow", "composite_bow", "royal_bow", "crystal_bow", "eclipse_bow"]
+
+## A long gun whose model marks where a second hand holds it (mesh meta "fore").
+static func two_handed(t: String) -> bool:
+	var m := model(t) if t != "" else null
+	return m != null and m.has_meta("fore")
+
+## Held to be looked at rather than used: not a tool, weapon or light.
+static func carried(t: String) -> bool:
+	var d := ItemDB.def(t)
+	return not d.is_empty() and not d.get("kind", "") in ["tool", "weapon", "light"]
+
+static func is_bow(t: String) -> bool:
+	return t in BOWS
 
 static func pointed(t: String) -> bool:
 	return t in POINTED or ItemDB.def(t).get("ranged", false)
@@ -242,6 +280,8 @@ static func model(t: String) -> ArrayMesh:
 		out = HandLight.torch_model()
 	elif _forged(t) != null:
 		out = _forged(t)
+		if t == "longbow":
+			out.set_meta("grip", Vector3.ZERO) # held at the middle
 	elif t == "hammer" and ResourceLoader.exists("res://assets/models/props/Pickaxe_Bronze.gltf"):
 		# The pickaxe's wooden handle, shortened, with a squared iron head.
 		out = kit_mesh("props/Pickaxe_Bronze", Transform3D.IDENTITY.scaled(Vector3(0.6, 0.5, 0.6)), null, true)
@@ -251,6 +291,8 @@ static func model(t: String) -> ArrayMesh:
 		k.cylinder("metal", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.115, hy, 0)), 0.042, 0.042, 0.05, 10)
 		k.box("metal", Transform3D(Basis(Vector3(0, 0, 1), 0.35), Vector3(-0.09, hy + 0.015, 0)), Vector3(0.07, 0.045, 0.05))
 		_append(out, k.commit(Materials.get_mat))
+	elif ToolModels.has(t):
+		out = ToolModels.build(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():
@@ -346,6 +388,8 @@ static func _metal_mask(a: Array, mat: Material) -> PackedByteArray:
 var _item = null
 
 func show_item(t: String, it = null) -> void:
+	if t != "" and ItemDB.def(t).is_empty():
+		t = "" # nothing the game knows: empty hands, not a blank card
 	if t == _type and is_same(it, _item) and t != "":
 		return # same thing still in hand (an inventory change elsewhere)
 	_type = t
@@ -353,9 +397,15 @@ func show_item(t: String, it = null) -> void:
 	if arms:
 		_mesh.mesh = null
 		arms.aim_hand(Vector3.ZERO, Vector3.ZERO)
-		arms.set_arms_only(t != "")
+		arms.set_arms_only(t != "" and not two_handed(t))
+		arms.gestures.relaxed = t == ""
+		arms.support(Vector3.ZERO)
+		arms.pull_in(Vector3.ZERO)
+		# A long gun is held with the body turned a little to the right, the left shoulder
+		# forward so the support hand reaches the fore-end.
+		arms.rotation.y = PI + (LONG_YAW if two_handed(t) else 0.0)
 		_rest = ARMS_REST if t == "" else (BINO_REST if ItemDB.def(t).get("zoom", false) else \
-			((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST))
+			(LONG_REST if two_handed(t) else CARRY_REST if carried(t) else BOW_REST if is_bow(t) else ((CROSSBOW_REST if t.begins_with("crossbow") else GUN_REST) if pointed(t) else ARM_REST)))
 		_hold_later.call_deferred(t)
 		return
 	_mesh.mesh = model(t) if t != "" else null
@@ -383,13 +433,21 @@ func _aim() -> void:
 		return
 	# The rig's own frame, so the item swings with the arms.
 	var b := global_transform.basis.orthonormalized()
-	if pointed(_type):
+	if carried(_type):
+		arms.aim_grip(b * CARRY_AIM, b * CARRY_PALM)
+		arms.reaim(Vector3.ZERO)
+		_face_eye()
+	elif pointed(_type) and not is_bow(_type):
 		arms.aim_hand(b * GUN_KNUCKLES, b * GUN_FINGERS)
 		arms.reaim(arms.hand_space(b * Vector3.UP), 0.0, arms.hand_space(b * Vector3.FORWARD))
+		if two_handed(_type):
+			var eye := (get_parent() as Node3D).global_position if get_parent() is Node3D else global_position
+			arms.pull_in(eye + b * LONG_WRIST)
+			_support(b)
 	else:
 		# The wrist holds the tool up and away with the back of the hand toward you; the
 		# fingers stay closed round the handle.
-		arms.aim_grip(b * TOOL_AIM, b * TOOL_PALM)
+		arms.aim_grip(b * (BOW_AIM if is_bow(_type) else TOOL_AIM), b * TOOL_PALM)
 		arms.reaim(Vector3.ZERO)
 		# The grip only fixes the handle: turn the head about it so what strikes faces
 		# ahead: an axe's edge (local -Z), a pick's point or a hammer's face (local +X).
@@ -403,11 +461,42 @@ func _aim() -> void:
 				var turn := Vector2(strike.x, -strike.z).angle_to(Vector2(want.x, -want.z))
 				prop.basis = prop.basis * Basis(Vector3.UP, turn)
 
+## The left hand under a long gun's fore-end: palm up against it, fingers across it to
+## the right and curled up its far side, the wrist a hand's length short of the point.
+func _support(b: Basis) -> void:
+	if arms._held == null or arms._held.get_child_count() == 0:
+		return
+	var prop := arms._held.get_child(0) as Node3D
+	var mi := prop.get_child(0) as MeshInstance3D if prop.get_child_count() > 0 else null
+	if mi == null or mi.mesh == null or not mi.mesh.has_meta("fore"):
+		return
+	var fore: Vector3 = mi.global_transform * Vector3(mi.mesh.get_meta("fore"))
+	var palm := (b * SUPPORT_PALM).normalized()
+	var fingers := (b * SUPPORT_FINGERS).normalized()
+	arms.support(fore - fingers * 0.07 - palm * 0.035, fingers, palm)
+
+## Turns a carried item's model about its upright axis so its face (+Z) looks at the eye:
+## a jar's label, a gauge's dial, an ingot's stamp, a card's icon.
+func _face_eye() -> void:
+	if arms._held == null or arms._held.get_child_count() == 0:
+		return
+	var prop := arms._held.get_child(0) as Node3D
+	if prop.get_child_count() == 0:
+		return
+	var mi := prop.get_child(0) as Node3D
+	var eye := (get_parent() as Node3D).global_position if get_parent() is Node3D else global_position
+	var to := prop.global_basis.inverse() * (eye - mi.global_position)
+	to.y = 0.0
+	if to.length() > 0.001:
+		mi.rotation.y = atan2(to.x, to.z)
+
 ## Which way the business end of a held tool faces in its model (Vector3.ZERO: no turn).
 static func _strike_axis(t: String) -> Vector3:
-	if t.begins_with("axe_") or t == "battle_axe":
+	if is_bow(t):
+		return Vector3.FORWARD # the belly ahead, the string toward you
+	if t.begins_with("axe_") or t in ["battle_axe", "hand_axe", "bronze_axe", "executioner_axe", "tomahawk", "chain_axe"]:
 		return Vector3.FORWARD
-	if t.begins_with("pickaxe_") and t != "pickaxe_plasma" or t == "hammer":
+	if t.begins_with("pickaxe_") and t != "pickaxe_plasma" or t in ["hammer", "warpick", "sledgehammer", "power_hammer"]:
 		return Vector3.RIGHT
 	return Vector3.ZERO
 

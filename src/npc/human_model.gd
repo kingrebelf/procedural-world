@@ -571,7 +571,9 @@ func _wrap(prop: Node3D) -> Dictionary:
 	var center := prop.transform * grip
 	# The rest frame and the attachment's frame are the same bone's.
 	var t := _held_type(prop)
-	var pose := "" if not Viewmodel.pointed(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	var pose := "" if not Viewmodel.pointed(t) or Viewmodel.is_bow(t) else ("trigger" if ItemDB.def(t).get("ranged", false) or t == "pickaxe_plasma" else "fist")
+	if prop.get_child_count() > 0 and prop.get_child(0) is MeshInstance3D and (prop.get_child(0) as MeshInstance3D).mesh is QuadMesh:
+		pose = "fist" # an icon card has no handle to close on: a loose fist under it
 	return HandGrip.solve(skeleton, r * prop.transform.basis.y.length(), axis, center, pose)
 
 static func _held_type(prop: Node3D) -> String:
@@ -635,6 +637,29 @@ func aim_hand(knuckles: Vector3, fingers: Vector3) -> void:
 	f = (f - u * f.dot(u)).normalized()
 	# (fwd, up) are in the bone's own space: the bone's basis maps them onto (f, u).
 	gestures.hand_r = Basis(f, u, f.cross(u)) * Basis(fwd, up, fwd.cross(up)).inverse()
+
+## Puts the left hand on `at` (world), fingers along `fingers`, palm facing `palm`: a
+## support hand under a long gun's fore-end. Vector3.ZERO for `at` lets the arm go.
+func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void:
+	if gestures == null or skeleton == null:
+		return
+	if at == Vector3.ZERO:
+		gestures.reach_l = {}
+		return
+	var to_sk := skeleton.global_basis.orthonormalized().inverse()
+	gestures.reach_l = {"at": skeleton.global_transform.affine_inverse() * at,
+		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
+
+## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
+func pull_in(at: Vector3) -> void:
+	if gestures == null or skeleton == null:
+		return
+	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+
+## The right shoulder in world space.
+func shoulder_r() -> Vector3:
+	var b := skeleton.find_bone("upperarm_r")
+	return skeleton.global_transform * skeleton.get_bone_global_pose(b).origin if b >= 0 else global_position
 
 ## Re-aims what the hand holds (first person: called every frame so the item keeps
 ## facing the view whatever the arms' animation does).

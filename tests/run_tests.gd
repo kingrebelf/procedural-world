@@ -1535,7 +1535,7 @@ func test_fires() -> void:
 	var mats := []
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
-	check(Materials.get_mat("torch_wood") in mats and Materials.get_mat("leather") in mats and Materials.get_mat("pitch_cloth") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -3701,6 +3701,23 @@ func test_town_life() -> void:
 	var wild := gen.generate(400, 400)
 	TownLife.annotate(gen, wild)
 	check(not wild.has("worn") and not wild.has("crops"), "the wilds stay as they were")
+
+func test_tool_models() -> void:
+	# Every tool and weapon with a built model is a real shape (not the fallback box),
+	# of a believable size, and is an item the game knows.
+	for t in ToolModels.BUILD:
+		check(not ItemDB.def(t).is_empty(), "%s: modelled item exists" % t)
+		var m := ToolModels.build(t)
+		check(m != null and m.get_surface_count() > 0, "%s: model builds" % t)
+		if m == null:
+			continue
+		var n := 0
+		for i in m.get_surface_count():
+			n += (m.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		check(n > 24, "%s: more than a box (%d verts)" % [t, n])
+		var s := m.get_aabb().size
+		check(maxf(s.x, maxf(s.y, s.z)) > 0.04 and maxf(s.x, maxf(s.y, s.z)) < 2.5, "%s: believable size %s" % [t, s])
+	check(Viewmodel._strike_axis("tomahawk") == Vector3.FORWARD and Viewmodel._strike_axis("warpick") == Vector3.RIGHT, "new axes and picks swing edge first")
 
 # --- Boats ---------------------------------------------------------------------------------
 
