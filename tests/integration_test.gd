@@ -615,6 +615,7 @@ func _run() -> void:
 	await _corpses(game, world, player, kc)
 	await _bandits(game, world, player)
 	await _pirates(game, world, player)
+	await _crowd(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -1109,6 +1110,51 @@ func _bandits(game, world, player) -> void:
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.
+## Market crowd: folk from the countryside fill the square by day and go home by night.
+func _crowd(game, world, player) -> void:
+	var e: Dictionary = {}
+	for x in world.npcs.settlements.values():
+		if x.has("places") and not x["data"].has("band") and not x.has("boat"):
+			e = x
+	check(not e.is_empty(), "a town is loaded for the market crowd")
+	if e.is_empty():
+		return
+	var day0: float = game.day
+	var c: Vector2 = e["data"]["center"]
+	var at := Vector3(c.x, player.global_position.y, c.y)
+	var visitors := func() -> Array:
+		var out: Array = []
+		for n in e["nodes"]:
+			if is_instance_valid(n) and n.rec.has("visit"):
+				out.append(n)
+		return out
+	var residents: int = e["nodes"].size() - visitors.call().size()
+	game.day = floor(day0) + 12.5 / 24.0
+	world.npcs._crowd(e, at)
+	await _frames(5)
+	var vs: Array = visitors.call()
+	check(vs.size() >= 3, "by midday visitors fill the town (%d, with %d townsfolk)" % [vs.size(), residents])
+	var inside := 0
+	for n in vs:
+		inside += int(Vector2(n.global_position.x, n.global_position.z).distance_to(c) < float(e["places"]["outer"]))
+	check(inside == vs.size(), "in the town, not out in the fields (%d/%d)" % [inside, vs.size()])
+	for n in vs:
+		n.decide_in = 0.0
+	await _frames(10)
+	var busy := 0
+	for n in vs:
+		busy += int(n.action == "work" and not n.duty.is_empty())
+	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
+	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
+	world.npcs._crowd(e, at + Vector3(400, 0, 0))
+	await _frames(2)
+	check(visitors.call().is_empty(), "nobody near: they cost nothing")
+	game.day = floor(day0) + 1.0 + 3.0 / 24.0
+	world.npcs._crowd(e, at)
+	await _frames(2)
+	check(visitors.call().is_empty(), "and by night they have gone home")
+	game.day = day0
+
 func _pirates(game, world, player) -> void:
 	var at: Vector3 = player.global_position + Vector3(14.0, 0.0, 0.0)
 	var npcs: NPCManager = world.npcs

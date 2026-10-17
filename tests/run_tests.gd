@@ -1023,7 +1023,8 @@ func test_npc_roles() -> void:
 	f["traits"]["diligent"] = 0.5
 	var d := NPCRoles.duty_at(f, pl, 9.0, 100.0)
 	check(d.get("duty", "") == "till", "a farmer is in the fields mid-morning (%s)" % d.get("duty", ""))
-	check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
+	if (pl["fields"] as Array).is_empty():
+		check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
 	check(NPCRoles.duty_at(f, pl, 9.0, 100.0)["target"] == d["target"], "the same stop at the same moment")
 	check(NPCRoles.duty_at(f, pl, 23.0, 100.0).is_empty(), "evenings are their own")
 	var per := {"hour": 9.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0, "duty": d}
@@ -1049,6 +1050,54 @@ func test_npc_roles() -> void:
 	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
 	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
 	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	# A village with fields of its own (TownLife): its farmers work them.
+	var vsite := {}
+	for ring in 16:
+		for st in gen.settlements_near(-ring * 256.0, -ring * 256.0, ring * 256.0, ring * 256.0):
+			if TownLife.applies(gen, st) and not (TownLife.plan(gen, st)["fields"] as Array).is_empty():
+				vsite = st
+		if not vsite.is_empty():
+			break
+	check(not vsite.is_empty(), "a village with fields found")
+	if not vsite.is_empty():
+		var vs := NPCGen.generate(777, gen, vsite, gen.settlement_layout(vsite))
+		var vpl := NPCRoles.places(gen, vsite, vs)
+		var vf: Dictionary = f.duplicate(true)
+		vf["era"] = Eras.MEDIEVAL
+		var vd2 := NPCRoles.duty_at(vf, vpl, 9.0, 100.0)
+		var inf := false
+		for fl in vpl["fields"]:
+			var l := TownLife.world_to_frame(fl["p"], float(fl["yaw"]), vd2["target"])
+			inf = inf or absf(l.x) < float(fl["hx"]) and absf(l.y) < float(fl["hz"])
+		check(vd2.get("duty", "") == "till" and inf, "a farmer works a row of the village's own field")
+		var vd3 := NPCRoles.duty_at(vf, vpl, 9.0, 100.0 + float(NPCRoles.DUTIES["till"]["hop"]) * 1.3)
+		check(vd3["target"] != vd2["target"] and (vd3["target"] as Vector2).distance_to(vd2["target"]) < 20.0, "moving on down the row")
+		var crates := 0
+		for pr in NPCRoles.props(vpl, vs):
+			crates += int(pr[0] == NPCRoles.PROPS["field"])
+		check(crates == 0, "no stand-in crop crates beside real fields")
+	# Market crowd: folk in from the country by day, gone by night.
+	var crowd := MarketCrowd.roster(site, 0, 12, pl["gates"])
+	check(crowd.size() >= MarketCrowd.BASE[int(site.get("size", 0))] - 1, "a town gets its day visitors (%d)" % crowd.size())
+	check(str(MarketCrowd.roster(site, 0, 12, pl["gates"])) == str(crowd), "the same crowd on the same day, for everyone")
+	check(str(MarketCrowd.roster(site, 0, 13, pl["gates"])) != str(crowd), "and a different one tomorrow")
+	var noon := 0
+	var dusk := 0
+	var night := 0
+	for v in crowd:
+		check(not v.get("child", false) and (v["home"] as Vector2) in pl["gates"], "a visitor is an adult who came by a road")
+		noon += int(MarketCrowd.here(v, 12.5))
+		dusk += int(MarketCrowd.here(v, 20.0))
+		night += int(MarketCrowd.here(v, 1.0)) + int(MarketCrowd.here(v, 23.5))
+	check(noon >= crowd.size() / 3 and noon > dusk and night == 0, "busiest at midday, thinner at dusk, gone by night (%d/%d/%d)" % [noon, dusk, night])
+	var v0: Dictionary = crowd[0]
+	var vd := NPCRoles.duty_at(v0, pl, float(v0["visit"][0]) + 0.1, 0.0)
+	check(vd.get("duty", "") == String(v0["visit"][2]) and vd["target"] != Vector2.INF, "a visitor's day out is a duty (%s)" % vd.get("duty", ""))
+	check((vd["target"] as Vector2).distance_to(site["center"]) < float(site["outer"]), "spent in town")
+	check(NPCRoles.duty_at(v0, pl, float(v0["visit"][1]) - 0.1, 0.0).get("duty", "") == "head_home", "and at the end they head for the road")
+	check(NPCRoles.duty_at(v0, pl, 3.0, 0.0).is_empty() and not NPCRoles.day_words(v0).is_empty(), "nothing at night; the model knows they're visiting")
+	var ks := MarketCrowd.knots(pl)
+	check(ks.size() == 5 and (ks[0] as Vector2).distance_to(site["center"]) < float(site["inner"]), "idlers gather in knots in the square")
 	# A weaponsmith keeps a forge outside the shop door for part of the day.
 	var shop := {}
 	for h in TownShops.shops_of(gen, site):
