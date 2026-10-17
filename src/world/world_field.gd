@@ -502,6 +502,7 @@ static func _steps(h: float, step: float, riser := 0.25) -> float:
 ##    the foot, and none rises more than about 50 m over the valley floor;
 ##  - towers grow in clusters, tallest in the heart of one and dwindling to knolls at
 ##    its edges, with open valleys between clusters; never one needle alone on a plain;
+##  - lakes and bays among them stay open water;
 ##  - each stands in an apron of fallen rock (talus at about the angle of repose), its
 ##    walls jointed and ledged, its top broken.
 const TOWERS_V := 19
@@ -525,17 +526,22 @@ func _tower_mass(x: float, z: float, off: float) -> float:
 func _tower_size(x: float, z: float, off: float) -> float:
 	return clampf((_mesa.get_noise_2d(x * 1.3 + off, z * 1.3 + off * 0.5) + 0.6) / 1.2, 0.0, 1.0)
 
+## Towers dwindle where the valley floor `base` dips under the water (sea level is 0),
+## so lakes and bays stay open water that boats can cross.
+static func _tower_dry(base: float) -> float:
+	return smoothstep(-1.5, 2.5, base)
+
 ## A tower's apron of fallen rock out to `reach` times its radius: a concave skirt a
 ## fifth of its height at the foot of the wall.
 static func _talus(tall: float, q: float, reach: float) -> float:
 	return 0.22 * tall * pow(clampf((reach - q) / (reach - 0.75), 0.0, 1.0), 1.6)
 
-func _karst_v19(x: float, z: float) -> float:
+func _karst_v19(x: float, z: float, base: float) -> float:
 	var d := _tower_d(x, z, 50.0, 0.0)
 	var s := _tower_size(x, z, 0.0)
 	var m := _tower_mass(x, z, 0.0)
 	var r := 10.0 + 8.0 * s
-	var tall := minf(24.0 + 30.0 * s, TOWER_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.55 + 0.45 * m)
+	var tall := minf(24.0 + 30.0 * s, TOWER_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.55 + 0.45 * m) * _tower_dry(base)
 	if tall < 0.5 or d > r * 2.0:
 		return 0.0
 	# Weathered limestone: vertical joints flute the walls, bedding planes step them in
@@ -553,12 +559,12 @@ func _karst_v19(x: float, z: float) -> float:
 	var tower := maxf(lerpf(body, stepped, 0.75), 0.0)
 	return maxf(tower, _talus(tall, q, 2.0) * (0.75 + 0.5 * (_moss.get_noise_2d(x * 1.7 - 40.0, z * 1.7) + 1.0) * 0.5))
 
-func _needles_v19(x: float, z: float) -> float:
+func _needles_v19(x: float, z: float, base: float) -> float:
 	var d := _tower_d(x, z, 40.0, 517.0)
 	var s := _tower_size(x, z, 517.0)
 	var m := _tower_mass(x, z, 517.0)
 	var r := 7.0 + 5.0 * s
-	var tall := minf(20.0 + 30.0 * s, NEEDLE_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.5 + 0.5 * m)
+	var tall := minf(20.0 + 30.0 * s, NEEDLE_ASPECT * 2.0 * r) * smoothstep(0.0, 0.5, m) * (0.5 + 0.5 * m) * _tower_dry(base)
 	if tall < 0.5:
 		return 0.0
 	var w := r / 12.0
@@ -593,7 +599,7 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			# valley floors (Guilin, Zhangjiajie).
 			var base := c * 0.55 + 3.0 + _moss.get_noise_2d(x, z) * 2.5
 			if terrain_v >= TOWERS_V:
-				return Vector3(base, 0.0, _karst_v19(x, z))
+				return Vector3(base, 0.0, _karst_v19(x, z, base))
 			var cl := _cell(x, z, 42.0, 0.0)
 			if cl.y < 0.42:
 				return Vector3(base, 0.0, 0.0)
@@ -621,7 +627,7 @@ func _landform(lf: int, x: float, z: float, c: float, h: float) -> Vector3:
 			# Thin pointed rock needles.
 			var base := c * 0.7 + _moss.get_noise_2d(x, z) * 3.0 - 3.0
 			if terrain_v >= TOWERS_V:
-				return Vector3(base, 0.0, _needles_v19(x, z))
+				return Vector3(base, 0.0, _needles_v19(x, z, base))
 			var cl := _cell(x, z, 34.0, 517.0)
 			if cl.y < 0.5:
 				return Vector3(base, 0.0, 0.0)
