@@ -1575,11 +1575,38 @@ func test_world_themes() -> void:
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_kit_flora() -> void:
+	var forms := {}
 	for t in ["oak", "pine"]:
-		for sp in range(1, 40):
+		for sp in range(1, 60):
 			var p := Flora.species(t, sp)
-			var n := KitFlora.model_name(t, p, sp, 0)
-			check(n != "" and ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "%s species %d has a kit model (%s)" % [t, sp, n])
+			var bare: bool = p["form"] == "dead" or p["form"] == "snag"
+			forms[t + ":" + String(p["form"])] = true
+			var m := RealTree.build(t, sp, sp % Flora.VARIANTS)
+			check(m != null and m.get_surface_count() == (1 if bare else 2), "%s species %d (%s) has bark%s" % [t, sp, p["form"], "" if bare else " and leaves"])
+			if m == null:
+				continue
+			var tall := m.get_aabb().size.y
+			check(tall > float(p["height"]) * 0.5 and tall < float(p["height"]) * 1.6, "%s species %d is about its species' height (%.1f m of %.1f)" % [t, sp, tall, p["height"]])
+			if not bare:
+				var leaves := m.surface_get_array_len(1)
+				check(leaves >= (96 if p["form"] == "shrub" else 200), "%s species %d has a full crown of sprays (%d vertices)" % [t, sp, leaves])
+				var far := RealTree.far_parts(t, sp, sp % Flora.VARIANTS)
+				var fl: int = (far["leaf"][Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+				check(fl > 0 and fl * 4 <= leaves, "%s species %d has a far version (%d vs %d vertices)" % [t, sp, fl, leaves])
+	check(forms.size() >= 10, "trees come in many forms (%d)" % forms.size())
+	var bush := RealTree.build_bush(5, 1.0)
+	check(bush.get_surface_count() == 2 and bush.get_aabb().size.y < 1.6, "bushes are leaf sprays about a metre tall")
+	# Human worlds keep their trees green: the odd violet species is alien-only.
+	var was := Eras.theme
+	for th in ["human", "alien"]:
+		Eras.theme = th
+		var violet := 0
+		for sp in range(1, 400):
+			var h := (Flora.species("oak", sp)["leaf"] as Color).h
+			if h > 0.7 and h < 0.97:
+				violet += 1
+		check((violet == 0) == (th == "human"), "violet oaks on %s worlds: %d" % [th, violet])
+	Eras.theme = was
 	for n in KitFlora.ALL:
 		check(ResourceLoader.exists(KitFlora.DIR + n + ".gltf"), "kit model %s is in the repo" % n)
 

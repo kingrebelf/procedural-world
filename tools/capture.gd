@@ -142,6 +142,8 @@ func _run() -> void:
 	if g.deep_caves and (only.is_empty() or only.has("40") or only.has("41") or only.has("42")):
 		# Caves are planned on the land rivers carve: plan with the world's own rivers flag.
 		await _cave_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
+	if only.is_empty() or only.has("43") or only.has("44"):
+		await _forest_shots(g)
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	var fan := _find_settlement(g, Eras.FANTASY)
 	var sci := _find_settlement(g, Eras.SCIFI)
@@ -708,3 +710,46 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## The densest woodland near spawn: a close look under the trees (44) and an overlook from
+## a rise like the one players stand on (43), each followed by a draw-call breakdown so
+## foliage batching can be compared before and after.
+func _forest_shots(g: ChunkGenerator) -> void:
+	var sp3 := Planets.spawn_point(Game.seed, Game.store.has_rivers())
+	var best := Vector2(sp3.x, sp3.z)
+	var most := -1
+	for dz in range(-5, 6):
+		for dx in range(-5, 6):
+			var cx := int(floor(sp3.x / 64.0)) + dx
+			var cz := int(floor(sp3.z / 64.0)) + dz
+			var ch := g.generate(cx, cz)
+			var n := 0
+			for o in ch["objects"]:
+				if ObjectLibrary.kind(o["t"]) == "tree":
+					n += 1
+			if n > most:
+				most = n
+				best = Vector2(cx * 64.0 + 32.0, cz * 64.0 + 32.0)
+	print("forest chunk ", best, " trees ", most)
+	await _shot("44_forest_close", best + Vector2(-14, -10), best + Vector2(20, 18), 0.4, 1.7, NAN, _draw_stats)
+	await _shot("43_forest_overlook", best + Vector2(-90, -70), best, 0.4, 28.0, NAN, _draw_stats)
+
+func _draw_stats() -> void:
+	var count := func() -> float:
+		var tot := 0.0
+		for i in 20:
+			await get_tree().process_frame
+			tot += Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)
+		return tot / 20.0
+	var base: float = await count.call()
+	var hidden: Array = []
+	for c in world.streamer.chunks.values():
+		for ch in c.get_children():
+			if ch is GeometryInstance3D and ch.visible and (String(ch.name).begins_with("MM_oak") or String(ch.name).begins_with("MM_pine") \
+					or String(ch.name).begins_with("Trees") or (ch.has_meta("key") and String(ch.get_meta("key")).begins_with("under"))):
+				ch.visible = false
+				hidden.append(ch)
+	var without: float = await count.call()
+	for ch in hidden:
+		ch.visible = true
+	print("DRAWS total %d  trees+bushes %d  (%d nodes)" % [int(base), int(base - without), hidden.size()])
