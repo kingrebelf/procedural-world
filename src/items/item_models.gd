@@ -960,17 +960,20 @@ static func _merge_into(k: MeshKit, sub: MeshKit, xf: Transform3D) -> void:
 
 static func _shortbow(k: MeshKit):
 	bow(k, 0.5, 0.11, ASH)
+	return Vector3.ZERO
 
 static func _composite_bow(k: MeshKit):
 	bow(k, 0.52, 0.09, Color(0.42, 0.28, 0.16), "it_wood", 0.06, Color(0.5, 0.12, 0.08))
 	# Horn bellies on the limbs.
 	for s in [-1.0, 1.0]:
 		k.sphere("it_bone", Transform3D(Basis.from_scale(Vector3(0.5, 2.0, 0.5)), Vector3(0, s * 0.42, -0.04)), 0.012, 4, 6, 0.0, 1.0, Color(0.25, 0.22, 0.2))
+	return Vector3.ZERO
 
 static func _royal_bow(k: MeshKit):
 	bow(k, 0.85, 0.15, Color(0.36, 0.23, 0.14), "it_wood", 0.0, Color(0.45, 0.08, 0.1))
 	for s in [-1.0, 1.0]:
 		lathe(k, "it_gold", Transform3D(Basis(), Vector3(0, s * 0.84, 0.0)), [Vector2(0, -0.02), Vector2(0.008, -0.015), Vector2(0.009, 0.015), Vector2(0, 0.02)], 8)
+	return Vector3.ZERO
 
 static func _sling(k: MeshKit):
 	# Two cords from your fist to a leather pouch holding a stone.
@@ -1461,9 +1464,11 @@ static func _plasma_whip(k: MeshKit):
 
 static func _crystal_bow(k: MeshKit):
 	bow(k, 0.55, 0.1, Color(0.7, 0.75, 1.0, 0.8), "it_crystal", 0.03, Color(0.25, 0.22, 0.3))
+	return Vector3.ZERO
 
 static func _eclipse_bow(k: MeshKit):
 	bow(k, 0.6, 0.12, Color(0.2, 0.17, 0.24), "it_chitin", 0.07, Color(0.4, 0.3, 0.5))
+	return Vector3.ZERO
 
 static func _nova_staff(k: MeshKit):
 	pole(k, -0.85, 0.85, 0.016, 0.014, Color(0.25, 0.2, 0.3), "it_chitin")

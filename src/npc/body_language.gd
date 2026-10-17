@@ -120,6 +120,10 @@ var grip_rot: Dictionary = {}
 ## {"axis": hand-space direction of what is held, "dir": skeleton-space direction to turn
 ## it to, "w": how far}: the wrist turns over its animation; {} for none.
 var hand_aim: Dictionary = {}
+## Empty hands hang relaxed: each finger a little more curled than the one before, the
+## thumb resting alongside, as a hand does when nothing is in it (first-person arms).
+var relaxed := false
+const IDLE_HAND := [0.3, 0.45, 0.55, 0.63, 0.7]
 ## How much of hand_r's turn the forearm takes instead of the wrist (0..1).
 var hand_share := 0.0
 ## The right hand's orientation in skeleton space, overriding the animation's (a gun
@@ -198,6 +202,12 @@ func _process_modification() -> void:
 	elif not grip_r.is_empty():
 		for i in 5:
 			_finger(sk, "r", i, float(grip_r[i]), 1.0)
+	elif relaxed:
+		for i in 5:
+			_finger(sk, "r", i, IDLE_HAND[i], 1.0)
+	if relaxed:
+		for i in 5:
+			_finger(sk, "l", i, IDLE_HAND[i], 1.0)
 	_t += dt
 	var active := _t < _len
 	_w = move_toward(_w, 1.0 if active else 0.0, dt * 4.0)
