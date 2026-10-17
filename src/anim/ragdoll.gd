@@ -175,6 +175,11 @@ func build(sk: Skeleton3D, spec: Array) -> Ragdoll:
 	_writer.rag = self
 	_writer.active = false
 	sk.add_child(_writer)
+	# A reshaped animal (BoneShaper) keeps its shape while it falls: place the bones first.
+	for c in sk.get_children():
+		if c is BoneShaper:
+			sk.move_child(_writer, c.get_index())
+			break
 	return self
 
 ## What the body carries on its bones (a shield on the forearm, a sword in the hand) is

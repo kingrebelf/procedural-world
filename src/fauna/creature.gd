@@ -29,6 +29,8 @@ var underground := false
 var _flash := 0.0
 var _alert_t := 0.0 ## how long a wary animal has been watching you
 var _graze_clip := "Eating"
+var _ground: Callable ## terrain height at (x, z), from the manager each step
+var _unstuck := 0.0
 ## Drawn as a carcass (see Corpses): no hit box, no mind, lying where it fell. `fresh`
 ## plays the fall; otherwise it is already down.
 var as_corpse := false
@@ -47,7 +49,8 @@ const KIT_OF := {"Red Deer": "Deer", "Elk": "Stag", "Grey Wolf": "Wolf", "Auroch
 	"Wild Horse": "Horse", "Wild Donkey": "Donkey", "Mossback": "Bull", "Glimmerhart": "Stag",
 	"Thornhound": "Wolf", "Woolly Lumen": "Alpaca", "Dune Runner": "Horse",
 	"Rust Crawler": "Alien_Scolitex", "Hexapod": "Alien_Scolitex", "Lantern Strider": "Alien_Scolitex",
-	"Drift Jelly": "Alien_Oculichrysalis", "Scout Drone": "Alien_Cyclop"}
+	"Drift Jelly": "Alien_Oculichrysalis", "Scout Drone": "Alien_Cyclop",
+	"Wild Boar": "Boar", "Hare": "Hare", "Fae Hare": "Hare"}
 
 ## Stronghold guards (negative species, -tier): hounds, crypt stalkers and sentry
 ## crawlers, tougher and harder-biting with each tier.
@@ -371,11 +374,83 @@ static func _bar_mat(c: Color) -> StandardMaterial3D:
 	return m
 
 func _pick_wander() -> void:
-	var a := randf() * TAU
 	var roam: float = p.get("roam", 22.0)
-	_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(minf(3.0, roam * 0.3), roam)
+	for i in 6:
+		var a := randf() * TAU
+		_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(minf(3.0, roam * 0.3), roam)
+		if underground or p["plan"] == "bird" or not blocked(_target.x, _target.z):
+			return
+
+## True where a walking animal can't stand: in the sea, a lake or a river, or inside a
+## rock, tree trunk or wall. Solid things are found with a ray from head height down to
+## just above the ground, so it only sees what has colliders (loaded ground near you).
+func blocked(x: float, z: float) -> bool:
+	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
+	if is_nan(h):
+		return false
+	if blocked_wet(x, z):
+		return true
+	return solid_at(Vector3(x, h, z))
+
+## The way to walk from `pos` heading `dir`: straight on if the ground ahead is clear,
+## else the nearest clear bearing to either side, or ZERO if none is. An animal already
+## in the water (chased in, or swimming) may keep going until it is out.
+func _steer(pos: Vector3, dir: Vector3) -> Vector3:
+	var reach := 0.5 + float(p.get("size", 1.0)) * 0.5
+	var wet_here := blocked_wet(pos.x, pos.z)
+	for turn in [0.0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9]:
+		var d: Vector3 = dir.rotated(Vector3.UP, turn)
+		var ahead := pos + d * reach
+		var h: float = _ground.call(ahead.x, ahead.z) if _ground.is_valid() else NAN
+		if is_nan(h):
+			return d
+		if not wet_here and blocked_wet(ahead.x, ahead.z):
+			continue
+		if solid_at(Vector3(ahead.x, h, ahead.z)):
+			continue
+		return d
+	return Vector3.ZERO
+
+func blocked_wet(x: float, z: float) -> bool:
+	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
+	return not is_nan(h) and (h < Water.LEVEL + 0.15 or h < Water.surface_height(x, z, 0.0) + 0.05)
+
+## Spawned (or pushed) inside a rock or out in the water: move to the nearest clear
+## ground within a few metres, and make it the animal's new home.
+func _get_unstuck() -> void:
+	var at := global_position
+	if not blocked(at.x, at.z):
+		return
+	for r in [1.5, 3.0, 5.0, 8.0, 12.0]:
+		for i in 8:
+			var a := TAU * (float(i) + 0.5 * float(int(r) % 2)) / 8.0
+			var q: Vector3 = at + Vector3(cos(a), 0, sin(a)) * r
+			if not blocked(q.x, q.z):
+				var h: float = _ground.call(q.x, q.z)
+				global_position = Vector3(q.x, h, q.z)
+				home = global_position
+				_pick_wander()
+				return
+
+## Something solid (not another animal or a person) between knee and head height here.
+func solid_at(at: Vector3) -> bool:
+	if not is_inside_tree():
+		return false
+	var top := maxf(0.9, float(p.get("size", 1.0)) * 0.9)
+	var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, top, 0), at + Vector3(0, 0.3, 0), 1 | 2)
+	var space := get_world_3d().direct_space_state
+	for i in 4:
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return false
+		var c: Object = hit["collider"]
+		if not (c is CharacterBody3D or (c is Node and (c as Node).has_meta("creature"))):
+			return true
+		q.exclude = q.exclude + [hit["rid"]]
+	return false
 
 func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
+	_ground = ground
 	_bite_cd = maxf(0.0, _bite_cd - delta)
 	if held_for > 0.0:
 		held_for -= delta
@@ -440,8 +515,22 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 	_speed = move_toward(_speed, want, delta * 6.0)
 	var pos := global_position
 	var dir := Vector3(goal.x - pos.x, 0, goal.z - pos.z)
+	var walks: bool = not underground and p["plan"] != "bird"
+	if walks:
+		_unstuck -= delta
+		if _unstuck <= 0.0:
+			_unstuck = randf_range(0.8, 1.4)
+			_get_unstuck()
+			pos = global_position
 	if dir.length() > 0.05 and _speed > 0.01:
 		dir = dir.normalized()
+		if walks:
+			dir = _steer(pos, dir)
+			if dir == Vector3.ZERO:
+				# Hemmed in by rock or water this way: stop and go somewhere else.
+				_speed = 0.0
+				if state == "wander":
+					_pick_wander()
 		pos += dir * _speed * delta
 		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), clampf(delta * 5.0, 0.0, 1.0))
 	var h: float = manager.call("cave_floor", pos) if underground else ground.call(pos.x, pos.z)

@@ -2066,6 +2066,10 @@ func test_village_livestock() -> void:
 			best = minf(best, Vector2(o["p"].x - h["lx"], o["p"].z - h["lz"]).length())
 		near = near and best < 10.0
 	check(near, "livestock stand by the houses (%s)" % [names])
+	# Every walking animal has a real model: none falls back to the block body.
+	for e in Creature.NAMES.size():
+		for n in Creature.NAMES[e].get("quad", []) + Creature.NAMES[e].get("hexa", []):
+			check(AnimalModel.available(Creature.KIT_OF.get(n, "")), "%s has a rigged model" % n)
 	check(var_to_bytes(Creature.livestock_for(9, village)) == var_to_bytes(Creature.livestock_for(9, village)), "the same animals every time")
 	var wild := {"cx": 2, "cz": 5, "era": Eras.MEDIEVAL, "biome": 1, "objects": [houses[0]]}
 	check(Creature.livestock_for(9, wild).is_empty(), "a lone house keeps no livestock")

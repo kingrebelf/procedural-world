@@ -13,7 +13,19 @@ const DIR := "res://assets/models/animals/"
 ## Kit model -> height in metres (to the top of the head or antlers).
 const HEIGHT := {"Wolf": 0.9, "Stag": 2.1, "Deer": 1.5, "Fox": 0.5, "Bull": 1.8, "Horse": 1.75,
 	"Alpaca": 1.8, "Donkey": 1.35, "Cow": 1.5, "Horse_White": 1.75, "Husky": 0.72, "ShibaInu": 0.6,
-	"Alien_Scolitex": 1.3, "Alien_Oculichrysalis": 0.9, "Alien_Cyclop": 1.1}
+	"Alien_Scolitex": 1.3, "Alien_Oculichrysalis": 0.9, "Alien_Cyclop": 1.1,
+	"Boar": 0.95, "Hare": 0.42}
+## Animals the kit has no model for, built from the nearest rig and reshaped: base kit,
+## whole-body shape (width, height, length), bone scales (BoneShaper), materials hidden,
+## coat colour, and tusks. A boar is a cow's frame, low, broad and short, with a heavy
+## head, no horns and a stub tail; a hare is a fox's, with long ears and a scut for a tail.
+const VARIANTS := {
+	"Boar": {"base": "Cow", "shape": Vector3(1.15, 0.82, 0.92), "hide": ["Horns"], "tusks": true,
+		"coat": Color(0.2, 0.15, 0.11), "bones": {"Head": Vector3(1.25, 1.2, 1.3), "Neck2": Vector3(1.15, 0.7, 1.15), "Tail1": Vector3(0.6, 0.35, 0.6)}},
+	"Hare": {"base": "Fox", "shape": Vector3(0.95, 1.0, 0.72), "coat": Color(0.42, 0.33, 0.24),
+		"bones": {"Ear1.L": Vector3(1.3, 2.6, 1.3), "Ear1.R": Vector3(1.3, 2.6, 1.3), "Tail1": Vector3(0.28, 0.28, 0.28),
+			"Neck3": Vector3(0.75, 0.75, 0.75), "Head": Vector3(1.25, 1.25, 1.1)}},
+}
 ## The sci-fi kit's aliens: rigged, but with an idle loop only, so Creature moves them
 ## procedurally (see procedural()).
 const ALIEN_DIR := "res://assets/models/scifi/"
@@ -32,6 +44,7 @@ var lod := true
 var _current := ""
 var _busy := false
 var _scene: Node3D
+var _box := AABB() ## the model's bounds at rest, in its own units
 var _kind := ""
 var _nat := {} ## clip -> metres per second at speed 1, in the model's own units
 var _len := 1.0 ## body length (model units), for the slope
@@ -46,6 +59,8 @@ var _tilt := Vector2.ZERO
 static var _gait_cache := {}
 
 static func path_of(kind: String) -> String:
+	if VARIANTS.has(kind):
+		kind = VARIANTS[kind]["base"]
 	return (ALIEN_DIR if kind.begins_with("Alien_") else DIR) + kind + ".gltf"
 
 static func available(kind: String) -> bool:
@@ -59,6 +74,9 @@ func procedural() -> bool:
 func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalModel:
 	var scene: Node3D = (load(path_of(kind)) as PackedScene).instantiate()
 	add_child(scene)
+	var v: Dictionary = VARIANTS.get(kind, {})
+	if v.has("coat") and tint == null:
+		tint = v["coat"]
 	var box := AABB()
 	var first := true
 	for mi in scene.find_children("*", "MeshInstance3D", true, false):
@@ -67,6 +85,10 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 		box = b if first else box.merge(b)
 		first = false
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		for s in m.mesh.get_surface_count():
+			var hm := m.get_active_material(s)
+			if hm and String(hm.resource_name) in v.get("hide", []):
+				m.set_surface_override_material(s, _hidden())
 		if tint != null or glow != null:
 			for s in m.mesh.get_surface_count():
 				var mat := m.get_active_material(s)
@@ -76,8 +98,9 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 				if mat is BaseMaterial3D and (String(mat.resource_name) in COAT or glows):
 					m.set_surface_override_material(s, _recolour(mat, tint, glow))
 	var k: float = HEIGHT.get(kind, 1.0) / maxf(box.size.y, 0.01) * size_mult
-	scene.scale = Vector3.ONE * k
+	scene.scale = Vector3.ONE * k * (v["shape"] as Vector3 if v.has("shape") else Vector3.ONE)
 	_scene = scene
+	_box = box
 	_kind = kind
 	_len = box.size.z * k
 	_wid = box.size.x * k
@@ -90,6 +113,8 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 		look = LookIK.new()
 		look.chain = LookIK.chain_for(sks[0])
 		sks[0].add_child(look)
+		if v.has("bones"):
+			_shape_bones(sks[0], v)
 	for n in LOOPS + ["Alien_Idle"]:
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
@@ -98,6 +123,63 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null) -> AnimalMo
 	return self
 
 static var _mats := {}
+static var _hidden_mat: StandardMaterial3D
+
+## A material that draws nothing (horns a variant doesn't have).
+static func _hidden() -> StandardMaterial3D:
+	if _hidden_mat == null:
+		_hidden_mat = StandardMaterial3D.new()
+		_hidden_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_hidden_mat.albedo_color = Color(0, 0, 0, 0)
+	return _hidden_mat
+
+## A variant's bone scales, and its tusks on the head.
+func _shape_bones(sk: Skeleton3D, v: Dictionary) -> void:
+	var shaper := BoneShaper.new()
+	for n in v["bones"]:
+		var b := sk.find_bone(n)
+		if b >= 0:
+			shaper.scales[b] = v["bones"][n]
+	sk.add_child(shaper)
+	if not v.get("tusks", false):
+		return
+	var head := sk.find_bone("Head")
+	if head < 0:
+		return
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = "Head"
+	sk.add_child(ba)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.88, 0.84, 0.72)
+	mat.roughness = 0.45
+	# Where the snout is: the front of the model, a little below the head bone, taken
+	# into the head bone's space. Sizes in metres, turned into the model's own units.
+	var to_sk := Transform3D.IDENTITY
+	var n: Node = sk
+	while n != _scene and n is Node3D:
+		to_sk = (n as Node3D).transform * to_sk
+		n = n.get_parent()
+	var rest := sk.get_bone_global_rest(head)
+	var front := to_sk.affine_inverse() * Vector3(0, 0, _box.end.z)
+	var tip := rest.affine_inverse() * Vector3(0, rest.origin.y - (rest.origin.y - front.y) * 0.0 - _box.size.y * 0.05, front.z * 0.96)
+	var u := 1.0 / maxf(_scene.scale.y, 0.0001)
+	var fwd := (rest.basis.inverse() * Vector3(0, 0, 1)).normalized()
+	var up := (rest.basis.inverse() * Vector3.UP).normalized()
+	var side := up.cross(fwd).normalized()
+	for sgn in [-1.0, 1.0]:
+		var t := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = 0.022 * u
+		cm.height = 0.1 * u
+		cm.radial_segments = 6
+		cm.rings = 1
+		t.mesh = cm
+		t.material_override = mat
+		# Curving up and out from the lower jaw, either side of the snout.
+		var dir: Vector3 = (up * 0.75 + side * sgn * 0.4 + fwd * 0.3).normalized()
+		t.transform = Transform3D(Basis(Quaternion(Vector3.UP, dir)), tip - fwd * 0.02 * u - up * 0.03 * u + side * sgn * 0.06 * u + dir * 0.04 * u)
+		ba.add_child(t)
 
 static func _recolour(src: BaseMaterial3D, tint, glow) -> BaseMaterial3D:
 	var key := "%s|%s|%s" % [src.get_instance_id(), tint, glow]
@@ -144,7 +226,7 @@ static func gaits(kind: String, ap: AnimationPlayer, sk: Skeleton3D) -> Dictiona
 func natural_speed(clip: String) -> float:
 	if not _nat.has(clip) or _scene == null or not _scene.is_inside_tree():
 		return NAN
-	return float(_nat[clip]) * _scene.global_basis.get_scale().y
+	return float(_nat[clip]) * _scene.global_basis.get_scale().z
 
 ## A looping state (Idle, Walk, Gallop, Eating), cross-faded; ignored during a one-shot.
 ## Walk and Gallop mean "on the move": which one, and how fast it plays, follows how fast
