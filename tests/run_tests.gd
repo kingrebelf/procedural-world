@@ -2622,3 +2622,87 @@ func test_pack_b_items() -> void:
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("lamp_kerosene", 1, 1.0, {}))
 	check(HandLight.lanterns(inv) == 1, "a kerosene lamp counts as a lantern")
+
+# --- Multiplayer -------------------------------------------------------------------------
+
+class FakeNet:
+	var sent: Array = []
+	func rs_send_chunk(p, c): sent.append(["chunk", p, c["cx"], c["cz"]])
+	func rs_send_player(d): sent.append(["player", d])
+	func rs_request_town(p, site): sent.append(["town?", p, site["sx"], site["sz"]])
+	func rs_send_town(p, s): sent.append(["town", p, s["sx"]])
+
+func test_server_config() -> void:
+	var c := ServerConfig.new()
+	c.apply_args(PackedStringArray(["--name=My World", "--port=25001", "--max-players=4", "--password=pw",
+		"--set", "pvp=off", "--set=time=night", "--set", "xp_mult=2.5", "--set", "time=noon", "--ignored"]))
+	check(c.name == "My World" and c.port == 25001 and c.max_players == 4 and c.password == "pw", "flags set the server")
+	check(c.options["pvp"] == false and c.options["time"] == "night" and is_equal_approx(c.options["xp_mult"], 2.5), "--set changes options")
+	check(c.set_option("time", "noon") != "" and c.options["time"] == "night", "bad choices are refused")
+	check(c.set_option("nope", "1") != "" and c.set_option("pvp", "maybe") != "", "unknown options and bad values are refused")
+	var dir := "user://test_server_%d" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(dir)
+	c.description = 'Quotes "and" back\\slashes'
+	check(c.write_file(dir.path_join("server.cfg")), "server.cfg written")
+	var d := ServerConfig.new()
+	d.read_file(dir.path_join("server.cfg"))
+	check(d.name == "My World" and d.description == c.description and d.port == 25001 and d.password == "pw", "server.cfg reads back (%s)" % d.description)
+	check(d.options["pvp"] == false and d.options["time"] == "night" and is_equal_approx(d.options["xp_mult"], 2.5), "options read back")
+	var e := ServerConfig.load_from(PackedStringArray(["--port=26000"]), dir)
+	check(e.port == 26000 and e.name == "My World", "flags beat the file")
+	var i := c.info(3)
+	check(i["players"] == 3 and i["max_players"] == 4 and i["password"] == true and i["protocol"] == ServerConfig.PROTOCOL, "server info for the browser")
+
+func test_identity_names() -> void:
+	check(Identity.clean_name("  Ben  ") == "Ben", "names are trimmed")
+	check(Identity.clean_name("A<b>[c]") == "Abc", "markup is stripped")
+	check(Identity.clean_name("x".repeat(40)).length() == 20, "names are capped")
+	check(Identity.valid_name("Sir Ben") and not Identity.valid_name("B") and not Identity.valid_name("<x>"), "valid names")
+	Identity.override = "user://test_identity_%d.cfg" % Time.get_ticks_usec()
+	var a := Identity.load_or_make()
+	check(a["token"].length() == 64 and Identity.load_or_make()["token"] == a["token"], "the secret token is made once")
+	Identity.remember_name("Ben")
+	check(Identity.load_or_make()["name"] == "Ben", "the name is remembered")
+	check(Identity.token_key(a["token"]) != a["token"] and Identity.token_key(a["token"]).length() == 64, "servers keep a hash, not the token")
+	Identity.override = ""
+
+func test_net_pack() -> void:
+	var c := ChunkGenerator.new(55).generate(1, 2)
+	var b := NetPack.pack(c)
+	check(b.size() < var_to_bytes(c).size(), "chunks are compressed on the wire")
+	var back = NetPack.unpack(b)
+	check(back is Dictionary and back["heights"] == c["heights"] and back["objects"].size() == c["objects"].size(), "chunks round-trip")
+	var bomb := PackedByteArray()
+	bomb.resize(4)
+	bomb.encode_u32(0, 512 * 1024 * 1024)
+	bomb.append_array(PackedByteArray([1, 2, 3]))
+	check(NetPack.unpack(bomb) == null, "oversized payloads are refused")
+	check(NetPack.unpack(PackedByteArray([9, 9])) == null, "garbage is refused")
+
+func test_remote_store() -> void:
+	var net := FakeNet.new()
+	var s := RemoteStore.new("user://test_remote_%d" % Time.get_ticks_usec(), {"seed": 5, "gen_version": ChunkGenerator.GEN_VERSION})
+	s.net = net
+	s.set_planet(0)
+	check(not s.has_chunk(3, 4) and s.load_chunk(3, 4) == null, "nothing cached yet")
+	var c := ChunkGenerator.new(5).generate(3, 4)
+	s.deliver_chunk(0, c)
+	check(s.has_chunk(3, 4) and s.load_chunk(3, 4) == c, "a delivered chunk is cached")
+	check(s.get_or_create_chunk(ChunkGenerator.new(5), 3, 4) == c, "a cached chunk is served without asking")
+	s.save_chunk(c)
+	check(net.sent.size() == 1 and net.sent[0][0] == "chunk", "an edit goes to the server")
+	s.closed = true
+	var fallback := s.get_or_create_chunk(ChunkGenerator.new(5), 9, 9)
+	check(fallback.has("heights") and not s.has_chunk(9, 9), "a closed connection never hangs a loader")
+	s.closed = false
+	var site := {"sx": 2, "sz": -1}
+	check(not s.prefetch_settlement(site) and net.sent[-1][0] == "town?", "a town is asked for once")
+	var n := net.sent.size()
+	s.prefetch_settlement(site)
+	check(net.sent.size() == n, "and not again while it is on its way")
+	s.deliver_town(0, {"sx": 2, "sz": -1, "npcs": []})
+	check(s.prefetch_settlement(site) and s.has_settlement(2, -1), "then it is ready")
+	s.save_player({"money": 3})
+	check(net.sent[-1][0] == "player" and s.load_player()["money"] == 3, "your save goes to the server")
+	s.save_meta()
+	check(not FileAccess.file_exists(s.root.path_join("world.dat")), "clients never write the world's meta")

@@ -384,7 +384,7 @@ func _pause_panel() -> Control:
 	v.add_child(UITheme.big_button("Character", func(): open("character")))
 	v.add_child(UITheme.big_button("Atlas", func(): open("map")))
 	v.add_child(UITheme.big_button("Settings", func(): open("settings")))
-	v.add_child(UITheme.big_button("Save and quit to menu", func():
+	v.add_child(UITheme.big_button("Leave the server" if Net.is_client() else "Save and quit to menu", func():
 		get_tree().paused = false
 		Game.close_world()
 		get_tree().change_scene_to_file("res://src/ui/main_menu.tscn")))
@@ -394,7 +394,10 @@ func _pause_panel() -> Control:
 	var meta := Game.store.meta if Game.store else {}
 	var pt := int(meta.get("play_time", 0.0))
 	v.add_child(UITheme.label("Seed %d    Played %dh %02dm    %d places discovered" % [Game.seed, pt / 3600, (pt / 60) % 60, Game.discovery["visited"].size()], 14, UITheme.DIM))
-	v.add_child(UITheme.label("Everything you see is saved the moment it first exists.", 14, UITheme.DIM))
+	if Net.is_client():
+		v.add_child(UITheme.label("On %s with %d other%s. Your character is saved on the server." % [Net.info.get("name", "a server"), Net.peers.size(), "" if Net.peers.size() == 1 else "s"], 14, UITheme.DIM))
+	else:
+		v.add_child(UITheme.label("Everything you see is saved the moment it first exists.", 14, UITheme.DIM))
 	return s[0]
 
 func _settings_panel() -> Control:
