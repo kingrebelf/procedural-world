@@ -20,6 +20,10 @@ static func node(t: String) -> MeshInstance3D:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# The boxes stretch out along the sun in the shader, anywhere in the room below.
 	mi.custom_aabb = AABB(Vector3(-8, -2, -8), Vector3(16, 16, 16))
+	# Seen from further, a beam is only ever glimpsed through a window.
+	mi.visibility_range_end = 60.0
+	mi.visibility_range_end_margin = 10.0
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	return mi
 
 ## The beams' material, shared by every room (tools scale its "strength").

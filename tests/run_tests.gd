@@ -329,7 +329,13 @@ func test_sun_windows() -> void:
 		check(open == wins.size(), "%s: every sun window is an opening in its walls (%d of %d)" % [t, open, wins.size()])
 		var m := SunBeams.mesh(t)
 		check(m != null and m.surface_get_array_len(0) == 8 * wins.size(), "%s has a beam box per window" % t)
-	check(SunBeams.mesh("cottage") == null and Interiors.sun_windows("castle_keep").is_empty(), "rooms without arrow slits have no beams")
+	# A house lets the sun in through its unshuttered windows, each where a pane is.
+	for t in KitHouse.PLANS:
+		var wins := Interiors.sun_windows(t)
+		var glows: Array = KitHouse._plan(t)["glows"]
+		var at_pane := wins.all(func(w): return glows.any(func(g: Transform3D): return g.origin.distance_to((w[0] as Vector3) + Vector3(0, Interiors.SINK, 0)) < 0.3))
+		check(not wins.is_empty() and wins.size() <= glows.size() and at_pane, "%s lets the sun in at its windows (%d of %d panes)" % [t, wins.size(), glows.size()])
+	check(SunBeams.mesh("hab_block") == null and Interiors.sun_windows("castle_keep").is_empty(), "rooms without sun windows have no beams")
 
 func test_room_interiors() -> void:
 	for t in Interiors.FURNISH:

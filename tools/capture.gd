@@ -428,6 +428,8 @@ func _run() -> void:
 			await _shot("16_viaduct", cam, vm, 0.4, maxf(deck - low + 2.0, 2.0), deck - 4.0, Callable(), 4.0)
 	if g.outposts and (only.is_empty() or only.has("27") or only.has("28") or only.has("29") or only.has("33") or only.has("34")):
 		await _room_shots(g)
+	if only.is_empty() or only.has("38"):
+		await _house_shot(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
 	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
@@ -612,6 +614,37 @@ func _room_shots(g: ChunkGenerator) -> void:
 			var loc := Vector2(rel.x * cos(yaw) - rel.y * sin(yaw), rel.x * sin(yaw) + rel.y * cos(yaw)).normalized() * 2.6
 			await _shot("34_tower_roof", to_w.call(loc), fc, 0.45, float(b[4]) - 0.1, gh + 2.0)
 			break
+
+## Inside a village house in the morning or evening, looking at the windowed front wall
+## with the sun beyond it, so its light falls in through the panes (SunBeams).
+func _house_shot(g: ChunkGenerator) -> void:
+	var med := _find_settlement(g, Eras.MEDIEVAL)
+	if med.is_empty():
+		return
+	var best := {}
+	var score := 0.3
+	for it in g.settlement_layout(med):
+		if not KitHouse.has(String(it["t"])):
+			continue
+		var yaw: float = it["yaw"]
+		var front := Vector2(sin(yaw), cos(yaw))
+		for day in [0.31, 0.33, 0.35, 0.65, 0.67, 0.69]:
+			var ang: float = (day - 0.25) * TAU
+			var sc := Vector2(cos(ang), 0.35).normalized().dot(front)
+			if sc > score:
+				score = sc
+				best = {"it": it, "day": day}
+	if best.is_empty():
+		print("no house facing the sun")
+		return
+	var t: String = best["it"]["t"]
+	var c: Vector2 = best["it"]["p"]
+	var yaw: float = best["it"]["yaw"]
+	var dm := KitHouse._dims(t)
+	var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
+	var gh: float = med["target_h"]
+	await _shot("38_house_sun", to_w.call(Vector2(-dm.x / 2 + 1.3, -dm.z / 2 + 1.1)), to_w.call(Vector2(0.6, dm.z / 2)), best["day"],
+		KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 1.0)
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.

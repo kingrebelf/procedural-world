@@ -337,8 +337,16 @@ static func fires(t: String) -> Array:
 ## the object's own space (sunk like the object): [centre of the opening on the wall's
 ## inner face, inward normal, half width, half height, the room's floor and ceiling
 ## heights, its half size across x and z]. A stone tower's arrow slits, one storey under
-## its top (Stronghold._face, row 2, every other module).
+## its top (Stronghold._face, row 2, every other module), or a house's unshuttered
+## windows (KitHouse).
 static func sun_windows(t: String) -> Array:
+	if KitHouse.has(t):
+		var dm := KitHouse._dims(t)
+		var half := Vector2(dm.x * 0.5 - 0.2, dm.z * 0.5 - 0.2)
+		var wins: Array = []
+		for w in KitHouse.sun_windows(t):
+			wins.append([(w[0] as Vector3) - Vector3(0, SINK, 0), w[1], w[2], w[3], KitHouse.FLOOR - SINK, dm.y - 0.1 - SINK, half])
+		return wins
 	if not TOWER.has(t):
 		return []
 	var out: Array = []

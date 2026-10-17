@@ -130,6 +130,7 @@ static func _plan(t: String) -> Dictionary:
 	var r := WHash.rng(WHash.str_hash(t), 0, 0, 1)
 	var models: Array = []
 	var glows: Array = []
+	var suns: Array = []
 	for s in storeys:
 		var style: String = p[3] if s == 0 or String(p[4]) == "" else p[4]
 		var y := s * 3.0
@@ -152,9 +153,14 @@ static func _plan(t: String) -> Dictionary:
 					models.append(["village/Door_1_Round", yaw + 100.0, at - basis * Vector3(0.53, 0, 0.18), 1.0])
 				elif window:
 					models.append(["village/Window_Wide_Round1", yaw, at, 1.0])
+					var shut := false
 					if r.randf() < 0.45:
-						models.append(["village/WindowShutters_Wide_Round_Open" if r.randf() < 0.6 else "village/WindowShutters_Wide_Round_Closed", yaw, at, 1.0])
+						shut = r.randf() >= 0.6
+						models.append(["village/WindowShutters_Wide_Round_Closed" if shut else "village/WindowShutters_Wide_Round_Open", yaw, at, 1.0])
 					glows.append(Transform3D(basis, at + Vector3(0, 1.85, 0) - out * 0.4))
+					if not shut:
+						# The pane (Window_Wide_Round1's glass) on the wall's inner face.
+						suns.append([at + Vector3(0, 1.84, 0) - out * 0.2, -out, 0.54, 0.78])
 		for c in [Vector3(-w / 2, y, -d / 2), Vector3(w / 2, y, -d / 2), Vector3(-w / 2, y, d / 2), Vector3(w / 2, y, d / 2)]:
 			models.append(["village/Corner_Exterior_Brick" if style == "brick" else "village/Corner_Exterior_Wood", 0, c, 1.0])
 	var top := storeys * 3.0
@@ -163,7 +169,7 @@ static func _plan(t: String) -> Dictionary:
 	models.append(["village/Roof_Front_Brick6", 0, Vector3(0, top, d / 2), 1.0])
 	models.append(["village/Roof_Front_Brick6", 180, Vector3(0, top, -d / 2), 1.0])
 	models.append(["village/Prop_Chimney" if storeys > 1 else "village/Prop_Chimney2", 0, Vector3(w / 2 - 1.6, top + 0.9, -d / 2 + 1.4), 1.0])
-	return {"models": models, "glows": glows}
+	return {"models": models, "glows": glows, "suns": suns}
 
 static func build(t: String) -> ArrayMesh:
 	var dm := _dims(t)
@@ -232,6 +238,11 @@ static func interior(t: String) -> ArrayMesh:
 	k.box(rug[0], I.translated(Vector3(rc.x, FLOOR + 0.006, rc.z)), Vector3(rs.x, 0.012, rs.y))
 	k.commit(Materials.get_mat, mesh)
 	return mesh
+
+## The windows the sun can shine in through (not shuttered), for Interiors.sun_windows:
+## [centre on the wall's inner face, inward normal, half width, half height], unsunk.
+static func sun_windows(t: String) -> Array:
+	return _plan(t)["suns"]
 
 ## Lamplit panels just inside the windows, for houses seen from further than the
 ## furniture is drawn.
