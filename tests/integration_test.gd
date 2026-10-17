@@ -168,6 +168,15 @@ func _make_room(game) -> void:
 		if it != null and loot.has(it["type"]):
 			game.inventory.set_slot(i, null)
 
+## What is in the pack, for a failure message.
+func _pack_list(game) -> String:
+	var out: PackedStringArray = []
+	for i in Inventory.SIZE:
+		var it = game.inventory.get_slot(i)
+		if it != null:
+			out.append("%s x%d" % [it["type"], int(it["qty"])])
+	return ", ".join(out)
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -565,7 +574,7 @@ func _run() -> void:
 	check(game.money == money_before, "money identical after reload")
 	check(game.equipment.has("head") and game.equipment["head"]["type"] == "helm_elven", "worn armour restored")
 	check(game.stats.level == 3 and game.stats.attrs["end"] == 1 and game.max_health() == 110.0, "level and attributes restored")
-	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested %s is in the pack (%d, pack %s)" % [ObjectLibrary.YIELD[felled["t"]], game.inventory.count(ObjectLibrary.YIELD[felled["t"]]), str(game.inventory.to_data().map(func(x): return "" if x == null else x["type"]))])
+	check(game.inventory.count(ObjectLibrary.YIELD[felled["t"]]) >= 5, "harvested %s is in the pack (%d, pack %s)" % [ObjectLibrary.YIELD[felled["t"]], game.inventory.count(ObjectLibrary.YIELD[felled["t"]]), _pack_list(game)])
 	check(game.pending_player_state["pos"].distance_to(pos_before) < 0.01, "player position restored")
 	check(game.discovery["visited"].size() >= 1, "discovery log saved")
 	check(absf(game.map.revealed(pos_before.x, pos_before.z) - map_seen) < 0.01 and map_seen > 0.9, "the atlas remembers where the fog lifted")
