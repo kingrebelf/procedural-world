@@ -892,8 +892,11 @@ func _run() -> void:
 		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
 	# A starship climbs where you look, won't let you step out in mid-air, and lands.
 	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
-	for i in 30:
+	# (Until it touches down: on a fast runner 30 frames weren't always enough.)
+	for i in 240:
 		await physics_frame
+		if ship == null or (i >= 30 and ship.is_on_floor()):
+			break
 	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
 	player.mount(ship)
 	var y0s: float = ship.global_position.y
@@ -1682,12 +1685,22 @@ func _fire_crew(game, world, player) -> void:
 	var cr := Creature.new()
 	cr.setup("test_fire_animal", ksp, Eras.MEDIEVAL, wp + Vector3(6, 0, 4), world.fauna)
 	world.fauna.add_child(cr)
-	world.fauna._herds[Vector2i(99998, 99998)] = [cr]
+	# In the herd of the chunk it stands in: a herd far from the player is let go (freed)
+	# on the fauna's next refresh, which on a fast runner came within these frames.
+	var hk := ChunkStreamer.chunk_of(wp + Vector3(6, 0, 4))
+	var had_herd: bool = world.fauna._herds.has(hk)
+	if not had_herd:
+		world.fauna._herds[hk] = []
+	world.fauna._herds[hk].append(cr)
 	await _frames(2)
 	fs._scare_animals()
-	check(cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
-	world.fauna._herds.erase(Vector2i(99998, 99998))
-	cr.queue_free()
+	check(is_instance_valid(cr) and cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
+	if world.fauna._herds.has(hk):
+		world.fauna._herds[hk].erase(cr)
+		if not had_herd and world.fauna._herds[hk].is_empty():
+			world.fauna._herds.erase(hk)
+	if is_instance_valid(cr):
+		cr.queue_free()
 	# Out: back to their day, bucket put away.
 	fs.douse_all()
 	n.stop_perform()
