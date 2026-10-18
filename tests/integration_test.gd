@@ -1009,7 +1009,19 @@ func _run() -> void:
 		if not player.frozen:
 			break
 	var home_seed: int = game.seed
-	var sh: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
+	# The ship sets down on dry, loaded ground near you: try round about rather than only
+	# straight ahead (a null there hung the run on sh.leaving).
+	var sh: Vehicle = null
+	for off: Vector3 in [Vector3(0, 0, -9), Vector3(9, 0, 0), Vector3(0, 0, 9), Vector3(-9, 0, 0), Vector3(0, 0, -16), Vector3(16, 0, 0)]:
+		if sh == null:
+			sh = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + off, 0.0)
+	check(sh != null, "a ship can be set down near the player (at %s)" % player.global_position)
+	if sh == null:
+		game.close_world()
+		WorldStore.delete_world(world_id)
+		print("integration: %d FAILED" % _fail)
+		quit(1)
+		return
 	for i in 10:
 		await physics_frame
 	player.mount(sh)
