@@ -2162,6 +2162,26 @@ func test_gaits() -> void:
 
 ## Everything a hand can hold is its real size (HeldScale): no six-foot pickaxes, in a
 ## villager's hand or yours, whoever is holding it.
+## The icon is the standard for an item's look: everything with an icon has a 3D model
+## (not its icon on a card, not a painted block) unless it's on GearModels.OWED, and an owed
+## item that gains a model must come off the list. tools/icon_match.gd shows each model
+## beside its icon to check they match.
+func test_icon_models() -> void:
+	var items := GearModels.icon_items()
+	check(items.size() > 600, "the icon sheets list the items (%d)" % items.size())
+	for t: String in items:
+		if not ItemDB.ITEMS.has(t):
+			continue
+		var prop := Viewmodel.prop_for(t)
+		var card := HeldScale.unmodelled(prop)
+		prop.free()
+		if GearModels.OWED.has(t):
+			check(card, "%s has a model now: take it off GearModels.OWED" % t)
+		else:
+			check(not card, "%s has an icon but no model: build it like its icon (or list it on GearModels.OWED)" % t)
+	for t: String in GearModels.OWED:
+		check(items.has(t), "%s is on GearModels.OWED but has no icon" % t)
+
 func test_held_scale() -> void:
 	var checked := 0
 	for t: String in ItemDB.ITEMS:
