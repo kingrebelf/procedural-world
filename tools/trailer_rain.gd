@@ -31,11 +31,11 @@ func _ready() -> void:
 	top_level = true
 	_rng.seed = 4242
 	var q := QuadMesh.new()
-	q.size = Vector2(0.008, 0.16)
+	q.size = Vector2(0.011, 0.22)
 	var m := StandardMaterial3D.new()
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-	m.albedo_color = Color(0.9, 0.93, 0.98, 0.45)
+	m.albedo_color = Color(0.92, 0.95, 1.0, 0.6)
 	m.roughness = 0.05
 	m.disable_receive_shadows = true
 	q.material = m

@@ -50,7 +50,7 @@ void fragment() {
 	}
 	// Shallower near its ragged rim, where the ground's grain breaks the surface.
 	float rim = smoothstep(edge, edge - 0.08, r);
-	vec3 n = normalize(vec3(-tilt.x * 0.5, 1.0, -tilt.y * 0.5));
+	vec3 n = normalize(vec3(-tilt.x * 0.9, 1.0, -tilt.y * 0.9));
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	ALBEDO = mix(vec3(0.06, 0.055, 0.05), vec3(0.015, 0.017, 0.02), rim);
 	ROUGHNESS = mix(0.35, 0.02, rim);

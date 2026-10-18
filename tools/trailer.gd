@@ -147,6 +147,19 @@ func _run() -> void:
 # --- Recording ----------------------------------------------------------------------
 
 ## Late in each frame (after everything else has moved): the camera's pose for the frame
+## Close-ups at the puddle are of the rain, not of whoever wanders past the lens: the
+## town's people within `people` metres of the camera stand still out of sight for the take.
+var _people_r := 0.0
+var _hidden: Array[Node3D] = []
+func _hide_people() -> void:
+	if _people_r <= 0.0 or world.npcs == null:
+		return
+	for n in world.npcs._by_id.values():
+		if is_instance_valid(n) and (n as Node3D).visible and (n as Node3D).global_position.distance_to(cam.global_position) < _people_r:
+			(n as Node3D).visible = false
+			(n as Node3D).process_mode = Node.PROCESS_MODE_DISABLED
+			_hidden.append(n)
+
 ## about to be drawn, the clock, and the held shader parameters.
 func _process(delta: float) -> void:
 	super._process(delta)
@@ -157,6 +170,7 @@ func _process(delta: float) -> void:
 	Game.day = lerpf(_day.x, _day.y, t)
 	for k in _hold:
 		RenderingServer.global_shader_parameter_set(k, _hold[k])
+	_hide_people()
 	if _tick.is_valid():
 		_tick.call(_rec_i, t)
 
@@ -184,6 +198,8 @@ func _record(name: String, secs: float, pose: Callable, opts := {}) -> void:
 		_day = Vector2(day_override, day_override)
 	_frames = maxi(2, int(round(secs * len_scale * fps)))
 	_set_weather(String(opts.get("weather", "clear")))
+	world.atmosphere.vfog_boost = float(opts.get("vfog", 1.0))
+	_people_r = float(opts.get("people", 0.0))
 	Game.day = _day.x
 	_rec_i = -1
 	_apply_pose(0.0)
@@ -202,6 +218,7 @@ func _record(name: String, secs: float, pose: Callable, opts := {}) -> void:
 	_shoo_creatures(at, 60.0, true)
 	if opts.has("setup"):
 		await (opts["setup"] as Callable).call()
+	_hide_people()
 	await _settle(world.player)
 	for i in (preroll if preroll >= 0 else int(opts.get("preroll", 60))):
 		Game.day = _day.x
@@ -232,6 +249,13 @@ func _record(name: String, secs: float, pose: Callable, opts := {}) -> void:
 	_hold.clear()
 	_tick = Callable()
 	_rain.stop()
+	world.atmosphere.vfog_boost = 1.0
+	_people_r = 0.0
+	for n in _hidden:
+		if is_instance_valid(n):
+			n.visible = true
+			n.process_mode = Node.PROCESS_MODE_INHERIT
+	_hidden.clear()
 	await _close(enc, name)
 	if mid:
 		mid.resize(1280, 720, Image.INTERPOLATE_LANCZOS)
@@ -496,7 +520,7 @@ func _take_rain_low() -> void:
 	var far: Vector3 = rs["look"]
 	await _record("rain_low", 9.0, _path([[_v3(cam2, gy + 0.42), far + Vector3(0, -0.6, 0)],
 		[_v3(cam2 + d * 0.45, gy + 0.36), far + Vector3(0, -0.8, 0)]]), {
-		"weather": "rain", "day": 0.47, "fov": 34.0, "preroll": 240,
+		"weather": "rain", "day": 0.47, "fov": 34.0, "preroll": 240, "people": 40.0,
 		"setup": func() -> void:
 			_wet()
 			_rain.start(puddle, 2.2, 1.5, 75.0)
@@ -518,7 +542,7 @@ func _take_rain_pov() -> void:
 	var puddle := _v3(cam2 + d * 1.7, gy)
 	var eye0 := _v3(cam2, gy + 1.65)
 	await _record("rain_pov", 7.0, _path([[eye0, puddle], [eye0 + Vector3(0, -0.02, 0), rs["look"]]]), {
-		"weather": "rain", "day": 0.47, "fov": 46.0, "preroll": 240,
+		"weather": "rain", "day": 0.47, "fov": 46.0, "preroll": 240, "people": 40.0,
 		"setup": func() -> void:
 			_wet()
 			_rain.start(puddle, 2.2, 1.5, 60.0)
@@ -565,7 +589,7 @@ func _take_storm_town() -> void:
 	var b := tc + dir * 140.0 + dir.orthogonal() * 25.0
 	var th := float(town["target_h"])
 	await _record("storm_town", 9.0, _path([[_v3(a, _ground(a) + 14.0), _v3(tc, th + 6.0)], [_v3(b, _ground(b) + 11.0), _v3(tc, th + 8.0)]]), {
-		"weather": "storm", "day": 0.6, "fov": 38.0, "preroll": 300,
+		"weather": "storm", "day": 0.6, "fov": 38.0, "preroll": 300, "vfog": 0.5,
 		"tick": func(i: int, _t: float) -> void:
 			if i == int(_frames * 0.25) or i == int(_frames * 0.7):
 				_strike()})
@@ -750,7 +774,7 @@ func _take_village_sunset() -> void:
 	await _record("village_sunset", 10.0, func(t: float) -> Array:
 		var a := deg_to_rad(lerpf(-80.0, -30.0, smoothstep(0.0, 1.0, t)))
 		var q := tc + Vector2.from_angle(a) * 95.0
-		return [_v3(q, y), _v3(tc, th + 4.0)], {"day": 0.735, "fov": 40.0})
+		return [_v3(q, y), _v3(tc, th + 4.0)], {"day": 0.72, "fov": 40.0, "vfog": 0.3})
 
 ## Night: the town's windows and hearths lit under a full moon, slowly pushing in.
 func _take_village_night() -> void:
@@ -797,4 +821,4 @@ func _take_finale() -> void:
 	var a := tc + d * 60.0
 	var b := tc + d * 420.0
 	await _record("finale", 12.0, _path([[_v3(a, th + 22.0), _v3(tc, th + 4.0)], [_v3(tc.lerp(b, 0.5), th + 90.0), _v3(tc, th)],
-		[_v3(b, th + 190.0), _v3(tc - d * 400.0, th + 40.0)]]), {"day": 0.70, "fov": 40.0})
+		[_v3(b, th + 190.0), _v3(tc - d * 400.0, th + 40.0)]]), {"day": 0.68, "fov": 40.0, "vfog": 0.3})
