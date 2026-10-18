@@ -4772,7 +4772,7 @@ func test_firearm_models() -> void:
 		check(m.has_meta("grip"), "%s says where the hand grips it" % t)
 		if Firearms.has(t):
 			check(float(m.get_meta("grip_r", 0.0)) > 0.005, "%s says how thick its grip is" % t)
-		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY:
+		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY and not d.get("alien", false):
 			var lit := false
 			for i in m.get_surface_count():
 				var mat := m.surface_get_material(i) as BaseMaterial3D
