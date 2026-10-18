@@ -14,7 +14,7 @@ extends "res://tools/capture.gd"
 ## enough to pass round for review), TAKE_mid.jpg and TAKE.json (what was found where).
 
 const TAKES := ["rain_low", "rain_pov", "storm_town", "sunrise_peaks", "fly_rainforest", "fly_savanna", "fly_boreal",
-	"fly_karst", "fly_needles", "waterfall_rise", "lake_glide", "cog_orbit", "cog_wake", "rowboat", "town_flyin",
+	"fly_karst", "fly_needles", "fly_gorge", "waterfall_rise", "lake_glide", "cog_orbit", "cog_wake", "rowboat", "town_flyin",
 	"market_dolly", "village_sunset", "village_night", "night_sky", "finale"]
 
 var fps := 60
@@ -39,6 +39,8 @@ var _day := Vector2(0.42, 0.42)
 var _fov := 40.0
 var _hold := {} ## global shader parameters held every frame (weather_puddle_g ...)
 var _rain: HeroRain
+const TAG_LAYER := 1 << 19
+const LIFT := 60.0 ## metres the (hidden) player hangs over the camera
 const HeroRain := preload("res://tools/trailer_rain.gd")
 
 func _ready() -> void:
@@ -98,12 +100,37 @@ func _run() -> void:
 	var p: Player = world.player
 	p.set_physics_process(false)
 	p.visible = false
+	if p.body:
+		p.body.visible = false
 	cam = Camera3D.new()
 	cam.name = "TrailerCamera"
 	cam.near = 0.05
 	cam.far = 6000.0
+	# Speech and name tags (Label3D) go on a layer this camera doesn't draw.
+	cam.cull_mask &= ~TAG_LAYER
 	world.add_child(cam)
 	cam.current = true
+	for n in world.find_children("*", "Label3D", true, false):
+		(n as Label3D).layers = TAG_LAYER
+	get_tree().node_added.connect(func(n: Node) -> void:
+		if n is Label3D:
+			(n as Label3D).layers = TAG_LAYER)
+	# The world streams, lights and rains round the camera, not the player: the player
+	# hangs well above it (out of sight), so villagers don't walk up to greet the lens.
+	world.streamer.set_target(cam)
+	world.atmosphere.target = cam
+	for k in ["Water", "ClimateWear", "FarLand"]:
+		var n := world.get_node_or_null(k)
+		if n and "target" in n:
+			n.set("target", cam)
+	# Reflections that don't give up half way across a puddle (the game's 48 steps leave
+	# holes where the sky shows through).
+	world.atmosphere.env.ssr_max_steps = 256
+	world.atmosphere.env.ssr_depth_tolerance = 0.3
+	var w := _weather()
+	if w:
+		# The weather a take asks for, at once (no minute of clouds gathering).
+		w.set("ease_time", 0.0)
 	_rain = HeroRain.new()
 	world.add_child(_rain)
 	DirAccess.make_dir_recursive_absolute(out_dir)
@@ -142,8 +169,7 @@ func _apply_pose(t: float) -> void:
 	if not eye.is_equal_approx(look):
 		var up := Vector3.UP if absf((look - eye).normalized().y) < 0.99 else Vector3.FORWARD
 		cam.look_at(look, up)
-	# The world streams round the player: keep it with the camera.
-	world.player.global_position = eye - Vector3(0, 1.6, 0)
+	world.player.global_position = eye + Vector3(0, LIFT, 0)
 
 ## Records one take: puts the camera at its first pose, lets the land load and the light
 ## settle, rolls `preroll` frames unrecorded (rain filling the air, the eye adapting),
@@ -255,9 +281,6 @@ func _close(enc: Dictionary, name: String) -> void:
 	var pid := int(enc["pid"])
 	while OS.is_process_running(pid):
 		await get_tree().process_frame
-	var err := (enc["stderr"] as FileAccess).get_as_text() if enc.has("stderr") else ""
-	if err.strip_edges() != "":
-		print("  ffmpeg: ", err.strip_edges())
 	var dir := ProjectSettings.globalize_path(out_dir)
 	var out := []
 	OS.execute(ffmpeg, PackedStringArray(["-y", "-hide_banner", "-loglevel", "error", "-i", dir.path_join(name + ".mp4"),
@@ -279,12 +302,18 @@ func _weather() -> Node:
 ## Holds the ground soaked and the hollows brimming for the take (with the weather).
 func _wet() -> void:
 	if _weather():
-		_hold = {"weather_wet_g": 1.0, "weather_puddle_g": 1.0, "weather_rain_g": 1.0}
+		_hold = {"weather_wet_g": 1.0, "weather_puddle_g": 0.55, "weather_rain_g": 1.0}
 
 func _strike() -> void:
 	var w := _weather()
 	if w and "strike_now" in w:
 		w.set("strike_now", true)
+
+## The capture tour's sight-line check, with the camera (which the land now streams
+## round) taken along to the spot.
+func _clear_view(cands: Array, target: Vector3, eye_h: float, near: float, min_y := -INF) -> Vector2:
+	cam.global_position = target + Vector3(0, 20, 0)
+	return await super._clear_view(cands, target, eye_h, near, min_y)
 
 # --- Paths ----------------------------------------------------------------------------
 
@@ -345,10 +374,34 @@ func _v3(q: Vector2, y: float) -> Vector3:
 var _town_cache := {}
 func _town() -> Dictionary:
 	if _town_cache.is_empty():
-		_town_cache = _find_settlement(gen, Eras.MEDIEVAL, 2) if gen.towns else {}
+		_town_cache = _mild_town(2) if gen.towns else {}
+		if _town_cache.is_empty():
+			_town_cache = _mild_town(0)
 		if _town_cache.is_empty():
 			_town_cache = _find_settlement(gen, Eras.MEDIEVAL)
+		print("trailer: town at ", _town_cache.get("center"))
 	return _town_cache
+
+## The nearest medieval town of at least min_size in a mild climate: no snow on its roofs
+## or its firs (ClimateWear), well below the snow line, its tiles red in the sun.
+func _mild_town(min_size: int) -> Dictionary:
+	for r in 40:
+		for sz in range(-r, r + 1):
+			for sx in range(-r, r + 1):
+				if maxi(absi(sx), absi(sz)) != r:
+					continue
+				var s := gen.settlement_at(sx, sz)
+				if s.is_empty() or s["era"] != Eras.MEDIEVAL or int(s["size"]) < min_size:
+					continue
+				var c: Vector2 = s["center"]
+				var mild := true
+				for o in [Vector2.ZERO, Vector2(250, 0), Vector2(-250, 0), Vector2(0, 250), Vector2(0, -250)]:
+					var q: Vector2 = c + o
+					if ClimateWear.levels(gen.field, q.x, q.y).g > 0.02 or gen.field.height(q.x, q.y) > WorldField.snow_line - 160.0:
+						mild = false
+				if mild:
+					return s
+	return {}
 
 ## The market square of the biggest town near spawn: {c, rad, mid (well/cross), stalls}.
 func _square() -> Dictionary:
@@ -433,23 +486,20 @@ func _sail(kind: String, route_t: float) -> BoatNode:
 ## Rain falling into a puddle on the market square, the camera a hand's breadth over the
 ## water, the stalls and houses mirrored in it and soft behind; it creeps forward.
 func _take_rain_low() -> void:
-	var sq := _square()
-	if sq.is_empty():
+	var rs: Dictionary = await _rain_spot()
+	if rs.is_empty():
 		return
-	var c: Vector2 = sq["c"]
-	var look2: Vector2 = (sq["stalls"][0] if not (sq["stalls"] as Array).is_empty() else sq["mid"])
-	var d := (look2 - c).normalized() if look2 != c else Vector2(1, 0)
-	var spot := c - d * 2.0
-	var gy := _ground(spot)
-	var puddle := _v3(spot + d * 1.4, gy)
-	var eye0 := _v3(spot, gy + 0.16)
-	var eye1 := _v3(spot + d * 0.5, gy + 0.13)
-	var look := _v3(look2, gy + 1.2)
-	await _record("rain_low", 9.0, _path([[eye0, look], [eye1, look + Vector3(0, -0.3, 0)]]), {
-		"weather": "storm", "day": 0.47, "fov": 32.0, "preroll": 240,
+	var d: Vector2 = rs["d"]
+	var gy: float = rs["gy"]
+	var cam2: Vector2 = rs["cam"]
+	var puddle := _v3(cam2 + d * 1.7, gy)
+	var far: Vector3 = rs["look"]
+	await _record("rain_low", 9.0, _path([[_v3(cam2, gy + 0.42), far + Vector3(0, -0.6, 0)],
+		[_v3(cam2 + d * 0.45, gy + 0.36), far + Vector3(0, -0.8, 0)]]), {
+		"weather": "rain", "day": 0.47, "fov": 34.0, "preroll": 240,
 		"setup": func() -> void:
 			_wet()
-			_rain.start(puddle, 2.4, 1.9, 70.0)
+			_rain.start(puddle, 2.2, 1.5, 75.0)
 			await _wait(1),
 		"tick": func(i: int, _t: float) -> void:
 			if i == int(_frames * 0.85):
@@ -457,24 +507,51 @@ func _take_rain_low() -> void:
 		"note": "puddle at %s" % puddle})
 
 ## The same puddle seen as you would standing over it: eyes down at the rain hitting the
-## water at your feet.
+## water at your feet, then up to the square.
 func _take_rain_pov() -> void:
-	var sq := _square()
-	if sq.is_empty():
+	var rs: Dictionary = await _rain_spot()
+	if rs.is_empty():
 		return
-	var c: Vector2 = sq["c"]
-	var look2: Vector2 = (sq["stalls"][0] if not (sq["stalls"] as Array).is_empty() else sq["mid"])
-	var d := (look2 - c).normalized() if look2 != c else Vector2(1, 0)
-	var spot := c - d * 2.0
-	var gy := _ground(spot)
-	var puddle := _v3(spot + d * 1.4, gy)
-	var eye0 := _v3(spot - d * 0.2, gy + 1.65)
-	await _record("rain_pov", 7.0, _path([[eye0, puddle + _v3(d * 0.2, 0.0)], [eye0 + Vector3(0, -0.02, 0), puddle + _v3(d * 2.5, 0.6)]]), {
+	var d: Vector2 = rs["d"]
+	var gy: float = rs["gy"]
+	var cam2: Vector2 = rs["cam"]
+	var puddle := _v3(cam2 + d * 1.7, gy)
+	var eye0 := _v3(cam2, gy + 1.65)
+	await _record("rain_pov", 7.0, _path([[eye0, puddle], [eye0 + Vector3(0, -0.02, 0), rs["look"]]]), {
 		"weather": "rain", "day": 0.47, "fov": 46.0, "preroll": 240,
 		"setup": func() -> void:
 			_wet()
-			_rain.start(puddle, 2.4, 1.9, 55.0)
+			_rain.start(puddle, 2.2, 1.5, 60.0)
 			await _wait(1)})
+
+## A spot on the market square with open ground in front and a stall or house to look
+## at beyond it: {cam, d (the way it looks), gy, look}.
+var _rain_cache := {}
+func _rain_spot() -> Dictionary:
+	if not _rain_cache.is_empty():
+		return _rain_cache
+	var sq := _square()
+	if sq.is_empty():
+		return {}
+	var c: Vector2 = sq["c"]
+	var r: float = sq["rad"]
+	var looks: Array = (sq["stalls"] as Array).duplicate()
+	looks.append(c)
+	for lk: Vector2 in looks:
+		var cands := []
+		for k in 12:
+			var dir := Vector2.from_angle(TAU * k / 12.0)
+			for dist in [9.0, 12.0, 7.0]:
+				var q: Vector2 = lk + dir * dist
+				if q.distance_to(c) < r and q.distance_to(sq["mid"]) > 3.5:
+					cands.append(q)
+		var gl := _ground(lk)
+		var got: Vector2 = await _clear_view(cands, _v3(lk, gl + 1.2), 1.7, 1.5)
+		if got != Vector2.INF:
+			var d := (lk - got).normalized()
+			_rain_cache = {"cam": got, "d": d, "gy": _ground(got), "look": _v3(lk, gl + 1.4)}
+			return _rain_cache
+	return {}
 
 ## The town under a thunderstorm from the road outside its walls; two strikes.
 func _take_storm_town() -> void:
@@ -498,13 +575,16 @@ func _take_storm_town() -> void:
 func _take_sunrise_peaks() -> void:
 	var peak := _peak()
 	var top := Vector2(peak.x, peak.z)
+	# Stand on the sun's side, so the first light falls on the faces we look at.
+	Game.day = 0.27
+	await _wait(3)
+	var sd := Vector2(Atmosphere.sun_dir.x, Atmosphere.sun_dir.z)
+	var sun2 := sd.normalized() if sd.length() > 0.01 else Vector2(1, 0)
 	var best := Vector2.INF
-	var low := INF
-	for k in 16:
-		var q := top + Vector2.from_angle(TAU * k / 16.0) * 600.0
+	for k in 9:
+		var q := top + sun2.rotated(deg_to_rad((k - 4) * 12.0)) * 650.0
 		var h := gen.field.height(q.x, q.y)
-		if h > WATER_SAFE + 1.0 and h < low:
-			low = h
+		if h > WATER_SAFE + 1.0 and (best == Vector2.INF or h < gen.field.height(best.x, best.y)):
 			best = q
 	if best == Vector2.INF:
 		return
@@ -512,7 +592,7 @@ func _take_sunrise_peaks() -> void:
 	var b := best + d * 120.0
 	var y0 := _ridge(best, b, 30.0) + 30.0
 	await _record("sunrise_peaks", 10.0, _path([[_v3(best, y0), _v3(top, peak.y - 40.0)], [_v3(b, y0 + 10.0), _v3(top, peak.y - 30.0)]]), {
-		"day": Vector2(0.215, 0.31), "fov": 36.0})
+		"day": Vector2(0.235, 0.33), "fov": 36.0})
 
 func _fly_over(name: String, at: Vector2, day: float, dir_deg: float, clear := 32.0) -> void:
 	if at == Vector2.INF:
@@ -529,6 +609,9 @@ func _take_fly_savanna() -> void:
 
 func _take_fly_boreal() -> void:
 	await _fly_over("fly_boreal", _climate_spot(CLIMATE_SHOTS["95_boreal"]), 0.33, 120.0, 30.0)
+
+func _take_fly_gorge() -> void:
+	await _fly_over("fly_gorge", _landform_spot(WorldField.LF_GORGE), 0.36, 70.0, 20.0)
 
 func _take_fly_karst() -> void:
 	await _fly_over("fly_karst", _landform_spot(WorldField.LF_KARST), 0.40, 200.0, 18.0)
@@ -594,8 +677,8 @@ func _take_cog_wake() -> void:
 	if b == null:
 		return
 	await _record("cog_wake", 9.0, func(t: float) -> Array:
-		var eye := b.to_global(Vector3(18.0 - 8.0 * t, 0.0, 34.0 - 6.0 * t))
-		eye.y = Water.LEVEL + 16.0 - 4.0 * t
+		var eye := b.to_global(Vector3(12.0 - 6.0 * t, 0.0, 30.0 - 6.0 * t))
+		eye.y = Water.LEVEL + 7.0 - 2.5 * t
 		return [eye, b.to_global(Vector3(0, 0.0, 18.0))], {"day": 0.44, "fov": 40.0, "preroll": 30})
 
 ## Alongside a small boat as her crew pull at the oars.
@@ -632,12 +715,28 @@ func _take_market_dolly() -> void:
 	var mid: Vector2 = sq["mid"]
 	var r: float = sq["rad"]
 	var stall: Vector2 = sq["stalls"][0] if not (sq["stalls"] as Array).is_empty() else c + Vector2(r, 0)
-	var d := (stall - mid).normalized()
-	var side := d.orthogonal()
-	var a := mid - d * 3.0 - side * (r * 0.5)
-	var b := mid - d * 3.0 + side * (r * 0.5)
-	var gy := _ground(mid)
-	await _record("market_dolly", 9.0, _path([[_v3(a, gy + 2.0), _v3(stall - side * 3.0, gy + 1.3)], [_v3(b, gy + 2.3), _v3(stall + side * 3.0, gy + 1.3)]]), {
+	var gs := _ground(stall)
+	var tgt := _v3(stall, gs + 1.3)
+	# Two clear spots facing the stall from across the square, a few metres apart, and
+	# well off the well or cross in the middle.
+	var cands := []
+	for k in 16:
+		var q := stall + Vector2.from_angle(TAU * k / 16.0) * 9.0
+		if q.distance_to(c) < r + 2.0 and q.distance_to(mid) > 4.5:
+			cands.append(q)
+	var a: Vector2 = await _clear_view(cands, tgt, 1.7, 1.5)
+	if a == Vector2.INF:
+		return
+	var side := (stall - a).normalized().orthogonal()
+	var bc := []
+	for off in [6.0, -6.0, 4.0, -4.0]:
+		var q: Vector2 = a + side * off
+		if q.distance_to(mid) > 4.5:
+			bc.append(q)
+	var b: Vector2 = await _clear_view(bc, tgt, 1.7, 1.5)
+	if b == Vector2.INF:
+		b = a
+	await _record("market_dolly", 9.0, _path([[_v3(a, _ground(a) + 2.0), tgt + _v3(-side * 1.5, 0.0)], [_v3(b, _ground(b) + 2.2), tgt + _v3(side * 1.5, 0.0)]]), {
 		"day": 0.43, "fov": 40.0})
 
 ## Round the town at sunset, the low sun raking the roofs.
@@ -660,11 +759,17 @@ func _take_village_night() -> void:
 		return
 	var tc: Vector2 = town["center"]
 	var th := float(town["target_h"])
-	var a := tc + Vector2(55, -45)
-	var b := tc + Vector2(40, -32)
+	var cands := []
+	for k in 12:
+		for dist in [60.0, 75.0, 50.0]:
+			cands.append(tc + Vector2.from_angle(TAU * k / 12.0 + 0.3) * dist)
+	var a: Vector2 = await _clear_view(cands, _v3(tc, th + 3.0), 9.0, 12.0)
+	if a == Vector2.INF:
+		return
+	var b := a.lerp(tc, 0.25)
 	var keep := Atmosphere.moon_phase_override
 	Atmosphere.moon_phase_override = 0.5
-	await _record("village_night", 9.0, _path([[_v3(a, _ground(a) + 4.0), _v3(tc, th + 2.0)], [_v3(b, _ground(b) + 3.0), _v3(tc, th + 2.5)]]), {
+	await _record("village_night", 9.0, _path([[_v3(a, _ground(a) + 9.0), _v3(tc, th + 2.0)], [_v3(b, maxf(_ground(b), _ground(a)) + 8.0), _v3(tc, th + 2.5)]]), {
 		"day": 0.93, "fov": 42.0})
 	Atmosphere.moon_phase_override = keep
 

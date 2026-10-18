@@ -20,6 +20,7 @@ var _crowns: Array[GPUParticles3D] = []
 var _next_crown := 0
 var _puddle: MeshInstance3D
 var _puddle_mat: ShaderMaterial
+var _probe: ReflectionProbe
 var _rings := PackedVector4Array()
 var _next_ring := 0
 var _owed := 0.0
@@ -30,11 +31,11 @@ func _ready() -> void:
 	top_level = true
 	_rng.seed = 4242
 	var q := QuadMesh.new()
-	q.size = Vector2(0.005, 0.12)
+	q.size = Vector2(0.008, 0.16)
 	var m := StandardMaterial3D.new()
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
-	m.albedo_color = Color(0.86, 0.9, 0.96, 0.32)
+	m.albedo_color = Color(0.9, 0.93, 0.98, 0.45)
 	m.roughness = 0.05
 	m.disable_receive_shadows = true
 	q.material = m
@@ -93,6 +94,13 @@ func _ready() -> void:
 	_puddle.visible = false
 	add_child(_puddle)
 	_rings.resize(RINGS)
+	# What the puddle mirrors where the screen has nothing to reflect (above the frame).
+	_probe = ReflectionProbe.new()
+	_probe.size = Vector3(40, 16, 40)
+	_probe.box_projection = true
+	_probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
+	_probe.visible = false
+	add_child(_probe)
 
 ## Rain round `center` (on the ground) over a square `area` metres either side, `rate`
 ## drops a second, with a puddle `radius` metres across lying there.
@@ -105,11 +113,14 @@ func start(center: Vector3, area: float, radius: float, rate: float) -> void:
 	_puddle.global_position = center + Vector3(0, 0.012, 0)
 	_puddle_mat.set_shader_parameter("radius", radius)
 	_puddle.visible = true
+	_probe.global_position = center + Vector3(0, 1.2, 0)
+	_probe.visible = true
 	_rings.fill(Vector4.ZERO)
 
 func stop() -> void:
 	_on = false
 	_puddle.visible = false
+	_probe.visible = false
 	for d in _drops:
 		d.visible = false
 
