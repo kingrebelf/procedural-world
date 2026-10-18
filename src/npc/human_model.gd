@@ -275,6 +275,12 @@ func wear(worn: Dictionary) -> void:
 		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			mi.visible = not _arms
+	_keep_layer()
+
+## What was just put on or taken up joins the rest of the body on the Movers layer.
+func _keep_layer() -> void:
+	if animator != null and animator.far:
+		Movers.set_far(self, true)
 
 func _shield_mesh(item: Dictionary) -> Node3D:
 	var lk := Outfit.look_of(item)
@@ -366,8 +372,9 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	var cols: Dictionary = _wardrobe["cols"]
 	var accent := Color(0, 0, 0, 0)
 	if era == Eras.SCIFI:
-		# Glowing seams are alien fashion; human outposts wear plain work clothes.
-		accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
+		# Glowing seams are alien fashion, worn only on alien worlds. Human outposts wear
+		# plain work clothes, on human worlds and on older worlds without a theme alike.
+		accent = Color(0.3, 0.9, 1.0, 1.0 if Eras.theme == "alien" else 0.0)
 	# The body under the garments is painted in the same colours, and drawn a little
 	# inside them (human.gdshader), so nothing shows through where they bend.
 	var shirt: Color = cols[Outfit.PART_SHIRT]
@@ -618,8 +625,17 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 	if gestures:
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(prop)
-	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	_shade_held()
+	_keep_layer()
+
+## What the hand holds casts no shadow on the first-person arms, nor from a shadow-only
+## body: that body's copy sits almost where the first-person one is drawn, and with the sun
+## behind you its shadow blacked out the tool in your hand.
+func _shade_held() -> void:
+	if _held == null:
+		return
+	for mi in _held.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms or _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 ## The scale a prop is held at so it stays its real size however tall this person is
 ## drawn (NPC sets the whole body's scale to their stature): a short woman's pickaxe is
@@ -801,6 +817,7 @@ func set_shadow_only(on: bool) -> void:
 		if _no_shadow(mi):
 			# They cast no shadow, so a body seen only by its shadow hides them outright.
 			(mi as MeshInstance3D).visible = not on
+	_shade_held()
 
 ## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
 ## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.

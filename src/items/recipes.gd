@@ -39,6 +39,13 @@ const LIST := [
 	{"out": "dummy", "qty": 1, "in": {"wood": 3, "fiber": 6}, "at": "workbench"},
 	{"out": "market_stall", "qty": 1, "in": {"planks": 10, "fiber": 6}, "at": "workbench"},
 	{"out": "cart", "qty": 1, "in": {"planks": 8, "iron_ingot": 1}, "at": "workbench"},
+	# Small boats (Sailing): logs lashed with rope under a cloth sail; then plank and resin.
+	{"out": "sail_raft", "qty": 1, "in": {"wood": 7, "rope": 3, "cloth": 2}, "at": "workbench"},
+	{"out": "paddle_canoe", "qty": 1, "in": {"planks": 1}, "at": "workbench"},
+	{"out": "paddle_kayak", "qty": 1, "in": {"planks": 1, "wood": 1, "resin": 1}, "at": "workbench"},
+	{"out": "canoe", "qty": 1, "in": {"planks": 8, "resin": 2, "paddle_canoe": 1}, "at": "workbench"},
+	{"out": "kayak", "qty": 1, "in": {"planks": 6, "hide": 4, "resin": 2, "paddle_kayak": 1}, "at": "workbench"},
+	{"out": "rowboat", "qty": 1, "in": {"planks": 12, "iron_nails": 10, "resin": 2}, "at": "workbench"},
 	{"out": "apple_crate", "qty": 1, "in": {"planks": 2, "wild_berries": 4}, "at": "workbench"},
 	{"out": "apple_barrel", "qty": 1, "in": {"planks": 3, "wild_berries": 6}, "at": "workbench"},
 	{"out": "metal_crate", "qty": 1, "in": {"planks": 3, "iron_ingot": 2}, "at": "workbench"},

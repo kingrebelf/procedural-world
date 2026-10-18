@@ -57,8 +57,16 @@ static func mat(kind: String, rough := -1.0, world := false, detail := "") -> Sh
 	var key := "%s@%.2f@%s@%s" % [kind, rough, world, detail]
 	_lock.lock()
 	var m: ShaderMaterial = _cache.get(key)
+	_lock.unlock()
+	if m != null:
+		return m
+	# Made outside the lock (see Materials._share): loading the shader can wait on the
+	# main thread, which may be asking for a metal itself.
+	var made := _make(kind, rough, world, detail)
+	_lock.lock()
+	m = _cache.get(key)
 	if m == null:
-		m = _make(kind, rough, world, detail)
+		m = made
 		_cache[key] = m
 	_lock.unlock()
 	return m
@@ -99,8 +107,11 @@ static func _make(kind: String, rough: float, world: bool, detail: String) -> Sh
 ## Seamless noise: "smudge" soft blotches, "scratch" thin streaks (stretched), "dimple"
 ## the round hollows a hammer leaves (cellular, as a normal map).
 static func _noise(key: String, freq: float, octaves: int, dimples: bool, stretch := Vector2.ONE) -> NoiseTexture2D:
-	if _tex.has(key):
-		return _tex[key]
+	_lock.lock()
+	var had: NoiseTexture2D = _tex.get(key)
+	_lock.unlock()
+	if had != null:
+		return had
 	var n := FastNoiseLite.new()
 	n.seed = WHash.str_hash("metal_" + key) & 0xFFFF
 	n.frequency = freq
@@ -125,5 +136,10 @@ static func _noise(key: String, freq: float, octaves: int, dimples: bool, stretc
 		t.bump_strength = 4.0
 	else:
 		t.normalize = true
-	_tex[key] = t
+	_lock.lock()
+	if _tex.has(key):
+		t = _tex[key]
+	else:
+		_tex[key] = t
+	_lock.unlock()
 	return t

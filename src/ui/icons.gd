@@ -185,9 +185,27 @@ const MORE_SHEETS := [
 		"hydrogen_cell", "fusion_pellets", "rocket_fuel", "plasma_fuel", "void_fuel", "star_fuel",
 	]],
 	# Fire (tools/place_icon.py, one item per cell): the fire pot, and the incendiary
-	# grenade ahead of its item.
+	# grenade ahead of its item; then power pieces and the town watch's things
+	# (plans/icon-prompts-2026-10-18.md, art/icons/v3 in project files). Cells 15-17 hold
+	# the field cannon, cannon_ball and hot_shot, named when fire stage 3 brings the items.
 	["res://assets/icons/items25.png", [
-		"fire_pot", "incendiary_grenade", "", "", "", "",
+		"fire_pot", "incendiary_grenade", "lamp_ceiling", "lamp_wall", "floodlight", "street_lamp",
+		"searchlight", "light_bulb", "knife_switch", "lever", "push_button", "pressure_plate",
+		"motion_sensor", "daylight_sensor", "flame_trap", "", "", "",
+		"treasure_chip", "watch_tabard", "grappling_hook", "writ", "watch_keys", "logic_timer",
+		"logic_clock", "logic_gate", "logic_latch", "logic_counter", "logic_delay", "relay",
+	]],
+	["res://assets/icons/items26.png", [
+		"charge_sensor", "door_motor", "electric_motor", "multimeter", "alarm_bell", "gen_woodgas",
+		"gen_diesel", "windmill", "solar_array", "steam_engine", "water_wheel", "battery_bank",
+		"battery_cell", "power_pole", "junction_box", "signal_wire", "insulator", "conveyor_belt",
+		"hopper", "robot_arm", "auto_miner", "quarry_drill", "electric_furnace", "power_sawmill",
+		"assembler", "auto_turret", "heavy_turret", "fence_post", "spike_trap", "",
+	]],
+	# Boats (Sailing), painted for the sailing patch; the bigger boats' cells wait for
+	# their items.
+	["res://assets/icons/boats.png", [
+		"sail_raft", "canoe", "kayak", "rowboat", "paddle_canoe", "paddle_kayak",
 		"", "", "", "", "", "",
 		"", "", "", "", "", "",
 		"", "", "", "", "", "",

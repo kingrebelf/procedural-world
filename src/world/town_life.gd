@@ -1308,9 +1308,11 @@ func _lantern(models: Array, root: Node3D, e: Dictionary, o2: Vector2, oy: float
 	var at := Vector3(p2.x - o2.x, float(e["y"]), p2.y - o2.y)
 	var m := ["props/Lantern_Wall", rad_to_deg(float(e["yaw"])), at, 1.0]
 	models.append(m)
-	# The wick burning behind the lantern's glass, which glows with it from any side.
+	# The wick burning behind the lantern's glass, which glows with it from any side. Its
+	# light is strong enough to pool on the wall and the street below, so the lantern
+	# reads as lit from across a square at night (render IG found 1.1 barely showed).
 	var f: Array = FireFx.prop_flames([m])[0]
-	_flame(root, f[0], float(f[1]), 1.1, 6.5, FireFx.prop_flame(f))
+	_flame(root, f[0], float(f[1]), 1.8, 8.0, FireFx.prop_flame(f))
 
 ## A real flame with its firelight, both only lit after dark (`fl`, a prop's own flame
 ## from FireFx.prop_flame, or an open one `size` tall).

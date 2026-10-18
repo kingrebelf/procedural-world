@@ -362,6 +362,7 @@ func _update_time_of_day() -> void:
 		get_tree().set_group(WindowLight.GROUP, "light_energy", fill)
 	# Lamps are lit in the windows as the sun goes down, and put out after sunrise.
 	Materials.set_window_light(1.0 - smoothstep(-0.02, 0.16, elev))
+	Materials.set_screen_clock(Game.day)
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)
@@ -384,7 +385,7 @@ func _update_time_of_day() -> void:
 	# moonlight, warm windows) instead of dusk, but the land stays readable. Under a bright
 	# moon it is held back more (a full moon read as dusk), on a moonless night it adapts
 	# further. Underground it adapts fully to the torch.
-	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(55.0, 105.0, moonlit), 60.0, maxf(daylight, underground))
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(65.0, 135.0, moonlit), 60.0, maxf(daylight, underground))
 	# The eye loses colour in the dark (rod vision): FrameMend greys and blues the dim
 	# moonlit parts of the frame, leaving lamplight warm.
 	FrameMend.night = (1.0 - daylight) * (1.0 - underground)
@@ -453,9 +454,14 @@ func _update_time_of_day() -> void:
 	# much by itself, so part of the night fill is a flat cool starlight: on a moonless
 	# night the land, the trees and the skyline still stand out as dim shapes.
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
+	# Bloom spreads a blur of the whole frame over it. At night the eye opens wide and a
+	# fire or a lamp is most of what that blur holds, so it laid a warm wash over the cool
+	# moonlit land and the sky, turning them lilac. At night only what really outshines
+	# its surroundings (past the glow threshold) glows.
+	env.glow_bloom = 0.08 * (1.0 - 0.8 * dark)
 	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
 	env.ambient_light_color = Color(0.14, 0.17, 0.25)
-	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.45 + 0.3 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
 	# With GI on, the shade's fill comes from the GI rather than the ambient above, and
 	# by day it fell short of the sky and sunlit ground a wall in shade looks out on.

@@ -43,14 +43,14 @@ const BLOOD_RED := Color(0.45, 0.01, 0.03, 0.94)
 const LEAF_GREEN := Color(0.04, 0.36, 0.1, 0.9)
 const GOLDEN := Color(0.7, 0.42, 0.04, 0.9)
 const WATER := Color(0.82, 0.92, 0.96, 0.03)
-const WHISKY := Color(0.46, 0.17, 0.01, 0.96)
-const HONEY := Color(0.68, 0.33, 0.0, 0.96)
+const WHISKY := Color(0.5, 0.25, 0.03, 0.96)
+const HONEY := Color(0.72, 0.42, 0.02, 0.96)
 const COLA := Color(0.13, 0.04, 0.02, 0.96)
 const VIOLET := Color(0.38, 0.08, 0.6, 0.86)
 const CHARTREUSE := Color(0.4, 0.44, 0.07, 0.9)
 const AMBER_DRINK := Color(0.55, 0.2, 0.02, 0.92)
 const ICE_BLUE := Color(0.42, 0.68, 0.64, 0.5)
-const OIL := Color(0.42, 0.28, 0.04, 0.95)
+const OIL := Color(0.5, 0.36, 0.06, 0.95)
 const IODINE := Color(0.35, 0.08, 0.02, 0.95)
 
 # --- Building blocks --------------------------------------------------------------------
@@ -385,6 +385,20 @@ static func _std(rough: float, metal := 0.0, tex := "", freq := 0.1, scale := 12
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+## The liquid shows what is behind it through its colour, as a real one does (whisky held
+## to the sky turns amber, wine stays dark), instead of a lit coat of paint: the screen
+## behind, bent a little, times the liquid's colour taken as how much light it lets
+## through. It never shines brighter than what is behind it.
+const LIQUID_FROM := "void fragment() {"
+const LIQUID_TO := """uniform sampler2D behind : hint_screen_texture, filter_linear_mipmap;
+
+void fragment() {
+	// Heavily blurred, as through a thick curved bottle: what is behind (the fingers round
+	// it) shows only as a soft glow, never as sharp bands.
+	vec3 seen = textureLod(behind, SCREEN_UV - NORMAL.xy * 0.015, 5.0).rgb;
+	seen = mix(seen, vec3(dot(seen, vec3(0.333))), 0.3);
+	EMISSION = seen * min(to_linear(COLOR.rgb) * 2.8, vec3(1.0));"""
+
 static func _glassy(rough: float, edge: float, through: float, priority: int, spec := 0.5) -> ShaderMaterial:
 	if _glass_shader == null:
 		_glass_shader = load("res://src/items/glass.gdshader")
@@ -395,7 +409,9 @@ static func _glassy(rough: float, edge: float, through: float, priority: int, sp
 		# the bottle) stays behind it instead of veiling it in white.
 		if _liquid_shader == null:
 			_liquid_shader = Shader.new()
-			_liquid_shader.code = _glass_shader.code.replace("depth_draw_opaque", "depth_draw_always")
+			_liquid_shader.code = _glass_shader.code.replace("depth_draw_opaque", "depth_draw_always").replace(LIQUID_FROM, LIQUID_TO) \
+				.replace("ALBEDO = tint;", "ALBEDO = tint * 0.15;").replace("ALPHA = mix(COLOR.a, edge_alpha, f);", "ALPHA = 1.0;") \
+				.replace("BACKLIGHT = tint * through;", "")
 		m.shader = _liquid_shader
 	m.set_shader_parameter("rough", rough)
 	m.set_shader_parameter("edge_alpha", edge)

@@ -101,6 +101,11 @@ const PISTOL_GRIP := Vector3(0.0, -0.15, -0.34)
 const HEAVY_GRIP := Vector3(0.14, -0.32, -0.2)
 const BOW_GRIP := Vector3(0.1, -0.12, -0.38)
 const BOW_CANT := 0.3
+## Pistol-grip power tools (a drill-like body) turned in toward the middle of the view and
+## tipped a little, so you see their side and the chuck, not just the battery end.
+const POWER_TOOLS := ["laser_cutter", "mining_laser"]
+const POWER_TOE := 0.55
+const POWER_TIP := 0.12
 ## A pick's point or a hammer's face is turned this far left of straight ahead: it leads
 ## the swing, but enough of the head's side shows that it reads as a pick (seen exactly
 ## end-on it is a thin spike).
@@ -328,6 +333,9 @@ static func model(t: String) -> ArrayMesh:
 	elif Provisions.has(t):
 		# A bottle thrown as a weapon (the fire bottle) is still the bottle.
 		out = Provisions.model(t)
+	elif GearModels.has(t):
+		# A tool modelled with the parts and gear (the multimeter).
+		out = GearModels.model(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():
@@ -557,6 +565,8 @@ func _hold_gun() -> void:
 	var shoulder := LONG_BUTT - BUTT_POCKET if m.has_meta("fore") else SHOULDER_AT
 	if is_bow(_type):
 		gb = Basis(Vector3.BACK, BOW_CANT)
+	elif _type in POWER_TOOLS:
+		gb = Basis(Vector3.UP, POWER_TOE) * Basis(Vector3.RIGHT, POWER_TIP)
 	elif m.has_meta("butt") and not _type in HIP:
 		pin = m.get_meta("butt")
 		at = LONG_BUTT

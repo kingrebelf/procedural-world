@@ -19,7 +19,7 @@ const BUILD := {
 	"pack_recon": "_pack_recon", "oxygen_pack": "_oxygen_pack", "cloak_optic": "_cloak_optic",
 	"jetpack_military": "_jetpack_military", "jetpack": "_jetpack", "wings_chitin": "_wings_chitin",
 	"halo_pack": "_halo_pack", "cape_precursor": "_cape_precursor", "quiver": "_quiver",
-	"ammo_belt": "_ammo_belt",
+	"ammo_belt": "_ammo_belt", "watch_tabard": "_watch_tabard",
 }
 
 const IRON := Color(0.5, 0.5, 0.5)
@@ -1540,3 +1540,55 @@ static func _hex_tex() -> Texture2D:
 	var t := ImageTexture.create_from_image(img)
 	_tex["hex"] = t
 	return t
+
+## The town watch's tabard: a sleeveless wool tunic quartered gold and red, the town's
+## gold shield with its red tower on the breast, leather side straps, and the hem worn
+## ragged. Laid out flat, face on +Z.
+static func _watch_tabard(k: MeshKit, _r: RandomNumberGenerator, _t: String):
+	var red := Color(0.55, 0.09, 0.07)
+	var gold := Color(0.68, 0.46, 0.1)
+	var H := 0.56
+	var half := func(v: float) -> float:
+		# Wider at the hem, cut in for the arms, out again to the shoulders.
+		var hw := lerpf(0.2, 0.165, smoothstep(0.0, 0.6, v))
+		return hw - 0.04 * smoothstep(0.62, 0.8, v) * (1.0 - smoothstep(0.9, 1.0, v) * 0.6)
+	var hem := func(x: float) -> float:
+		return 0.03 * absf(sin(x * 61.0 + sin(x * 23.0) * 2.0)) + 0.012 * sin(x * 140.0)
+	var top := func(x: float) -> float:
+		return H - (0.045 * cos(absf(x) / 0.065 * PI * 0.5) if absf(x) < 0.065 else 0.0)
+	var rows: Array = []
+	var nu := 48
+	var nv := 28
+	for j in nv + 1:
+		var v := float(j) / nv
+		var row := PackedVector3Array()
+		for i in nu + 1:
+			var u := float(i) / nu
+			var x: float = (u - 0.5) * 2.0 * half.call(v)
+			var y: float = lerpf(hem.call(x), top.call(x), v)
+			row.append(Vector3(x, y, 0.007 * sin(x * 30.0) * smoothstep(0.07, 0.13, absf(x))))
+		rows.append(row)
+	var mid := 0.3
+	var col := func(p: Vector3) -> Color:
+		var c: Color = red if (p.x < 0.0) == (p.y > mid) else gold
+		return c.darkened(0.08 * (Provisions._nz(p, 90.0) + 0.3))
+	_shell(k, "im:wool", Transform3D.IDENTITY, rows, 0.004, false, col, Color(0.3, 0.2, 0.12))
+	# The breast shield: gold with a red rim, the red tower with its battlements and door.
+	var sh := PackedVector2Array([Vector2(-0.058, 0.445), Vector2(0.058, 0.445), Vector2(0.058, 0.39), Vector2(0.05, 0.36), Vector2(0.032, 0.335), Vector2(0.0, 0.315), Vector2(-0.032, 0.335), Vector2(-0.05, 0.36), Vector2(-0.058, 0.39)])
+	TechModels._ext(k, "im:wool", Transform3D(Basis.IDENTITY, Vector3(0, 0, 0.0008)), sh, [], 0.0012, red.darkened(0.1))
+	var inner: Array = Geometry2D.offset_polygon(sh, -0.005)
+	TechModels._ext(k, "im:wool", Transform3D(Basis.IDENTITY, Vector3(0, 0, 0.0016)), inner[0], [], 0.0012, gold.lightened(0.05))
+	var tz := 0.0024
+	k.box("im:wool", Transform3D(Basis.IDENTITY, Vector3(0, 0.37, tz)), Vector3(0.03, 0.05, 0.0012), red)
+	k.box("im:wool", Transform3D(Basis.IDENTITY, Vector3(0, 0.398, tz)), Vector3(0.04, 0.008, 0.0012), red)
+	for i in 3:
+		k.box("im:wool", Transform3D(Basis.IDENTITY, Vector3((i - 1) * 0.016, 0.405, tz)), Vector3(0.008, 0.009, 0.0012), red)
+	k.box("im:wool", Transform3D(Basis.IDENTITY, Vector3(0, 0.355, tz + 0.0004)), Vector3(0.01, 0.018, 0.0012), gold.darkened(0.45))
+	# Leather straps buckled at the sides.
+	for s: float in [-1.0, 1.0]:
+		for y: float in [0.24, 0.38]:
+			var v := y / H
+			var x: float = s * half.call(v)
+			k.box("im:leather_armour", Transform3D(Basis.IDENTITY, Vector3(x + s * 0.008, y, 0.002)), Vector3(0.03, 0.012, 0.004), LEATHER.lightened(0.1))
+			k.box("im:metal@0.5", Transform3D(Basis.IDENTITY, Vector3(x + s * 0.02, y, 0.0045)), Vector3(0.008, 0.014, 0.002), Color(0.4, 0.38, 0.34))
+	return Vector3(0, 0.5, 0)

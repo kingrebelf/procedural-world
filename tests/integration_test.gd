@@ -1428,7 +1428,7 @@ func _round_the_cliff(world, streamer: ChunkStreamer, player) -> void:
 	var round_end := false
 	for f in 200:
 		for s in 4:
-			n.step(0.05, npcs._ground, far, [])
+			n.step(0.05, npcs._ground, far, PackedVector2Array())
 		var at: Vector3 = n.global_position
 		top = maxf(top, at.y)
 		worst = maxf(worst, npcs.walk.grade(at.x, at.z))
@@ -1735,6 +1735,40 @@ func _crowd(game, world, player) -> void:
 	var down: bool = await tag_at.call(8.6)
 	var stays_down: bool = await tag_at.call(7.5)
 	check(up and held and not down and not stays_down, "a name tag doesn't blink at the edge of its range (%s %s %s %s)" % [up, held, down, stays_down])
+	# A speech line is drawn in the open, and not through a wall between you and the speaker.
+	var cam: Camera3D = world.get_viewport().get_camera_3d()
+	if cam:
+		var ahead := -cam.global_transform.basis.z
+		ahead.y = 0.0
+		ahead = ahead.normalized()
+		var spot := cam.global_position + ahead * 12.0
+		tagged.global_position = Vector3(spot.x, tagged.global_position.y, spot.z)
+		tagged.target = Vector2(spot.x, spot.z)
+		tagged.say("Fire! Fetch the buckets!", 30.0)
+		await _frames(10)
+		var in_open: bool = tagged.tag_visible()
+		var head: Vector3 = tagged.tag_point()
+		var wall := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(8, 8, 0.5)
+		cs.shape = box
+		wall.add_child(cs)
+		world.add_child(wall)
+		wall.global_position = (cam.global_position + head) * 0.5
+		wall.look_at(head, Vector3.UP)
+		# Line of sight is re-asked every TagLayout.RECHECK seconds, in physics.
+		await create_timer(0.6).timeout
+		await _frames(5)
+		var walled: bool = tagged.tag_visible()
+		wall.queue_free()
+		await create_timer(0.6).timeout
+		await _frames(5)
+		check(in_open and not walled and tagged.tag_visible(), "a speech line shows in the open and hides behind a wall (%s %s %s)" % [in_open, walled, tagged.tag_visible()])
+		var lay: TagLayout = world.npcs._tags
+		var vh: float = world.get_viewport().get_visible_rect().size.y
+		check(lay.layer < 1 and not lay._pool.is_empty() and lay._font_px == maxi(14, int(round(vh * TagLayout.FONT_FRAC))), "villager tags are flat text over the view, under the HUD, sized to the screen (%d px)" % lay._font_px)
+		tagged._speech_t = 0.0
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0
@@ -1820,18 +1854,19 @@ func _fire_crew(game, world, player) -> void:
 	n.global_position = Vector3(well.x, n.global_position.y, well.y)
 	world.npcs._decide(n, e, player.global_position, world.npcs.now())
 	check(n.rec.get("_fire_leg", "") == "carry", "fills it at the well")
-	n.stop_perform()
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	var edge: Vector2 = n.target
-	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
-	# The fire they are on: the wall, or whatever it has spread to that is nearer them.
-	var on: Dictionary = fs._burning.get(String(n.rec.get("_fire", "")), {})
-	var target: Dictionary = wall["st"]
-	if not on.is_empty() and world.streamer.get_chunk(on["k"]) != null:
-		target = (world.streamer.get_chunk(on["k"]) as ChunkNode).get_object(int(on["i"]))["st"]
-	var h0 := FireSim.heat(target)
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(target) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(target)])
+	# Heat of every fire before the carry: the throw can land on the wall or on
+	# whatever it spread to, and can happen on any carry step (a well near the edge
+	# throws on the first one), so walk the carry until the bucket is empty, capped.
+	var h0 := _fire_heat(world, fs)
+	for _step in 10:
+		if n.rec.get("_fire_leg", "") == "fetch":
+			break
+		n.stop_perform()
+		world.npcs._decide(n, e, player.global_position, world.npcs.now())
+		var to: Vector2 = n.target
+		n.global_position = Vector3(to.x, n.global_position.y, to.y)
+	var h1 := _fire_heat(world, fs)
+	check(n.rec.get("_fire_leg", "") == "fetch" and h1 < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, h1])
 	# Animals near it run.
 	var ksp := 0
 	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
@@ -1941,7 +1976,11 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.use_held()
 	check(int(gun.get("charge", 0)) == 1, "firing spends a round from the magazine")
 	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
-	await _frames(30)
+	# Until it lands (the shot flies in physics steps, which a fast runner's frames outpace).
+	for i in 120:
+		await process_frame
+		if kc.hp < hp0 or player.gunplay._shots.is_empty() and i > 10:
+			break
 	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
 	kc.held_for = 0.0
 	# Headshots: the upper front of the body box counts as the head and takes double.
@@ -2415,7 +2454,7 @@ func _use_lore(game, player, rc: ChunkNode, room: Dictionary) -> void:
 		var ui = player.get_tree().get_first_node_in_group("lore_ui")
 		check(ui != null and ui.is_open(), "Interact opens the %s's page" % room["t"])
 		if ui != null and ui.is_open():
-			check(String(ui._body.text).length() > 40, "the page has something to read")
+			check(ui.page_text().length() > 40, "the page has something to read")
 			ui.close()
 			await _frames(2)
 		check(not player.ui_open, "stepping away gives the controls back")
@@ -2767,3 +2806,14 @@ func _fire_checks(game, world, pc: ChunkNode, at: Vector3) -> Dictionary:
 	world.player.global_position = stood
 	game.flush_chunks()
 	return {"key": pc.key, "i": wood["i"], "ruin": ruin, "sp": int(pc.get_object(ruin).get("sp", 0)) if ruin >= 0 else -1, "stone": stone["i"], "doused": third["i"]}
+
+
+# Total heat of everything burning that is loaded.
+func _fire_heat(world, fs: FireSystem) -> float:
+	var h := 0.0
+	for key in fs._burning:
+		var b: Dictionary = fs._burning[key]
+		var c: Node = world.streamer.get_chunk(b["k"])
+		if c != null:
+			h += FireSim.heat((c as ChunkNode).get_object(int(b["i"]))["st"])
+	return h

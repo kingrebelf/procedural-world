@@ -17,6 +17,15 @@ var quick := false ## --quick: skip the per-feature GPU tests
 var compare: Array = []
 var report: PackedStringArray = []
 var _switched_off: Array = [] ## nodes _each_process switched off
+## The main thread's frame, split: from the scene's process step starting (process_frame)
+## to the renderer starting (frame_pre_draw) is scripts, animation, timers and the scene's
+## own updates; from there to frame_post_draw is the renderer's turn on this thread (with
+## the wait for the GPU when that is behind). Performance's TIME_PROCESS is the worst step
+## of the last second, not the mean, so it can't say what a system costs per frame.
+var _t_proc := 0
+var _t_draw := 0
+var _scene_us := 0
+var _draw_us := 0
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -41,11 +50,16 @@ func _out(s: String) -> void:
 func _run() -> void:
 	await _wait(5)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+	# With the renderer on its own thread (--render-thread separate) these come from that
+	# thread and the split means nothing: then only the frame is timed.
+	if RenderingServer.is_on_render_thread():
+		_split_main_thread()
 	var size := get_viewport().get_visible_rect().size
 	_out("Perf probe  %s  %dx%d  render %.0f%%  preset %s  vsync %s  seed %d" % [ProjectSettings.get_setting("application/config/version", ""),
 		int(size.x), int(size.y), float(Settings.values["render_scale"]) * 100.0, Settings.values["preset"],
 		str(Settings.values["vsync"]), Game.seed])
-	_out("GPU: %s   CPU threads: %d" % [RenderingServer.get_video_adapter_name(), OS.get_processor_count()])
+	_out("GPU: %s   CPU threads: %d   render thread: %s" % [RenderingServer.get_video_adapter_name(), OS.get_processor_count(),
+		"main" if RenderingServer.is_on_render_thread() else "separate"])
 	var g := ChunkGenerator.new(Game.seed)
 	var sp := Planets.spawn_point(Game.seed, Game.store.has_rivers())
 	var views := []
@@ -81,6 +95,17 @@ func _run() -> void:
 		f.store_string("\n".join(report))
 	print("perf probe written to ", ProjectSettings.globalize_path("user://perf_probe.txt"))
 	get_tree().quit()
+
+## Times the main thread's frame in parts (see _t_proc).
+func _split_main_thread() -> void:
+	get_tree().process_frame.connect(func(): _t_proc = Time.get_ticks_usec())
+	RenderingServer.frame_pre_draw.connect(func():
+		_t_draw = Time.get_ticks_usec()
+		if _t_proc > 0:
+			_scene_us += _t_draw - _t_proc)
+	RenderingServer.frame_post_draw.connect(func():
+		if _t_draw > 0:
+			_draw_us += Time.get_ticks_usec() - _t_draw)
 
 func _forest_spot(g: ChunkGenerator) -> Array:
 	var sp3 := Planets.spawn_point(Game.seed, Game.store.has_rivers())
@@ -132,6 +157,8 @@ func _measure() -> Dictionary:
 	var m := {"gpu": 0.0, "cpu": 0.0, "proc": 0.0, "phys": 0.0, "draws": 0.0, "prims": 0.0, "objs": 0.0, "worst": 0.0}
 	var t0 := Time.get_ticks_usec()
 	var last := t0
+	_scene_us = 0
+	_draw_us = 0
 	for i in SAMPLE:
 		await get_tree().process_frame
 		var now := Time.get_ticks_usec()
@@ -145,13 +172,15 @@ func _measure() -> Dictionary:
 		m["prims"] += Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)
 		m["objs"] += Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)
 	m["frame"] = (Time.get_ticks_usec() - t0) / 1000.0 / SAMPLE
+	m["scene"] = _scene_us / 1000.0 / SAMPLE
+	m["draw"] = _draw_us / 1000.0 / SAMPLE
 	for k in ["gpu", "cpu", "proc", "phys", "draws", "prims", "objs"]:
 		m[k] /= SAMPLE
 	return m
 
 func _fmt(m: Dictionary) -> String:
-	return "frame %.1f ms (%d FPS, worst %.0f)  GPU %.1f  CPU render %.1f  script %.1f  physics %.1f  draws %d  objects %d  tris %.2fM" % [
-		m["frame"], int(1000.0 / maxf(m["frame"], 0.1)), m["worst"], m["gpu"], m["cpu"], m["proc"], m["phys"], int(m["draws"]), int(m["objs"]), m["prims"] / 1e6]
+	return "frame %.1f ms (%d FPS, worst %.0f)  GPU %.1f  CPU render %.1f  main thread: scene %.1f, render %.1f  worst script %.1f  physics %.1f  draws %d  objects %d  tris %.2fM" % [
+		m["frame"], int(1000.0 / maxf(m["frame"], 0.1)), m["worst"], m["gpu"], m["cpu"], m["scene"], m["draw"], m["proc"], m["phys"], int(m["draws"]), int(m["objs"]), m["prims"] / 1e6]
 
 ## Counts what is in the scene round the player.
 ## Per person: how many mesh instances and surfaces are drawn, and how many cast shadows
@@ -268,7 +297,7 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 		return
 	# CPU: what each game system's scripts cost per frame (switched off one at a time). The
 	# baseline is measured again before each one: people keep arriving while this runs.
-	_out("  Script/physics cost by system (ms saved: frame / script / physics):")
+	_out("  Script/physics cost by system (ms saved: frame / scene step / physics):")
 	var rows: Array = []
 	for n in ["People", "Wildlife", "Corpses", "Vehicles", "Water", "FarLand", "Chunks", "Treasure", "Player"]:
 		var nd := world.get_node_or_null(n)
@@ -303,7 +332,7 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 		(r[1] as Callable).call(true)
 		var m: Dictionary = await _measure()
 		(r[1] as Callable).call(false)
-		_out("    %-12s %5.2f  %5.2f  %5.2f" % [r[0], b0["frame"] - m["frame"], b0["proc"] - m["proc"], b0["phys"] - m["phys"]])
+		_out("    %-12s %5.2f  %5.2f  %5.2f" % [r[0], b0["frame"] - m["frame"], b0["scene"] - m["scene"], b0["phys"] - m["phys"]])
 	if quick:
 		return
 	# GPU: the benchmark's feature list, measured here.

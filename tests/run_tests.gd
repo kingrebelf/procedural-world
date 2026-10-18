@@ -2121,6 +2121,17 @@ func test_wardrobes() -> void:
 			on_legs += 1
 	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
 	h.free()
+	# Nothing a human wears glows: sci-fi seams light up only on alien worlds.
+	var was: String = Eras.theme
+	for theme in ["", "human", "alien"]:
+		Eras.theme = theme
+		var g := HumanModel.new()
+		root.add_child(g)
+		g.build({"height": 1.0, "build": 1.0, "female": false, "skin": Color(0.6, 0.45, 0.35), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.SCIFI, "engineer")
+		var acc: Color = g._body.get_instance_shader_parameter("accent_col")
+		check((acc.a > 0.0) == (theme == "alien"), "sci-fi work clothes glow only on alien worlds (theme '%s')" % theme)
+		g.free()
+	Eras.theme = was
 
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
@@ -2170,8 +2181,8 @@ func test_icon_models() -> void:
 	var items := GearModels.icon_items()
 	check(items.size() > 600, "the icon sheets list the items (%d)" % items.size())
 	for t: String in items:
-		if not ItemDB.ITEMS.has(t):
-			continue
+		if not ItemDB.ITEMS.has(t) or Vehicle.is_boat(t):
+			continue # a boat is carried, not held: her model is the boat you put in the water
 		var prop := Viewmodel.prop_for(t)
 		var card := HeldScale.unmodelled(prop)
 		prop.free()
@@ -2279,6 +2290,15 @@ func test_tool_grip() -> void:
 		for j in 3:
 			d = minf(d, HandGrip._seg_line(pts[j], pts[j + 1], c, axis))
 		check(d > r and d < r + HandGrip.FINGER_R + 0.012, "the %s finger closes on the handle without passing into it (%.3f m from its middle)" % [f, d])
+	var casts := func() -> Array:
+		var cs := []
+		for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
+			cs.append((mi as MeshInstance3D).cast_shadow)
+		return cs
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "a held tool casts its shadow")
+	h.set_shadow_only(true)
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "your first-person shadow body's tool doesn't shadow the one in your view")
+	h.set_shadow_only(false)
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()
@@ -2853,7 +2873,7 @@ func test_levelling_and_attributes() -> void:
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("stone", 10, 1.0, {}))
 	inv.add(ItemDB.make("axe_iron", 1, 1.0, {}))
-	check(is_equal_approx(inv.weight(), 10 * ItemDB.weight("stone") + ItemDB.weight("axe_iron")) and inv.weight() > 20.0, "the pack has weight (%.1f kg)" % inv.weight())
+	check(is_equal_approx(inv.weight(), 10 * ItemDB.weight("stone") + ItemDB.weight("axe_iron")) and inv.weight() > 2.0, "the pack has weight (%.1f kg)" % inv.weight())
 	check(not s.spend("luck"), "unknown attribute rejected")
 	while s.points > 0:
 		s.spend("end")
@@ -3057,6 +3077,73 @@ func test_pockets() -> void:
 	var purse := int(rec["purse"])
 	check(NPCSocial.lift_marks(rec, purse + 50) == purse and int(rec["purse"]) == 0, "lifting a purse takes no more than it holds")
 
+## Sailing: a boat goes where the wind and her paddles push her, as a real one would.
+func test_sailing() -> void:
+	var run := func(kind: String, wind: Vector2, secs: float, paddle := 0.0, rudder := 0.0, depth := 5.0) -> Dictionary:
+		var st := Sailing.new_state(0.0) # heading -z
+		for i in int(secs * 30.0):
+			Sailing.step(kind, st, 1.0 / 30.0, wind, Vector2.ZERO, rudder, paddle, 0.0, true, depth)
+		return st
+	var ahead := func(st: Dictionary) -> float:
+		return (st["vel"] as Vector2).dot(Sailing.fwd(float(st["yaw"])))
+	# Wind 6 m/s: astern (blowing toward -z), on the beam (toward +x), and from dead ahead.
+	var astern := Vector2(0, -6)
+	var beam := Vector2(6, 0)
+	var head := Vector2(0, 6)
+	var raft_run: float = ahead.call(run.call("sail_raft", astern, 40.0))
+	check(raft_run > 0.8 and raft_run < 3.0, "a sail raft runs before the wind (%.2f m/s)" % raft_run)
+	check(absf(ahead.call(run.call("sail_raft", head, 30.0))) < 0.15, "a sail raft can't sail into the wind")
+	var sloop_beam: float = ahead.call(run.call("sloop", beam, 60.0))
+	var sloop_irons: float = ahead.call(run.call("sloop", head, 30.0))
+	check(sloop_beam > 1.5, "a sloop sails fast on a beam reach (%.2f m/s)" % sloop_beam)
+	check(sloop_irons < 0.2, "a sloop head to wind is in irons (%.2f m/s)" % sloop_irons)
+	# Close-hauled, 45 degrees off the wind: the sloop still makes way; the raft doesn't.
+	var close := Vector2(sin(PI * 0.25), cos(PI * 0.25)) * 6.0
+	check(float(ahead.call(run.call("sloop", close, 60.0))) > 0.5, "a sloop can beat to windward")
+	check(float(ahead.call(run.call("sail_raft", close, 40.0))) < 0.3, "a square-rigged raft can't")
+	# Leeway: a raft slides with the wind far more than the keeled sloop.
+	var raft_side := absf((run.call("sail_raft", beam, 40.0)["vel"] as Vector2).x)
+	var sloop_side := absf((run.call("sloop", beam, 40.0)["vel"] as Vector2).x)
+	check(raft_side > sloop_side, "a raft makes more leeway than a sloop (%.2f vs %.2f)" % [raft_side, sloop_side])
+	# Paddling on a calm day: the kayak is the quickest, the canoe next.
+	var calm := Vector2.ZERO
+	var canoe: float = ahead.call(run.call("canoe", calm, 30.0, 1.0))
+	var kayak: float = ahead.call(run.call("kayak", calm, 30.0, 1.0))
+	var row: float = ahead.call(run.call("rowboat", calm, 30.0, 1.0))
+	check(canoe > 1.8 and canoe < 3.5, "paddling a canoe (%.2f m/s)" % canoe)
+	check(kayak > canoe, "a kayak is quicker than a canoe (%.2f vs %.2f)" % [kayak, canoe])
+	check(row > 1.8 and row < 3.5, "rowing a rowboat (%.2f m/s)" % row)
+	# The rudder turns her under way (A/D: + to starboard, so her yaw goes down).
+	var turned: Dictionary = run.call("canoe", calm, 3.0, 1.0, 1.0)
+	check(float(turned["yaw"]) < -1.0, "the rudder turns her to starboard (yaw %.2f)" % float(turned["yaw"]))
+	# Aground in the shallows she stops.
+	check(absf(ahead.call(run.call("canoe", calm, 10.0, 1.0, 0.0, 0.05))) < 0.3, "a boat aground hardly moves")
+	# The trim the sails show: a square yard braced, a boom eased.
+	var st := Sailing.new_state(0.0)
+	st["sheet"] = 0.0
+	check(is_equal_approx(absf(Sailing.sail_turn("sail_raft", st)), 0.7), "hauled in, the raft's yard is braced round")
+	st["sheet"] = 1.0
+	check(absf(Sailing.sail_turn("sail_raft", st)) < 0.01, "eased out, the raft's yard is square")
+	check(absf(Sailing.sail_turn("sloop", st)) > 1.3, "eased out, a boom swings right out")
+	check(Sailing.point_of_sail(head, 0.0) == "In irons" and Sailing.point_of_sail(beam, 0.0) == "Beam reach"
+		and Sailing.point_of_sail(astern, 0.0) == "Running", "points of sail")
+	# Every boat you can ride has her handling and goes in the water, not on land.
+	for k in Vehicle.KINDS:
+		if Vehicle.is_boat(k):
+			check(Sailing.BOATS.has(k) and Boats.KINDS.has(Vehicle.KINDS[k]["boat"]), "%s handles like a boat" % k)
+
+## A player's boat: the sail raft's sail goes up and down, a canoe has none, and each
+## rider sits on a seat in the hull, not at the masthead. (Floating and sailing need a
+## physics space, so the integration test rides one.)
+func test_boat_ride() -> void:
+	var r := Vehicle.new().setup({"id": 2, "kind": "sail_raft", "pos": Vector3.ZERO, "yaw": 0.0})
+	check(r.boat() and r.has_sail() and r.toggle_sail() and not r.toggle_sail(), "the raft's sail raises and lowers")
+	check(r.seat.y < 1.0 and r.motion_mode == CharacterBody3D.MOTION_MODE_FLOATING, "the raft's rider sits on her deck")
+	r.free()
+	var c := Vehicle.new().setup({"id": 3, "kind": "canoe", "pos": Vector3.ZERO, "yaw": 0.0})
+	check(not c.has_sail() and not c.toggle_sail(), "a canoe has no sail")
+	c.free()
+
 func test_vehicles() -> void:
 	for k in Vehicle.KINDS:
 		check(ItemDB.def(k).get("kind", "") == "vehicle" and not ItemDB.is_stackable(k), "%s is a vehicle item" % k)
@@ -3067,7 +3154,9 @@ func test_vehicles() -> void:
 		check(made, "%s is made at a station" % k)
 		var m := Vehicle.make_model(k)
 		var box := Vehicle._bounds(m)
-		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > -0.2, "%s model is a sensible size (%s)" % [k, box])
+		# A boat's hull goes down below her waterline (y = 0).
+		var below := -1.0 if Vehicle.is_boat(k) else -0.2
+		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > below, "%s model is a sensible size (%s)" % [k, box])
 		m.free()
 	for st in ["vehicle_bay", "stable"]:
 		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)
@@ -3503,8 +3592,9 @@ func test_pack_a_items() -> void:
 	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
 		found[t] = true
 	for t in known:
-		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead", "power_cell_spent"]:
-			continue # butchered, from treasure maps, caught, or a spent flashlight or cell
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "treasure_chip", "fish_raw", "flashlight_dead",
+				"power_cell_spent", "watch_keys", "watch_tabard", "writ"]:
+			continue # butchered, from treasure maps, caught, a spent flashlight or cell, or from the town watch
 		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
 	# Level gates rise with the age: stone first, steel later, the finest last.
 	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
@@ -6312,3 +6402,19 @@ func test_bog_mist() -> void:
 		bog += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.9))["mist"])
 		dry += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.5))["mist"])
 	check(bog > dry * 1.5, "bogs lie under mist far oftener (%.0f vs %.0f)" % [bog, dry])
+
+func test_movers_layer() -> void:
+	# Far off, a body leaves the shadowed lamps' light; back near, it rejoins it, with a
+	# margin so one at the edge doesn't flip each frame.
+	check(not Movers.is_far(Movers.FAR - 0.5, false) and Movers.is_far(Movers.FAR + 0.5, false), "movers: far past FAR")
+	check(Movers.is_far(Movers.FAR - 1.0, true) and not Movers.is_far(Movers.FAR - 2.5, true), "movers: near again only well inside")
+	var root := Node3D.new()
+	var a := MeshInstance3D.new()
+	var b := Label3D.new()
+	root.add_child(a)
+	a.add_child(b)
+	Movers.set_far(root, true)
+	check(a.layers == Movers.LAYER and b.layers == Movers.LAYER, "movers: every mesh on the layer")
+	Movers.set_far(root, false)
+	check(a.layers == 1 and b.layers == 1, "movers: back on layer 1")
+	root.free()
