@@ -619,8 +619,16 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 	if gestures:
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(prop)
-	for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
-		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms else (GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
+	_shade_held()
+
+## What the hand holds casts no shadow on the first-person arms, nor from a shadow-only
+## body: that body's copy sits almost where the first-person one is drawn, and with the sun
+## behind you its shadow blacked out the tool in your hand.
+func _shade_held() -> void:
+	if _held == null:
+		return
+	for mi in _held.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms or _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 ## The scale a prop is held at so it stays its real size however tall this person is
 ## drawn (NPC sets the whole body's scale to their stature): a short woman's pickaxe is
@@ -802,6 +810,7 @@ func set_shadow_only(on: bool) -> void:
 		if _no_shadow(mi):
 			# They cast no shadow, so a body seen only by its shadow hides them outright.
 			(mi as MeshInstance3D).visible = not on
+	_shade_held()
 
 ## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
 ## (sun cascades, each lamp's cube) cost two of a person's nine shadow draws for nothing.
