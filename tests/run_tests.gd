@@ -2356,6 +2356,21 @@ func test_fires() -> void:
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
 	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	# Tool metal is the shared metal look: forged on a medieval axe, brushed alloy on a
+	# sci-fi multitool, rust on a used crowbar, and mirror chrome on none.
+	var kinds := func(t: String) -> Array:
+		var mesh := ToolModels.build(t)
+		var ks := []
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial:
+				ks.append(sm.resource_name)
+		return ks
+	var axe: Array = kinds.call("axe_steel")
+	var mt: Array = kinds.call("multitool")
+	check("metal_steel" in axe and "metal_iron" in axe and not "metal_chrome" in axe, "a medieval axe head is forged steel and iron in the shared metal look")
+	check("metal_alloy" in mt and not "metal_steel" in mt and not "metal_chrome" in mt, "a sci-fi multitool is brushed alloy, not forged steel or mirror chrome")
+	check("metal_rusty" in kinds.call("crowbar"), "a crowbar is rusty from use, like its icon")
 
 ## Stall awnings and drapes, banners and flags move in the wind.
 func test_cloth() -> void:
