@@ -83,8 +83,13 @@ void fragment() {
 	vec2 w = warp * vec2(0.09, 0.05) * above * (0.6 + 0.6 * life);
 	vec3 col = mix(frame(uv_a + w), frame(uv_b + w), mixf);
 	// Brighter as it leaps; the tips burn cooler and redder than the heart.
-	col *= tint.rgb * tint.a * (0.78 + 0.5 * life);
+	col *= tint.rgb * tint.a * (0.66 + 0.42 * life);
 	col *= mix(vec3(1.0), vec3(1.0, 0.72, 0.5), smoothstep(0.45, 1.0, above) * 0.55);
+	// A wood fire's colours: yellow at the heart, orange body, red tips (tinted jets keep
+	// their own).
+	if (!hang) {
+		col = fire_hue(col);
+	}
 	// Premultiplied: bright flame hides what is behind it in proportion, so it keeps its
 	// colour against a bright sky instead of washing out as plain adding would.
 	ALBEDO = col;

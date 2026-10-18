@@ -34,7 +34,7 @@ void fragment() {
 	vec2 np = vec2(p.x * 4.5 + nature * 17.0, p.y * 3.0 - fire_time * 3.4 + nature * 5.0);
 	float n = 0.65 * fx_noise2(np) + 0.35 * fx_noise2(np * 2.3 + 9.0);
 	shape = clamp(shape * shape * (0.3 + 1.3 * n) - 0.1, 0.0, 1.0);
-	vec3 col = COLOR.rgb * COLOR.a * shape;
+	vec3 col = fire_hue(COLOR.rgb) * COLOR.a * shape;
 	ALBEDO = col;
 	ALPHA = clamp(max(col.r, max(col.g, col.b)) * 0.9, 0.0, 1.0);
 }
