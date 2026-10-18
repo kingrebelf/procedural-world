@@ -955,7 +955,11 @@ func _run() -> void:
 	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
 	await _frames(60)
 
-	# Levelling: experience from the console, a point spent, all saved below.
+	# Levelling: experience from the console, a point spent, all saved below. At 4x
+	# experience the harvesting above may already have levelled us, so start from 1.
+	game.stats.level = 1
+	game.stats.xp = 0
+	game.stats.points = 0
 	con.run("level 3")
 	check(game.stats.level == 3 and game.stats.points == 6, "levelled to 3 with points (%d, %d)" % [game.stats.level, game.stats.points])
 	check(game.spend_point("end") and game.max_health() == 110.0, "endurance point raises max health")
