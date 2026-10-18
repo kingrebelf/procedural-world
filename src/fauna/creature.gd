@@ -679,7 +679,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		return
 	if p["plan"] == "bird":
 		var alt: float = p["alt"] * (0.4 if state == "flee" else 1.0)
-		pos.y = lerpf(pos.y, maxf(h, Water.LEVEL) + alt + sin(Time.get_ticks_msec() * 0.001 + float(sp % 100)) * 0.6, clampf(delta * 1.5, 0.0, 1.0))
+		pos.y = lerpf(pos.y, maxf(h, Water.LEVEL) + alt + sin(GameClock.msec() * 0.001 + float(sp % 100)) * 0.6, clampf(delta * 1.5, 0.0, 1.0))
 		if state == "wander":
 			_speed = maxf(_speed, 2.5)
 	else:

@@ -980,7 +980,7 @@ var _last_idle_ms := 0
 ## Standing about, people don't loop one idle: now and then they fold their arms, put
 ## their hands on their hips, or glance at something nearby.
 func _idle_variety() -> void:
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
 	_last_idle_ms = now
 	if _idle_t <= 0.0:
@@ -1015,7 +1015,7 @@ func _idle_variety() -> void:
 ## On the move, eyes don't stay locked straight ahead: every few seconds a look aside at
 ## something passed, or down at the path a few steps on.
 func _walk_glances() -> void:
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
 	_last_idle_ms = now
 	if _glance != Vector3.INF:

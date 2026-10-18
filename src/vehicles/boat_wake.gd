@@ -44,7 +44,7 @@ static func make(kind: String) -> BoatWake:
 ## `ago`: seconds in the past this sample is from (BoatNode.prime_wake replays her course).
 func feed(stern: Vector2, heading: Vector2, speed: float, strength: float, delta: float, ago := 0.0) -> void:
 	global_transform = Transform3D.IDENTITY
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := GameClock.sec()
 	var born := now - ago
 	# A jump (put back on her loop, or teleported) starts a fresh track.
 	if not _pts.is_empty() and (_pts[0][0] as Vector2).distance_to(stern) > STEP * 8.0:

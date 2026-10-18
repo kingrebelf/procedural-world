@@ -916,7 +916,7 @@ func _process(_d: float) -> void:
 	if _under.visible:
 		var cam := player.camera.global_position
 		var um := _under.material as ShaderMaterial
-		um.set_shader_parameter("depth", Water.surface_height(cam.x, cam.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)) - cam.y)
+		um.set_shader_parameter("depth", Water.surface_height(cam.x, cam.z, fmod(GameClock.sec(), 3600.0)) - cam.y)
 		um.set_shader_parameter("daylight", smoothstep(-0.12, 0.25, sin((fposmod(Game.day, 1.0) - 0.25) * TAU)))
 		# Green in a silty pond, blue-green in the open sea.
 		um.set_shader_parameter("tint", Color(0.35, 0.7, 0.75).lerp(Color(0.42, 0.62, 0.45), Water.turbidity(cam.x, cam.z)))

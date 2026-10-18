@@ -244,7 +244,7 @@ func _physics_process(delta: float) -> void:
 		# The ground here isn't loaded (yet): hold still rather than fall through the world.
 		velocity = Vector3.ZERO
 		return
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	var depth := surface - global_position.y
 	var top: float = p["speed"] * (p["boost"] if boosting else 1.0)

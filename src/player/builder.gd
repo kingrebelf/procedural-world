@@ -111,7 +111,7 @@ func update() -> void:
 
 ## Built pieces near you (BuildCatalog.built_near), refreshed every NEAR_EVERY seconds.
 func near_pieces() -> Array:
-	var now := Time.get_ticks_msec() / 1000.0
+	var now := GameClock.sec()
 	var here := player.global_position
 	if now - _near_t > NEAR_EVERY or here.distance_to(_near_at) > 2.0:
 		_near = BuildCatalog.built_near(player.streamer, here, NEAR_RADIUS)

@@ -586,7 +586,7 @@ func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> voi
 		(arm[0] as Node3D).rotation.z = (0.08 if i == 0 else -0.08)
 		(arm[1] as Node3D).rotation.x = -0.25 - (0.5 if run else 0.0) * amt
 	# Idle breathing, talk gestures and the walk bob.
-	var t := Time.get_ticks_msec() / 1000.0 + float(rec["traits"]["curious"]) * 10.0
+	var t := GameClock.sec() + float(rec["traits"]["curious"]) * 10.0
 	_torso.scale = Vector3(1.0, 1.0 + sin(t * 1.6) * 0.012, 1.0)
 	_hips.position.y = 0.95 + absf(cos(_phase)) * 0.035 * amt
 	if (_speech_t > 0.0 or talking) and not moving:
@@ -651,7 +651,7 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 		_human.play(work_anim)
 	elif action == "socialize" and face_to != Vector2.INF and Vector2(global_position.x, global_position.z).distance_to(face_to) < 2.5:
 		# Chatting with a neighbour: they take turns to talk.
-		_human.play("talk" if (int(Time.get_ticks_msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
+		_human.play("talk" if (int(GameClock.msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
 	elif action in ["confront", "attack"]:
 		if rec.has("band"):
 			_human.play("pistol_idle" if keep_off > 0.0 else "sword_idle")

@@ -161,6 +161,9 @@ func _ready() -> void:
 	if OS.get_cmdline_user_args().has("--capture") and ResourceLoader.exists("res://tools/capture.gd") and not get_tree().root.has_node("CaptureTour"):
 		# --perf runs the performance probe (tools/perf_probe.gd) instead of the screenshots.
 		var tour := "res://tools/perf_probe.gd" if OS.get_cmdline_user_args().has("--perf") else "res://tools/capture.gd"
+		# --trailer renders the trailer takes (tools/trailer.gd) instead.
+		if OS.get_cmdline_user_args().has("--trailer"):
+			tour = "res://tools/trailer.gd"
 		var cap: Node = load(tour).new()
 		cap.name = "CaptureTour"
 		cap.world = self
