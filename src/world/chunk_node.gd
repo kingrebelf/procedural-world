@@ -1455,6 +1455,10 @@ func _add_rooms(t: String, buf: PackedFloat32Array) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if t.ends_with("~in"):
 			mi.visibility_range_end = 60.0
+			var rt := t.trim_suffix("~in")
+			if Interiors.glows(rt) or rt == "hab_dome":
+				# Its screens carry the site's name in their headers (ScreenLook).
+				ScreenLook.set_title(mi, Lore.site_name(rt, position + mi.transform.origin))
 		else:
 			mi.visibility_range_begin = 52.0
 			mi.visibility_range_begin_margin = 8.0

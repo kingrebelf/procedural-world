@@ -1,12 +1,13 @@
 class_name LoreUI
 extends Control
-## The window a readable or usable room prop opens (see Lore): a terminal's glowing
-## screen, or a page of parchment for books, letters, scrolls and epitaphs. Tabs for
-## each page, buttons for what the thing can do, and Esc or Interact to step away.
+## The window a readable or usable room prop opens (see Lore): a terminal's screen (a
+## little operating system drawn in code, TerminalUI), or a page of parchment for books,
+## letters, scrolls and epitaphs. Tabs for each page, buttons for what the thing can do,
+## and Esc or Interact to step away.
 
 var player: Player
 
-var _panel: PanelContainer
+var _panel: Control ## the parchment page, or the terminal window
 var _body: RichTextLabel
 var _tabs: HBoxContainer
 var _actions: HBoxContainer
@@ -20,8 +21,6 @@ var _opened_at := 0
 var _screen := false
 var _at := Vector3.INF ## where a free-standing entry (open_entry) was read
 
-const SCREEN_BG := Color(0.02, 0.06, 0.05, 0.96)
-const SCREEN_TEXT := Color(0.55, 1.0, 0.78)
 const INK := Color(0.2, 0.13, 0.07)
 
 func _ready() -> void:
@@ -50,9 +49,10 @@ func open_spot(chunk: ChunkNode, i: int, spot: int) -> void:
 	_page = 0
 	_opened_at = Time.get_ticks_msec()
 	_build()
-	_show_page(0)
-	if _entry.get("note", "") != "":
-		_note.text = _entry["note"]
+	if not _screen:
+		_show_page(0)
+		if _entry.get("note", "") != "":
+			_note.text = _entry["note"]
 	visible = true
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -71,10 +71,17 @@ func open_entry(entry: Dictionary, at: Vector3) -> void:
 	_page = 0
 	_opened_at = Time.get_ticks_msec()
 	_build()
-	_show_page(0)
+	if not _screen:
+		_show_page(0)
 	visible = true
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+## The text of the page showing (the first page while a terminal boots).
+func page_text() -> String:
+	if not is_open():
+		return ""
+	return String(_entry["pages"][_page if not _screen else (_panel as TerminalUI)._page]["text"])
 
 func close() -> void:
 	if not is_open():
@@ -106,11 +113,14 @@ func _process(_d: float) -> void:
 		close()
 
 func _build() -> void:
-	_panel = PanelContainer.new()
 	if _screen:
-		_panel.add_theme_stylebox_override("panel", UITheme.sb(SCREEN_BG, Color(SCREEN_TEXT, 0.45), 6, 2, 22))
-	else:
-		_panel.add_theme_stylebox_override("panel", _parchment())
+		var term := TerminalUI.new()
+		term.setup(_entry, _act, close)
+		_panel = term
+		add_child(term)
+		return
+	_panel = PanelContainer.new()
+	_panel.add_theme_stylebox_override("panel", _parchment())
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.offset_left = -400
 	_panel.offset_right = 400
@@ -121,16 +131,11 @@ func _build() -> void:
 	v.add_theme_constant_override("separation", 8)
 	_panel.add_child(v)
 	var t := UITheme.title(_entry["title"], 26)
-	if _screen:
-		t.add_theme_font_override("font", _mono())
-		t.add_theme_color_override("font_color", SCREEN_TEXT)
-		t.add_theme_constant_override("outline_size", 0)
-	else:
-		t.add_theme_color_override("font_color", INK)
-		t.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
-		t.add_theme_constant_override("outline_size", 0)
+	t.add_theme_color_override("font_color", INK)
+	t.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0))
+	t.add_theme_constant_override("outline_size", 0)
 	v.add_child(t)
-	v.add_child(UITheme.label(_entry.get("sub", ""), 14, Color(SCREEN_TEXT, 0.6) if _screen else Color(INK, 0.7)))
+	v.add_child(UITheme.label(_entry.get("sub", ""), 14, Color(INK, 0.7)))
 	_tabs = HBoxContainer.new()
 	_tabs.add_theme_constant_override("separation", 6)
 	v.add_child(_tabs)
@@ -147,17 +152,12 @@ func _build() -> void:
 	_body.add_theme_font_size_override("normal_font_size", 17)
 	_body.add_theme_font_size_override("bold_font_size", 17)
 	_body.add_theme_font_size_override("italics_font_size", 18)
-	if _screen:
-		for k in ["normal_font", "bold_font", "italics_font"]:
-			_body.add_theme_font_override(k, _mono())
-		_body.add_theme_color_override("default_color", SCREEN_TEXT)
-	else:
-		_body.add_theme_color_override("default_color", INK)
+	_body.add_theme_color_override("default_color", INK)
 	v.add_child(_body)
 	_actions = HBoxContainer.new()
 	_actions.add_theme_constant_override("separation", 8)
 	v.add_child(_actions)
-	_note = UITheme.label("", 15, Color(1.0, 0.9, 0.55) if _screen else Color(0.45, 0.22, 0.05))
+	_note = UITheme.label("", 15, Color(0.45, 0.22, 0.05))
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_note)
 	var foot := HBoxContainer.new()
@@ -179,27 +179,18 @@ func _show_page(n: int) -> void:
 	for a in pg.get("actions", []):
 		var id: String = a[0]
 		_actions.add_child(UITheme.button(String(a[1]), func(): _act(id)))
-	if _screen:
-		# The text types itself out, as screens do.
-		_body.visible_ratio = 0.0
-		_body.create_tween().tween_property(_body, "visible_ratio", 1.0, clampf(_body.text.length() / 900.0, 0.25, 1.2))
 	UITheme.focus_first(_panel)
 
-func _act(id: String) -> void:
+func _act(id: String) -> String:
 	if not is_instance_valid(_chunk):
-		return
-	_note.text = Lore.act(_chunk.get_object(_i), _chunk, _spot, id, player)
-	Game.toast.emit(_note.text)
+		return ""
+	var msg := Lore.act(_chunk.get_object(_i), _chunk, _spot, id, player)
+	if _note:
+		_note.text = msg
+	Game.toast.emit(msg)
+	return msg
 
-static var _mono_font: Font
 static var _parch: StyleBox
-
-static func _mono() -> Font:
-	if _mono_font == null:
-		var f := SystemFont.new()
-		f.font_names = PackedStringArray(["Consolas", "DejaVu Sans Mono", "Liberation Mono", "Menlo", "monospace"])
-		_mono_font = f
-	return _mono_font
 
 ## The atlas's parchment where it is there, else a warm flat page.
 static func _parchment() -> StyleBox:

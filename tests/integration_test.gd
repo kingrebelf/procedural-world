@@ -1735,6 +1735,40 @@ func _crowd(game, world, player) -> void:
 	var down: bool = await tag_at.call(8.6)
 	var stays_down: bool = await tag_at.call(7.5)
 	check(up and held and not down and not stays_down, "a name tag doesn't blink at the edge of its range (%s %s %s %s)" % [up, held, down, stays_down])
+	# A speech line is drawn in the open, and not through a wall between you and the speaker.
+	var cam: Camera3D = world.get_viewport().get_camera_3d()
+	if cam:
+		var ahead := -cam.global_transform.basis.z
+		ahead.y = 0.0
+		ahead = ahead.normalized()
+		var spot := cam.global_position + ahead * 12.0
+		tagged.global_position = Vector3(spot.x, tagged.global_position.y, spot.z)
+		tagged.target = Vector2(spot.x, spot.z)
+		tagged.say("Fire! Fetch the buckets!", 30.0)
+		await _frames(10)
+		var in_open: bool = tagged.tag_visible()
+		var head: Vector3 = tagged.tag_point()
+		var wall := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(8, 8, 0.5)
+		cs.shape = box
+		wall.add_child(cs)
+		world.add_child(wall)
+		wall.global_position = (cam.global_position + head) * 0.5
+		wall.look_at(head, Vector3.UP)
+		# Line of sight is re-asked every TagLayout.RECHECK seconds, in physics.
+		await create_timer(0.6).timeout
+		await _frames(5)
+		var walled: bool = tagged.tag_visible()
+		wall.queue_free()
+		await create_timer(0.6).timeout
+		await _frames(5)
+		check(in_open and not walled and tagged.tag_visible(), "a speech line shows in the open and hides behind a wall (%s %s %s)" % [in_open, walled, tagged.tag_visible()])
+		var lay: TagLayout = world.npcs._tags
+		var vh: float = world.get_viewport().get_visible_rect().size.y
+		check(lay.layer < 1 and not lay._pool.is_empty() and lay._font_px == maxi(14, int(round(vh * TagLayout.FONT_FRAC))), "villager tags are flat text over the view, under the HUD, sized to the screen (%d px)" % lay._font_px)
+		tagged._speech_t = 0.0
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0
@@ -2420,7 +2454,7 @@ func _use_lore(game, player, rc: ChunkNode, room: Dictionary) -> void:
 		var ui = player.get_tree().get_first_node_in_group("lore_ui")
 		check(ui != null and ui.is_open(), "Interact opens the %s's page" % room["t"])
 		if ui != null and ui.is_open():
-			check(String(ui._body.text).length() > 40, "the page has something to read")
+			check(ui.page_text().length() > 40, "the page has something to read")
 			ui.close()
 			await _frames(2)
 		check(not player.ui_open, "stepping away gives the controls back")
