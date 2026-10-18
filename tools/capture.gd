@@ -39,7 +39,8 @@ var fall := false
 ## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
 var spin := 0.0
 ## --hold=pickaxe_iron puts that item in the selected hotbar slot for every shot, to see
-## it held in first person in the world.
+## it held in first person in the world. --hold=none puts away what's in hand (no hands
+## show), for clean beauty shots.
 var hold := ""
 var _spinning := false
 
@@ -286,7 +287,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var y := g.field.height(at.x, at.y) + height
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
-	if hold != "" and not ItemDB.def(hold).is_empty():
+	if hold == "none":
+		p.holster(true)
+	elif hold != "" and not ItemDB.def(hold).is_empty():
 		Game.inventory.set_slot(p.selected, ItemDB.make(hold, 1, 1.0, {}))
 		p.select(p.selected)
 	var arrived := Time.get_ticks_msec()
@@ -1702,6 +1705,10 @@ func _space() -> void:
 		if tree.current_scene is OrbitView:
 			break
 	var orbit: OrbitView = tree.current_scene
+	if hud_mode == "none":
+		# The info panel only; the warp streaks share its layer.
+		for c in orbit.find_children("*", "PanelContainer", true, false):
+			(c as Control).visible = false
 	await _wait(settle_frames)
 	await _snap("13_orbit")
 	var fey := 1
@@ -1730,6 +1737,7 @@ func _space() -> void:
 			break
 	world = tree.current_scene
 	p = world.player
+	_apply_hud_mode()
 	for i in 3000:
 		await tree.process_frame
 		if p.vehicle != null:
