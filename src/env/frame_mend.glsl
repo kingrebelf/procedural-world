@@ -34,8 +34,15 @@ void main() {
 			float lum = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
 			// Scene-linear, before exposure: moonlit ground sits well under 0.2, lamplight
 			// and the surfaces right by a flame well over 1.
-			float rod = night * (1.0 - smoothstep(0.2, 1.2, lum));
-			imageStore(color_image, uv, vec4(mix(c.rgb, lum * vec3(0.78, 0.9, 1.18), rod * 0.7), c.a));
+			// Firelight stays warm: what a flame, a lamp or a window lights is far redder
+			// than anything the moon lights. Half-greyed toward blue, firelit ground, smoke
+			// and the soft edges of flames had turned mauve.
+			float warm = (c.r - c.b) / max(lum, 1e-4);
+			float rod = night * (1.0 - smoothstep(0.2, 1.2, lum)) * (1.0 - smoothstep(0.5, 1.2, warm));
+			// Only a hint of blue, and only where the eye is fully dark-adapted: a strong
+			// blue went purple through the tonemap.
+			vec3 tint = mix(vec3(1.0), vec3(0.86, 0.94, 1.08), rod);
+			imageStore(color_image, uv, vec4(mix(c.rgb, lum * tint, rod * 0.7), c.a));
 		}
 		return;
 	}
