@@ -791,7 +791,8 @@ func sway(delta: float, speed: float) -> void:
 		aim_off += _raise_off * smoothstep(0.0, 1.0, raise)
 	var hide := raise > 0.8
 	if arms:
-		arms.visible = not hide
+		# Empty hands stay out of view; they show only while throwing a punch.
+		arms.visible = not hide and (_type != "" or _swing_t < 1.0)
 	_mesh.visible = not hide
 	if arms:
 		position = _rest + aim_off + off + pose[0] + drift + Vector3(0, -0.18 * dip, _recoil * 0.04 + 0.05 * dip)
