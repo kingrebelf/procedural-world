@@ -179,7 +179,7 @@ func run(text: String) -> String:
 		"level":
 			var target := clampi(a[1].to_int() if a.size() > 1 else Game.stats.level + 1, 1, Stats.MAX_LEVEL)
 			while Game.stats.level < target:
-				Game.add_xp(ceilf((Stats.xp_to_next(Game.stats.level) - Game.stats.xp) / Game.stats.xp_mult()) + 1.0, "Console")
+				Game.add_xp(ceilf((Stats.xp_to_next(Game.stats.level) - Game.stats.xp) / (Game.stats.xp_mult() * Game.XP_RATE)) + 1.0, "Console")
 			return "Level %d, %d points to spend (K)" % [Game.stats.level, Game.stats.points]
 		"money":
 			Game.add_money(a[1].to_int() if a.size() > 1 else 1000)
