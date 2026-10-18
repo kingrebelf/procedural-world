@@ -41,6 +41,7 @@ const GLOWS := ["Light", "Cyan", "Eyes"]
 
 var anim: AnimationPlayer
 var look: LookIK
+var _sk: Skeleton3D ## the kit's skeleton, its bone fixes stepped with the animation
 var flex: BodyFlex
 var feet: QuadFeet
 ## Ground height under a point, Callable(x, z) -> float: tilts the body to the slope.
@@ -136,6 +137,11 @@ func build(kind: String, size_mult := 1.0, tint = null, glow = null, seed := -1)
 	var sks := scene.find_children("*", "Skeleton3D", true, false)
 	if not sks.is_empty():
 		_nat = gaits(kind, anim, sks[0])
+		# The bone fixes after the animation (flex, feet, looking) run when it does, so a
+		# distant or unseen animal's level of detail spares them too: run every frame for
+		# every animal about, they were most of what a town's livestock cost.
+		_sk = sks[0]
+		_sk.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_MANUAL
 		flex = BodyFlex.new()
 		sks[0].add_child(flex)
 		feet = QuadFeet.new()
@@ -370,19 +376,21 @@ func _process(delta: float) -> void:
 	if anim == null:
 		return
 	_measure(delta)
-	if flex:
-		flex.yaw_rate = _yaw_rate if _current != "Death" else 0.0
-		flex.moving = clampf(_speed / maxf(_len * 1.5, 0.3), 0.0, 1.0)
 	_glances(delta)
-	_plant_feet()
 	_accum += delta
 	_tick += 1
 	var every := _lod_every() if lod else 1
 	if _tick % every != 0:
 		return
+	if flex:
+		flex.yaw_rate = _yaw_rate if _current != "Death" else 0.0
+		flex.moving = clampf(_speed / maxf(_len * 1.5, 0.3), 0.0, 1.0)
+	_plant_feet()
 	_pace_stride()
 	anim.advance(_accum)
 	_slope(_accum)
+	if _sk:
+		_sk.advance(_accum)
 	_accum = 0.0
 
 ## Which feet bear weight now, for QuadFeet to pin (none unless walking or galloping).
@@ -546,6 +554,8 @@ func _glances(dt: float) -> void:
 func advance(dt: float) -> void:
 	if anim:
 		anim.advance(dt)
+		if _sk:
+			_sk.advance(dt)
 
 func _on_finished(_n: StringName) -> void:
 	if _current == "Death":

@@ -8,6 +8,8 @@ var _st: Dictionary = {} ## material name -> SurfaceTool
 var _noise: FastNoiseLite
 ## While a grained box or cylinder is being added: (local point, local normal) -> UV.
 var _uv_fn := Callable()
+## While a screen face is being added: the UV2 its corners carry (ScreenLook).
+var _uv2 := Vector2.INF
 
 ## Materials whose texture is wood grain, laid along each box's long axis and each
 ## cylinder's length (a beam is cut along the tree), not projected from the world.
@@ -39,6 +41,8 @@ func _v(st: SurfaceTool, xf: Transform3D, nb: Basis, p: Vector3, n: Vector3, col
 	st.set_normal((nb * n).normalized())
 	st.set_color(color)
 	st.set_uv(_uv_fn.call(p, n) if _uv_fn.is_valid() else Vector2(wp.x + wp.z, wp.y))
+	if _uv2 != Vector2.INF:
+		st.set_uv2(_uv2)
 	st.add_vertex(wp)
 
 ## Adds triangle (a, b, c) given counter-clockwise when seen from the front side.
@@ -70,6 +74,27 @@ func card(mat: String, xf: Transform3D, center: Vector3, basis: Basis, w: float,
 		st.set_color(color)
 		st.set_uv(c[1])
 		st.add_vertex(wp)
+
+## A flat face w x h in the xy plane of `xf`, facing +z, its UV spanning it (u right, v
+## down) and `uv2` on every corner: a screen drawn by a shader (ScreenLook.face).
+func panel(mat: String, xf: Transform3D, w: float, h: float, uv2: Vector2, color := Color.WHITE) -> void:
+	_uv_fn = func(p: Vector3, _n: Vector3) -> Vector2: return Vector2(p.x / w + 0.5, 0.5 - p.y / h)
+	_uv2 = uv2
+	quad(mat, xf, Vector3(-w / 2, -h / 2, 0), Vector3(w / 2, -h / 2, 0), Vector3(w / 2, h / 2, 0), Vector3(-w / 2, h / 2, 0), color)
+	_uv_fn = Callable()
+	_uv2 = Vector2.INF
+
+## A flat disc of radius r in the xz plane of `xf`, facing +y, its UV the square round it
+## (v towards +z) and `uv2` on every point: a round screen (ScreenLook.disc).
+func disc(mat: String, xf: Transform3D, r: float, segs: int, uv2: Vector2, color := Color.WHITE) -> void:
+	_uv_fn = func(p: Vector3, _n: Vector3) -> Vector2: return Vector2(0.5 + p.x / (2.0 * r), 0.5 + p.z / (2.0 * r))
+	_uv2 = uv2
+	for s in segs:
+		var a0 := TAU * s / segs
+		var a1 := TAU * (s + 1) / segs
+		tri(mat, xf, Vector3.ZERO, Vector3(cos(a1), 0, sin(a1)) * r, Vector3(cos(a0), 0, sin(a0)) * r, Vector3.UP, Vector3.UP, Vector3.UP, color)
+	_uv_fn = Callable()
+	_uv2 = Vector2.INF
 
 func box(mat: String, xf: Transform3D, size: Vector3, color := Color.WHITE) -> void:
 	var h := size * 0.5

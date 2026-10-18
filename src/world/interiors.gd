@@ -423,9 +423,11 @@ static func interior(t: String) -> ArrayMesh:
 	for f in Furnish.settled(t):
 		var name: String = f[0]
 		if name.begins_with("@"):
-			_piece(name, k, models, Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), f[2]))
+			_piece(name, k, models, Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), f[2]), t)
 		else:
 			models.append([name, f[1], f[2], 0.85 if name == "scifi/Sniper_1" else 1.0])
+			if name == "scifi/Prop_Computer":
+				ScreenLook.computer(k, Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), f[2]), t)
 	if RUGS.has(t):
 		var rug: Array = RUGS[t]
 		var rc: Vector3 = rug[1]
@@ -1083,7 +1085,7 @@ static func _shrine(k: MeshKit) -> void:
 const PAINT_PALE := Color(0.86, 0.87, 0.87)
 const PAINT_LOCKER := Color(0.6, 0.67, 0.74)
 
-static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> void:
+static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D, room := "bunker") -> void:
 	var I := Transform3D.IDENTITY
 	var at := func(p: Vector3) -> Transform3D: return xf * I.translated(p)
 	match name:
@@ -1109,17 +1111,19 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 		"@console":
 			k.bevel_box("enamel", at.call(Vector3(0, 0.375, -0.05)), Vector3(1.6, 0.75, 0.7), 0.02, PAINT_PALE)
 			k.bevel_box("enamel_grey", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(0, 0.8, 0.12)), Vector3(1.5, 0.05, 0.5))
+			# Touch decks on the sloped desk, the main screen on its stand (ScreenLook).
+			var deck := xf.basis * Basis(Vector3.RIGHT, 0.45)
 			for x in [-0.38, 0.38]:
-				k.bevel_box("glow_cyan", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(x, 0.83, 0.12)), Vector3(0.6, 0.01, 0.32))
+				ScreenLook.face(k, Transform3D(deck * Basis(Vector3.RIGHT, -PI / 2), xf * Vector3(x, 0.8, 0.12) + deck.y * 0.027), 0.6, 0.32, "touch", room)
 			k.bevel_box("enamel_grey", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
-			k.bevel_box("screen", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
+			ScreenLook.face(k, at.call(Vector3(0, 1.0, -0.268)), 1.4, 0.4, "terminal", room)
 		"@desk":
 			k.bevel_box("enamel", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8), 0.02, PAINT_PALE)
 			for x in [-0.85, 0.85]:
 				k.bevel_box("metal", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
 			k.bevel_box("enamel", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72), 0.02, PAINT_LOCKER)
 			k.bevel_box("enamel_grey", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
-			k.bevel_box("screen", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
+			ScreenLook.face(k, at.call(Vector3(-0.3, 0.98, -0.279)), 0.64, 0.36, "monitor", room)
 		"@chair":
 			k.cylinder("enamel_grey", at.call(Vector3(0, 0, 0)), 0.25, 0.25, 0.03, 8)
 			k.cylinder("metal", at.call(Vector3(0, 0.03, 0)), 0.04, 0.04, 0.43, 6)
@@ -1140,11 +1144,11 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 		"@holo":
 			k.cylinder("enamel", at.call(Vector3(0, 0, 0)), 0.75, 0.6, 0.9, 16, true, 0.0, 1, PAINT_PALE)
 			k.cylinder("metal", at.call(Vector3(0, 0.9, 0)), 0.8, 0.8, 0.05, 16)
-			if Eras.theme == "human":
-				# Human worlds: a map table, its top a lit display; nothing floats or glows.
-				k.cylinder("screen", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
-			else:
-				k.cylinder("glow_cyan", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
+			# A map table, its top a lit display of the land round it (ScreenLook).
+			k.cylinder("enamel_grey", at.call(Vector3(0, 0.95, 0)), 0.65, 0.65, 0.02, 16)
+			ScreenLook.disc(k, at.call(Vector3(0, 0.972, 0)), 0.62, "map", room)
+			if Eras.theme != "human":
+				# Alien worlds: a hologram floats over it as well.
 				k.sphere("glow_cyan", at.call(Vector3(0, 1.4, 0)), 0.22, 6, 10)
 				k.cylinder("glow_cyan", at.call(Vector3(0, 1.38, 0)), 0.45, 0.45, 0.01, 16, false)
 		"@rack":
@@ -1164,8 +1168,8 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 				k.bevel_box("glow_violet", at.call(Vector3(x, 0.45, 0)), Vector3(0.01, 0.05, 1.8))
 		"@screen":
 			k.bevel_box("enamel_grey", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
-			# A lit display, not a white slab of light.
-			k.bevel_box("screen", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
+			# A lit display, not a white slab of light (ScreenLook).
+			ScreenLook.face(k, at.call(Vector3(0, 0.7, 0.032)), 2.45, 1.25, "bulletin", room)
 		"@planter":
 			k.bevel_box("enamel", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6), 0.02, PAINT_PALE)
 			k.bevel_box("moss", at.call(Vector3(0, 0.62, 0)), Vector3(1.1, 0.05, 0.5))

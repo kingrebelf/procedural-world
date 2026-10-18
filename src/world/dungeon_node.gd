@@ -266,6 +266,9 @@ func _mesh_node(k: MeshKit, models: Array, range_end := 0.0) -> MeshInstance3D:
 	k.commit(Materials.get_mat, mesh)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
+	if _era == Eras.SCIFI:
+		# The bunker's name in its screens' headers.
+		ScreenLook.set_title(mi, String(pl.get("name", "")))
 	if range_end > 0.0:
 		mi.visibility_range_end = range_end
 	return mi
@@ -820,6 +823,8 @@ func _place_at(name: String, at: Vector3, yaw_deg: float, k: MeshKit, models: Ar
 			boxes.append([Transform3D(b, at + Vector3(0, sz.y * 0.5, 0)), sz])
 		return
 	models.append([name, yaw_deg, at, 1.0])
+	if name == "scifi/Prop_Computer":
+		ScreenLook.computer(k, Transform3D(b, at), "bunker")
 	var bb := _aabb_of(name)
 	if boxes != null and bb.size.y > 0.5 and bb.size.x * bb.size.z > 0.12:
 		boxes.append([Transform3D(b, at + b * bb.get_center()), bb.size])
@@ -1034,7 +1039,7 @@ func _build_parts() -> void:
 		var b := Basis(Vector3.UP, float(nt["yaw"]))
 		if _era == Eras.SCIFI:
 			k.box("enamel_grey", Transform3D(b, Vector3(0, 0, 0.03)), Vector3(0.6, 0.44, 0.06))
-			k.box("screen", Transform3D(b, Vector3(0, 0.01, 0.065)), Vector3(0.5, 0.32, 0.01))
+			ScreenLook.face(k, Transform3D(b, Vector3(0, 0, 0.03) + b * Vector3(0, 0.01, 0.031)), 0.5, 0.32, "notice", "bunker")
 		else:
 			k.box("planks", Transform3D(b, Vector3(0, 0, 0.025)), Vector3(0.62, 0.48, 0.05))
 			k.box("linen", Transform3D(b, Vector3(0, -0.01, 0.055)), Vector3(0.44, 0.34, 0.01), Color(0.95, 0.9, 0.78))
@@ -1313,6 +1318,8 @@ func use(n: String, who: Node) -> void:
 			var nt: Dictionary = pl["notes"][i]
 			var entry := {"title": nt["title"], "sub": pl["name"], "look": "screen" if _era == Eras.SCIFI else "paper",
 				"pages": [{"tab": "Notice", "text": nt["text"]}]}
+			if _era == Eras.SCIFI:
+				entry["screen"] = {"kind": "notice", "room": "bunker", "site": pl["name"], "os": "MILNET", "user": "guest"}
 			who.get_tree().call_group("lore_ui", "open_entry", entry, Dungeon.to_world(pl, nt["p"]))
 			if not _is("read", i):
 				_mark("read", i)
