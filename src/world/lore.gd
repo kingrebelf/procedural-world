@@ -7,7 +7,7 @@ class_name Lore
 ## terminal downloads its survey onto your atlas and lets you charge your gear from the
 ## grid, a holo-table marks the nearest settlement, a shrine's rite restores you.
 ##
-## The spots come straight from the rooms' furniture (Interiors.FURNISH and
+## The spots come straight from the rooms' furniture (Furnish.settled: Interiors.FURNISH and
 ## KitHouse.FURNISH), so they follow the props wherever those are placed. What you have
 ## read and done is kept in the room's state in the chunk snapshot: "lore" holds the
 ## spots read, "lore_act" the one-off and daily actions.
@@ -42,7 +42,7 @@ static var _gen_seed := -1
 static func spots(t: String) -> Array:
 	if _spots.has(t):
 		return _spots[t]
-	var src: Array = Interiors.FURNISH.get(t, KitHouse.FURNISH.get(t, []))
+	var src: Array = Furnish.settled(t)
 	var out: Array = []
 	for f in src:
 		var kind: String = KINDS.get(String(f[0]), "")

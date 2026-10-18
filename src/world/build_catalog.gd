@@ -107,9 +107,9 @@ const PIECES := {
 	"shelf": {"name": "Shelf", "models": [["props/Shelf_Simple", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 4.0, "era": -1, "decor": true},
 	"shelf_arch": {"name": "Arched Shelf", "models": [["props/Shelf_Arch", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"candle_stand": {"name": "Candle Stand", "models": [["props/CandleStick_Stand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "light": Color(1.0, 0.68, 0.35)},
-	"lantern": {"name": "Lantern", "models": [["props/Lantern_Wall", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "light": Color(1.0, 0.65, 0.3)},
-	"banner_red": {"name": "Banner", "models": [["props/Banner_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
-	"banner_blue": {"name": "Banner (striped)", "models": [["props/Banner_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
+	"lantern": {"name": "Lantern", "models": [["props/Lantern_Wall", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "hang": true, "light": Color(1.0, 0.65, 0.3)},
+	"banner_red": {"name": "Banner", "models": [["props/Banner_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
+	"banner_blue": {"name": "Banner (striped)", "models": [["props/Banner_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
 	"weapon_stand": {"name": "Weapon Rack", "models": [["props/WeaponStand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"dummy": {"name": "Training Dummy", "models": [["props/Dummy", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 30.0, "era": -1, "decor": true},
 	"market_stall": {"name": "Market Stall", "models": [["props/Stall_Empty", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "decor": true},
@@ -120,7 +120,7 @@ const PIECES := {
 	"vase": {"name": "Metal Basin", "models": [["props/Vase_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "stone", "hp": 2.0, "era": -1, "decor": true},
 	"pot": {"name": "Clay Pot", "models": [["props/Pot_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "stone", "hp": 2.0, "era": -1, "decor": true},
 	"book_stand": {"name": "Book Stand", "models": [["props/BookStand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
-	"peg_rack": {"name": "Peg Rack", "models": [["props/Peg_Rack", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
+	"peg_rack": {"name": "Peg Rack", "models": [["props/Peg_Rack", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
 	"cage": {"name": "Small Cage", "models": [["props/Cage_Small", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 5.0, "era": -1, "decor": true},
 	# Storage: chests that keep what you put in them, forever.
 	"storage_chest": {"name": "Storage Chest", "models": [["props/Chest_Wood", 0, Vector3.ZERO, 1.0]],
@@ -274,6 +274,16 @@ const PIECES := {
 }
 
 const STATION_RANGE := 6.0
+## Fitting a free piece (rest_free): how near a wall or piece its sides may come, the
+## skin kept off the floor under it and the ceiling over it, how high over its
+## foot it may step up onto a floor, how far down it looks for one, the steps it is tried
+## out of what it hits, and how far from where you aim it may be moved.
+const REST_TOUCH := 0.005
+const REST_SKIN := 0.03
+const REST_STEP := 0.45
+const REST_DROP := 3.0
+const REST_STEP_OUT := 0.1
+const REST_SHIFT := 1.0
 
 static var _meshes := {}
 static var _shapes := {}
@@ -1128,6 +1138,89 @@ static func nearest_in(near: Array, pos: Vector3, radius: float):
 		if dd < best_d:
 			best_d = dd
 			best = e["pos"]
+	return best
+
+## Where a free piece (a table, a chest, a crate) really stands near pos: level, its
+## foot on the highest floor, step or ground under it (looking down from a step's height
+## over it, so never sunk into a floor or left floating over one), and, when it would
+## reach into a wall or another piece, moved the least way out along its own sides or the
+## world's (towards eye, the side you look from, when that's about as near). ok is false
+## when it can't be fitted within REST_SHIFT. Pieces hung on a wall ("hang") keep pos.
+static func rest_free(space: PhysicsDirectSpaceState3D, id: String, pos: Vector3, yaw: float, exclude: Array = [], eye := Vector3.INF) -> Dictionary:
+	var d := def(id)
+	if d.get("snap", "") != "free" or d.get("hang", false) or d.has("mount"):
+		return {"pos": pos, "ok": true}
+	var a := mesh(id).get_aabb()
+	var b := Basis(Vector3.UP, yaw)
+	var shape := BoxShape3D.new()
+	# A touch smaller than the piece and lifted off its foot, so the floor it stands on
+	# and a wall it only touches don't count.
+	shape.size = Vector3(maxf(a.size.x - 2 * REST_TOUCH, 0.02), maxf(a.size.y - 2 * REST_SKIN, 0.02), maxf(a.size.z - 2 * REST_TOUCH, 0.02))
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.collision_mask = 2
+	q.exclude = exclude
+	var first := _rested(space, a, b, pos, exclude)
+	if _clear(space, q, a, b, first):
+		return {"pos": first, "ok": true}
+	var dirs: Array = [b.x, -b.x, b.z, -b.z, Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
+	var back := Vector3.ZERO
+	if eye != Vector3.INF:
+		back = Vector3(eye.x - pos.x, 0, eye.z - pos.z).normalized()
+	var best := first
+	var best_cost := INF
+	for dv in dirs:
+		var dir: Vector3 = dv
+		dir.y = 0.0
+		dir = dir.normalized()
+		# Prefer coming out on your side of a wall, not through it.
+		var bias := 0.15 * (1.0 - dir.dot(back)) if back != Vector3.ZERO else 0.0
+		var lo := 0.0
+		var hi := -1.0
+		var dist := REST_STEP_OUT
+		while dist <= REST_SHIFT + 0.001 and dist + bias < best_cost:
+			if _clear(space, q, a, b, _rested(space, a, b, pos + dir * dist, exclude)):
+				hi = dist
+				break
+			lo = dist
+			dist += REST_STEP_OUT
+		if hi < 0.0:
+			continue
+		for k in 3:
+			var mid := (lo + hi) / 2
+			if _clear(space, q, a, b, _rested(space, a, b, pos + dir * mid, exclude)):
+				hi = mid
+			else:
+				lo = mid
+		if hi + bias < best_cost:
+			best_cost = hi + bias
+			best = _rested(space, a, b, pos + dir * hi, exclude)
+	return {"pos": best, "ok": best_cost < INF}
+
+## pos with its foot on the floor under it (unchanged when there is none).
+static func _rested(space: PhysicsDirectSpaceState3D, a: AABB, b: Basis, pos: Vector3, exclude: Array) -> Vector3:
+	var y = _support(space, a, b, pos, exclude)
+	if y != null:
+		pos.y = float(y) - a.position.y
+	return pos
+
+static func _clear(space: PhysicsDirectSpaceState3D, q: PhysicsShapeQueryParameters3D, a: AABB, b: Basis, at: Vector3) -> bool:
+	q.transform = Transform3D(b, at + b * a.get_center() + Vector3(0, REST_SKIN, 0))
+	return space.intersect_shape(q, 1).is_empty()
+
+## The highest floor top under a piece's footprint (its corners and middle), looking down
+## from a step's height over its foot; null when there is nothing under it.
+static func _support(space: PhysicsDirectSpaceState3D, a: AABB, b: Basis, at: Vector3, exclude: Array):
+	var best = null
+	var lo := a.position + Vector3(REST_SKIN, 0, REST_SKIN)
+	var hi := a.end - Vector3(REST_SKIN, 0, REST_SKIN)
+	var top := at.y + a.position.y + REST_STEP
+	for c in [Vector2(lo.x, lo.z), Vector2(hi.x, lo.z), Vector2(hi.x, hi.z), Vector2(lo.x, hi.z), Vector2((lo.x + hi.x) / 2, (lo.z + hi.z) / 2)]:
+		var w := at + b * Vector3(c.x, 0, c.y)
+		var rq := PhysicsRayQueryParameters3D.create(Vector3(w.x, top, w.z), Vector3(w.x, top - REST_DROP, w.z), 1 | 2, exclude)
+		var hit := space.intersect_ray(rq)
+		if not hit.is_empty() and (best == null or float(hit["position"].y) > float(best)):
+			best = hit["position"].y
 	return best
 
 ## A piece's world-space box at pos / yaw, from its mesh.

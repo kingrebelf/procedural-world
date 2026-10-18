@@ -494,6 +494,11 @@ func _frames(n: int) -> void:
 		await process_frame
 
 func _run() -> void:
+	# Free pieces you build stand level on the floor under them, out of walls and pieces.
+	var rest: Dictionary = await ProbeRest.run(self, Vector3(0, 3000, 0))
+	for l in rest["lines"]:
+		print("  ", l)
+	check(rest["bad"] == 0, "built tables, chests and crates rest on their floor, clear of walls")
 	var game = root.get_node("/root/Game")
 	game.new_world("Integration", "424242")
 	var world_id: String = game.store.root.get_file()

@@ -23,6 +23,9 @@ func _init() -> void:
 	var g := survey(seed, R, old)
 	for l in g["lines"]:
 		print(l)
+	if old:
+		for l in floors(true)["lines"]:
+			print(l)
 	for l in floors()["lines"]:
 		print(l)
 	quit()
@@ -118,32 +121,48 @@ static func measure(chunk: Dictionary, o: Dictionary, old := false) -> Dictionar
 			flt = maxf(flt, w.y - gy)
 	return {"bury": maxf(bury, 0.0), "float": maxf(flt, 0.0)}
 
-## Furniture against the floors of the rooms: {"lines", "bad"}. A piece meant to stand on
-## the floor whose lowest point is more than 5 cm under it (sunk out of sight), or more
-## than 1 cm over it (a gap you see).
-static func floors() -> Dictionary:
-	var lines := ["Furniture on floors (lowest point minus floor; - is sunk in):"]
+## Furniture in the rooms (KitHouse, Interiors): {"lines", "bad"}. Bad: a piece meant for
+## the floor whose foot is off it by more than 1 cm, or that reaches into a wall, two
+## solid floor pieces inside each other, or a room's loot chest not on its floor. `raw` checks
+## the hand-written lists instead of Furnish.settled.
+static func floors(raw := false) -> Dictionary:
+	var lines := ["Furniture in rooms (%s):" % ("as written" if raw else "settled")]
 	var bad := 0
-	var rooms := {}
-	for t in KitHouse.FURNISH:
-		rooms[t] = [KitHouse.FURNISH[t], KitHouse.FLOOR]
-	for t in Interiors.FURNISH:
-		rooms[t] = [Interiors.FURNISH[t], floor_of(t)]
-	for t in rooms:
-		var fl: float = rooms[t][1]
-		for f in rooms[t][0]:
-			var name: String = f[0]
-			if name.begins_with("@"):
-				continue
-			var p: Vector3 = f[2]
-			if absf(p.y - fl) > 0.001:
-				continue # on a table or shelf, hung up
-			var box := KitHouse._model_box(name, Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), p))
+	var types: Array = KitHouse.FURNISH.keys() + Interiors.FURNISH.keys()
+	for t in types:
+		var list: Array = KitHouse.FURNISH.get(t, Interiors.FURNISH.get(t, [])) if raw else Furnish.settled(t)
+		var rm := Furnish.room(t)
+		var fl: float = rm["floor"]
+		var boxes: Array = []
+		var feet: Array = []
+		var floored: Array = []
+		for f in list:
+			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), f[2])
+			var box := Furnish.box_of(f[0], xf)
+			boxes.append(box)
+			feet.append(Furnish.footprint(f[0], xf))
 			var d := box.position.y - fl
-			if d < -0.05 or d > 0.01:
+			var on := d <= Furnish.OVER and -d <= Furnish.UNDER
+			floored.append(on)
+			if on and absf(d) > 0.01:
 				bad += 1
-			if absf(d) > 0.01:
-				lines.append("  %-14s %-28s %+.3f" % [t, name, d])
+				lines.append("  %-14s %-28s off the floor %+.3f" % [t, f[0], d])
+			var stacked := false
+			for i in boxes.size() - 1:
+				if absf(box.position.y - (boxes[i] as AABB).end.y) < 0.05 and Furnish._overlap(feet[-1], feet[i]):
+					stacked = true
+			var w := Furnish._into_room(box.grow(-Furnish.GAP), rm)
+			if (on or stacked) and w.length() > 0.005:
+				bad += 1
+				lines.append("  %-14s %-28s into the wall %.3f" % [t, f[0], w.length()])
+		for i in list.size():
+			for j in range(i + 1, list.size()):
+				if not (list[i][3] and list[j][3] and floored[i] and floored[j]) or not Furnish._overlap(feet[i], feet[j]):
+					continue
+				var ov := (boxes[i] as AABB).intersection(boxes[j])
+				if ov.size.y >= 0.05:
+					bad += 1
+					lines.append("  %-14s %s inside %s %s" % [t, list[j][0], list[i][0], ov.size.snapped(Vector3(0.01, 0.01, 0.01))])
 	for t in Interiors.LOOT:
 		var fl := floor_of(t)
 		for spot in Interiors.LOOT[t]:
@@ -153,11 +172,10 @@ static func floors() -> Dictionary:
 			for c in Eras.CACHE_TYPES:
 				var box := ObjectLibrary.get_mesh(c).get_aabb()
 				var d := q.y + box.position.y - fl
-				if d < -0.05 or d > 0.01:
-					bad += 1
 				if absf(d) > 0.01:
+					bad += 1
 					lines.append("  %-14s %-28s %+.3f" % [t, c + " (loot)", d])
-	lines.append("  %d pieces off their floor" % bad)
+	lines.append("  %d problems" % bad)
 	return {"lines": lines, "bad": bad}
 
 ## The floor height of a room type, in its own space (before the room sinks).
