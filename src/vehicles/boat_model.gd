@@ -25,6 +25,8 @@ const STATIONS := {
 		{"p": Vector3(0, 2.6, -7.6), "yaw": PI, "pose": "lookout"}],
 	"canoe": [{"p": Vector3(0, 0.09 - SEAT, 1.45), "yaw": PI, "pose": "sit"},
 		{"p": Vector3(0, 0.09 - SEAT, -1.35), "yaw": PI, "pose": "sit"}],
+	"sloop": [{"p": Vector3(0.75, 0.7 + 0.4 - SEAT, 3.0), "yaw": PI, "pose": "sit"},
+		{"p": Vector3(-0.8, 0.7 + 0.4 - SEAT, 2.2), "yaw": PI * 0.5, "pose": "sit"}],
 	"kayak": [{"p": Vector3(0, -0.06 - SEAT, 0.3), "yaw": PI, "pose": "sit"}],
 	"life_raft": [{"p": Vector3(-0.55, 0.3 - SEAT, 0.3), "yaw": PI * 0.75, "pose": "sit"},
 		{"p": Vector3(0.55, 0.3 - SEAT, -0.2), "yaw": -PI * 0.25, "pose": "sit"}],
@@ -49,6 +51,7 @@ const HULLS := {
 	"canoe": {"L": 4.8, "B": 0.86, "D": 0.2, "F": 0.16, "rise": 0.3, "transom": 0.0, "deck": NAN, "double": true},
 	"kayak": {"L": 4.0, "B": 0.6, "D": 0.15, "F": 0.13, "rise": 0.07, "transom": 0.0, "deck": NAN, "double": true},
 	"rowboat": {"L": 4.4, "B": 1.45, "D": 0.32, "F": 0.42, "rise": 0.18, "transom": 0.55, "deck": NAN},
+	"sloop": {"L": 9.0, "B": 2.6, "D": 0.75, "F": 0.8, "rise": 0.38, "transom": 0.55, "deck": 0.7},
 	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6, "tumble": 0.04},
 	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.34, "deck": 1.6, "tumble": 0.09, "rake": 0.03, "round": 0.35},
 	"launch": {"L": 7.5, "B": 2.5, "D": 0.55, "F": 0.7, "rise": 0.25, "transom": 0.8, "deck": 0.52, "paint": true},
@@ -104,6 +107,21 @@ static func get_mat(name: String) -> Material:
 				s.normal_scale = 0.12
 				s.uv1_triplanar = true
 				s.uv1_scale = Vector3.ONE * 0.25
+			m = s
+		"painted_planks":
+			# White lead paint over planking: the seams still show through it.
+			var s := StandardMaterial3D.new()
+			s.albedo_color = Color.WHITE
+			s.vertex_color_use_as_albedo = true
+			s.vertex_color_is_srgb = true
+			s.roughness = 0.5
+			var n := Materials.photo("planks", "normal")
+			if n:
+				s.normal_enabled = true
+				s.normal_texture = n
+				s.normal_scale = 0.6
+				s.uv1_triplanar = true
+				s.uv1_scale = Vector3.ONE * 0.5
 			m = s
 		"rubber_orange":
 			var s := StandardMaterial3D.new()
@@ -188,6 +206,9 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"kayak":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.72, 0.09, 0.07))
 			_kayak(k, shapes)
+		"sloop":
+			_hull(k, shapes, HULLS[kind], "painted_planks", Color(0.9, 0.88, 0.83), Color(0.42, 0.26, 0.16))
+			_sloop(k, shapes, r, root)
 		"fishing_boat":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.62, 0.52, 0.44), Color(0.62, 0.52, 0.44).darkened(0.38))
 			_fishing_boat(k, shapes, r, root)
@@ -1000,6 +1021,77 @@ static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator, r
 	_crate(k, shapes, Vector3(-0.7, dy, -0.2), 0.5, 0.2)
 	_coil(k, Vector3(0.5, dy, -2.4), 0.24)
 	_rails(k, shapes, h, dy, 0.35, true, 0.03, 0.93, 0.5)
+
+## A small gaff sloop, as her icon: a white planked hull with a varnished sheer strake and
+## a brown bottom, a deep keel, a cuddy cabin with round ports and a hatch, a gaff
+## mainsail on a boom over the cockpit, a jib to the stem, a tiller on a transom rudder.
+static func _sloop(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node3D) -> void:
+	var h: Dictionary = HULLS["sloop"]
+	var L: float = h["L"]
+	var dy: float = h["deck"]
+	var wood := Color(0.62, 0.4, 0.22)
+	var white := Color(0.93, 0.91, 0.86)
+	_deck(k, shapes, h, dy, "planks", 0.03, 0.96, Color(0.78, 0.66, 0.5))
+	# Varnished sheer strake and toe rail along each side.
+	for side in [1.0, -1.0]:
+		var prev := Vector3.INF
+		for i in 25:
+			var u := lerpf(0.02, 0.985, float(i) / 24.0)
+			var q := _hull_pt(h, u, 1.0)
+			var p := Vector3(q.x * side, q.y - 0.02, q.z)
+			if prev != Vector3.INF:
+				_beam(k, "timber", prev, p, 0.045, 6)
+				_beam(k, "timber", prev + Vector3(-side * 0.06, 0.07, 0), p + Vector3(-side * 0.06, 0.07, 0), 0.025, 5)
+			prev = p
+	# The keel: a deep fin under the middle, ballast at its foot.
+	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, -float(h["D"]) - 0.25, 0.3)), Vector3(0.14, 0.6, 3.6), wood.darkened(0.3))
+	k.box("iron", Transform3D(Basis.IDENTITY, Vector3(0, -float(h["D"]) - 0.5, 0.3)), Vector3(0.2, 0.16, 3.2), Color(0.3, 0.29, 0.28))
+	# Cuddy cabin forward of the cockpit: white sides, round ports, a varnished hatch.
+	var cz := -0.6
+	var cl := 2.2
+	var cw := _width_at(h, 0.5 - cz / L, dy) * 1.25
+	_solid(k, shapes, "painted_planks", Vector3(0, dy + 0.3, cz), Vector3(cw, 0.6, cl), white)
+	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, dy + 0.63, cz)), Vector3(cw + 0.08, 0.06, cl + 0.08), wood)
+	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, dy + 0.69, cz - 0.3)), Vector3(0.6, 0.08, 0.6), wood)
+	for side in [1.0, -1.0]:
+		for z in [cz - 0.55, cz + 0.45]:
+			var at := Vector3(side * (cw * 0.5 + 0.005), dy + 0.33, z)
+			k.cylinder("iron", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), at), 0.085, 0.085, 0.03, 12, true, 0.0, 1, Color(0.72, 0.55, 0.3))
+			k.cylinder("screen", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), at + Vector3(side * 0.012, 0, 0)), 0.06, 0.06, 0.02, 12)
+	# Cabin door in the aft end (into the cuddy), and cockpit benches either side.
+	k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, dy + 0.27, cz + cl * 0.5 + 0.01)), Vector3(0.55, 0.5, 0.03), wood)
+	for side in [1.0, -1.0]:
+		var bw := _width_at(h, 0.5 - 2.4 / L, dy) - 0.3
+		_solid(k, shapes, "planks", Vector3(side * bw, dy + 0.2, 2.4), Vector3(0.38, 0.4, 2.2), wood.lightened(0.15))
+	# Mast through the cabin top, shrouds to the rail, forestay and backstay.
+	var mast := Vector3(0, dy, -1.2)
+	var top := 8.4
+	_beam(k, "spar", mast, mast + Vector3(0, top, 0), 0.08)
+	k.cylinder("spar", Transform3D(Basis.IDENTITY, mast + Vector3(0, top + 0.05, 0)), 0.06, 0.04, 0.12, 8)
+	for side in [1.0, -1.0]:
+		var foot := _hull_pt(h, 0.5 - (mast.z + 0.25) / L, 1.0)
+		_line(k, mast + Vector3(0, top - 0.6, 0), Vector3(side * (foot.x - 0.05), foot.y + 0.05, mast.z + 0.25), 0.012)
+	var stem := _hull_pt(h, 0.995, 1.0) + Vector3(0, 0.05, 0.05)
+	var transom := _hull_pt(h, 0.0, 1.0)
+	var head := mast + Vector3(0, top - 0.5, 0)
+	_line(k, head, stem, 0.012)
+	_line(k, mast + Vector3(0, top, 0), Vector3(0, transom.y + 0.1, transom.z - 0.05), 0.01)
+	var rig := _rig(root)
+	var cream := Color(0.88, 0.83, 0.72)
+	var boom_y := 1.15
+	var aft := transom.z - mast.z - 0.2
+	rig.add_gaff(mast, Vector3(0, boom_y, 0.08), Vector3(0, top - 2.2, 0.08), Vector3(0, top + 0.2, aft * 0.62), Vector3(0, boom_y + 0.1, aft),
+		0.55, cream, [["clew", Vector3(0, dy + 0.15, transom.z - 0.35)]])
+	rig.add_jib(stem + Vector3(0, 0.1, 0.1), head + Vector3(0, -0.15, 0.1), Vector3(0, dy + 1.05, mast.z + 0.9), 0.4, cream,
+		[["clew", Vector3(0.55, dy + 0.1, mast.z + 1.6)]])
+	# Rudder on the transom and its tiller across the cockpit.
+	var rz := transom.z + 0.08
+	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, -0.15, rz + 0.22)), Vector3(0.07, 1.3, 0.45), wood.darkened(0.15))
+	_beam(k, "timber", Vector3(0, dy + 0.45, rz + 0.05), Vector3(0, dy + 0.62, rz - 1.25), 0.035)
+	# A coil of line and a bucket in the cockpit.
+	_coil(k, Vector3(-0.3, dy, 3.4), 0.18)
+	if r.randf() < 0.6:
+		_barrel(k, Vector3(0.35, dy, 3.3), 0.16, 0.3)
 
 static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node3D) -> void:
 	var h: Dictionary = HULLS["cog"]

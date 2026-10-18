@@ -87,7 +87,7 @@ func deploy(item: Dictionary, at: Vector3, yaw: float) -> Vehicle:
 
 ## Removes the vehicle from the world and returns it as an item (in your pack if it fits).
 func pack_up(v: Vehicle) -> bool:
-	if v == null or v.rider != null:
+	if v == null or v.rider != null or Vehicle.KINDS[v.kind].get("moored", false):
 		return false
 	var it := ItemDB.make(v.kind, 1, float(v.rec.get("q", 1.0)), v.rec.get("origin", {}))
 	if not Game.give(it):

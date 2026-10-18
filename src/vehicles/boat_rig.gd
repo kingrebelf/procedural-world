@@ -93,6 +93,61 @@ func add_lug(mast: Vector3, tack: Vector3, throat: Vector3, peak: Vector3, clew:
 	sails[-1]["pts"]["clew"] = ["cloth", clew - mid]
 	sails[-1]["pts"]["tack"] = ["cloth", tack - mid]
 
+## A gaff mainsail on the mast at `mast`: a four-sided sail laced to a gaff above (throat
+## to peak) and a boom below (tack to clew), corners in mast-local space. Gaff, boom and
+## cloth swing together on the mast like a lug's; lowered, the cloth drops onto the boom.
+## `ropes` as add_lug ("clew", "tack").
+func add_gaff(mast: Vector3, tack: Vector3, throat: Vector3, peak: Vector3, clew: Vector3, belly: float, col: Color, ropes: Array, max_turn := 1.45) -> void:
+	var pivot := Node3D.new()
+	pivot.position = mast
+	add_child(pivot)
+	var yk := MeshKit.new(3)
+	BoatModel._beam(yk, "spar", throat + Vector3(0, 0, -0.08), peak + (peak - throat).normalized() * 0.15, 0.05)
+	BoatModel._beam(yk, "spar", tack + Vector3(0, -0.06, -0.08), clew + (clew - tack).normalized() * 0.25 + Vector3(0, -0.06, 0), 0.06)
+	# Jaws round the mast at the gaff's and boom's inner ends, and the peak halyard.
+	for q in [throat, tack]:
+		yk.cylinder("rope", Transform3D(Basis.IDENTITY, Vector3(0, q.y - 0.05, 0)), 0.1, 0.1, 0.1, 8)
+	BoatModel._line(yk, Vector3(0, peak.y + 0.4, 0.06), throat.lerp(peak, 0.6), 0.01)
+	_mesh(pivot, "Yard", yk)
+	var cloth := Node3D.new()
+	pivot.add_child(cloth)
+	var ck := MeshKit.new(4)
+	_cloth(ck, [throat, peak, clew, tack], Vector3(1, 0, 0), belly, col, 0.6)
+	_mesh(cloth, "Cloth", ck)
+	var bk := MeshKit.new(5)
+	BoatModel._beam(bk, "sail", tack.lerp(clew, 0.05) + Vector3(0, 0.08, 0), tack.lerp(clew, 0.9) + Vector3(0, 0.08, 0), 0.12, 8)
+	var bundle := _mesh(pivot, "Furled", bk)
+	_add(LUG, pivot, cloth, bundle, ropes, {}, max_turn)
+	# Lowered, the sail gathers down onto the boom: hang the cloth on the boom's middle.
+	var mid := tack.lerp(clew, 0.5)
+	cloth.position = mid
+	(cloth.get_child(0) as Node3D).position = -mid
+	sails[-1]["pts"] = {"clew": ["cloth", clew - mid], "tack": ["cloth", tack - mid]}
+
+## A jib from the stem at `tack` (boat space) up the forestay to `head`, its clew at
+## `clew`: a triangle that swings about the tack and fills to leeward. Lowered, it drops
+## down the stay to a heap at the tack. `ropes` ("clew").
+func add_jib(tack: Vector3, head: Vector3, clew: Vector3, belly: float, col: Color, ropes: Array, max_turn := 1.0) -> void:
+	# It swings about the forestay: the pivot turns about its own y, tilted up the stay.
+	var stay := Node3D.new()
+	stay.position = tack
+	var up := head - tack
+	stay.basis = Basis(Vector3.RIGHT, atan2(up.z, up.y))
+	add_child(stay)
+	var pivot := Node3D.new()
+	stay.add_child(pivot)
+	var h := stay.basis.inverse() * (head - tack)
+	var c := stay.basis.inverse() * (clew - tack)
+	var cloth := Node3D.new()
+	pivot.add_child(cloth)
+	var ck := MeshKit.new(6)
+	_cloth(ck, [h, h + (c - h).normalized() * 0.05, c, Vector3.ZERO], Vector3(1, 0, 0), belly, col, 0.6)
+	_mesh(cloth, "Cloth", ck)
+	var bk := MeshKit.new(7)
+	bk.sphere("sail", Transform3D(Basis.IDENTITY, Vector3(0, 0.12, 0.25)), 0.22, 6, 8, 0.2, 0.55)
+	var bundle := _mesh(pivot, "Furled", bk)
+	_add(LUG, pivot, cloth, bundle, ropes, {"clew": ["cloth", c]}, max_turn)
+
 func _add(type: String, pivot: Node3D, cloth: Node3D, bundle: Node3D, ropes: Array, pts: Dictionary, max_turn: float) -> void:
 	var lines := MeshInstance3D.new()
 	lines.name = "Lines"
@@ -215,6 +270,12 @@ func _lines(s: Dictionary, dt: float) -> void:
 	var k := MeshKit.new(6)
 	var pivot: Node3D = s["pivot"]
 	var cloth: Node3D = s["cloth"]
+	# The pivot's place in the rig (a jib's sits on its tilted forestay).
+	var px := pivot.transform
+	var up := pivot.get_parent() as Node3D
+	while up != self and up != null:
+		px = up.transform * px
+		up = up.get_parent() as Node3D
 	for r in s["ropes"]:
 		var at: Array = s["pts"][r[0]]
 		var local: Vector3 = at[1]
@@ -222,8 +283,8 @@ func _lines(s: Dictionary, dt: float) -> void:
 		if at[0] == "cloth":
 			if furl > 0.6:
 				continue # taken in: the sheets hang slack along the yard
-			p = pivot.transform * (cloth.transform * local)
+			p = px * (cloth.transform * local)
 		else:
-			p = pivot.transform * local
+			p = px * local
 		BoatModel._line(k, p, r[1], 0.012)
 	(s["lines"] as MeshInstance3D).mesh = k.commit(BoatModel.get_mat)

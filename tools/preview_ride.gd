@@ -13,6 +13,9 @@ const RUNS := [
 	["sail_raft", Vector2.ZERO, Vector2(0, -1), 25.0, true],
 	["sail_raft", Vector2.ZERO, Vector2(1, -0.3), 25.0, true],
 	["sail_raft", Vector2.ZERO, Vector2(0, 1), 15.0, true],
+	["sloop", Vector2.ZERO, Vector2(1, 0), 40.0, true],
+	["sloop", Vector2.ZERO, Vector2(0.7, 0.7), 40.0, true],
+	["sloop", Vector2(0.4, 0), Vector2(1, 0), 30.0, true],
 ]
 
 func _initialize() -> void:
@@ -75,8 +78,9 @@ func _run() -> void:
 			p.x, p.y, p.z, v.rotation.y, v.spd, float(v.sail["heel"]), sailing.point_of_sail(wind, v.rotation.y),
 			sailing.sail_state(v.sail), float(v.sail["sheet"])])
 		var back: Vector3 = v.global_transform.basis.z
-		cam.global_position = p + back * 7.0 + Vector3(2.5, 3.0, 0)
-		cam.look_at(p + Vector3(0, 0.6, 0))
+		var far := 7.0 if r[0] != "sloop" else 16.0
+		cam.global_position = p + back * far + Vector3(far * 0.35, far * 0.45, 0)
+		cam.look_at(p + Vector3(0, 0.6 if r[0] != "sloop" else 2.5, 0))
 		for i in 4:
 			await process_frame
 		await RenderingServer.frame_post_draw

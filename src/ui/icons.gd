@@ -206,7 +206,7 @@ const MORE_SHEETS := [
 	# their items.
 	["res://assets/icons/boats.png", [
 		"sail_raft", "canoe", "kayak", "rowboat", "paddle_canoe", "paddle_kayak",
-		"", "", "", "", "", "",
+		"sloop", "", "", "", "", "",
 		"", "", "", "", "", "",
 		"", "", "", "", "", "",
 		"", "", "", "", "", "",

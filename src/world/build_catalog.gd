@@ -143,6 +143,9 @@ const PIECES := {
 		["scifi/Prop_Light_Floor", 0, Vector3(3.6, 0.05, -3.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(-3.6, 0.05, -3.6), 1.0],
 		["scifi/Prop_Computer", 0, Vector3(-3.4, 0.05, 0), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 60.0, "era": 2, "station": "launch_pad", "light": Color(1.0, 0.6, 0.3)},
+	# A slipway by the water: greased ways down which a boat built on them is launched.
+	"slipway": {"name": "Slipway", "models": [], "proc": "slipway",
+		"snap": "free", "mat": "wood", "hp": 30.0, "era": 0, "station": "slipway"},
 	"stable": {"name": "Stable", "models": [["village/Prop_Wagon", 0, Vector3(0, 0, 0.4), 1.0],
 		["village/Prop_WoodenFence_Single", 0, Vector3(-1.0, 0, -1.6), 0.97], ["village/Prop_WoodenFence_Single", 0, Vector3(1.0, 0, -1.6), 0.97],
 		["props/Barrel", 0, Vector3(2.2, 0, -1.0), 1.0]],
@@ -724,6 +727,34 @@ static func _proc(k: MeshKit, what: String) -> void:
 			# Stone block under the floor tile, reaching into the ground on slopes: a
 			# storey deep, so a foundation set a storey above the ground still meets it.
 			k.box("stone", I.translated(Vector3(0, -1.57, 0)), Vector3(2.0, 3.12, 2.0))
+		"slipway":
+			# Two greased ways running down the shore into the water (local -z), on
+			# sleepers and posts that reach down to a falling beach, with chocks for the
+			# hull, a capstan at the head to haul her up and a pair of bollards.
+			var slope := 0.05
+			var top := 0.55
+			for sx in [-0.75, 0.75]:
+				for i in 10:
+					var z0 := 1.0 - i
+					var y0 := top - slope * (1.0 - z0)
+					k.box("timber", Transform3D(Basis(Vector3.RIGHT, -slope), Vector3(sx, y0 - slope * 0.5, z0 - 0.5)), Vector3(0.22, 0.2, 1.02))
+					if i % 2 == 0:
+						k.box("timber", I.translated(Vector3(sx, y0 - 1.0, z0 - 0.5)), Vector3(0.16, 1.8, 0.16))
+			for i in 11:
+				var z := 1.0 - i
+				k.box("timber", I.translated(Vector3(0, top - 0.17 - slope * (1.0 - z), z)), Vector3(2.4, 0.14, 0.2))
+			for z in [-1.5, -3.5, -5.5]:
+				for sx in [-1.0, 1.0]:
+					k.box("planks", Transform3D(Basis(Vector3.FORWARD, sx * 0.5), Vector3(sx * 1.05, top + 0.3 - slope * (1.0 - z), z)), Vector3(0.16, 0.6, 0.35))
+			# The capstan: a drum on a post, its bars, and the hauling line down the ways.
+			k.cylinder("timber", I.translated(Vector3(0, 0.0, 2.4)), 0.2, 0.2, 1.0, 10)
+			k.cylinder("timber", I.translated(Vector3(0, 0.95, 2.4)), 0.3, 0.3, 0.14, 12)
+			for a in 4:
+				var b := Basis(Vector3.UP, a * PI * 0.25) * Basis(Vector3.FORWARD, PI * 0.5)
+				k.cylinder("timber", Transform3D(b, Vector3(0, 0.9, 2.4)), 0.035, 0.035, 2.0, 6)
+			k.cylinder("iron", I.translated(Vector3(0, 0.5, 2.4)), 0.21, 0.21, 0.25, 12)
+			for sx in [-1.6, 1.6]:
+				k.box("planks", Transform3D(Basis(Vector3.FORWARD, sx * 0.12), Vector3(sx, 0.6, 1.6)), Vector3(0.12, 1.3, 0.12))
 		"campfire":
 			# A ring of smooth, flat river stones, sooted a little.
 			for n in 11:

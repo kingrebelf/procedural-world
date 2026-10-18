@@ -27,6 +27,8 @@ const KINDS := {
 	"canoe": {"name": "Canoe", "boat": "canoe", "length": 4.8, "speed": 2.6, "seat_at": Vector3(0, 0.1, 1.45)},
 	"kayak": {"name": "Kayak", "boat": "kayak", "length": 4.0, "speed": 3.2, "seat_at": Vector3(0, -0.05, 0.3)},
 	"rowboat": {"name": "Rowboat", "boat": "rowboat", "length": 4.4, "speed": 2.8, "seat_at": Vector3(0, 0.36, 0.25)},
+	# Built on a slipway and launched; too big to pack up again ("moored").
+	"sloop": {"name": "Sloop", "boat": "sloop", "length": 9.0, "speed": 3.5, "seat_at": Vector3(0.75, 1.12, 3.0), "moored": true},
 }
 const CEILING := 180.0 ## metres above the ground a ship flies at most; climbing on leaves for orbit
 const LEAVE_TIME := 2.0

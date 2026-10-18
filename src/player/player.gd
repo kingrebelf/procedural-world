@@ -781,7 +781,9 @@ func _update_decon(delta: float) -> void:
 			if focus["kind"] == "vehicle":
 				var v: Vehicle = focus["vehicle"]
 				if is_instance_valid(v):
-					if vehicles.pack_up(v):
+					if Vehicle.KINDS[v.kind].get("moored", false):
+						Game.toast.emit("She's too big to carry: she stays where you moor her")
+					elif vehicles.pack_up(v):
 						Game.toast.emit("Packed up the %s" % Vehicle.label(v.kind).to_lower())
 					else:
 						Game.toast.emit("No room in your pack")

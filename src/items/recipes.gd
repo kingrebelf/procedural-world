@@ -45,6 +45,9 @@ const LIST := [
 	{"out": "paddle_kayak", "qty": 1, "in": {"planks": 1, "wood": 1, "resin": 1}, "at": "workbench"},
 	{"out": "canoe", "qty": 1, "in": {"planks": 8, "resin": 2, "paddle_canoe": 1}, "at": "workbench"},
 	{"out": "kayak", "qty": 1, "in": {"planks": 6, "hide": 4, "resin": 2, "paddle_kayak": 1}, "at": "workbench"},
+	# Bigger boats are built on a slipway by the water (and can't be packed up again).
+	{"out": "slipway", "qty": 1, "in": {"wood": 12, "planks": 10, "rope": 4, "iron_nails": 20}, "at": "workbench"},
+	{"out": "sloop", "qty": 1, "in": {"planks": 60, "wood": 10, "iron_nails": 80, "resin": 8, "rope": 12, "cloth": 14, "iron_ingot": 6}, "at": "slipway"},
 	{"out": "rowboat", "qty": 1, "in": {"planks": 12, "iron_nails": 10, "resin": 2}, "at": "workbench"},
 	{"out": "apple_crate", "qty": 1, "in": {"planks": 2, "wild_berries": 4}, "at": "workbench"},
 	{"out": "apple_barrel", "qty": 1, "in": {"planks": 3, "wild_berries": 6}, "at": "workbench"},
@@ -753,7 +756,7 @@ const LIST := [
 ]
 
 const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
-	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable", "launch_pad": "Launch Pad"}
+	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable", "launch_pad": "Launch Pad", "slipway": "Slipway"}
 
 ## Player level that unlocks making (and placing) a thing (ItemDB.unlock_level).
 const SHIP_LEVEL := ItemDB.SHIP_LEVEL
