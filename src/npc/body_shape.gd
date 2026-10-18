@@ -87,7 +87,7 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	# The old stoop (some much more than others); everyone slouches or stands tall a little.
 	var stoop := clampf(old * (0.45 + 0.75 * _rnd(b, "stoop")) + (_rnd(b, "slouch") - 0.4) * 0.25, -0.1, 1.0)
 	# The kit hero's shoulders are broad as a door; most people's are not.
-	var shoulder_in := (0.045 * (1.0 - f) + 0.02 * f) * soft * (1.0 - 0.4 * w) + 0.02 * kid
+	var shoulder_in := (0.045 * (1.0 - f) + 0.02 * f) * soft * (1.0 - 0.4 * w) + 0.05 * kid
 	# A few limp (more of the old); heavy builds sway and hold their arms off their sides.
 	var limp := 0.0
 	if known and _rnd(b, "limp") < 0.05 + 0.12 * old:
@@ -101,7 +101,7 @@ static func shape(b: Dictionary, age := -1, job := "") -> Dictionary:
 	if kid > 0.0:
 		stoop = minf(stoop, 0.05)
 		limp = 0.0
-	return {"age": yrs, "weight": w, "muscle": m, "old": old, "stoop": stoop, "female": fem, "shoulder_in": shoulder_in, "child": kid, "head": 1.0 + 0.3 * kid,
+	return {"age": yrs, "weight": w, "muscle": m, "old": old, "stoop": stoop, "female": fem, "shoulder_in": shoulder_in, "child": kid, "head": head_size(age), "legs": 1.0 - 0.13 * kid, "arms": 1.0 - 0.06 * kid, "hands": 1.0 - 0.1 * kid, "neck": 1.0 - 0.35 * kid,
 		"limp": limp, "waddle": waddle, "arms_out": arms_out, "hip": hip,
 		"girth": girth, "stature": stature(b, age), "pace": pace(b, age)}
 
@@ -114,7 +114,11 @@ static func stature(b: Dictionary, age := -1) -> float:
 		# Children grow from about 1.0 m at four to nearly full height in their late teens
 		# (girls a little sooner, and shorter); their own roll spreads them a little.
 		var grown := _grown(float(age), b.get("female", false))
-		return grown * (1.0 + (float(b.get("height", 1.0)) - 0.99) * 0.5)
+		# The larger head adds height above the neck (about 0.12 of it) and the short
+		# legs and neck take some off (about 0.49 and 0.055 of it); the table is the total.
+		var kid := child(age)
+		var built := 1.0 + 0.12 * (head_size(age) * (1.0 - 0.04 * kid) - 1.0) - (0.49 * 0.13 + 0.055 * 0.35) * kid
+		return grown / built * (1.0 + (float(b.get("height", 1.0)) - 0.99) * 0.5)
 	if b.get("female", false):
 		s *= 0.955
 	if age >= 0:
@@ -129,6 +133,17 @@ static func child(age: int) -> float:
 	if age < 0 or age >= ADULT:
 		return 0.0
 	return clampf((float(ADULT) - float(age)) / 14.0, 0.0, 1.0)
+
+## Head size against an adult's on the same height: a grown head is about 1/7.5 of
+## their height, a four-year-old's about 1/5, closing up through the teens.
+static func head_size(age: int) -> float:
+	if age < 0 or age >= ADULT:
+		return 1.0
+	# Heads tall at 4, 6, 8, 10, 12, 14, 16, 18.
+	var heads := [5.0, 5.5, 5.9, 6.25, 6.6, 6.9, 7.2, 7.5]
+	var t := clampf((float(age) - 4.0) / 2.0, 0.0, 7.0)
+	var i := mini(int(t), 6)
+	return 7.5 / lerpf(heads[i], heads[i + 1], t - float(i))
 
 ## A child's model scale by age (the kit body is 1.82 m; girls' bodies are 1.78 m).
 static func _grown(age: float, fem: bool) -> float:

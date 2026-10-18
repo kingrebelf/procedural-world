@@ -54,6 +54,8 @@ var _ready_bones := false
 var _pelvis := -1
 var _spine1 := -1
 var _legs: Array = [] ## [thigh, calf, foot, upper length, lower length]
+## Leg length against the rest skeleton's (BodyPosture.leg_len: a child's short legs).
+var leg_len := 1.0
 var _look_bones: Array = []
 var _clav := [-1, -1]
 var _balls := [-1, -1]
@@ -204,7 +206,7 @@ func _feet(sk: Skeleton3D, gx: Transform3D, up: Vector3, s: float, dt: float) ->
 			var leg: Array = _legs[i]
 			var hip := sk.get_bone_global_pose(leg[0]).origin
 			var target: Vector3 = (anim_feet[i] as Transform3D).origin + up * (_d[i] / s) + (pins[i] as Vector3)
-			var reach := float(leg[3]) + float(leg[4])
+			var reach := (float(leg[3]) + float(leg[4])) * leg_len
 			var anim_len := hip.distance_to((anim_feet[i] as Transform3D).origin)
 			# Never straighter than the animation already holds the leg (or nearly straight).
 			var allowed := maxf(anim_len, reach * 0.97)
@@ -231,7 +233,7 @@ func _feet(sk: Skeleton3D, gx: Transform3D, up: Vector3, s: float, dt: float) ->
 		var h := sk.get_bone_global_pose(leg[0])
 		var kn := sk.get_bone_global_pose(leg[1])
 		# Knees bend forward, the way the animation already bends them.
-		var knee := AnimMath.knee_for(h.origin, target, float(leg[3]), float(leg[4]), kn.origin + Vector3(0, 0, 0.3))
+		var knee := AnimMath.knee_for(h.origin, target, float(leg[3]) * leg_len, float(leg[4]) * leg_len, kn.origin + Vector3(0, 0, 0.3))
 		h.basis = Basis(AnimMath.arc(kn.origin - h.origin, knee - h.origin)) * h.basis
 		sk.set_bone_global_pose(leg[0], h)
 		kn = sk.get_bone_global_pose(leg[1])
