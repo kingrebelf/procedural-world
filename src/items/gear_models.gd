@@ -35,7 +35,9 @@ static func model(t: String) -> ArrayMesh:
 			var r := RandomNumberGenerator.new()
 			r.seed = WHash.str_hash(t)
 			var grip = f.call(f.BUILD[t], k, r, t)
-			m = k.commit(ItemModels.mat)
+			m = k.commit(func(name: String) -> Material:
+				# "own:<name>" is a material the family makes itself (its static mat(name)).
+				return f.call("mat", name.substr(4)) if name.begins_with("own:") else ItemModels.mat(name))
 			if grip is Vector3:
 				m.set_meta("grip", grip)
 			break
