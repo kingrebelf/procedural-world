@@ -7,8 +7,9 @@ with ffmpeg, like tools/synth_ambience.py: all from noise, so ours to license (C
     sfx/fire/catch_N.ogg    the soft whoomph of something catching
     sfx/fire/hiss_N.ogg     water on fire: a hiss and sizzle
     sfx/fire/collapse_N.ogg a burnt building falling in: crack, rumble, timbers
+    sfx/fire/cannon_N.ogg   a cannon going off: the crack, the boom and its echo
 
-    python3 tools/synth_fire.py assets/audio
+    python3 tools/synth_fire.py assets/audio [only]   (only: write just names starting so)
 """
 import os
 import subprocess
@@ -128,6 +129,31 @@ def collapse(var):
     return norm(x, 0.85)
 
 
+def cannon(var):
+    n = int(SR * 3.6)
+    t = np.arange(n) / SR
+    # The sharp crack of the charge, a deep boom with a falling thump under it, then the
+    # rolling echo back off the land.
+    crack = band(n, 800, 9000, circular=False) * np.exp(-t * 60)[:, None]
+    boom = band(n, 18, 160, circular=False) * (np.minimum(t * 400, 1.0) * np.exp(-t * (3.0 + 0.6 * var)))[:, None]
+    f0 = 52 + 8 * var
+    thump = np.sin(2 * np.pi * (f0 * t - 9 * t * t)) * np.exp(-t * 9)
+    x = crack * 0.7 + boom * 1.6
+    x[:, 0] += thump
+    x[:, 1] += thump
+    mid = band(n, 120, 1400, circular=False) * np.exp(-t * 7)[:, None] * 0.5
+    x += mid
+    for d, g in ((0.42 + 0.1 * var, 0.35), (0.95 + 0.15 * var, 0.2), (1.6, 0.1)):
+        k = int(d * SR)
+        echo = np.zeros_like(x)
+        echo[k:] = x[: n - k]
+        # Far echoes lose their top.
+        for c in range(2):
+            echo[:, c] = np.convolve(echo[:, c], np.ones(24) / 24, mode="same")
+        x += echo * g * np.array([0.8, 1.0] if var % 2 else [1.0, 0.8])
+    return norm(x, 0.95)
+
+
 def write_ogg(path, data, q):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     pcm = (np.clip(data, -1, 1) * 32767).astype(np.int16)
@@ -144,14 +170,24 @@ def write_ogg(path, data, q):
 
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else "assets/audio"
+    only = sys.argv[2] if len(sys.argv) > 2 else ""
     d = os.path.join(root, "sfx", "fire")
-    write_ogg(os.path.join(d, "crackle.ogg"), crackle(14), 2)
-    write_ogg(os.path.join(d, "roar.ogg"), roar(12), 1)
+
+    def out(name, make, q):
+        # Every sound is made either way, so the noise each one draws stays the same.
+        data = make()
+        if name.startswith(only):
+            write_ogg(os.path.join(d, name), data, q)
+
+    out("crackle.ogg", lambda: crackle(14), 2)
+    out("roar.ogg", lambda: roar(12), 1)
     for i in range(3):
-        write_ogg(os.path.join(d, "catch_%d.ogg" % i), catch(i), 3)
-        write_ogg(os.path.join(d, "hiss_%d.ogg" % i), hiss(i), 3)
+        out("catch_%d.ogg" % i, lambda: catch(i), 3)
+        out("hiss_%d.ogg" % i, lambda: hiss(i), 3)
     for i in range(2):
-        write_ogg(os.path.join(d, "collapse_%d.ogg" % i), collapse(i), 3)
+        out("collapse_%d.ogg" % i, lambda: collapse(i), 3)
+    for i in range(3):
+        out("cannon_%d.ogg" % i, lambda: cannon(i), 4)
 
 
 if __name__ == "__main__":

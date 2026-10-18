@@ -8,13 +8,15 @@ class_name DeathBag
 ## Record (on top of what Corpses keeps for every body: p, day, yaw): kind "bag", owner
 ## (the dead player's id, Game.my_id), owner_name ("" offline), items (Inventory
 ## data), worn (armour slot -> the uid of the piece worn there, to put it back on),
-## purse (Marks), unix (real time of death).
+## purse (Marks), unix (real time of death). Things you drop on purpose to lighten your
+## pack lie in the same kind of bag with "dropped": true (Corpses.drop_items).
 ##
 ## Pure functions and two hooks for a multiplayer server: `lifetime_s` (0 = bags never
 ## go away) and `may_take` (who may open a bag; everyone, by default: Ben wants other
 ## players able to steal it). The server option "death_penalty" ("keep") turns bags off.
 
-## Room for a full pack plus every piece of armour.
+## Room for a starting-size pack plus every piece of armour; a bigger pack makes a bigger
+## bag (make), and Corpses.slots_of opens it at the size it was saved.
 const SLOTS := Inventory.SIZE + 10
 ## Furthest a bag is moved to find dry ground when you die in the water.
 const DRY_SEARCH := 160.0
@@ -30,7 +32,7 @@ static var may_take: Callable
 ## A bag holding everything in `inv`, the armour in `equipment` (slot -> item) and
 ## `money` Marks, dropped by player `owner` (named `name`).
 static func make(owner: String, name: String, inv: Inventory, equipment: Dictionary, money: int, unix: float) -> Dictionary:
-	var bag := Inventory.new(SLOTS)
+	var bag := Inventory.new(maxi(SLOTS, inv.capacity + 10))
 	var worn := {}
 	for slot in equipment:
 		var it = equipment[slot]
@@ -72,7 +74,7 @@ static func expired(c: Dictionary, now_unix: float) -> bool:
 ## What it is called: "Your bag", "Ada's bag".
 static func title(c: Dictionary, me: String) -> String:
 	if is_mine(c, me):
-		return "Your bag"
+		return "Your dropped things" if c.get("dropped", false) else "Your bag"
 	var n := String(c.get("owner_name", "")).strip_edges()
 	return ("%s's bag" % n.split(" ")[0]) if n != "" else "Someone's bag"
 

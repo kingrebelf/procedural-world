@@ -26,6 +26,7 @@ var _torch_mesh: MeshInstance3D
 var _t := 0.0
 var _omni_at := Vector3.ZERO ## where the torch light rests before it sways
 var show_model := true ## the torch in your hand (first person only)
+var wet := false ## the flame would be under water: a torch, lantern or candle goes out and won't light
 
 func _ready() -> void:
 	_omni = OmniLight3D.new()
@@ -131,10 +132,16 @@ func is_on() -> bool:
 func lit() -> String:
 	return held if held != "" else kind
 
-## Called when the hotbar selection changes: a torch or flashlight in hand lights itself.
+static func flame(k: String) -> bool:
+	return k == "torch" or k == "lantern" or k == "candle"
+
+## Called when the hotbar selection changes: a torch or flashlight in hand lights itself
+## (a flame not under water).
 func set_held(t: String, inv: Inventory) -> void:
 	held = ""
-	if t == "torch" and inv.count("torch") > 0:
+	if wet and t in ["torch", "hand_lantern", "lamp_kerosene", "candle"]:
+		pass
+	elif t == "torch" and inv.count("torch") > 0:
 		held = "torch"
 		if torch_left <= 0.0:
 			torch_left = TORCH_BURN
@@ -162,6 +169,8 @@ func toggle(inv: Inventory) -> String:
 		kind = "flashlight"
 		_apply()
 		return "Flashlight on (%s left)" % _hours(float(inv.get_slot(fi).get("charge", FLASH_CHARGE)))
+	if wet:
+		return "You can't light a flame under water"
 	if lanterns(inv) > 0 and (lantern_left > 0.0 or _lantern_fuel(inv) != ""):
 		kind = "lantern"
 		kerosene = inv.count("lamp_kerosene") > 0
@@ -197,15 +206,25 @@ static func lanterns(inv: Inventory) -> int:
 	return inv.count("hand_lantern") + inv.count("lamp_kerosene")
 
 static func flashlight_slot(inv: Inventory) -> int:
-	for i in Inventory.SIZE:
+	for i in inv.capacity:
 		var s = inv.get_slot(i)
 		if s != null and s["type"] == "flashlight" and float(s.get("charge", FLASH_CHARGE)) > 0.0:
 			return i
 	return -1
 
-## Burns fuel. Returns a message when something runs out, else "".
-func tick(delta: float, inv: Inventory) -> String:
+## Burns fuel. Returns a message when something runs out, else "". `under` is whether
+## the flame is under water, which puts out a torch, lantern or candle.
+func tick(delta: float, inv: Inventory, under := false) -> String:
 	var msg := ""
+	wet = under
+	if wet and flame(lit()):
+		var gone := lit()
+		if flame(held):
+			held = ""
+		if flame(kind):
+			kind = ""
+		_apply()
+		return "Your %s goes out in the water" % gone
 	var was := lit()
 	if was == "torch":
 		torch_left -= delta

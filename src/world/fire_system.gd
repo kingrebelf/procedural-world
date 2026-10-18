@@ -28,9 +28,14 @@ const SPREAD_EVERY := 2.0
 const WRITE_EVERY := 8.0 ## offline: how often a burning chunk is saved
 const WRITE_EVERY_ONLINE := 20.0
 const MAX_BURNING := 48
-const NEAR_FLAMES := 14 ## fires drawn with flames, nearest first
-const LIGHTS := 4
-const SHADOW_LIGHTS := 1
+## By the fire_fx setting (Low, Normal, High): fires drawn with flames (nearest first),
+## lit, and lit with shadows, and the smoke particles over each.
+const QUALITY := [
+	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 36},
+	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 72},
+	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 110},
+]
+static var quality := 1
 const SOUNDS := 4
 const FLAME_RANGE := 260.0
 const SMOKE_RANGE := 1100.0
@@ -56,6 +61,8 @@ var _torch := {"key": "", "t": 0.0}
 func _ready() -> void:
 	current = self
 	add_to_group("fire")
+	_apply_settings()
+	Settings.changed.connect(_apply_settings)
 	if streamer != null:
 		streamer.chunk_ready.connect(_on_chunk)
 
@@ -220,6 +227,12 @@ func ignite_at(at: Vector3, radius: float, strength: float, by_player := true, o
 ## The fire a powder blast may start (dynamite, kegs, grenades): less sure than oil.
 func blast(at: Vector3, radius: float) -> void:
 	ignite_at(at, radius * 0.6, 0.55, true, 0.0)
+
+func _apply_settings() -> void:
+	var q := clampi(int(Settings.get_value("fire_fx")), 0, QUALITY.size() - 1)
+	if q != quality:
+		quality = q
+		_rank_t = 0.0 # re-rank, so the change shows at once
 
 func _register(node: ChunkNode, o: Dictionary) -> void:
 	var k := key_of(node.key, int(o["i"]))
@@ -430,12 +443,92 @@ func _rank(eye: Vector3, e: Dictionary) -> void:
 		if v == null or not is_instance_valid(v):
 			var nv := FireVis.new()
 			add_child(nv)
-			nv.setup(b["box"], false, ObjectLibrary.kind(b["t"]) == "tree")
+			var tree := ObjectLibrary.kind(b["t"]) == "tree"
+			nv.setup(b["box"], false, tree, false, {} if tree else _spots_of(b))
 			b["vis"] = nv
 			v = nv
 		var fv := v as FireVis
-		fv.set_lod(n < NEAR_FLAMES and d < FLAME_RANGE, n < LIGHTS and d < 90.0, n < SHADOW_LIGHTS and d < 40.0, n < SOUNDS and d < 70.0, d)
+		var q: Dictionary = QUALITY[quality]
+		fv.set_lod(n < int(q["flames"]) and d < FLAME_RANGE, n < int(q["lights"]) and d < 90.0, n < int(q["shadows"]) and d < 40.0, n < SOUNDS and d < 70.0, d)
 		n += 1
+
+# --- Where the flames stand ---------------------------------------------------------------
+
+static var _spot_cache: Dictionary = {}
+
+## Where flames can stand on a burning thing, in the world: up through its roof and out of
+## its walls, on its own surfaces rather than on the box round it (a house turned on its
+## plot, or a roof that overhangs, has corners of that box out in the air).
+func _spots_of(b: Dictionary) -> Dictionary:
+	var node: ChunkNode = streamer.get_chunk(b["k"]) if streamer != null else null
+	if node == null:
+		return {}
+	var o: Dictionary = node.get_object(int(b["i"]))
+	if o.is_empty():
+		return {}
+	var key := ObjectLibrary.mesh_key(o)
+	var local: Dictionary = surface_spots(ObjectLibrary.get_mesh(key), key)
+	if local.is_empty():
+		return {}
+	var xf := Transform3D(Basis(Vector3.UP, float(o["r"])).scaled(Vector3.ONE * float(o.get("s", 1.0))), node.position + (o["p"] as Vector3))
+	var roof: Array = []
+	for q in local["roof"]:
+		roof.append(xf * (q as Vector3))
+	var wall: Array = []
+	for w in local["wall"]:
+		wall.append([xf * (w[0] as Vector3), (xf.basis * (w[1] as Vector3)).normalized()])
+	return {"roof": roof, "wall": wall}
+
+## Flame spots on a mesh, in its own space: the highest upward faces (the roof, never a
+## floor under it), one per 0.75 m cell, and the outermost wall faces at window height, one
+## per slice of the compass round it, each with its outward normal. Cached per mesh.
+static func surface_spots(mesh: Mesh, key: String) -> Dictionary:
+	if _spot_cache.has(key):
+		return _spot_cache[key]
+	var out := {}
+	if mesh != null:
+		var faces := mesh.get_faces()
+		var aabb := mesh.get_aabb()
+		var c := aabb.get_center()
+		var y0 := aabb.position.y
+		var h := maxf(aabb.size.y, 0.1)
+		const CELL := 0.75
+		const SLICES := 24
+		var top := {} # cell -> highest y of anything there
+		var up := {} # cell -> highest upward-facing point there
+		var side := {} # slice -> [distance out, point, normal]
+		for t in range(0, faces.size() - 2, 3):
+			var a := faces[t]
+			var n := (faces[t + 1] - a).cross(faces[t + 2] - a)
+			var area := n.length() * 0.5
+			if area < 0.005:
+				continue
+			n /= area * 2.0
+			var m := (a + faces[t + 1] + faces[t + 2]) / 3.0
+			var cell := Vector2i(floori(m.x / CELL), floori(m.z / CELL))
+			var hi := maxf(a.y, maxf(faces[t + 1].y, faces[t + 2].y))
+			top[cell] = maxf(float(top.get(cell, -INF)), hi)
+			if n.y > 0.35 and m.y > y0 + h * 0.3 and (not up.has(cell) or (up[cell] as Vector3).y < m.y):
+				up[cell] = m
+			elif absf(n.y) < 0.3 and m.y > y0 + h * 0.15 and m.y < y0 + h * 0.6:
+				var d := Vector2(m.x - c.x, m.z - c.z)
+				if d.length() < 0.2 or Vector2(n.x, n.z).normalized().dot(d.normalized()) < 0.3:
+					continue
+				var sl := int(fposmod(d.angle(), TAU) / TAU * SLICES) % SLICES
+				if not side.has(sl) or float(side[sl][0]) < d.length():
+					side[sl] = [d.length(), m, Vector3(n.x, 0.0, n.z).normalized()]
+		var roof: Array = []
+		for cell in up:
+			var p: Vector3 = up[cell]
+			if p.y >= float(top[cell]) - 0.35:
+				roof.append(p)
+		var wall: Array = []
+		for sl in side:
+			wall.append([side[sl][1], side[sl][2]])
+		if not roof.is_empty() or not wall.is_empty():
+			out = {"roof": roof, "wall": wall}
+	_spot_cache[key] = out
+	return out
 
 # --- Burning down ------------------------------------------------------------------------
 
@@ -471,13 +564,13 @@ func _burn_down(node: ChunkNode, o: Dictionary, seen: bool) -> void:
 		"tree":
 			node.add_object(WonderSite.TRUNK, lp, yaw, era, {"char": 1.0, "fl": 0.0, "smoke": snappedf(now() + 90.0, 0.1)},
 				{"sp": 1 + randi() % 60, "v": 1 if t == "pine" else 0, "s": s})
-		"timber", "masonry", "ash":
+		"timber", "masonry", "shell", "ash":
 			var c := foot.get_center() * s
 			var at := lp + Vector3(c.x, 0, c.y).rotated(Vector3.UP, yaw)
 			var w := maxf(foot.size.x * s, 0.8)
 			var d := maxf(foot.size.y * s, 0.8)
 			node.add_object(FireSim.RUIN, at, yaw, era, {"smoke": snappedf(now() + RUIN_SMOKE * (1.0 if leaves != "ash" else 0.4), 0.1)},
-				{"sp": FireRuins.encode(w, d, randi()), "v": FireRuins.kind_for(leaves)})
+				{"sp": FireRuins.encode(w, d, randi()), "v": FireRuins.variant(leaves, box.size.y)})
 	_flammable.erase(node.key)
 	_on_chunk(node) # take up the new ruin's smoke
 	if by and player != null and player.npcs != null and kind in ["structure", "trader"]:
@@ -852,7 +945,8 @@ class FireVis extends Node3D:
 	static var _smoke_draw: StandardMaterial3D
 	static var _steam_draw: StandardMaterial3D
 
-	func setup(b: AABB, ruin: bool, tree := false, ground := false) -> void:
+	## `spots` (FireSystem._spots_of): world points on its roof and walls for the flames.
+	func setup(b: AABB, ruin: bool, tree := false, ground := false, spots := {}) -> void:
 		box = b
 		_ruin = ruin
 		_tree = tree
@@ -872,6 +966,13 @@ class FireVis extends Node3D:
 					p = Vector3(rng.randf_range(-0.4, 0.4) * b.size.x, 0.0, rng.randf_range(-0.4, 0.4) * b.size.z)
 				elif tree:
 					p = Vector3(rng.randf_range(-0.3, 0.3) * b.size.x, b.size.y * rng.randf_range(0.35, 0.75), rng.randf_range(-0.3, 0.3) * b.size.z)
+				elif not spots.is_empty() and (i % 3 == 2 or (spots["roof"] as Array).is_empty()) and not (spots["wall"] as Array).is_empty():
+					# Out of a wall, standing just off its face.
+					var w: Array = spots["wall"][rng.randi() % (spots["wall"] as Array).size()]
+					p = (w[0] as Vector3) + (w[1] as Vector3) * 0.12 - global_position
+				elif not spots.is_empty() and not (spots["roof"] as Array).is_empty():
+					# Up through the roof, from a spot on it.
+					p = (spots["roof"][rng.randi() % (spots["roof"] as Array).size()] as Vector3) - global_position
 				elif i % 3 == 2:
 					# Out of the walls, at a window's height.
 					var side := rng.randi() % 4
@@ -917,7 +1018,7 @@ class FireVis extends Node3D:
 		_smoke = GPUParticles3D.new()
 		_smoke.name = "Smoke"
 		var big := maxf(box.size.x, box.size.z)
-		_smoke.amount = 72 if not _ground else 24
+		_smoke.amount = int(FireSystem.QUALITY[FireSystem.quality]["smoke"]) if not _ground else 24
 		_smoke.lifetime = 13.0 if not _ground else 5.0
 		_smoke.local_coords = false
 		_smoke.preprocess = 0.0
@@ -970,6 +1071,22 @@ class FireVis extends Node3D:
 		_smoke.emitting = true
 		add_child(_smoke)
 
+	## Where the firelight hangs: a little out from the flame furthest out from the middle
+	## (one out of a wall, else one on the roof), lifted into the flames.
+	func _light_spot() -> Vector3:
+		var best := Vector3(0, box.size.y * 0.7, 0)
+		var bd := -1.0
+		for f in _flames:
+			var q := (f as Node3D).position
+			var d := Vector2(q.x, q.z).length()
+			if d > bd:
+				bd = d
+				best = q
+		if bd < 0.0:
+			return best
+		var out := Vector3(best.x, 0, best.z).normalized() if bd > 0.1 else Vector3.ZERO
+		return best + out * 0.8 + Vector3(0, _base * 0.6, 0)
+
 	## Which parts are drawn: flames and sparks, the firelight (with shadows?), the sound.
 	func set_lod(flames: bool, lit: bool, shadow: bool, loud: bool, dist: float) -> void:
 		_near = flames
@@ -980,12 +1097,14 @@ class FireVis extends Node3D:
 				_light = FlickerLight.new()
 				_light.light_color = Color(1.0, 0.56, 0.26)
 				_light.light_energy = 2.0
-				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 1.6 + 6.0, 8.0, 26.0)
+				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 1.8 + 8.0, 10.0, 32.0)
 				_light.omni_attenuation = 1.2
 				_light.distance_fade_enabled = true
 				_light.distance_fade_begin = 70.0
 				_light.distance_fade_length = 20.0
-				_light.position = Vector3(0, box.size.y * 0.7, 0)
+				# Out where the flames are, not inside the walls: a light in the middle of a
+				# house lights only its insides, never the walls, yard and smoke round it.
+				_light.position = _light_spot()
 				if not _flames.is_empty():
 					_light.seed = float((_flames[0] as Node3D).get_meta("fire_seed", 0.5))
 				add_child(_light)
@@ -1053,7 +1172,7 @@ class FireVis extends Node3D:
 		if _embers != null:
 			_embers.visible = _near and _heat > 0.3
 		if _light != null:
-			_light.base = 0.6 + 4.2 * _heat
+			_light.base = 0.8 + 6.0 * _heat # bright enough to show by day
 			_light.visible = _lit and _heat > 0.05
 		if _sound != null:
 			_sound.volume_db = linear_to_db(clampf(_heat * 1.4, 0.02, 1.0)) - 4.0

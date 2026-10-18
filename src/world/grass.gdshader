@@ -65,7 +65,7 @@ void vertex() {
 		// it lies, in patches, and the frost of a cold dawn.
 		float patch = vnoise(wp.xz * 0.21 + 5.3);
 		winter = vec3(smoothstep(0.4, 0.85, lv.y + (patch - 0.5) * 0.2),
-			smoothstep(0.55, 1.0, lv.y) * (0.45 + 0.55 * patch), wear_frost(lv));
+			wear_snow(wp) * (0.45 + 0.55 * patch), wear_frost(lv));
 	}
 	blade_wp = wp;
 	// Thin out with distance: each clump has its own cut-off, so the field thins evenly

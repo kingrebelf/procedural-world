@@ -188,9 +188,15 @@ func _find_target() -> Dictionary:
 		why = "player"
 	if why == "" and BuildCatalog.tree_in_way(near_trees(), BuildCatalog.world_aabb(_id, pos, s["yaw"]).grow(-0.05)):
 		why = "tree"
+	if why == "" and BuildCatalog.def(_id).has("fire") and under_water(pos):
+		why = "water"
 	if why == "" and Game.stats.level < Recipes.unlock_level(_id):
 		why = "level"
 	return {"pos": pos, "yaw": s["yaw"], "ok": why == "", "why": why}
+
+## Below the water's surface: no fire can be lit there.
+static func under_water(pos: Vector3) -> bool:
+	return pos.y + 0.1 < Water.surface_height(pos.x, pos.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
 
 ## Your own body box, feet to head.
 func _body_box() -> AABB:
@@ -344,6 +350,7 @@ func why_text(why: String) -> String:
 		"unloaded": return "Can't build out there yet"
 		"player": return "You're standing where it would go"
 		"tree": return "A tree is in the way: fell it first"
+		"water": return "A fire can't be lit under water"
 		"level": return "You can build a %s from level %d" % [nm, Recipes.unlock_level(_id)]
 	return "Can't build there"
 

@@ -72,13 +72,13 @@ void fragment() {
 	if (individual) {
 		vec4 lv = wear_levels(wp);
 		float frost = wear_frost(lv);
-		float s_lvl = smoothstep(0.35, 0.85, lv.y);
+		float s_lvl = wear_snow(wp) * 0.7;
 		if (frost + s_lvl > 0.01) {
 			vec3 wn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 			vec2 q = vec2(plant_p.x + plant_p.z, plant_p.y) + seed;
 			float up = smoothstep(0.2, 0.8, wn.y);
 			// Snow along the tops of limbs, hoar frost furring the bark on its upper side.
-			float sn = smoothstep(0.35, 0.65, up * s_lvl * 1.4 + (vnoise(q * 3.1) - 0.5) * 0.5);
+			float sn = smoothstep(0.35, 0.65, up * s_lvl * 1.4 + (vnoise(q * 3.1) - 0.5) * 0.5) * 0.85;
 			ALBEDO = mix(ALBEDO, WEAR_SNOW, sn);
 			float fm = frost * (0.12 + 0.4 * up + 0.3 * smoothstep(0.45, 0.9, vnoise(q * 19.0))) * (1.0 - sn);
 			ALBEDO = mix(ALBEDO, WEAR_FROST, clamp(fm, 0.0, 0.55));

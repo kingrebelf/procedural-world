@@ -40,11 +40,14 @@ func _shot(name: String) -> void:
 func _run() -> void:
 	var only := ""
 	var lake := false # --water: the real lake shader on a fine sheet, with the boat's wake waves
+	var wind_from := deg_to_rad(120.0) # --wind=<deg>: where the wind comes from, off the bow (+ starboard)
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--kind="):
 			only = a.substr(7)
 		if a == "--water":
 			lake = true
+		if a.begins_with("--wind="):
+			wind_from = deg_to_rad(float(a.substr(7)))
 	var bm = load("res://src/vehicles/boat_model.gd")
 	var hm = load("res://src/npc/human_model.gd")
 	var gen = load("res://src/npc/npc_gen.gd")
@@ -111,6 +114,13 @@ void fragment() {
 		var bw = load("res://src/vehicles/boat_water.gd").build(kind)
 		scene.add_child(bw)
 		var under_way: bool = kind in ["rowboat", "fishing_boat", "launch", "cog", "research_vessel"]
+		var model: Node3D = scene.get_child(1)
+		var rig = model.get_node_or_null("Rig")
+		if rig:
+			rig.trim(Vector2(sin(wind_from), -cos(wind_from)), 0.5, under_way or kind == "raft", 0.0)
+		var fenders: Node3D = model.get_node_or_null("Fenders")
+		if fenders:
+			fenders.visible = not under_way
 		bw.follow(Vector2.ZERO, 0.0, 0.7 if under_way else 0.0)
 		var extra: Array = []
 		if under_way:

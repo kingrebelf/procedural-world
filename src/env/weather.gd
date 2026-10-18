@@ -84,6 +84,10 @@ var _bolt_mat: ShaderMaterial
 var starfall: Starfall
 var _strike_slot := -1
 var _quality := 1
+## Parts the benchmark has switched off to time them: "precip" (rain, snow, hail and dust
+## particles), "catch" (the rain catch over roofs), "ground" (wet ground, puddles, settled
+## snow) and "air" (the fog and haze the weather adds).
+var bench_off := {}
 var _enabled := true
 
 ## Rain: box half size round the camera and how many drops fill it at full pour, by
@@ -298,6 +302,8 @@ var _sent := PackedFloat32Array([-1.0, -1.0, -1.0, -1.0])
 func _publish() -> void:
 	rain_g = precip * (1.0 - snow) * (1.0 - atmosphere.underground)
 	var vals := [wet, puddles, snow_cover, rain_g]
+	if bench_off.has("ground"):
+		vals = [0.0, 0.0, 0.0, 0.0]
 	var names := ["weather_wet_g", "weather_puddle_g", "weather_snow_g", "weather_rain_g"]
 	# Only when a value has moved: they change slowly, and each set is a renderer call.
 	for i in 4:
@@ -322,9 +328,16 @@ func _light() -> void:
 	# Cloud scatters the sun's disc into a wide soft source: shadows lose their edge and
 	# fade. (Fading them, not widening the sun: a wide sun makes the soft-shadow search
 	# PCSS does far costlier, several ms a frame in a forest under overcast.)
-	sun.light_angular_distance = lerpf(0.5, 1.0, oc)
-	sun.shadow_blur = lerpf(1.2, 2.0, oc)
+	sun.light_angular_distance = lerpf(0.5, 0.7, oc)
+	sun.shadow_blur = lerpf(1.2, 2.2, oc)
 	sun.shadow_opacity *= lerpf(1.0, 0.45, oc)
+	# The faint shadows left under a heavy overcast needn't reach as far: the cascades
+	# then cover less ground and draw far fewer casters (rain cost a town 13 FPS). Stepped,
+	# so the cascades don't creep (and shimmer) through a slow change of weather.
+	var reach := atmosphere.shadow_dist * lerpf(1.0, 0.5, oc)
+	if absf(reach - sun.directional_shadow_max_distance) > atmosphere.shadow_dist * 0.05 or (oc == 0.0 and reach != sun.directional_shadow_max_distance):
+		sun.directional_shadow_max_distance = reach
+		atmosphere.moon.directional_shadow_max_distance = reach
 	atmosphere.moon.light_energy *= lerpf(1.0, 0.2, oc)
 	if atmosphere.target.get("underwater"):
 		return
@@ -334,6 +347,8 @@ func _light() -> void:
 	var rain := precip * (1.0 - snow)
 	var thick := rain * 0.0016 + storm * 0.0018 + precip * snow * (0.004 + wind * 0.012) + dust * 0.014 + mist * 0.0035
 	thick *= 1.0 - atmosphere.underground
+	if bench_off.has("air"):
+		thick = 0.0
 	var k := clampf(thick * 400.0, 0.0, 1.0)
 	atmosphere.reflect_mul = lerpf(1.0, 0.4, k)
 	# (Set once by the atmosphere, so set here from its own value every frame.)
@@ -482,7 +497,8 @@ func _precipitation(p: Vector3) -> void:
 	# Faint: rain reads from the many drops together, not from any one bright streak.
 	_rain_mat.set_shader_parameter("tint", Color(lum * 0.85, lum * 0.9, lum * 0.97))
 	_rain_mat.set_shader_parameter("opacity", 0.12 + 0.08 * rain)
-	_show(_rain, rain > 0.01, at, rfall)
+	var shown := not bench_off.has("precip")
+	_show(_rain, rain > 0.01 and shown, at, rfall)
 	# Snow drifts down at about a metre a second and goes where the wind takes it; dust
 	# streams along it, barely falling.
 	var snowing := flakes > 0.01
@@ -499,8 +515,8 @@ func _precipitation(p: Vector3) -> void:
 	_flake_mat.set_shader_parameter("tint", fc * (1.25 if hailing else 1.0))
 	_flake_mat.set_shader_parameter("thick", 0.011 if hailing else 0.014 if snowing else 0.006)
 	_flake_mat.set_shader_parameter("opacity", 0.95 if hailing else 0.85 if snowing else 0.45)
-	_show(_flakes, snowing or hailing or specks > 0.02, at, fl)
-	_field.visible = _rain.visible or _flakes.visible
+	_show(_flakes, (snowing or hailing or specks > 0.02) and shown, at, fl)
+	_field.visible = (_rain.visible or _flakes.visible) and not bench_off.has("catch")
 	if _field.visible:
 		var snap := Vector3(snappedf(at.x, FIELD_STEP), snappedf(at.y, FIELD_STEP), snappedf(at.z, FIELD_STEP))
 		if not _field.global_position.is_equal_approx(snap):

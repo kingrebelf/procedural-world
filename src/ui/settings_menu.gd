@@ -134,6 +134,7 @@ func _graphics_tab() -> Control:
 	_option(g, "effects", "Effects quality", ["Low", "Medium", "High"], "Sample counts for ambient occlusion, screen-space and SDFGI light. Low and Medium run GI at half resolution.")
 	_check(g, "weather", "Dynamic weather", "Rain, snow, storms, mist and dust storms that come and go. Off keeps fair skies.")
 	_option(g, "weather_fx", "Weather effects", ["Low", "Normal", "High"], "How many raindrops and snowflakes fall round you; Normal and High add splashes where rain lands, High lets lightning cast shadows.")
+	_option(g, "fire_fx", "Fire and smoke", ["Low", "Normal", "High"], "How many burning buildings show flames and cast firelight (High: more of them throw shadows), and how thick the smoke rises.")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
 	_slider(g, "detail_distance", "Detail distance", 0.4, 1.5, 0.1, "%.1fx", "How far grass, ground clutter and small props are drawn. Trees and buildings are not affected.")
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")

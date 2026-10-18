@@ -80,10 +80,16 @@ func _water_checks(streamer: ChunkStreamer, player) -> void:
 		for i in 3:
 			await physics_frame
 		check(player.swimming and player.underwater, "deep in the water you swim, eyes under")
-		for i in 360:
+		# Until they ride at the surface (up to 15 s): a fixed wait caught a fast runner's
+		# swimmer mid-bob now and then.
+		var off := INF
+		for i in 900:
 			await physics_frame
-		var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
-		var off: float = player.global_position.y - (s - Swim.FLOAT_CHEST)
+			if i >= 120:
+				var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
+				off = player.global_position.y - (s - Swim.FLOAT_CHEST)
+				if player.swimming and absf(off) < 0.6:
+					break
 		check(player.swimming and absf(off) < 0.6, "you float up and bob at the surface (%.2f m off)" % off)
 	if river == Vector3.INF:
 		print("  skip no river near spawn")
@@ -165,11 +171,11 @@ func _make_room(game, n := 0) -> void:
 	for sh in Icons.MORE_SHEETS.slice(1):
 		for t in sh[1]:
 			loot[t] = true
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and loot.has(it["type"]):
 			game.inventory.set_slot(i, null)
-	for i in range(Inventory.SIZE - 1, -1, -1):
+	for i in range(game.inventory.capacity - 1, -1, -1):
 		if game.inventory.free_slots() >= n:
 			break
 		game.inventory.set_slot(i, null)
@@ -177,7 +183,7 @@ func _make_room(game, n := 0) -> void:
 ## What is in the pack, for a failure message.
 func _pack_list(game) -> String:
 	var out: PackedStringArray = []
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null:
 			out.append("%s x%d" % [it["type"], int(it["qty"])])
@@ -192,7 +198,7 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	var dwp: Vector3 = pc.position + dway["p"]
 	game.give(ItemDB.make("door_wood", 1, 1.0, game.origin_here("crafted", -1, here_key)))
 	var di := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var sl = game.inventory.get_slot(i)
 		if sl != null and sl["type"] == "door_wood":
 			di = i
@@ -563,7 +569,7 @@ func _run() -> void:
 	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
 	game.give(ItemDB.make("jet_fuel", 2, 1.0, {}))
 	var jslot := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var js = game.inventory.get_slot(i)
 		if js != null and js["type"] == "jetpack":
 			jslot = i
@@ -739,7 +745,7 @@ func _run() -> void:
 	_make_room(game)
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
 	var fi := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var sl = game.inventory.get_slot(i)
 		if sl != null and sl["type"] == "foundation":
 			fi = i
@@ -820,7 +826,7 @@ func _run() -> void:
 		if game.inventory.get_slot(i) == null:
 			bare = i
 			break
-	for i in range(Inventory.HOTBAR, Inventory.SIZE):
+	for i in range(Inventory.HOTBAR, game.inventory.capacity):
 		if game.inventory.get_slot(bare) == null:
 			break
 		if game.inventory.get_slot(i) == null:
@@ -927,6 +933,7 @@ func _run() -> void:
 	check(hr != null and hr._animal != null, "a riding horse stands ready")
 	if hr:
 		world.vehicles.pack_up(hr)
+	await _cannon_check(game, world, player)
 
 	# Console cheats.
 	var con: DevConsole = world.console
@@ -1197,7 +1204,7 @@ func _death_bag(game, world, player) -> void:
 		return
 	var menus = world.menus
 	menus.open_corpse(world.corpses, bag["key"])
-	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
+	check(menus._mode == "corpse" and menus._store.capacity >= DeathBag.SLOTS, "opening the bag shows what is in it")
 	var m: int = menus._take_purse()
 	Storage.transfer_all(menus._store, game.inventory)
 	menus._corpse_changed(m)
@@ -1738,6 +1745,50 @@ func _crowd(game, world, player) -> void:
 
 ## A fire in a town: the able-bodied run a bucket line between the well and the flames,
 ## the rest get clear; animals bolt from it; when it is out they go back to their day.
+## A field cannon: man it, load hot shot from the pack, lay it on a timber wall and fire;
+## the ball flies, strikes the wall and sets it alight.
+func _cannon_check(game, world, player) -> void:
+	var fs: FireSystem = FireSystem.current
+	var cv: Vehicle = world.vehicles.deploy(ItemDB.make("cannon", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
+	await _frames(3)
+	check(cv != null and cv.barrel != null, "a field cannon stands ready with its barrel")
+	if cv == null or fs == null:
+		return
+	_make_room(game, 2)
+	game.inventory.add(ItemDB.make("hot_shot", 1, 1.0, {}))
+	game.inventory.add(ItemDB.make("black_powder", 2, 1.0, {}))
+	player.mount(cv)
+	await _frames(3)
+	check(player.vehicle == cv, "manning the cannon")
+	Cannon.use(player, cv)
+	check(cv.rec.has("loading") and game.inventory.count("hot_shot") == 0, "loading takes the ball from the pack")
+	await create_timer(Cannon.LOAD_TIME + 0.3).timeout
+	check(cv.rec.get("load", "") == "hot_shot", "loaded with hot shot")
+	# A timber wall down range, the barrel laid on its middle.
+	var wp: Vector3 = cv.global_position + Vector3(0, 0, -22)
+	var gy: float = world.vehicles.ground(wp.x, wp.z)
+	wp.y = gy if not is_nan(gy) else cv.global_position.y
+	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
+	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+	await _frames(3)
+	var mz := Cannon.muzzle(cv)
+	var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
+	player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
+	await _frames(4)
+	Cannon.use(player, cv)
+	check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+	var lit := false
+	for i in 90:
+		await physics_frame
+		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
+			lit = true
+			break
+	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s)" % [wall["st"].keys()])
+	player.dismount()
+	fs.douse_all()
+	node.remove_object(wall["i"])
+	world.vehicles.pack_up(cv)
+
 func _fire_crew(game, world, player) -> void:
 	var fs: FireSystem = FireSystem.current
 	var e: Dictionary = {}
@@ -1769,13 +1820,19 @@ func _fire_crew(game, world, player) -> void:
 	n.global_position = Vector3(well.x, n.global_position.y, well.y)
 	world.npcs._decide(n, e, player.global_position, world.npcs.now())
 	check(n.rec.get("_fire_leg", "") == "carry", "fills it at the well")
-	n.stop_perform()
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	var edge: Vector2 = n.target
-	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
-	var h0 := FireSim.heat(wall["st"])
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(wall["st"]) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(wall["st"])])
+	# Heat of every fire before the carry: the throw can land on the wall or on
+	# whatever it spread to, and can happen on any carry step (a well near the edge
+	# throws on the first one), so walk the carry until the bucket is empty, capped.
+	var h0 := _fire_heat(world, fs)
+	for _step in 10:
+		if n.rec.get("_fire_leg", "") == "fetch":
+			break
+		n.stop_perform()
+		world.npcs._decide(n, e, player.global_position, world.npcs.now())
+		var to: Vector2 = n.target
+		n.global_position = Vector3(to.x, n.global_position.y, to.y)
+	var h1 := _fire_heat(world, fs)
+	check(n.rec.get("_fire_leg", "") == "fetch" and h1 < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, h1])
 	# Animals near it run.
 	var ksp := 0
 	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
@@ -1885,7 +1942,11 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.use_held()
 	check(int(gun.get("charge", 0)) == 1, "firing spends a round from the magazine")
 	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
-	await _frames(30)
+	# Until it lands (the shot flies in physics steps, which a fast runner's frames outpace).
+	for i in 120:
+		await process_frame
+		if kc.hp < hp0 or player.gunplay._shots.is_empty() and i > 10:
+			break
 	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
 	kc.held_for = 0.0
 	# Headshots: the upper front of the body box counts as the head and takes double.
@@ -2019,14 +2080,14 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var ruin: Dictionary = rc.add_object("alien_ruin", at.call(0.0, -12.0), 0.0, Eras.SCIFI, {})
 	check(Wonders.use_of(ruin, game.day).get("verb", "").begins_with("Wake"), "a sleeping relic offers to wake")
 	var items_before := 0
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		if game.inventory.get_slot(i) != null:
 			items_before += int(game.inventory.get_slot(i)["qty"])
 	var xp_before: int = game.stats.xp + game.stats.level * 100000
 	game.set_health(30.0)
 	var msg := WonderEffects.apply(ruin, rc, player)
 	var items_after := 0
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		if game.inventory.get_slot(i) != null:
 			items_after += int(game.inventory.get_slot(i)["qty"])
 	check(ruin["st"].get("woke", false) and msg.contains("wakes"), "waking the relic (%s)" % msg)
@@ -2090,7 +2151,7 @@ func _easter_eggs(game, streamer: ChunkStreamer, player) -> void:
 	msg = WonderEffects.apply(sword, rc, player)
 	check(sword["st"].get("drawn", false) and game.inventory.count("sword_iron") == swords0 + 1, "a strong arm draws it (%s)" % msg)
 	var drawn := {}
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and it["type"] == "sword_iron" and int(it.get("rarity", 0)) == 4:
 			drawn = it
@@ -2216,7 +2277,7 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	# The checks before this fill the pack, and a full pack leaves the loot in the chest
 	# (which read here as the chest not opening, now and then): make room first.
 	var inv: Inventory = root.get_node("/root/Game").inventory
-	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR - 1, -1):
+	for i in range(inv.capacity - 1, Inventory.HOTBAR - 1, -1):
 		if inv.free_slots() >= 12:
 			break
 		var it = inv.get_slot(i)
@@ -2566,7 +2627,7 @@ func _menu_checks(world, game, con) -> void:
 	AtlasView.selected = -1
 	# What the test has looted so far can fill the pack: two helmets and a slot to drag
 	# one into need room.
-	for i in range(Inventory.SIZE - 1, -1, -1):
+	for i in range(game.inventory.capacity - 1, -1, -1):
 		if game.inventory.free_slots() >= 3:
 			break
 		game.inventory.set_slot(i, null)
@@ -2574,7 +2635,7 @@ func _menu_checks(world, game, con) -> void:
 	con.run("give helm_elven 1")
 	var hi := -1
 	var he := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and it["type"] == "helm_iron": hi = i
 		if it != null and it["type"] == "helm_elven": he = i
@@ -2582,7 +2643,7 @@ func _menu_checks(world, game, con) -> void:
 	check(game.equip(hi) and game.equipment["head"]["type"] == "helm_iron" and game.inventory.get_slot(hi) == null, "drop a helmet on the head to wear it")
 	check(game.equip(he) and game.equipment["head"]["type"] == "helm_elven" and game.inventory.get_slot(he)["type"] == "helm_iron", "swapping helmets puts the old one where the new came from")
 	var empty := -1
-	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR, -1):
+	for i in range(game.inventory.capacity - 1, Inventory.HOTBAR, -1):
 		if game.inventory.get_slot(i) == null:
 			empty = i
 			break
@@ -2599,7 +2660,7 @@ func _menu_checks(world, game, con) -> void:
 	# Pack A items: a ring raises stamina, an elixir and a scroll last a while, a salve
 	# heals over time.
 	var find := func(t: String) -> int:
-		for i in Inventory.SIZE:
+		for i in game.inventory.capacity:
 			var it = game.inventory.get_slot(i)
 			if it != null and it["type"] == t:
 				return i
@@ -2711,3 +2772,14 @@ func _fire_checks(game, world, pc: ChunkNode, at: Vector3) -> Dictionary:
 	world.player.global_position = stood
 	game.flush_chunks()
 	return {"key": pc.key, "i": wood["i"], "ruin": ruin, "sp": int(pc.get_object(ruin).get("sp", 0)) if ruin >= 0 else -1, "stone": stone["i"], "doused": third["i"]}
+
+
+# Total heat of everything burning that is loaded.
+func _fire_heat(world, fs: FireSystem) -> float:
+	var h := 0.0
+	for key in fs._burning:
+		var b: Dictionary = fs._burning[key]
+		var c: Node = world.streamer.get_chunk(b["k"])
+		if c != null:
+			h += FireSim.heat((c as ChunkNode).get_object(int(b["i"]))["st"])
+	return h

@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--hold=ITEM] [--weather=KIND] [--strike] [--fall] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
+##   godot --path . res://src/world/world.tscn -- --capture [--burn=N] [--hold=ITEM] [--weather=KIND] [--strike] [--fall] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -41,6 +41,9 @@ var spin := 0.0
 ## --hold=pickaxe_iron puts that item in the selected hotbar slot for every shot, to see
 ## it held in first person in the world.
 var hold := ""
+## --burn=N sets the N burnable things nearest each shot's target well alight before the
+## shot settles (FireSystem), to see a town burn and measure what its fires cost.
+var burn := 0
 var _spinning := false
 
 func _ready() -> void:
@@ -53,6 +56,8 @@ func _ready() -> void:
 			only = a.substr(8).split(",")
 		if a == "--strike":
 			strike = true
+		if a.begins_with("--burn="):
+			burn = a.substr(7).to_int()
 		if a == "--fall":
 			fall = true
 		if a.begins_with("--hud="):
@@ -314,6 +319,8 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	_spinning = spin != 0.0
+	if burn > 0:
+		_burn_near(Vector3(look_at.x, tgt_h, look_at.y))
 	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
@@ -336,6 +343,29 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	_report_broken(world)
 	print("  %d ms after arriving, %d fps, cloud cover %.2f, underground %.2f" % [Time.get_ticks_msec() - arrived,
 		Engine.get_frames_per_second(), float(world.atmosphere.sky_mat.get_shader_parameter("cloud_cover")), world.atmosphere.underground])
+
+## --burn: the nearest things that burn round `at`, set well alight.
+func _burn_near(at: Vector3) -> void:
+	var fs := FireSystem.current
+	if fs == null:
+		return
+	var found: Array = []
+	for e in fs.near(AABB(at - Vector3(70, 40, 70), Vector3(140, 80, 140)), 0.0):
+		var node: ChunkNode = e[0]
+		var o: Dictionary = node.get_object(int(e[1]))
+		if not o.is_empty() and FireSim.burns(o["t"]) and ObjectLibrary.kind(o["t"]) != "tree":
+			found.append([(e[2] as AABB).get_center().distance_to(at), node, int(e[1])])
+	found.sort_custom(func(a, b): return a[0] < b[0])
+	var lit := 0
+	for f in found:
+		if lit >= burn:
+			break
+		if fs.ignite(f[1], f[2], 1.0, false, true):
+			var st: Dictionary = (f[1] as ChunkNode).get_object(f[2])["st"]
+			if st.has("fire"):
+				st["fire"]["h"] = 0.9
+			lit += 1
+	print("  set %d fires (of %d that burn nearby)" % [lit, found.size()])
 
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).

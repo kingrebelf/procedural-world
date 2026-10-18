@@ -2121,6 +2121,17 @@ func test_wardrobes() -> void:
 			on_legs += 1
 	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
 	h.free()
+	# Nothing a human wears glows: sci-fi seams light up only on alien worlds.
+	var was: String = Eras.theme
+	for theme in ["", "human", "alien"]:
+		Eras.theme = theme
+		var g := HumanModel.new()
+		root.add_child(g)
+		g.build({"height": 1.0, "build": 1.0, "female": false, "skin": Color(0.6, 0.45, 0.35), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.SCIFI, "engineer")
+		var acc: Color = g._body.get_instance_shader_parameter("accent_col")
+		check((acc.a > 0.0) == (theme == "alien"), "sci-fi work clothes glow only on alien worlds (theme '%s')" % theme)
+		g.free()
+	Eras.theme = was
 
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
@@ -2279,6 +2290,15 @@ func test_tool_grip() -> void:
 		for j in 3:
 			d = minf(d, HandGrip._seg_line(pts[j], pts[j + 1], c, axis))
 		check(d > r and d < r + HandGrip.FINGER_R + 0.012, "the %s finger closes on the handle without passing into it (%.3f m from its middle)" % [f, d])
+	var casts := func() -> Array:
+		var cs := []
+		for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
+			cs.append((mi as MeshInstance3D).cast_shadow)
+		return cs
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "a held tool casts its shadow")
+	h.set_shadow_only(true)
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "your first-person shadow body's tool doesn't shadow the one in your view")
+	h.set_shadow_only(false)
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()
@@ -2790,6 +2810,24 @@ func test_doors() -> void:
 	var back = s.load_chunk(1, 1)
 	var bd: Dictionary = back["objects"][back["objects"].size() - 1]
 	check(Doors.is_door(bd["t"]) and Doors.is_locked(bd) and Doors.is_open(bd) and float(bd["st"]["side"]) == -1.0 and Doors.has_access(bd, "friend") and Doors.is_mine(bd), "a door keeps its lock, owner, keys and swing through a save")
+
+func test_flames_under_water() -> void:
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("torch", 2, 1.0, {}))
+	var hl := HandLight.new()
+	hl.toggle(inv)
+	check(hl.tick(0.1, inv, true).contains("goes out") and not hl.is_on(), "a torch goes out under water")
+	check(hl.toggle(inv).contains("under water") and not hl.is_on(), "and won't light there")
+	hl.set_held("torch", inv)
+	check(hl.held == "", "nor will a torch taken in hand")
+	hl.tick(0.1, inv, false)
+	hl.set_held("torch", inv)
+	check(hl.held == "torch", "out of the water it lights again")
+	check(hl.tick(0.1, inv, true) != "" and hl.held == "", "a held torch goes out too")
+	inv.add(ItemDB.make("flashlight", 1, 1.0, {}))
+	check(hl.toggle(inv).begins_with("Flashlight") and hl.is_on(), "a flashlight still works under water")
+	check(BuildCatalog.def("campfire").has("fire") and Builder.under_water(Vector3(0, -500, 0)), "a campfire can't be built under water")
+	hl.free()
 
 func test_hand_light() -> void:
 	var inv := Inventory.new()
@@ -3509,8 +3547,9 @@ func test_pack_a_items() -> void:
 	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
 		found[t] = true
 	for t in known:
-		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead", "power_cell_spent"]:
-			continue # butchered, from treasure maps, caught, or a spent flashlight or cell
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "treasure_chip", "fish_raw", "flashlight_dead",
+				"power_cell_spent", "watch_keys", "watch_tabard", "writ"]:
+			continue # butchered, from treasure maps, caught, a spent flashlight or cell, or from the town watch
 		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
 	# Level gates rise with the age: stone first, steel later, the finest last.
 	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
@@ -4097,6 +4136,39 @@ static func _species_named(name: String, era: int) -> Dictionary:
 		if p["name"] == name:
 			return p
 	return {}
+
+## Ben (2026-10-18): unlimited slots in your pack; weight is the limit, 5% slower per
+## 100 kg over your carry capacity.
+func test_unlimited_pack_and_weight() -> void:
+	var pack := Inventory.new(Inventory.SIZE, true)
+	var o := {"how": "found", "era": 0}
+	var left := 0
+	for i in 73:
+		left += pack.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(left == 0, "every sword fits")
+	check(pack.count("sword_iron") == 73 and pack.capacity == 80 and pack.room() > 1000, "a growing pack never fills: 73 swords in %d slots" % pack.capacity)
+	var chest := Inventory.new(5)
+	for i in 6:
+		chest.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(chest.count("sword_iron") == 5 and chest.capacity == 5 and chest.room() == 0, "a chest keeps its slot count")
+	var back := Inventory.new(Inventory.SIZE, true)
+	back.from_data(str_to_var(var_to_str(pack.to_data())))
+	check(back.count("sword_iron") == 73 and back.capacity >= 73, "a big pack loads whole (%d slots)" % back.capacity)
+	var small := Inventory.new()
+	small.from_data(pack.to_data())
+	check(small.count("sword_iron") == 73, "nothing is dropped loading a big pack into a fixed one")
+	for i in range(20, back.capacity):
+		back.slots[i] = null
+	back.trim()
+	check(back.capacity == Inventory.SIZE, "an emptied pack shrinks back to %d slots (%d)" % [Inventory.SIZE, back.capacity])
+	var bag := DeathBag.make("p1", "", pack, {}, 0, 1.0)
+	var held := Inventory.new(Corpses.slots_of(bag))
+	held.from_data(bag["items"])
+	check(held.count("sword_iron") == 73, "a death bag holds a big pack")
+	check(DeathBag.title({"kind": "bag", "owner": "p1", "dropped": true}, "p1") == "Your dropped things", "a bag you dropped is named so")
+	check(Player.load_mult_for(600.0, 600.0) == 1.0, "no slowdown up to your carry capacity")
+	check(absf(Player.load_mult_for(700.0, 600.0) - 0.95) < 1e-4 and absf(Player.load_mult_for(650.0, 600.0) - 0.975) < 1e-4, "5% slower per 100 kg over, smoothly")
+	check(absf(Player.load_mult_for(5000.0, 600.0) - Player.LOAD_FLOOR) < 1e-4, "never slower than the floor")
 
 func test_death_bag() -> void:
 	var inv := Inventory.new()
@@ -5090,10 +5162,31 @@ func test_boat_models() -> void:
 	for k in Boats.KINDS:
 		var body := StaticBody3D.new()
 		var m := BoatModel.build(k, 3, body)
-		var mi: MeshInstance3D = m.find_children("*", "MeshInstance3D", false, false)[0]
+		var mi: MeshInstance3D = m.get_node("Hull")
 		check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s has a model" % k)
 		check(body.get_child_count() > 0, "%s has collision" % k)
 		check(not BoatModel.stations(k).is_empty() and BoatModel.stations(k).size() >= int(Boats.KINDS[k]["crew"][1]), "%s has a station per crew member" % k)
+		m.free()
+		body.free()
+	# Sails: set and filled with the wind astern, braced round for a beam wind, taken in
+	# at anchor; the lugsail swings out to leeward and its belly follows.
+	for k in ["raft", "fishing_boat", "cog"]:
+		var body := StaticBody3D.new()
+		var m := BoatModel.build(k, 3, body)
+		var rig: BoatRig = m.get_node_or_null("Rig")
+		check(rig != null and rig.sails.size() == 1, "%s has a live sail" % k)
+		rig.trim(Vector2(0, 1), 0.5, true, 0.0) # wind from dead astern
+		var s: Dictionary = rig.sails[0]
+		check((s["cloth"] as Node3D).visible and not (s["bundle"] as Node3D).visible and float(s["fill"]) > 0.9, "%s: sail set and full running before the wind" % k)
+		rig.trim(Vector2(1, 0), 0.5, true, 0.0) # from starboard, on the beam
+		if s["type"] == BoatRig.SQUARE:
+			check(float(s["swing"]) < -0.3, "%s: yard braced round, windward arm aft" % k)
+		else:
+			check(float(s["swing"]) < -0.3 and (s["cloth"] as Node3D).scale.x < 0.0, "%s: lugsail out to port, bellied to port" % k)
+		rig.trim(Vector2(0, -1), 0.5, true, 0.0) # head to wind
+		check(float(s["fill"]) < 0.1, "%s: sail spills the wind head to wind" % k)
+		rig.trim(Vector2(0, 1), 0.5, false, 0.0)
+		check(not (s["cloth"] as Node3D).visible and (s["bundle"] as Node3D).visible, "%s: sail taken in at anchor" % k)
 		m.free()
 		body.free()
 	# Pirates: a spawned site makes a hostile crew.
@@ -5926,6 +6019,11 @@ func test_fire_ruins() -> void:
 		var a := m.get_aabb()
 		check(m.get_surface_count() >= 2 and a.size.x > 6.0 and a.size.x < 12.0, "ruin %d is built to its footprint (%s)" % [v, a.size])
 	check(FireRuins.build(sp, FireRuins.MASONRY).get_aabb().size.y > FireRuins.build(sp, FireRuins.TIMBER).get_aabb().size.y * 0.8, "brick walls stand above the ash")
+	var shell := FireRuins.variant("shell", 9.0)
+	check(shell % 16 == FireRuins.SHELL and FireRuins.kind_for("shell") == FireRuins.SHELL, "a stone house leaves a shell")
+	var sa := FireRuins.build(sp, shell).get_aabb()
+	check(sa.size.y > 5.0 and sa.size.y < 12.0 and sa.size.x > 6.0 and sa.size.x < 15.0, "its walls stand to the eaves, gables up (%s)" % sa.size)
+	check(FireSim.profile("townhouse")["leaves"] == "shell" and FireSim.profile("cottage")["leaves"] == "masonry", "stone town houses stand as shells, plastered cottages fall in")
 	check(ObjectLibrary.label(FireSim.RUIN) == "Burnt Ruin" and ObjectLibrary.kind(FireSim.RUIN) == "structure", "a ruin is a structure you can pick through")
 	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
 
@@ -5936,6 +6034,23 @@ func test_fire_items() -> void:
 	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
 	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
 	check(Crime.FINES.has("arson"), "arson is a crime")
+
+func test_cannon() -> void:
+	check(Vehicle.KINDS.has("cannon") and ItemDB.def("cannon")["kind"] == "vehicle", "the field cannon is a vehicle you carry and set down")
+	var m := Vehicle.make_model("cannon")
+	var b: Node3D = m.find_child("Barrel", false, false)
+	check(b != null and (b.get_child(0) as MeshInstance3D).mesh.get_aabb().size.z > 2.4, "its barrel is a separate piece, long as a field gun's")
+	var box := Vehicle._bounds(m)
+	check(box.size.z > 2.8 and box.size.z < 4.2 and box.size.y > 1.0 and box.size.y < 1.6, "a field cannon's size (%s)" % box.size)
+	m.free()
+	for t in Cannon.AMMO:
+		check(ItemDB.ITEMS.has(t) and Recipes.LIST.any(func(r): return r["out"] == t), "%s is an item you can make" % t)
+		check(Cannon.SHOT.has(t), "%s flies from a cannon" % t)
+	check(float(Cannon.SHOT["hot_shot"].get("incendiary", 0.0)) > 0.5 and not Cannon.SHOT["cannon_ball"].has("incendiary"), "hot shot sets things alight, round shot doesn't")
+	check(Cannon.MAX_EL > deg_to_rad(20.0) and Cannon.MIN_EL < 0.0, "the barrel can be laid up and down")
+	for pr in Settings.PRESETS:
+		check(Settings.PRESETS[pr].has("fire_fx") and int(Settings.PRESETS[pr]["fire_fx"]) < FireSystem.QUALITY.size(), "%s sets fire and smoke quality" % pr)
+	check(int(FireSystem.QUALITY[0]["smoke"]) < int(FireSystem.QUALITY[2]["smoke"]) and int(FireSystem.QUALITY[0]["flames"]) < int(FireSystem.QUALITY[2]["flames"]), "low fire quality draws less")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
@@ -6196,6 +6311,22 @@ func test_kit_surfaces_worn() -> void:
 	glow.emission_enabled = true
 	glow.cull_mode = BaseMaterial3D.CULL_DISABLED
 	check(BuildCatalog.worn(glow, "village/X") == glow, "nothing glowing is touched")
+	# Castles, town walls and towers weather with the houses round them; crypts don't.
+	var cw := Materials.worn("castle_stone")
+	check(cw is ShaderMaterial and (cw as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"), "castle stone weathers")
+	check(Materials.worn("castle_stone") == cw, "worn castle stone is shared")
+	check(Materials.worn("crypt_stone") == Materials.get_mat("crypt_stone"), "crypt stone doesn't weather")
+	check(Materials.worn("glass") == Materials.get_mat("glass"), "glass doesn't weather")
+	var shader_of := func(mesh: ArrayMesh) -> int:
+		var n := 0
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial and (sm as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"):
+				n += 1
+		return n
+	check(shader_of.call(Stronghold.build("castle_wall")) > 0, "a town wall's stone weathers")
+	check(shader_of.call(Stronghold.build("castle_tower")) > 0, "a tower's stone weathers")
+	check(shader_of.call(Stronghold.build("crypt_wall")) == 0, "a crypt's walls don't")
 
 func test_climate_belts() -> void:
 	var c := Climate.new(4242)

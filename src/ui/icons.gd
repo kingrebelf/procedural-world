@@ -185,13 +185,22 @@ const MORE_SHEETS := [
 		"hydrogen_cell", "fusion_pellets", "rocket_fuel", "plasma_fuel", "void_fuel", "star_fuel",
 	]],
 	# Fire (tools/place_icon.py, one item per cell): the fire pot, and the incendiary
-	# grenade ahead of its item.
+	# grenade ahead of its item; then power pieces and the town watch's things
+	# (plans/icon-prompts-2026-10-18.md, art/icons/v3 in project files). Cells 15-17 hold
+	# the field cannon, cannon_ball and hot_shot, named when fire stage 3 brings the items.
 	["res://assets/icons/items25.png", [
-		"fire_pot", "incendiary_grenade", "", "", "", "",
-		"", "", "", "", "", "",
-		"", "", "", "", "", "",
-		"", "", "", "", "", "",
-		"", "", "", "", "", "",
+		"fire_pot", "incendiary_grenade", "lamp_ceiling", "lamp_wall", "floodlight", "street_lamp",
+		"searchlight", "light_bulb", "knife_switch", "lever", "push_button", "pressure_plate",
+		"motion_sensor", "daylight_sensor", "flame_trap", "", "", "",
+		"treasure_chip", "watch_tabard", "grappling_hook", "writ", "watch_keys", "logic_timer",
+		"logic_clock", "logic_gate", "logic_latch", "logic_counter", "logic_delay", "relay",
+	]],
+	["res://assets/icons/items26.png", [
+		"charge_sensor", "door_motor", "electric_motor", "multimeter", "alarm_bell", "gen_woodgas",
+		"gen_diesel", "windmill", "solar_array", "steam_engine", "water_wheel", "battery_bank",
+		"battery_cell", "power_pole", "junction_box", "signal_wire", "insulator", "conveyor_belt",
+		"hopper", "robot_arm", "auto_miner", "quarry_drill", "electric_furnace", "power_sawmill",
+		"assembler", "auto_turret", "heavy_turret", "fence_post", "spike_trap", "",
 	]],
 ]
 ## type -> [sheet path, its order], built on first use.
@@ -293,6 +302,13 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 19), Vector2(9, 4), Color(0.75, 0.68, 0.55))
 			_poly(img, [Vector2(30, 16), Vector2(34, 4), Vector2(38, 15)], Color(1.0, 0.62, 0.2))
 			_poly(img, [Vector2(32, 16), Vector2(34, 9), Vector2(36, 16)], Color(1.0, 0.9, 0.5))
+		"cannon_ball", "hot_shot":
+			# Three iron balls in a pile; hot shot glowing red from the forge.
+			var hot := type == "hot_shot"
+			for b in [Vector2(21, 42), Vector2(43, 42), Vector2(32, 24)]:
+				_circle(img, b, 12.0, Color(0.1, 0.1, 0.11) if not hot else Color(0.55, 0.12, 0.03))
+				_circle(img, b, 10.0, c if not hot else Color(0.85, 0.3, 0.06))
+				_circle(img, b + Vector2(-3, -3), 4.0, c.lightened(0.35) if not hot else Color(1.0, 0.75, 0.3))
 		"bread":
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:

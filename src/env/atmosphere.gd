@@ -12,6 +12,8 @@ static var moon_dir := Vector3.DOWN
 static var moon_phase := 0.5
 ## Tools set this (0..1) to shoot a given phase; below 0 the phase follows the calendar.
 static var moon_phase_override := -1.0
+## How bright the daylight in through house windows is now (WindowLight): out at night.
+static var window_fill := 0.0
 ## Game days from one full moon to the next. The first night of a new world is full.
 const LUNAR_DAYS := 8.0
 var sun: DirectionalLight3D
@@ -43,6 +45,8 @@ var weather: Weather
 ## How much of the sky metal and gloss mirror (sky_reflect_g, the sky's radiance pass), as
 ## the weather leaves it: thick mist or rain hides the sky they would show. Set by Weather.
 var reflect_mul := 1.0
+## The sun's shadow reach the settings ask for (Weather shortens it under overcast).
+var shadow_dist := 300.0
 var _reflect_sent := -1.0
 
 func _ready() -> void:
@@ -197,7 +201,8 @@ func apply_settings() -> void:
 	_shafts.visible = bool(Settings.get_value("sun_shafts"))
 	RenderingServer.environment_set_volumetric_fog_volume_size(64 if vf < 2 else 128, 64 if vf < 2 else 128)
 	RenderingServer.environment_set_volumetric_fog_filter_active(vf >= 2)
-	sun.directional_shadow_max_distance = float(Settings.get_value("shadow_distance"))
+	shadow_dist = float(Settings.get_value("shadow_distance"))
+	sun.directional_shadow_max_distance = shadow_dist
 	# Low shadows: two cascades instead of four (half the shadow passes).
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if int(Settings.get_value("shadows")) == 0 \
 		else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
@@ -348,6 +353,13 @@ func _update_time_of_day() -> void:
 	RenderingServer.global_shader_parameter_set("sun_dir_g", dir)
 	sun_dir = dir
 	var daylight := smoothstep(-0.12, 0.25, elev)
+	# Daylight in through the windows of the rooms round you, with the day.
+	var fill := snappedf(0.7 * daylight, 0.01)
+	if fill != window_fill:
+		if (fill > 0.0) != (window_fill > 0.0):
+			get_tree().set_group(WindowLight.GROUP, "visible", fill > 0.0)
+		window_fill = fill
+		get_tree().set_group(WindowLight.GROUP, "light_energy", fill)
 	# Lamps are lit in the windows as the sun goes down, and put out after sunrise.
 	Materials.set_window_light(1.0 - smoothstep(-0.02, 0.16, elev))
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))

@@ -16,6 +16,7 @@ var quick := false ## --quick: skip the per-feature GPU tests
 ## view instead of the per-system and per-feature tests (e.g. render scale options).
 var compare: Array = []
 var report: PackedStringArray = []
+var _switched_off: Array = [] ## nodes _each_process switched off
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -228,6 +229,24 @@ func _census() -> String:
 static func _toggle_process(off: bool, nd: Node) -> void:
 	nd.process_mode = Node.PROCESS_MODE_DISABLED if off else Node.PROCESS_MODE_INHERIT
 
+## Switches off every processing node in the world made from one of these scripts, or
+## back on the ones it switched off.
+func _each_process(scripts: Array, off: bool) -> void:
+	if not off:
+		for n in _switched_off:
+			if is_instance_valid(n):
+				n.set_process(true)
+		_switched_off.clear()
+		return
+	var stack: Array = [world]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		var sc: Script = n.get_script()
+		if sc != null and scripts.has(sc) and n.is_processing():
+			n.set_process(false)
+			_switched_off.append(n)
+		stack.append_array(n.get_children())
+
 func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> void:
 	await _goto(at, look, height)
 	var base: Dictionary = await _measure()
@@ -267,6 +286,18 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 				(m as SkeletonModifier3D).active = not off])
 	rows.append(["HUD and UI", _toggle_process.bind(world.hud.get_parent())])
 	rows.append(["Atmosphere", _toggle_process.bind(world.atmosphere)])
+	# Newer systems, each on its own (Weather runs under the atmosphere above too).
+	for n in ["Fires", "ClimateWear", "Power", "Dungeons", "Boats", "WaterLife"]:
+		var nd := world.get_node_or_null(n)
+		if nd != null:
+			rows.append([n, _toggle_process.bind(nd)])
+	if world.atmosphere.weather != null:
+		rows.append(["  weather", _toggle_process.bind(world.atmosphere.weather)])
+	# Per-node effects that run every frame: flames leaning as they move, firelight
+	# flickering, sunbeams through windows, town decor.
+	rows.append(["flames", func(off: bool): _each_process([FireFx.Drag], off)])
+	rows.append(["flicker", func(off: bool): _each_process([FlickerLight], off)])
+	rows.append(["beams+decor", func(off: bool): _each_process([SunBeams.Shafts, TownDecor, TownLife, GateWatch, DoorNode], off)])
 	for r in rows:
 		var b0: Dictionary = await _measure()
 		(r[1] as Callable).call(true)

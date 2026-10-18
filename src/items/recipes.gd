@@ -310,6 +310,10 @@ const LIST := [
 	{"out": "black_powder", "qty": 4, "in": {"charcoal": 1, "salt": 1, "coal": 1}, "tools": ["mortar_pestle"]},
 	{"out": "black_powder", "qty": 3, "in": {"charcoal": 2, "salt_crystal": 1}, "tools": ["mortar_pestle"]},
 	{"out": "musket_balls", "qty": 20, "in": {"iron_ingot": 1, "black_powder": 2}, "at": "forge"},
+	{"out": "cannon_ball", "qty": 4, "in": {"iron_ingot": 3}, "at": "forge"},
+	# Hot shot: a ball heated red in the forge, to fire into timber.
+	{"out": "hot_shot", "qty": 2, "in": {"cannon_ball": 2, "charcoal": 2}, "at": "forge"},
+	{"out": "cannon", "qty": 1, "in": {"bronze_ingot": 8, "planks": 6, "iron_ingot": 3}, "at": "anvil"},
 	{"out": "shotgun_shells", "qty": 12, "in": {"copper_ingot": 1, "black_powder": 2, "cloth": 1}, "at": "workbench"},
 	{"out": "rifle_cartridges", "qty": 15, "in": {"copper_ingot": 1, "iron_ingot": 1, "black_powder": 3}, "at": "anvil"},
 	{"out": "rounds", "qty": 15, "in": {"copper_ingot": 1, "black_powder": 2}, "at": "anvil"},
@@ -777,8 +781,8 @@ static func max_crafts(inv: Inventory, recipe: Dictionary) -> int:
 		return 0
 	if not ItemDB.is_stackable(recipe["out"]):
 		# Each tool needs its own slot; consuming inputs may free some.
-		n = mini(n, inv.free_slots() + _slots_freed(inv, recipe, n))
-	elif inv.count(recipe["out"]) == 0 and inv.free_slots() + _slots_freed(inv, recipe, n) <= 0:
+		n = mini(n, inv.room() + _slots_freed(inv, recipe, n))
+	elif inv.count(recipe["out"]) == 0 and inv.room() + _slots_freed(inv, recipe, n) <= 0:
 		return 0
 	return maxi(n, 0)
 

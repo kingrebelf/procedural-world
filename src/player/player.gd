@@ -232,6 +232,15 @@ func _refresh_held() -> void:
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
 		_tag_self()
+	_torch_flame.call_deferred() # after the viewmodel's deferred hold has made the prop
+
+## A torch or lamp held but not burning (put out in the water) shows no flame.
+func _torch_flame() -> void:
+	var on := hand_light == null or hand_light.held != ""
+	for root in [viewmodel, body]:
+		if root != null:
+			for f in (root as Node).find_children("Flame", "", true, false): # a held torch's (HandLight.torch_fire)
+				(f as Node3D).visible = on
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -409,9 +418,10 @@ func _physics_process(delta: float) -> void:
 	_cooldown = maxf(0.0, _cooldown - delta)
 	if Game.health < Game.max_health() and Game.health > 0.0 and Game.wearing_affix("mending"):
 		Game.set_health(Game.health + delta * 0.8)
-	var lmsg := hand_light.tick(delta, Game.inventory)
+	var lmsg := hand_light.tick(delta, Game.inventory, underwater)
 	if lmsg != "":
 		Game.toast.emit(lmsg)
+		_torch_flame()
 	_tick_fishing(delta)
 	_update_nightsight()
 	if not ui_open:
@@ -1245,7 +1255,7 @@ func eat() -> void:
 		return
 	var idx := -1
 	var best := 99
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		var s = Game.inventory.get_slot(i)
 		if s == null:
 			continue
@@ -1422,13 +1432,20 @@ func _sleep(fd: Dictionary, name: String) -> void:
 	Game.toast.emit("You sleep on your %s and wake at dawn, well rested." % name.to_lower())
 
 ## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
-## How a heavy pack slows you: 1 up to your carry capacity, then down to a crawl. Over
-## capacity you cannot sprint.
+## How a heavy pack slows you: 1 up to your carry capacity, then 5% slower for every
+## 100 kg over it (smoothly, per kg), never below LOAD_FLOOR so you can still move. The
+## pack has no slot limit, so this is what limits carrying. Over capacity you cannot sprint.
 func load_mult() -> float:
-	var r := Game.inventory.weight() / Game.stats.carry_capacity()
-	if r <= 1.0:
+	return Player.load_mult_for(Game.inventory.weight(), Game.stats.carry_capacity())
+
+const LOAD_SLOW_PER_KG := 0.05 / 100.0
+const LOAD_FLOOR := 0.25
+
+static func load_mult_for(kg: float, cap: float) -> float:
+	var over := kg - cap
+	if over <= 0.0:
 		return 1.0
-	return maxf(0.3, 1.0 - (r - 1.0) * 1.4)
+	return maxf(LOAD_FLOOR, 1.0 - over * LOAD_SLOW_PER_KG)
 
 func _tire(n: float) -> bool:
 	_rest = 0.0
@@ -2087,6 +2104,10 @@ func mount(v: Vehicle) -> void:
 	_last_info = ""
 	look_info_changed.emit({})
 	_apply_view()
+	if v.p.get("gun", false):
+		Game.toast.emit("%s: [%s/%s] push and pull it, [%s/%s] swing it round, look up and down to lay it, [%s] load and fire, [%s] step away" % [Vehicle.label(v.kind),
+			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("use"), _key("interact")])
+		return
 	Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
 		_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
 		"gallop" if v.kind == "horse" else "boost", _key("interact")])
@@ -2145,12 +2166,24 @@ func _ride(delta: float) -> void:
 			_yaw += turned
 			_apply_look()
 	var seat := v.seat_transform()
-	# Sitting: hips on the seat. The body faces the vehicle's way, whatever you look at.
-	global_position = seat.origin - Vector3(0, SIT_HIPS, 0)
-	if body:
-		body.rotation = Vector3(0, PI + wrapf(v.rotation.y - _yaw, -PI, PI), 0)
-		body.play("sit")
-	head.position = head.position.lerp(Vector3(0, SIT_HIPS + 0.62, 0), clampf(delta * 10.0, 0.0, 1.0))
+	if v.p.get("stand", false):
+		# A gun: you stand behind the trail, pushing it, and the barrel follows your look.
+		global_position = seat.origin
+		if body:
+			body.rotation = Vector3(0, PI + wrapf(v.rotation.y - _yaw, -PI, PI), 0)
+			body.play("walk" if absf(v.spd) > 0.2 else "idle")
+		head.position = head.position.lerp(Vector3(0, STAND_H - 0.12, 0), clampf(delta * 10.0, 0.0, 1.0))
+	else:
+		# Sitting: hips on the seat. The body faces the vehicle's way, whatever you look at.
+		global_position = seat.origin - Vector3(0, SIT_HIPS, 0)
+		if body:
+			body.rotation = Vector3(0, PI + wrapf(v.rotation.y - _yaw, -PI, PI), 0)
+			body.play("sit")
+		head.position = head.position.lerp(Vector3(0, SIT_HIPS + 0.62, 0), clampf(delta * 10.0, 0.0, 1.0))
+	if v.p.get("gun", false):
+		v.elevation = clampf(_pitch + 0.08, Cannon.MIN_EL, Cannon.MAX_EL)
+		if not ui_open and Input.is_action_just_pressed("use"):
+			Cannon.use(self, v)
 	steps.ride(v, delta)
 	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
@@ -2167,6 +2200,8 @@ func _ride(delta: float) -> void:
 	if _rest > 0.8:
 		Game.set_stamina(Game.stamina + 22.0 * delta * Game.stats.stamina_regen_mult())
 	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
+	if v.p.get("gun", false):
+		text = "%s   [%s] get off" % [Cannon.status(v), _key("interact")]
 	if v.flies() and v.leaving >= Vehicle.LEAVE_TIME:
 		go_to_orbit()
 		return
