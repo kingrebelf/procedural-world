@@ -490,7 +490,7 @@ func _send_state(pl: Node3D) -> void:
 		pos = riding.global_position
 		yaw = riding.rotation.y
 	s_state.rpc_id(1, Game.planet, pos, yaw, float(pl.get("_pitch")), anim, speed, shot)
-	var it = Game.inventory.get_slot(pl.selected) if Game.inventory else null
+	var it = pl.held_item() if Game.inventory else null
 	var look := {"equip": Game.equipment, "held": it if it != null else {}, "wanted": _wanted(), "veh": _parked(riding)}
 	if look != _last_look:
 		_last_look = look.duplicate(true)

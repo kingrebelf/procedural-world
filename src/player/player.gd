@@ -46,6 +46,9 @@ var noclip := false
 var speed_mult := 1.0
 var snap_down := false ## Put the player on the ground once it loads (after a teleport).
 var selected := 0
+## Hands empty: what's in the selected slot is put away (the holster key, or pressing that
+## slot's key again) until a slot is picked.
+var holstered := false
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
 var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
@@ -199,7 +202,8 @@ func yaw() -> float:
 	return _yaw
 
 func select(i: int) -> void:
-	var was := selected
+	var was := selected if not holstered else -1
+	holstered = false
 	selected = clampi(i, 0, Inventory.HOTBAR - 1)
 	_refresh_held()
 	var it = held_item()
@@ -208,7 +212,13 @@ func select(i: int) -> void:
 	selected_changed.emit(selected)
 
 func held_item():
-	return Game.inventory.get_slot(selected)
+	return null if holstered else Game.inventory.get_slot(selected)
+
+## Puts away what's in hand, or takes it out again.
+func holster(on = null) -> void:
+	holstered = (not holstered) if on == null else bool(on)
+	_refresh_held()
+	selected_changed.emit(selected)
 
 func _refresh_held() -> void:
 	var it = held_item()
@@ -353,7 +363,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		select((selected + 1) % Inventory.HOTBAR)
 	for i in Inventory.HOTBAR:
 		if event.is_action_pressed("slot_%d" % (i + 1)):
-			select(i)
+			if i == selected and not holstered:
+				holster(true)
+			else:
+				select(i)
+	if event.is_action_pressed("holster"):
+		holster()
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()

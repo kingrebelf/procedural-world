@@ -473,7 +473,7 @@ static func _step_every(n: NPC, cam: Camera3D) -> int:
 
 ## What a person makes of the player at `pp`: you (peer 0), or online another player.
 func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dictionary:
-	var held = Game.inventory.get_slot(player.selected) if player.has_method("held_item") else null
+	var held = player.held_item() if player.has_method("held_item") else null
 	var wanted: int = Game.crime.stars(String(e.get("sid", "")), Game.day)
 	if peer != 0:
 		var r: Dictionary = Net.peers.get(peer, {})

@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
+##   godot --path . res://src/world/world.tscn -- --capture [--hold=ITEM] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -32,6 +32,9 @@ var beams := 1.0
 ## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
 ## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
 var spin := 0.0
+## --hold=pickaxe_iron puts that item in the selected hotbar slot for every shot, to see
+## it held in first person in the world.
+var hold := ""
 var _spinning := false
 
 func _ready() -> void:
@@ -61,6 +64,8 @@ func _ready() -> void:
 		# --moon=0.5 shoots every night at that moon phase (0 new, 0.5 full).
 		if a.begins_with("--moon="):
 			Atmosphere.moon_phase_override = a.substr(7).to_float()
+		if a.begins_with("--hold="):
+			hold = a.substr(7)
 		if a.begins_with("--spin="):
 			spin = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
@@ -271,6 +276,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var y := g.field.height(at.x, at.y) + height
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
+	if hold != "" and not ItemDB.def(hold).is_empty():
+		Game.inventory.set_slot(p.selected, ItemDB.make(hold, 1, 1.0, {}))
+		p.select(p.selected)
 	var arrived := Time.get_ticks_msec()
 	await _wait_loaded(p, streamer)
 	# Loading can take a long while on a slow renderer: put the clock back to the shot's time.
@@ -314,6 +322,10 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
 func _process(delta: float) -> void:
+	# The player is frozen for the shots (no physics step), but what it holds should still
+	# settle into its hold as it does in play.
+	if world and world.player and not world.player.is_physics_processing() and world.player.viewmodel.visible:
+		world.player.viewmodel.sway(delta, 0.0)
 	if _spinning and world and world.player:
 		world.player._yaw += deg_to_rad(spin) * delta
 		world.player._apply_look()

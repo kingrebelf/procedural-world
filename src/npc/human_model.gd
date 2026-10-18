@@ -718,10 +718,23 @@ func support(at: Vector3, fingers := Vector3.ZERO, palm := Vector3.ZERO) -> void
 		"fingers": (to_sk * fingers).normalized(), "palm": (to_sk * palm).normalized()}
 
 ## Bends the right arm so its wrist sits at `at` (world); Vector3.ZERO lets it go.
-func pull_in(at: Vector3) -> void:
+func pull_in(at: Vector3, elbow := Vector3.ZERO) -> void:
 	if gestures == null or skeleton == null:
 		return
 	gestures.reach_r = {} if at == Vector3.ZERO else {"at": skeleton.global_transform.affine_inverse() * at}
+	if at != Vector3.ZERO and elbow != Vector3.ZERO:
+		gestures.reach_r["pole"] = (skeleton.global_basis.orthonormalized().inverse() * elbow).normalized()
+
+## Puts the right hand exactly at `xf` (world): the arm reaches the wrist there and the
+## hand turns to its basis. What it holds then lands where its own placement says.
+func set_hand(xf: Transform3D) -> void:
+	if gestures == null or skeleton == null:
+		return
+	var s := skeleton.global_transform.affine_inverse() * xf
+	gestures.hand_aim = {}
+	gestures.hand_share = 0.3
+	gestures.hand_r = s.basis.orthonormalized()
+	gestures.reach_r = {"at": s.origin}
 
 ## The right shoulder in world space.
 func shoulder_r() -> Vector3:
@@ -765,6 +778,9 @@ func set_arms_only(right_only := false) -> void:
 			_arms_cut(m)
 		elif not _is_held(m):
 			m.visible = false
+	# First person: no blinking, or the shut eyelids show up in front of the camera.
+	if gestures:
+		gestures.eyelids = [null, null]
 
 var _side := 1.0
 

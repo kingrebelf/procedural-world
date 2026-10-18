@@ -44,6 +44,7 @@ const ACTIONS := {
 	"build_snap": ["Grid snap on / off (while placing)", KEY_G, "btn:2"],
 	"hotbar_prev": ["Previous hotbar slot", -1, "btn:13"],
 	"hotbar_next": ["Next hotbar slot", -1, "btn:14"],
+	"holster": ["Put away what you hold (empty hands); 1-0 or the wheel takes it out again", KEY_H, ""],
 	"hotbar_pick": ["Hold to pick a hotbar slot with A/B/X/Y and the D-pad", -1, "btn:9"],
 	"pause": ["Pause", KEY_ESCAPE, "btn:6"],
 	"mouse_toggle": ["Free / lock the mouse pointer", KEY_ALT, ""],
