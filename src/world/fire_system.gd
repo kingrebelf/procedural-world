@@ -1105,11 +1105,11 @@ class FireVis extends Node3D:
 			_shadow = shadow
 			if lit and _light == null:
 				_light = FlickerLight.new()
-				_light.light_color = Color(1.0, 0.56, 0.26)
+				_light.light_color = Color(1.0, 0.64, 0.34) # amber, as the town torches
 				_light.light_energy = 2.0
-				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 2.0 + 10.0, 12.0, 40.0)
-				# Falls off as light does, bright on the walls and yard close by and gone
-				# well before its reach (no rim of light on the ground round it).
+				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 0.9 + 4.0, 6.0, 14.0)
+				# Falls off as light does: warm on the wall and ground by the flames, not a
+				# wash of orange over the whole house and the roofs next door.
 				_light.omni_attenuation = 2.0
 				_light.distance_fade_enabled = true
 				_light.distance_fade_begin = FireSystem.LIGHT_RANGE - 30.0
@@ -1190,7 +1190,7 @@ class FireVis extends Node3D:
 		if _embers != null:
 			_embers.visible = _near and _heat > 0.3
 		if _light != null:
-			_light.base = 1.5 + 18.0 * _heat # a house well alight lights its walls and yard by day
+			_light.base = 0.6 + 3.2 * _heat
 			_light.visible = _lit and _heat > 0.05
 		if _sound != null:
 			_sound.volume_db = linear_to_db(clampf(_heat * 1.4, 0.02, 1.0)) - 4.0
