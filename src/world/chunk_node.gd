@@ -352,6 +352,9 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			# Moss on its top (StoneKit's material reads alpha): in green lands, not on sand.
 			var w := Eras.look(ChunkGenerator.weights_at(chunk, p.x, p.z))
 			tint.a = w[Eras.MEDIEVAL] * lerpf(0.2, 0.9, u2) * ChunkGenerator.cover_at(chunk, p.x, p.z)
+		if built:
+			# How far it has weathered since it was built (the kit shader reads alpha).
+			tint.a = ClimateWear.maturity(float(o["st"].get("day", -1.0)), Game.day)
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a]
 		if far and real:
 			var look := RealTree.plant_look(float(chunk["cx"]) * SIZE + p.x, float(chunk["cz"]) * SIZE + p.z)

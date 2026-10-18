@@ -61,6 +61,10 @@ func _ready() -> void:
 	water.atmosphere = atmosphere
 	water.streamer = streamer
 	add_child(water)
+	var wear := ClimateWear.new()
+	wear.name = "ClimateWear"
+	wear.target = player
+	add_child(wear)
 	var far := FarLand.new()
 	far.name = "FarLand"
 	far.target = player

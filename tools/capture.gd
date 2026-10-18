@@ -472,6 +472,8 @@ func _run() -> void:
 		await _landform_shots(g)
 	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
+	if only.is_empty() or only.has("100"):
+		await _wear_shots(g)
 	if only.is_empty() or only.has("62"):
 		await _peaks_shot(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
@@ -1038,6 +1040,57 @@ func _landform_shots(g: ChunkGenerator) -> void:
 				cam = c
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
+
+## Village houses weathered by their climate (ClimateWear, shots 100_wear_*): the mossiest, the coldest
+## (at dawn, for the hoar frost) and the dustiest village near spawn, a yard seen at eye
+## height, and the inside of the mossy one, which must stay clean.
+func _wear_shots(g: ChunkGenerator) -> void:
+	var pick := [{}, {}, {}]
+	var score := [-INF, -INF, -INF]
+	for r in 30:
+		for sz in range(-r, r + 1):
+			for sx in range(-r, r + 1):
+				if maxi(absi(sx), absi(sz)) != r:
+					continue
+				var s := g.settlement_at(sx, sz)
+				if s.is_empty() or s["era"] != Eras.MEDIEVAL:
+					continue
+				var c: Vector2 = s["center"]
+				var lv := ClimateWear.levels(g.field, c.x, c.y)
+				# The cold of height toward the snow line, as the shaders add it.
+				var alt := smoothstep(WorldField.snow_line - 22.0, WorldField.snow_line - 6.0, g.field.height(c.x, c.y))
+				var cold := maxf(lv.g, alt)
+				# Each climate pure (a wet village that isn't also snowy), and near, so the
+				# far shots load in time.
+				var near := c.length() / 20000.0
+				var want := [lv.r - cold - lv.b - near, cold - lv.b - near, lv.b - cold - lv.r * 0.5 - near]
+				for k in 3:
+					if want[k] > score[k]:
+						score[k] = want[k]
+						pick[k] = s
+	var names := ["100_wear_wet", "100_wear_cold", "100_wear_dry"]
+	for k in 3:
+		if pick[k].is_empty():
+			print("no village for ", names[k])
+			continue
+		var pl := TownLife.plan(g, pick[k])
+		if pl["houses"].is_empty():
+			print("no house for ", names[k])
+			continue
+		var h: Dictionary = pl["houses"][0]
+		var hp: Vector2 = h["p"]
+		var hy: float = h["yaw"]
+		var hw: float = h["w"]
+		var hd: float = h["d"]
+		print("wear shot ", names[k], " level ", score[k], " at ", hp)
+		await _shot(names[k], TownLife.frame_to_world(hp, hy, Vector2(hw * 0.5 + 6.0, hd * 0.5 + 7.0)),
+			TownLife.frame_to_world(hp, hy, Vector2(0.0, 0.0)), 0.27 if k == 1 else 0.42, 1.7,
+			g.field.height(hp.x, hp.y) + 2.5)
+		if k == 0:
+			# Standing on the floor (the height is the feet's), looking at the far corner.
+			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.25, hd * 0.25)),
+				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 0.15,
+				g.field.height(hp.x, hp.y) + 1.0)
 
 ## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
 ## cold spruce uplands; standing on its edge looking in.

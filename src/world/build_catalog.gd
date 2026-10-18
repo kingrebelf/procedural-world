@@ -433,7 +433,7 @@ static func model_parts(name: String) -> Array:
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
-				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name)
+				var mat: Material = worn(_aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name), name)
 				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
 	_lock.lock()
@@ -587,6 +587,73 @@ static func _aged(m: Material, model := "") -> Material:
 		out = c
 	_lock.unlock()
 	return out
+
+static var _worn_mats := {}
+
+## How readily moss takes on each village kit material (kit_surface.gdshader): rough stone
+## and roof tiles most, limewash and planed timber less, iron hardly at all.
+const MOSS_TAKE := {"MI_RoundTiles": 1.2, "MI_RockTrim": 1.1, "MI_UnevenBrick": 1.0, "MI_Brick": 1.0,
+	"MI_WoodTrim_Wear": 0.9, "MI_WoodTrim": 0.8, "MI_Plaster": 0.75, "MI_MetalOrnaments": 0.15}
+
+## The village kit's opaque materials (houses and what the player builds from them) as
+## kit_surface.gdshader: drawn the same, with the place's moss, snow, frost and dust out
+## of doors (ClimateWear). Glass, leaves and anything glowing stay as they are, and so
+## does every other kit.
+static func worn(m: Material, model := "") -> Material:
+	if not model.begins_with("village/") or not (m is BaseMaterial3D):
+		return m
+	var b := m as BaseMaterial3D
+	if b.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or b.emission_enabled or b.uv1_triplanar \
+			or b.cull_mode != BaseMaterial3D.CULL_DISABLED:
+		return m
+	_lock.lock()
+	var out = _worn_mats.get(m)
+	_lock.unlock()
+	if out != null:
+		return out
+	var w := ShaderMaterial.new()
+	w.shader = load("res://src/world/shaders/kit_surface.gdshader")
+	w.resource_name = b.resource_name
+	w.set_shader_parameter("albedo", b.albedo_color)
+	w.set_shader_parameter("albedo_tex", b.albedo_texture)
+	w.set_shader_parameter("use_vertex_color", b.vertex_color_use_as_albedo)
+	w.set_shader_parameter("roughness", b.roughness)
+	w.set_shader_parameter("roughness_tex", b.roughness_texture)
+	w.set_shader_parameter("roughness_channel", _channel(b.roughness_texture_channel))
+	w.set_shader_parameter("metallic", b.metallic)
+	w.set_shader_parameter("metallic_tex", b.metallic_texture)
+	w.set_shader_parameter("metallic_channel", _channel(b.metallic_texture_channel))
+	w.set_shader_parameter("specular", b.metallic_specular)
+	w.set_shader_parameter("has_normal", b.normal_enabled and b.normal_texture != null)
+	w.set_shader_parameter("normal_tex", b.normal_texture)
+	w.set_shader_parameter("normal_scale", b.normal_scale)
+	w.set_shader_parameter("uv1_scale", b.uv1_scale)
+	w.set_shader_parameter("uv1_offset", b.uv1_offset)
+	w.set_shader_parameter("moss_take", MOSS_TAKE.get(b.resource_name, 0.8))
+	w.set_shader_parameter("mean_lum", _mean_lum(b))
+	_lock.lock()
+	_worn_mats[m] = w
+	_lock.unlock()
+	return w
+
+static func _channel(c: int) -> Vector4:
+	var v := Vector4.ZERO
+	v[clampi(c, 0, 3)] = 1.0
+	return v
+
+## A material's average brightness (linear), from its colour map halved down to a texel.
+static func _mean_lum(b: BaseMaterial3D) -> float:
+	var t := b.albedo_texture
+	var img: Image = t.get_image() if t != null else null
+	if img == null or img.is_empty():
+		return 0.35
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	while img.get_width() > 1 and img.get_height() > 1:
+		img.shrink_x2() # each halving averages 2 x 2 texels
+	var c := img.get_pixel(0, 0).srgb_to_linear() * b.albedo_color
+	return maxf(c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722, 0.02)
 
 static func _node_xf(n: Node3D, root: Node) -> Transform3D:
 	var xf := n.transform
