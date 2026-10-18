@@ -1820,18 +1820,19 @@ func _fire_crew(game, world, player) -> void:
 	n.global_position = Vector3(well.x, n.global_position.y, well.y)
 	world.npcs._decide(n, e, player.global_position, world.npcs.now())
 	check(n.rec.get("_fire_leg", "") == "carry", "fills it at the well")
-	n.stop_perform()
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	var edge: Vector2 = n.target
-	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
-	# The fire they are on: the wall, or whatever it has spread to that is nearer them.
-	var on: Dictionary = fs._burning.get(String(n.rec.get("_fire", "")), {})
-	var target: Dictionary = wall["st"]
-	if not on.is_empty() and world.streamer.get_chunk(on["k"]) != null:
-		target = (world.streamer.get_chunk(on["k"]) as ChunkNode).get_object(int(on["i"]))["st"]
-	var h0 := FireSim.heat(target)
-	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(target) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(target)])
+	# Heat of every fire before the carry: the throw can land on the wall or on
+	# whatever it spread to, and can happen on any carry step (a well near the edge
+	# throws on the first one), so walk the carry until the bucket is empty, capped.
+	var h0 := _fire_heat(world, fs)
+	for _step in 10:
+		if n.rec.get("_fire_leg", "") == "fetch":
+			break
+		n.stop_perform()
+		world.npcs._decide(n, e, player.global_position, world.npcs.now())
+		var to: Vector2 = n.target
+		n.global_position = Vector3(to.x, n.global_position.y, to.y)
+	var h1 := _fire_heat(world, fs)
+	check(n.rec.get("_fire_leg", "") == "fetch" and h1 < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, h1])
 	# Animals near it run.
 	var ksp := 0
 	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
@@ -2771,3 +2772,14 @@ func _fire_checks(game, world, pc: ChunkNode, at: Vector3) -> Dictionary:
 	world.player.global_position = stood
 	game.flush_chunks()
 	return {"key": pc.key, "i": wood["i"], "ruin": ruin, "sp": int(pc.get_object(ruin).get("sp", 0)) if ruin >= 0 else -1, "stone": stone["i"], "doused": third["i"]}
+
+
+# Total heat of everything burning that is loaded.
+func _fire_heat(world, fs: FireSystem) -> float:
+	var h := 0.0
+	for key in fs._burning:
+		var b: Dictionary = fs._burning[key]
+		var c: Node = world.streamer.get_chunk(b["k"])
+		if c != null:
+			h += FireSim.heat((c as ChunkNode).get_object(int(b["i"]))["st"])
+	return h
