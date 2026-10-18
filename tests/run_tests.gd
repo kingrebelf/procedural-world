@@ -5851,6 +5851,11 @@ func test_fire_ruins() -> void:
 		var a := m.get_aabb()
 		check(m.get_surface_count() >= 2 and a.size.x > 6.0 and a.size.x < 12.0, "ruin %d is built to its footprint (%s)" % [v, a.size])
 	check(FireRuins.build(sp, FireRuins.MASONRY).get_aabb().size.y > FireRuins.build(sp, FireRuins.TIMBER).get_aabb().size.y * 0.8, "brick walls stand above the ash")
+	var shell := FireRuins.variant("shell", 9.0)
+	check(shell % 16 == FireRuins.SHELL and FireRuins.kind_for("shell") == FireRuins.SHELL, "a stone house leaves a shell")
+	var sa := FireRuins.build(sp, shell).get_aabb()
+	check(sa.size.y > 5.0 and sa.size.y < 12.0 and sa.size.x > 6.0 and sa.size.x < 15.0, "its walls stand to the eaves, gables up (%s)" % sa.size)
+	check(FireSim.profile("townhouse")["leaves"] == "shell" and FireSim.profile("cottage")["leaves"] == "masonry", "stone town houses stand as shells, plastered cottages fall in")
 	check(ObjectLibrary.label(FireSim.RUIN) == "Burnt Ruin" and ObjectLibrary.kind(FireSim.RUIN) == "structure", "a ruin is a structure you can pick through")
 	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
 
@@ -5861,6 +5866,20 @@ func test_fire_items() -> void:
 	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
 	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
 	check(Crime.FINES.has("arson"), "arson is a crime")
+
+func test_cannon() -> void:
+	check(Vehicle.KINDS.has("cannon") and ItemDB.def("cannon")["kind"] == "vehicle", "the field cannon is a vehicle you carry and set down")
+	var m := Vehicle.make_model("cannon")
+	var b: Node3D = m.find_child("Barrel", false, false)
+	check(b != null and (b.get_child(0) as MeshInstance3D).mesh.get_aabb().size.z > 2.4, "its barrel is a separate piece, long as a field gun's")
+	var box := Vehicle._bounds(m)
+	check(box.size.z > 2.8 and box.size.z < 4.2 and box.size.y > 1.0 and box.size.y < 1.6, "a field cannon's size (%s)" % box.size)
+	m.free()
+	for t in Cannon.AMMO:
+		check(ItemDB.ITEMS.has(t) and Recipes.LIST.any(func(r): return r["out"] == t), "%s is an item you can make" % t)
+		check(Cannon.SHOT.has(t), "%s flies from a cannon" % t)
+	check(float(Cannon.SHOT["hot_shot"].get("incendiary", 0.0)) > 0.5 and not Cannon.SHOT["cannon_ball"].has("incendiary"), "hot shot sets things alight, round shot doesn't")
+	check(Cannon.MAX_EL > deg_to_rad(20.0) and Cannon.MIN_EL < 0.0, "the barrel can be laid up and down")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

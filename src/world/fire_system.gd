@@ -471,13 +471,13 @@ func _burn_down(node: ChunkNode, o: Dictionary, seen: bool) -> void:
 		"tree":
 			node.add_object(WonderSite.TRUNK, lp, yaw, era, {"char": 1.0, "fl": 0.0, "smoke": snappedf(now() + 90.0, 0.1)},
 				{"sp": 1 + randi() % 60, "v": 1 if t == "pine" else 0, "s": s})
-		"timber", "masonry", "ash":
+		"timber", "masonry", "shell", "ash":
 			var c := foot.get_center() * s
 			var at := lp + Vector3(c.x, 0, c.y).rotated(Vector3.UP, yaw)
 			var w := maxf(foot.size.x * s, 0.8)
 			var d := maxf(foot.size.y * s, 0.8)
 			node.add_object(FireSim.RUIN, at, yaw, era, {"smoke": snappedf(now() + RUIN_SMOKE * (1.0 if leaves != "ash" else 0.4), 0.1)},
-				{"sp": FireRuins.encode(w, d, randi()), "v": FireRuins.kind_for(leaves)})
+				{"sp": FireRuins.encode(w, d, randi()), "v": FireRuins.variant(leaves, box.size.y)})
 	_flammable.erase(node.key)
 	_on_chunk(node) # take up the new ruin's smoke
 	if by and player != null and player.npcs != null and kind in ["structure", "trader"]:

@@ -21,6 +21,8 @@ const KINDS := {
 	"rusty": {"col": Color(0.6, 0.58, 0.56), "rough": 0.55, "var": 0.3, "hammer": 0.3, "wear": 0.4, "grime": 0.3, "rust": 0.62},
 	"brass": {"col": Color(0.96, 0.85, 0.58), "rough": 0.28, "var": 0.25, "wear": 0.5, "grime": 0.3, "rust": 0.05, "rust_col": Color(0.3, 0.42, 0.33)},
 	"bronze": {"col": Color(0.85, 0.65, 0.45), "rough": 0.36, "var": 0.28, "hammer": 0.2, "wear": 0.55, "grime": 0.35, "rust": 0.1, "rust_col": Color(0.3, 0.45, 0.36)},
+	# Cast gun bronze left out in the weather: browned, dull, verdigris in the mouldings.
+	"gun_bronze": {"col": Color(0.66, 0.5, 0.34), "rough": 0.5, "var": 0.35, "hammer": 0.05, "wear": 0.6, "grime": 0.55, "rust": 0.28, "rust_col": Color(0.3, 0.45, 0.36)},
 	"copper": {"col": Color(0.97, 0.74, 0.62), "rough": 0.3, "var": 0.25, "hammer": 0.25, "wear": 0.5, "grime": 0.3, "rust": 0.08, "rust_col": Color(0.33, 0.55, 0.45)},
 	"gold": {"col": Color(1.0, 0.85, 0.55), "rough": 0.2, "var": 0.15, "scratch": 0.2, "wear": 0.3, "grime": 0.15},
 	"silver": {"col": Color(0.98, 0.97, 0.95), "rough": 0.22, "var": 0.2, "scratch": 0.35, "wear": 0.4, "grime": 0.35, "rust_col": Color(0.2, 0.18, 0.16)},

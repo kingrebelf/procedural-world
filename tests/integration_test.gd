@@ -919,6 +919,7 @@ func _run() -> void:
 	check(hr != null and hr._animal != null, "a riding horse stands ready")
 	if hr:
 		world.vehicles.pack_up(hr)
+	await _cannon_check(game, world, player)
 
 	# Console cheats.
 	var con: DevConsole = world.console
@@ -1599,6 +1600,50 @@ func _crowd(game, world, player) -> void:
 
 ## A fire in a town: the able-bodied run a bucket line between the well and the flames,
 ## the rest get clear; animals bolt from it; when it is out they go back to their day.
+## A field cannon: man it, load hot shot from the pack, lay it on a timber wall and fire;
+## the ball flies, strikes the wall and sets it alight.
+func _cannon_check(game, world, player) -> void:
+	var fs: FireSystem = FireSystem.current
+	var cv: Vehicle = world.vehicles.deploy(ItemDB.make("cannon", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
+	await _frames(3)
+	check(cv != null and cv.barrel != null, "a field cannon stands ready with its barrel")
+	if cv == null or fs == null:
+		return
+	_make_room(game, 2)
+	game.inventory.add(ItemDB.make("hot_shot", 1, 1.0, {}))
+	game.inventory.add(ItemDB.make("black_powder", 2, 1.0, {}))
+	player.mount(cv)
+	await _frames(3)
+	check(player.vehicle == cv, "manning the cannon")
+	Cannon.use(player, cv)
+	check(cv.rec.has("loading") and game.inventory.count("hot_shot") == 0, "loading takes the ball from the pack")
+	await create_timer(Cannon.LOAD_TIME + 0.3).timeout
+	check(cv.rec.get("load", "") == "hot_shot", "loaded with hot shot")
+	# A timber wall down range, the barrel laid on its middle.
+	var wp: Vector3 = cv.global_position + Vector3(0, 0, -22)
+	var gy: float = world.vehicles.ground(wp.x, wp.z)
+	wp.y = gy if not is_nan(gy) else cv.global_position.y
+	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
+	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+	await _frames(3)
+	var mz := Cannon.muzzle(cv)
+	var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
+	player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
+	await _frames(4)
+	Cannon.use(player, cv)
+	check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+	var lit := false
+	for i in 90:
+		await physics_frame
+		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
+			lit = true
+			break
+	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s)" % [wall["st"].keys()])
+	player.dismount()
+	fs.douse_all()
+	node.remove_object(wall["i"])
+	world.vehicles.pack_up(cv)
+
 func _fire_crew(game, world, player) -> void:
 	var fs: FireSystem = FireSystem.current
 	var e: Dictionary = {}

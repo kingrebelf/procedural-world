@@ -252,6 +252,21 @@ func fire(it: Dictionary, d: Dictionary) -> void:
 	if rounds(it) == 0 and h.get("auto_reload", false):
 		start_reload(it)
 
+## Something fired from other than the held weapon (a cannon's ball): flies and strikes
+## like any shot, drawn as `node` itself rather than a streak.
+func launch(from: Vector3, vel: Vector3, d: Dictionary, type: String, node: Node3D, item = null, exclude: Array = []) -> void:
+	var shot := {
+		"pos": from, "vel": vel, "drop": 1.0, "life": float(d.get("range", 60.0)) / maxf(vel.length(), 1.0) + 2.0,
+		"left": float(d.get("range", 60.0)) * 1.15, "item": item, "d": d, "type": type, "vis": Vector3.ZERO,
+		"ball": true, "exclude": exclude,
+	}
+	player.get_tree().current_scene.add_child(node)
+	shot["node"] = node
+	if _shots.size() >= MAX_SHOTS:
+		_drop_shot(0)
+	_shots.append(shot)
+	_place_visual(shot)
+
 ## A direction within `cone` radians of `fwd`, denser towards the middle.
 static func _scatter(fwd: Vector3, cone: float) -> Vector3:
 	if cone <= 0.0:
@@ -462,7 +477,10 @@ func _step_shots(delta: float) -> void:
 		s["vel"] = vel
 		var from: Vector3 = s["pos"]
 		var to := from + vel * delta
-		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2, [player.get_rid()])
+		var skip: Array[RID] = [player.get_rid()]
+		for r in s.get("exclude", []):
+			skip.append(r)
+		var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2, skip)
 		var hit := space.intersect_ray(q)
 		s["life"] = float(s["life"]) - delta
 		s["left"] = float(s["left"]) - from.distance_to(to)
@@ -561,6 +579,8 @@ func _place_visual(s: Dictionary) -> void:
 		var len := clampf(vel.length() * 0.025, 0.3, 7.0)
 		len = maxf(0.05, minf(len, (s["pos"] as Vector3).distance_to(player.camera.global_position) * 0.5))
 		node.global_transform = Transform3D(Basis.looking_at(dir), pos - dir * len * 0.5).scaled_local(Vector3(1, 1, len))
+	elif s.get("ball", false):
+		node.global_position = pos
 	else:
 		s["arrow"] = true
 		node.global_transform = Transform3D(Basis.looking_at(dir), pos)
@@ -667,6 +687,13 @@ func _impact_fx(t: String, d: Dictionary, at: Vector3, n: Vector3, what: String)
 		_flipbook("smoke", false, out, 1.5 if not powder else float(d["splash"]) * 0.5, 2.0, Color(0.55, 0.5, 0.6, 0.6) if not powder else Color(0.3, 0.28, 0.26, 0.7), Vector2(0, 14), Vector3(0, 1.2, 0), 2.5)
 		_flash_light(out, Color(1.0, 0.6, 0.3) if powder else Color(0.75, 0.5, 1.0), 6.0, float(d["splash"]) * 2.5, 0.25)
 		return
+	if tr == "cannon":
+		# A cannon ball: a burst of dust and splinters thrown back off what it struck.
+		for i in 3:
+			_flipbook("smoke", false, out + n * (0.3 + i * 0.4), 0.9 + i * 0.5, 2.5 + i, Color(0.52, 0.46, 0.38, 0.7), Vector2(0, 13), n * 1.2 + Vector3(0, 0.4, 0), 2.6)
+		if what == "stone" or what == "metal":
+			_flipbook("sparks", true, out, 0.9, 0.25, Color(1, 0.85, 0.6, 1), Vector2(1, 9))
+		Audio.play_at(Audio.hit_bank(what) if what != "ground" else "hit/dig", at, 6.0, 0.1)
 	if d.has("flare"):
 		# A signal flare sputters red where it lands, lighting the ground around it.
 		_flash_light(out, Color(1.0, 0.35, 0.2), 4.0, 22.0, float(d["flare"]))
