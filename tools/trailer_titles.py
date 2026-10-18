@@ -63,6 +63,13 @@ def card(lines):
     dark = Image.new("RGBA", (W, H), (0, 0, 0, 255))
     dark.putalpha(shadow.point(lambda v: int(v * 0.75)))
     img = Image.alpha_composite(img, dark)
+    # Lines in the lower third sit on a soft dark band rising from the bottom edge, so they
+    # read over fog and grey sky too.
+    if min(l[4] for l in lines) > 0.7:
+        band = Image.linear_gradient("L").resize((W, H)).point(lambda v: int(max(0, v - 128) * 2 * 0.5))
+        scrim = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+        scrim.putalpha(band)
+        img = Image.alpha_composite(scrim, img)
     img.paste((246, 238, 224, 255), (0, 0), text)
     return img
 
