@@ -69,9 +69,29 @@ recording becomes text through:
 
 | Setup | What to set |
 |---|---|
-| OpenAI provider | Nothing: it uses the same key, with `gpt-4o-mini-transcribe`. |
-| Any other provider | **Speech-to-text server**: any OpenAI-compatible `/audio/transcriptions` server, e.g. a local speaches or LocalAI at `http://127.0.0.1:8000/v1`, or `https://api.openai.com/v1` with a key. |
-| Nothing set, on Windows | Windows' own offline speech recogniser is used. It needs no setup but is less accurate. It is also the fallback when the server fails. |
+| Nothing (the default) | The built-in speech recognition that comes with the game (installer option **Talk with your voice**, about 660 MB): NVIDIA's Parakeet TDT 0.6B v2 model, run offline by the built-in voice program (`tools/voice_server`, `POST /v1/audio/transcriptions`). |
+| OpenAI provider, without the built-in one | It uses the same key, with `gpt-4o-mini-transcribe`. |
+| **Speech-to-text server** set | Any OpenAI-compatible `/audio/transcriptions` server, e.g. a local speaches or LocalAI at `http://127.0.0.1:8000/v1`, or `https://api.openai.com/v1` with a key. It comes first; the built-in one takes over if it fails. |
+| None of these, on Windows | Windows' own offline speech recogniser. Less accurate; the last fallback. |
+
+Local chat servers (Strata, Ollama, LM Studio) and the Anthropic API can't turn speech into
+text, so they are never asked.
+
+### Open mic
+
+Turn on **Open mic** in Settings > AI, or press **O** (rebindable). The microphone stays
+on and the game listens for phrases (it pauses while people in the game are speaking, so it
+never hears its own voices; headphones still help). A tag at the top right shows it is on.
+
+- In a conversation, what you say is your reply.
+- Out loud near people ("Hey, can anyone spare me 5 marks?"), everyone within about 14 m
+  hears it, but only one answers: the person you face, otherwise the nearest one whose quick
+  answer would be yes (or who has an answer to your question). Everyone else ignores you, so
+  voices never pile up. Talk that isn't meant for anyone (no question, greeting or request)
+  draws no answer.
+- Whoever answers comes over and keeps talking with you hands-free, without the
+  conversation window, until about 25 seconds of quiet or you walk away. Pressing **E** on
+  them opens the window with the conversation so far.
 
 **Test microphone (3 s)** in Settings > AI records you and shows what was understood.
 

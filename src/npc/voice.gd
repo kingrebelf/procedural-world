@@ -328,6 +328,12 @@ static func is_speaking() -> bool:
 		return _out != null and is_instance_valid(_out) and _out.busy()
 	return not _list().is_empty() and DisplayServer.tts_is_speaking()
 
+## Whether any voice can be heard from the speakers right now (passers-by too).
+static func sounding() -> bool:
+	if _out != null and is_instance_valid(_out) and _out.sounding():
+		return true
+	return not _list().is_empty() and DisplayServer.tts_is_speaking()
+
 static func hush() -> void:
 	if _out != null and is_instance_valid(_out):
 		_out.stop_all()

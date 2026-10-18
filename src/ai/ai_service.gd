@@ -43,13 +43,14 @@ const DEFAULTS := {
 	"voices": true, ## People speak their lines aloud.
 	"voice_volume": 80,
 	"voice_barks": true, ## Also speak greetings and calls from passers-by, not just conversation.
-	"stt_url": "", ## Speech-to-text server (OpenAI-compatible /audio/transcriptions); empty = the AI provider above.
+	"stt_url": "", ## Speech-to-text server (OpenAI-compatible /audio/transcriptions); empty = the built-in one, else the OpenAI provider.
 	"stt_key": "",
 	"stt_model": "",
 	"voice_engine": "auto", ## "auto" (a voice server when one is set, else the built-in natural voices, else this PC's), "builtin", "ai" or "system".
 	"tts_url": "", ## Natural voices: an OpenAI-compatible /audio/speech server (OpenAI, or a local Kokoro / speaches server).
 	"tts_key": "",
 	"tts_model": "",
+	"open_mic": false, ## The microphone is always on: people near you hear what you say (toggle key O).
 	"quick_replies": true, ## People answer "Yes.", "Hmm, let me think..." at once while the model works out the rest.
 }
 
@@ -70,7 +71,8 @@ func _ready() -> void:
 	voice_server = VoiceServer.new()
 	add_child(voice_server)
 	# Load the built-in voices in the background now, so the first line is quick.
-	if DisplayServer.get_name() != "headless" and not OS.has_feature("server") and voice_engine() == "ai" and _builtin_voices():
+	if DisplayServer.get_name() != "headless" and not OS.has_feature("server") and (voice_engine() == "ai" and _builtin_voices() \
+			or VoiceServer.has_stt() and String(cfg["stt_url"]).strip_edges() == ""):
 		voice_server.start()
 
 # --- Configuration -------------------------------------------------------------------
@@ -356,15 +358,18 @@ static func parse_decisions(raw: String) -> Dictionary:
 # --- Speech to text ------------------------------------------------------------------------------
 
 ## Where your voice is sent to become text: {url, key, model}, or {} if nowhere. Uses the
-## speech-to-text settings if set, otherwise the AI provider when it speaks the OpenAI
-## format (OpenAI itself, and local servers such as speaches or LocalAI). The Anthropic
-## API has no speech-to-text, so it needs a separate server.
+## speech-to-text server if one is set, otherwise the built-in speech to text that comes
+## with the game (VoiceServer), otherwise the AI provider when that is OpenAI itself.
+## Local chat servers (Strata, Ollama, LM Studio) and the Anthropic API don't do speech
+## to text, so they are never asked.
 func stt_target() -> Dictionary:
 	var url := String(cfg["stt_url"]).strip_edges().trim_suffix("/")
 	var key := String(cfg["stt_key"]).strip_edges()
 	var model := String(cfg["stt_model"]).strip_edges()
 	if url == "":
-		if not enabled() or cfg["format"] != "openai" or cfg["provider"] == "openrouter":
+		if voice_server != null and voice_server.stt_usable():
+			return voice_server.stt_target()
+		if not enabled() or cfg["provider"] != "openai":
 			return {}
 		url = String(cfg["base_url"]).strip_edges().trim_suffix("/")
 		key = String(cfg["api_key"]).strip_edges()
@@ -391,14 +396,21 @@ static func build_transcription(target: Dictionary, wav: PackedByteArray, bounda
 	return {"url": target["url"], "headers": headers, "body": body}
 
 ## Turns a WAV recording into text. Always returns {ok, text, error, via}. Uses the
-## speech-to-text server when there is one; on Windows, when there is none or it fails,
-## the speech recogniser built into Windows does it offline.
+## speech-to-text server when there is one, then the built-in speech to text if that
+## failed; on Windows, when there is neither or both fail, the speech recogniser built
+## into Windows does it offline.
 func transcribe(wav: PackedByteArray) -> Dictionary:
-	var out := {"ok": false, "text": "", "error": "No speech-to-text server (Settings > AI)"}
-	if stt_enabled():
-		out = await _transcribe_server(wav)
-		out["via"] = "server"
-	if not out["ok"] and OS.get_name() == "Windows":
+	var out := {"ok": false, "text": "", "error": "No speech recognition: reinstall with \"Talk with your voice\" ticked, or set a speech-to-text server in Settings > AI"}
+	var target := stt_target()
+	if not target.is_empty():
+		out = await _transcribe_server(wav, target)
+		out["via"] = "built-in" if target["model"] == "builtin" else "server"
+	if not out["ok"] and target.get("model", "") != "builtin" and voice_server != null and voice_server.stt_usable():
+		var b: Dictionary = await _transcribe_server(wav, voice_server.stt_target())
+		if b["ok"]:
+			out = b
+			out["via"] = "built-in"
+	if not out["ok"] and OS.get_name() == "Windows" and out.get("via", "") != "built-in":
 		var w: Dictionary = await _transcribe_windows(wav)
 		if w["ok"] or not stt_enabled():
 			if not w["ok"] and stt_enabled():
@@ -407,11 +419,13 @@ func transcribe(wav: PackedByteArray) -> Dictionary:
 			out["via"] = "windows"
 	return out
 
-func _transcribe_server(wav: PackedByteArray) -> Dictionary:
-	var target := stt_target()
+func _transcribe_server(wav: PackedByteArray, target: Dictionary) -> Dictionary:
+	var builtin: bool = target["model"] == "builtin"
+	if builtin and not await voice_server.wait_ready():
+		return {"ok": false, "text": "", "error": "The built-in speech recognition could not start"}
 	var req := build_transcription(target, wav, "pwboundary%d" % randi())
 	var http := HTTPRequest.new()
-	http.timeout = float(cfg["timeout"])
+	http.timeout = 90.0 if builtin else float(cfg["timeout"]) # built-in: the model may still be loading
 	add_child(http)
 	var out := {"ok": false, "text": "", "error": ""}
 	var err := http.request_raw(req["url"], req["headers"], HTTPClient.METHOD_POST, req["body"])

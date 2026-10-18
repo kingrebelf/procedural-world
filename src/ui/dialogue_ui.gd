@@ -6,6 +6,13 @@ extends Control
 ## dialogue answers. Replies are spoken aloud (Voice) and can make the person act:
 ## follow, trade, give or lend you Marks, hand you a gift, dance, sit, wave, wink, hold up
 ## fingers... The Give tab hands them Marks or anything you carry; armour gets worn.
+##
+## Open mic (Settings > AI, or the open mic key): the microphone stays on. Said in a
+## conversation, it is your reply. Said out loud near people ("Can anyone spare me five
+## Marks?"), the people within earshot hear it, but only one who is willing answers (the
+## one you face, else the nearest who would say yes); the rest ignore you, so voices never
+## pile up. That person carries on talking with you hands-free, without this window,
+## until you stop talking to them or walk off.
 
 var player: Player
 var menus: GameMenus
@@ -24,6 +31,19 @@ var _mic_btn: Button
 var _extra: Control ## the Give / Ask drawer, when open
 var _body: VBoxContainer
 var _join_btn: Button
+## A conversation without the window (open mic): the person answers out loud and you talk
+## back hands-free. Its log, status and options live off screen.
+var _ambient := false
+var _amb_t := 0.0 ## seconds since the last thing either of you said
+var _amb_met := false ## they have come over (begin_talk)
+var _hearing := false ## an open-mic phrase is being understood
+var _hear_err_t := -100.0
+var _mic_tag: Label
+
+const HEAR_RADIUS := 14.0 ## how far people hear you on the open mic
+const AMBIENT_SECONDS := 25.0 ## quiet this long ends a hands-free conversation
+## The quick answers that mean "I'll help / I'll answer you" (Interject kinds).
+const WILLING := ["yes", "think", "greet", "thanks"]
 
 func _ready() -> void:
 	theme = UITheme.get_theme()
@@ -34,12 +54,22 @@ func _ready() -> void:
 	add_to_group("dialogue_ui")
 	_mic = Microphone.new()
 	add_child(_mic)
+	_mic.heard.connect(_on_heard)
+	_mic.paused_by = Voice.sounding # never hear the game's own voices
 
 func is_open() -> bool:
 	return npc != null
 
 func open_with(n: NPC) -> void:
-	if npc != null or menus.is_open():
+	if menus.is_open():
+		return
+	var kept: Array = []
+	if _ambient:
+		# Walking up to someone you're already talking to keeps the conversation going.
+		if n == npc:
+			kept = _history.duplicate()
+		_end_ambient()
+	if npc != null:
 		return
 	npc = n
 	_history.clear()
@@ -48,6 +78,12 @@ func open_with(n: NPC) -> void:
 	visible = true
 	player.ui_open = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not kept.is_empty():
+		_history = kept
+		_replay()
+		_set_options(NPCMind.default_options(n.rec))
+		_status.text = "Hold %s to talk, or press Enter to type." % _voice_key()
+		return
 	var first: String = NPCMind.bark(n.rec, "greet") if int(n.rec.get("rel", 0)) > -40 else "What do you want?"
 	if n.rec.has("shop_kind") and int(n.rec.get("rel", 0)) > -40:
 		first = TownShops.greeting(n.rec, _shop())
@@ -69,6 +105,9 @@ func close_talk() -> void:
 		return
 	if _mic.recording:
 		_mic.stop()
+	if _ambient:
+		_end_ambient()
+		return
 	if _history.size() > 2 and not AI.dialogue_enabled():
 		NPCMind.remember(npc.rec, "Chatted with the traveller.")
 	manager.end_talk(npc)
@@ -85,23 +124,35 @@ func _unhandled_input(event: InputEvent) -> void:
 		close_pickpocket()
 		get_viewport().set_input_as_handled()
 		return
-	if npc != null and event.is_action_pressed("pause"):
+	if npc != null and not _ambient and event.is_action_pressed("pause"):
 		close_talk()
 		get_viewport().set_input_as_handled()
 		return
 	if npc != null and event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_ENTER or event.keycode == KEY_KP_ENTER):
+		if _ambient:
+			open_with(npc) # typing needs the window
+			if npc == null or _ambient:
+				return
 		_entry.grab_focus()
 		get_viewport().set_input_as_handled()
 		return
 	# Hold the voice key to speak to whoever you are looking at (or are talking to).
 	if InputMap.has_action("voice") and event.is_action("voice") and not event.is_echo():
 		if event.is_pressed():
-			if npc == null and not menus.is_open():
-				var f: Dictionary = player.focus if "focus" in player else {}
-				if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")):
-					open_with(f["npc"])
+			var f: Dictionary = player.focus if "focus" in player else {}
+			var looked: NPC = f["npc"] if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")) else null
+			if _ambient and looked != null and looked != npc:
+				_end_ambient() # you turned to someone else
+			if npc == null and not menus.is_open() and looked != null:
+				open_with(looked)
 			if npc != null:
 				_mic_start()
+		get_viewport().set_input_as_handled()
+
+	if InputMap.has_action("open_mic") and event.is_action_pressed("open_mic") and not event.is_echo():
+		var on := not bool(AI.get_value("open_mic"))
+		AI.set_value("open_mic", on)
+		Game.toast.emit("Open mic on: people near you can hear you" if on else "Open mic off")
 		get_viewport().set_input_as_handled()
 
 func _input(event: InputEvent) -> void:
@@ -115,6 +166,10 @@ func _process(_d: float) -> void:
 		close_pickpocket()
 	if _mic.recording and _mic_btn:
 		_mic_btn.text = "Listening " + "|".repeat(1 + int(_mic.level() * 9.0))
+	_sync_open_mic()
+	if _ambient:
+		_ambient_tick(_d)
+		return
 	if npc != null and (not is_instance_valid(npc) or npc.global_position.distance_to(player.global_position) > 8.0):
 		npc = null if not is_instance_valid(npc) else npc
 		if npc == null:
@@ -196,7 +251,7 @@ func _build() -> void:
 	_mic_btn = UITheme.button("Hold to speak", func(): pass)
 	_mic_btn.button_down.connect(_mic_start)
 	_mic_btn.button_up.connect(_mic_stop)
-	_mic_btn.tooltip_text = "Speak instead of typing (or hold %s while looking at someone). Needs a speech-to-text server in Settings > AI." % _voice_key()
+	_mic_btn.tooltip_text = "Speak instead of typing (or hold %s while looking at someone). With open mic on (%s), just talk." % [_voice_key(), _open_mic_key()]
 	row.add_child(_mic_btn)
 	v.add_child(row)
 	_status = UITheme.label(_mode_text(), 12, UITheme.DIM)
@@ -225,20 +280,25 @@ func _set_options(opts: Array) -> void:
 		b.add_theme_font_size_override("font_size", 14)
 		_opts.add_child(b)
 
-func _send(text: String) -> void:
+## `note`: what the person knows about how it was said (only the model sees it).
+func _send(text: String, note := "") -> void:
 	text = text.strip_edges()
 	if text == "" or _busy or npc == null:
 		return
+	_amb_t = 0.0
 	_entry.text = ""
-	_entry.release_focus() # back to the voice key
+	if _entry.is_inside_tree():
+		_entry.release_focus() # back to the voice key
 	_add_line("You", text, UITheme.ACCENT_2)
-	_history.append({"role": "user", "content": text})
+	_history.append({"role": "user", "content": note + text})
 	var n := npc
 	var d: Dictionary
 	var quick := ""
 	if AI.dialogue_enabled():
 		_busy = true
 		_status.text = "%s is thinking..." % n.rec["name"].split(" ")[0]
+		if _ambient:
+			n.act("think")
 		var held = player.held_item()
 		var ctx := {"held": ItemDB.display_name(held) if held != null else ""}
 		var msgs := _history.slice(-12)
@@ -283,9 +343,16 @@ func _send(text: String) -> void:
 	manager.mark_dirty(n.settlement)
 	if doing != "":
 		n.act(doing)
+	_amb_t = 0.0
 	_act(action, d)
 
 func _act(action: String, d: Dictionary = {}) -> void:
+	if npc == null:
+		return
+	if _ambient and action in ["trade", "join_guild", "buy_house"]:
+		open_with(npc) # these need the window
+		if npc == null or _ambient:
+			return
 	var first: String = npc.rec["name"].split(" ")[0]
 	match action:
 		"give_money", "lend_money":
@@ -874,7 +941,7 @@ func _mic_start() -> void:
 	if npc == null or _busy or _mic.recording:
 		return
 	if not AI.stt_enabled() and OS.get_name() != "Windows":
-		_problem("Speech-to-text isn't set up. In Settings > AI, set a speech-to-text server (or use the OpenAI provider).")
+		_problem("Speech recognition isn't installed. Reinstall with \"Talk with your voice\" ticked, or set a speech-to-text server in Settings > AI.")
 		return
 	if not _mic.start():
 		_problem("No microphone input available (check your OS microphone permission).")
@@ -904,8 +971,193 @@ func _mic_stop() -> void:
 	if not r["ok"] or String(r["text"]).strip_edges() == "":
 		var why := "Couldn't make that out (%s)." % (r["error"] if r["error"] != "" else "silence")
 		if r.get("via", "") == "windows" and not AI.stt_enabled():
-			why += " For better recognition, set a speech-to-text server in Settings > AI."
+			why += " For better recognition, reinstall with \"Talk with your voice\" ticked."
 		_problem(why)
 		return
 	_status.text = _mode_text()
 	_send(r["text"])
+
+# --- Open mic and hands-free conversations ------------------------------------------------------
+
+## Keeps the microphone in step with the open mic setting (the key and Settings both
+## change it), and shows a small tag on screen while it is on.
+func _sync_open_mic() -> void:
+	var want := bool(AI.get_value("open_mic")) and DisplayServer.get_name() != "headless"
+	if want != _mic.listening:
+		if want and not _mic.listen(true):
+			AI.set_value("open_mic", false)
+			Game.toast.emit("Open mic: no microphone input (check your OS microphone permission)")
+			want = false
+		elif not want:
+			_mic.listen(false)
+	if want and _mic_tag == null and get_parent() != null:
+		_mic_tag = UITheme.label("", 14, UITheme.DIM)
+		_mic_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_mic_tag.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+		_mic_tag.offset_left = -220
+		_mic_tag.offset_right = -16
+		_mic_tag.offset_top = 64
+		_mic_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		get_parent().add_child(_mic_tag)
+	if _mic_tag:
+		_mic_tag.visible = want
+		if want:
+			var lv := _mic.level()
+			_mic_tag.text = "Mic open (%s)  %s" % [_open_mic_key(), "|".repeat(1 + int(lv * 6.0))] if not _hearing else "Mic open: understanding..."
+			_mic_tag.modulate = Color(1, 1, 1, 0.55 + 0.45 * minf(lv * 3.0, 1.0))
+
+func _open_mic_key() -> String:
+	var ev := InputMap.action_get_events("open_mic") if InputMap.has_action("open_mic") else []
+	return ev[0].as_text().split(" ")[0] if not ev.is_empty() else "O"
+
+## A phrase came in on the open mic.
+func _on_heard(wav: PackedByteArray, peak: float) -> void:
+	if _hearing or player == null or menus.is_open() or get_tree().paused or _pick_npc != null:
+		return
+	var windowed := npc != null and not _ambient
+	var listeners: Array = []
+	if npc == null:
+		listeners = _listeners()
+		if listeners.is_empty():
+			return # nobody near enough to hear: no need to understand it
+	elif _busy:
+		return
+	if windowed and _entry.has_focus():
+		return # typing
+	_hearing = true
+	if windowed:
+		_status.text = "Understanding what you said..."
+	var r: Dictionary = await AI.transcribe(wav)
+	_hearing = false
+	var text := String(r.get("text", "")).strip_edges()
+	if not r["ok"] or text.length() < 2:
+		var why := String(r.get("error", ""))
+		if windowed and npc != null:
+			_status.text = _mode_text() if why in ["", "silence"] else "Couldn't make that out (%s)." % why
+		elif why not in ["", "silence"] and Time.get_ticks_msec() / 1000.0 - _hear_err_t > 30.0:
+			_hear_err_t = Time.get_ticks_msec() / 1000.0
+			Game.toast.emit("Open mic: %s" % why)
+		return
+	if npc != null:
+		if is_instance_valid(npc) and not _busy:
+			if not windowed:
+				Game.toast.emit("You: \"%s\"" % text)
+			_send(text)
+		return
+	Game.toast.emit("You: \"%s\"" % text)
+	var who: NPC = await _answerer(text, listeners)
+	if who == null or npc != null or not is_instance_valid(who):
+		return
+	_open_ambient(who)
+	_send(text, "(The traveller called this out to anyone nearby; you heard it and chose to answer.) ")
+
+## The people near enough to hear you, nearest first (the one you face first of all).
+func _listeners() -> Array:
+	var pp := player.global_position
+	var near: Array = []
+	for n in manager.all_nodes():
+		if not is_instance_valid(n) or not (n is NPC):
+			continue
+		var d: float = (n as NPC).global_position.distance_to(pp)
+		if d <= HEAR_RADIUS and not n.talking and not String(n.action) in ["flee", "attack", "confront"]:
+			near.append([d, n])
+	near.sort_custom(func(a, b): return a[0] < b[0])
+	var out: Array = near.slice(0, 5).map(func(e): return e[1])
+	var looked := _looked_at()
+	if looked != null and out.has(looked):
+		out.erase(looked)
+		out.push_front(looked)
+	return out
+
+func _looked_at() -> NPC:
+	var f: Dictionary = player.focus if "focus" in player else {}
+	return f["npc"] if f.get("kind", "") == "npc" and is_instance_valid(f.get("npc")) else null
+
+## Who answers what you called out: the person you face, whatever they think of it;
+## otherwise the nearest one who would say yes (or has an answer), and nobody when
+## nobody would. Talk that isn't meant for anyone gets no answer at all.
+func _answerer(text: String, listeners: Array) -> NPC:
+	var looked := _looked_at()
+	if looked != null and listeners.has(looked) and looked.global_position.distance_to(player.global_position) < 8.0:
+		return looked
+	if not Interject.calls_out(text):
+		return null
+	for n in listeners:
+		if not is_instance_valid(n) or n.talking:
+			continue
+		var kind: String = await AI.interject(n.rec, text)
+		if kind in WILLING:
+			return n
+	return null
+
+## Starts talking with `n` without the window: they turn to you, come over and answer.
+func _open_ambient(n: NPC) -> void:
+	npc = n
+	_ambient = true
+	_amb_t = 0.0
+	_amb_met = false
+	_history.clear()
+	_mic_btn = null
+	# The conversation's log, status and options are kept off screen.
+	_log = RichTextLabel.new()
+	_log.bbcode_enabled = true
+	_status = Label.new()
+	_entry = LineEdit.new()
+	_opts = HBoxContainer.new()
+	if n.global_position.distance_to(player.global_position) > 3.5:
+		manager.instruct(n, "greet", 10.0) # walk over
+	else:
+		_meet()
+
+func _meet() -> void:
+	if _amb_met or npc == null:
+		return
+	_amb_met = true
+	manager.instruct(npc, "stop_following", 0.0)
+	manager.begin_talk(npc)
+
+func _ambient_tick(dt: float) -> void:
+	if not is_instance_valid(npc):
+		_end_ambient()
+		return
+	var d := npc.global_position.distance_to(player.global_position)
+	if not _amb_met and (d < 3.5 or _amb_t > 10.0):
+		_meet()
+	if not _busy and not _hearing and not _mic.recording:
+		_amb_t += dt
+	if _amb_t > AMBIENT_SECONDS or d > HEAR_RADIUS + 6.0:
+		_end_ambient()
+
+func _end_ambient() -> void:
+	var n := npc
+	_ambient = false
+	npc = null
+	_busy = false
+	if is_instance_valid(n):
+		if _history.size() > 1 and not AI.dialogue_enabled():
+			NPCMind.remember(n.rec, "Chatted with the traveller.")
+		if _amb_met:
+			manager.end_talk(n)
+		else:
+			manager.instruct(n, "stop_following", 0.0)
+	for c in [_log, _status, _entry, _opts]:
+		if is_instance_valid(c) and not c.is_inside_tree():
+			c.queue_free()
+	_log = null
+	_status = null
+	_entry = null
+	_opts = null
+
+## Shows what was said so far (when a hands-free conversation moves into the window).
+func _replay() -> void:
+	var first: String = npc.rec["name"].split(" ")[0]
+	for h in _history.slice(-8):
+		var c := String(h["content"])
+		if h["role"] == "user":
+			c = c.substr(c.find(") ") + 2) if c.begins_with("(") and c.contains(") ") else c
+			if c != "" and not c.begins_with("("):
+				_add_line("You", c, UITheme.ACCENT_2)
+		else:
+			var d = JSON.parse_string(c)
+			if d is Dictionary and String(d.get("say", "")) != "":
+				_add_line(first, String(d["say"]), UITheme.ACCENT)

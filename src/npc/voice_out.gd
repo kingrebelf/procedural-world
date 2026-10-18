@@ -15,6 +15,7 @@ var _queue: Array = [] ## conversation lines waiting: {key, node, dist}
 var _now: Node ## the conversation player that is talking
 var _gen := 0 ## bumped by every interruption; stale fetches are dropped
 var _barks: Array = []
+var _live := 0 ## voices playing right now, passers-by included (open mic pauses for them)
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -22,6 +23,10 @@ func _ready() -> void:
 func _key(rec: Dictionary, text: String) -> Array:
 	var o := Voice.natural_for(rec)
 	return [str(hash([o, text])), o]
+
+## Whether any voice is playing (a conversation line or a passer-by).
+func sounding() -> bool:
+	return _live > 0 or busy()
 
 func busy() -> bool:
 	return (_now != null and is_instance_valid(_now) and _now.playing) or not _queue.is_empty()
@@ -114,6 +119,8 @@ func _play(stream: AudioStream, node: Node3D, dist: float, pitch := 1.0) -> Node
 		p2.play()
 		p = p2
 	p.finished.connect(p.queue_free)
+	_live += 1
+	p.tree_exiting.connect(func(): _live -= 1) # finished, cut off, or the speaker left
 	return p
 
 func stop_all() -> void:

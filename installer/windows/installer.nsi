@@ -106,7 +106,18 @@ SectionEnd
 Section "Natural voices" SecVoices
   ; The built-in voice program and voice model (tools/voice_server), if the build has them.
   SetOutPath "$INSTDIR\voices"
-  File /nonfatal /r "${SRC_DIR}\voices\*.*"
+  File /nonfatal /r /x stt "${SRC_DIR}\voices\*.*"
+  SetOutPath "$INSTDIR"
+SectionEnd
+
+Section "Talk with your voice" SecListen
+  ; The same voice program, with the speech-to-text model in voices\data\stt.
+  SetOutPath "$INSTDIR\voices"
+  File /nonfatal "${SRC_DIR}\voices\*.exe"
+  File /nonfatal "${SRC_DIR}\voices\*.dll"
+  File /nonfatal "${SRC_DIR}\voices\LICENSES.txt"
+  SetOutPath "$INSTDIR\voices\data\stt"
+  File /nonfatal /r "${SRC_DIR}\voices\data\stt\*.*"
   SetOutPath "$INSTDIR"
 SectionEnd
 
@@ -137,6 +148,7 @@ SectionEnd
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
   !insertmacro MUI_DESCRIPTION_TEXT ${SecCore} "The game itself."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecVoices} "Natural, human-sounding voices for the people of the world, with accents, that run offline on this PC (about 400 MB). Without them people use Windows' own speech voices."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecListen} "Speak to people with your microphone: speech recognition that runs offline on this PC (about 660 MB). Without it you need a speech-to-text server in Settings > AI, or Windows' own recogniser."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecStart} "Start Menu entries for the game, your saved worlds folder and the uninstaller."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "A shortcut on the desktop."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecWindowed} "Start in a 1920x1080 window instead of fullscreen. You can change this any time in Settings."
