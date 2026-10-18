@@ -5117,10 +5117,31 @@ func test_boat_models() -> void:
 	for k in Boats.KINDS:
 		var body := StaticBody3D.new()
 		var m := BoatModel.build(k, 3, body)
-		var mi: MeshInstance3D = m.find_children("*", "MeshInstance3D", false, false)[0]
+		var mi: MeshInstance3D = m.get_node("Hull")
 		check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s has a model" % k)
 		check(body.get_child_count() > 0, "%s has collision" % k)
 		check(not BoatModel.stations(k).is_empty() and BoatModel.stations(k).size() >= int(Boats.KINDS[k]["crew"][1]), "%s has a station per crew member" % k)
+		m.free()
+		body.free()
+	# Sails: set and filled with the wind astern, braced round for a beam wind, taken in
+	# at anchor; the lugsail swings out to leeward and its belly follows.
+	for k in ["raft", "fishing_boat", "cog"]:
+		var body := StaticBody3D.new()
+		var m := BoatModel.build(k, 3, body)
+		var rig: BoatRig = m.get_node_or_null("Rig")
+		check(rig != null and rig.sails.size() == 1, "%s has a live sail" % k)
+		rig.trim(Vector2(0, 1), 0.5, true, 0.0) # wind from dead astern
+		var s: Dictionary = rig.sails[0]
+		check((s["cloth"] as Node3D).visible and not (s["bundle"] as Node3D).visible and float(s["fill"]) > 0.9, "%s: sail set and full running before the wind" % k)
+		rig.trim(Vector2(1, 0), 0.5, true, 0.0) # from starboard, on the beam
+		if s["type"] == BoatRig.SQUARE:
+			check(float(s["swing"]) < -0.3, "%s: yard braced round, windward arm aft" % k)
+		else:
+			check(float(s["swing"]) < -0.3 and (s["cloth"] as Node3D).scale.x < 0.0, "%s: lugsail out to port, bellied to port" % k)
+		rig.trim(Vector2(0, -1), 0.5, true, 0.0) # head to wind
+		check(float(s["fill"]) < 0.1, "%s: sail spills the wind head to wind" % k)
+		rig.trim(Vector2(0, 1), 0.5, false, 0.0)
+		check(not (s["cloth"] as Node3D).visible and (s["bundle"] as Node3D).visible, "%s: sail taken in at anchor" % k)
 		m.free()
 		body.free()
 	# Pirates: a spawned site makes a hostile crew.
