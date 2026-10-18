@@ -61,6 +61,7 @@ var _last := Vector3.INF
 var _last_yaw := 0.0
 var _accum := 0.0
 var _tick := 0
+var _far := false ## on the Movers layer
 var _tilt := Vector2.ZERO
 static var _gait_cache := {}
 static var _warp_cache := {}
@@ -432,6 +433,9 @@ func _lod_every() -> int:
 		flex.active = d < 45.0
 	if feet:
 		feet.active = d < 30.0 and every <= 2
+	if Movers.is_far(d, _far) != _far:
+		_far = not _far
+		Movers.set_far(self, _far)
 	return every
 
 func _measure(delta: float) -> void:

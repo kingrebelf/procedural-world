@@ -4,11 +4,31 @@ class_name Materials
 
 static var _cache: Dictionary = {}
 static var _tex: Dictionary = {}
+static var _tex_lock := Mutex.new()
+
+## The texture cached under `k` as [true, texture] (null for a photo that isn't there),
+## or [false]. Textures, like materials (_share), are made outside the lock.
+static func _tex_find(k: String) -> Array:
+	_tex_lock.lock()
+	var out := [true, _tex[k]] if _tex.has(k) else [false]
+	_tex_lock.unlock()
+	return out
+
+## Caches `t` under `k`, or returns what another thread cached there first.
+static func _tex_keep(k: String, t: Texture2D) -> Texture2D:
+	_tex_lock.lock()
+	if _tex.has(k):
+		t = _tex[k]
+	else:
+		_tex[k] = t
+	_tex_lock.unlock()
+	return t
 
 static func _noise_tex(key: String, freq: float, normal: bool, octaves: int = 5, cellular: bool = false, stretch := Vector2.ONE) -> NoiseTexture2D:
 	var k := "%s_%s" % [key, normal]
-	if _tex.has(k):
-		return _tex[k]
+	var f := _tex_find(k)
+	if f[0]:
+		return f[1]
 	var n := FastNoiseLite.new()
 	n.seed = WHash.str_hash(key) & 0xFFFF
 	n.frequency = freq
@@ -33,8 +53,7 @@ static func _noise_tex(key: String, freq: float, normal: bool, octaves: int = 5,
 	if stretch != Vector2.ONE:
 		t.width = int(512 * stretch.x)
 		t.height = int(512 * stretch.y)
-	_tex[k] = t
-	return t
+	return _tex_keep(k, t) as NoiseTexture2D
 
 const PHOTO_DIR := "res://assets/textures/"
 
@@ -42,16 +61,16 @@ const PHOTO_DIR := "res://assets/textures/"
 ## normal), or null when it is not there. Made by tools/make_textures.py.
 static func photo(name: String, kind: String) -> Texture2D:
 	var k := "photo_%s_%s" % [name, kind]
-	if _tex.has(k):
-		return _tex[k]
+	var f := _tex_find(k)
+	if f[0]:
+		return f[1]
 	var t: Texture2D = null
 	for ext in [".jpg", ".png"]:
 		var path: String = PHOTO_DIR + name + "_" + kind + ext
 		if ResourceLoader.exists(path):
 			t = load(path) as Texture2D
 			break
-	_tex[k] = t
-	return t
+	return _tex_keep(k, t)
 
 ## Procedural noise texture names that have a photo replacement: noise key -> photo name.
 ## Materials coloured by albedo/vertex colour use the greyscale "detail" version.
@@ -190,14 +209,13 @@ static func _glow(c: Color, energy: float) -> StandardMaterial3D:
 ## Procedurally painted foliage atlas: clusters of leaves (or needles) with alpha.
 static func _foliage_tex(kind: String) -> Texture2D:
 	var k := "foliage_" + kind
-	if _tex.has(k):
-		return _tex[k]
+	var f := _tex_find(k)
+	if f[0]:
+		return f[1]
 	if kind == "leaf" and photo("leaves", "card") != null:
-		_tex[k] = photo("leaves", "card")
-		return _tex[k]
+		return _tex_keep(k, photo("leaves", "card"))
 	if kind == "needle" and photo("needles", "card") != null:
-		_tex[k] = photo("needles", "card")
-		return _tex[k]
+		return _tex_keep(k, photo("needles", "card"))
 	var S := 256
 	var img := Image.create(S, S, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0, 0, 0, 0))
@@ -244,8 +262,7 @@ static func _foliage_tex(kind: String) -> Texture2D:
 						img.set_pixel(x, y, tint * Color(vein, vein, vein, 1) * Color(1, 1, 1, 1).lerp(Color(0.8, 0.8, 0.8, 1), e))
 	img.generate_mipmaps()
 	var t := ImageTexture.create_from_image(img)
-	_tex[k] = t
-	return t
+	return _tex_keep(k, t)
 
 static func _foliage(kind: String, albedo: Color, back: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -296,7 +313,22 @@ static func set_screen_clock(day: float) -> void:
 
 static func get_mat(name: String) -> Material:
 	_lock.lock()
-	var out := _get_mat(name)
+	var out: Material = _cache.get(name)
+	_lock.unlock()
+	if out == null:
+		out = _share(name, _get_mat(name))
+	return out
+
+## Puts a newly made material in the cache, or returns the one another thread put there
+## first. Materials are made outside the lock: making one loads shaders and textures,
+## which can wait on the main thread, and the main thread asks for materials every frame
+## (the screens' clock), so holding the lock through it froze the game.
+static func _share(key: String, made: Material) -> Material:
+	_lock.lock()
+	var out: Material = _cache.get(key)
+	if out == null:
+		_cache[key] = made
+		out = made
 	_lock.unlock()
 	return out
 
@@ -314,6 +346,7 @@ static func worn(name: String) -> Material:
 		return base
 	_lock.lock()
 	var out: Material = _cache.get(name + "~worn")
+	_lock.unlock()
 	if out == null:
 		var b := base as BaseMaterial3D
 		var w := ShaderMaterial.new()
@@ -333,20 +366,15 @@ static func worn(name: String) -> Material:
 		# lines and cracks read darker and moss starts there.
 		var c := b.albedo_color.srgb_to_linear()
 		w.set_shader_parameter("mean_lum", (c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722) * (0.6 if b.albedo_texture != null else 1.0))
-		_cache[name + "~worn"] = w
-		out = w
-	_lock.unlock()
+		out = _share(name + "~worn", w)
 	return out
 
 ## Neutral ("_w") materials take their colour entirely from vertex colours, so every
 ## species can have its own palette while sharing one material and one draw state.
 ## "crystal@N" and "glow@N" are hue buckets (N of 12) for emissive parts.
 static func _get_mat(name: String) -> Material:
-	if _cache.has(name):
-		return _cache[name]
 	if name.begins_with("rug:") or name == "rug_fringe":
-		_cache[name] = Rugs.material(name)
-		return _cache[name]
+		return Rugs.material(name)
 	var m: BaseMaterial3D
 	if name.contains("@"):
 		var parts := name.split("@")
@@ -361,35 +389,28 @@ static func _get_mat(name: String) -> Material:
 			m.rim = 0.6
 		else:
 			m = _glow(Color.from_hsv(hue, 0.7, 1.0), 1.6)
-		_cache[name] = m
 		return m
 	match name:
 		"screen_ui":
 			# Displays drawn in code (ScreenLook, screen_ui.gdshader).
-			_cache[name] = ScreenLook.material()
-			return _cache[name]
+			return ScreenLook.material()
 		"leaf_w":
 			m = _pbr(Color(1, 1, 1), 0.85, 0.0, "leaf", 0.08, 0.6, 1.0)
 			m.backlight_enabled = true
 			m.backlight = Color(0.25, 0.3, 0.1)
 		"leaf_card_w":
-			_cache[name] = _wind_foliage("leaf", false, Color(0.3, 0.35, 0.12), 1.0)
-			return _cache[name]
+			return _wind_foliage("leaf", false, Color(0.3, 0.35, 0.12), 1.0)
 		"needle_card_w":
-			_cache[name] = _wind_foliage("needle", false, Color(0.15, 0.22, 0.06), 0.5)
-			return _cache[name]
+			return _wind_foliage("needle", false, Color(0.15, 0.22, 0.06), 0.5)
 		"leaf_core_w":
-			_cache[name] = _wind_foliage("leaf", true, Color(0.25, 0.3, 0.1), 1.0)
-			return _cache[name]
+			return _wind_foliage("leaf", true, Color(0.25, 0.3, 0.1), 1.0)
 		"weathering":
 			var wm := ShaderMaterial.new()
 			wm.shader = load("res://src/world/weathering.gdshader")
-			_cache[name] = wm
 			return wm
 		"sett_grime":
 			var gm := ShaderMaterial.new()
 			gm.shader = load("res://src/world/sett_grime.gdshader")
-			_cache[name] = gm
 			return gm
 		"bark_w": m = _pbr(Color(1, 1, 1), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
@@ -397,8 +418,7 @@ static func _get_mat(name: String) -> Material:
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
 		# Metals share one look (Metals, metal.gdshader): real reflectance, wear and grime.
 		"metal_w":
-			_cache[name] = Metals.mat("worked", 0.42, true)
-			return _cache[name]
+			return Metals.mat("worked", 0.42, true)
 		"cloth_w": m = _pbr(Color(1, 1, 1), 0.97, 0.0, "cloth", 0.15, 1.0, 0.6) # felt hats and hoods
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"bark_pine": m = _pbr(Color(0.34, 0.24, 0.18), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
@@ -429,33 +449,25 @@ static func _get_mat(name: String) -> Material:
 		# Smooth enamel on machinery: satin, untextured, tinted per part.
 		"machine_paint": m = _pbr(Color(1, 1, 1), 0.42, 0.15, "", 0, 1)
 		"iron":
-			_cache[name] = Metals.mat("iron", -1.0, true)
-			return _cache[name]
+			return Metals.mat("iron", -1.0, true)
 		"rust":
-			_cache[name] = Metals.mat("rusty", -1.0, true)
-			return _cache[name]
+			return Metals.mat("rusty", -1.0, true)
 		"gold":
-			_cache[name] = Metals.mat("gold", -1.0, true)
-			return _cache[name]
+			return Metals.mat("gold", -1.0, true)
 		# Plain worked steel and dark steel, for every era's fittings.
 		"metal":
-			_cache[name] = Metals.mat("steel", -1.0, true)
-			return _cache[name]
+			return Metals.mat("steel", -1.0, true)
 		"metal_dark":
-			_cache[name] = Metals.mat("dark_steel", -1.0, true)
-			return _cache[name]
+			return Metals.mat("dark_steel", -1.0, true)
 		# Sci-fi hull plate: brushed alloy and dark steel over the panels photo.
 		"hull_metal":
-			_cache[name] = Metals.mat("alloy", -1.0, true, "panels")
-			return _cache[name]
+			return Metals.mat("alloy", -1.0, true, "panels")
 		"hull_metal_dark":
-			_cache[name] = Metals.mat("dark_steel", -1.0, true, "panels")
-			return _cache[name]
+			return Metals.mat("dark_steel", -1.0, true, "panels")
 		"petal_w": m = _pbr(Color(1, 1, 1), 0.7, 0.0, "", 0, 1)
 		# Paint (the vertex colour) over steel, chipped through at the edges.
 		"painted":
-			_cache[name] = Metals.mat("painted", -1.0, true)
-			return _cache[name]
+			return Metals.mat("painted", -1.0, true)
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
 		# Painted sci-fi interiors, a space station or a hospital rather than a ship's
 		# engine room (tools/make_paint_textures.py): sprayed wall panels, sheet vinyl
@@ -589,5 +601,4 @@ static func _get_mat(name: String) -> Material:
 		"glow_white": m = _glow(Color(0.95, 0.97, 1.0), 3.0)
 		_:
 			m = _pbr(Color(1, 0, 1), 0.5, 0.0, "", 0, 1)
-	_cache[name] = m
 	return m
