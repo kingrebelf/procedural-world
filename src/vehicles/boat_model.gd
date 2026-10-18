@@ -74,12 +74,9 @@ static func get_mat(name: String) -> Material:
 	match name:
 		"sail":
 			var s := StandardMaterial3D.new()
+			# Plain cloth: a woven texture this fine only shimmers into rings and grids at
+			# any distance; the panels BoatRig sews it from carry the detail instead.
 			s.albedo_color = Color(0.86, 0.8, 0.68)
-			var tex := Materials.photo("fabric_linen", "detail")
-			if tex:
-				s.albedo_texture = tex
-				s.uv1_triplanar = true
-				s.uv1_scale = Vector3.ONE * 0.6
 			s.vertex_color_use_as_albedo = true
 			s.roughness = 0.95
 			s.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -148,6 +145,14 @@ static func get_mat(name: String) -> Material:
 			s.clearcoat_enabled = true
 			s.clearcoat = 0.7
 			m = s
+		"screen":
+			# Instrument screens: dark glass showing a dim chart, lit no brighter than the
+			# room (human worlds: nothing glows).
+			var s := StandardMaterial3D.new()
+			s.albedo_color = Color(0.08, 0.13, 0.16)
+			s.roughness = 0.12
+			s.metallic_specular = 0.7
+			m = s
 		"rope":
 			var s := StandardMaterial3D.new()
 			s.albedo_color = Color(0.5, 0.42, 0.3)
@@ -168,13 +173,13 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 	r.seed = seed
 	match kind:
 		"raft":
-			_raft(k, shapes, r)
+			_raft(k, shapes, r, root)
 		"rowboat":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.78, 0.64, 0.5), Color(0.78, 0.64, 0.5).darkened(0.38))
 			_rowboat(k, shapes, r)
 		"fishing_boat":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.62, 0.52, 0.44), Color(0.62, 0.52, 0.44).darkened(0.38))
-			_fishing_boat(k, shapes, r)
+			_fishing_boat(k, shapes, r, root)
 		"cog":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.5, 0.42, 0.36), Color(0.5, 0.42, 0.36).darkened(0.38))
 			_cog(k, shapes, r, root)
@@ -183,14 +188,15 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"launch":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.93, 0.94, 0.95), Color(0.16, 0.22, 0.36))
 			_launch(k, shapes, r)
-			_weather_steel(k, HULLS[kind], r, 5, 3)
+			_weather_steel(k, HULLS[kind], r, 4, 3, root)
 		"research_vessel":
 			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.94, 0.94, 0.95), Color(0.55, 0.12, 0.1))
 			_research_vessel(k, shapes, r, root)
-			_weather_steel(k, HULLS[kind], r, 14, 5)
+			_weather_steel(k, HULLS[kind], r, 8, 5, root)
 	if kind == "rowboat":
 		_oars(root, seed)
 	var mi := MeshInstance3D.new()
+	mi.name = "Hull"
 	mi.mesh = k.commit(get_mat)
 	mi.visibility_range_end = 1300.0
 	root.add_child(mi)
@@ -605,49 +611,6 @@ static func _stairs(k: MeshKit, shapes: Array, a: Vector3, b: Vector3, w: float,
 	var xf := Transform3D(Basis(right, up, fwd), (a + b) * 0.5 - up * 0.06)
 	shapes.append([ramp, xf])
 
-## Square sail hung from a yard, bellied forward by the wind (or furled on the yard).
-static func _square_sail(k: MeshKit, top_y: float, bot_y: float, half_w: float, z: float, belly: float, furled: bool, col := Color.WHITE) -> void:
-	_beam(k, "spar", Vector3(-half_w - 0.3, top_y, z), Vector3(half_w + 0.3, top_y, z), 0.09)
-	if furled:
-		_beam(k, "sail", Vector3(-half_w, top_y - 0.12, z + 0.05), Vector3(half_w, top_y - 0.12, z + 0.05), 0.2, 8)
-		for i in 5:
-			var x := lerpf(-half_w * 0.9, half_w * 0.9, float(i) / 4.0)
-			k.cylinder("rope", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(x - 0.02, top_y - 0.12, z + 0.05)), 0.215, 0.215, 0.04, 8)
-		return
-	var nx := 8
-	var ny := 8
-	var pts: Array = []
-	for j in ny + 1:
-		var row: Array = []
-		var v := float(j) / ny
-		for i in nx + 1:
-			var u := float(i) / nx
-			# Filled by the wind: deepest a little below the middle, the leeches drawn in as
-			# the cloth bellies, and the foot sagging between its clews.
-			var b := belly * pow(sin(u * PI), 0.8) * sin(clampf(v * 1.05, 0.0, 1.0) * PI * 0.8 + 0.2)
-			var x := lerpf(-half_w, half_w, u) * (1.0 - v * 0.06) * (1.0 - 0.05 * b / maxf(belly, 0.01))
-			var y := lerpf(top_y, bot_y, v) + (top_y - bot_y) * 0.06 * sin(u * PI) * v * v * v
-			row.append(Vector3(x, y, z - b))
-		pts.append(row)
-	# Smooth normals, so the cloth shades as one curved sheet, not a quilt of facets.
-	var nrm := func(j: int, i: int) -> Vector3:
-		var du: Vector3 = pts[j][mini(i + 1, nx)] - pts[j][maxi(i - 1, 0)]
-		var dv: Vector3 = pts[mini(j + 1, ny)][i] - pts[maxi(j - 1, 0)][i]
-		return du.cross(dv).normalized()
-	for j in ny:
-		for i in nx:
-			var a: Vector3 = pts[j][i]
-			var b: Vector3 = pts[j][i + 1]
-			var c: Vector3 = pts[j + 1][i + 1]
-			var d: Vector3 = pts[j + 1][i]
-			var na: Vector3 = nrm.call(j, i)
-			var nb: Vector3 = nrm.call(j, i + 1)
-			var nc: Vector3 = nrm.call(j + 1, i + 1)
-			var nd: Vector3 = nrm.call(j + 1, i)
-			k.tri("sail", Transform3D.IDENTITY, a, b, c, na, nb, nc, col)
-			k.tri("sail", Transform3D.IDENTITY, a, c, d, na, nc, nd, col)
-
-## Something to sit on, crates and barrels: the clutter of a working deck.
 static func _barrel(k: MeshKit, p: Vector3, r := 0.3, h := 0.85) -> void:
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, p), r * 0.88, r * 0.88, h, 12, true, 0.0, 1, Color(0.7, 0.55, 0.4))
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, p + Vector3(0, h * 0.2, 0)), r, r, h * 0.6, 12, false, 0.0, 1, Color(0.75, 0.6, 0.45))
@@ -690,14 +653,18 @@ static func _lantern(root: Node3D, k: MeshKit, p: Vector3, tech := false) -> voi
 
 ## A working steel hull's wear: rust weeping down from scuppers and hawse holes in
 ## tapering streaks, and fenders hung over the side on lines from the rail.
-static func _weather_steel(k: MeshKit, h: Dictionary, r: RandomNumberGenerator, streaks: int, fenders: int) -> void:
+static func _weather_steel(k: MeshKit, h: Dictionary, r: RandomNumberGenerator, streaks: int, fenders: int, root: Node3D) -> void:
+	# Fenders are their own node ("Fenders"): BoatNode shows them only while she lies
+	# still, as a crew would haul them in before getting under way.
+	var fk := MeshKit.new(9)
 	for side in [1.0, -1.0]:
 		for si in streaks:
 			var u := r.randf_range(0.08, 0.9)
 			var v0 := r.randf_range(0.95, 0.99)
-			var v1 := v0 - r.randf_range(0.12, 0.3)
-			var w0 := r.randf_range(0.04, 0.09) * (1.0 if float(h["L"]) > 10.0 else 0.6)
-			var col := Color(0.6, 0.36, 0.2).lerp(Color(0.5, 0.3, 0.2), r.randf())
+			var v1 := v0 - r.randf_range(0.06, 0.16)
+			var w0 := r.randf_range(0.05, 0.1) * (1.0 if float(h["L"]) > 10.0 else 0.6)
+			# Weathered brown, never red: a bright streak on white paint reads as blood.
+			var col := Color(0.55, 0.42, 0.3).lerp(Color(0.62, 0.52, 0.4), r.randf())
 			# The scupper it weeps from.
 			var sp := _skin(h, u, v0 + 0.004, side)
 			k.box("metal_dark", Transform3D(Basis.IDENTITY, sp), Vector3(0.03, 0.06, w0 * 2.4))
@@ -713,7 +680,7 @@ static func _weather_steel(k: MeshKit, h: Dictionary, r: RandomNumberGenerator, 
 				var along_b := Vector3(0, 0, wb)
 				var n := Vector3(side, 0, 0)
 				# Fading out into the paint as it runs down.
-				var c := col.lerp(Color(0.86, 0.82, 0.76), t1 * 0.75)
+				var c := col.lerp(Color(0.9, 0.88, 0.84), 0.25 + t1 * 0.7)
 				_tri_out(k, "rust", a - along, a + along, b + along_b, n, n, n, n, c)
 				_tri_out(k, "rust", a - along, b + along_b, b - along_b, n, n, n, n, c)
 		for fi in fenders:
@@ -722,8 +689,14 @@ static func _weather_steel(k: MeshKit, h: Dictionary, r: RandomNumberGenerator, 
 			var top := float(h["F"]) + float(h["rise"]) * pow(2.0 * u - 1.0, 2.0)
 			var x: float = side * (_width_at(h, u, top - 0.6) + 0.17)
 			var R := 0.12 if float(h["L"]) < 10.0 else 0.2
-			k.cylinder("rubber", Transform3D(Basis.IDENTITY, Vector3(x, top - 0.75, z)), R, R, R * 3.2, 12, true, 0.0, 1, Color(0.12, 0.13, 0.15))
-			_line(k, Vector3(x, top - 0.75 + R * 1.6, z), Vector3(x - side * 0.15, top + 0.05, z), 0.01)
+			fk.cylinder("rubber", Transform3D(Basis.IDENTITY, Vector3(x, top - 0.75, z)), R, R, R * 3.2, 12, true, 0.0, 1, Color(0.12, 0.13, 0.15))
+			_line(fk, Vector3(x, top - 0.75 + R * 1.6, z), Vector3(x - side * 0.15, top + 0.05, z), 0.01)
+	if fenders > 0:
+		var mi := MeshInstance3D.new()
+		mi.name = "Fenders"
+		mi.mesh = fk.commit(get_mat)
+		mi.visibility_range_end = 400.0
+		root.add_child(mi)
 
 ## A point just off the outside of the hull's skin on side s (decals sit on it).
 static func _skin(h: Dictionary, u: float, v: float, s: float) -> Vector3:
@@ -798,10 +771,19 @@ static func _helm_chair(k: MeshKit, p: Vector3) -> void:
 		k.box("metal_dark", Transform3D(Basis.IDENTITY, p + Vector3(s * 0.27, 0.68, 0.05)), Vector3(0.04, 0.16, 0.04))
 		k.box("upholstery", Transform3D(Basis.IDENTITY, p + Vector3(s * 0.27, 0.77, 0.02)), Vector3(0.07, 0.05, 0.36), cloth.darkened(0.25))
 
+## The boat's live sails (BoatRig), made on first use.
+static func _rig(root: Node3D) -> BoatRig:
+	var rig: BoatRig = root.get_node_or_null("Rig")
+	if rig == null:
+		rig = BoatRig.new()
+		root.add_child(rig)
+	return rig
+
 # --- Kinds ---------------------------------------------------------------------------------
 
-static func _raft(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
-	# Logs lashed side by side, a pole with a rag of sail, a bundle and a water skin.
+static func _raft(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node3D) -> void:
+	# Logs lashed side by side, a short mast with a small square sail on a yard, a bundle
+	# and a water skin.
 	var n := 6
 	for i in n:
 		var x := (float(i) - (n - 1) * 0.5) * 0.36
@@ -813,12 +795,14 @@ static func _raft(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
 	var bs := BoxShape3D.new()
 	bs.size = Vector3(2.15, 0.3, 3.2)
 	shapes.append([bs, Transform3D(Basis.IDENTITY, Vector3(0, 0.1, 0))])
-	var mast := Vector3(-0.3, 0.25, -0.6)
-	_beam(k, "timber", mast, mast + Vector3(0.05, 2.4, 0), 0.05)
-	var rag := [mast + Vector3(0.05, 2.3, 0), mast + Vector3(0.06, 1.0, 0.02), mast + Vector3(0.9, 1.1, 0.35)]
-	var r0: Vector3 = rag[0]
-	var nn := ((rag[1] as Vector3) - r0).cross((rag[2] as Vector3) - r0).normalized()
-	k.tri("sail", Transform3D.IDENTITY, rag[0], rag[1], rag[2], nn, nn, nn, Color(0.7, 0.62, 0.5))
+	var mast := Vector3(0, 0.25, -0.75)
+	_beam(k, "timber", mast, mast + Vector3(0, 2.7, 0), 0.055)
+	# Stays to the raft's corners hold the mast up.
+	for c in [Vector3(-1.0, 0.27, -1.5), Vector3(1.0, 0.27, -1.5), Vector3(-1.0, 0.27, 1.2), Vector3(1.0, 0.27, 1.2)]:
+		_line(k, mast + Vector3(0, 2.55, 0), c, 0.01)
+	var rig := _rig(root)
+	rig.add_square(mast, 2.45, 0.75, 0.85, 0.1, 0.35, Color(0.8, 0.74, 0.64),
+		[["clew_l", Vector3(-1.05, 0.28, 0.2)], ["clew_r", Vector3(1.05, 0.28, 0.2)]], 0.8)
 	k.sphere("leather", Transform3D(Basis.IDENTITY, Vector3(0.6, 0.38, 0.9)), 0.22, 6, 8, 0.2, 0.7)
 	k.sphere("cloth", Transform3D(Basis.IDENTITY, Vector3(-0.6, 0.36, 0.95)), 0.26, 6, 8, 0.25, 0.6)
 
@@ -897,19 +881,20 @@ static func oar_stroke(s: float, ph: float, w: float) -> Basis:
 	var e := smoothstep(0.0, 1.0, w)
 	return oar_basis(s, lerpf(-1.15, sweep, e), lerpf(0.12, dip, e), lerpf(1.0, feather, e))
 
-static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
+static func _fishing_boat(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node3D) -> void:
 	var h: Dictionary = HULLS["fishing_boat"]
 	var dy: float = h["deck"]
 	_deck(k, shapes, h, dy, "planks", 0.03, 0.93, Color(0.72, 0.6, 0.48))
-	# Mast with a lug sail drawing, a tiller at the stern.
+	# Mast with a lugsail on a slanted yard (BoatRig swings it to the wind), a tiller at
+	# the stern.
 	var mast := Vector3(0, dy, -1.3)
 	_beam(k, "spar", mast, mast + Vector3(0, 6.2, 0), 0.09)
-	_square_sail(k, dy + 5.8, dy + 1.5, 1.7, -1.15, 0.85, false, Color(0.82, 0.7, 0.58))
+	var rig := _rig(root)
+	rig.add_lug(mast, Vector3(0, 1.75, -1.2), Vector3(0, 4.3, -1.4), Vector3(0, 6.5, 2.3), Vector3(0, 2.0, 3.0), 0.75, Color(0.84, 0.77, 0.66),
+		[["clew", Vector3(0, dy + 0.35, 3.7)], ["tack", Vector3(0, dy + 0.1, -2.6)]])
 	for s in [-1.0, 1.0]:
 		_line(k, mast + Vector3(0, 5.9, 0), Vector3(s * (_width_at(h, 0.6, dy) - 0.05), dy + 0.2, -1.0))
 	_line(k, mast + Vector3(0, 6.0, 0), Vector3(0, float(h["F"]) + 0.4, -float(h["L"]) * 0.5 + 0.1))
-	_line(k, Vector3(-1.6, dy + 1.5, -1.15), Vector3(-0.9, dy + 0.1, 1.8))
-	_line(k, Vector3(1.6, dy + 1.5, -1.15), Vector3(0.9, dy + 0.1, 1.8))
 	_beam(k, "timber", Vector3(0, dy + 0.5, 3.75), Vector3(0, dy + 0.75, 2.6), 0.04)
 	k.box("planks", Transform3D(Basis.IDENTITY, Vector3(0, dy - 0.6, 4.05)), Vector3(0.06, 1.4, 0.5), Color(0.6, 0.5, 0.4))
 	# Catch: baskets, a heap of net, barrels, a coil of line.
@@ -1017,12 +1002,25 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 	_solid(k, shapes, "planks", Vector3(0, fc - 0.05, -7.6), Vector3(3.2, 0.1, 2.2), Color(0.72, 0.6, 0.48))
 	_solid(k, shapes, "planks", Vector3(0, dy + 0.5, -6.55), Vector3(3.2, 1.0, 0.1), Color(0.6, 0.5, 0.4))
 	_stairs(k, shapes, Vector3(1.2, dy, -4.6), Vector3(1.2, fc, -6.45), 0.7, "planks")
+	# Its rail: posts and a top rail down both sides, open at the after end for the stair.
+	for s in [-1.0, 1.0]:
+		var x: float = s * 1.52
+		_beam(k, "timber", Vector3(x, fc + 0.85, -8.6), Vector3(x, fc + 0.85, -6.6), 0.05)
+		for z in [-8.6, -7.6, -6.6]:
+			_beam(k, "timber", Vector3(x, fc, z), Vector3(x, fc + 0.88, z), 0.045)
+		var rs := BoxShape3D.new()
+		rs.size = Vector3(0.1, 0.9, 2.0)
+		shapes.append([rs, Transform3D(Basis.IDENTITY, Vector3(x, fc + 0.45, -7.6))])
 	_beam(k, "timber", Vector3(0, float(h["F"]) + float(h["rise"]) * 1.3 + 0.1, -10.0), Vector3(0, float(h["F"]) + 2.6, -13.2), 0.14)
-	# Mainmast, furled square sail on its yard, shrouds and stays; a crow's nest.
+	# Mainmast, square sail on its yard (BoatRig), shrouds and stays; a crow's nest.
 	var mast := Vector3(0, dy, -0.8)
 	_beam(k, "spar", mast - Vector3(0, 1.5, 0), mast + Vector3(0, 16.5, 0), 0.24, 10)
 	k.cylinder("planks", Transform3D(Basis.IDENTITY, mast + Vector3(0, 13.4, 0)), 0.8, 0.9, 0.9, 12, true, 0.0, 1, Color(0.65, 0.52, 0.4))
-	_square_sail(k, dy + 12.6, dy + 4.2, 5.2, -0.5, 2.7, false, Color(0.9, 0.84, 0.72))
+	var rig := _rig(root)
+	rig.add_square(mast, 12.6, 4.2, 5.2, 0.4, 2.7, Color(0.9, 0.84, 0.72),
+		[["clew_l", Vector3(-2.2, dy + 1.0, 3.8)], ["clew_r", Vector3(2.2, dy + 1.0, 3.8)],
+		["arm_l", Vector3(-(hx - 0.1), top + 0.9, 8.6)], ["arm_r", Vector3(hx - 0.1, top + 0.9, 8.6)],
+		["clew_l", Vector3(-1.4, dy + 1.0, -6.0)], ["clew_r", Vector3(1.4, dy + 1.0, -6.0)]])
 	for s in [-1.0, 1.0]:
 		# Shrouds to deadeyes on the rail, with ratlines across them to climb to the top.
 		var feet: Array = []
@@ -1038,14 +1036,9 @@ static func _cog(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Node
 			var a: Vector3 = (feet[0] as Vector3).lerp(head, t)
 			var b: Vector3 = (feet[3] as Vector3).lerp(head, t)
 			_line(k, a, b, 0.008)
-		# Sheets from the sail's lower corners aft to the rail, braces from the yard's ends.
-		_line(k, mast + Vector3(s * 5.0, 4.2, 0.3), Vector3(s * 2.2, dy + 1.0, 3.8), 0.012)
-		_line(k, mast + Vector3(s * 5.4, 12.6, -0.5), Vector3(s * (hx - 0.1), top + 0.9, 8.6), 0.012)
-		_line(k, mast + Vector3(s * 4.8, 4.25, 0.2), Vector3(s * 1.4, dy + 1.0, -6.0), 0.01)
-	# Halyard down the mast to a cleat, and a lift from the masthead to each yardarm.
+		# (Sheets, braces and the yard's lifts are BoatRig's: they move with the sail.)
+	# Halyard down the mast to a cleat.
 	_line(k, mast + Vector3(0.28, 16.0, 0.1), mast + Vector3(0.28, 1.2, 0.1), 0.014)
-	for s in [-1.0, 1.0]:
-		_line(k, mast + Vector3(0, 16.2, 0), mast + Vector3(s * 5.4, 12.6, -0.5), 0.01)
 	_line(k, mast + Vector3(0, 16.2, 0), Vector3(0, float(h["F"]) + 2.5, -13.1), 0.025)
 	_line(k, mast + Vector3(0, 15.8, 0), Vector3(0, top + 0.9, 9.1), 0.02)
 	# Anchor cable running from the bow down into the water (only while she lies at anchor).
@@ -1138,7 +1131,11 @@ static func _launch(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void
 	k.box("metal_dark", Transform3D(Basis.IDENTITY, Vector3(0, dy + 0.45, stern + 0.25)), Vector3(0.45, 0.7, 0.5))
 	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(0, dy + 0.85, stern + 0.25)), Vector3(0.5, 0.18, 0.62), Color(0.15, 0.17, 0.2))
 	k.box("metal_dark", Transform3D(Basis.IDENTITY, Vector3(0, -0.3, stern + 0.3)), Vector3(0.16, 1.1, 0.2))
-	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(-0.6, dy + 0.25, 1.7)), Vector3(0.7, 0.45, 0.45), Color(0.2, 0.45, 0.75))
+	# A white cool box with a grey lid and rope handles.
+	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(-0.6, dy + 0.22, 1.7)), Vector3(0.7, 0.4, 0.45), Color(0.9, 0.9, 0.88))
+	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(-0.6, dy + 0.445, 1.7)), Vector3(0.72, 0.05, 0.47), Color(0.55, 0.57, 0.6))
+	for s in [-1.0, 1.0]:
+		_line(k, Vector3(-0.6 + s * 0.36, dy + 0.3, 1.6), Vector3(-0.6 + s * 0.36, dy + 0.3, 1.8), 0.012)
 	for s in [-1.0, 1.0]:
 		_beam(k, "metal", Vector3(s * 0.95, dy + 0.4, 3.4), Vector3(s * 1.2, dy + 2.6, 4.2), 0.012)
 	# Navigation lights.
@@ -1219,7 +1216,18 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 		_beam(k, "hazard", Vector3(s * 2.5, dy, stern - 1.2), Vector3(s * 1.2, dy + 4.6, stern + 0.4), 0.13, 8)
 	_beam(k, "hazard", Vector3(-1.3, dy + 4.55, stern + 0.4), Vector3(1.3, dy + 4.55, stern + 0.4), 0.13, 8)
 	_line(k, Vector3(0, dy + 4.5, stern + 0.4), Vector3(0, dy + 1.4, stern + 0.6), 0.015)
-	k.box("metal", Transform3D(Basis.IDENTITY, Vector3(0, dy + 1.0, stern + 0.6)), Vector3(0.8, 0.8, 0.8))
+	# The sampling rosette hung under it: a ring of grey sampling bottles in an open
+	# steel frame round the instrument.
+	var ro := Vector3(0, dy + 0.75, stern + 0.6)
+	for y in [0.0, 0.85]:
+		k.cylinder("metal", Transform3D(Basis.IDENTITY, ro + Vector3(0, y, 0)), 0.45, 0.45, 0.04, 16, false)
+	for i in 8:
+		var a := TAU * i / 8.0
+		var q := ro + Vector3(cos(a) * 0.36, 0.42, sin(a) * 0.36)
+		k.cylinder("hull_paint", Transform3D(Basis.IDENTITY, q), 0.07, 0.07, 0.62, 10, true, 0.0, 1, Color(0.7, 0.72, 0.74))
+		if i % 2 == 0:
+			_beam(k, "metal", ro + Vector3(cos(a) * 0.45, 0, sin(a) * 0.45), ro + Vector3(cos(a) * 0.45, 0.85, sin(a) * 0.45), 0.012)
+	k.cylinder("metal_dark", Transform3D(Basis.IDENTITY, ro + Vector3(0, 0.35, 0)), 0.1, 0.1, 0.6, 10)
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.6, dy + 0.55, stern - 3.4)), 0.45, 0.45, 1.2, 14)
 	var bs := CylinderShape3D.new()
 	bs.radius = 0.5
@@ -1245,10 +1253,6 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(0, dy + 6.05, -9.5)), Vector3(0.1, 0.1, 0.1))
 	k.box("glow_red", Transform3D(Basis.IDENTITY, Vector3(-2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
 	k.box("lens", Transform3D(Basis.IDENTITY, Vector3(2.85, bdeck + 1.1, -1.0)), Vector3(0.05, 0.1, 0.18))
-	# Name boards and a hull stripe.
-	for s in [-1.0, 1.0]:
-		var hw := _width_at(h, 0.12, 1.0)
-		k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(s * (hw + 0.02), 1.15, L * 0.5 - 0.12 * L - 6.0)), Vector3(0.02, 0.22, L * 0.62), Color(0.12, 0.3, 0.55))
 	# Boarding: a stair down the starboard side to a platform at the water.
 	var gap_z := L * (0.5 - 0.62)
 	var hw2 := _width_at(h, 0.62, dy)
