@@ -75,8 +75,8 @@ void process() {
 	TRANSFORM[1] = vec4(up * len, 0.0);
 	TRANSFORM[2] = vec4(0.0, 0.0, w, 0.0);
 	// White-gold low in the fire, orange, then a dull red as it cools and thins away.
-	vec3 c = mix(vec3(1.0, 0.7, 0.32) * 1.9, vec3(1.0, 0.4, 0.08) * 1.3, smoothstep(0.04, 0.35, k));
-	c = mix(c, vec3(0.75, 0.15, 0.03) * 0.55, smoothstep(0.35, 0.8, k));
+	vec3 c = mix(vec3(1.0, 0.62, 0.25) * 1.25, vec3(1.0, 0.36, 0.06) * 0.95, smoothstep(0.04, 0.35, k));
+	c = mix(c, vec3(0.7, 0.12, 0.02) * 0.45, smoothstep(0.35, 0.8, k));
 	float al = 0.85 * smoothstep(0.0, 0.08, k) * (1.0 - smoothstep(0.3, 0.85, k));
 	COLOR = vec4(c * (0.72 + 0.56 * life), al);
 }
