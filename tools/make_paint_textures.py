@@ -1,6 +1,6 @@
 """Draws the painted interior surfaces of sci-fi rooms (space station / hospital look).
 
-Writes into assets/textures/ (greyscale detail, mean about 0.72, tinted by the material
+Writes into assets/textures/ at 512 px (greyscale detail, mean about 0.72, tinted by the material
 colour and vertex colour, plus a tangent-space normal map), each tile 2.4 m square:
   paint_panels_detail.jpg / _normal.png   painted wall panels, 1.2 m wide, a groove
                                           between them and across every 2.4 m
@@ -15,7 +15,7 @@ import numpy as np
 from PIL import Image
 
 OUT = Path(__file__).resolve().parent.parent / "assets" / "textures"
-N = 1024  # pixels per 2.4 m tile
+N = 1024  # pixels per 2.4 m tile while drawing (saved at 512)
 
 
 def blur(a, r):
@@ -61,14 +61,15 @@ def normal_from(h, strength):
 
 def save(name, detail, height, strength):
     detail = detail * (0.72 / detail.mean())
-    Image.fromarray((detail.clip(0, 1) * 255).astype(np.uint8)).save(OUT / f"{name}_detail.jpg", quality=92)
+    img = Image.fromarray((detail.clip(0, 1) * 255).astype(np.uint8)).resize((512, 512), Image.LANCZOS)
+    img.save(OUT / f"{name}_detail.jpg", quality=92)
     Image.fromarray(normal_from(height, strength)).resize((512, 512), Image.LANCZOS).save(OUT / f"{name}_normal.png", optimize=True)
 
 
 def paint_panels(rng):
     y, x = np.mgrid[0:N, 0:N].astype(float)
     px_m = N / 2.4
-    face = grooves(x, 1.2 * px_m, 2.5, 2.0) * grooves(y, 2.4 * px_m, 2.5, 2.0)
+    face = grooves(x, 1.2 * px_m, 3.0, 2.0) * grooves(y, 2.4 * px_m, 3.0, 2.0)
     # Each panel a hair different in shade, as sprayed panels are.
     shade = np.where(x < N / 2, 1.0, 0.985)
     mottle = 1.0 + (smooth_noise(rng, 3) - 0.5) * 0.04

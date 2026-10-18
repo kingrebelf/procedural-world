@@ -490,18 +490,24 @@ const DROP_CEILING := 4.04
 static func _painted_room(k: MeshKit, t: String) -> void:
 	var b: Array = BOX[t]
 	var ih: Vector2 = b[0]
-	var door: Array = b[5]
+	var oh: Vector2 = b[3]
 	var pc: Array = PAINT[t]
 	var I := Transform3D.IDENTITY
-	k.box("vinyl_floor", I.translated(Vector3(0, _F_KIT + 0.005, 0)), Vector3(ih.x * 2.0, 0.01, ih.y * 2.0), pc[0])
-	k.box("ceiling_tile", I.translated(Vector3(0, DROP_CEILING + 0.02, 0)), Vector3(ih.x * 2.0, 0.04, ih.y * 2.0))
-	# A coved vinyl skirting round the walls, open across the doorway, and a painted
-	# angle where the ceiling grid meets the walls.
-	var dx: float = door[0]
-	var hw: float = door[1]
-	var gap := [["+z", dx - hw, dx + hw]]
-	Trim.room(k, "vinyl_floor", Trim.cove(0.12, 0.035), -ih.x, ih.x, -ih.y, ih.y, _F_KIT, gap, false, false, (pc[0] as Color).darkened(0.4))
-	Trim.room(k, "enamel", [Vector2(0, 0.03), Vector2(0.025, 0.03), Vector2(0.025, 0)], -ih.x, ih.x, -ih.y, ih.y, DROP_CEILING, [], true, false, Color(0.9, 0.9, 0.88))
+	# Floor and ceiling reach into the walls: the kit's window modules stand further
+	# out than its plain ones.
+	k.box("vinyl_floor", I.translated(Vector3(0, _F_KIT + 0.005, 0)), Vector3(oh.x * 2.0 - 1.2, 0.01, oh.y * 2.0 - 1.2), pc[0])
+	k.box("ceiling_tile", I.translated(Vector3(0, DROP_CEILING + 0.02, 0)), Vector3(oh.x * 2.0 - 1.2, 0.04, oh.y * 2.0 - 1.2))
+	# A coved vinyl skirting along each wall module's own inner face, open across the
+	# doorway, and a painted angle where the ceiling grid meets the walls.
+	var cove := PackedVector2Array(Trim.cove(0.12, 0.035))
+	var angle := PackedVector2Array([Vector2(0, 0.03), Vector2(0.025, 0.03), Vector2(0.025, 0)])
+	for run in _wall_runs(_kit_of(t)):
+		var a: Vector3 = run[0]
+		var e: Vector3 = run[1]
+		var into: Vector3 = run[2]
+		var sides := PackedVector3Array([into, into])
+		k.sweep("vinyl_floor", I.translated(Vector3(0, _F_KIT, 0)), PackedVector3Array([a, e]), sides, Vector3.UP, cove, false, true, (pc[0] as Color).darkened(0.4))
+		k.sweep("enamel", I.translated(Vector3(0, DROP_CEILING, 0)), PackedVector3Array([a, e]), sides, Vector3.DOWN, angle, false, true, Color(0.9, 0.9, 0.88))
 	# Recessed light panels in the ceiling grid.
 	var n := 3 if ih.x > 4.0 else 2
 	for i in n:
@@ -509,6 +515,65 @@ static func _painted_room(k: MeshKit, t: String) -> void:
 		for z in [-1.2, 1.2]:
 			k.box("enamel", I.translated(Vector3(x, DROP_CEILING - 0.005, z)), Vector3(1.24, 0.012, 0.64), Color(0.92, 0.92, 0.9))
 			k.box("glow_white", I.translated(Vector3(x, DROP_CEILING - 0.012, z)), Vector3(1.16, 0.004, 0.56))
+
+## The ground floor's walls as runs along their inner faces: [start, end, inward], at
+## floor level 0. Each kit wall module's face stands at its own depth (a plain module is
+## thicker than a window module), and the runs at a corner stop at the other wall's face.
+## The doorway's module is left out.
+static func _wall_runs(kit: String) -> Array:
+	var p: Array = KitBase.PLANS[kit]
+	var nx: int = p[0]
+	var nz: int = p[1]
+	var hw := nx * 2.0
+	var hd := nz * 2.0
+	var models: Array = []
+	KitBase._building(kit, MeshKit.new(1), models, [])
+	# Inner depth in from the wall's line per side and module (-1: the doorway).
+	var depth := {"-x": [], "+x": [], "-z": [], "+z": []}
+	for side in depth:
+		var cnt := nz if side.ends_with("x") else nx
+		for i in cnt:
+			depth[side].append(-1.0)
+	var walls: Array = KitBase.WALL.values().reduce(func(acc, v): return acc + v, [])
+	for m in models:
+		if not walls.has(m[0]) or (m[2] as Vector3).y > 0.5:
+			continue
+		var c: Vector3 = m[2]
+		var d: float = KitHouse._model_box(m[0], Transform3D.IDENTITY).end.x + 2.0
+		match int(m[1]):
+			0: depth["-x"][int((c.z + hd) / 4.0)] = d
+			180: depth["+x"][int((c.z + hd) / 4.0)] = d
+			-90: depth["-z"][int((c.x + hw) / 4.0)] = d
+			90: depth["+z"][int((c.x + hw) / 4.0)] = d
+	var at := func(side: String, i: int) -> float: return maxf(depth[side][i], 0.0)
+	var runs: Array = []
+	for side in depth:
+		var along_x: bool = side.ends_with("z")
+		var cnt: int = depth[side].size()
+		var sgn := -1.0 if side.begins_with("-") else 1.0
+		var into := Vector3(0, 0, -sgn) if along_x else Vector3(-sgn, 0, 0)
+		var half := hw if along_x else hd
+		for i in cnt:
+			var d: float = depth[side][i]
+			if d < 0.0:
+				continue
+			var lo := -half + i * 4.0
+			var hi := lo + 4.0
+			# At a corner, stop at the other wall's face.
+			if i == 0:
+				lo += at.call(("-x" if along_x else "-z"), (0 if side in ["-z", "-x"] else (nz - 1 if along_x else nx - 1)))
+			if i == cnt - 1:
+				hi -= at.call(("+x" if along_x else "+z"), (0 if side in ["-z", "-x"] else (nz - 1 if along_x else nx - 1)))
+			var line := sgn * ((hd if along_x else hw) - d)
+			var a := Vector3(lo, 0, line) if along_x else Vector3(line, 0, lo)
+			var e := Vector3(hi, 0, line) if along_x else Vector3(line, 0, hi)
+			# Run each wall the way Trim.room does (clockwise from above), so it faces in.
+			if (e - a).dot(Vector3.UP.cross(into)) < 0.0:
+				var tmp := a
+				a = e
+				e = tmp
+			runs.append([a, e, into])
+	return runs
 
 ## Where a keep's or stone tower's kit walls stand, out from the middle (Stronghold).
 const HALL := 4.0
