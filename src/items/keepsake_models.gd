@@ -8,7 +8,7 @@ class_name KeepsakeModels
 const BUILD := {
 	"silver_chalice": "_chalice", "moonpearl": "_moonpearl", "gold_coin": "_coins",
 	"rune_tablet": "_rune_tablet", "dungeon_key": "_dungeon_key", "gold_idol": "_gold_idol",
-	"void_gem": "_void_gem", "bone": "_bone", "lockpick": "_lockpick", "salt": "_salt",
+	"void_gem": "_void_gem", "lockpick": "_lockpick",
 	"bedroll": "_bedroll", "tent_kit": "_tent_kit", "dice": "_dice", "lute": "_lute",
 	"flute": "_flute", "book_leather": "_book", "treasure_map": "_treasure_map",
 	"scroll_plain": "_scroll", "scroll_red": "_scroll", "scroll_blue": "_scroll",
@@ -437,33 +437,6 @@ static func _void_gem(k: MeshKit, r: RandomNumberGenerator, t: String):
 		facet.call(gir2[i], culet, gir2[j], r.randf_range(-0.3, 0.05))
 	return Vector3(0, 0.012, 0)
 
-## A long bone: a bowed ivory shaft flaring to knobbed ends, each with its two rounded
-## condyles, the ends porous and stained brown.
-static func _bone(k: MeshKit, r: RandomNumberGenerator, _t: String):
-	var ivory := Color(0.78, 0.68, 0.52)
-	var stain := Color(0.48, 0.36, 0.24)
-	var path := PackedVector3Array()
-	var radii := PackedFloat32Array()
-	for i in 13:
-		var t := i / 12.0
-		path.append(Vector3(sin(t * PI) * 0.008, -0.13 + t * 0.26, 0))
-		radii.append(0.018 + 0.026 * pow(absf(t - 0.5) * 2.0, 4.0))
-	Provisions.tube(k, "im:bone", Transform3D.IDENTITY, path, radii, 12, func(p: Vector3, _a: float, _t2: float) -> Color:
-		return ivory.lerp(stain, clampf(absf(p.y) * 7.0 - 0.45 + 0.5 * Provisions._nz(p, 80.0), 0.0, 0.85)))
-	for i in 60:
-		var t := r.randf()
-		var a := r.randf() * TAU
-		var c := Vector3(sin(t * PI) * 0.008, -0.13 + t * 0.26, 0)
-		var n := Vector3(cos(a), 0, sin(a))
-		var rr := 0.018 + 0.026 * pow(absf(t - 0.5) * 2.0, 4.0)
-		ItemModels._disc(k, "im:bone", Transform3D.IDENTITY, c + n * (rr + 0.0003), n, r.randf_range(0.001, 0.003), 6, stain.darkened(r.randf_range(0.0, 0.3)))
-	for e: float in [-1.0, 1.0]:
-		var y := e * 0.138
-		k.sphere("im:bone", _at(-0.019, y, 0.003), 0.03, 8, 12, 0.3, 1.0, stain.lerp(ivory, 0.2))
-		k.sphere("im:bone", _at(0.019, y + e * 0.004, -0.003), 0.028, 8, 12, 0.3, 1.0, stain.lerp(ivory, 0.1))
-		k.sphere("im:bone", _at(0, y - e * 0.014, 0), 0.03, 8, 12, 0.22, 1.0, stain.lerp(ivory, 0.4))
-	return Vector3(0, 0, 0)
-
 ## A lockpick: a thin rod of dark forged iron with a ring at the end for the finger, the
 ## grip bound with cord, and a fine hook at the tip.
 static func _lockpick(k: MeshKit, _r: RandomNumberGenerator, _t: String):
@@ -481,21 +454,6 @@ static func _lockpick(k: MeshKit, _r: RandomNumberGenerator, _t: String):
 	ItemModels._tube(k, m, Transform3D.IDENTITY, PackedVector3Array([Vector3(0, 0.117, 0), Vector3(0, 0.124, 0), Vector3(0.0015, 0.128, 0), Vector3(0.004, 0.129, 0), Vector3(0.006, 0.126, 0)]),
 		PackedFloat32Array([0.0018, 0.0017, 0.0015, 0.0013, 0.0011]), 6, IRON)
 	return Vector3(0, 0.035, 0)
-
-## A heap of salt: a low mound of coarse white crystals, each a little cube catching the
-## light, a few spilt round its foot.
-static func _salt(k: MeshKit, r: RandomNumberGenerator, _t: String):
-	var h := func(rho: float) -> float: return 0.032 * pow(clampf(1.0 - rho / 0.055, 0.0, 1.0), 1.2)
-	_lathe(k, "im:salt", Transform3D.IDENTITY, [Vector2(0, 0), Vector2(0.055, 0), Vector2(0.04, 0.008), Vector2(0.02, 0.022), Vector2(0, 0.032)], Color(0.8, 0.8, 0.82), 28,
-		func(a: float, _t2: float, _p: Vector3) -> float: return 1.0 + 0.1 * sin(a * 3.0) + 0.05 * sin(a * 7.0))
-	for i in 95:
-		var rho := sqrt(r.randf()) * 0.062
-		var a := r.randf() * TAU
-		var y: float = h.call(rho)
-		var s := r.randf_range(0.005, 0.011)
-		var b := Basis(Vector3(r.randf() - 0.5, r.randf() - 0.5, r.randf() - 0.5).normalized(), r.randf() * TAU)
-		k.bevel_box("im:salt", Transform3D(b, Vector3(cos(a) * rho, y + s * 0.1, sin(a) * rho)), Vector3(s, s * r.randf_range(0.5, 1.0), s * r.randf_range(0.4, 0.9)), s * 0.2, Color(0.84, 0.86, 0.9).darkened(r.randf_range(0.0, 0.3)))
-	return Vector3(0, 0.01, 0)
 
 # --- Camp --------------------------------------------------------------------------------
 
