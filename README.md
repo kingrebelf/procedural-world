@@ -27,10 +27,10 @@ with the HUD hidden.
 
 | | |
 |---|---|
-| ![Sunset over medieval farmland](docs/screenshots/sunset.jpg) | ![A lake on a clear day](docs/screenshots/lake.jpg) |
-| ![A river in its own valley](docs/screenshots/river.jpg) | ![A stone viaduct carrying a road](docs/screenshots/viaduct.jpg) |
+| ![Sunset over medieval farmland](docs/screenshots/sunset.jpg) | ![A river in its own valley](docs/screenshots/river.jpg) |
+| ![A stone viaduct carrying a road](docs/screenshots/viaduct.jpg) | ![Karst towers over a lake](docs/screenshots/karst.jpg) |
 | ![Old-growth forest from a ridge](docs/screenshots/forest_overlook.jpg) | ![Inside the forest](docs/screenshots/forest.jpg) |
-| ![A waterfall and its plunge pool](docs/screenshots/waterfall.jpg) | ![Karst towers](docs/screenshots/karst.jpg) |
+| ![A waterfall and its plunge pool](docs/screenshots/waterfall.jpg) | ![A valley below a waterfall](docs/screenshots/waterfall_valley.jpg) |
 | ![Tropical rainforest](docs/screenshots/rainforest.jpg) | ![Dry savanna](docs/screenshots/savanna.jpg) |
 
 ### Towns and people
@@ -47,14 +47,15 @@ with the HUD hidden.
 |---|---|
 | ![A cog at anchor on a lake](docs/screenshots/cog.jpg) | ![A cog under way, with its wake](docs/screenshots/cog_wake.jpg) |
 | ![Lightning over a town in a storm](docs/screenshots/storm.jpg) | ![Mist in the forest](docs/screenshots/mist.jpg) |
-| ![Under the water](docs/screenshots/underwater.jpg) | ![A night sky](docs/screenshots/night_sky.jpg) |
+| ![A reef on a lake bed](docs/screenshots/reef.jpg) | ![Under the water](docs/screenshots/underwater.jpg) |
+| ![Moonrise](docs/screenshots/moonrise.jpg) | ![A night sky](docs/screenshots/night_sky.jpg) |
 
 ### Further out
 
 | | |
 |---|---|
 | ![A human sci-fi outpost](docs/screenshots/outpost.jpg) | ![Inside an outpost](docs/screenshots/outpost_room.jpg) |
-| ![A cave chamber](docs/screenshots/cave.jpg) | ![The planet from orbit](docs/screenshots/orbit.jpg) |
+| ![The planet from orbit](docs/screenshots/orbit.jpg) | ![Landed on an alien moon](docs/screenshots/fey_moon.jpg) |
 
 ## Features
 
