@@ -9,6 +9,21 @@ class_name GearModels
 ## gains a model, so the list only shrinks); tools/icon_match.gd draws every icon beside
 ## its model to check the match.
 
+## Items with an icon and no model yet (the hand holds the icon on a card).
+const OWED := {}
+
+## Every item that has an icon on a sheet.
+static func icon_items() -> Array:
+	var out: Array = []
+	var sheets: Array = [Icons.SHEET_ORDER, Icons.SHEET2_ORDER]
+	for sh in Icons.MORE_SHEETS:
+		sheets.append(sh[1])
+	for order: Array in sheets:
+		for t: String in order:
+			if t != "" and not out.has(t):
+				out.append(t)
+	return out
+
 static func families() -> Array:
 	return [ShieldModels, AmmoModels, KeepsakeModels, TechModels, AlienModels, AlienMatter]
 
