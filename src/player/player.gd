@@ -1245,7 +1245,7 @@ func eat() -> void:
 		return
 	var idx := -1
 	var best := 99
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		var s = Game.inventory.get_slot(i)
 		if s == null:
 			continue
@@ -1422,13 +1422,20 @@ func _sleep(fd: Dictionary, name: String) -> void:
 	Game.toast.emit("You sleep on your %s and wake at dawn, well rested." % name.to_lower())
 
 ## Spends stamina; returns false if there was not enough. Running dry leaves you winded.
-## How a heavy pack slows you: 1 up to your carry capacity, then down to a crawl. Over
-## capacity you cannot sprint.
+## How a heavy pack slows you: 1 up to your carry capacity, then 5% slower for every
+## 100 kg over it (smoothly, per kg), never below LOAD_FLOOR so you can still move. The
+## pack has no slot limit, so this is what limits carrying. Over capacity you cannot sprint.
 func load_mult() -> float:
-	var r := Game.inventory.weight() / Game.stats.carry_capacity()
-	if r <= 1.0:
+	return Player.load_mult_for(Game.inventory.weight(), Game.stats.carry_capacity())
+
+const LOAD_SLOW_PER_KG := 0.05 / 100.0
+const LOAD_FLOOR := 0.25
+
+static func load_mult_for(kg: float, cap: float) -> float:
+	var over := kg - cap
+	if over <= 0.0:
 		return 1.0
-	return maxf(0.3, 1.0 - (r - 1.0) * 1.4)
+	return maxf(LOAD_FLOOR, 1.0 - over * LOAD_SLOW_PER_KG)
 
 func _tire(n: float) -> bool:
 	_rest = 0.0

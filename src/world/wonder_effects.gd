@@ -94,7 +94,7 @@ static func _give_all(items: Array) -> String:
 ## Recharges every flashlight you carry, dead ones too. True if any were.
 static func _charge_lights(player: Player) -> bool:
 	var any := false
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		var s = Game.inventory.get_slot(i)
 		if s != null and (s["type"] == "flashlight" or s["type"] == "flashlight_dead"):
 			s["type"] = "flashlight"

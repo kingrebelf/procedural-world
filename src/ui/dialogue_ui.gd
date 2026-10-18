@@ -832,7 +832,7 @@ func _show_give() -> void:
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sc.add_child(grid)
 	v.add_child(sc)
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		var it = Game.inventory.get_slot(i)
 		if it == null:
 			continue
