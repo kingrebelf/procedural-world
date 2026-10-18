@@ -460,6 +460,8 @@ func _run() -> void:
 		await _room_shots(g)
 	if only.is_empty() or only.has("38"):
 		await _house_shot(g)
+	if only.is_empty() or only.has("84") or only.has("85") or only.has("87"):
+		await _prop_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
 	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
@@ -945,6 +947,57 @@ func _house_shot(g: ChunkGenerator) -> void:
 	var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 	var gh: float = med["target_h"]
 	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 0.2)
+
+## Props on the ground and floors (PropSettle): a chest out in the wilds on a hillside,
+## seen side on so its lie on the slope shows (84); a town's wagon or stall close to (85);
+## a cottage's chest on the floor, from across the room (87).
+func _prop_shots(g: ChunkGenerator) -> void:
+	if only.is_empty() or only.has("84"):
+		var best := {}
+		var score := INF
+		for kz in range(-5, 6):
+			for kx in range(-5, 6):
+				var chunk: Dictionary = g.generate(kx, kz)
+				for o in chunk["objects"]:
+					if not Eras.CACHE_TYPES.has(o["t"]) or not PropSettle.on_ground(chunk, o):
+						continue
+					var p: Vector3 = o["p"]
+					var gx := ChunkGenerator.height_at(chunk, p.x + 0.6, p.z) - ChunkGenerator.height_at(chunk, p.x - 0.6, p.z)
+					var gz := ChunkGenerator.height_at(chunk, p.x, p.z + 0.6) - ChunkGenerator.height_at(chunk, p.x, p.z - 0.6)
+					var slope := rad_to_deg(atan(Vector2(gx, gz).length() / 1.2))
+					# A clear hillside: steep enough to show, not a cliff.
+					var sc := absf(slope - 22.0) + Vector2(kx, kz).length() * 0.3
+					if sc < score:
+						score = sc
+						best = {"w": Vector2(kx * 64.0 + p.x, kz * 64.0 + p.z), "y": p.y, "down": -Vector2(gx, gz).normalized()}
+		if not best.is_empty():
+			var at: Vector2 = best["w"]
+			# Side on to the fall line, a little downhill.
+			var side := (best["down"] as Vector2).orthogonal()
+			await _shot("84_prop_slope", at + side * 3.6 + (best["down"] as Vector2) * 1.0, at, 0.42, 1.3, float(best["y"]) + 0.3)
+	var med := _find_settlement(g, Eras.MEDIEVAL)
+	if med.is_empty():
+		return
+	var mid: Vector2 = med["center"]
+	var gh: float = med["target_h"]
+	if only.is_empty() or only.has("85"):
+		for it in g.settlement_layout(med):
+			if String(it["t"]) in ["wagon", "fruit_cart", "market_stall", "barrels"]:
+				var p: Vector2 = it["p"]
+				var away := (p - mid).normalized() if p != mid else Vector2(1, 0)
+				await _shot("85_town_wagon", p + away.rotated(0.6) * 4.5, p, 0.4, 1.1, gh + 0.4)
+				break
+	if only.is_empty() or only.has("87"):
+		for it in g.settlement_layout(med):
+			if String(it["t"]) != "cottage":
+				continue
+			var c: Vector2 = it["p"]
+			var yaw: float = it["yaw"]
+			var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
+			var spot: Vector3 = Interiors.LOOT["cottage"][0][0]
+			var fl := KitHouse.FLOOR - KitHouse.SINK
+			await _shot("87_room_chest", to_w.call(Vector2(1.2, 1.6)), to_w.call(Vector2(spot.x, spot.z)), 0.45, fl + 1.55, gh + fl + 0.35)
+			break
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.
