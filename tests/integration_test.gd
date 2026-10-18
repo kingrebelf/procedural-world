@@ -1679,9 +1679,14 @@ func _fire_crew(game, world, player) -> void:
 	world.npcs._decide(n, e, player.global_position, world.npcs.now())
 	var edge: Vector2 = n.target
 	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
-	var h0 := FireSim.heat(wall["st"])
+	# The fire they are on: the wall, or whatever it has spread to that is nearer them.
+	var on: Dictionary = fs._burning.get(String(n.rec.get("_fire", "")), {})
+	var target: Dictionary = wall["st"]
+	if not on.is_empty() and world.streamer.get_chunk(on["k"]) != null:
+		target = (world.streamer.get_chunk(on["k"]) as ChunkNode).get_object(int(on["i"]))["st"]
+	var h0 := FireSim.heat(target)
 	world.npcs._decide(n, e, player.global_position, world.npcs.now())
-	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(wall["st"]) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(wall["st"])])
+	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(target) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(target)])
 	# Animals near it run.
 	var ksp := 0
 	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
