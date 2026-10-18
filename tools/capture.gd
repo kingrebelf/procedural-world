@@ -279,7 +279,10 @@ func _follow_river(g: ChunkGenerator, p: Vector2, d: Vector2, cache: Dictionary)
 	# Circling round inside a pool doesn't count.
 	return at if at.distance_to(p) > 60.0 else Vector2.INF
 
-func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0) -> void:
+## `aim`, when given, aims the eye (not the feet) at that height over the ground at
+## `look_at`, both as streamed in: a close shot of something on the ground or a floor
+## stays on it whatever the generator's plain heights say.
+func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0, aim := NAN) -> void:
 	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
@@ -309,12 +312,16 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var tgt_h := y
 	var tc: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(look_at.x, 0, look_at.y)))
 	if tc:
-		tgt_h = ChunkGenerator.height_at(tc.data, look_at.x - tc.key.x * 64.0, look_at.y - tc.key.y * 64.0) + 3.0
+		tgt_h = ChunkGenerator.height_at(tc.data, look_at.x - tc.key.x * 64.0, look_at.y - tc.key.y * 64.0) + (3.0 if is_nan(aim) else aim)
+	elif not is_nan(aim):
+		tgt_h = g.field.height(look_at.x, look_at.y) + aim
 	if not is_nan(look_y):
 		tgt_h = look_y
 	if sight > 0.0:
 		_clear_line(streamer, Vector3(at.x, y, at.y), Vector3(look_at.x, tgt_h, look_at.y), sight)
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
+	if not is_nan(aim):
+		d.y -= p.head.position.y
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
@@ -1028,9 +1035,11 @@ func _prop_shots(g: ChunkGenerator) -> void:
 	if only.is_empty() or only.has("84"):
 		var best := {}
 		var score := INF
+		# The world's own land: rivers move what lies where (the tour's `g` has none).
+		var gr := ChunkGenerator.new(Game.seed, Game.store.has_rivers())
 		for kz in range(-5, 6):
 			for kx in range(-5, 6):
-				var chunk: Dictionary = g.generate(kx, kz)
+				var chunk: Dictionary = gr.generate(kx, kz)
 				for o in chunk["objects"]:
 					if not Eras.CACHE_TYPES.has(o["t"]) or not PropSettle.on_ground(chunk, o):
 						continue
@@ -1047,7 +1056,8 @@ func _prop_shots(g: ChunkGenerator) -> void:
 			var at: Vector2 = best["w"]
 			# Side on to the fall line, a little downhill.
 			var side := (best["down"] as Vector2).orthogonal()
-			await _shot("84_prop_slope", at + side * 3.6 + (best["down"] as Vector2) * 1.0, at, 0.42, 1.3, float(best["y"]) + 0.3)
+			print("84: ", best)
+			await _shot("84_prop_slope", at + side * 3.6 + (best["down"] as Vector2) * 1.0, at, 0.42, 0.0, NAN, Callable(), 0.0, 0.35)
 	var med := _find_settlement(g, Eras.MEDIEVAL)
 	if med.is_empty():
 		return
@@ -1069,7 +1079,8 @@ func _prop_shots(g: ChunkGenerator) -> void:
 			var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
 			var spot: Vector3 = Interiors.LOOT["cottage"][0][0]
 			var fl := KitHouse.FLOOR - KitHouse.SINK
-			await _shot("87_room_chest", to_w.call(Vector2(1.2, 1.6)), to_w.call(Vector2(spot.x, spot.z)), 0.45, fl + 1.55, gh + fl + 0.35)
+			# Feet on the floor (the eye is a head above them), looking down at the chest.
+			await _shot("87_room_chest", to_w.call(Vector2(1.2, 1.6)), to_w.call(Vector2(spot.x, spot.z)), 0.45, fl, NAN, Callable(), 0.0, fl + 0.35)
 			break
 
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
@@ -1160,8 +1171,8 @@ func _wear_shots(g: ChunkGenerator) -> void:
 		if k == 0:
 			# Standing on the floor (the height is the feet's), looking at the far corner.
 			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.25, hd * 0.25)),
-				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 0.15,
-				g.field.height(hp.x, hp.y) + 1.0)
+				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.45, -hd * 0.45)), 0.42, 0.15,
+				NAN, Callable(), 0.0, 1.0)
 
 ## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
 ## cold spruce uplands; standing on its edge looking in.

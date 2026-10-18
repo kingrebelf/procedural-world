@@ -40,7 +40,7 @@ const REAL := {
 	"royal_bow": [1.5, 2.0], "shortbow": [0.9, 1.3], "composite_bow": [0.9, 1.4],
 	"crystal_bow": [0.9, 1.6], "eclipse_bow": [1.0, 1.7], "crossbow": [0.55, 0.95],
 	"crossbow_runic": [0.55, 0.95], "heavy_crossbow": [0.7, 1.2], "sling": [0.3, 1.1],
-	"shovel": [0.9, 1.55], "hoe": [1.1, 1.6], "sickle": [0.3, 0.6], "fishing_rod": [1.5, 3.6],
+	"shovel": [0.9, 1.55], "hoe": [1.1, 1.6], "sickle": [0.3, 0.6], "fishing_rod": [1.5, 3.6], "paddle_canoe": [1.2, 1.6], "paddle_kayak": [2.0, 2.6],
 	"saw": [0.4, 0.8], "tongs": [0.3, 0.6], "bucket": [0.25, 0.4], "tinderbox": [0.05, 0.15],
 	"quill_ink": [0.12, 0.35], "mortar_pestle": [0.1, 0.25], "cauldron_small": [0.15, 0.4],
 	"wrench": [0.2, 0.45], "crowbar": [0.45, 0.95], "hand_drill": [0.25, 0.5],

@@ -118,6 +118,13 @@ const ITEMS := {
 	"ship": {"name": "Starship", "era": Eras.SCIFI, "value": 1600, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.7, 0.25)},
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
 	"cannon": {"name": "Field Cannon", "era": Eras.SCIFI, "value": 520, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.5, 0.25)},
+	# Small boats (Sailing): carried, put in the water like a vehicle, packed up again.
+	"sail_raft": {"name": "Sail Raft", "era": Eras.MEDIEVAL, "value": 45, "stack": false, "kind": "vehicle", "color": Color(0.62, 0.5, 0.36)},
+	"canoe": {"name": "Canoe", "era": Eras.MEDIEVAL, "value": 70, "stack": false, "kind": "vehicle", "color": Color(0.78, 0.5, 0.3)},
+	"kayak": {"name": "Kayak", "era": Eras.MEDIEVAL, "value": 90, "stack": false, "kind": "vehicle", "color": Color(0.72, 0.09, 0.07)},
+	"rowboat": {"name": "Rowboat", "era": Eras.MEDIEVAL, "value": 80, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.55, 0.4)},
+	"paddle_canoe": {"name": "Canoe Paddle", "era": Eras.MEDIEVAL, "value": 8, "stack": false, "kind": "tool", "damage": 5, "range": 2.6, "color": Color(0.7, 0.5, 0.3)},
+	"paddle_kayak": {"name": "Kayak Paddle", "era": Eras.MEDIEVAL, "value": 12, "stack": false, "kind": "tool", "damage": 5, "range": 2.8, "color": Color(0.72, 0.1, 0.08)},
 
 	# --- The medieval age (icon sheets items4-9) ----------------------------------------
 	# Raw and worked materials. "fuel": seconds it burns (lanterns, smelting); see Effects
@@ -791,6 +798,7 @@ const UNLOCK := {
 	"forge": 3, "anvil": 5, "stable": 6, "storage_chest": 2, "bed": 2, "lantern": 2,
 	"wall_door_stone": 3, "wall_window_stone": 3, "corner_stone": 3, "door_wood": 2, "door_iron": 6, "door_bulkhead": 14,
 	"metal_crate": 3, "cage": 4, "weapon_stand": 4, "market_stall": 5, "cart": 5, "horse": 7,
+	"sail_raft": 1, "paddle_canoe": 3, "canoe": 3, "rowboat": 4, "paddle_kayak": 5, "kayak": 5,
 	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
 	# Gunpowder is the first step out of the medieval age.
 	"scrap_pistol": 10, "rounds": 10,
@@ -1090,7 +1098,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"helm_bronze": 2.5, "cuirass_bronze": 8.0, "bracers_bronze": 1.2, "greaves_bronze": 4.0, "sandals_bronze": 1.0, "shield_bronze": 5.0,
 	"helm_steel": 3.0, "plate_steel": 11.0, "gauntlets_steel": 1.5, "cuisses_steel": 6.0, "sabatons_steel": 2.5, "shield_tower": 9.0,
 	"pickaxe_stone": 3.0, "axe_stone": 2.5, "pickaxe_bronze": 3.5, "pickaxe_steel": 3.8, "axe_steel": 2.8, "shovel": 2.5,
-	"hoe": 2.0, "sickle": 0.8, "fishing_rod": 1.0, "saw": 1.0, "tongs": 1.0, "bucket": 1.5, "waterskin": 0.6,
+	"hoe": 2.0, "sickle": 0.8, "fishing_rod": 1.0, "paddle_canoe": 1.2, "paddle_kayak": 1.0, "saw": 1.0, "tongs": 1.0, "bucket": 1.5, "waterskin": 0.6,
 	"hand_lantern": 1.2, "candle": 0.1, "tinderbox": 0.2, "bedroll": 2.5, "tent_kit": 6.0, "ring_copper": 0.02,
 	"ring_silver": 0.02, "ring_ruby": 0.02, "amulet_bone": 0.05, "amulet_silver": 0.05, "amulet_saint": 0.1,
 	"lucky_coin": 0.01, "dice": 0.02, "lute": 2.0, "flute": 0.3, "book_leather": 0.8, "pumpkin": 3.0, "cabbage": 1.0,
@@ -1238,10 +1246,14 @@ static func craft_tabs(type: String) -> Array:
 
 
 ## Weight of one item of this type, in kg. Vehicles are carried as their keys.
+## Every weight in WEIGHT and KIND_WEIGHT is scaled by this (Ben, 2026-10-18: items
+## weigh a tenth of what they did; the carry limit stayed the same).
+const WEIGHT_SCALE := 0.1
+
 static func weight(type: String) -> float:
 	if WEIGHT.has(type):
-		return WEIGHT[type]
-	return KIND_WEIGHT.get(String(def(type).get("kind", "")), 1.0)
+		return WEIGHT[type] * WEIGHT_SCALE
+	return KIND_WEIGHT.get(String(def(type).get("kind", "")), 1.0) * WEIGHT_SCALE
 
 static func has(type: String) -> bool:
 	return ITEMS.has(type) or BuildCatalog.is_piece_item(type)

@@ -150,8 +150,9 @@ static func _cloth(k: MeshKit, c: Array, out: Vector3, belly: float, col: Color,
 
 ## The wind as she feels it, `from` the direction it blows from in boat space (x, z) and
 ## `strength` 0..1, and whether she's under way (sails set) or lying at anchor (taken in).
-## dt <= 0 snaps everything straight to where it ends up (for pictures).
-func trim(from: Vector2, strength: float, under_way: bool, dt: float) -> void:
+## dt <= 0 snaps everything straight to where it ends up (for pictures). `set_turn` and
+## `set_fill` (Sailing.sail_turn, how well she draws) override the trim it would choose.
+func trim(from: Vector2, strength: float, under_way: bool, dt: float, set_turn := NAN, set_fill := NAN) -> void:
 	var snap := dt <= 0.0
 	_t += maxf(dt, 0.0)
 	furl = (0.0 if under_way else 1.0) if snap else move_toward(furl, 0.0 if under_way else 1.0, dt * FURL_RATE)
@@ -174,6 +175,12 @@ func trim(from: Vector2, strength: float, under_way: bool, dt: float) -> void:
 				s["side"] = want_side
 			turn = float(s["side"]) * clampf((a - 0.45) * 0.55, 0.08, float(s["max_turn"]))
 			fill = clampf((a - 0.5) / 0.35, 0.0, 1.0)
+		if not is_nan(set_turn):
+			# Someone is working the sheet (a player's boat, Sailing): hold it where they set it.
+			turn = clampf(set_turn, -float(s["max_turn"]), float(s["max_turn"]))
+			fill = set_fill
+			if s["type"] != SQUARE and absf(set_turn) > 0.01:
+				s["side"] = signf(set_turn)
 		fill *= clampf(0.35 + strength * 1.6, 0.0, 1.0)
 		var k := 1.0 if snap else clampf(dt * 0.8, 0.0, 1.0)
 		s["swing"] = lerp_angle(float(s["swing"]), turn, k)

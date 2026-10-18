@@ -24,6 +24,9 @@ const BUILD := {
 	"thruster_part": "_thruster_part", "antenna": "_antenna", "solar_panel": "_solar_panel",
 	"magnet": "_magnet", "nanopaste": "_nanopaste", "quantum_chip": "_quantum_chip",
 	"splint_mech": "_splint_mech", "oxygen_mask": "_oxygen_mask", "defibrillator": "_defibrillator",
+	"light_bulb": "_light_bulb", "electric_motor": "_electric_motor", "multimeter": "_multimeter",
+	"battery_cell": "_battery_cell", "signal_wire": "_signal_wire", "insulator": "_insulator",
+	"treasure_chip": "_treasure_chip",
 }
 
 const STEEL := Color(0.66, 0.67, 0.69)
@@ -1328,6 +1331,272 @@ static func _nanopaste(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> voi
 		var a := PI * 0.5 + s * 0.55
 		k.bevel_box("im:paint", Transform3D(Basis(Vector3.UP, -a + PI * 0.5), Vector3(cos(a) * R, 0.012, sin(a) * R)), Vector3(0.008, 0.004, 0.003), 0.001, Color(0.2, 0.5, 0.95))
 
+# --- Power parts ------------------------------------------------------------------------
+
+## A light bulb, standing on its screw base: a clear pear of glass over a glass stem whose
+## two lead wires hold a coiled filament, the brass shell with its thread, the black glass
+## band below it and the solder tip.
+static func _light_bulb(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> Vector3:
+	var brass := Color(0.72, 0.52, 0.24)
+	k.sphere("im:metal@0.4", _at(0, 0.0025, 0), 0.0035, 5, 10, 0.0, 1.0, Color(0.6, 0.58, 0.55))
+	_cyl(k, "own:gloss", _at(0, 0, 0), Vector3(0, 0.002, 0), Vector3(0, 0.007, 0), 0.0085, 0.0115, 20, Color(0.05, 0.05, 0.05))
+	_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(0, 0.006, 0), Vector3(0, 0.03, 0), 0.0118, 0.0128, 24, brass)
+	# The thread: a rolled helix round the shell.
+	var path := PackedVector3Array()
+	var radii := PackedFloat32Array()
+	for i in 121:
+		var t := i / 120.0
+		var a := t * TAU * 5.5
+		path.append(Vector3(cos(a) * 0.0127, lerpf(0.009, 0.027, t), sin(a) * 0.0127))
+		radii.append(0.0014)
+	ItemModels._tube(k, "im:metal@0.35", _at(0, 0, 0), path, radii, 6, brass.lightened(0.06))
+	ItemModels._torus(k, "im:metal@0.35", _at(0, 0.0295, 0), 0.0128, 0.0012, 24, 4, brass.darkened(0.1))
+	# The glass: a narrow neck swelling into the bulb.
+	var glass := Color(0.92, 0.95, 1.0, 0.1)
+	Provisions.lathe(k, "im:glass", _at(0, 0, 0), Provisions._curve([Vector2(0.0128, 0.029), Vector2(0.0135, 0.036), Vector2(0.019, 0.048),
+		Vector2(0.027, 0.061), Vector2(0.0305, 0.076), Vector2(0.028, 0.092), Vector2(0.02, 0.103), Vector2(0.009, 0.1085), Vector2(0.0, 0.109)], 4), 32, glass)
+	# The stem, its lead wires and the filament slung between them.
+	_cyl(k, "im:glass", _at(0, 0, 0), Vector3(0, 0.029, 0), Vector3(0, 0.058, 0), 0.0055, 0.0035, 12, Color(0.9, 0.95, 1.0, 0.2))
+	var wire := Color(0.45, 0.44, 0.42)
+	for s: float in [-1.0, 1.0]:
+		ItemModels._tube(k, "im:metal@0.4", _at(0, 0, 0), PackedVector3Array([Vector3(s * 0.0015, 0.04, 0), Vector3(s * 0.004, 0.058, 0), Vector3(s * 0.009, 0.074, 0)]), PackedFloat32Array([0.0004, 0.0004, 0.0004]), 4, wire)
+	ItemModels._tube(k, "im:metal@0.4", _at(0, 0, 0), PackedVector3Array([Vector3(0, 0.058, 0), Vector3(0, 0.08, 0)]), PackedFloat32Array([0.0003, 0.0003]), 4, wire)
+	var fil := PackedVector3Array()
+	var fr := PackedFloat32Array()
+	for i in 49:
+		var t := i / 48.0
+		var a := t * TAU * 8.0
+		var x := lerpf(-0.009, 0.009, t)
+		fil.append(Vector3(x, 0.075 + sin(t * PI) * 0.005 + sin(a) * 0.0008, cos(a) * 0.0008))
+		fr.append(0.00025)
+	ItemModels._tube(k, "im:metal@0.3", _at(0, 0, 0), fil, fr, 4, Color(0.3, 0.29, 0.28))
+	return Vector3(0, 0.015, 0)
+
+## An electric motor: a cast iron body ribbed with cooling fins along its length on a
+## footed base, a terminal box on top, the end bells held by brass bolts and a bright
+## steel shaft with its key out of the front bearing.
+static func _electric_motor(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> Vector3:
+	# Cast iron, dark and dull: rough metal keeps its dark colour (Metals lifts only the bright).
+	var iron := Color(0.2, 0.205, 0.21)
+	var m := "im:metal@0.78"
+	var cy := 0.058
+	var R := 0.042
+	_cyl(k, m, _at(0, 0, 0), Vector3(-0.06, cy, 0), Vector3(0.05, cy, 0), R, R, 32, iron)
+	for i in 18:
+		var a := TAU * i / 18.0
+		if absf(a - PI * 1.5) < 0.6:
+			continue # the underside sits on the feet
+		var d := Vector3(0, sin(a), cos(a))
+		k.box(m, Transform3D(Basis(Vector3.RIGHT, -a), Vector3(-0.006, cy, 0) + d * (R + 0.004)), Vector3(0.096, 0.008, 0.0032), iron.lightened(0.05))
+	# The end bells: the front one domed into its bearing boss, the back one a fan cover.
+	_cyl(k, m, _at(0, 0, 0), Vector3(0.05, cy, 0), Vector3(0.062, cy, 0), R + 0.004, R - 0.008, 32, iron.darkened(0.05))
+	_cyl(k, m, _at(0, 0, 0), Vector3(0.062, cy, 0), Vector3(0.072, cy, 0), 0.017, 0.014, 20, iron.darkened(0.1))
+	_cyl(k, m, _at(0, 0, 0), Vector3(-0.072, cy, 0), Vector3(-0.06, cy, 0), R - 0.006, R + 0.004, 32, iron.darkened(0.05))
+	for i in 12:
+		var a := TAU * i / 12.0
+		k.box(m, Transform3D(Basis(Vector3.RIGHT, -a), Vector3(-0.073, cy, 0) + Vector3(0, sin(a), cos(a)) * 0.022), Vector3(0.002, 0.026, 0.003), Color(0.12, 0.12, 0.12))
+	for i in 4:
+		var a := TAU * i / 4.0 + PI * 0.25
+		var d := Vector3(0, sin(a), cos(a)) * (R - 0.002)
+		for x: float in [0.058, -0.066]:
+			_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(x, cy, 0) + d, Vector3(x + signf(x) * 0.006, cy, 0) + d, 0.0035, 0.0035, 6, Color(0.66, 0.48, 0.24))
+	var steel := Color(0.72, 0.72, 0.73)
+	_cyl(k, "im:metal@0.25", _at(0, 0, 0), Vector3(0.072, cy, 0), Vector3(0.115, cy, 0), 0.0075, 0.0075, 18, steel)
+	k.box("im:metal@0.3", _at(0.098, cy + 0.0072, 0), Vector3(0.024, 0.002, 0.004), steel.darkened(0.2))
+	# The feet and base plate, with bolt holes at the corners.
+	_block(k, m, _at(-0.005, 0.005, 0), Vector3(0.11, 0.01, 0.09), 0.002, iron.darkened(0.1))
+	for s: float in [-1.0, 1.0]:
+		_block(k, m, Transform3D(Basis(Vector3.RIGHT, s * 0.35), Vector3(-0.005, 0.02, s * 0.022)), Vector3(0.09, 0.03, 0.012), 0.002, iron)
+		for x: float in [-0.05, 0.04]:
+			ItemModels._disc(k, m, _at(0, 0, 0), Vector3(x, 0.0102, s * 0.037), Vector3.UP, 0.004, 8, Color(0.05, 0.05, 0.05))
+	# The terminal box, its lid screwed down at the corners.
+	_block(k, m, _at(-0.005, cy + R + 0.01, 0), Vector3(0.04, 0.024, 0.038), 0.002, iron)
+	_block(k, m, _at(-0.005, cy + R + 0.0235, 0), Vector3(0.044, 0.005, 0.042), 0.0015, iron.lightened(0.06))
+	for c: Vector2 in [Vector2(-1, -1), Vector2(-1, 1), Vector2(1, -1), Vector2(1, 1)]:
+		_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(-0.005 + c.x * 0.018, cy + R + 0.026, c.y * 0.017), Vector3(-0.005 + c.x * 0.018, cy + R + 0.0285, c.y * 0.017), 0.0028, 0.0026, 6, Color(0.66, 0.48, 0.24))
+	return Vector3(-0.005, cy, 0)
+
+static func _block(k: MeshKit, m: String, xf: Transform3D, size: Vector3, bevel: float, col: Color) -> void:
+	ItemModels._block(k, m, xf, size, bevel, col)
+
+## A multimeter: a brown bakelite case, a brass-framed meter at the top with a cream dial,
+## its scale and black needle under glass, the range knob below with its marks, brass
+## screws at the corners, and red and black test leads ending in probes.
+static func _multimeter(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> Vector3:
+	var case := Color(0.32, 0.14, 0.07)
+	var brass := Color(0.75, 0.55, 0.26)
+	var w := 0.09
+	var h := 0.13
+	var d := 0.04
+	k.bevel_box("own:gloss", _at(0, h * 0.5, 0), Vector3(w, h, d), 0.005, case)
+	var fz := d * 0.5
+	# The meter: brass bezel, cream dial, scale, needle, glass.
+	var dc := Vector2(0, 0.102)
+	_ext(k, "im:metal@0.35", _at(dc.x, dc.y, fz + 0.001), _rrect(0.074, 0.042, 0.004), [_rrect(0.066, 0.034, 0.003)], 0.002, brass)
+	k.box("im:dial", _at(dc.x, dc.y, fz + 0.0003), Vector3(0.066, 0.034, 0.0006), Color(0.86, 0.8, 0.64))
+	var piv := Vector2(0, -0.016)
+	for i in 21:
+		var a := lerpf(PI * 0.78, PI * 0.22, i / 20.0)
+		var u := Vector2(cos(a), sin(a))
+		var r0 := 0.026 if i % 5 else 0.023
+		_trace(k, _at(dc.x, dc.y, fz + 0.0006), PackedVector2Array([piv + u * r0, piv + u * 0.029]), 0.0006 if i % 5 else 0.0009, Color(0.08, 0.07, 0.06), 0.0001)
+	var arc := PackedVector2Array()
+	for i in 17:
+		var a := lerpf(PI * 0.78, PI * 0.22, i / 16.0)
+		arc.append(piv + Vector2(cos(a), sin(a)) * 0.029)
+	_trace(k, _at(dc.x, dc.y, fz + 0.0006), arc, 0.0006, Color(0.08, 0.07, 0.06), 0.0001)
+	var na := PI * 0.62
+	_trace(k, _at(dc.x, dc.y, fz + 0.0007), PackedVector2Array([piv, piv + Vector2(cos(na), sin(na)) * 0.03]), 0.0008, Color(0.02, 0.02, 0.02), 0.0002)
+	k.box("own:tint", _at(dc.x, dc.y, fz + 0.0016), Vector3(0.066, 0.034, 0.0006), Color(0.9, 0.95, 1.0, 0.08))
+	# The range knob: a fluted black knob with its pointer, the marks round it.
+	var kc := Vector3(0, 0.055, fz)
+	_cyl(k, "own:gloss", _at(0, 0, 0), kc, kc + Vector3(0, 0, 0.012), 0.016, 0.014, 16, Color(0.06, 0.05, 0.05))
+	k.box("own:gloss", Transform3D(Basis(Z, 0.5), kc + Vector3(0, 0, 0.0125)), Vector3(0.006, 0.026, 0.004), Color(0.1, 0.09, 0.08))
+	for i in 9:
+		var a := PI * 0.5 + lerpf(-2.2, 2.2, i / 8.0)
+		var u := Vector3(cos(a), sin(a), 0)
+		k.box("im:paint", Transform3D(Basis(Z, a), kc + u * 0.021 + Vector3(0, 0, 0.0003)), Vector3(0.004, 0.0012, 0.0006), Color(0.86, 0.8, 0.64))
+	for c: Vector2 in [Vector2(-1, -1), Vector2(-1, 1), Vector2(1, -1), Vector2(1, 1)]:
+		var p := Vector3(c.x * (w * 0.5 - 0.007), h * 0.5 + c.y * (h * 0.5 - 0.007), fz)
+		_cyl(k, "im:metal@0.35", _at(0, 0, 0), p, p + Vector3(0, 0, 0.0015), 0.0028, 0.0026, 10, brass)
+	# The jacks and leads.
+	var cols := [Color(0.62, 0.07, 0.05), Color(0.05, 0.05, 0.05)]
+	for i in 2:
+		var s := -1.0 if i == 0 else 1.0
+		var jack := Vector3(s * 0.016, 0.018, fz)
+		_cyl(k, "own:gloss", _at(0, 0, 0), jack, jack + Vector3(0, 0, 0.006), 0.0045, 0.004, 12, cols[i])
+		var tip := Vector3(-0.05 + i * 0.01, -0.03 - i * 0.012, 0.035 + i * 0.008)
+		var pts := PackedVector3Array([jack + Vector3(0, 0, 0.006), jack + Vector3(0.004, -0.012, 0.016), Vector3(0.04 + i * 0.008, -0.03, 0.03),
+			Vector3(0.07 + i * 0.006, -0.012 + i * 0.01, 0.02), Vector3(0.066, 0.012 + i * 0.008, 0.01), Vector3(0.05, -0.02, 0.035), Vector3(0.025, tip.y, tip.z)])
+		var lead := _smooth(pts, 6)
+		ItemModels._tube(k, "own:plastic", _at(0, 0, 0), lead, _fill(lead.size(), 0.0018), 6, cols[i])
+		_cyl(k, "own:gloss", _at(0, 0, 0), Vector3(0.025, tip.y, tip.z), Vector3(-0.025, tip.y, tip.z), 0.0042, 0.0036, 10, cols[i])
+		_cyl(k, "im:metal@0.25", _at(0, 0, 0), Vector3(-0.025, tip.y, tip.z), Vector3(-0.042, tip.y, tip.z), 0.0012, 0.0004, 8, Color(0.75, 0.75, 0.76))
+	return Vector3(0, 0.065, 0)
+
+## A Catmull-Rom curve through `pts`, `steps` points per span.
+static func _smooth(pts: PackedVector3Array, steps: int) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var n := pts.size()
+	for i in n - 1:
+		var p0 := pts[maxi(i - 1, 0)]
+		var p1 := pts[i]
+		var p2 := pts[i + 1]
+		var p3 := pts[mini(i + 2, n - 1)]
+		for s in steps:
+			var t := float(s) / steps
+			out.append(0.5 * (2.0 * p1 + (p2 - p0) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t * t + (3.0 * p1 - p0 - 3.0 * p2 + p3) * t * t * t))
+	out.append(pts[n - 1])
+	return out
+
+## A lead-acid cell: a clear glass jar showing the grey lead plates stacked inside, a
+## black pitch lid and two brass terminal posts with their nuts.
+static func _battery_cell(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> Vector3:
+	var w := 0.07
+	var h := 0.095
+	var d := 0.05
+	for i in 7:
+		var z := lerpf(-0.018, 0.018, i / 6.0)
+		var lead := Color(0.16, 0.165, 0.17) if i % 2 == 0 else Color(0.1, 0.1, 0.11)
+		ItemModels._block(k, "own:ceramic", _at(0, 0.046, z), Vector3(w - 0.012, h - 0.024, 0.003), 0.0005, lead)
+	ItemModels._block(k, "im:glass", _at(0, h * 0.5, 0), Vector3(w, h, d), 0.004, Color(0.88, 0.95, 0.94, 0.14))
+	for c: Vector2 in [Vector2(-1, -1), Vector2(-1, 1), Vector2(1, -1), Vector2(1, 1)]:
+		k.box("im:glass_edge", _at(c.x * (w * 0.5 - 0.0015), h * 0.5, c.y * (d * 0.5 - 0.0015)), Vector3(0.003, h - 0.004, 0.003), Color(0.6, 0.7, 0.66, 0.35))
+	ItemModels._block(k, "own:gloss", _at(0, h + 0.003, 0), Vector3(w + 0.004, 0.008, d + 0.004), 0.002, Color(0.11, 0.1, 0.09))
+	var brass := Color(0.78, 0.56, 0.24)
+	for s: float in [-1.0, 1.0]:
+		var x := s * 0.018
+		k.box("own:ceramic", _at(x, h * 0.5 + 0.02, 0), Vector3(0.006, h * 0.5, 0.004), Color(0.26, 0.27, 0.28))
+		_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(x, h + 0.006, 0), Vector3(x, h + 0.022, 0), 0.0035, 0.0035, 12, brass)
+		_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(x, h + 0.007, 0), Vector3(x, h + 0.012, 0), 0.0075, 0.0075, 6, brass.darkened(0.1))
+		_cyl(k, "im:metal@0.35", _at(0, 0, 0), Vector3(x, h + 0.016, 0), Vector3(x, h + 0.0195, 0), 0.006, 0.006, 6, brass)
+	return Vector3(0, h * 0.5, 0)
+
+## Signal wire: a red and black twisted pair wound on a wooden reel, the loose end
+## trailing off with its strands bared.
+static func _signal_wire(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> Vector3:
+	var wood := Color(0.6, 0.42, 0.26)
+	var H := 0.062
+	for y: float in [0.0, H - 0.008]:
+		k.cylinder("planks", _at(0, y, 0), 0.046, 0.046, 0.008, 28, true, 0.0, 1, wood)
+		ItemModels._torus(k, "planks", _at(0, y + 0.004, 0), 0.046, 0.0035, 28, 6, wood.darkened(0.08))
+	ItemModels._disc(k, "planks", _at(0, 0, 0), Vector3(0, H + 0.0005, 0), Vector3.UP, 0.009, 14, Color(0.08, 0.06, 0.04))
+	k.cylinder("planks", _at(0, 0, 0), 0.016, 0.016, H, 16, false, 0.0, 1, wood.darkened(0.1))
+	var red := Color(0.6, 0.07, 0.05)
+	var black := Color(0.05, 0.05, 0.06)
+	var turns := 7.0
+	for layer in 3:
+		var rr := 0.021 + layer * 0.0062
+		var n := int(turns * 24)
+		var a_pts := PackedVector3Array()
+		var b_pts := PackedVector3Array()
+		for i in n + 1:
+			var t := float(i) / n
+			if layer % 2 == 1:
+				t = 1.0 - t
+			var a := t * TAU * turns
+			var radial := Vector3(cos(a), 0, sin(a))
+			var c := radial * rr + Vector3(0, lerpf(0.011, H - 0.011, t), 0)
+			var tw := a * 5.0
+			var o := (radial * cos(tw) + Vector3.UP * sin(tw)) * 0.0016
+			a_pts.append(c + o)
+			b_pts.append(c - o)
+		ItemModels._tube(k, "own:plastic", _at(0, 0, 0), a_pts, _fill(a_pts.size(), 0.0016), 5, red, false)
+		ItemModels._tube(k, "own:plastic", _at(0, 0, 0), b_pts, _fill(b_pts.size(), 0.0016), 5, black, false)
+	# The loose end, out over the bottom flange and away along the ground.
+	var tail := _smooth(PackedVector3Array([Vector3(0.036, 0.014, 0.0), Vector3(0.05, 0.008, 0.012), Vector3(0.068, 0.004, 0.03), Vector3(0.082, 0.003, 0.055), Vector3(0.075, 0.003, 0.08)]), 10)
+	var ta := PackedVector3Array()
+	var tb := PackedVector3Array()
+	for i in tail.size():
+		var fwd := (tail[mini(i + 1, tail.size() - 1)] - tail[maxi(i - 1, 0)]).normalized()
+		var side := fwd.cross(Vector3.UP).normalized()
+		var tw := i * 0.9
+		var o := (side * cos(tw) + Vector3.UP * sin(tw)) * 0.0016
+		ta.append(tail[i] + o)
+		tb.append(tail[i] - o)
+	ItemModels._tube(k, "own:plastic", _at(0, 0, 0), ta, _fill(ta.size(), 0.0016), 5, red)
+	ItemModels._tube(k, "own:plastic", _at(0, 0, 0), tb, _fill(tb.size(), 0.0016), 5, black)
+	var end := tail[tail.size() - 1]
+	var dir := (end - tail[tail.size() - 3]).normalized()
+	for s: float in [-1.0, 1.0]:
+		var o := dir.cross(Vector3.UP).normalized() * s * 0.0022
+		_cyl(k, "im:metal@0.3", _at(0, 0, 0), end + o, end + o * 1.6 + dir * 0.007, 0.0008, 0.0006, 6, Color(0.85, 0.5, 0.3))
+	return Vector3(0, H * 0.5, 0)
+
+## Three porcelain pin insulators: glazed white stoneware in stacked sheds over a hollow
+## skirt, the top saddled for the line.
+static func _insulator(k: MeshKit, r: RandomNumberGenerator, _t: String) -> Vector3:
+	var prof := [Vector2(0.012, 0.0), Vector2(0.03, 0.0), Vector2(0.0305, 0.006), Vector2(0.03, 0.014), Vector2(0.026, 0.018), Vector2(0.02, 0.021),
+		Vector2(0.024, 0.026), Vector2(0.025, 0.031), Vector2(0.021, 0.035), Vector2(0.016, 0.038), Vector2(0.019, 0.042), Vector2(0.0195, 0.047),
+		Vector2(0.016, 0.051), Vector2(0.0145, 0.056), Vector2(0.0155, 0.062), Vector2(0.014, 0.068), Vector2(0.01, 0.071), Vector2(0.0, 0.072)]
+	var spots := [Vector3(-0.036, 0, -0.012), Vector3(0.036, 0, -0.016), Vector3(0.0, 0, 0.026)]
+	for p: Vector3 in spots:
+		var col := Color(0.76, 0.73, 0.66).darkened(r.randf_range(0.0, 0.06))
+		var xf := Transform3D(Basis(Vector3.UP, r.randf_range(0.0, TAU)), p)
+		Provisions.lathe(k, "own:glaze", xf, Provisions._curve(prof, 4), 32, col)
+		ItemModels._disc(k, "own:glaze", xf, Vector3(0, 0.0005, 0), Vector3.DOWN, 0.012, 20, col.darkened(0.35))
+		# The saddle: a groove across the crown between two lips.
+		for s: float in [-1.0, 1.0]:
+			k.sphere("own:glaze", xf * _at(s * 0.0075, 0.067, 0), 0.0065, 6, 12, 0.0, 1.0, col)
+		k.box("own:glaze", xf * _at(0, 0.0712, 0), Vector3(0.004, 0.0012, 0.022), col.darkened(0.25))
+	return Vector3(0, 0.035, 0)
+
+## A cache data chip: a stout dark grey card with a cut corner, the label recess on its
+## face, a row of gold contacts along the bottom and the lock tab.
+static func _treasure_chip(k: MeshKit, _r: RandomNumberGenerator, _t: String) -> void:
+	var w := 0.05
+	var h := 0.058
+	var th := 0.005
+	var xf := Transform3D(Basis(Vector3.UP, -0.55) * FLAT, Vector3(0, 0.0025, 0))
+	var out := PackedVector2Array([Vector2(-w * 0.5, -h * 0.5), Vector2(w * 0.5, -h * 0.5), Vector2(w * 0.5, h * 0.5 - 0.009), Vector2(w * 0.5 - 0.009, h * 0.5), Vector2(-w * 0.5, h * 0.5)])
+	var body := Color(0.18, 0.19, 0.21)
+	_ext_bevel(k, "own:plastic", xf, out, [], th, 0.0012, body)
+	_ext(k, "own:plastic", xf * _at(0, 0.006, th * 0.5 + 0.0002), _rrect(w - 0.012, h - 0.026, 0.002), [], 0.0004, body.lightened(0.06))
+	for i in 7:
+		var x := lerpf(-w * 0.36, w * 0.36, i / 6.0)
+		k.box("im:metal@0.3", xf * _at(x, -h * 0.5 + 0.0065, th * 0.5 + 0.0002), Vector3(0.0045, 0.009, 0.0004), Color(0.88, 0.65, 0.28))
+	k.box("own:plastic", xf * _at(w * 0.5 - 0.005, h * 0.08, th * 0.5 + 0.0003), Vector3(0.004, 0.006, 0.0006), Color(0.06, 0.06, 0.07))
+
 # --- Materials ----------------------------------------------------------------------------
 
 static var _mats := {}
@@ -1368,6 +1637,13 @@ static func _make(n: String) -> Material:
 			return m
 		"ceramic":
 			return _std(0.6, 0.0)
+		"glaze":
+			# Glazed porcelain: a hard glassy coat over white stoneware.
+			var m := _std(0.25, 0.0)
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.9
+			m.clearcoat_roughness = 0.1
+			return m
 		"tint", "lens":
 			# Coloured glass and filled windows: see-through a little, glossy, unlit.
 			var m := _std(0.05, 0.0)
