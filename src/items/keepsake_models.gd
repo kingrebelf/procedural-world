@@ -18,6 +18,7 @@ const BUILD := {
 	"cards_deck": "_cards", "harmonica": "_harmonica", "banjo": "_banjo",
 	"cigar_box": "_cigar_box", "photo_frame": "_tintype", "family_photo": "_holo_photo",
 	"toy_robot": "_toy_robot", "music_player": "_music_player", "chess_set": "_chess_set",
+	"writ": "_scroll", "watch_keys": "_watch_keys", "grappling_hook": "_grappling_hook",
 }
 
 const GOLD := Color(0.9, 0.6, 0.2)
@@ -751,10 +752,12 @@ static func _chessman(k: MeshKit, xf: Transform3D, kind: String, s: float, col: 
 static func _scroll(k: MeshKit, r: RandomNumberGenerator, t: String):
 	var L := 0.24
 	var R := 0.035
-	var paper := PARCH
-	var deed := t == "deed_scroll"
-	# Tipped so the open lower end, with its spiral, turns toward the viewer.
-	var W := Transform3D.IDENTITY
+	var writ := t == "writ"
+	var paper := Color(0.74, 0.62, 0.44) if writ else PARCH
+	var deed := t == "deed_scroll" or writ
+	# Tipped so the open lower end, with its spiral, turns toward the viewer; the writ
+	# lies on its side as painted.
+	var W := Transform3D(Basis(Vector3.BACK, -PI * 0.5 + 0.22), Vector3.ZERO) if writ else Transform3D.IDENTITY
 	var fl := 1.22 if deed else 1.14
 	_lathe(k, "own:paper", W, [Vector2(R * fl, -L * 0.5), Vector2(R * 1.03, -L * 0.5 + 0.022), Vector2(R, -L * 0.3), Vector2(R, L * 0.3), Vector2(R * 1.02, L * 0.5 - 0.018), Vector2(R * 1.08, L * 0.5)],
 		_mottle(paper, 90.0, 0.14), 32, func(a: float, _t2: float, p: Vector3) -> float: return 1.0 + (0.06 if deed else 0.03) * Provisions._nz(p * Vector3(1.0, 0.3, 1.0), 60.0))
@@ -771,7 +774,11 @@ static func _scroll(k: MeshKit, r: RandomNumberGenerator, t: String):
 			ItemModels._torus(k, "own:satin", W * Transform3D(Basis(Vector3.BACK, s * 0.6) * Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3(1.0, 0.4, 1.0)), Vector3(s * 0.017, 0.018, R + 0.008)), 0.016, 0.005, 16, 5, red.lightened(0.05))
 			ItemModels._tube(k, "own:satin", W, PackedVector3Array([Vector3(0, 0.012, R + 0.007), Vector3(s * 0.006 + 0.004, -0.006, R + 0.016), Vector3(s * 0.012 + 0.024, -0.03, R + 0.012), Vector3(s * 0.01 + 0.046, -0.05, R + 0.004)]),
 				PackedFloat32Array([0.0045, 0.005, 0.005, 0.0045]), 6, red)
-		k.sphere("own:satin", W * _at(0, 0.013, R + 0.008), 0.0075, 6, 8, 0.1, 1.0, red.darkened(0.1))
+		if writ:
+			# The town's red seal pressed over the knot.
+			_seal(k, W * Transform3D(FRONT, Vector3(0, 0.012, R + 0.013)), 0.024, Color(0.6, 0.05, 0.04), "lion")
+		else:
+			k.sphere("own:satin", W * _at(0, 0.013, R + 0.008), 0.0075, 6, 8, 0.1, 1.0, red.darkened(0.1))
 		return Vector3.ZERO
 	# The cord: two turns round the middle, the loose ends hanging.
 	var cord := Color(0.42, 0.28, 0.16)
@@ -1226,3 +1233,64 @@ static func _music_player(k: MeshKit, _r: RandomNumberGenerator, _t: String):
 		ItemModels._torus(k, "im:metal@0.3", Transform3D(FRONT, bp + Vector3(0, 0, 0.006)), 0.0082, 0.0019, 16, 5, Color(0.12, 0.38, 0.75))
 		ItemModels._disc(k, "own:rubber", Transform3D.IDENTITY, bp + Vector3(0, 0, 0.0075), Vector3.BACK, 0.0075, 14, Color(0.05, 0.05, 0.06))
 	return Vector3(0, 0.05, 0)
+
+## The watch's keys: four long iron keys, rust-dark, hanging from an iron ring with a
+## knotted leather thong, each with a round bow, a collar and a bit cut into wards.
+static func _watch_keys(k: MeshKit, r: RandomNumberGenerator, _t: String):
+	var iron := Color(0.22, 0.19, 0.17)
+	var m := "im:metal@0.8"
+	var RR := 0.03
+	ItemModels._torus(k, m, _at(0, 0, 0, FRONT), RR, 0.0032, 36, 6, iron.darkened(0.1))
+	var thong := Color(0.4, 0.22, 0.12)
+	ItemModels._torus(k, "own:leather", Transform3D(FRONT, Vector3(RR * 0.75, RR * 0.66, 0)), 0.007, 0.003, 14, 5, thong)
+	k.sphere("own:leather", _at(RR * 0.95, RR * 0.45, 0.002), 0.006, 6, 10, 0.2, 0.8, thong.darkened(0.1))
+	for i in 4:
+		var a := lerpf(-PI * 0.5 - 0.75, -PI * 0.5 + 0.75, i / 3.0)
+		var at := Vector3(cos(a), sin(a), 0) * RR
+		var lean := (a + PI * 0.5) * 0.45
+		var col := iron.darkened(r.randf_range(-0.08, 0.12))
+		_iron_key(k, Transform3D(Basis(Vector3.BACK, lean), at + Vector3(0, 0, (i % 2) * 0.004 - 0.002)), r.randf_range(0.085, 0.1), col, r)
+	return Vector3.ZERO
+
+## One plain iron key hanging from the origin: the bow's ring, a collar, the shank and
+## its bit (to +X), facing +Z.
+static func _iron_key(k: MeshKit, xf: Transform3D, L: float, col: Color, r: RandomNumberGenerator) -> void:
+	var m := "im:metal@0.8"
+	var br := 0.0095
+	ItemModels._torus(k, m, xf * _at(0, -br, 0, FRONT), br, 0.0024, 20, 6, col)
+	var rad := 0.0026
+	k.cylinder(m, xf * _at(0, -L, 0), rad, rad * 1.1, L - br * 2.0, 10, true, 0.0, 1, col)
+	ItemModels._torus(k, m, xf * _at(0, -br * 2.0 - 0.003, 0), rad * 1.2, rad * 0.55, 12, 5, col.lightened(0.05))
+	var bh := 0.014
+	k.box(m, xf * _at(rad + 0.0045, -L + bh * 0.5 + 0.002, 0), Vector3(0.009, bh, rad * 1.1), col.darkened(0.05))
+	for j in 2:
+		var y := -L + 0.004 + j * 0.006 + r.randf_range(0.0, 0.002)
+		k.box(m, xf * _at(rad + 0.0095, y, 0), Vector3(0.004, 0.003, rad * 1.1), col.darkened(0.05))
+
+## A grappling hook: a forged iron shank with an eye at the top, three barbed tines
+## curling up from its crown, and a coil of rope tied through the eye.
+static func _grappling_hook(k: MeshKit, _r: RandomNumberGenerator, _t: String):
+	var iron := Color(0.17, 0.165, 0.16)
+	var m := "im:metal@0.8"
+	k.cylinder(m, _at(0, 0.028, 0), 0.0075, 0.0065, 0.17, 14, true, 0.0, 1, iron)
+	ItemModels._torus(k, m, _at(0, 0.21, 0, FRONT), 0.012, 0.0042, 22, 7, iron.darkened(0.05))
+	ItemModels._torus(k, m, _at(0, 0.19, 0), 0.0082, 0.0025, 14, 5, iron.lightened(0.06))
+	k.sphere(m, _at(0, 0.03, 0), 0.0115, 7, 12, 0.0, 1.0, iron)
+	for az: float in [0.3, PI - 0.3, -PI * 0.5]:
+		var d := Vector3(cos(az), 0, sin(az))
+		var prof := [Vector2(0.0, 0.032), Vector2(0.018, 0.01), Vector2(0.046, 0.002), Vector2(0.074, 0.014), Vector2(0.09, 0.042), Vector2(0.094, 0.08)]
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for i in prof.size():
+			path.append(d * prof[i].x + Vector3(0, prof[i].y, 0))
+			radii.append(lerpf(0.0085, 0.0012, pow(float(i) / (prof.size() - 1), 1.5)))
+		ItemModels._tube(k, m, _at(0, 0, 0), path, radii, 8, iron.lightened(0.03))
+		# The barb, turned back down inside the point.
+		ItemModels._tube(k, m, _at(0, 0, 0), PackedVector3Array([d * 0.092 + Vector3(0, 0.066, 0), d * 0.08 + Vector3(0, 0.052, 0)]), PackedFloat32Array([0.0032, 0.0008]), 6, iron)
+	# The rope: tied through the eye and coiled beside the shank.
+	var rope := Color(0.4, 0.27, 0.14)
+	var coil := Transform3D(Basis(Vector3.UP, 0.5) * FRONT * Basis(Vector3.RIGHT, 0.25), Vector3(0.075, 0.16, -0.02))
+	for i in 7:
+		ItemModels._torus(k, "im:rope", coil * _at(sin(i * 1.7) * 0.003, (i - 3.0) * 0.0105, cos(i * 1.3) * 0.003), 0.045 + sin(i * 2.1) * 0.003, 0.0066, 28, 6, rope.darkened(0.05 * (i % 2)))
+	ItemModels._tube(k, "im:rope", _at(0, 0, 0), PackedVector3Array([Vector3(0, 0.222, 0.0), Vector3(0.015, 0.232, 0.005), Vector3(0.035, 0.22, 0.006), Vector3(0.045, 0.2, 0.0)]), PackedFloat32Array([0.0045, 0.0048, 0.0048, 0.0048]), 6, rope)
+	return Vector3(0, 0.12, 0)
