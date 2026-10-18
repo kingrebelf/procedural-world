@@ -320,7 +320,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	_spinning = spin != 0.0
 	if burn > 0:
-		_burn_near(Vector3(look_at.x, tgt_h, look_at.y))
+		_burn_near(Vector3(look_at.x, tgt_h, look_at.y), Vector3(at.x, y, at.y))
 	await _settle(p)
 	# The clock ran on while things settled (a game hour per real minute).
 	Game.day = day
@@ -344,19 +344,28 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	print("  %d ms after arriving, %d fps, cloud cover %.2f, underground %.2f" % [Time.get_ticks_msec() - arrived,
 		Engine.get_frames_per_second(), float(world.atmosphere.sky_mat.get_shader_parameter("cloud_cover")), world.atmosphere.underground])
 
-## --burn: the nearest things that burn round `at`, set well alight.
-func _burn_near(at: Vector3) -> void:
+## --burn: the things that burn nearest `at` that the eye at `eye` looks towards, set
+## well alight, as fires that have been going a while (scorched already).
+func _burn_near(at: Vector3, eye: Vector3) -> void:
 	var fs := FireSystem.current
 	if fs == null:
 		return
+	var look := Vector2(at.x - eye.x, at.z - eye.z).normalized()
 	var found: Array = []
-	for e in fs.near(AABB(at - Vector3(70, 40, 70), Vector3(140, 80, 140)), 0.0):
+	for e in fs.near(AABB(at - Vector3(90, 40, 90), Vector3(180, 80, 180)), 0.0):
 		var node: ChunkNode = e[0]
 		var o: Dictionary = node.get_object(int(e[1]))
-		if not o.is_empty() and FireSim.burns(o["t"]) and ObjectLibrary.kind(o["t"]) != "tree":
-			found.append([(e[2] as AABB).get_center().distance_to(at), node, int(e[1])])
+		if o.is_empty() or not FireSim.burns(o["t"]) or ObjectLibrary.kind(o["t"]) == "tree":
+			continue
+		var c := (e[2] as AABB).get_center()
+		var to := Vector2(c.x - eye.x, c.z - eye.z)
+		# In the frame (within ~35 degrees of the view) and not right under the eye.
+		if to.length() < 6.0 or to.normalized().dot(look) < 0.82:
+			continue
+		found.append([c.distance_to(at), node, int(e[1]), String(o["t"])])
 	found.sort_custom(func(a, b): return a[0] < b[0])
 	var lit := 0
+	var kinds: Array = []
 	for f in found:
 		if lit >= burn:
 			break
@@ -364,8 +373,10 @@ func _burn_near(at: Vector3) -> void:
 			var st: Dictionary = (f[1] as ChunkNode).get_object(f[2])["st"]
 			if st.has("fire"):
 				st["fire"]["h"] = 0.9
+				st["char"] = maxf(float(st.get("char", 0.0)), 0.55)
+			kinds.append(f[3])
 			lit += 1
-	print("  set %d fires (of %d that burn nearby)" % [lit, found.size()])
+	print("  set %d fires (of %d that burn in view): %s" % [lit, found.size(), ", ".join(kinds)])
 
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
