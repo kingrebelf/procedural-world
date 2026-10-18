@@ -118,6 +118,20 @@ func _apply_hud_mode() -> void:
 			c.reparent(hold, false)
 	print("hud mode ", hud_mode)
 
+## --hud=none: the name tags over people go on a layer the camera leaves out (animal tags
+## are already off, and shop signs are Label3Ds too, so only a person's own tag moves).
+const TAG_HIDE := 1 << 17
+func _hide_tags() -> void:
+	if hud_mode != "none":
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		cam.cull_mask &= ~TAG_HIDE
+	for l in get_tree().root.find_children("*", "Label3D", true, false):
+		if l.get_parent() is NPC:
+			(l as Label3D).layers = TAG_HIDE
+	await _wait(6)
+
 func _wait(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
@@ -345,6 +359,7 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if hold == "none" and not p.holstered:
 		p.holster(true)
 		await _wait(12)
+	await _hide_tags()
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
@@ -1722,6 +1737,7 @@ func _snap(name: String) -> void:
 		if hold == "none" and pl is Player and not pl.holstered:
 			pl.holster(true)
 			await _wait(12)
+		await _hide_tags()
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join(name + ".png"))
 		print("captured ", name)
 
@@ -2038,6 +2054,7 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	await _settle(p)
 	world.atmosphere.underground = world.atmosphere._under_target
 	await _wait(20)
+	await _hide_tags()
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
