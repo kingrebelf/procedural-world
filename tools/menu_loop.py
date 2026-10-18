@@ -47,7 +47,7 @@ def build(takes, out):
     total = t + X
     lines.append("[%s]null[vout]" % prev)
     args = ["ffmpeg", "-y", "-hide_banner"] + inputs + ["-filter_complex", ";".join(lines), "-map", "[vout]", "-an",
-            "-c:v", "libtheora", "-b:v", "3000k", "-g", "60", "-r", str(FPS), out]
+            "-pix_fmt", "yuv420p", "-c:v", "libtheora", "-b:v", "3000k", "-g", "60", "-r", str(FPS), out]
     return args, total
 
 
