@@ -144,9 +144,9 @@ func _run_job(job: Dictionary) -> void:
 	var k: Vector2i = job["key"]
 	var res := {"key": k, "mode": job["mode"], "lod": job["lod"]}
 	# Crash breadcrumb: a "start" with no "done" after it names the chunk a crash was building.
-	var t0 := Time.get_ticks_msec()
+	var what := "chunk %s %s" % [k, job["mode"]]
 	if not preview:
-		CrashLog.note("chunk %s %s start" % [k, job["mode"]])
+		CrashLog.job_start(what)
 	var chunk: Dictionary
 	if job.has("given"):
 		chunk = job["given"]
@@ -199,7 +199,7 @@ func _run_job(job: Dictionary) -> void:
 			elif not String(mk).begins_with("~"):
 				ObjectLibrary.get_mesh(mk)
 	if not preview:
-		CrashLog.note("chunk %s %s done %d ms" % [k, job["mode"], Time.get_ticks_msec() - t0])
+		CrashLog.job_done(what)
 	_mutex.lock()
 	_results.append(res)
 	_mutex.unlock()
