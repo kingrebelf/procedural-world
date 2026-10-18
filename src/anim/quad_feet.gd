@@ -57,7 +57,7 @@ func _process_modification_with_delta(delta: float) -> void:
 		return
 	var dt := clampf(delta, 0.0, 0.1)
 	# Switched off a while (far away, out of sight): where the feet were is stale.
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	if now - _last_ms > 250:
 		reset()
 	_last_ms = now

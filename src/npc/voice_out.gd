@@ -53,7 +53,7 @@ func say(rec: Dictionary, text: String, dist: float, interrupt: bool, node: Node
 		# A passer-by: only when nobody is talking, and within the budget.
 		if busy():
 			return
-		var t := Time.get_ticks_msec() / 1000.0
+		var t := GameClock.sec()
 		while not _barks.is_empty() and t - float(_barks[0]) > 60.0:
 			_barks.pop_front()
 		if not _cache.has(k):

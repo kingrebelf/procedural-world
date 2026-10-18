@@ -173,7 +173,7 @@ func row(on: bool, offset := 0.0) -> void:
 ## Where in the stroke a rower is (0..1): 0..0.4 the drive (blades in, pulling), the
 ## rest the recovery.
 static func row_phase(offset: float) -> float:
-	return fmod(Time.get_ticks_msec() / 1000.0 / ROW_PERIOD + offset, 1.0)
+	return fmod(GameClock.sec() / ROW_PERIOD + offset, 1.0)
 
 ## How far through the pull the hands are: 0 reaching forward at the catch, 1 drawn in
 ## at the finish.
@@ -201,7 +201,7 @@ func _process_modification() -> void:
 		return
 	if _frame == Basis():
 		_setup(sk)
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	var dt := clampf((now - _last) / 1000.0, 0.0, 0.1) if _last > 0 else 0.0
 	_last = now
 	if not reach_r.is_empty():

@@ -400,7 +400,7 @@ func _update_time_of_day() -> void:
 	sky_mat.set_shader_parameter("horizon_day", sky_tint.lerp(Color(0.85, 0.88, 0.92), 0.6).lerp(Color(1.0, 0.7, 0.52), golden * 0.5))
 	sky_mat.set_shader_parameter("era_fantasy", _w[Eras.FANTASY])
 	sky_mat.set_shader_parameter("era_scifi", _w[Eras.SCIFI])
-	sky_mat.set_shader_parameter("time_s", Time.get_ticks_msec() / 1000.0)
+	sky_mat.set_shader_parameter("time_s", GameClock.sec())
 
 	var fog_c: Color = _blend(Eras.FOG_COLOR)
 	# Night haze: moonlit air is a dim blue-grey, so the far land fades instead of

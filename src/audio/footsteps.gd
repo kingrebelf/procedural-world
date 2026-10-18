@@ -85,7 +85,7 @@ func ride(v: Vehicle, delta: float) -> void:
 ## What the player is standing on, as a step/ sound name (or "sand", "wade").
 static func surface(pl: Player) -> String:
 	var p := pl.global_position
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	if Water.surface_height(p.x, p.z, t_water) > p.y + 0.15:
 		return "wade"
 	var space := pl.get_world_3d().direct_space_state

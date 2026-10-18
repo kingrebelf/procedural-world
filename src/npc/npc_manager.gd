@@ -58,7 +58,7 @@ func _exit_tree() -> void:
 	save_all()
 
 func now() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return GameClock.sec()
 
 func ground(x: float, z: float) -> float:
 	if streamer == null:

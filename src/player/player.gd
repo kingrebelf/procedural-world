@@ -457,7 +457,7 @@ func _physics_process(delta: float) -> void:
 	var landed_vy := 0.0
 
 	# Water: swim (Swim) once it is chest-deep; wade below that.
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	swimming = surface - global_position.y > 1.15
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
@@ -1633,7 +1633,7 @@ func _cast_line() -> void:
 	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * CAST_RANGE, 1 | 2, [get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var far: float = from.distance_to(hit["position"]) if hit.has("position") else CAST_RANGE
-	var tw := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var tw := fmod(GameClock.sec(), 3600.0)
 	var wet := false
 	var d := 2.0
 	while d <= far:
@@ -2185,7 +2185,7 @@ func _ride(delta: float) -> void:
 		if not ui_open and Input.is_action_just_pressed("use"):
 			Cannon.use(self, v)
 	steps.ride(v, delta)
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
 	if underwater:
 		breath = maxf(0.0, breath - delta)
