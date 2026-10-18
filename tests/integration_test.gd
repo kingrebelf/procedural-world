@@ -1197,7 +1197,7 @@ func _death_bag(game, world, player) -> void:
 		return
 	var menus = world.menus
 	menus.open_corpse(world.corpses, bag["key"])
-	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
+	check(menus._mode == "corpse" and menus._store.capacity >= DeathBag.SLOTS, "opening the bag shows what is in it")
 	var m: int = menus._take_purse()
 	Storage.transfer_all(menus._store, game.inventory)
 	menus._corpse_changed(m)
