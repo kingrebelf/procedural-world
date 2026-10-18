@@ -31,9 +31,9 @@ const MAX_BURNING := 48
 ## By the fire_fx setting (Low, Normal, High): fires drawn with flames (nearest first),
 ## lit, and lit with shadows, and the smoke particles over each.
 const QUALITY := [
-	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 56},
-	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 104},
-	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 150},
+	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 70},
+	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 130},
+	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 190},
 ]
 static var quality := 1
 const SOUNDS := 4
@@ -1034,12 +1034,12 @@ class FireVis extends Node3D:
 		# another as a column (not puffs scattered over the sky), widening as it goes.
 		_smoke_mat.emission_box_extents = Vector3(box.size.x * 0.22, 0.3, box.size.z * 0.22)
 		_smoke_mat.direction = Vector3.UP
-		_smoke_mat.spread = 5.0
-		_smoke_mat.initial_velocity_min = 2.0
-		_smoke_mat.initial_velocity_max = 2.8
-		_smoke_mat.gravity = Vector3(0, 0.3, 0)
-		_smoke_mat.damping_min = 0.2
-		_smoke_mat.damping_max = 0.3
+		_smoke_mat.spread = 4.0
+		_smoke_mat.initial_velocity_min = 4.0
+		_smoke_mat.initial_velocity_max = 4.6
+		_smoke_mat.gravity = Vector3(0, 0.15, 0)
+		_smoke_mat.damping_min = 0.3
+		_smoke_mat.damping_max = 0.36
 		_smoke_mat.angle_min = -180.0
 		_smoke_mat.angle_max = 180.0
 		_smoke_mat.angular_velocity_min = -12.0
@@ -1060,9 +1060,9 @@ class FireVis extends Node3D:
 		g.set_color(1, Color(1, 1, 1, 0.0))
 		# Each puff is thin and they overlap: the plume is dense where many are, not
 		# where one is, so it has no edges of its own.
-		g.add_point(0.05, Color(0.8, 0.8, 0.8, 0.6))
-		g.add_point(0.45, Color(1, 1, 1, 0.4))
-		g.add_point(0.8, Color(1, 1, 1, 0.15))
+		g.add_point(0.04, Color(0.8, 0.8, 0.8, 0.9))
+		g.add_point(0.45, Color(1, 1, 1, 0.65))
+		g.add_point(0.8, Color(1, 1, 1, 0.28))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
 		_smoke_mat.color_ramp = gt
@@ -1071,11 +1071,11 @@ class FireVis extends Node3D:
 		_smoke_mat.turbulence_noise_strength = 1.0
 		_smoke_mat.turbulence_noise_scale = 14.0
 		_smoke_mat.turbulence_noise_speed_random = 0.1
-		_smoke_mat.turbulence_influence_min = 0.02
-		_smoke_mat.turbulence_influence_max = 0.05
+		_smoke_mat.turbulence_influence_min = 0.01
+		_smoke_mat.turbulence_influence_max = 0.03
 		_smoke.process_material = _smoke_mat
 		var q := QuadMesh.new()
-		q.size = Vector2.ONE * clampf(big * 0.35, 1.2, 4.0) * (0.6 if _ground else 1.0)
+		q.size = Vector2.ONE * clampf(big * 0.45, 1.6, 5.0) * (0.6 if _ground else 1.0)
 		q.material = _smoke_draw
 		_smoke.draw_pass_1 = q
 		_smoke.emitting = true
@@ -1164,16 +1164,19 @@ class FireVis extends Node3D:
 		var ws: float = env.get("wind", 0.3)
 		var wd: Vector2 = env.get("wind_dir", Vector2(0.8, 0.6))
 		var rain: float = env.get("rain", 0.0)
-		# The wind takes the plume from the moment it leaves the fire and bends it over
-		# further the higher it climbs: a column leaning downwind (Atmosphere's wind).
-		_smoke_mat.direction = Vector3(wd.x * ws * 1.4, 1.0, wd.y * ws * 1.4).normalized()
-		_smoke_mat.gravity = Vector3(wd.x * ws * 3.6, 0.25 + h * 0.45, wd.y * ws * 3.6)
+		# Billows straight up off the fire, hot and fast (all at one speed, so it climbs as
+		# one column), slows as it cools, and the wind (Atmosphere's) bends it over and
+		# carries it off the higher it gets.
+		_smoke_mat.direction = Vector3.UP
+		_smoke_mat.gravity = Vector3(wd.x * ws * 2.8, 0.1 + h * 0.3, wd.y * ws * 2.8)
+		var rise := 2.4 + h * 2.6
+		_smoke_mat.initial_velocity_min = rise
+		_smoke_mat.initial_velocity_max = rise + 0.5
 		# Thick dark smoke off a fire well alight; pale off a smoulder; whiter in rain
 		# (steam).
-		var tone := lerpf(0.55, 0.13, smoothstep(0.2, 0.8, h)) if not _ruin else 0.5
+		var tone := lerpf(0.5, 0.07, smoothstep(0.15, 0.7, h)) if not _ruin else 0.5
 		tone = lerpf(tone, 0.75, rain * 0.6)
 		_smoke_mat.color = Color(tone, tone * 0.97, tone * 0.94, clampf(0.25 + h * 0.75 + smoulder, 0.0, 1.0))
-		_smoke_mat.initial_velocity_max = 1.6 + h * 3.0
 		_apply()
 
 	func _apply() -> void:
