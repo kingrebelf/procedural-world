@@ -11,6 +11,9 @@ const KINDS := {
 	"blue": [Color(0.18, 0.22, 0.31), Color(0.39, 0.17, 0.13), Color(0.66, 0.61, 0.50), Color(0.52, 0.42, 0.23), Color(0.16, 0.12, 0.09), 0],
 	"felt": [Color(0.30, 0.33, 0.37), Color(0.22, 0.24, 0.27), Color(0.55, 0.54, 0.51), Color(0.47, 0.44, 0.38), Color(0.15, 0.16, 0.17), 1],
 }
+## Loaded with this script, on the main thread: the rooms are built on the chunk workers,
+## and a first load() of the shader there, under Materials' lock, can stall the game.
+const SHADER := preload("res://src/world/shaders/rug.gdshader")
 const PILE := 0.012
 const FRINGE := 0.075
 const FRINGE_GAP := 0.02
@@ -63,7 +66,7 @@ static func material(name: String) -> Material:
 	var parts := name.split(":")
 	var pal: Array = KINDS.get(parts[1], KINDS["red"])
 	var m := ShaderMaterial.new()
-	m.shader = load("res://src/world/shaders/rug.gdshader")
+	m.shader = SHADER
 	m.resource_name = name
 	m.set_shader_parameter("size_m", Vector2(float(parts[2]) / 100.0, float(parts[3]) / 100.0))
 	m.set_shader_parameter("field_col", pal[0])
