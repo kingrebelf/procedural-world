@@ -335,6 +335,7 @@ func _light() -> void:
 	var thick := rain * 0.0016 + storm * 0.0018 + precip * snow * (0.004 + wind * 0.012) + dust * 0.014 + mist * 0.0035
 	thick *= 1.0 - atmosphere.underground
 	var k := clampf(thick * 400.0, 0.0, 1.0)
+	atmosphere.reflect_mul = lerpf(1.0, 0.4, k)
 	# (Set once by the atmosphere, so set here from its own value every frame.)
 	env.fog_aerial_perspective = AERIAL * (1.0 - k * 0.7)
 	if thick > 0.0:
