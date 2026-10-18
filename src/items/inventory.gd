@@ -262,8 +262,12 @@ func from_data(d: Dictionary) -> void:
 	for i in slots.size():
 		if slots[i] != null:
 			last = i
-	if last + 1 > capacity:
-		capacity = (int(ceil(float(last + 1) / ROW)) * ROW) if grows else last + 1
+	if grows:
+		# A growing pack loads at the size it was saved (whole rows, at least SIZE), so it
+		# saves back the same: one that had grown loaded back short.
+		capacity = maxi(SIZE, int(ceil(float(maxi(slots.size(), last + 1)) / ROW)) * ROW)
+	elif last + 1 > capacity:
+		capacity = last + 1
 	slots.resize(capacity)
 	next_uid = d.get("next_uid", 1)
 	_compact()
@@ -280,4 +284,3 @@ func _compact() -> void:
 			if o != null and o["type"] == s["type"] and stacks(o) and s["qty"] + o["qty"] <= STACK_MAX:
 				merge_into(s, o, o["qty"])
 				slots[j] = null
-	trim()
