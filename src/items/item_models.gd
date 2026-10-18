@@ -133,11 +133,16 @@ static func _build(t: String) -> ArrayMesh:
 		ra.seed = WHash.str_hash(t)
 		_armour(ka, ra, t)
 		var am := ka.commit(mat)
+		var slot := String(ItemDB.def(t).get("slot", ""))
+		var lk := Outfit.look_of({"type": t})
+		if slot in ["hands", "feet"] or slot == "legs" and not lk["style"] in [Outfit.STYLE_LEATHER, Outfit.STYLE_CLOTH, Outfit.STYLE_MAIL]:
+			# Gloves, boots and greaves come in pairs, as their icons show them.
+			am = WearModels.paired(am, 0.02)
 		if String(ItemDB.def(t).get("slot", "")) == "chest" and Outfit.look_of({"type": t})["style"] == Outfit.STYLE_MAIL:
 			# Held by the top fold of the bundle.
 			am.set_meta("grip", Vector3(0, 0.11, 0))
 			am.set_meta("grip_r", 0.03)
-		if String(ItemDB.def(t).get("slot", "")) == "head":
+		if slot == "head" and not WearModels.has(t):
 			# A helm is carried crown forward, the way a hand holds one by the back of its
 			# rim, so the skull and nasal show and not the lining.
 			am = _transformed(am, Transform3D(Basis(Vector3.RIGHT, 0.75), Vector3.ZERO))
@@ -1235,11 +1240,15 @@ static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 		c = c.darkened(0.3)
 	var soft := style == Outfit.STYLE_LEATHER or style == Outfit.STYLE_CLOTH
 	var trim := "im:hide" if soft else ("im:composite" if style == Outfit.STYLE_EXO else m)
+	if WearModels.has(t):
+		# Pieces whose icon shows a shape of their own (a great helm, a gas mask, a watch).
+		WearModels.build(k, r, t, m, c, style)
+		return
 	match String(d.get("slot", "")):
 		"head": _helm(k, m, c, style, trim)
 		"chest": _hauberk(k, r, m, c) if style == Outfit.STYLE_MAIL else _cuirass(k, r, m, c, style, soft)
 		"hands": _gauntlet(k, m, c, style, soft)
-		"legs": _greave(k, m, c, style, soft)
+		"legs": WearModels.trousers(k, m, c) if soft or style == Outfit.STYLE_MAIL else _greave(k, m, c, style, soft)
 		"feet": _boot(k, m, c, style, soft)
 		"ring": _ring(k, t, c)
 		"neck": _amulet(k, t, c)
@@ -1453,7 +1462,8 @@ static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -
 	# A gauntlet as a hand just left it: a leather glove underneath, fingers half curled,
 	# the thumb apart. Plate adds a flared hourglass cuff with a rolled rim, a domed plate
 	# over the back of the hand and small overlapping scales along each finger.
-	var glove := "leather" if not soft else m
+	# A suit's gloves are the suit's own material, not leather under plates.
+	var glove := "leather" if not soft and style != Outfit.STYLE_EXO else m
 	var gc := Color.WHITE if glove == "leather" else c
 	# Palm and back of the hand: a flattened, slightly cupped body.
 	k.sphere(glove, Transform3D(Basis.from_scale(Vector3(1.05, 1.2, 0.38)), Vector3(0, 0.075, 0.0)), 0.04, 8, 14, 0.04, 1.0, gc)
@@ -1695,9 +1705,11 @@ static func _make(n: String) -> Material:
 		m.refraction_enabled = true
 		m.refraction_scale = 0.04
 		if n.begins_with("crystal_glow:"):
-			var s: Array = SHAPES[n.substr(13)]
+			# Its glow: the colour of the item's own crystals, or one given as hex
+			# ("crystal_glow:8a6cff"), else alien violet.
+			var id := n.substr(13)
 			m.emission_enabled = true
-			m.emission = s[1]
+			m.emission = SHAPES[id][1] if SHAPES.has(id) else (Color.html(id) if Color.html_is_valid(id) else Color(0.55, 0.45, 0.95))
 			m.emission_energy_multiplier = 0.35
 		return m
 	match n:

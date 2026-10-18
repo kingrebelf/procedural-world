@@ -104,7 +104,7 @@ func _run() -> void:
 			var mc := Color(0, 0, 0, 0)
 			if mesh != null:
 				span = _longest(mesh.get_aabb())
-				var shot := await _shoot(mesh, tag)
+				var shot := await _shoot(mesh, String(ItemDB.def(t).get("kind", "")))
 				shot.resize(size, size, Image.INTERPOLATE_LANCZOS)
 				mc = mean_colour(shot)
 				page.blend_rect(shot, Rect2i(0, 0, size, size), Vector2i(ox + size, oy))
@@ -197,10 +197,10 @@ func _stage() -> void:
 	_holder = Node3D.new()
 	_vp.add_child(_holder)
 
-## The model posed like its icon: handle-along-+Y things lie diagonally with the grip at the
-## bottom left, guns (barrel along -Z) are seen side-on pointing right, the rest from the
+## The model posed like its icon: tools and weapons long along +Y lie diagonally with the
+## grip at the bottom left, guns (barrel along -Z) are seen side-on pointing right, the rest from the
 ## front and a little above (ItemModels and Provisions show their best face on +Z).
-func _shoot(mesh: Mesh, tag: String) -> Image:
+func _shoot(mesh: Mesh, kind: String) -> Image:
 	for c in _holder.get_children():
 		c.queue_free()
 	var mi := MeshInstance3D.new()
@@ -215,7 +215,7 @@ func _shoot(mesh: Mesh, tag: String) -> Image:
 		# Barrel along -Z: turn so it points along +X (screen right), tip it up a touch.
 		pivot.basis = Basis(Vector3.UP, PI * 0.5).rotated(Vector3(0, 0, 1), 0.12)
 		_frame(pivot, Vector3(0.05, 0.12, 1.0))
-	elif s.y > maxf(s.x, s.z) * 1.8:
+	elif s.y > maxf(s.x, s.z) * 1.8 and kind in ["tool", "weapon", "light"]:
 		# Long along +Y: grip bottom-left, tip top-right; the broad side (axe or pick head,
 		# blade flat) faces the camera.
 		var turn := 0.0 if s.x >= s.z else PI * 0.5
