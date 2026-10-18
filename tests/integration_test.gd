@@ -494,6 +494,11 @@ func _frames(n: int) -> void:
 		await process_frame
 
 func _run() -> void:
+	# Free pieces you build stand level on the floor under them, out of walls and pieces.
+	var rest: Dictionary = await ProbeRest.run(self, Vector3(0, 3000, 0))
+	for l in rest["lines"]:
+		print("  ", l)
+	check(rest["bad"] == 0, "built tables, chests and crates rest on their floor, clear of walls")
 	var game = root.get_node("/root/Game")
 	game.new_world("Integration", "424242")
 	var world_id: String = game.store.root.get_file()
@@ -892,8 +897,11 @@ func _run() -> void:
 		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
 	# A starship climbs where you look, won't let you step out in mid-air, and lands.
 	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
-	for i in 30:
+	# (Until it touches down: on a fast runner 30 frames weren't always enough.)
+	for i in 240:
 		await physics_frame
+		if ship == null or (i >= 30 and ship.is_on_floor()):
+			break
 	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
 	player.mount(ship)
 	var y0s: float = ship.global_position.y
@@ -1457,7 +1465,7 @@ func _town_gate(game, world, player) -> void:
 	var data := {"sx": 9997, "sz": 9996, "era": Eras.MEDIEVAL, "center": c, "name": "Gatehold", "npcs": [guard, friend], "rumors": [], "sim_day": -1.0}
 	var sid := "%d:9997_9996" % game.planet
 	var e := {"data": data, "nodes": [], "dirty": false, "site": site, "outer": 40.0, "sid": sid, "transient": true,
-		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate]}}
+		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate], "postern": {}}}
 	npcs.settlements["9997_9996"] = e
 	var gn: NPC = npcs._add_node(e, guard)
 	var fn: NPC = npcs._add_node(e, friend)
@@ -1466,6 +1474,7 @@ func _town_gate(game, world, player) -> void:
 	var wait := func(): await create_timer(0.4).timeout
 	# Walk up to the gate: the guard stops you.
 	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
 	await wait.call()
 	check(game.standing.towns.has(sid) and game.standing.towns[sid]["name"] == "Gatehold", "a town you come near is noted")
 	var o: Dictionary = npcs.gates.options(gn)
@@ -1480,6 +1489,7 @@ func _town_gate(game, world, player) -> void:
 	game.standing.revoke(sid)
 	gn.rec["dead"] = true
 	player.global_position = Vector3(c.x - 10.0, at.y, c.y)
+	player.velocity = Vector3.ZERO
 	await wait.call()
 	check(e["gate"]["inside"] and game.crime.owed(sid, game.day) == 0, "with nobody watching you slip in")
 	# A guard who doesn't know you, up close and facing you, asks for your pass, then fines you.
@@ -1507,6 +1517,120 @@ func _town_gate(game, world, player) -> void:
 	var rel0 := int(friend["rel"])
 	game.add_bounty(sid, "Gatehold", 20, "Theft")
 	check(int(friend["rel"]) < rel0 - 20 and not game.standing.has_pass(sid, game.day), "break the law and they're shamed, and the pass is gone")
+	# At night a strict town's portcullis comes down for a stranger, and rises for a pass.
+	game.crime = Crime.new()
+	game.standing.revoke(sid)
+	var day0: float = game.day
+	game.day = floorf(game.day) + 23.0 / 24.0
+	var tp: Dictionary = GatePolicy.temper(site, data)
+	tp["night_shut"] = true
+	tp["need"] = 90
+	e["gate"]["tp"] = tp
+	e["gate"]["folk_t"] = 1e12
+	npcs.gates._ports[sid] = [npcs.gates._make_port(Transform3D(Basis(), Vector3(gate.x, at.y, gate.y)))]
+	player.global_position = Vector3(gate.x - 8.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
+	for i in 10:
+		await wait.call()
+	var pt: Dictionary = npcs.gates._ports[sid][0]
+	check(npcs.gates.gate_shut(sid) and not (pt["body"] as CollisionShape3D).disabled, "at night the portcullis comes down and bars the way")
+	game.standing.give_pass(sid, game.day + 1.0, "toll")
+	for i in 10:
+		await wait.call()
+	check(not npcs.gates.gate_shut(sid) and (pt["body"] as CollisionShape3D).disabled, "with leave it is wound up again")
+	game.day = day0
+	game.standing.revoke(sid)
+	# Over the wall with a rope, away from the gate.
+	gn.rec["dead"] = true
+	player.global_position = Vector3(c.x, at.y, c.y + 24.5)
+	player.velocity = Vector3.ZERO
+	await _frames(2)
+	var us: Array = npcs.gates.usables(player.global_position)
+	check(us.size() == 1 and String(us[0]["verb"]).begins_with("Climb over the wall"), "a stretch of wall away from the gate can be climbed (%s)" % str(us))
+	game.inventory.add(ItemDB.make("rope", 3, 1.0, {}))
+	var ropes: int = game.inventory.count("rope")
+	if not us.is_empty():
+		npcs.gates.use(sid, player)
+		for i in 14:
+			await wait.call()
+	var pin := Vector2(player.global_position.x, player.global_position.z)
+	check(pin.distance_to(c) < 20.0 and not player.script_move, "you climb up, over and down inside (%.1f m from the middle)" % pin.distance_to(c))
+	check(game.inventory.count("rope") == ropes - GateWatch.CLIMB_ROPE, "the rope is left on the wall")
+	# The postern: pick its lock from outside and step through into town.
+	var pst := {"p": c + Vector2(0, -22.5), "yaw": PI, "tier": 1}
+	e["gate"]["postern"] = pst
+	var po: Vector2 = GateWatch.postern_side(pst, true)
+	player.global_position = Vector3(po.x, at.y, po.y)
+	player.velocity = Vector3.ZERO
+	e["gate"]["inside"] = false
+	await _frames(2)
+	if game.inventory.count("lockpick") <= 0:
+		game.inventory.add(ItemDB.make("lockpick", 3, 1.0, {}))
+	var pu: Array = npcs.gates.usables(player.global_position)
+	check(pu.size() == 1 and String(pu[0]["n"]) == "postern:" + sid and String(pu[0]["verb"]).begins_with("Pick the postern"), "a town's postern door can be picked from outside (%s)" % str(pu))
+	npcs.gates.use("postern:" + sid, player)
+	var lui: LockpickUI = player.get_tree().get_first_node_in_group("lockpick_ui")
+	check(lui != null and lui.is_open(), "picking the postern opens the lockpicking minigame")
+	if lui and lui.is_open():
+		lui._opened()
+		for i in 6:
+			await wait.call()
+	var pin2 := Vector2(player.global_position.x, player.global_position.z)
+	check(pin2.distance_to(c) < 21.5 and not player.script_move, "through the postern and into town (%.1f m from the middle)" % pin2.distance_to(c))
+	check(npcs.gates._posterns.get(sid, {}).get("open", false), "a picked postern stays open")
+	# The watch's keys open the postern without picking it.
+	npcs.gates._posterns[sid]["open"] = false
+	game.inventory.add(ItemDB.make("watch_keys", 1, 1.0, {"how": "stolen", "sid": sid}))
+	player.global_position = Vector3(po.x, at.y, po.y)
+	player.velocity = Vector3.ZERO
+	e["gate"]["inside"] = false
+	await _frames(2)
+	var ku: Array = npcs.gates.usables(player.global_position)
+	check(ku.size() == 1 and String(ku[0]["verb"]).contains("watch's keys"), "the watch's keys fit the postern (%s)" % str(ku))
+	npcs.gates.use("postern:" + sid, player)
+	for i in 6:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) < 21.5 and not (lui != null and lui.is_open()), "and you're through without picking it")
+	# A grappling hook gets you back over the wall without leaving rope behind.
+	game.inventory.add(ItemDB.make("grappling_hook", 1, 1.0, {}))
+	var r0: int = game.inventory.count("rope")
+	player.global_position = Vector3(c.x, at.y, c.y + 21.0)
+	player.velocity = Vector3.ZERO
+	await _frames(2)
+	var hu: Array = npcs.gates.usables(player.global_position)
+	check(hu.size() == 1 and String(hu[0]["verb"]).contains("grappling hook"), "a grappling hook climbs the wall (%s)" % str(hu))
+	npcs.gates.use(sid, player)
+	for i in 12:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) > 23.5 and game.inventory.count("rope") == r0 and not player.script_move,
+		"over and out, and the rope is still yours")
+	# A writ of passage from a town whose word reaches here is as good as a pass.
+	check(not npcs.gates.verdict(e)["ok"], "a stranger without leave still isn't let in")
+	game.inventory.add(ItemDB.make("writ", 1, 1.0, {"sid": "%d:1_1" % game.planet, "x": c.x + 300.0, "z": c.y, "until": game.day + 2.0}))
+	check(npcs.gates.verdict(e)["why"] == "pass", "a writ from a town nearby lets you in")
+	game.inventory.remove_type("writ", 1)
+	# In the watch's tabard, guards who don't know you take you for one of their own...
+	game.equipment["back"] = ItemDB.make("watch_tabard", 1, 1.0, {})
+	check(npcs.gates.verdict(e)["why"] == "disguise", "in the watch's tabard you pass for one of them")
+	# ...but one who knows your face sees through it.
+	gn.rec["dead"] = false
+	gn.rec["rel"] = 60
+	gn.action = "idle"
+	gn.global_position = Vector3(gate.x + 2.0, at.y, gate.y)
+	e["gate"]["welcomed"] = false
+	e["gate"]["inside"] = false
+	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
+	game.crime = Crime.new()
+	for i in 6:
+		await wait.call()
+		if game.crime.owed(sid, game.day) > 0:
+			break
+	check(game.crime.owed(sid, game.day) >= Crime.FINES["impersonation"] and npcs.gates.verdict(e)["why"] != "disguise",
+		"a guard who knows you sees through it: posing as the watch (%d)" % game.crime.owed(sid, game.day))
+	game.equipment.erase("back")
+	game.crime = Crime.new()
+	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()
 	var p = game.store.load_player()
@@ -1514,8 +1638,23 @@ func _town_gate(game, world, player) -> void:
 	npcs._unload("9997_9996")
 	game.crime = Crime.new()
 	game.standing.towns.erase(sid)
-	player.global_position = at
-	await _frames(2)
+	# Over the wall and back is a long way: let the ground round where you stood come
+	# back in at full detail before the next checks drive about on it, held still (not
+	# falling) meanwhile, then set down on it.
+	for i in 300:
+		player.global_position = at + Vector3(0, 1.0, 0)
+		player.velocity = Vector3.ZERO
+		await physics_frame
+		if world.streamer.ready_round(at):
+			break
+	var gy: float = npcs.ground(at.x, at.z)
+	player.global_position = Vector3(at.x, (at.y if is_nan(gy) else gy) + 0.1, at.z)
+	player.velocity = Vector3.ZERO
+	for i in 30:
+		await physics_frame
+		if player.is_on_floor():
+			break
+	player.velocity = Vector3.ZERO
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.
@@ -1694,12 +1833,22 @@ func _fire_crew(game, world, player) -> void:
 	var cr := Creature.new()
 	cr.setup("test_fire_animal", ksp, Eras.MEDIEVAL, wp + Vector3(6, 0, 4), world.fauna)
 	world.fauna.add_child(cr)
-	world.fauna._herds[Vector2i(99998, 99998)] = [cr]
+	# In the herd of the chunk it stands in: a herd far from the player is let go (freed)
+	# on the fauna's next refresh, which on a fast runner came within these frames.
+	var hk := ChunkStreamer.chunk_of(wp + Vector3(6, 0, 4))
+	var had_herd: bool = world.fauna._herds.has(hk)
+	if not had_herd:
+		world.fauna._herds[hk] = []
+	world.fauna._herds[hk].append(cr)
 	await _frames(2)
 	fs._scare_animals()
-	check(cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
-	world.fauna._herds.erase(Vector2i(99998, 99998))
-	cr.queue_free()
+	check(is_instance_valid(cr) and cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
+	if world.fauna._herds.has(hk):
+		world.fauna._herds[hk].erase(cr)
+		if not had_herd and world.fauna._herds[hk].is_empty():
+			world.fauna._herds.erase(hk)
+	if is_instance_valid(cr):
+		cr.queue_free()
 	# Out: back to their day, bucket put away.
 	fs.douse_all()
 	n.stop_perform()
@@ -2424,6 +2573,10 @@ func _map_unit_checks() -> void:
 ## Map overlays: each paints tiles under the minimap and lists what is in view.
 func _layer_checks(world, game) -> void:
 	var mm: Minimap = world.hud._minimap
+	# Your standing shows only round towns you know: one where you stand.
+	var here: Vector3 = game.player.global_position
+	var tsid := "%d:layer_test" % game.planet
+	game.standing.note(tsid, "Layerton", Vector2(here.x, here.z), game.day)
 	for l in range(1, MapLayers.COUNT):
 		game.map.set_layer(l)
 		mm._canvas.layer_mask = 0
@@ -2433,6 +2586,8 @@ func _layer_checks(world, game) -> void:
 			await process_frame
 			n += 1
 		check(mm._canvas.layer_mask != 0, "the %s overlay paints the minimap (%d frames)" % [MapLayers.NAMES[l], n])
+	check(MapLayers.describe(MapLayers.STANDING, here.x, here.z).begins_with("Layerton: "), "the standing overlay names the town and your tier (%s)" % MapLayers.describe(MapLayers.STANDING, here.x, here.z))
+	game.standing.towns.erase(tsid)
 	check(MapLayers.sample(MapLayers.LEVELS, 3000.0, 0.0) == Eras.zone_level(3000.0, 0.0) / 10, "the level overlay follows zone levels")
 	var lv := Eras.zone_level(3000.0, 0.0)
 	var far_danger: int = MapLayers.sample(MapLayers.DANGER, 3000.0, 0.0)

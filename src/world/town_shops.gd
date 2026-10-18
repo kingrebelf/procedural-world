@@ -374,7 +374,7 @@ static func door_point(h: Dictionary) -> Vector2:
 static func _obstacles(t: String) -> Array:
 	var rm := room(t)
 	var out: Array = []
-	var furn: Array = KitHouse.FURNISH[t] if KitHouse.has(t) else Interiors.FURNISH.get(t, [])
+	var furn: Array = Furnish.settled(t)
 	var floor_y: float = rm["floor"]
 	for f in furn:
 		var name: String = f[0]

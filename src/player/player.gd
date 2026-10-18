@@ -51,6 +51,8 @@ var selected := 0
 var holstered := false
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
+## Moved by a script for a while (climbing over a town wall, GateWatch): no walking, falling or input.
+var script_move := false
 var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
 
 var _yaw := 0.0
@@ -405,6 +407,8 @@ func _apply_look() -> void:
 		head.rotation = Vector3(_pitch + bob.tilt.x, 0, bob.tilt.z)
 
 func _physics_process(delta: float) -> void:
+	if script_move:
+		return
 	if frozen:
 		if streamer != null and streamer.is_ready_at(global_position):
 			frozen = false
@@ -683,6 +687,13 @@ func _find_focus() -> Dictionary:
 		for u in dungeons.usables(global_position):
 			var sc := _focus_score(eye, fwd, u["at"])
 			if sc < best_s and _can_see(eye, u["at"]):
+				best_s = sc
+				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
+	if npcs and npcs.gates:
+		# A town wall to climb over with a rope (GateWatch).
+		for u in npcs.gates.usables(global_position):
+			var sc := _focus_score(eye, fwd, u["at"])
+			if sc < best_s:
 				best_s = sc
 				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
 	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.

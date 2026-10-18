@@ -133,21 +133,41 @@ static func _paint(c: Color) -> StandardMaterial3D:
 		_mats[key] = m
 	return _mats[key]
 
+## Gun steel and brass on the shared metal look (Metals): [kind, roughness, reflectance
+## colour or null for the kind's own]. Blued steel is a dark blue-black oxide that still
+## reflects, worn bright at the edges; period guns are forged and handled, never polished
+## to a mirror.
+const METALS := {
+	"gun_blued": ["dark_steel", 0.3, Color(0.42, 0.45, 0.52)],
+	"gun_metal": ["dark_steel", 0.36, null],
+	"gun_iron": ["iron", -1.0, null],
+	"gun_brass": ["brass", 0.4, null],
+}
+
+## A gun metal from a METALS-style spec, kept in `cache` under `name`.
+static func metal(name: String, spec: Array, cache: Dictionary) -> Material:
+	var m: ShaderMaterial = Metals.mat(spec[0], spec[1])
+	if spec[2] != null or spec.size() > 3:
+		m = m.duplicate()
+		if spec[2] != null:
+			m.set_shader_parameter("base_color", spec[2])
+		var extra: Dictionary = spec[3] if spec.size() > 3 else {}
+		for k in extra:
+			m.set_shader_parameter(k, extra[k])
+	cache[name] = m
+	return m
+
 ## Gun materials: a fine grain in the normals and scuffed roughness, so light breaks up
 ## across the surfaces instead of sliding over flat plastic.
 static func mat(name: String) -> Material:
 	if _mats.has(name):
 		return _mats[name]
+	if METALS.has(name):
+		return metal(name, METALS[name], _mats)
 	var m: StandardMaterial3D
 	match name:
-		"gun_metal": m = finish(Color(0.24, 0.25, 0.27), 0.32, 0.85, Color(0.55, 0.55, 0.56), 0.1, 0.18)
-		# Blued steel: deep blue-black with a sheen, handling wear rubbed through to
-		# the bright steel in places.
-		"gun_blued": m = finish(Color(0.1, 0.12, 0.17), 0.24, 0.92, Color(0.5, 0.5, 0.52), 0.07, 0.15)
 		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
 		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.45)
-		"gun_brass": m = _base(Color(0.78, 0.6, 0.3), 0.38, 1.0)
-		"gun_iron": m = _base(Color(0.32, 0.31, 0.3), 0.5, 0.8)
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
 		"gun_fletch": m = _base(Color(0.82, 0.8, 0.76), 0.85, 0.0)
 		"gun_string": m = _base(Color(0.78, 0.72, 0.58), 0.9, 0.0)

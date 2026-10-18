@@ -2,8 +2,8 @@ class_name MapLayers
 extends RefCounted
 ## Overlays the minimap and atlas can paint over the land, picked with the map overlay
 ## key or in the atlas: the level of the creatures and people that live there, how
-## dangerous that is for you, the technology era of what is built, the named zones and
-## the landforms. One is shown at a time (WorldMap.layer, kept with the map).
+## dangerous that is for you, the technology era of what is built, the named zones, the
+## landforms, and your standing in the towns you know. One is shown at a time (WorldMap.layer, kept with the map).
 ##
 ## Each layer sorts the land into a few categories (a colour and a name each). The map is
 ## sampled into small tiles, a few per frame and cached, at a spacing that suits the zoom;
@@ -11,11 +11,13 @@ extends RefCounted
 ## Level layers follow distance from spawn (Eras.zone_level) and are no secret, so they
 ## show over the fog of war; eras and landforms only show where you have uncovered.
 
-enum { OFF, LEVELS, DANGER, ERA, ZONES, LAND }
-const COUNT := 6
-const NAMES := ["Off", "Creature levels", "Danger to you", "Technology era", "Zones", "Landforms"]
+enum { OFF, LEVELS, DANGER, ERA, ZONES, LAND, STANDING }
+const COUNT := 7
+const NAMES := ["Off", "Creature levels", "Danger to you", "Technology era", "Zones", "Landforms", "Your standing"]
 ## Short names for the toast and the minimap legend.
-const SHORT := ["Off", "Levels", "Danger", "Era", "Zones", "Land"]
+const SHORT := ["Off", "Levels", "Danger", "Era", "Zones", "Land", "Standing"]
+## How far round a town (metres) its standing is painted.
+const STANDING_R := 95.0
 
 const N := 32 ## samples per tile side (plus a border of one for seamless filtering)
 const SPACINGS := [8.0, 32.0, 128.0] ## metres between samples, finest first
@@ -49,7 +51,7 @@ static func current() -> int:
 
 ## Whether the layer can show over the fog of war (it gives nothing away).
 static func over_fog(layer: int) -> bool:
-	return layer == LEVELS or layer == DANGER or (layer == ZONES and Eras.theme == "human")
+	return layer == LEVELS or layer == DANGER or layer == STANDING or (layer == ZONES and Eras.theme == "human")
 
 # --- Categories -----------------------------------------------------------------------
 
@@ -71,6 +73,9 @@ static func category(layer: int, i: int) -> Array:
 			return [UITheme.ERA_COLORS[i], kind]
 		LAND:
 			return [LAND_COLORS[i], LAND_NAMES[i]]
+		STANDING:
+			var t: String = Standing.TIERS[i][1] if i < Standing.TIERS.size() else Standing.CITIZEN
+			return [Standing.tier_color(t), t]
 	return [Color.TRANSPARENT, ""]
 
 ## What is built in land of `era` on this kind of world.
@@ -115,7 +120,38 @@ static func sample(layer: int, x: float, z: float) -> int:
 			var f := ZoneInfo._field_for(Game.seed)
 			var s := f.region_site_at(x, z)
 			return f.site_landform(s.x, s.y)
+		STANDING:
+			var sid := _town_near(x, z)
+			if sid == "":
+				return -1
+			var t := Game.town_tier(sid)
+			if t == Standing.CITIZEN:
+				return Standing.TIERS.size()
+			for i in Standing.TIERS.size():
+				if Standing.TIERS[i][1] == t:
+					return i
 	return -1
+
+## The town you know of (on this planet) whose ground (x, z) is on, or "".
+static func _town_near(x: float, z: float) -> String:
+	if Game.standing == null:
+		return ""
+	var pre := "%d:" % Game.planet
+	for sid in Game.standing.towns:
+		var t: Dictionary = Game.standing.towns[sid]
+		if String(sid).begins_with(pre) and String(t.get("name", "")) != "" \
+				and Vector2(float(t["x"]), float(t["z"])).distance_squared_to(Vector2(x, z)) < STANDING_R * STANDING_R:
+			return sid
+	return ""
+
+## Changes whenever a town's tier does, so the standing tiles are made again.
+static func _standing_key() -> int:
+	var h := 0
+	var pre := "%d:" % Game.planet
+	for sid in Game.standing.towns:
+		if String(sid).begins_with(pre):
+			h = hash([h, sid, Game.town_tier(sid)])
+	return h
 
 static func _era_at(x: float, z: float) -> int:
 	var f := ZoneInfo._field_for(Game.seed)
@@ -136,6 +172,11 @@ static func describe(layer: int, x: float, z: float) -> String:
 		ZONES:
 			if Eras.theme == "human":
 				return "%s  ·  Lv %d" % [category(layer, i)[1], Eras.zone_level(x, z)]
+		STANDING:
+			var sid := _town_near(x, z)
+			var ps := Game.standing.pass_of(sid, Game.day)
+			return "%s: %s (%d)%s" % [Game.standing.towns[sid]["name"], category(layer, i)[1], Game.town_standing(sid),
+				"  ·  gate pass" if not ps.is_empty() else ""]
 	return category(layer, i)[1]
 
 ## A line under the legend: what the layer means for you.
@@ -149,6 +190,8 @@ static func note(layer: int) -> String:
 			return "Advanced gear unlocks at level %d" % Eras.UNLOCK_LEVEL if Eras.themed() else ""
 		ZONES:
 			return "Portals stand in level %d+ land" % WorldPortal.MIN_LEVEL if Eras.theme == "human" else ""
+		STANDING:
+			return "How the towns you know think of you"
 	return ""
 
 ## Circles of equal level round spawn worth drawing on this layer, as [radius m, label].
@@ -193,7 +236,7 @@ static func draw_tiles(ci: CanvasItem, canvas: MapCanvas, layer: int) -> int:
 	var a := canvas.to_world(Vector2.ZERO)
 	var b := canvas.to_world(canvas.size)
 	var mask := 0
-	var extra := _player_level() if layer == DANGER else 0
+	var extra := _player_level() if layer == DANGER else (_standing_key() if layer == STANDING else 0)
 	var added := false
 	var hidden := not over_fog(layer) ## the legend counts only uncovered land
 	for tz in range(floori(a.y / tm), floori(b.y / tm) + 1):
@@ -260,7 +303,7 @@ static func _make(layer: int, spacing: float, tx: int, tz: int) -> Array:
 			var j0 := grid[gj]
 			var j1 := grid[gj + 1]
 			var c := cats[j0 * W + i0]
-			var same := c == cats[j0 * W + i1] and c == cats[j1 * W + i0] and c == cats[j1 * W + i1]
+			var same := c == cats[j0 * W + i1] and c == cats[j1 * W + i0] and c == cats[j1 * W + i1] and layer != STANDING # towns are smaller than a block
 			for j in range(j0, j1 + 1):
 				for i in range(i0, i1 + 1):
 					if cats[j * W + i] == UNSET:

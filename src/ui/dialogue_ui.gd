@@ -569,6 +569,12 @@ func _try_pick(idx: int, marks: int) -> void:
 	manager.mark_dirty(n.settlement)
 
 func _open_trade() -> void:
+	# How the town thinks of you sets its prices; an Outcast isn't served at all.
+	var tier := manager.gates.tier_for(npc)
+	if tier == "Outcast":
+		_add_line(npc.rec["name"].split(" ")[0], ["Your sort isn't welcome in %s. I'll not trade with you." % npc.settlement["name"],
+			"Everyone here knows what you did. Take your Marks elsewhere."][randi() % 2], UITheme.ACCENT)
+		return
 	if npc.rec.has("shop_kind"):
 		var kind: String = npc.rec["shop_kind"]
 		var first: String = npc.rec["name"].split(" ")[0]
@@ -584,7 +590,7 @@ func _open_trade() -> void:
 		var st := TownShops.trade_state(npc.rec, _shop(), Game.guilds)
 		manager.mark_dirty(npc.settlement)
 		close_talk()
-		menus.open_trader(st, null)
+		menus.open_trader(GatePolicy.priced(st, tier), null)
 		return
 	if npc.rec["job"] != "trader" or not npc.rec.has("stall"):
 		# Anyone else trades the goods of their own work, from their own purse.
@@ -594,7 +600,7 @@ func _open_trade() -> void:
 		var st := NPCSocial.shop(npc.rec)
 		manager.mark_dirty(npc.settlement)
 		close_talk()
-		menus.open_trader(st, null)
+		menus.open_trader(GatePolicy.priced(st, tier), null)
 		return
 	var s := manager.trader_stall(npc)
 	if s.is_empty():
@@ -602,7 +608,9 @@ func _open_trade() -> void:
 		return
 	Economy.tick(s[0], Game.day)
 	close_talk()
-	menus.open_trader(s[0], s[1])
+	s[0]["charge_mult"] = 1.0 # the stall's own prices, then the town's view of you
+	s[0]["pay_mult"] = 1.0
+	menus.open_trader(GatePolicy.priced(s[0], tier), s[1])
 
 # --- Guilds and houses ---------------------------------------------------------------------------
 
@@ -704,12 +712,18 @@ func _show_gate() -> void:
 		"wanted": note = "You're wanted here. Pay your bounty before they'll let you in."
 		"outcast": note = "They won't sell an Outcast a pass. A bribe, or another way in."
 		"night": note = "The gates are shut for the night. Strangers pay double."
+		"disguise": note = "In the watch's colours, they take you for one of their own. For now."
 		_: note = "A stranger here pays the toll, or needs someone in town to speak for them."
 	if bool(o["inside"]) and not ad["ok"]:
 		note += " You're already inside without leave: paying now costs a %d Mark fine on top." % o["late"]
 	var nl := UITheme.label(note, 14, UITheme.DIM)
 	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(nl)
+	if int(o["writ"]) > 0:
+		var wb := UITheme.button("Ask for a writ of passage (%d Marks)" % int(o["writ"]), _gate_writ)
+		wb.disabled = Game.money < int(o["writ"])
+		wb.tooltip_text = "A letter under %s's seal: good at every walled town within a day's word of here for %d days." % [o["town"], int(GateWatch.WRIT_DAYS)]
+		v.add_child(wb)
 	if ad["ok"]:
 		return
 	var sc := ScrollContainer.new()
@@ -743,6 +757,15 @@ func _show_gate() -> void:
 		var hint := UITheme.label("Nobody in town would vouch for you yet. Townsfolk who like you (gifts, help, a kind word) will.", 13, UITheme.DIM)
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(hint)
+
+func _gate_writ() -> void:
+	var o := manager.gates.options(npc)
+	if not manager.gates.buy_writ(npc):
+		return
+	_close_extra()
+	_reaction("(You pay %d Marks for a writ of passage.)" % int(o.get("writ", 0)), ["Under the town's seal. Any gate within a day's ride will honour it.",
+		"Keep it dry. It's good for a week.", "There. You've earned it."][randi() % 3], "nod")
+	_history.append({"role": "user", "content": "(The traveller buys a writ of passage under the town's seal.)"})
 
 func _gate_toll() -> void:
 	var o := manager.gates.options(npc)

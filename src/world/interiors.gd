@@ -328,7 +328,7 @@ static func fires(t: String) -> Array:
 	var out: Array = []
 	if KitHouse.has(t):
 		out.append([KitHouse.fire_at(t), 1.0])
-	for f in FireFx.prop_flames(FURNISH.get(t, KitHouse.FURNISH.get(t, []))):
+	for f in FireFx.prop_flames(Furnish.settled(t)):
 		out.append([(f[0] as Vector3) - Vector3(0, SINK, 0), f[1]])
 	_fires[t] = out
 	return out
@@ -420,7 +420,7 @@ static func interior(t: String) -> ArrayMesh:
 	var models: Array = []
 	var k := MeshKit.new(WHash.str_hash(t + "~in") & 0xFFFF)
 	var I := Transform3D.IDENTITY
-	for f in FURNISH[t]:
+	for f in Furnish.settled(t):
 		var name: String = f[0]
 		if name.begins_with("@"):
 			_piece(name, k, models, Transform3D(Basis(Vector3.UP, deg_to_rad(float(f[1]))), f[2]))
@@ -629,7 +629,7 @@ static func shape(t: String) -> Array:
 		_dome_room(f)
 	elif t == "shrine":
 		_shrine_shape(f)
-	for e in FURNISH[t]:
+	for e in Furnish.settled(t):
 		if not e[3]:
 			continue
 		var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2])

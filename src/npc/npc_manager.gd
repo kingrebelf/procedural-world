@@ -968,7 +968,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism", "arson": "Arson"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "impersonation": "Posing as the watch", "vandalism": "Vandalism", "arson": "Arson"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
@@ -976,6 +976,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"],
 		"trespass": ["You've no leave to be here! Guards!", "Intruder! Guards!", "Oi! Who let you in?"],
 		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."],
+		"impersonation": ["That's not one of ours! Seize them!", "Where did you get that tabard? Guards!", "An impostor in our colours!"],
 		"arson": ["Fire! They've set it alight!", "Guards! Fire! Stop them!", "Fire raiser! Get water!"]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
@@ -983,7 +984,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 			continue
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
-			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave",
+			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave", "impersonation": "dressed up as one of the watch",
 			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch", "arson": "setting fire to the " + what}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
@@ -996,7 +997,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
 			n.decide_in = 0.0
 	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest",
-		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch", "arson": "setting fire to the " + what}.get(kind, "breaking the law"))
+		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch", "impersonation": "posing as the watch", "arson": "setting fire to the " + what}.get(kind, "breaking the law"))
 	e["dirty"] = true
 	return true
 

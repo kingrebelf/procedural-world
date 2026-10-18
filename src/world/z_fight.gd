@@ -90,7 +90,7 @@ static func _overlap(a: Array, b: Array) -> bool:
 
 ## The same, item by item among a room's furniture: [description] naming both items.
 static func items(t: String) -> Array:
-	var list: Array = KitHouse.FURNISH[t] if KitHouse.has(t) else Interiors.FURNISH.get(t, [])
+	var list: Array = Furnish.settled(t)
 	var per: Array = []
 	for f in list:
 		var name: String = f[0]

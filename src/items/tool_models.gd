@@ -9,52 +9,30 @@ class_name ToolModels
 ## Built on the main thread (they are shown in the hand and on shop counters).
 
 static var _mats := {}
+## Surface name -> Metals kind.
+const METALS := {"it_steel": "steel", "it_iron": "iron", "it_bronze": "bronze", "it_brass": "brass",
+	"it_gold": "gold", "it_paint": "painted", "it_rusty": "rusty", "it_chrome": "chrome"}
+const SCIFI_METALS := {"it_steel": "alloy", "it_iron": "dark_steel", "it_bronze": "bronze", "it_brass": "brass",
+	"it_gold": "gold", "it_paint": "painted", "it_rusty": "rusty", "it_chrome": "chrome"}
 static var _tex := {}
 
 ## Materials of their own: the world's materials are scaled for buildings and terrain
 ## (their textures repeat every metre or two), which leaves a hand-sized tool one flat
 ## colour. These carry grain, hammer marks and wear at the scale of the thing held.
-static func mat(name: String) -> Material:
+##
+## Bare metal is the shared metal look (Metals): medieval and fantasy tools are forged
+## steel, iron, bronze and brass, handled and never mirror-bright; a sci-fi tool's steel
+## is brushed alloy and its iron gunmetal (`scifi`). The vertex colour still tints it.
+static func mat(name: String, scifi := false) -> Material:
+	var mk: String = (SCIFI_METALS if scifi else METALS).get(name, "")
+	if mk != "":
+		return Metals.mat(mk)
 	if _mats.has(name):
 		return _mats[name]
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
 	match name:
-		"it_steel":
-			# Ground and polished: bright, a little brushed along the blade.
-			# Not fully metallic: with nothing bright to reflect (a cave, a capture without a
-			# sky) a pure metal renders black; real steel still shows its grey there.
-			m.albedo_color = Color(0.62, 0.63, 0.65)
-			m.metallic = 0.72
-			m.roughness = 0.3
-			m.roughness_texture = _noise("brushed", 0.02, Vector2(1.0, 14.0), Color(0.55, 0.55, 0.55), Color(1, 1, 1))
-			m.uv1_scale = Vector3(18.0, 3.0, 1.0)
-		"it_iron":
-			# Forged and blackened: dark, hammer-marked, rough where it wasn't ground.
-			m.albedo_color = Color(0.45, 0.45, 0.46)
-			m.metallic = 0.45
-			m.roughness = 0.58
-			m.albedo_texture = _noise("hammered", 0.05, Vector2.ONE, Color(0.7, 0.7, 0.7), Color(1, 1, 1), true)
-			m.normal_enabled = true
-			m.normal_texture = _noise("hammered", 0.05, Vector2.ONE, Color.BLACK, Color.WHITE, true, true)
-			m.normal_scale = 0.5
-			m.uv1_scale = Vector3(10.0, 10.0, 1.0)
-		"it_bronze":
-			m.albedo_color = Color(0.74, 0.5, 0.27)
-			m.metallic = 0.8
-			m.roughness = 0.34
-			# Patches of dull green-brown patina.
-			m.albedo_texture = _noise("patina", 0.04, Vector2.ONE, Color(0.62, 0.72, 0.6), Color(1, 1, 1))
-			m.uv1_scale = Vector3(8.0, 8.0, 1.0)
-		"it_brass":
-			m.albedo_color = Color(0.8, 0.63, 0.33)
-			m.metallic = 0.8
-			m.roughness = 0.3
-		"it_gold":
-			m.albedo_color = Color(1.0, 0.78, 0.36)
-			m.metallic = 0.85
-			m.roughness = 0.22
 		"it_wood":
 			# Straight grain along the handle, darker late-wood lines.
 			m.albedo_color = Color(1, 1, 1)
@@ -117,13 +95,6 @@ static func mat(name: String) -> Material:
 		"it_rubber":
 			m.albedo_color = Color(0.06, 0.06, 0.065)
 			m.roughness = 0.88
-		"it_paint":
-			# Painted steel: the colour comes from the part, chipped to bare metal in places.
-			m.albedo_color = Color(1, 1, 1)
-			m.roughness = 0.5
-			m.metallic = 0.25
-			m.albedo_texture = _noise("chips", 0.07, Vector2.ONE, Color(0.78, 0.78, 0.78), Color(1, 1, 1), true)
-			m.uv1_scale = Vector3(8.0, 8.0, 1.0)
 		"it_cloth":
 			m.albedo_color = Color(1, 1, 1)
 			m.roughness = 0.96
@@ -644,7 +615,7 @@ static func build(t: String) -> ArrayMesh:
 		return null
 	var k := MeshKit.new(t.hash() & 0xFF)
 	var grip = (Callable(ToolModels, BUILD[t])).call(k)
-	var out := k.commit(mat)
+	var out := k.commit(mat.bind(ItemDB.era_of(t) == Eras.SCIFI))
 	if grip is Vector3:
 		out.set_meta("grip", grip)
 	return out
@@ -1355,12 +1326,11 @@ static func _sledgehammer(k: MeshKit):
 static func _wrench(k: MeshKit):
 	# A forged combination spanner: an open jaw at one end, a ring at the other, the shank
 	# between them flat and slightly dished.
-	var dark := Color(0.95, 0.84, 0.8)
 	var st := []
 	for i in 9:
 		var f := float(i) / 8.0
 		st.append(_at(Vector3(0, 0.015 + f * 0.2, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.018 + 0.002 * sin(f * PI), 0.005, 0.4)))
-	sweep(k, "it_iron", Transform3D.IDENTITY, st, true, dark)
+	sweep(k, "it_rusty", Transform3D.IDENTITY, st, true)
 	for ring in [[Vector3(0, 0.0, 0), 0.025, 0.013, PI], [Vector3(0, 0.255, 0), 0.04, 0.019, 0.0]]:
 		var c: Vector3 = ring[0]
 		var ro: float = ring[1]
@@ -1372,7 +1342,7 @@ static func _wrench(k: MeshKit):
 			var a: float = lerpf(gap, TAU - gap, float(s) / n) + PI * 0.5
 			var d := Vector3(cos(a), sin(a), 0)
 			rs.append(_at(c + d * (ro + ri) * 0.5, d, Vector3(0, 0, 1), sec_rect((ro - ri) * 0.5, 0.005, 0.3)))
-		sweep(k, "it_iron", Transform3D.IDENTITY, rs, true, dark, gap > 0.0)
+		sweep(k, "it_rusty", Transform3D.IDENTITY, rs, true, Color.WHITE, gap > 0.0)
 
 static func _crowbar(k: MeshKit):
 	# A hexagonal bar, rusty from use: a gooseneck hook curling back at the top ending in a
@@ -1397,7 +1367,7 @@ static func _crowbar(k: MeshKit):
 		elif f > 0.95:
 			s = sec_round(r * lerpf(1.0, 0.35, (f - 0.95) / 0.05), r * 1.4, 6)
 		st.append(_at(p, x, Vector3(0, 0, 1), s))
-	sweep(k, "it_iron", Transform3D.IDENTITY, st, true, RUST)
+	sweep(k, "it_rusty", Transform3D.IDENTITY, st, true)
 
 static func _hand_drill(k: MeshKit):
 	# A carpenter's brace: a cranked iron bow, a turning grip in the middle, a bit below.

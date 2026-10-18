@@ -175,6 +175,11 @@ func _find_target() -> Dictionary:
 	var pos: Vector3 = s["pos"]
 	if anchor == null and _id == "foundation" and not _free:
 		pos.y = p.y + 0.12 + _lift * float(BuildCatalog.def(_id)["storey"])
+	# A table or chest stands level on the floor under it, clear of walls and pieces.
+	var rest := BuildCatalog.rest_free(player.get_world_3d().direct_space_state, _id, pos, s["yaw"], [player.get_rid()], from)
+	pos = rest["pos"]
+	if why == "" and not rest["ok"]:
+		why = "occupied"
 	if why == "" and pos.distance_to(from) > REACH + 2.0:
 		why = "reach"
 	if why == "" and player.streamer and player.streamer.get_chunk(ChunkStreamer.chunk_of(pos)) == null:

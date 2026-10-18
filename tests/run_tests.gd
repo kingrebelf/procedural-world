@@ -621,7 +621,7 @@ func test_house_interiors() -> void:
 		var hx := dm.x / 2 - KitHouse.WALL_IN + 0.05
 		var hz := dm.z / 2 - KitHouse.WALL_IN + 0.05
 		var lane := AABB(Vector3(-0.6, KitHouse.FLOOR + 0.05, dm.z / 2 - 1.8), Vector3(1.2, 1.8, 1.8))
-		for e in KitHouse.FURNISH[t]:
+		for e in Furnish.settled(t):
 			var bx := KitHouse._model_box(e[0], Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2]))
 			var fits: bool = bx.size.length() > 0.01 and bx.position.x > -hx and bx.end.x < hx and bx.position.z > -hz and bx.end.z < hz and bx.end.y < dm.y
 			check(fits, "%s: %s stands inside the walls (%s)" % [t, e[0], bx])
@@ -735,7 +735,7 @@ func test_room_interiors() -> void:
 			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(spot[1]))), q)
 			var cb := xf * AABB(Vector3(-0.6, 0.05, -0.4), Vector3(1.2, 0.8, 0.8))
 			var clear := true
-			for e in Interiors.FURNISH[t]:
+			for e in Furnish.settled(t):
 				if e[3]:
 					var ex := Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2])
 					var bx: AABB
@@ -2162,6 +2162,26 @@ func test_gaits() -> void:
 
 ## Everything a hand can hold is its real size (HeldScale): no six-foot pickaxes, in a
 ## villager's hand or yours, whoever is holding it.
+## The icon is the standard for an item's look: everything with an icon has a 3D model
+## (not its icon on a card, not a painted block) unless it's on GearModels.OWED, and an owed
+## item that gains a model must come off the list. tools/icon_match.gd shows each model
+## beside its icon to check they match.
+func test_icon_models() -> void:
+	var items := GearModels.icon_items()
+	check(items.size() > 600, "the icon sheets list the items (%d)" % items.size())
+	for t: String in items:
+		if not ItemDB.ITEMS.has(t):
+			continue
+		var prop := Viewmodel.prop_for(t)
+		var card := HeldScale.unmodelled(prop)
+		prop.free()
+		if GearModels.OWED.has(t):
+			check(card, "%s has a model now: take it off GearModels.OWED" % t)
+		else:
+			check(not card, "%s has an icon but no model: build it like its icon (or list it on GearModels.OWED)" % t)
+	for t: String in GearModels.OWED:
+		check(items.has(t), "%s is on GearModels.OWED but has no icon" % t)
+
 func test_held_scale() -> void:
 	var checked := 0
 	for t: String in ItemDB.ITEMS:
@@ -2356,6 +2376,21 @@ func test_fires() -> void:
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
 	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	# Tool metal is the shared metal look: forged on a medieval axe, brushed alloy on a
+	# sci-fi multitool, rust on a used crowbar, and mirror chrome on none.
+	var kinds := func(t: String) -> Array:
+		var mesh := ToolModels.build(t)
+		var ks := []
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial:
+				ks.append(sm.resource_name)
+		return ks
+	var axe: Array = kinds.call("axe_steel")
+	var mt: Array = kinds.call("multitool")
+	check("metal_steel" in axe and "metal_iron" in axe and not "metal_chrome" in axe, "a medieval axe head is forged steel and iron in the shared metal look")
+	check("metal_alloy" in mt and not "metal_steel" in mt and not "metal_chrome" in mt, "a sci-fi multitool is brushed alloy, not forged steel or mirror chrome")
+	check("metal_rusty" in kinds.call("crowbar"), "a crowbar is rusty from use, like its icon")
 
 ## Stall awnings and drapes, banners and flags move in the wind.
 func test_cloth() -> void:
@@ -2954,6 +2989,22 @@ func test_standing_and_town_gates() -> void:
 	var vs := GatePolicy.vouchers(kind)
 	check(vs.size() == 1 and vs[0]["id"] == kind["npcs"][2]["id"] or NPCGen.GUARD_JOBS.has(String(kind["npcs"][2]["job"])), "a friend in town will vouch for you")
 	check(GatePolicy.folk_regard(kind) > 0.0, "the people's regard is their mean")
+	var shop := GatePolicy.priced({"charge_mult": 1.1, "pay_mult": 0.9}, "Honoured")
+	check(is_equal_approx(float(shop["charge_mult"]), 1.1 * 0.86) and float(shop["pay_mult"]) > 0.9, "the Honoured pay less and are paid more")
+	check(float(GatePolicy.priced({}, "Distrusted")["charge_mult"]) > 1.2, "the Distrusted pay more")
+	check(GatePolicy.port_mesh_ok(), "the portcullis has bars, cross-bars and teeth")
+	check(GateWatch.postern_tier({"strict": 0.2}) == 1 and GateWatch.postern_tier({"strict": 0.5}) == 2 and GateWatch.postern_tier({"strict": 0.8}) == 3,
+		"a stricter town keeps a harder lock on its postern")
+	var pt := {"p": Vector2(10, 0), "yaw": PI / 2.0}
+	check(GateWatch.postern_side(pt, true).x > 10.0 and GateWatch.postern_side(pt, false).x < 10.0, "the postern's outer side is away from town")
+	check(GateWatch.see_through_odds({"strict": 0.5}, 60, false) == 1.0, "a guard who knows your face sees through a tabard")
+	check(GateWatch.see_through_odds({"strict": 0.8}, 0, false) > GateWatch.see_through_odds({"strict": 0.2}, 0, false)
+		and GateWatch.see_through_odds({"strict": 0.5}, 0, true) < GateWatch.see_through_odds({"strict": 0.5}, 0, false), "a strict watch is sharper, and night hides you")
+	for t in ["grappling_hook", "watch_keys", "writ", "watch_tabard"]:
+		check(ItemDB.has(t), "%s is an item" % t)
+	check(Recipes.LIST.any(func(r): return r["out"] == "grappling_hook"), "a grappling hook can be made")
+	var pm := GateWatch.postern_mesh()
+	check(pm.get_aabb().size.y > 2.5 and pm.get_aabb().position.z < -0.7 and pm.get_aabb().end.z > 0.7, "the postern door shows on both faces of the wall")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
@@ -6021,7 +6072,7 @@ func test_props_settle_on_ground() -> void:
 	check(PropSettle.transform(g.generate(0, 0), inside) == null, "a room's chest keeps its place")
 	WorldField.terrain_v = keep_tv
 	# Furniture stands on its floor.
-	check(ProbeProps.floors()["bad"] == 0, "furniture sunk into or floating over its floor")
+	check(ProbeProps.floors()["bad"] == 0, "room furniture stands on its floor, inside its walls and clear of its neighbours")
 
 func test_caches_rest_v21() -> void:
 	# A v20 world places every cache where it always did (object id and x, z pinned from

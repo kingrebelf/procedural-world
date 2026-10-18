@@ -11,7 +11,7 @@ class_name NPCSocial
 ## What each trade has to sell.
 const JOB_GOODS := {
 	"farmer": ["bread", "wild_berries", "fiber", "apple", "potato", "carrot", "onion", "cabbage", "wheat", "egg", "milk", "pumpkin", "corn", "pear", "grapes"],
-	"smith": ["iron_ingot", "lockpick", "sword_iron", "pickaxe_iron", "hammer", "helm_iron", "iron_nails", "coal", "tongs", "bronze_ingot", "steel_ingot"],
+	"smith": ["iron_ingot", "lockpick", "grappling_hook", "sword_iron", "pickaxe_iron", "hammer", "helm_iron", "iron_nails", "coal", "tongs", "bronze_ingot", "steel_ingot"],
 	"guard": ["sword_iron", "shield_wood", "crossbow", "bolt", "bandage_linen", "falchion", "shield_kite"], "innkeeper": ["bread", "cooked_meat", "health_potion", "mead", "wine", "ham", "sausage"],
 	"hunter": ["hide", "raw_meat", "longbow", "arrow", "dagger", "fur_pelt", "shortbow", "broadhead_arrows", "skinning_knife", "salted_meat"],
 	"priest": ["health_potion", "silver_chalice", "holy_water", "candle", "amulet_saint", "book_leather"],
@@ -234,6 +234,14 @@ const POCKET_BITS := [["bread", "wild_berries", "torch", "dungeon_key", "silver_
 	["ration_pack", "power_cell", "data_core", "stamina_potion", "circuitry", "health_potion", "lockpick", "jerky",
 		"rounds", "cards_deck", "harmonica", "photo_frame", "telegraph_key", "gramophone_record", "cigar_box", "biscuit_hard"]]
 const POCKETS_EVERY := 3 ## days before their pockets fill again
+const WATCH_KEYS_CHANCE := 0.35
+const TABARD_CHANCE := 0.2
+
+## The id of the town (on this planet) a resident's record belongs to: "planet:sx_sz".
+static func town_sid(rec: Dictionary) -> String:
+	var id := String(rec.get("id", ""))
+	var g = (Engine.get_main_loop() as SceneTree).root.get_node_or_null("Game")
+	return "%d:%s_%s" % [int(g.planet) if g != null else 0, id.get_slice("_", 0), id.get_slice("_", 1)]
 
 ## What this person carries that a quick hand could lift (not their purse, not worn gear).
 ## Fills again every few days.
@@ -251,6 +259,13 @@ static func pockets(rec: Dictionary) -> Array:
 				continue
 			var stack := ItemDB.is_stackable(t)
 			out.append(ItemDB.make(t, r.randi_range(1, 4) if stack else 1, 1.0, {"how": "stolen", "era": int(rec["era"])}))
+		# The town watch carry their town's keys (the postern's among them, GateWatch),
+		# and some a spare tabard.
+		if NPCGen.GUARD_JOBS.has(String(rec["job"])) and int(rec["era"]) == Eras.MEDIEVAL and not rec.has("band"):
+			if r.randf() < WATCH_KEYS_CHANCE:
+				out.append(ItemDB.make("watch_keys", 1, 1.0, {"how": "stolen", "era": int(rec["era"]), "sid": town_sid(rec)}))
+			if r.randf() < TABARD_CHANCE:
+				out.append(ItemDB.make("watch_tabard", 1, 1.0, {"how": "stolen", "era": int(rec["era"])}))
 		rec["pockets"] = out
 		rec["pockets_cycle"] = cycle
 	return rec["pockets"]
