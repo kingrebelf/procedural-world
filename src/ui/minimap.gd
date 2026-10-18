@@ -29,6 +29,7 @@ var _t := 0.0
 ## a good part of the HUD's time, standing still as much as walking.
 var _drawn := Vector4(INF, 0.0, 0.0, -1.0)
 var _redraw_t := 0.0
+var _drawn_layer := -1 ## the overlay it was last drawn with: a new one redraws at once
 
 const MASK := """
 shader_type canvas_item;
@@ -112,8 +113,9 @@ func _process(delta: float) -> void:
 	_redraw_t -= delta
 	# Redrawn when you have moved half a pixel on it or turned, else ten times a second.
 	if _redraw_t <= 0.0 or Vector2(p.x - _drawn.x, p.z - _drawn.y).length() * ppm > 0.5 \
-			or absf(angle_difference(rot, _drawn.z)) > 0.002 or zoom != int(_drawn.w):
+			or absf(angle_difference(rot, _drawn.z)) > 0.002 or zoom != int(_drawn.w) or MapLayers.current() != _drawn_layer:
 		_redraw_t = 0.1
+		_drawn_layer = MapLayers.current()
 		_drawn = Vector4(p.x, p.z, rot, zoom)
 		_canvas.center = Vector2(p.x, p.z)
 		_canvas.scale_ppm = ppm
