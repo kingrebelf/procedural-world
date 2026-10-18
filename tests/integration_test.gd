@@ -1503,6 +1503,44 @@ func _town_gate(game, world, player) -> void:
 	var rel0 := int(friend["rel"])
 	game.add_bounty(sid, "Gatehold", 20, "Theft")
 	check(int(friend["rel"]) < rel0 - 20 and not game.standing.has_pass(sid, game.day), "break the law and they're shamed, and the pass is gone")
+	# At night a strict town's portcullis comes down for a stranger, and rises for a pass.
+	game.crime = Crime.new()
+	game.standing.revoke(sid)
+	var day0: float = game.day
+	game.day = floorf(game.day) + 23.0 / 24.0
+	var tp: Dictionary = GatePolicy.temper(site, data)
+	tp["night_shut"] = true
+	tp["need"] = 90
+	e["gate"]["tp"] = tp
+	e["gate"]["folk_t"] = 1e12
+	npcs.gates._ports[sid] = [npcs.gates._make_port(Transform3D(Basis(), Vector3(gate.x, at.y, gate.y)))]
+	player.global_position = Vector3(gate.x - 8.0, at.y, gate.y)
+	for i in 10:
+		await wait.call()
+	var pt: Dictionary = npcs.gates._ports[sid][0]
+	check(npcs.gates.gate_shut(sid) and not (pt["body"] as CollisionShape3D).disabled, "at night the portcullis comes down and bars the way")
+	game.standing.give_pass(sid, game.day + 1.0, "toll")
+	for i in 10:
+		await wait.call()
+	check(not npcs.gates.gate_shut(sid) and (pt["body"] as CollisionShape3D).disabled, "with leave it is wound up again")
+	game.day = day0
+	game.standing.revoke(sid)
+	# Over the wall with a rope, away from the gate.
+	gn.rec["dead"] = true
+	player.global_position = Vector3(c.x, at.y, c.y + 24.5)
+	await _frames(2)
+	var us: Array = npcs.gates.usables(player.global_position)
+	check(us.size() == 1 and String(us[0]["verb"]).begins_with("Climb over the wall"), "a stretch of wall away from the gate can be climbed (%s)" % str(us))
+	game.inventory.add(ItemDB.make("rope", 3, 1.0, {}))
+	var ropes: int = game.inventory.count("rope")
+	if not us.is_empty():
+		npcs.gates.use(sid, player)
+		for i in 14:
+			await wait.call()
+	var pin := Vector2(player.global_position.x, player.global_position.z)
+	check(pin.distance_to(c) < 20.0 and not player.script_move, "you climb up, over and down inside (%.1f m from the middle)" % pin.distance_to(c))
+	check(game.inventory.count("rope") == ropes - GateWatch.CLIMB_ROPE, "the rope is left on the wall")
+	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()
 	var p = game.store.load_player()
@@ -2305,6 +2343,10 @@ func _map_unit_checks() -> void:
 ## Map overlays: each paints tiles under the minimap and lists what is in view.
 func _layer_checks(world, game) -> void:
 	var mm: Minimap = world.hud._minimap
+	# Your standing shows only round towns you know: one where you stand.
+	var here: Vector3 = game.player.global_position
+	var tsid := "%d:layer_test" % game.planet
+	game.standing.note(tsid, "Layerton", Vector2(here.x, here.z), game.day)
 	for l in range(1, MapLayers.COUNT):
 		game.map.set_layer(l)
 		mm._canvas.layer_mask = 0
@@ -2314,6 +2356,8 @@ func _layer_checks(world, game) -> void:
 			await process_frame
 			n += 1
 		check(mm._canvas.layer_mask != 0, "the %s overlay paints the minimap (%d frames)" % [MapLayers.NAMES[l], n])
+	check(MapLayers.describe(MapLayers.STANDING, here.x, here.z).begins_with("Layerton: "), "the standing overlay names the town and your tier (%s)" % MapLayers.describe(MapLayers.STANDING, here.x, here.z))
+	game.standing.towns.erase(tsid)
 	check(MapLayers.sample(MapLayers.LEVELS, 3000.0, 0.0) == Eras.zone_level(3000.0, 0.0) / 10, "the level overlay follows zone levels")
 	var lv := Eras.zone_level(3000.0, 0.0)
 	var far_danger: int = MapLayers.sample(MapLayers.DANGER, 3000.0, 0.0)

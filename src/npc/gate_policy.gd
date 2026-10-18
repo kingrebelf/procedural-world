@@ -28,6 +28,17 @@ const TOLL_FLOOR := -25
 ## A fine on top of the toll for someone found inside without one.
 const LATE_FINE := 0.5
 
+## What a town's shops charge and pay you, by your standing there: [charge x, pay x].
+const PRICES := {"Distrusted": [1.25, 0.8], "Stranger": [1.0, 1.0], "Known": [0.97, 1.02], "Respected": [0.92, 1.06],
+	"Honoured": [0.86, 1.1], "Citizen": [0.86, 1.1]}
+
+## A trader state with its prices leaning on your standing (tier) there.
+static func priced(st: Dictionary, tier: String) -> Dictionary:
+	var m: Array = PRICES.get(tier, [1.0, 1.0])
+	st["charge_mult"] = float(st.get("charge_mult", 1.0)) * float(m[0])
+	st["pay_mult"] = float(st.get("pay_mult", 1.0)) * float(m[1])
+	return st
+
 static func is_walled(site: Dictionary) -> bool:
 	return bool(site.get("walled", false))
 
@@ -165,3 +176,8 @@ static func welcome_line(why: String, tier: String) -> String:
 		"pass":
 			return "Pass is good. On you go."
 	return {"Known": "I know you. Go on through.", "Respected": "Good to see you again. Go on in.", "Honoured": "Make way! Welcome back to town."}.get(tier, "Go on through.")
+
+## Whether the night portcullis mesh builds (for the tests: GateWatch needs the scene).
+static func port_mesh_ok() -> bool:
+	var m := GateWatch.port_mesh()
+	return m != null and m.get_surface_count() > 0 and m.get_aabb().size.y > 3.0

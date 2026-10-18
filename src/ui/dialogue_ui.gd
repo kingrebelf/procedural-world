@@ -569,6 +569,12 @@ func _try_pick(idx: int, marks: int) -> void:
 	manager.mark_dirty(n.settlement)
 
 func _open_trade() -> void:
+	# How the town thinks of you sets its prices; an Outcast isn't served at all.
+	var tier := manager.gates.tier_for(npc)
+	if tier == "Outcast":
+		_add_line(npc.rec["name"].split(" ")[0], ["Your sort isn't welcome in %s. I'll not trade with you." % npc.settlement["name"],
+			"Everyone here knows what you did. Take your Marks elsewhere."][randi() % 2], UITheme.ACCENT)
+		return
 	if npc.rec.has("shop_kind"):
 		var kind: String = npc.rec["shop_kind"]
 		var first: String = npc.rec["name"].split(" ")[0]
@@ -584,7 +590,7 @@ func _open_trade() -> void:
 		var st := TownShops.trade_state(npc.rec, _shop(), Game.guilds)
 		manager.mark_dirty(npc.settlement)
 		close_talk()
-		menus.open_trader(st, null)
+		menus.open_trader(GatePolicy.priced(st, tier), null)
 		return
 	if npc.rec["job"] != "trader" or not npc.rec.has("stall"):
 		# Anyone else trades the goods of their own work, from their own purse.
@@ -594,7 +600,7 @@ func _open_trade() -> void:
 		var st := NPCSocial.shop(npc.rec)
 		manager.mark_dirty(npc.settlement)
 		close_talk()
-		menus.open_trader(st, null)
+		menus.open_trader(GatePolicy.priced(st, tier), null)
 		return
 	var s := manager.trader_stall(npc)
 	if s.is_empty():
@@ -602,7 +608,9 @@ func _open_trade() -> void:
 		return
 	Economy.tick(s[0], Game.day)
 	close_talk()
-	menus.open_trader(s[0], s[1])
+	s[0]["charge_mult"] = 1.0 # the stall's own prices, then the town's view of you
+	s[0]["pay_mult"] = 1.0
+	menus.open_trader(GatePolicy.priced(s[0], tier), s[1])
 
 # --- Guilds and houses ---------------------------------------------------------------------------
 

@@ -2936,6 +2936,10 @@ func test_standing_and_town_gates() -> void:
 	var vs := GatePolicy.vouchers(kind)
 	check(vs.size() == 1 and vs[0]["id"] == kind["npcs"][2]["id"] or NPCGen.GUARD_JOBS.has(String(kind["npcs"][2]["job"])), "a friend in town will vouch for you")
 	check(GatePolicy.folk_regard(kind) > 0.0, "the people's regard is their mean")
+	var shop := GatePolicy.priced({"charge_mult": 1.1, "pay_mult": 0.9}, "Honoured")
+	check(is_equal_approx(float(shop["charge_mult"]), 1.1 * 0.86) and float(shop["pay_mult"]) > 0.9, "the Honoured pay less and are paid more")
+	check(float(GatePolicy.priced({}, "Distrusted")["charge_mult"]) > 1.2, "the Distrusted pay more")
+	check(GatePolicy.port_mesh_ok(), "the portcullis has bars, cross-bars and teeth")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
