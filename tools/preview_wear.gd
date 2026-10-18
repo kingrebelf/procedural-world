@@ -8,7 +8,7 @@ const FRAME := Vector2i(1920, 900)
 const GAP := 40.0
 ## Each climate's levels (moss, cold, dust, bog), one map texel per cottage.
 const CLIMATES := [["temperate", Color(0.45, 0.0, 0.0, 0.0)], ["wet", Color(1.0, 0.0, 0.0, 0.6)],
-	["cold", Color(0.3, 0.95, 0.0, 0.0)], ["dry", Color(0.0, 0.0, 1.0, 0.0)]]
+	["cold", Color(0.3, 1.0, 0.0, 0.0)], ["dry", Color(0.0, 0.0, 1.0, 0.0)]]
 
 func _initialize() -> void:
 	var out := "user://wear"
@@ -22,12 +22,14 @@ func _initialize() -> void:
 	BuildCatalog.warm_kits()
 	RenderingServer.global_shader_parameter_set("snow_line_g", 400.0)
 	RenderingServer.global_shader_parameter_set("sun_dir_g", Vector3(0.4, 0.6, 0.3).normalized())
-	# The map: a texel per cottage along x, the same down z.
+	# The map: one climate per cottage's plot along x, the same down z.
 	var n := CLIMATES.size()
-	var img := Image.create(n, 4, false, Image.FORMAT_RGBA8)
-	for i in n:
-		for j in 4:
-			img.set_pixel(i, j, CLIMATES[i][1])
+	# Many texels per cottage, so each climate holds flat out to the edge of its plot
+	# (the shaders read the map filtered).
+	var img := Image.create(n * 16, 64, false, Image.FORMAT_RGBA8)
+	for i in n * 16:
+		for j in 64:
+			img.set_pixel(i, j, CLIMATES[i / 16][1])
 	var tex := ImageTexture.create_from_image(img)
 	RenderingServer.global_shader_parameter_set("climate_wear_map_g", tex)
 	RenderingServer.global_shader_parameter_set("climate_wear_rect_g", Vector4(-GAP * 0.5, -GAP * 2.0, GAP * n, 0.0))
@@ -58,7 +60,18 @@ func _initialize() -> void:
 	var gm := StandardMaterial3D.new()
 	gm.albedo_color = Color(0.36, 0.38, 0.24)
 	ground.material_override = gm
+	# The terrain's own shader on a strip in front, to show its snow beside the rest.
+	var strip := MeshInstance3D.new()
+	var sp_m := PlaneMesh.new()
+	sp_m.size = Vector2(n * GAP, 14.0)
+	sp_m.subdivide_width = 40
+	strip.mesh = sp_m
+	strip.position = Vector3((n - 1) * GAP * 0.5, 0.02, 16.0)
+	var tm := ShaderMaterial.new()
+	tm.shader = load("res://src/world/terrain.gdshader")
+	strip.material_override = tm
 	vp.add_child(ground)
+	vp.add_child(strip)
 	var cam := Camera3D.new()
 	cam.fov = 50
 	cam.far = 600.0
@@ -78,6 +91,9 @@ func _initialize() -> void:
 		var house := MultiMeshInstance3D.new()
 		house.multimesh = _one(KitHouse.build("cottage"), Transform3D(Basis(), Vector3(x, 0, 0)), Color(1, 1, 1, 1))
 		vp.add_child(house)
+		var wall := MultiMeshInstance3D.new()
+		wall.multimesh = _one(Stronghold.build("castle_tower"), Transform3D(Basis(), Vector3(x + 14.0, 0, -6.0)), Color(1, 1, 1, 1))
+		vp.add_child(wall)
 		var rock := MultiMeshInstance3D.new()
 		var sm := SphereMesh.new()
 		sm.radial_segments = 24
@@ -94,11 +110,15 @@ func _initialize() -> void:
 			g.multimesh = _grass(sp, Vector2(x + 2.0, 7.5), 6.0, 140 if sp == "meadow" else 40, i)
 			g.material_override = grass_mat
 			vp.add_child(g)
+		var spruce := MultiMeshInstance3D.new()
+		spruce.multimesh = _one(RealTree.build("pine", 7, 0), Transform3D(Basis(), Vector3(x - 4.0, 0, -9.0)), Color(1, 1, 1, 1))
+		vp.add_child(spruce)
 		print("%s at x %.0f" % [CLIMATES[i][0], x])
 	var mid := (n - 1) * GAP * 0.5
 	var shots := [["row", Vector3(mid, 10.0, 78.0), Vector3(mid, 3.0, 0.0)]]
 	for i in n:
 		shots.append([CLIMATES[i][0], Vector3(i * GAP + 7.0, 3.0, 15.0), Vector3(i * GAP, 2.2, 0.0)])
+	shots.append(["cold_tower", Vector3(2 * GAP + 2.0, 20.0, 18.0), Vector3(2 * GAP + 12.0, 7.0, -6.0)])
 	shots.append(["wet_inside", Vector3(GAP + 0.5, 1.7, 0.8), Vector3(GAP - 2.5, 0.8, -2.5)])
 	await process_frame
 	for shot in shots:

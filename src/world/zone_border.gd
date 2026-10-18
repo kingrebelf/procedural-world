@@ -283,4 +283,4 @@ static func build(t: String) -> ArrayMesh:
 			k.box("glass", I.translated(Vector3(1.5, 4.25, -0.86)), Vector3(0.24, 0.02, 0.12))
 			for i in 6:
 				k.sphere("plaster", I.translated(Vector3(-1.9 - (i % 2) * 0.05, 0.38 + (i / 2) * 0.22, -1.0 + (i % 3) * 0.7)), 0.3, 4, 7, 0.1, 0.42)
-	return k.commit(Materials.get_mat, out)
+	return k.commit(Materials.worn, out)

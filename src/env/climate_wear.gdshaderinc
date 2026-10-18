@@ -8,6 +8,7 @@ global uniform vec4 climate_wear_now_g; // frost the time of day allows, game da
 global uniform sampler2D shelter_map_g : filter_linear, repeat_disable; // top of everything, from above
 global uniform vec4 shelter_rect_g; // its origin x, z, side, and the height its 0 stands for
 global uniform float snow_line_g;
+global uniform float weather_snow_g; // fresh snow from the weather (Weather), 0..1
 
 const float SHELTER_RANGE = 256.0;
 const vec4 WEAR_TEMPERATE = vec4(0.45, 0.0, 0.0, 0.0);
@@ -15,15 +16,31 @@ const vec3 WEAR_SNOW = vec3(0.8, 0.82, 0.86);
 const vec3 WEAR_FROST = vec3(0.7, 0.75, 0.8);
 const vec3 WEAR_DUST = vec3(0.56, 0.45, 0.31);
 
-// The place's levels at p (ClimateWear.levels), the cold rising toward the snow line.
-vec4 wear_levels(vec3 p) {
-	vec4 l = WEAR_TEMPERATE;
+// The place's levels from the map (ClimateWear.levels), as the climate alone has them.
+vec4 wear_map(vec3 p) {
 	vec2 uv = (p.xz - climate_wear_rect_g.xy) / max(climate_wear_rect_g.z, 1.0);
 	if (climate_wear_rect_g.z > 0.0 && uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0) {
-		l = texture(climate_wear_map_g, uv);
+		return texture(climate_wear_map_g, uv);
 	}
-	l.y = max(l.y, smoothstep(snow_line_g - 22.0, snow_line_g - 6.0, p.y));
+	return WEAR_TEMPERATE;
+}
+
+// The place's levels at p, the cold (frost, winter-killed grass) rising over the last
+// 20 m below the snow line.
+vec4 wear_levels(vec3 p) {
+	vec4 l = wear_map(p);
+	l.y = max(l.y, smoothstep(snow_line_g - 20.0, snow_line_g + 2.0, p.y));
 	return l;
+}
+
+// How much snow lies at p, 0..1: wherever it lies on the ground round it, so roofs, walls,
+// rocks, grass and trees all carry it together. That is up past the snow line (as the
+// ground's own snow, GroundCover), deep in the cold belt (the terrain's weather_ground
+// lays the same), and anywhere fresh snow has fallen (weather_snow_g).
+float wear_snow(vec3 p) {
+	float belt = smoothstep(0.7, 1.0, wear_map(p).y);
+	float high = smoothstep(snow_line_g - 6.0, snow_line_g + 8.0, p.y);
+	return max(max(belt, high), clamp(weather_snow_g, 0.0, 1.0));
 }
 
 // Height of the highest thing over (x, z): a roof, a floor above, a canopy, or the ground
@@ -76,7 +93,8 @@ float wear_frost(vec4 lv) {
 float wear_building(inout vec3 alb, inout float rough, vec3 p, vec3 n, float base_y, float age, float take, float lum) {
 	vec4 lv = wear_levels(p);
 	float frost = wear_frost(lv);
-	if (lv.x * take * age + lv.y + lv.z * age + frost < 0.02) {
+	float s_lvl = wear_snow(p);
+	if (lv.x * take * age + s_lvl + lv.z * age + frost < 0.02) {
 		return 0.0;
 	}
 	vec2 sh = wear_shelter(p, n);
@@ -121,13 +139,16 @@ float wear_building(inout vec3 alb, inout float rough, vec3 p, vec3 n, float bas
 
 	// Snow lies on what faces up under the open sky, thick on gentle pitches, in streaks
 	// on steep ones, and drifts against the foot of walls.
-	float s_lvl = smoothstep(0.35, 0.85, lv.y);
 	float snow = 0.0;
 	if (s_lvl > 0.0) {
+		// Thin cover first in patches (the surface showing through), closing over as it
+		// deepens; it never paints a roof one flat white, the courses and ridges still
+		// read through it.
 		float cap = smoothstep(0.55 - 0.25 * s_lvl, 0.8 - 0.2 * s_lvl, n.y + (pat - 0.5) * 0.35) * open;
 		float drift = (1.0 - smoothstep(0.05, 0.2 + 0.4 * s_lvl, h + (pat - 0.5) * 0.25)) * (1.0 - up);
-		snow = clamp(max(cap, drift * 0.9 * outside) * s_lvl * 1.3, 0.0, 1.0);
-		alb = mix(alb, WEAR_SNOW * (0.94 + 0.06 * fine), snow);
+		float cover = smoothstep(0.0, 0.6, s_lvl * 1.2 + (pat - 0.5) * 0.8 + (fine - 0.5) * 0.2);
+		snow = clamp(max(cap, drift * 0.9 * outside) * cover, 0.0, 0.92);
+		alb = mix(alb, WEAR_SNOW * (0.84 + 0.1 * fine + 0.12 * clamp(lum - 0.6, -0.5, 0.6)), snow);
 		rough = mix(rough, 0.55, snow);
 	}
 	// Hoar frost: feathery white rime over everything outdoors on a cold morning, up

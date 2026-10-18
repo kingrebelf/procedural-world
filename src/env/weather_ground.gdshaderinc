@@ -1,12 +1,25 @@
 // The weather on the ground (Weather sets the uniforms): rain darkens the ground and
 // gives it a sheen, fills its hollows with puddles that ring with each drop, and drains
 // and dries away after; fresh snow settles on open level ground anywhere, thin and patchy
-// at first, and melts back when it thaws. Included by terrain.gdshaderinc (after its
+// at first, and melts back when it thaws; deep in the cold belt snow lies all year. Included by terrain.gdshaderinc (after its
 // texture helpers), which calls weather_ground() once it has the ground's look.
 global uniform float weather_wet_g; // 0 dry .. 1 soaked
 global uniform float weather_puddle_g; // 0 none .. 1 the hollows brimming
 global uniform float weather_snow_g; // fresh snow, 0 none .. 1 a full cover
 global uniform float weather_rain_g; // how hard it is raining here now
+// The climate's levels round the camera (ClimateWear; see climate_wear.gdshaderinc).
+global uniform sampler2D climate_wear_map_g : filter_linear, repeat_disable;
+global uniform vec4 climate_wear_rect_g;
+
+// Snow that lies all year deep in the cold belt (climate_wear.gdshaderinc's wear_snow
+// lays the same on roofs, walls, rocks, grass and trees).
+float wg_belt_snow(vec3 wp) {
+	vec2 uv = (wp.xz - climate_wear_rect_g.xy) / max(climate_wear_rect_g.z, 1.0);
+	if (climate_wear_rect_g.z <= 0.0 || uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
+		return 0.0;
+	}
+	return smoothstep(0.7, 1.0, texture(climate_wear_map_g, uv).g);
+}
 
 float wg_hash(vec2 q) {
 	return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453);
@@ -43,16 +56,17 @@ vec2 wg_rings(vec2 p, float t, float rate) {
 // (sheds water, no puddles). Changes them in place.
 void weather_ground(vec3 wp, vec3 wn, vec2 p, vec4 gp, float macro, float meso, float micro, float slope, float dist,
 		float far, float rockiness, inout vec3 col, inout float rough, inout float spec, inout vec3 n) {
-	if (weather_wet_g + weather_snow_g < 0.002 || wp.y < 0.05) {
+	float fall = max(weather_snow_g, wg_belt_snow(wp));
+	if (weather_wet_g + fall < 0.002 || wp.y < 0.05) {
 		return;
 	}
 	vec3 up = vec3(0.0, 1.0, 0.0);
 	// Fresh snow: settles first on level open ground and in the hollows of it, the
 	// ground's grain showing through until it closes over.
 	float fresh = 0.0;
-	if (weather_snow_g > 0.001) {
+	if (fall > 0.001) {
 		float level = smoothstep(0.55, 0.85, wn.y);
-		fresh = smoothstep(0.05, 0.7, weather_snow_g * 1.35 + (0.5 - meso) * 0.5 + (micro - 0.5) * 0.2 - (1.0 - level) * 1.2);
+		fresh = smoothstep(0.05, 0.7, fall * 1.35 + (0.5 - meso) * 0.5 + (micro - 0.5) * 0.2 - (1.0 - level) * 1.2);
 		vec3 st = untiled(snow_tex, p + 41.0, gp, SNOW_TILE, meso, far).rgb * 0.8;
 		st *= mix(vec3(0.84, 0.91, 1.0), vec3(1.0), smoothstep(-0.1, 0.45, dot(wn, sun_dir_g)));
 		col = mix(col, mix(col * 0.6 + st * 0.4, st, smoothstep(0.35, 0.85, fresh)), fresh);
