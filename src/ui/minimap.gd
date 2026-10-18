@@ -24,6 +24,12 @@ var _zone_kind := "" ## the zone you were last told you are in
 var _zone_seen := ""
 var _zone_held := 0
 var _t := 0.0
+## Where, which way and at what zoom the map was last drawn, and the time to the next
+## redraw anyway (people and wonders move on it): drawn every frame it cost a town street
+## a good part of the HUD's time, standing still as much as walking.
+var _drawn := Vector4(INF, 0.0, 0.0, -1.0)
+var _redraw_t := 0.0
+var _drawn_layer := -1 ## the overlay it was last drawn with: a new one redraws at once
 
 const MASK := """
 shader_type canvas_item;
@@ -102,11 +108,22 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	var p := player.global_position
-	_canvas.center = Vector2(p.x, p.z)
-	_canvas.scale_ppm = RES * 0.5 / RANGES[zoom]
-	_canvas.refresh()
-	_disc.rotation = _turn()
-	_over.queue_redraw()
+	var rot := _turn()
+	var ppm: float = RES * 0.5 / RANGES[zoom]
+	_redraw_t -= delta
+	# Redrawn when you have moved half a pixel on it or turned, else ten times a second.
+	if _redraw_t <= 0.0 or Vector2(p.x - _drawn.x, p.z - _drawn.y).length() * ppm > 0.5 \
+			or absf(angle_difference(rot, _drawn.z)) > 0.002 or zoom != int(_drawn.w) or MapLayers.current() != _drawn_layer:
+		_redraw_t = 0.1
+		_drawn_layer = MapLayers.current()
+		_drawn = Vector4(p.x, p.z, rot, zoom)
+		_canvas.center = Vector2(p.x, p.z)
+		_canvas.scale_ppm = ppm
+		_canvas.refresh()
+		_disc.rotation = rot
+		_over.queue_redraw()
+	else:
+		MapLayers.pump()
 	var t := fposmod(Game.day, 1.0) * 24.0
 	# The weather and the air's temperature (Weather).
 	var wx := "\n%s  ·  %d°C" % [Weather.current.describe(), roundi(Weather.current.temp)] if Weather.current != null else ""
