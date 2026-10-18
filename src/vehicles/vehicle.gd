@@ -15,6 +15,10 @@ const KINDS := {
 	# Flies where the rider looks: thrust, climb and descend, land anywhere flat enough.
 	"ship": {"name": "Starship", "model": "res://assets/models/ships/Striker.gltf", "length": 9.0, "yaw": PI,
 		"speed": 40.0, "boost": 2.5, "accel": 16.0, "turn": 1.4, "reverse": 12.0, "fly": true, "seat": 0.62, "seat_z": -0.6},
+	# A field gun (Cannon) you push from behind the trail: you stand, look up and down to lay
+	# the barrel, and Use loads and fires it.
+	"cannon": {"name": "Field Cannon", "proc": "cannon", "length": 2.8,
+		"speed": 1.4, "boost": 1.0, "accel": 1.5, "turn": 0.55, "reverse": 1.0, "gun": true, "stand": true, "seat_z": 2.05},
 }
 const CEILING := 180.0 ## metres above the ground a ship flies at most; climbing on leaves for orbit
 const LEAVE_TIME := 2.0
@@ -43,6 +47,9 @@ var _animal: AnimalModel
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 var _tilt := Basis.IDENTITY
 var _bob := 0.0
+var barrel: Node3D = null ## a gun's barrel, pivoting at its trunnions
+var elevation := 0.0 ## a gun: the barrel raised this far (radians)
+var kick := 0.0 ## a gun: the barrel's recoil, 1 just after firing, easing back to 0
 
 static func is_vehicle_item(type: String) -> bool:
 	return KINDS.has(type)
@@ -53,6 +60,8 @@ static func label(k: String) -> String:
 ## The model on its own, scaled to the vehicle's length and facing -z (also for icons).
 static func make_model(k: String) -> Node3D:
 	var d: Dictionary = KINDS[k]
+	if d.get("proc", "") == "cannon":
+		return Cannon.model()
 	var holder := Node3D.new()
 	if d.has("animal"):
 		var a := AnimalModel.new().build(d["animal"])
@@ -99,6 +108,7 @@ func setup(r: Dictionary) -> Vehicle:
 	add_child(_model)
 	if p.has("animal"):
 		_animal = _model.get_child(0)
+	barrel = _model.find_child("Barrel", false, false)
 	var box := _bounds(_model)
 	height = box.size.y
 	half_width = box.size.x * 0.5
@@ -110,6 +120,8 @@ func setup(r: Dictionary) -> Vehicle:
 	add_child(shape)
 	if _animal:
 		seat = Vector3(0, box.size.y * 0.66, 0.15)
+	elif p.get("stand", false):
+		seat = Vector3(0, 0, float(p["seat_z"])) # where the feet go
 	else:
 		seat = Vector3(0, box.size.y * float(p.get("seat", 0.55)), float(p.get("seat_z", 0.25)))
 	position = r["pos"]
@@ -147,8 +159,8 @@ func _physics_process(delta: float) -> void:
 	spd = move_toward(spd, want, a * delta)
 	# Steering bites with speed; reversing steers the other way like a car.
 	var grip := clampf(absf(spd) / 3.0, 0.0, 1.0) * (1.0 if spd >= 0.0 else -1.0)
-	if _animal:
-		grip = 1.0 if spd > -0.1 else -1.0 # a horse turns on the spot
+	if _animal or p.get("gun", false):
+		grip = 1.0 if spd > -0.1 else -1.0 # a horse turns on the spot, a gun is swung round by its trail
 	rotation.y -= drive.x * float(p["turn"]) * grip * delta
 	var fwd := -global_transform.basis.z
 	velocity.x = fwd.x * spd
@@ -256,6 +268,10 @@ func _pose(delta: float, g: float) -> void:
 	var want := Basis(Quaternion(Vector3.UP, local_up.normalized())) * Basis(Vector3.FORWARD, bank)
 	_tilt = _tilt.slerp(want.orthonormalized(), clampf(delta * 6.0, 0.0, 1.0))
 	_model.basis = _tilt
+	if barrel != null:
+		kick = move_toward(kick, 0.0, delta * 1.6)
+		barrel.rotation.x = elevation
+		barrel.position = Cannon.TRUNNION + Vector3(0, 0, 0.16 * kick * kick)
 	if _animal:
 		var s := absf(spd)
 		if s < 0.3:

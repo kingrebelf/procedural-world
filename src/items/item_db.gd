@@ -117,6 +117,7 @@ const ITEMS := {
 	"rover": {"name": "Survey Rover", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "vehicle", "color": Color(0.85, 0.85, 0.9)},
 	"ship": {"name": "Starship", "era": Eras.SCIFI, "value": 1600, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.7, 0.25)},
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
+	"cannon": {"name": "Field Cannon", "era": Eras.SCIFI, "value": 520, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.5, 0.25)},
 
 	# --- The medieval age (icon sheets items4-9) ----------------------------------------
 	# Raw and worked materials. "fuel": seconds it burns (lanterns, smelting); see Effects
@@ -335,6 +336,8 @@ const ITEMS := {
 	"bear_trap": {"name": "Bear Trap", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 70.0, "radius": 1.2, "hold": 6.0}, "color": Color(0.4, 0.4, 0.42)},
 	"tripwire": {"name": "Tripwire Kit", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "trap", "cat": "Weapons", "trap": {"damage": 80.0, "radius": 2.0, "blast": 4.0}, "color": Color(0.55, 0.5, 0.4)},
 	"black_powder": {"name": "Black Powder", "era": Eras.SCIFI, "value": 4, "stack": true, "kind": "resource", "color": Color(0.15, 0.15, 0.15)},
+	"cannon_ball": {"name": "Cannon Ball", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "ammo", "color": Color(0.22, 0.22, 0.24)},
+	"hot_shot": {"name": "Hot Shot", "era": Eras.SCIFI, "value": 9, "stack": true, "kind": "ammo", "color": Color(0.75, 0.25, 0.08)},
 	"musket_balls": {"name": "Musket Balls", "era": Eras.SCIFI, "value": 2, "stack": true, "kind": "ammo", "color": Color(0.45, 0.45, 0.48)},
 	"shotgun_shells": {"name": "Shotgun Shells", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.75, 0.2, 0.15)},
 	"rifle_cartridges": {"name": "Rifle Cartridges", "era": Eras.SCIFI, "value": 3, "stack": true, "kind": "ammo", "color": Color(0.8, 0.65, 0.3)},
@@ -834,7 +837,7 @@ const UNLOCK := {
 	"sarsaparilla": 10, "apple_dried": 10, "pickles": 10, "egg_fried": 10, "pancakes": 11, "steak": 11, "chili": 12,
 	"stew_tin": 12, "whiskey": 11, "water_canteen": 11, "bandage_roll": 10, "iodine": 11, "splint": 11, "harmonica": 10,
 	"cards_deck": 10, "satchel": 11, "tomahawk": 11, "bayonet": 12, "blunderbuss": 12, "revolver_six": 13,
-	"shotgun_shells": 12, "rifle_cartridges": 13, "derringer": 12, "flare_gun": 12, "fire_bottle": 12, "fire_pot": 4, "bear_trap": 12,
+	"shotgun_shells": 12, "rifle_cartridges": 13, "derringer": 12, "flare_gun": 12, "fire_bottle": 12, "fire_pot": 4, "cannon": 12, "cannon_ball": 12, "hot_shot": 12, "bear_trap": 12,
 	"sabre": 13, "lamp_kerosene": 12, "valve": 12, "pressure_gauge": 13, "piston": 13, "steel_sheet": 12,
 	"hardhat_lamp": 12, "overalls": 12, "gloves_work": 12, "trousers_canvas": 12, "boots_steeltoe": 12,
 	"backpack_canvas": 13, "pickaxe_miner": 13, "axe_lumber": 13, "sledgehammer": 13, "gun_oil": 13, "compass": 12,
@@ -1102,7 +1105,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"flintlock_pistol": 1.3, "musket": 4.5, "blunderbuss": 4.0, "revolver_six": 1.2, "lever_rifle": 3.5,
 	"double_shotgun": 3.4, "bolt_rifle": 4.0, "derringer": 0.4, "flare_gun": 0.9, "harpoon_gun": 5.0, "gatling": 14.0,
 	"elephant_gun": 5.5, "sabre": 1.8, "machete": 1.0, "tomahawk": 0.9, "bowie_knife": 0.6, "bayonet": 0.4,
-	"sledgehammer": 5.0, "dynamite": 0.3, "frag_grenade": 0.6, "powder_keg": 6.0, "fire_bottle": 0.6, "fire_pot": 1.2, "bear_trap": 4.0,
+	"sledgehammer": 5.0, "dynamite": 0.3, "frag_grenade": 0.6, "powder_keg": 6.0, "fire_bottle": 0.6, "fire_pot": 1.2, "cannon_ball": 2.7, "hot_shot": 2.7, "bear_trap": 4.0,
 	"tripwire": 0.8, "black_powder": 0.05, "musket_balls": 0.03, "shotgun_shells": 0.05, "rifle_cartridges": 0.03,
 	"ammo_belt": 1.2, "gun_oil": 0.2, "hat_cowboy": 0.3, "duster": 2.5, "gloves_riding": 0.2, "chaps": 1.5,
 	"boots_riding": 1.2, "bandana": 0.05, "hardhat_lamp": 0.9, "overalls": 1.5, "gloves_work": 0.3,

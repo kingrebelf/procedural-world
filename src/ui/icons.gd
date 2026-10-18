@@ -293,6 +293,13 @@ static func get_icon(type: String) -> Texture2D:
 			_ellipse(img, Vector2(32, 19), Vector2(9, 4), Color(0.75, 0.68, 0.55))
 			_poly(img, [Vector2(30, 16), Vector2(34, 4), Vector2(38, 15)], Color(1.0, 0.62, 0.2))
 			_poly(img, [Vector2(32, 16), Vector2(34, 9), Vector2(36, 16)], Color(1.0, 0.9, 0.5))
+		"cannon_ball", "hot_shot":
+			# Three iron balls in a pile; hot shot glowing red from the forge.
+			var hot := type == "hot_shot"
+			for b in [Vector2(21, 42), Vector2(43, 42), Vector2(32, 24)]:
+				_circle(img, b, 12.0, Color(0.1, 0.1, 0.11) if not hot else Color(0.55, 0.12, 0.03))
+				_circle(img, b, 10.0, c if not hot else Color(0.85, 0.3, 0.06))
+				_circle(img, b + Vector2(-3, -3), 4.0, c.lightened(0.35) if not hot else Color(1.0, 0.75, 0.3))
 		"bread":
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:

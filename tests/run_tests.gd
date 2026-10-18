@@ -2767,6 +2767,24 @@ func test_doors() -> void:
 	var bd: Dictionary = back["objects"][back["objects"].size() - 1]
 	check(Doors.is_door(bd["t"]) and Doors.is_locked(bd) and Doors.is_open(bd) and float(bd["st"]["side"]) == -1.0 and Doors.has_access(bd, "friend") and Doors.is_mine(bd), "a door keeps its lock, owner, keys and swing through a save")
 
+func test_flames_under_water() -> void:
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("torch", 2, 1.0, {}))
+	var hl := HandLight.new()
+	hl.toggle(inv)
+	check(hl.tick(0.1, inv, true).contains("goes out") and not hl.is_on(), "a torch goes out under water")
+	check(hl.toggle(inv).contains("under water") and not hl.is_on(), "and won't light there")
+	hl.set_held("torch", inv)
+	check(hl.held == "", "nor will a torch taken in hand")
+	hl.tick(0.1, inv, false)
+	hl.set_held("torch", inv)
+	check(hl.held == "torch", "out of the water it lights again")
+	check(hl.tick(0.1, inv, true) != "" and hl.held == "", "a held torch goes out too")
+	inv.add(ItemDB.make("flashlight", 1, 1.0, {}))
+	check(hl.toggle(inv).begins_with("Flashlight") and hl.is_on(), "a flashlight still works under water")
+	check(BuildCatalog.def("campfire").has("fire") and Builder.under_water(Vector3(0, -500, 0)), "a campfire can't be built under water")
+	hl.free()
+
 func test_hand_light() -> void:
 	var inv := Inventory.new()
 	var hl := HandLight.new()
@@ -5902,6 +5920,11 @@ func test_fire_ruins() -> void:
 		var a := m.get_aabb()
 		check(m.get_surface_count() >= 2 and a.size.x > 6.0 and a.size.x < 12.0, "ruin %d is built to its footprint (%s)" % [v, a.size])
 	check(FireRuins.build(sp, FireRuins.MASONRY).get_aabb().size.y > FireRuins.build(sp, FireRuins.TIMBER).get_aabb().size.y * 0.8, "brick walls stand above the ash")
+	var shell := FireRuins.variant("shell", 9.0)
+	check(shell % 16 == FireRuins.SHELL and FireRuins.kind_for("shell") == FireRuins.SHELL, "a stone house leaves a shell")
+	var sa := FireRuins.build(sp, shell).get_aabb()
+	check(sa.size.y > 5.0 and sa.size.y < 12.0 and sa.size.x > 6.0 and sa.size.x < 15.0, "its walls stand to the eaves, gables up (%s)" % sa.size)
+	check(FireSim.profile("townhouse")["leaves"] == "shell" and FireSim.profile("cottage")["leaves"] == "masonry", "stone town houses stand as shells, plastered cottages fall in")
 	check(ObjectLibrary.label(FireSim.RUIN) == "Burnt Ruin" and ObjectLibrary.kind(FireSim.RUIN) == "structure", "a ruin is a structure you can pick through")
 	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
 
@@ -5912,6 +5935,23 @@ func test_fire_items() -> void:
 	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
 	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
 	check(Crime.FINES.has("arson"), "arson is a crime")
+
+func test_cannon() -> void:
+	check(Vehicle.KINDS.has("cannon") and ItemDB.def("cannon")["kind"] == "vehicle", "the field cannon is a vehicle you carry and set down")
+	var m := Vehicle.make_model("cannon")
+	var b: Node3D = m.find_child("Barrel", false, false)
+	check(b != null and (b.get_child(0) as MeshInstance3D).mesh.get_aabb().size.z > 2.4, "its barrel is a separate piece, long as a field gun's")
+	var box := Vehicle._bounds(m)
+	check(box.size.z > 2.8 and box.size.z < 4.2 and box.size.y > 1.0 and box.size.y < 1.6, "a field cannon's size (%s)" % box.size)
+	m.free()
+	for t in Cannon.AMMO:
+		check(ItemDB.ITEMS.has(t) and Recipes.LIST.any(func(r): return r["out"] == t), "%s is an item you can make" % t)
+		check(Cannon.SHOT.has(t), "%s flies from a cannon" % t)
+	check(float(Cannon.SHOT["hot_shot"].get("incendiary", 0.0)) > 0.5 and not Cannon.SHOT["cannon_ball"].has("incendiary"), "hot shot sets things alight, round shot doesn't")
+	check(Cannon.MAX_EL > deg_to_rad(20.0) and Cannon.MIN_EL < 0.0, "the barrel can be laid up and down")
+	for pr in Settings.PRESETS:
+		check(Settings.PRESETS[pr].has("fire_fx") and int(Settings.PRESETS[pr]["fire_fx"]) < FireSystem.QUALITY.size(), "%s sets fire and smoke quality" % pr)
+	check(int(FireSystem.QUALITY[0]["smoke"]) < int(FireSystem.QUALITY[2]["smoke"]) and int(FireSystem.QUALITY[0]["flames"]) < int(FireSystem.QUALITY[2]["flames"]), "low fire quality draws less")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

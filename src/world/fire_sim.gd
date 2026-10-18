@@ -16,13 +16,13 @@ extends RefCounted
 
 ## type -> [how readily it catches 0..1, fuel in seconds at full heat, what it leaves].
 ## Leaves: "timber" (falls in: charred beams and ash), "masonry" (walls fall to rubble
-## over burnt beams), "tree" (a charred trunk), "ash" (a small heap), "" (nothing: it
+## over burnt beams), "shell" (stone walls left standing, roofless), "tree" (a charred trunk), "ash" (a small heap), "" (nothing: it
 ## only scorches).
 const PROFILES := {
 	"longhouse": [0.85, 420.0, "timber"],
 	"cottage": [0.45, 320.0, "masonry"],
-	"townhouse": [0.45, 460.0, "masonry"],
-	"watchtower": [0.3, 200.0, "masonry"],
+	"townhouse": [0.45, 460.0, "shell"],
+	"watchtower": [0.3, 200.0, "shell"],
 	"market_stall": [0.9, 120.0, "ash"],
 	"fruit_cart": [0.9, 90.0, "ash"],
 	"wagon": [0.85, 140.0, "ash"],
