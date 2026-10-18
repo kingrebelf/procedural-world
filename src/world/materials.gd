@@ -428,7 +428,7 @@ static func _get_mat(name: String) -> Material:
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
 			m.metallic_specular = 0.9
 		"solar_cell":
-			m = _pbr(Color(0.05, 0.08, 0.16), 0.12, 0.6, "", 0, 1)
+			m = _pbr(Color(0.07, 0.13, 0.36), 0.12, 0.6, "", 0, 1)
 			m.clearcoat_enabled = true
 			m.clearcoat = 0.8
 		"rubber": m = _pbr(Color(0.06, 0.06, 0.065), 0.85, 0.0, "cloth", 0.15, 1.0, 0.35)
