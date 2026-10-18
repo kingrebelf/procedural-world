@@ -5880,6 +5880,9 @@ func test_cannon() -> void:
 		check(Cannon.SHOT.has(t), "%s flies from a cannon" % t)
 	check(float(Cannon.SHOT["hot_shot"].get("incendiary", 0.0)) > 0.5 and not Cannon.SHOT["cannon_ball"].has("incendiary"), "hot shot sets things alight, round shot doesn't")
 	check(Cannon.MAX_EL > deg_to_rad(20.0) and Cannon.MIN_EL < 0.0, "the barrel can be laid up and down")
+	for pr in Settings.PRESETS:
+		check(Settings.PRESETS[pr].has("fire_fx") and int(Settings.PRESETS[pr]["fire_fx"]) < FireSystem.QUALITY.size(), "%s sets fire and smoke quality" % pr)
+	check(int(FireSystem.QUALITY[0]["smoke"]) < int(FireSystem.QUALITY[2]["smoke"]) and int(FireSystem.QUALITY[0]["flames"]) < int(FireSystem.QUALITY[2]["flames"]), "low fire quality draws less")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

@@ -28,9 +28,14 @@ const SPREAD_EVERY := 2.0
 const WRITE_EVERY := 8.0 ## offline: how often a burning chunk is saved
 const WRITE_EVERY_ONLINE := 20.0
 const MAX_BURNING := 48
-const NEAR_FLAMES := 14 ## fires drawn with flames, nearest first
-const LIGHTS := 4
-const SHADOW_LIGHTS := 1
+## By the fire_fx setting (Low, Normal, High): fires drawn with flames (nearest first),
+## lit, and lit with shadows, and the smoke particles over each.
+const QUALITY := [
+	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 36},
+	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 72},
+	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 110},
+]
+static var quality := 1
 const SOUNDS := 4
 const FLAME_RANGE := 260.0
 const SMOKE_RANGE := 1100.0
@@ -56,6 +61,8 @@ var _torch := {"key": "", "t": 0.0}
 func _ready() -> void:
 	current = self
 	add_to_group("fire")
+	_apply_settings()
+	Settings.changed.connect(_apply_settings)
 	if streamer != null:
 		streamer.chunk_ready.connect(_on_chunk)
 
@@ -220,6 +227,12 @@ func ignite_at(at: Vector3, radius: float, strength: float, by_player := true, o
 ## The fire a powder blast may start (dynamite, kegs, grenades): less sure than oil.
 func blast(at: Vector3, radius: float) -> void:
 	ignite_at(at, radius * 0.6, 0.55, true, 0.0)
+
+func _apply_settings() -> void:
+	var q := clampi(int(Settings.get_value("fire_fx")), 0, QUALITY.size() - 1)
+	if q != quality:
+		quality = q
+		_rank_t = 0.0 # re-rank, so the change shows at once
 
 func _register(node: ChunkNode, o: Dictionary) -> void:
 	var k := key_of(node.key, int(o["i"]))
@@ -434,7 +447,8 @@ func _rank(eye: Vector3, e: Dictionary) -> void:
 			b["vis"] = nv
 			v = nv
 		var fv := v as FireVis
-		fv.set_lod(n < NEAR_FLAMES and d < FLAME_RANGE, n < LIGHTS and d < 90.0, n < SHADOW_LIGHTS and d < 40.0, n < SOUNDS and d < 70.0, d)
+		var q: Dictionary = QUALITY[quality]
+		fv.set_lod(n < int(q["flames"]) and d < FLAME_RANGE, n < int(q["lights"]) and d < 90.0, n < int(q["shadows"]) and d < 40.0, n < SOUNDS and d < 70.0, d)
 		n += 1
 
 # --- Burning down ------------------------------------------------------------------------
@@ -917,7 +931,7 @@ class FireVis extends Node3D:
 		_smoke = GPUParticles3D.new()
 		_smoke.name = "Smoke"
 		var big := maxf(box.size.x, box.size.z)
-		_smoke.amount = 72 if not _ground else 24
+		_smoke.amount = int(FireSystem.QUALITY[FireSystem.quality]["smoke"]) if not _ground else 24
 		_smoke.lifetime = 13.0 if not _ground else 5.0
 		_smoke.local_coords = false
 		_smoke.preprocess = 0.0
