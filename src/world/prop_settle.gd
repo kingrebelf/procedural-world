@@ -107,3 +107,16 @@ static func fit(ground: Callable, at: Vector3, yaw: float, s: float, box: AABB, 
 		lo = minf(lo, e)
 	var y := minf(hi, lo + OVERHANG) if best_up != Vector3.ZERO else lo
 	return Transform3D(bs, Vector3(at.x, y - sink, at.z))
+
+## How badly a model with bounds `box` sits on the ground at `at` once fitted (yaw 0, scale
+## 1): the deepest any of its base is buried more than SINK, or the highest it floats,
+## over a 5 x 5 grid of its footprint. 0 on ground it rests on flush.
+static func misfit(ground: Callable, at: Vector3, box: AABB) -> float:
+	var xf := fit(ground, at, 0.0, 1.0, box)
+	var worst := 0.0
+	for i in 5:
+		for j in 5:
+			var w := xf * Vector3(box.position.x + box.size.x * 0.25 * i, box.position.y, box.position.z + box.size.z * 0.25 * j)
+			var e: float = float(ground.call(w.x, w.z)) - w.y
+			worst = maxf(worst, maxf(e - SINK, -e))
+	return worst

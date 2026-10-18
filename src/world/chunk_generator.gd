@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 19 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins).
+const GEN_VERSION := 21 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins). 21: wild caches set down on ground they can rest on (PropSettle), not on a cliff or a terrace lip.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -1197,6 +1197,33 @@ func _add(chunk: Dictionary, type: String, era: int, lx: float, lz: float, yaw: 
 		o["v"] = v
 	objs.append(o)
 
+## Worlds from this version set wild caches down where they can rest (v21).
+const CACHE_REST_V := 21
+## Ground a cache rests on well enough to stay where it was rolled (PropSettle.misfit, m).
+const CACHE_REST_OK := 0.06
+
+## Where a wild cache rolled at (x, z) is set down: there if the ground lets it rest flush,
+## else the spot within a few metres that fits best (out of a cliff, off a terrace lip),
+## kept to the same rules as the first spot. `r` is its own stream, so nothing else moves.
+func _cache_rest(chunk: Dictionary, x: float, z: float, plans: Array, sites: Array, x0: float, z0: float, r: RandomNumberGenerator) -> Vector2:
+	var ground := func(gx: float, gz: float) -> float: return height_at(chunk, gx, gz)
+	var foot := AABB(Vector3(-0.8, 0, -0.8), Vector3(1.6, 0.8, 1.6)) # any chest, any way round
+	var best := Vector2(x, z)
+	var fit := PropSettle.misfit(ground, Vector3(x, 0, z), foot)
+	if fit <= CACHE_REST_OK:
+		return best
+	for n in 24:
+		var c := Vector2(x, z) + Vector2.from_angle(r.randf() * TAU) * r.randf_range(1.0, 7.0)
+		if c.x < 4.0 or c.y < 4.0 or c.x > SIZE - 4.0 or c.y > SIZE - 4.0 or kept_out(plans, c.x, c.y, 1.0) \
+				or _near_settlement(x0 + c.x, z0 + c.y, sites, 6.0) or road_at(chunk, c.x, c.y) >= 0.05 \
+				or under_river(chunk, c.x, c.y) or in_cave(chunk, c.x, c.y):
+			continue
+		var f := PropSettle.misfit(ground, Vector3(c.x, 0, c.y), foot)
+		if f < fit:
+			fit = f
+			best = c
+	return best
+
 ## Within `extra` metres of a settlement's flat ground.
 func _near_settlement(x: float, z: float, sites: Array, extra: float) -> bool:
 	for s in sites:
@@ -1381,6 +1408,10 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 			and road_at(chunk, cache_x, cache_z) < 0.05 and not under_river(chunk, cache_x, cache_z):
 		var lx := cache_x
 		var lz := cache_z
+		if WorldField.terrain_v >= CACHE_REST_V:
+			var at := _cache_rest(chunk, cache_x, cache_z, plans, sites, x0, z0, WHash.rng(seed, cx, cz, 309))
+			lx = at.x
+			lz = at.y
 		var era := WorldField.dominant(weights_at(chunk, lx, lz))
 		var o := origin.duplicate()
 		o["era"] = era

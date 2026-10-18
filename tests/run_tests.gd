@@ -384,7 +384,7 @@ func test_landforms() -> void:
 ## higher than about fifteen storeys over the valley; older worlds keep theirs and the
 ## other landforms are untouched.
 func test_believable_towers() -> void:
-	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	WorldField.terrain_v = WorldField.TOWERS_V
 	var f := WorldField.new(2024)
 	var deep := {}
 	for iz in range(-25, 25):
@@ -397,11 +397,11 @@ func test_believable_towers() -> void:
 	for lf in deep:
 		var c: Vector2 = deep[lf]
 		var st := {}
-		for tv in [ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION]:
+		for tv in [WorldField.TOWERS_V - 2, WorldField.TOWERS_V]:
 			WorldField.terrain_v = tv
 			st[tv] = _tower_stats(WorldField.new(2024), c, 200)
-		var o: Dictionary = st[ChunkGenerator.GEN_VERSION - 2]
-		var n: Dictionary = st[ChunkGenerator.GEN_VERSION]
+		var o: Dictionary = st[WorldField.TOWERS_V - 2]
+		var n: Dictionary = st[WorldField.TOWERS_V]
 		var name: String = WorldField.LANDFORM_NAMES[lf]
 		print("  %-12s old: top %.1f m, %d towers, worst height:width %.2f, %d lone; new: top %.1f m, %d towers, worst %.2f, %d lone" % [name,
 			o["top"], o["towers"], o["worst"], o["lone"], n["top"], n["towers"], n["worst"], n["lone"]])
@@ -422,16 +422,16 @@ func test_believable_towers() -> void:
 			for k in 4:
 				var x := p.x + k * 37.0 - 60.0
 				var z := p.y - k * 23.0 + 30.0
-				WorldField.terrain_v = ChunkGenerator.GEN_VERSION - 1
+				WorldField.terrain_v = WorldField.TOWERS_V - 1
 				var a := WorldField.new(2024).shape(x, z)
-				WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+				WorldField.terrain_v = WorldField.TOWERS_V
 				var b := WorldField.new(2024).shape(x, z)
 				same = same and a == b
 				other += 1
 	check(same and other > 200, "land away from towers is unchanged by v19 (%d samples)" % other)
 	var c0: Vector2 = deep[WorldField.LF_KARST]
 	var line := {}
-	for tv in [ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION - 2, ChunkGenerator.GEN_VERSION]:
+	for tv in [WorldField.TOWERS_V - 2, WorldField.TOWERS_V - 2, WorldField.TOWERS_V]:
 		WorldField.terrain_v = tv
 		var fv := WorldField.new(2024)
 		var hs := PackedFloat32Array()
@@ -439,8 +439,8 @@ func test_believable_towers() -> void:
 			hs.append(fv.height(c0.x + i * 2.0 - 100.0, c0.y + i * 0.7))
 		check(not line.has(tv) or line[tv] == hs, "older worlds keep their towers")
 		line[tv] = hs
-	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
-	check(line[ChunkGenerator.GEN_VERSION - 2] != line[ChunkGenerator.GEN_VERSION], "new worlds get the new towers")
+	WorldField.terrain_v = WorldField.TOWERS_V
+	check(line[WorldField.TOWERS_V - 2] != line[WorldField.TOWERS_V], "new worlds get the new towers")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
 ## Towers in an n x n metre patch round c: the highest relief, how many towers stand
@@ -5501,3 +5501,55 @@ func test_props_settle_on_ground() -> void:
 	WorldField.terrain_v = keep_tv
 	# Furniture stands on its floor.
 	check(ProbeProps.floors()["bad"] == 0, "furniture sunk into or floating over its floor")
+
+func test_caches_rest_v21() -> void:
+	# A v20 world places every cache where it always did (object id and x, z pinned from
+	# before v21).
+	const PINS := [[-2, -2, 4, 51.700, 31.762], [-1, -2, 5, 42.985, 19.893], [0, -2, 4, 47.298, 4.408], [1, -2, 25, 15.836, 59.603],
+		[2, -2, 6, 34.055, 33.602], [2, -2, 19, 5.978, 50.770], [-2, -1, 6, 25.838, 25.457], [-1, -1, 8, 13.510, 53.874],
+		[0, -1, 7, 50.438, 32.712], [1, -1, 35, 53.973, 43.445], [2, -1, 40, 23.289, 21.417], [-2, 0, 8, 51.542, 5.719],
+		[-1, 0, 4, 52.599, 48.489], [0, 0, 39, 25.048, 40.415], [1, 0, 92, 29.070, 29.661], [2, 0, 68, 49.710, 59.097],
+		[-2, 1, 7, 22.348, 31.355], [-1, 1, 37, 46.482, 36.538], [0, 1, 59, 24.312, 34.652], [1, 1, 53, 39.748, 57.065],
+		[2, 1, 15, 20.775, 51.181], [-2, 2, 6, 15.242, 12.988], [-1, 2, 61, 4.307, 48.625], [0, 2, 10, 6.272, 41.878],
+		[1, 2, 0, 9.614, 45.000], [2, 2, 0, 33.063, 16.947]]
+	var keep_tv := WorldField.terrain_v
+	var old := {}
+	var new := {}
+	for tv in [ChunkGenerator.CACHE_REST_V - 1, ChunkGenerator.CACHE_REST_V]:
+		WorldField.terrain_v = tv
+		var g := ChunkGenerator.new(4242, true) # a generator per version: it caches what it plans
+		for kz in range(-2, 3):
+			for kx in range(-2, 3):
+				(old if tv < ChunkGenerator.CACHE_REST_V else new)[Vector2i(kx, kz)] = g.generate(kx, kz)
+	WorldField.terrain_v = keep_tv
+	for pin in PINS:
+		var o := {"t": "", "p": Vector3.INF}
+		for c in old[Vector2i(pin[0], pin[1])]["objects"]:
+			if int(c["i"]) == pin[2]:
+				o = c
+		var p: Vector3 = o["p"]
+		check(Eras.CACHE_TYPES.has(o["t"]) and absf(p.x - pin[3]) < 0.002 and absf(p.z - pin[4]) < 0.002,
+			"v20 cache %s at (%.3f, %.3f), pinned (%.3f, %.3f)" % [o["t"], p.x, p.z, pin[3], pin[4]])
+	# v21 moves wild caches only: every other object, and every index, stays as it was;
+	# a moved cache goes no further than a few metres, onto ground it fits no worse.
+	var moved := 0
+	for k in old:
+		var oa: Array = old[k]["objects"]
+		var na: Array = new[k]["objects"]
+		check(oa.size() == na.size(), "same objects in chunk %s" % k)
+		for i in mini(oa.size(), na.size()):
+			var a: Dictionary = oa[i]
+			var b: Dictionary = na[i]
+			if Eras.CACHE_TYPES.has(a["t"]):
+				check(Eras.CACHE_TYPES.has(b["t"]), "cache %d of %s still a cache" % [i, k])
+				var d := Vector2(a["p"].x - b["p"].x, a["p"].z - b["p"].z).length()
+				check(d < 7.01, "cache moved %.2f m" % d)
+				if d > 0.001:
+					moved += 1
+					var foot := AABB(Vector3(-0.8, 0, -0.8), Vector3(1.6, 0.8, 1.6))
+					var ga := func(x: float, z: float) -> float: return ChunkGenerator.height_at(old[k], x, z)
+					var gb := func(x: float, z: float) -> float: return ChunkGenerator.height_at(new[k], x, z)
+					check(PropSettle.misfit(gb, b["p"], foot) <= PropSettle.misfit(ga, a["p"], foot) + 0.001, "a moved cache fits its ground no worse")
+			else:
+				check(a["t"] == b["t"] and a["p"] == b["p"] and a["r"] == b["r"], "object %d of %s unchanged by v21" % [i, k])
+	check(moved > 0, "v21 moved some caches off rough ground (%d)" % moved)
