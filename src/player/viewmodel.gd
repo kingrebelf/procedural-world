@@ -196,7 +196,8 @@ static func aura_for(it) -> Material:
 	return m
 
 ## Held like a gun: the item points along the view instead of being raised.
-const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars"]
+const POINTED := ["pulse_pistol", "pickaxe_plasma", "flashlight", "flashlight_dead", "binoculars",
+	"laser_cutter", "mining_laser", "grapple"]
 
 ## Bows are held like a tool, fist closed round the middle of the stave, not like a gun.
 ## Every bow model (ToolModels, Firearms, the forged longbow) runs its stave along +Y with
@@ -319,6 +320,9 @@ static func model(t: String) -> ArrayMesh:
 		out = ToolModels.build(t)
 		if is_bow(t):
 			out.set_meta("grip_r", BOW_GRIP_R)
+	elif Provisions.has(t):
+		# A bottle thrown as a weapon (the fire bottle) is still the bottle.
+		out = Provisions.model(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():

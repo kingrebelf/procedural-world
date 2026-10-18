@@ -459,39 +459,37 @@ static func sword(k: MeshKit, o: Dictionary) -> void:
 		guard(k, gm, grip + 0.008, o["cross"], 0.016, 0.022, gc, o.get("droop", 0.0))
 	blade(k, metal, grip + 0.014, o["len"], o["w"], o.get("t", 0.006), o.get("tip", 0.16), o.get("curve", 0.0), o.get("single", false), o.get("belly", 0.0), o.get("col", Color.WHITE))
 
-## An axe head on a haft at y, its edge toward -Z: the eye round the haft, the cheeks
-## thinning to a ground edge that flares up and (with a beard) down.
-static func axe_head(k: MeshKit, m: String, y: float, len: float, h: float, beard: float, t: float, col := Color.WHITE, hr := 0.018) -> void:
-	var st := []
-	var n := 12
-	for i in n + 1:
-		var f := float(i) / n
-		# From the poll behind the haft (z = +hr*1.6) to the edge.
-		var z := lerpf(hr * 1.6, -len, f)
-		var top := lerpf(h * 0.32, h * 0.55, f * f)
-		var bot := -lerpf(h * 0.32, h * 0.45 + beard, pow(f, 1.6))
-		var th := lerpf(t, 0.0012, pow(f, 0.7)) if f > 0.25 else t
-		if f > 0.92:
-			th = 0.0008
-		var c := (top + bot) * 0.5
-		var hh := (top - bot) * 0.5
-		var s := PackedVector2Array([Vector2(0, hh), Vector2(th * 0.5, hh * 0.85), Vector2(th * 0.5, -hh * 0.85), Vector2(0, -hh), Vector2(-th * 0.5, -hh * 0.85), Vector2(-th * 0.5, hh * 0.85)])
-		st.append(_at(Vector3(0, y + c, z), Vector3(1, 0, 0), Vector3(0, 1, 0), s))
-	sweep(k, m, Transform3D.IDENTITY, st, true, col)
-	# A brighter strip where the edge was ground and kept sharp.
+## An axe head on a haft at y, its edge toward -Z: a squared poll behind the haft, the
+## eye round it, cheeks that pinch in at the neck and flare out to a broad, slightly
+## curved edge (with a beard dropping below), thinning to the ground edge.
+static func axe_head(k: MeshKit, m: String, y: float, len: float, h: float, beard: float, t: float, col := Color.WHITE, hr := 0.018, yaw := 0.0) -> void:
+	var xf := Transform3D(Basis(Vector3.UP, yaw), Vector3.ZERO)
+	var zp := hr * 1.6
+	var bow := h * 0.12
+	var top := func(u: float) -> float: return h * (0.32 + 0.23 * pow(u, 2.2) - 0.07 * sin(PI * minf(u / 0.8, 1.0)))
+	var bot := func(u: float) -> float: return -(h * 0.32 + (h * 0.13 + beard) * pow(u, 1.7) - h * 0.08 * sin(PI * minf(u / 0.75, 1.0)))
+	var at := func(u: float, v: float) -> Vector3:
+		var w := 2.0 * v - 1.0
+		return xf * Vector3(0, y + lerpf(bot.call(u), top.call(u), v), lerpf(zp, -len + bow * w * w, u))
+	plate(k, m, 12, 8, at, t, col, func(u, _v): return lerpf(1.0, 0.06, pow(clampf((u - 0.15) / 0.85, 0.0, 1.0), 0.75)))
+	# The eye: a forged collar round the haft, standing proud of the cheeks above and below.
 	if m != "it_flint" and m != "it_stone":
+		var eye := []
+		for yy in [-0.36, -0.3, 0.3, 0.36]:
+			var g: float = 1.0 if absf(yy) < 0.33 else 0.92
+			eye.append(_at(Vector3(0, y + h * yy, hr * 0.25), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect((hr + 0.006) * g, (hr * 1.35 + 0.006) * g, 0.35)))
+		sweep(k, m, xf, eye, true, col)
+		# A brighter strip where the edge was ground and kept sharp.
 		var e := []
-		for i in 7:
-			var f := float(i) / 6.0
-			var top := h * 0.55
-			var bot := -(h * 0.45 + beard)
-			var yy := lerpf(bot, top, f)
-			e.append(_at(Vector3(0, y + yy, -len + 0.004), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.0016, 0.006, 0.4)))
-		sweep(k, "it_steel", Transform3D.IDENTITY, e, true, Color.WHITE)
+		for i in 9:
+			var v := 0.04 + 0.92 * float(i) / 8.0
+			var p: Vector3 = xf.affine_inverse() * at.call(0.985, v)
+			e.append(_at(p, Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.0014, 0.006, 0.4)))
+		sweep(k, "it_steel", xf, e, true, Color.WHITE)
 
 ## A pick's head at y: a long point toward +X curving down, a shorter one (or an adze
 ## blade) toward -X, a socket round the haft.
-static func pick_head(k: MeshKit, m: String, y: float, len_a: float, len_b: float, r: float, col := Color.WHITE, adze := false) -> void:
+static func pick_head(k: MeshKit, m: String, y: float, len_a: float, len_b: float, r: float, col := Color.WHITE, adze := false, collar := 0.0, droop := 0.35) -> void:
 	for side in [1.0, -1.0]:
 		var L: float = len_a if side > 0 else len_b
 		if L <= 0.0:
@@ -500,8 +498,8 @@ static func pick_head(k: MeshKit, m: String, y: float, len_a: float, len_b: floa
 		for i in 9:
 			var f := float(i) / 8.0
 			var x: float = side * f * L
-			var dy := -0.35 * L * f * f
-			var rr := r * (1.0 - f * 0.92)
+			var dy := -droop * L * f * f
+			var rr := r * (1.0 - 0.9 * pow(f, 1.4))
 			var s := sec_rect(rr, rr * 0.8, 0.3)
 			if adze and side < 0:
 				s = sec_rect(rr * 0.35, r * (0.8 + f * 0.6), 0.2)
@@ -510,7 +508,12 @@ static func pick_head(k: MeshKit, m: String, y: float, len_a: float, len_b: floa
 		for s in st:
 			fixed.append(_at(s["p"], Vector3(0, 1, 0), Vector3(0, 0, 1), s["s"]))
 		sweep(k, m, Transform3D.IDENTITY, fixed, true, col)
-	lathe(k, m, Transform3D.IDENTITY, [Vector2(0, y - r * 1.5), Vector2(r * 1.15, y - r * 1.5), Vector2(r * 1.25, y), Vector2(r * 1.15, y + r * 1.5), Vector2(0, y + r * 1.5)], 8, col)
+	if m != "it_flint" and m != "it_stone":
+		lathe(k, m, Transform3D.IDENTITY, [Vector2(0, y - r * 1.5), Vector2(r * 1.15, y - r * 1.5), Vector2(r * 1.25, y), Vector2(r * 1.15, y + r * 1.5), Vector2(0, y + r * 1.5)], 8, col)
+	# A socket running down the haft below the head, where it was drawn out to grip.
+	if collar > 0.0:
+		var c0 := y - r * 1.5 - collar
+		lathe(k, m, Transform3D.IDENTITY, [Vector2(r * 0.9, c0 - 0.002), Vector2(r * 1.0, c0 + 0.004), Vector2(r * 1.02, c0 + collar * 0.5), Vector2(r * 1.15, y - r * 1.4)], 8, col)
 
 ## A hammer head at y, faces toward ±X: an octagonal block, its striking faces chamfered.
 static func hammer_head(k: MeshKit, m: String, y: float, half: float, r: float, col := Color.WHITE, peen := 0.0) -> void:
@@ -531,13 +534,17 @@ static func spear_head(k: MeshKit, m: String, y: float, len: float, w: float, co
 
 ## A thin plate shaped by `f(u, v) -> Vector3` (u, v in 0..1), `t` thick, with its edges
 ## closed: shovel blades, saws, sickles.
-static func plate(k: MeshKit, m: String, nu: int, nv: int, f: Callable, t: float, col := Color.WHITE) -> void:
+static func plate(k: MeshKit, m: String, nu: int, nv: int, f: Callable, t: float, col := Color.WHITE, thick := Callable()) -> void:
 	var grid := []
+	var tt := []
 	for j in nv + 1:
 		var row := []
+		var trow := []
 		for i in nu + 1:
 			row.append(f.call(float(i) / nu, float(j) / nv))
+			trow.append(t * (thick.call(float(i) / nu, float(j) / nv) if thick.is_valid() else 1.0))
 		grid.append(row)
+		tt.append(trow)
 	var norm := func(i: int, j: int) -> Vector3:
 		var a: Vector3 = grid[j][mini(i + 1, nu)] - grid[j][maxi(i - 1, 0)]
 		var b: Vector3 = grid[mini(j + 1, nv)][i] - grid[maxi(j - 1, 0)][i]
@@ -547,10 +554,11 @@ static func plate(k: MeshKit, m: String, nu: int, nv: int, f: Callable, t: float
 		for i in nu:
 			var p := [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
 			var n := [norm.call(i, j), norm.call(i + 1, j), norm.call(i + 1, j + 1), norm.call(i, j + 1)]
+			var th := [tt[j][i], tt[j][i + 1], tt[j + 1][i + 1], tt[j + 1][i]]
 			for side in [1.0, -1.0]:
 				var q := []
 				for c in 4:
-					q.append(p[c] + n[c] * t * 0.5 * side)
+					q.append(p[c] + n[c] * th[c] * 0.5 * side)
 				var nn := []
 				for c in 4:
 					nn.append(n[c] * side)
@@ -577,8 +585,9 @@ static func plate(k: MeshKit, m: String, nu: int, nv: int, f: Callable, t: float
 		var pb: Vector3 = grid[b.y][b.x]
 		var na: Vector3 = norm.call(a.x, a.y)
 		var nb: Vector3 = norm.call(b.x, b.y)
-		var out := (pb - pa).cross(na).normalized()
-		k.quad(m, I, pa - na * t * 0.5, pb - nb * t * 0.5, pb + nb * t * 0.5, pa + na * t * 0.5, col)
+		var ta: float = tt[a.y][a.x] * 0.5
+		var tb: float = tt[b.y][b.x] * 0.5
+		k.quad(m, I, pa - na * ta, pb - nb * tb, pb + nb * tb, pa + na * ta, col)
 
 ## Iron studs or rivets at points.
 static func studs(k: MeshKit, m: String, pts: Array, r: float, col := Color.WHITE) -> void:
@@ -615,6 +624,16 @@ const BIRCH := Color(0.74, 0.62, 0.45)
 const LEATHER := Color(0.36, 0.22, 0.12)
 const LEATHER_DARK := Color(0.18, 0.12, 0.08)
 const CORD := Color(0.72, 0.64, 0.48)
+## Hafts as the icons paint them: a warm mid brown, oiled and handled dark.
+const HAFT := Color(0.46, 0.28, 0.15)
+const HAFT_DARK := Color(0.32, 0.2, 0.12)
+const RAWHIDE := Color(0.62, 0.38, 0.2)
+## The safety orange of human sci-fi tools.
+const ORANGE := Color(0.9, 0.45, 0.08)
+## Moulded hard cases, and iron gone brown with rust.
+const CASE := Color(0.26, 0.27, 0.29)
+const RUST := Color(0.66, 0.42, 0.33)
+const BARK := Color(0.42, 0.32, 0.22)
 const FLINT := Color(0.32, 0.29, 0.27)
 
 static func has(t: String) -> bool:
@@ -710,7 +729,7 @@ const BUILD := {
 	"bayonet": "_bayonet", "sledgehammer": "_sledgehammer", "wrench": "_wrench", "crowbar": "_crowbar",
 	"hand_drill": "_hand_drill", "pickaxe_miner": "_pickaxe_miner", "axe_lumber": "_axe_lumber",
 	"lamp_kerosene": "_lamp_kerosene", "dynamite": "_dynamite", "frag_grenade": "_frag_grenade",
-	"powder_keg": "_powder_keg", "fire_bottle": "_fire_bottle", "survival_knife": "_survival_knife",
+	"powder_keg": "_powder_keg", "survival_knife": "_survival_knife",
 	"vibro_knife": "_vibro_knife", "combat_machete": "_combat_machete", "stun_baton": "_stun_baton",
 	"mono_katana": "_mono_katana", "power_hammer": "_power_hammer", "chain_axe": "_chain_axe",
 	"frag_grenade_mk2": "_frag_mk2", "emp_grenade": "_emp_grenade", "smoke_grenade": "_smoke_grenade",
@@ -730,21 +749,39 @@ const BUILD := {
 # Medieval: wood, stone, bronze, then iron and steel.
 
 static func _wooden_club(k: MeshKit):
-	# A length of hardwood, the bark stripped, thickening to a knotted head.
-	var prof := [Vector2(0, -0.02), Vector2(0.016, -0.018), Vector2(0.018, 0.0), Vector2(0.017, 0.12), Vector2(0.022, 0.25), Vector2(0.034, 0.38), Vector2(0.042, 0.47), Vector2(0.04, 0.52), Vector2(0.028, 0.545), Vector2(0, 0.55)]
-	lathe(k, "it_wood", Transform3D.IDENTITY, prof, 12, OAK)
-	for p in [Vector3(0.036, 0.42, 0.012), Vector3(-0.03, 0.36, -0.02), Vector3(0.01, 0.47, 0.038)]:
-		k.sphere("it_wood", Transform3D(Basis(), p), 0.012, 4, 6, 0.3, 0.6, OAK.darkened(0.25))
+	# A length of hardwood with its bark left on, swelling to a heavy head knotted with the
+	# stubs of cut branches; a leather strip wound round the grip.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var prof := [Vector2(0, -0.02), Vector2(0.017, -0.018), Vector2(0.02, 0.0)]
+	for i in 12:
+		var y := 0.03 + i * 0.045
+		var r := lerpf(0.021, 0.05, smoothstep(0.1, 0.5, y)) * (1.0 + rng.randf_range(-0.08, 0.08))
+		prof.append(Vector2(r, y))
+	prof.append_array([Vector2(0.04, 0.555), Vector2(0.022, 0.574), Vector2(0, 0.578)])
+	lathe(k, "it_wood", Transform3D.IDENTITY, prof, 12, BARK)
+	for i in 18:
+		var y := rng.randf_range(0.2, 0.54)
+		var a := rng.randf() * TAU
+		var r := lerpf(0.021, 0.05, smoothstep(0.1, 0.5, y))
+		var d := Vector3(cos(a), 0.0, sin(a))
+		var b := Basis(Vector3.UP.cross(d).normalized(), PI * 0.5 - 0.35)
+		k.cylinder("it_wood", Transform3D(b, d * r * 0.8 + Vector3(0, y, 0)), rng.randf_range(0.014, 0.019), 0.007, rng.randf_range(0.024, 0.034), 6, true, 0.0, 1, BARK.darkened(0.25))
+	wrap_grip(k, 0.0, 0.13, 0.0215, LEATHER)
 
 static func _cudgel(k: MeshKit):
-	_wooden_club(k)
-	for y in [0.33, 0.45]:
-		lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.036 + (y - 0.33) * 0.07, y - 0.012), Vector2(0.041 + (y - 0.33) * 0.07, y - 0.008), Vector2(0.041 + (y - 0.33) * 0.07, y + 0.008), Vector2(0.036 + (y - 0.33) * 0.07, y + 0.012)], 12)
-	var pts := []
-	for i in 8:
-		var a := TAU * i / 8.0
-		pts.append(Vector3(cos(a) * 0.043, 0.39 + 0.04 * (i % 2), sin(a) * 0.043))
-	studs(k, "it_iron", pts, 0.008)
+	# A thick oak billet bound with riveted iron bands, an iron cap on the butt.
+	lathe(k, "it_wood", Transform3D.IDENTITY, [Vector2(0, -0.01), Vector2(0.026, -0.008), Vector2(0.027, 0.12), Vector2(0.038, 0.25), Vector2(0.05, 0.4), Vector2(0.054, 0.5), Vector2(0.05, 0.53), Vector2(0.034, 0.55), Vector2(0, 0.555)], 14, Color(0.4, 0.26, 0.15))
+	for b in [[0.3, 0.043], [0.45, 0.053], [0.52, 0.0525]]:
+		var y: float = b[0]
+		var r: float = b[1] + 0.002
+		lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(r - 0.003, y - 0.014), Vector2(r, y - 0.01), Vector2(r, y + 0.01), Vector2(r - 0.003, y + 0.014)], 14)
+		var pts := []
+		for i in 7:
+			var a := TAU * i / 7.0
+			pts.append(Vector3(cos(a) * r, y, sin(a) * r))
+		studs(k, "it_iron", pts, 0.005)
+	_butt_cap(k, "it_iron", 0.0, 0.028)
 
 static func _quarterstaff(k: MeshKit):
 	pole(k, -0.9, 0.9, 0.017, 0.017, ASH)
@@ -759,19 +796,24 @@ static func _stone_knife(k: MeshKit):
 	blade(k, "it_flint", 0.09, 0.11, 0.017, 0.008, 0.4, 0.0, false, 0.2, FLINT)
 
 static func _hand_axe(k: MeshKit):
-	haft(k, -0.02, 0.36, 0.015, 0.013, HICKORY)
-	axe_head(k, "it_iron", 0.31, 0.085, 0.06, 0.012, 0.022)
+	haft(k, -0.02, 0.34, 0.019, 0.016, HAFT)
+	wrap_grip(k, 0.0, 0.15, 0.0185, LEATHER)
+	axe_head(k, "it_iron", 0.3, 0.13, 0.11, 0.03, 0.024, Color.WHITE, 0.017)
 
 static func _axe_stone(k: MeshKit):
-	haft(k, -0.02, 0.5, 0.017, 0.016, OAK)
-	# A ground stone head set through a split haft and bound.
-	axe_head(k, "it_stone", 0.42, 0.1, 0.07, 0.0, 0.03, Color(0.42, 0.42, 0.4))
-	lash(k, Vector3(0, 0.42, 0.0), 0.022, 6, 0.07, CORD)
+	haft(k, -0.02, 0.5, 0.021, 0.019, HAFT)
+	# A big knapped flint set through a split haft, standing out behind it too, and bound
+	# with rawhide wound criss-cross over the joint.
+	axe_head(k, "it_flint", 0.42, 0.16, 0.12, 0.0, 0.036, Color(0.78, 0.78, 0.76), 0.02)
+	axe_head(k, "it_flint", 0.42, 0.07, 0.09, 0.0, 0.03, Color(0.78, 0.78, 0.76), 0.02, PI)
+	lash(k, Vector3(0, 0.42, 0.0), 0.027, 8, 0.11, RAWHIDE)
+	k.sphere("it_wood", Transform3D(Basis(), Vector3(0, 0.5, 0)), 0.022, 5, 8, 0.15, 0.8, HAFT)
 
 static func _pickaxe_stone(k: MeshKit):
-	haft(k, -0.02, 0.6, 0.017, 0.016, OAK)
-	pick_head(k, "it_flint", 0.55, 0.15, 0.08, 0.018, FLINT)
-	lash(k, Vector3(0, 0.55, 0), 0.024, 6, 0.06, CORD)
+	haft(k, -0.02, 0.6, 0.021, 0.019, HAFT)
+	pick_head(k, "it_flint", 0.53, 0.22, 0.2, 0.032, Color(0.78, 0.78, 0.76), false, 0.0, 0.25)
+	lash(k, Vector3(0, 0.53, 0), 0.03, 8, 0.1, RAWHIDE)
+	k.sphere("it_wood", Transform3D(Basis(), Vector3(0, 0.6, 0)), 0.022, 5, 8, 0.15, 0.8, HAFT)
 
 static func _hunting_spear(k: MeshKit):
 	pole(k, -0.6, 1.0, 0.015, 0.014, ASH)
@@ -796,49 +838,56 @@ static func _bronze_sword(k: MeshKit):
 	sword(k, {"metal": "it_bronze", "guard": "it_bronze", "len": 0.5, "w": 0.02, "t": 0.007, "tip": 0.22, "belly": 0.28, "cross": 0.038, "wrap": false, "wood": WALNUT, "grip": 0.095, "pommel": 0.02, "wheel": false})
 
 static func _bronze_axe(k: MeshKit):
-	haft(k, -0.02, 0.48, 0.016, 0.015, ASH)
-	axe_head(k, "it_bronze", 0.42, 0.1, 0.06, 0.0, 0.026)
+	haft(k, 0.0, 0.45, 0.02, 0.018, HAFT_DARK, false)
+	wrap_grip(k, 0.01, 0.17, 0.02, LEATHER_DARK)
+	axe_head(k, "it_bronze", 0.39, 0.17, 0.14, 0.045, 0.028, Color.WHITE, 0.019)
+	_butt_cap(k, "it_brass", 0.0, 0.0215)
 
 static func _pickaxe_bronze(k: MeshKit):
-	haft(k, -0.02, 0.65, 0.017, 0.016, ASH)
-	pick_head(k, "it_bronze", 0.6, 0.2, 0.12, 0.016, Color.WHITE, true)
+	haft(k, -0.02, 0.62, 0.02, 0.018, HAFT)
+	pick_head(k, "it_bronze", 0.56, 0.27, 0.27, 0.024, Color.WHITE, false, 0.035, 0.32)
+	_band(k, "it_bronze", 0.47, 0.0205)
 
 ## Mythril reads as a pale, faintly blue steel: polished, never glowing.
 const MYTHRIL := Color(0.8, 0.88, 1.0)
 
 static func _pickaxe_iron(k: MeshKit):
-	haft(k, -0.02, 0.66, 0.017, 0.016, HICKORY)
-	pick_head(k, "it_iron", 0.61, 0.23, 0.21, 0.017)
-	_wedge(k, 0.61, 0.017)
+	haft(k, -0.02, 0.62, 0.02, 0.018, HAFT)
+	pick_head(k, "it_iron", 0.57, 0.29, 0.22, 0.024, Color.WHITE, false, 0.03, 0.34)
+	_wedge(k, 0.57, 0.024)
 
 static func _pickaxe_mythril(k: MeshKit):
-	haft(k, -0.02, 0.68, 0.017, 0.016, WALNUT)
-	wrap_grip(k, 0.02, 0.2, 0.017, Color(0.22, 0.16, 0.12))
-	pick_head(k, "it_steel", 0.63, 0.25, 0.22, 0.017, MYTHRIL)
-	_wedge(k, 0.63, 0.017)
+	haft(k, -0.02, 0.64, 0.02, 0.018, WALNUT)
+	wrap_grip(k, 0.02, 0.22, 0.02, Color(0.16, 0.18, 0.26), "it_cloth")
+	pick_head(k, "it_steel", 0.58, 0.28, 0.26, 0.03, MYTHRIL, false, 0.06, 0.4)
+	_wedge(k, 0.58, 0.03)
 
 static func _axe_iron(k: MeshKit):
-	haft(k, -0.02, 0.6, 0.017, 0.015, HICKORY)
-	axe_head(k, "it_iron", 0.54, 0.12, 0.085, 0.02, 0.026)
-	_wedge(k, 0.54, 0.015)
+	haft(k, -0.02, 0.59, 0.022, 0.019, HAFT)
+	axe_head(k, "it_iron", 0.52, 0.2, 0.16, 0.04, 0.032, Color.WHITE, 0.02)
 
 static func _axe_mythril(k: MeshKit):
-	haft(k, -0.02, 0.62, 0.017, 0.015, WALNUT)
-	wrap_grip(k, 0.02, 0.18, 0.017, Color(0.22, 0.16, 0.12))
-	axe_head(k, "it_steel", 0.56, 0.13, 0.09, 0.03, 0.024, MYTHRIL)
-	_wedge(k, 0.56, 0.015)
+	# A double-bitted war axe in pale, faintly blue steel: two broad crescents back to back,
+	# a spike between them on top, the haft wrapped in dark cloth.
+	haft(k, -0.02, 0.565, 0.019, 0.017, WALNUT)
+	wrap_grip(k, 0.02, 0.24, 0.019, Color(0.16, 0.18, 0.26), "it_cloth")
+	for yaw in [0.0, PI]:
+		axe_head(k, "it_steel", 0.5, 0.15, 0.17, 0.05, 0.024, MYTHRIL, 0.017, yaw)
+	k.cylinder("it_steel", Transform3D(Basis(), Vector3(0, 0.56, 0)), 0.016, 0.0, 0.08, 8, true, 0.0, 1, MYTHRIL)
+	_band(k, "it_steel", 0.42, 0.02, MYTHRIL)
 
 static func _battle_axe(k: MeshKit):
-	# A long bearded war axe: an ash haft with a leather grip, a spike behind the head and
-	# iron straps (langets) running down the haft from it.
-	haft(k, -0.02, 0.86, 0.019, 0.017, ASH)
-	wrap_grip(k, 0.02, 0.26, 0.019, Color(0.3, 0.19, 0.11))
-	axe_head(k, "it_steel", 0.78, 0.17, 0.11, 0.07, 0.024, Color.WHITE, 0.019)
-	k.cylinder("it_iron", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.79, 0.055)), 0.011, 0.001, 0.07, 6)
+	# A long double-bitted war axe: an ash haft with a leather grip, two bearded bits back to
+	# back and iron straps (langets) running down the haft from them.
+	haft(k, -0.02, 0.83, 0.02, 0.018, HAFT_DARK)
+	wrap_grip(k, 0.02, 0.3, 0.02, LEATHER_DARK)
+	for yaw in [0.0, PI]:
+		axe_head(k, "it_iron", 0.76, 0.17, 0.17, 0.06, 0.026, Color.WHITE, 0.019, yaw)
 	for x in [-1.0, 1.0]:
-		k.box("it_iron", Transform3D.IDENTITY.translated(Vector3(x * 0.018, 0.69, 0)), Vector3(0.003, 0.12, 0.012))
-		for y in [0.65, 0.72]:
-			k.cylinder("it_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x * 0.02, y, 0)), 0.003, 0.003, 0.003, 6)
+		k.box("it_iron", Transform3D.IDENTITY.translated(Vector3(x * 0.021, 0.64, 0)), Vector3(0.004, 0.16, 0.014))
+		for y in [0.59, 0.68]:
+			k.cylinder("it_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(x * 0.023, y, 0)), 0.003, 0.003, 0.003, 6)
+	_band(k, "it_iron", 0.32, 0.021)
 	return Vector3(0, 0.12, 0)
 
 static func _hammer(k: MeshKit):
@@ -862,7 +911,16 @@ static func _sword_iron(k: MeshKit):
 	sword(k, {"len": 0.72, "w": 0.024, "t": 0.006, "cross": 0.1, "grip": 0.12, "guard": "it_iron", "pommel": 0.024})
 
 static func _sword_runic(k: MeshKit):
-	sword(k, {"len": 0.78, "w": 0.024, "t": 0.006, "cross": 0.11, "droop": 0.01, "grip": 0.13, "col": MYTHRIL, "guard": "it_brass", "pommel": 0.025, "wrap_col": Color(0.12, 0.14, 0.24), "wrap_m": "it_cloth"})
+	sword(k, {"len": 0.78, "w": 0.032, "t": 0.007, "tip": 0.2, "cross": 0.075, "droop": -0.012, "grip": 0.13, "col": MYTHRIL, "guard": "it_brass", "pommel": 0.024, "wrap_col": Color(0.12, 0.14, 0.24), "wrap_m": "it_cloth"})
+	# Runes cut down the fuller and filled with dark enamel (cut, not glowing), and a green
+	# stone set in the guard.
+	for i in 7:
+		var y := 0.2 + i * 0.075
+		var w := 0.008 + 0.004 * float(i % 2)
+		for s in [-1.0, 1.0]:
+			k.box("it_paint", Transform3D(Basis(Vector3(0, 0, 1), 0.3 * float(i % 3 - 1)), Vector3(0, y, s * 0.0036)), Vector3(w, 0.018, 0.0008), Color(0.08, 0.3, 0.3))
+	for s in [-1.0, 1.0]:
+		k.sphere("it_glass", Transform3D(Basis(), Vector3(0, 0.138, s * 0.012)), 0.007, 4, 8, 0.0, 0.6, Color(0.2, 0.7, 0.45))
 
 static func _dagger(k: MeshKit):
 	sword(k, {"len": 0.24, "w": 0.018, "t": 0.005, "tip": 0.35, "cross": 0.05, "grip": 0.095, "pommel": 0.017})
@@ -874,13 +932,22 @@ static func _skinning_knife(k: MeshKit):
 static func _wedge(k: MeshKit, y: float, r: float) -> void:
 	k.box("it_steel", Transform3D.IDENTITY.translated(Vector3(0, y + r * 1.5 + 0.004, 0)), Vector3(0.003, 0.008, r * 1.9))
 
+## A metal cap over the butt of a haft (bottom at y).
+static func _butt_cap(k: MeshKit, m: String, y: float, r: float, col := Color.WHITE) -> void:
+	lathe(k, m, Transform3D.IDENTITY, [Vector2(0, y - 0.012), Vector2(r * 0.85, y - 0.012), Vector2(r * 1.05, y - 0.006), Vector2(r * 1.05, y + 0.022), Vector2(r * 0.95, y + 0.026)], 12, col)
+
+## A metal band round a haft at y.
+static func _band(k: MeshKit, m: String, y: float, r: float, col := Color.WHITE) -> void:
+	lathe(k, m, Transform3D.IDENTITY, [Vector2(r * 0.95, y - 0.012), Vector2(r * 1.05, y - 0.008), Vector2(r * 1.05, y + 0.008), Vector2(r * 0.95, y + 0.012)], 12, col)
+
 static func _pickaxe_steel(k: MeshKit):
-	haft(k, -0.02, 0.68, 0.017, 0.016, HICKORY)
-	pick_head(k, "it_iron", 0.63, 0.24, 0.2, 0.017)
+	haft(k, -0.02, 0.62, 0.02, 0.018, HAFT)
+	pick_head(k, "it_iron", 0.57, 0.29, 0.29, 0.022, Color(0.78, 0.78, 0.8), false, 0.05, 0.4)
 
 static func _axe_steel(k: MeshKit):
-	haft(k, -0.02, 0.62, 0.017, 0.015, HICKORY)
-	axe_head(k, "it_iron", 0.56, 0.12, 0.08, 0.02, 0.026)
+	haft(k, -0.02, 0.59, 0.022, 0.019, HAFT)
+	lash(k, Vector3(0, 0.12, 0), 0.0225, 5, 0.06, LEATHER)
+	axe_head(k, "it_iron", 0.51, 0.22, 0.18, 0.05, 0.032, Color(0.95, 0.92, 0.9), 0.02)
 
 static func _steel_sword(k: MeshKit):
 	sword(k, {"len": 0.78, "w": 0.022, "t": 0.006, "cross": 0.1, "grip": 0.2, "pommel": 0.022})
@@ -908,26 +975,35 @@ static func _zweihander(k: MeshKit):
 	return Vector3(0, 0.08, 0)
 
 static func _halberd(k: MeshKit):
-	pole(k, -0.9, 1.0, 0.018, 0.017, ASH)
+	pole(k, -0.9, 1.0, 0.018, 0.017, HAFT)
 	# Iron langets riveted down the shaft below the head.
 	for s in [-1.0, 1.0]:
-		k.box("it_iron", Transform3D(Basis(), Vector3(s * 0.019, 0.8, 0)), Vector3(0.004, 0.2, 0.012))
-	spear_head(k, "it_steel", 1.0, 0.26, 0.018, Color.WHITE, 0.018)
-	# A broad, slightly hooked axe blade on one side...
-	axe_head(k, "it_steel", 0.9, 0.25, 0.3, 0.06, 0.014, Color.WHITE, 0.018)
+		k.box("it_iron", Transform3D(Basis(), Vector3(s * 0.019, 0.76, 0)), Vector3(0.004, 0.24, 0.012))
+	_band(k, "it_iron", 0.64, 0.02)
+	spear_head(k, "it_steel", 1.04, 0.32, 0.02, Color.WHITE, 0.018)
+	# A broad crescent axe blade on one side...
+	axe_head(k, "it_iron", 0.9, 0.3, 0.36, 0.08, 0.016, Color.WHITE, 0.018)
 	# ...and a long back fluke curving down on the other.
 	var st := []
 	for i in 9:
 		var f := float(i) / 8.0
-		st.append(_at(Vector3(0, 0.93 - f * f * 0.07, 0.025 + f * 0.15), Vector3(1, 0, 0), Vector3(0, 1, 0),
-			sec_rect(0.005 * (1.0 - f * 0.7), 0.016 * (1.0 - f * 0.92))))
-	sweep(k, "it_steel", Transform3D.IDENTITY, st)
+		st.append(_at(Vector3(0, 0.94 - f * f * 0.09, 0.025 + f * 0.17), Vector3(1, 0, 0), Vector3(0, 1, 0),
+			sec_rect(0.006 * (1.0 - f * 0.7), 0.022 * (1.0 - f * 0.92))))
+	sweep(k, "it_iron", Transform3D.IDENTITY, st)
 	return Vector3(0, 0.1, 0)
 
 static func _glaive(k: MeshKit):
-	pole(k, -0.9, 0.95, 0.017, 0.016, ASH)
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.018, 0.9), Vector2(0.02, 0.92), Vector2(0.018, 0.99), Vector2(0.012, 1.0)], 10)
-	blade(k, "it_steel", 0.98, 0.42, 0.032, 0.007, 0.35, 0.18, true)
+	pole(k, -0.9, 0.95, 0.017, 0.016, HAFT)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.018, 0.88), Vector2(0.021, 0.9), Vector2(0.02, 0.97), Vector2(0.014, 0.99), Vector2(0.012, 1.0)], 10)
+	_band(k, "it_iron", 0.86, 0.019)
+	# A broad, curved single-edged blade with a hooked spur on its back.
+	blade(k, "it_iron", 0.98, 0.5, 0.05, 0.008, 0.4, 0.22, true, 0.25)
+	var st := []
+	for i in 7:
+		var f := float(i) / 6.0
+		st.append(_at(Vector3(-0.035 - f * 0.05, 1.08 + f * f * 0.06, 0), Vector3(0, 1, 0), Vector3(0, 0, 1),
+			sec_rect(0.012 * (1.0 - f * 0.85), 0.004)))
+	sweep(k, "it_iron", Transform3D.IDENTITY, st)
 	return Vector3(0, 0.1, 0)
 
 static func _mace_handle(k: MeshKit, y1: float):
@@ -975,23 +1051,43 @@ static func _warpick(k: MeshKit):
 	hammer_head(k, "it_iron", 0.52, 0.0, 0.0)
 
 static func _executioner_axe(k: MeshKit):
-	haft(k, -0.02, 0.95, 0.019, 0.017, WALNUT)
-	axe_head(k, "it_iron", 0.82, 0.24, 0.24, 0.05, 0.03)
+	# A great double-bitted axe, its bits deep and broad, a gilt-brass collar worked round the
+	# eye, the haft dark and wrapped, a brass cap at the butt.
+	haft(k, 0.0, 0.93, 0.021, 0.019, HAFT_DARK, false)
+	wrap_grip(k, 0.02, 0.4, 0.021, LEATHER_DARK)
+	for yaw in [0.0, PI]:
+		axe_head(k, "it_iron", 0.8, 0.22, 0.24, 0.06, 0.028, Color.WHITE, 0.021, yaw)
+	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0.023, 0.66), Vector2(0.03, 0.68), Vector2(0.028, 0.74), Vector2(0.034, 0.76), Vector2(0.03, 0.88), Vector2(0.034, 0.9), Vector2(0.024, 0.93)], 10)
+	_butt_cap(k, "it_brass", 0.0, 0.023)
 	return Vector3(0, 0.08, 0)
 
 static func _dragonbone_dagger(k: MeshKit):
-	lathe(k, "it_bone", Transform3D.IDENTITY, [Vector2(0, -0.02), Vector2(0.014, -0.018), Vector2(0.016, 0.0), Vector2(0.013, 0.05), Vector2(0.015, 0.1), Vector2(0.018, 0.11)], 10)
-	blade(k, "it_bone", 0.11, 0.2, 0.017, 0.008, 0.3, 0.06, true, 0.1, Color(0.95, 0.92, 0.82))
+	# Carved from a great beast's bone: a curved, ridged blade, a guard carved in a knot, a
+	# knuckled grip and a pommel carved as the beast's skull.
+	var bone := Color(0.93, 0.88, 0.74)
+	lathe(k, "it_bone", Transform3D.IDENTITY, [Vector2(0, -0.005), Vector2(0.015, -0.004), Vector2(0.016, 0.01), Vector2(0.013, 0.025), Vector2(0.016, 0.04), Vector2(0.013, 0.055), Vector2(0.016, 0.07), Vector2(0.013, 0.085), Vector2(0.016, 0.1), Vector2(0.015, 0.11)], 10, bone.darkened(0.08))
+	lathe(k, "it_bone", Transform3D.IDENTITY, [Vector2(0.012, 0.105), Vector2(0.026, 0.11), Vector2(0.03, 0.12), Vector2(0.024, 0.132), Vector2(0.012, 0.136)], 10, bone.darkened(0.15))
+	blade(k, "it_bone", 0.13, 0.22, 0.024, 0.009, 0.35, 0.08, true, 0.15, bone)
+	# The skull: a rounded cranium, a snout, the brows over sunken eyes.
+	k.sphere("it_bone", Transform3D(Basis.from_scale(Vector3(0.9, 0.8, 1.0)), Vector3(0, -0.02, 0)), 0.021, 6, 10, 0.1, 1.0, bone)
+	k.cylinder("it_bone", Transform3D(Basis(Vector3(0, 0, 1), -2.0), Vector3(0.012, -0.022, 0)), 0.013, 0.007, 0.03, 8, true, 0.0, 1, bone)
+	for s in [-1.0, 1.0]:
+		k.sphere("it_char", Transform3D(Basis(), Vector3(0.012, -0.012, s * 0.011)), 0.0045, 4, 6)
 
 static func _throwing_knives(k: MeshKit):
-	# Three in a fan, as you'd hold them ready.
+	# Three forged throwing knives side by side: diamond blades, cord-wrapped grips and a ring
+	# at each butt to hang them by.
 	for i in 3:
 		var sub := MeshKit.new(i)
-		blade(sub, "it_steel", 0.0, 0.14, 0.012, 0.004, 0.3)
-		lathe(sub, "it_iron", Transform3D.IDENTITY, [Vector2(0, -0.08), Vector2(0.008, -0.08), Vector2(0.009, 0.0), Vector2(0, 0.0)], 6)
-		wrap_grip(sub, -0.075, -0.005, 0.009, CORD, "it_cord", 0.007, 0.0014)
-		var xf := Transform3D(Basis(Vector3(0, 0, 1), (i - 1) * 0.18), Vector3((i - 1) * 0.006, 0.08, (i - 1) * 0.004))
-		_merge_into(k, sub, xf)
+		blade(sub, "it_iron", 0.0, 0.12, 0.014, 0.005, 0.55, 0.0, false, 0.15)
+		lathe(sub, "it_iron", Transform3D.IDENTITY, [Vector2(0, -0.085), Vector2(0.006, -0.085), Vector2(0.0075, -0.004), Vector2(0.009, 0.0), Vector2(0, 0.002)], 6)
+		wrap_grip(sub, -0.08, -0.008, 0.0075, LEATHER_DARK, "it_leather", 0.007, 0.0016)
+		var st := []
+		for s in 13:
+			var a := TAU * s / 12.0
+			st.append(_at(Vector3(sin(a) * 0.011, -0.098 - cos(a) * 0.011, 0), Vector3(0, 0, 1), Vector3(sin(a), -cos(a), 0), sec_round(0.0022, 0.0022, 5)))
+		sweep(sub, "it_iron", Transform3D.IDENTITY, st, false, Color.WHITE, false)
+		_merge_into(k, sub, Transform3D(Basis(), Vector3((i - 1) * 0.032, 0.1 + (i - 1) * 0.012, (i - 1) * 0.003)))
 
 ## Copies another kit's geometry into k, moved by xf.
 static func _merge_into(k: MeshKit, sub: MeshKit, xf: Transform3D) -> void:
@@ -1035,10 +1131,13 @@ static func _shovel(k: MeshKit):
 	return Vector3(0, 0.12, 0)
 
 static func _hoe(k: MeshKit):
-	pole(k, -0.2, 1.05, 0.016, 0.015, ASH)
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.018, 0.98), Vector2(0.02, 1.0), Vector2(0.02, 1.04), Vector2(0, 1.05)], 10)
-	plate(k, "it_iron", 4, 4, func(u, v):
-		return Vector3((u - 0.5) * 0.16, 1.02 - v * 0.02, -0.02 - v * 0.12 - 0.01 * v * v), 0.004)
+	pole(k, -0.2, 1.02, 0.017, 0.016, HAFT)
+	# A forged eye across the end of the haft and a broad, square-ended blade hung from it,
+	# raked back toward the user.
+	k.cylinder("it_iron", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.035, 1.03, 0)), 0.024, 0.024, 0.07, 12)
+	plate(k, "it_iron", 4, 6, func(u, v):
+		var w: float = (u - 0.5) * lerpf(0.06, 0.17, minf(v * 2.5, 1.0))
+		return Vector3(w, 1.02 - v * 0.05 - v * v * 0.02, -0.02 - v * 0.17), 0.005)
 	return Vector3(0, 0.0, 0)
 
 static func _sickle(k: MeshKit):
@@ -1236,33 +1335,51 @@ static func _sledgehammer(k: MeshKit):
 	return Vector3(0, 0.08, 0)
 
 static func _wrench(k: MeshKit):
+	# A forged combination spanner: an open jaw at one end, a ring at the other, the shank
+	# between them flat and slightly dished.
+	var dark := Color(0.95, 0.84, 0.8)
 	var st := []
 	for i in 9:
 		var f := float(i) / 8.0
-		st.append(_at(Vector3(0, -0.02 + f * 0.24, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.012 + 0.004 * f, 0.006, 0.4)))
-	sweep(k, "it_steel", Transform3D.IDENTITY, st, true, Color(0.85, 0.85, 0.85))
-	k.box("it_steel", Transform3D(Basis(), Vector3(0.008, 0.235, 0)), Vector3(0.05, 0.03, 0.013))
-	k.box("it_steel", Transform3D(Basis(), Vector3(0.024, 0.262, 0)), Vector3(0.016, 0.03, 0.012))
-	k.box("it_steel", Transform3D(Basis(), Vector3(-0.012, 0.262, 0)), Vector3(0.014, 0.028, 0.012))
-	k.cylinder("it_steel", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.018, 0.212, 0)), 0.006, 0.006, 0.036, 10)
+		st.append(_at(Vector3(0, 0.015 + f * 0.2, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.018 + 0.002 * sin(f * PI), 0.005, 0.4)))
+	sweep(k, "it_iron", Transform3D.IDENTITY, st, true, dark)
+	for ring in [[Vector3(0, 0.0, 0), 0.025, 0.013, PI], [Vector3(0, 0.255, 0), 0.04, 0.019, 0.0]]:
+		var c: Vector3 = ring[0]
+		var ro: float = ring[1]
+		var ri: float = ring[2]
+		var gap: float = 0.0 if ring[3] == PI else 0.95
+		var rs := []
+		var n := 18
+		for s in n + 1:
+			var a: float = lerpf(gap, TAU - gap, float(s) / n) + PI * 0.5
+			var d := Vector3(cos(a), sin(a), 0)
+			rs.append(_at(c + d * (ro + ri) * 0.5, d, Vector3(0, 0, 1), sec_rect((ro - ri) * 0.5, 0.005, 0.3)))
+		sweep(k, "it_iron", Transform3D.IDENTITY, rs, true, dark, gap > 0.0)
 
 static func _crowbar(k: MeshKit):
+	# A hexagonal bar, rusty from use: a gooseneck hook curling back at the top ending in a
+	# split claw, a flattened, bent chisel at the foot.
 	var st := []
-	for i in 21:
-		var f := float(i) / 20.0
+	for i in 29:
+		var f := float(i) / 28.0
 		var p: Vector3
 		var tng: Vector3
-		if f < 0.8:
-			p = Vector3(0, -0.05 + f / 0.8 * 0.55, 0)
+		if f < 0.75:
+			p = Vector3(0, -0.05 + f / 0.75 * 0.55, 0)
 			tng = Vector3.UP
 		else:
-			var a := (f - 0.8) / 0.2 * PI * 0.95
-			p = Vector3(-0.03 + cos(a) * 0.03, 0.5 + sin(a) * 0.03, 0)
+			var a := (f - 0.75) / 0.25 * PI * 1.05
+			p = Vector3(-0.045 + cos(a) * 0.045, 0.5 + sin(a) * 0.045, 0)
 			tng = Vector3(-sin(a), cos(a), 0)
 		var x := Vector3(tng.y, -tng.x, 0)
-		var r := 0.009 if f > 0.02 and f < 0.97 else 0.006
-		st.append(_at(p, x, Vector3(0, 0, 1), sec_round(r, r, 6)))
-	sweep(k, "it_paint", Transform3D.IDENTITY, st, false, Color(0.55, 0.1, 0.08))
+		var r := 0.0135
+		var s := sec_round(r, r, 6)
+		if f < 0.06:
+			s = sec_round(r * lerpf(0.35, 1.0, f / 0.06), r * 1.3, 6)
+		elif f > 0.95:
+			s = sec_round(r * lerpf(1.0, 0.35, (f - 0.95) / 0.05), r * 1.4, 6)
+		st.append(_at(p, x, Vector3(0, 0, 1), s))
+	sweep(k, "it_iron", Transform3D.IDENTITY, st, true, RUST)
 
 static func _hand_drill(k: MeshKit):
 	# A carpenter's brace: a cranked iron bow, a turning grip in the middle, a bit below.
@@ -1280,12 +1397,15 @@ static func _hand_drill(k: MeshKit):
 	return Vector3(0.08, 0.13, 0)
 
 static func _pickaxe_miner(k: MeshKit):
-	haft(k, -0.02, 0.72, 0.018, 0.017, HICKORY)
-	pick_head(k, "it_iron", 0.67, 0.26, 0.26, 0.019, Color(0.8, 0.8, 0.8))
+	haft(k, 0.0, 0.66, 0.021, 0.019, Color(0.52, 0.27, 0.14), false)
+	pick_head(k, "it_iron", 0.6, 0.3, 0.26, 0.024, Color(0.62, 0.58, 0.56), false, 0.06, 0.42)
+	# An iron ferrule on the butt, as a miner's pick takes a beating there too.
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0, -0.012), Vector2(0.02, -0.012), Vector2(0.0235, -0.006), Vector2(0.0235, 0.06), Vector2(0.021, 0.066)], 10, Color(0.75, 0.72, 0.7))
 
 static func _axe_lumber(k: MeshKit):
-	haft(k, -0.02, 0.78, 0.018, 0.016, HICKORY)
-	axe_head(k, "it_paint", 0.72, 0.13, 0.1, 0.0, 0.03, Color(0.6, 0.12, 0.08))
+	# A felling axe: a long, thick haft flaring at the butt and a big, deep, weathered head.
+	haft(k, -0.02, 0.73, 0.025, 0.021, Color(0.56, 0.32, 0.17))
+	axe_head(k, "it_iron", 0.65, 0.25, 0.2, 0.04, 0.036, Color(0.82, 0.66, 0.58), 0.022)
 	return Vector3(0, 0.06, 0)
 
 static func _lamp_kerosene(k: MeshKit):
@@ -1323,17 +1443,54 @@ static func _dynamite(k: MeshKit):
 	sweep(k, "it_cord", Transform3D.IDENTITY, st, false, Color(0.25, 0.22, 0.18))
 
 static func _frag_grenade(k: MeshKit):
-	# The cast-iron "pineapple": a segmented body, a fuse head, the lever and ring pin.
-	for row in 5:
-		for col in 8:
-			var a := TAU * col / 8.0
-			var e := lerpf(-1.0, 1.0, row / 4.0)
-			var r := 0.028 * sqrt(1.0 - e * e * 0.7)
-			k.box("it_paint", Transform3D(Basis(Vector3.UP, -a), Vector3(cos(a) * r, 0.04 + e * 0.032, sin(a) * r)), Vector3(0.006, 0.012, 0.014), Color(0.3, 0.33, 0.22))
-	k.sphere("it_paint", Transform3D(Basis.from_scale(Vector3(1, 1.25, 1)), Vector3(0, 0.04, 0)), 0.026, 8, 10, 0.0, 1.0, Color(0.27, 0.3, 0.2))
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.01, 0.07), Vector2(0.011, 0.09), Vector2(0, 0.092)], 8)
-	k.box("it_iron", Transform3D(Basis(Vector3(0, 0, 1), -0.25), Vector3(0.016, 0.06, 0)), Vector3(0.006, 0.06, 0.012))
-	_ring(k, Vector3(-0.016, 0.085, 0), 0.01)
+	# The cast-iron "pineapple": a body cast in raised blocks, a fuse head, the lever and ring.
+	_pineapple(k, Color(0.62, 0.58, 0.52))
+	k.box("it_iron", Transform3D(Basis(Vector3(0, 0, 1), -0.2), Vector3(0.024, 0.055, 0)), Vector3(0.006, 0.07, 0.012), Color(0.55, 0.53, 0.5))
+	_ring(k, Vector3(-0.018, 0.086, 0), 0.012)
+
+## A grenade body cast in rows of raised blocks between deep grooves, its fuse head on top.
+static func _pineapple(k: MeshKit, col: Color) -> void:
+	var blocks := func(x: float, n: float) -> float:
+		var f := fposmod(x * n, 1.0)
+		return smoothstep(0.0, 0.16, f) * smoothstep(1.0, 0.84, f)
+	_surface(k, "it_iron", 48, 40, func(u: float, v: float) -> Vector3:
+		var a := u * TAU
+		var r := 0.0285 * sin(PI * v) * (1.0 - 0.08 * (v - 0.5))
+		var g: float = 1.0
+		if v > 0.14 and v < 0.9:
+			g = 0.86 + 0.14 * blocks.call(u, 8.0) * blocks.call((v - 0.14) / 0.76, 5.0)
+		return Vector3(cos(a) * r * g, 0.04 - 0.036 * cos(PI * v), sin(a) * r * g), col)
+	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.012, 0.068), Vector2(0.014, 0.072), Vector2(0.012, 0.09), Vector2(0.0, 0.093)], 10, col.lightened(0.15))
+
+## A closed surface p = f(u, v) (u round, v along), faced outward from the Y axis.
+static func _surface(k: MeshKit, m: String, nu: int, nv: int, f: Callable, col := Color.WHITE) -> void:
+	var g := []
+	for j in nv + 1:
+		var row := []
+		for i in nu + 1:
+			row.append(f.call(float(i) / nu, float(j) / nv))
+		g.append(row)
+	var nrm := func(i: int, j: int) -> Vector3:
+		var p: Vector3 = g[j][i]
+		var a: Vector3 = g[j][(i + 1) % nu] - g[j][(i - 1 + nu) % nu]
+		var b: Vector3 = g[mini(j + 1, nv)][i] - g[maxi(j - 1, 0)][i]
+		var n := a.cross(b)
+		if n.length() < 1e-9:
+			n = Vector3(p.x, 0, p.z) if Vector3(p.x, 0, p.z).length() > 1e-6 else Vector3.UP * signf(j - nv * 0.5)
+		if n.dot(Vector3(p.x, 0, p.z) + Vector3.UP * (p.y - 0.04) * 0.2) < 0.0:
+			n = -n
+		return n.normalized()
+	for j in nv:
+		for i in nu:
+			var q := [g[j][i], g[j][i + 1], g[j + 1][i + 1], g[j + 1][i]]
+			var n := [nrm.call(i % nu, j), nrm.call((i + 1) % nu, j), nrm.call((i + 1) % nu, j + 1), nrm.call(i % nu, j + 1)]
+			var fn: Vector3 = n[0] + n[1] + n[2] + n[3]
+			if (q[1] - q[0]).cross(q[2] - q[0]).dot(fn) > 0.0:
+				k.tri(m, Transform3D.IDENTITY, q[0], q[1], q[2], n[0], n[1], n[2], col)
+				k.tri(m, Transform3D.IDENTITY, q[0], q[2], q[3], n[0], n[2], n[3], col)
+			else:
+				k.tri(m, Transform3D.IDENTITY, q[0], q[2], q[1], n[0], n[2], n[1], col)
+				k.tri(m, Transform3D.IDENTITY, q[0], q[3], q[2], n[0], n[3], n[2], col)
 
 static func _ring(k: MeshKit, c: Vector3, r: float) -> void:
 	var st := []
@@ -1349,12 +1506,6 @@ static func _powder_keg(k: MeshKit):
 	k.cylinder("it_cord", Transform3D(Basis(Vector3(0, 0, 1), 0.3), Vector3(0, 0.1, 0)), 0.002, 0.002, 0.07, 5, false, 0.0, 1, Color(0.25, 0.22, 0.18))
 	return Vector3(0, -0.04, 0)
 
-static func _fire_bottle(k: MeshKit):
-	lathe(k, "it_glass", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(0.03, 0.0), Vector2(0.032, 0.005), Vector2(0.032, 0.11), Vector2(0.015, 0.14), Vector2(0.012, 0.18), Vector2(0.013, 0.185), Vector2(0, 0.185)], 14)
-	# Lamp oil inside, a rag stuffed in the neck.
-	lathe(k, "it_paint", Transform3D.IDENTITY, [Vector2(0, 0.004), Vector2(0.029, 0.004), Vector2(0.029, 0.08), Vector2(0, 0.08)], 14, Color(0.55, 0.38, 0.12))
-	k.sphere("it_cloth", Transform3D(Basis.from_scale(Vector3(0.8, 2.2, 0.8)), Vector3(0.004, 0.2, 0)), 0.014, 4, 6, 0.4, 1.0, Color(0.75, 0.68, 0.55))
-
 static func _survival_knife(k: MeshKit):
 	sword(k, {"len": 0.17, "w": 0.016, "t": 0.006, "single": true, "tip": 0.3, "cross": 0.028, "grip": 0.11, "guard": "it_steel", "wrap_m": "it_cord", "wrap_col": Color(0.25, 0.27, 0.2), "pommel": 0.014, "wheel": false})
 
@@ -1365,7 +1516,23 @@ static func _vibro_knife(k: MeshKit):
 	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.06, 0.012)), Vector3(0.01, 0.05, 0.004), Color(0.75, 0.55, 0.1))
 
 static func _combat_machete(k: MeshKit):
-	sword(k, {"len": 0.44, "w": 0.024, "t": 0.005, "single": true, "tip": 0.25, "belly": 0.15, "cross": 0.0, "grip": 0.12, "wrap": false, "wood": Color(0.15, 0.15, 0.14), "metal": "it_iron", "pommel": 0.014, "wheel": false})
+	# A heavy cleaver of a machete: a wide, straight blade with a clipped, squared point, a
+	# bright ground edge (+X), and black slab grips riveted through the tang.
+	var grip := 0.13
+	k.bevel_box("it_polymer", Transform3D(Basis(), Vector3(0.002, grip * 0.5 - 0.005, 0)), Vector3(0.03, grip + 0.01, 0.022), 0.006)
+	for y in [0.025, 0.09]:
+		k.cylinder("it_steel", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0.002, y, -0.012)), 0.004, 0.004, 0.024, 8)
+	var base := grip + 0.005
+	plate(k, "it_iron", 6, 12, func(u, v):
+		var x: float = lerpf(-0.016, 0.068, u)
+		var tip: float = lerpf(0.52, 0.58, u) if u < 0.999 else 0.58
+		var y: float = lerpf(base, tip - 0.05 * (1.0 - u) * (1.0 - u), v)
+		return Vector3(x, y, 0), 0.005, Color(0.85, 0.85, 0.86), func(u, _v): return lerpf(1.0, 0.45, u))
+	var e := []
+	for i in 9:
+		var f := float(i) / 8.0
+		e.append(_at(Vector3(0.063, lerpf(base + 0.01, 0.575, f), 0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.005, 0.0016, 0.3)))
+	sweep(k, "it_steel", Transform3D.IDENTITY, e, true)
 
 static func _stun_baton(k: MeshKit):
 	lathe(k, "it_rubber", Transform3D.IDENTITY, [Vector2(0, -0.01), Vector2(0.016, -0.01), Vector2(0.017, 0.14), Vector2(0.013, 0.15)], 10)
@@ -1380,26 +1547,72 @@ static func _mono_katana(k: MeshKit):
 	return Vector3(0, 0.07, 0)
 
 static func _power_hammer(k: MeshKit):
+	# A powered sledge: a black polymer haft ringed in orange, a heavy gunmetal head with
+	# chamfered striking blocks, orange trim and a readout set in its side.
 	haft(k, -0.02, 0.6, 0.018, 0.017, Color.WHITE, false, "it_polymer")
-	hammer_head(k, "it_paint", 0.6, 0.09, 0.045, Color(0.75, 0.55, 0.12))
+	for y in [0.02, 0.06, 0.1, 0.14, 0.18]:
+		_band(k, "it_rubber", y, 0.019)
+	for y in [0.22, 0.42]:
+		_band(k, "it_paint", y, 0.02, ORANGE)
+	var gun := Color(0.28, 0.29, 0.31)
+	k.bevel_box("it_paint", Transform3D(Basis(), Vector3(0, 0.62, 0)), Vector3(0.1, 0.09, 0.09), 0.012, gun)
 	for s in [-1.0, 1.0]:
-		k.cylinder("it_steel", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(s * 0.02, 0.6, 0.05)), 0.008, 0.008, 0.06, 8)
-	k.box("it_iron", Transform3D(Basis(), Vector3(0, 0.6, 0.05)), Vector3(0.05, 0.03, 0.02))
+		k.bevel_box("it_paint", Transform3D(Basis(), Vector3(s * 0.095, 0.62, 0)), Vector3(0.07, 0.11, 0.11), 0.014, gun)
+		k.box("it_steel", Transform3D(Basis(), Vector3(s * 0.132, 0.62, 0)), Vector3(0.006, 0.085, 0.085), Color(0.7, 0.7, 0.72))
+		k.box("it_paint", Transform3D(Basis(), Vector3(s * 0.062, 0.62, 0)), Vector3(0.006, 0.112, 0.112), ORANGE)
+	k.box("it_glass", Transform3D(Basis(), Vector3(0, 0.625, 0.046)), Vector3(0.05, 0.035, 0.003))
+	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.625, 0.0445)), Vector3(0.05, 0.035, 0.002), Color(0.6, 0.45, 0.1))
+	_band(k, "it_paint", 0.555, 0.024, ORANGE)
 
 static func _chain_axe(k: MeshKit):
-	haft(k, -0.02, 0.6, 0.018, 0.017, Color.WHITE, false, "it_polymer")
-	axe_head(k, "it_paint", 0.54, 0.14, 0.1, 0.02, 0.03, Color(0.35, 0.38, 0.4))
-	# The chain of teeth round the edge.
-	for i in 14:
-		var f := float(i) / 13.0
-		var y := lerpf(0.54 - 0.07, 0.54 + 0.055, f)
-		k.box("it_steel", Transform3D(Basis(Vector3(1, 0, 0), 0.3), Vector3(0, y, -0.142)), Vector3(0.004, 0.006, 0.012))
+	# A one-handed chainsaw: a wrapped grip with a guard looped over the hand, a motor
+	# housing, and a long orange bar with its chain of teeth running round the edge.
+	var gun := Color(0.3, 0.31, 0.32)
+	haft(k, -0.01, 0.15, 0.017, 0.017, Color.WHITE, false, "it_polymer")
+	wrap_grip(k, 0.0, 0.13, 0.017, LEATHER_DARK)
+	var st := []
+	for i in 9:
+		var f := float(i) / 8.0
+		st.append(_at(Vector3(0, lerpf(-0.005, 0.15, f), -0.035 - sin(f * PI) * 0.025), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.007, 0.005, 0.4)))
+	sweep(k, "it_iron", Transform3D.IDENTITY, st, true, gun)
+	k.bevel_box("it_paint", Transform3D(Basis(), Vector3(0, 0.205, 0.01)), Vector3(0.075, 0.12, 0.12), 0.018, gun)
+	k.bevel_box("it_steel", Transform3D(Basis(), Vector3(0.039, 0.205, 0.01)), Vector3(0.004, 0.075, 0.08), 0.004, Color(0.8, 0.8, 0.8))
+	k.cylinder("it_polymer", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.045, 0.21, 0.035)), 0.028, 0.028, 0.008, 12)
+	# The bar: a flat plate, rounded at the nose.
+	var top := 0.64
+	var bw := 0.045
+	var cw := 0.05
+	plate(k, "it_paint", 2, 10, func(u, v):
+		var y: float = lerpf(0.26, top, v)
+		var w: float = bw if y < top - bw else sqrt(maxf(0.0, bw * bw - pow(y - (top - bw), 2.0)))
+		return Vector3(0, y, (u * 2.0 - 1.0) * w), 0.005, ORANGE.darkened(0.15))
+	# The chain: teeth round the bar's edge.
+	var n := 48
+	for i in n:
+		var t := float(i) / n
+		var per := 2.0 * (top - bw - 0.26) + PI * bw
+		var dist := t * per
+		var p: Vector3
+		var out: Vector3
+		var straight := top - bw - 0.26
+		if dist < straight:
+			p = Vector3(0, 0.26 + dist, cw)
+			out = Vector3(0, 0, 1)
+		elif dist < straight + PI * bw:
+			var a := (dist - straight) / bw
+			out = Vector3(0, sin(a), cos(a))
+			p = Vector3(0, top - bw, 0) + out * cw
+		else:
+			p = Vector3(0, top - bw - (dist - straight - PI * bw), -cw)
+			out = Vector3(0, 0, -1)
+		k.box("it_steel", Transform3D(Basis.looking_at(out, Vector3.RIGHT), p), Vector3(0.009, 0.005, 0.012), Color(0.7, 0.7, 0.7))
+	return Vector3(0, 0.06, 0)
 
 static func _frag_mk2(k: MeshKit):
-	k.sphere("it_paint", Transform3D(Basis.from_scale(Vector3(1, 1.2, 1)), Vector3(0, 0.035, 0)), 0.026, 10, 12, 0.0, 1.0, Color(0.22, 0.26, 0.2))
-	lathe(k, "it_iron", Transform3D.IDENTITY, [Vector2(0.009, 0.06), Vector2(0.01, 0.075), Vector2(0, 0.078)], 8)
-	k.box("it_steel", Transform3D(Basis(Vector3(0, 0, 1), -0.15), Vector3(0.015, 0.048, 0)), Vector3(0.005, 0.05, 0.012))
-	_ring(k, Vector3(-0.014, 0.07, 0), 0.009)
+	_pineapple(k, Color(0.5, 0.52, 0.46))
+	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0.0145, 0.072), Vector2(0.016, 0.075), Vector2(0.016, 0.079), Vector2(0.0145, 0.082)], 12)
+	k.box("it_steel", Transform3D(Basis(Vector3(0, 0, 1), -0.15), Vector3(0.026, 0.05, 0)), Vector3(0.006, 0.075, 0.013), Color(0.4, 0.4, 0.42))
+	_ring(k, Vector3(-0.02, 0.086, 0), 0.013)
 
 static func _canister(k: MeshKit, body: Color, band: Color):
 	lathe(k, "it_paint", Transform3D.IDENTITY, [Vector2(0, 0), Vector2(0.024, 0), Vector2(0.025, 0.005), Vector2(0.025, 0.11), Vector2(0.02, 0.115), Vector2(0, 0.115)], 14, body)
@@ -1420,46 +1633,129 @@ static func _breach_charge(k: MeshKit):
 	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.05, 0.0205)), Vector3(0.03, 0.015, 0.001), Color(0.15, 0.3, 0.12))
 
 static func _multitool(k: MeshKit):
+	# Folding pliers, opened: two channel handles in brushed steel with dark inlays, splayed
+	# from the pivot, and the needle-nose jaws above it.
 	for s in [-1.0, 1.0]:
-		k.box("it_steel", Transform3D(Basis(Vector3(0, 0, 1), s * 0.04), Vector3(s * 0.009, 0.05, 0)), Vector3(0.014, 0.11, 0.012))
-	k.box("it_steel", Transform3D(Basis(), Vector3(0, 0.12, 0)), Vector3(0.012, 0.035, 0.008))
-	k.box("it_steel", Transform3D(Basis(Vector3(0, 0, 1), 0.2), Vector3(0.004, 0.145, 0)), Vector3(0.004, 0.025, 0.006))
+		var b := Basis(Vector3(0, 0, 1), s * 0.14)
+		k.bevel_box("it_steel", Transform3D(b, b * Vector3(0, -0.055, 0) + Vector3(s * 0.006, 0.0, 0)), Vector3(0.022, 0.105, 0.012), 0.004)
+		k.box("it_polymer", Transform3D(b, b * Vector3(0, -0.055, 0) + Vector3(s * 0.006, 0.0, 0.0065)), Vector3(0.012, 0.075, 0.002))
+		var jb := Basis(Vector3(0, 0, 1), s * 0.09)
+		k.cylinder("it_steel", Transform3D(jb, Vector3(s * 0.0055, 0.004, 0)), 0.0065, 0.0012, 0.055, 6)
+	k.cylinder("it_steel", Transform3D(Basis(Vector3(1, 0, 0), PI * 0.5), Vector3(0, 0.004, 0.009)), 0.006, 0.006, 0.018, 10, true, 0.0, 1, Color(0.7, 0.7, 0.72))
+	return Vector3(0, -0.06, 0)
 
-static func _tool_gun(k: MeshKit, nozzle: float, body: Color):
-	# A tool you point: a polymer pistol grip, a painted body, a steel nozzle ahead.
+## A cordless power tool held by its pistol grip: a battery pack under the grip, a motor
+## body above it in safety yellow and black, a steel chuck ahead (toward -Z).
+static func _power_tool(k: MeshKit, col: Color) -> void:
+	# The grip, raked back, in black rubberised polymer with a coloured panel down its back.
 	var st := []
 	for i in 7:
 		var f := float(i) / 6.0
-		st.append(_at(Vector3(0, -0.02 + f * 0.11, 0.01 - f * 0.012), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.013, 0.02, 0.5)))
+		st.append(_at(Vector3(0, -0.005 + f * 0.1, 0.014 - f * 0.02), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(0.0155, 0.021, 10)))
 	sweep(k, "it_polymer", Transform3D.IDENTITY, st, false)
-	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.11, -0.04)), Vector3(0.04, 0.05, 0.16), body)
-	k.cylinder("it_steel", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.11, -0.12)), 0.012, 0.007, nozzle, 10)
+	k.bevel_box("it_paint", Transform3D(Basis(Vector3.RIGHT, 0.2), Vector3(0, 0.05, 0.03)), Vector3(0.026, 0.07, 0.008), 0.003, col)
+	k.box("it_polymer", Transform3D(Basis(), Vector3(0, 0.075, -0.016)), Vector3(0.012, 0.022, 0.014))
+	# The battery pack under the grip.
+	k.bevel_box("it_polymer", Transform3D(Basis(), Vector3(0, -0.028, -0.004)), Vector3(0.056, 0.042, 0.088), 0.009)
+	k.bevel_box("it_paint", Transform3D(Basis(), Vector3(0, -0.012, -0.004)), Vector3(0.058, 0.01, 0.09), 0.003, col)
+	# The motor body: round, along -Z, a coloured sleeve over a black housing, vents at
+	# the back and a steel chuck ahead.
+	var body := Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.125, 0.06))
+	lathe(k, "it_polymer", body, [Vector2(0, 0), Vector2(0.022, 0.0), Vector2(0.03, 0.012), Vector2(0.032, 0.04), Vector2(0.032, 0.16), Vector2(0.026, 0.175), Vector2(0, 0.176)], 16)
+	lathe(k, "it_paint", body, [Vector2(0.0325, 0.05), Vector2(0.034, 0.056), Vector2(0.034, 0.14), Vector2(0.0325, 0.146)], 16, col)
+	for i in 4:
+		lathe(k, "it_rubber", body, [Vector2(0.0322, 0.014 + i * 0.008), Vector2(0.0328, 0.016 + i * 0.008), Vector2(0.0328, 0.019 + i * 0.008), Vector2(0.0322, 0.021 + i * 0.008)], 16)
+	lathe(k, "it_steel", body, [Vector2(0.024, 0.176), Vector2(0.021, 0.18), Vector2(0.02, 0.2), Vector2(0.016, 0.212), Vector2(0.0, 0.214)], 14, Color(0.82, 0.82, 0.84))
 
 static func _laser_cutter(k: MeshKit):
-	_tool_gun(k, 0.06, Color(0.75, 0.55, 0.12))
+	_power_tool(k, Color(0.88, 0.65, 0.08))
+	k.cylinder("it_steel", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.125, -0.15)), 0.012, 0.006, 0.04, 10)
+	k.cylinder("it_glass", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.125, -0.19)), 0.0045, 0.0045, 0.002, 8, true, 0.0, 1, Color(0.4, 0.2, 0.15))
+	return Vector3(0, 0.05, 0.004) # the fist round the middle of the grip
 
 static func _welder(k: MeshKit):
-	_tool_gun(k, 0.09, Color(0.2, 0.35, 0.6))
+	# A welding torch: a red and black handle, a bent swan-neck with a ceramic nozzle, and
+	# its black hose hanging in coils below.
+	var red := Color(0.62, 0.1, 0.08)
+	lathe(k, "it_polymer", Transform3D.IDENTITY, [Vector2(0, -0.01), Vector2(0.017, -0.008), Vector2(0.018, 0.04), Vector2(0.016, 0.12), Vector2(0.012, 0.14)], 12)
+	lathe(k, "it_paint", Transform3D.IDENTITY, [Vector2(0.0185, 0.03), Vector2(0.019, 0.05), Vector2(0.0175, 0.11), Vector2(0.0165, 0.115)], 12, red)
+	k.box("it_paint", Transform3D(Basis(), Vector3(0, 0.07, -0.018)), Vector3(0.01, 0.03, 0.008), red.darkened(0.3))
+	var st := []
+	for i in 9:
+		var f := float(i) / 8.0
+		var a := f * 1.2
+		st.append(_at(Vector3(0, 0.14 + sin(a) * 0.07, -(1.0 - cos(a)) * 0.07), Vector3(1, 0, 0), Vector3(0, sin(a), cos(a)), sec_round(0.0065, 0.0065, 8)))
+	sweep(k, "it_steel", Transform3D.IDENTITY, st, false, Color(0.75, 0.62, 0.45))
+	var tip := Vector3(0, 0.14 + sin(1.2) * 0.07, -(1.0 - cos(1.2)) * 0.07)
+	var tb := Basis(Vector3(1, 0, 0), -1.2)
+	k.cylinder("it_paint", Transform3D(tb, tip), 0.011, 0.008, 0.035, 10, true, 0.0, 1, Color(0.9, 0.88, 0.84))
+	# The hose: a few loose coils.
+	var hose := []
+	for i in 61:
+		var f := float(i) / 60.0
+		var a := f * TAU * 2.5
+		hose.append(_at(Vector3(sin(a) * 0.06, -0.03 - f * 0.05 - (1.0 - cos(a)) * 0.0, 0.03 - cos(a) * 0.06 + 0.06), Vector3(0, 1, 0), Vector3(cos(a), 0, sin(a)), sec_round(0.007, 0.007, 6)))
+	sweep(k, "it_rubber", Transform3D.IDENTITY, hose, false)
+	return Vector3(0, 0.06, 0)
 
 static func _mining_laser(k: MeshKit):
-	_tool_gun(k, 0.12, Color(0.65, 0.6, 0.55))
-	k.box("it_iron", Transform3D(Basis(), Vector3(0, 0.145, -0.02)), Vector3(0.03, 0.02, 0.08))
+	_power_tool(k, Color(0.88, 0.65, 0.08))
+	# A heavy spiral bit and a guard looped round the hand.
+	var bit := []
+	for i in 9:
+		var f := float(i) / 8.0
+		bit.append(Vector2(0.018 * (1.0 - f) + 0.001, f * 0.09))
+	bit.push_front(Vector2(0, 0))
+	bit.append(Vector2(0, 0.091))
+	lathe(k, "it_steel", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.125, -0.15)), bit, 10)
+	for i in 8:
+		var f := float(i) / 8.0
+		k.box("it_steel", Transform3D(Basis(Vector3(0, 0, 1), f * TAU * 1.5), Vector3(0, 0.125, -0.155 - f * 0.08)), Vector3(0.04 * (1.0 - f) + 0.006, 0.003, 0.004))
+	var st := []
+	for i in 9:
+		var f := float(i) / 8.0
+		st.append(_at(Vector3(0, lerpf(0.09, -0.02, f), lerpf(-0.07, -0.06, f) - sin(f * PI) * 0.02), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_rect(0.006, 0.006, 0.4)))
+	sweep(k, "it_polymer", Transform3D.IDENTITY, st, true)
+	return Vector3(0, 0.05, 0.004) # the fist round the middle of the grip
 
 static func _grapple(k: MeshKit):
-	_tool_gun(k, 0.03, Color(0.3, 0.32, 0.35))
+	# A grapple gun: a pistol body with a drum of line wound on its side and a three-tined hook
+	# seated in the muzzle.
+	_power_tool(k, ORANGE)
+	k.cylinder("it_polymer", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.066, 0.125, -0.02)), 0.032, 0.032, 0.03, 16)
+	k.cylinder("it_cord", Transform3D(Basis(Vector3(0, 0, 1), PI * 0.5), Vector3(0.068, 0.125, -0.02)), 0.034, 0.034, 0.026, 16, true, 0.0, 1, Color(0.22, 0.2, 0.18))
+	k.cylinder("it_steel", Transform3D(Basis(Vector3(1, 0, 0), -PI * 0.5), Vector3(0, 0.125, -0.15)), 0.006, 0.006, 0.05, 8)
 	for i in 3:
 		var a := TAU * i / 3.0
-		k.cylinder("it_steel", Transform3D(Basis(Vector3(cos(a), sin(a), 0).cross(Vector3.FORWARD).normalized(), 2.4), Vector3(0, 0.11, -0.16)), 0.003, 0.002, 0.035, 5)
+		var d := Vector3(cos(a), sin(a), 0)
+		var st := []
+		for s in 6:
+			var f := float(s) / 5.0
+			st.append(_at(Vector3(0, 0.125, -0.195) + d * (sin(f * 1.6) * 0.03) + Vector3(0, 0, -0.01 + (1.0 - cos(f * 1.6)) * 0.03), d, Vector3(-d.y, d.x, 0), sec_round(0.0028, 0.0028, 5)))
+		sweep(k, "it_steel", Transform3D.IDENTITY, st, false)
+	return Vector3(0, 0.05, 0.004) # the fist round the middle of the grip
+
+## A moulded hard case in dark grey, ribbed, with orange latches and handle mounts and a
+## black carry handle on top (the handle at the origin).
+static func _hard_case(k: MeshKit, size: Vector3, accent: Color) -> void:
+	var cy := -0.025 - size.y * 0.5
+	k.bevel_box("it_paint", Transform3D(Basis(), Vector3(0, cy, 0)), size, 0.012, CASE)
+	k.bevel_box("it_paint", Transform3D(Basis(), Vector3(0, cy + size.y * 0.22, 0)), Vector3(size.x + 0.006, 0.012, size.z + 0.006), 0.004, CASE.darkened(0.3))
+	for i in 5:
+		var x := (float(i) / 4.0 - 0.5) * size.x * 0.8
+		k.box("it_paint", Transform3D(Basis(), Vector3(x, cy - size.y * 0.1, size.z * 0.5 + 0.002)), Vector3(0.008, size.y * 0.55, 0.004), CASE.darkened(0.15))
+	for s in [-1.0, 1.0]:
+		k.bevel_box("it_paint", Transform3D(Basis(), Vector3(s * size.x * 0.32, cy + size.y * 0.22, size.z * 0.5 + 0.006)), Vector3(0.026, 0.04, 0.01), 0.004, accent)
+		k.bevel_box("it_paint", Transform3D(Basis(), Vector3(s * 0.05, -0.016, 0)), Vector3(0.022, 0.022, 0.03), 0.005, accent)
+	k.bevel_box("it_rubber", Transform3D(Basis(), Vector3(0, -0.006, 0)), Vector3(0.12, 0.016, 0.02), 0.006)
 
 static func _repair_kit(k: MeshKit):
-	k.box("it_paint", Transform3D(Basis(), Vector3(0, -0.07, 0)), Vector3(0.2, 0.12, 0.06), Color(0.75, 0.55, 0.1))
-	k.box("it_polymer", Transform3D(Basis(), Vector3(0, 0.0, 0)), Vector3(0.08, 0.012, 0.016))
+	_hard_case(k, Vector3(0.24, 0.16, 0.06), ORANGE)
+	k.box("it_paint", Transform3D(Basis(), Vector3(0, -0.105, 0.0335)), Vector3(0.03, 0.03, 0.002), Color(0.75, 0.1, 0.08))
 	return Vector3(0, 0.0, 0)
 
 static func _toolbox_tech(k: MeshKit):
-	k.box("it_paint", Transform3D(Basis(), Vector3(0, -0.09, 0)), Vector3(0.3, 0.14, 0.12), Color(0.55, 0.12, 0.1))
-	k.box("it_iron", Transform3D(Basis(), Vector3(0, -0.015, 0)), Vector3(0.31, 0.012, 0.125))
-	k.box("it_polymer", Transform3D(Basis(), Vector3(0, 0.0, 0)), Vector3(0.12, 0.014, 0.018))
+	_hard_case(k, Vector3(0.34, 0.17, 0.16), ORANGE)
 	return Vector3(0, 0.0, 0)
 
 static func _binoculars_digital(k: MeshKit):
