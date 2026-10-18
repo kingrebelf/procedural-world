@@ -20,14 +20,14 @@ pack (with where and when you got it) stay exactly as you left them, forever.
 
 ## Screenshots
 
-All shots are taken in game (v0.3.50, seed 4242, High preset, 2560x1440 on an RTX 4090),
-with the HUD hidden.
+All shots are taken in game with the screenshot tour (seed 4242, High preset, rendered at
+2560x1440 on an RTX 4090), with the HUD hidden and nothing in hand.
 
 ### The land
 
 | | |
 |---|---|
-| ![Sunset over medieval farmland](docs/screenshots/sunset.jpg) | ![A river in its own valley](docs/screenshots/river.jpg) |
+| ![Sunset over medieval farmland](docs/screenshots/sunset.jpg) | ![A meadow at the edge of a village](docs/screenshots/meadow.jpg) |
 | ![A stone viaduct carrying a road](docs/screenshots/viaduct.jpg) | ![Karst towers over a lake](docs/screenshots/karst.jpg) |
 | ![Old-growth forest from a ridge](docs/screenshots/forest_overlook.jpg) | ![Inside the forest](docs/screenshots/forest.jpg) |
 | ![A waterfall and its plunge pool](docs/screenshots/waterfall.jpg) | ![A valley below a waterfall](docs/screenshots/waterfall_valley.jpg) |
