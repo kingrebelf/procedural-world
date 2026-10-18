@@ -45,7 +45,7 @@ const DEFAULTS := {
 	"volumetric_fog": 1, "sun_shafts": true, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
 	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "head_bob_strength": 1.0, "stick_sensitivity": 3.0,
-	"motion_blur": true, "motion_blur_strength": 0.3,
+	"motion_blur": true, "motion_blur_strength": 0.3, "film_grade": true,
 	"master_volume": 0.8, "music_volume": 0.5, "sfx_volume": 0.8, "ambience_volume": 0.7,
 	"show_fps": false, "menu_flyover": true,
 }

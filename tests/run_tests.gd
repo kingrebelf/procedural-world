@@ -383,6 +383,20 @@ func test_landforms() -> void:
 ## thin sheer fin between its neighbours, none standing alone on open ground, and no
 ## higher than about fifteen storeys over the valley; older worlds keep theirs and the
 ## other landforms are untouched.
+func test_film_grade_is_gentle() -> void:
+	# Neutral greys keep their brightness (only a slight cool or warm lean), saturated
+	# yellow-greens lose a little saturation, and other hues keep theirs.
+	for v in [0.1, 0.5, 0.9]:
+		var c := Grade.grade(Color(v, v, v))
+		check(absf((c.r + c.g + c.b) / 3.0 - v) < 0.02, "grey %.1f stays %.1f, got %s" % [v, v, c])
+	var leaf := Color(0.3, 0.6, 0.12)
+	var g := Grade.grade(leaf)
+	check(g.s < leaf.s - 0.03 and g.s > leaf.s * 0.7, "a leaf green softens a little: %.2f -> %.2f" % [leaf.s, g.s])
+	var red := Color(0.7, 0.15, 0.1)
+	check(absf(Grade.grade(red).s - red.s) < 0.05, "a red keeps its saturation")
+	var lut := Grade.lut()
+	check(lut != null and lut.get_width() == Grade.SIZE and lut.get_depth() == Grade.SIZE, "the grade table is %d cubed" % Grade.SIZE)
+
 func test_believable_towers() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var f := WorldField.new(2024)
