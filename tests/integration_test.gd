@@ -1549,6 +1549,12 @@ func _town_gate(game, world, player) -> void:
 	game.crime = Crime.new()
 	game.standing.towns.erase(sid)
 	player.global_position = at
+	# Over the wall and back is a long way: let the ground round where you stood come
+	# back in at full detail before the next checks drive about on it.
+	for i in 300:
+		await physics_frame
+		if world.streamer.ready_round(at):
+			break
 	await _frames(2)
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
