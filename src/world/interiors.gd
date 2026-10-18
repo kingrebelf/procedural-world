@@ -255,11 +255,11 @@ const PIECES := {
 	"@ladder": Vector3(0.6, 3.0, 0.1), "@table": Vector3(1.4, 0.76, 0.9),
 }
 
-## Rugs: [material, centre, size].
+## Rugs: [Rugs kind, centre on the floor, size].
 const RUGS := {
-	"castle_keep": ["cloth", Vector3(0.6, _F_KEEP, 0.2), Vector2(1.0, 6.0)],
-	"mushroom_house": ["cloth_blue", Vector3(0.0, _F_HUT, 0.1), Vector2(1.6, 1.6)],
-	"hab_block": ["cloth_blue", Vector3(-0.9, _F_KIT, 0.9), Vector2(2.4, 2.2)],
+	"castle_keep": ["red", Vector3(0.6, _F_KEEP, 0.2), Vector2(1.0, 6.0)],
+	"mushroom_house": ["blue", Vector3(0.0, _F_HUT, 0.1), Vector2(1.6, 1.6)],
+	"hab_block": ["felt", Vector3(-0.9, _F_KIT, 0.9), Vector2(2.4, 2.2)],
 }
 
 ## Loot spots: [position on the floor, yaw (degrees)]. Village houses keep theirs where
@@ -430,7 +430,7 @@ static func interior(t: String) -> ArrayMesh:
 		var rug: Array = RUGS[t]
 		var rc: Vector3 = rug[1]
 		var rs: Vector2 = rug[2]
-		k.box(rug[0], I.translated(Vector3(rc.x, rc.y + 0.006, rc.z)), Vector3(rs.x, 0.012, rs.y))
+		Rugs.add(k, rug[0], rc, rs, WHash.str_hash(t + "~rug"))
 	match t:
 		"castle_keep":
 			# Dressed stone flags over the boards, and a tapestry on the east wall.

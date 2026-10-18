@@ -337,6 +337,9 @@ static func worn(name: String) -> Material:
 static func _get_mat(name: String) -> Material:
 	if _cache.has(name):
 		return _cache[name]
+	if name.begins_with("rug:") or name == "rug_fringe":
+		_cache[name] = Rugs.material(name)
+		return _cache[name]
 	var m: BaseMaterial3D
 	if name.contains("@"):
 		var parts := name.split("@")
