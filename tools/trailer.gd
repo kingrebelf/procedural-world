@@ -199,6 +199,7 @@ func _record(name: String, secs: float, pose: Callable, opts := {}) -> void:
 	_frames = maxi(2, int(round(secs * len_scale * fps)))
 	_set_weather(String(opts.get("weather", "clear")))
 	world.atmosphere.vfog_boost = float(opts.get("vfog", 1.0))
+	world.atmosphere.fog_boost = float(opts.get("fog", 1.0))
 	_people_r = float(opts.get("people", 0.0))
 	Game.day = _day.x
 	_rec_i = -1
@@ -250,6 +251,7 @@ func _record(name: String, secs: float, pose: Callable, opts := {}) -> void:
 	_tick = Callable()
 	_rain.stop()
 	world.atmosphere.vfog_boost = 1.0
+	world.atmosphere.fog_boost = 1.0
 	_people_r = 0.0
 	for n in _hidden:
 		if is_instance_valid(n):
@@ -616,7 +618,7 @@ func _take_sunrise_peaks() -> void:
 	var b := best + d * 120.0
 	var y0 := _ridge(best, b, 30.0) + 30.0
 	await _record("sunrise_peaks", 10.0, _path([[_v3(best, y0), _v3(top, peak.y - 40.0)], [_v3(b, y0 + 10.0), _v3(top, peak.y - 30.0)]]), {
-		"day": Vector2(0.235, 0.33), "fov": 36.0})
+		"day": Vector2(0.258, 0.272), "fov": 36.0, "vfog": 0.25, "fog": 0.4})
 
 func _fly_over(name: String, at: Vector2, day: float, dir_deg: float, clear := 32.0) -> void:
 	if at == Vector2.INF:
@@ -820,5 +822,7 @@ func _take_finale() -> void:
 	var d := Vector2(-0.7, 0.5).normalized()
 	var a := tc + d * 60.0
 	var b := tc + d * 420.0
-	await _record("finale", 12.0, _path([[_v3(a, th + 22.0), _v3(tc, th + 4.0)], [_v3(tc.lerp(b, 0.5), th + 90.0), _v3(tc, th)],
-		[_v3(b, th + 190.0), _v3(tc - d * 400.0, th + 40.0)]]), {"day": 0.68, "fov": 40.0, "vfog": 0.3})
+	# Up only so far that the land stays clear to the horizon, ending on the town with the
+	# country running away beyond it.
+	await _record("finale", 12.0, _path([[_v3(a, th + 22.0), _v3(tc, th + 4.0)], [_v3(tc.lerp(b, 0.45), th + 55.0), _v3(tc, th + 2.0)],
+		[_v3(tc.lerp(b, 0.8), th + 85.0), _v3(tc - d * 300.0, th + 10.0)]]), {"day": 0.68, "fov": 40.0, "vfog": 0.15, "fog": 0.35})

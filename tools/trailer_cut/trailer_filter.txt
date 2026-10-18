@@ -4,7 +4,7 @@
 [3:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c3];
 [4:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c4];
 [5:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c5];
-[6:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.11:brightness=-0.055:saturation=1.3[c6];
+[6:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.08:brightness=-0.04:saturation=1.25:gamma_r=1.08:gamma_g=1.05:gamma_b=0.9,curves=all='0/0 0.25/0.21 0.75/0.79 1/1'[c6];
 [7:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c7];
 [8:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c8];
 [9:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c9];
@@ -14,7 +14,7 @@
 [13:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c13];
 [14:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c14];
 [15:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.05:brightness=-0.025:saturation=1.12[c15];
-[16:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.11:brightness=-0.055:saturation=1.3[c16];
+[16:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.11:brightness=-0.055:saturation=1.3,curves=all='0/0 0.5/0.47 1/0.88'[c16];
 [17:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60[c17];
 [18:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60[c18];
 [19:v]scale=3840:2160:flags=lanczos,fps=60,format=yuv420p10le,setpts=PTS-STARTPTS,settb=1/60,eq=contrast=1.11:brightness=-0.055:saturation=1.3[c19];

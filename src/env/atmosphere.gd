@@ -227,6 +227,8 @@ var shaft_boost := 1.0
 
 ## Scales the open-air volumetric haze (tools try looks with it; 1 in the game).
 var vfog_boost := 1.0
+## Scales the distance fog (tools/trailer.gd thins it for long vistas; 1 in the game).
+var fog_boost := 1.0
 
 ## Era weights currently blended into the atmosphere (smoothed).
 func current_weights() -> PackedFloat32Array:
@@ -411,7 +413,7 @@ func _update_time_of_day() -> void:
 	# High up (flying), thicker distance fog hides the edge of the streamed world. Height is
 	# above the land below, so standing on a tall hill is not flying.
 	var alt := clampf((target.global_position.y - _ground - 40.0) / 160.0, 0.0, 1.0) if target else 0.0
-	env.fog_density = dens * 0.22 + alt * 0.0025
+	env.fog_density = (dens * 0.22 + alt * 0.0025) * fog_boost
 	env.fog_sky_affect = 0.2 + alt * 0.8
 	# Light haze near you: thick volumetric fog washed the whole view out to white when
 	# looking towards the sun. Under a low sun the air holds more of it (morning mist,
