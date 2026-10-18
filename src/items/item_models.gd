@@ -53,62 +53,66 @@ const SHAPES := {
 	"gold_ingot": ["bar", Color(1.0, 0.8, 0.42), 0.24, Color(0.8, 0.55, 0.25), 0.05, 0.13, "bar"],
 	"mythril_ingot": ["bar", Color(0.78, 0.9, 0.98), 0.18, Color(0.55, 0.75, 0.9), 0.1, 0.15, "bar"],
 	"titanium_ingot": ["bar", Color(0.62, 0.6, 0.58), 0.4, Color(0.5, 0.42, 0.6), 0.25, 0.16, "bar"],
-	"voidsteel_ingot": ["bar", Color(0.52, 0.5, 0.58), 0.5, Color(0.4, 0.2, 0.6), 0.3, 0.16, "bar"],
-	"starsteel_ingot": ["bar", Color(0.85, 0.86, 0.95), 0.15, Color(0.7, 0.6, 0.9), 0.2, 0.16, "bar"],
-	"neutronium": ["bar", Color(0.6, 0.61, 0.64), 0.45, Color(0.2, 0.22, 0.3), 0.1, 0.07, "bar"],
+	"voidsteel_ingot": ["bar", Color(0.3, 0.22, 0.4), 0.3, Color(0.4, 0.2, 0.6), 0.3, 0.16, "bar"],
+	"starsteel_ingot": ["bar", Color(0.3, 0.5, 0.9), 0.22, Color(0.7, 0.6, 0.9), 0.2, 0.16, "bar"],
+	"neutronium": ["spindle"],
 	# Ore: [ore, rock colour, mineral colour, second mineral, seam width, metallic, angular]
 	"stone": ["ore", Color(0.52, 0.5, 0.47), Color(0.6, 0.58, 0.55), Color(0.7, 0.68, 0.64), 0.00, 0.0, 0.5],
 	"iron_ore": ["ore", Color(0.48, 0.3, 0.22), Color(0.26, 0.25, 0.26), Color(0.62, 0.3, 0.16), 0.14, 0.75, 0.45],
 	"copper_ore": ["ore", Color(0.45, 0.43, 0.4), Color(0.2, 0.55, 0.4), Color(0.85, 0.5, 0.3), 0.13, 0.25, 0.45],
 	"tin_ore": ["ore", Color(0.5, 0.48, 0.44), Color(0.16, 0.12, 0.1), Color(0.35, 0.28, 0.2), 0.11, 0.55, 0.5],
 	"silver_ore": ["ore", Color(0.6, 0.58, 0.55), Color(0.55, 0.56, 0.6), Color(0.75, 0.76, 0.78), 0.12, 0.9, 0.5],
-	"gold_ore": ["ore", Color(0.86, 0.84, 0.78), Color(1.0, 0.76, 0.3), Color(0.8, 0.55, 0.25), 0.05, 1.0, 0.4],
+	# Gem ores: [gem, palette of [material, colour, share], points [kind, material, colour,
+	# count, size] or [], angular, patch frequency]. The mineral is the bulk of the piece
+	# (crystal faces, metal plates, blue bubbles), as their icons show, not seams in grey.
+	"gold_ore": ["gem", [["im:stone", Color(0.14, 0.13, 0.12), 0.55], ["im:metal@0.35", Color(0.86, 0.6, 0.22), 0.45]], [], 0.3, 3.5],
 	"coal": ["ore", Color(0.07, 0.07, 0.075), Color(0.12, 0.12, 0.13), Color(0.2, 0.2, 0.22), 0.18, 0.35, 0.8],
 	"flint": ["ore", Color(0.17, 0.17, 0.18), Color(0.85, 0.83, 0.78), Color(0.6, 0.58, 0.52), 0.16, 0.0, 0.3],
-	"titanium_ore": ["ore", Color(0.5, 0.48, 0.46), Color(0.12, 0.12, 0.13), Color(0.3, 0.28, 0.27), 0.14, 0.8, 0.5],
-	"uranium_ore": ["ore", Color(0.42, 0.4, 0.36), Color(0.1, 0.1, 0.09), Color(0.6, 0.6, 0.3), 0.14, 0.5, 0.5],
-	"lithium_ore": ["ore", Color(0.7, 0.68, 0.66), Color(0.8, 0.66, 0.75), Color(0.92, 0.9, 0.88), 0.16, 0.1, 0.55],
-	"cobalt_ore": ["ore", Color(0.5, 0.49, 0.48), Color(0.75, 0.76, 0.8), Color(0.82, 0.38, 0.55), 0.14, 0.8, 0.5],
-	"rare_earth": ["ore", Color(0.42, 0.33, 0.25), Color(0.6, 0.42, 0.22), Color(0.3, 0.3, 0.32), 0.14, 0.3, 0.5],
-	"voidstone_ore": ["ore", Color(0.12, 0.1, 0.16), Color(0.4, 0.22, 0.6), Color(0.6, 0.45, 0.85), 0.09, 0.6, 0.6],
-	"starsteel_ore": ["ore", Color(0.25, 0.26, 0.32), Color(0.85, 0.86, 0.95), Color(0.6, 0.65, 0.85), 0.11, 1.0, 0.55],
+	"titanium_ore": ["gem", [["im:stone", Color(0.12, 0.12, 0.13), 0.3], ["im:metal@0.22", Color(0.62, 0.66, 0.72), 0.7]], [["plate", "im:metal@0.2", Color(0.7, 0.74, 0.8), 8, 0.024]], 0.7, 2.5],
+	"uranium_ore": ["gem", [["im:gem", Color(0.06, 0.1, 0.06), 0.45], ["im:gem", Color(0.14, 0.3, 0.1), 0.35], ["im:gem", Color(0.42, 0.75, 0.12), 0.2]], [], 0.6, 4.0],
+	"lithium_ore": ["gem", [["im:gem", Color(0.62, 0.58, 0.66), 0.5], ["im:gem", Color(0.5, 0.38, 0.62), 0.3], ["im:stone", Color(0.3, 0.28, 0.3), 0.2]], [["crystal", "im:gem", Color(0.66, 0.6, 0.74), 18, 0.05]], 0.5, 3.0],
+	"cobalt_ore": ["gem", [["im:stone", Color(0.1, 0.1, 0.13), 0.3], ["im:gem", Color(0.05, 0.13, 0.42), 0.45], ["im:gem", Color(0.15, 0.3, 0.72), 0.25]], [["bulb", "im:gem", Color(0.06, 0.15, 0.48), 9, 0.016]], 0.5, 3.0],
+	"rare_earth": ["gem", [["im:metal@0.3", Color(0.36, 0.24, 0.55), 0.3], ["im:metal@0.3", Color(0.62, 0.5, 0.25), 0.25], ["im:metal@0.3", Color(0.2, 0.34, 0.6), 0.25], ["im:stone", Color(0.08, 0.07, 0.09), 0.2]], [], 0.65, 6.0],
+	"voidstone_ore": ["gem", [["im:stone", Color(0.12, 0.1, 0.14), 0.7], ["im:gem", Color(0.24, 0.08, 0.42), 0.3]], [["crystal", "im:gem", Color(0.15, 0.05, 0.3), 9, 0.07], ["crystal", "im:crystal_glow:7a3ce8", Color(0.3, 0.1, 0.6, 0.95), 4, 0.05]], 0.6, 3.0],
+	"starsteel_ore": ["gem", [["im:stone", Color(0.1, 0.1, 0.13), 0.2], ["im:metal@0.25", Color(0.2, 0.36, 0.75), 0.45], ["im:metal@0.2", Color(0.6, 0.7, 0.9), 0.35]], [["spark", "im:crystal_glow:9cc8ff", Color(0.8, 0.9, 1.0, 0.95), 14, 0.0025]], 0.6, 5.0],
 	# Lumps: [lump, material, colour, size]
-	"gold_nugget": ["nugget", Color(1.0, 0.76, 0.33), 0.035],
-	"clay": ["lump", "im:clay", Color(0.55, 0.45, 0.36), 0.055],
-	"animal_fat": ["lump", "im:wax", Color(0.93, 0.89, 0.74), 0.045],
+	"gold_nugget": ["nugget", Color(0.8, 0.55, 0.17), 0.035],
+	"clay": ["clay", Color(0.42, 0.2, 0.12)],
+	"animal_fat": ["fat"],
 	"charcoal": ["charcoal"],
 	# Crystals: [crystals, colour, alpha, how many, glow]
-	"salt_crystal": ["halite", Color(0.95, 0.86, 0.84)],
+	"salt_crystal": ["halite", Color(0.82, 0.52, 0.46)],
+	"salt": ["saltpile"],
 	"aether_crystal": ["crystals", Color(0.5, 0.78, 1.0), 0.55, 5, true],
 	"silicon_crystal": ["crystals", Color(0.42, 0.44, 0.48), 1.0, 4, false],
-	"psi_crystal_large": ["crystals", Color(0.75, 0.5, 1.0), 0.55, 7, true],
+	"psi_crystal_large": ["geode", Color(0.55, 0.25, 0.95)],
 	"resin": ["amber"],
 	# Timber
 	"wood": ["log", 0.34, 0.06, Color(0.36, 0.27, 0.2)],
-	"glowroot": ["log", 0.34, 0.055, Color(0.18, 0.3, 0.32)],
-	"firewood": ["split"],
+	"glowroot": ["glowroot"],
+	"firewood": ["firewood"],
 	"planks": ["planks"],
 	# Fired and pressed blocks: [block, material, colour, size, frog]
-	"brick": ["brick", "im:brick", Color(0.62, 0.3, 0.2), Vector3(0.1, 0.215, 0.065), true],
+	"brick": ["brick", "im:brick", Color(0.42, 0.19, 0.12), Vector3(0.1, 0.215, 0.065), true, true],
 	"peat": ["brick", "im:peat", Color(0.22, 0.15, 0.1), Vector3(0.09, 0.2, 0.07), false],
 	"coal_briquettes": ["briquettes"],
-	"beeswax": ["cake", Color(0.88, 0.66, 0.22)],
+	"beeswax": ["comb", Color(0.7, 0.42, 0.1)],
 	# Animal
-	"hide": ["hide", "im:hide", Color(0.6, 0.47, 0.34), Color(0.78, 0.68, 0.56)],
+	"hide": ["pelt", Color(0.36, 0.25, 0.16), Color(0.66, 0.55, 0.42)],
 	"leather": ["leather"],
-	"fur_pelt": ["hide", "im:fur", Color(0.45, 0.36, 0.28), Color(0.7, 0.6, 0.5)],
+	"fur_pelt": ["furfold", Color(0.25, 0.17, 0.11), Color(0.68, 0.58, 0.46)],
 	"hide_xeno": ["hide", "im:hide", Color(0.28, 0.36, 0.34), Color(0.5, 0.56, 0.5)],
-	"im:bone": ["im:bone"],
+	"bone": ["im:bone"],
 	"antler": ["antler"],
 	"fang_xeno": ["fang"],
 	# Fibre and textiles
-	"rope": ["rope", Color(0.66, 0.55, 0.38), 0.009],
-	"rope_synth": ["rope", Color(0.9, 0.5, 0.12), 0.007],
-	"cloth": ["cloth", Color(0.78, 0.72, 0.6)],
+	"rope": ["rope", Color(0.36, 0.25, 0.15), 0.011],
+	"rope_synth": ["rope_synth"],
+	"cloth": ["cloth", Color(0.4, 0.35, 0.3)],
 	"wool": ["skein", Color(0.86, 0.82, 0.74)],
-	"fiber": ["bundle", Color(0.5, 0.56, 0.28), false],
-	"flax": ["bundle", Color(0.72, 0.64, 0.42), false],
-	"wheat": ["bundle", Color(0.82, 0.68, 0.38), true],
+	"fiber": ["bundle", Color(0.34, 0.27, 0.18), "fibre"],
+	"flax": ["bundle", Color(0.46, 0.33, 0.17), "flax"],
+	"wheat": ["bundle", Color(0.58, 0.38, 0.14), "wheat"],
 	# Worked metal parts
 	"iron_nails": ["nails"],
 	"gears": ["gears"],
@@ -154,30 +158,61 @@ static func _build(t: String) -> ArrayMesh:
 	match s[0]:
 		"bar": _metal(k, r, s, t)
 		"ore": _ore(k, r, t, s)
+		"gem": _gem_ore(k, r, s)
+		"spindle": _spindle(k, r)
 		"nugget": _nugget(k, r, s[1], s[2])
 		"lump": _lump(k, r, s[1], s[2], s[3])
+		"clay": _clay(k, r, s[1])
+		"fat": _fat(k, r)
 		"charcoal": _charcoal(k, r)
 		"halite": _halite(k, r, s[1])
+		"saltpile": _salt_pile(k, r)
 		"crystals": _crystals(k, r, t, s[1], s[2], s[3], s[4])
+		"geode": _geode(k, r, t, s[1])
 		"amber": _amber(k, r)
 		"log":
 			# Leaned toward the eye so a sawn end with its rings shows.
 			_log(k, r, s[1], s[2], s[3])
 			return _transformed(k.commit(mat), Transform3D(Basis(Vector3.RIGHT, 0.5), Vector3.ZERO))
+		"glowroot":
+			_glowroot(k, r)
+			# Lying across, a sawn end turned to the eye, as its icon lays it.
+			return _transformed(k.commit(mat), Transform3D(Basis(Vector3.RIGHT, 0.2) * Basis(Vector3.UP, -0.35) * Basis(Vector3.FORWARD, PI * 0.5 - 0.35), Vector3(-0.06, 0.06, 0.0)))
 		"split": _split(k, r)
+		"firewood":
+			_firewood(k, r)
+			# Turned so the sawn ends of the bundle face the eye, as the icon shows them.
+			return _transformed(k.commit(mat), Transform3D(Basis(Vector3.RIGHT, 0.2) * Basis(Vector3.UP, -0.3) * Basis(Vector3.FORWARD, PI * 0.5), Vector3(-0.07, 0.06, 0.0)))
 		"planks": _planks(k, r)
-		"brick": _brick(k, r, s[1], s[2], s[3], s[4])
+		"brick":
+			_brick(k, r, s[1], s[2], s[3], s[4])
+			if s.size() > 5 and s[5]:
+				# Laid on its bed, long face and top toward the eye, as its icon shows it.
+				return _transformed(k.commit(mat), Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(-0.0575, 0.035, 0)))
 		"briquettes": _briquettes(k, r)
 		"cake": _cake(k, s[1])
+		"comb": _comb(k, r, s[1])
 		"hide": _hide(k, r, s[1], s[2], s[3])
+		"pelt": _pelt(k, r, s[1], s[2])
+		"furfold": _fur_fold(k, r, s[1], s[2])
 		"leather": _leather(k, r)
 		"im:bone": _bone(k, r)
 		"antler": _antler(k, r)
 		"fang": _fang(k)
-		"rope": _rope(k, r, s[1], s[2])
+		"rope", "rope_synth":
+			if s[0] == "rope":
+				_rope(k, r, s[1], s[2])
+			else:
+				_rope_synth(k, r)
+			# The pile tipped toward the eye, its loops seen from above as the icons show them.
+			return _transformed(k.commit(mat), Transform3D(Basis(Vector3.RIGHT, 0.6), Vector3.ZERO))
 		"cloth": _cloth(k, r, s[1])
 		"skein": _skein(k, r, s[1])
-		"bundle": _bundle(k, r, s[1], s[2])
+		"bundle":
+			_bundle(k, r, s[1], s[2])
+			if s[2] == "fibre":
+				# A hank of fibre lies across the hand, as its icon shows it.
+				return _transformed(k.commit(mat), Transform3D(Basis(Vector3.FORWARD, 0.9), Vector3(0.04, 0.0, 0)))
 		"nails":
 			_nails(k, r)
 			var nm := k.commit(mat)
@@ -554,12 +589,59 @@ static func _bar(k: MeshKit, r: RandomNumberGenerator, col: Color, rough: float,
 				var w := (a1 - a0).cross(Vector3.UP).normalized() * 0.0005
 				_quad(k, m, xf, a0 - w, a1 - w, a1 + w, a0 + w, Vector3.UP, c.darkened(r.randf_range(0.3, 0.45)))
 	# Tarnish rides in the material's roughness; spotted patches read as stickers here.
+	if VEINS.has(_t):
+		# Star-forged alien metal: lightning-branched veins of faintly lit matter run
+		# through it, over the top and down the long faces.
+		var vm := "im:crystal_glow:" + String(VEINS[_t])
+		var vc := Color.html(String(VEINS[_t]))
+		var top := func(u: float, v: float) -> Vector3:
+			return Vector3(u * length * 0.43, ht * 0.5 + 0.0004, (v * 2.0 - 1.0) * hw * 0.74)
+		_veins_on(k, r, vm, vc, xf, top, Vector3.UP, 12)
+		for side: float in [-1.0, 1.0]:
+			var face := func(u: float, v: float) -> Vector3:
+				return Vector3(u * length * 0.47, lerpf(-ht * 0.5, ht * 0.5, v), side * (lerpf(hw, hw * 0.78, v) + 0.0004))
+			_veins_on(k, r, vm, vc, xf, face, Vector3(0, 0, side), 7)
+		# The arrises catch the light from within: a thin lit line round the top face.
+		var edge := _rect(length * 0.45, hw * 0.78, ht * 0.5 - e * 0.5, e)
+		edge.append(edge[0])
+		var er := PackedFloat32Array()
+		er.resize(edge.size())
+		er.fill(0.0008)
+		_tube(k, vm, xf, edge, er, 4, vc, false)
+
+## Alien metals whose ingots carry lit veins: id -> vein colour.
+const VEINS := {"voidsteel_ingot": "b46cff", "starsteel_ingot": "a8d4ff"}
+
+## Branching cracks over a face given by `face(u, v)`, u in -1..1 and v in 0..1.
+static func _veins_on(k: MeshKit, r: RandomNumberGenerator, m: String, col: Color, xf: Transform3D, face: Callable, n: Vector3, count: int) -> void:
+	for i in count:
+		var u := r.randf_range(-0.9, 0.9)
+		var v := r.randf_range(0.1, 0.9)
+		var a := r.randf() * TAU
+		var w := 0.0009
+		for s in 9:
+			var a2 := a + r.randf_range(-0.7, 0.7)
+			var u2 := clampf(u + cos(a2) * 0.12, -1.0, 1.0)
+			var v2 := clampf(v + sin(a2) * 0.18, 0.02, 0.98)
+			var p0: Vector3 = face.call(u, v)
+			var p1: Vector3 = face.call(u2, v2)
+			var d := (p1 - p0).cross(n).normalized()
+			_quad(k, m, xf, p0 - d * w, p1 - d * w * 0.8, p1 + d * w * 0.8, p0 + d * w, n, col)
+			u = u2
+			v = v2
+			a = a2
+			w *= 0.88
 
 static func _nugget(k: MeshKit, r: RandomNumberGenerator, col: Color, size: float) -> void:
-	# Water-worn gold: one irregular, flattened lump with softened, folded edges and a
-	# smaller lobe grown onto its side, quartz grit caught in the hollows.
-	_rock(k, "im:metal@0.3", Transform3D(Basis.from_scale(Vector3(1.0, 0.65, 0.8)), Vector3(0, size * 0.6, 0)), size, 0.18, r, col)
-	_rock(k, "im:metal@0.3", Transform3D(Basis.from_scale(Vector3(0.8, 0.6, 0.7)), Vector3(size * 0.75, size * 0.45, size * 0.15)), size * 0.5, 0.2, r, col.darkened(0.05))
+	# Water-worn gold: one irregular lump, smooth-shouldered but pocked and knobbly all
+	# over (gold is soft and folds, it never breaks into flat faces), a smaller lobe grown
+	# onto its side, quartz grit caught in the hollows.
+	_blob(k, "im:metal@0.42", Transform3D(Basis.from_scale(Vector3(1.0, 0.8, 0.7)), Vector3(0, size * 0.75, 0)), size, 0.4, 4.0, r, col, 18, 26)
+	_blob(k, "im:metal@0.42", Transform3D(Basis.from_scale(Vector3(0.8, 0.7, 0.7)), Vector3(size * 0.7, size * 0.5, size * 0.1)), size * 0.55, 0.4, 4.0, r, col.darkened(0.05), 12, 18)
+	for i in 12:
+		# Pocks and knobs: the hammered, pitted skin of a nugget.
+		var d := Vector3(r.randf_range(-1, 1), r.randf_range(-0.8, 1), r.randf_range(-1, 1)).normalized()
+		k.sphere("im:metal@0.42", Transform3D(Basis.IDENTITY, Vector3(0, size * 0.75, 0) + d * Vector3(size, size * 0.8, size * 0.7) * 0.85), size * r.randf_range(0.1, 0.18), 5, 7, 0.4, 0.7, col.darkened(r.randf_range(-0.05, 0.15)))
 	for i in 5:
 		var d := Vector3(r.randf_range(-1, 1), r.randf_range(-0.4, 0.6), r.randf_range(-1, 1)).normalized()
 		k.sphere("im:stone", Transform3D(Basis.IDENTITY, Vector3(0, size * 0.6, 0) + d * Vector3(size, size * 0.6, size * 0.8) * 0.82), size * 0.08, 4, 5, 0.4, 1.0, Color(0.85, 0.83, 0.78))
@@ -592,6 +674,112 @@ static func _ore(k: MeshKit, r: RandomNumberGenerator, t: String, s: Array) -> v
 				_block(k, "im:metal@0.25", xf * Transform3D(gb, gp), Vector3(gs, gs * r.randf_range(0.4, 1.0), gs), gs * 0.08, gc)
 			else:
 				k.crystal("im:crystal:" + t, xf * Transform3D(Basis(Vector3.UP.cross(d).normalized(), Vector3.UP.angle_to(d)) if d.cross(Vector3.UP).length() > 0.01 else Basis.IDENTITY, gp - d * gs * 0.5), gs * 0.35, gs * 1.6, 6, 0.3, Color(gc.r, gc.g, gc.b, 0.9))
+
+## Ore that is mostly mineral: a broken lump whose every fracture face is a crystal face
+## or metal plate of the mineral, in patches of its colours (picked by smooth noise so
+## they cluster as real ore does), dark host rock between; then whatever grows out of it:
+## crystal points, metal plates, blue botryoidal bubbles or bright sparks.
+static func _gem_ore(k: MeshKit, r: RandomNumberGenerator, s: Array) -> void:
+	var size := 0.05
+	var pal: Array = s[1]
+	var c := Vector3(0, size * 0.85, 0)
+	var xf := Transform3D(Basis.from_euler(Vector3(r.randf_range(-0.3, 0.3), r.randf() * TAU, r.randf_range(-0.3, 0.3))), c)
+	var grid := _rock_grid(size, s[3], r, 14, 20)
+	var noise := FastNoiseLite.new()
+	noise.seed = r.randi()
+	noise.frequency = s[4]
+	var total := 0.0
+	for p: Array in pal:
+		total += float(p[2])
+	# Smooth noise ranked into the palette's shares, then a little jitter per face.
+	var pick_at := func(p: Vector3) -> Array:
+		var f := clampf(0.5 + noise.get_noise_3dv(p / size) * 0.9 + r.randf_range(-0.08, 0.08), 0.0, 0.999) * total
+		var pick: Array = pal[0]
+		for pp: Array in pal:
+			pick = pp
+			f -= float(pp[2])
+			if f < 0.0:
+				break
+		return pick
+	var rings := grid.size() - 1
+	var segs: int = (grid[0] as Array).size()
+	for ri in rings:
+		for si in segs:
+			var s2 := (si + 1) % segs
+			var a: Vector3 = grid[ri][si]
+			var b: Vector3 = grid[ri][s2]
+			var cc: Vector3 = grid[ri + 1][s2]
+			var d: Vector3 = grid[ri + 1][si]
+			var ctr := (a + b + cc + d) * 0.25
+			var pick: Array = pick_at.call(ctr)
+			_quad(k, pick[0], xf, a, b, cc, d, ctr, (pick[1] as Color).lightened(r.randf_range(-0.15, 0.2)))
+	# Grains: small crystals and cleavage flakes of the mineral standing proud all over,
+	# which break the lump into the glittering mosaic the icons paint.
+	for i in 90:
+		var ri := r.randi_range(1, rings - 1)
+		var si := r.randi() % segs
+		var at: Vector3 = grid[ri][si]
+		var pick: Array = pick_at.call(at)
+		var nrm := (at.normalized() + Vector3(r.randf_range(-0.5, 0.5), r.randf_range(-0.5, 0.5), r.randf_range(-0.5, 0.5))).normalized()
+		var gb := Basis(Vector3.UP.cross(nrm).normalized(), Vector3.UP.angle_to(nrm)) * Basis(Vector3.UP, r.randf() * TAU) if nrm.cross(Vector3.UP).length() > 0.01 else Basis.IDENTITY
+		var gs := r.randf_range(0.006, 0.014)
+		var gc := (pick[1] as Color).lightened(r.randf_range(-0.1, 0.3))
+		if String(pick[0]).begins_with("im:metal"):
+			_block(k, pick[0], xf * Transform3D(gb, at * 0.95), Vector3(gs, gs * 0.45, gs * r.randf_range(0.6, 1.0)), gs * 0.05, gc)
+		else:
+			k.crystal(pick[0], xf * Transform3D(gb, at * 0.9), gs * 0.5, gs * 0.9, 5, 0.5, gc)
+	for pt: Array in s[2]:
+		var kind: String = pt[0]
+		var pm: String = pt[1]
+		var pc: Color = pt[2]
+		var ps: float = pt[4]
+		for i in int(pt[3]):
+			# Crystals grow as a cluster from the top; the rest anywhere the eye can see.
+			var dir := Vector3(r.randf_range(-1, 1), r.randf_range(0.5, 1.6) if kind == "crystal" else r.randf_range(-0.2, 1.0), r.randf_range(-0.6, 1.0)).normalized()
+			# Sit it on the surface: the grid point nearest that direction.
+			var ri := clampi(roundi(acos(clampf(dir.y, -1.0, 1.0)) / PI * rings), 1, rings - 1)
+			var si := posmod(int(atan2(dir.z, dir.x) / TAU * segs), segs)
+			var at: Vector3 = grid[ri][si]
+			var ob := Basis(Vector3.UP.cross(dir).normalized(), Vector3.UP.angle_to(dir)) if dir.cross(Vector3.UP).length() > 0.01 else Basis.IDENTITY
+			var col := pc.lightened(r.randf_range(-0.1, 0.2))
+			match kind:
+				"crystal":
+					var h := ps * r.randf_range(0.6, 1.3)
+					k.crystal(pm, xf * Transform3D(ob * Basis(Vector3.UP, r.randf() * TAU), at * 0.75), h * 0.24, h, 6, 0.3, col)
+				"plate":
+					var w := ps * r.randf_range(0.6, 1.2)
+					_block(k, pm, xf * Transform3D(ob * Basis(Vector3.UP, r.randf() * TAU), at * 0.97), Vector3(w, w * 0.18, w * r.randf_range(0.6, 1.0)), w * 0.04, col)
+				"bulb":
+					var br := ps * r.randf_range(0.6, 1.3)
+					# Botryoidal: rounded bubbles, but made of crystal faces.
+					k.sphere(pm, xf * Transform3D(ob * Basis(Vector3.UP, r.randf() * TAU), at * 0.88), br, 4, 6, 0.2, 0.8, col)
+				"spark":
+					k.sphere(pm, xf * Transform3D(ob, at * 1.01), ps * r.randf_range(0.5, 1.2), 3, 5, 0.0, 1.0, col)
+
+## The points of a broken rock (rings x segs), from a squashed sphere cut by fracture planes.
+static func _rock_grid(size: float, angular: float, r: RandomNumberGenerator, rings := 7, segs := 10) -> Array:
+	var noise := FastNoiseLite.new()
+	noise.seed = r.randi()
+	noise.frequency = 2.2
+	var planes: Array = []
+	for i in 3 + int(angular * 4.0):
+		var n := Vector3(r.randf_range(-1, 1), r.randf_range(-1, 1), r.randf_range(-1, 1)).normalized()
+		planes.append([n, size * r.randf_range(0.55, 0.8)])
+	var grid: Array = []
+	for ri in rings + 1:
+		var phi := PI * ri / rings
+		var row: Array = []
+		for si in segs:
+			var th := TAU * si / segs
+			var d := Vector3(sin(phi) * cos(th), cos(phi) * 0.8, sin(phi) * sin(th) * 0.85)
+			var p := d * size * (1.0 + 0.3 * noise.get_noise_3dv(d))
+			for pl in planes:
+				var over: float = p.dot(pl[0]) - pl[1]
+				if over > 0.0:
+					p -= pl[0] * over * angular * 1.5
+			row.append(p)
+		grid.append(row)
+	return grid
 
 ## A broken rock: a lump cut by a few flat fracture planes (the angular faces that make
 ## rock read as broken stone rather than clay).
@@ -642,6 +830,174 @@ static func _lump(k: MeshKit, r: RandomNumberGenerator, m: String, col: Color, s
 		var d := Vector3(r.randf_range(-1, 1), r.randf_range(-0.6, 0.8), r.randf_range(-1, 1)).normalized()
 		k.sphere(m, Transform3D(Basis.IDENTITY, Vector3(0, size * 0.75, 0) + d * size * 0.85), size * 0.07, 4, 5, 0.4, 1.0, col.darkened(0.05))
 
+## A soft, lumpy body (clay, fat, a nugget): a sphere pushed in and out by smooth noise of
+## its own, smooth shaded so it reads as squeezed and not broken.
+static func _blob(k: MeshKit, m: String, xf: Transform3D, size: float, bump: float, freq: float, r: RandomNumberGenerator, col: Color, rings := 12, segs := 18) -> void:
+	var noise := FastNoiseLite.new()
+	noise.seed = r.randi()
+	noise.frequency = freq
+	noise.fractal_octaves = 3
+	var grid: Array = []
+	for ri in rings + 1:
+		var phi := PI * ri / rings
+		var row: Array = []
+		for si in segs + 1:
+			var th := TAU * (si % segs) / segs
+			var d := Vector3(sin(phi) * cos(th), cos(phi), sin(phi) * sin(th))
+			row.append(d * size * (1.0 + bump * noise.get_noise_3dv(d)))
+		grid.append(row)
+	for ri in rings:
+		for si in segs:
+			var q: Array = [grid[ri][si], grid[ri][si + 1], grid[ri + 1][si + 1], grid[ri + 1][si]]
+			var nn: Array = []
+			for c: Array in [[ri, si], [ri, si + 1], [ri + 1, si + 1], [ri + 1, si]]:
+				var du: Vector3 = grid[c[0]][mini(c[1] + 1, segs)] - grid[c[0]][maxi(c[1] - 1, 0)]
+				var dv: Vector3 = grid[mini(c[0] + 1, rings)][c[1]] - grid[maxi(c[0] - 1, 0)][c[1]]
+				var n := du.cross(dv).normalized()
+				var p: Vector3 = grid[c[0]][c[1]]
+				if n.length() < 0.5:
+					n = p.normalized()
+				nn.append(n if n.dot(p) >= 0.0 else -n)
+			_tri(k, m, xf, q[0], q[1], q[2], nn[0], nn[1], nn[2], col)
+			_tri(k, m, xf, q[0], q[2], q[3], nn[0], nn[2], nn[3], col)
+
+## A soft cushion shape (half sizes `half`): a superellipsoid, flat-topped and square in
+## plan with fully rounded edges, smooth shaded, each face coloured by `shade(normal)`.
+static func _pillow(k: MeshKit, m: String, xf: Transform3D, half: Vector3, shade: Callable, rings := 16, segs := 32) -> void:
+	var se := func(c: float, e: float) -> float:
+		return signf(c) * pow(absf(c), e)
+	var grid: Array = []
+	for ri in rings + 1:
+		var phi := PI * ri / rings
+		var row: Array = []
+		for si in segs + 1:
+			var th := TAU * (si % segs) / segs
+			var sp: float = se.call(sin(phi), 0.45)
+			row.append(Vector3(sp * se.call(cos(th), 0.3) * half.x, se.call(cos(phi), 0.45) * half.y, sp * se.call(sin(th), 0.3) * half.z))
+		grid.append(row)
+	var nrm := func(ri: int, si: int) -> Vector3:
+		if ri == 0:
+			return Vector3.UP
+		if ri == rings:
+			return Vector3.DOWN
+		var du: Vector3 = grid[ri][(si + 1) % segs] - grid[ri][(si - 1 + segs) % segs]
+		var dv: Vector3 = grid[ri + 1][si] - grid[ri - 1][si]
+		var n := du.cross(dv).normalized()
+		var p: Vector3 = grid[ri][si]
+		return n if n.dot(p) >= 0.0 else -n
+	for ri in rings:
+		for si in segs:
+			var q: Array = [grid[ri][si], grid[ri][si + 1], grid[ri + 1][si + 1], grid[ri + 1][si]]
+			var nn: Array = [nrm.call(ri, si % segs), nrm.call(ri, (si + 1) % segs), nrm.call(ri + 1, (si + 1) % segs), nrm.call(ri + 1, si % segs)]
+			var col: Color = shade.call(((nn[0] + nn[1] + nn[2] + nn[3]) as Vector3).normalized())
+			_tri(k, m, xf, q[0], q[1], q[2], nn[0], nn[1], nn[2], col)
+			_tri(k, m, xf, q[0], q[2], q[3], nn[0], nn[2], nn[3], col)
+
+## A fist of wet potter's clay: red-brown, a few soft lobes squeezed together, finger dents
+## and crumbs, matte with a damp sheen only on the knuckles.
+static func _clay(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
+	var c := Vector3(0, 0.04, 0)
+	_blob(k, "im:clay", Transform3D(Basis.from_scale(Vector3(1.0, 0.85, 0.8)), c), 0.04, 0.4, 2.6, r, col, 16, 24)
+	for i in 5:
+		var a := TAU * i / 5.0 + r.randf() * 0.6
+		var d := Vector3(cos(a), r.randf_range(-0.3, 0.7), sin(a) * 0.8).normalized()
+		_blob(k, "im:clay", Transform3D(Basis.IDENTITY, c + d * 0.03), r.randf_range(0.016, 0.024), 0.35, 3.0, r, col.darkened(r.randf_range(-0.06, 0.1)), 8, 12)
+	# Crumbs and pinched knobs all over: the grainy, torn skin of worked clay.
+	for i in 40:
+		var d := Vector3(r.randf_range(-1, 1), r.randf_range(-0.6, 1), r.randf_range(-1, 1)).normalized()
+		k.sphere("im:clay", Transform3D(Basis.IDENTITY, c + d * Vector3(0.04, 0.034, 0.032)), r.randf_range(0.003, 0.007), 4, 5, 0.4, 0.7, col.darkened(r.randf_range(-0.05, 0.15)))
+
+## Rendered animal fat (tallow, lard) in a round earthenware bowl: the glazed red-brown
+## pot with a rolled rim, the fat a soft, creamy-yellow heap with a glossy, lumpy top,
+## tipped toward the eye so the fat shows.
+static func _fat(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var xf := Transform3D(Basis(Vector3.RIGHT, 0.1), Vector3(0, 0.015, 0))
+	var prof := PackedVector2Array([Vector2(0, 0), Vector2(0.024, 0), Vector2(0.024, 0), Vector2(0.026, 0.003), Vector2(0.04, 0.013), Vector2(0.049, 0.028), Vector2(0.053, 0.037),
+		Vector2(0.053, 0.037), Vector2(0.05, 0.04), Vector2(0.046, 0.037), Vector2(0.046, 0.037), Vector2(0.043, 0.027), Vector2(0.034, 0.014), Vector2(0.018, 0.0075), Vector2(0, 0.007)])
+	Provisions.lathe(k, "im:clay", xf, prof, 28, Color(0.36, 0.15, 0.08))
+	_torus(k, "im:clay", xf.translated_local(Vector3(0, 0.038, 0)), 0.05, 0.0035, 28, 6, Color(0.32, 0.13, 0.07))
+	# The fat: a heap, its top in soft swirls where it was spooned in.
+	_blob(k, "im:fat", xf * Transform3D(Basis.from_scale(Vector3(1.0, 0.25, 1.0)), Vector3(0, 0.029, 0)), 0.041, 0.12, 3.0, r, Color(0.66, 0.5, 0.24), 10, 24)
+	for i in 7:
+		var a := r.randf() * TAU
+		var p := Vector3(cos(a), 0, sin(a)) * r.randf_range(0.0, 0.026) + Vector3(0, 0.036, 0)
+		_blob(k, "im:fat", xf * Transform3D(Basis.from_scale(Vector3(1.0, 0.4, 1.0)), p), r.randf_range(0.009, 0.015), 0.3, 4.0, r, Color(0.72, 0.56, 0.28), 6, 10)
+
+## A geode broken open: a rough, dark, knobbly shell round a hollow lined with violet
+## crystal points, a pale band of chalcedony where the rind meets them. The crystals give a
+## faint alien light.
+static func _geode(k: MeshKit, r: RandomNumberGenerator, t: String, col: Color) -> void:
+	var c := Vector3(0, 0.08, 0)
+	var rad := 0.078
+	# The rind: a deep bowl opening toward the eye (+Z), crusted with knobs.
+	var shell := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), c)
+	var outer := PackedVector2Array()
+	for i in 13:
+		var phi := PI * 0.62 * i / 12.0
+		outer.append(Vector2(sin(phi) * rad, -cos(phi) * rad))
+	var rim_y := outer[outer.size() - 1].y
+	var rim_r := outer[outer.size() - 1].x
+	var prof := PackedVector2Array(outer)
+	prof.append(outer[outer.size() - 1])
+	prof.append(Vector2(rim_r * 0.78, rim_y + 0.001))
+	prof.append(Vector2(rim_r * 0.78, rim_y + 0.001))
+	prof.append(Vector2(rim_r * 0.5, rim_y - rad * 0.3))
+	prof.append(Vector2(0, rim_y - rad * 0.45))
+	var crust := func(a: float, tt: float, p: Vector3) -> float:
+		return 1.0 + 0.06 * sin(a * 11.0 + tt * 23.0) * sin(a * 7.0 - tt * 17.0)
+	# Rind dark, the lip a pale band of chalcedony, the hollow deep violet.
+	Provisions.lathe(k, "im:stone", shell, prof, 30, func(p: Vector3, a: float, tt: float) -> Color:
+		return Color(0.13, 0.14, 0.2) if tt < 0.8 else (Color(0.62, 0.55, 0.45) if tt < 0.83 else Color(0.2, 0.08, 0.32)), crust)
+	for i in 60:
+		# Knobs of the crust: the scaled, bubbly skin of the stone.
+		var phi := r.randf_range(0.1, PI * 0.6)
+		var a := r.randf() * TAU
+		var d := Vector3(sin(phi) * cos(a), -cos(phi), sin(phi) * sin(a))
+		k.sphere("im:gem", shell.translated_local(d * rad * 0.98), rad * r.randf_range(0.07, 0.12), 4, 6, 0.2, 0.6, Color(0.12, 0.14, 0.24).lerp(Color(0.25, 0.3, 0.45), r.randf() * 0.5))
+	# The crystal lining: points growing inward from the walls, toward the opening.
+	var m := "im:crystal_glow:" + t
+	var floor_y := rim_y - rad * 0.45
+	for i in 60:
+		var rho := sqrt(r.randf()) * rim_r * 0.76
+		var a := r.randf() * TAU
+		var f := rho / (rim_r * 0.78)
+		var radial := Vector3(cos(a), 0, sin(a))
+		var base := radial * rho + Vector3(0, lerpf(floor_y, rim_y, f * f) - 0.002, 0)
+		var dir := (Vector3.UP - radial * 0.5 * f + Vector3(r.randf_range(-0.25, 0.25), 0, r.randf_range(-0.25, 0.25))).normalized()
+		var h := r.randf_range(0.019, 0.04) * (1.5 - f * 0.6)
+		var b := Basis(Vector3.UP.cross(dir).normalized(), Vector3.UP.angle_to(dir)) if dir.cross(Vector3.UP).length() > 0.01 else Basis.IDENTITY
+		var cc := col.darkened(r.randf_range(0.1, 0.45))
+		k.crystal(m if i % 3 == 0 else "im:gem", shell * Transform3D(b, base), h * 0.3, h, 6, 0.35, Color(cc.r, cc.g, cc.b, 0.92))
+
+## Neutronium as its icon draws it: a spindle-shaped shard of dark, star-flecked matter,
+## bound in curling gold filigree, a small lit core at its heart. Alien: the core and the
+## fleck glow faintly.
+static func _spindle(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var c := Vector3(0, 0.035, 0)
+	var dark := Color(0.12, 0.1, 0.3)
+	var tilt := Basis(Vector3.FORWARD, 0.35)
+	k.crystal("im:gem", Transform3D(tilt, c), 0.014, 0.042, 8, 1.0, dark)
+	k.crystal("im:gem", Transform3D(tilt * Basis(Vector3.RIGHT, PI), c), 0.014, 0.038, 8, 1.0, dark.lightened(0.08))
+	var gold := Color(0.8, 0.56, 0.22)
+	for band in 3:
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		var ph := band * TAU / 3.0
+		for s in 25:
+			var t := float(s) / 24.0
+			var y := lerpf(-0.034, 0.038, t)
+			var rr := 0.015 * (1.0 - absf(y) / 0.042) + 0.0012
+			var a := ph + t * PI * 1.3
+			path.append(c + tilt * Vector3(cos(a) * rr, y, sin(a) * rr))
+			radii.append(0.0011)
+		_tube(k, "im:metal@0.3", Transform3D.IDENTITY, path, radii, 5, gold, true)
+	_torus(k, "im:metal@0.3", Transform3D(tilt * Basis(Vector3.RIGHT, 1.35) * Basis(Vector3.FORWARD, 0.3), c), 0.022, 0.0006, 32, 4, gold.darkened(0.15))
+	k.sphere("im:crystal_glow:c8a8ff", Transform3D(Basis.IDENTITY, c + Vector3(0.0, 0.0, 0.009)), 0.004, 6, 8, 0.0, 1.0, Color(0.85, 0.75, 1.0, 0.95))
+	for i in 10:
+		var p := c + tilt * Vector3(r.randf_range(-0.006, 0.006), r.randf_range(-0.02, 0.02), 0.0)
+		p.z = 0.0105 * (1.0 - absf(p.y - c.y) / 0.04)
+		k.sphere("im:crystal_glow:c8a8ff", Transform3D(Basis.IDENTITY, p), 0.0008, 3, 4, 0.0, 1.0, Color(0.8, 0.85, 1.0, 0.9))
+
 static func _charcoal(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# A handful of lump charcoal: broken, angular pieces of charred wood of different
 	# sizes, black with a faint silvery sheen, grain lines still showing.
@@ -655,16 +1011,33 @@ static func _halite(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
 	# Rock salt: a crust of cubic crystals all grown in the same orientation, of many
 	# sizes, interpenetrating, with stepped (hopper) hollows in their faces, on a broken
 	# lump of cloudy massive salt.
-	_rock(k, "im:salt", Transform3D(Basis.IDENTITY, Vector3(0, 0.03, 0)), 0.035, 0.85, r, col.darkened(0.08))
-	var b := Basis.from_euler(Vector3(0.2, 0.5, 0.1))
-	for i in 14:
-		var sz := 0.03 * pow(r.randf(), 1.6) + 0.006
-		var p := Vector3(r.randf_range(-0.03, 0.03), 0.03 + r.randf_range(0.0, 0.04), r.randf_range(-0.025, 0.025))
+	# Pink Himalayan-style rock salt: a mound of cubes, rosy where iron stains them and
+	# milky white-pink elsewhere.
+	_rock(k, "im:salt", Transform3D(Basis.IDENTITY, Vector3(0, 0.025, 0)), 0.032, 0.85, r, col.darkened(0.08))
+	for i in 30:
+		var sz := 0.018 * pow(r.randf(), 1.3) + 0.008
+		var a := r.randf() * TAU
+		var rr := sqrt(r.randf()) * 0.035
+		var p := Vector3(cos(a) * rr, 0.012 + (0.045 - rr) * r.randf_range(0.6, 1.1), sin(a) * rr * 0.8)
+		var b := Basis.from_euler(Vector3(r.randf_range(-0.3, 0.3), r.randf() * TAU, r.randf_range(-0.3, 0.3)))
 		var xf := Transform3D(b, p)
-		_block(k, "im:salt", xf, Vector3.ONE * sz, sz * 0.04, col.darkened(r.randf() * 0.12))
+		_block(k, "im:salt", xf, Vector3.ONE * sz, sz * 0.06, col.lerp(Color(0.86, 0.78, 0.76), r.randf() * 0.6).darkened(r.randf() * 0.1))
 		if sz > 0.015:
 			# The hopper step: a smaller, darker square set into the face looking out.
 			_quad(k, "im:salt", xf, Vector3(-sz * 0.3, -sz * 0.3, sz * 0.501), Vector3(sz * 0.3, -sz * 0.3, sz * 0.501), Vector3(sz * 0.3, sz * 0.3, sz * 0.501), Vector3(-sz * 0.3, sz * 0.3, sz * 0.501), Vector3.BACK, col.darkened(0.25))
+
+## A heap of coarse salt as poured out of a sack: a low cone of glittering white grains,
+## each a tiny cube, loose ones scattered round its foot.
+static func _salt_pile(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var white := Color(0.86, 0.87, 0.88)
+	_blob(k, "im:salt", Transform3D(Basis.from_scale(Vector3(1.0, 0.75, 0.8)), Vector3(0, 0.002, 0)), 0.04, 0.1, 3.0, r, white.darkened(0.1), 10, 18)
+	for i in 220:
+		var a := r.randf() * TAU
+		var rr := sqrt(r.randf()) * 1.15
+		var y := maxf(0.0, 1.0 - rr) * 0.04 + 0.002
+		var p := Vector3(cos(a) * rr * 0.05, y + r.randf_range(0.0, 0.003), sin(a) * rr * 0.04)
+		var sz := r.randf_range(0.003, 0.0065)
+		_block(k, "im:salt", Transform3D(Basis.from_euler(Vector3(r.randf() * TAU, r.randf() * TAU, r.randf() * TAU)), p), Vector3.ONE * sz, sz * 0.1, white.darkened(r.randf_range(-0.05, 0.12)))
 
 static func _crystals(k: MeshKit, r: RandomNumberGenerator, t: String, col: Color, alpha: float, count: int, glow: bool) -> void:
 	# A cluster on its matrix rock: hexagonal points of different sizes leaning out from a
@@ -696,7 +1069,20 @@ static func _crystals(k: MeshKit, r: RandomNumberGenerator, t: String, col: Colo
 static func _amber(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# A lump of resin as it is gathered from bark: one irregular, glassy piece with a
 	# fleck of bark caught inside.
-	_rock(k, "im:resin", Transform3D(Basis.from_scale(Vector3(1.0, 1.15, 0.8)), Vector3(0, 0.035, 0)), 0.03, 0.25, r, Color(0.85, 0.5, 0.12, 0.8))
+	# Many small conchoidal facets, each catching the light its own shade of amber.
+	var xf := Transform3D(Basis.from_scale(Vector3(1.0, 1.0, 0.8)), Vector3(0, 0.03, 0))
+	var grid := _rock_grid(0.032, 0.75, r, 10, 14)
+	for ri in grid.size() - 1:
+		var row: Array = grid[ri]
+		for si in row.size():
+			var s2 := (si + 1) % row.size()
+			var a: Vector3 = grid[ri][si]
+			var b: Vector3 = grid[ri][s2]
+			var c: Vector3 = grid[ri + 1][s2]
+			var d: Vector3 = grid[ri + 1][si]
+			var col := Color(0.92, 0.55, 0.1).lerp(Color(0.62, 0.26, 0.02), r.randf())
+			col.a = 0.85
+			_quad(k, "im:resin", xf, a, b, c, d, (a + b + c + d) * 0.25, col)
 	_block(k, "bark", Transform3D(Basis.from_euler(Vector3(0.3, 0.7, 0.2)), Vector3(-0.004, 0.04, 0.004)), Vector3(0.008, 0.004, 0.006), 0.0, Color(0.25, 0.16, 0.08))
 
 # --- Timber -----------------------------------------------------------------------------
@@ -777,6 +1163,105 @@ static func _split(k: MeshKit, r: RandomNumberGenerator) -> void:
 				var bump := Vector3(out) * -r.randf_range(-0.002, 0.003)
 				_quad(k, "im:splitwood", xf, face * t0 + bump, face * t1 + bump, face * t1 + bump + Vector3(0, l, 0), face * t0 + bump + Vector3(0, l, 0), out, heart.lightened(r.randf_range(0.1, 0.25)))
 
+## Glowroot: a length of root-wood with dark, grey-green bark, its sawn ends and the
+## seams and blisters in its bark a vivid sea-green. It is coloured, not lit: nothing on a
+## human world glows.
+static func _glowroot(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var rad := 0.055
+	var length := 0.34
+	var teal := Color(0.12, 0.62, 0.55)
+	k.cylinder("bark", Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0)), rad, rad * 0.94, length, 14, false, 0.08, 6, Color(0.36, 0.5, 0.5))
+	_end_grain(k, Transform3D.IDENTITY, Vector3(0, -0.0405, 0), Vector3.DOWN, rad * 0.93, 9, teal.darkened(0.3), r)
+	_end_grain(k, Transform3D.IDENTITY, Vector3(0, length - 0.0395, 0), Vector3.UP, rad * 0.88, 9, teal.darkened(0.3), r)
+	# Seams: long green cracks in the bark, following the grain with a slight twist.
+	for i in 9:
+		var a := r.randf() * TAU
+		var y0 := r.randf_range(-0.03, 0.1)
+		var y1 := y0 + r.randf_range(0.1, 0.2)
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for s in 9:
+			var t := s / 8.0
+			var aa := a + t * 0.5 + sin(t * 9.0 + i) * 0.06
+			path.append(Vector3(cos(aa) * rad * 0.99, lerpf(y0, y1, t), sin(aa) * rad * 0.99))
+			radii.append(0.005 * sin(t * PI) + 0.0008)
+		_tube(k, "im:gem", Transform3D.IDENTITY, path, radii, 5, teal, false)
+	# Blisters: rounded green swellings bursting through the bark.
+	for i in 16:
+		var a := r.randf() * TAU
+		var d := Vector3(cos(a), 0, sin(a))
+		var p := d * rad * 0.97 + Vector3(0, r.randf_range(-0.02, 0.27), 0)
+		var b := Basis(Vector3.UP.cross(d).normalized(), PI * 0.5)
+		k.sphere("im:gem", Transform3D(b, p), r.randf_range(0.009, 0.02), 5, 8, 0.25, 0.4, teal.lightened(r.randf_range(-0.1, 0.25)))
+
+## A bundle of firewood: split rounds and halves, bark outward, their sawn ends showing
+## pale wood and rings, stacked together and bound round twice with rope.
+static func _firewood(k: MeshKit, r: RandomNumberGenerator) -> void:
+	var l := 0.27
+	var heart := Color(0.62, 0.42, 0.24)
+	var slots := [Vector2.ZERO]
+	for i in 6:
+		var a := TAU * i / 6.0 + 0.3
+		slots.append(Vector2(cos(a), sin(a)) * 0.064)
+	for i in slots.size():
+		var sl: Vector2 = slots[i]
+		var rad := r.randf_range(0.029, 0.035)
+		# Outer pieces are rounds and halves with their bark outward; the middle a round.
+		var span: float = TAU if i == 0 else [TAU, PI * 1.1, PI * 1.4][r.randi() % 3]
+		var mid := atan2(sl.y, sl.x) if i > 0 else 0.0
+		var a0 := mid - span * 0.5
+		var cen := 0.0 if span >= TAU - 0.01 else 4.0 * rad * sin(span * 0.5) / (3.0 * span)
+		var off := Vector3(sl.x, 0, sl.y) - Vector3(cos(mid), 0, sin(mid)) * cen
+		var xf := Transform3D(Basis(Vector3.UP, r.randf_range(-0.05, 0.05)), off + Vector3(0, -0.06 + r.randf_range(-0.01, 0.01), 0))
+		_wood_piece(k, r, xf, rad, l + r.randf_range(-0.01, 0.01), a0, span, heart.darkened(r.randf() * 0.12))
+	for y: float in [0.03, 0.15]:
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		for s in 33:
+			var a := TAU * s / 32.0
+			var rr := 0.1 + 0.004 * sin(a * 6.0)
+			path.append(Vector3(cos(a) * rr, y + sin(a * 2.0) * 0.003, sin(a) * rr))
+			radii.append(0.0045)
+		_tube(k, "im:rope", Transform3D.IDENTITY, path, radii, 6, Color(0.45, 0.33, 0.2), false)
+	# The knot where the binding is tied off, on the face toward the eye.
+	k.sphere("im:rope", Transform3D(Basis.IDENTITY, Vector3(0, 0.15, 0.102)), 0.009, 5, 7, 0.3, 1.0, Color(0.42, 0.3, 0.18))
+
+## One piece of split firewood along +Y: a sector of a log from angle a0 through `span`
+## (a whole round when span is a full turn), bark on the arc, rough split faces, sawn
+## ends with growth rings.
+static func _wood_piece(k: MeshKit, r: RandomNumberGenerator, xf: Transform3D, rad: float, l: float, a0: float, span: float, heart: Color) -> void:
+	var arc := 12
+	var whole := span >= TAU - 0.01
+	for e: float in [0.0, l]:
+		var n := Vector3.DOWN if e == 0.0 else Vector3.UP
+		var ctr := Vector3(0, e, 0)
+		for s in arc:
+			var p0 := Vector3(cos(a0 + span * s / arc), 0, sin(a0 + span * s / arc))
+			var p1 := Vector3(cos(a0 + span * (s + 1) / arc), 0, sin(a0 + span * (s + 1) / arc))
+			for g in 5:
+				var r0 := rad * 0.96 * g / 5.0
+				var r1 := rad * 0.96 * (g + 1) / 5.0
+				var col := heart.lightened(0.12 * g / 5.0).darkened(0.1 if g % 2 == 0 else 0.0)
+				_quad(k, "im:endgrain", xf, ctr + p0 * r0, ctr + p0 * r1, ctr + p1 * r1, ctr + p1 * r0, n, col)
+			# The bark seen end-on: a dark band.
+			_quad(k, "im:endgrain", xf, ctr + p0 * rad * 0.96, ctr + p0 * rad, ctr + p1 * rad, ctr + p1 * rad * 0.96, n, Color(0.22, 0.15, 0.1))
+	for s in arc:
+		var a := a0 + span * s / arc
+		var b := a0 + span * (s + 1) / arc
+		var p0 := Vector3(cos(a) * rad, 0, sin(a) * rad)
+		var p1 := Vector3(cos(b) * rad, 0, sin(b) * rad)
+		_quad(k, "bark", xf, p0, p1, p1 + Vector3(0, l, 0), p0 + Vector3(0, l, 0), (p0 + p1) * 0.5, Color(0.85, 0.8, 0.75))
+	if whole:
+		return
+	for edge: float in [a0, a0 + span]:
+		var d := Vector3(cos(edge), 0, sin(edge)) * rad
+		var out := Vector3(0, 1, 0).cross(d).normalized() * (1.0 if edge == a0 else -1.0)
+		for g in 4:
+			var t0 := g / 4.0
+			var t1 := (g + 1) / 4.0
+			var bump := out * r.randf_range(-0.0015, 0.002)
+			_quad(k, "im:splitwood", xf, d * t0 + bump, d * t1 + bump, d * t1 + bump + Vector3(0, l, 0), d * t0 + bump + Vector3(0, l, 0), out, heart.lightened(r.randf_range(0.05, 0.2)))
+
 static func _planks(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# Sawn boards: a few stacked, slightly different in colour and cut, saw-marked ends
 	# showing the arcs of the rings, nail holes from reuse.
@@ -823,7 +1308,7 @@ static func _brick(k: MeshKit, r: RandomNumberGenerator, m: String, col: Color, 
 		_quad(k, m, xf, f + Vector3(0, -fl, -fw), f + Vector3(0, fl, -fw), f + Vector3(0, fl, fw), f + Vector3(0, -fl, fw), Vector3.RIGHT, col.darkened(0.35))
 	for i in 5:
 		var p := Vector3(-size.z * 0.5 - 0.0003, r.randf_range(-0.4, 0.4) * size.y, r.randf_range(-0.35, 0.35) * size.x)
-		_disc(k, m, xf, p, Vector3.LEFT, r.randf_range(0.006, 0.014), 7, col.darkened(r.randf_range(0.15, 0.35)))
+		_disc(k, m, xf, p, Vector3.LEFT, r.randf_range(0.006, 0.014), 7, col.darkened(r.randf_range(0.06, 0.16)))
 
 static func _briquettes(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# Pressed coal briquettes: pillow-shaped, matte black-brown, with a pressed seam.
@@ -837,6 +1322,34 @@ static func _cake(k: MeshKit, col: Color) -> void:
 	k.cylinder("im:wax", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.02, 0.015)), 0.045, 0.05, 0.03, 20, true)
 	_disc(k, "im:wax", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.02, 0.015)), Vector3(0, 0.0303, 0), Vector3.UP, 0.044, 20, col.lightened(0.15))
 	k.sphere("im:wax", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.02, 0.015)), 0.045, 8, 20, 0.0, 0.35, col, true)
+
+## A block of beeswax cut from the comb: a squarish, slightly slumped amber block whose
+## front and top are a honeycomb of hexagonal cells, each a dark hollow inside a pale wax
+## wall, the cut sides smooth and waxy.
+static func _comb(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
+	var size := Vector3(0.095, 0.08, 0.07)
+	var xf := Transform3D(Basis(Vector3.UP, 0.25), Vector3(0, size.y * 0.5, 0))
+	_block(k, "im:wax", xf, size, 0.006, col, 0.94)
+	var cell := 0.0105
+	# The open cells on the front face (+Z) and on the top (+Y).
+	for face in 2:
+		var n := Vector3.BACK if face == 0 else Vector3.UP
+		var hu := size.x * 0.5 - cell * 0.6
+		var hv := (size.y if face == 0 else size.z) * 0.5 - cell * 0.6
+		var cols := int(hu * 2.0 / (cell * 1.5)) + 1
+		var rows := int(hv * 2.0 / (cell * 1.732)) + 1
+		for ci in cols:
+			for rj in rows:
+				var u := -hu + ci * cell * 1.5
+				var v := -hv + rj * cell * 1.732 + (cell * 0.866 if ci % 2 == 1 else 0.0)
+				if absf(v) > hv or absf(u) > hu:
+					continue
+				# The front face leans in with the block's taper (0.94 at the top).
+				var lean := lerpf(1.0, 0.94, (v + size.y * 0.5) / size.y) if face == 0 else 0.94
+				var p := Vector3(u * lean, v, size.z * 0.5 * lean + 0.0004) if face == 0 else Vector3(u * 0.94, size.y * 0.5 + 0.0004, v * 0.94)
+				var dark := col.darkened(r.randf_range(0.08, 0.16))
+				_disc(k, "im:wax", xf, p, n, cell * 0.8, 6, dark)
+				_disc(k, "im:wax", xf, p + n * 0.0002, n, cell * 0.5, 6, dark.darkened(0.22))
 
 # --- Animal -----------------------------------------------------------------------------
 
@@ -853,6 +1366,117 @@ static func _hide(k: MeshKit, r: RandomNumberGenerator, m: String, hair: Color, 
 		var out := Vector3(cos(a), 0, sin(a))
 		var tip := base + out * long * 0.35 + Vector3(0, -long, 0) + Vector3(-sin(a), 0, cos(a)) * long * r.randf_range(-0.3, 0.3)
 		_tube(k, "im:fur", Transform3D.IDENTITY, PackedVector3Array([base, (base + tip) * 0.5 + out * long * 0.15, tip]), PackedFloat32Array([0.0034, 0.0024, 0.0004]), 4, hair.darkened(r.randf_range(-0.1, 0.3)), false)
+
+## A raw hide laid out flat, as its icon shows it: the irregular outline of the animal
+## with four legs, neck and tail, short brown hair on top darker down the spine, the
+## edges ragged with a pale fringe of belly hair, the flesh side pale underneath.
+static func _pelt(k: MeshKit, r: RandomNumberGenerator, hair: Color, edge: Color) -> void:
+	var noise := FastNoiseLite.new()
+	noise.seed = r.randi()
+	noise.frequency = 3.0
+	# Head to tail along x (neck at angle 0, tail at PI), legs splayed at the corners.
+	var outline := func(a: float) -> float:
+		var rr := 0.1
+		for leg: float in [0.75, 2.4, 3.88, 5.53]:
+			var d := angle_difference(a, leg)
+			rr += 0.045 * exp(-d * d / 0.03)
+		rr += 0.035 * exp(-pow(angle_difference(a, 0.0), 2.0) / 0.05)
+		rr += 0.04 * exp(-pow(angle_difference(a, PI), 2.0) / 0.012)
+		return rr * (1.0 + 0.14 * noise.get_noise_2d(cos(a) * 1.5, sin(a) * 1.5))
+	var drape := func(x: float, y: float) -> float:
+		return 0.01 * sin(x * 16.0) * cos(y * 11.0) - 0.6 * (y * y)
+	# Turned a little off square, as it lies in the icon.
+	var xf := Transform3D(Basis(Vector3.BACK, 0.35), Vector3(0, 0.08, 0))
+	# Angles run clockwise so the hair side faces the eye (+Z).
+	var f := func(u: float, v: float) -> Vector3:
+		var a := -u * TAU
+		var rr: float = outline.call(a) * lerpf(0.03, 1.0, v)
+		var x := cos(a) * rr * 1.25
+		var y := sin(a) * rr
+		return Vector3(x, y, drape.call(x, y))
+	# The skin itself, face by face so its colour can shade: darkest down the spine, warm
+	# brown over the flanks, paler and greyer toward the belly edges; flesh side under.
+	var nu := 72
+	var nv := 8
+	var pts: Array = []
+	for i in nu + 1:
+		var row: Array = []
+		for j in nv + 1:
+			row.append(f.call(float(i) / nu, float(j) / nv))
+		pts.append(row)
+	for i in nu:
+		for j in nv:
+			var a: Vector3 = pts[i][j]
+			var b: Vector3 = pts[i + 1][j]
+			var c: Vector3 = pts[i + 1][j + 1]
+			var d: Vector3 = pts[i][j + 1]
+			var ctr := (a + b + c + d) * 0.25
+			var spine_w := clampf(absf(ctr.y) / 0.05, 0.0, 1.0)
+			var rim := float(j) / nv
+			var col := hair.darkened(0.3 * (1.0 - spine_w)).lerp(edge, smoothstep(0.55, 1.0, rim) * 0.6).darkened(r.randf_range(-0.04, 0.06))
+			var n := (b - a).cross(d - a).normalized()
+			if n.z < 0.0:
+				n = -n
+			_quad(k, "im:fur", xf, a, b, c, d, n, col)
+			var off := Vector3(0, 0, -0.003)
+			_quad(k, "im:flesh", xf, a + off, b + off, c + off, d + off, -n, edge.darkened(0.05))
+	# Hair: short tufts lying back along the body, the shade of the skin under them.
+	for i in 320:
+		var u := r.randf()
+		var v := sqrt(r.randf()) * 0.9
+		var p: Vector3 = f.call(u, v) + Vector3(0, 0, 0.0008)
+		var out := Vector3(-1.0, p.y * 6.0, 0).normalized()
+		var long := r.randf_range(0.005, 0.01)
+		var spine_w := clampf(absf(p.y) / 0.05, 0.0, 1.0)
+		var tc := hair.darkened(0.3 * (1.0 - spine_w)).lerp(edge, smoothstep(0.55, 1.0, v) * 0.6).darkened(r.randf_range(0.0, 0.2))
+		_tube(k, "im:fur", xf, PackedVector3Array([p, p + out * long + Vector3(0, 0, 0.001)]), PackedFloat32Array([0.0016, 0.0003]), 3, tc, false)
+	# The ragged fringe: tufts of paler belly hair sticking out all round the edge.
+	for i in 130:
+		var u := r.randf()
+		var p: Vector3 = f.call(u, 0.97)
+		var a := -u * TAU
+		var out := Vector3(cos(a) * 1.25, sin(a), 0).normalized()
+		var long := r.randf_range(0.005, 0.014)
+		var tip := p + out * long + Vector3(-out.y, out.x, 0) * long * r.randf_range(-0.4, 0.4)
+		_tube(k, "im:fur", xf, PackedVector3Array([p - out * 0.005, tip]), PackedFloat32Array([0.0024, 0.0003]), 4, edge.darkened(r.randf_range(-0.05, 0.2)), false)
+
+## A fur pelt folded for carrying, as its icon shows it: a thick, deep-piled skin doubled
+## over on itself in soft, rounded folds, dark brown on top with paler, creamy fur where
+## the folds turn, the long guard hairs fuzzing every edge.
+static func _fur_fold(k: MeshKit, r: RandomNumberGenerator, hair: Color, pale: Color) -> void:
+	# Two soft, fully rounded folds of the skin, one on the other and a little out of line.
+	var folds := [[Vector3(0.24, 0.055, 0.15), Transform3D(Basis(Vector3.UP, 0.04), Vector3(0, -0.03, 0))],
+		[Vector3(0.23, 0.05, 0.14), Transform3D(Basis(Vector3.UP, -0.06), Vector3(0.006, 0.022, -0.008))]]
+	for fo: Array in folds:
+		var size: Vector3 = fo[0]
+		var xf: Transform3D = fo[1]
+		# Dark pile over the top, creamy belly fur where the fold turns toward the eye.
+		var shade := func(n: Vector3) -> Color:
+			var front := clampf(n.z, 0.0, 1.0) * (1.0 - absf(n.y))
+			return hair.lerp(pale, front * front * 0.4)
+		_pillow(k, "im:fur", xf.translated_local(Vector3(0, size.y * 0.5, 0)), size * 0.5, shade)
+		# Pile: soft tufts combed one way, lying over the surface so they read as fur.
+		for i in 1400:
+			var top := r.randf() < 0.45
+			var p: Vector3
+			var out: Vector3
+			var col := hair
+			if top:
+				p = Vector3(r.randf_range(-0.45, 0.45) * size.x, size.y, r.randf_range(-0.42, 0.42) * size.z)
+				out = Vector3.UP
+			else:
+				var a := r.randf_range(-0.2, PI + 0.2)
+				var t := r.randf_range(0.15, 0.85)
+				out = Vector3(cos(a), 0, sin(a))
+				var m := 1.0 / pow(pow(absf(cos(a)), 4.0) + pow(absf(sin(a)), 4.0), 0.25)
+				p = Vector3(cos(a) * m * size.x * 0.5, t * size.y, sin(a) * m * size.z * 0.5)
+				var front := clampf(sin(a), 0.0, 1.0) * sin(t * PI)
+				col = hair.lerp(pale, front * front * 0.6)
+			var comb := Vector3(0.25, -0.6 if not top else 0.0, 1.0).normalized()
+			var dir := (out * (0.15 if top else 0.3) + comb + Vector3(r.randf_range(-0.4, 0.4), 0, r.randf_range(-0.2, 0.2))).normalized()
+			var long := r.randf_range(0.007, 0.014)
+			var tip := p + dir * long
+			_tube(k, "im:fur", xf, PackedVector3Array([p - out * 0.002, (p + tip) * 0.5 + out * 0.001, tip]), PackedFloat32Array([0.0026, 0.0018, 0.0003]), 3, col.darkened(r.randf_range(-0.15, 0.2)), false)
 
 static func _roll(k: MeshKit, r: RandomNumberGenerator, m: String, outer: Color, inner: Color, rad: float, l: float, lump: float, tie_m: String, tie: Color) -> void:
 	k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0)), rad, rad * 0.95, l, 18, false, lump, 5, outer)
@@ -874,23 +1498,29 @@ static func _roll(k: MeshKit, r: RandomNumberGenerator, m: String, outer: Color,
 		_torus(k, tie_m, Transform3D(Basis.IDENTITY, Vector3(0, y, 0)), rad * (1.0 + lump * 0.4) + 0.0015, 0.0018, 18, 5, tie)
 
 static func _leather(k: MeshKit, r: RandomNumberGenerator) -> void:
-	# Tanned leather, rolled and tied with a thong: smooth grain side outward, the suede
-	# flesh side showing in the spiral at the ends.
-	_roll(k, r, "leather", Color.WHITE, Color(0.5, 0.36, 0.24), 0.032, 0.22, 0.03, "im:hide", Color(0.3, 0.2, 0.12))
+	# A tanned hide folded for carrying, as its icon shows it: dark, supple leather in two
+	# loose folds, the grain side out and the edges soft and uneven.
+	_folded(k, r, "im:hide", Color(0.18, 0.1, 0.06), Color(0.22, 0.13, 0.08), 0.2, 0.14, 0.014, 3)
 
 static func _bone(k: MeshKit, r: RandomNumberGenerator) -> void:
-	# A long bone: a slightly bowed, waisted shaft flaring to knobbed ends (two condyles
-	# at one, a rounded head at the other), ivory with a dull, porous surface.
+	# A long bone, lying across as its icon shows it: a slightly bowed, waisted shaft
+	# flaring to big knobbed ends (two condyles at each), old dry bone the colour of
+	# parchment, stained brown and pitted at the ends.
+	var xf := Transform3D(Basis(Vector3.BACK, -0.75), Vector3(0, 0.04, 0))
+	var ivory := Color(0.66, 0.58, 0.44)
 	var path := PackedVector3Array()
 	var radii := PackedFloat32Array()
 	for i in 9:
 		var t := i / 8.0
-		path.append(Vector3(sin(t * PI) * 0.008, -0.04 + t * 0.22, 0))
-		radii.append(0.011 + 0.008 * pow(absf(t - 0.5) * 2.0, 3.0))
-	_tube(k, "im:bone", Transform3D.IDENTITY, path, radii, 10, Color(0.88, 0.84, 0.74))
-	k.sphere("im:bone", Transform3D(Basis.IDENTITY, Vector3(-0.008, -0.045, 0.006)), 0.016, 6, 8, 0.15, 1.0, Color(0.86, 0.82, 0.72))
-	k.sphere("im:bone", Transform3D(Basis.IDENTITY, Vector3(0.008, -0.045, -0.006)), 0.015, 6, 8, 0.15, 1.0, Color(0.86, 0.82, 0.72))
-	k.sphere("im:bone", Transform3D(Basis.IDENTITY, Vector3(0.0, 0.185, 0)), 0.02, 7, 10, 0.12, 0.9, Color(0.9, 0.86, 0.76))
+		path.append(Vector3(sin(t * PI) * 0.008, -0.09 + t * 0.18, 0))
+		radii.append(0.012 + 0.012 * pow(absf(t - 0.5) * 2.0, 3.0))
+	_tube(k, "im:bone", xf, path, radii, 10, ivory)
+	for e: float in [-1.0, 1.0]:
+		for side: float in [-1.0, 1.0]:
+			k.sphere("im:bone", xf.translated_local(Vector3(side * 0.012, e * 0.096, side * e * 0.003)), 0.017, 7, 9, 0.18, 1.0, ivory.darkened(0.08))
+		for i in 5:
+			var d := Vector3(r.randf_range(-1, 1), e * r.randf_range(0.2, 1.0), r.randf_range(0.2, 1)).normalized()
+			_disc(k, "im:bone", xf, Vector3(0, e * 0.096, 0) + d * 0.0175, d, r.randf_range(0.003, 0.007), 7, Color(0.48, 0.38, 0.26))
 
 static func _antler(k: MeshKit, r: RandomNumberGenerator) -> void:
 	# A shed antler: the burr at the base, a beam that sweeps back and up, ridged and
@@ -927,58 +1557,76 @@ static func _fang(k: MeshKit) -> void:
 
 # --- Fibre and textiles -----------------------------------------------------------------
 
-static func _rope(k: MeshKit, r: RandomNumberGenerator, col: Color, rad: float) -> void:
-	# A coil of laid rope: loops stacked into a hank, each strand twisting (three strands
-	# laid together show as a spiral of ridges), the hank bound round the middle.
-	var loops := 6
+## Synthetic climbing rope: a coil of kernmantle in dark camouflage (olive, black and
+## brown flecked with rust orange), a steel carabiner clipped through the coil.
+static func _rope_synth(k: MeshKit, r: RandomNumberGenerator) -> void:
+	_rope(k, r, Color(0.1, 0.1, 0.08), 0.009, [Color(0.12, 0.13, 0.09), Color(0.05, 0.05, 0.045), Color(0.24, 0.15, 0.07)])
+	# The carabiner: a D of round steel rod with its spring gate, lying on the front of
+	# the pile where the coil is clipped.
+	var xf := Transform3D(Basis(Vector3.UP, 0.5) * Basis(Vector3.RIGHT, -1.2), Vector3(0.035, 0.012, 0.075))
+	var path := PackedVector3Array()
+	var radii := PackedFloat32Array()
+	for s in 33:
+		var a := TAU * s / 32.0
+		var rx := 0.012 if cos(a) < 0.0 else 0.016
+		path.append(Vector3(cos(a) * rx, sin(a) * 0.024, 0))
+		radii.append(0.003)
+	_tube(k, "im:metal@0.3", xf, path, radii, 8, Color(0.6, 0.6, 0.62), false)
+	_block(k, "im:metal@0.4", xf.translated_local(Vector3(0.0165, 0.0, 0.0)), Vector3(0.0065, 0.024, 0.0065), 0.0015, Color(0.3, 0.3, 0.32))
+
+static func _rope(k: MeshKit, r: RandomNumberGenerator, col: Color, rad: float, strands := []) -> void:
+	# A coil of laid rope lying in a loose pile, as its icon shows it: loops of slightly
+	# different sizes heaped on one another and a little out of round, each of three
+	# strands twisting about the others (a spiral of ridges), the end trailing off.
+	var loops := 7
 	var segs := 20
+	var last := Vector3.ZERO
 	for l in loops:
-		var R := 0.07 + r.randf_range(-0.004, 0.004)
-		var tilt := Basis(Vector3.FORWARD, r.randf_range(-0.12, 0.12)) * Basis(Vector3.UP, r.randf_range(-0.08, 0.08))
-		var c := Vector3(0, 0.07, (l - loops * 0.5) * rad * 1.7)
+		# Loops nest as much as they stack: the pile is low and wide.
+		var R := lerpf(0.068, 0.045, float(l % 4) / 3.0) + r.randf_range(-0.004, 0.004)
+		var tilt := Basis(Vector3.RIGHT, r.randf_range(-0.15, 0.15)) * Basis(Vector3.FORWARD, r.randf_range(-0.15, 0.15))
+		var c := Vector3(r.randf_range(-0.008, 0.008), l * rad * 0.75, r.randf_range(-0.008, 0.008))
 		for strand in 3:
 			var path := PackedVector3Array()
 			var radii := PackedFloat32Array()
 			for s in segs * 3 + 1:
 				var a := TAU * s / (segs * 3)
 				var tw := a * 18.0 + strand * TAU / 3.0
-				var base := Vector3(cos(a) * R, sin(a) * R * 1.1, 0)
+				var base := Vector3(cos(a) * R, 0, sin(a) * R * 0.95)
 				var radial := base.normalized()
-				var off := radial * cos(tw) * rad * 0.45 + Vector3(0, 0, 1) * sin(tw) * rad * 0.45
-				path.append(c + tilt * (base + off) - tilt * Vector3.ZERO)
+				var off := radial * cos(tw) * rad * 0.45 + Vector3.UP * sin(tw) * rad * 0.45
+				path.append(c + tilt * (base + off))
 				radii.append(rad * 0.58)
-			_tube(k, "im:rope", Transform3D.IDENTITY, path, radii, 5, col.darkened(strand * 0.06), false)
-	# The binding: a few turns of the rope's end round the hank where it is held.
-	# Turns go round the bottom of the hank (across the loops' stack, along z).
-	var zc := -rad * 0.85
-	var half := loops * 0.5 * rad * 1.7
-	for i in 4:
-		var x := -0.012 + i * rad * 1.5
-		var y := 0.07 - 0.07 * 1.1
-		var path := PackedVector3Array()
-		var radii := PackedFloat32Array()
-		for sgi in 17:
-			var a := TAU * sgi / 16.0
-			path.append(Vector3(x, y + sin(a) * rad * 1.3, zc + cos(a) * (half + rad * 0.4)))
-			radii.append(rad * 0.55)
-		_tube(k, "im:rope", Transform3D.IDENTITY, path, radii, 5, col.darkened(0.1), false)
+			var sc: Color = strands[strand] if strand < strands.size() else col.darkened(strand * 0.06)
+			_tube(k, "im:rope", Transform3D.IDENTITY, path, radii, 5, sc, false)
+		last = c + tilt * Vector3(0, 0, R * 0.95)
+	# The free end, slung off the top of the pile and down over its front.
+	var tail := PackedVector3Array()
+	var tr := PackedFloat32Array()
+	for s in 9:
+		var t := s / 8.0
+		tail.append(last + Vector3(t * 0.03, -sin(t * PI * 0.5) * loops * rad * 0.8, t * 0.014))
+		tr.append(rad * 0.9)
+	_tube(k, "im:rope", Transform3D.IDENTITY, tail, tr, 6, col.darkened(0.05), true)
 
 static func _cloth(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
-	# A bolt of woven cloth folded into a stack: soft rounded folds at the front, the
-	# layers slightly out of line, the selvedge edge showing a band.
-	var w := 0.2
-	var d := 0.12
-	var th := 0.014
-	for i in 4:
-		var xf := Transform3D(Basis(Vector3.UP, r.randf_range(-0.04, 0.04)), Vector3(r.randf_range(-0.004, 0.004), -0.03 + i * th, 0))
+	# A length of felted woollen cloth folded into a soft stack: rounded folds at the
+	# front, the layers slightly out of line and sagging, the selvedge showing a band.
+	_folded(k, r, "im:wool", col, col.darkened(0.08), 0.2, 0.13, 0.024, 3)
+
+## A stack of `layers` folds of a soft sheet (w wide, d deep, th thick): flat tops with a
+## slight sag, rounded folds toward the eye coloured toward `fold`.
+static func _folded(k: MeshKit, r: RandomNumberGenerator, m: String, col: Color, fold: Color, w: float, d: float, th: float, layers: int) -> void:
+	for i in layers:
+		var xf := Transform3D(Basis(Vector3.UP, r.randf_range(-0.05, 0.05)), Vector3(r.randf_range(-0.005, 0.005), -0.03 + i * th, 0))
 		var h := Vector3(w * 0.5, th * 0.48, d * 0.5)
 		var top := func(u: float, v: float) -> Vector3:
-			return Vector3((u - 0.5) * w, h.y + sin(u * PI * 7.0) * 0.0006, (v - 0.5) * d)
-		_sheet(k, "im:linen", xf, top, 8, 4, 0.004, col.darkened(i * 0.02), col.darkened(0.08))
-		_sheet(k, "im:linen", xf, func(u: float, v: float) -> Vector3:
+			return Vector3((u - 0.5) * w, h.y + sin(u * PI * 5.0) * 0.0008 - sin(u * PI) * sin(v * PI) * th * 0.12, (v - 0.5) * d)
+		_sheet(k, m, xf, top, 10, 6, 0.004, col.darkened(i * 0.03), col.darkened(0.08))
+		_sheet(k, m, xf, func(u: float, v: float) -> Vector3:
 			var a := v * PI
-			return Vector3((u - 0.5) * w, cos(a) * h.y, d * 0.5 + sin(a) * h.y), 8, 6, 0.004, col.darkened(i * 0.02), col.darkened(0.08))
-		_quad(k, "im:linen", xf, Vector3(-w * 0.5, h.y - 0.0005, -d * 0.5 - 0.0005), Vector3(w * 0.5, h.y - 0.0005, -d * 0.5 - 0.0005),
+			return Vector3((u - 0.5) * w * (1.0 + sin(a) * 0.02), cos(a) * h.y, d * 0.5 + sin(a) * h.y * (1.0 + 0.15 * sin(u * PI * 3.0))), 10, 6, 0.004, col.lerp(fold, 0.6), col.darkened(0.08))
+		_quad(k, m, xf, Vector3(-w * 0.5, h.y - 0.0005, -d * 0.5 - 0.0005), Vector3(w * 0.5, h.y - 0.0005, -d * 0.5 - 0.0005),
 			Vector3(w * 0.5, h.y - 0.0035, -d * 0.5 - 0.0005), Vector3(-w * 0.5, h.y - 0.0035, -d * 0.5 - 0.0005), Vector3.FORWARD, col.darkened(0.25))
 
 static func _skein(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
@@ -1000,23 +1648,68 @@ static func _skein(k: MeshKit, r: RandomNumberGenerator, col: Color) -> void:
 			radii.append(0.0055)
 		_tube(k, "im:wool", Transform3D.IDENTITY, path, radii, 6, col.darkened(r.randf() * 0.08), false)
 
-static func _bundle(k: MeshKit, r: RandomNumberGenerator, col: Color, heads: bool) -> void:
-	# A sheaf of stalks tied in the middle with a twist of the same, the cut ends showing
-	# as hollow straws, ears of grain nodding at the top.
-	var n := 22
+## A sheaf tied at the waist with a few turns of twine: dense stalks squeezed together at
+## the tie and fanning out above and below. Wheat carries plump golden ears with whiskery
+## awns, flax its round seed bolls on forked tips; fibre is a loose hank of retted
+## strands, wavy and splaying, with no heads at all.
+static func _bundle(k: MeshKit, r: RandomNumberGenerator, col: Color, kind: String) -> void:
+	var fibre := kind == "fibre"
+	var n := 70 if fibre else 90
+	var waist := 0.09
+	var sw := 0.014
+	var stalk_r := 0.003 if fibre else 0.0024
 	for i in n:
 		var a := r.randf() * TAU
-		var rr := sqrt(r.randf()) * 0.018
-		var top := Vector3(cos(a) * rr * 2.2, 0.26 + r.randf() * 0.03, sin(a) * rr * 2.2)
-		var bot := Vector3(cos(a) * rr * 1.6, -0.06, sin(a) * rr * 1.6)
-		var mid := Vector3(cos(a) * rr, 0.09, sin(a) * rr)
-		var path := PackedVector3Array([bot, mid, top])
-		var c := col.darkened(r.randf() * 0.15)
-		_tube(k, "im:straw", Transform3D.IDENTITY, path, PackedFloat32Array([0.0018, 0.0016, 0.0012]), 4, c, false)
-		if heads:
-			var dir := (top - mid).normalized()
-			k.sphere("im:straw", Transform3D(Basis(Vector3.UP.cross(dir).normalized(), Vector3.UP.angle_to(dir)) if dir.cross(Vector3.UP).length() > 0.001 else Basis.IDENTITY, top + dir * 0.02), 0.006, 5, 6, 0.1, 4.0, c.lightened(0.05))
-	_torus(k, "im:straw", Transform3D(Basis.IDENTITY, Vector3(0, 0.09, 0)), 0.02, 0.0035, 14, 5, col.darkened(0.25))
+		var rr := sqrt(r.randf())
+		var d := Vector3(cos(a), 0, sin(a) * 0.8)
+		var top_y := 0.25 + r.randf() * 0.04 - (rr * rr * 0.03)
+		var top := d * (0.012 + rr * (0.12 if kind == "wheat" else 0.07)) + Vector3(0, top_y, 0)
+		var bot := d * (0.01 + rr * 0.06) + Vector3(0, -0.06 + r.randf() * 0.015, 0)
+		var mid := d * rr * sw + Vector3(0, waist, 0)
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		var wave := r.randf_range(0.002, 0.005) if fibre else 0.0
+		for s in 9:
+			var t := s / 8.0
+			var p := bot.lerp(mid, t * 2.0) if t < 0.5 else mid.lerp(top, (t - 0.5) * 2.0)
+			# Bowed out a little between the ends and the tie; fibre wanders.
+			p += d * sin(t * TAU) * 0.004 * (1.0 if t < 0.5 else -0.5)
+			p += Vector3(sin(t * 17.0 + i), 0, cos(t * 13.0 + i)) * wave
+			if fibre and t > 0.6:
+				# Loose strands droop under their own weight.
+				p.y -= pow((t - 0.6) / 0.4, 2.0) * rr * 0.07
+				p += d * pow((t - 0.6) / 0.4, 2.0) * rr * 0.03
+			path.append(p)
+			radii.append(stalk_r)
+		var c := col.darkened(r.randf_range(-0.1, 0.2))
+		_tube(k, "im:straw", Transform3D.IDENTITY, path, radii, 4, c, false)
+		var tip := path[8]
+		var dir := (path[8] - path[7]).normalized()
+		var tb := Basis(Vector3.UP.cross(dir).normalized(), Vector3.UP.angle_to(dir)) if dir.cross(Vector3.UP).length() > 0.001 else Basis.IDENTITY
+		match kind:
+			"wheat":
+				# The ear: a plump, braided head of grains, nodding, with long awns.
+				var ec := c.lightened(0.06)
+				var ear := Transform3D(tb, tip + dir * 0.026)
+				k.sphere("im:straw", ear, 0.0068, 6, 7, 0.15, 4.2, ec)
+				for g in 7:
+					var gy := lerpf(-0.022, 0.022, g / 6.0)
+					for side: float in [-1.0, 1.0]:
+						k.sphere("im:straw", ear * Transform3D(Basis.IDENTITY, Vector3(side * 0.0045, gy, 0.002)), 0.0045, 4, 5, 0.0, 1.6, ec.darkened(0.06))
+				for aw in 5:
+					var ap := ear * Vector3(0, r.randf_range(-0.01, 0.02), 0)
+					var ad := (dir + Vector3(r.randf_range(-0.4, 0.4), 0.3, r.randf_range(-0.4, 0.4))).normalized()
+					_tube(k, "im:straw", Transform3D.IDENTITY, PackedVector3Array([ap, ap + ad * 0.025]), PackedFloat32Array([0.0005, 0.0002]), 3, ec, false)
+			"flax":
+				# Forked tips, each ending in a round seed boll.
+				for f in 3:
+					var fd := (dir + Vector3(r.randf_range(-0.6, 0.6), 0.2, r.randf_range(-0.6, 0.6))).normalized()
+					var fp := tip + fd * r.randf_range(0.008, 0.016)
+					_tube(k, "im:straw", Transform3D.IDENTITY, PackedVector3Array([tip, fp]), PackedFloat32Array([0.001, 0.0008]), 3, c, false)
+					k.sphere("im:straw", Transform3D(Basis.IDENTITY, fp), 0.0028, 4, 6, 0.1, 1.0, c.darkened(0.12))
+	# The tie: a few turns of twine round the waist and a short twisted end.
+	for tw in 3:
+		_torus(k, "im:rope", Transform3D(Basis(Vector3.FORWARD, (tw - 1) * 0.08), Vector3(0, waist + (tw - 1) * 0.006, 0)), sw + 0.004, 0.0022, 18, 5, col.darkened(0.35))
 
 # --- Worked metal -----------------------------------------------------------------------
 
@@ -1054,22 +1747,25 @@ static func _gears(k: MeshKit) -> void:
 	_gear(k, Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, 0.1, 0.006)), 0.025, 0.01, 12, Color(0.8, 0.62, 0.34))
 
 static func _spring(k: MeshKit) -> void:
-	# A coil spring: round wire wound in a helix, the ends ground flat.
-	var path := PackedVector3Array()
-	var radii := PackedFloat32Array()
-	var turns := 9.0
-	var segs := 160
-	for s in segs + 1:
-		var t := float(s) / segs
-		var a := t * TAU * turns
-		var y := -0.03 + t * 0.12
-		if t < 0.06:
-			y = -0.03 + 0.0
-		elif t > 0.94:
-			y = 0.09
-		path.append(Vector3(cos(a) * 0.016, y, sin(a) * 0.016))
-		radii.append(0.0022)
-	_tube(k, "im:metal@0.3", Transform3D.IDENTITY, path, radii, 6, Color(0.55, 0.56, 0.6))
+	# A handful of heavy coil springs, as the icon heaps them: thick round wire wound in
+	# close helices with the end turns closed and ground flat, dark oiled steel gone
+	# bronze-brown with old grease, two standing and two lying.
+	var col := Color(0.3, 0.24, 0.2)
+	var place := [Transform3D(Basis.IDENTITY, Vector3(-0.02, 0.0, 0.0)), Transform3D(Basis.IDENTITY, Vector3(0.022, 0.035, -0.012)),
+		Transform3D(Basis(Vector3.FORWARD, PI * 0.5), Vector3(0.028, -0.008, 0.02)), Transform3D(Basis(Vector3.FORWARD, PI * 0.5) * Basis(Vector3.RIGHT, 0.3), Vector3(-0.03, 0.05, 0.016))]
+	for i in place.size():
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		var turns := 6.0
+		var segs := 120
+		var h := 0.042
+		for s in segs + 1:
+			var t := float(s) / segs
+			var a := t * TAU * turns
+			var y := clampf((t - 0.08) / 0.84, 0.0, 1.0) * h - h * 0.5
+			path.append(Vector3(cos(a) * 0.014, y, sin(a) * 0.014))
+			radii.append(0.0028)
+		_tube(k, "im:metal@0.45", place[i], path, radii, 7, col.lightened(i * 0.04))
 
 static func _pipe(k: MeshKit) -> void:
 	# A length of pipe with a bolted flange at each end: hollow (you see in), the bore
@@ -1106,13 +1802,13 @@ static func _valve(k: MeshKit) -> void:
 	k.cylinder("im:paint", Transform3D(Basis.IDENTITY, Vector3(0, 0.096, 0)), 0.006, 0.006, 0.008, 8, true, 0.0, 1, wheel)
 
 static func _gauge(k: MeshKit) -> void:
-	# A pressure gauge: a brass case, a domed glass over a white dial with tick marks and a
-	# black needle, a threaded stem below.
-	var brass := Color(0.82, 0.62, 0.32)
+	# A pressure gauge: an aged brass case, a domed glass over a cream, yellowed dial with
+	# tick marks and a black needle, a threaded stem below.
+	var brass := Color(0.62, 0.4, 0.17)
 	var face := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0.07, 0))
 	k.cylinder("im:metal@0.35", face.translated_local(Vector3(0, -0.012, 0)), 0.04, 0.04, 0.018, 28, true, 0.0, 1, brass)
 	_torus(k, "im:metal@0.3", face.translated_local(Vector3(0, 0.006, 0)), 0.04, 0.003, 28, 6, brass.lightened(0.1))
-	_disc(k, "im:dial", face, Vector3(0, 0.0065, 0), Vector3.UP, 0.037, 28, Color(0.93, 0.92, 0.88))
+	_disc(k, "im:dial", face, Vector3(0, 0.0065, 0), Vector3.UP, 0.037, 28, Color(0.44, 0.37, 0.24))
 	for i in 11:
 		var a := lerpf(-PI * 0.75, PI * 0.75, i / 10.0) - PI * 0.5
 		var d := Vector3(cos(a), 0, sin(a))
@@ -1125,7 +1821,7 @@ static func _gauge(k: MeshKit) -> void:
 	var nw := Vector3(-nd.z, 0, nd.x) * 0.0012
 	_quad(k, "im:dial", face, -nd * 0.006 - nw + Vector3(0, 0.0072, 0), nd * 0.03 + Vector3(0, 0.0072, 0), nd * 0.03 + Vector3(0, 0.0072, 0) + nw * 0.1, -nd * 0.006 + nw + Vector3(0, 0.0072, 0), Vector3.UP, Color(0.02, 0.02, 0.02))
 	_disc(k, "im:dial", face, Vector3(0, 0.0074, 0), Vector3.UP, 0.003, 8, Color(0.05, 0.05, 0.05))
-	k.sphere("im:glass", face.translated_local(Vector3(0, 0.006, 0)), 0.037, 6, 24, 0.0, 0.18, Color(0.9, 0.95, 1.0, 0.18), true)
+	k.sphere("im:glass", face.translated_local(Vector3(0, 0.006, 0)), 0.037, 6, 24, 0.0, 0.18, Color(0.9, 0.95, 1.0, 0.08), true)
 	k.cylinder("im:metal@0.35", Transform3D(Basis.IDENTITY, Vector3(0, -0.02, 0)), 0.007, 0.007, 0.05, 6, true, 0.0, 1, brass.darkened(0.1))
 	_block(k, "im:metal@0.35", Transform3D(Basis.IDENTITY, Vector3(0, 0.0, 0)), Vector3(0.018, 0.012, 0.018), 0.001, brass)
 
@@ -1718,9 +2414,23 @@ static func _make(n: String) -> Material:
 			_photo_detail(m, "rock", 3.0)
 			return m
 		"clay":
-			var m := _base(0.45, 0.0, "stone", 0.05, 12.0, 0.5)
+			# Wet clay and fired earthenware: a gritty, matte body.
+			var m := _base(0.85, 0.0, "stone", 0.05, 14.0, 1.0)
+			_photo_detail(m, "rock", 6.0)
+			return m
+		"fat":
+			# Tallow: soft, waxy and a little translucent, glossy where it is smoothed.
+			var m := _base(0.35, 0.0, "cap", 0.06, 14.0, 0.25)
+			m.subsurf_scatter_enabled = true
+			m.subsurf_scatter_strength = 0.5
+			return m
+		"gem":
+			# Opaque mineral and crystal faces: hard and glossy, sharp highlights, unlit.
+			var m := _base(0.14, 0.25, "", 0, 1)
 			m.clearcoat_enabled = true
-			m.clearcoat = 0.3
+			m.clearcoat = 0.8
+			m.rim_enabled = true
+			m.rim = 0.25
 			return m
 		"wax":
 			var m := _base(0.5, 0.0, "cap", 0.06, 10.0, 0.3)
