@@ -393,7 +393,10 @@ const LIQUID_FROM := "void fragment() {"
 const LIQUID_TO := """uniform sampler2D behind : hint_screen_texture, filter_linear_mipmap;
 
 void fragment() {
-	vec3 seen = textureLod(behind, SCREEN_UV - NORMAL.xy * 0.03, 1.5).rgb;
+	// Heavily blurred, as through a thick curved bottle: what is behind (the fingers round
+	// it) shows only as a soft glow, never as sharp bands.
+	vec3 seen = textureLod(behind, SCREEN_UV - NORMAL.xy * 0.015, 5.0).rgb;
+	seen = mix(seen, vec3(dot(seen, vec3(0.333))), 0.3);
 	EMISSION = seen * min(to_linear(COLOR.rgb) * 2.8, vec3(1.0));"""
 
 static func _glassy(rough: float, edge: float, through: float, priority: int, spec := 0.5) -> ShaderMaterial:
