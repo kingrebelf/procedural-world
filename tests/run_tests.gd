@@ -2261,6 +2261,21 @@ func test_natural_motion() -> void:
 	check(st.size() == 4, "each of a horse's feet knows when it is down in a walk")
 	sc.free()
 
+## The first-person rig is lit by its own copy of the sun, so your shadow body can't
+## shade what you hold.
+func test_viewmodel_light() -> void:
+	var sun := DirectionalLight3D.new()
+	var vm := Viewmodel.new()
+	vm._ready()
+	vm.show_item("pickaxe_iron")
+	vm._tag_view()
+	vm._adopt_sun(sun)
+	check(sun.light_cull_mask & Viewmodel.VIEW_LAYER == 0, "the world's sun skips the first-person rig")
+	check(vm.find_children("*", "GeometryInstance3D", true, false).all(func(g): return g.layers == Viewmodel.VIEW_LAYER), "everything in the rig draws on its own layer")
+	check(not vm._view_sun.shadow_enabled and vm._view_sun.light_cull_mask == Viewmodel.VIEW_LAYER, "a shadowless light of its own lights the rig")
+	vm.free()
+	sun.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return
