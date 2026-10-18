@@ -1539,6 +1539,74 @@ func test_walk_grid_goes_round_cliffs() -> void:
 	w3.grade(100.0, 10.0)
 	check(is_nan(w3.grade(10.0, 100.0)) and not w3.clear(Vector2(10.0, 100.0), Vector2(12.0, 100.0), WalkGrid.PERSON), "ground not worked out yet isn't taken as safe")
 
+## Walks someone along `pts` from `a` the way NPC.step does (a short step toward each
+## waypoint, then push_out): [where they got to, the deepest they got into a solid].
+func _walk_through(walk: WalkGrid, a: Vector2, pts: PackedVector2Array) -> Array:
+	var at := a
+	var deepest := 0.0
+	var i := 0
+	for _step in 4000:
+		if i >= pts.size():
+			break
+		var to := pts[i]
+		if at.distance_to(to) < 0.3:
+			i += 1
+			continue
+		at = walk.push_out(at + (to - at).normalized() * minf(0.12, at.distance_to(to)))
+		for r in [0.3, 0.2, 0.1, 0.0]:
+			if walk.solid_at(at, r):
+				deepest = maxf(deepest, WalkGrid.BODY - r)
+				break
+	return [at, deepest]
+
+func test_walk_grid_goes_round_stalls() -> void:
+	var land := _walk_land()
+	# A market stall standing as a chunk object, turned a little.
+	var k := Vector2i(0, 1)
+	land[k]["cx"] = 0
+	land[k]["cz"] = 1
+	land[k]["objects"] = [{"t": "market_stall", "p": Vector3(20.0, 5.0, 16.0), "r": 0.3, "s": 1.0, "st": {}, "i": 0}]
+	var walk := WalkGrid.new(func(c: Vector2i) -> Dictionary: return land.get(c, {}))
+	walk.build_per_frame = 99
+	walk.search_usec = 1 << 30
+	walk.grade(20.0, 80.0)
+	check(walk.solid_at(Vector2(20.0, 80.0)) and not walk.solid_at(Vector2(20.0, 84.0)), "a chunk's stall stands in the way, and only where it is")
+	var a := Vector2(20.0, 70.0)
+	var b := Vector2(20.5, 90.0)
+	check(not walk.clear(a, b, WalkGrid.PERSON) and walk.clear_ground(a, b, WalkGrid.PERSON), "the straight way runs through the stall")
+	var way := walk.detour(a, b, WalkGrid.PERSON)
+	check(not way.is_empty() and way[way.size() - 1] == b, "a way round its corners (%s)" % way)
+	var got := _walk_through(walk, a, way)
+	check((got[0] as Vector2).distance_to(b) < 0.31 and float(got[1]) < 0.01, "walked round it, never in it (%.2f m in)" % got[1])
+	# Walking straight at it anyway: they slide along its side.
+	got = _walk_through(walk, a, PackedVector2Array([b]))
+	check(float(got[1]) < 0.01, "pushed into it, they stay out (%.2f m in)" % got[1])
+	var inside := walk.push_out(Vector2(20.1, 80.1))
+	check(not walk.solid_at(inside) and inside.distance_to(Vector2(20.1, 80.1)) < 2.0, "somewhere to stand by it, not in it (%s)" % inside)
+	# A row of stalls end to end, a wall from x 2 to 44: no corner to step round, so a route
+	# searched round its end.
+	var row: Array = []
+	for i in 16:
+		row.append(PackedFloat32Array([3.3 + 2.6 * i, 40.0, 1.0, 0.0, 1.3, 0.6]))
+	walk.set_solids("row", row)
+	var c := Vector2(25.0, 32.0)
+	var d := Vector2(25.0, 48.0)
+	check(not walk.clear(c, d, WalkGrid.PERSON) and walk.detour(c, d, WalkGrid.PERSON).is_empty(), "no corner of the row to step round")
+	var r := walk.route(c, d, WalkGrid.PERSON)
+	check(not r.is_empty() and r["reached"], "a route round the end of the row")
+	if not r.is_empty():
+		got = _walk_through(walk, c, r["pts"])
+		check((got[0] as Vector2).distance_to(d) < 0.31 and float(got[1]) < 0.01, "walked round the row's end, never through it (%.2f m in, got to %s by %s)" % [got[1], got[0], r["pts"]])
+	walk.set_solids("row", [])
+	check(walk.clear(c, d, WalkGrid.PERSON), "taken away, the way is clear again")
+	# Cheap enough for every walker every frame.
+	var t0 := Time.get_ticks_usec()
+	for i in 10000:
+		walk.push_out(Vector2(18.0 + float(i % 40) * 0.1, 78.0))
+	var us := float(Time.get_ticks_usec() - t0) / 10000.0
+	print("    push_out: %.2f us" % us)
+	check(us < 20.0, "push_out is cheap (%.2f us)" % us)
+
 func test_bandits() -> void:
 	var gen := ChunkGenerator.new(777)
 	var was := Eras.theme
@@ -2261,6 +2329,21 @@ func test_natural_motion() -> void:
 	check(st.size() == 4, "each of a horse's feet knows when it is down in a walk")
 	sc.free()
 
+## The first-person rig is lit by its own copy of the sun, so your shadow body can't
+## shade what you hold.
+func test_viewmodel_light() -> void:
+	var sun := DirectionalLight3D.new()
+	var vm := Viewmodel.new()
+	vm._ready()
+	vm.show_item("pickaxe_iron")
+	vm._tag_view()
+	vm._adopt_sun(sun)
+	check(sun.light_cull_mask & Viewmodel.VIEW_LAYER == 0, "the world's sun skips the first-person rig")
+	check(vm.find_children("*", "GeometryInstance3D", true, false).all(func(g): return g.layers == Viewmodel.VIEW_LAYER), "everything in the rig draws on its own layer")
+	check(not vm._view_sun.shadow_enabled and vm._view_sun.light_cull_mask == Viewmodel.VIEW_LAYER, "a shadowless light of its own lights the rig")
+	vm.free()
+	sun.free()
+
 func test_tool_grip() -> void:
 	if not HumanModel.available():
 		return
@@ -2298,7 +2381,11 @@ func test_tool_grip() -> void:
 	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "a held tool casts its shadow")
 	h.set_shadow_only(true)
 	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "your first-person shadow body's tool doesn't shadow the one in your view")
+	var shown := func() -> bool:
+		return (prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else [])).any(func(mi): return (mi as MeshInstance3D).visible)
+	check(not shown.call(), "your shadow body's own copy of the tool is never drawn beside the one in your hand")
 	h.set_shadow_only(false)
+	check(shown.call(), "the tool shows again once the body is drawn")
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()

@@ -72,12 +72,23 @@ machine has to be measured by a human with the game running.
   crafting stations (workbench, campfire, forge, anvil, arcane cauldron, fabricator) that
   recipes require, a builder's hammer, all persisted in chunk snapshots.
 
-## v0.3: Beyond the planet (planned)
+## v0.3: Beyond the planet (done, v0.3.0 to v0.3.50)
 
-- Build a spaceship from parts; fly it. Ground vehicles, built at a vehicle bay.
-- Other planets and solar systems, each a persistent world of its own; warp drives.
-- Rivers from melting snowcaps flowing downhill to lakes and the sea.
-- Texture sets for terrain and materials; more icons.
+- Vehicles from a vehicle bay, riding horses, and a starship built on a launch pad.
+- Orbit, five linked planets per world, each saved on its own, and warp between them.
+- Human worlds (medieval near spawn, sci-fi further out, nothing glowing) and alien worlds
+  as the endgame, with zone levels by distance, level-gated gear and rare portals.
+- Landforms (karst, needles, gorges, crags, badlands, dunes and more), regional climates
+  and tropical biomes, rivers, waterfalls, lakes with reefs and fish, real caves.
+- Walled towns, market squares, shops, guilds, roads, bridges and viaducts; standing with
+  each town, crime, stealth and lockpicking.
+- People with natural voices, voice input, body and clothing variety, children, natural
+  animation and ragdolls.
+- Weather fronts, storms, hail, starfall nights, climate wear, spreading fire.
+- Power, logic, defences and automation; lockable doors; storage; waystones.
+- Strongholds and dungeons, treasure maps, hidden finds, corpses and death bags.
+- Boats with crews, multiplayer with a dedicated server, and every item modelled after
+  its icon.
 
 ## Phase 5: Fidelity pass (next)
 

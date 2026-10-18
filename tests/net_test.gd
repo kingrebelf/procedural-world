@@ -150,7 +150,7 @@ func _run() -> void:
 	var xp0: float = game.stats.xp
 	var lv0: int = game.stats.level
 	game.add_xp(1.0)
-	check(game.stats.level > lv0 or is_equal_approx(game.stats.xp - xp0, 3.0), "an experience rate of 3 triples experience")
+	check(game.stats.level > lv0 or is_equal_approx(game.stats.xp - xp0, 12.0), "an experience rate of 3 triples experience (on top of the 4x base rate)")
 	net.options = opts
 
 	# The server's model, for a player with none.

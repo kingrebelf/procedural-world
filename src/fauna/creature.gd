@@ -449,8 +449,9 @@ func _pick_wander() -> void:
 			return
 
 ## True where a walking animal can't stand: in the sea, a lake or a river, or inside a
-## rock, tree trunk or wall. Solid things are found with a ray from head height down to
-## just above the ground, so it only sees what has colliders (loaded ground near you).
+## rock, tree trunk, wall, stall or cart. Solid things are found with a ray from head
+## height down to just above the ground, so it only sees what has colliders (loaded
+## ground near you).
 func blocked(x: float, z: float) -> bool:
 	var h: float = _ground.call(x, z) if _ground.is_valid() else NAN
 	if is_nan(h):
@@ -498,6 +499,8 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 			continue
 		if w and _too_steep(w, pos + d * maxf(reach, WalkGrid.CELL), steep_here):
 			continue
+		if w and w.solid_at(Vector2(ahead.x, ahead.z), _body_r()):
+			continue
 		if solid_at(Vector3(ahead.x, h, ahead.z)):
 			continue
 		return d
@@ -508,6 +511,10 @@ func _steer(pos: Vector3, dir: Vector3) -> Vector3:
 func _too_steep(w: WalkGrid, ahead: Vector3, here: float) -> bool:
 	var g := w.grade(ahead.x, ahead.z)
 	return not is_nan(g) and g > WalkGrid.ANIMAL and (is_nan(here) or g > here)
+
+## Half its breadth: how far its middle keeps off a stall's or a cart's side.
+func _body_r() -> float:
+	return clampf(float(p.get("size", 1.0)) * 0.3, 0.15, WalkGrid.BODY_MAX)
 
 func _walk() -> WalkGrid:
 	var npcs = manager.get("npcs") if manager else null
@@ -553,6 +560,9 @@ func solid_at(at: Vector3) -> bool:
 		return false
 	var top := maxf(0.9, float(p.get("size", 1.0)) * 0.9)
 	var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, top, 0), at + Vector3(0, 0.3, 0), 1 | 2)
+	# A cart, a stall or a trunk taller than the ray's top holds both its ends: without
+	# this the ray starts inside it and sees nothing there.
+	q.hit_from_inside = true
 	var space := get_world_3d().direct_space_state
 	for i in 4:
 		var hit := space.intersect_ray(q)
@@ -661,6 +671,12 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 				if state == "wander":
 					_pick_wander()
 		pos += dir * _speed * delta
+		var w := _walk() if walks else null
+		if w:
+			# Along a stall's or a cart's side, never through it.
+			var out := w.push_out(Vector2(pos.x, pos.z), _body_r())
+			pos.x = out.x
+			pos.z = out.y
 		rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), clampf(delta * 5.0, 0.0, 1.0))
 	var h: float = manager.call("cave_floor", pos, global_position) if underground else ground.call(pos.x, pos.z)
 	if is_nan(h) and in_dungeon:
