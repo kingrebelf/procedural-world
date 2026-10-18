@@ -1,5 +1,5 @@
 extends SceneTree
-## Renders close-ups of item models (ItemModels) one by one under a daylight sky, and a
+## Renders close-ups of item models (any item with a model) one by one under a daylight sky, and a
 ## contact sheet of them all, for judging whether each reads as the real thing. Run windowed:
 ##   godot --path . --script res://tools/preview_items.gd -- --out=DIR [--items=a,b] [--size=512]
 ## With no --items, every item ItemModels has is shown; "b:<id>" shows a build piece.
@@ -53,7 +53,7 @@ func _run() -> void:
 		for c in holder.get_children():
 			c.queue_free()
 		# "b:<id>" shows a build piece (BuildCatalog) instead.
-		var mesh: Mesh = BuildCatalog.mesh(t.substr(2)) if t.begins_with("b:") else ItemModels.model(t)
+		var mesh: Mesh = BuildCatalog.mesh(t.substr(2)) if t.begins_with("b:") else _model(t)
 		if mesh == null:
 			push_warning("no model for " + t)
 			continue
@@ -62,6 +62,9 @@ func _run() -> void:
 		holder.add_child(mi)
 		var box := mesh.get_aabb()
 		var ctr := box.get_center()
+		# A helm is held back-first (ItemModels "held_pose"); show it face on.
+		var pose: Transform3D = mesh.get_meta("held_pose", Transform3D.IDENTITY)
+		mi.transform = Transform3D(pose.basis.inverse(), ctr - pose.basis.inverse() * ctr)
 		var rad := box.size.length() * 0.5
 		var dist := rad / tan(deg_to_rad(cam.fov * 0.5)) * 1.1
 		var dir := Vector3(0.55, 0.35, 1.0).normalized()
@@ -86,3 +89,14 @@ func _run() -> void:
 		sheet.blit_rect(s, Rect2i(0, 0, cell, cell), Vector2i((i % cols) * cell, (i / cols) * cell))
 	sheet.save_png(out.path_join("_sheet.png"))
 	quit()
+
+## The model the hand holds for `t`, from whichever family builds it (ItemModels,
+## Provisions, GearModels, or a tool or weapon's own), or null.
+static func _model(t: String) -> Mesh:
+	if ItemModels.has(t):
+		return ItemModels.model(t)
+	if Provisions.has(t):
+		return Provisions.model(t)
+	if GearModels.has(t):
+		return GearModels.model(t)
+	return Viewmodel.model(t)
