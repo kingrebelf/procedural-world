@@ -47,6 +47,7 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 		if streamer.is_ready_at(stand):
 			break
 	player.global_position = stand
+	player.velocity = Vector3.ZERO # whatever speed it fell at while the ground streamed in
 	await _frames(20)
 	check(player.focus.get("kind", "") == "plant", "looking at a plant offers to pick it (%s)" % player.focus.get("verb", "nothing"))
 	var fiber: int = game.inventory.count("fiber")
@@ -712,6 +713,7 @@ func _run() -> void:
 			if streamer.is_ready_at(stand):
 				break
 		player.global_position = stand
+		player.velocity = Vector3.ZERO
 		await _frames(20)
 		check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "walking up to a chest offers to open it (%s)" % player.focus.get("verb", "nothing"))
 		player.interact()
@@ -2004,14 +2006,19 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	var dims := KitHouse.size_of(t)
 	var hp := Vector3(best["p"].x, 0, best["p"].y)
 	var stand := hp + out * (dims.z * 0.5 + 1.0)
+	# Held high over the spot (not falling: speed piled up over hundreds of frames up
+	# there, on a fast machine, landed the player hard enough to die, and they woke far
+	# away) until the house's chunk and its neighbours are in at full detail.
 	for i in 600:
 		player.global_position = Vector3(stand.x, 400, stand.z)
+		player.velocity = Vector3.ZERO
 		await _frames(1)
-		if streamer.is_ready_at(stand):
+		if streamer.ready_round(stand):
 			break
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(stand))
 	stand.y = ChunkGenerator.height_at(c.data, stand.x - c.position.x, stand.z - c.position.z) + 0.1
 	player.set_state({"pos": stand, "yaw": atan2(out.x, out.z), "pitch": 0.0, "slot": 0})
+	player.velocity = Vector3.ZERO
 	# The body turns to the new heading over a few frames; let it settle on the spot.
 	for i in 3:
 		await _frames(20)
