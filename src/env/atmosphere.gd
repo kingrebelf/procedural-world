@@ -453,6 +453,11 @@ func _update_time_of_day() -> void:
 	# much by itself, so part of the night fill is a flat cool starlight: on a moonless
 	# night the land, the trees and the skyline still stand out as dim shapes.
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
+	# Bloom spreads a blur of the whole frame over it. At night the eye opens wide and a
+	# fire or a lamp is most of what that blur holds, so it laid a warm wash over the cool
+	# moonlit land and the sky, turning them lilac. At night only what really outshines
+	# its surroundings (past the glow threshold) glows.
+	env.glow_bloom = 0.08 * (1.0 - 0.8 * dark)
 	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
 	env.ambient_light_color = Color(0.14, 0.17, 0.25)
 	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.45 + 0.3 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
