@@ -398,6 +398,7 @@ func _process(delta: float) -> void:
 		if e.has("boat") and is_instance_valid(e["boat"]):
 			e["data"]["center"] = e["boat"].pos2() # the crew's "town" goes where the boat goes
 		var shared := send and held and Net.shared(kind_of(e["data"]), _key2(e["data"]))
+		var spots := PackedVector2Array()
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
@@ -434,7 +435,9 @@ func _process(delta: float) -> void:
 			n.lod_dt += delta
 			n.lod_tick += 1
 			if n.lod_tick % _step_every(n, cam) == 0:
-				n.step(n.lod_dt, _ground, tp, e["nodes"])
+				if spots.is_empty():
+					spots = spots_of(e["nodes"])
+				n.step(n.lod_dt, _ground, tp, spots)
 				n.lod_dt = 0.0
 			if shared:
 				out.append(n.net_state())
@@ -467,6 +470,15 @@ func _process(delta: float) -> void:
 					e["data"]["sim_day"] = Game.day
 				Game.store.save_settlement(e["data"])
 				e["dirty"] = false
+
+## Where each of these people stands, on the ground plane, for keeping personal space.
+static func spots_of(nodes: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for n in nodes:
+		if is_instance_valid(n):
+			var p: Vector3 = n.global_position
+			out.append(Vector2(p.x, p.z))
+	return out
 
 ## How many frames apart a person steps: every frame on screen, near you, or when busy
 ## with you (talking, following, fleeing, fighting); every fourth frame otherwise.

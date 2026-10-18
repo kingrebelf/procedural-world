@@ -1428,7 +1428,7 @@ func _round_the_cliff(world, streamer: ChunkStreamer, player) -> void:
 	var round_end := false
 	for f in 200:
 		for s in 4:
-			n.step(0.05, npcs._ground, far, [])
+			n.step(0.05, npcs._ground, far, PackedVector2Array())
 		var at: Vector3 = n.global_position
 		top = maxf(top, at.y)
 		worst = maxf(worst, npcs.walk.grade(at.x, at.z))

@@ -322,7 +322,8 @@ func flash_hit() -> void:
 # --- Movement and animation ---------------------------------------------------------------
 
 ## Called every frame by the manager. ground: Callable(x, z) -> float (NAN if unloaded).
-func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) -> void:
+## `others`: where the rest of the settlement stands (`NPCManager.spots_of`), to keep apart.
+func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVector2Array) -> void:
 	_speech_t -= delta
 	if _speaking and _speech_t <= 0.0:
 		_speaking = false
@@ -359,13 +360,12 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	if go and p2.distance_to(aim) > 0.05:
 		var dir := (aim - p2).normalized()
 		# Keep a little personal space.
-		for o in others:
-			if o == self:
-				continue
-			var op := Vector2(o.global_position.x, o.global_position.z)
-			var dd := p2.distance_to(op)
-			if dd < 1.1 and dd > 0.001:
-				dir += (p2 - op).normalized() * (1.1 - dd) * 1.5
+		for op in others:
+			var away := p2 - op
+			var d2 := away.length_squared()
+			if d2 < 1.21 and d2 > 1e-6:
+				var dd := sqrt(d2)
+				dir += away / dd * (1.1 - dd) * 1.5
 		dir = dir.normalized()
 		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2) * _pace
 		_speed = move_toward(_speed, want, delta * 4.0)
