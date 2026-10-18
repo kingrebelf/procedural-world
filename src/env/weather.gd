@@ -126,6 +126,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if current == self:
 		current = null
+		rain_g = 0.0
 	# Unhook the splashes and stop the particles before the nodes go, so the renderer
 	# never steps a rain system whose sub-emitter has already been freed.
 	_rain.sub_emitter = NodePath()
@@ -289,11 +290,20 @@ func _classify() -> int:
 		return Kind.CLOUDY
 	return Kind.FAIR if cover > 0.2 else Kind.CLEAR
 
+## How hard it is raining over the player right now (weather_rain_g), for scripts: never
+## read the shader global back (global_shader_parameter_get stalls on the renderer).
+static var rain_g := 0.0
+var _sent := PackedFloat32Array([-1.0, -1.0, -1.0, -1.0])
+
 func _publish() -> void:
-	RenderingServer.global_shader_parameter_set("weather_wet_g", wet)
-	RenderingServer.global_shader_parameter_set("weather_puddle_g", puddles)
-	RenderingServer.global_shader_parameter_set("weather_snow_g", snow_cover)
-	RenderingServer.global_shader_parameter_set("weather_rain_g", precip * (1.0 - snow) * (1.0 - atmosphere.underground))
+	rain_g = precip * (1.0 - snow) * (1.0 - atmosphere.underground)
+	var vals := [wet, puddles, snow_cover, rain_g]
+	var names := ["weather_wet_g", "weather_puddle_g", "weather_snow_g", "weather_rain_g"]
+	# Only when a value has moved: they change slowly, and each set is a renderer call.
+	for i in 4:
+		if absf(float(vals[i]) - _sent[i]) > 0.002:
+			_sent[i] = vals[i]
+			RenderingServer.global_shader_parameter_set(names[i], vals[i])
 
 const AERIAL := 0.35 ## the atmosphere's fog_aerial_perspective
 
