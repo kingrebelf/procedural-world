@@ -29,10 +29,12 @@ static func is_cloth(m: Material) -> bool:
 ## The moving version of a kit's cloth material (its own textures), out in the wind or
 ## (indoor) sheltered.
 static func kit_material(src: Material, indoor := false) -> ShaderMaterial:
-	_lock.lock()
 	var key := [src, indoor]
+	_lock.lock()
 	var m: ShaderMaterial = _mats.get(key)
+	_lock.unlock()
 	if m == null:
+		# Made outside the lock, as Materials are (Materials._share).
 		m = ShaderMaterial.new()
 		m.resource_name = "MI_Banner" if not indoor else "MI_Banner_Indoor"
 		m.shader = load("res://src/world/cloth.gdshader")
@@ -53,8 +55,12 @@ static func kit_material(src: Material, indoor := false) -> ShaderMaterial:
 		m.set_shader_parameter("shelter", 1.0 if indoor else 0.0)
 		# Out in the sun and rain it fades and stains; indoors it stays as it was dyed.
 		m.set_shader_parameter("weathering", 0.0 if indoor else 1.0)
-		_mats[key] = m
-	_lock.unlock()
+		_lock.lock()
+		if _mats.has(key):
+			m = _mats[key]
+		else:
+			_mats[key] = m
+		_lock.unlock()
 	return m
 
 ## Swaps every outdoor kit cloth surface of a mesh for the sheltered one (rooms).
@@ -71,21 +77,23 @@ static var _flag_mat: ShaderMaterial
 
 ## Woollen bunting, dyed by vertex colour.
 static func flag_material() -> ShaderMaterial:
-	_lock.lock()
 	if _flag_mat == null:
-		_flag_mat = ShaderMaterial.new()
-		_flag_mat.shader = load("res://src/world/cloth.gdshader")
+		var fm := ShaderMaterial.new()
+		fm.shader = load("res://src/world/cloth.gdshader")
 		# Plain-woven bunting: the linen weave, fine and soft (a knit at this scale
 		# shimmers into stripes that read as wood grain).
 		var weave := Materials.photo("fabric_linen", "detail")
 		if weave != null:
-			_flag_mat.set_shader_parameter("albedo_tex", weave)
-			_flag_mat.set_shader_parameter("has_albedo", true)
-			_flag_mat.set_shader_parameter("detail_mix", 0.45)
-		_flag_mat.set_shader_parameter("vertex_dye", true)
-		_flag_mat.set_shader_parameter("uv_scale", Vector2(14.0, 8.0))
-		_flag_mat.set_shader_parameter("translucency", 0.45)
-	_lock.unlock()
+			fm.set_shader_parameter("albedo_tex", weave)
+			fm.set_shader_parameter("has_albedo", true)
+			fm.set_shader_parameter("detail_mix", 0.45)
+		fm.set_shader_parameter("vertex_dye", true)
+		fm.set_shader_parameter("uv_scale", Vector2(14.0, 8.0))
+		fm.set_shader_parameter("translucency", 0.45)
+		_lock.lock()
+		if _flag_mat == null:
+			_flag_mat = fm
+		_lock.unlock()
 	return _flag_mat
 
 static var _prepared := {}
