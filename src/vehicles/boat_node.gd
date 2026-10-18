@@ -36,6 +36,8 @@ var _line := PackedVector2Array() ## the hull's waterline outline (BoatModel.wat
 var _bob := Vector3.ZERO
 var _heel := 0.0
 var _anchor: Node3D ## the anchor cable, shown only while she lies at anchor
+var _fenders: Node3D ## fenders over the side, likewise only while she lies still
+var _rig: BoatRig ## her sails, trimmed to the wind
 var _yaw := 0.0
 var _pos2 := Vector2.ZERO
 
@@ -69,6 +71,8 @@ func _ready() -> void:
 	add_child(_trail)
 	row_offset = float(int(site.get("seed", 1)) % 97) / 97.0
 	_anchor = model.get_node_or_null("Anchor")
+	_fenders = model.get_node_or_null("Fenders")
+	_rig = model.get_node_or_null("Rig")
 	for s in [1.0, -1.0]:
 		var o: Node3D = model.get_node_or_null("Oar_r" if s > 0.0 else "Oar_l")
 		if o:
@@ -226,6 +230,14 @@ func _place(delta: float) -> void:
 	global_transform = Transform3D(b, Vector3(c.x, _bob.x, c.y))
 	if _anchor:
 		_anchor.visible = speed < 0.2
+	if _fenders:
+		_fenders.visible = speed < 0.2
+	if _rig:
+		# The wind she feels: the true wind (Atmosphere's, via Water) less her own way.
+		# Rafts never anchor, so theirs stays up.
+		var air := Water._dir.normalized() * (1.5 + wind * 11.0) - fwd * speed
+		var lb := Basis(Vector3.UP, _yaw).inverse() * Vector3(-air.x, 0.0, -air.y)
+		_rig.trim(Vector2(lb.x, lb.z), wind, speed > 0.25 or not d.has("rest"), delta)
 
 ## Splashes come from a small shared pool (Splashes): only spend them where they'll be seen.
 func _fx_near(at: Vector3, within: float) -> bool:

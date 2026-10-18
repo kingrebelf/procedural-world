@@ -206,7 +206,7 @@ static func lanterns(inv: Inventory) -> int:
 	return inv.count("hand_lantern") + inv.count("lamp_kerosene")
 
 static func flashlight_slot(inv: Inventory) -> int:
-	for i in Inventory.SIZE:
+	for i in inv.capacity:
 		var s = inv.get_slot(i)
 		if s != null and s["type"] == "flashlight" and float(s.get("charge", FLASH_CHARGE)) > 0.0:
 			return i

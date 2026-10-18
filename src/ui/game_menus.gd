@@ -107,6 +107,7 @@ func close() -> void:
 	if _mode != "":
 		Audio.ui("ui/close")
 	_mode = ""
+	_scroll_at.clear()
 	if _panel:
 		_panel.queue_free()
 		_panel = null
@@ -617,14 +618,21 @@ func _inventory_panel() -> Control:
 	# Right: the pack and the hotbar.
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", 8)
-	right.add_child(UITheme.heading("Pack  ·  %d / %d slots" % [Inventory.SIZE - Inventory.HOTBAR - _free_in_pack(), Inventory.SIZE - Inventory.HOTBAR]))
+	# The pack has no slot limit (only weight slows you), so it grows by rows and scrolls.
+	Game.inventory.trim()
+	var used := 0
+	for i in range(Inventory.HOTBAR, Game.inventory.capacity):
+		if Game.inventory.get_slot(i) != null:
+			used += 1
+	right.add_child(UITheme.heading("Pack  ·  %d items" % used))
 	var g := GridContainer.new()
 	g.columns = Inventory.HOTBAR
 	g.add_theme_constant_override("h_separation", 6)
 	g.add_theme_constant_override("v_separation", 6)
-	for i in range(Inventory.HOTBAR, Inventory.SIZE):
+	for i in range(Inventory.HOTBAR, Game.inventory.capacity):
 		g.add_child(_slot_button(i))
-	right.add_child(g)
+	right.add_child(_scroll_rows(g, "pack", 4, SLOT_PX))
+	right.add_child(_drop_zone())
 	var sp := Control.new()
 	sp.custom_minimum_size = Vector2(0, 6)
 	right.add_child(sp)
@@ -639,12 +647,56 @@ func _inventory_panel() -> Control:
 	v.add_child(_hint_row([["Drag", "move or wear"], ["Right-click", "wear / take off"], ["Click, click", "swap two slots"]]))
 	return s[0]
 
-func _free_in_pack() -> int:
-	var n := 0
-	for i in range(Inventory.HOTBAR, Inventory.SIZE):
-		if Game.inventory.get_slot(i) == null:
-			n += 1
-	return n
+## A strip under the pack: drag a stack onto it (or pick one, then click it) to put the
+## stack down in a bag at your feet, to lighten your pack.
+func _drop_zone() -> Button:
+	var b := UITheme.button("Drop on the ground  ·  drag a stack here, or pick one and click", func():
+		if _swap_from >= 0:
+			var i := _swap_from
+			_swap_from = -1
+			_drop_slot(i))
+	b.custom_minimum_size = Vector2(0, 40)
+	b.tooltip_text = "Leaves the whole stack in a bag at your feet. Come back for it, or anyone may take it."
+	b.set_drag_forwarding(func(_at): return null,
+		func(_at, d): return d is Dictionary and d.has("inv_slot"),
+		func(_at, d):
+			_swap_from = -1
+			_drop_slot(int(d["inv_slot"])))
+	return b
+
+## Puts the stack in slot `i` of your pack down in a bag at your feet.
+func _drop_slot(i: int) -> void:
+	var it = Game.inventory.get_slot(i)
+	if it == null or player == null or not is_instance_valid(player.corpses):
+		_refresh()
+		return
+	var fwd := -player.global_transform.basis.z
+	fwd.y = 0.0
+	var at := player.global_position + fwd.normalized() * 0.8
+	var part := Game.inventory.remove_at(i)
+	if not player.corpses.drop_items(at, [part]):
+		Game.inventory.set_slot(i, part)
+		Game.toast.emit("There's no ground here to drop it on")
+		return
+	Audio.ui("ui/close")
+	Game.toast.emit("Dropped %s%s (%.1f kg)" % [ItemDB.display_name(part), (" x%d" % int(part["qty"])) if int(part["qty"]) > 1 else "", ItemDB.weight(part["type"]) * int(part["qty"])])
+
+## Scroll offsets of the slot grids, kept while the menu rebuilds after every click.
+var _scroll_at := {}
+
+## Puts a grid of slots `px` wide in a box `rows` rows tall that scrolls when it holds
+## more; `key` keeps its scroll position across rebuilds.
+func _scroll_rows(grid: GridContainer, key: String, rows: int, px: int) -> Control:
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var n := ceili(float(grid.get_child_count()) / maxi(1, grid.columns))
+	sc.custom_minimum_size = Vector2(grid.columns * (px + 6) + 14, mini(n, rows) * (px + 6))
+	sc.add_child(grid)
+	sc.get_v_scroll_bar().value_changed.connect(func(val: float): _scroll_at[key] = val)
+	var at := float(_scroll_at.get(key, 0.0))
+	if at > 0.0:
+		sc.ready.connect(func(): sc.set_deferred("scroll_vertical", int(at)))
+	return sc
 
 ## A row of "[key] what it does" hints along the bottom of a panel.
 static func _hint_row(pairs: Array) -> Control:
@@ -873,16 +925,17 @@ func _storage_panel() -> Control:
 	g.add_theme_constant_override("v_separation", 6)
 	for i in _store.capacity:
 		g.add_child(_move_button(_store, i, Game.inventory))
-	v.add_child(g)
+	v.add_child(_scroll_rows(g, "store", 5, 60))
 	v.add_child(HSeparator.new())
 	v.add_child(UITheme.label("YOUR PACK", 15, UITheme.ACCENT))
+	Game.inventory.trim()
 	var pg := GridContainer.new()
 	pg.columns = 10
 	pg.add_theme_constant_override("h_separation", 6)
 	pg.add_theme_constant_override("v_separation", 6)
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		pg.add_child(_move_button(Game.inventory, i, _store))
-	v.add_child(pg)
+	v.add_child(_scroll_rows(pg, "store_pack", 5, 60))
 	return s[0]
 
 # --- Bodies ----------------------------------------------------------------------------
@@ -955,7 +1008,7 @@ func _corpse_panel() -> Control:
 	g.add_theme_constant_override("v_separation", 6)
 	for i in _store.capacity:
 		g.add_child(_move_button(_store, i, Game.inventory))
-	v.add_child(g)
+	v.add_child(_scroll_rows(g, "corpse", 6, 60))
 	if (person or bag) and _store.free_slots() == _store.capacity and purse <= 0:
 		v.add_child(UITheme.label("Nothing left on them.", 15, UITheme.DIM))
 	return s[0]
@@ -1080,7 +1133,7 @@ func _trade_panel() -> Control:
 	sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sell_sc.add_child(sell)
 	sell.add_child(UITheme.label("Sell", 20, UITheme.ACCENT))
-	for i in Inventory.SIZE:
+	for i in Game.inventory.capacity:
 		var it = Game.inventory.get_slot(i)
 		if it == null:
 			continue

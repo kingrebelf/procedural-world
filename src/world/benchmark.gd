@@ -50,6 +50,19 @@ func _tests() -> Array:
 	var sd := atm.sun.directional_shadow_max_distance
 	t.append(["Shadow distance 150 m", func(off: bool): atm.sun.directional_shadow_max_distance = 150.0 if off else sd])
 	t.append(["Sun shadows", func(off: bool): atm.sun.shadow_enabled = not off])
+	# The weather's own parts, each timed alone (Weather.bench_off), so a run in rain or
+	# snow shows what the falling drops, the roofs that stop them, the wet ground and the
+	# thicker air each cost.
+	var wx = atm.get_node_or_null("Weather")
+	if wx:
+		for k in [["precip", "Weather: falling rain, snow and hail"], ["catch", "Weather: rain stopped at roofs"],
+				["ground", "Weather: wet ground and puddles"], ["air", "Weather: fog and haze"]]:
+			var part: String = k[0]
+			t.append([k[1], func(off: bool):
+				if off:
+					wx.bench_off[part] = true
+				else:
+					wx.bench_off.erase(part)])
 	var lamps: Array = []
 	var stack: Array = [world]
 	while not stack.is_empty():

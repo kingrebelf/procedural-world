@@ -141,7 +141,7 @@ const METALS := {
 	"gun_blued": ["dark_steel", 0.3, Color(0.42, 0.45, 0.52)],
 	"gun_metal": ["dark_steel", 0.36, null],
 	"gun_iron": ["iron", -1.0, null],
-	"gun_brass": ["brass", 0.4, null],
+	"gun_brass": ["brass", 0.52, Color(0.84, 0.7, 0.4)],
 }
 
 ## A gun metal from a METALS-style spec, kept in `cache` under `name`.
@@ -167,7 +167,11 @@ static func mat(name: String) -> Material:
 	var m: StandardMaterial3D
 	match name:
 		# Moulded polymer: dark grey, stippled, satin where hands have polished it.
-		"gun_polymer": m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.45)
+		"gun_polymer":
+			# Moulded polymer is evenly matt all over: no polished patches to catch the sky.
+			m = finish(Color(0.075, 0.077, 0.08), 0.62, 0.0, Color(0.1, 0.1, 0.105), 0.06, 0.12)
+			m.roughness_texture = null
+			m.roughness = 0.7
 		"gun_bone": m = _base(Color(0.86, 0.8, 0.66), 0.45, 0.0)
 		"gun_fletch": m = _base(Color(0.82, 0.8, 0.76), 0.85, 0.0)
 		"gun_string": m = _base(Color(0.78, 0.72, 0.58), 0.9, 0.0)
@@ -370,7 +374,7 @@ static func _revolver() -> ArrayMesh:
 ## at each point (heights measured toward `up`). Ends capped. Stocks, grips and limbs.
 ## Through three or more points the path is a smooth curve (and widths ease between
 ## their values) rather than straight runs meeting at kinks.
-static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up := Vector3.UP, segs := 16) -> void:
+static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up := Vector3.UP, segs := 16, pw := 4.0) -> void:
 	var I := Transform3D.IDENTITY
 	if pts.size() >= 3:
 		var sm := _smooth(pts, ws, hs, 3)
@@ -392,12 +396,13 @@ static func _loft(k: MeshKit, m: String, pts: Array, ws: Array, hs: Array, up :=
 			var a := TAU * j / segs
 			var c := cos(a)
 			var sn := sin(a)
-			# Superellipse (power 4): flat sides, rounded corners.
-			var px := w * signf(c) * pow(absf(c), 0.5)
-			var py := h * signf(sn) * pow(absf(sn), 0.5)
+			# Superellipse (power 4 by default): flat sides, rounded corners; lower
+			# powers round it towards an ellipse.
+			var px := w * signf(c) * pow(absf(c), 2.0 / pw)
+			var py := h * signf(sn) * pow(absf(sn), 2.0 / pw)
 			ring.append(p + x * px + y * py)
-			var nx := signf(px) * pow(absf(px / w), 3.0) / w
-			var ny := signf(py) * pow(absf(py / h), 3.0) / h
+			var nx := signf(px) * pow(absf(px / w), pw - 1.0) / w
+			var ny := signf(py) * pow(absf(py / h), pw - 1.0) / h
 			nr.append((x * nx + y * ny).normalized())
 		rings.append(ring)
 		norms.append(nr)

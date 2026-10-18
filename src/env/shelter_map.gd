@@ -53,7 +53,9 @@ func _ready() -> void:
 	env.background_color = Color(1, 1, 1)
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	_cam.environment = env
-	_cam.cull_mask = 0xFFFFF
+	# Not grass, flowers and clutter (Weather.LOW_LAYER): a blade's tip read as a roof over
+	# the ground under it, leaving snow on the bare texels between in a chequerboard.
+	_cam.cull_mask = 0xFFFFF & ~Weather.LOW_LAYER
 	_vp.add_child(_cam)
 	var quad := MeshInstance3D.new()
 	var qm := QuadMesh.new()

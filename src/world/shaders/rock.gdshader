@@ -118,8 +118,8 @@ void fragment() {
 	// streaks on the steeper ones, and banked up round its foot, as wind leaves it
 	// against anything that stands in the open.
 	float high_line = snow_cover * smoothstep(snow_line_g - 12.0, snow_line_g + 2.0, wp.y + (fbm(wp.xz * 0.07 + 3.0) - 0.5) * 10.0);
-	// In the cold belt below the snow line, a cap of snow on its top but no banks.
-	float high = max(high_line, snow_cover * smoothstep(0.35, 0.85, lv.y) * 0.7);
+	// Wherever else snow lies round it (the cold belt, fresh snow), a cap on its top.
+	float high = max(high_line, snow_cover * wear_snow(wp) * 0.8);
 	float snow = 0.0;
 	if (high > 0.0) {
 		float cap = smoothstep(0.35, 0.75, n.y + (patches - 0.5) * 0.6 + (fbm(wp.xz * 4.0 + wp.y + 1.0) - 0.5) * 0.3);

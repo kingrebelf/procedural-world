@@ -781,8 +781,8 @@ static func max_crafts(inv: Inventory, recipe: Dictionary) -> int:
 		return 0
 	if not ItemDB.is_stackable(recipe["out"]):
 		# Each tool needs its own slot; consuming inputs may free some.
-		n = mini(n, inv.free_slots() + _slots_freed(inv, recipe, n))
-	elif inv.count(recipe["out"]) == 0 and inv.free_slots() + _slots_freed(inv, recipe, n) <= 0:
+		n = mini(n, inv.room() + _slots_freed(inv, recipe, n))
+	elif inv.count(recipe["out"]) == 0 and inv.room() + _slots_freed(inv, recipe, n) <= 0:
 		return 0
 	return maxi(n, 0)
 

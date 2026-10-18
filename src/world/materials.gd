@@ -293,6 +293,44 @@ static func get_mat(name: String) -> Material:
 	_lock.unlock()
 	return out
 
+## Materials that weather with their place out of doors (WORN_TAKE: how readily each
+## holds moss), for the masonry of castles, town walls and towers.
+const WORN_TAKE := {"castle_stone": 1.0, "flagstone": 0.9, "slate": 0.9, "timber": 0.6, "planks": 0.6}
+
+## `name`'s material with the place's moss, snow, frost and dust over it out of doors
+## (wear_triplanar.gdshader, climate_wear.gdshaderinc), or plain get_mat(name) for one
+## that doesn't weather. Not for rooms underground (dungeons, crypts): the shelter map
+## sees only the ground far above them.
+static func worn(name: String) -> Material:
+	var base := get_mat(name)
+	if not WORN_TAKE.has(name) or not (base is BaseMaterial3D) or not (base as BaseMaterial3D).uv1_triplanar:
+		return base
+	_lock.lock()
+	var out: Material = _cache.get(name + "~worn")
+	if out == null:
+		var b := base as BaseMaterial3D
+		var w := ShaderMaterial.new()
+		w.shader = load("res://src/world/shaders/wear_triplanar.gdshader")
+		w.resource_name = name
+		w.set_shader_parameter("albedo", b.albedo_color)
+		w.set_shader_parameter("albedo_tex", b.albedo_texture)
+		w.set_shader_parameter("roughness", b.roughness)
+		w.set_shader_parameter("metallic", b.metallic)
+		w.set_shader_parameter("has_normal", b.normal_enabled and b.normal_texture != null)
+		w.set_shader_parameter("normal_tex", b.normal_texture)
+		w.set_shader_parameter("normal_scale", b.normal_scale)
+		w.set_shader_parameter("uv1_scale", b.uv1_scale)
+		w.set_shader_parameter("sharpness", b.uv1_triplanar_sharpness)
+		w.set_shader_parameter("moss_take", WORN_TAKE[name])
+		# Roughly the surface's mean brightness (a texture averages about 0.6), so mortar
+		# lines and cracks read darker and moss starts there.
+		var c := b.albedo_color.srgb_to_linear()
+		w.set_shader_parameter("mean_lum", (c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722) * (0.6 if b.albedo_texture != null else 1.0))
+		_cache[name + "~worn"] = w
+		out = w
+	_lock.unlock()
+	return out
+
 ## Neutral ("_w") materials take their colour entirely from vertex colours, so every
 ## species can have its own palette while sharing one material and one draw state.
 ## "crystal@N" and "glow@N" are hue buckets (N of 12) for emissive parts.

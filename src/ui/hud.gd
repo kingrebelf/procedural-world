@@ -920,7 +920,7 @@ func _process(_d: float) -> void:
 	_update_buffs()
 	var kg := Game.inventory.weight()
 	var cap := Game.stats.carry_capacity()
-	_weight.text = "Pack %.0f / %d kg%s" % [kg, int(cap), "  OVERLOADED" if kg > cap else ""]
+	_weight.text = "Pack %.0f / %d kg%s" % [kg, int(cap), ("  OVERLOADED, %d%% slower" % int(round(100.0 * (1.0 - Player.load_mult_for(kg, cap))))) if kg > cap else ""]
 	_weight.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if kg > cap else UITheme.DIM)
 	_breath.visible = player.breath < Game.stats.max_breath() - 0.01
 	_breath.value = player.breath
