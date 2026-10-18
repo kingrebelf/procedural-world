@@ -1453,7 +1453,7 @@ func _town_gate(game, world, player) -> void:
 	var data := {"sx": 9997, "sz": 9996, "era": Eras.MEDIEVAL, "center": c, "name": "Gatehold", "npcs": [guard, friend], "rumors": [], "sim_day": -1.0}
 	var sid := "%d:9997_9996" % game.planet
 	var e := {"data": data, "nodes": [], "dirty": false, "site": site, "outer": 40.0, "sid": sid, "transient": true,
-		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate]}}
+		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate], "postern": {}}}
 	npcs.settlements["9997_9996"] = e
 	var gn: NPC = npcs._add_node(e, guard)
 	var fn: NPC = npcs._add_node(e, friend)
@@ -1540,6 +1540,27 @@ func _town_gate(game, world, player) -> void:
 	var pin := Vector2(player.global_position.x, player.global_position.z)
 	check(pin.distance_to(c) < 20.0 and not player.script_move, "you climb up, over and down inside (%.1f m from the middle)" % pin.distance_to(c))
 	check(game.inventory.count("rope") == ropes - GateWatch.CLIMB_ROPE, "the rope is left on the wall")
+	# The postern: pick its lock from outside and step through into town.
+	var pst := {"p": c + Vector2(0, -22.5), "yaw": PI, "tier": 1}
+	e["gate"]["postern"] = pst
+	var po: Vector2 = GateWatch.postern_side(pst, true)
+	player.global_position = Vector3(po.x, at.y, po.y)
+	e["gate"]["inside"] = false
+	await _frames(2)
+	if game.inventory.count("lockpick") <= 0:
+		game.inventory.add(ItemDB.make("lockpick", 3, 1.0, {}))
+	var pu: Array = npcs.gates.usables(player.global_position)
+	check(pu.size() == 1 and String(pu[0]["n"]) == "postern:" + sid and String(pu[0]["verb"]).begins_with("Pick the postern"), "a town's postern door can be picked from outside (%s)" % str(pu))
+	npcs.gates.use("postern:" + sid, player)
+	var lui: LockpickUI = player.get_tree().get_first_node_in_group("lockpick_ui")
+	check(lui != null and lui.is_open(), "picking the postern opens the lockpicking minigame")
+	if lui and lui.is_open():
+		lui._opened()
+		for i in 6:
+			await wait.call()
+	var pin2 := Vector2(player.global_position.x, player.global_position.z)
+	check(pin2.distance_to(c) < 21.5 and not player.script_move, "through the postern and into town (%.1f m from the middle)" % pin2.distance_to(c))
+	check(npcs.gates._posterns.get(sid, {}).get("open", false), "a picked postern stays open")
 	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()

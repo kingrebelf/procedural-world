@@ -380,6 +380,7 @@ func _move_ports(delta: float) -> void:
 	for e in manager.settlements.values():
 		if e.has("gate") and e.has("sid") and not (e["gate"]["gates"] as Array).is_empty():
 			live[String(e["sid"])] = e
+	_place_posterns(live)
 	for sid in _ports.keys():
 		if not live.has(sid):
 			for pt in _ports[sid]:
@@ -493,6 +494,9 @@ var _climb := {} ## {path: [Vector3], t, e, seen: NPC or null, inward}
 func usables(pos: Vector3) -> Array:
 	if not _climb.is_empty() or manager == null:
 		return []
+	var door := _postern_use(pos)
+	if not door.is_empty():
+		return door
 	var p2 := Vector2(pos.x, pos.z)
 	for e in manager.settlements.values():
 		if not e.has("gate") or (e["gate"]["gates"] as Array).is_empty():
@@ -520,6 +524,9 @@ func usables(pos: Vector3) -> Array:
 ## the other side. Climbing in without leave is trespass if a guard sees you.
 func use(sid: String, player: Node3D) -> void:
 	if not _climb.is_empty():
+		return
+	if sid.begins_with("postern:"):
+		_use_postern(sid.trim_prefix("postern:"), player)
 		return
 	var e := {}
 	for x in manager.settlements.values():
@@ -568,24 +575,28 @@ func _climb_step(delta: float) -> void:
 	if not is_instance_valid(pl):
 		_climb = {}
 		return
-	_climb["t"] = float(_climb["t"]) + delta / CLIMB_SECONDS
+	_climb["t"] = float(_climb["t"]) + delta / float(_climb.get("secs", CLIMB_SECONDS))
 	var t: float = minf(float(_climb["t"]), 1.0)
 	var path: Array = _climb["path"]
-	# Time per leg: a step to the wall, the long haul up, across the top, down the far side.
-	var legs := [0.08, 0.5, 0.17, 0.25]
+	# Time per leg: a step to the wall, the long haul up, across the top, down the far side
+	# (or through a postern: up to the door, and through).
+	var legs: Array = _climb.get("legs", [0.08, 0.5, 0.17, 0.25])
 	var acc := 0.0
 	var at: Vector3 = path[-1]
 	for i in legs.size():
-		if t <= acc + legs[i]:
-			at = (path[i] as Vector3).lerp(path[i + 1], smoothstep(0.0, 1.0, (t - acc) / legs[i]))
+		if t <= acc + float(legs[i]):
+			at = (path[i] as Vector3).lerp(path[i + 1], smoothstep(0.0, 1.0, (t - acc) / float(legs[i])))
 			break
-		acc += legs[i]
+		acc += float(legs[i])
 	pl.global_position = at
 	if pl is CharacterBody3D:
 		(pl as CharacterBody3D).velocity = Vector3.ZERO
 	if t < 1.0:
 		return
 	pl.set("script_move", false)
+	if _climb.get("door", false):
+		_climb = {}
+		return # coming in by the postern is like slipping in at the gate: the watch sees to it
 	var e: Dictionary = _climb["e"]
 	var seen = _climb["seen"]
 	var inward: bool = _climb["inward"]
@@ -624,3 +635,170 @@ static func _rope_mat() -> StandardMaterial3D:
 		_rope.albedo_color = Color(0.62, 0.5, 0.33)
 		_rope.roughness = 0.95
 	return _rope
+
+# --- The postern: a small locked door in the wall ----------------------------------------------
+
+## How near the postern's door you must be to use it.
+const POSTERN_R := 2.4
+## Seconds to step through the wall.
+const POSTERN_SECONDS := 1.1
+var _posterns := {} ## sid -> {node: Node3D, open: bool}
+
+## The postern of a walled town: the stretch of wall furthest round from its gates.
+## {p: Vector2 (the wall section's middle), yaw (its outer face's), tier (lock 1..3)} or {}.
+func postern(e: Dictionary) -> Dictionary:
+	var g := _state(e)
+	if g.has("postern"):
+		return g["postern"]
+	if (g["gates"] as Array).is_empty() or not GatePolicy.is_walled(e["site"]):
+		return {}
+	var c: Vector2 = e["site"]["center"]
+	var best := {}
+	var far := -1.0
+	for it in manager.gen.settlement_layout(e["site"]):
+		if it["t"] != "castle_wall":
+			continue
+		var a := (it["p"] as Vector2 - c).angle()
+		var near := TAU
+		for q in g["gates"]:
+			near = minf(near, absf(angle_difference(a, (q as Vector2 - c).angle())))
+		if near > far:
+			far = near
+			best = {"p": it["p"], "yaw": float(it["yaw"])}
+	if not best.is_empty():
+		best["tier"] = postern_tier(GatePolicy.temper(e["site"], e["data"]))
+	g["postern"] = best
+	return best
+
+## The postern's lock by how strict the town is: Novice, Adept or Master (LockGame).
+static func postern_tier(tp: Dictionary) -> int:
+	var s := float(tp["strict"])
+	return 1 + (1 if s >= 0.4 else 0) + (1 if s >= 0.7 else 0)
+
+## Where you stand to use the postern from outside (true) or inside (false).
+static func postern_side(pt: Dictionary, outside: bool) -> Vector2:
+	var out := Vector2(sin(float(pt["yaw"])), cos(float(pt["yaw"])))
+	return (pt["p"] as Vector2) + out * (1.5 if outside else -1.7)
+
+func _postern_at(pos: Vector3) -> Array:
+	var p2 := Vector2(pos.x, pos.z)
+	for e in manager.settlements.values():
+		if not e.has("gate") or not e.has("sid") or (e["gate"]["gates"] as Array).is_empty():
+			continue
+		var pt := postern(e)
+		if pt.is_empty() or p2.distance_to(pt["p"]) > POSTERN_R + 2.0:
+			continue
+		for outside in [true, false]:
+			if p2.distance_to(postern_side(pt, outside)) < POSTERN_R:
+				return [e, pt, outside]
+	return []
+
+## What the postern offers from here: [{node, n, at, verb}], or [].
+func _postern_use(pos: Vector3) -> Array:
+	var hit := _postern_at(pos)
+	if hit.is_empty():
+		return []
+	var e: Dictionary = hit[0]
+	var pt: Dictionary = hit[1]
+	var outside: bool = hit[2]
+	var open := bool(_posterns.get(String(e["sid"]), {}).get("open", false))
+	var verb := "Go through the postern"
+	if outside and not open:
+		verb = "Pick the postern's lock (%s)" % LockGame.TIERS[int(pt["tier"])] if Game.inventory.count(LockpickUI.PICK_ITEM) > 0 \
+			else "Postern door (locked: needs a lockpick)"
+	elif not outside and not open:
+		verb = "Unbar the postern and slip out"
+	var at := pos
+	var g := manager.ground(float(pt["p"].x), float(pt["p"].y))
+	at = Vector3(pt["p"].x, (pos.y if is_nan(g) else g) + 1.1, pt["p"].y)
+	return [{"node": self, "n": "postern:" + String(e["sid"]), "at": at, "verb": verb}]
+
+## Uses the postern from where the player stands: pick the lock from outside (then step
+## through), unbar it from inside, or walk through once it's open. Coming in this way
+## without leave is the same as slipping in at the gate: trespass if a guard sees you.
+func _use_postern(sid: String, player: Node3D) -> void:
+	var hit := _postern_at(player.global_position)
+	if hit.is_empty() or String(hit[0]["sid"]) != sid:
+		return
+	var pt: Dictionary = hit[1]
+	var outside: bool = hit[2]
+	if not _posterns.has(sid):
+		_posterns[sid] = {"node": null, "open": false}
+	var st: Dictionary = _posterns[sid]
+	if bool(st["open"]) or not outside:
+		st["open"] = true
+		_through(hit[0], pt, outside, player)
+		return
+	var at := Vector3(pt["p"].x, player.global_position.y, pt["p"].y)
+	var seed_ := absi(hash(sid + "postern"))
+	get_tree().call_group("lockpick_ui", "open_custom", int(pt["tier"]), seed_, at, func() -> void:
+		st["open"] = true
+		_through(hit[0], pt, true, player))
+
+## Steps through the postern, from one side of the wall to the other.
+func _through(e: Dictionary, pt: Dictionary, outside: bool, player: Node3D) -> void:
+	if not _climb.is_empty() or not is_instance_valid(player):
+		return
+	var a := postern_side(pt, outside)
+	var b := postern_side(pt, not outside)
+	var y0: float = player.global_position.y
+	var y1 := manager.ground(b.x, b.y)
+	if is_nan(y1):
+		y1 = y0
+	var from: Vector3 = player.global_position
+	_climb = {"e": e, "t": 0.0, "inward": outside, "seen": null, "player": player, "secs": POSTERN_SECONDS, "door": true,
+		"legs": [0.3, 0.7], "path": [from, Vector3(a.x, y0, a.y), Vector3(b.x, y1 + 0.05, b.y)]}
+	player.set("script_move", true)
+	Audio.play("door/open", -6.0)
+
+## Puts the postern doors of the towns about into the wall (once their ground is in), and
+## takes away those of towns gone out of reach.
+func _place_posterns(live: Dictionary) -> void:
+	for sid in _posterns.keys():
+		if not live.has(sid):
+			if is_instance_valid(_posterns[sid]["node"]):
+				_posterns[sid]["node"].queue_free()
+			_posterns.erase(sid)
+	for sid in live:
+		if _posterns.has(sid) and is_instance_valid(_posterns[sid]["node"]):
+			continue
+		var pt := postern(live[sid])
+		if pt.is_empty():
+			continue
+		var y := manager.ground(float(pt["p"].x), float(pt["p"].y))
+		if is_nan(y):
+			continue
+		var node := MeshInstance3D.new()
+		node.mesh = postern_mesh()
+		add_child(node)
+		node.global_transform = Transform3D(Basis(Vector3.UP, float(pt["yaw"])), Vector3(pt["p"].x, y, pt["p"].y))
+		if not _posterns.has(sid):
+			_posterns[sid] = {"node": node, "open": false}
+		else:
+			_posterns[sid]["node"] = node
+
+static var _postern_mesh: ArrayMesh
+## A low arched oak door with iron straps, in a frame of dressed stone, on the wall's
+## outer face; the same door (barred) on the inner face. Local +z is out of town.
+static func postern_mesh() -> ArrayMesh:
+	if _postern_mesh != null:
+		return _postern_mesh
+	var k := MeshKit.new(4121)
+	var I := Transform3D.IDENTITY
+	for side: float in [1.0, -1.0]:
+		var z := 0.76 * side
+		var r := Basis(Vector3.UP, 0.0 if side > 0.0 else PI)
+		var X := func(v: Vector3) -> Transform3D: return Transform3D(r, Vector3(v.x * side, v.y, z + v.z * side))
+		k.box("planks", X.call(Vector3(0, 1.0, 0.02)), Vector3(1.0, 2.0, 0.08), Color(0.62, 0.5, 0.4))
+		for y: float in [0.35, 1.0, 1.65]:
+			k.box("iron", X.call(Vector3(0, y, 0.07)), Vector3(1.0, 0.07, 0.02))
+		k.box("iron", X.call(Vector3(0.36 * side, 1.05, 0.08)), Vector3(0.08, 0.08, 0.04)) # the lock plate
+		# Dressed stone round it: jambs, a lintel and its relieving arch.
+		for x: float in [-0.66, 0.66]:
+			k.box("castle_stone", X.call(Vector3(x, 1.12, 0.08)), Vector3(0.32, 2.24, 0.16))
+		k.box("castle_stone", X.call(Vector3(0, 2.36, 0.08)), Vector3(1.64, 0.3, 0.18))
+		k.box("castle_stone", X.call(Vector3(0, 2.64, 0.06)), Vector3(1.2, 0.26, 0.14))
+		if side < 0.0:
+			k.box("planks", X.call(Vector3(0, 1.1, 0.1)), Vector3(1.3, 0.14, 0.1), Color(0.5, 0.4, 0.32)) # the bar
+	_postern_mesh = k.commit(Materials.get_mat)
+	return _postern_mesh
