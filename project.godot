@@ -24,6 +24,7 @@ AI="*res://src/ai/ai_service.gd"
 Game="*res://src/core/game.gd"
 Audio="*res://src/audio/audio.gd"
 Net="*res://src/net/net.gd"
+FireClock="*res://src/world/fire_clock.gd"
 
 [display]
 
@@ -130,6 +131,10 @@ sun_light_g={
 "value": Vector3(0, 0, 0)
 }
 wind_time={
+"type": "float",
+"value": 0.0
+}
+fire_time={
 "type": "float",
 "value": 0.0
 }
