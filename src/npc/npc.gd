@@ -32,10 +32,22 @@ var upper_anim := ""
 ## An archer or gunner holds off this far from whoever they attack (0: up close).
 var keep_off := 0.0
 
+## The way they are walking: waypoints round ground too steep to walk (WalkGrid), the one
+## they head for, the goal it was planned to and when they may plan again.
+var _route := PackedVector2Array()
+var _route_i := 0
+var _route_goal := Vector2.INF
+var _route_reached := true
+var _route_wait := 0.0
+
 var _body: AnimatableBody3D
 var _model: Node3D
 var _human: HumanModel ## the kit character, when its assets are present
 ## What each job looks like while working at its spot.
+## Jobs whose tool in hand (a pickaxe standing in for a hoe) belongs only in the fields,
+## and the duties done there.
+const FIELD_TOOL_JOBS := ["farmer", "beekeeper", "hydroponics tech"]
+const FIELD_DUTIES := ["till", "harvest", "bees", "grow"]
 const WORK_ANIM := {"farmer": "harvest", "smith": "fix", "guard": "sword_idle", "innkeeper": "interact",
 	"hunter": "chop", "priest": "fold_arms", "weaver": "interact", "miller": "carry", "herbalist": "harvest",
 	"warden": "sword_idle", "runecarver": "fix", "bard": "dance", "mystic": "spell", "beekeeper": "plant",
@@ -290,6 +302,10 @@ func show_name(on: bool) -> void:
 func is_hidden() -> bool:
 	return not _model.visible
 
+## Whether the name tag is up (shown, not speech).
+func name_shown() -> bool:
+	return _label.visible and not _speaking
+
 func flash_hit() -> void:
 	_hit_flash = 0.25
 	if _human:
@@ -325,8 +341,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		_end_perform()
 	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
 	var stay := perform != "" and perform != "zombie"
-	if not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at:
-		var dir := (goal - p2).normalized()
+	_route_wait -= delta
+	var go := not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at
+	var aim := _aim(p2, goal) if go else goal
+	if go and p2.distance_to(aim) > 0.05:
+		var dir := (aim - p2).normalized()
 		# Keep a little personal space.
 		for o in others:
 			if o == self:
@@ -377,12 +396,62 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		elif p2.distance_to(rec["work"]) < 1.5:
 			work_anim = WORK_ANIM.get(rec["job"], "interact")
 	rec["yaw"] = rotation.y
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		# The hoe comes out in the fields and nowhere else.
+		_human.show_tool(action == "work" and FIELD_DUTIES.has(String(duty.get("duty", ""))))
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
 	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
 	_model.visible = not indoors
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
 	_animate(delta, moving, run, player_pos)
+
+## Where to head for next on the way to `goal`: straight there when nothing on the way is
+## too steep, else along a route round it (planned again when the goal moves on or the
+## route runs out). Where they are now when they must wait (for a route, or at the end of
+## one that can't get any nearer).
+func _aim(p2: Vector2, goal: Vector2) -> Vector2:
+	var walk: WalkGrid = manager.get("walk") if manager else null
+	if walk == null:
+		return goal
+	var moved := _route_goal == Vector2.INF or goal.distance_to(_route_goal) > maxf(2.0, p2.distance_to(goal) * 0.15)
+	var done := _route_i >= _route.size()
+	if (moved or done) and _route_wait <= 0.0:
+		_route_wait = 0.4
+		if walk.clear(p2, goal, WalkGrid.PERSON):
+			_set_route(PackedVector2Array([goal]), goal, true)
+		else:
+			var r := walk.route(p2, goal, WalkGrid.PERSON)
+			if not r.is_empty() and not r["reached"]:
+				# No walk there: a scramble up a steep bank will do, but not a cliff.
+				var up := walk.route(p2, goal, WalkGrid.SCRAMBLE)
+				if not up.is_empty() and up["reached"]:
+					r = up
+			if not r.is_empty():
+				_set_route(r["pts"], goal, r["reached"])
+				if not r["reached"]:
+					# Nowhere nearer to be got to: try again in a while (the way may open).
+					_route_wait = 3.0
+	while _route_i < _route.size() - 1 and p2.distance_to(_route[_route_i]) < 1.2:
+		_route_i += 1
+	if _route_i >= _route.size():
+		return p2
+	if _route_i < _route.size() - 1:
+		return _route[_route_i]
+	# The last leg: to the goal itself (it may have moved on a little since), or to the
+	# nearest place to it they can get to, where they wait.
+	if _route_reached:
+		return goal
+	if p2.distance_to(_route[_route_i]) < 0.6:
+		_route_i += 1
+		return p2
+	return _route[_route_i]
+
+func _set_route(pts: PackedVector2Array, goal: Vector2, reached: bool) -> void:
+	_route = pts
+	_route_i = 0
+	_route_goal = goal
+	_route_reached = reached
 
 ## Whether they have got to where their duty is done.
 func at_work() -> bool:
@@ -473,6 +542,8 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 	if st.size() >= 14:
 		work_anim = String(st[12])
 		upper_anim = String(st[13])
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		_human.show_tool(action == "work" and work_anim in ["plant", "harvest"])
 	if _seen_acts < 0:
 		_seen_acts = int(st[8]) # what they did before you came is over
 	elif int(st[8]) != _seen_acts:

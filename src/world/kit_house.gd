@@ -190,8 +190,8 @@ static func build(t: String) -> ArrayMesh:
 	k.box("wood_floor", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.05, 0)), Vector3(dm.x - 0.5, 0.1, dm.z - 0.5))
 	for j in int(dm.z / 2) + 1:
 		var z := -dm.z / 2 + WALL_IN + 0.1 + (dm.z - 2 * WALL_IN - 0.2) * j / int(dm.z / 2)
-		k.box("timber", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.2, z)), Vector3(dm.x - 0.5, 0.22, 0.2))
-	k.box("stone", Transform3D.IDENTITY.translated(Vector3(0, -0.4, 0)), Vector3(dm.x + 0.5, 0.9, dm.z + 0.5))
+		k.bevel_box("timber", Transform3D.IDENTITY.translated(Vector3(0, dm.y - 0.2, z)), Vector3(dm.x - 0.5, 0.22, 0.2), 0.025)
+	k.bevel_box("stone", Transform3D.IDENTITY.translated(Vector3(0, -0.4, 0)), Vector3(dm.x + 0.5, 0.9, dm.z + 0.5), 0.05)
 	var mesh := BuildCatalog.merge_models(models)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
@@ -253,8 +253,31 @@ static func interior(t: String) -> ArrayMesh:
 	var rc: Vector3 = rug[1]
 	var rs: Vector2 = rug[2]
 	k.box(rug[0], I.translated(Vector3(rc.x, FLOOR + 0.006, rc.z)), Vector3(rs.x, 0.012, rs.y))
+	_trim(k, t)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
+
+## Finishing joinery (Trim): a skirting round the floor, open at the doorway; a cove
+## under each storey's wall beam where the plaster meets it; a chamfered post in each
+## inside corner; a casing round the doorway and a sill on an apron under each window.
+static func _trim(k: MeshKit, t: String) -> void:
+	var p: Array = PLANS[t]
+	var dm := _dims(t)
+	var hx := dm.x / 2 - Trim.KIT_PLASTER
+	var hz := dm.z / 2 - Trim.KIT_PLASTER
+	var door_x := -dm.x / 2 + 1 + 2 * (int(p[0]) / 2)
+	Trim.room(k, "timber", Trim.SKIRT, -hx, hx, -hz, hz, FLOOR, [["+z", door_x - 0.66, door_x + 0.66]])
+	var beam := WALL_IN - Trim.KIT_PLASTER
+	for s in int(p[2]):
+		Trim.room(k, "timber", Trim.cove(0.06, beam), -hx, hx, -hz, hz, s * 3.0 + 2.877, [], true)
+		var y0 := FLOOR if s == 0 else s * 3.0 + 0.123
+		for c in [Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3(hx, 0, hz), Vector3(-hx, 0, hz)]:
+			Trim.corner_post(k, "timber", c, -c, y0, s * 3.0 + 2.877)
+	Trim.kit_wall(k, Transform3D(Basis.IDENTITY, Vector3(door_x, 0, dm.z / 2)), "door", FLOOR, false)
+	for g in _plan(t)["glows"]:
+		var gx: Transform3D = g
+		var at := gx.origin - Vector3(0, 1.85, 0) + gx.basis.z * 0.4
+		Trim.kit_wall(k, Transform3D(gx.basis, at), "window", 0.0, false)
 
 ## The windows the sun can shine in through (not shuttered), for Interiors.sun_windows:
 ## [centre on the wall's inner face, inward normal, half width, half height], unsunk.

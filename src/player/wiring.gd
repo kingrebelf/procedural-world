@@ -5,11 +5,14 @@ extends Node
 ## Power.MAX_CABLE). Until then a loose cable hangs from the first piece to where you aim.
 ## Use on the first piece again lets it go; crouch and Use on a piece takes down all its
 ## cables and gives the wire back.
+## Signal Wire in hand works the same way for the logic layer (Signals), one way only:
+## from the piece that makes the signal to the one it should work.
 
 const REACH := 10.0
 
 var player: Player
 var _from := "" ## piece id the cable starts at
+var _mode := "" ## "power" (Copper Wire) or "signal" (Signal Wire) in hand
 var _target := {} ## {chunk, o, id} of the powered piece under the crosshair
 var _aim := Vector3.ZERO
 var _ghost: MeshInstance3D
@@ -26,11 +29,31 @@ func _ready() -> void:
 	_mat_bad = Builder._ghost_mat(Color(1.0, 0.3, 0.25, 0.7))
 
 func active() -> bool:
+	return held_mode() != ""
+
+## "power", "signal" or "" for what is in hand.
+func held_mode() -> String:
 	var it = player.held_item()
-	return it != null and it["type"] == Power.WIRE
+	if it == null:
+		return ""
+	if it["type"] == Power.WIRE:
+		return "power"
+	if it["type"] == Signals.WIRE:
+		return "signal"
+	return ""
+
+func _signal() -> bool:
+	return _mode == "signal"
+
+func _end(id: String, o: Dictionary, c: ChunkNode) -> Vector3:
+	return Power.signal_terminal(o, c.position) if _signal() else Power.terminal(o, c.position)
 
 ## Called every physics frame by the player.
 func update() -> void:
+	var m := held_mode()
+	if m != _mode:
+		_mode = m
+		_from = ""
 	if not active() or player.ui_open or PowerGrid.current == null:
 		_ghost.visible = false
 		if not active():
@@ -43,12 +66,12 @@ func update() -> void:
 		_from = ""
 		_ghost.visible = false
 		return
-	var a := g.terminal_of(_from)
+	var a := g.signal_terminal_of(_from) if _signal() else g.terminal_of(_from)
 	var b: Vector3 = _aim
 	if not _target.is_empty():
-		b = Power.terminal(_target["o"], (_target["chunk"] as ChunkNode).position)
-	var ok := a.distance_to(b) <= Power.MAX_CABLE
-	_ghost.mesh = PowerGrid.cable_mesh(a, b, 0.018)
+		b = _end(_target["id"], _target["o"], _target["chunk"])
+	var ok := a.distance_to(b) <= (Signals.MAX_SPAN if _signal() else Power.MAX_CABLE)
+	_ghost.mesh = PowerGrid.cable_mesh(a, b, 0.01 if _signal() else 0.018)
 	_ghost.material_override = _mat_ok if ok else _mat_bad
 	_ghost.visible = true
 
@@ -83,6 +106,8 @@ func use() -> void:
 		if _from != "":
 			_from = ""
 			Game.toast.emit("Let the cable go")
+		elif _signal():
+			Game.toast.emit("Aim at a lever, button, sensor, timer or gate to start a signal wire")
 		else:
 			Game.toast.emit("Aim at a generator, battery, pole, switch or lamp to start a cable")
 		return
@@ -90,6 +115,9 @@ func use() -> void:
 	var c: ChunkNode = _target["chunk"]
 	if not _mine(o):
 		Game.toast.emit("That isn't yours to wire")
+		return
+	if _signal():
+		_use_signal(g, c, o)
 		return
 	if player.sneaking():
 		var back := g.unhook(c, o)
@@ -101,6 +129,9 @@ func use() -> void:
 			Game.toast.emit("It has no cables")
 		return
 	if _from == "":
+		if Power.max_links(o) == 0:
+			Game.toast.emit("It takes no power: wire it with Signal Wire")
+			return
 		if Power.links(o).size() >= Power.max_links(o):
 			Game.toast.emit("Every terminal on it is taken")
 			return
@@ -126,23 +157,76 @@ func use() -> void:
 	_from = _target["id"]
 	Game.toast.emit("Joined. The cable carries on from here: Use on the next piece, or on this one to stop")
 
+## Use with Signal Wire in hand: start at a piece that makes a signal, end at one that
+## takes it; crouched, take every signal wire on a piece down.
+func _use_signal(g: PowerGrid, c: ChunkNode, o: Dictionary) -> void:
+	if player.sneaking():
+		var back := g.unhook_signals(c, o)
+		_from = ""
+		if back > 0:
+			Game.give(ItemDB.make(Signals.WIRE, back, 1.0, Game.origin_here("salvaged", -1, c.key)))
+			Game.toast.emit("Took down its signal wires: %d Signal Wire back" % back)
+		else:
+			Game.toast.emit("It has no signal wires")
+		return
+	if _from == "":
+		if not Signals.has_out(o):
+			Game.toast.emit("It makes no signal: start at a lever, button, sensor, timer or gate" if Signals.max_in(o) == 0 else "Start the wire at what makes the signal, then Use on this")
+			return
+		_from = _target["id"]
+		Game.toast.emit("Signal wire started: Use on what it should work")
+		return
+	if _from == _target["id"]:
+		_from = ""
+		Game.toast.emit("Let the signal wire go")
+		return
+	var a := g.piece(_from)
+	var ca := g.chunk_of_id(_from)
+	if a.is_empty() or ca == null:
+		_from = ""
+		return
+	var why := g.connect_signal(ca, a, c, o)
+	if why != "":
+		Game.toast.emit(why)
+		return
+	Audio.play_at("hit/plank", Power.signal_terminal(o, c.position), -14.0)
+	Game.add_xp(2.0, "Wiring")
+	# A gate or sensor wired on carries on from here; anything else ends the run.
+	if Signals.has_out(o):
+		_from = _target["id"]
+		Game.toast.emit("Wired. It carries on from here: Use on the next piece, or on this one to stop")
+	else:
+		_from = ""
+		Game.toast.emit("Wired: it now follows that signal")
+
 ## Look-at panel contents while holding Copper Wire.
 func info() -> Dictionary:
 	var k := func(a: String) -> String: return "[%s]" % Player._key(a)
+	var sig := _signal()
+	var item := "Signal Wire" if sig else "Copper Wire"
+	var item_id := Signals.WIRE if sig else Power.WIRE
+	var what := "signal wire" if sig else "cable"
+	var span := Signals.MAX_SPAN if sig else Power.MAX_CABLE
 	var lines: Array = []
 	if _from == "":
-		lines.append("%s on a powered piece starts a cable; %s on the next strings it across." % [k.call("use"), k.call("use")])
-	else:
-		var a := PowerGrid.current.terminal_of(_from) if PowerGrid.current != null else Vector3.ZERO
-		var b: Vector3 = _aim if _target.is_empty() else Power.terminal(_target["o"], (_target["chunk"] as ChunkNode).position)
+		if sig:
+			lines.append("%s on what makes the signal (lever, sensor, timer, gate), then %s on what it should work." % [k.call("use"), k.call("use")])
+		else:
+			lines.append("%s on a powered piece starts a cable; %s on the next strings it across." % [k.call("use"), k.call("use")])
+	elif PowerGrid.current != null:
+		var g := PowerGrid.current
+		var a := g.signal_terminal_of(_from) if sig else g.terminal_of(_from)
+		var b: Vector3 = _aim if _target.is_empty() else _end(_target["id"], _target["o"], _target["chunk"])
 		var d := a.distance_to(b)
-		lines.append("Cable %d m: %s" % [int(d), ("needs %d Copper Wire" % Power.wire_for(d)) if d <= Power.MAX_CABLE else "too long (at most %d m)" % int(Power.MAX_CABLE)])
+		var need := Signals.wire_for(d) if sig else Power.wire_for(d)
+		lines.append("%s %d m: %s" % [what.capitalize(), int(d), ("needs %d %s" % [need, item]) if d <= span else "too long (at most %d m)" % int(span)])
 		lines.append("%s on the piece it starts from lets it go." % k.call("use"))
-	lines.append("Crouch and %s on a piece to take its cables down." % k.call("use"))
-	lines.append("%d Copper Wire in your pack: %d m of cable" % [Game.inventory.count(Power.WIRE), int(Game.inventory.count(Power.WIRE) * Power.WIRE_PER)])
-	var title := "Copper Wire"
+	lines.append("Crouch and %s on a piece to take its %ss down." % [k.call("use"), what])
+	var per := Signals.WIRE_PER if sig else Power.WIRE_PER
+	lines.append("%d %s in your pack: %d m of %s" % [Game.inventory.count(item_id), item, int(Game.inventory.count(item_id) * per), what])
+	var title := item
 	if not _target.is_empty():
 		var nm := String(BuildCatalog.def(BuildCatalog.id_of(_target["o"]["t"])).get("name", ""))
-		title = "Copper Wire  ·  %s" % nm
+		title = "%s  ·  %s" % [item, nm]
 		lines.append_array(PowerGrid.current.describe(_target["chunk"], _target["o"], false) if PowerGrid.current != null else [])
-	return {"title": title, "sub": "Wiring  ·  %s %s" % [k.call("use"), "join" if _from != "" else "start a cable"], "lines": lines, "icon": Power.WIRE}
+	return {"title": title, "sub": "Wiring  ·  %s %s" % [k.call("use"), "join" if _from != "" else "start a " + what], "lines": lines, "icon": item_id}

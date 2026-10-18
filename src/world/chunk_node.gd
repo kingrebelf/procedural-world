@@ -80,6 +80,12 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	var uvs := PackedVector2Array()
 	if not mid.is_empty():
 		uvs.resize(n * n)
+	# The climate on the ground (v18), as the vertex UV2: (how dry, how lush or cold), from
+	# the chunk's grid of regions and how far into the band between two each point is.
+	var clim := _climate_grid(chunk)
+	var uv2s := PackedVector2Array()
+	if not clim.is_empty():
+		uv2s.resize(n * n)
 	var human := Eras.theme == "human"
 	var l0 := PackedByteArray()
 	var l1 := PackedByteArray()
@@ -127,6 +133,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 				uvs[v] = Vector2((mid[k] - 128) / 20.0, 1.0)
 			for b in 4:
 				cv[v * 4 + b] = cover[k * 4 + b]
+			if not clim.is_empty():
+				uv2s[v] = _climate_at(clim, gi, gj)
 	# Up close, a cave mouth is an opening in the ground (far off the hole is too small to
 	# see, and the cave walls are not drawn).
 	var hole := PackedByteArray()
@@ -148,7 +156,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			else:
 				idx.append_array([a, b, c, b, d, c])
 	if step > 1:
-		_add_skirts(n, verts, norms, cols, idx, 3.0 * step)
+		_add_skirts(n, verts, norms, cols, idx, 3.0 * step, uv2s)
 		if has_look:
 			_skirt_looks(n, l0, l1, l2)
 		_skirt_looks(n, cv, PackedByteArray(), PackedByteArray())
@@ -160,6 +168,8 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 	arr[Mesh.ARRAY_INDEX] = idx
 	if not uvs.is_empty():
 		arr[Mesh.ARRAY_TEX_UV] = uvs
+	if not uv2s.is_empty():
+		arr[Mesh.ARRAY_TEX_UV2] = uv2s
 	if not l0.is_empty():
 		arr[Mesh.ARRAY_CUSTOM0] = l0
 		arr[Mesh.ARRAY_CUSTOM1] = l1
@@ -205,7 +215,43 @@ static func _skirt_looks(n: int, l0: PackedByteArray, l1: PackedByteArray, l2: P
 			l1.append_array(l1.slice(v * 4, v * 4 + 4))
 			l2.append_array(l2.slice(v * 4, v * 4 + 4))
 
-static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, depth: float) -> void:
+## A chunk's climate look (WorldField.ground_look) on its MIX_N grid, or empty in chunks
+## made before climates.
+static func _climate_grid(chunk: Dictionary) -> PackedVector2Array:
+	var mix: PackedByteArray = chunk.get("biome_mix", PackedByteArray())
+	var out := PackedVector2Array()
+	if mix.is_empty():
+		return out
+	var hs: Array = chunk["biomes"]
+	var looks: Array = []
+	var any := false
+	for h in hs:
+		var g := WorldField.ground_look(h)
+		looks.append(g)
+		any = any or g != Vector2.ZERO
+	if not any:
+		return out
+	var m := ChunkGenerator.MIX_N
+	out.resize(m * m)
+	for k in m * m:
+		out[k] = (looks[mix[k * 3]] as Vector2).lerp(looks[mix[k * 3 + 1]], mix[k * 3 + 2] / 510.0)
+	return out
+
+## The climate look at metre (gi, gj) of a chunk, between the grid's points.
+static func _climate_at(grid: PackedVector2Array, gi: int, gj: int) -> Vector2:
+	var m := ChunkGenerator.MIX_N
+	var step := SIZE / float(m - 1)
+	var fx := clampf(gi / step, 0.0, m - 1.001)
+	var fz := clampf(gj / step, 0.0, m - 1.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	fx -= ix
+	fz -= iz
+	var a := grid[iz * m + ix].lerp(grid[iz * m + ix + 1], fx)
+	var b := grid[(iz + 1) * m + ix].lerp(grid[(iz + 1) * m + ix + 1], fx)
+	return a.lerp(b, fz)
+
+static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array, depth: float, uv2s := PackedVector2Array()) -> void:
 	var edges := []
 	var e0 := []
 	var e1 := []
@@ -223,6 +269,8 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 			verts.append(verts[v] - Vector3(0, depth, 0))
 			norms.append(norms[v])
 			cols.append(cols[v])
+			if not uv2s.is_empty():
+				uv2s.append(uv2s[v])
 		for i in e.size() - 1:
 			var a: int = e[i]
 			var b: int = e[i + 1]
@@ -398,6 +446,16 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		biome_tint = bp["grass_tint"]
 		biome_tint.a = 1.0
 		density *= float(bp["grass_density"])
+	# v18: the grass's colour, lushness and thickness run smoothly from one region's into
+	# the next across the band where they meet (rows: tint rgb, lush, density).
+	var blend := ChunkGenerator.biome_mix_grid(chunk, biome_era, ["grass_tint", "lush", "grass_density"])
+	var thickest := 1.0
+	if not blend.is_empty():
+		var top := 0.0
+		for row in blend:
+			top = maxf(top, row[4])
+		thickest = top
+		density *= top / float(Biome.params(chunk["biome"], biome_era)["grass_density"])
 	var seed := int(chunk.get("seed", 0))
 	var clump := FastNoiseLite.new()
 	clump.seed = seed ^ 0x6A55
@@ -430,6 +488,10 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var size := r.randf()
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var dens := w[0] * Eras.GRASS_DENSITY[0] + w[1] * Eras.GRASS_DENSITY[1] + w[2] * Eras.GRASS_DENSITY[2]
+		if not blend.is_empty():
+			dens *= ChunkGenerator.mix_sample(blend, lx, lz, 4) / thickest
+			lush = ChunkGenerator.mix_sample(blend, lx, lz, 3)
+			biome_tint = Color(ChunkGenerator.mix_sample(blend, lx, lz, 0), ChunkGenerator.mix_sample(blend, lx, lz, 1), ChunkGenerator.mix_sample(blend, lx, lz, 2), 1.0)
 		if pick > dens:
 			continue
 		# Thinning out up a steep bank (smaller clumps hold on longest), not a hard line.
@@ -592,7 +654,13 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var top := _top(chunk)
 		var ux0 := float(chunk["cx"]) * SIZE
 		var uz0 := float(chunk["cz"]) * SIZE
-		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
+		# v18: near a region's edge, now and then the neighbour's plants (as its trees).
+		var mixed := chunk.has("biome_mix")
+		var thickest := float(bp["under_density"])
+		if mixed:
+			for h in chunk["biomes"]:
+				thickest = maxf(thickest, float(Biome.params(h, era)["under_density"]))
+		for n in int(580 * density * thickest * (0.6 if era == Eras.SCIFI else 1.0)):
 			var lx := r.randf() * SIZE
 			var lz := r.randf() * SIZE
 			var pick := r.randi()
@@ -611,9 +679,15 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
+			var own := unders
+			if mixed:
+				var rp := Biome.params(ChunkGenerator.biome_pick(chunk, lx, lz, ((pick >> 20) & 0xFF) / 256.0), era)
+				if float((pick * 2654435761) & 0xFFFF) / 65536.0 * thickest >= float(rp["under_density"]):
+					continue
+				own = rp["under"]
 			# Each plant where its kind grows: the region's first species (from the roll)
 			# that suits this spot, or none.
-			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
+			var sp := _under_for(chunk, cover, own, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
 			if sp < 0:
 				continue
 			# Wild flowers come in drifts, not dotted one by one across the grass, and even
@@ -1668,7 +1742,7 @@ func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) ->
 		_add_obj_body(o)
 	_regrow_if_kept_out(t)
 	Game.mark_chunk_dirty(data)
-	if Power.is_power(t):
+	if Power.is_power(t) or Automation.is_container(t):
 		PowerGrid.changed(self)
 	if BuildCatalog.is_built(t):
 		TownLife.note_built(Vector2(key.x * ChunkGenerator.SIZE + lp.x, key.y * ChunkGenerator.SIZE + lp.z))
@@ -1696,7 +1770,7 @@ func remove_object(i: int) -> void:
 		refresh_far()
 	_regrow_if_kept_out(o["t"])
 	Game.mark_chunk_dirty(data)
-	if Power.is_power(o["t"]):
+	if Power.is_power(o["t"]) or Automation.is_container(o["t"]):
 		PowerGrid.changed(self)
 	if BuildCatalog.is_built(o["t"]):
 		var lp: Vector3 = o["p"]

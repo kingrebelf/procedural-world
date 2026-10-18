@@ -33,6 +33,8 @@ var health := 100.0
 var stamina := 100.0
 var stats := Stats.new()
 var crime := Crime.new() ## bounties and wanted level, per settlement
+var standing := Standing.new() ## how each town thinks of you, and your passes through town gates
+signal standing_changed
 var day := 0.3
 var discovery: Dictionary = {"visited": {}, "regions": {}}
 var player: Node3D ## Set by the player when it spawns.
@@ -116,6 +118,7 @@ func _begin(fresh: bool) -> void:
 	landings = {}
 	markers = Markers.new()
 	crime = Crime.new()
+	standing = Standing.new()
 	guilds = {}
 	estates = []
 	treasure = []
@@ -138,6 +141,7 @@ func _begin(fresh: bool) -> void:
 		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
 		crime = Crime.from_data(p.get("crime"))
+		standing = Standing.from_data(p.get("standing"))
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
 		treasure = (p.get("treasure", []) as Array).duplicate(true)
@@ -347,7 +351,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "standing": standing.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -753,12 +757,58 @@ func add_bounty(sid: String, town: String, amount: int, why: String) -> void:
 		toast.emit("%s! Wanted in %s: %d star%s" % [why, town, now_stars, "" if now_stars == 1 else "s"])
 	else:
 		toast.emit("%s: bounty in %s is now %d Marks" % [why, town, b])
+	# The town thinks less of you, and tears up any pass it gave you; if someone
+	# vouched for you, you've shamed them too.
+	var held := standing.pass_of(sid, day)
+	standing.revoke(sid)
+	standing_deed(sid, -clampf(amount / 3.0, 3.0, 60.0))
+	if held.get("how", "") == "vouched":
+		standing_deed(sid, Standing.DEEDS["betrayal"])
+		vouch_betrayed.emit(sid, String(held["by"]))
 	wanted_changed.emit()
 
 func clear_bounty(sid: String) -> void:
 	crime.clear(sid)
+	standing_deed(sid, Standing.DEEDS["paid_bounty"])
 	_player_dirty = true
 	wanted_changed.emit()
+
+## Someone vouched for you at a town's gate and you broke the law there (sid, their id).
+signal vouch_betrayed(sid: String, by: String)
+## You bought or sold at a stall or shop (Marks changing hands): towns count it to your standing.
+signal traded(marks: int)
+
+## Something you did that a town will remember (Standing.deed): word spreads to the
+## towns near it, and you hear when your standing there changes tier.
+func standing_deed(sid: String, amount: float) -> void:
+	if amount == 0.0:
+		return
+	var e: Dictionary = standing.towns.get(sid, {})
+	var before := town_standing(sid)
+	var town := String(e.get("name", ""))
+	# A town not yet placed (none should be: towns are noted as they load) keeps it to itself.
+	var at := Vector2(float(e["x"]), float(e["z"])) if not e.is_empty() else Vector2(1e9, 1e9)
+	standing.deed(sid, town, at, amount, day)
+	_player_dirty = true
+	var now_t := Standing.tier_of(town_standing(sid))
+	if now_t != Standing.tier_of(before) and town != "" and not is_citizen(sid):
+		toast.emit("Your standing in %s: %s" % [town, now_t])
+	standing_changed.emit()
+
+## Your standing in a town now (Standing.score, less your wanted stars there).
+func town_standing(sid: String) -> int:
+	return standing.score(sid, day, crime.stars(sid, day))
+
+## The tier word for a town: Citizen where you own a house, else Standing.tier_of.
+func town_tier(sid: String) -> String:
+	return Standing.CITIZEN if is_citizen(sid) and crime.stars(sid, day) == 0 else Standing.tier_of(town_standing(sid))
+
+## Whether you own a house in this town (sid "planet:sx_sz").
+func is_citizen(sid: String) -> bool:
+	for e in estates:
+		if "%d:%s" % [int(e.get("planet", 0)), String(e.get("sid", ""))] == sid:
+			return true
+	return false
 
 func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 	return {"how": how, "era": era, "chunk": chunk, "day": snappedf(day, 0.01)}

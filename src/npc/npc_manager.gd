@@ -31,12 +31,16 @@ var _think_t := 0.0
 var _deciding := false
 var _thinking := false
 var _ground := Callable(self, "ground")
+## How steep the loaded land is, for routes that go round cliffs (people and animals).
+var walk := WalkGrid.new(Callable(self, "_chunk_data"))
 var _stealth_t := 0.0
 var _mob_t := 0.0
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
 var watched := false
+## The watch on walled towns' gates, and towns' standing (GateWatch).
+var gates: GateWatch
 
 func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
@@ -46,6 +50,9 @@ func _ready() -> void:
 	Net.mob_said.connect(_on_mob_said)
 	Net.town_pushed.connect(_on_town_pushed)
 	Net.mob_talk.connect(_on_mob_talk)
+	gates = GateWatch.new()
+	gates.manager = self
+	add_child(gates)
 
 func _exit_tree() -> void:
 	save_all()
@@ -61,6 +68,10 @@ func ground(x: float, z: float) -> float:
 	if c == null:
 		return NAN
 	return ChunkGenerator.height_at(c.data, x - k.x * ChunkGenerator.SIZE, z - k.y * ChunkGenerator.SIZE)
+
+func _chunk_data(k: Vector2i) -> Dictionary:
+	var c := streamer.get_chunk(k) if streamer else null
+	return c.data if c else {}
 
 func all_nodes() -> Array:
 	var out: Array = []
@@ -196,6 +207,14 @@ func _add_node(e: Dictionary, rec: Dictionary) -> NPC:
 	e["nodes"].append(n)
 	_by_id[rec["id"]] = n
 	return n
+
+## Where the people within `radius` of `at` stand (for sensors and pressure plates).
+func people_near(at: Vector3, radius: float) -> Array:
+	var out: Array = []
+	for n in _by_id.values():
+		if is_instance_valid(n) and (n as Node3D).global_position.distance_to(at) <= radius:
+			out.append((n as Node3D).global_position)
+	return out
 
 ## Whether this game runs the town's people (always, offline).
 func runs(e: Dictionary) -> bool:
@@ -378,7 +397,9 @@ func _process(delta: float) -> void:
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
-			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
+			# Shown inside 7 m, hidden only past 8: someone at the edge doesn't blink their tag.
+			var tag_d := pp.distance_to(n.global_position)
+			n.show_name(tag_d < (8.0 if n.name_shown() else 7.0) and not n.is_hidden())
 			if n.boat != null:
 				# Aboard: everyone draws the crew at their stations; the game that runs
 				# them decides what they do.
@@ -755,6 +776,10 @@ func end_talk(n: NPC) -> void:
 ## The player struck an NPC. Everyone remembers.
 func player_hit(n: NPC, damage: float) -> void:
 	var rec := n.rec
+	if rec.get("child", false):
+		# Children can't be hurt by the player: the blow is pulled.
+		n.say(NPCMind.bark(rec, "hurt"), 2.0)
+		return
 	var s := n.settlement
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
@@ -929,7 +954,10 @@ func witnesses(pos: Vector3, extra: Array = []) -> Array:
 ## kind: a Crime.FINES key; worth: Marks taken. Returns true if you were seen.
 ## Other systems (shops, stalls) call this when you take what isn't yours.
 func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_by: NPC = null) -> bool:
-	var e := town_at(pos)
+	# Whoever caught you tells their own town; otherwise it's the town whose ground it is.
+	var e := _entry_of(caught_by.settlement) if caught_by != null and not caught_by.settlement.has("band") else {}
+	if e.is_empty() or not e.has("sid"):
+		e = town_at(pos)
 	if e.is_empty():
 		return false
 	var seen := witnesses(pos, [caught_by] if caught_by != null else [])
@@ -937,19 +965,22 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "vandalism": "Vandalism"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
 		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"],
-		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"]}.get(kind, ["Guards!"])
+		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"],
+		"trespass": ["You've no leave to be here! Guards!", "Intruder! Guards!", "Oi! Who let you in?"],
+		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
 		if not is_instance_valid(n):
 			continue
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
-			"lockpick": "breaking into a chest", "vandalism": "smashing down a door"}.get(kind, "committing a crime"))
+			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave",
+			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch"}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
 			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
@@ -960,7 +991,8 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 	for n in e["nodes"]:
 		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
 			n.decide_in = 0.0
-	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest"}.get(kind, "breaking the law"))
+	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest",
+		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch"}.get(kind, "breaking the law"))
 	e["dirty"] = true
 	return true
 
@@ -1028,6 +1060,8 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 	if n == null or not is_instance_valid(n):
 		return
 	var rec: Dictionary = n.rec
+	if rec.get("child", false):
+		return # nobody hurts children (player_hit refuses it where they are run too)
 	if killed:
 		rec["dead"] = true
 		rec["hp"] = 0.0
@@ -1328,6 +1362,7 @@ func _bandit_hit(n: NPC, _damage: float) -> void:
 		e["nodes"].erase(n)
 	_by_id.erase(rec["id"])
 	Game.add_xp(20.0 + 6.0 * NPCSocial.level(rec), "Outlaw slain")
+	gates.outlaw_slain(n.global_position)
 	Game.toast.emit("%s is dead" % rec["name"])
 	if not e.is_empty() and e["nodes"].is_empty():
 		Game.add_xp(40.0 + 10.0 * float(e["band"]["zone"]), "Broke a %s" % String(e["band"]["name"]).to_lower())
