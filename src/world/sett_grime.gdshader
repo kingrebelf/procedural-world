@@ -78,6 +78,7 @@ void fragment() {
 	// against the walls; trodden to a thin grey slush across the middle of the square and
 	// down the streets, the stones showing through in patches and melted along the kennel.
 	float s_lvl = wear_snow(wpos);
+	float snow_a = 0.0;
 	if (s_lvl > 0.01) {
 		float open = wear_shelter(wpos, vec3(0.0, 1.0, 0.0)).x;
 		float n1 = g_fbm(q * 0.35 + 11.0);
@@ -99,20 +100,28 @@ void fragment() {
 		// The outermost setts (the frayed quarter cells) always closed over, so none of
 		// their squares stands bare against the ground's snow.
 		float edge = max(smoothstep(0.2, 0.75, rim + (n1 - 0.5) * 0.7 + (n3 - 0.5) * 0.12), smoothstep(0.55, 0.8, rim));
-		// Trodden: patchy, thinner where feet and wheels go most (the kennel's line).
-		float trod = smoothstep(0.3, 0.7, n1 * 0.6 + n2 * 0.4 + (n3 - 0.5) * 0.15 + 0.15 * s_lvl - 0.3 * kennel) * 0.75;
+		// Trodden: patches of packed snow with soft edges and the stones bare between,
+		// fewer where feet and wheels go most (the kennel's line). Packed snow is opaque,
+		// not a veil, so the setts' cell-by-cell tones don't show through it as squares.
+		float trod = smoothstep(0.38, 0.58, n1 * 0.6 + n2 * 0.4 + (n3 - 0.5) * 0.15 + 0.2 * s_lvl - 0.3 * kennel);
 		float sa = max(max(edge, drift), trod) * smoothstep(0.0, 0.5, s_lvl) * open;
 		float deep = max(edge, drift);
-		vec3 slush = mix(vec3(0.36, 0.35, 0.34), vec3(0.6, 0.61, 0.63), n2) * (1.0 - 0.3 * kennel);
-		vec3 sc = mix(slush, WEAR_SNOW * (0.88 + 0.1 * n3), smoothstep(0.2, 0.8, deep));
+		vec3 slush = mix(vec3(0.36, 0.36, 0.37), vec3(0.5, 0.53, 0.57), n2) * (1.0 - 0.3 * kennel);
+		// The ground's own snow colour (the terrain's snow texture, linear mean, at the
+		// 0.8 it draws it), so the setts' rim doesn't stand out from the snow round it.
+		vec3 sc = mix(slush, vec3(0.51, 0.56, 0.62) * (0.95 + 0.1 * n3), smoothstep(0.2, 0.8, deep));
 		float out_a = sa + a * (1.0 - sa);
 		col = (sc * sa + col * a * (1.0 - sa)) / max(out_a, 1e-4);
-		rough = mix(rough, mix(0.5, 0.62, deep), sa);
+		// Matte as the open snow beside it, and lit as level ground rather than by each
+		// sett cell's own tilt, so the cells don't read as lighter and darker squares.
+		rough = mix(rough, 0.85, sa);
 		pud *= 1.0 - sa;
 		a = out_a;
+		snow_a = sa;
 	}
 	ALBEDO = col;
 	ROUGHNESS = rough;
-	SPECULAR = mix(0.5, 0.6, pud);
+	NORMAL = normalize(mix(NORMAL, (VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz, snow_a));
+	SPECULAR = mix(mix(0.5, 0.6, pud), 0.3, snow_a);
 	ALPHA = a;
 }
