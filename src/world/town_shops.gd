@@ -47,7 +47,7 @@ const KINDS := {
 			["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "arc_launcher", "scrap_pistol", "rounds",
 				"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
 				"derringer", "flare_gun", "harpoon_gun", "sabre", "machete", "tomahawk", "bowie_knife", "bayonet", "sledgehammer",
-				"dynamite", "frag_grenade", "fire_bottle", "bear_trap", "tripwire", "black_powder", "musket_balls",
+				"dynamite", "frag_grenade", "fire_bottle", "bear_trap", "tripwire", "black_powder", "musket_balls", "cannon_ball",
 				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil", "laser_pistol", "smart_pistol", "needle_gun",
 				"carbine_combat", "auto_shotgun", "plasma_rifle", "gauss_rifle", "grenade_launcher", "vibro_knife", "stun_baton",
 				"combat_machete", "chain_axe", "smart_rounds", "energy_cell", "shells_12g", "plasma_canister", "gauss_slugs",
