@@ -275,6 +275,12 @@ func wear(worn: Dictionary) -> void:
 		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			mi.visible = not _arms
+	_keep_layer()
+
+## What was just put on or taken up joins the rest of the body on the Movers layer.
+func _keep_layer() -> void:
+	if animator != null and animator.far:
+		Movers.set_far(self, true)
 
 func _shield_mesh(item: Dictionary) -> Node3D:
 	var lk := Outfit.look_of(item)
@@ -620,6 +626,7 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 		gestures.grip_r = GRIP
 		gestures.grip_rot = _wrap(prop)
 	_shade_held()
+	_keep_layer()
 
 ## What the hand holds casts no shadow on the first-person arms, nor from a shadow-only
 ## body: that body's copy sits almost where the first-person one is drawn, and with the sun

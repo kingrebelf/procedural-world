@@ -62,6 +62,7 @@ var _accum := 0.0
 var _tick := 0
 var _idle_rate := 1.0
 var _hold := false
+var far := false ## on the Movers layer (by distance, like the level of detail)
 
 ## lib: the people's AnimationLibrary; root: the node the clips' track paths start from.
 func setup(lib: AnimationLibrary, root: Node, sk: Skeleton3D, who: Node3D) -> void:
@@ -324,6 +325,10 @@ func _lod_every() -> int:
 	if ik:
 		ik.feet_on = d < 28.0 and every <= 2
 		ik.look_on = d < 40.0
+		ik.near = d < 12.0
+	if Movers.is_far(d, far) != far:
+		far = not far
+		Movers.set_far(body, far)
 	return every
 
 ## Advances the animation by `dt` seconds (also used to settle a pose at once).
