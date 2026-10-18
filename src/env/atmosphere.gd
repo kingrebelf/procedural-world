@@ -181,6 +181,7 @@ func apply_settings() -> void:
 	env.ssao_enabled = bool(Settings.get_value("ssao"))
 	env.ssr_enabled = bool(Settings.get_value("ssr"))
 	env.glow_enabled = bool(Settings.get_value("glow"))
+	env.adjustment_color_correction = Grade.lut() if bool(Settings.get_value("film_grade")) else null
 	var vf := int(Settings.get_value("volumetric_fog"))
 	env.volumetric_fog_enabled = vf > 0
 	_shafts.visible = bool(Settings.get_value("sun_shafts"))

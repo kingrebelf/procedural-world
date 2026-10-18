@@ -127,6 +127,7 @@ func _graphics_tab() -> Control:
 	_check(g, "sun_shafts", "Light shafts", "Rays of sunlight through trees, gaps and windows.")
 	_check(g, "glow", "Bloom")
 	_check(g, "auto_exposure", "Auto exposure")
+	_check(g, "film_grade", "Film colour grade", "Cool shadows, warm highlights and softer greens, as a graded film. Off shows the raw colours.")
 	_check(g, "motion_blur", "Motion blur", "A slight smear when you turn or move fast, as a camera shutter gives. The held item stays sharp.")
 	_slider(g, "motion_blur_strength", "Motion blur amount", 0.1, 1.0, 0.05, "%.2f", "How long the shutter stays open, in 60ths of a second. 0.3 is subtle; 1.0 is film-like.")
 	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")

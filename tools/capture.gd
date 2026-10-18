@@ -265,7 +265,7 @@ func _follow_river(g: ChunkGenerator, p: Vector2, d: Vector2, cache: Dictionary)
 	return at if at.distance_to(p) > 60.0 else Vector2.INF
 
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0) -> void:
-	if not only.is_empty() and not only.has(name.substr(0, 2)):
+	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
@@ -482,6 +482,8 @@ func _run() -> void:
 		await _landform_shots(g)
 	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
+	if only.is_empty() or only.has("62"):
+		await _peaks_shot(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -607,6 +609,8 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
+	if only.is_empty() or only.has("101") or only.has("102") or only.has("103"):
+		await _waterfall_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
 	if only.is_empty() or only.has("80") or only.has("81") or only.has("82") or only.has("83"):
@@ -1052,6 +1056,33 @@ func _border_shot(g: ChunkGenerator) -> void:
 					await _shot("96_biome_border", p + side, p - side, 0.42, 6.0)
 					return
 	print("no climate border found")
+
+## The highest snowy peak near the spawn, seen from lower ground a few hundred metres
+## off in the morning sun: rock faces, gullies and the snow lodged in them.
+func _peaks_shot(g: ChunkGenerator) -> void:
+	var peak := Vector3(0, -INF, 0)
+	for iz in range(-60, 61):
+		for ix in range(-60, 61):
+			var h := g.field.height(ix * 40.0, iz * 40.0)
+			if h > peak.y:
+				peak = Vector3(ix * 40.0, h, iz * 40.0)
+	if peak.y < WorldField.snow_line + 20.0:
+		print("no snowy peak near the spawn")
+		return
+	var top := Vector2(peak.x, peak.z)
+	var best := Vector2.INF
+	var low := INF
+	for k in 16:
+		var cam := top + Vector2.from_angle(TAU * k / 16.0) * 420.0
+		var h := g.field.height(cam.x, cam.y)
+		if h > WATER_SAFE + 1.0 and h < low:
+			low = h
+			best = cam
+	if best == Vector2.INF:
+		print("no ground to see the peak from")
+		return
+	print("peaks shot at ", best, " looking at ", peak)
+	await _shot("62_peaks", best, top, 0.36, 25.0, peak.y - 25.0)
 
 func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
 	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
@@ -1815,7 +1846,7 @@ func _cave_floor(ps: PackedFloat32Array, p: Vector2, top: float) -> float:
 	return NAN
 
 func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool) -> void:
-	if not only.is_empty() and not only.has(name.substr(0, 2)):
+	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
 	Game.day = day
@@ -1836,6 +1867,43 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## Waterfalls (Waterfalls, v19 worlds with rivers), the nearest good one to the spawn:
+## 101 seen from the plunge pool below it, 102 from the bank beside its lip, looking over
+## the edge, 103 from further down the river, the fall in its valley.
+func _waterfall_shots(g: ChunkGenerator) -> void:
+	var best := {}
+	var bd := INF
+	for iz in range(-6, 6):
+		for ix in range(-6, 6):
+			var f := Waterfalls.in_cell(g, ix, iz)
+			if f.is_empty() or float(f["drop"]) < 8.0:
+				continue
+			var dl := (f["lip"] as Vector2).length()
+			if dl < bd:
+				bd = dl
+				best = f
+	if best.is_empty():
+		print("no waterfall near the spawn")
+		return
+	var lip: Vector2 = best["lip"]
+	var d: Vector2 = best["dir"]
+	var side := Vector2(-d.y, d.x)
+	var top: float = best["top"]
+	var h := Waterfalls.tier_drop(best, 0)
+	var low: float = (best["levels"] as PackedFloat32Array)[0]
+	var ground := func(q: Vector2) -> float:
+		var k := Vector2i(int(floor(q.x / ChunkGenerator.SIZE)), int(floor(q.y / ChunkGenerator.SIZE)))
+		var ch := g.generate(k.x, k.y)
+		return ChunkGenerator.height_at(ch, q.x - k.x * ChunkGenerator.SIZE, q.y - k.y * ChunkGenerator.SIZE)
+	print("waterfall at %s, %.1f m (%d tiers)" % [lip, float(best["drop"]), (best["steps"] as PackedFloat32Array).size()])
+	var face := Vector3(lip.x, low + h * 0.55, lip.y) + Vector3(d.x, 0.0, d.y) * 1.5
+	var below := lip + d * (Waterfalls.pool_radius(h) * 1.5 + h * 0.8 + 8.0) + side * 4.0
+	await _abs_shot("101_waterfall", Vector3(below.x, maxf(low, float(ground.call(below))) + 2.0, below.y), face, 0.42, false)
+	var bank := lip + side * 14.0 - d * 2.0
+	await _abs_shot("102_waterfall_lip", Vector3(bank.x, maxf(top, float(ground.call(bank))) + 1.7, bank.y), Vector3(lip.x, low, lip.y) + Vector3(d.x, 0.0, d.y) * 6.0, 0.42, false)
+	var far := lip + d * 75.0 + side * 22.0
+	await _abs_shot("103_waterfall_valley", Vector3(far.x, float(ground.call(far)) + 6.0, far.y), Vector3(lip.x, low + h * 0.5, lip.y), 0.4, false)
 
 ## Boats (65-69, 88): a cog at anchor and a research vessel seen from the water, the cog's
 ## deck and the vessel's bridge from aboard, a small working boat with its crew, and the cog's stern

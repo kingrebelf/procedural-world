@@ -288,6 +288,8 @@ static func build_rows(job: Dictionary, j0: int, j1: int, gen: ChunkGenerator = 
 			if rt < WorldField.RIVER_REACH:
 				var lv := river_level(field, x, z)
 				var m := WorldField.river_strength(h - sh.z, lv)
+				if gen.falls_on:
+					lv = Waterfalls.level(Waterfalls.near(gen, x, z, x, z), x, z, lv)
 				h = WorldField.carve_river(h, rt, lv, m)
 				if m > 0.25 and lv > ChunkGenerator.WATER_LEVEL + 0.2:
 					wet = rt / WorldField.RIVER_REACH

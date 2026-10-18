@@ -1009,7 +1009,19 @@ func _run() -> void:
 		if not player.frozen:
 			break
 	var home_seed: int = game.seed
-	var sh: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
+	# The ship sets down on dry, loaded ground near you: try round about rather than only
+	# straight ahead (a null there hung the run on sh.leaving).
+	var sh: Vehicle = null
+	for off: Vector3 in [Vector3(0, 0, -9), Vector3(9, 0, 0), Vector3(0, 0, 9), Vector3(-9, 0, 0), Vector3(0, 0, -16), Vector3(16, 0, 0)]:
+		if sh == null:
+			sh = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + off, 0.0)
+	check(sh != null, "a ship can be set down near the player (at %s)" % player.global_position)
+	if sh == null:
+		game.close_world()
+		WorldStore.delete_world(world_id)
+		print("integration: %d FAILED" % _fail)
+		quit(1)
+		return
 	for i in 10:
 		await physics_frame
 	player.mount(sh)
@@ -1525,6 +1537,11 @@ func _crowd(game, world, player) -> void:
 		busy += int(n.action == "work" and not n.duty.is_empty())
 	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
 	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
+	for n in e["nodes"]:
+		if is_instance_valid(n) and n._human and is_instance_valid(n._human._work_tool) and NPC.FIELD_TOOL_JOBS.has(n.rec["job"]):
+			var in_field: bool = n.action == "work" and NPC.FIELD_DUTIES.has(String(n.duty.get("duty", "")))
+			check(n._human._work_tool.visible == in_field, "a farmer's tool is out only in the fields (%s, %s)" % [n.action, n.duty.get("duty", "")])
+			break
 	var benches: Array = e["places"].get("benches", [])
 	if not benches.is_empty():
 		var sitter: NPC = vs[0]
@@ -1538,6 +1555,21 @@ func _crowd(game, world, player) -> void:
 		var other: NPC = vs[1]
 		check(world.npcs._bench_spot(other, e, benches[0][0]).is_empty() or int(other.get_meta("bench_i", -1)) != int(sitter.get_meta("bench_i", -2)), "one to a bench")
 		sitter.stop_perform()
+	# A name tag at the edge of its range holds steady: up inside 7 m, down only past 8.
+	var tagged: NPC = vs[vs.size() - 1]
+	tagged._speech_t = 0.0
+	tagged._speaking = false
+	var pp: Vector3 = player.global_position
+	var tag_at := func(d: float) -> bool:
+		tagged.global_position = Vector3(pp.x + d, tagged.global_position.y, pp.z)
+		tagged.target = Vector2(pp.x + d, pp.z)
+		await _frames(1)
+		return tagged.name_shown()
+	var up: bool = await tag_at.call(5.0)
+	var held: bool = await tag_at.call(7.5)
+	var down: bool = await tag_at.call(8.6)
+	var stays_down: bool = await tag_at.call(7.5)
+	check(up and held and not down and not stays_down, "a name tag doesn't blink at the edge of its range (%s %s %s %s)" % [up, held, down, stays_down])
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0
