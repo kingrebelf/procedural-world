@@ -80,13 +80,15 @@ void fragment() {
 			float whiten = 1.0 - smoothstep(3.0, 28.0, back);
 			a = band * smoothstep(0.3, 0.95, n * 0.4 + feathers * 0.5 + band * 0.15) * f * whiten * swell_of_it * 0.75;
 		} else if (kind < 0.85) {
-			// Transverse waves: curved crests across her track (bowed back at the middle),
-			// marked by thin foam lines and slicks rather than painted bands.
+			// Transverse waves: curved crests across her track (bowed back at the middle).
+			// At a sailing pace they don't break: no more than a faint, patchy slick on each
+			// crest close astern (thin solid lines read as rows of white dashes from above).
 			float bow = (across - 0.5) * (across - 0.5);
 			float crest = 0.5 + 0.5 * cos(6.2831853 * (UV2.y + bow * 1.4));
-			crest = smoothstep(0.82, 1.0, crest);
-			float edges = smoothstep(0.0, 0.2, mid);
-			a = crest * edges * smoothstep(0.35, 0.75, n) * f * 0.35;
+			crest = smoothstep(0.55, 1.0, crest);
+			float edges = smoothstep(0.0, 0.35, mid);
+			float near = 1.0 - smoothstep(4.0, 22.0, back);
+			a = crest * edges * smoothstep(0.5, 0.85, n) * f * f * near * 0.14;
 		} else {
 			// The wash: churned white close astern, settling into a smooth slick with drifting
 			// lace of old foam.

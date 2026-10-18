@@ -27,7 +27,7 @@ var store: WorldStore
 var seed: int = 0 ## the current planet's terrain seed
 var home_seed: int = 0 ## the world's own seed; every planet of its system derives from it
 var planet := 0 ## which planet of the system you are on (0 = home)
-var inventory := Inventory.new()
+var inventory := Inventory.new(Inventory.SIZE, true)
 var money := 0
 var health := 100.0
 var stamina := 100.0
@@ -108,7 +108,7 @@ func _begin(fresh: bool) -> void:
 	home_seed = store.meta["seed"]
 	seed = home_seed
 	day = store.meta.get("day", 0.3)
-	inventory = Inventory.new()
+	inventory = Inventory.new(Inventory.SIZE, true)
 	inventory.changed.connect(_on_inventory_changed)
 	_dirty_chunks.clear()
 	_current_region = ""
@@ -506,6 +506,7 @@ func pack_death_bag() -> Dictionary:
 	var bag := DeathBag.make(my_id(), my_name(), inventory, equipment, money, Time.get_unix_time_from_system())
 	for i in inventory.capacity:
 		inventory.slots[i] = null
+	inventory.trim()
 	inventory.changed.emit()
 	equipment = {}
 	equipment_changed.emit()

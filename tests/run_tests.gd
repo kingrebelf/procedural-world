@@ -4092,6 +4092,39 @@ static func _species_named(name: String, era: int) -> Dictionary:
 			return p
 	return {}
 
+## Ben (2026-10-18): unlimited slots in your pack; weight is the limit, 5% slower per
+## 100 kg over your carry capacity.
+func test_unlimited_pack_and_weight() -> void:
+	var pack := Inventory.new(Inventory.SIZE, true)
+	var o := {"how": "found", "era": 0}
+	var left := 0
+	for i in 73:
+		left += pack.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(left == 0, "every sword fits")
+	check(pack.count("sword_iron") == 73 and pack.capacity == 80 and pack.room() > 1000, "a growing pack never fills: 73 swords in %d slots" % pack.capacity)
+	var chest := Inventory.new(5)
+	for i in 6:
+		chest.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(chest.count("sword_iron") == 5 and chest.capacity == 5 and chest.room() == 0, "a chest keeps its slot count")
+	var back := Inventory.new(Inventory.SIZE, true)
+	back.from_data(str_to_var(var_to_str(pack.to_data())))
+	check(back.count("sword_iron") == 73 and back.capacity >= 73, "a big pack loads whole (%d slots)" % back.capacity)
+	var small := Inventory.new()
+	small.from_data(pack.to_data())
+	check(small.count("sword_iron") == 73, "nothing is dropped loading a big pack into a fixed one")
+	for i in range(20, back.capacity):
+		back.slots[i] = null
+	back.trim()
+	check(back.capacity == Inventory.SIZE, "an emptied pack shrinks back to %d slots (%d)" % [Inventory.SIZE, back.capacity])
+	var bag := DeathBag.make("p1", "", pack, {}, 0, 1.0)
+	var held := Inventory.new(Corpses.slots_of(bag))
+	held.from_data(bag["items"])
+	check(held.count("sword_iron") == 73, "a death bag holds a big pack")
+	check(DeathBag.title({"kind": "bag", "owner": "p1", "dropped": true}, "p1") == "Your dropped things", "a bag you dropped is named so")
+	check(Player.load_mult_for(600.0, 600.0) == 1.0, "no slowdown up to your carry capacity")
+	check(absf(Player.load_mult_for(700.0, 600.0) - 0.95) < 1e-4 and absf(Player.load_mult_for(650.0, 600.0) - 0.975) < 1e-4, "5% slower per 100 kg over, smoothly")
+	check(absf(Player.load_mult_for(5000.0, 600.0) - Player.LOAD_FLOOR) < 1e-4, "never slower than the floor")
+
 func test_death_bag() -> void:
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("bread", 4, 1.0, {}))
@@ -5084,10 +5117,31 @@ func test_boat_models() -> void:
 	for k in Boats.KINDS:
 		var body := StaticBody3D.new()
 		var m := BoatModel.build(k, 3, body)
-		var mi: MeshInstance3D = m.find_children("*", "MeshInstance3D", false, false)[0]
+		var mi: MeshInstance3D = m.get_node("Hull")
 		check(mi.mesh != null and mi.mesh.get_surface_count() > 0, "%s has a model" % k)
 		check(body.get_child_count() > 0, "%s has collision" % k)
 		check(not BoatModel.stations(k).is_empty() and BoatModel.stations(k).size() >= int(Boats.KINDS[k]["crew"][1]), "%s has a station per crew member" % k)
+		m.free()
+		body.free()
+	# Sails: set and filled with the wind astern, braced round for a beam wind, taken in
+	# at anchor; the lugsail swings out to leeward and its belly follows.
+	for k in ["raft", "fishing_boat", "cog"]:
+		var body := StaticBody3D.new()
+		var m := BoatModel.build(k, 3, body)
+		var rig: BoatRig = m.get_node_or_null("Rig")
+		check(rig != null and rig.sails.size() == 1, "%s has a live sail" % k)
+		rig.trim(Vector2(0, 1), 0.5, true, 0.0) # wind from dead astern
+		var s: Dictionary = rig.sails[0]
+		check((s["cloth"] as Node3D).visible and not (s["bundle"] as Node3D).visible and float(s["fill"]) > 0.9, "%s: sail set and full running before the wind" % k)
+		rig.trim(Vector2(1, 0), 0.5, true, 0.0) # from starboard, on the beam
+		if s["type"] == BoatRig.SQUARE:
+			check(float(s["swing"]) < -0.3, "%s: yard braced round, windward arm aft" % k)
+		else:
+			check(float(s["swing"]) < -0.3 and (s["cloth"] as Node3D).scale.x < 0.0, "%s: lugsail out to port, bellied to port" % k)
+		rig.trim(Vector2(0, -1), 0.5, true, 0.0) # head to wind
+		check(float(s["fill"]) < 0.1, "%s: sail spills the wind head to wind" % k)
+		rig.trim(Vector2(0, 1), 0.5, false, 0.0)
+		check(not (s["cloth"] as Node3D).visible and (s["bundle"] as Node3D).visible, "%s: sail taken in at anchor" % k)
 		m.free()
 		body.free()
 	# Pirates: a spawned site makes a hostile crew.
@@ -6212,6 +6266,22 @@ func test_kit_surfaces_worn() -> void:
 	glow.emission_enabled = true
 	glow.cull_mode = BaseMaterial3D.CULL_DISABLED
 	check(BuildCatalog.worn(glow, "village/X") == glow, "nothing glowing is touched")
+	# Castles, town walls and towers weather with the houses round them; crypts don't.
+	var cw := Materials.worn("castle_stone")
+	check(cw is ShaderMaterial and (cw as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"), "castle stone weathers")
+	check(Materials.worn("castle_stone") == cw, "worn castle stone is shared")
+	check(Materials.worn("crypt_stone") == Materials.get_mat("crypt_stone"), "crypt stone doesn't weather")
+	check(Materials.worn("glass") == Materials.get_mat("glass"), "glass doesn't weather")
+	var shader_of := func(mesh: ArrayMesh) -> int:
+		var n := 0
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial and (sm as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"):
+				n += 1
+		return n
+	check(shader_of.call(Stronghold.build("castle_wall")) > 0, "a town wall's stone weathers")
+	check(shader_of.call(Stronghold.build("castle_tower")) > 0, "a tower's stone weathers")
+	check(shader_of.call(Stronghold.build("crypt_wall")) == 0, "a crypt's walls don't")
 
 func test_climate_belts() -> void:
 	var c := Climate.new(4242)
