@@ -1440,6 +1440,30 @@ func _round_the_cliff(world, streamer: ChunkStreamer, player) -> void:
 	check(end.distance_to(to) < 1.0, "they get there (%.1f m off)" % end.distance_to(to))
 	check(top < h0 + 0.5 and worst <= WalkGrid.PERSON, "without climbing it (highest %.1f m up, steepest %.2f)" % [top - h0, worst])
 	check(round_end, "going round its end")
+	# A market stall across the way past the cliff's end: round it, never through it.
+	var stall := o + Vector2(32.0, 54.0)
+	npcs.walk.set_solids("test_stall", [PackedFloat32Array([stall.x, stall.y, cos(0.3), sin(0.3), 1.3, 0.6])])
+	var from2 := o + Vector2(20.0, 54.0)
+	var to2 := o + Vector2(44.0, 54.5)
+	n.global_position = Vector3(from2.x, h0, from2.y)
+	n.target = to2
+	n._route = PackedVector2Array()
+	n._route_goal = Vector2.INF
+	n._route_wait = 0.0
+	check(not npcs.walk.clear(from2, to2, WalkGrid.PERSON), "the straight way is through a stall")
+	var into := 0.0
+	for f in 200:
+		for s in 4:
+			n.step(0.05, npcs._ground, far, [])
+		var at2 := Vector2(n.global_position.x, n.global_position.z)
+		if npcs.walk.solid_at(at2, WalkGrid.BODY - 0.05):
+			into = maxf(into, 0.05)
+		if at2.distance_to(to2) < 1.0:
+			break
+		await process_frame
+	var end2 := Vector2(n.global_position.x, n.global_position.z)
+	check(end2.distance_to(to2) < 1.0 and into == 0.0, "they walk round the stall (%.1f m off, %s)" % [end2.distance_to(to2), "never in it" if into == 0.0 else "went into it"])
+	npcs.walk.set_solids("test_stall", [])
 	npcs._by_id.erase(n.rec["id"])
 	n.queue_free()
 	npcs._unload("b9_9_1")

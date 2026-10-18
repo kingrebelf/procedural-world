@@ -168,6 +168,7 @@ func _load(site: Dictionary, id: String) -> void:
 	e["decor"] = decor
 	var life := TownLife.new()
 	life.setup(gen, streamer, site)
+	life.walk = walk
 	add_child(life)
 	e["life"] = life
 	# Where the town's work is done, and the anvils and crates people work at.

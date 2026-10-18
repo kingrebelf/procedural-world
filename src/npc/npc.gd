@@ -342,6 +342,10 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	elif rec.has("room"):
 		# Shopkeepers go in and out by the door.
 		goal = TownShops.route(rec["room"], p2, goal)
+	var walk: WalkGrid = manager.get("walk") if manager else null
+	if walk and goal != Vector2.INF and not target_player:
+		# Somewhere they can stand: by a stall or a cart, not in it.
+		goal = walk.push_out(goal)
 	var moving := false
 	_update_perform(delta)
 	# Doing something on the spot holds them there, unless they must run.
@@ -366,6 +370,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2) * _pace
 		_speed = move_toward(_speed, want, delta * 4.0)
 		p2 += dir * _speed * delta
+		if walk:
+			# Along a stall's or a cart's side, never through it.
+			p2 = walk.push_out(p2)
 		var yaw := atan2(dir.x, dir.y)
 		rotation.y = lerp_angle(rotation.y, yaw, clampf(delta * 6.0, 0.0, 1.0))
 		moving = true
@@ -415,7 +422,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_animate(delta, moving, run, player_pos)
 
 ## Where to head for next on the way to `goal`: straight there when nothing on the way is
-## too steep, else along a route round it (planned again when the goal moves on or the
+## too steep or stands across it, round the corners of a stall or a cart in the way, else
+## along a route round it (planned again when the goal moves on or the
 ## route runs out). Where they are now when they must wait (for a route, or at the end of
 ## one that can't get any nearer).
 func _aim(p2: Vector2, goal: Vector2) -> Vector2:
@@ -426,8 +434,14 @@ func _aim(p2: Vector2, goal: Vector2) -> Vector2:
 	var done := _route_i >= _route.size()
 	if (moved or done) and _route_wait <= 0.0:
 		_route_wait = 0.4
+		var way := PackedVector2Array()
 		if walk.clear(p2, goal, WalkGrid.PERSON):
-			_set_route(PackedVector2Array([goal]), goal, true)
+			way.append(goal)
+		elif walk.clear_ground(p2, goal, WalkGrid.PERSON):
+			# Only a stall or a cart in the way: round its corners.
+			way = walk.detour(p2, goal, WalkGrid.PERSON)
+		if not way.is_empty():
+			_set_route(way, goal, true)
 		else:
 			var r := walk.route(p2, goal, WalkGrid.PERSON)
 			if not r.is_empty() and not r["reached"]:
