@@ -106,6 +106,27 @@ static func gen() -> ChunkGenerator:
 		_gen_seed = Game.seed
 	return _gen
 
+static var _site_names: Dictionary = {}
+
+## The name a sci-fi room of type `t` at world point `wp` shows in its screens' headers:
+## its stronghold's, settlement's or region's, as the terminal inside names its site.
+static func site_name(t: String, wp: Vector3) -> String:
+	var key := Vector3i(wp.snapped(Vector3.ONE))
+	if _site_names.has(key):
+		return _site_names[key]
+	var g := gen()
+	var name := g.field.region_name_at(wp.x, wp.z)
+	if Stronghold.has(t):
+		name = "%s of %s" % [Stronghold.NAMES[Eras.SCIFI], name]
+	else:
+		for s in g.settlements_near(wp.x - 1, wp.z - 1, wp.x + 1, wp.z + 1):
+			var sc: Vector2 = s["center"]
+			if sc.distance_to(Vector2(wp.x, wp.z)) <= float(s["outer"]):
+				name = g.field.region_name_at(sc.x, sc.y)
+				break
+	_site_names[key] = name
+	return name
+
 ## Everything the texts can name, as strings for String.format.
 static func context(o: Dictionary, chunk: ChunkNode, idx: int, npcs: NPCManager) -> Dictionary:
 	var g := gen()
