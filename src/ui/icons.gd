@@ -198,9 +198,9 @@ const MORE_SHEETS := [
 	["res://assets/icons/items26.png", [
 		"charge_sensor", "door_motor", "electric_motor", "multimeter", "alarm_bell", "gen_woodgas",
 		"gen_diesel", "windmill", "solar_array", "steam_engine", "water_wheel", "battery_bank",
-		"battery_cell", "power_pole", "junction_box", "signal_wire", "insulator", "",
-		"", "", "", "", "", "",
-		"", "", "", "", "", "",
+		"battery_cell", "power_pole", "junction_box", "signal_wire", "insulator", "conveyor_belt",
+		"hopper", "robot_arm", "auto_miner", "quarry_drill", "electric_furnace", "power_sawmill",
+		"assembler", "auto_turret", "heavy_turret", "fence_post", "spike_trap", "",
 	]],
 ]
 ## type -> [sheet path, its order], built on first use.
