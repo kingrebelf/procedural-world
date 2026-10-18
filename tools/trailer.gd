@@ -452,7 +452,7 @@ func _take_rain_low() -> void:
 			_rain.start(puddle, 2.4, 1.9, 70.0)
 			await _wait(1),
 		"tick": func(i: int, _t: float) -> void:
-			if i == int(_frames * 0.62):
+			if i == int(_frames * 0.85):
 				_strike(),
 		"note": "puddle at %s" % puddle})
 
