@@ -19,6 +19,7 @@ import os
 import shlex
 import sys
 
+SHARE_PART = 25.0 ## seconds in each part of the 1080p copy (each under about 11 MB)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -122,6 +123,13 @@ def main():
     if "--cmd" in a:
         with open(a[a.index("--cmd") + 1], "w", newline="\r\n") as f:
             f.write("@echo off\n" + " ".join('"%s"' % x if (" " in x or "'" in x) else x for x in args) + "\n")
+            if "--station" in a:
+                # A 1080p copy for the project thread, in parts small enough to upload there.
+                parts = int(total // SHARE_PART) + 1
+                for i in range(parts):
+                    f.write("ffmpeg -y -hide_banner -ss %.3f -t %.3f -i %s -vf scale=1920:1080:flags=lanczos,format=yuv420p "
+                            "-c:v h264_nvenc -preset p7 -tune hq -multipass fullres -rc vbr -b:v 2900k -maxrate 6M -bufsize 12M "
+                            "-c:a aac -b:a 128k -movflags +faststart trailer_1080p_part%d.mp4\n" % (i * SHARE_PART, SHARE_PART, out, i + 1))
     if run:
         os.execvp("ffmpeg", args)
     print(" ".join(shlex.quote(x) for x in args))
