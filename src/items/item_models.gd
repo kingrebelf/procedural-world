@@ -148,12 +148,14 @@ static func _build(t: String) -> ArrayMesh:
 			am.set_meta("grip_r", 0.03)
 		if slot == "head":
 			# A helm is carried the way a hand holds one: fingers inside the back of the
-			# rim, the back toward you, the crown tipped a little your way, so the skull shows and not
-			# the lining. ("held_pose" lets tools/icon_match turn it back to face front like its icon.)
-			var tilt := Transform3D(Basis(Vector3.RIGHT, 0.3) * Basis(Vector3.UP, PI), Vector3.ZERO)
+			# rim, the crown tipped a little your way, the face turned half toward you so
+			# its eyes and front show (from straight behind, a great helm is a plain slab and
+			# a mask an empty bowl). ("held_pose" lets tools/icon_match turn it back to face
+			# front like its icon.)
+			var tilt := Transform3D(Basis(Vector3.RIGHT, 0.3) * Basis(Vector3.UP, -PI * 0.25), Vector3.ZERO)
 			var box := am.get_aabb()
 			am = _transformed(am, tilt)
-			am.set_meta("grip", tilt * Vector3(0, box.position.y + 0.05, box.position.z + 0.012))
+			am.set_meta("grip", tilt * Vector3(0, box.position.y + 0.03, box.end.z - 0.015))
 			am.set_meta("grip_r", 0.008)
 			am.set_meta("held_pose", tilt)
 		return am
