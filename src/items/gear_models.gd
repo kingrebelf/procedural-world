@@ -11,7 +11,7 @@ class_name GearModels
 
 ## Items with an icon and no model yet (the hand holds the icon on a card).
 const OWED := {"light_bulb": true, "electric_motor": true, "multimeter": true, "treasure_chip": true,
-	"battery_cell": true, "signal_wire": true, "insulator": true}
+	"battery_cell": true, "signal_wire": true, "insulator": true, "cannon": true}
 
 ## Every item that has an icon on a sheet.
 static func icon_items() -> Array:

@@ -1813,7 +1813,9 @@ func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 		# A fire bottle, a fire pot, a flamethrower's tongue, a burning arrow: what it hits
 		# goes up first, then what is round it.
 		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
-			fires.ignite(col.get_meta("chunk"), int(col.get_meta("obj")), inc, true, false, float(d.get("oil", 0.0)))
+			# Hot shot lodges in what it strikes, red-hot iron in the timber: that always
+			# catches if it can burn at all.
+			fires.ignite(col.get_meta("chunk"), int(col.get_meta("obj")), inc, true, bool(d.get("lodges", false)), float(d.get("oil", 0.0)))
 		fires.ignite_at(at, float(d.get("splash", 0.7)), inc, true, float(d.get("oil", 0.0)))
 	if d.has("splash"):
 		var powder: bool = not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm"

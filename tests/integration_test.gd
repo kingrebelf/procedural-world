@@ -1771,6 +1771,8 @@ func _cannon_check(game, world, player) -> void:
 	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
 	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
 	await _frames(3)
+	# Fires left from the checks before can't fill the burning list (MAX_BURNING).
+	fs.douse_all()
 	var mz := Cannon.muzzle(cv)
 	var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
 	player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
@@ -1778,12 +1780,13 @@ func _cannon_check(game, world, player) -> void:
 	Cannon.use(player, cv)
 	check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
 	var lit := false
-	for i in 90:
+	# The ball flies on physics time: wait for it to strike (capped).
+	for i in 240:
 		await physics_frame
 		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
 			lit = true
 			break
-	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s)" % [wall["st"].keys()])
+	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s, %d burning)" % [wall["st"].keys(), fs.burning_count()])
 	player.dismount()
 	fs.douse_all()
 	node.remove_object(wall["i"])
