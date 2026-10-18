@@ -71,7 +71,7 @@ const SHAPES := {
 	"titanium_ore": ["gem", [["im:stone", Color(0.12, 0.12, 0.13), 0.3], ["im:metal@0.22", Color(0.62, 0.66, 0.72), 0.7]], [["plate", "im:metal@0.2", Color(0.7, 0.74, 0.8), 8, 0.024]], 0.7, 2.5],
 	"uranium_ore": ["gem", [["im:gem", Color(0.06, 0.1, 0.06), 0.45], ["im:gem", Color(0.14, 0.3, 0.1), 0.35], ["im:gem", Color(0.42, 0.75, 0.12), 0.2]], [], 0.6, 4.0],
 	"lithium_ore": ["gem", [["im:gem", Color(0.62, 0.58, 0.66), 0.5], ["im:gem", Color(0.5, 0.38, 0.62), 0.3], ["im:stone", Color(0.3, 0.28, 0.3), 0.2]], [["crystal", "im:gem", Color(0.66, 0.6, 0.74), 18, 0.05]], 0.5, 3.0],
-	"cobalt_ore": ["gem", [["im:stone", Color(0.1, 0.1, 0.13), 0.3], ["im:gem", Color(0.05, 0.13, 0.42), 0.45], ["im:gem", Color(0.15, 0.3, 0.72), 0.25]], [["bulb", "im:gem", Color(0.06, 0.15, 0.48), 9, 0.016]], 0.5, 3.0],
+	"cobalt_ore": ["gem", [["im:stone", Color(0.1, 0.1, 0.13), 0.3], ["im:gem", Color(0.05, 0.13, 0.42), 0.45], ["im:gem", Color(0.15, 0.3, 0.72), 0.25]], [["cube", "im:gem", Color(0.08, 0.2, 0.6), 14, 0.022]], 0.5, 3.0],
 	"rare_earth": ["gem", [["im:metal@0.3", Color(0.36, 0.24, 0.55), 0.3], ["im:metal@0.3", Color(0.62, 0.5, 0.25), 0.25], ["im:metal@0.3", Color(0.2, 0.34, 0.6), 0.25], ["im:stone", Color(0.08, 0.07, 0.09), 0.2]], [], 0.65, 6.0],
 	"voidstone_ore": ["gem", [["im:stone", Color(0.12, 0.1, 0.14), 0.7], ["im:gem", Color(0.24, 0.08, 0.42), 0.3]], [["crystal", "im:gem", Color(0.15, 0.05, 0.3), 9, 0.07], ["crystal", "im:crystal_glow:7a3ce8", Color(0.3, 0.1, 0.6, 0.95), 4, 0.05]], 0.6, 3.0],
 	"starsteel_ore": ["gem", [["im:stone", Color(0.1, 0.1, 0.13), 0.2], ["im:metal@0.25", Color(0.2, 0.36, 0.75), 0.45], ["im:metal@0.2", Color(0.6, 0.7, 0.9), 0.35]], [["spark", "im:crystal_glow:9cc8ff", Color(0.8, 0.9, 1.0, 0.95), 14, 0.0025]], 0.6, 5.0],
@@ -759,6 +759,11 @@ static func _gem_ore(k: MeshKit, r: RandomNumberGenerator, s: Array) -> void:
 					var br := ps * r.randf_range(0.6, 1.3)
 					# Botryoidal: rounded bubbles, but made of crystal faces.
 					k.sphere(pm, xf * Transform3D(ob * Basis(Vector3.UP, r.randf() * TAU), at * 0.88), br, 4, 6, 0.2, 0.8, col)
+				"cube":
+					# Blocky crystals (cobalt's are little cubes and octahedra) set at all angles.
+					var cw := ps * r.randf_range(0.6, 1.3)
+					var tilt := Basis(Vector3(r.randf(), r.randf(), r.randf()).normalized(), r.randf() * TAU)
+					_block(k, pm, xf * Transform3D(ob * tilt, at * 0.92), Vector3.ONE * cw, cw * 0.06, col)
 				"spark":
 					k.sphere(pm, xf * Transform3D(ob, at * 1.01), ps * r.randf_range(0.5, 1.2), 3, 5, 0.0, 1.0, col)
 
@@ -1396,7 +1401,7 @@ static func _pelt(k: MeshKit, r: RandomNumberGenerator, hair: Color, edge: Color
 	# Angles run clockwise so the hair side faces the eye (+Z).
 	var f := func(u: float, v: float) -> Vector3:
 		var a := -u * TAU
-		var rr: float = outline.call(a) * lerpf(0.03, 1.0, v)
+		var rr: float = outline.call(a) * v
 		var x := cos(a) * rr * 1.25
 		var y := sin(a) * rr
 		return Vector3(x, y, drape.call(x, y))
@@ -2168,7 +2173,7 @@ static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -
 	var glove := "leather" if not soft and style != Outfit.STYLE_EXO else m
 	var gc := Color.WHITE if glove == "leather" else c
 	# Palm and back of the hand: a flattened, slightly cupped body.
-	k.sphere(glove, Transform3D(Basis.from_scale(Vector3(1.05, 1.2, 0.38)), Vector3(0, 0.075, 0.0)), 0.04, 8, 14, 0.04, 1.0, gc)
+	k.sphere(glove, Transform3D(Basis.from_scale(Vector3(1.15, 1.25, 0.45)), Vector3(0, 0.075, 0.0)), 0.04, 8, 14, 0.04, 1.0, gc)
 	# The cuff.
 	if soft:
 		k.cylinder(m, Transform3D(Basis.IDENTITY, Vector3(0, -0.04, 0)), 0.042, 0.036, 0.085, 16, false, 0.05, 3, c)
@@ -2187,9 +2192,10 @@ static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -
 		for p: Vector3 in [Vector3(-0.035, 0.05, 0.029), Vector3(0.035, 0.05, 0.029), Vector3(-0.035, 0.108, 0.029), Vector3(0.035, 0.108, 0.029)]:
 			k.sphere(m, Transform3D(Basis.IDENTITY, p), 0.003, 4, 6, 0.0, 1.0, c.lightened(0.1))
 	for i in 4:
-		var x := -0.03 + i * 0.02
-		var l: float = [0.07, 0.078, 0.074, 0.058][i]
-		var base := Vector3(x, 0.118, 0.0)
+		# Fingers sit close and fat as a glove's do, rooted inside the palm.
+		var x := -0.0315 + i * 0.021
+		var l: float = [0.072, 0.08, 0.076, 0.06][i]
+		var base := Vector3(x, 0.106, 0.0)
 		var path := PackedVector3Array()
 		var radii := PackedFloat32Array()
 		# Three joints, each bent a little more towards the palm (-z).
@@ -2197,7 +2203,7 @@ static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -
 		var p := base
 		for j in 4:
 			path.append(p)
-			radii.append(0.0088 - j * 0.0008)
+			radii.append(0.0112 - j * 0.0008)
 			dir = dir.rotated(Vector3.RIGHT, -0.35)
 			p += dir * l / 3.0
 		_tube(k, glove, Transform3D.IDENTITY, path, radii, 8, gc)
@@ -2213,7 +2219,7 @@ static func _gauntlet(k: MeshKit, m: String, c: Color, style: int, soft: bool) -
 					return Vector3(sin(ang) * 0.0098, (v - 0.5) * l / 3.0 * 0.85, cos(ang) * 0.0098)
 				_sheet(k, m, Transform3D(bb, mid), f, 5, 1, 0.0015, c.darkened(0.08), c.darkened(0.4))
 	var thumb := PackedVector3Array([Vector3(0.04, 0.06, 0.008), Vector3(0.058, 0.09, 0.018), Vector3(0.062, 0.115, 0.03), Vector3(0.058, 0.135, 0.04)])
-	_tube(k, glove, Transform3D.IDENTITY, thumb, PackedFloat32Array([0.011, 0.01, 0.009, 0.008]), 8, gc)
+	_tube(k, glove, Transform3D.IDENTITY, thumb, PackedFloat32Array([0.0135, 0.0125, 0.0115, 0.0105]), 8, gc)
 
 static func _greave(k: MeshKit, m: String, c: Color, style: int, soft: bool) -> void:
 	# A leg piece: plate greaves are a shaped shell from ankle to knee with a domed knee

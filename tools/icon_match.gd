@@ -14,6 +14,7 @@ func _initialize() -> void:
 var _cam: Camera3D
 var _holder: Node3D
 var _vp: SubViewport
+var _backdrop: MeshInstance3D
 
 func _sheets() -> Array:
 	var out: Array = [[Icons.SHEET_PATH, Icons.SHEET_ORDER], [Icons.SHEET2_PATH, Icons.SHEET2_ORDER]]
@@ -194,6 +195,18 @@ func _stage() -> void:
 	_cam.fov = 26.0
 	_vp.add_child(_cam)
 	_cam.make_current()
+	# A light backdrop behind the item, so glass and liquids show their colour against
+	# something (they show what's behind them), drawn only for the colour pass.
+	_backdrop = MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(1, 1)
+	_backdrop.mesh = q
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.albedo_color = Color(0.5, 0.5, 0.5)
+	_backdrop.material_override = bm
+	_backdrop.visible = false
+	_cam.add_child(_backdrop)
 	_holder = Node3D.new()
 	_vp.add_child(_holder)
 
@@ -226,6 +239,33 @@ func _shoot(mesh: Mesh, kind: String) -> Image:
 		var pose: Transform3D = mesh.get_meta("held_pose", Transform3D.IDENTITY)
 		pivot.basis = pose.basis.inverse()
 		_frame(pivot, Vector3(0.45, 0.55, 1.0))
+	# Two passes: the item alone gives the outline (alpha), the item over the backdrop
+	# gives the colour, so what glass shows through is the backdrop, not black.
+	var mask := await _grab()
+	if not _shows_through(mesh):
+		return mask
+	var dist := _cam.position.distance_to(pivot.position)
+	_backdrop.position = Vector3(0, 0, -dist * 2.5)
+	_backdrop.scale = Vector3.ONE * dist * 8.0
+	_backdrop.visible = true
+	var img := await _grab()
+	_backdrop.visible = false
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			c.a = mask.get_pixel(x, y).a
+			img.set_pixel(x, y, c)
+	return img
+
+## Whether the mesh has a liquid (which shows what is behind it, see Provisions).
+static func _shows_through(mesh: Mesh) -> bool:
+	for i in mesh.get_surface_count():
+		var m := mesh.surface_get_material(i)
+		if m is ShaderMaterial and (m as ShaderMaterial).shader == Provisions._liquid_shader:
+			return true
+	return false
+
+func _grab() -> Image:
 	for i in 4:
 		await process_frame
 	await RenderingServer.frame_post_draw

@@ -63,20 +63,24 @@ static func _line(k: MeshKit, m: String, pts: PackedVector3Array, rad: float, co
 ## by a reinforcing cross, breaths pierced low on the right, rivets round the crown. The
 ## steel one is trimmed in gilt with crosses on the cheeks.
 static func _great_helm(k: MeshKit, r: RandomNumberGenerator, t: String, m: String, c: Color, style: int) -> void:
-	var R := 0.112
-	var y0 := -0.11
-	var H := 0.27
+	var R := 0.106
+	var y0 := -0.12
+	var H := 0.3
+	# Plate steel reads mid grey in the icons, darker than the worn look's tint.
+	c = c.darkened(0.3)
 	var shell := func(u: float, v: float) -> Vector3:
 		var a := u * TAU
 		# Flattened a little at the face, swelling slightly over the brow.
-		var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) * (1.0 + 0.03 * sin(v * PI))
+		# The crown rolls in to the top plate, so the top edge is a rounded shoulder.
+		var sh := 1.0 - 0.12 * pow(maxf(v - 0.82, 0.0) / 0.18, 2.0)
+		var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) * (1.0 + 0.03 * sin(v * PI)) * sh
 		return Vector3(sin(a) * rr, y0 + v * H, cos(a) * rr * 1.08)
 	ItemModels._sheet(k, m, Transform3D.IDENTITY, shell, 32, 8, 0.004, c, Color(0.1, 0.09, 0.08), "im:linen")
 	# The crown: a low dome riveted on.
 	var top := y0 + H
 	var dome := func(u: float, v: float) -> Vector3:
 		var a := u * TAU
-		var rr := R * 1.03 * (1.0 - v * v)
+		var rr := R * 0.88 * (1.0 - v * v)
 		return Vector3(sin(a) * rr, top + v * 0.03, cos(a) * rr * 1.08)
 	ItemModels._sheet(k, m, Transform3D.IDENTITY, dome, 32, 4, 0.004, c.lightened(0.04), c.darkened(0.4))
 	for i in 18:
@@ -87,28 +91,28 @@ static func _great_helm(k: MeshKit, r: RandomNumberGenerator, t: String, m: Stri
 	# Eye slits: dark recesses either side of the upright of the cross.
 	var ey := 0.075
 	for side: float in [-1.0, 1.0]:
-		var slit := func(u: float, v: float) -> Vector3:
-			var a := side * lerpf(0.09, 0.62, u)
-			var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) + 0.0015
-			return Vector3(sin(a) * rr, ey + (v - 0.5) * 0.016, cos(a) * rr * 1.08)
-		ItemModels._sheet(k, "im:linen", Transform3D.IDENTITY, slit, 6, 1, 0.002, DARK, DARK)
+		for i in 5:
+			var a := side * lerpf(0.13, 0.6, i / 4.0)
+			var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) * 1.03 + 0.009
+			ItemModels._block(k, "im:linen", Transform3D(Basis(Vector3.UP, a), Vector3(sin(a) * rr, ey, cos(a) * rr * 1.08)), Vector3(0.022, 0.016, 0.004), 0.0, DARK)
+	# (Everything laid on the shell stands proud of its outer face, R + its thickness.)
 	# The cross: an upright strap from the crown to the chin, and a bar along the slits.
 	var up := func(u: float, v: float) -> Vector3:
 		var a := (u - 0.5) * 0.16
-		var rr := R * 0.94 + 0.004
-		return Vector3(sin(a) * rr, y0 + 0.01 + v * (H - 0.005), cos(a) * rr * 1.08 + 0.002)
+		var rr := R * 1.03 + 0.008
+		return Vector3(sin(a) * rr, y0 + 0.01 + v * (H - 0.03), cos(a) * rr * 1.08 + 0.002)
 	ItemModels._sheet(k, trim_m, Transform3D.IDENTITY, up, 2, 8, 0.004, trim, trim.darkened(0.4))
 	for row: float in [ey + 0.016, ey - 0.016]:
 		var bar := func(u: float, v: float) -> Vector3:
 			var a := lerpf(-0.75, 0.75, u)
-			var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) + 0.003
+			var rr := R * (1.0 - 0.06 * pow(maxf(cos(a), 0.0), 3.0)) * 1.03 + 0.011
 			return Vector3(sin(a) * rr, row + (v - 0.5) * 0.012, cos(a) * rr * 1.08)
 		ItemModels._sheet(k, trim_m, Transform3D.IDENTITY, bar, 10, 1, 0.003, trim, trim.darkened(0.4))
 	if t == "helm_steel":
 		# Gilt edging round the face plate and a dark cross on each cheek.
 		for side: float in [-1.0, 1.0]:
 			var a := side * 0.55
-			var p := Vector3(sin(a) * (R + 0.002), -0.01, cos(a) * (R + 0.002) * 1.08)
+			var p := Vector3(sin(a) * (R + 0.006), -0.01, cos(a) * (R + 0.006) * 1.08)
 			var bs := Basis(Vector3.UP, a)
 			ItemModels._block(k, "im:paint", Transform3D(bs, p), Vector3(0.008, 0.04, 0.002), 0.0, DARK)
 			ItemModels._block(k, "im:paint", Transform3D(bs, p + Vector3(0, 0.006, 0)), Vector3(0.03, 0.008, 0.002), 0.0, DARK)
@@ -118,7 +122,7 @@ static func _great_helm(k: MeshKit, r: RandomNumberGenerator, t: String, m: Stri
 		for i in 9:
 			var a := 0.45 + (i % 3) * 0.12
 			var y := 0.0 - (i / 3) * 0.022
-			var p := Vector3(sin(a) * (R + 0.0008), y, cos(a) * (R + 0.0008) * 1.08)
+			var p := Vector3(sin(a) * (R * 1.03 + 0.0075), y, cos(a) * (R * 1.03 + 0.0075) * 1.08)
 			ItemModels._disc(k, "im:linen", Transform3D.IDENTITY, p, Vector3(sin(a), 0, cos(a)), 0.004, 8, DARK)
 
 ## A bronze helm with a nasal and hinged cheek guards hanging either side of the face,
@@ -317,14 +321,19 @@ static func _gas_mask(k: MeshKit, r: RandomNumberGenerator, t: String, m: String
 		var p := Vector3(side * 0.04, 0.05, 0.093)
 		var n := Vector3(side * 0.35, 0.05, 1.0).normalized()
 		var bs := Basis(Vector3.UP.cross(n).normalized(), n.cross(Vector3.UP.cross(n).normalized()), n) if absf(n.y) < 0.99 else Basis.IDENTITY
-		k.cylinder("im:metal@0.35", Transform3D(bs * Basis(Vector3.RIGHT, PI * 0.5), p), 0.026, 0.026, 0.014, 18, true, 0.0, 1, BRASS)
-		ItemModels._disc(k, "im:glass", Transform3D.IDENTITY, p + n * 0.0075, n, 0.02, 18, Color(0.55, 0.62, 0.6, 0.55))
+		k.cylinder("im:metal@0.35", Transform3D(bs * Basis(Vector3.RIGHT, PI * 0.5), p - n * 0.007), 0.026, 0.026, 0.014, 18, true, 0.0, 1, BRASS.darkened(0.25))
+		# Dark glass eyes in a raised brass ring, as the icon paints them.
+		ItemModels._disc(k, "im:visor", Transform3D.IDENTITY, p + n * 0.0075, n, 0.021, 18, Color(0.06, 0.07, 0.08))
+		ItemModels._torus(k, "im:metal@0.3", Transform3D(bs * Basis(Vector3.RIGHT, PI * 0.5), p + n * 0.0075), 0.022, 0.003, 20, 5, BRASS)
 	# The filter: a ribbed canister on the snout, pointing down and forward.
 	var fx := Transform3D(Basis(Vector3.RIGHT, PI * 0.5 + 0.6), Vector3(0, -0.04, 0.11))
-	k.cylinder("im:metal@0.4", fx, 0.034, 0.034, 0.05, 20, true, 0.0, 1, Color(0.36, 0.33, 0.3))
+	# A brass canister, its face a dark grille of rings.
+	k.cylinder("im:metal@0.4", fx * Transform3D(Basis.IDENTITY, Vector3(0, -0.025, 0)), 0.036, 0.036, 0.05, 20, true, 0.0, 1, BRASS.darkened(0.2))
 	for i in 4:
-		ItemModels._torus(k, "im:metal@0.4", fx * Transform3D(Basis.IDENTITY, Vector3(0, -0.02 + i * 0.013, 0)), 0.0345, 0.0025, 20, 4, Color(0.28, 0.25, 0.22))
-	ItemModels._disc(k, "im:metal@0.6", fx, Vector3(0, -0.026, 0), Vector3.DOWN, 0.03, 18, Color(0.1, 0.1, 0.1))
+		ItemModels._torus(k, "im:metal@0.4", fx * Transform3D(Basis.IDENTITY, Vector3(0, -0.02 + i * 0.013, 0)), 0.0365, 0.0025, 20, 4, BRASS.darkened(0.35))
+	ItemModels._disc(k, "im:metal@0.6", fx, Vector3(0, 0.0255, 0), Vector3.UP, 0.032, 18, Color(0.08, 0.07, 0.06))
+	for rr: float in [0.01, 0.019, 0.028]:
+		ItemModels._torus(k, "im:metal@0.35", fx * Transform3D(Basis.IDENTITY, Vector3(0, 0.026, 0)), rr, 0.0018, 18, 4, BRASS)
 	for y: float in [0.06, -0.02]:
 		_line(k, "im:rubber", _ring_pts(0.088, y, 16, PI * 0.5, PI * 1.5, 1.1), 0.006, rub.darkened(0.2))
 
@@ -565,13 +574,20 @@ static func _bandana(k: MeshKit, r: RandomNumberGenerator, t: String, m: String,
 static func _pocket_watch(k: MeshKit, r: RandomNumberGenerator, t: String, m: String, c: Color, style: int) -> void:
 	# A gold hunter watch: engraved case, crown and bow at the top, a fob chain falling away.
 	var gold := Color(0.86, 0.64, 0.32)
-	var face := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3.ZERO)
-	k.cylinder("im:metal@0.3", face, 0.024, 0.024, 0.012, 28, true, 0.0, 1, gold)
-	ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0, 0.006)), 0.022, 0.002, 28, 5, gold.lightened(0.1))
-	# The lid's engraving: a scroll pattern of small raised arcs.
-	for i in 10:
-		var a := TAU * i / 10.0
-		ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(cos(a), sin(a), 0) * 0.012 + Vector3(0, 0, 0.0062)), 0.004, 0.0006, 10, 3, gold.darkened(0.2))
+	var face := Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0, -0.006))
+	k.cylinder("im:metal@0.3", face, 0.024, 0.024, 0.012, 28, true, 0.0, 1, gold.darkened(0.1))
+	# The lid domes up from a milled bezel.
+	k.sphere("im:metal@0.25", Transform3D(Basis.from_scale(Vector3(1, 1, 0.28)) * Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0, 0.004)), 0.0225, 8, 28, 0.0, 1.0, gold, true)
+	ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0, 0, 0.0055)), 0.0235, 0.0022, 28, 5, gold.lightened(0.1))
+	# The lid's engraving: a scroll border of raised arcs round a rosette, dark in the cuts.
+	for i in 12:
+		var a := TAU * i / 12.0
+		var p := Vector3(cos(a), sin(a), 0) * 0.016
+		ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), p + Vector3(0, 0, 0.0095)), 0.0035, 0.0007, 10, 3, gold.darkened(0.35))
+	for i in 8:
+		var a := TAU * i / 8.0
+		k.sphere("im:metal@0.3", Transform3D(Basis.from_scale(Vector3(1, 0.45, 0.4)).rotated(Vector3.BACK, a), Vector3(cos(a), sin(a), 0) * 0.006 + Vector3(0, 0, 0.0108)), 0.004, 4, 8, 0.0, 1.0, gold.darkened(0.25))
+	_dot(k, "im:metal@0.3", Vector3(0, 0, 0.0112), 0.0025, gold.lightened(0.1))
 	k.cylinder("im:metal@0.3", Transform3D.IDENTITY.translated(Vector3(0, 0.026, 0)), 0.004, 0.004, 0.006, 10, true, 0.0, 1, gold)
 	ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(0, 0.034, 0)), 0.006, 0.0013, 12, 4, gold)
 	var chain := PackedVector3Array()
@@ -623,7 +639,12 @@ static func _compass(k: MeshKit, r: RandomNumberGenerator, t: String, m: String,
 		ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(0, 0.037, 0)), 0.006, 0.0014, 12, 4, Color(0.6, 0.48, 0.3))
 	else:
 		# The lid, swung open on its hinge at the top and leaning back, its inside to the eye.
-		k.cylinder("im:metal@0.3", Transform3D(Basis(Vector3.RIGHT, PI * 0.5 - 0.4), Vector3(0, 0.05, -0.018)), 0.026, 0.026, 0.004, 28, true, 0.0, 1, case_c)
+		var lid := Basis(Vector3.RIGHT, PI * 0.5 - 0.4)
+		var lid_at := Vector3(0, 0.026, -0.004) + lid * Vector3(0, 0, -0.026)
+		k.cylinder("im:metal@0.3", Transform3D(lid, lid_at), 0.026, 0.026, 0.004, 28, true, 0.0, 1, case_c)
+		# Its inside, a shade darker, and the hinge knuckle joining it to the case.
+		ItemModels._torus(k, "im:metal@0.3", Transform3D(lid, lid_at + lid * Vector3(0, 0.0042, 0)), 0.022, 0.0015, 28, 4, case_c.darkened(0.2))
+		k.cylinder("im:metal@0.3", Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(0.007, 0.0265, -0.004)), 0.0028, 0.0028, 0.014, 10, true, 0.0, 1, case_c.darkened(0.1))
 		ItemModels._torus(k, "im:metal@0.3", Transform3D(Basis(Vector3.BACK, PI * 0.5), Vector3(0, -0.03, 0)), 0.005, 0.0013, 10, 4, case_c)
 
 static func _star_badge(k: MeshKit, r: RandomNumberGenerator, t: String, m: String, c: Color, style: int) -> void:
