@@ -1,20 +1,44 @@
 class_name Inventory
 extends RefCounted
 ## Slot-based inventory. Slots 0..HOTBAR-1 are the hotbar. Every item is a Dictionary
-## (see ItemDB.make) and carries its provenance forever.
+## (see ItemDB.make) and carries its provenance forever. The player's pack `grows`: it
+## starts at SIZE slots and adds a row of ROW whenever it is full, so only weight limits
+## what you carry. Chests, corpses and bags keep a fixed slot count.
 
 signal changed
 
 const HOTBAR := 10
 const SIZE := 50
+const ROW := 10 ## a growing pack adds slots a row at a time
 
 var slots: Array = []
 var next_uid := 1
-var capacity := SIZE ## slot count: your pack has SIZE, a storage chest its own
+var capacity := SIZE ## slot count: your pack starts with SIZE, a storage chest has its own
+var grows := false ## true for the player's pack: never full, see room()
 
-func _init(n: int = SIZE) -> void:
+func _init(n: int = SIZE, grow := false) -> void:
 	capacity = n
+	grows = grow
 	slots.resize(n)
+
+## Adds empty slots, whole rows at a time, until at least `n` more exist.
+func _grow(n: int) -> void:
+	capacity += int(ceil(float(n) / ROW)) * ROW
+	slots.resize(capacity)
+
+## Sizes a growing pack to its contents: at least SIZE slots and always one empty row
+## after the last item, so there is somewhere to drop things. Items never move.
+func trim() -> void:
+	if not grows:
+		return
+	var last := -1
+	for i in capacity:
+		if slots[i] != null:
+			last = i
+	var want := maxi(SIZE, int(ceil(float(last + 1) / ROW)) * ROW + ROW)
+	if want != capacity:
+		capacity = want
+		slots.resize(capacity)
 
 const STACK_MAX := 9999
 const MAX_SOURCES := 8
@@ -105,6 +129,9 @@ func add(item: Dictionary) -> int:
 			slots[i] = item
 			changed.emit()
 			return 0
+	if grows:
+		_grow(1)
+		return add(item)
 	return item["qty"]
 
 func count(type: String) -> int:
@@ -129,6 +156,11 @@ func weight() -> float:
 		if s != null:
 			w += ItemDB.weight(s["type"]) * s["qty"] * (0.1 if Rarity.has_affix(s, "featherweight") else 1.0)
 	return w
+
+## How many more slots can be filled: free_slots(), or effectively unlimited for a pack
+## that grows. Use this to ask "will it fit?"; free_slots() is what is shown.
+func room() -> int:
+	return 1 << 30 if grows else free_slots()
 
 func free_slots() -> int:
 	var n := 0
@@ -225,6 +257,13 @@ func to_data() -> Dictionary:
 
 func from_data(d: Dictionary) -> void:
 	slots = d.get("slots", []).duplicate(true)
+	# Never drop items: a pack saved bigger than this one (it grew) loads at its size.
+	var last := -1
+	for i in slots.size():
+		if slots[i] != null:
+			last = i
+	if last + 1 > capacity:
+		capacity = (int(ceil(float(last + 1) / ROW)) * ROW) if grows else last + 1
 	slots.resize(capacity)
 	next_uid = d.get("next_uid", 1)
 	_compact()
@@ -241,3 +280,4 @@ func _compact() -> void:
 			if o != null and o["type"] == s["type"] and stacks(o) and s["qty"] + o["qty"] <= STACK_MAX:
 				merge_into(s, o, o["qty"])
 				slots[j] = null
+	trim()

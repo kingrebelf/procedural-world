@@ -4092,6 +4092,39 @@ static func _species_named(name: String, era: int) -> Dictionary:
 			return p
 	return {}
 
+## Ben (2026-10-18): unlimited slots in your pack; weight is the limit, 5% slower per
+## 100 kg over your carry capacity.
+func test_unlimited_pack_and_weight() -> void:
+	var pack := Inventory.new(Inventory.SIZE, true)
+	var o := {"how": "found", "era": 0}
+	var left := 0
+	for i in 73:
+		left += pack.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(left == 0, "every sword fits")
+	check(pack.count("sword_iron") == 73 and pack.capacity == 80 and pack.room() > 1000, "a growing pack never fills: 73 swords in %d slots" % pack.capacity)
+	var chest := Inventory.new(5)
+	for i in 6:
+		chest.add(ItemDB.make("sword_iron", 1, 1.0, o))
+	check(chest.count("sword_iron") == 5 and chest.capacity == 5 and chest.room() == 0, "a chest keeps its slot count")
+	var back := Inventory.new(Inventory.SIZE, true)
+	back.from_data(str_to_var(var_to_str(pack.to_data())))
+	check(back.count("sword_iron") == 73 and back.capacity >= 73, "a big pack loads whole (%d slots)" % back.capacity)
+	var small := Inventory.new()
+	small.from_data(pack.to_data())
+	check(small.count("sword_iron") == 73, "nothing is dropped loading a big pack into a fixed one")
+	for i in range(20, back.capacity):
+		back.slots[i] = null
+	back.trim()
+	check(back.capacity == Inventory.SIZE, "an emptied pack shrinks back to %d slots (%d)" % [Inventory.SIZE, back.capacity])
+	var bag := DeathBag.make("p1", "", pack, {}, 0, 1.0)
+	var held := Inventory.new(Corpses.slots_of(bag))
+	held.from_data(bag["items"])
+	check(held.count("sword_iron") == 73, "a death bag holds a big pack")
+	check(DeathBag.title({"kind": "bag", "owner": "p1", "dropped": true}, "p1") == "Your dropped things", "a bag you dropped is named so")
+	check(Player.load_mult_for(600.0, 600.0) == 1.0, "no slowdown up to your carry capacity")
+	check(absf(Player.load_mult_for(700.0, 600.0) - 0.95) < 1e-4 and absf(Player.load_mult_for(650.0, 600.0) - 0.975) < 1e-4, "5% slower per 100 kg over, smoothly")
+	check(absf(Player.load_mult_for(5000.0, 600.0) - Player.LOAD_FLOOR) < 1e-4, "never slower than the floor")
+
 func test_death_bag() -> void:
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("bread", 4, 1.0, {}))

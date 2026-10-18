@@ -75,13 +75,15 @@ func drop_bag(at: Vector3, rec: Dictionary) -> String:
 	var spot := bag_spot(at)
 	var k := ChunkStreamer.chunk_of(spot)
 	var id := "b%s_%d" % [String(rec.get("owner", "")), int(rec.get("unix", 0.0) * 1000.0) % 1000000000]
+	if rec.get("dropped", false):
+		id += "_%d" % (randi() % 100000) # drops can come many to the millisecond
 	rec["yaw"] = randf() * TAU
 	if not _put(spot, id, rec):
 		spot = at
 		k = ChunkStreamer.chunk_of(spot)
 		if not _put(spot, id, rec):
 			return ""
-	if DeathBag.is_mine(rec, Game.my_id()):
+	if DeathBag.is_mine(rec, Game.my_id()) and not rec.get("dropped", false):
 		for m in Game.markers.list.duplicate():
 			if m["kind"] == "death" and m.get("name", "") == "Last death":
 				m["name"] = "Your bag, day %d" % (int(m.get("dday", 0)) + 1)
@@ -90,6 +92,32 @@ func drop_bag(at: Vector3, rec: Dictionary) -> String:
 		Game.touch_player()
 	bag_changed.emit(k, id, rec)
 	return key_of(k, id)
+
+## Bags of your own things within this of where you drop more join them.
+const DROP_JOIN := 2.5
+
+## Your own things, put down to lighten your pack: they go in a bag on the ground at `at`
+## (into the bag you dropped there already, if one is that close). It is a bag like the
+## one you drop when you die (DeathBag, flag "dropped"), saved with its chunk, but not
+## marked on the map; anyone may take from it. False if that ground had not loaded.
+func drop_items(at: Vector3, items: Array) -> bool:
+	for b in near(at, DROP_JOIN):
+		var c: Dictionary = b["rec"]
+		if c.get("dropped", false) and DeathBag.is_mine(c, Game.my_id()):
+			var held := Inventory.new(slots_of(c), true)
+			held.from_data(c["items"])
+			for it in items:
+				held.add(it)
+			c["items"] = held.to_data()
+			took_from(b["key"], 0)
+			_scan = 0.0
+			return true
+	var inv := Inventory.new(DeathBag.SLOTS, true)
+	for it in items:
+		inv.add(it)
+	var rec := {"kind": "bag", "owner": Game.my_id(), "owner_name": Game.my_name(), "items": inv.to_data(),
+		"worn": {}, "purse": 0, "unix": Time.get_unix_time_from_system(), "dropped": true}
+	return drop_bag(at, rec) != ""
 
 ## Where a bag dropped at `at` comes to rest: on whatever floor is under it (a cave's, a
 ## room's), or the nearest dry ground if that floor is under water.
@@ -285,7 +313,10 @@ static func _bag_model() -> Node3D:
 
 ## Slots in this body's or bag's own inventory.
 static func slots_of(c: Dictionary) -> int:
-	return DeathBag.SLOTS if DeathBag.is_bag(c) else CorpseLoot.SLOTS
+	if DeathBag.is_bag(c):
+		var d = c.get("items")
+		return maxi(DeathBag.SLOTS, (d.get("slots", []) as Array).size() if d is Dictionary else 0)
+	return CorpseLoot.SLOTS
 
 ## Builds (or re-dresses) a person's body: who they were, in what they still wear.
 func _dress(key: String, fresh := false, limp := false) -> void:

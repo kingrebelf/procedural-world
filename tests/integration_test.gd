@@ -171,11 +171,11 @@ func _make_room(game, n := 0) -> void:
 	for sh in Icons.MORE_SHEETS.slice(1):
 		for t in sh[1]:
 			loot[t] = true
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and loot.has(it["type"]):
 			game.inventory.set_slot(i, null)
-	for i in range(Inventory.SIZE - 1, -1, -1):
+	for i in range(game.inventory.capacity - 1, -1, -1):
 		if game.inventory.free_slots() >= n:
 			break
 		game.inventory.set_slot(i, null)
@@ -183,7 +183,7 @@ func _make_room(game, n := 0) -> void:
 ## What is in the pack, for a failure message.
 func _pack_list(game) -> String:
 	var out: PackedStringArray = []
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null:
 			out.append("%s x%d" % [it["type"], int(it["qty"])])
@@ -198,7 +198,7 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	var dwp: Vector3 = pc.position + dway["p"]
 	game.give(ItemDB.make("door_wood", 1, 1.0, game.origin_here("crafted", -1, here_key)))
 	var di := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var sl = game.inventory.get_slot(i)
 		if sl != null and sl["type"] == "door_wood":
 			di = i
@@ -569,7 +569,7 @@ func _run() -> void:
 	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
 	game.give(ItemDB.make("jet_fuel", 2, 1.0, {}))
 	var jslot := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var js = game.inventory.get_slot(i)
 		if js != null and js["type"] == "jetpack":
 			jslot = i
@@ -745,7 +745,7 @@ func _run() -> void:
 	_make_room(game)
 	game.give(ItemDB.make("foundation", 3, 1.0, game.origin_here("crafted", -1, here_key)))
 	var fi := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var sl = game.inventory.get_slot(i)
 		if sl != null and sl["type"] == "foundation":
 			fi = i
@@ -826,7 +826,7 @@ func _run() -> void:
 		if game.inventory.get_slot(i) == null:
 			bare = i
 			break
-	for i in range(Inventory.HOTBAR, Inventory.SIZE):
+	for i in range(Inventory.HOTBAR, game.inventory.capacity):
 		if game.inventory.get_slot(bare) == null:
 			break
 		if game.inventory.get_slot(i) == null:
@@ -1204,7 +1204,7 @@ func _death_bag(game, world, player) -> void:
 		return
 	var menus = world.menus
 	menus.open_corpse(world.corpses, bag["key"])
-	check(menus._mode == "corpse" and menus._store.capacity == DeathBag.SLOTS, "opening the bag shows what is in it")
+	check(menus._mode == "corpse" and menus._store.capacity >= DeathBag.SLOTS, "opening the bag shows what is in it")
 	var m: int = menus._take_purse()
 	Storage.transfer_all(menus._store, game.inventory)
 	menus._corpse_changed(m)
@@ -2075,14 +2075,14 @@ func _relics(game, streamer: ChunkStreamer, player) -> void:
 	var ruin: Dictionary = rc.add_object("alien_ruin", at.call(0.0, -12.0), 0.0, Eras.SCIFI, {})
 	check(Wonders.use_of(ruin, game.day).get("verb", "").begins_with("Wake"), "a sleeping relic offers to wake")
 	var items_before := 0
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		if game.inventory.get_slot(i) != null:
 			items_before += int(game.inventory.get_slot(i)["qty"])
 	var xp_before: int = game.stats.xp + game.stats.level * 100000
 	game.set_health(30.0)
 	var msg := WonderEffects.apply(ruin, rc, player)
 	var items_after := 0
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		if game.inventory.get_slot(i) != null:
 			items_after += int(game.inventory.get_slot(i)["qty"])
 	check(ruin["st"].get("woke", false) and msg.contains("wakes"), "waking the relic (%s)" % msg)
@@ -2146,7 +2146,7 @@ func _easter_eggs(game, streamer: ChunkStreamer, player) -> void:
 	msg = WonderEffects.apply(sword, rc, player)
 	check(sword["st"].get("drawn", false) and game.inventory.count("sword_iron") == swords0 + 1, "a strong arm draws it (%s)" % msg)
 	var drawn := {}
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and it["type"] == "sword_iron" and int(it.get("rarity", 0)) == 4:
 			drawn = it
@@ -2272,7 +2272,7 @@ func _open_inside(player, c: ChunkNode, o: Dictionary) -> void:
 	# The checks before this fill the pack, and a full pack leaves the loot in the chest
 	# (which read here as the chest not opening, now and then): make room first.
 	var inv: Inventory = root.get_node("/root/Game").inventory
-	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR - 1, -1):
+	for i in range(inv.capacity - 1, Inventory.HOTBAR - 1, -1):
 		if inv.free_slots() >= 12:
 			break
 		var it = inv.get_slot(i)
@@ -2622,7 +2622,7 @@ func _menu_checks(world, game, con) -> void:
 	AtlasView.selected = -1
 	# What the test has looted so far can fill the pack: two helmets and a slot to drag
 	# one into need room.
-	for i in range(Inventory.SIZE - 1, -1, -1):
+	for i in range(game.inventory.capacity - 1, -1, -1):
 		if game.inventory.free_slots() >= 3:
 			break
 		game.inventory.set_slot(i, null)
@@ -2630,7 +2630,7 @@ func _menu_checks(world, game, con) -> void:
 	con.run("give helm_elven 1")
 	var hi := -1
 	var he := -1
-	for i in Inventory.SIZE:
+	for i in game.inventory.capacity:
 		var it = game.inventory.get_slot(i)
 		if it != null and it["type"] == "helm_iron": hi = i
 		if it != null and it["type"] == "helm_elven": he = i
@@ -2638,7 +2638,7 @@ func _menu_checks(world, game, con) -> void:
 	check(game.equip(hi) and game.equipment["head"]["type"] == "helm_iron" and game.inventory.get_slot(hi) == null, "drop a helmet on the head to wear it")
 	check(game.equip(he) and game.equipment["head"]["type"] == "helm_elven" and game.inventory.get_slot(he)["type"] == "helm_iron", "swapping helmets puts the old one where the new came from")
 	var empty := -1
-	for i in range(Inventory.SIZE - 1, Inventory.HOTBAR, -1):
+	for i in range(game.inventory.capacity - 1, Inventory.HOTBAR, -1):
 		if game.inventory.get_slot(i) == null:
 			empty = i
 			break
@@ -2655,7 +2655,7 @@ func _menu_checks(world, game, con) -> void:
 	# Pack A items: a ring raises stamina, an elixir and a scroll last a while, a salve
 	# heals over time.
 	var find := func(t: String) -> int:
-		for i in Inventory.SIZE:
+		for i in game.inventory.capacity:
 			var it = game.inventory.get_slot(i)
 			if it != null and it["type"] == t:
 				return i
