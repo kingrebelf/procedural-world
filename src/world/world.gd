@@ -214,7 +214,11 @@ func _on_died(cause: String) -> void:
 		return
 	Game.stats.xp = int(Game.stats.xp * 0.75)
 	var home = Game.home_near(player.global_position)
-	if home is Vector2:
+	var bunk := vehicles.berth_point()
+	if bunk != Vector3.INF:
+		# The bunk aboard your boat you last slept in.
+		player.global_position = bunk
+	elif home is Vector2:
 		var h := npcs.ground(home.x, home.y)
 		if is_nan(h):
 			h = npcs.gen.field.height(home.x, home.y)
@@ -223,7 +227,7 @@ func _on_died(cause: String) -> void:
 		player.global_position = find_spawn() + Vector3(0, 2, 0)
 	player.velocity = Vector3.ZERO
 	player.frozen = true
-	player.snap_down = true
+	player.snap_down = bunk == Vector3.INF
 	player.breath = Game.stats.max_breath()
 	Game.revive()
 	Game.stats_changed.emit()

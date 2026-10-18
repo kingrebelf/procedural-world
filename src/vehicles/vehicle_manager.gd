@@ -54,6 +54,23 @@ func refresh() -> void:
 				nodes[id].queue_free()
 			nodes.erase(id)
 
+## Where you wake after a fall when you last slept aboard one of your boats: by her bunk,
+## on this planet. Vector3.INF if none. Puts her in the world first so her deck is there.
+func berth_point() -> Vector3:
+	for r in Game.vehicles:
+		if not r.get("berth", false) or int(r.get("planet", 0)) != Game.planet or not Vehicle.KINDS.has(r["kind"]):
+			continue
+		var n: Vehicle = nodes.get(int(r["id"]))
+		if n == null or not is_instance_valid(n):
+			n = Vehicle.new().setup(r)
+			n.ground = ground
+			add_child(n)
+			nodes[int(r["id"])] = n
+		for sp in n.spots():
+			if sp["use"] == "bunk":
+				return (sp["wake_pos"] as Vector3) + Vector3(0, 0.9, 0)
+	return Vector3.INF
+
 func all_nodes() -> Array:
 	return nodes.values().filter(func(n): return is_instance_valid(n))
 
@@ -87,7 +104,7 @@ func deploy(item: Dictionary, at: Vector3, yaw: float) -> Vehicle:
 
 ## Removes the vehicle from the world and returns it as an item (in your pack if it fits).
 func pack_up(v: Vehicle) -> bool:
-	if v == null or v.rider != null:
+	if v == null or v.rider != null or Vehicle.KINDS[v.kind].get("moored", false):
 		return false
 	var it := ItemDB.make(v.kind, 1, float(v.rec.get("q", 1.0)), v.rec.get("origin", {}))
 	if not Game.give(it):

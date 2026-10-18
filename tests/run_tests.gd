@@ -3143,6 +3143,24 @@ func test_boat_ride() -> void:
 	var c := Vehicle.new().setup({"id": 3, "kind": "canoe", "pos": Vector3.ZERO, "yaw": 0.0})
 	check(not c.has_sail() and not c.toggle_sail(), "a canoe has no sail")
 	c.free()
+	# Big boats: decks to walk on, and their hold and bunk are aboard her.
+	for k in Vehicle.KINDS:
+		var d: Dictionary = Vehicle.KINDS[k]
+		if not d.get("moored", false):
+			continue
+		var b := Vehicle.new().setup({"id": 4, "kind": k, "pos": Vector3.ZERO, "yaw": 0.0})
+		check(b.deck != null and b.deck.get_child_count() > 0, "%s has a deck to walk on" % k)
+		var box := Vehicle._bounds(b._model).grow(0.3)
+		var holds := 0
+		for sp in d.get("spots", []):
+			check(box.has_point(sp["at"]) and box.has_point(sp.get("wake", sp["at"])), "%s's %s is aboard her" % [k, sp["name"]])
+			holds += 1 if sp["use"] == "hold" else 0
+		check(holds == 1 and int(d["hold"]) > 0, "%s has a hold" % k)
+		var inv := b.open_hold()
+		inv.add(ItemDB.make("wood", 5, 1.0, {}))
+		b.save_hold(inv)
+		check(b.open_hold().count("wood") == 5, "%s's hold keeps what you put in it" % k)
+		b.free()
 
 func test_vehicles() -> void:
 	for k in Vehicle.KINDS:
@@ -3154,9 +3172,10 @@ func test_vehicles() -> void:
 		check(made, "%s is made at a station" % k)
 		var m := Vehicle.make_model(k)
 		var box := Vehicle._bounds(m)
-		# A boat's hull goes down below her waterline (y = 0).
-		var below := -1.0 if Vehicle.is_boat(k) else -0.2
-		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > below, "%s model is a sensible size (%s)" % [k, box])
+		# A boat's hull, keel and anchor cable go down below her waterline (y = 0), and a
+		# cog's mast stands twenty metres.
+		var boat := Vehicle.is_boat(k)
+		check(box.size.y > 0.5 and box.size.y < (25.0 if boat else 4.0) and box.position.y > (-4.0 if boat else -0.2), "%s model is a sensible size (%s)" % [k, box])
 		m.free()
 	for st in ["vehicle_bay", "stable"]:
 		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)

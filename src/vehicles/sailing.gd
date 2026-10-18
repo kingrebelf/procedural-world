@@ -24,12 +24,20 @@ const NO_GO := {"square": 1.1, "fore_aft": 0.55}
 ## Per boat kind: mass (kg, laden), sail area (m², 0 = none), rig, paddle force (N, 0 =
 ## none), forward drag k (N per (m/s)²), sideways resistance k, turn rate at speed
 ## (rad/s), draft (m: grounds shallower), stiff (how hard she resists heeling: a wide
-## raft hardly leans at all).
+## raft hardly leans at all), engine (the "paddle" is a motor), burn (seconds of full
+## throttle on one can of fuel).
 const BOATS := {
 	"sail_raft": {"mass": 420.0, "sail": 3.6, "rig": "square", "paddle": 60.0, "drag": 38.0, "lateral": 160.0, "turn": 0.35, "draft": 0.2, "stiff": 0.5},
 	"canoe": {"mass": 140.0, "sail": 0.0, "rig": "", "paddle": 85.0, "drag": 11.0, "lateral": 420.0, "turn": 0.6, "draft": 0.18},
 	"kayak": {"mass": 110.0, "sail": 0.0, "rig": "", "paddle": 100.0, "drag": 8.0, "lateral": 380.0, "turn": 0.7, "draft": 0.16},
 	"rowboat": {"mass": 260.0, "sail": 0.0, "rig": "", "paddle": 150.0, "drag": 18.0, "lateral": 520.0, "turn": 0.5, "draft": 0.3},
+	# The existing boats, built on a slipway or in a vehicle bay. Engines push like paddles
+	# that never tire ("engine": they burn fuel instead, Vehicle).
+	"fishing_boat": {"mass": 3500.0, "sail": 24.0, "rig": "fore_aft", "paddle": 0.0, "drag": 150.0, "lateral": 10000.0, "turn": 0.4, "draft": 0.9, "stiff": 0.18},
+	"cog": {"mass": 50000.0, "sail": 150.0, "rig": "square", "paddle": 0.0, "drag": 1000.0, "lateral": 60000.0, "turn": 0.2, "draft": 2.0, "stiff": 0.25},
+	"motor_launch": {"mass": 2200.0, "sail": 0.0, "rig": "", "paddle": 5000.0, "drag": 55.0, "lateral": 3000.0, "turn": 0.8, "draft": 0.55, "engine": true, "burn": 600.0},
+	"research_vessel": {"mass": 300000.0, "sail": 0.0, "rig": "", "paddle": 90000.0, "drag": 3500.0, "lateral": 300000.0, "turn": 0.15, "draft": 2.4, "engine": true, "burn": 900.0},
+	"life_raft": {"mass": 180.0, "sail": 0.0, "rig": "", "paddle": 45.0, "drag": 35.0, "lateral": 120.0, "turn": 0.35, "draft": 0.2},
 	"sloop": {"mass": 2600.0, "sail": 30.0, "rig": "fore_aft", "paddle": 0.0, "drag": 110.0, "lateral": 9000.0, "turn": 0.5, "draft": 1.1, "stiff": 0.14},
 }
 
@@ -147,7 +155,10 @@ static func step(kind: String, st: Dictionary, dt: float, wind: Vector2, current
 	var bite := clampf(absf(ahead) / 1.5, 0.0, 1.0) * signf(ahead) if absf(ahead) > 0.02 else 0.0
 	var want := -rudder * float(d["turn"]) * bite
 	if float(d["paddle"]) > 0.0:
-		want -= rudder * 0.5 * (1.0 - absf(bite))
+		# Paddles spin a small boat round; an engine's wash over the rudder turns a big
+		# one slowly.
+		var spin := float(d["turn"]) * 0.3 if d.get("engine", false) else 0.5
+		want -= rudder * spin * (1.0 - absf(bite))
 	st["omega"] = move_toward(float(st["omega"]), want, dt * 1.5)
 	yaw += float(st["omega"]) * dt
 	st["yaw"] = wrapf(yaw, -PI, PI)
