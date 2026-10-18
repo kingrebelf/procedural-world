@@ -1237,19 +1237,37 @@ static func _hand_lantern(k: MeshKit):
 	return Vector3(0, by + 0.255, 0)
 
 static func _candle(k: MeshKit):
-	# A brass chamberstick: a dish with a finger ring, the candle with drips down it.
-	lathe(k, "it_brass", Transform3D.IDENTITY, [Vector2(0, -0.01), Vector2(0.05, -0.01), Vector2(0.055, 0.0), Vector2(0.05, 0.004), Vector2(0.014, 0.0), Vector2(0.013, 0.025), Vector2(0.016, 0.03), Vector2(0, 0.03)], 14)
-	lathe(k, "it_wax", Transform3D.IDENTITY, [Vector2(0, 0.03), Vector2(0.011, 0.03), Vector2(0.0105, 0.15), Vector2(0.008, 0.155), Vector2(0, 0.152)], 12)
-	for i in 4:
-		var a := TAU * i / 4.0 + 0.4
-		k.cylinder("it_wax", Transform3D(Basis(), Vector3(cos(a) * 0.0105, 0.12 - i * 0.02, sin(a) * 0.0105)), 0.003, 0.0018, 0.03 + i * 0.008, 5)
-	k.cylinder("it_polymer", Transform3D(Basis(), Vector3(0, 0.152, 0)), 0.0012, 0.0006, 0.01, 4)
-	var st := []
-	for i in 13:
-		var a := TAU * i / 12.0
-		st.append(_at(Vector3(0.058 + cos(a) * 0.014, 0.0, sin(a) * 0.014), Vector3(0, 1, 0), Vector3(cos(a), 0, sin(a)), sec_round(0.003, 0.0022, 6)))
-	sweep(k, "it_brass", Transform3D.IDENTITY, st, false, Color.WHITE, false)
-	return Vector3(0.0, 0.0, 0)
+	# A fat beeswax pillar burned down a while: the rim slumped round a melted pool, wax run
+	# down the sides in drips of every length, a puddle set hard round the foot, and a black,
+	# curled wick.
+	var wax := Color(0.9, 0.66, 0.36)
+	var r := 0.034
+	var h := 0.11
+	lathe(k, "it_wax", Transform3D.IDENTITY, [Vector2(0, 0.0), Vector2(r * 1.18, 0.0), Vector2(r * 1.2, 0.004), Vector2(r * 1.05, 0.009),
+		Vector2(r, 0.016), Vector2(r * 1.01, h * 0.5), Vector2(r, h - 0.008), Vector2(r * 1.06, h - 0.002), Vector2(r * 0.96, h + 0.002),
+		Vector2(r * 0.7, h - 0.004), Vector2(0, h - 0.008)], 20, wax)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for i in 11:
+		var a := TAU * i / 11.0 + rng.randf_range(-0.15, 0.15)
+		var d := Vector3(cos(a), 0, sin(a))
+		var len := rng.randf_range(0.02, 0.085)
+		var w := rng.randf_range(0.0035, 0.006)
+		var st := []
+		for s in 6:
+			var f := float(s) / 5.0
+			var bulge := 1.0 + 0.7 * smoothstep(0.6, 1.0, f)
+			st.append(_at(d * (r + w * 0.3) + Vector3(0, h - 0.001 - f * len, 0), d.cross(Vector3.UP), d, sec_round(w * bulge, w * 0.55 * bulge, 6)))
+		# A rounded bead where the drip stopped.
+		st.append(_at(d * (r + w * 0.3) + Vector3(0, h - 0.001 - len - w * 1.1, 0), d.cross(Vector3.UP), d, sec_round(w * 0.6, w * 0.4, 6)))
+		st.append(_at(d * (r + w * 0.3) + Vector3(0, h - 0.001 - len - w * 1.6, 0), d.cross(Vector3.UP), d, sec_round(w * 0.1, w * 0.1, 6)))
+		sweep(k, "it_wax", Transform3D.IDENTITY, st, false, wax.darkened(0.04))
+	var wk := []
+	for s in 6:
+		var f := float(s) / 5.0
+		wk.append(_at(Vector3(0.004 * f * f, h - 0.008 + f * 0.016, 0), Vector3(1, 0, 0), Vector3(0, 0, 1), sec_round(0.0011, 0.0011, 5)))
+	sweep(k, "it_char", Transform3D.IDENTITY, wk, false)
+	return Vector3(0.0, 0.04, 0)
 
 static func _tinderbox(k: MeshKit):
 	# A small flat wooden box with a brass-hinged lid; the C-shaped steel striker and a
