@@ -1799,7 +1799,8 @@ func _cannon_check(game, world, player) -> void:
 	await create_timer(Cannon.LOAD_TIME + 0.3).timeout
 	check(cv.rec.get("load", "") == "hot_shot", "loaded with hot shot")
 	# A timber wall down range, the barrel laid on its middle.
-	var wp: Vector3 = cv.global_position + Vector3(0, 0, -22)
+	# Close enough that nothing (a tree, a passer-by) stands in the ball's way.
+	var wp: Vector3 = cv.global_position + Vector3(0, 0, -11)
 	var gy: float = world.vehicles.ground(wp.x, wp.z)
 	wp.y = gy if not is_nan(gy) else cv.global_position.y
 	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
@@ -1820,7 +1821,7 @@ func _cannon_check(game, world, player) -> void:
 		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
 			lit = true
 			break
-	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s, %d burning)" % [wall["st"].keys(), fs.burning_count()])
+	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s, burning: %s)" % [wall["st"].keys(), fs._burning.values().map(func(b): return b["t"])])
 	player.dismount()
 	fs.douse_all()
 	node.remove_object(wall["i"])
