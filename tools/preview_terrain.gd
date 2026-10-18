@@ -4,9 +4,10 @@ extends Node3D
 ##   xvfb-run -s "-screen 0 1280x720x24" godot --path . --rendering-driver vulkan \
 ##     --resolution 1280x720 res://tools/preview_terrain.tscn -- --at=x,z [--yaw=deg]
 ##     [--pitch=deg] [--up=m above the ground] [--r=chunks round, 3] [--grass] [--grade]
-##     [--seed=4242] [--out=path.png]
+##     [--seed=4242] [--lods] [--out=path.png]
 ## --grass adds the grass blades on the nine chunks round the camera; --grade the film
-## grade (Grade.lut). Objects, trees, water and the distant land are not drawn.
+## grade (Grade.lut); --lods builds farther chunks coarser, as the game streams them
+## (ChunkStreamer.lod_for), instead of every chunk at full detail. Objects, trees, water and the distant land are not drawn.
 ## The shot goes to user://screenshots/terrain.png unless --out names a file.
 func _ready() -> void:
 	var out := "user://screenshots/terrain.png"
@@ -18,6 +19,7 @@ func _ready() -> void:
 	var r := 3
 	var grass := false
 	var grade := false
+	var lods := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -34,6 +36,8 @@ func _ready() -> void:
 			grade = true
 		elif a == "--grass":
 			grass = true
+		elif a == "--lods":
+			lods = true
 		elif a.begins_with("--r="):
 			r = int(a.substr(4))
 		elif a.begins_with("--seed="):
@@ -74,7 +78,8 @@ func _ready() -> void:
 			var c := g.generate(ci + di, cj + dj)
 			var node := ChunkNode.new()
 			add_child(node)
-			node.setup(c, ChunkNode.build_terrain_arrays(c, 1), 1, {})
+			var lod := ChunkStreamer.lod_for(maxi(absi(di), absi(dj))) if lods else 1
+			node.setup(c, ChunkNode.build_terrain_arrays(c, lod), lod, {})
 			if grass and absi(di) <= 1 and absi(dj) <= 1:
 				node.set_grass(ChunkNode.build_grass_buffers(c, 1.0))
 			if di == 0 and dj == 0:

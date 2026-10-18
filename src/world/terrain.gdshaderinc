@@ -851,8 +851,17 @@ void fragment() {
 		const mat3 FR = mat3(vec3(0.0, -0.8, -0.6), vec3(0.8, 0.36, -0.48), vec3(0.6, -0.48, 0.64));
 		vec4 fc = vnoise3d(FR * wpos * 0.22 + 5.0);
 		gr += sign(fc.x - 0.5) * 0.8 * (transpose(FR) * fc.yzw) * 0.22 * rock_mask * (1.0 - smoothstep(0.8, 2.5, fw));
-		float gully = couloir * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
-		gr += sign(gl.x - 0.5) * 3.0 * gl.yzw * vec3(0.05, 0.005, 0.05) * rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
+		// Gullies are narrow channels cut into an otherwise even face, some deep and some
+		// hardly there along the same cliff: a groove a metre or so deep and about three
+		// across down the line, flat face between. (Tilting the whole face either side of
+		// every line made a corrugated sheet that read as a palisade from afar.)
+		vec3 gg = gl.yzw * vec3(0.05, 0.005, 0.05);
+		float gm = (gl.x - 0.5) / max(length(gg), 1e-4);
+		float gk = smoothstep(0.3, 0.75, vnoise(vec2(wpos.x + wpos.z, wpos.y * 0.3) * 0.025 + 3.0));
+		float far_g = rock_mask * (1.0 - smoothstep(4.0, 12.0, fw));
+		// (The slope of 1.1 * (1 - exp(-gm * gm / 2.2)), gm being metres from the line.)
+		gr += gk * gm * exp(-gm * gm / 2.2) * gg / max(length(gg), 1e-4) * far_g;
+		float gully = couloir * far_g * (0.3 + 0.7 * gk);
 		col *= 1.0 - 0.18 * gully * (1.0 - snow);
 		float bed = (wpos.y + dip) / 2.3 + vnoise(vec2(wpos.y * 0.3, (wpos.x + wpos.z) * 0.02)) * 0.35;
 		float bf = fract(bed);

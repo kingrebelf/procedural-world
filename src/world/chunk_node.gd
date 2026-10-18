@@ -110,13 +110,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			var k := gj * RES + gi
 			var v := j * n + i
 			verts[v] = Vector3(gi, hs[k], gj)
-			var hl := hs[gj * RES + maxi(gi - 1, 0)]
-			var hr := hs[gj * RES + mini(gi + 1, RES - 1)]
-			var hd := hs[maxi(gj - 1, 0) * RES + gi]
-			var hu := hs[mini(gj + 1, RES - 1) * RES + gi]
-			var dx := float(mini(gi + 1, RES - 1) - maxi(gi - 1, 0))
-			var dz := float(mini(gj + 1, RES - 1) - maxi(gj - 1, 0))
-			norms[v] = Vector3(-(hr - hl) / dx, 1.0, -(hu - hd) / dz).normalized()
+			norms[v] = _normal_at(hs, gi, gj, step)
 			var wk := k * Eras.COUNT
 			# Alpha: 1 minus how much road surface shows (roads and village squares).
 			# Human worlds dress their sci-fi land as the medieval wilds (Eras.look).
@@ -176,6 +170,23 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 		arr[Mesh.ARRAY_CUSTOM2] = l2
 	arr[Mesh.ARRAY_CUSTOM3] = cv
 	return arr
+
+## The ground's normal at grid point (gi, gj), from its slope across the mesh's own cell
+## size (`step` metres) and smoothed over the neighbouring rows (a Sobel filter). A bank
+## or cliff running slantwise across the grid steps from cell to cell; differences over
+## one metre in one row only made each step lean another way, which drew evenly spaced
+## light and dark stripes down the face, like a palisade, from a few hundred metres off.
+static func _normal_at(hs: PackedFloat32Array, gi: int, gj: int, step: int) -> Vector3:
+	var x0 := maxi(gi - step, 0)
+	var x1 := mini(gi + step, RES - 1)
+	var z0 := maxi(gj - step, 0)
+	var z1 := mini(gj + step, RES - 1)
+	var r0 := z0 * RES
+	var r1 := gj * RES
+	var r2 := z1 * RES
+	var gx := (hs[r0 + x1] + 2.0 * hs[r1 + x1] + hs[r2 + x1] - hs[r0 + x0] - 2.0 * hs[r1 + x0] - hs[r2 + x0]) / (4.0 * (x1 - x0))
+	var gz := (hs[r2 + x0] + 2.0 * hs[r2 + gi] + hs[r2 + x1] - hs[r0 + x0] - 2.0 * hs[r0 + gi] - hs[r0 + x1]) / (4.0 * (z1 - z0))
+	return Vector3(-gx, 1.0, -gz).normalized()
 
 ## Vertex format flags for terrain arrays that carry a landform look, and for the ground
 ## cover every terrain mesh carries.
