@@ -2873,7 +2873,7 @@ func test_levelling_and_attributes() -> void:
 	var inv := Inventory.new()
 	inv.add(ItemDB.make("stone", 10, 1.0, {}))
 	inv.add(ItemDB.make("axe_iron", 1, 1.0, {}))
-	check(is_equal_approx(inv.weight(), 10 * ItemDB.weight("stone") + ItemDB.weight("axe_iron")) and inv.weight() > 20.0, "the pack has weight (%.1f kg)" % inv.weight())
+	check(is_equal_approx(inv.weight(), 10 * ItemDB.weight("stone") + ItemDB.weight("axe_iron")) and inv.weight() > 2.0, "the pack has weight (%.1f kg)" % inv.weight())
 	check(not s.spend("luck"), "unknown attribute rejected")
 	while s.points > 0:
 		s.spend("end")

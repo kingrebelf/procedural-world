@@ -1246,10 +1246,14 @@ static func craft_tabs(type: String) -> Array:
 
 
 ## Weight of one item of this type, in kg. Vehicles are carried as their keys.
+## Every weight in WEIGHT and KIND_WEIGHT is scaled by this (Ben, 2026-10-18: items
+## weigh a tenth of what they did; the carry limit stayed the same).
+const WEIGHT_SCALE := 0.1
+
 static func weight(type: String) -> float:
 	if WEIGHT.has(type):
-		return WEIGHT[type]
-	return KIND_WEIGHT.get(String(def(type).get("kind", "")), 1.0)
+		return WEIGHT[type] * WEIGHT_SCALE
+	return KIND_WEIGHT.get(String(def(type).get("kind", "")), 1.0) * WEIGHT_SCALE
 
 static func has(type: String) -> bool:
 	return ITEMS.has(type) or BuildCatalog.is_piece_item(type)
