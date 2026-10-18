@@ -344,9 +344,11 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 		# Shopkeepers go in and out by the door.
 		goal = TownShops.route(rec["room"], p2, goal)
 	var walk: WalkGrid = manager.get("walk") if manager else null
+	# A shopkeeper's own shop is no wall to them: they go in by its door (TownShops.route).
+	var within: Vector2 = rec["room"]["c"] if rec.has("room") else Vector2.INF
 	if walk and goal != Vector2.INF and not target_player:
-		# Somewhere they can stand: by a stall or a cart, not in it.
-		goal = walk.push_out(goal)
+		# Somewhere they can stand: by a stall, a cart or a house, not in it.
+		goal = walk.push_out(goal, WalkGrid.BODY, within)
 	var moving := false
 	_update_perform(delta)
 	# Doing something on the spot holds them there, unless they must run.
@@ -371,8 +373,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 		_speed = move_toward(_speed, want, delta * 4.0)
 		p2 += dir * _speed * delta
 		if walk:
-			# Along a stall's or a cart's side, never through it.
-			p2 = walk.push_out(p2)
+			# Along a wall's, a stall's or a cart's side, never through it.
+			p2 = walk.push_out(p2, WalkGrid.BODY, within)
 		var yaw := atan2(dir.x, dir.y)
 		rotation.y = lerp_angle(rotation.y, yaw, clampf(delta * 6.0, 0.0, 1.0))
 		moving = true
@@ -416,6 +418,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 		_human.show_tool(action == "work" and FIELD_DUTIES.has(String(duty.get("duty", ""))))
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
+	if walk:
+		home = walk.push_out(home, WalkGrid.BODY, within) # where they stop by its wall
 	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
 	_model.visible = not indoors
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT

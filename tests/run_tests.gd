@@ -1599,6 +1599,15 @@ func test_walk_grid_goes_round_stalls() -> void:
 		check((got[0] as Vector2).distance_to(d) < 0.31 and float(got[1]) < 0.01, "walked round the row's end, never through it (%.2f m in, got to %s by %s)" % [got[1], got[0], r["pts"]])
 	walk.set_solids("row", [])
 	check(walk.clear(c, d, WalkGrid.PERSON), "taken away, the way is clear again")
+	# A house: walked round, never through, but its own keeper goes in.
+	land[k]["objects"].append({"t": "cottage", "p": Vector3(30.0, 5.0, 40.0), "r": 0.0, "s": 1.0, "st": {}, "i": 1})
+	walk.set_solids(k, WalkGrid.object_solids(land[k]))
+	var hc := Vector2(30.0, 104.0)
+	check(walk.solid_at(hc) and not walk.clear(Vector2(30.0, 94.0), Vector2(30.0, 108.0), WalkGrid.PERSON), "a cottage's walls stand in the way")
+	way = walk.detour(Vector2(30.0, 94.0), Vector2(30.5, 108.0), WalkGrid.PERSON)
+	got = _walk_through(walk, Vector2(30.0, 94.0), way)
+	check(not way.is_empty() and float(got[1]) < 0.01 and (got[0] as Vector2).distance_to(Vector2(30.5, 108.0)) < 0.31, "walked round the cottage, not through it (%s)" % way)
+	check(walk.push_out(hc, WalkGrid.BODY, hc) == hc and walk.push_out(hc) != hc, "but a keeper may stand in their own shop")
 	# Cheap enough for every walker every frame.
 	var t0 := Time.get_ticks_usec()
 	for i in 10000:
