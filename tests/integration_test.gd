@@ -2420,7 +2420,7 @@ func _use_lore(game, player, rc: ChunkNode, room: Dictionary) -> void:
 		var ui = player.get_tree().get_first_node_in_group("lore_ui")
 		check(ui != null and ui.is_open(), "Interact opens the %s's page" % room["t"])
 		if ui != null and ui.is_open():
-			check(String(ui._body.text).length() > 40, "the page has something to read")
+			check(ui.page_text().length() > 40, "the page has something to read")
 			ui.close()
 			await _frames(2)
 		check(not player.ui_open, "stepping away gives the controls back")

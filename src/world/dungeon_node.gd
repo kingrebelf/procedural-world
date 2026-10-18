@@ -1318,6 +1318,8 @@ func use(n: String, who: Node) -> void:
 			var nt: Dictionary = pl["notes"][i]
 			var entry := {"title": nt["title"], "sub": pl["name"], "look": "screen" if _era == Eras.SCIFI else "paper",
 				"pages": [{"tab": "Notice", "text": nt["text"]}]}
+			if _era == Eras.SCIFI:
+				entry["screen"] = {"kind": "notice", "room": "bunker", "site": pl["name"], "os": "MILNET", "user": "guest"}
 			who.get_tree().call_group("lore_ui", "open_entry", entry, Dungeon.to_world(pl, nt["p"]))
 			if not _is("read", i):
 				_mark("read", i)

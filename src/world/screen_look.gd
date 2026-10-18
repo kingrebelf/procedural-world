@@ -27,6 +27,9 @@ const CHARS := " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.:-/><_=+#%[]()*!?,|{}'$@"
 ## Emission strength by world: a lit display on human worlds, brighter on alien ones.
 const ENERGY := {"human": 0.85, "alien": 1.6}
 
+## The world's hour (0-24), as the screens' clocks show it (Materials.set_screen_clock).
+static var hours := 12.0
+
 ## The accent of `room` for a face of `kind`, in sRGB: bulletins run whiter, maps a touch
 ## cooler, and alien worlds turn every accent towards violet.
 static func accent(room: String, kind: String = "terminal") -> Color:
@@ -97,3 +100,38 @@ static func ui_palette(room: String, kind: String) -> Dictionary:
 	var amber := a.r > a.g * 1.2
 	return {"bg": Color(a.r * 0.05 + 0.01, a.g * 0.05 + 0.015, a.b * 0.05 + 0.02, 0.97), "dim": Color(a, 0.42),
 		"text": a, "key": a.lerp(Color.WHITE, 0.55), "warn": Color(1.0, 0.3, 0.22) if amber else Color(1.0, 0.62, 0.22)}
+
+# --- Words ----------------------------------------------------------------------------
+# The screens' vocabulary, as the shader has it packed in WORDS (keep the two alike).
+
+const WORDS := ["SYS", "INIT", "LOAD", "GRID", "POWER", "SCAN", "NODE", "LINK", "CORE", "DATA", "PING",
+	"SYNC", "AIR", "TEMP", "FENCE", "DOOR", "LOCK", "OPEN", "SEAL", "PUMP", "CELL", "BANK", "RELAY",
+	"DRONE", "ROUTE", "VENT", "FAN", "BUS", "MEM", "CPU", "NAV", "COMMS", "LOG", "USER", "ROOT", "AUTH",
+	"KEY", "MAP", "SITE", "ZONE", "TRADE", "CRATE", "WATER", "FLUX", "LAMP", "PORT", "GATE", "CREW"]
+const VESSEL_WORDS := ["HULL", "HDG", "DEPTH", "WIND", "SAIL", "KNOTS", "HELM", "BILGE", "RPM", "FUEL",
+	"TIDE", "BUOY", "RADIO", "CHART", "SONAR", "TRIM"]
+
+static func _word(r: RandomNumberGenerator, vessel: bool) -> String:
+	if vessel and r.randf() < 0.6:
+		return VESSEL_WORDS[r.randi() % VESSEL_WORDS.size()]
+	return WORDS[r.randi() % WORDS.size()]
+
+## A line of the live code the screens write: "LET GRID = SYNC(42)", "IF PUMP > 7 {".
+static func code_line(r: RandomNumberGenerator, vessel := false) -> String:
+	var w := func() -> String: return _word(r, vessel)
+	var n := str(r.randi_range(0, 999))
+	var pad := "  ".repeat(r.randi_range(0, 2))
+	match r.randi() % 6:
+		0: return pad + "%s %s = %s(%s)" % [["LET", "VAR", "MUT"][r.randi() % 3], w.call(), w.call(), n]
+		1: return pad + "%s %s > %s {" % [["IF", "WHILE", "FOR"][r.randi() % 3], w.call(), n]
+		2: return "}"
+		3: return pad + "%s.%s(%s)" % [w.call(), w.call(), w.call()]
+		4: return pad + "%s %s" % [["RET", "LOOP", "FN"][r.randi() % 3], w.call()]
+	return pad + "// %s %s %s" % [w.call(), w.call(), w.call()]
+
+## A log line stamped `secs` into the day: "14:02:33 [OK] GRID SYNC 42".
+static func log_line(r: RandomNumberGenerator, secs: float, vessel := false) -> String:
+	var s := int(fposmod(secs, 86400.0))
+	var f := r.randf()
+	var tag := "OK" if f < 0.72 else "INFO" if f < 0.86 else "WARN" if f < 0.96 else "ERR"
+	return "%02d:%02d:%02d [%s] %s %s %d" % [s / 3600, (s / 60) % 60, s % 60, tag, _word(r, vessel), _word(r, vessel), r.randi_range(0, 999)]

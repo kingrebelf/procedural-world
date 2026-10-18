@@ -226,6 +226,8 @@ static func read(o: Dictionary, chunk: ChunkNode, idx: int, npcs: NPCManager) ->
 		"scroll": out = _scroll(o, idx, c)
 		"tomb": out = _tomb(c)
 		_: out = {"look": "page", "title": "Nothing", "sub": "", "pages": [{"tab": "", "text": ""}]}
+	if out["look"] == "screen":
+		out["screen"] = _screen_info(o, idx, kind, c)
 	out["note"] = ""
 	if not _was_read(o, idx):
 		if not o["st"].has("lore"):
@@ -371,10 +373,13 @@ static func _terminal(o: Dictionary, idx: int, c: Dictionary) -> Dictionary:
 		comms.append("[relay] " + line)
 	for l in _some(r, COMMS, 4 - mini(2, comms.size())):
 		comms.append(_fmt(l, c))
+	var pw := r.randi_range(41, 97)
+	var fence := r.randf() < 0.7
+	c["power"] = pw
 	var status := PackedStringArray([
 		"%s %s  ·  %s" % [String(c["site"]).to_upper(), String(c["site_kind"]).to_upper(), String(c["place"]).to_upper()],
 		"Local time: %s, day %s" % [c["time"], c["day"]],
-		"Power: %d%%   Air: nominal   Fence: %s" % [r.randi_range(41, 97), "charged" if r.randf() < 0.7 else "OFFLINE"],
+		"Power: %d%%   Air: nominal   Fence: %s" % [pw, "charged" if fence else "OFFLINE"],
 		"Crew registered: %s" % (c["crew"] if c["crew"] != "0" else "none logged in for %s days" % c["count"]),
 		"Last user: %s (%s)" % [c["author"], c["job"]],
 		"Nearest settlement: %s, %s to the %s" % [c["near"], c["near_dist"], c["near_dir"]],
@@ -390,6 +395,27 @@ static func _terminal(o: Dictionary, idx: int, c: Dictionary) -> Dictionary:
 			{"tab": "Status", "text": "\n".join(status), "actions": [["power", "Charge my gear from the grid"]]},
 			{"tab": "Survey", "text": survey, "actions": [["survey", "Download survey to atlas"]]},
 		]}
+
+## The operating system each kind of room runs, for its terminal window's header.
+const OS_NAMES := {"lab_block": "LABNET", "ops_tower": "OPS/CTL", "hab_block": "HABNET", "hab_dome": "DOME-OS",
+	"bunker_keep": "MILNET", "bunker_tower": "MILNET"}
+
+## What a screen's window shows round its pages (TerminalUI): the kind of screen, the
+## room for its colours, the site, its last user, its power, the settlements near by for
+## its radar ([name, dx, dz, distance]) and, on a bulletin, the news for its ticker.
+static func _screen_info(o: Dictionary, idx: int, kind: String, c: Dictionary) -> Dictionary:
+	var model: String = spots(o["t"])[idx][2]
+	var sk: String = {"terminal": "monitor" if model == "scifi/Prop_Computer" else "terminal", "screen": "bulletin", "holo": "map"}.get(kind, "terminal")
+	var sites: Array = []
+	for s in (c["near_list"] as Array).slice(0, 6):
+		var dv: Vector2 = (s["c"] as Vector2) - (c["here"] as Vector2)
+		sites.append([s["name"], dv.x, dv.y, s["d"]])
+	var ticker: Array = []
+	if sk == "bulletin":
+		ticker = _rumor_lines(c, 4)
+		ticker.append("Next convoy to %s: %s" % [c["near"], _pick(c["r"], ["tomorrow", "delayed", "on time"])])
+	return {"kind": sk, "room": o["t"], "site": c["site"], "os": OS_NAMES.get(o["t"], "PWOS"), "user": c["author"],
+		"code": c["code"], "power": c.get("power", -1), "sites": sites, "ticker": ticker, "range": LOOK}
 
 static func _site_lines(c: Dictionary, n: int) -> Array:
 	var out: Array = []
