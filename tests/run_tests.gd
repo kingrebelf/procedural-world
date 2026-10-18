@@ -2279,6 +2279,15 @@ func test_tool_grip() -> void:
 		for j in 3:
 			d = minf(d, HandGrip._seg_line(pts[j], pts[j + 1], c, axis))
 		check(d > r and d < r + HandGrip.FINGER_R + 0.012, "the %s finger closes on the handle without passing into it (%.3f m from its middle)" % [f, d])
+	var casts := func() -> Array:
+		var cs := []
+		for mi in prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else []):
+			cs.append((mi as MeshInstance3D).cast_shadow)
+		return cs
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "a held tool casts its shadow")
+	h.set_shadow_only(true)
+	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "your first-person shadow body's tool doesn't shadow the one in your view")
+	h.set_shadow_only(false)
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()
