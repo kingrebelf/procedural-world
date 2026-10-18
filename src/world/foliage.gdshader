@@ -71,6 +71,16 @@ void vertex() {
 }
 
 void fragment() {
+	// A bough brushing the eye dissolves rather than filling the view with smeared, half
+	// shaded cards (seen edge on and from inside a crown, up close they read as black
+	// streaks): dithered away within a metre and a half, which TAA smooths into a fade.
+	// Shadow maps keep the whole bough.
+	if (!IN_SHADOW_PASS) {
+		float near_keep = smoothstep(0.35, 1.5, length(VERTEX));
+		if (near_keep < 1.0 && fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715)))) > near_keep) {
+			discard;
+		}
+	}
 	// The card's own facing, before it is bent toward the sky for lighting below (snow
 	// goes by this: with the bent one nearly every card faced up).
 	vec3 face_n = crown_normals ? normalize(crown_n) : NORMAL;
