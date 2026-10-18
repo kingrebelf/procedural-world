@@ -712,12 +712,18 @@ func _show_gate() -> void:
 		"wanted": note = "You're wanted here. Pay your bounty before they'll let you in."
 		"outcast": note = "They won't sell an Outcast a pass. A bribe, or another way in."
 		"night": note = "The gates are shut for the night. Strangers pay double."
+		"disguise": note = "In the watch's colours, they take you for one of their own. For now."
 		_: note = "A stranger here pays the toll, or needs someone in town to speak for them."
 	if bool(o["inside"]) and not ad["ok"]:
 		note += " You're already inside without leave: paying now costs a %d Mark fine on top." % o["late"]
 	var nl := UITheme.label(note, 14, UITheme.DIM)
 	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(nl)
+	if int(o["writ"]) > 0:
+		var wb := UITheme.button("Ask for a writ of passage (%d Marks)" % int(o["writ"]), _gate_writ)
+		wb.disabled = Game.money < int(o["writ"])
+		wb.tooltip_text = "A letter under %s's seal: good at every walled town within a day's word of here for %d days." % [o["town"], int(GateWatch.WRIT_DAYS)]
+		v.add_child(wb)
 	if ad["ok"]:
 		return
 	var sc := ScrollContainer.new()
@@ -751,6 +757,15 @@ func _show_gate() -> void:
 		var hint := UITheme.label("Nobody in town would vouch for you yet. Townsfolk who like you (gifts, help, a kind word) will.", 13, UITheme.DIM)
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list.add_child(hint)
+
+func _gate_writ() -> void:
+	var o := manager.gates.options(npc)
+	if not manager.gates.buy_writ(npc):
+		return
+	_close_extra()
+	_reaction("(You pay %d Marks for a writ of passage.)" % int(o.get("writ", 0)), ["Under the town's seal. Any gate within a day's ride will honour it.",
+		"Keep it dry. It's good for a week.", "There. You've earned it."][randi() % 3], "nod")
+	_history.append({"role": "user", "content": "(The traveller buys a writ of passage under the town's seal.)"})
 
 func _gate_toll() -> void:
 	var o := manager.gates.options(npc)

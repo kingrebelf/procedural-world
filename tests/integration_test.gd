@@ -1561,6 +1561,55 @@ func _town_gate(game, world, player) -> void:
 	var pin2 := Vector2(player.global_position.x, player.global_position.z)
 	check(pin2.distance_to(c) < 21.5 and not player.script_move, "through the postern and into town (%.1f m from the middle)" % pin2.distance_to(c))
 	check(npcs.gates._posterns.get(sid, {}).get("open", false), "a picked postern stays open")
+	# The watch's keys open the postern without picking it.
+	npcs.gates._posterns[sid]["open"] = false
+	game.inventory.add(ItemDB.make("watch_keys", 1, 1.0, {"how": "stolen", "sid": sid}))
+	player.global_position = Vector3(po.x, at.y, po.y)
+	e["gate"]["inside"] = false
+	await _frames(2)
+	var ku: Array = npcs.gates.usables(player.global_position)
+	check(ku.size() == 1 and String(ku[0]["verb"]).contains("watch's keys"), "the watch's keys fit the postern (%s)" % str(ku))
+	npcs.gates.use("postern:" + sid, player)
+	for i in 6:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) < 21.5 and not (lui != null and lui.is_open()), "and you're through without picking it")
+	# A grappling hook gets you back over the wall without leaving rope behind.
+	game.inventory.add(ItemDB.make("grappling_hook", 1, 1.0, {}))
+	var r0: int = game.inventory.count("rope")
+	player.global_position = Vector3(c.x, at.y, c.y + 21.0)
+	await _frames(2)
+	var hu: Array = npcs.gates.usables(player.global_position)
+	check(hu.size() == 1 and String(hu[0]["verb"]).contains("grappling hook"), "a grappling hook climbs the wall (%s)" % str(hu))
+	npcs.gates.use(sid, player)
+	for i in 12:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) > 23.5 and game.inventory.count("rope") == r0 and not player.script_move,
+		"over and out, and the rope is still yours")
+	# A writ of passage from a town whose word reaches here is as good as a pass.
+	check(not npcs.gates.verdict(e)["ok"], "a stranger without leave still isn't let in")
+	game.inventory.add(ItemDB.make("writ", 1, 1.0, {"sid": "%d:1_1" % game.planet, "x": c.x + 300.0, "z": c.y, "until": game.day + 2.0}))
+	check(npcs.gates.verdict(e)["why"] == "pass", "a writ from a town nearby lets you in")
+	game.inventory.remove_type("writ", 1)
+	# In the watch's tabard, guards who don't know you take you for one of their own...
+	game.equipment["back"] = ItemDB.make("watch_tabard", 1, 1.0, {})
+	check(npcs.gates.verdict(e)["why"] == "disguise", "in the watch's tabard you pass for one of them")
+	# ...but one who knows your face sees through it.
+	gn.rec["dead"] = false
+	gn.rec["rel"] = 60
+	gn.action = "idle"
+	gn.global_position = Vector3(gate.x + 2.0, at.y, gate.y)
+	e["gate"]["welcomed"] = false
+	e["gate"]["inside"] = false
+	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	game.crime = Crime.new()
+	for i in 6:
+		await wait.call()
+		if game.crime.owed(sid, game.day) > 0:
+			break
+	check(game.crime.owed(sid, game.day) >= Crime.FINES["impersonation"] and npcs.gates.verdict(e)["why"] != "disguise",
+		"a guard who knows you sees through it: posing as the watch (%d)" % game.crime.owed(sid, game.day))
+	game.equipment.erase("back")
+	game.crime = Crime.new()
 	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()

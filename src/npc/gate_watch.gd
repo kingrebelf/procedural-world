@@ -103,12 +103,15 @@ func _watch(e: Dictionary, pp: Vector3) -> void:
 		g["inside"] = inside # where you were when the town came near (a load inside is no crossing)
 		return
 	var v := verdict(e)
+	if v["why"] == "disguise" and _seen_through(e, gate, gd, inside, pp, t):
+		v = verdict(e)
 	if v["ok"]:
 		if not inside and gd < HALT_R * 0.8 and not g["welcomed"]:
 			var guard := _gate_guard(e, gate, pp)
 			if guard != null and guard.global_position.distance_to(pp) < 16.0:
 				g["welcomed"] = true
-				manager._bark(guard, GatePolicy.welcome_line(v["why"], Game.town_tier(sid)), guard.global_position.distance_to(pp))
+				manager._bark(guard, GatePolicy.welcome_line(v["why"], Game.town_tier(sid)) if v["why"] != "disguise"
+					else ["Evening.", "All quiet out there?", "On you go. Sergeant's looking for you."][randi() % 3], guard.global_position.distance_to(pp))
 				guard.act("nod" if v["why"] != "standing" or Game.town_standing(sid) < 65 else "salute")
 		elif gd > HALT_R * 2.0:
 			g["welcomed"] = false
@@ -169,8 +172,11 @@ func verdict(e: Dictionary) -> Dictionary:
 	var g := _state(e)
 	if not g.has("tp"):
 		g["tp"] = GatePolicy.temper(e["site"], e["data"])
-	return GatePolicy.admit(g["tp"], Game.town_standing(sid), Game.is_citizen(sid), not Game.guilds.is_empty(),
-		Game.crime.stars(sid, Game.day), Game.standing.has_pass(sid, Game.day), NPCMind.hour_now())
+	var v := GatePolicy.admit(g["tp"], Game.town_standing(sid), Game.is_citizen(sid), not Game.guilds.is_empty(),
+		Game.crime.stars(sid, Game.day), Game.standing.has_pass(sid, Game.day) or has_writ(sid, e["site"]["center"]), NPCMind.hour_now())
+	if not v["ok"] and v["why"] != "wanted" and disguised(e):
+		return {"ok": true, "why": "disguise"}
+	return v
 
 ## The guard nearest the gate and awake to come and stop you, or null.
 func _gate_guard(e: Dictionary, gate: Vector2, pp: Vector3) -> NPC:
@@ -232,7 +238,29 @@ func options(n: NPC) -> Dictionary:
 		"need": GatePolicy.need(tp, not Game.guilds.is_empty(), bool(tp["night_shut"]) and GatePolicy.is_night(hour)),
 		"admit": verdict(e), "toll": toll, "late": int(round(toll * GatePolicy.LATE_FINE)) if inside else 0, "inside": inside,
 		"sells": GatePolicy.sells_pass(score, Game.crime.stars(sid, Game.day)), "bribe": GatePolicy.bribe(tp, n.rec, hour),
-		"vouchers": GatePolicy.vouchers(e["data"]), "pass": Game.standing.pass_of(sid, Game.day), "days": float(tp["days"])}
+		"vouchers": GatePolicy.vouchers(e["data"]), "pass": Game.standing.pass_of(sid, Game.day), "days": float(tp["days"]),
+		"writ": int(tp["toll"]) * WRIT_TOLLS if score >= WRIT_STANDING and Game.crime.stars(sid, Game.day) == 0 else 0}
+
+## A writ of passage: the town's word, in writing, good at every walled town its word
+## reaches, for some days. Sold by the watch to those it respects.
+const WRIT_STANDING := 35
+const WRIT_TOLLS := 3
+const WRIT_DAYS := 7.0
+
+func buy_writ(n: NPC) -> bool:
+	var o := options(n)
+	if o.is_empty() or int(o["writ"]) <= 0 or Game.money < int(o["writ"]):
+		return false
+	var e := gate_of(n)
+	var c: Vector2 = e["site"]["center"]
+	var w := ItemDB.make("writ", 1, 1.0, {"how": "bought", "sid": String(e["sid"]), "town": String(e["data"]["name"]),
+		"x": c.x, "z": c.y, "until": Game.day + WRIT_DAYS})
+	if not Game.inventory.add(w):
+		return false
+	Game.add_money(-int(o["writ"]))
+	n.rec["purse"] = int(n.rec.get("purse", 0)) + int(o["writ"])
+	_cleared(e)
+	return true
 
 ## Pays the toll (and the fine for being found inside without it): a pass for some days.
 func pay_toll(n: NPC) -> bool:
@@ -486,6 +514,9 @@ func gate_shut(sid: String) -> bool:
 ## Rope it takes (left hanging on the wall).
 const CLIMB_ROPE := 2
 const CLIMB_SECONDS := 3.4
+## A grappling hook gets you over without leaving rope, and quicker.
+const HOOK := "grappling_hook"
+const HOOK_SECONDS := 2.6
 ## How far from a gate the wall can be climbed (the gate is watched; the towers are in the way).
 const CLIMB_CLEAR := 9.0
 var _climb := {} ## {path: [Vector3], t, e, seen: NPC or null, inward}
@@ -517,6 +548,8 @@ func usables(pos: Vector3) -> Array:
 		var w := c + dir * rad
 		var have := Game.inventory.count("rope")
 		var verb := ("Climb over the wall (%d rope)" if have >= CLIMB_ROPE else "Climb over the wall (needs %d rope)") % CLIMB_ROPE
+		if Game.inventory.count(HOOK) > 0:
+			verb = "Climb over the wall (grappling hook)"
 		return [{"node": self, "n": String(e["sid"]), "at": Vector3(w.x, pos.y + 1.4, w.y), "verb": verb}]
 	return []
 
@@ -534,8 +567,9 @@ func use(sid: String, player: Node3D) -> void:
 			e = x
 	if e.is_empty():
 		return
-	if Game.inventory.count("rope") < CLIMB_ROPE:
-		Game.toast.emit("You need %d rope to get over the wall" % CLIMB_ROPE)
+	var hook := Game.inventory.count(HOOK) > 0
+	if not hook and Game.inventory.count("rope") < CLIMB_ROPE:
+		Game.toast.emit("You need %d rope or a grappling hook to get over the wall" % CLIMB_ROPE)
 		return
 	var site: Dictionary = e["site"]
 	var c: Vector2 = site["center"]
@@ -557,13 +591,15 @@ func use(sid: String, player: Node3D) -> void:
 	var land := manager.ground(far_side.x, far_side.y)
 	if is_nan(land):
 		land = from.y
-	Game.inventory.remove_type("rope", CLIMB_ROPE)
+	if not hook:
+		Game.inventory.remove_type("rope", CLIMB_ROPE)
 	var seen := _seen_by(e, from, 38.0, 0.12)
-	_climb = {"e": e, "t": 0.0, "inward": inward, "seen": seen, "player": player,
+	_climb = {"e": e, "t": 0.0, "inward": inward, "seen": seen, "player": player, "secs": HOOK_SECONDS if hook else CLIMB_SECONDS,
 		"path": [from, Vector3(near_side.x, from.y + 0.2, near_side.y), Vector3(near_side.x, top + 0.3, near_side.y),
 			Vector3(far_side.x, top + 0.3, far_side.y), Vector3(far_side.x, land + 0.1, far_side.y)]}
 	player.set("script_move", true)
-	_hang_rope(Vector3(near_side.x, top, near_side.y), from.y)
+	if not hook:
+		_hang_rope(Vector3(near_side.x, top, near_side.y), from.y) # a hook comes down with you
 	Game.practice("sneak", 2.0)
 	Audio.play("weapon/draw", -8.0)
 
@@ -706,6 +742,8 @@ func _postern_use(pos: Vector3) -> Array:
 	if outside and not open:
 		verb = "Pick the postern's lock (%s)" % LockGame.TIERS[int(pt["tier"])] if Game.inventory.count(LockpickUI.PICK_ITEM) > 0 \
 			else "Postern door (locked: needs a lockpick)"
+		if has_keys(String(e["sid"])):
+			verb = "Unlock the postern (the watch's keys)"
 	elif not outside and not open:
 		verb = "Unbar the postern and slip out"
 	var at := pos
@@ -726,6 +764,12 @@ func _use_postern(sid: String, player: Node3D) -> void:
 		_posterns[sid] = {"node": null, "open": false}
 	var st: Dictionary = _posterns[sid]
 	if bool(st["open"]) or not outside:
+		st["open"] = true
+		_through(hit[0], pt, outside, player)
+		return
+	if has_keys(sid):
+		Game.toast.emit("One of the watch's keys turns the postern's lock")
+		Audio.play("door/lock", -6.0)
 		st["open"] = true
 		_through(hit[0], pt, outside, player)
 		return
@@ -802,3 +846,73 @@ static func postern_mesh() -> ArrayMesh:
 			k.box("planks", X.call(Vector3(0, 1.1, 0.1)), Vector3(1.3, 0.14, 0.1), Color(0.5, 0.4, 0.32)) # the bar
 	_postern_mesh = k.commit(Materials.get_mat)
 	return _postern_mesh
+
+## Whether you carry this town's watch keys (lifted from one of its guards).
+static func has_keys(sid: String) -> bool:
+	for it in Game.inventory.slots:
+		if it is Dictionary and it["type"] == "watch_keys" and String((it.get("origin", {}) as Dictionary).get("sid", "")) == sid:
+			return true
+	return false
+
+# --- Disguised as the watch ---------------------------------------------------------------------
+
+## The tabard of the town watch, worn: guards who don't know your face take you for one of theirs.
+const TABARD := "watch_tabard"
+## Seconds between looks from the watch inside town while you're in their colours.
+const LOOK_EVERY := 45.0
+
+## Whether you are passing as one of this town's watch (in its tabard, not yet found out today).
+func disguised(e: Dictionary) -> bool:
+	var it = Game.equipment.get("back")
+	if not it is Dictionary or it["type"] != TABARD:
+		return false
+	return float(e.get("gate", {}).get("unmasked", -1.0)) < Game.day
+
+## The odds a guard sees through the tabard: the stricter the town, the sharper the watch;
+## by night it's harder to tell. A guard who knows your face isn't fooled.
+static func see_through_odds(tp: Dictionary, guard_rel: int, night: bool) -> float:
+	if guard_rel >= GatePolicy.KNOWS_REL:
+		return 1.0
+	return clampf(0.12 + float(tp["strict"]) * 0.4 - (0.1 if night else 0.0), 0.05, 0.9)
+
+## A guard at the gate (or, now and then, inside) gives you a look. True if they saw
+## through the disguise: posing as the watch is a crime, and you're unmasked there till tomorrow.
+func _seen_through(e: Dictionary, gate: Vector2, gd: float, inside: bool, pp: Vector3, t: float) -> bool:
+	var g: Dictionary = e["gate"]
+	var guard: NPC = null
+	if not inside and gd < HALT_R * 0.8 and not g["welcomed"]:
+		guard = _gate_guard(e, gate, pp)
+		if guard != null and guard.global_position.distance_to(pp) > 16.0:
+			guard = null
+	elif inside and t - float(g.get("looked_t", -999.0)) > LOOK_EVERY:
+		guard = _seen_by(e, pp, ASK_R, 0.45)
+		if guard != null:
+			g["looked_t"] = t
+	if guard == null:
+		return false
+	var odds := see_through_odds(g["tp"], int(guard.rec.get("rel", 0)), GatePolicy.is_night(NPCMind.hour_now()))
+	if inside:
+		odds *= 0.5
+	if randf() >= odds:
+		return false
+	g["unmasked"] = Game.day + 1.0
+	g["welcomed"] = false
+	manager.report_crime(pp, "impersonation", 0, "", guard)
+	Game.standing_deed(String(e["sid"]), DISGUISE_DEED)
+	Game.toast.emit("A guard saw through your tabard: posing as the watch of %s is a crime." % e["data"]["name"])
+	return true
+
+const DISGUISE_DEED := -10
+
+## A writ of passage you carry, good at this town: issued by a town whose word reaches it,
+## and not yet run out.
+static func has_writ(sid: String, center: Vector2) -> bool:
+	for it in Game.inventory.slots:
+		if not it is Dictionary or it["type"] != "writ":
+			continue
+		var o: Dictionary = it.get("origin", {})
+		if float(o.get("until", 0.0)) < Game.day or String(o.get("sid", "")).get_slice(":", 0) != sid.get_slice(":", 0):
+			continue
+		if Vector2(float(o.get("x", 0.0)), float(o.get("z", 0.0))).distance_to(center) <= Standing.WORD_REACH:
+			return true
+	return false

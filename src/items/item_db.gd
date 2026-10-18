@@ -47,6 +47,11 @@ const ITEMS := {
 	"pickaxe_plasma": {"name": "Plasma Drill", "era": Eras.SCIFI, "value": 260, "stack": false, "kind": "tool", "mine": 3.5, "chop": 0.6, "damage": 10, "range": 3.5, "dig": 1.6, "beam": true, "beam_dps": 45.0, "beam_range": 10.0, "beam_mine": 4.0},
 	"axe_iron": {"name": "Iron Axe", "era": Eras.MEDIEVAL, "value": 40, "stack": false, "kind": "tool", "mine": 0.3, "chop": 1.0, "damage": 12, "range": 3.0},
 	"lockpick": {"name": "Lockpick", "era": ANY, "value": 4, "stack": true, "kind": "resource", "cat": "Tools", "color": Color(0.72, 0.74, 0.78)},
+	# Ways into a walled town (GateWatch): over the wall, through the postern, past the watch.
+	"grappling_hook": {"name": "Grappling Hook", "era": Eras.MEDIEVAL, "value": 32, "stack": false, "kind": "resource", "cat": "Tools", "color": Color(0.4, 0.4, 0.42)},
+	"watch_keys": {"name": "The Watch's Keys", "era": Eras.MEDIEVAL, "value": 15, "stack": false, "kind": "resource", "cat": "Tools", "color": Color(0.36, 0.33, 0.3)},
+	"writ": {"name": "Writ of Passage", "era": Eras.MEDIEVAL, "value": 0, "stack": false, "kind": "resource", "color": Color(0.9, 0.84, 0.7)},
+	"watch_tabard": {"name": "Watch Tabard", "era": Eras.MEDIEVAL, "value": 60, "stack": false, "kind": "armor", "slot": "back", "armor": 1, "look": "cloth", "color": Color(0.62, 0.16, 0.14)},
 	"torch": {"name": "Torch", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "light", "color": Color(0.85, 0.5, 0.2)},
 	"flashlight": {"name": "Flashlight", "era": Eras.SCIFI, "value": 60, "stack": false, "kind": "light", "color": Color(0.3, 0.32, 0.36)},
 	"flashlight_dead": {"name": "Flashlight (dead battery)", "era": Eras.SCIFI, "value": 20, "stack": false, "kind": "light", "color": Color(0.22, 0.22, 0.24)},
@@ -1067,7 +1072,7 @@ const WEIGHT := {"wood": 2.0, "glowroot": 1.6, "stone": 2.5, "iron_ore": 3.0, "a
 	"workbench": 15.0, "forge": 20.0, "anvil": 25.0, "jetpack": 7.0, "jet_fuel": 1.2,
 	"treasure_map": 0.05, "treasure_chip": 0.05,
 	# The medieval age.
-	"flint": 0.3, "clay": 1.0, "brick": 1.5, "rope": 0.4, "cloth": 0.3, "wool": 0.2, "flax": 0.1, "resin": 0.2,
+	"flint": 0.3, "clay": 1.0, "brick": 1.5, "rope": 0.4, "grappling_hook": 2.5, "watch_keys": 0.4, "writ": 0.05, "watch_tabard": 0.8, "cloth": 0.3, "wool": 0.2, "flax": 0.1, "resin": 0.2,
 	"charcoal": 0.3, "salt": 0.1, "beeswax": 0.2, "lamp_oil": 0.5, "copper_ore": 2.5, "tin_ore": 2.5, "coal": 1.0,
 	"silver_ore": 2.5, "gold_ore": 3.0, "salt_crystal": 1.0, "copper_ingot": 2.0, "bronze_ingot": 2.0, "steel_ingot": 2.0,
 	"silver_ingot": 1.5, "gold_ingot": 2.5, "iron_nails": 0.02, "wooden_club": 2.0, "stone_knife": 0.4, "sling": 0.2,
