@@ -3503,8 +3503,9 @@ func test_pack_a_items() -> void:
 	for t in Byproducts.HERBS + ["mushroom", "herb_nightshade", "flax", "clay"]:
 		found[t] = true
 	for t in known:
-		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "fish_raw", "flashlight_dead", "power_cell_spent"]:
-			continue # butchered, from treasure maps, caught, or a spent flashlight or cell
+		if t in ["bone", "animal_fat", "antler", "fur_pelt", "leather", "treasure_map", "treasure_chip", "fish_raw", "flashlight_dead",
+				"power_cell_spent", "watch_keys", "watch_tabard", "writ"]:
+			continue # butchered, from treasure maps, caught, a spent flashlight or cell, or from the town watch
 		check(made.has(t) or found.has(t), "%s can be had somewhere" % t)
 	# Level gates rise with the age: stone first, steel later, the finest last.
 	check(ItemDB.UNLOCK.get("pickaxe_stone", 1) < ItemDB.UNLOCK["pickaxe_bronze"], "stone before bronze")
