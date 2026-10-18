@@ -1691,6 +1691,8 @@ func _add_obj_body(o: Dictionary) -> void:
 	var beams := SunBeams.node(o["t"])
 	if beams != null:
 		b.add_child(beams)
+	for w in Interiors.sun_windows(o["t"]):
+		b.add_child(WindowLight.make(w[0], w[1]))
 	for f in Interiors.fires(o["t"]):
 		# Indoors only a draught stirs them.
 		var fl := FireFx.flame(f[1], Color(1, 1, 1, 1), "fire", false, 0.12)

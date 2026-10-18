@@ -322,9 +322,16 @@ func _light() -> void:
 	# Cloud scatters the sun's disc into a wide soft source: shadows lose their edge and
 	# fade. (Fading them, not widening the sun: a wide sun makes the soft-shadow search
 	# PCSS does far costlier, several ms a frame in a forest under overcast.)
-	sun.light_angular_distance = lerpf(0.5, 1.0, oc)
-	sun.shadow_blur = lerpf(1.2, 2.0, oc)
+	sun.light_angular_distance = lerpf(0.5, 0.7, oc)
+	sun.shadow_blur = lerpf(1.2, 2.2, oc)
 	sun.shadow_opacity *= lerpf(1.0, 0.45, oc)
+	# The faint shadows left under a heavy overcast needn't reach as far: the cascades
+	# then cover less ground and draw far fewer casters (rain cost a town 13 FPS). Stepped,
+	# so the cascades don't creep (and shimmer) through a slow change of weather.
+	var reach := atmosphere.shadow_dist * lerpf(1.0, 0.5, oc)
+	if absf(reach - sun.directional_shadow_max_distance) > atmosphere.shadow_dist * 0.05 or (oc == 0.0 and reach != sun.directional_shadow_max_distance):
+		sun.directional_shadow_max_distance = reach
+		atmosphere.moon.directional_shadow_max_distance = reach
 	atmosphere.moon.light_energy *= lerpf(1.0, 0.2, oc)
 	if atmosphere.target.get("underwater"):
 		return
