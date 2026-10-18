@@ -30,6 +30,7 @@ varying float crest;
 varying float amp;
 varying float murk;
 varying float exposure;
+varying float bed_slope;
 
 // Integer hash of a lattice point (PCG2D). Exact on every GPU: the old sin() hash gave a
 // shared cell corner two different values on some GPUs (NVIDIA: light and dark rectangles
@@ -75,6 +76,8 @@ void vertex() {
 	// shore the wind blows toward, and the shore it blows off stays nearly still.
 	vec2 dg = vec2(depth_here(wpos.xz + vec2(12.0, 0.0)) - depth_here(wpos.xz - vec2(12.0, 0.0)),
 		depth_here(wpos.xz + vec2(0.0, 12.0)) - depth_here(wpos.xz - vec2(0.0, 12.0)));
+	// How steeply the bed shelves here (rise per metre): breakers need a beach to run up.
+	bed_slope = length(dg) / 24.0;
 	exposure = length(dg) > 0.05 ? smoothstep(-0.3, 0.7, dot(normalize(wind_dir + vec2(0.0001)), -normalize(dg))) : 0.5;
 	murk = (muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0) ? 0.0 : texture(murk_map, muv).r;
 	vec3 s = swell(wpos.xz, TIME, amp);
@@ -131,7 +134,10 @@ void fragment() {
 	float lap = 0.5 + 0.5 * sin(t * 0.9 + n2(wpos.xz * 0.08) * 9.0);
 	float edge_f = (1.0 - smoothstep(0.0, 0.06 + amp * 0.3 + lap * 0.05, vdepth)) * smoothstep(0.0, 0.015, vdepth);
 	float roll = sin(vdepth * 7.0 + t * 1.3 + n2(wpos.xz * 0.25) * 4.0);
-	float rollers = smoothstep(0.8, 1.0, roll) * (1.0 - smoothstep(0.2, 0.8 + amp * 2.0, vdepth)) * smoothstep(0.03, 0.12, vdepth);
+	// Only in a narrow band off a shelving shore: over wide flat shallows every small rise
+	// in the bed drew a ring of its own, like the contour lines on a map.
+	float rollers = smoothstep(0.8, 1.0, roll) * (1.0 - smoothstep(0.2, 0.5 + amp * 1.2, vdepth)) * smoothstep(0.03, 0.12, vdepth)
+		* smoothstep(0.01, 0.04, bed_slope);
 	// Broken into stretches, as real breakers are, never a ring round the whole shore.
 	rollers *= smoothstep(-0.05, 0.25, n2(wpos.xz * 0.05 + vec2(t * 0.03, 0.0)));
 	// Surf needs fetch: a sheltered pond barely laps, a big lake or the sea breaks.
