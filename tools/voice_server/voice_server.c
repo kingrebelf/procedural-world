@@ -7,7 +7,10 @@
  *
  *   POST /v1/audio/speech  {"input": "...", "voice": "42@en-GB-scotland", "speed": 1.0}
  *        -> raw 16-bit mono PCM at 24 kHz (or a WAV with "response_format": "wav")
- *   GET  /health           -> {"ok": true, "token": "<--token>", "voices": N}
+ *   POST /v1/audio/transcriptions  a 16-bit PCM WAV (multipart "file", or the raw body)
+ *        -> {"text": "..."}: speech to text with NVIDIA's Parakeet TDT 0.6B v2 (CC-BY-4.0),
+ *        when the voice pack has it in stt/ (loaded in the background at start)
+ *   GET  /health           -> {"ok": true, "token": "<--token>", "voices": N, "stt": "ready"}
  *
  * "voice" is a speaker number in the voice table, optionally followed by "@" and the
  * eSpeak NG accent its words are sounded out in (en, en-GB-x-rp, en-GB-scotland,
@@ -44,11 +47,17 @@ typedef int sock_t;
 #include "sherpa-onnx/c-api/c-api.h"
 
 #define MAX_BODY (64 * 1024)
+#define MAX_UPLOAD (4 * 1024 * 1024) /* a recording: 30 s at 48 kHz stereo is under 6 MB, 16 kHz mono 1 MB */
 #define MAX_TEXT 2000
 
 static const SherpaOnnxOfflineTts *tts;
 static char token[128] = "";
 static int num_voices = 0;
+static const SherpaOnnxOfflineRecognizer *stt;
+/* Speech to text: "none" (no model in the pack), "loading", "ready" or "failed". */
+static volatile const char *stt_state = "none";
+static char stt_dir[1024];
+static int stt_threads = 4;
 
 /* ---- the game that started us ------------------------------------------------------ */
 
@@ -192,6 +201,7 @@ static void put_le(char *p, uint32_t v, int bytes) {
 static void speak(sock_t s, const char *body) {
   static char text[MAX_TEXT * 4 + 1];
   char voice[96] = "0", fmt[16] = "pcm", lang[64] = "";
+  if (tts == NULL) { reply_error(s, 404, "this voice pack has no voices"); return; }
   if (!json_string(body, "input", text, sizeof text) || text[0] == 0) { reply_error(s, 400, "no input"); return; }
   json_string(body, "voice", voice, sizeof voice);
   json_string(body, "response_format", fmt, sizeof fmt);
@@ -242,6 +252,125 @@ static void speak(sock_t s, const char *body) {
   SherpaOnnxDestroyOfflineTtsGeneratedAudio(a);
 }
 
+/* ---- speech to text ------------------------------------------------------------------ */
+
+static void sleep_ms(int ms) {
+#ifdef _WIN32
+  Sleep((DWORD)ms);
+#else
+  usleep((useconds_t)ms * 1000);
+#endif
+}
+
+static void load_stt(void) {
+  char enc[1100], dec[1100], join[1100], toks[1100];
+  snprintf(enc, sizeof enc, "%s/encoder.int8.onnx", stt_dir);
+  snprintf(dec, sizeof dec, "%s/decoder.int8.onnx", stt_dir);
+  snprintf(join, sizeof join, "%s/joiner.int8.onnx", stt_dir);
+  snprintf(toks, sizeof toks, "%s/tokens.txt", stt_dir);
+  SherpaOnnxOfflineRecognizerConfig c;
+  memset(&c, 0, sizeof c);
+  c.feat_config.sample_rate = 16000;
+  c.feat_config.feature_dim = 80;
+  c.model_config.transducer.encoder = enc;
+  c.model_config.transducer.decoder = dec;
+  c.model_config.transducer.joiner = join;
+  c.model_config.tokens = toks;
+  c.model_config.num_threads = stt_threads;
+  c.model_config.provider = "cpu";
+  c.model_config.model_type = "nemo_transducer";
+  c.decoding_method = "greedy_search";
+  stt = SherpaOnnxCreateOfflineRecognizer(&c);
+  stt_state = stt ? "ready" : "failed";
+  fprintf(stderr, "voice_server: speech to text %s\n", stt ? "ready" : "could not load");
+}
+
+#ifdef _WIN32
+static DWORD WINAPI stt_thread(LPVOID arg) { (void)arg; load_stt(); return 0; }
+static void start_stt(void) { CreateThread(NULL, 0, stt_thread, NULL, 0, NULL); }
+#else
+static void *stt_thread(void *arg) { (void)arg; load_stt(); return NULL; }
+static void start_stt(void) {
+  pthread_t t;
+  pthread_create(&t, NULL, stt_thread, NULL);
+  pthread_detach(t);
+}
+#endif
+
+static uint32_t get_le(const unsigned char *p, int bytes) {
+  uint32_t v = 0;
+  for (int i = bytes - 1; i >= 0; i--) v = (v << 8) | p[i];
+  return v;
+}
+
+/* Finds the WAV in a request body (a multipart upload or the bare file) and reads its
+   16-bit PCM as mono floats. Returns the sample count (0 if there is no usable WAV). */
+static long read_wav(const unsigned char *b, size_t n, float **out, int *rate) {
+  const unsigned char *w = NULL;
+  for (size_t i = 0; i + 12 <= n; i++)
+    if (memcmp(b + i, "RIFF", 4) == 0 && memcmp(b + i + 8, "WAVE", 4) == 0) { w = b + i; break; }
+  if (w == NULL) return 0;
+  const unsigned char *end = b + n, *p = w + 12;
+  int ch = 0, bits = 0, fmt = 0;
+  *rate = 0;
+  while (p + 8 <= end) {
+    uint32_t len = get_le(p + 4, 4);
+    const unsigned char *d = p + 8;
+    if (memcmp(p, "fmt ", 4) == 0 && d + 16 <= end) {
+      fmt = (int)get_le(d, 2); ch = (int)get_le(d + 2, 2); *rate = (int)get_le(d + 4, 4); bits = (int)get_le(d + 14, 2);
+    } else if (memcmp(p, "data", 4) == 0) {
+      if ((fmt != 1 && fmt != 0xFFFE) || bits != 16 || ch < 1 || *rate < 8000) return 0;
+      size_t avail = (size_t)(end - d);
+      if (len > avail) len = (uint32_t)avail; /* a writer that never filled in the size */
+      long frames = (long)(len / (2u * (unsigned)ch));
+      float *f = malloc(sizeof(float) * (size_t)(frames > 0 ? frames : 1));
+      if (f == NULL) return 0;
+      for (long i = 0; i < frames; i++) {
+        long sum = 0;
+        for (int k = 0; k < ch; k++) sum += (int16_t)get_le(d + 2 * ((size_t)i * ch + k), 2);
+        f[i] = (float)sum / (32768.0f * ch);
+      }
+      *out = f;
+      return frames;
+    }
+    p = d + len + (len & 1);
+  }
+  return 0;
+}
+
+static void transcribe(sock_t s, const char *body, size_t n) {
+  if (strcmp((const char *)stt_state, "none") == 0) { reply_error(s, 404, "this voice pack has no speech recognition"); return; }
+  for (int i = 0; i < 1200 && strcmp((const char *)stt_state, "loading") == 0; i++) sleep_ms(50); /* still loading: up to a minute */
+  if (stt == NULL) { reply_error(s, 400, "speech recognition did not load"); return; }
+  float *pcm = NULL;
+  int rate = 0;
+  long frames = read_wav((const unsigned char *)body, n, &pcm, &rate);
+  if (frames <= 0) { free(pcm); reply_error(s, 400, "send a 16-bit PCM WAV"); return; }
+  const SherpaOnnxOfflineStream *st = SherpaOnnxCreateOfflineStream(stt);
+  SherpaOnnxAcceptWaveformOffline(st, rate, pcm, (int32_t)frames);
+  SherpaOnnxDecodeOfflineStream(stt, st);
+  const SherpaOnnxOfflineRecognizerResult *r = SherpaOnnxGetOfflineStreamResult(st);
+  const char *t = (r && r->text) ? r->text : "";
+  size_t tl = strlen(t);
+  char *o = malloc(tl * 6 + 32), *q = o;
+  if (o == NULL) { reply_error(s, 400, "out of memory"); }
+  else {
+    q += sprintf(q, "{\"text\": \"");
+    for (const char *c = t; *c; c++) {
+      unsigned char u = (unsigned char)*c;
+      if (u == '"' || u == '\\') { *q++ = '\\'; *q++ = (char)u; }
+      else if (u < 0x20) q += sprintf(q, "\\u%04x", u);
+      else *q++ = (char)u;
+    }
+    q += sprintf(q, "\"}");
+    reply(s, 200, "application/json", o, (size_t)(q - o));
+    free(o);
+  }
+  if (r) SherpaOnnxDestroyOfflineRecognizerResult(r);
+  SherpaOnnxDestroyOfflineStream(st);
+  free(pcm);
+}
+
 /* Case-insensitive prefix test for a header line. */
 static int has_prefix(const char *l, const char *p) {
   for (; *p; l++, p++)
@@ -250,7 +379,7 @@ static int has_prefix(const char *l, const char *p) {
 }
 
 static void handle(sock_t s) {
-  static char buf[MAX_BODY + 8192];
+  static char buf[MAX_UPLOAD + 8192];
   size_t got = 0;
   char *body = NULL;
   long want = -1;
@@ -266,24 +395,32 @@ static void handle(sock_t s) {
       want = 0;
       for (char *l = buf; l < e; l = strstr(l, "\r\n") + 2) /* every line ends in \r\n up to e */
         if (has_prefix(l, "content-length:")) want = atol(l + 15);
-      if (want < 0 || want > MAX_BODY) { reply_error(s, 400, "request too large"); return; }
+      if (want < 0 || want > MAX_UPLOAD) { reply_error(s, 400, "request too large"); return; }
     }
     if ((long)(got - (size_t)(body - buf)) >= want) break;
   }
   body[want] = 0;
+  body[-4] = 0; /* from here on buf is the request line and headers only, never the audio */
   if (strncmp(buf, "GET /health", 11) == 0) {
     char b[256];
-    int n = snprintf(b, sizeof b, "{\"ok\": true, \"token\": \"%s\", \"voices\": %d}", token, num_voices);
+    int n = snprintf(b, sizeof b, "{\"ok\": true, \"token\": \"%s\", \"voices\": %d, \"stt\": \"%s\"}", token, num_voices, (const char *)stt_state);
     reply(s, 200, "application/json", b, (size_t)n);
     return;
   }
-  if (strncmp(buf, "POST ", 5) == 0 && strstr(buf, "/audio/speech ") != NULL) {
+  int to_speak = strstr(buf, "/audio/speech ") != NULL, to_hear = strstr(buf, "/audio/transcriptions ") != NULL;
+  if (strncmp(buf, "POST ", 5) == 0 && (to_speak || to_hear)) {
     if (token[0]) {
       char want_auth[200];
-      snprintf(want_auth, sizeof want_auth, "Bearer %s\r\n", token);
-      if (strstr(buf, want_auth) == NULL) { reply_error(s, 401, "wrong token"); return; }
+      snprintf(want_auth, sizeof want_auth, "Bearer %s", token); /* the last header has no \r\n left */
+      char *at = strstr(buf, want_auth);
+      if (at == NULL || (at[strlen(want_auth)] != '\r' && at[strlen(want_auth)] != 0)) { reply_error(s, 401, "wrong token"); return; }
     }
-    speak(s, body);
+    if (to_speak) {
+      if (want > MAX_BODY) { reply_error(s, 400, "request too large"); return; }
+      speak(s, body);
+    } else {
+      transcribe(s, body, (size_t)want);
+    }
     return;
   }
   reply_error(s, 404, "not found");
@@ -326,9 +463,25 @@ int main(int argc, char **argv) {
   cfg.model.provider = "cpu";
   cfg.max_num_sentences = 1;
   cfg.silence_scale = 0.2f;
-  tts = SherpaOnnxCreateOfflineTts(&cfg);
-  if (tts == NULL) { fprintf(stderr, "voice_server: could not load the voices in %s\n", dir); return 2; }
-  num_voices = SherpaOnnxOfflineTtsNumSpeakers(tts);
+  /* Speech to text loads beside the voices, so speaking is ready first. */
+  snprintf(stt_dir, sizeof stt_dir, "%s/stt", dir);
+  char probe[1100];
+  snprintf(probe, sizeof probe, "%s/encoder.int8.onnx", stt_dir);
+  FILE *pf = fopen(probe, "rb");
+  if (pf) {
+    fclose(pf);
+    stt_threads = cfg.model.num_threads;
+    stt_state = "loading";
+    start_stt();
+  }
+  /* The voices are optional when speech to text is there (the installer has both as options). */
+  FILE *mf = fopen(model, "rb");
+  if (mf) {
+    fclose(mf);
+    tts = SherpaOnnxCreateOfflineTts(&cfg);
+  }
+  if (tts == NULL && strcmp((const char *)stt_state, "none") == 0) { fprintf(stderr, "voice_server: could not load the voices in %s\n", dir); return 2; }
+  num_voices = tts ? SherpaOnnxOfflineTtsNumSpeakers(tts) : 0;
 
 #ifdef _WIN32
   WSADATA w;

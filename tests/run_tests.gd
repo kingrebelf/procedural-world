@@ -1889,6 +1889,47 @@ func test_voice_and_quick_replies() -> void:
 	loud.encode_s16(400, -16384)
 	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
 
+## Speech to text goes to the server set in Settings, else the built-in one, else OpenAI;
+## local chat servers can't transcribe, so they are never asked.
+func test_speech_to_text_target() -> void:
+	var ai = load("res://src/ai/ai_service.gd").new()
+	ai.cfg = ai.DEFAULTS.duplicate()
+	ai.cfg.merge({"provider": "ollama", "format": "openai", "base_url": "http://127.0.0.1:11434/v1", "model": "llama3.1:8b"}, true)
+	check(ai.stt_target().is_empty(), "a local chat server is not a speech-to-text server")
+	ai.cfg.merge({"provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": "k"}, true)
+	check(String(ai.stt_target().get("url", "")) == "https://api.openai.com/v1/audio/transcriptions", "OpenAI transcribes")
+	ai.cfg["stt_url"] = "http://127.0.0.1:8000/v1"
+	check(String(ai.stt_target()["url"]) == "http://127.0.0.1:8000/v1/audio/transcriptions" and ai.stt_target()["model"] == "whisper-1", "a set server comes first")
+	ai.free()
+
+## Open mic: the speech gate cuts phrases out of a stream at the pauses, ignores clicks
+## and steady hum, and only talk meant for the people around draws an answer.
+func test_open_mic_gate() -> void:
+	var g := SpeechGate.new()
+	var rate := 48000.0
+	var stream := PackedFloat32Array()
+	# silence, a phrase, silence, a click, silence, another phrase, silence
+	for part in [[1.0, 0.0], [1.2, 0.2], [1.2, 0.0], [0.05, 0.4], [1.0, 0.0], [0.8, 0.15], [1.2, 0.0]]:
+		for i in int(part[0] * rate):
+			stream.append(part[1] * sin(float(i) * 0.12) + randf_range(-0.002, 0.002))
+	var got: Array = []
+	for i in range(0, stream.size(), 1024): # as the capture buffer hands it over
+		got.append_array(g.feed(stream.slice(i, i + 1024), rate))
+	check(got.size() == 2, "two phrases heard, the click dropped (got %d)" % got.size())
+	if got.size() == 2:
+		var secs := float((got[0] as PackedFloat32Array).size()) / SpeechGate.RATE
+		check(secs > 1.2 and secs < 2.6, "the phrase keeps its start and a short tail (%.2f s)" % secs)
+		var wav := SpeechGate.to_wav(got[1])
+		check(wav.decode_u32(24) == 16000 and wav.size() == 44 + (got[1] as PackedFloat32Array).size() * 2, "16 kHz WAV for speech to text")
+	var hum := SpeechGate.new()
+	var steady := PackedFloat32Array()
+	steady.resize(int(rate * 4.0))
+	for i in steady.size():
+		steady[i] = 0.003 * sin(float(i) * 0.05)
+	check(hum.feed(steady, rate).is_empty() and not hum.active, "a quiet hum is not speech")
+	check(Interject.calls_out("Hey, can anyone spare me 5 marks?") and Interject.calls_out("Where's the smithy") and Interject.calls_out("Hello!"), "calling out to people")
+	check(not Interject.calls_out("ugh this inventory is full") and not Interject.calls_out("yeah I'll be on in five minutes"), "talking to yourself draws no answer")
+
 ## The built-in natural voices: everyone in a town sounds like someone else, voices fit
 ## sex and age, accents fit the era, and long lines are spoken sentence by sentence.
 func test_builtin_voices() -> void:

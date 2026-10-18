@@ -1,8 +1,9 @@
-Procedural World: built-in natural voices
-==========================================
+Procedural World: built-in natural voices and speech recognition
+=================================================================
 
-This folder holds the game's offline voice program and voice model. Everything here is
-free for any use, including commercial use, with no royalties.
+This folder holds the game's offline voice program, voice model and speech recognition
+model. Everything here is free for any use, including commercial use, with no royalties
+(the speech recognition model asks only for the credit below).
 
 - voice_server: part of Procedural World (MIT licence, see the game's LICENSE).
   Source: tools/voice_server/voice_server.c in the game's repository.
@@ -10,6 +11,9 @@ free for any use, including commercial use, with no royalties.
   (data/LICENSE-kokoro.txt). https://huggingface.co/hexgrad/Kokoro-82M
   The model's speaker table was resized and the voices were mixed for the game
   (tools/voice_server/make_voices.py and assets/voices/catalog.json).
+- Parakeet TDT 0.6B v2 speech recognition model (data/stt), by NVIDIA: Creative Commons
+  Attribution 4.0 (CC-BY-4.0), converted to ONNX by k2-fsa (int8).
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
 - sherpa-onnx (sherpa-onnx-c-api library), by k2-fsa / Xiaomi: Apache License 2.0.
   https://github.com/k2-fsa/sherpa-onnx
 - ONNX Runtime (onnxruntime library), by Microsoft: MIT License.

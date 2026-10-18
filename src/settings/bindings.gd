@@ -59,6 +59,7 @@ const ACTIONS := {
 	"slot_9": ["Hotbar 9", KEY_9, ""],
 	"slot_10": ["Hotbar 10", KEY_0, ""],
 	"voice": ["Hold to speak to the person you face", KEY_B, ""],
+	"open_mic": ["Open mic on / off (people near you hear what you say)", KEY_O, ""],
 	"chat": ["Chat (on a server)", KEY_ENTER, ""],
 	"debug_overlay": ["FPS counter", KEY_F3, ""],
 	"toggle_view": ["First / third person", KEY_V, ""],
