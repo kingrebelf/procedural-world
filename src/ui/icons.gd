@@ -184,6 +184,15 @@ const MORE_SHEETS := [
 		"firewood", "coal_briquettes", "peat", "lamp_oil", "kerosene_can", "diesel_jerrycan",
 		"hydrogen_cell", "fusion_pellets", "rocket_fuel", "plasma_fuel", "void_fuel", "star_fuel",
 	]],
+	# Fire (tools/place_icon.py, one item per cell): the fire pot, and the incendiary
+	# grenade ahead of its item.
+	["res://assets/icons/items25.png", [
+		"fire_pot", "incendiary_grenade", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+	]],
 ]
 ## type -> [sheet path, its order], built on first use.
 static var _sheet_of: Dictionary = {}
@@ -276,6 +285,14 @@ static func get_icon(type: String) -> Texture2D:
 			_rect(img, Rect2(20, 12, 24, 42), Color(0.2, 0.22, 0.25))
 			_rect(img, Rect2(27, 7, 10, 6), Color(0.6, 0.6, 0.62))
 			_rect(img, Rect2(24, 28, 16, 22), c)
+		"fire_pot":
+			# A round clay pot, a rag tied over its mouth, a tongue of flame from the rag.
+			_ellipse(img, Vector2(32, 40), Vector2(19, 17), c)
+			_ellipse(img, Vector2(28, 36), Vector2(8, 7), c.lightened(0.2))
+			_rect(img, Rect2(25, 20, 14, 6), c.darkened(0.2))
+			_ellipse(img, Vector2(32, 19), Vector2(9, 4), Color(0.75, 0.68, 0.55))
+			_poly(img, [Vector2(30, 16), Vector2(34, 4), Vector2(38, 15)], Color(1.0, 0.62, 0.2))
+			_poly(img, [Vector2(32, 16), Vector2(34, 9), Vector2(36, 16)], Color(1.0, 0.9, 0.5))
 		"bread":
 			_ellipse(img, Vector2(32, 36), Vector2(24, 14), c)
 			for x in [22, 32, 42]:

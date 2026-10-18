@@ -23,14 +23,27 @@ const LINEUP := [
 	[true, 30, 1.02, 1.0, "miller"],
 ]
 
+## --kids: a family, two grown-ups and their children from four to seventeen.
+const KIDS := [
+	[false, 38, 1.0, 1.02, "farmer"],
+	[false, 4, 1.0, 1.0, "child"],
+	[true, 7, 0.95, 1.03, "child"],
+	[false, 10, 1.05, 0.97, "child"],
+	[true, 13, 0.9, 1.0, "child"],
+	[false, 16, 0.95, 1.04, "child"],
+	[true, 36, 1.05, 0.98, "weaver"],
+]
+
 ## Who --heads frames: young and old, men and women.
 const HEADS := [0, 1, 4, 7, 8, 9]
+
+var _line: Array = LINEUP
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _body(i: int) -> Dictionary:
-	var e: Array = LINEUP[i]
+	var e: Array = _line[i]
 	var cl: Array = NPCGen.CLOTH[Eras.MEDIEVAL]
 	return {"height": e[3], "build": e[2], "female": e[0], "skin": NPCGen.SKIN[(i * 3) % NPCGen.SKIN.size()],
 		"hair": NPCGen.HAIR[(i * 5) % NPCGen.HAIR.size()], "hair_style": i % 4, "cloth": cl[i % cl.size()], "cloth2": cl[(i + 3) % cl.size()]}
@@ -51,6 +64,8 @@ func _run() -> void:
 			heads = true
 		elif a.begins_with("--msaa="):
 			msaa = {"0": Viewport.MSAA_DISABLED, "2": Viewport.MSAA_2X, "4": Viewport.MSAA_4X, "8": Viewport.MSAA_8X}.get(a.substr(7), Viewport.MSAA_4X)
+		elif a == "--kids":
+			_line = KIDS
 		elif a == "--beards":
 			beards = true
 			heads = true
@@ -87,15 +102,15 @@ func _run() -> void:
 	vp.add_child(ground)
 	var flat := func(_x: float, _z: float) -> float: return 0.0
 	var people: Array[HumanModel] = []
-	var n := 6 if heads else LINEUP.size()
+	var n := 6 if heads and _line == LINEUP else _line.size()
 	var who: Array = []
 	for i in n:
-		who.append(HEADS[i] if heads else i)
+		who.append(HEADS[i] if heads and _line == LINEUP and not beards else i)
 	# --beards: the first body of each facial hair style, among men of forty.
 	var shaved: Array = []
 	var tries := 0
 	while beards and shaved.size() < 6 and tries < 5000:
-		var b := _body(tries % LINEUP.size())
+		var b := _body(tries % _line.size())
 		b["female"] = false
 		b["height"] = 0.95 + 0.00002 * tries
 		if BodyShape.beard(b, 40) == shaved.size():
@@ -104,8 +119,8 @@ func _run() -> void:
 	for i in n:
 		var j: int = who[i]
 		var b := _body(j)
-		var job := String(LINEUP[j][4])
-		var age := int(LINEUP[j][1])
+		var job := String(_line[j][4])
+		var age := int(_line[j][1])
 		if beards:
 			b = shaved[i]
 			job = "scribe"
@@ -148,7 +163,7 @@ func _run() -> void:
 			for k in people.size():
 				var h := people[k]
 				if walk:
-					var row: Array = LINEUP[who[k]]
+					var row: Array = _line[who[k]]
 					h.position.z += 1.35 * BodyShape.pace(_body(who[k]), int(row[1])) / 30.0
 				h.advance(1.0 / 30.0)
 			await process_frame
@@ -161,7 +176,7 @@ func _run() -> void:
 				var fr := gx * sk.get_bone_global_pose(sk.find_bone("foot_r")).origin
 				var hd := gx * sk.get_bone_global_pose(sk.find_bone("Head")).origin
 				var sh: Dictionary = people[i].shape
-				var row: Array = LINEUP[who[i]]
+				var row: Array = _line[who[i]]
 				print("%s %-10s %s age %d w %.2f m %.2f stoop %.2f  feet %.3f %.3f head %.2f" % [shot[0], row[4], "F" if row[0] else "M",
 					int(row[1]), sh["weight"], sh["muscle"], sh["stoop"], fl.y, fr.y, hd.y])
 			continue

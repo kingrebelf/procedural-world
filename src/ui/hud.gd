@@ -344,7 +344,7 @@ func _refresh() -> void:
 		var s: Dictionary = _slots[i]
 		s["qty"].text = ("%d" % it["qty"]) if it != null and ItemDB.is_stackable(it["type"]) else ""
 		s["icon"].texture = Icons.get_icon(it["type"]) if it != null else null
-		var sel := player != null and player.selected == i
+		var sel := player != null and player.selected == i and not player.holstered
 		if sel:
 			_held_name.text = ItemDB.display_name(it) if it != null else ""
 		var box: StyleBox = UITheme.tex_sb("slot_sel", 8) if sel else (UITheme.rarity_sb(it, UITheme.SLOT_BG, 2, 8) if it != null else UITheme.tex_sb("slot", 8))

@@ -110,13 +110,7 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 			var k := gj * RES + gi
 			var v := j * n + i
 			verts[v] = Vector3(gi, hs[k], gj)
-			var hl := hs[gj * RES + maxi(gi - 1, 0)]
-			var hr := hs[gj * RES + mini(gi + 1, RES - 1)]
-			var hd := hs[maxi(gj - 1, 0) * RES + gi]
-			var hu := hs[mini(gj + 1, RES - 1) * RES + gi]
-			var dx := float(mini(gi + 1, RES - 1) - maxi(gi - 1, 0))
-			var dz := float(mini(gj + 1, RES - 1) - maxi(gj - 1, 0))
-			norms[v] = Vector3(-(hr - hl) / dx, 1.0, -(hu - hd) / dz).normalized()
+			norms[v] = _normal_at(hs, gi, gj, step)
 			var wk := k * Eras.COUNT
 			# Alpha: 1 minus how much road surface shows (roads and village squares).
 			# Human worlds dress their sci-fi land as the medieval wilds (Eras.look).
@@ -176,6 +170,23 @@ static func build_terrain_arrays(chunk: Dictionary, step: int, cover := PackedBy
 		arr[Mesh.ARRAY_CUSTOM2] = l2
 	arr[Mesh.ARRAY_CUSTOM3] = cv
 	return arr
+
+## The ground's normal at grid point (gi, gj), from its slope across the mesh's own cell
+## size (`step` metres) and smoothed over the neighbouring rows (a Sobel filter). A bank
+## or cliff running slantwise across the grid steps from cell to cell; differences over
+## one metre in one row only made each step lean another way, which drew evenly spaced
+## light and dark stripes down the face, like a palisade, from a few hundred metres off.
+static func _normal_at(hs: PackedFloat32Array, gi: int, gj: int, step: int) -> Vector3:
+	var x0 := maxi(gi - step, 0)
+	var x1 := mini(gi + step, RES - 1)
+	var z0 := maxi(gj - step, 0)
+	var z1 := mini(gj + step, RES - 1)
+	var r0 := z0 * RES
+	var r1 := gj * RES
+	var r2 := z1 * RES
+	var gx := (hs[r0 + x1] + 2.0 * hs[r1 + x1] + hs[r2 + x1] - hs[r0 + x0] - 2.0 * hs[r1 + x0] - hs[r2 + x0]) / (4.0 * (x1 - x0))
+	var gz := (hs[r2 + x0] + 2.0 * hs[r2 + gi] + hs[r2 + x1] - hs[r0 + x0] - 2.0 * hs[r0 + gi] - hs[r0 + x1]) / (4.0 * (z1 - z0))
+	return Vector3(-gx, 1.0, -gz).normalized()
 
 ## Vertex format flags for terrain arrays that carry a landform look, and for the ground
 ## cover every terrain mesh carries.
@@ -285,6 +296,17 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 ## Trees drawn by RealTree switch to the merged far mesh beyond this distance (from the
 ## middle of the chunk).
 const TREE_NEAR := 320.0
+## Suffix of the multimesh group for scorched objects (drawn with soot_material()).
+const SOOT := "~soot"
+
+static var _soot: ShaderMaterial
+
+## The overlay that blackens scorched objects (soot.gdshader).
+static func soot_material() -> ShaderMaterial:
+	if _soot == null:
+		_soot = ShaderMaterial.new()
+		_soot.shader = load("res://src/world/soot.gdshader")
+	return _soot
 
 ## Instance buffers per mesh key, plus "~far": the far versions of every RealTree tree in
 ## the chunk merged into one mesh's surface arrays (one surface per material), so a
@@ -322,6 +344,11 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		# Sink slightly so bases never float on slopes.
 		if not built and not EasterEggs.floats(o["t"]):
 			p.y -= 0.15 * s
+		# Chests, wagons, stalls and barrels lie with the ground under them (PropSettle).
+		var settled = PropSettle.transform(chunk, o)
+		if settled != null:
+			b = (settled as Transform3D).basis
+			p = (settled as Transform3D).origin
 		var tint := Color(1, 1, 1)
 		if organic:
 			var v := lerpf(0.86, 1.1, u2)
@@ -336,6 +363,22 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 			# Moss on its top (StoneKit's material reads alpha): in green lands, not on sand.
 			var w := Eras.look(ChunkGenerator.weights_at(chunk, p.x, p.z))
 			tint.a = w[Eras.MEDIEVAL] * lerpf(0.2, 0.9, u2) * ChunkGenerator.cover_at(chunk, p.x, p.z)
+		if built:
+			# How far it has weathered since it was built (the kit shader reads alpha).
+			tint.a = ClimateWear.maturity(float(o["st"].get("day", -1.0)), Game.day)
+		# Scorched by fire (FireSim): a tree's own tint darkens (leaves and bark alike);
+		# anything else goes in its own group drawn with the soot overlay, how burnt in
+		# the row's alpha. Stepped, so a fire rebuilds the chunk's meshes only a few times.
+		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
+		var burnt := FireSim.char_step(o["st"])
+		if burnt > 0.0 and o["t"] != FireSim.RUIN:
+			if k == "tree":
+				tint = Color(tint.r * (1.0 - burnt * 0.82), tint.g * (1.0 - burnt * 0.86), tint.b * (1.0 - burnt * 0.86), tint.a)
+			else:
+				key += SOOT
+				if not by_key.has(key):
+					by_key[key] = PackedFloat32Array()
+				tint.a = 1.0 - burnt
 		var row := [b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z, tint.r, tint.g, tint.b, tint.a]
 		if far and real:
 			var look := RealTree.plant_look(float(chunk["cx"]) * SIZE + p.x, float(chunk["cz"]) * SIZE + p.z)
@@ -345,7 +388,6 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		by_key[key] = buf
 		# A room you can walk into brings its furniture (drawn up close) and any lamplit
 		# windows (from further off) as their own meshes.
-		var rk := key.get_slice(Stronghold.VAR, 0) # a castle tower's build shares its rooms
 		if KitHouse.has(rk) or Interiors.has(rk):
 			for extra in [rk + "~in", rk + "~glow"] if KitHouse.has(rk) or Interiors.glows(rk) else [rk + "~in"]:
 				var eb: PackedFloat32Array = by_key.get(extra, PackedFloat32Array())
@@ -443,6 +485,16 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		biome_tint = bp["grass_tint"]
 		biome_tint.a = 1.0
 		density *= float(bp["grass_density"])
+	# v18: the grass's colour, lushness and thickness run smoothly from one region's into
+	# the next across the band where they meet (rows: tint rgb, lush, density).
+	var blend := ChunkGenerator.biome_mix_grid(chunk, biome_era, ["grass_tint", "lush", "grass_density"])
+	var thickest := 1.0
+	if not blend.is_empty():
+		var top := 0.0
+		for row in blend:
+			top = maxf(top, row[4])
+		thickest = top
+		density *= top / float(Biome.params(chunk["biome"], biome_era)["grass_density"])
 	var seed := int(chunk.get("seed", 0))
 	var clump := FastNoiseLite.new()
 	clump.seed = seed ^ 0x6A55
@@ -475,6 +527,10 @@ static func build_grass_buffers(chunk: Dictionary, density: float, cover := Pack
 		var size := r.randf()
 		var w := Eras.look(ChunkGenerator.weights_at(chunk, lx, lz))
 		var dens := w[0] * Eras.GRASS_DENSITY[0] + w[1] * Eras.GRASS_DENSITY[1] + w[2] * Eras.GRASS_DENSITY[2]
+		if not blend.is_empty():
+			dens *= ChunkGenerator.mix_sample(blend, lx, lz, 4) / thickest
+			lush = ChunkGenerator.mix_sample(blend, lx, lz, 3)
+			biome_tint = Color(ChunkGenerator.mix_sample(blend, lx, lz, 0), ChunkGenerator.mix_sample(blend, lx, lz, 1), ChunkGenerator.mix_sample(blend, lx, lz, 2), 1.0)
 		if pick > dens:
 			continue
 		# Thinning out up a steep bank (smaller clumps hold on longest), not a hard line.
@@ -637,7 +693,13 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 		var top := _top(chunk)
 		var ux0 := float(chunk["cx"]) * SIZE
 		var uz0 := float(chunk["cz"]) * SIZE
-		for n in int(580 * density * float(bp["under_density"]) * (0.6 if era == Eras.SCIFI else 1.0)):
+		# v18: near a region's edge, now and then the neighbour's plants (as its trees).
+		var mixed := chunk.has("biome_mix")
+		var thickest := float(bp["under_density"])
+		if mixed:
+			for h in chunk["biomes"]:
+				thickest = maxf(thickest, float(Biome.params(h, era)["under_density"]))
+		for n in int(580 * density * thickest * (0.6 if era == Eras.SCIFI else 1.0)):
 			var lx := r.randf() * SIZE
 			var lz := r.randf() * SIZE
 			var pick := r.randi()
@@ -656,9 +718,15 @@ static func build_clutter_buffers(chunk: Dictionary, density: float, cover := Pa
 			var y := ChunkGenerator.height_at(chunk, lx, lz)
 			if y < 0.3 or ChunkGenerator.under_river(chunk, lx, lz) or Flora.was_cleared(chunk, lx, lz) or ChunkGenerator.road_at(chunk, lx, lz) > 0.05 or ChunkGenerator.in_cave(chunk, lx, lz) or ChunkGenerator.kept_out(plans, lx, lz, 0.5):
 				continue
+			var own := unders
+			if mixed:
+				var rp := Biome.params(ChunkGenerator.biome_pick(chunk, lx, lz, ((pick >> 20) & 0xFF) / 256.0), era)
+				if float((pick * 2654435761) & 0xFFFF) / 65536.0 * thickest >= float(rp["under_density"]):
+					continue
+				own = rp["under"]
 			# Each plant where its kind grows: the region's first species (from the roll)
 			# that suits this spot, or none.
-			var sp := _under_for(chunk, cover, unders, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
+			var sp := _under_for(chunk, cover, own, pick, era, lx, lz, y, (sc - 0.6) / 0.9, top)
 			if sp < 0:
 				continue
 			# Wild flowers come in drifts, not dotted one by one across the grass, and even
@@ -1178,6 +1246,8 @@ func clear_under(best: Dictionary) -> void:
 var _river: MeshInstance3D
 
 func set_river(arrays: Array) -> void:
+	if data.has("falls"):
+		WaterfallFx.add_all(self, data)
 	if arrays.is_empty():
 		return
 	var m := ArrayMesh.new()
@@ -1267,17 +1337,21 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 		if t.ends_with("~in") or t.ends_with("~glow"):
 			_add_rooms(t, buf)
 			continue
+		var sooty: bool = String(t).ends_with(SOOT)
+		var mt: String = String(t).trim_suffix(SOOT)
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		mm.mesh = ObjectLibrary.get_mesh(t)
+		mm.mesh = ObjectLibrary.get_mesh(mt)
 		mm.instance_count = buf.size() / 16
 		mm.buffer = buf
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.name = "MM_" + t.replace("#", "_")
-		var k := ObjectLibrary.kind(t.get_slice("#", 0))
-		if k == "tree" and RealTree.handles(t.get_slice("#", 0)) and buffers.has("~far"):
+		if sooty:
+			mmi.material_overlay = soot_material()
+		var k := ObjectLibrary.kind(mt.get_slice("#", 0))
+		if k == "tree" and RealTree.handles(mt.get_slice("#", 0)) and buffers.has("~far"):
 			# Up close only; the merged far mesh takes over beyond.
 			mmi.visibility_range_end = TREE_NEAR
 			mmi.visibility_range_end_margin = 12.0
@@ -1285,7 +1359,7 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 			mmi.visibility_range_end = 900.0
 			# A small lamp or candle stand casts no shadow of its own (its own light sits
 			# inside it, and would throw its arms across the room).
-			var bd := BuildCatalog.def(BuildCatalog.id_of(t.get_slice("#", 0))) if k == "built" else {}
+			var bd := BuildCatalog.def(BuildCatalog.id_of(mt.get_slice("#", 0))) if k == "built" else {}
 			if bd.get("decor", false) and bd.has("light"):
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
@@ -1417,6 +1491,7 @@ func set_grass(bufs: Dictionary) -> void:
 		# chunk: 46 m); the shader thins it out before.
 		_set_range(mmi, AquaKit.range_of(sp).y + 46.0 if aqua else GrassKit.range_of(sp).y + 24.0)
 		mmi.name = "Grass_" + key.replace("@", "_")
+		mmi.layers = Weather.LOW_LAYER # rain falls through it (Weather's rain catch skips it)
 		add_child(mmi)
 		_grass.append(mmi)
 
@@ -1448,6 +1523,7 @@ func set_clutter(buffers: Dictionary) -> void:
 		_set_range(mmi, 110.0 if t.begins_with("under") else 70.0)
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		mmi.visibility_range_end_margin = 10.0
+		mmi.layers = Weather.LOW_LAYER
 		add_child(mmi)
 		_clutter.append(mmi)
 
@@ -1616,7 +1692,8 @@ func _add_obj_body(o: Dictionary) -> void:
 	if beams != null:
 		b.add_child(beams)
 	for f in Interiors.fires(o["t"]):
-		var fl := FireFx.flame(f[1])
+		# Indoors only a draught stirs them.
+		var fl := FireFx.flame(f[1], Color(1, 1, 1, 1), "fire", false, 0.12)
 		fl.position = f[0]
 		if f[1] >= 0.3:
 			# Sparks fly from a hearth or a wall torch; the smoke goes up the chimney.
@@ -1634,17 +1711,16 @@ func _add_obj_body(o: Dictionary) -> void:
 			var cf := FireFx.flame(float(bd["fire"]))
 			cf.add_child(FireFx.embers(float(bd["fire"])))
 			b.add_child(cf)
-		# A candle stand you build burns at its wicks.
+		# A candle stand you build burns at its wicks, a lantern behind its glass.
 		var flames := FireFx.prop_flames(bd.get("models", []))
 		var wicks := Vector3.ZERO
 		for f in flames:
-			var pf := FireFx.flame(f[1])
-			pf.position = f[0]
-			b.add_child(pf)
+			b.add_child(FireFx.prop_flame(f))
 			wicks += (f[0] as Vector3) + Vector3(0, float(f[1]) * 0.6, 0)
 		var lc = bd.get("light")
 		if lc != null:
-			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") else OmniLight3D.new()
+			# Firelight wavers with its flame and shines from it.
+			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") or not flames.is_empty() else OmniLight3D.new()
 			l.light_color = lc
 			l.light_energy = 1.6
 			l.omni_range = 7.0
@@ -1675,10 +1751,14 @@ func _add_obj_body(o: Dictionary) -> void:
 			fill.distance_fade_length = 10.0
 			fill.position = l.position
 			b.add_child(fill)
-	b.position = o["p"]
-	b.rotation.y = o["r"]
-	var s: float = o["s"]
-	b.scale = Vector3(s, s, s)
+	var settled = PropSettle.transform(data, o)
+	if settled != null:
+		b.transform = settled # collides where it is drawn, lying with the ground
+	else:
+		b.position = o["p"]
+		b.rotation.y = o["r"]
+		var s: float = o["s"]
+		b.scale = Vector3(s, s, s)
 	add_child(b)
 	_obj_bodies[o["i"]] = b
 
@@ -1704,8 +1784,10 @@ func add_built(id: String, lp: Vector3, yaw: float, st: Dictionary) -> Dictionar
 
 ## Adds an object at local point lp after generation (a piece you built, a supply pod a
 ## beacon called down) and keeps it in the snapshot.
-func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary) -> Dictionary:
+## `more` sets other fields of the record (a species "sp", a variant "v", a scale "s").
+func add_object(t: String, lp: Vector3, yaw: float, era: int, st: Dictionary, more := {}) -> Dictionary:
 	var o := {"i": data["objects"].size(), "t": t, "p": lp, "r": yaw, "s": 1.0, "e": era, "st": st}
+	o.merge(more, true)
 	data["objects"].append(o)
 	set_objects(build_object_buffers(data, false), true)
 	refresh_far()

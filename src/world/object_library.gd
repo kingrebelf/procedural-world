@@ -22,7 +22,7 @@ const KIND := {
 	"bunker_wall": "structure", "bunker_tower": "structure", "bunker_gate": "structure", "bunker_keep": "structure",
 	"trader": "trader", "alien_ruin": "structure",
 	"signpost": "marker", "bridge": "structure", "cave": "structure", "cave_glow": "marker", "cave_crystal": "marker",
-	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure",
+	"summit_shrine": "structure", "eyrie": "structure", "sunken_altar": "structure", "fallen_star": "structure", "star_iron": "structure",
 	"star_wreck": "structure", "titan_bones": "structure", "dolmen": "structure",
 	"w_throne": "structure", "w_worldroot": "structure", "w_dreadnought": "structure", "w_gate": "structure",
 	"w_column": "structure", "w_crystal": "structure", "w_pylon": "structure", "w_obelisk": "structure",
@@ -30,6 +30,7 @@ const KIND := {
 	"pad_imperial": "structure", "pad_insurgent": "structure", "pad_omen": "structure", "pad_pancake": "structure",
 	"pad_spitfire": "structure", "pad_zenith": "structure",
 	"world_portal": "structure",
+	"fire_ruin": "structure",
 }
 
 ## Market and street props in villages and towns, from the kits.
@@ -88,6 +89,8 @@ static func label(t: String) -> String:
 		return "Dreadnought Wreckage"
 	if t == WonderSite.TRUNK:
 		return "Charred Trunk"
+	if t == FireSim.RUIN:
+		return "Burnt Ruin"
 	return LABEL.get(t, t.capitalize())
 
 static var _lock := Mutex.new()
@@ -180,6 +183,8 @@ static func _build_mesh(key: String) -> ArrayMesh:
 			return WonderSite.debris(int(parts[1]), int(parts[2]))
 		if parts[0] == WonderSite.TRUNK:
 			return WonderSite.trunk(int(parts[1]), int(parts[2]))
+		if parts[0] == FireSim.RUIN:
+			return FireRuins.build(int(parts[1]), int(parts[2]))
 		var kit := MeshKit.new(int(parts[1]) & 0xFFFF)
 		if parts[0] == "under":
 			var ku := KitFlora.build_under(int(parts[1]), int(parts[2]))
@@ -318,7 +323,7 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[t] = ps
 			_lock.unlock()
 		return ps
-	if (t == "alien_ruin" or t == WonderSite.DEBRIS or t == WonderSite.TRUNK) and sp != 0:
+	if (t == "alien_ruin" or t == WonderSite.DEBRIS or t == WonderSite.TRUNK or t == FireSim.RUIN) and sp != 0:
 		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
 		# core, instead of into a box around the whole thing.
 		var rk := mesh_key(o)

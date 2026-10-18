@@ -123,6 +123,107 @@ func test_rivers() -> void:
 	var old := ChunkGenerator.new(4242).generate(found["cx"], found["cz"])
 	check(not old.has("river"), "worlds made before rivers get none")
 
+func test_waterfalls() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242, true)
+	# The nearest falls to the spawn on seed 4242 (tools/probe_falls.gd lists them).
+	var f := {}
+	for r in 6:
+		for iz in range(-r, r + 1):
+			for ix in range(-r, r + 1):
+				if f.is_empty() and maxi(absi(ix), absi(iz)) == r:
+					f = Waterfalls.in_cell(g, ix, iz)
+	check(not f.is_empty(), "a waterfall within 3 km of the spawn")
+	if f.is_empty():
+		WorldField.terrain_v = was
+		return
+	var lip: Vector2 = f["lip"]
+	var d: Vector2 = f["dir"]
+	var drop: float = f["drop"]
+	var levels: PackedFloat32Array = f["levels"]
+	print("    falls at %s: %.1f m in %d" % [lip, drop, levels.size()])
+	check(drop >= Waterfalls.MIN_DROP and drop <= Waterfalls.MAX_DROP, "a natural height (%.1f m)" % drop)
+	check(var_to_str(Waterfalls.in_cell(ChunkGenerator.new(4242, true), f["cell"].x, f["cell"].y)) == var_to_str(f), "falls are planned the same by any generator")
+	var at := func(q: Vector2) -> Dictionary:
+		return g.generate(int(floor(q.x / 64.0)), int(floor(q.y / 64.0)))
+	var water := func(q: Vector2) -> float:
+		var c: Dictionary = at.call(q)
+		return ChunkGenerator.river_surface(c, q.x - c["cx"] * 64.0, q.y - c["cz"] * 64.0)
+	var ground := func(q: Vector2) -> float:
+		var c: Dictionary = at.call(q)
+		return ChunkGenerator.height_at(c, q.x - c["cx"] * 64.0, q.y - c["cz"] * 64.0)
+	var above: float = water.call(lip - d * 4.0)
+	var below: float = water.call(lip + d * (Waterfalls.RAMP + 3.0))
+	check(not is_nan(above) and above > float(f["top"]) - 1.0, "the river runs on to the lip (%.1f, top %.1f)" % [above, f["top"]])
+	var tier := Waterfalls.tier_drop(f, 0)
+	check(not is_nan(below) and absf(below - levels[0]) < 0.3, "it lands in its pool at the tier's level (%.1f, wanted %.1f)" % [below, levels[0]])
+	check(above - below > tier * 0.8, "the water drops sheer at the lip (%.1f m of %.1f)" % [above - below, tier])
+	var foot := lip + d * (Waterfalls.pool_centre(tier) + Waterfalls.RAMP * 0.5)
+	check(float(water.call(foot)) - float(ground.call(foot)) > WorldField.RIVER_DEPTH + 0.8, "a plunge pool is cut deeper than the river's bed")
+	# Beside the water, the bank steps down as well: the fall is a cliff across the valley.
+	var side := Vector2(-d.y, d.x)
+	var off := 2.0
+	while off < 60.0 and g.field.river_t(lip.x + side.x * off, lip.y + side.y * off) < 1.6:
+		off += 1.0
+	var bank_hi: float = ground.call(lip - d * 1.0 + side * off)
+	var bank_lo: float = ground.call(lip + d * (Waterfalls.RAMP + 2.0) + side * off)
+	check(bank_hi - bank_lo > tier * 0.4, "a cliff steps down across the valley beside the fall (%.1f m at %.0f m out)" % [bank_hi - bank_lo, off])
+	# The chunk the lip lies in keeps the drop for its water, mist and sound.
+	var lc: Dictionary = at.call(lip)
+	check(lc.has("falls") and not (lc["falls"] as Array).is_empty(), "the lip's chunk keeps its falls")
+	if lc.has("falls"):
+		var fx := WaterfallFx.new()
+		fx.build(lc["falls"][0], lc)
+		var sheet := fx.get_node("Sheet") as MeshInstance3D
+		var vs: PackedVector3Array = sheet.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var finite := true
+		var lowest := INF
+		for v in vs:
+			finite = finite and v.is_finite()
+			lowest = minf(lowest, v.y)
+		check(finite and vs.size() > 40, "the falling sheet is built (%d vertices)" % vs.size())
+		check(lowest < levels[0], "the sheet reaches down into the pool")
+		check(fx.has_node("Mist") and fx.has_node("Foam") and fx.has_node("Roar"), "with foam, mist and its roar")
+		check(fx.has_node("Boulders") and fx.get_node("Boulders").get_child_count() >= 6, "and boulders round its pool")
+		check((fx.get_node("Mist") as GPUParticles3D).amount <= 64, "mist stays cheap")
+		fx.free()
+	# Chunks round the falls meet seamlessly.
+	var k := Vector2i(int(floor(lip.x / 64.0)), int(floor(lip.y / 64.0)))
+	var R := ChunkGenerator.RES
+	var maxd := 0.0
+	var a: Dictionary = g.generate(k.x, k.y)
+	var b: Dictionary = g.generate(k.x + 1, k.y)
+	var c2: Dictionary = g.generate(k.x, k.y + 1)
+	for i in R:
+		maxd = maxf(maxd, absf(a["heights"][i * R + R - 1] - b["heights"][i * R]))
+		maxd = maxf(maxd, absf(a["heights"][(R - 1) * R + i] - c2["heights"][i]))
+	check(maxd < 0.0001, "chunks round a falls meet at their edges (max diff %f)" % maxd)
+	# Worlds made before falls keep their rivers exactly; so do chunks far from any falls.
+	WorldField.terrain_v = Waterfalls.V - 1
+	var og := ChunkGenerator.new(4242, true)
+	check(Waterfalls.near(og, lip.x, lip.y, lip.x, lip.y).is_empty(), "older worlds have no falls")
+	var old: Dictionary = og.generate(k.x, k.y)
+	check(not old.has("falls") and old["heights"] != a["heights"], "older worlds keep their river where a falls would be")
+	WorldField.terrain_v = Waterfalls.V
+	var now := ChunkGenerator.new(4242, true)
+	# A river chunk no falls reaches.
+	var away := Vector2i.MAX
+	for r in range(4, 40):
+		for cx in range(-r, r + 1):
+			if away == Vector2i.MAX and now.field.river_t(cx * 64.0 + 32.0, r * 64.0 + 32.0) < 0.5 and Waterfalls.near(now, cx * 64.0, r * 64.0, cx * 64.0 + 64.0, r * 64.0 + 64.0).is_empty():
+				away = Vector2i(cx, r)
+	var after := now.generate(away.x, away.y)
+	WorldField.terrain_v = Waterfalls.V - 1
+	var before := ChunkGenerator.new(4242, true).generate(away.x, away.y)
+	check(before.has("river"), "the chunk compared has a river")
+	before.erase("created")
+	after.erase("created")
+	before.erase("gen_version")
+	after.erase("gen_version")
+	check(var_to_bytes(before) == var_to_bytes(after), "chunks away from falls are exactly as before (terrain, river and every object)")
+	WorldField.terrain_v = was
+
 func test_same_seed_same_chunk() -> void:
 	var g1 := ChunkGenerator.new(777)
 	var g2 := ChunkGenerator.new(777)
@@ -379,6 +480,136 @@ func test_landforms() -> void:
 		check(WorldField.new(2024).height(c.x, c.y) == at14, "v14 worlds keep their towers")
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
+## v19 rock towers are believable: none taller than its width allows or squeezed into a
+## thin sheer fin between its neighbours, none standing alone on open ground, and no
+## higher than about fifteen storeys over the valley; older worlds keep theirs and the
+## other landforms are untouched.
+func test_film_grade_is_gentle() -> void:
+	# Neutral greys keep their brightness (only a slight cool or warm lean), saturated
+	# yellow-greens lose a little saturation, and other hues keep theirs.
+	for v in [0.1, 0.5, 0.9]:
+		var c := Grade.grade(Color(v, v, v))
+		check(absf((c.r + c.g + c.b) / 3.0 - v) < 0.02, "grey %.1f stays %.1f, got %s" % [v, v, c])
+	var leaf := Color(0.3, 0.6, 0.12)
+	var g := Grade.grade(leaf)
+	check(g.s < leaf.s - 0.03 and g.s > leaf.s * 0.7, "a leaf green softens a little: %.2f -> %.2f" % [leaf.s, g.s])
+	var red := Color(0.7, 0.15, 0.1)
+	check(absf(Grade.grade(red).s - red.s) < 0.05, "a red keeps its saturation")
+	var lut := Grade.lut()
+	check(lut != null and lut.get_width() == Grade.SIZE and lut.get_depth() == Grade.SIZE, "the grade table is %d cubed" % Grade.SIZE)
+
+func test_believable_towers() -> void:
+	WorldField.terrain_v = WorldField.TOWERS_V
+	var f := WorldField.new(2024)
+	var deep := {}
+	for iz in range(-25, 25):
+		for ix in range(-25, 25):
+			var lf := f.site_landform(ix, iz)
+			var p := f.site_pos(ix, iz)
+			if (lf == WorldField.LF_KARST or lf == WorldField.LF_NEEDLES) and not deep.has(lf) and f.landform_weights(p.x, p.y)[lf] > 0.97:
+				deep[lf] = p
+	check(deep.size() == 2, "found karst and needle country (%d)" % deep.size())
+	for lf in deep:
+		var c: Vector2 = deep[lf]
+		var st := {}
+		for tv in [WorldField.TOWERS_V - 2, WorldField.TOWERS_V]:
+			WorldField.terrain_v = tv
+			st[tv] = _tower_stats(WorldField.new(2024), c, 200)
+		var o: Dictionary = st[WorldField.TOWERS_V - 2]
+		var n: Dictionary = st[WorldField.TOWERS_V]
+		var name: String = WorldField.LANDFORM_NAMES[lf]
+		print("  %-12s old: top %.1f m, %d towers, worst height:width %.2f, %d lone; new: top %.1f m, %d towers, worst %.2f, %d lone" % [name,
+			o["top"], o["towers"], o["worst"], o["lone"], n["top"], n["towers"], n["worst"], n["lone"]])
+		var cap := WorldField.TOWER_ASPECT if lf == WorldField.LF_KARST else WorldField.NEEDLE_ASPECT
+		check(n["worst"] <= cap * 1.25, "%s: no tower is much taller than it is wide (%.2f)" % [name, n["worst"]])
+		check(n["top"] > 25.0 and n["top"] < 52.0, "%s still tower, but no higher than about fifteen storeys (%.1f m)" % [name, n["top"]])
+		check(n["towers"] >= 3, "%s: the towers are still there (%d)" % [name, n["towers"]])
+		check(n["lone"] == 0, "%s: no tall tower stands alone (%d)" % [name, n["lone"]])
+	# Old worlds keep their towers; every other landform is the same in v19 as before it.
+	var other := 0
+	var same := true
+	for iz in range(-12, 12):
+		for ix in range(-12, 12):
+			var p := f.site_pos(ix, iz)
+			var lw := f.landform_weights(p.x, p.y)
+			if lw[WorldField.LF_KARST] > 0.0 or lw[WorldField.LF_NEEDLES] > 0.0:
+				continue
+			for k in 4:
+				var x := p.x + k * 37.0 - 60.0
+				var z := p.y - k * 23.0 + 30.0
+				WorldField.terrain_v = WorldField.TOWERS_V - 1
+				var a := WorldField.new(2024).shape(x, z)
+				WorldField.terrain_v = WorldField.TOWERS_V
+				var b := WorldField.new(2024).shape(x, z)
+				same = same and a == b
+				other += 1
+	check(same and other > 200, "land away from towers is unchanged by v19 (%d samples)" % other)
+	var c0: Vector2 = deep[WorldField.LF_KARST]
+	var line := {}
+	for tv in [WorldField.TOWERS_V - 2, WorldField.TOWERS_V - 2, WorldField.TOWERS_V]:
+		WorldField.terrain_v = tv
+		var fv := WorldField.new(2024)
+		var hs := PackedFloat32Array()
+		for i in 100:
+			hs.append(fv.height(c0.x + i * 2.0 - 100.0, c0.y + i * 0.7))
+		check(not line.has(tv) or line[tv] == hs, "older worlds keep their towers")
+		line[tv] = hs
+	WorldField.terrain_v = WorldField.TOWERS_V
+	check(line[WorldField.TOWERS_V - 2] != line[WorldField.TOWERS_V], "new worlds get the new towers")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+
+## Towers in an n x n metre patch round c: the highest relief, how many towers stand
+## over 12 m, the worst height-to-width (width: of the part above half its height) and
+## how many over 20 m have no other tower over 8 m within 50 m.
+func _tower_stats(f: WorldField, c: Vector2, n: int) -> Dictionary:
+	var rel := PackedFloat32Array()
+	rel.resize(n * n)
+	var top := 0.0
+	for j in n:
+		for i in n:
+			var sh := f.shape(c.x + i - n / 2, c.y + j - n / 2)
+			rel[j * n + i] = sh.z + sh.y
+			top = maxf(top, sh.z)
+	var peaks: Array[Vector3] = []
+	for j in range(4, n - 4):
+		for i in range(4, n - 4):
+			var h := rel[j * n + i]
+			if h < 8.0:
+				continue
+			var peak := true
+			for dj in range(-4, 5):
+				for di in range(-4, 5):
+					if (di != 0 or dj != 0) and rel[(j + dj) * n + i + di] >= h:
+						peak = false
+			if peak:
+				peaks.append(Vector3(i, j, h))
+	var worst := 0.0
+	var towers := 0
+	var lone := 0
+	for p in peaks:
+		if p.z < 12.0:
+			continue
+		towers += 1
+		# Flood the part of it above half its height.
+		var seen := {}
+		var todo := [Vector2i(int(p.x), int(p.y))]
+		var area := 0
+		while not todo.is_empty() and area < 4000:
+			var q: Vector2i = todo.pop_back()
+			if seen.has(q) or q.x < 0 or q.y < 0 or q.x >= n or q.y >= n or rel[q.y * n + q.x] < p.z * 0.5:
+				continue
+			seen[q] = true
+			area += 1
+			todo.append_array([q + Vector2i.LEFT, q + Vector2i.RIGHT, q + Vector2i.UP, q + Vector2i.DOWN])
+		# A cone's half-height section is half its foot: compare the height to twice it.
+		worst = maxf(worst, p.z / (4.0 * sqrt(area / PI)))
+		if p.z >= 20.0 and p.x > 50 and p.y > 50 and p.x < n - 50 and p.y < n - 50:
+			var friend := false
+			for p2 in peaks:
+				friend = friend or (p2 != p and p2.z >= 8.0 and Vector2(p.x, p.y).distance_to(Vector2(p2.x, p2.y)) < 50.0)
+			lone += 0 if friend else 1
+	return {"top": top, "towers": towers, "worst": worst, "lone": lone}
+
 func test_house_interiors() -> void:
 	for t in KitHouse.PLANS:
 		var dm := KitHouse._dims(t)
@@ -390,7 +621,7 @@ func test_house_interiors() -> void:
 		var hx := dm.x / 2 - KitHouse.WALL_IN + 0.05
 		var hz := dm.z / 2 - KitHouse.WALL_IN + 0.05
 		var lane := AABB(Vector3(-0.6, KitHouse.FLOOR + 0.05, dm.z / 2 - 1.8), Vector3(1.2, 1.8, 1.8))
-		for e in KitHouse.FURNISH[t]:
+		for e in Furnish.settled(t):
 			var bx := KitHouse._model_box(e[0], Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2]))
 			var fits: bool = bx.size.length() > 0.01 and bx.position.x > -hx and bx.end.x < hx and bx.position.z > -hz and bx.end.z < hz and bx.end.y < dm.y
 			check(fits, "%s: %s stands inside the walls (%s)" % [t, e[0], bx])
@@ -504,7 +735,7 @@ func test_room_interiors() -> void:
 			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(spot[1]))), q)
 			var cb := xf * AABB(Vector3(-0.6, 0.05, -0.4), Vector3(1.2, 0.8, 0.8))
 			var clear := true
-			for e in Interiors.FURNISH[t]:
+			for e in Furnish.settled(t):
 				if e[3]:
 					var ex := Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2])
 					var bx: AABB
@@ -518,6 +749,24 @@ func test_room_interiors() -> void:
 						printerr("  %s: loot overlaps %s" % [t, e[0]])
 			check(clear, "%s: the loot spot is clear" % t)
 			check(_ray_hit(faces, xf * Vector3(0, 0.6, 1.0), xf * Vector3(0, 0.4, 0)) == INF, "%s: the loot can be reached from in front" % t)
+
+## Sci-fi rooms are painted, not plated: the bunker's walls, floors and ceilings and
+## the outpost blocks' fit-out use painted panels, sheet vinyl and ceiling tiles (real
+## textures, no metal in them), and tread plate is left to the stairs and stores.
+func test_painted_scifi_interiors() -> void:
+	for n in ["paint_wall", "vinyl_floor", "ceiling_tile"]:
+		var m := Materials.get_mat(n) as StandardMaterial3D
+		check(m.albedo_texture != null and m.normal_texture != null and m.metallic == 0.0, "%s is a textured, unmetallic surface" % n)
+	var bunker: Dictionary = DungeonNode.MATS[Eras.SCIFI]
+	for key in ["wall", "floor", "ceil", "beam"]:
+		check(not String(bunker[key]) in ["scifi_panels", "scifi_floor", "metal", "metal_dark", "panel"], "a bunker's %s is painted (%s)" % [key, bunker[key]])
+	for t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]:
+		var room := ObjectLibrary.get_mesh(t + "~in")
+		var mats := {}
+		for i in room.get_surface_count():
+			mats[room.surface_get_material(i)] = true
+		check(mats.has(Materials.get_mat("vinyl_floor")) and mats.has(Materials.get_mat("ceiling_tile")), "%s has a vinyl floor and a tiled ceiling" % t)
+		check(not mats.has(Materials.get_mat("metal_dark")), "%s has no dark plate in its fit-out" % t)
 
 ## Finishing trim: chamfered boxes and swept mouldings face out on every triangle (Godot
 ## culls the back faces, so a wrong winding is a hole), and a skirting leaves the
@@ -1051,6 +1300,18 @@ func test_npc_generation_deterministic() -> void:
 		for k in ["friendly", "brave", "curious", "diligent", "greedy"]:
 			check(p["traits"][k] >= 0.0 and p["traits"][k] <= 1.0, "trait range")
 	check(ids.size() == a["npcs"].size(), "unique ids")
+	# Households: children live at a home, have no trade, and the grown-ups are the same
+	# people they were before children were added (their own random stream).
+	var kids := 0
+	var grown := 0
+	for p in a["npcs"]:
+		if p.get("child", false):
+			kids += 1
+			check(p["job"] == "child" and int(p["age"]) >= 4 and int(p["age"]) < BodyShape.ADULT, "a child is 4-17 with no trade")
+		else:
+			grown += 1
+			check(int(p["age"]) >= 18, "grown-ups are grown")
+	check(kids == 0 or a["npcs"][grown - 1].get("child", false) == false, "children come after the grown-ups")
 
 func test_decision_engine() -> void:
 	var fx := _npc_fixture()
@@ -1628,6 +1889,47 @@ func test_voice_and_quick_replies() -> void:
 	loud.encode_s16(400, -16384)
 	check(is_equal_approx(Microphone.peak(loud), 0.5), "peak level")
 
+## Speech to text goes to the server set in Settings, else the built-in one, else OpenAI;
+## local chat servers can't transcribe, so they are never asked.
+func test_speech_to_text_target() -> void:
+	var ai = load("res://src/ai/ai_service.gd").new()
+	ai.cfg = ai.DEFAULTS.duplicate()
+	ai.cfg.merge({"provider": "ollama", "format": "openai", "base_url": "http://127.0.0.1:11434/v1", "model": "llama3.1:8b"}, true)
+	check(ai.stt_target().is_empty(), "a local chat server is not a speech-to-text server")
+	ai.cfg.merge({"provider": "openai", "base_url": "https://api.openai.com/v1", "api_key": "k"}, true)
+	check(String(ai.stt_target().get("url", "")) == "https://api.openai.com/v1/audio/transcriptions", "OpenAI transcribes")
+	ai.cfg["stt_url"] = "http://127.0.0.1:8000/v1"
+	check(String(ai.stt_target()["url"]) == "http://127.0.0.1:8000/v1/audio/transcriptions" and ai.stt_target()["model"] == "whisper-1", "a set server comes first")
+	ai.free()
+
+## Open mic: the speech gate cuts phrases out of a stream at the pauses, ignores clicks
+## and steady hum, and only talk meant for the people around draws an answer.
+func test_open_mic_gate() -> void:
+	var g := SpeechGate.new()
+	var rate := 48000.0
+	var stream := PackedFloat32Array()
+	# silence, a phrase, silence, a click, silence, another phrase, silence
+	for part in [[1.0, 0.0], [1.2, 0.2], [1.2, 0.0], [0.05, 0.4], [1.0, 0.0], [0.8, 0.15], [1.2, 0.0]]:
+		for i in int(part[0] * rate):
+			stream.append(part[1] * sin(float(i) * 0.12) + randf_range(-0.002, 0.002))
+	var got: Array = []
+	for i in range(0, stream.size(), 1024): # as the capture buffer hands it over
+		got.append_array(g.feed(stream.slice(i, i + 1024), rate))
+	check(got.size() == 2, "two phrases heard, the click dropped (got %d)" % got.size())
+	if got.size() == 2:
+		var secs := float((got[0] as PackedFloat32Array).size()) / SpeechGate.RATE
+		check(secs > 1.2 and secs < 2.6, "the phrase keeps its start and a short tail (%.2f s)" % secs)
+		var wav := SpeechGate.to_wav(got[1])
+		check(wav.decode_u32(24) == 16000 and wav.size() == 44 + (got[1] as PackedFloat32Array).size() * 2, "16 kHz WAV for speech to text")
+	var hum := SpeechGate.new()
+	var steady := PackedFloat32Array()
+	steady.resize(int(rate * 4.0))
+	for i in steady.size():
+		steady[i] = 0.003 * sin(float(i) * 0.05)
+	check(hum.feed(steady, rate).is_empty() and not hum.active, "a quiet hum is not speech")
+	check(Interject.calls_out("Hey, can anyone spare me 5 marks?") and Interject.calls_out("Where's the smithy") and Interject.calls_out("Hello!"), "calling out to people")
+	check(not Interject.calls_out("ugh this inventory is full") and not Interject.calls_out("yeah I'll be on in five minutes"), "talking to yourself draws no answer")
+
 ## The built-in natural voices: everyone in a town sounds like someone else, voices fit
 ## sex and age, accents fit the era, and long lines are spoken sentence by sentence.
 func test_builtin_voices() -> void:
@@ -1713,6 +2015,30 @@ func test_body_variety() -> void:
 		m["female"] = true
 		womens += BodyShape.beard(m, 45)
 	check(styles.size() == 6 and womens == 0, "men wear every facial hair style, from clean-shaven to a full beard; women none")
+	# Children: small, growing every year, with large heads, no beards and no grey.
+	check(BodyShape.stature(b, 4) < 0.6 and BodyShape.stature(b, 10) < BodyShape.stature(b, 14) and BodyShape.stature(b, 14) < BodyShape.stature(b, 30) * 1.0, "children are small and grow with age")
+	check(float(BodyShape.shape(b, 5)["head"]) > 1.2 and float(BodyShape.shape(b, 30)["head"]) == 1.0, "a small child's head is large for its body")
+	check(BodyShape.head_size(4) > 1.45 and BodyShape.head_size(10) < BodyShape.head_size(6) and BodyShape.head_size(17) < 1.05, "heads grow less than bodies through childhood")
+	var k4 := BodyShape.shape(b, 4)
+	check(float(k4["legs"]) < 0.9 and float(k4["neck"]) < 0.7 and float(k4["hands"]) < 0.95 and float(BodyShape.shape(b, 30)["legs"]) == 1.0, "small children have short legs and necks and small hands")
+	check(BodyShape.beard(b, 10) == 0 and BodyShape.child(30) == 0.0 and BodyShape.child(6) > 0.8, "children have no beards")
+	var grey := b.duplicate()
+	grey["hair"] = Color(0.6, 0.6, 0.6)
+	check(BodyShape.hair_color(grey, 8).s > 0.15, "no child has grey hair")
+	check(float(BodyShape.shape(b, 8, "child")["muscle"]) < 0.15 and float(BodyShape.shape(b, 8)["stoop"]) <= 0.05, "children are slight and stand straight")
+	# Until Outfit dresses children, a girl gets a plain tunic, never a bodice, apron or cape.
+	var girl := b.duplicate()
+	girl["female"] = true
+	for era in [Eras.MEDIEVAL, Eras.SCIFI]:
+		for k in 12:
+			girl["cloth"] = Color(0.1 + 0.07 * k, 0.4, 0.3)
+			var own := Outfit.wardrobe(girl, era, "child")
+			var w := HumanModel.child_safe(own, era)
+			if own.get("child", false):
+				check(w == own, "Outfit's own child outfits are kept")
+				continue
+			var sp: Dictionary = w["spec"]
+			check(int(sp["vest"]) == 0 and float(sp["apron"]) == 0.0 and float(sp["cape"]) == 0.0 and not sp.get("open", false) and w["child"], "children never wear adult garments")
 	if not HumanModel.available():
 		return
 	var a := HumanModel.new()
@@ -1986,12 +2312,55 @@ func test_fires() -> void:
 	var fll := FlickerLight.new()
 	check(fll is OmniLight3D, "firelight is an omni light that wavers")
 	fll.free()
-	var fl := FireFx.flame(1.0)
+	var fl := FireFx.flame(0.42)
 	var cards := fl.find_children("*", "MeshInstance3D", true, false)
-	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a flame is two cards sharing the fire material")
+	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a torch's flame is two cards sharing the fire material")
 	fl.free()
+	var bon := FireFx.flame(1.0)
+	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return (c as MeshInstance3D).material_override == FireFx.material())
+	check(bcards.size() >= 3 and bon.find_child("Coals", true, false) != null, "a big fire burns across its bed, over glowing coals")
+	var spread := 0.0
+	for c in bcards:
+		spread = maxf(spread, Vector2((c as Node3D).position.x, (c as Node3D).position.z).length())
+	check(spread > 0.1, "a big fire's tongues stand apart (%.2f m)" % spread)
+	bon.free()
+	var wick := FireFx.flame(0.07)
+	var wc := wick.find_children("*", "MeshInstance3D", true, false)
+	check(wc.size() == 1 and (wc[0] as MeshInstance3D).material_override == FireFx.wick_material(), "a candle's flame is drawn, not a flipbook blob")
+	var lit := Node3D.new()
+	var lfl := FireFx.flame(0.42)
+	lit.add_child(lfl)
+	var ll := FlickerLight.new()
+	ll.light_energy = 2.0
+	lit.add_child(ll)
+	ll._ready()
+	check(is_equal_approx(ll.seed, float(lfl.get_meta("fire_seed"))), "firelight follows the flame beside it")
+	FireFx.time = 12.3
+	ll.distance_fade_enabled = false
+	ll._process(0.0)
+	var want := 2.0 * (1.0 + ll.depth * (FireFx.life(12.3, ll.seed) - 0.5) * 2.0)
+	check(is_equal_approx(ll.light_energy, want), "firelight leaps and sinks with its flame's life (%.3f, %.3f)" % [ll.light_energy, want])
+	lit.free()
+	wick.free()
+	var lsum := 0.0
+	var lmin := 1.0
+	var lmax := 0.0
+	for i in 2000:
+		var lv := FireFx.life(i * 0.037, 0.41)
+		lsum += lv
+		lmin = minf(lmin, lv)
+		lmax = maxf(lmax, lv)
+	check(lmin >= 0.0 and lmax <= 1.0 and absf(lsum / 2000.0 - 0.5) < 0.12 and lmax - lmin > 0.4, "a flame's life wavers about the middle (%.2f..%.2f, mean %.2f)" % [lmin, lmax, lsum / 2000.0])
+	check(not is_equal_approx(FireFx.life(5.0, 0.1), FireFx.life(5.0, 0.6)), "no two fires flicker in step")
+	var lf := FireFx.prop_flames(BuildCatalog.def("lantern")["models"])
+	check(lf.size() == 1, "a lantern you hang burns")
+	if lf.size() == 1:
+		var ln := FireFx.prop_flame(lf[0])
+		check(ln.find_child("Glass", true, false) != null, "a lit lantern's glass glows with its flame, seen from any side")
+		ln.free()
 	var torch := Viewmodel.prop_for("torch")
 	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
+	check(torch.find_child("Drag", true, false) != null, "a carried torch's flame trails as it moves")
 	check(torch.find_child("Sparks", true, false) is CPUParticles3D and torch.find_child("Smoke", true, false) is CPUParticles3D, "a torch throws sparks and smoke")
 	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
 	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")
@@ -2007,6 +2376,75 @@ func test_fires() -> void:
 	for i in tm.get_surface_count():
 		mats.append(tm.surface_get_material(i))
 	check(ToolModels.mat("it_wood") in mats and ToolModels.mat("it_leather") in mats and ToolModels.mat("it_pitch") in mats, "a torch is a wooden stick with a leather grip and a pitch-soaked rag head")
+	# Tool metal is the shared metal look: forged on a medieval axe, brushed alloy on a
+	# sci-fi multitool, rust on a used crowbar, and mirror chrome on none.
+	var kinds := func(t: String) -> Array:
+		var mesh := ToolModels.build(t)
+		var ks := []
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial:
+				ks.append(sm.resource_name)
+		return ks
+	var axe: Array = kinds.call("axe_steel")
+	var mt: Array = kinds.call("multitool")
+	check("metal_steel" in axe and "metal_iron" in axe and not "metal_chrome" in axe, "a medieval axe head is forged steel and iron in the shared metal look")
+	check("metal_alloy" in mt and not "metal_steel" in mt and not "metal_chrome" in mt, "a sci-fi multitool is brushed alloy, not forged steel or mirror chrome")
+	check("metal_rusty" in kinds.call("crowbar"), "a crowbar is rusty from use, like its icon")
+
+## Stall awnings and drapes, banners and flags move in the wind.
+func test_cloth() -> void:
+	var stall := ObjectLibrary.get_mesh("market_stall")
+	var cs := -1
+	for i in stall.get_surface_count():
+		if stall.surface_get_material(i) is ShaderMaterial and (stall.surface_get_material(i) as ShaderMaterial).shader.resource_path.ends_with("cloth.gdshader"):
+			cs = i
+	check(cs >= 0, "a market stall's canvas is cloth that moves")
+	if cs < 0:
+		return
+	check(stall.surface_get_format(cs) & Mesh.ARRAY_FORMAT_CUSTOM0 != 0, "the canvas knows how it hangs")
+	var a := stall.surface_get_arrays(cs)
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var c0: PackedFloat32Array = a[Mesh.ARRAY_CUSTOM0]
+	var hang := 0.0
+	var billow := 0.0
+	for i in v.size():
+		hang = maxf(hang, c0[i * 4])
+		billow = maxf(billow, c0[i * 4 + 1])
+	check(hang > 0.8 and billow > 0.2, "a stall's back drape hangs free and its roof canvas billows (hang %.2f m, billow %.2f m)" % [hang, billow])
+	var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+	var longest := 0.0
+	for t in range(0, idx.size(), 3):
+		for k in 3:
+			longest = maxf(longest, v[idx[t + k]].distance_to(v[idx[t + (k + 1) % 3]]))
+	# The stall stands 1.2 times its kit size.
+	check(longest <= ClothFx.MAX_EDGE * 1.2 + 0.01 and idx.size() / 3 > 2000, "the canvas is cut fine enough to bend smoothly (%d triangles, longest edge %.2f m)" % [idx.size() / 3, longest])
+	var sub := ClothFx._subdivide(BuildCatalog.model_parts("props/Banner_1")[2][1], 0.1)
+	var sv: PackedVector3Array = sub[Mesh.ARRAY_VERTEX]
+	var area := 0.0
+	var si: PackedInt32Array = sub[Mesh.ARRAY_INDEX]
+	for t in range(0, si.size(), 3):
+		area += (sv[si[t + 1]] - sv[si[t]]).cross(sv[si[t + 2]] - sv[si[t]]).length() * 0.5
+	var oa: Array = BuildCatalog.model_parts("props/Banner_1")[2][1]
+	var ov: PackedVector3Array = oa[Mesh.ARRAY_VERTEX]
+	var oi: PackedInt32Array = oa[Mesh.ARRAY_INDEX]
+	var oarea := 0.0
+	for t in range(0, oi.size(), 3):
+		oarea += (ov[oi[t + 1]] - ov[oi[t]]).cross(ov[oi[t + 2]] - ov[oi[t]]).length() * 0.5
+	check(absf(area - oarea) < 0.001 * maxf(oarea, 1.0), "cutting cloth finer keeps it the same cloth (%.3f vs %.3f m2)" % [area, oarea])
+	var room := Interiors.interior("castle_keep")
+	var sheltered := false
+	for i in room.get_surface_count():
+		var m := room.surface_get_material(i)
+		if m is ShaderMaterial and (m as ShaderMaterial).get_shader_parameter("shelter") == 1.0:
+			sheltered = true
+	check(sheltered, "a keep's banners stir only in a draught indoors")
+	var tower := Interiors.build("watchtower")
+	var fi := -1
+	for i in tower.get_surface_count():
+		if tower.surface_get_material(i) == ClothFx.flag_material():
+			fi = i
+	check(fi >= 0 and tower.surface_get_format(fi) & Mesh.ARRAY_FORMAT_CUSTOM1 != 0, "a watchtower flies a real flag from its pole")
 
 func test_species_variety() -> void:
 	var gen := ChunkGenerator.new(4242)
@@ -2533,6 +2971,10 @@ func test_standing_and_town_gates() -> void:
 	var vs := GatePolicy.vouchers(kind)
 	check(vs.size() == 1 and vs[0]["id"] == kind["npcs"][2]["id"] or NPCGen.GUARD_JOBS.has(String(kind["npcs"][2]["job"])), "a friend in town will vouch for you")
 	check(GatePolicy.folk_regard(kind) > 0.0, "the people's regard is their mean")
+	var shop := GatePolicy.priced({"charge_mult": 1.1, "pay_mult": 0.9}, "Honoured")
+	check(is_equal_approx(float(shop["charge_mult"]), 1.1 * 0.86) and float(shop["pay_mult"]) > 0.9, "the Honoured pay less and are paid more")
+	check(float(GatePolicy.priced({}, "Distrusted")["charge_mult"]) > 1.2, "the Distrusted pay more")
+	check(GatePolicy.port_mesh_ok(), "the portcullis has bars, cross-bars and teeth")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
@@ -4643,7 +5085,7 @@ func test_firearm_models() -> void:
 		check(m.has_meta("grip"), "%s says where the hand grips it" % t)
 		if Firearms.has(t):
 			check(float(m.get_meta("grip_r", 0.0)) > 0.005, "%s says how thick its grip is" % t)
-		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY:
+		if Firearms.has(t) and d.get("era", -1) != Eras.FANTASY and not d.get("alien", false):
 			var lit := false
 			for i in m.get_surface_count():
 				var mat := m.surface_get_material(i) as BaseMaterial3D
@@ -4974,6 +5416,96 @@ func test_camera_feel() -> void:
 	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
 	CameraBlur.strength = old
 
+# --- Weather -----------------------------------------------------------------------
+
+func test_climate() -> void:
+	var a := Climate.new(4242)
+	var b := Climate.new(4242)
+	check(a.at(37.5, 120.0, -80.0, 12.0, WorldField.LF_NONE, 50.0) == b.at(37.5, 120.0, -80.0, 12.0, WorldField.LF_NONE, 50.0),
+		"the same world, place and hour have the same weather (every player on a server agrees)")
+	var keys := ["cover", "precip", "snow", "storm", "mist", "dust", "wind"]
+	var wet := {WorldField.LF_NONE: 0, WorldField.LF_DUNES: 0}
+	var snowed_low := 0
+	var snowed_high := 0
+	var dust_green := 0
+	var changes := 0
+	var last := -1
+	for i in 2000:
+		var h := i * 0.5
+		for lf in wet:
+			var c := a.at(h, 300.0, -200.0, 8.0, lf, 50.0)
+			for k in keys:
+				check(float(c[k]) >= 0.0 and float(c[k]) <= 1.0, "%s stays within 0..1" % k)
+			if float(c["precip"]) > 0.5:
+				wet[lf] += 1
+			if lf == WorldField.LF_NONE:
+				if float(c["dust"]) > 0.05:
+					dust_green += 1
+				var raining := 1 if float(c["precip"]) > 0.3 else 0
+				if raining != last:
+					changes += 1
+				last = raining
+				if float(c["precip"]) > 0.3 and float(c["snow"]) > 0.5:
+					snowed_low += 1
+		var hi := a.at(h, 300.0, -200.0, 85.0, WorldField.LF_NONE, 50.0)
+		if float(hi["precip"]) > 0.3 and float(hi["snow"]) > 0.5:
+			snowed_high += 1
+	check(wet[WorldField.LF_NONE] > 40 and wet[WorldField.LF_NONE] < 800, "it rains some of the time, not all of it (%d / 2000)" % wet[WorldField.LF_NONE])
+	check(wet[WorldField.LF_DUNES] * 4 < wet[WorldField.LF_NONE], "deserts are much drier (%d vs %d)" % [wet[WorldField.LF_DUNES], wet[WorldField.LF_NONE]])
+	check(snowed_high > snowed_low * 3 and snowed_high > 0, "it snows on the peaks far more than in the lowlands (%d vs %d)" % [snowed_high, snowed_low])
+	check(dust_green == 0, "no dust storms on green land")
+	check(changes >= 4 and changes < 400, "rain comes and goes in spells (%d changes)" % changes)
+	# Fronts travel: the weather here now is the weather upwind a little earlier.
+	var up := a.prevailing * -Climate.FRONT_SPEED
+	var now := a.at(50.0, 0.0, 0.0, 8.0, WorldField.LF_NONE, 50.0)
+	var then := a.at(49.0, up.x, up.y, 8.0, WorldField.LF_NONE, 50.0)
+	check(absf(float(now["cover"]) - float(then["cover"])) < 0.25, "a front passing upwind an hour ago is over you now")
+	check(Climate.base_temp(6.0) < 0.0 and Climate.base_temp(50.0) > 10.0, "frozen worlds are cold")
+
+func test_starfall() -> void:
+	var nights := 0
+	for n in 2000:
+		if Climate.starfall_is_night(4242, float(n)):
+			nights += 1
+	check(nights > 120 and nights < 300, "about one night in ten is a starfall night (%d of 2000)" % nights)
+	var n0 := -1
+	for n in 200:
+		if Climate.starfall_is_night(4242, float(n)):
+			n0 = n
+			break
+	check(n0 >= 0, "a starfall night comes within 200 days")
+	check(Climate.starfall(4242, n0) > 0.99, "a starfall night is at its height at midnight")
+	check(Climate.starfall(4242, n0 + 0.5) == 0.0, "no falling stars at noon")
+	check(Climate.starfall(4242, n0 + 0.5) == Climate.starfall(4242, n0 + 0.5) and Climate.starfall_radiant(4242, n0) == Climate.starfall_radiant(4242, n0),
+		"the same night falls the same way for everyone")
+	check(Climate.starfall_radiant(4242, n0).y > 0.4, "the stars fall from high in the sky")
+	check(Landmark.has("star_iron") and Wonders.LANDMARKS.has("star_iron") and ObjectLibrary.kind("star_iron") == "structure",
+		"a fallen fragment is a landmark you can pry at")
+
+func test_great_storms() -> void:
+	var c := Climate.new(4242)
+	var seen := {}
+	var strong := 0
+	var hail := 0
+	var banks := 0
+	# Walk one spot through 80 days, a sample every game hour.
+	for i in 80 * 24:
+		var w := c.at(float(i), 500.0, -300.0, 12.0, WorldField.LF_NONE, 50.0)
+		if w["great"] != "":
+			seen[w["great"]] = true
+			strong += 1
+			check(float(w["wind"]) > 0.45 and float(w["cover"]) > 0.4, "a great storm blows hard under thick cloud")
+		if float(w["hail"]) > 0.3:
+			hail += 1
+		if float(w["bank"]) > 0.3:
+			banks += 1
+	check(not seen.is_empty(), "great storms come by within 80 days (%d hours of one)" % strong)
+	check(strong < 80 * 24 / 6, "great storms are rare (%d hours of 1920)" % strong)
+	check(hail > 0, "great storms bring hail")
+	check(banks > 0, "fog banks roll in on some mornings")
+	var g := c.great(1000.0, 500.0, -300.0)
+	check(g == c.great(1000.0, 500.0, -300.0), "the same great storm for everyone")
+
 # --- Power ------------------------------------------------------------------------
 
 func _pw(id: String, i: int, st := {}) -> Dictionary:
@@ -5251,6 +5783,123 @@ func test_power_automation() -> void:
 	r = Power.solve([{"id": "w", "o": _pw("water_wheel", 5), "f": 0.0}], {}, 1.0)
 	check(float(r["supply"]) == 0.0, "and nothing on dry ground")
 
+# --- Fire ------------------------------------------------------------------------------
+
+func test_fire_burns_by_material() -> void:
+	check(FireSim.burns("longhouse") and FireSim.burns("market_stall") and FireSim.burns("pine"), "timber buildings, stalls and trees burn")
+	check(not FireSim.burns("castle_wall") and not FireSim.burns("rock") and not FireSim.burns("hab_block"), "stone, rock and metal do not")
+	check(FireSim.burns("b:wall_plaster") and not FireSim.burns("b:wall_stone"), "a built timber wall burns, a stone one does not")
+	check(FireSim.profile("cottage")["leaves"] == "masonry" and FireSim.profile("longhouse")["leaves"] == "timber", "brick houses leave walls, timber ones fall in")
+	var st := {}
+	check(not FireSim.ignite("castle_wall", st, 1.0, 0.0) and not st.has("fire"), "stone will not catch")
+	FireSim.scorch(st, 0.3)
+	check(is_equal_approx(float(st["char"]), 0.3), "but it scorches")
+
+func test_fire_grows_and_burns_out() -> void:
+	var e := FireSim.calm()
+	var st := {}
+	check(FireSim.ignite("market_stall", st, 0.6, 0.0, true), "a stall catches")
+	var h0 := FireSim.heat(st)
+	for i in 30:
+		FireSim.step("market_stall", st, 1.0, e, i)
+	check(FireSim.heat(st) > h0 + 0.4, "it takes hold within half a minute (%.2f -> %.2f)" % [h0, FireSim.heat(st)])
+	check(float(st.get("char", 0.0)) > 0.05, "and scorches as it burns")
+	var r := ""
+	var secs := 0
+	while r == "" and secs < 2000:
+		r = FireSim.step("market_stall", st, 1.0, e, secs)
+		secs += 1
+	check(r == "burnt" and not st.has("fire"), "with nothing left to burn it burns out (%s after %d s)" % [r, secs])
+	check(int(st.get("lit_by", 0)) == 1, "and remembers who lit it")
+	check(FireSim.catch_chance("market_stall", st, 1.0, e, 0.0) == 0.0 or not st.has("fl"), "what burnt out does not light again")
+
+func test_fire_rain_beats_it_down() -> void:
+	var dry := FireSim.calm()
+	var wet := FireSim.calm()
+	wet["rain"] = 1.0
+	wet["wet"] = 1.0
+	var a := {}
+	var b := {}
+	FireSim.ignite("longhouse", a, 1.0, 0.0)
+	FireSim.ignite("longhouse", b, 1.0, 0.0)
+	for i in 120:
+		FireSim.step("longhouse", a, 1.0, dry, i)
+		FireSim.step("longhouse", b, 1.0, wet, i)
+	check(FireSim.heat(a) > 0.85, "a house goes up in dry weather (%.2f)" % FireSim.heat(a))
+	check(not b.has("fire") or FireSim.heat(b) < FireSim.heat(a) - 0.3, "a downpour holds it down (%.2f)" % FireSim.heat(b))
+	check(FireSim.catch_chance("longhouse", {}, 1.0, wet, 0.0) < FireSim.catch_chance("longhouse", {}, 1.0, dry, 0.0) * 0.6, "and wet things are hard to light")
+
+func test_fire_put_out_and_fed() -> void:
+	var e := FireSim.calm()
+	var st := {}
+	FireSim.ignite("fruit_cart", st, 0.5, 0.0)
+	for i in 8:
+		FireSim.step("fruit_cart", st, 1.0, e, i)
+	var blows := 0
+	while st.has("fire") and blows < 10:
+		FireSim.beat(st, 0.8, 8.0)
+		blows += 1
+	check(not st.has("fire") and blows <= 6, "a small fire is beaten out in a few blows (%d)" % blows)
+	check(float(st.get("fl", 0.0)) > 1.0, "with fuel left in it")
+	var big := {}
+	FireSim.ignite("longhouse", big, 1.0, 0.0)
+	for i in 90:
+		FireSim.step("longhouse", big, 1.0, e, i)
+	var h := FireSim.heat(big)
+	FireSim.beat(big, 0.8, 90.0)
+	check(big.has("fire") and FireSim.heat(big) > h - 0.05, "but a house well alight barely notices a beating")
+	var buckets := 0
+	while big.has("fire") and buckets < 12:
+		FireSim.quench(big, 0.55, 90.0 + buckets)
+		buckets += 1
+	check(not big.has("fire") and buckets >= 2 and buckets <= 6, "a few buckets put out a house (%d)" % buckets)
+	check(FireSim.soak(big, 100.0) > 0.5 and FireSim.catch_chance("longhouse", big, 1.0, e, 100.0) < 0.2, "soaked, it is hard to light again")
+	check(FireSim.soak(big, 100.0 + 600.0) == 0.0, "until it dries out")
+	var oiled := {}
+	FireSim.feed(oiled, 60.0)
+	check(FireSim.catch_chance("chest", oiled, 0.3, e, 0.0) >= 0.9, "oil on it, it catches from a spark")
+	FireSim.ignite("chest", oiled, 0.3, 0.0)
+	var h1 := FireSim.heat(oiled)
+	FireSim.feed(oiled, 60.0)
+	check(FireSim.heat(oiled) > h1 + 0.2, "more oil on a fire flares it up")
+
+func test_fire_spreads_downwind() -> void:
+	var e := FireSim.calm()
+	e["wind"] = 0.8
+	e["wind_dir"] = Vector2(1, 0)
+	var down := FireSim.spread_rate(0.9, 2.5, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0)
+	var up := FireSim.spread_rate(0.9, 2.5, Vector2(-1, 0), 6.0, "longhouse", {}, e, 0.0)
+	check(down > up * 2.0 and down > 0.0, "flames lick much further downwind (%.3f vs %.3f)" % [down, up])
+	check(FireSim.spread_rate(0.9, 0.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) > down, "touching buildings catch fastest")
+	check(FireSim.spread_rate(0.9, 40.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) == 0.0, "but not across a field")
+	check(FireSim.spread_rate(0.9, 0.0, Vector2(1, 0), 6.0, "castle_wall", {}, e, 0.0) == 0.0, "and never to stone")
+	check(FireSim.spread_rate(0.2, 0.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) == 0.0, "a fire just catching throws no flame yet")
+	check(FireSim.spread_rate(0.9, 1.0, Vector2(1, 0), 6.0, "oak", {}, e, 0.0) < FireSim.spread_rate(0.9, 1.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) * 0.3, "live trees catch much less readily than timber")
+
+func test_fire_catches_up_while_away() -> void:
+	var st := {}
+	FireSim.ignite("barrels", st, 1.0, 0.0)
+	check(FireSim.catch_up("barrels", st, 3600.0, FireSim.calm(), 3600.0) == "burnt", "a fire left an hour has burnt out")
+
+func test_fire_ruins() -> void:
+	var sp := FireRuins.encode(7.5, 9.0, 300)
+	var d := FireRuins.decode(sp)
+	check(is_equal_approx(d[0], 7.5) and is_equal_approx(d[1], 9.0) and d[2] == 300 & 255, "a ruin's size survives its species number (%s)" % [d])
+	for v in [FireRuins.TIMBER, FireRuins.MASONRY, FireRuins.HEAP]:
+		var m := FireRuins.build(sp, v)
+		var a := m.get_aabb()
+		check(m.get_surface_count() >= 2 and a.size.x > 6.0 and a.size.x < 12.0, "ruin %d is built to its footprint (%s)" % [v, a.size])
+	check(FireRuins.build(sp, FireRuins.MASONRY).get_aabb().size.y > FireRuins.build(sp, FireRuins.TIMBER).get_aabb().size.y * 0.8, "brick walls stand above the ash")
+	check(ObjectLibrary.label(FireSim.RUIN) == "Burnt Ruin" and ObjectLibrary.kind(FireSim.RUIN) == "structure", "a ruin is a structure you can pick through")
+	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
+
+func test_fire_items() -> void:
+	for t in ["fire_pot", "fire_bottle", "incendiary_grenade", "flamethrower"]:
+		check(float(ItemDB.def(t).get("incendiary", 0.0)) > 0.0, "%s sets things alight" % t)
+	check(ItemDB.def("fire_pot")["era"] == Eras.MEDIEVAL and int(ItemDB.UNLOCK.get("fire_pot", 99)) < int(ItemDB.UNLOCK.get("fire_bottle", 0)), "the fire pot comes before the fire bottle")
+	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
+	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
+	check(Crime.FINES.has("arson"), "arson is a crime")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
@@ -5318,3 +5967,226 @@ func test_water_life() -> void:
 	for k in FishKit.KINDS:
 		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
 	WorldField.terrain_v = tv
+
+func test_props_settle_on_ground() -> void:
+	# A chest on a 15 degree slope lies with it, every corner bedded in by SINK.
+	var box := AABB(Vector3(-0.6, 0, -0.4), Vector3(1.2, 0.7, 0.8))
+	var slope := tan(deg_to_rad(15.0))
+	var ground := func(x: float, z: float) -> float: return 10.0 + x * slope
+	var xf := PropSettle.fit(ground, Vector3(5, 10, 5), 0.7, 1.0, box)
+	var up := Vector3(-slope, 1, 0).normalized()
+	check(xf.basis.y.normalized().angle_to(up) < 0.01, "prop tips to the slope, off by %.3f" % xf.basis.y.normalized().angle_to(up))
+	for c in [Vector3(-0.6, 0, -0.4), Vector3(0.6, 0, -0.4), Vector3(-0.6, 0, 0.4), Vector3(0.6, 0, 0.4)]:
+		var w: Vector3 = xf * c
+		var d: float = ground.call(w.x, w.z) - w.y
+		check(absf(d - PropSettle.SINK) < 0.01, "corner bedded in by SINK, got %.3f" % d)
+	# Flat ground: level, its base just under the ground.
+	var flat := func(_x: float, _z: float) -> float: return 3.0
+	var fx := PropSettle.fit(flat, Vector3(0, 3, 0), 1.2, 1.0, box)
+	check(fx.basis.y.normalized().angle_to(Vector3.UP) < 0.001 and absf(fx.origin.y - (3.0 - PropSettle.SINK)) < 0.001, "level on the flat")
+	# A cliff: the lean stops at MAX_TILT and nothing floats.
+	var cliff := func(x: float, _z: float) -> float: return x * 2.0
+	var cx := PropSettle.fit(cliff, Vector3.ZERO, 0.0, 1.0, box)
+	check(absf(cx.basis.y.normalized().angle_to(Vector3.UP) - PropSettle.MAX_TILT) < 0.01, "lean capped on a cliff")
+	for c in [Vector3(-0.6, 0, -0.4), Vector3(0.6, 0, 0.4)]:
+		var w: Vector3 = cx * c
+		check(cliff.call(w.x, w.z) - w.y >= PropSettle.SINK - 0.001, "nothing floats on a cliff")
+	# Generated props: a town's wagons, stalls and barrels (on its flattened ground) sit
+	# flush; out in the wilds chests lie far less buried than they stood level, and none
+	# hangs in the air.
+	var keep_tv := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242, true)
+	var n := 0
+	var bury_old := 0.0
+	var bury_new := 0.0
+	for kz in range(-2, 3):
+		for kx in range(-2, 3):
+			var chunk := g.generate(kx, kz)
+			for o in chunk["objects"]:
+				var m := ProbeProps.measure(chunk, o) if PropSettle.settles(o["t"]) else {}
+				if m.is_empty():
+					continue
+				n += 1
+				bury_new += m["bury"]
+				bury_old += ProbeProps.measure(chunk, o, true)["bury"]
+				check(m["float"] < 0.2, "%s floats %.3f m" % [o["t"], m["float"]])
+				if not Eras.CACHE_TYPES.has(o["t"]):
+					check(m["bury"] < 0.05 and m["float"] < 0.01, "%s sits flush: bury %.3f, float %.3f" % [o["t"], m["bury"], m["float"]])
+	check(bury_new < bury_old * 0.7, "props less buried than standing level: %.2f m against %.2f m" % [bury_new, bury_old])
+	check(n > 5, "found settled props to check (%d)" % n)
+	# Rooms keep theirs: a chest stocked in a cottage is not set on the ground.
+	var inside := {"t": "chest", "p": Vector3(5, 99, 5), "r": 0.0, "s": 1.0, "st": {"inside": "cottage"}}
+	check(PropSettle.transform(g.generate(0, 0), inside) == null, "a room's chest keeps its place")
+	WorldField.terrain_v = keep_tv
+	# Furniture stands on its floor.
+	check(ProbeProps.floors()["bad"] == 0, "room furniture stands on its floor, inside its walls and clear of its neighbours")
+
+func test_caches_rest_v21() -> void:
+	# A v20 world places every cache where it always did (object id and x, z pinned from
+	# before v21).
+	const PINS := [[-2, -2, 4, 51.700, 31.762], [-1, -2, 5, 42.985, 19.893], [0, -2, 4, 47.298, 4.408], [1, -2, 25, 15.836, 59.603],
+		[2, -2, 6, 34.055, 33.602], [2, -2, 19, 5.978, 50.770], [-2, -1, 6, 25.838, 25.457], [-1, -1, 8, 13.510, 53.874],
+		[0, -1, 7, 50.438, 32.712], [1, -1, 35, 53.973, 43.445], [2, -1, 40, 23.289, 21.417], [-2, 0, 8, 51.542, 5.719],
+		[-1, 0, 4, 52.599, 48.489], [0, 0, 39, 25.048, 40.415], [1, 0, 92, 29.070, 29.661], [2, 0, 68, 49.710, 59.097],
+		[-2, 1, 7, 22.348, 31.355], [-1, 1, 37, 46.482, 36.538], [0, 1, 59, 24.312, 34.652], [1, 1, 53, 39.748, 57.065],
+		[2, 1, 15, 20.775, 51.181], [-2, 2, 6, 15.242, 12.988], [-1, 2, 61, 4.307, 48.625], [0, 2, 10, 6.272, 41.878],
+		[1, 2, 0, 9.614, 45.000], [2, 2, 0, 33.063, 16.947]]
+	var keep_tv := WorldField.terrain_v
+	var old := {}
+	var new := {}
+	for tv in [ChunkGenerator.CACHE_REST_V - 1, ChunkGenerator.CACHE_REST_V]:
+		WorldField.terrain_v = tv
+		var g := ChunkGenerator.new(4242, true) # a generator per version: it caches what it plans
+		for kz in range(-2, 3):
+			for kx in range(-2, 3):
+				(old if tv < ChunkGenerator.CACHE_REST_V else new)[Vector2i(kx, kz)] = g.generate(kx, kz)
+	WorldField.terrain_v = keep_tv
+	for pin in PINS:
+		var o := {"t": "", "p": Vector3.INF}
+		for c in old[Vector2i(pin[0], pin[1])]["objects"]:
+			if int(c["i"]) == pin[2]:
+				o = c
+		var p: Vector3 = o["p"]
+		check(Eras.CACHE_TYPES.has(o["t"]) and absf(p.x - pin[3]) < 0.002 and absf(p.z - pin[4]) < 0.002,
+			"v20 cache %s at (%.3f, %.3f), pinned (%.3f, %.3f)" % [o["t"], p.x, p.z, pin[3], pin[4]])
+	# v21 moves wild caches only: every other object, and every index, stays as it was;
+	# a moved cache goes no further than a few metres, onto ground it fits no worse.
+	var moved := 0
+	for k in old:
+		var oa: Array = old[k]["objects"]
+		var na: Array = new[k]["objects"]
+		check(oa.size() == na.size(), "same objects in chunk %s" % k)
+		for i in mini(oa.size(), na.size()):
+			var a: Dictionary = oa[i]
+			var b: Dictionary = na[i]
+			if Eras.CACHE_TYPES.has(a["t"]):
+				check(Eras.CACHE_TYPES.has(b["t"]), "cache %d of %s still a cache" % [i, k])
+				var d := Vector2(a["p"].x - b["p"].x, a["p"].z - b["p"].z).length()
+				check(d < 7.01, "cache moved %.2f m" % d)
+				if d > 0.001:
+					moved += 1
+					var foot := AABB(Vector3(-0.8, 0, -0.8), Vector3(1.6, 0.8, 1.6))
+					var ga := func(x: float, z: float) -> float: return ChunkGenerator.height_at(old[k], x, z)
+					var gb := func(x: float, z: float) -> float: return ChunkGenerator.height_at(new[k], x, z)
+					check(PropSettle.misfit(gb, b["p"], foot) <= PropSettle.misfit(ga, a["p"], foot) + 0.001, "a moved cache fits its ground no worse")
+			else:
+				check(a["t"] == b["t"] and a["p"] == b["p"] and a["r"] == b["r"], "object %d of %s unchanged by v21" % [i, k])
+	check(moved > 0, "v21 moved some caches off rough ground (%d)" % moved)
+
+func test_climate_wear() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var f := WorldField.new(4242)
+	var g := WorldField.new(4242)
+	var mossy := 0
+	var cold := 0
+	var dusty := 0
+	var boggy := 0
+	var ranged := true
+	var same := true
+	var desert_dust := true
+	var home_mild := true
+	for iz in range(-15, 16):
+		for ix in range(-15, 16):
+			var x := ix * 400.0 + 17.0
+			var z := iz * 400.0 - 31.0
+			var c := ClimateWear.levels(f, x, z)
+			same = same and c == ClimateWear.levels(g, x, z)
+			for v in [c.r, c.g, c.b, c.a]:
+				ranged = ranged and v >= 0.0 and v <= 1.0
+			mossy += 1 if c.r > 0.8 else 0
+			cold += 1 if c.g > 0.6 else 0
+			dusty += 1 if c.b > 0.5 else 0
+			boggy += 1 if c.a > 0.5 else 0
+			var cl := f.climate_at(x, z)
+			var lf := f.landform_at(x, z)
+			if cl.y + WorldField.LF_WET[lf] < 0.15 and cl.x > 0.55:
+				desert_dust = desert_dust and c.b > 0.5
+			if Vector2(x, z).length() < 900.0:
+				home_mild = home_mild and c.g < 0.3
+	check(ranged, "levels are 0..1")
+	check(same, "levels are the same from any field of the seed (nothing to sync)")
+	check(mossy > 0 and cold > 0 and dusty > 0 and boggy > 0, "the world has wet, cold, dusty and boggy places (%d %d %d %d)" % [mossy, cold, dusty, boggy])
+	check(mossy < 961 and cold < 961 and dusty < 961, "and they are regions, not the whole world")
+	check(desert_dust, "hot dry land is dusty")
+	check(home_mild, "the land round the spawn is not frozen")
+	# The map holds the levels at its texel middles.
+	var b := ClimateWear.map_bytes(f, Vector2(-1000, 500), 640.0, 8)
+	check(b.size() == 8 * 8 * 4, "map is RES x RES RGBA8")
+	var lv := ClimateWear.levels(f, -1000 + 3.5 * 80.0, 500 + 5.5 * 80.0)
+	check(absi(b[(5 * 8 + 3) * 4 + 1] - int(round(lv.g * 255.0))) <= 1 and absi(b[(5 * 8 + 3) * 4] - int(round(lv.r * 255.0))) <= 1, "map texel = levels there")
+	check(absf(ClimateWear.bog(f, 123.0, 456.0) - ClimateWear.levels(f, 123.0, 456.0).a) < 1e-5, "bog() matches the map's bog")
+	WorldField.terrain_v = WorldField.CLIMATE_V - 1
+	var old := WorldField.new(4242)
+	var none := true
+	for i in 40:
+		var oc := ClimateWear.levels(old, i * 731.0 - 9000.0, i * -517.0 + 4000.0)
+		none = none and oc.g == 0.0
+	check(none, "worlds made before climates have no cold belts")
+	WorldField.terrain_v = was
+	# Built pieces weather toward their place's level over game days; the rest are old.
+	check(ClimateWear.maturity(-1.0, 5.0) == 1.0, "no build day: as old as the village")
+	check(ClimateWear.maturity(5.0, 5.0) == 0.0, "new built piece is clean")
+	check(absf(ClimateWear.maturity(5.0, 5.0 + ClimateWear.MATURE_DAYS * 0.5) - 0.5) < 1e-4, "half weathered half way")
+	check(ClimateWear.maturity(5.0, 500.0) == 1.0, "fully weathered in time")
+	check(ClimateWear.frost_now(10.22) > 0.9, "frost thickest before dawn")
+	check(ClimateWear.frost_now(10.5) == 0.0 and ClimateWear.frost_now(10.7) == 0.0, "no frost by day")
+	check(ClimateWear.frost_now(10.0) > 0.3, "frost growing at midnight")
+	var chunk := {"seed": 1, "cx": 0, "cz": 0, "objects": [
+		{"t": "b:wall_plaster", "i": 0, "p": Vector3(1, 0, 1), "r": 0.0, "s": 1.0, "st": {"day": 1e9}},
+		{"t": "b:wall_plaster", "i": 1, "p": Vector3(3, 0, 1), "r": 0.0, "s": 1.0, "st": {}}]}
+	var bufs := ChunkNode.build_object_buffers(chunk, false)
+	var buf: PackedFloat32Array = bufs[ObjectLibrary.mesh_key(chunk["objects"][0])]
+	check(buf.size() == 32 and buf[15] == 0.0 and buf[31] == 1.0, "a piece built today is clean, one with no day is old (instance alpha)")
+
+func test_kit_surfaces_worn() -> void:
+	var parts := BuildCatalog.model_parts("village/Wall_Plaster_Straight")
+	var worn := 0
+	for p in parts:
+		var m: Material = p[0]
+		if m is ShaderMaterial and (m as ShaderMaterial).shader.resource_path.ends_with("kit_surface.gdshader"):
+			worn += 1
+			var sm := m as ShaderMaterial
+			check(sm.get_shader_parameter("albedo_tex") != null, "worn %s keeps its colour map" % m.resource_name)
+			check(sm.get_shader_parameter("mean_lum") > 0.02, "worn %s has a mean brightness" % m.resource_name)
+	check(worn == parts.size() and worn > 0, "village wall surfaces weather (%d of %d)" % [worn, parts.size()])
+	for p in BuildCatalog.model_parts("village/Window_Wide_Round1"):
+		if p[0] != null and (p[0] as Material).resource_name == "MI_WindowGlass":
+			check(p[0] is BaseMaterial3D, "window glass stays glass")
+	var std := StandardMaterial3D.new()
+	check(BuildCatalog.worn(std, "props/Barrel") == std, "only the village kit weathers")
+	var glow := StandardMaterial3D.new()
+	glow.emission_enabled = true
+	glow.cull_mode = BaseMaterial3D.CULL_DISABLED
+	check(BuildCatalog.worn(glow, "village/X") == glow, "nothing glowing is touched")
+
+func test_climate_belts() -> void:
+	var c := Climate.new(4242)
+	var snow_tropic := 0
+	var snow_cold := 0
+	var rain_wet := 0
+	var rain_dry := 0
+	for i in 1500:
+		var h := float(i) * 1.7
+		if float(c.at(h, 0.0, 0.0, 10.0, WorldField.LF_NONE, 50.0, Vector2(0.95, 0.5))["snow"]) > 0.5:
+			snow_tropic += 1
+		if float(c.at(h, 0.0, 0.0, 10.0, WorldField.LF_NONE, 50.0, Vector2(0.05, 0.5))["snow"]) > 0.5:
+			snow_cold += 1
+		if float(c.at(h, 0.0, 0.0, 10.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.95))["precip"]) > 0.3:
+			rain_wet += 1
+		if float(c.at(h, 0.0, 0.0, 10.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.1))["precip"]) > 0.3:
+			rain_dry += 1
+	check(snow_tropic == 0, "it never snows on low ground in the tropics")
+	check(snow_cold > snow_tropic, "the cold belts get snow (%d of 1500)" % snow_cold)
+	check(rain_wet > rain_dry * 2, "wet lands rain much oftener than dry ones (%d vs %d)" % [rain_wet, rain_dry])
+
+func test_bog_mist() -> void:
+	var c := Climate.new(4242)
+	var bog := 0.0
+	var dry := 0.0
+	for i in 1500:
+		var h := float(i) * 1.3
+		bog += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.9))["mist"])
+		dry += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.5))["mist"])
+	check(bog > dry * 1.5, "bogs lie under mist far oftener (%.0f vs %.0f)" % [bog, dry])

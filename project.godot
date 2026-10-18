@@ -5,7 +5,7 @@ config_version=5
 
 config/name="Procedural World"
 config/description="An infinite, persistent, first-person world that blends eras as you walk."
-config/version="0.3.48"
+config/version="0.3.49"
 run/main_scene="res://src/ui/main_menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="ProceduralWorld"
@@ -24,6 +24,7 @@ AI="*res://src/ai/ai_service.gd"
 Game="*res://src/core/game.gd"
 Audio="*res://src/audio/audio.gd"
 Net="*res://src/net/net.gd"
+FireClock="*res://src/world/fire_clock.gd"
 
 [display]
 
@@ -73,6 +74,26 @@ water_wake_boats={
 "type": "sampler2D",
 "value": ""
 }
+climate_wear_map_g={
+"type": "sampler2D",
+"value": ""
+}
+climate_wear_rect_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+climate_wear_now_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+shelter_map_g={
+"type": "sampler2D",
+"value": ""
+}
+shelter_rect_g={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
 night_glow_g={
 "type": "float",
 "value": 0.15
@@ -80,6 +101,10 @@ night_glow_g={
 snow_line_g={
 "type": "float",
 "value": 50.0
+}
+sky_reflect_g={
+"type": "float",
+"value": 1.0
 }
 wind_dir={
 "type": "vec2",
@@ -106,6 +131,26 @@ sun_light_g={
 "value": Vector3(0, 0, 0)
 }
 wind_time={
+"type": "float",
+"value": 0.0
+}
+fire_time={
+"type": "float",
+"value": 0.0
+}
+weather_wet_g={
+"type": "float",
+"value": 0.0
+}
+weather_puddle_g={
+"type": "float",
+"value": 0.0
+}
+weather_snow_g={
+"type": "float",
+"value": 0.0
+}
+weather_rain_g={
 "type": "float",
 "value": 0.0
 }

@@ -32,8 +32,18 @@ uniform float stars_gain = 1.3;
 uniform bool volumetric_clouds = true;
 uniform int cloud_steps = 28;
 uniform int cloud_light_steps = 4;
+// Weather (Weather): rain and storm cloud darkens the clouds and greys the sky, a dust
+// storm browns it, and a lightning flash lights the clouds round the bolt.
+uniform float storm = 0.0;
+uniform float dust = 0.0;
+uniform float flash = 0.0;
+uniform vec3 flash_dir = vec3(0.0, 1.0, 0.0);
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
+// How much of the sky reflects and lights from it (1 in the open; Atmosphere lowers it
+// underground, so metal and gloss in a cave don't mirror the daylit sky). Only the
+// radiance pass: the sky you see never changes.
+global uniform float sky_reflect_g;
 
 float hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -158,7 +168,10 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 			float powder = 1.0 - exp(-den * 2.5);
 			float hfrac = (p.y - CLOUD_LO) / (CLOUD_HI - CLOUD_LO);
 			vec3 lum = sun_col * beer * powder * phase * 2.6 + amb * (0.55 + 0.8 * hfrac);
-			float a = 1.0 - exp(-den * sigma * dt);
+			// Far off, the air between thins a cloud into the haze behind it (beyond about
+			// fourteen kilometres), so the low decks toward the horizon read as distant, not as
+			// bright white pancakes stacked on the skyline.
+			float a = (1.0 - exp(-den * sigma * dt)) * exp(-max(t - 14000.0, 0.0) / 22000.0);
 			col += trans * a * lum;
 			trans *= 1.0 - a;
 			if (trans < 0.02) break;
@@ -166,7 +179,7 @@ vec4 march_clouds(vec3 d, vec3 sun, vec3 sun_col, vec3 amb, vec2 jitter_px) {
 		t += dt;
 	}
 	// Fade into the haze toward the horizon.
-	float fade = smoothstep(0.015, 0.12, d.y);
+	float fade = smoothstep(0.015, 0.06, d.y);
 	return vec4(col, (1.0 - trans) * fade);
 }
 
@@ -184,6 +197,8 @@ void sky() {
 			+ vec3(0.02, 0.026, 0.04) * moon_lit;
 		// Flat-cloud quality skips the march entirely.
 		vec4 c = volumetric_clouds ? march_clouds(d, sunh, scol * 1.4, amb, FRAGCOORD.xy) : vec4(0.0);
+		c.rgb *= mix(1.0, 0.3, storm);
+		c.rgb += vec3(0.75, 0.8, 1.0) * flash * c.a * (0.25 + 2.5 * pow(max(dot(d, flash_dir), 0.0), 6.0));
 		COLOR = c.rgb;
 		ALPHA = c.a;
 	} else {
@@ -196,6 +211,7 @@ void sky() {
 	vec3 zen = mix(zenith_night + vec3(0.012, 0.02, 0.045) * moon_lit, zenith_day, daylight);
 	vec3 hor = mix(horizon_night + vec3(0.03, 0.04, 0.06) * moon_lit, horizon_day, daylight);
 	vec3 col = mix(hor, zen, pow(up, 0.45));
+	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))) * 0.6, storm * 0.85);
 
 	// Sunset glow near the sun when it is low.
 	float sd = max(dot(d, sun), 0.0);
@@ -324,14 +340,27 @@ void sky() {
 		vec3 cloud = mix(hor * 0.9, sun_col * (0.7 + 0.5 * daylight), daylight) * lit;
 		cloud += sun_col * pow(sd, 12.0) * 0.6 * daylight * (1.0 - dens);
 		cloud = mix(cloud, vec3(0.05, 0.06, 0.09) + hor * 0.3, 1.0 - daylight);
+		cloud *= mix(1.0, 0.35, storm);
+		cloud += vec3(0.75, 0.8, 1.0) * flash * (0.25 + 2.0 * pow(max(dot(d, flash_dir), 0.0), 6.0));
 		col = mix(col, cloud, dens * 0.92);
 	}
 
 	// Below horizon.
 	// Below horizon: hazy toward the horizon colour, so the far edge of the land (seen from
 	// the air) melts into haze instead of a dark band.
+	col = mix(col, vec3(0.62, 0.47, 0.3) * (0.06 + 0.7 * daylight), dust * 0.8);
 	vec3 below = mix(hor, ground_col * (0.2 + 0.8 * daylight), 0.4);
-	col = mix(col, below, smoothstep(0.0, -0.08, d.y));
-	COLOR = col;
+	float below_w = smoothstep(0.0, -0.08, d.y);
+	if (AT_CUBEMAP_PASS) {
+		// What metal and gloss reflect (and the sky light from below): the land under
+		// the horizon is daylit earth, a third as bright as the haze above it and warmer,
+		// with a soft horizon line between. A reflection that is the same pale haze above
+		// and below is what makes metal look like grey paint.
+		vec3 earth = vec3(0.3, 0.28, 0.2) * dot(hor, vec3(0.3333));
+		below = mix(hor * 0.85, earth, smoothstep(-0.005, -0.12, d.y));
+		below_w = smoothstep(0.0, -0.02, d.y);
+	}
+	col = mix(col, below, below_w);
+	COLOR = AT_CUBEMAP_PASS ? col * sky_reflect_g : col;
 	}
 }

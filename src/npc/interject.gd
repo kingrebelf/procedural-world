@@ -70,6 +70,24 @@ static func pick_local(rec: Dictionary, text: String) -> String:
 		return "think"
 	return "none"
 
+## Whether something said out loud, to nobody in particular, is meant for the people
+## around ("Can anyone spare me five Marks?", "Hello!", "Where's the smithy?") rather
+## than talking to yourself or someone on the other end of a headset.
+const CALLS := ["anyone", "anybody", "someone", "somebody", "everyone", "everybody", "hey", "hello", "hi", "excuse me",
+	"please", "help", "spare", "lend", "need", "looking for", "does anyone", "is there", "where", "who", "can", "could",
+	"would", "will you", "good morning", "good evening", "good day", "greetings", "howdy", "oi", "you there", "sir", "madam", "friend"]
+
+static func calls_out(text: String) -> bool:
+	var q := text.to_lower().strip_edges()
+	if q == "":
+		return false
+	if q.ends_with("?"):
+		return true
+	for w in CALLS:
+		if _has_word(q, w):
+			return true
+	return false
+
 ## The words this person uses for `kind` ("" for none).
 static func line(rec: Dictionary, kind: String) -> String:
 	var opts: Array = KINDS.get(kind, []).duplicate()

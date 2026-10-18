@@ -40,6 +40,8 @@ var _unstuck := 0.0
 ## plays the fall; otherwise it is already down.
 var as_corpse := false
 var held_for := 0.0 ## seconds left caught in a trap (Traps): it cannot move
+var scared_t := 0.0 ## seconds left running from a fire (FireSystem), away from scared_of
+var scared_of := Vector3.INF
 var fresh := false
 var limp := false ## lies as a ragdoll (Corpses lays it), not in its death clip
 
@@ -392,10 +394,11 @@ const TAG_PRIORITY := 3
 ## animal's name into a ghosted double. Solid, it moves with its owner, and a lake behind
 ## it still can't cover it (the water is depth-tested against it).
 static func crisp_tag(l: Label3D) -> void:
+	# A hard cut, no alpha to coverage: without MSAA that dithers the glyph edges, and on
+	# a small two-line tag the edges are most of the text, so it came out stippled.
 	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
 	l.alpha_scissor_threshold = 0.4
-	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
-	l.alpha_antialiasing_edge = 0.25
+	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_OFF
 
 func _build_tag() -> void:
 	_tag = Node3D.new()
@@ -569,7 +572,15 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 		return
 	_think -= delta
 	var d := global_position.distance_to(player_pos)
-	if _think <= 0.0:
+	if scared_t > 0.0:
+		# Running from a fire, whatever its temper: away from the flames until clear.
+		scared_t -= delta
+		state = "flee"
+		_think = maxf(_think, 0.5)
+		if scared_t <= 0.0:
+			state = "wander"
+			_pick_wander()
+	elif _think <= 0.0:
 		_think = randf_range(0.4, 1.0)
 		var t: String = p["temper"]
 		if t == "skittish" and d < 14.0:
@@ -613,7 +624,8 @@ func step(delta: float, ground: Callable, player_pos: Vector3) -> void:
 				_pick_wander()
 		"flee":
 			want = float(p["speed"]) * 2.0
-			goal = global_position + (global_position - player_pos).normalized() * 10.0
+			var from := scared_of if scared_t > 0.0 else player_pos
+			goal = global_position + (global_position - from).normalized() * 10.0
 		"chase":
 			want = float(p["speed"]) * 1.6
 			goal = player_pos
@@ -775,6 +787,12 @@ func _pick_graze() -> String:
 		if _kit.anim.has_animation(n):
 			opts.append(n)
 	return opts[randi() % opts.size()]
+
+## A fire close by (FireSystem): it bolts away from `from` for a few seconds, and keeps
+## running while the fire keeps scaring it.
+func scare(from: Vector3, seconds := 5.0) -> void:
+	scared_of = from
+	scared_t = maxf(scared_t, seconds)
 
 func hurt(dmg: float) -> bool:
 	hp -= dmg

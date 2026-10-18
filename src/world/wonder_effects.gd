@@ -179,6 +179,20 @@ static func _landmark(o: Dictionary, rng: RandomNumberGenerator, origin: Diction
 			if first or rng.randf() < 0.25:
 				gifts.append(ItemDB.make("power_cell", 1, q.call(), origin))
 			msg = "You strip the wreck"
+		"star_iron":
+			# Hull from the fleet that brought people here (Starfall, plans/story.md): plain
+			# metal near home, ship's parts further out where folk still know what they are.
+			var zone := Eras.zone_level(wp.x, wp.z)
+			gifts.append(ItemDB.make("iron_ingot", rng.randi_range(1, 3), q.call(), origin))
+			gifts.append(ItemDB.make("alloy_scrap", rng.randi_range(2, 5), q.call(), origin))
+			if zone >= 10:
+				gifts.append(ItemDB.make("circuitry", rng.randi_range(1, 3), q.call(), origin))
+			if zone >= 25:
+				gifts.append(ItemDB.make("power_cell", 1, q.call(), origin))
+			if zone >= 35 and rng.randf() < 0.3:
+				gifts.append(ItemDB.make("data_core", 1, q.call(), origin))
+			var ship: String = Climate.SHIPS[clampi(int(st.get("ship", 0)), 0, Climate.SHIPS.size() - 1)]
+			msg = "Letters stand out on the scorched plate: %s. Prying it loose you find" % ship
 		"titan_bones":
 			Game.add_xp(LANDMARK_XP * 0.5, "Discovery")
 			var way := _mark_settlement(wp)

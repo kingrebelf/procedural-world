@@ -127,10 +127,13 @@ func _graphics_tab() -> Control:
 	_check(g, "sun_shafts", "Light shafts", "Rays of sunlight through trees, gaps and windows.")
 	_check(g, "glow", "Bloom")
 	_check(g, "auto_exposure", "Auto exposure")
+	_check(g, "film_grade", "Film colour grade", "Cool shadows, warm highlights and softer greens, as a graded film. Off shows the raw colours.")
 	_check(g, "motion_blur", "Motion blur", "A slight smear when you turn or move fast, as a camera shutter gives. The held item stays sharp.")
 	_slider(g, "motion_blur_strength", "Motion blur amount", 0.1, 1.0, 0.05, "%.2f", "How long the shutter stays open, in 60ths of a second. 0.3 is subtle; 1.0 is film-like.")
 	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")
 	_option(g, "effects", "Effects quality", ["Low", "Medium", "High"], "Sample counts for ambient occlusion, screen-space and SDFGI light. Low and Medium run GI at half resolution.")
+	_check(g, "weather", "Dynamic weather", "Rain, snow, storms, mist and dust storms that come and go. Off keeps fair skies.")
+	_option(g, "weather_fx", "Weather effects", ["Low", "Normal", "High"], "How many raindrops and snowflakes fall round you; Normal and High add splashes where rain lands, High lets lightning cast shadows.")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
 	_slider(g, "detail_distance", "Detail distance", 0.4, 1.5, 0.1, "%.1fx", "How far grass, ground clutter and small props are drawn. Trees and buildings are not affected.")
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")
@@ -276,7 +279,8 @@ func _ai_tab() -> Control:
 	_ai_check(g, "quick_replies", "Quick replies", "People answer \"Yes.\", \"No.\" or \"Hmm, let me think about that.\" straight away (picked by the fast decision service if set), then the full reply follows.")
 	_ai_check(g, "voice_barks", "Passers-by speak too", "Greetings and shouts from people nearby are spoken, not only conversations.")
 	_ai_slider(g, "voice_volume", "Voice volume", 0, 100, 5, "%d")
-	_ai_line(g, "stt_url", "Speech-to-text server", "For talking with your microphone (hold B near someone). Empty uses the provider above if it is OpenAI-compatible. Any server with /audio/transcriptions works, e.g. https://api.openai.com/v1 or a local speaches / LocalAI server.")
+	_ai_check(g, "open_mic", "Open mic", "Your microphone stays on (toggle with O): say something and the people near you hear it. One who is willing answers; the rest carry on. Wear headphones, or people may hear each other through your speakers.")
+	_ai_line(g, "stt_url", "Speech-to-text server", "For talking with your microphone (hold B near someone, or open mic). Empty uses the built-in speech recognition that comes with the game (offline), else the OpenAI provider. Any server with /audio/transcriptions works, e.g. https://api.openai.com/v1 or a local speaches / LocalAI server.")
 	_ai_line(g, "stt_model", "Speech-to-text model", "Empty picks gpt-4o-mini-transcribe for OpenAI, whisper-1 elsewhere.")
 	_ai_line(g, "stt_key", "Speech-to-text key", "Only if the speech-to-text server differs from the provider above.", true)
 	var vrow := HBoxContainer.new()
@@ -350,7 +354,7 @@ func _ai_refresh() -> void:
 			c.select(maxi(ENGINES.find(v), 0))
 	var off: bool = AI.get_value("provider") == "off"
 	for k in _ai_fields:
-		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key",
+		if not k in ["provider", "decide_url", "decide_key", "voices", "voice_barks", "voice_volume", "stt_url", "stt_model", "stt_key", "open_mic",
 				"voice_engine", "tts_url", "tts_model", "tts_key", "quick_replies"]:
 			var c = _ai_fields[k]
 			if c is BaseButton:

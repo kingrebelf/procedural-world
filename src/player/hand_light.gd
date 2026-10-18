@@ -58,10 +58,12 @@ func _ready() -> void:
 
 ## Where a torch's flame stands on its model, and how tall it is.
 const TORCH_FLAME := [Vector3(0, 0.4, 0), 0.32]
+## The seed of a carried torch's flame, which the light in your hand follows.
+const TORCH_SEED := 0.37
 
 ## A torch's living fire, to sit on its model: the flame, with sparks and smoke.
 static func torch_fire() -> Node3D:
-	var n := FireFx.flame(TORCH_FLAME[1])
+	var n := FireFx.carried(TORCH_FLAME[1], TORCH_SEED)
 	n.position = TORCH_FLAME[0]
 	n.add_child(FireFx.embers(TORCH_FLAME[1], false))
 	n.add_child(_torch_smoke(TORCH_FLAME[1]))
@@ -273,11 +275,16 @@ func tick(delta: float, inv: Inventory) -> String:
 
 func _process(delta: float) -> void:
 	_t += delta
-	if lit() == "torch":
-		# Flicker: two slow waves and a fast one.
-		_omni.light_energy = 2.3 + 0.25 * sin(_t * 7.3) + 0.16 * sin(_t * 13.1 + 1.7) + 0.1 * sin(_t * 23.0)
+	var k := lit()
+	if k == "torch" or k == "lantern" or k == "candle":
+		# It leaps and sinks with the torch's flame (FireFx.life); a wick behind glass or a
+		# lone candle burns steadier.
+		var l := FireFx.life(FireFx.time, TORCH_SEED)
+		var base: float = {"lantern": 3.0 if kerosene else 2.6, "candle": 1.1}.get(k, 2.3)
+		_omni.light_energy = base * (1.0 + (0.42 if k == "torch" else 0.16) * (l - 0.5) * 2.0)
 		# The light sways with the flame, so the shadows it casts move a little.
-		_omni.position = _omni_at + Vector3(sin(_t * 5.1) * 0.012, sin(_t * 8.7 + 0.6) * 0.01, cos(_t * 6.3) * 0.012)
+		var sw := 0.012 if k == "torch" else 0.004
+		_omni.position = _omni_at + Vector3(FireFx._noise(FireFx.time * 2.3 + 26.0) - 0.5, l - 0.5, FireFx._noise(FireFx.time * 2.1 + 19.0) - 0.5) * sw * 2.0
 
 func _apply() -> void:
 	if _omni == null:

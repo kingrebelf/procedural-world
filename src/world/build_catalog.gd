@@ -107,9 +107,9 @@ const PIECES := {
 	"shelf": {"name": "Shelf", "models": [["props/Shelf_Simple", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 4.0, "era": -1, "decor": true},
 	"shelf_arch": {"name": "Arched Shelf", "models": [["props/Shelf_Arch", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"candle_stand": {"name": "Candle Stand", "models": [["props/CandleStick_Stand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "light": Color(1.0, 0.68, 0.35)},
-	"lantern": {"name": "Lantern", "models": [["props/Lantern_Wall", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "light": Color(1.0, 0.65, 0.3)},
-	"banner_red": {"name": "Banner", "models": [["props/Banner_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
-	"banner_blue": {"name": "Banner (striped)", "models": [["props/Banner_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
+	"lantern": {"name": "Lantern", "models": [["props/Lantern_Wall", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 3.0, "era": -1, "decor": true, "hang": true, "light": Color(1.0, 0.65, 0.3)},
+	"banner_red": {"name": "Banner", "models": [["props/Banner_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
+	"banner_blue": {"name": "Banner (striped)", "models": [["props/Banner_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
 	"weapon_stand": {"name": "Weapon Rack", "models": [["props/WeaponStand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"dummy": {"name": "Training Dummy", "models": [["props/Dummy", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 30.0, "era": -1, "decor": true},
 	"market_stall": {"name": "Market Stall", "models": [["props/Stall_Empty", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 10.0, "era": -1, "decor": true},
@@ -120,7 +120,7 @@ const PIECES := {
 	"vase": {"name": "Metal Basin", "models": [["props/Vase_2", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "stone", "hp": 2.0, "era": -1, "decor": true},
 	"pot": {"name": "Clay Pot", "models": [["props/Pot_1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "stone", "hp": 2.0, "era": -1, "decor": true},
 	"book_stand": {"name": "Book Stand", "models": [["props/BookStand", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
-	"peg_rack": {"name": "Peg Rack", "models": [["props/Peg_Rack", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true},
+	"peg_rack": {"name": "Peg Rack", "models": [["props/Peg_Rack", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 3.0, "era": -1, "decor": true, "hang": true},
 	"cage": {"name": "Small Cage", "models": [["props/Cage_Small", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "metal", "hp": 5.0, "era": -1, "decor": true},
 	# Storage: chests that keep what you put in them, forever.
 	"storage_chest": {"name": "Storage Chest", "models": [["props/Chest_Wood", 0, Vector3.ZERO, 1.0]],
@@ -216,7 +216,7 @@ const PIECES := {
 	# Automation (Automation): belts, hoppers, arms and machines. Their out side is
 	# their local +z (away from you as you place them).
 	"conveyor_belt": {"name": "Conveyor Belt", "models": [], "proc": "pw_belt", "snap": "belt", "mat": "metal", "hp": 12.0, "era": -1,
-		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6}}},
+		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6, "spin": {"part": "belt_drum", "pos": Vector3(0, 0.19, 0.46), "axis": Vector3(1, 0, 0), "rate": 14.0}}}},
 	"hopper": {"name": "Hopper", "models": [], "proc": "pw_hopper", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "storage": 8, "foot": 0.5,
 		"power": {"role": "box", "links": 0, "sterm": Vector3(0.0, 0.3, -0.42), "auto": {"kind": "hopper"}}},
 	"robot_arm": {"name": "Robot Arm", "models": [], "proc": "pw_robot_arm", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "foot": 0.3,
@@ -226,7 +226,7 @@ const PIECES := {
 			"auto": {"kind": "miner", "every": 8.0, "reach": 3.5, "spin": {"part": "drill_bit", "pos": Vector3(0, 0.95, -0.72), "axis": Vector3(0, 0, 1)}}}},
 	"quarry_drill": {"name": "Quarry Drill", "models": [], "proc": "pw_quarry", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1, "storage": 16, "foot": 1.0,
 		"power": {"role": "use", "watts": 900.0, "prio": 1, "term": Vector3(0.7, 1.2, 0.0),
-			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.25, 0), "axis": Vector3.UP}}}},
+			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.3, 0), "axis": Vector3.UP, "rate": 4.0}}}},
 	"electric_furnace": {"name": "Electric Furnace", "models": [], "proc": "pw_furnace", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
 		"power": {"role": "use", "watts": 1500.0, "prio": 1, "term": Vector3(0.0, 1.5, 0.3), "auto": {"kind": "smelter", "every": 6.0}}},
 	"power_sawmill": {"name": "Powered Sawmill", "models": [], "proc": "pw_sawmill", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 12, "foot": 0.9,
@@ -238,8 +238,9 @@ const PIECES := {
 		"power": {"role": "gen", "source": "water", "watts": 600.0, "links": 4, "term": Vector3(0.9, 1.9, 0.0),
 			"spin": {"part": "wheel_rim", "pos": Vector3(0, 1.4, 0), "axis": Vector3(1, 0, 0), "rate": 1.2}}},
 	"steam_engine": {"name": "Steam Engine", "models": [], "proc": "pw_steam", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1,
-		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(-0.35, 2.6, 0.3),
-			"spin": {"part": "flywheel", "pos": Vector3(0.62, 0.75, -0.2), "axis": Vector3(1, 0, 0), "rate": 5.0},
+		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(0.0, 2.5, -0.9),
+			"spin": {"part": "flywheel", "pos": Vector3(0.56, 0.95, 0.32), "axis": Vector3(1, 0, 0), "rate": 5.0,
+				"piston": {"part": "crosshead", "pos": Vector3(0.56, 0.95, -0.14), "axis": Vector3(0, 0, 1), "stroke": 0.12}},
 			"fuel": {"coal": 300.0, "charcoal": 300.0, "coal_briquettes": 320.0, "peat": 150.0, "wood": 60.0, "firewood": 50.0}}},
 	# Powered defences (Defences): turrets, an electric fence, traps, an alarm bell and a
 	# searchlight. All prio 2: the last to brown out.
@@ -273,6 +274,16 @@ const PIECES := {
 }
 
 const STATION_RANGE := 6.0
+## Fitting a free piece (rest_free): how near a wall or piece its sides may come, the
+## skin kept off the floor under it and the ceiling over it, how high over its
+## foot it may step up onto a floor, how far down it looks for one, the steps it is tried
+## out of what it hits, and how far from where you aim it may be moved.
+const REST_TOUCH := 0.005
+const REST_SKIN := 0.03
+const REST_STEP := 0.45
+const REST_DROP := 3.0
+const REST_STEP_OUT := 0.1
+const REST_SHIFT := 1.0
 
 static var _meshes := {}
 static var _shapes := {}
@@ -325,7 +336,7 @@ static func warm_kits() -> void:
 		if f.ends_with(".jpg") or f.ends_with(".png"):
 			_kept.append(load("res://assets/textures/" + f))
 	for sh in ["res://src/world/foliage.gdshader", "res://src/world/ore.gdshader", "res://src/world/shaders/organic.gdshader",
-			"res://src/world/shaders/crystal.gdshader"]:
+			"res://src/world/shaders/crystal.gdshader", "res://src/world/metal.gdshader"]:
 		_kept.append(load(sh))
 
 ## Loads every piece mesh on the calling thread (the main thread, at world start), so
@@ -375,20 +386,27 @@ static func merge_models(models: Array, tint := Callable()) -> ArrayMesh:
 		var base := _xf(e)
 		# An optional fifth entry swaps the model's materials by name for others.
 		var swap: Dictionary = e[4] if e.size() > 4 else {}
-		for part in model_parts(String(e[0])):
+		var parts := model_parts(String(e[0]))
+		for pk in parts.size():
+			var part: Array = parts[pk]
 			var mat: Material = part[0]
-			if mat != null and swap.has(mat.resource_name):
+			var arrays: Array = part[1]
+			if ClothFx.is_cloth(mat) and not swap.has(mat.resource_name):
+				# Banner cloth moves in the wind (ClothFx).
+				arrays = ClothFx.prepared(String(e[0]), pk, arrays)
+				mat = ClothFx.kit_material(mat)
+			elif mat != null and swap.has(mat.resource_name):
 				mat = swap[mat.resource_name]
 			if not groups.has(mat):
 				groups[mat] = []
 				order.append(mat)
-			groups[mat].append([part[1], base * (part[2] as Transform3D)])
+			groups[mat].append([arrays, base * (part[2] as Transform3D)])
 	var out := ArrayMesh.new()
 	for mat in order:
 		var arrays := _merge_arrays(groups[mat])
 		if tint.is_valid():
 			tint.call(mat, arrays)
-		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, ClothFx.FORMAT if arrays[Mesh.ARRAY_CUSTOM0] != null else 0)
 		out.surface_set_material(out.get_surface_count() - 1, mat)
 	return out
 
@@ -432,7 +450,7 @@ static func model_parts(name: String) -> Array:
 				var om: Material = mi.material_override
 				if om == null and s < mi.get_surface_override_material_count():
 					om = mi.get_surface_override_material(s)
-				var mat: Material = _aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name)
+				var mat: Material = worn(_aged(_tamed(om if om != null else mi.mesh.surface_get_material(s)), name), name)
 				out.append([mat, mi.mesh.surface_get_arrays(s), xf])
 		root.free()
 	_lock.lock()
@@ -444,9 +462,14 @@ static func model_parts(name: String) -> Array:
 ## UVs, colours and indices), all on the CPU.
 static func _merge_arrays(list: Array) -> Array:
 	var with_col := false
+	var with_custom := false
 	for e in list:
 		if e[0][Mesh.ARRAY_COLOR] != null:
 			with_col = true
+		if e[0][Mesh.ARRAY_CUSTOM0] != null:
+			with_custom = true
+	var c0 := PackedFloat32Array()
+	var c1 := PackedFloat32Array()
 	var v := PackedVector3Array()
 	var n := PackedVector3Array()
 	var tg := PackedFloat32Array()
@@ -488,6 +511,15 @@ static func _merge_arrays(list: Array) -> Array:
 			else:
 				for i in count:
 					col.append(Color.WHITE)
+		if with_custom:
+			# Cloth's hold (ClothFx): kept as it is, zero for anything else.
+			for ci in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1]:
+				var pc = a[ci]
+				var into := c0 if ci == Mesh.ARRAY_CUSTOM0 else c1
+				if pc != null and (pc as PackedFloat32Array).size() == count * 4:
+					into.append_array(pc)
+				else:
+					into.resize(into.size() + count * 4)
 		var pi = a[Mesh.ARRAY_INDEX]
 		if pi != null:
 			for i in pi:
@@ -503,6 +535,9 @@ static func _merge_arrays(list: Array) -> Array:
 	out[Mesh.ARRAY_TEX_UV] = uv
 	if with_col:
 		out[Mesh.ARRAY_COLOR] = col
+	if with_custom:
+		out[Mesh.ARRAY_CUSTOM0] = c0
+		out[Mesh.ARRAY_CUSTOM1] = c1
 	out[Mesh.ARRAY_INDEX] = idx
 	return out
 
@@ -533,12 +568,23 @@ static func _tamed(m: Material) -> Material:
 	if not (m is BaseMaterial3D) or (m as BaseMaterial3D).metallic <= 0.6:
 		return m
 	if not _tamed_mats.has(m):
-		# Bare polished metal mirrors the dark ground and turned whole outposts black:
-		# the panels are painted plate, lighter, with a little sheen.
+		# Every kit material says metallic 1 and lets its texture (ORM blue) mark the metal.
+		# The kits paint their metal far too dark for metal (the sci-fi trims about 0.38,
+		# so it reflected 13% and outposts read black, then grey paint once tamed to 0.2):
+		# bare metal reflects 50-60%. So the metal stays metal, raised to that reflectance;
+		# the kits' other parts (wood, cloth, stone, metal 0 in the texture) keep the
+		# lighter albedo they had.
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
-		c.metallic = 0.2
-		c.roughness = maxf(c.roughness, 0.55)
-		c.albedo_color = c.albedo_color * 1.45
+		var n := String(m.resource_name)
+		if n.begins_with("MI_Trim_01") or n.begins_with("MI_Trim_02"):
+			# Sci-fi hull trims, all metal: satin alloy (the texture's roughness, ~0.36).
+			c.albedo_color = c.albedo_color * 1.9
+		else:
+			c.albedo_color = c.albedo_color * 1.45
+			if not (n.begins_with("MI_Trim_Metal") or n.begins_with("MI_Trim_Props") or n == "MI_MetalOrnaments"):
+				# No metal in the texture: keep the old satin sheen, nothing else changes.
+				c.metallic = 0.2
+				c.roughness = maxf(c.roughness, 0.55)
 		_tamed_mats[m] = c
 	return _tamed_mats[m]
 
@@ -576,9 +622,11 @@ static func _aged(m: Material, model := "") -> Material:
 	if out == null:
 		var c := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
 		if metal:
-			c.albedo_color = Color(0.36, 0.35, 0.34)
-			c.metallic = 0.65
-			c.roughness = 1.0
+			# Blackened wrought iron: dark (about 23% reflectance against bright steel's
+			# 55%), but still metal, so it catches the light along its edges and curves.
+			c.albedo_color = Color(1.0, 0.98, 0.96)
+			c.metallic = 1.0
+			c.roughness = 0.8
 		else:
 			c.albedo_color = Color(0.68, 0.58, 0.52)
 			c.roughness = 1.0
@@ -586,6 +634,73 @@ static func _aged(m: Material, model := "") -> Material:
 		out = c
 	_lock.unlock()
 	return out
+
+static var _worn_mats := {}
+
+## How readily moss takes on each village kit material (kit_surface.gdshader): rough stone
+## and roof tiles most, limewash and planed timber less, iron hardly at all.
+const MOSS_TAKE := {"MI_RoundTiles": 1.2, "MI_RockTrim": 1.1, "MI_UnevenBrick": 1.0, "MI_Brick": 1.0,
+	"MI_WoodTrim_Wear": 0.9, "MI_WoodTrim": 0.8, "MI_Plaster": 0.75, "MI_MetalOrnaments": 0.15}
+
+## The village kit's opaque materials (houses and what the player builds from them) as
+## kit_surface.gdshader: drawn the same, with the place's moss, snow, frost and dust out
+## of doors (ClimateWear). Glass, leaves and anything glowing stay as they are, and so
+## does every other kit.
+static func worn(m: Material, model := "") -> Material:
+	if not model.begins_with("village/") or not (m is BaseMaterial3D):
+		return m
+	var b := m as BaseMaterial3D
+	if b.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or b.emission_enabled or b.uv1_triplanar \
+			or b.cull_mode != BaseMaterial3D.CULL_DISABLED:
+		return m
+	_lock.lock()
+	var out = _worn_mats.get(m)
+	_lock.unlock()
+	if out != null:
+		return out
+	var w := ShaderMaterial.new()
+	w.shader = load("res://src/world/shaders/kit_surface.gdshader")
+	w.resource_name = b.resource_name
+	w.set_shader_parameter("albedo", b.albedo_color)
+	w.set_shader_parameter("albedo_tex", b.albedo_texture)
+	w.set_shader_parameter("use_vertex_color", b.vertex_color_use_as_albedo)
+	w.set_shader_parameter("roughness", b.roughness)
+	w.set_shader_parameter("roughness_tex", b.roughness_texture)
+	w.set_shader_parameter("roughness_channel", _channel(b.roughness_texture_channel))
+	w.set_shader_parameter("metallic", b.metallic)
+	w.set_shader_parameter("metallic_tex", b.metallic_texture)
+	w.set_shader_parameter("metallic_channel", _channel(b.metallic_texture_channel))
+	w.set_shader_parameter("specular", b.metallic_specular)
+	w.set_shader_parameter("has_normal", b.normal_enabled and b.normal_texture != null)
+	w.set_shader_parameter("normal_tex", b.normal_texture)
+	w.set_shader_parameter("normal_scale", b.normal_scale)
+	w.set_shader_parameter("uv1_scale", b.uv1_scale)
+	w.set_shader_parameter("uv1_offset", b.uv1_offset)
+	w.set_shader_parameter("moss_take", MOSS_TAKE.get(b.resource_name, 0.8))
+	w.set_shader_parameter("mean_lum", _mean_lum(b))
+	_lock.lock()
+	_worn_mats[m] = w
+	_lock.unlock()
+	return w
+
+static func _channel(c: int) -> Vector4:
+	var v := Vector4.ZERO
+	v[clampi(c, 0, 3)] = 1.0
+	return v
+
+## A material's average brightness (linear), from its colour map halved down to a texel.
+static func _mean_lum(b: BaseMaterial3D) -> float:
+	var t := b.albedo_texture
+	var img: Image = t.get_image() if t != null else null
+	if img == null or img.is_empty():
+		return 0.35
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	while img.get_width() > 1 and img.get_height() > 1:
+		img.shrink_x2() # each halving averages 2 x 2 texels
+	var c := img.get_pixel(0, 0).srgb_to_linear() * b.albedo_color
+	return maxf(c.r * 0.2126 + c.g * 0.7152 + c.b * 0.0722, 0.02)
 
 static func _node_xf(n: Node3D, root: Node) -> Transform3D:
 	var xf := n.transform
@@ -1023,6 +1138,89 @@ static func nearest_in(near: Array, pos: Vector3, radius: float):
 		if dd < best_d:
 			best_d = dd
 			best = e["pos"]
+	return best
+
+## Where a free piece (a table, a chest, a crate) really stands near pos: level, its
+## foot on the highest floor, step or ground under it (looking down from a step's height
+## over it, so never sunk into a floor or left floating over one), and, when it would
+## reach into a wall or another piece, moved the least way out along its own sides or the
+## world's (towards eye, the side you look from, when that's about as near). ok is false
+## when it can't be fitted within REST_SHIFT. Pieces hung on a wall ("hang") keep pos.
+static func rest_free(space: PhysicsDirectSpaceState3D, id: String, pos: Vector3, yaw: float, exclude: Array = [], eye := Vector3.INF) -> Dictionary:
+	var d := def(id)
+	if d.get("snap", "") != "free" or d.get("hang", false) or d.has("mount"):
+		return {"pos": pos, "ok": true}
+	var a := mesh(id).get_aabb()
+	var b := Basis(Vector3.UP, yaw)
+	var shape := BoxShape3D.new()
+	# A touch smaller than the piece and lifted off its foot, so the floor it stands on
+	# and a wall it only touches don't count.
+	shape.size = Vector3(maxf(a.size.x - 2 * REST_TOUCH, 0.02), maxf(a.size.y - 2 * REST_SKIN, 0.02), maxf(a.size.z - 2 * REST_TOUCH, 0.02))
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.collision_mask = 2
+	q.exclude = exclude
+	var first := _rested(space, a, b, pos, exclude)
+	if _clear(space, q, a, b, first):
+		return {"pos": first, "ok": true}
+	var dirs: Array = [b.x, -b.x, b.z, -b.z, Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
+	var back := Vector3.ZERO
+	if eye != Vector3.INF:
+		back = Vector3(eye.x - pos.x, 0, eye.z - pos.z).normalized()
+	var best := first
+	var best_cost := INF
+	for dv in dirs:
+		var dir: Vector3 = dv
+		dir.y = 0.0
+		dir = dir.normalized()
+		# Prefer coming out on your side of a wall, not through it.
+		var bias := 0.15 * (1.0 - dir.dot(back)) if back != Vector3.ZERO else 0.0
+		var lo := 0.0
+		var hi := -1.0
+		var dist := REST_STEP_OUT
+		while dist <= REST_SHIFT + 0.001 and dist + bias < best_cost:
+			if _clear(space, q, a, b, _rested(space, a, b, pos + dir * dist, exclude)):
+				hi = dist
+				break
+			lo = dist
+			dist += REST_STEP_OUT
+		if hi < 0.0:
+			continue
+		for k in 3:
+			var mid := (lo + hi) / 2
+			if _clear(space, q, a, b, _rested(space, a, b, pos + dir * mid, exclude)):
+				hi = mid
+			else:
+				lo = mid
+		if hi + bias < best_cost:
+			best_cost = hi + bias
+			best = _rested(space, a, b, pos + dir * hi, exclude)
+	return {"pos": best, "ok": best_cost < INF}
+
+## pos with its foot on the floor under it (unchanged when there is none).
+static func _rested(space: PhysicsDirectSpaceState3D, a: AABB, b: Basis, pos: Vector3, exclude: Array) -> Vector3:
+	var y = _support(space, a, b, pos, exclude)
+	if y != null:
+		pos.y = float(y) - a.position.y
+	return pos
+
+static func _clear(space: PhysicsDirectSpaceState3D, q: PhysicsShapeQueryParameters3D, a: AABB, b: Basis, at: Vector3) -> bool:
+	q.transform = Transform3D(b, at + b * a.get_center() + Vector3(0, REST_SKIN, 0))
+	return space.intersect_shape(q, 1).is_empty()
+
+## The highest floor top under a piece's footprint (its corners and middle), looking down
+## from a step's height over its foot; null when there is nothing under it.
+static func _support(space: PhysicsDirectSpaceState3D, a: AABB, b: Basis, at: Vector3, exclude: Array):
+	var best = null
+	var lo := a.position + Vector3(REST_SKIN, 0, REST_SKIN)
+	var hi := a.end - Vector3(REST_SKIN, 0, REST_SKIN)
+	var top := at.y + a.position.y + REST_STEP
+	for c in [Vector2(lo.x, lo.z), Vector2(hi.x, lo.z), Vector2(hi.x, hi.z), Vector2(lo.x, hi.z), Vector2((lo.x + hi.x) / 2, (lo.z + hi.z) / 2)]:
+		var w := at + b * Vector3(c.x, 0, c.y)
+		var rq := PhysicsRayQueryParameters3D.create(Vector3(w.x, top, w.z), Vector3(w.x, top - REST_DROP, w.z), 1 | 2, exclude)
+		var hit := space.intersect_ray(rq)
+		if not hit.is_empty() and (best == null or float(hit["position"].y) > float(best)):
+			best = hit["position"].y
 	return best
 
 ## A piece's world-space box at pos / yaw, from its mesh.

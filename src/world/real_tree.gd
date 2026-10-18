@@ -116,6 +116,18 @@ static func _tube(b: Buf, pts: PackedVector3Array, radii: PackedFloat32Array, si
 			var b0 := a0 + sides + 1
 			var b1 := b0 + 1
 			b.ix.append_array([a0, b0, a1, a1, b0, b1])
+	# A thick end gets a rounded cap (a broken stub, a trunk top), never an open pipe.
+	var rl := radii[count - 1]
+	if rl > 0.006:
+		var tip_dir := (pts[count - 1] - pts[count - 2]).normalized()
+		var ci := b.v.size()
+		b.v.append(pts[count - 1] + tip_dir * rl * 0.6)
+		b.n.append(tip_dir)
+		b.uv.append(Vector2(wraps * 0.5, along / 1.2 + rl * 0.5))
+		b.c.append(col)
+		var ring := base + (count - 1) * (sides + 1)
+		for s in sides:
+			b.ix.append_array([ring + s, ci, ring + s + 1])
 
 ## One leaf card: its stem end at `at`, growing along `axis` for `length`, `width` wide
 ## across `side`. `uv_stem` says where the stem sits in the texture: (0.5, 1) for the oak
@@ -344,6 +356,80 @@ static func _bow_at(bw: Array, f: float) -> Vector3:
 	var amp: float = bw[4]
 	return ((bw[0] as Vector3) * sin(f * PI * 1.1 + float(bw[2])) + (bw[1] as Vector3) * sin(f * PI * 2.6 + float(bw[3])) * 0.5 - (bw[0] as Vector3) * sin(float(bw[2])) - (bw[1] as Vector3) * sin(float(bw[3])) * 0.5) * amp
 
+## Branches grown the way a tree grows them, a level at a time from `jobs` ([from, dir,
+## length, radius] limbs): every branch throws side shoots along its length, alternating
+## round it, and at its end either forks in two or a leader carries on, so no branch stops
+## in a blunt stub. Each shoot starts no thicker than its parent where it leaves it and
+## the finest twigs taper to a point a few millimetres thick. Shoots stop at the crown's
+## shell (`centre`, `radii`). `broken` is the chance a branch ends in a snapped, capped
+## stub instead (dead trees). Marks the bark once, after the limbs and big branches (the
+## medium LOD drops the twigs). Returns the finest twigs' points [point, direction], where
+## the leaf sprays grow.
+static func _grow(r: RandomNumberGenerator, bark: Buf, jobs: Array, levels: int, col: Color, centre: Vector3, radii: Vector3, bend: Vector3, broken := 0.0) -> Array:
+	var ends: Array = []
+	var mark_after := 1 if levels >= 3 else 0
+	for lv in levels:
+		var next: Array = []
+		var last := lv == levels - 1
+		var segs: int = [6, 3, 2][mini(lv, 2)]
+		var sides: int = [5, 4, 3][mini(lv, 2)]
+		for j in jobs:
+			var from: Vector3 = j[0]
+			var dir: Vector3 = j[1]
+			var length: float = j[2]
+			var rad: float = j[3]
+			var pts := _limb_pts(r, from, dir, length, segs if length > 0.6 else maxi(segs - 1, 2), bend * (0.5 if lv == 0 else 0.67), 0.3 if lv == 0 else 0.42)
+			var n := pts.size()
+			var stub := not last and r.randf() < broken
+			var tip := 0.003 if last else rad * (0.5 if stub else 0.3)
+			var radii_l := PackedFloat32Array()
+			for i in n:
+				radii_l.append(lerpf(rad, tip, pow(float(i) / (n - 1), 0.8)))
+			# A slight collar where it leaves its parent.
+			radii_l[0] *= 1.15
+			_tube(bark, pts, radii_l, sides, col, 0.0, 0.06 if lv == 0 else 0.0)
+			var td := (pts[n - 1] - pts[n - 2]).normalized()
+			if last:
+				ends.append([pts[n - 1], td])
+				ends.append([pts[n / 2], td])
+				continue
+			# Side shoots, longer low on the branch, each its own way round it.
+			var count := clampi(int(length * 1.3), 1 if lv > 0 else 2, 5 if lv == 0 else 2)
+			var az := r.randf() * TAU
+			for k in count:
+				var f := lerpf(0.22, 0.88, (k + r.randf_range(0.2, 0.8)) / count)
+				var fi := f * (n - 1)
+				var i0 := mini(int(fi), n - 2)
+				var at := pts[i0].lerp(pts[i0 + 1], fi - i0)
+				var sd := (pts[i0 + 1] - pts[i0]).normalized()
+				az += 2.39996 + r.randf_range(-0.4, 0.4)
+				var side := _orth(sd).rotated(sd, az)
+				var ang := r.randf_range(0.6, 1.05)
+				var cd := (sd * cos(ang) + side * sin(ang) + bend * 0.8).normalized()
+				var reach := _shell_reach(at - centre, cd, radii)
+				var cl := minf(length * lerpf(0.75, 0.4, f), reach * r.randf_range(0.75, 0.95))
+				if cl < 0.18:
+					continue
+				var rf := lerpf(rad, tip, pow(f, 0.8))
+				next.append([at - cd * rf * 0.5, cd, cl, rf * r.randf_range(0.55, 0.72)])
+			if stub:
+				continue
+			# The end: forks in two, or a leader carries on, at the branch's own thickness.
+			var forks := 2 if r.randf() < 0.55 else 1
+			var faz := r.randf() * TAU
+			for k in forks:
+				var cd := (td + Vector3(r.randf_range(-0.15, 0.15), r.randf_range(-0.1, 0.15), r.randf_range(-0.15, 0.15))).normalized()
+				if forks == 2:
+					var side := _orth(td).rotated(td, faz + PI * k)
+					cd = (td * cos(0.45) + side * sin(0.45)).normalized()
+				var reach := _shell_reach(pts[n - 1] - centre, cd, radii)
+				var cl := clampf(minf(length * 0.55, reach * 0.9), 0.2, maxf(length * 0.6, 0.2))
+				next.append([pts[n - 1] - cd * tip * 0.3, cd, cl, tip * (0.8 if forks == 2 else 1.0)])
+		if lv == mark_after:
+			bark.mark()
+		jobs = next
+	return ends
+
 static func _taper(count: int, r0: float, r1: float) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	for i in count:
@@ -382,10 +468,11 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 	var lean := Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized() * float(p.get("lean", 0.0)) * h * 0.4
 	centre += lean
 	var radii := Vector3(rx, ry, rx)
-	# Trunk: rises through the crown and fades out near its top.
+	# Trunk: rises into the crown and breaks up there into leaders (no pole poking out
+	# of the top).
 	var tpts := PackedVector3Array()
 	var bow := _bow(r, h * (0.022 if form == "column" else 0.045))
-	var top := ht + ry * 1.2
+	var top := ht + ry * (1.15 if form == "column" else 0.85)
 	var segs := 3 if far else 9
 	for i in segs + 1:
 		var f := float(i) / segs
@@ -393,43 +480,39 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var y := 0.0 if i == 0 else lerpf(0.45, top, float(i - 1) / (segs - 1))
 		tpts.append(Vector3(0, y, 0) + lean * (y / top) + _bow_at(bow, y / h))
 	bark.mark()
-	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * 0.25), 4 if far else 9, bark_col, 0.0 if far else (1.1 if form == "emergent" else 0.4), 0.0 if far else 0.08)
+	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * (0.3 if far else 0.32)), 4 if far else 9, bark_col, 0.0 if far else (1.1 if form == "emergent" else 0.4), 0.0 if far else 0.08)
 	bark.mark()
-	# Limbs from the upper trunk out toward the crown's shell; twigs from the limbs.
-	var tips: Array = [] # [point, outward direction]
+	# Limbs from the upper trunk out toward the crown's shell, each branching on down to
+	# twigs (_grow).
+	var jobs: Array = []
 	var limbs := int(p.get("branches", 4)) + 3
-	var twigs_at: Array = []
 	for i in limbs:
 		var a := i * 2.39996 + r.randf_range(-0.3, 0.3)
 		var e := r.randf_range(elev.x, elev.y)
 		var dir := Vector3(cos(a) * cos(e), sin(e), sin(a) * cos(e))
-		var y0 := lerpf(ht * 0.95, ht + ry * 1.1, float(i) / limbs) + r.randf_range(-0.3, 0.3)
+		var y0 := lerpf(ht * 0.95, top - 0.3, float(i) / limbs) + r.randf_range(-0.3, 0.3)
 		var from := Vector3(0, y0, 0) + lean * (y0 / top) + _bow_at(bow, y0 / h)
 		# Reach: most of the way to the crown shell along that direction.
-		var rel := from - centre
-		var reach := _shell_reach(rel, dir, radii) * r.randf_range(0.7, 0.92)
+		var reach := _shell_reach(from - centre, dir, radii) * r.randf_range(0.7, 0.92)
 		if reach < 0.4:
 			continue
-		if not far:
-			var pts := _limb_pts(r, from, dir, reach, 6, bend * 0.5, 0.3)
-			_tube(bark, pts, _taper(pts.size(), g * lerpf(0.55, 0.35, float(i) / limbs), g * 0.08), 5, bark_col, 0.0, 0.06)
-			twigs_at.append([pts, dir])
-			tips.append([pts[pts.size() - 1], dir])
-		else:
-			tips.append([from + dir * reach, dir])
-	bark.mark()
+		jobs.append([from, dir, reach, g * lerpf(0.55, 0.35, float(i) / limbs)])
+	# The leaders the trunk splits into at its top (a birch keeps one).
+	var leaders := 1 if form == "column" else 2
+	var laz := r.randf() * TAU
+	for k in leaders:
+		var dir := Vector3.UP
+		if leaders > 1:
+			dir = (Vector3.UP + Vector3(cos(laz + PI * k), 0, sin(laz + PI * k)) * r.randf_range(0.5, 0.8)).normalized()
+		var from := tpts[tpts.size() - 1] - dir * g * 0.2
+		var reach := _shell_reach(from - centre, dir, radii) * r.randf_range(0.75, 0.9)
+		if reach >= 0.4:
+			jobs.append([from, dir, reach, g * (0.3 if leaders == 1 else 0.24)])
+	var ends: Array = []
 	if not far:
-		for tw in twigs_at:
-			var pts: PackedVector3Array = tw[0]
-			for k in r.randi_range(2, 3):
-				var at := pts[1 + r.randi() % (pts.size() - 1)]
-				var dir: Vector3 = (tw[1] as Vector3) + Vector3(r.randf_range(-0.8, 0.8), r.randf_range(-0.2, 0.5) + bend.y, r.randf_range(-0.8, 0.8))
-				var reach := _shell_reach(at - centre, dir.normalized(), radii) * r.randf_range(0.6, 0.9)
-				if reach < 0.3:
-					continue
-				var tp := _limb_pts(r, at, dir, reach, 3, bend * 0.67, 0.3)
-				_tube(bark, tp, _taper(tp.size(), g * 0.12, g * 0.03), 4, bark_col)
-				tips.append([tp[tp.size() - 1], dir.normalized()])
+		ends = _grow(r, bark, jobs, 3, bark_col, centre, radii, bend)
+	else:
+		bark.mark()
 	bark.mark()
 	# Leaf sprays fill the crown's shell, more of them on the outside; a few deeper and
 	# darker ones keep the crown from looking hollow.
@@ -442,6 +525,9 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		count = clampi(count / 8, 16, 40)
 		size *= 2.4
 	var weep := form == "weeping"
+	# Sprays grow on the twigs' ends (no clump hanging in the air off a bare branch); a
+	# willow's strands also fall from its arching top.
+	var on_twigs := 0.0 if ends.is_empty() else (0.6 if weep else 1.0)
 	for i in count:
 		var dir := Vector3(r.randf_range(-1, 1), r.randf_range(-0.75, 1), r.randf_range(-1, 1)).normalized()
 		if weep:
@@ -451,6 +537,16 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var depth := r.randf_range(0.62, 1.0) if r.randf() > 0.18 else r.randf_range(0.3, 0.6)
 		if far:
 			depth = r.randf_range(0.55, 0.85)
+		elif r.randf() < on_twigs:
+			# A twig out in the crown's outer layer, where a tree carries its leaves (inner
+			# twigs stay bare; a stray twig poking out of the crown gets no lone clump).
+			for tries in 6:
+				var tw: Array = ends[r.randi() % ends.size()]
+				var rel: Vector3 = ((tw[0] as Vector3) + Vector3(r.randf_range(-1, 1), r.randf_range(-1, 1), r.randf_range(-1, 1)) * size * 0.2 - centre) / radii
+				if rel.length() >= 0.55 and rel.length() <= 1.05:
+					depth = minf(rel.length(), 1.0)
+					dir = rel.normalized()
+					break
 		var at := centre + dir * radii * depth
 		var out := (at - centre) / radii
 		out = out.normalized()
@@ -550,23 +646,28 @@ static func _dead(r: RandomNumberGenerator, p: Dictionary, h: float, g: float, b
 	var col := Color(0.82, 0.8, 0.78)
 	var tpts := PackedVector3Array()
 	var hh := h * (0.75 if conifer else 0.7) * r.randf_range(0.9, 1.1)
-	for i in 5:
-		var f := i / 4.0
-		tpts.append(Vector3(sin(f * 4.0 + r.randf()) * 0.12 * f, hh * f, cos(f * 3.0) * 0.12 * f))
+	var bow := _bow(r, hh * 0.05 + 0.1)
+	for i in 6:
+		var f := i / 5.0
+		tpts.append(Vector3(0, hh * f, 0) + _bow_at(bow, f))
 	bark.mark()
-	_tube(bark, tpts, _taper(5, g, g * 0.2), 4 if far else 8, col, 0.0 if far else 0.4)
+	# The top snapped off: the trunk ends in a capped stub.
+	_tube(bark, tpts, _taper(6, g, g * 0.28), 4 if far else 8, col, 0.0 if far else 0.4, 0.0 if far else 0.06)
 	bark.mark()
 	if far:
 		bark.mark()
 		bark.mark()
 		return
+	# Bare limbs that still branch and fork down to fine twigs, a third of them snapped.
+	var centre := Vector3(0, hh * 0.68, 0)
+	var radii := Vector3(hh * (0.22 if conifer else 0.38), hh * 0.45, hh * (0.22 if conifer else 0.38))
+	var jobs: Array = []
 	for i in r.randi_range(4, 7):
 		var a := i * 2.39996 + r.randf()
 		var y := hh * r.randf_range(0.35, 0.92)
-		var dir := Vector3(cos(a), r.randf_range(0.1, 0.9) if not conifer else r.randf_range(-0.3, 0.2), sin(a))
-		var pts := _limb_pts(r, Vector3(0, y, 0), dir, r.randf_range(1.0, 2.6) * (0.6 if conifer else 1.0), 3, Vector3(0, 0.08, 0), 0.25)
-		_tube(bark, pts, _taper(pts.size(), g * 0.35, 0.015), 5, col)
-	bark.mark()
+		var dir := Vector3(cos(a), r.randf_range(0.1, 0.9) if not conifer else r.randf_range(-0.3, 0.2), sin(a)).normalized()
+		jobs.append([Vector3(0, y, 0) + _bow_at(bow, y / hh), dir, r.randf_range(1.0, 2.6) * (0.6 if conifer else 1.0), g * (0.25 if conifer else 0.35)])
+	_grow(r, bark, jobs, 2 if conifer else 3, col, centre, radii, Vector3(0, -0.04 if conifer else 0.08, 0), 0.35)
 	bark.mark()
 
 ## A bush: a few stems and a rounded mass of leaf sprays, `height` metres tall.

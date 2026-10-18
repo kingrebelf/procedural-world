@@ -47,6 +47,7 @@ func _pick_by_hand(game, streamer: ChunkStreamer, player) -> void:
 		if streamer.is_ready_at(stand):
 			break
 	player.global_position = stand
+	player.velocity = Vector3.ZERO # whatever speed it fell at while the ground streamed in
 	await _frames(20)
 	check(player.focus.get("kind", "") == "plant", "looking at a plant offers to pick it (%s)" % player.focus.get("verb", "nothing"))
 	var fiber: int = game.inventory.count("fiber")
@@ -199,6 +200,14 @@ func _door_checks(game, streamer, player: Player, pc: ChunkNode, lp: Vector3, he
 	player.select(6)
 	await _frames(3)
 	check(player.builder.piece_id() == "door_wood", "holding a door starts hanging it")
+	# Put away, the hands are empty and out of view; the slot's key takes it out again.
+	player.holster(true)
+	await _frames(3)
+	player.viewmodel.sway(0.016, 0.0)
+	check(player.held_item() == null and (player.viewmodel.arms == null or not player.viewmodel.arms.visible), "put away, nothing is held and no hands show")
+	player.select(6)
+	await _frames(3)
+	check(player.held_item() != null and player.builder.piece_id() == "door_wood", "taking it out again holds the door")
 	var miss: Dictionary = player.builder._door_target(dwp + Vector3(30, 1.6, 30), dwp + Vector3(34, 1.0, 34))
 	check(not miss["ok"], "a door won't hang without a doorway")
 	var tgt: Dictionary = player.builder._door_target(dwp + Vector3(0.3, 1.6, 4.0), dwp + Vector3(-0.2, 1.0, -3.0))
@@ -485,6 +494,11 @@ func _frames(n: int) -> void:
 		await process_frame
 
 func _run() -> void:
+	# Free pieces you build stand level on the floor under them, out of walls and pieces.
+	var rest: Dictionary = await ProbeRest.run(self, Vector3(0, 3000, 0))
+	for l in rest["lines"]:
+		print("  ", l)
+	check(rest["bad"] == 0, "built tables, chests and crates rest on their floor, clear of walls")
 	var game = root.get_node("/root/Game")
 	game.new_world("Integration", "424242")
 	var world_id: String = game.store.root.get_file()
@@ -704,6 +718,7 @@ func _run() -> void:
 			if streamer.is_ready_at(stand):
 				break
 		player.global_position = stand
+		player.velocity = Vector3.ZERO
 		await _frames(20)
 		check(player.focus.get("kind", "") == "cache" and player.focus.get("i", -1) == o["i"], "walking up to a chest offers to open it (%s)" % player.focus.get("verb", "nothing"))
 		player.interact()
@@ -761,6 +776,8 @@ func _run() -> void:
 	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
 	await _door_checks(game, streamer, player, pc, placed["p"] + Vector3(0, 0, -6), here_key)
 	await _power_checks(game, world, player, pc, placed["p"] + Vector3(6, 0, 6))
+	# Upwind of the power pieces (the fire checks blow the wind along +x).
+	var burnt := await _fire_checks(game, world, pc, placed["p"] + Vector3(-8, 0, 12))
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
@@ -845,6 +862,7 @@ func _run() -> void:
 	await _pirates(game, world, player)
 	await _crowd(game, world, player)
 	await _town_gate(game, world, player)
+	await _fire_crew(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -879,8 +897,11 @@ func _run() -> void:
 		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
 	# A starship climbs where you look, won't let you step out in mid-air, and lands.
 	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
-	for i in 30:
+	# (Until it touches down: on a fast runner 30 frames weren't always enough.)
+	for i in 240:
 		await physics_frame
+		if ship == null or (i >= 30 and ship.is_on_floor()):
+			break
 	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
 	player.mount(ship)
 	var y0s: float = ship.global_position.y
@@ -993,6 +1014,12 @@ func _run() -> void:
 	check(c4["objects"][placed["i"]]["t"] == "b:foundation" and c4["objects"][placed["i"]]["p"].distance_to(placed["p"]) < 0.001, "built foundation saved in place")
 	check(c4["objects"][bwb["i"]]["t"] == "b:workbench", "workbench saved")
 	check(c4["objects"][bwall["i"]]["st"].get("gone", false), "taken-down wall stays gone")
+	if not burnt.is_empty():
+		var c5 = store.load_chunk(burnt["key"].x, burnt["key"].y)
+		check(c5["objects"][burnt["i"]]["st"].get("gone", false), "a wall that burnt down stays gone")
+		check(burnt["ruin"] >= 0 and c5["objects"][burnt["ruin"]]["t"] == FireSim.RUIN and int(c5["objects"][burnt["ruin"]].get("sp", 0)) == burnt["sp"], "and its ash and charred beams are still there")
+		check(float(c5["objects"][burnt["stone"]]["st"].get("char", 0.0)) > 0.0, "the stone wall it stood by stays scorched")
+		check(c5["objects"][burnt["doused"]]["st"].has("fl") and not c5["objects"][burnt["doused"]]["st"].has("fire"), "the wall put out with a bucket stays out, half burnt")
 
 	# Regenerating the same chunk with today's generator would NOT reproduce the edits,
 	# which proves the game reads the snapshot rather than regenerating.
@@ -1009,7 +1036,19 @@ func _run() -> void:
 		if not player.frozen:
 			break
 	var home_seed: int = game.seed
-	var sh: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
+	# The ship sets down on dry, loaded ground near you: try round about rather than only
+	# straight ahead (a null there hung the run on sh.leaving).
+	var sh: Vehicle = null
+	for off: Vector3 in [Vector3(0, 0, -9), Vector3(9, 0, 0), Vector3(0, 0, 9), Vector3(-9, 0, 0), Vector3(0, 0, -16), Vector3(16, 0, 0)]:
+		if sh == null:
+			sh = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + off, 0.0)
+	check(sh != null, "a ship can be set down near the player (at %s)" % player.global_position)
+	if sh == null:
+		game.close_world()
+		WorldStore.delete_world(world_id)
+		print("integration: %d FAILED" % _fail)
+		quit(1)
+		return
 	for i in 10:
 		await physics_frame
 	player.mount(sh)
@@ -1475,6 +1514,44 @@ func _town_gate(game, world, player) -> void:
 	var rel0 := int(friend["rel"])
 	game.add_bounty(sid, "Gatehold", 20, "Theft")
 	check(int(friend["rel"]) < rel0 - 20 and not game.standing.has_pass(sid, game.day), "break the law and they're shamed, and the pass is gone")
+	# At night a strict town's portcullis comes down for a stranger, and rises for a pass.
+	game.crime = Crime.new()
+	game.standing.revoke(sid)
+	var day0: float = game.day
+	game.day = floorf(game.day) + 23.0 / 24.0
+	var tp: Dictionary = GatePolicy.temper(site, data)
+	tp["night_shut"] = true
+	tp["need"] = 90
+	e["gate"]["tp"] = tp
+	e["gate"]["folk_t"] = 1e12
+	npcs.gates._ports[sid] = [npcs.gates._make_port(Transform3D(Basis(), Vector3(gate.x, at.y, gate.y)))]
+	player.global_position = Vector3(gate.x - 8.0, at.y, gate.y)
+	for i in 10:
+		await wait.call()
+	var pt: Dictionary = npcs.gates._ports[sid][0]
+	check(npcs.gates.gate_shut(sid) and not (pt["body"] as CollisionShape3D).disabled, "at night the portcullis comes down and bars the way")
+	game.standing.give_pass(sid, game.day + 1.0, "toll")
+	for i in 10:
+		await wait.call()
+	check(not npcs.gates.gate_shut(sid) and (pt["body"] as CollisionShape3D).disabled, "with leave it is wound up again")
+	game.day = day0
+	game.standing.revoke(sid)
+	# Over the wall with a rope, away from the gate.
+	gn.rec["dead"] = true
+	player.global_position = Vector3(c.x, at.y, c.y + 24.5)
+	await _frames(2)
+	var us: Array = npcs.gates.usables(player.global_position)
+	check(us.size() == 1 and String(us[0]["verb"]).begins_with("Climb over the wall"), "a stretch of wall away from the gate can be climbed (%s)" % str(us))
+	game.inventory.add(ItemDB.make("rope", 3, 1.0, {}))
+	var ropes: int = game.inventory.count("rope")
+	if not us.is_empty():
+		npcs.gates.use(sid, player)
+		for i in 14:
+			await wait.call()
+	var pin := Vector2(player.global_position.x, player.global_position.z)
+	check(pin.distance_to(c) < 20.0 and not player.script_move, "you climb up, over and down inside (%.1f m from the middle)" % pin.distance_to(c))
+	check(game.inventory.count("rope") == ropes - GateWatch.CLIMB_ROPE, "the rope is left on the wall")
+	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()
 	var p = game.store.load_player()
@@ -1525,6 +1602,11 @@ func _crowd(game, world, player) -> void:
 		busy += int(n.action == "work" and not n.duty.is_empty())
 	check(busy >= vs.size() / 2, "browsing the stalls and standing about the square (%d/%d)" % [busy, vs.size()])
 	check(not e["data"]["npcs"].has(vs[0].rec), "visitors are not townsfolk (nothing saved)")
+	for n in e["nodes"]:
+		if is_instance_valid(n) and n._human and is_instance_valid(n._human._work_tool) and NPC.FIELD_TOOL_JOBS.has(n.rec["job"]):
+			var in_field: bool = n.action == "work" and NPC.FIELD_DUTIES.has(String(n.duty.get("duty", "")))
+			check(n._human._work_tool.visible == in_field, "a farmer's tool is out only in the fields (%s, %s)" % [n.action, n.duty.get("duty", "")])
+			break
 	var benches: Array = e["places"].get("benches", [])
 	if not benches.is_empty():
 		var sitter: NPC = vs[0]
@@ -1538,12 +1620,98 @@ func _crowd(game, world, player) -> void:
 		var other: NPC = vs[1]
 		check(world.npcs._bench_spot(other, e, benches[0][0]).is_empty() or int(other.get_meta("bench_i", -1)) != int(sitter.get_meta("bench_i", -2)), "one to a bench")
 		sitter.stop_perform()
+	# A name tag at the edge of its range holds steady: up inside 7 m, down only past 8.
+	var tagged: NPC = vs[vs.size() - 1]
+	tagged._speech_t = 0.0
+	tagged._speaking = false
+	var pp: Vector3 = player.global_position
+	var tag_at := func(d: float) -> bool:
+		tagged.global_position = Vector3(pp.x + d, tagged.global_position.y, pp.z)
+		tagged.target = Vector2(pp.x + d, pp.z)
+		await _frames(1)
+		return tagged.name_shown()
+	var up: bool = await tag_at.call(5.0)
+	var held: bool = await tag_at.call(7.5)
+	var down: bool = await tag_at.call(8.6)
+	var stays_down: bool = await tag_at.call(7.5)
+	check(up and held and not down and not stays_down, "a name tag doesn't blink at the edge of its range (%s %s %s %s)" % [up, held, down, stays_down])
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0
 	world.npcs._crowd(e, at)
 	check(visitors.call().is_empty(), "and by night they have gone home")
 	game.day = day0
+	player.global_position = was
+
+## A fire in a town: the able-bodied run a bucket line between the well and the flames,
+## the rest get clear; animals bolt from it; when it is out they go back to their day.
+func _fire_crew(game, world, player) -> void:
+	var fs: FireSystem = FireSystem.current
+	var e: Dictionary = {}
+	for x in world.npcs.settlements.values():
+		if x.has("places") and not x["data"].has("band") and not x.has("boat") and not (x["nodes"] as Array).is_empty():
+			e = x
+	check(not e.is_empty(), "a town is loaded for the fire")
+	if e.is_empty() or fs == null:
+		return
+	var n: NPC = null
+	for o in e["nodes"]:
+		if is_instance_valid(o) and not o.rec.has("visit") and not o.rec.get("child", false):
+			n = o
+	check(n != null, "a townsman to fight the fire")
+	if n == null:
+		return
+	n.rec["traits"]["brave"] = 0.9
+	var was: Vector3 = player.global_position
+	player.global_position = n.global_position + Vector3(0, 1, 30)
+	var wp: Vector3 = n.global_position + Vector3(7, 0, 0)
+	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
+	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(node, wall["i"], 1.0, false, true)
+	wall["st"]["fire"]["h"] = 0.7
+	var held_was = n.rec.get("held", null)
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.action == "fight_fire" and String((n.rec.get("held", {}) as Dictionary).get("type", "")) == "bucket", "a townsman grabs a bucket to fight the fire (%s)" % n.action)
+	var well: Vector2 = n.target
+	n.global_position = Vector3(well.x, n.global_position.y, well.y)
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.rec.get("_fire_leg", "") == "carry", "fills it at the well")
+	n.stop_perform()
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	var edge: Vector2 = n.target
+	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
+	var h0 := FireSim.heat(wall["st"])
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(wall["st"]) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(wall["st"])])
+	# Animals near it run.
+	var ksp := 0
+	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
+		ksp += 1
+	var cr := Creature.new()
+	cr.setup("test_fire_animal", ksp, Eras.MEDIEVAL, wp + Vector3(6, 0, 4), world.fauna)
+	world.fauna.add_child(cr)
+	# In the herd of the chunk it stands in: a herd far from the player is let go (freed)
+	# on the fauna's next refresh, which on a fast runner came within these frames.
+	var hk := ChunkStreamer.chunk_of(wp + Vector3(6, 0, 4))
+	var had_herd: bool = world.fauna._herds.has(hk)
+	if not had_herd:
+		world.fauna._herds[hk] = []
+	world.fauna._herds[hk].append(cr)
+	await _frames(2)
+	fs._scare_animals()
+	check(is_instance_valid(cr) and cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
+	if world.fauna._herds.has(hk):
+		world.fauna._herds[hk].erase(cr)
+		if not had_herd and world.fauna._herds[hk].is_empty():
+			world.fauna._herds.erase(hk)
+	if is_instance_valid(cr):
+		cr.queue_free()
+	# Out: back to their day, bucket put away.
+	fs.douse_all()
+	n.stop_perform()
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.action != "fight_fire" and not n.rec.has("_fire") and str(n.rec.get("held", null)) == str(held_was), "with the fire out they put the bucket down")
+	wall["st"]["gone"] = true
 	player.global_position = was
 
 func _pirates(game, world, player) -> void:
@@ -1894,14 +2062,19 @@ func _walk_into_house(game, world, streamer: ChunkStreamer, player) -> void:
 	var dims := KitHouse.size_of(t)
 	var hp := Vector3(best["p"].x, 0, best["p"].y)
 	var stand := hp + out * (dims.z * 0.5 + 1.0)
+	# Held high over the spot (not falling: speed piled up over hundreds of frames up
+	# there, on a fast machine, landed the player hard enough to die, and they woke far
+	# away) until the house's chunk and its neighbours are in at full detail.
 	for i in 600:
 		player.global_position = Vector3(stand.x, 400, stand.z)
+		player.velocity = Vector3.ZERO
 		await _frames(1)
-		if streamer.is_ready_at(stand):
+		if streamer.ready_round(stand):
 			break
 	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(stand))
 	stand.y = ChunkGenerator.height_at(c.data, stand.x - c.position.x, stand.z - c.position.z) + 0.1
 	player.set_state({"pos": stand, "yaw": atan2(out.x, out.z), "pitch": 0.0, "slot": 0})
+	player.velocity = Vector3.ZERO
 	# The body turns to the new heading over a few frames; let it settle on the spot.
 	for i in 3:
 		await _frames(20)
@@ -2257,6 +2430,10 @@ func _map_unit_checks() -> void:
 ## Map overlays: each paints tiles under the minimap and lists what is in view.
 func _layer_checks(world, game) -> void:
 	var mm: Minimap = world.hud._minimap
+	# Your standing shows only round towns you know: one where you stand.
+	var here: Vector3 = game.player.global_position
+	var tsid := "%d:layer_test" % game.planet
+	game.standing.note(tsid, "Layerton", Vector2(here.x, here.z), game.day)
 	for l in range(1, MapLayers.COUNT):
 		game.map.set_layer(l)
 		mm._canvas.layer_mask = 0
@@ -2266,6 +2443,8 @@ func _layer_checks(world, game) -> void:
 			await process_frame
 			n += 1
 		check(mm._canvas.layer_mask != 0, "the %s overlay paints the minimap (%d frames)" % [MapLayers.NAMES[l], n])
+	check(MapLayers.describe(MapLayers.STANDING, here.x, here.z).begins_with("Layerton: "), "the standing overlay names the town and your tier (%s)" % MapLayers.describe(MapLayers.STANDING, here.x, here.z))
+	game.standing.towns.erase(tsid)
 	check(MapLayers.sample(MapLayers.LEVELS, 3000.0, 0.0) == Eras.zone_level(3000.0, 0.0) / 10, "the level overlay follows zone levels")
 	var lv := Eras.zone_level(3000.0, 0.0)
 	var far_danger: int = MapLayers.sample(MapLayers.DANGER, 3000.0, 0.0)
@@ -2357,3 +2536,85 @@ func _menu_checks(world, game, con) -> void:
 	check(Cursor.free and not Cursor.locked(), "a freed pointer stays free after a menu closes")
 	Cursor.free = false
 	Cursor.restore()
+
+## Fire: a timber wall set alight takes hold, throws flame onto the wall touching it,
+## scorches the stone wall beside it, burns down to ash and charred beams; a bucket of
+## water puts out another, a few blows beat out a small one, rain holds fires down.
+## Returns what to check after the reload.
+func _fire_checks(game, world, pc: ChunkNode, at: Vector3) -> Dictionary:
+	var fs: FireSystem = FireSystem.current
+	check(fs != null and fs.get_parent() == world, "the world runs its fires")
+	if fs == null:
+		return {}
+	# Stand well upwind of the test fires, and don't burn: they run for minutes of game time
+	# here and can spread into the trees round about, and dying in one would spoil the
+	# death checks further on.
+	var stood: Vector3 = world.player.global_position
+	world.player.global_position = pc.position + at + Vector3(-14, 0, -3)
+	var god: bool = game.cheats["god"]
+	game.cheats["god"] = true
+	var wood := pc.add_built("wall_plaster", at, 0.0, {"by": "you", "day": 0.0})
+	var next := pc.add_built("wall_plaster", at + Vector3(2, 0, 0), 0.0, {"by": "you", "day": 0.0})
+	var stone := pc.add_built("wall_stone", at + Vector3(-2, 0, 0), 0.0, {"by": "you", "day": 0.0})
+	check(not fs.ignite(pc, stone["i"], 1.0, false, true), "a stone wall will not burn")
+	check(fs.ignite(pc, wood["i"], 1.0, false, true), "a timber wall catches")
+	check(fs.is_burning(pc.key, wood["i"]) and fs.burning_count() >= 1, "and is burning")
+	# Wind along the row, to carry it.
+	world.atmosphere.wind_dir = Vector2(1, 0)
+	fs.rain_override = 0.0
+	var secs := 0.0
+	while secs < 900.0 and not wood["st"].get("gone", false):
+		fs._process(1.0)
+		secs += 1.0
+		# The stone wall beside it is in the flames.
+		if wood["st"].has("fire") and FireSim.heat(wood["st"]) > 0.5 and not stone["st"].has("char"):
+			fs.ignite(pc, stone["i"], 1.0, false, false, 5.0)
+	check(wood["st"].get("gone", false), "it burns down (%.0f s)" % secs)
+	check(next["st"].has("fire") or next["st"].get("gone", false) or next["st"].has("lit_by") or float(next["st"].get("char", 0.0)) > 0.0, "flames caught the wall touching it")
+	check(float(stone["st"].get("char", 0.0)) > 0.0, "and scorched the stone one")
+	var ruin := -1
+	for o in pc.data["objects"]:
+		if o["t"] == FireSim.RUIN and not o["st"].get("gone", false) and (o["p"] as Vector3).distance_to(at) < 2.0:
+			ruin = o["i"]
+	check(ruin >= 0, "it leaves a heap of ash and charred beams")
+	var bufs := ChunkNode.build_object_buffers(pc.data, false)
+	var sooty := false
+	for k in bufs:
+		if String(k).ends_with(ChunkNode.SOOT) and String(k).begins_with("b:wall_stone"):
+			sooty = true
+	check(sooty, "the scorched stone wall is drawn sooted")
+	fs.douse_all()
+	# A bucket of water on the next one.
+	var third := pc.add_built("wall_plaster", at + Vector3(0, 0, 4), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, third["i"], 1.0, false, true)
+	for i in 40:
+		fs._process(1.0)
+	var buckets := 0
+	while third["st"].has("fire") and buckets < 8:
+		fs.douse(pc.position + (third["p"] as Vector3) + Vector3(0, 1, 0), 2.2, 0.55)
+		buckets += 1
+	check(not third["st"].has("fire") and buckets <= 5, "a few buckets put it out (%d)" % buckets)
+	check(not fs.is_burning(pc.key, third["i"]), "and the fire is gone")
+	# Beaten out with your fists while it is small.
+	var fence := pc.add_built("fence", at + Vector3(0, 0, 8), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, fence["i"], 0.4, false, true)
+	var blows := 0
+	while fence["st"].has("fire") and blows < 10:
+		fs.player_use(world.player, null, Durability.FIST, {"obj": fence["i"], "chunk": pc, "point": pc.position + (fence["p"] as Vector3)})
+		blows += 1
+	check(not fence["st"].has("fire") and blows <= 6, "a small fire is beaten out (%d blows)" % blows)
+	check(not fence["st"].get("gone", false), "without breaking what was burning")
+	# Rain beats a fire down.
+	var fourth := pc.add_built("wall_plaster", at + Vector3(0, 0, 12), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, fourth["i"], 1.0, false, true)
+	fs.rain_override = 1.0
+	for i in 120:
+		fs._process(1.0)
+	check(not fourth["st"].has("fire") or FireSim.heat(fourth["st"]) < 0.6, "a downpour holds it down (%.2f)" % FireSim.heat(fourth["st"]))
+	print("  (fires still burning after the checks: %d)" % fs.burning_count())
+	fs.douse_all()
+	fs.rain_override = -1.0
+	game.cheats["god"] = god
+	world.player.global_position = stood
+	game.flush_chunks()
+	return {"key": pc.key, "i": wood["i"], "ruin": ruin, "sp": int(pc.get_object(ruin).get("sp", 0)) if ruin >= 0 else -1, "stone": stone["i"], "doused": third["i"]}

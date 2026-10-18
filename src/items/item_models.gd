@@ -146,10 +146,16 @@ static func _build(t: String) -> ArrayMesh:
 			# Held by the top fold of the bundle.
 			am.set_meta("grip", Vector3(0, 0.11, 0))
 			am.set_meta("grip_r", 0.03)
-		if slot == "head" and not WearModels.has(t):
-			# A helm is carried crown forward, the way a hand holds one by the back of its
-			# rim, so the skull and nasal show and not the lining.
-			am = _transformed(am, Transform3D(Basis(Vector3.RIGHT, 0.75), Vector3.ZERO))
+		if slot == "head":
+			# A helm is carried the way a hand holds one: fingers inside the back of the
+			# rim, the back toward you, the crown tipped a little your way, so the skull shows and not
+			# the lining. ("held_pose" lets tools/icon_match turn it back to face front like its icon.)
+			var tilt := Transform3D(Basis(Vector3.RIGHT, 0.3) * Basis(Vector3.UP, PI), Vector3.ZERO)
+			var box := am.get_aabb()
+			am = _transformed(am, tilt)
+			am.set_meta("grip", tilt * Vector3(0, box.position.y + 0.05, box.position.z + 0.012))
+			am.set_meta("grip_r", 0.008)
+			am.set_meta("held_pose", tilt)
 		return am
 	var s: Array = SHAPES[t]
 	var k := MeshKit.new(WHash.str_hash(t) & 0xFFFF)
@@ -1919,9 +1925,9 @@ static func _armour_mat(style: int, col: Color) -> Array:
 			return ["im:composite", col]
 		Outfit.STYLE_CRYSTAL:
 			return ["im:metal@0.18", col]
-	# Steel reflects about 55-60%: near-white item colours would read as chrome. Worn
-	# plate is brushed and dulled by handling, never mirror-polished.
-	return ["im:metal@0.6", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
+	# Worn plate is brushed and dulled by handling, never mirror-polished (Metals raises
+	# the colour to steel's reflectance; roughness, not a grey colour, keeps it from chrome).
+	return ["im:metal@0.42", Color(minf(col.r, 0.68), minf(col.g, 0.68), minf(col.b, 0.68))]
 
 static func _armour(k: MeshKit, r: RandomNumberGenerator, t: String) -> void:
 	var d := ItemDB.def(t)
@@ -2364,12 +2370,10 @@ static func _photo_detail(m: StandardMaterial3D, ph: String, scale: float) -> vo
 
 static func _make(n: String) -> Material:
 	if n.begins_with("metal@"):
-		# Cast and worked metal: fine hammered/cast unevenness in the normal, a little
-		# roughness variation; colour (and so the metal) from the vertices.
-		var m := _base(n.substr(6).to_float(), 1.0, "forged", 0.04, 6.0, 0.06)
-		m.albedo_color = Color.WHITE
-		m.albedo_texture = null
-		return m
+		# Cast and worked metal in the shared metal look (Metals): the colour (and so the
+		# metal) from the vertices, raised to a real metal's reflectance, with smudges,
+		# scratches, worn edges and grime.
+		return Metals.mat("worked", n.substr(6).to_float())
 	if n.begins_with("ore:"):
 		var t := n.substr(4)
 		var s: Array = SHAPES[t]
@@ -2545,12 +2549,8 @@ static func _make(n: String) -> Material:
 		"dial":
 			return _base(0.6, 0.0, "", 0, 1)
 		"metal_rolled":
-			var m := _base(0.38, 0.9, "forged", 0.04, 3.0, 0.04)
-			m.albedo_color = Color.WHITE
-			m.albedo_texture = null
-			m.anisotropy_enabled = true
-			m.anisotropy = 0.5
-			return m
+			# Rolled sheet: brushed grain, stretched highlights.
+			return Metals.mat("worked_rolled", 0.38)
 		"glass", "glass_edge":
 			var m := _base(0.02, 0.0, "", 0, 1)
 			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS

@@ -10,7 +10,12 @@ extends Node
 ## your face asks for your pass; stay without one and it's trespass, which the town puts
 ## a bounty on like any crime. Those who earned their standing are waved through.
 ##
-## Runs on each player's own game with their own standing, so it works the same online.
+## At night, strict towns drop the portcullis in each gateway for anyone without leave
+## (it rises for those with it); a rope thrown over an unwatched stretch of wall gets you
+## over all the same, if nobody sees you climb.
+##
+## Runs on each player's own game with their own standing, so it works the same online
+## (each player sees the portcullis as it stands for them).
 
 const TICK := 0.25
 ## How near a gate (metres) the guard there stops you.
@@ -37,6 +42,8 @@ func _now() -> float:
 	return Time.get_ticks_msec() / 1000.0
 
 func _process(delta: float) -> void:
+	_climb_step(delta)
+	_move_ports(delta)
 	_t -= delta
 	if _t > 0.0 or manager == null or manager.player == null or Game.store == null:
 		return
@@ -71,6 +78,9 @@ func _watch(e: Dictionary, pp: Vector3) -> void:
 		Game.standing.note(sid, String(e["data"]["name"]), e["site"]["center"], Game.day)
 		g["tp"] = GatePolicy.temper(e["site"], e["data"])
 		Game.standing.set_folk(sid, GatePolicy.folk_regard(e["data"]))
+	# At night strict towns drop the portcullis, for anyone without leave to come in.
+	if not (g["gates"] as Array).is_empty():
+		g["shut"] = bool(g["tp"]["night_shut"]) and GatePolicy.is_night(NPCMind.hour_now()) and not verdict(e)["ok"]
 	if (g["gates"] as Array).is_empty() or manager.player.get("ui_open"):
 		return
 	var site: Dictionary = e["site"]
@@ -336,6 +346,14 @@ func outlaw_slain(at: Vector3) -> void:
 	if best != "":
 		Game.standing_deed(best, Standing.DEEDS["outlaw"])
 
+## Your standing tier in this person's town ("" outside any town).
+func tier_for(n: NPC) -> String:
+	var e := manager._entry_of(n.settlement)
+	if e.is_empty() or not e.has("sid") or n.settlement.has("band"):
+		return ""
+	_state(e)
+	return Game.town_tier(String(e["sid"]))
+
 ## A deed in this person's town (guild joined, house bought...): Standing.DEEDS key.
 func deed_for(n: NPC, kind: String) -> void:
 	var e := manager._entry_of(n.settlement)
@@ -343,3 +361,266 @@ func deed_for(n: NPC, kind: String) -> void:
 		return
 	_state(e)
 	Game.standing_deed(String(e["sid"]), Standing.DEEDS[kind])
+
+# --- Night gates: the portcullis ---------------------------------------------------------------
+
+## How far the portcullis drops below its raised place (the gateway's bars hang from 3.1 m).
+const PORT_DROP := 3.1
+## Metres a second it falls or is wound up.
+const PORT_SPEED := 1.4
+var _ports := {} ## sid -> [{node: Node3D, lift: Node3D, body: CollisionShape3D, up: float 0 (down)..1}]
+static var _port_mesh: ArrayMesh
+
+## Raises or lowers each town's portcullises toward where they stand for you now, and
+## lets go of those of towns gone out of reach.
+func _move_ports(delta: float) -> void:
+	if manager == null:
+		return
+	var live := {}
+	for e in manager.settlements.values():
+		if e.has("gate") and e.has("sid") and not (e["gate"]["gates"] as Array).is_empty():
+			live[String(e["sid"])] = e
+	for sid in _ports.keys():
+		if not live.has(sid):
+			for pt in _ports[sid]:
+				if is_instance_valid(pt["node"]):
+					pt["node"].queue_free()
+			_ports.erase(sid)
+	for sid in live:
+		var e: Dictionary = live[sid]
+		var shut: bool = e["gate"].get("shut", false)
+		if not _ports.has(sid):
+			if not shut:
+				continue # made the first time one has to come down
+			if not _make_ports(e):
+				continue
+		for pt in _ports[sid]:
+			var up := move_toward(float(pt["up"]), 0.0 if shut else 1.0, delta * PORT_SPEED / PORT_DROP)
+			if up == float(pt["up"]):
+				continue
+			pt["up"] = up
+			(pt["lift"] as Node3D).position.y = up * PORT_DROP
+			(pt["lift"] as Node3D).visible = up < 0.97
+			# It bars the way until it is above head height.
+			(pt["body"] as CollisionShape3D).disabled = up > 0.6
+
+## Makes the portcullises in a town's gateways (once their chunks are in), raised.
+func _make_ports(e: Dictionary) -> bool:
+	var out: Array = []
+	for q in e["gate"]["gates"]:
+		var xf = _gate_xf(q)
+		if xf == null:
+			return false # its chunk isn't in yet
+		if xf is Transform3D:
+			out.append(_make_port(xf))
+	_ports[String(e["sid"])] = out
+	return true
+
+## Where the gateway at `q` stands (its object in the chunk), null while its chunk isn't
+## loaded, or false when it is gone.
+func _gate_xf(q: Vector2):
+	if manager.streamer == null:
+		return null
+	var c := manager.streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(q.x, 0.0, q.y)))
+	if c == null:
+		return null
+	for o in c.data["objects"]:
+		if o["t"] == "castle_gate" and not o["st"].get("gone", false):
+			var wp: Vector3 = c.position + (o["p"] as Vector3)
+			if Vector2(wp.x, wp.z).distance_to(q) < 1.0:
+				return Transform3D(Basis(Vector3.UP, float(o["r"])), wp)
+	return false
+
+func _make_port(xf: Transform3D) -> Dictionary:
+	var node := Node3D.new()
+	node.transform = xf
+	add_child(node)
+	var lift := Node3D.new()
+	lift.position.y = PORT_DROP
+	lift.visible = false
+	node.add_child(lift)
+	var mi := MeshInstance3D.new()
+	mi.mesh = port_mesh()
+	lift.add_child(mi)
+	var body := StaticBody3D.new()
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(4.0, PORT_DROP, 0.3)
+	cs.shape = box
+	cs.position = Vector3(0.0, PORT_DROP * 0.5, 0.12)
+	cs.disabled = true
+	body.add_child(cs)
+	node.add_child(body)
+	return {"node": node, "lift": lift, "body": cs, "up": 1.0}
+
+## The lower part of a castle gateway's portcullis (its top hangs in the gateway's own
+## mesh, Stronghold._gateway): the same iron bars carried down to the ground, cross-bars
+## and pointed teeth that bite into the road.
+static func port_mesh() -> ArrayMesh:
+	if _port_mesh != null:
+		return _port_mesh
+	var k := MeshKit.new(4117)
+	var I := Transform3D.IDENTITY
+	var x := -1.8
+	while x <= 1.81:
+		k.box("iron", I.translated(Vector3(x, 0.15 + PORT_DROP * 0.5, 0.125)), Vector3(0.07, PORT_DROP - 0.3, 0.07))
+		k.cylinder("iron", I.translated(Vector3(x, 0.0, 0.125)), 0.006, 0.045, 0.3, 5)
+		x += 0.3
+	for y: float in [0.55, 1.35, 2.15, 2.9]:
+		k.box("iron", I.translated(Vector3(0, y, 0.125)), Vector3(3.75, 0.06, 0.06))
+	_port_mesh = k.commit(Materials.get_mat)
+	return _port_mesh
+
+## Whether the portcullis of this town is down for you (for the tests and the HUD).
+func gate_shut(sid: String) -> bool:
+	if not _ports.has(sid):
+		return false
+	for pt in _ports[sid]:
+		if float(pt["up"]) < 0.4:
+			return true
+	return false
+
+# --- Over the wall with a rope ------------------------------------------------------------------
+
+## Rope it takes (left hanging on the wall).
+const CLIMB_ROPE := 2
+const CLIMB_SECONDS := 3.4
+## How far from a gate the wall can be climbed (the gate is watched; the towers are in the way).
+const CLIMB_CLEAR := 9.0
+var _climb := {} ## {path: [Vector3], t, e, seen: NPC or null, inward}
+
+## What you can do at a town wall from `pos`: [{node, n, at, verb}] like Dungeons.usables.
+func usables(pos: Vector3) -> Array:
+	if not _climb.is_empty() or manager == null:
+		return []
+	var p2 := Vector2(pos.x, pos.z)
+	for e in manager.settlements.values():
+		if not e.has("gate") or (e["gate"]["gates"] as Array).is_empty():
+			continue
+		var site: Dictionary = e["site"]
+		var c: Vector2 = site["center"]
+		var rad := float(site["inner"]) + 2.5
+		var d := p2.distance_to(c)
+		if absf(d - rad) > 3.5 or absf(d - rad) < 0.4:
+			continue
+		var near_gate := false
+		for q in e["gate"]["gates"]:
+			if (q as Vector2).distance_to(p2) < CLIMB_CLEAR:
+				near_gate = true
+		if near_gate:
+			continue
+		var dir := (p2 - c).normalized()
+		var w := c + dir * rad
+		var have := Game.inventory.count("rope")
+		var verb := ("Climb over the wall (%d rope)" if have >= CLIMB_ROPE else "Climb over the wall (needs %d rope)") % CLIMB_ROPE
+		return [{"node": self, "n": String(e["sid"]), "at": Vector3(w.x, pos.y + 1.4, w.y), "verb": verb}]
+	return []
+
+## Throws a rope over the wall and climbs it: up the face, over the wall walk and down
+## the other side. Climbing in without leave is trespass if a guard sees you.
+func use(sid: String, player: Node3D) -> void:
+	if not _climb.is_empty():
+		return
+	var e := {}
+	for x in manager.settlements.values():
+		if String(x.get("sid", "")) == sid:
+			e = x
+	if e.is_empty():
+		return
+	if Game.inventory.count("rope") < CLIMB_ROPE:
+		Game.toast.emit("You need %d rope to get over the wall" % CLIMB_ROPE)
+		return
+	var site: Dictionary = e["site"]
+	var c: Vector2 = site["center"]
+	var rad := float(site["inner"]) + 2.5
+	var from: Vector3 = player.global_position
+	var dir := (Vector2(from.x, from.z) - c).normalized()
+	var inward := Vector2(from.x, from.z).distance_to(c) > rad
+	var near_side := c + dir * (rad + (1.6 if inward else -2.2))
+	var far_side := c + dir * (rad + (-2.6 if inward else 2.4))
+	var wall := c + dir * rad
+	# The top of the wall walk: straight down onto the wall from well above.
+	var top := from.y + 7.0
+	var q := PhysicsRayQueryParameters3D.create(Vector3(wall.x, from.y + 30.0, wall.y), Vector3(wall.x, from.y - 4.0, wall.y), 1)
+	if player is CollisionObject3D:
+		q.exclude = [(player as CollisionObject3D).get_rid()]
+	var hit := player.get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty():
+		top = (hit["position"] as Vector3).y
+	var land := manager.ground(far_side.x, far_side.y)
+	if is_nan(land):
+		land = from.y
+	Game.inventory.remove_type("rope", CLIMB_ROPE)
+	var seen := _seen_by(e, from, 38.0, 0.12)
+	_climb = {"e": e, "t": 0.0, "inward": inward, "seen": seen, "player": player,
+		"path": [from, Vector3(near_side.x, from.y + 0.2, near_side.y), Vector3(near_side.x, top + 0.3, near_side.y),
+			Vector3(far_side.x, top + 0.3, far_side.y), Vector3(far_side.x, land + 0.1, far_side.y)]}
+	player.set("script_move", true)
+	_hang_rope(Vector3(near_side.x, top, near_side.y), from.y)
+	Game.practice("sneak", 2.0)
+	Audio.play("weapon/draw", -8.0)
+
+## Steps the climb along its path; at the end you stand on the far side.
+func _climb_step(delta: float) -> void:
+	if _climb.is_empty():
+		return
+	var pl = _climb["player"]
+	if not is_instance_valid(pl):
+		_climb = {}
+		return
+	_climb["t"] = float(_climb["t"]) + delta / CLIMB_SECONDS
+	var t: float = minf(float(_climb["t"]), 1.0)
+	var path: Array = _climb["path"]
+	# Time per leg: a step to the wall, the long haul up, across the top, down the far side.
+	var legs := [0.08, 0.5, 0.17, 0.25]
+	var acc := 0.0
+	var at: Vector3 = path[-1]
+	for i in legs.size():
+		if t <= acc + legs[i]:
+			at = (path[i] as Vector3).lerp(path[i + 1], smoothstep(0.0, 1.0, (t - acc) / legs[i]))
+			break
+		acc += legs[i]
+	pl.global_position = at
+	if pl is CharacterBody3D:
+		(pl as CharacterBody3D).velocity = Vector3.ZERO
+	if t < 1.0:
+		return
+	pl.set("script_move", false)
+	var e: Dictionary = _climb["e"]
+	var seen = _climb["seen"]
+	var inward: bool = _climb["inward"]
+	_climb = {}
+	var g: Dictionary = e["gate"]
+	g["inside"] = inward
+	if inward and not verdict(e)["ok"]:
+		if seen != null and is_instance_valid(seen):
+			_trespass(e, pl.global_position, seen)
+			Game.standing_deed(String(e["sid"]), Standing.DEEDS["trespass"]) # scaling the walls is worse than walking in
+		else:
+			Game.toast.emit("Over the wall into %s, unseen. Guards who don't know you will ask for your pass." % e["data"]["name"])
+	elif not inward:
+		g["warned"] = false
+
+## The rope left hanging down the wall: there for a while, then someone hauls it in.
+func _hang_rope(top: Vector3, foot: float) -> void:
+	var mi := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	var len := maxf(1.0, top.y - foot)
+	cyl.top_radius = 0.018
+	cyl.bottom_radius = 0.018
+	cyl.height = len
+	cyl.radial_segments = 6
+	cyl.rings = 1
+	mi.mesh = cyl
+	mi.material_override = _rope_mat()
+	add_child(mi)
+	mi.global_position = Vector3(top.x, foot + len * 0.5, top.z)
+	get_tree().create_timer(90.0).timeout.connect(mi.queue_free)
+
+static var _rope: StandardMaterial3D
+static func _rope_mat() -> StandardMaterial3D:
+	if _rope == null:
+		_rope = StandardMaterial3D.new()
+		_rope.albedo_color = Color(0.62, 0.5, 0.33)
+		_rope.roughness = 0.95
+	return _rope

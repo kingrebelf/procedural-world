@@ -16,6 +16,7 @@ func _run() -> void:
 	var wear := {}
 	var night := false
 	var hand := false
+	var hfov := 0.0 ## --hfov=90: the camera as the game sets it (horizontal FOV), not the fixed 80° vertical
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -30,6 +31,8 @@ func _run() -> void:
 			night = true
 		elif a == "--hand":
 			hand = true
+		elif a.begins_with("--hfov="):
+			hfov = a.substr(7).to_float()
 	DirAccess.make_dir_recursive_absolute(out)
 	get_root().size = Vector2i(1600, 900)
 	var env := WorldEnvironment.new()
@@ -39,6 +42,19 @@ func _run() -> void:
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = Color(0.6, 0.65, 0.7)
 	env.environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	# Metal shows what it reflects: a daylight sky (with a darker ground below), as in game.
+	var sky := Sky.new()
+	var sm := ProceduralSkyMaterial.new()
+	sm.sky_top_color = Color(0.32, 0.5, 0.8)
+	sm.sky_horizon_color = Color(0.72, 0.78, 0.85)
+	sm.ground_horizon_color = Color(0.55, 0.55, 0.5)
+	sm.ground_bottom_color = Color(0.3, 0.28, 0.22)
+	if night:
+		sm.sky_energy_multiplier = 0.05
+		sm.ground_energy_multiplier = 0.05
+	sky.sky_material = sm
+	env.environment.sky = sky
+	env.environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	get_root().add_child(env)
 	var sun := DirectionalLight3D.new()
 	sun.rotation = Vector3(-0.9, 0.6, 0)
@@ -55,6 +71,9 @@ func _run() -> void:
 	get_root().add_child(ground)
 	var cam := Camera3D.new()
 	cam.fov = 80.0
+	if hfov > 0.0:
+		cam.keep_aspect = Camera3D.KEEP_WIDTH
+		cam.fov = hfov
 	get_root().add_child(cam)
 	cam.make_current()
 	var vm := Viewmodel.new()

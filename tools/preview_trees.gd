@@ -2,8 +2,9 @@ extends SceneTree
 ## Renders a row of trees (RealTree) side by side for checking their look: by default one
 ## of each palm (coconut, royal, date, palmetto, banana) and of each tropical broadleaf
 ## (acacia, fig, kapok), with an oak for scale, from the side and from under the crowns:
-##   godot --path . --script res://tools/preview_trees.gd -- --out=<dir> [--types=palm,tropic,oak] [--far]
-## --far draws each tree's merged far version instead.
+##   godot --path . --script res://tools/preview_trees.gd -- --out=<dir> [--types=palm,tropic,oak] [--far] [--all] [--bare]
+## --far draws each tree's merged far version instead. --all takes every form (dead, birch,
+## willow and the oak's other forms too); --bare leaves the leaves off, to judge the limbs.
 
 const FRAME := Vector2i(1920, 900)
 
@@ -11,6 +12,8 @@ func _initialize() -> void:
 	var out := "user://trees"
 	var types := ["palm", "tropic", "oak"]
 	var far := false
+	var all := false
+	var bare := false
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--out="):
 			out = a.substr(6)
@@ -18,6 +21,10 @@ func _initialize() -> void:
 			types = Array(a.substr(8).split(","))
 		elif a == "--far":
 			far = true
+		elif a == "--all":
+			all = true
+		elif a == "--bare":
+			bare = true
 	DirAccess.make_dir_recursive_absolute(out)
 	RenderingServer.global_shader_parameter_set("wind_dir", Vector2(1, 0.3).normalized())
 	RenderingServer.global_shader_parameter_set("wind_strength", 0.3)
@@ -59,9 +66,9 @@ func _initialize() -> void:
 		for sp in range(1, 3000):
 			var p := Flora.species(t, sp)
 			var form := String(p.get("form", ""))
-			if seen.has(form) or form in ["dead", "snag", "shrub", "column", "weeping"]:
+			if seen.has(form) or (not all and form in ["dead", "snag", "shrub", "column", "weeping"]):
 				continue
-			if t == "oak" and (form != "round" or bool(p.get("autumn", false))):
+			if t == "oak" and not all and (form != "round" or bool(p.get("autumn", false))):
 				continue
 			seen[form] = true
 			row.append([t, sp, form, float(p["height"])])
@@ -85,6 +92,11 @@ func _initialize() -> void:
 			mi.mesh = m
 		else:
 			mi.mesh = RealTree.build(e[0], e[1], 0)
+			if bare and mi.mesh.get_surface_count() > 1:
+				var only := ArrayMesh.new()
+				only.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mi.mesh.surface_get_arrays(0))
+				only.surface_set_material(0, mi.mesh.surface_get_material(0))
+				mi.mesh = only
 		mi.position = Vector3(x, 0, 0)
 		mi.rotation.y = 0.6
 		vp.add_child(mi)
@@ -93,7 +105,8 @@ func _initialize() -> void:
 		x += w * 0.5 + gap
 	var mid := x * 0.5
 	var shots := [["side", Vector3(mid, 7.0, x * 0.95), Vector3(mid, 7.0, 0)],
-		["crowns", Vector3(mid * 0.5, 2.0, 16.0), Vector3(mid * 0.5, 9.0, 0)]]
+		["crowns", Vector3(mid * 0.5, 2.0, 16.0), Vector3(mid * 0.5, 9.0, 0)],
+		["near", Vector3(mid * 0.55, 4.5, 15.0), Vector3(mid * 0.55, 5.0, 0)]]
 	for shot in shots:
 		await process_frame
 		cam.position = shot[1]

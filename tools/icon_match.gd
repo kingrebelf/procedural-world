@@ -222,7 +222,9 @@ func _shoot(mesh: Mesh, kind: String) -> Image:
 		pivot.basis = Basis(Vector3(0, 0, 1), -PI * 0.25) * Basis(Vector3.UP, turn)
 		_frame(pivot, Vector3(0.0, 0.1, 1.0))
 	else:
-		pivot.basis = Basis.IDENTITY
+		# A helm is held back-first (ItemModels "held_pose"); turn it to face front like its icon.
+		var pose: Transform3D = mesh.get_meta("held_pose", Transform3D.IDENTITY)
+		pivot.basis = pose.basis.inverse()
 		_frame(pivot, Vector3(0.45, 0.55, 1.0))
 	for i in 4:
 		await process_frame

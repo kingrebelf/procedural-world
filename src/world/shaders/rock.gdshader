@@ -3,10 +3,14 @@ shader_type spatial;
 // same size on a pebble and on a boulder ten times its size (object-space mapping
 // stretched it with the instance's scale). COLOR.rgb is the stone's tint (vertex colour
 // times instance colour, sRGB); COLOR.a how much moss grows on its top. Darker where it
-// meets the ground. Up past the snow line, snow lies on it instead of moss.
+// meets the ground. Up past the snow line, snow lies on it instead of moss. The place's
+// climate (climate_wear.gdshaderinc) thickens the moss where it is wet and takes it away
+// where it is dry, lays snow on it in the cold belt, hoar frost on cold mornings, and dust
+// in the deserts.
 render_mode diffuse_burley, specular_schlick_ggx;
 #include "res://src/env/clouds.gdshaderinc"
 #include "res://src/world/noise2d.gdshaderinc"
+#include "res://src/env/climate_wear.gdshaderinc"
 
 uniform sampler2D rock_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D rock_nrm : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -20,7 +24,6 @@ uniform vec3 soil_col : source_color = vec3(0.2, 0.16, 0.11);
 uniform vec3 moss_col : source_color = vec3(0.24, 0.3, 0.12);
 // 0 for cave shells: no snow inside a mountain.
 uniform float snow_cover = 1.0;
-global uniform float snow_line_g;
 const vec3 ROCK_MEAN = vec3(0.266, 0.2665, 0.245);
 const vec3 LUM = vec3(0.2126, 0.7152, 0.0722);
 
@@ -90,9 +93,13 @@ void fragment() {
 	// cushions with ragged edges (not a carpet laid over the top), the bare stone
 	// showing through between them.
 	float up = smoothstep(0.25, 0.9, n.y);
+	vec4 lv = wear_levels(wp);
+	// As much moss as the land's green allows in a temperate place, up to twice that in
+	// a wet one, none in a desert.
+	float moss_k = clamp(lv.x / WEAR_TEMPERATE.x, 0.0, 2.2);
 	vec3 mt = texture(moss_tex, wp.xz / 1.3).rgb;
 	float patches = fbm(wp.xz * 0.45 + wp.y * 0.35 + 5.0) * 0.85 + fbm(wp.xz * 1.6 + 2.0) * 0.15;
-	float moss = smoothstep(0.35, 0.7, COLOR.a * up * 1.18 - (lum - 1.0) * 0.45 + (dot(mt, LUM) - 0.12) * 1.2
+	float moss = smoothstep(0.35, 0.7, COLOR.a * moss_k * up * 1.18 - (lum - 1.0) * 0.45 + (dot(mt, LUM) - 0.12) * 1.2
 		+ (patches - 0.5) * 1.9 - 0.1);
 	// moss_col is already linear (source_color); the grass photo gives it texture, and
 	// cushions in the sun go yellower and paler, those in the crevices deeper.
@@ -110,20 +117,34 @@ void fragment() {
 	// Above the snow line: snow on its upward faces in place of the moss, thinning to
 	// streaks on the steeper ones, and banked up round its foot, as wind leaves it
 	// against anything that stands in the open.
-	float high = snow_cover * smoothstep(snow_line_g - 12.0, snow_line_g + 2.0, wp.y + (fbm(wp.xz * 0.07 + 3.0) - 0.5) * 10.0);
+	float high_line = snow_cover * smoothstep(snow_line_g - 12.0, snow_line_g + 2.0, wp.y + (fbm(wp.xz * 0.07 + 3.0) - 0.5) * 10.0);
+	// In the cold belt below the snow line, a cap of snow on its top but no banks.
+	float high = max(high_line, snow_cover * smoothstep(0.35, 0.85, lv.y) * 0.7);
 	float snow = 0.0;
 	if (high > 0.0) {
 		float cap = smoothstep(0.35, 0.75, n.y + (patches - 0.5) * 0.6 + (fbm(wp.xz * 4.0 + wp.y + 1.0) - 0.5) * 0.3);
 		float bank = 1.0 - smoothstep(tide * 1.6 - 0.1, tide * 1.6 + 0.05, above);
-		snow = max(cap, bank * (1.0 - smoothstep(0.85, 1.0, abs(wn.y)))) * high;
+		snow = max(cap * high, bank * (1.0 - smoothstep(0.85, 1.0, abs(wn.y))) * high_line);
 		vec3 sc = vec3(0.74) * mix(vec3(0.84, 0.91, 1.0), vec3(1.0), smoothstep(-0.1, 0.45, dot(n, sun_dir_g)));
 		col = mix(col, sc, snow);
 		moss *= 1.0 - snow;
 		earth *= 1.0 - snow;
 	}
+	// Dust on its tops and in its hollows in a desert, coming and going with the dry
+	// spells; hoar frost over it on a cold morning.
+	float dm = 0.0;
+	float fm = 0.0;
+	if (snow_cover > 0.0) {
+		float d = lv.z * wear_dust_now(wp);
+		dm = smoothstep(0.1, 0.65, (up * 0.9 + clamp(1.0 - lum, 0.0, 1.0) * 0.3) * d * 2.0 + (patches - 0.5) * 0.7 - 0.15) * (1.0 - snow);
+		col = mix(col, WEAR_DUST * (0.85 + 0.3 * vnoise(wp.xz * 7.0)), dm * 0.75);
+		moss *= 1.0 - dm;
+		fm = wear_frost(lv) * (0.12 + 0.4 * up + 0.3 * smoothstep(0.45, 0.9, vnoise(wp.xz * 23.0 + wp.y * 17.0))) * (1.0 - snow);
+		col = mix(col, WEAR_FROST, clamp(fm, 0.0, 0.55));
+	}
 	col *= mix(0.55, 1.0, max(max(smoothstep(-0.05, 0.3, above), smoothstep(0.35, 0.8, wn.y)), snow * 0.6));
 	ALBEDO = col * (1.0 - 0.42 * cloud_shadow(wp));
-	ROUGHNESS = mix(mix(0.82, 0.95, max(moss, earth)), 0.62, snow);
+	ROUGHNESS = mix(mix(mix(0.82, 0.95, max(max(moss, earth), dm)), 0.62, snow), 0.85, fm);
 	SPECULAR = 0.35;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

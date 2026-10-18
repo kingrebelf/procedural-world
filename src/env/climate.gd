@@ -1,0 +1,220 @@
+class_name Climate
+extends RefCounted
+## What the weather is doing at a place and time: a pure function of the world seed, the
+## game clock and where you stand, so every player on a server sees the same sky without
+## anything being sent, and a save reloads into the weather it left.
+##
+## Weather comes in fronts: big wet and dry spells a day or two long that roll across the
+## land on the prevailing wind (so the rain reaches the west of a valley before the east,
+## and you can walk out from under it), with showers and thunderstorms dotted through the
+## wet spells, morning mist on calm damp mornings, and dust storms when a dry gale blows
+## over sand. Temperature falls with height toward the planet's snow line and with the
+## night, and decides whether what falls is rain or snow.
+##
+## Weather (weather.gd) smooths these targets over time and turns them into sky, fog,
+## particles, wet ground and sound.
+
+## How fast weather fronts travel over the land, metres per game hour (a game hour is a
+## real minute, so about 40 m/s: a jetpack can outrun a front, walking cannot).
+const FRONT_SPEED := 2400.0
+
+## How wet each landform's climate is (WorldField.LF_*): dunes and badlands are deserts,
+## lakes are damp.
+const LF_MOIST := [1.0, 1.1, 1.0, 1.05, 0.95, 1.05, 1.0, 1.15, 0.45, 0.7, 0.6]
+## How much each landform's air heats up by day (deserts bake, lakes stay mild).
+const LF_WARM := [0.0, 0.0, 0.0, 0.0, -0.5, 0.0, 0.0, -1.0, 7.0, 3.0, 5.0]
+## How readily mist forms (valleys, lakes and sinks hold it).
+const LF_MIST := [1.0, 1.3, 0.8, 1.3, 0.7, 1.4, 1.0, 1.6, 0.15, 0.5, 0.35]
+## How much dust the wind can lift.
+const LF_DUST := [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.35, 0.8]
+
+var seed := 0
+## The way fronts come from (unit, world x/z): each world has its own prevailing wind.
+var prevailing := Vector2(1, 0)
+var _spell := FastNoiseLite.new() ## wet and dry spells, a day or two each
+var _showers := FastNoiseLite.new() ## showers and storm cells a kilometre or two across
+var _gale := FastNoiseLite.new() ## dry windy spells
+var _warmth := FastNoiseLite.new() ## warm and cold spells
+var _veer := FastNoiseLite.new() ## the wind backing and veering round the prevailing way
+
+func _init(world_seed: int) -> void:
+	seed = world_seed
+	var a := WHash.unit2(world_seed, 3, 9, 401) * TAU
+	prevailing = Vector2(cos(a), sin(a))
+	var i := 0
+	for n in [_spell, _showers, _gale, _warmth, _veer]:
+		n.seed = WHash.hash2(world_seed, i, 0, 402) & 0x7FFFFFFF
+		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		n.frequency = 1.0
+		n.fractal_type = FastNoiseLite.FRACTAL_FBM
+		n.fractal_octaves = 2
+		i += 1
+	_showers.fractal_octaves = 3
+
+## The game clock in hours (Game.day is in days).
+static func hours_of(day: float) -> float:
+	return day * 24.0
+
+## Temperature at sea level before height, night and spells: a frozen world (low snow
+## line) is cold everywhere.
+static func base_temp(snow_line: float) -> float:
+	return lerpf(-4.0, 15.0, clampf(snow_line / 50.0, 0.0, 1.0))
+
+## The weather the sky is heading for at (x, z) at game hour `hours`. ground: land height
+## there; lf: its landform (WorldField.landform_at); snow_line: the planet's.
+## belt: the region's climate (WorldField.climate_at: warmth, wetness, 0.5 temperate), so
+## the tropics are hot and never snow and rainforest rains oftener than savanna.
+## Returns {cover, precip, snow, storm, mist, dust, wind, temp, wind_dir, hail, great,
+## bank}: all 0..1 but temp (degrees C), wind_dir (unit Vector2, the way the wind blows
+## toward) and great (the name of a great storm blowing, or "").
+func at(hours: float, x: float, z: float, ground: float, lf: int, snow_line: float, belt := Vector2(0.5, 0.5)) -> Dictionary:
+	lf = clampi(lf, 0, LF_MOIST.size() - 1)
+	# Where the front over you now was an hour ago is upwind: shift the clock by the
+	# distance along the prevailing wind.
+	var t := hours - (x * prevailing.x + z * prevailing.y) / FRONT_SPEED
+	# Wet and dry spells, with a bias toward fair weather.
+	var spell := _spell.get_noise_1d(t * 0.03)
+	# Showers: patches a kilometre or two across that drift with the front and grow and
+	# die over a few hours; they only matter in an unsettled spell.
+	var sx := x - prevailing.x * FRONT_SPEED * hours
+	var sz := z - prevailing.y * FRONT_SPEED * hours
+	var cell := _showers.get_noise_3d(sx * 0.0005, sz * 0.0005, hours * 0.18)
+	var unsettled := smoothstep(-0.15, 0.25, spell)
+	var hum := clampf(0.42 + spell * 0.85 + cell * 0.55 * unsettled, 0.0, 1.0)
+	hum = clampf(hum * LF_MOIST[lf] + (LF_MOIST[lf] - 1.0) * 0.25 + (belt.y - 0.5) * 0.4, 0.0, 1.0)
+
+	# Temperature: falls with height to about -2 at the snow line, colder at night
+	# (coldest before dawn, warmest mid-afternoon), warm and cold spells over days.
+	var tod := fposmod(hours / 24.0, 1.0)
+	var bt := base_temp(snow_line)
+	var temp := bt - (bt + 2.0) * clampf(maxf(ground, 0.0) / maxf(snow_line, 1.0), 0.0, 2.5)
+	var sunny := 1.0 - smoothstep(0.45, 0.85, hum)
+	temp += cos((tod - 0.62) * TAU) * (2.5 + 3.5 * sunny) + LF_WARM[lf] * (0.3 + 0.7 * smoothstep(0.3, 0.6, tod) * (1.0 - smoothstep(0.75, 0.9, tod)))
+	temp += _warmth.get_noise_1d(t * 0.012) * 7.0
+	# The climate belts: about ten degrees warmer in the tropics, colder toward the poles.
+	temp += (belt.x - 0.5) * 22.0
+
+	var cover := lerpf(0.06, 1.0, smoothstep(0.22, 0.72, hum))
+	var precip := smoothstep(0.6, 0.86, hum)
+	temp -= precip * 2.5 # rain cools the air
+	var snow := smoothstep(1.5, -1.0, temp)
+	# Thunderstorms: the wettest cells of a warm spell (snow only rarely thunders).
+	var storm := smoothstep(0.8, 0.95, hum) * smoothstep(5.0, 13.0, temp)
+	# Wind: fronts and storms are blustery, and now and then a dry gale blows for hours.
+	var gale := maxf(_gale.get_noise_1d(t * 0.04 + 50.0), 0.0) * 1.7
+	var wind := clampf(0.18 + precip * 0.3 + storm * 0.4 + gale * 0.55 + absf(spell) * 0.12, 0.03, 1.0)
+	# Mist: a calm damp morning settles it in the low ground; a damp spell can keep
+	# fog banks all day on lakes and in valleys.
+	var dawn := smoothstep(0.15, 0.24, tod) * (1.0 - smoothstep(0.3, 0.4, tod)) + (1.0 - smoothstep(0.85, 0.95, tod)) * smoothstep(0.78, 0.86, tod) * 0.4
+	var calm := 1.0 - smoothstep(0.2, 0.45, wind)
+	var mist := clampf((smoothstep(0.38, 0.62, hum) * dawn * calm + smoothstep(0.55, 0.75, hum) * smoothstep(1.2, 1.5, LF_MIST[lf]) * 0.35 * calm)
+		* LF_MIST[lf] * (1.0 - precip * 0.6), 0.0, 1.0)
+	# Bogs and swamps (wet belts, low ground) breed mist far oftener, even by day.
+	var bog := smoothstep(0.62, 0.8, belt.y) * (1.0 - smoothstep(6.0, 22.0, ground))
+	mist = clampf(mist * (1.0 + 2.0 * bog) + bog * calm * 0.35 * smoothstep(0.45, 0.7, hum), 0.0, 1.0)
+	# Dust: a strong dry wind over sand and badlands.
+	var dust: float = LF_DUST[lf] * smoothstep(0.45, 0.8, wind) * (1.0 - smoothstep(0.3, 0.5, hum))
+	cover = maxf(cover, dust * 0.5)
+	# A great storm passing (rare, named): a day of gale, downpour and hail.
+	var g := great(hours, x, z)
+	var gs: float = g["s"] * clampf(LF_MOIST[lf], 0.5, 1.0)
+	var hail := 0.0
+	if gs > 0.0:
+		cover = maxf(cover, smoothstep(0.0, 0.45, gs))
+		precip = maxf(precip, gs * 0.95)
+		temp -= gs * 3.0
+		snow = smoothstep(1.5, -1.0, temp)
+		storm = maxf(storm, smoothstep(0.3, 0.8, gs) * smoothstep(-2.0, 6.0, temp))
+		wind = maxf(wind, 0.35 + 0.62 * gs)
+		mist *= 1.0 - gs
+		dust *= 1.0 - gs
+		# Hail comes in bursts at the storm's heart while it is still warm enough to rain.
+		var burst := _showers.get_noise_2d(hours * 3.0, 77.0)
+		hail = smoothstep(0.6, 0.85, gs) * smoothstep(-1.0, 3.0, temp) * smoothstep(-0.1, 0.25, burst)
+	# A fog bank: on a calm cold morning now and then the sea and lake fog rolls inland
+	# over the low ground and lies there half the day.
+	var bank := fog_bank(hours, x, z) * calm * (1.0 - smoothstep(10.0, 45.0, ground)) * (1.0 - precip)
+	mist = maxf(mist, bank)
+	var ang := _veer.get_noise_1d(t * 0.05 + 300.0) * 1.4
+	var wd := prevailing.rotated(ang)
+	return {"cover": cover, "precip": precip, "snow": snow, "storm": storm, "mist": mist, "dust": dust,
+		"wind": wind, "temp": temp, "wind_dir": wd, "hail": hail, "great": g["name"] if gs > 0.2 else "", "bank": bank}
+
+# --- Great storms (plans/story.md) ---------------------------------------------------------
+
+const GREAT_CELL := 16000.0 ## metres; each cell may brew one great storm a period
+const GREAT_PERIOD := 8.0 ## game days
+const GREAT_RADIUS := 9000.0
+const GREAT_SPEED := 1200.0 ## metres per game hour: it takes most of a day to pass over
+## Great storms are remembered by name, the way old folk remember hard winters.
+const STORM_NAMES := ["Morwen", "the Harrower", "Old Tamsin", "the Grey Widow", "Corrigan", "the Long Wind",
+	"Brannoc", "the Drowner", "Ysolde", "the Hammer", "Gwenna", "the Iron Sky"]
+
+## How hard a great storm blows at (x, z) at game hour `hours`: {"s": 0..1, "name"}.
+## Each cell of the world may brew one each period; it crosses the cell on the prevailing
+## wind. They come oftener out toward the gate lands (zone 25 and up, plans/story.md).
+func great(hours: float, x: float, z: float) -> Dictionary:
+	var best := {"s": 0.0, "name": ""}
+	var k0 := floori(hours / 24.0 / GREAT_PERIOD)
+	var gx := floori(x / GREAT_CELL)
+	var gz := floori(z / GREAT_CELL)
+	var span := (GREAT_RADIUS * 2.0 + GREAT_CELL) / GREAT_SPEED
+	var side := Vector2(-prevailing.y, prevailing.x)
+	for k in [k0 - 1, k0]:
+		for i in 9:
+			var cx: int = gx + i % 3 - 1
+			var cz: int = gz + floori(i / 3.0) - 1
+			var h := WHash.hash2(seed ^ (int(k) * 92821), cx, cz, 620)
+			var centre := Vector2((cx + 0.5) * GREAT_CELL, (cz + 0.5) * GREAT_CELL)
+			var zone := float(Eras.zone_level(centre.x, centre.y))
+			if WHash.to_unit(h) > 0.3 + 0.35 * smoothstep(25.0, 45.0, zone):
+				continue
+			var t := hours - (float(k) + WHash.unit2(h, 1, 0, 621) * 0.7) * GREAT_PERIOD * 24.0
+			if t < 0.0 or t > span:
+				continue
+			var c := centre + prevailing * GREAT_SPEED * (t - span * 0.5) + side * (WHash.unit2(h, 2, 0, 621) - 0.5) * GREAT_CELL * 0.6
+			var s := (1.0 - smoothstep(GREAT_RADIUS * 0.3, GREAT_RADIUS, Vector2(x, z).distance_to(c))) \
+				* smoothstep(0.0, 3.0, t) * (1.0 - smoothstep(span - 3.0, span, t))
+			if s > float(best["s"]):
+				best = {"s": s, "name": STORM_NAMES[absi(h) % STORM_NAMES.size()]}
+	return best
+
+## A fog bank over (x, z) on the morning of game hour `hours`, 0..1 (before the calm and
+## the lie of the land are counted): banks a few kilometres across on about one morning
+## in six, thickest at dawn and burning off by early afternoon.
+func fog_bank(hours: float, x: float, z: float) -> float:
+	var d := floori(hours / 24.0)
+	var tod := hours / 24.0 - d
+	var morning := smoothstep(0.12, 0.22, tod) * (1.0 - smoothstep(0.42, 0.55, tod))
+	if morning <= 0.0 or WHash.unit2(seed, d, 0, 630) > 0.17:
+		return 0.0
+	var n := _veer.get_noise_2d(x * 0.00025 + float(d) * 31.7, z * 0.00025)
+	return smoothstep(0.0, 0.3, n) * morning
+
+# --- Starfall nights (Starfall, plans/story.md) ------------------------------------------
+
+const STARFALL_CHANCE := 0.1 ## of a night being a starfall night
+const STARFALL_NIGHT := 0.19 ## days either side of midnight the shower runs
+## The ships whose names turn up stamped on the fragments: the three colony ships and
+## their escorts (plans/story.md).
+const SHIPS := ["ASTRAEA", "LONG PATIENCE", "HEARTHWARD", "VIGIL", "IRON PSALM", "MERIDIAN"]
+
+## Whether the night nearest `day` is a starfall night.
+static func starfall_is_night(seed: int, day: float) -> bool:
+	return WHash.unit2(seed, starfall_night_of(day), 0, 610) < STARFALL_CHANCE
+
+static func starfall_night_of(day: float) -> int:
+	return floori(day + 0.5)
+
+## How strong the shower is right now, 0 .. 1: none by day or on other nights, building
+## after dusk and fading before dawn.
+static func starfall(seed: int, day: float) -> float:
+	if not starfall_is_night(seed, day):
+		return 0.0
+	return 1.0 - smoothstep(STARFALL_NIGHT - 0.06, STARFALL_NIGHT, absf(day - starfall_night_of(day)))
+
+## The point in the sky the night's falling stars seem to come from.
+static func starfall_radiant(seed: int, n: int) -> Vector3:
+	var a := WHash.unit2(seed, n, 1, 611) * TAU
+	var el := lerpf(0.5, 1.2, WHash.unit2(seed, n, 2, 611))
+	return Vector3(cos(a) * cos(el), sin(el), sin(a) * cos(el))

@@ -135,12 +135,19 @@ func _run() -> void:
 			smi.mesh = PowerKit.part(String(spn["part"]))
 			smi.position = spn["pos"]
 			root.add_child(smi)
+			box = box.merge(Transform3D(Basis(), smi.position) * smi.mesh.get_aabb())
+			if spn.has("piston"):
+				var pmi := MeshInstance3D.new()
+				pmi.mesh = PowerKit.part(String(spn["piston"]["part"]))
+				pmi.position = spn["piston"]["pos"]
+				root.add_child(pmi)
 		if au.has("arm"):
 			var ami := MeshInstance3D.new()
 			ami.mesh = PowerKit.part("robot_arm")
 			ami.position = au["arm"]
 			ami.rotation.y = 0.8
 			root.add_child(ami)
+			box = box.merge(AABB(ami.position + Vector3(-0.7, 0, -0.7), Vector3(1.4, 0.6, 1.4)))
 		if df.has("clapper"):
 			var cm := MeshInstance3D.new()
 			cm.mesh = PowerKit.part("bell_clapper")
@@ -196,9 +203,13 @@ func _run() -> void:
 				dist *= 3.2
 				c += Vector3(0, -1.1, 0)
 		if float(s.get("lamp", {}).get("spot", 0.0)) > 0.0:
-			# From above and back, to see the pool it throws on the ground ahead.
-			view = Vector3(0.6, 0.9, -1.0)
-			dist *= 1.9
+			# From the side and above, framing the lamp and the pool it throws on the
+			# ground ahead of it (its local -z, where it aims).
+			var aim := deg_to_rad(float(s["lamp"].get("aim", 0.0)))
+			var pool := root.position + Vector3(0, 0, -(s["lamp"]["pos"] as Vector3).y / maxf(tan(-aim), 0.2))
+			c = (c + pool) * 0.5
+			view = Vector3(1.0, 0.8, -0.2)
+			dist = maxf(dist, (c.distance_to(pool) + 1.0) / tan(deg_to_rad(cam.fov * 0.5)) * 1.1)
 		if s.get("source", "") == "sun":
 			view = Vector3(0.45, 0.6, 1.0) # its cells face its local +z
 		cam.position = c + view.normalized() * maxf(dist, 1.2)

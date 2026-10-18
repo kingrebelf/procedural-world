@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the built-in voice pack into $1 (default build/voices/<platform>): the voice
 # server for Linux and Windows, the sherpa-onnx and ONNX Runtime libraries it uses, and the
-# Kokoro voice model with the game's voice table (tools/voice_server/make_voices.py).
+# Kokoro voice model with the game's voice table (tools/voice_server/make_voices.py), and
+# the Parakeet speech-to-text model (data/stt) that turns the player's voice into text.
 # Needs: gcc, x86_64-w64-mingw32-gcc (for Windows), python3 with numpy and onnx, curl.
 # Downloads are cached in $VOICE_CACHE (default ~/.cache/pw-voices).
 set -euo pipefail
@@ -25,11 +26,14 @@ fetch() { # url -> cached file, extracted once
 LIN="$(fetch "$REL/v$SHERPA/sherpa-onnx-v$SHERPA-linux-x64-shared.tar.bz2")"
 WIN="$(fetch "$REL/v$SHERPA/sherpa-onnx-v$SHERPA-win-x64-shared-MT-Release-lib.tar.bz2")"
 KOKORO="$(fetch "$REL/tts-models/kokoro-multi-lang-v1_0.tar.bz2")"
+PARAKEET="$(fetch "$REL/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2")"
 
 # The model and voices, shared by both platforms.
 DATA="$OUT/data"
 mkdir -p "$DATA"
 python3 "$HERE/make_voices.py" "$KOKORO" "$ROOT/assets/voices/catalog.json" "$DATA"
+mkdir -p "$DATA/stt"
+cp -a "$PARAKEET"/{encoder,decoder,joiner}.int8.onnx "$PARAKEET/tokens.txt" "$DATA/stt/"
 
 # Linux
 L="$OUT/linux"

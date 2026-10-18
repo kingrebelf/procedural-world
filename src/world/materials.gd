@@ -117,6 +117,21 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+## A painted interior surface (tools/make_paint_textures.py, 2.4 m to a tile): its
+## greyscale detail under `tone` and the vertex colour, its relief from the normal map.
+static func _painted(ph: String, tone: Color, rough: float, normal_scale: float) -> StandardMaterial3D:
+	var m := _pbr(tone, rough, 0.0, "", 0, 1)
+	if photo(ph, "detail") != null and photo(ph, "normal") != null:
+		m.albedo_color = Color(tone.r / 0.72, tone.g / 0.72, tone.b / 0.72) # the detail averages 0.72
+		m.albedo_texture = photo(ph, "detail")
+		m.normal_enabled = true
+		m.normal_texture = photo(ph, "normal")
+		m.normal_scale = normal_scale
+		m.uv1_triplanar = true
+		m.uv1_scale = Vector3.ONE / 2.4
+		m.uv1_triplanar_sharpness = 4.0
+	return m
+
 ## Hewn and planed timber: old oak boards whose grain runs along each beam, post and
 ## rail (MeshKit lays its UVs that way), rather than the bark on the trees.
 static func _timber() -> StandardMaterial3D:
@@ -328,7 +343,10 @@ static func _get_mat(name: String) -> Material:
 		"birch_w": m = _pbr(Color(1, 1, 1), 0.85, 0.0, "birch", 0.03, 1.2, 1.4)
 		"stone_w": m = _pbr(Color(1, 1, 1), 0.88, 0.0, "stone", 0.02, 0.35, 1.4)
 		"cap_w": m = _pbr(Color(1, 1, 1), 0.6, 0.0, "cap", 0.05, 0.6, 0.8)
-		"metal_w": m = _pbr(Color(1, 1, 1), 0.35, 0.9, "metal", 0.03, 0.8, 0.3)
+		# Metals share one look (Metals, metal.gdshader): real reflectance, wear and grime.
+		"metal_w":
+			_cache[name] = Metals.mat("worked", 0.42, true)
+			return _cache[name]
 		"cloth_w": m = _pbr(Color(1, 1, 1), 0.97, 0.0, "cloth", 0.15, 1.0, 0.6) # felt hats and hoods
 		"bark": m = _pbr(Color(0.42, 0.32, 0.24), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
 		"bark_pine": m = _pbr(Color(0.34, 0.24, 0.18), 0.95, 0.0, "bark", 0.03, 1.2, 1.6)
@@ -354,16 +372,48 @@ static func _get_mat(name: String) -> Material:
 		# A dressed slate switchboard: smooth, dark, matt.
 		"slate_board": m = _pbr(Color(0.17, 0.18, 0.2), 0.55, 0.0, "", 0, 1)
 		"slate": m = _pbr(Color(0.25, 0.27, 0.32), 0.7, 0.0, "stone", 0.05, 0.6, 1.2)
-		"iron": m = _pbr(Color(0.45, 0.45, 0.47), 0.45, 0.9, "forged", 0.04, 1.0, 0.4)
 		# Cast and painted iron on machines: dull, so it doesn't mirror the dark ground black.
 		"cast_iron": m = _pbr(Color(0.36, 0.35, 0.34), 0.72, 0.35, "forged", 0.04, 1.0, 0.5)
-		"rust": m = _pbr(Color(0.55, 0.30, 0.18), 0.8, 0.4, "rust", 0.06, 1.2, 1.0)
-		"gold": m = _pbr(Color(1.0, 0.77, 0.34), 0.3, 1.0, "forged", 0.04, 1.0, 0.3)
-		"metal": m = _pbr(Color(0.62, 0.64, 0.68), 0.32, 0.95, "metal", 0.03, 0.8, 0.3)
-		"metal_dark": m = _pbr(Color(0.26, 0.27, 0.3), 0.4, 0.85, "metal", 0.03, 0.8, 0.3)
+		# Smooth enamel on machinery: satin, untextured, tinted per part.
+		"machine_paint": m = _pbr(Color(1, 1, 1), 0.42, 0.15, "", 0, 1)
+		"iron":
+			_cache[name] = Metals.mat("iron", -1.0, true)
+			return _cache[name]
+		"rust":
+			_cache[name] = Metals.mat("rusty", -1.0, true)
+			return _cache[name]
+		"gold":
+			_cache[name] = Metals.mat("gold", -1.0, true)
+			return _cache[name]
+		# Plain worked steel and dark steel, for every era's fittings.
+		"metal":
+			_cache[name] = Metals.mat("steel", -1.0, true)
+			return _cache[name]
+		"metal_dark":
+			_cache[name] = Metals.mat("dark_steel", -1.0, true)
+			return _cache[name]
+		# Sci-fi hull plate: brushed alloy and dark steel over the panels photo.
+		"hull_metal":
+			_cache[name] = Metals.mat("alloy", -1.0, true, "panels")
+			return _cache[name]
+		"hull_metal_dark":
+			_cache[name] = Metals.mat("dark_steel", -1.0, true, "panels")
+			return _cache[name]
 		"petal_w": m = _pbr(Color(1, 1, 1), 0.7, 0.0, "", 0, 1)
-		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
+		# Paint (the vertex colour) over steel, chipped through at the edges.
+		"painted":
+			_cache[name] = Metals.mat("painted", -1.0, true)
+			return _cache[name]
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
+		# Painted sci-fi interiors, a space station or a hospital rather than a ship's
+		# engine room (tools/make_paint_textures.py): sprayed wall panels, sheet vinyl
+		# and acoustic ceiling tiles, coloured by vertex colour so each room takes its
+		# own paint, and satin enamel for trims, coves, rails and furniture.
+		"paint_wall": m = _painted("paint_panels", Color(1, 1, 1), 0.6, 0.6)
+		"vinyl_floor": m = _painted("vinyl", Color(1, 1, 1), 0.48, 0.5)
+		"ceiling_tile": m = _painted("ceiling_tiles", Color(0.9, 0.9, 0.88), 0.92, 0.7)
+		"enamel": m = _pbr(Color(1, 1, 1), 0.38, 0.0, "", 0, 1)
+		"enamel_grey": m = _pbr(Color(0.3, 0.32, 0.35), 0.42, 0.0, "", 0, 1)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)
 		"clear_glass":

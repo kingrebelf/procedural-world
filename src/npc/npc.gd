@@ -44,6 +44,10 @@ var _body: AnimatableBody3D
 var _model: Node3D
 var _human: HumanModel ## the kit character, when its assets are present
 ## What each job looks like while working at its spot.
+## Jobs whose tool in hand (a pickaxe standing in for a hoe) belongs only in the fields,
+## and the duties done there.
+const FIELD_TOOL_JOBS := ["farmer", "beekeeper", "hydroponics tech"]
+const FIELD_DUTIES := ["till", "harvest", "bees", "grow"]
 const WORK_ANIM := {"farmer": "harvest", "smith": "fix", "guard": "sword_idle", "innkeeper": "interact",
 	"hunter": "chop", "priest": "fold_arms", "weaver": "interact", "miller": "carry", "herbalist": "harvest",
 	"warden": "sword_idle", "runecarver": "fix", "bard": "dance", "mystic": "spell", "beekeeper": "plant",
@@ -155,8 +159,7 @@ func refresh_gear() -> void:
 	gear_shown = key
 	_human.wear(rec.get("gear", {}))
 	var held = rec.get("held", null)
-	if held is Dictionary:
-		_human.hold(Viewmodel.prop_for(held["type"], held))
+	_human.hold(Viewmodel.prop_for(held["type"], held) if held is Dictionary else null)
 
 ## Does something: a full-body action from NPCMind.PERFORM or a gesture from BodyLanguage.
 ## Returns false if this person doesn't know how.
@@ -293,10 +296,16 @@ func show_name(on: bool) -> void:
 		_label.text = "Lv %d  %s\n%s" % [NPCSocial.level(rec), rec["name"], rec["job"].capitalize()]
 		# Like an animal's tag: guards and anyone out to hurt you show their danger.
 		var danger := action == "attack" or int(rec.get("rel", 0)) <= -40
-		_label.modulate = Color(1.0, 0.55, 0.45, 0.95) if danger else (Color(1.0, 0.85, 0.55, 0.9) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1, 0.85))
+		# Opaque: the tag is cut out solid (Creature.crisp_tag), and a see-through one is
+		# dithered there, which temporal anti-aliasing scrambled into a ghosted double.
+		_label.modulate = Color(1.0, 0.55, 0.45) if danger else (Color(1.0, 0.85, 0.55) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1))
 
 func is_hidden() -> bool:
 	return not _model.visible
+
+## Whether the name tag is up (shown, not speech).
+func name_shown() -> bool:
+	return _label.visible and not _speaking
 
 func flash_hit() -> void:
 	_hit_flash = 0.25
@@ -331,7 +340,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	# Doing something on the spot holds them there, unless they must run.
 	if perform != "" and action in ["flee", "attack"]:
 		_end_perform()
-	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
+	var run := action == "flee" or action == "attack" or action == "fight_fire" or (action == "follow" and p2.distance_to(goal) > 8.0)
 	var stay := perform != "" and perform != "zombie"
 	_route_wait -= delta
 	var go := not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at
@@ -388,6 +397,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 		elif p2.distance_to(rec["work"]) < 1.5:
 			work_anim = WORK_ANIM.get(rec["job"], "interact")
 	rec["yaw"] = rotation.y
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		# The hoe comes out in the fields and nowhere else.
+		_human.show_tool(action == "work" and FIELD_DUTIES.has(String(duty.get("duty", ""))))
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
 	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
@@ -531,6 +543,8 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 	if st.size() >= 14:
 		work_anim = String(st[12])
 		upper_anim = String(st[13])
+	if _human and FIELD_TOOL_JOBS.has(rec["job"]):
+		_human.show_tool(action == "work" and work_anim in ["plant", "harvest"])
 	if _seen_acts < 0:
 		_seen_acts = int(st[8]) # what they did before you came is over
 	elif int(st[8]) != _seen_acts:

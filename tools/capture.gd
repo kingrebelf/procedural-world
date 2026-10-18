@@ -1,6 +1,6 @@
 extends Node
 ## Automated screenshot tour used to check visuals without a human at the keyboard:
-##   godot --path . res://src/world/world.tscn -- --capture [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
+##   godot --path . res://src/world/world.tscn -- --capture [--hold=ITEM] [--weather=KIND] [--strike] [--fall] [--out=DIR] [--seed=N] [--set=gi=0 ...] [--hud=MODE] [--env=tonemap_mode=4 ...] [--cam=auto_exposure_min_sensitivity=120] [--vfog=3] [--beams=2] [--day=0.3] [--moon=0.5]
 ## (seed 4242 unless given, so runs of the tour compare like with like)
 ## Finds a medieval town, a fantasy wildwood, a sci-fi outpost and an era border,
 ## frames each, waits for lighting to settle, and writes PNGs.
@@ -29,9 +29,18 @@ var vfog := 1.0
 var day_override := -1.0
 ## --beams=N scales the sunbeams through windows for this run.
 var beams := 1.0
+## --strike: a lightning bolt strikes in front of the camera just before each picture
+## (with --weather=storm; Weather).
+var strike := false
+## --fall: a falling star comes down in front of the camera before each picture, and
+## the night is a starfall night (Starfall; pair with --day=0.0).
+var fall := false
 ## --spin=N turns the view N degrees a second while a shot settles and is taken, so the
 ## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
 var spin := 0.0
+## --hold=pickaxe_iron puts that item in the selected hotbar slot for every shot, to see
+## it held in first person in the world.
+var hold := ""
 var _spinning := false
 
 func _ready() -> void:
@@ -42,6 +51,10 @@ func _ready() -> void:
 			settle_frames = a.substr(9).to_int()
 		if a.begins_with("--shots="):
 			only = a.substr(8).split(",")
+		if a == "--strike":
+			strike = true
+		if a == "--fall":
+			fall = true
 		if a.begins_with("--hud="):
 			hud_mode = a.substr(6)
 		if a.begins_with("--env=") and a.count("=") == 2:
@@ -61,6 +74,8 @@ func _ready() -> void:
 		# --moon=0.5 shoots every night at that moon phase (0 new, 0.5 full).
 		if a.begins_with("--moon="):
 			Atmosphere.moon_phase_override = a.substr(7).to_float()
+		if a.begins_with("--hold="):
+			hold = a.substr(7)
 		if a.begins_with("--spin="):
 			spin = a.substr(7).to_float()
 		# --set=gi=0 overrides a graphics setting for this run only (not saved), to tell
@@ -260,7 +275,7 @@ func _follow_river(g: ChunkGenerator, p: Vector2, d: Vector2, cache: Dictionary)
 	return at if at.distance_to(p) > 60.0 else Vector2.INF
 
 func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.7, look_y := NAN, before := Callable(), sight := 0.0) -> void:
-	if not only.is_empty() and not only.has(name.substr(0, 2)):
+	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
 	var streamer: ChunkStreamer = world.streamer
@@ -271,6 +286,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var y := g.field.height(at.x, at.y) + height
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
+	if hold != "" and not ItemDB.def(hold).is_empty():
+		Game.inventory.set_slot(p.selected, ItemDB.make(hold, 1, 1.0, {}))
+		p.select(p.selected)
 	var arrived := Time.get_ticks_msec()
 	await _wait_loaded(p, streamer)
 	# Loading can take a long while on a slow renderer: put the clock back to the shot's time.
@@ -303,6 +321,14 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	_shoo_creatures(p.global_position, 45.0, true)
 	if before.is_valid():
 		await before.call()
+	if strike and Weather.current != null:
+		Weather.current.strike_now = true
+		await _wait(3)
+	if fall and Weather.current != null:
+		Weather.current.starfall.forced = true
+		Weather.current.starfall.land_now = true
+		# Caught mid-fall, the fireball still high over the land.
+		await _wait_ms(2200)
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
@@ -314,6 +340,10 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 ## Prints every 3D node whose transform has gone non-finite (the renderer only says
 ## "!v.is_finite()" without naming it).
 func _process(delta: float) -> void:
+	# The player is frozen for the shots (no physics step), but what it holds should still
+	# settle into its hold as it does in play.
+	if world and world.player and not world.player.is_physics_processing() and world.player.viewmodel.visible:
+		world.player.viewmodel.sway(delta, 0.0)
 	if _spinning and world and world.player:
 		world.player._yaw += deg_to_rad(spin) * delta
 		world.player._apply_look()
@@ -460,6 +490,8 @@ func _run() -> void:
 		await _room_shots(g)
 	if only.is_empty() or only.has("38"):
 		await _house_shot(g)
+	if only.is_empty() or only.has("84") or only.has("85") or only.has("87"):
+		await _prop_shots(g)
 	if only.is_empty() or only.has("30") or only.has("31") or only.has("32"):
 		await _wonder_shots()
 	if only.is_empty() or only.has("45") or only.has("46") or only.has("47") or only.has("48"):
@@ -468,8 +500,12 @@ func _run() -> void:
 		await _egg_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if g.landforms:
 		await _landform_shots(g)
-	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95"].any(func(n): return only.has(n))):
+	if WorldField.terrain_v >= WorldField.CLIMATE_V and (only.is_empty() or ["93", "94", "95", "96"].any(func(n): return only.has(n))):
 		await _climate_shots(g)
+	if only.is_empty() or only.has("100"):
+		await _wear_shots(g)
+	if only.is_empty() or only.has("62"):
+		await _peaks_shot(g)
 	if only.is_empty() or ["65", "66", "67", "68", "69", "88", "89"].any(func(n): return only.has(n)):
 		await _boat_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if only.is_empty() or only.has("50") or only.has("51") or only.has("52"):
@@ -595,6 +631,8 @@ func _run() -> void:
 	var rv := _find_river(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if rv != Vector4.ZERO:
 		await _shot("08_river", Vector2(rv.x, rv.y), Vector2(rv.z, rv.w), 0.4, 7.0, NAN, Callable(), 4.0)
+	if only.is_empty() or only.has("101") or only.has("102") or only.has("103"):
+		await _waterfall_shots(ChunkGenerator.new(Game.seed, Game.store.has_rivers()))
 	if shore != Vector2.ZERO and (only.is_empty() or only.has("35") or only.has("36") or only.has("86")):
 		await _water_shots(g, shore)
 	if only.is_empty() or only.has("80") or only.has("81") or only.has("82") or only.has("83"):
@@ -784,7 +822,7 @@ func _ground_shots(g: ChunkGenerator) -> void:
 			# front, and stays level behind for the camera.
 			for k in 16:
 				var d := Vector2.from_angle(k * TAU / 16.0)
-				var side := d.orthogonal()
+				var side: Vector2 = d.orthogonal()
 				var wall := true
 				for o: float in [-12.0, 0.0, 12.0]:
 					var q: Vector2 = p + side * o
@@ -942,6 +980,57 @@ func _house_shot(g: ChunkGenerator) -> void:
 	var gh: float = med["target_h"]
 	await _shot("38_house_sun", to_w.call(cam), to_w.call(at), best["day"], KitHouse.FLOOR - 0.1, gh + KitHouse.FLOOR + 0.2)
 
+## Props on the ground and floors (PropSettle): a chest out in the wilds on a hillside,
+## seen side on so its lie on the slope shows (84); a town's wagon or stall close to (85);
+## a cottage's chest on the floor, from across the room (87).
+func _prop_shots(g: ChunkGenerator) -> void:
+	if only.is_empty() or only.has("84"):
+		var best := {}
+		var score := INF
+		for kz in range(-5, 6):
+			for kx in range(-5, 6):
+				var chunk: Dictionary = g.generate(kx, kz)
+				for o in chunk["objects"]:
+					if not Eras.CACHE_TYPES.has(o["t"]) or not PropSettle.on_ground(chunk, o):
+						continue
+					var p: Vector3 = o["p"]
+					var gx := ChunkGenerator.height_at(chunk, p.x + 0.6, p.z) - ChunkGenerator.height_at(chunk, p.x - 0.6, p.z)
+					var gz := ChunkGenerator.height_at(chunk, p.x, p.z + 0.6) - ChunkGenerator.height_at(chunk, p.x, p.z - 0.6)
+					var slope := rad_to_deg(atan(Vector2(gx, gz).length() / 1.2))
+					# A clear hillside: steep enough to show, not a cliff.
+					var sc := absf(slope - 22.0) + Vector2(kx, kz).length() * 0.3
+					if sc < score:
+						score = sc
+						best = {"w": Vector2(kx * 64.0 + p.x, kz * 64.0 + p.z), "y": p.y, "down": -Vector2(gx, gz).normalized()}
+		if not best.is_empty():
+			var at: Vector2 = best["w"]
+			# Side on to the fall line, a little downhill.
+			var side := (best["down"] as Vector2).orthogonal()
+			await _shot("84_prop_slope", at + side * 3.6 + (best["down"] as Vector2) * 1.0, at, 0.42, 1.3, float(best["y"]) + 0.3)
+	var med := _find_settlement(g, Eras.MEDIEVAL)
+	if med.is_empty():
+		return
+	var mid: Vector2 = med["center"]
+	var gh: float = med["target_h"]
+	if only.is_empty() or only.has("85"):
+		for it in g.settlement_layout(med):
+			if String(it["t"]) in ["wagon", "fruit_cart", "market_stall", "barrels"]:
+				var p: Vector2 = it["p"]
+				var away := (p - mid).normalized() if p != mid else Vector2(1, 0)
+				await _shot("85_town_wagon", p + away.rotated(0.6) * 4.5, p, 0.4, 1.1, gh + 0.4)
+				break
+	if only.is_empty() or only.has("87"):
+		for it in g.settlement_layout(med):
+			if String(it["t"]) != "cottage":
+				continue
+			var c: Vector2 = it["p"]
+			var yaw: float = it["yaw"]
+			var to_w := func(l: Vector2) -> Vector2: return c + Vector2(l.x * cos(yaw) + l.y * sin(yaw), -l.x * sin(yaw) + l.y * cos(yaw))
+			var spot: Vector3 = Interiors.LOOT["cottage"][0][0]
+			var fl := KitHouse.FLOOR - KitHouse.SINK
+			await _shot("87_room_chest", to_w.call(Vector2(1.2, 1.6)), to_w.call(Vector2(spot.x, spot.z)), 0.45, fl + 1.55, gh + fl + 0.35)
+			break
+
 ## v7 landforms, each from the heart of the nearest region that has it: towers and
 ## needles from the valley floor, holes (craters, gorges, sinkholes) from the rim.
 const LANDFORM_SHOTS := {
@@ -982,6 +1071,57 @@ func _landform_shots(g: ChunkGenerator) -> void:
 		var tgt := g.field.height(best.x, best.y)
 		await _shot(shot, cam, best, 0.42, 9.0 if looking_down else 2.5, tgt + (2.0 if looking_down else 14.0))
 
+## Village houses weathered by their climate (ClimateWear, shots 100_wear_*): the mossiest, the coldest
+## (at dawn, for the hoar frost) and the dustiest village near spawn, a yard seen at eye
+## height, and the inside of the mossy one, which must stay clean.
+func _wear_shots(g: ChunkGenerator) -> void:
+	var pick := [{}, {}, {}]
+	var score := [-INF, -INF, -INF]
+	for r in 30:
+		for sz in range(-r, r + 1):
+			for sx in range(-r, r + 1):
+				if maxi(absi(sx), absi(sz)) != r:
+					continue
+				var s := g.settlement_at(sx, sz)
+				if s.is_empty() or s["era"] != Eras.MEDIEVAL:
+					continue
+				var c: Vector2 = s["center"]
+				var lv := ClimateWear.levels(g.field, c.x, c.y)
+				# The cold of height toward the snow line, as the shaders add it.
+				var alt := smoothstep(WorldField.snow_line - 22.0, WorldField.snow_line - 6.0, g.field.height(c.x, c.y))
+				var cold := maxf(lv.g, alt)
+				# Each climate pure (a wet village that isn't also snowy), and near, so the
+				# far shots load in time.
+				var near := c.length() / 20000.0
+				var want := [lv.r - cold - lv.b - near, cold - lv.b - near, lv.b - cold - lv.r * 0.5 - near]
+				for k in 3:
+					if want[k] > score[k]:
+						score[k] = want[k]
+						pick[k] = s
+	var names := ["100_wear_wet", "100_wear_cold", "100_wear_dry"]
+	for k in 3:
+		if pick[k].is_empty():
+			print("no village for ", names[k])
+			continue
+		var pl := TownLife.plan(g, pick[k])
+		if pl["houses"].is_empty():
+			print("no house for ", names[k])
+			continue
+		var h: Dictionary = pl["houses"][0]
+		var hp: Vector2 = h["p"]
+		var hy: float = h["yaw"]
+		var hw: float = h["w"]
+		var hd: float = h["d"]
+		print("wear shot ", names[k], " level ", score[k], " at ", hp)
+		await _shot(names[k], TownLife.frame_to_world(hp, hy, Vector2(hw * 0.5 + 6.0, hd * 0.5 + 7.0)),
+			TownLife.frame_to_world(hp, hy, Vector2(0.0, 0.0)), 0.27 if k == 1 else 0.42, 1.7,
+			g.field.height(hp.x, hp.y) + 2.5)
+		if k == 0:
+			# Standing on the floor (the height is the feet's), looking at the far corner.
+			await _shot("100_wear_inside", TownLife.frame_to_world(hp, hy, Vector2(hw * 0.25, hd * 0.25)),
+				TownLife.frame_to_world(hp, hy, Vector2(-hw * 0.5, -hd * 0.5)), 0.42, 0.15,
+				g.field.height(hp.x, hp.y) + 1.0)
+
 ## The nearest region of each climate (v18): rainforest of palms and jungle, dry savanna,
 ## cold spruce uplands; standing on its edge looking in.
 const CLIMATE_SHOTS := {"93_rainforest": [3, 2], "94_savanna": [3, 1], "95_boreal": [0, 1]}
@@ -1014,6 +1154,59 @@ func _climate_shots(g: ChunkGenerator) -> void:
 		print("climate shot ", shot, " at ", best, " ", g.field.region_name_at(best.x, best.y))
 		var cam := best + Vector2(-60, -35)
 		await _shot(shot, cam, best, 0.42, 2.5, g.field.height(best.x, best.y) + 8.0)
+	if only.is_empty() or only.has("96"):
+		await _border_shot(g)
+
+## Where two regions of different climate meet near the spawn, looking across the band
+## they blend over (WorldField.BLEND): the trees and ground should change gradually.
+func _border_shot(g: ChunkGenerator) -> void:
+	for r in range(256, 6000, 64):
+		for k in 48:
+			var a := TAU * k / 48.0
+			var p := Vector2(cos(a), sin(a)) * r
+			var b: Array = g.field.region_blend(p.x, p.y)
+			if float(b[2]) < 0.45 or not _low_ground(g, p):
+				continue
+			var c0 := WorldField.region_climate(int(b[0]))
+			var c1 := WorldField.region_climate(int(b[1]))
+			if c0.x < 0 or c0.x == c1.x:
+				continue
+			for d: Vector2 in [Vector2(90, 0), Vector2(0, 90), Vector2(64, 64), Vector2(64, -64)]:
+				var h0 := g.field.region_hash_at(p.x - d.x, p.y - d.y)
+				var h1 := g.field.region_hash_at(p.x + d.x, p.y + d.y)
+				if h0 != h1 and _low_ground(g, p - d) and _low_ground(g, p + d):
+					var side: Vector2 = d.orthogonal().normalized() * 70.0
+					print("border shot at ", p, " climates ", c0, " ", c1)
+					await _shot("96_biome_border", p + side, p - side, 0.42, 6.0)
+					return
+	print("no climate border found")
+
+## The highest snowy peak near the spawn, seen from lower ground a few hundred metres
+## off in the morning sun: rock faces, gullies and the snow lodged in them.
+func _peaks_shot(g: ChunkGenerator) -> void:
+	var peak := Vector3(0, -INF, 0)
+	for iz in range(-60, 61):
+		for ix in range(-60, 61):
+			var h := g.field.height(ix * 40.0, iz * 40.0)
+			if h > peak.y:
+				peak = Vector3(ix * 40.0, h, iz * 40.0)
+	if peak.y < WorldField.snow_line + 20.0:
+		print("no snowy peak near the spawn")
+		return
+	var top := Vector2(peak.x, peak.z)
+	var best := Vector2.INF
+	var low := INF
+	for k in 16:
+		var cam := top + Vector2.from_angle(TAU * k / 16.0) * 420.0
+		var h := g.field.height(cam.x, cam.y)
+		if h > WATER_SAFE + 1.0 and h < low:
+			low = h
+			best = cam
+	if best == Vector2.INF:
+		print("no ground to see the peak from")
+		return
+	print("peaks shot at ", best, " looking at ", peak)
+	await _shot("62_peaks", best, top, 0.36, 25.0, peak.y - 25.0)
 
 func _climate_is(g: ChunkGenerator, p: Vector2, want: Array) -> bool:
 	var c := WorldField.region_climate(g.field.region_hash_at(p.x, p.y))
@@ -1777,7 +1970,7 @@ func _cave_floor(ps: PackedFloat32Array, p: Vector2, top: float) -> float:
 	return NAN
 
 func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool) -> void:
-	if not only.is_empty() and not only.has(name.substr(0, 2)):
+	if not only.is_empty() and not only.has(name.get_slice("_", 0)):
 		return
 	var p: Player = world.player
 	Game.day = day
@@ -1798,6 +1991,43 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)
 	if torch:
 		p.hand_light.from_data({"kind": "", "torch_left": 0.0})
+
+## Waterfalls (Waterfalls, v19 worlds with rivers), the nearest good one to the spawn:
+## 101 seen from the plunge pool below it, 102 from the bank beside its lip, looking over
+## the edge, 103 from further down the river, the fall in its valley.
+func _waterfall_shots(g: ChunkGenerator) -> void:
+	var best := {}
+	var bd := INF
+	for iz in range(-6, 6):
+		for ix in range(-6, 6):
+			var f := Waterfalls.in_cell(g, ix, iz)
+			if f.is_empty() or float(f["drop"]) < 8.0:
+				continue
+			var dl := (f["lip"] as Vector2).length()
+			if dl < bd:
+				bd = dl
+				best = f
+	if best.is_empty():
+		print("no waterfall near the spawn")
+		return
+	var lip: Vector2 = best["lip"]
+	var d: Vector2 = best["dir"]
+	var side := Vector2(-d.y, d.x)
+	var top: float = best["top"]
+	var h := Waterfalls.tier_drop(best, 0)
+	var low: float = (best["levels"] as PackedFloat32Array)[0]
+	var ground := func(q: Vector2) -> float:
+		var k := Vector2i(int(floor(q.x / ChunkGenerator.SIZE)), int(floor(q.y / ChunkGenerator.SIZE)))
+		var ch := g.generate(k.x, k.y)
+		return ChunkGenerator.height_at(ch, q.x - k.x * ChunkGenerator.SIZE, q.y - k.y * ChunkGenerator.SIZE)
+	print("waterfall at %s, %.1f m (%d tiers)" % [lip, float(best["drop"]), (best["steps"] as PackedFloat32Array).size()])
+	var face := Vector3(lip.x, low + h * 0.55, lip.y) + Vector3(d.x, 0.0, d.y) * 1.5
+	var below := lip + d * (Waterfalls.pool_radius(h) * 1.5 + h * 0.8 + 8.0) + side * 4.0
+	await _abs_shot("101_waterfall", Vector3(below.x, maxf(low, float(ground.call(below))) + 2.0, below.y), face, 0.42, false)
+	var bank := lip + side * 14.0 - d * 2.0
+	await _abs_shot("102_waterfall_lip", Vector3(bank.x, maxf(top, float(ground.call(bank))) + 1.7, bank.y), Vector3(lip.x, low, lip.y) + Vector3(d.x, 0.0, d.y) * 6.0, 0.42, false)
+	var far := lip + d * 75.0 + side * 22.0
+	await _abs_shot("103_waterfall_valley", Vector3(far.x, float(ground.call(far)) + 6.0, far.y), Vector3(lip.x, low + h * 0.5, lip.y), 0.4, false)
 
 ## Boats (65-69, 88): a cog at anchor and a research vessel seen from the water, the cog's
 ## deck and the vessel's bridge from aboard, a small working boat with its crew, and the cog's stern

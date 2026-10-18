@@ -2,11 +2,15 @@ shader_type spatial;
 // RealTree bark: the bark photo (and its normal map) tinted by the vertex and instance
 // colour, with each tree's own moss and lichen (plant_look.gdshaderinc): moss thickest at
 // the foot of the trunk, on the tops of limbs and on the north side, lichen in pale
-// blotches. Off on the merged far mesh (`individual` false), where it is too small to see.
+// blotches. The place's climate (climate_wear.gdshaderinc) furs it with moss where it is
+// wet and bares it where it is dry, and lays snow along the limbs and hoar frost on cold
+// mornings where it is cold. Off on the merged far mesh (`individual` false), where it is
+// too small to see.
 render_mode diffuse_burley, specular_schlick_ggx;
 
 #include "res://src/world/plant_look.gdshaderinc"
 #include "res://src/world/noise2d.gdshaderinc"
+#include "res://src/env/climate_wear.gdshaderinc"
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -22,6 +26,7 @@ varying vec3 plant_p;
 varying vec2 growth; // moss, lichen
 varying float seed;
 varying vec3 tone;
+varying vec3 wp;
 
 void vertex() {
 	// Vertex and instance colours are authored as sRGB.
@@ -30,12 +35,14 @@ void vertex() {
 	growth = vec2(0.0);
 	seed = 0.0;
 	tone = vec3(1.0);
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	if (individual) {
 		vec4 r = plant_rand((MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz, 1u);
 		// Each trunk its own lit grey-brown: cool grey to warm brown, lighter or darker.
 		tone = mix(vec3(0.95, 0.97, 1.0), vec3(1.08, 0.97, 0.84), r.w) * (0.85 + 0.35 * fract(r.z * 5.3));
 		// From bare to furred with moss; lichen on about two thirds.
-		growth = vec2(r.x * moss_scale, smoothstep(0.35, 1.0, r.y));
+		vec4 lv = wear_levels(MODEL_MATRIX[3].xyz);
+		growth = vec2(r.x * moss_scale * clamp(lv.x / WEAR_TEMPERATE.x, 0.0, 2.0), smoothstep(0.35, 1.0, r.y) * clamp(1.6 - lv.x, 0.4, 1.2));
 		seed = r.z * 97.0;
 	}
 }
@@ -61,5 +68,21 @@ void fragment() {
 		ROUGHNESS = mix(ROUGHNESS, 1.0, m);
 		float l = smoothstep(0.7, 0.78, vnoise(q * 4.1 + 31.0)) * growth.y * (1.0 - m);
 		ALBEDO = mix(ALBEDO, vec3(0.32, 0.34, 0.26), l * 0.75);
+	}
+	if (individual) {
+		vec4 lv = wear_levels(wp);
+		float frost = wear_frost(lv);
+		float s_lvl = smoothstep(0.35, 0.85, lv.y);
+		if (frost + s_lvl > 0.01) {
+			vec3 wn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+			vec2 q = vec2(plant_p.x + plant_p.z, plant_p.y) + seed;
+			float up = smoothstep(0.2, 0.8, wn.y);
+			// Snow along the tops of limbs, hoar frost furring the bark on its upper side.
+			float sn = smoothstep(0.35, 0.65, up * s_lvl * 1.4 + (vnoise(q * 3.1) - 0.5) * 0.5);
+			ALBEDO = mix(ALBEDO, WEAR_SNOW, sn);
+			float fm = frost * (0.12 + 0.4 * up + 0.3 * smoothstep(0.45, 0.9, vnoise(q * 19.0))) * (1.0 - sn);
+			ALBEDO = mix(ALBEDO, WEAR_FROST, clamp(fm, 0.0, 0.55));
+			ROUGHNESS = mix(ROUGHNESS, 0.6, sn);
+		}
 	}
 }

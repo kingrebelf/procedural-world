@@ -397,7 +397,9 @@ func _process(delta: float) -> void:
 		for n in e["nodes"]:
 			if not is_instance_valid(n):
 				continue
-			n.show_name(pp.distance_to(n.global_position) < 7.0 and not n.is_hidden())
+			# Shown inside 7 m, hidden only past 8: someone at the edge doesn't blink their tag.
+			var tag_d := pp.distance_to(n.global_position)
+			n.show_name(tag_d < (8.0 if n.name_shown() else 7.0) and not n.is_hidden())
 			if n.boat != null:
 				# Aboard: everyone draws the crew at their stations; the game that runs
 				# them decides what they do.
@@ -471,7 +473,7 @@ static func _step_every(n: NPC, cam: Camera3D) -> int:
 
 ## What a person makes of the player at `pp`: you (peer 0), or online another player.
 func perception(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> Dictionary:
-	var held = Game.inventory.get_slot(player.selected) if player.has_method("held_item") else null
+	var held = player.held_item() if player.has_method("held_item") else null
 	var wanted: int = Game.crime.stars(String(e.get("sid", "")), Game.day)
 	if peer != 0:
 		var r: Dictionary = Net.peers.get(peer, {})
@@ -495,6 +497,9 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		_decide_bandit(n, e, pp, t)
 		return
 	var rec := n.rec
+	if FireCrew.decide(self, n, e):
+		rec["_action"] = n.action
+		return
 	var per := perception(n, e, pp, t, peer)
 	if per["player_dist"] > 30.0:
 		rec["greeted"] = false
@@ -774,6 +779,10 @@ func end_talk(n: NPC) -> void:
 ## The player struck an NPC. Everyone remembers.
 func player_hit(n: NPC, damage: float) -> void:
 	var rec := n.rec
+	if rec.get("child", false):
+		# Children can't be hurt by the player: the blow is pulled.
+		n.say(NPCMind.bark(rec, "hurt"), 2.0)
+		return
 	var s := n.settlement
 	rec["hp"] = float(rec.get("hp", 100.0)) - damage
 	n.flash_hit()
@@ -959,14 +968,15 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		return false
 	var s: Dictionary = e["data"]
 	var fine := int(Crime.FINES.get(kind, 10)) + maxi(0, worth)
-	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism"}.get(kind, "Crime")
+	var why: String = {"theft": "Theft", "pickpocket": "Caught pickpocketing", "lockpick": "Caught breaking in", "trespass": "Trespassing", "bribery": "Bribing the watch", "vandalism": "Vandalism", "arson": "Arson"}.get(kind, "Crime")
 	Game.add_bounty(String(e["sid"]), s["name"], fine, why)
 	var shout: Array = {"theft": ["Thief! Stop, thief!", "Hey! That's not yours!", "Guards! A thief!"],
 		"pickpocket": ["Get your hands off me!", "Thief! Guards!", "Hey! My purse!"],
 		"lockpick": ["What are you doing with that lock?", "Guards! Someone's breaking in!"],
 		"vandalism": ["Hey! Stop smashing that!", "Guards! They're breaking the door down!"],
 		"trespass": ["You've no leave to be here! Guards!", "Intruder! Guards!", "Oi! Who let you in?"],
-		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."]}.get(kind, ["Guards!"])
+		"bribery": ["You think the watch can be bought? Guards!", "A bribe? You'll pay a fine for that."],
+		"arson": ["Fire! They've set it alight!", "Guards! Fire! Stop them!", "Fire raiser! Get water!"]}.get(kind, ["Guards!"])
 	var shouted := false
 	for n in seen:
 		if not is_instance_valid(n):
@@ -974,7 +984,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		NPCMind.change_rel(n.rec, -30 if n == caught_by else -12)
 		NPCMind.remember(n.rec, "Saw the traveller %s." % {"theft": "stealing " + what, "pickpocket": "trying to pick my pocket" if n == caught_by else "picking pockets",
 			"lockpick": "breaking into a chest", "vandalism": "smashing down a door", "trespass": "in town without leave",
-			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch"}.get(kind, "committing a crime"))
+			"bribery": "trying to bribe me" if n == caught_by else "trying to bribe the watch", "arson": "setting fire to the " + what}.get(kind, "committing a crime"))
 		n.rec["mood"] = "angry" if float(n.rec["traits"]["brave"]) > 0.5 else "afraid"
 		if not shouted:
 			_bark(n, shout[randi() % shout.size()], n.global_position.distance_to(player.global_position))
@@ -986,7 +996,7 @@ func report_crime(pos: Vector3, kind: String, worth: int, what: String, caught_b
 		if NPCGen.GUARD_JOBS.has(n.rec["job"]):
 			n.decide_in = 0.0
 	NPCMind.add_rumor(s, "The traveller was seen %s." % {"theft": "stealing", "pickpocket": "picking pockets", "lockpick": "breaking into a chest",
-		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch"}.get(kind, "breaking the law"))
+		"trespass": "sneaking about town without leave", "bribery": "trying to bribe the watch", "arson": "setting fire to the " + what}.get(kind, "breaking the law"))
 	e["dirty"] = true
 	return true
 
@@ -1054,6 +1064,8 @@ func _on_mob_hit(kind: String, id: String, dmg: float, killed: bool, _from: int)
 	if n == null or not is_instance_valid(n):
 		return
 	var rec: Dictionary = n.rec
+	if rec.get("child", false):
+		return # nobody hurts children (player_hit refuses it where they are run too)
 	if killed:
 		rec["dead"] = true
 		rec["hp"] = 0.0

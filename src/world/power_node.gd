@@ -47,6 +47,9 @@ var _spinner: Node3D
 var _spin_axis := Vector3.UP
 var _spin_rate := 0.0
 var _spin_max := 9.0
+var _piston: MeshInstance3D ## a crosshead the crank drives, or null
+var _piston_spec := {}
+var _crank := 0.0
 var _machine_on := false
 var _arm: Node3D
 var _arm_t := 0.0
@@ -110,6 +113,12 @@ func setup(c: ChunkNode, o: Dictionary) -> void:
 		_spinner.add_child(_mesh(String(sp["part"])))
 		_spin_axis = sp.get("axis", Vector3.UP)
 		add_child(_spinner)
+		if sp.has("piston"):
+			# A crosshead or piston driven off the spinner's crank, to and fro.
+			_piston_spec = sp["piston"]
+			_piston = _mesh(String(_piston_spec["part"]))
+			_piston.position = _piston_spec["pos"]
+			add_child(_piston)
 	if au.has("arm"):
 		_arm = Node3D.new()
 		_arm.position = au["arm"]
@@ -408,6 +417,9 @@ func _process(delta: float) -> void:
 	if _spinner != null:
 		_spin_rate = move_toward(_spin_rate, _spin_max if (_machine_on or _running) else 0.0, delta * _spin_max * 0.6)
 		_spinner.rotate_object_local(_spin_axis, _spin_rate * delta)
+		if _piston != null:
+			_crank = fmod(_crank + _spin_rate * delta, TAU)
+			_piston.position = (_piston_spec["pos"] as Vector3) + (_piston_spec["axis"] as Vector3) * float(_piston_spec["stroke"]) * cos(_crank)
 		busy = busy or _spin_rate > 0.0
 	if _arm != null and _arm_t > 0.0:
 		_arm_t = maxf(0.0, _arm_t - delta * 1.6)

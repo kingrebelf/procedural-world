@@ -187,9 +187,10 @@ static func build(k: MeshKit, t: String, sp: int, v: int) -> bool:
 const UNDER_FORMS := [["fern", "bush", "flowers", "reeds"], ["fern", "bush", "glowbulbs", "fronds"], ["tendrils", "bush", "glowbulbs", "reeds"]]
 
 ## Undergrowth species of the wet tropics carry this flag (above the 31 random bits): big
-## fronds and lime ferns under the palms instead of the woodland's flowers and reeds.
+## fronds, ferns and bushes under the palms instead of the woodland's flowers and reeds
+## (no flower mats: the big petals read as alien in the jungle shade).
 const TROPIC_UNDER := 1 << 32
-const TROPIC_UNDER_FORMS := ["fronds", "fern", "bush", "fronds", "flowers"]
+const TROPIC_UNDER_FORMS := ["fronds", "fern", "bush", "fronds", "fern"]
 
 ## Which undergrowth form species `sp` takes in `era` (the same pick build_under makes).
 static func under_form(sp: int, era: int) -> String:

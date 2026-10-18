@@ -185,16 +185,19 @@ static func _v(st: SurfaceTool, p: Vector3, n: Vector3, u: float, t: float, col:
 	st.set_uv2(rg)
 	st.add_vertex(p)
 
-## An oat-like seed head: two crossed narrow diamonds of straw, drooping a little.
+## A grass seed head: a slim spike of straw, drooping a little, as three thin crossed
+## spindles so it has body from every side. (Two wide crossed diamonds read as paper
+## kites hanging in the air, face on.)
 static func _seed_head(st: SurfaceTool, r: RandomNumberGenerator, rg: Vector2, at: Vector3, size_m: float) -> void:
 	var col := Color(0.74, 0.64, 0.4).lerp(Color(0.58, 0.55, 0.36), r.randf())
 	col.a = 0.0
 	var droop := Basis(Vector3(1, 0, 0), r.randf_range(0.2, 0.5)).rotated(Vector3.UP, r.randf() * TAU)
-	for k in 2:
-		var side := droop * (Vector3(1, 0, 0) if k == 0 else Vector3(0, 0, 1)) * size_m * 0.16
-		var up := droop * Vector3(0, size_m, 0)
-		var n := droop * (Vector3(0, 0, 1) if k == 0 else Vector3(1, 0, 0))
-		var mid := at + up * 0.45
+	var up := droop * Vector3(0, size_m * 1.2, 0)
+	var mid := at + up * 0.4
+	for k in 3:
+		var a := k * TAU / 6.0
+		var side := droop * Vector3(cos(a), 0, sin(a)) * size_m * 0.07
+		var n := droop * Vector3(-sin(a), 0, cos(a))
 		for tri in [[at, mid - side, mid + side], [mid - side, at + up, mid + side]]:
 			for p in tri:
 				_v(st, p, n, 0.5, 1.0, col, rg)

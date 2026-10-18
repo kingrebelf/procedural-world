@@ -19,6 +19,18 @@ var limp := 0.0
 ## Standing weight on one leg: + the left, by how much (0..1). The hips tilt up on that
 ## side and shift over it, the back straightens against them.
 var hip := 0.0
+## Head size against the body: a child's head is large for its height (1 grown).
+var head_scale := 1.0
+## A child's rounder face: the head a little wider and shorter (0 grown .. 1 at four).
+var head_round := 0.0
+## Leg and forearm length against the kit body's (children's legs are short); the hips
+## come down to keep the feet where the animation put them.
+var leg_len := 1.0
+var arm_len := 1.0
+## Hand size (a child's hands are small).
+var hand_scale := 1.0
+## Neck length against the kit's (a child's neck is short).
+var neck_len := 1.0
 ## Where the stride is: HumanAnimator.stride() (phase, how much on the move).
 var animator: HumanAnimator
 
@@ -28,6 +40,9 @@ var _legs: Array = [] ## [thigh, calf, local axis thigh, local axis calf, leg le
 var _pelvis := -1
 var _arms: Array = [] ## [upper arm, its rest position from the clavicle, local forward axis, side +1 left]
 var _roll := -1 ## spine_01: the torso leans over the planted foot
+var _head := -1
+var _shins: Array = [] ## [calf, foot] per leg
+var _forearms: Array = [] ## [lower arm, hand] per arm
 var _roll_axis := Vector3.ZERO
 
 ## Bend per unit of stoop, radians: the back rounds, the neck pushes the head forward and
@@ -50,6 +65,10 @@ func _setup(sk: Skeleton3D) -> void:
 		if c >= 0:
 			# Shoulders rolled forward: the clavicle swings toward the chest.
 			_bones.append([c, _axis(sk, c, Vector3.UP), SHOULDER * (-1.0 if s == "l" else 1.0)])
+		var la := sk.find_bone("lowerarm_" + s)
+		var hd := sk.find_bone("hand_" + s)
+		if la >= 0 and hd >= 0:
+			_forearms.append([la, hd])
 		var ua := sk.find_bone("upperarm_" + s)
 		if ua >= 0:
 			_arms.append([ua, sk.get_bone_rest(ua).origin, _axis(sk, ua, Vector3.BACK), 1.0 if s == "l" else -1.0])
@@ -57,13 +76,42 @@ func _setup(sk: Skeleton3D) -> void:
 		var ca := sk.find_bone("calf_" + s)
 		var fo := sk.find_bone("foot_" + s)
 		if th >= 0 and ca >= 0 and fo >= 0:
+			_shins.append([ca, fo])
 			var a := sk.get_bone_global_rest(th).origin.distance_to(sk.get_bone_global_rest(ca).origin)
 			var l := sk.get_bone_global_rest(ca).origin.distance_to(sk.get_bone_global_rest(fo).origin)
 			_legs.append([th, ca, _axis(sk, th, Vector3.RIGHT), _axis(sk, ca, Vector3.RIGHT), a + l])
 	_pelvis = sk.find_bone("pelvis")
+	_head = sk.find_bone("Head")
 	_roll = sk.find_bone("spine_01")
 	if _roll >= 0:
 		_roll_axis = _axis(sk, _roll, Vector3.BACK)
+
+## A child's short legs and forearms and small hands, on the animated pose. Each joint
+## moves in toward its parent rather than scaling the bone, so the limbs keep their girth.
+func _proportions(sk: Skeleton3D) -> void:
+	if neck_len < 0.999 and _head >= 0:
+		sk.set_bone_pose_position(_head, sk.get_bone_pose_position(_head) * neck_len)
+	if arm_len < 0.999:
+		for e in _forearms:
+			sk.set_bone_pose_position(e[0], sk.get_bone_pose_position(e[0]) * arm_len)
+			sk.set_bone_pose_position(e[1], sk.get_bone_pose_position(e[1]) * arm_len)
+	if hand_scale < 0.999:
+		for e in _forearms:
+			sk.set_bone_pose_scale(e[1], Vector3.ONE * hand_scale)
+	if leg_len > 0.999 or _pelvis < 0 or _shins.size() != 2:
+		return
+	var before := 0.0
+	for e in _shins:
+		before += sk.get_bone_global_pose(e[1]).origin.y
+	for e in _shins:
+		sk.set_bone_pose_position(e[0], sk.get_bone_pose_position(e[0]) * leg_len)
+		sk.set_bone_pose_position(e[1], sk.get_bone_pose_position(e[1]) * leg_len)
+	var after := 0.0
+	for e in _shins:
+		after += sk.get_bone_global_pose(e[1]).origin.y
+	var pg := sk.get_bone_global_pose(_pelvis)
+	pg.origin.y -= (after - before) * 0.5
+	sk.set_bone_global_pose(_pelvis, pg)
 
 ## A character-space axis in bone `b`'s own rest frame.
 static func _axis(sk: Skeleton3D, b: int, v: Vector3) -> Vector3:
@@ -82,6 +130,11 @@ func _process_modification_with_delta(_delta: float) -> void:
 			sk.set_bone_pose_position(a[0], r * maxf(1.0 - shoulder_in / maxf(r.length(), 0.01), 0.5))
 		if arms_out > 0.001:
 			sk.set_bone_pose_rotation(a[0], sk.get_bone_pose_rotation(a[0]) * Quaternion(a[2], arms_out * float(a[3])))
+	if _head >= 0 and absf(head_scale - 1.0) > 0.001:
+		# Everything on the head (hair, eyes, brows, a hat) is skinned or attached to it.
+		# The head bone's axes are the body's (x across, y up, z forward).
+		sk.set_bone_pose_scale(_head, Vector3(1.0 + 0.06 * head_round, 1.0 - 0.04 * head_round, 1.0 + 0.02 * head_round) * head_scale)
+	_proportions(sk)
 	_gait(sk)
 	_stand(sk)
 	if absf(stoop) < 0.01:
@@ -98,7 +151,7 @@ func _process_modification_with_delta(_delta: float) -> void:
 	for leg in _legs:
 		sk.set_bone_pose_rotation(leg[0], sk.get_bone_pose_rotation(leg[0]) * Quaternion(leg[2], -k))
 		sk.set_bone_pose_rotation(leg[1], sk.get_bone_pose_rotation(leg[1]) * Quaternion(leg[3], 2.0 * k))
-		drop = maxf(drop, float(leg[4]) * (1.0 - cos(k)))
+		drop = maxf(drop, float(leg[4]) * leg_len * (1.0 - cos(k)))
 	var pg := sk.get_bone_global_pose(_pelvis)
 	pg.origin.y -= drop
 	sk.set_bone_global_pose(_pelvis, pg)

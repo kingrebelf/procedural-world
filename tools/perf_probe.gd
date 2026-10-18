@@ -153,6 +153,35 @@ func _fmt(m: Dictionary) -> String:
 		m["frame"], int(1000.0 / maxf(m["frame"], 0.1)), m["worst"], m["gpu"], m["cpu"], m["proc"], m["phys"], int(m["draws"]), int(m["objs"]), m["prims"] / 1e6]
 
 ## Counts what is in the scene round the player.
+## Per person: how many mesh instances and surfaces are drawn, and how many cast shadows
+## (each costs a draw in every shadow pass it falls in).
+func _people_census() -> String:
+	var ppl := world.get_node_or_null("People")
+	if ppl == null:
+		return "people: none"
+	var n := 0
+	var inst := 0
+	var surf := 0
+	var cast := 0
+	var cast_surf := 0
+	for h in ppl.find_children("*", "HumanModel", true, false):
+		if not (h as Node3D).is_visible_in_tree():
+			continue
+		n += 1
+		for mi in h.find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			if not m.is_visible_in_tree() or m.mesh == null:
+				continue
+			inst += 1
+			surf += m.mesh.get_surface_count()
+			if m.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				cast += 1
+				cast_surf += m.mesh.get_surface_count()
+	if n == 0:
+		return "people: none drawn"
+	return "people: %d drawn, per person %.1f meshes (%.1f surfaces), %.1f casting shadows (%.1f surfaces)" % [
+		n, inst / float(n), surf / float(n), cast / float(n), cast_surf / float(n)]
+
 func _census() -> String:
 	var lights := 0
 	var shadow_lights := 0
@@ -206,6 +235,7 @@ func _probe_view(label: String, at: Vector2, look: Vector2, height: float) -> vo
 	_out("== %s at %s" % [label, at])
 	_out("  " + _fmt(base))
 	_out("  " + _census())
+	_out("  " + _people_census())
 	if not compare.is_empty():
 		var saved := Settings.values.duplicate()
 		for c in compare:

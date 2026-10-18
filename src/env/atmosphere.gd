@@ -38,6 +38,12 @@ var streamer: Node3D ## a ChunkStreamer (untyped: tests load this without the Ga
 ## 0 in the open .. 1 deep in a cave: daylight, sky light and haze fade out underground.
 var underground := 0.0
 var _under_target := 0.0
+## Rain, snow, storms and the rest (a child, so it runs after this each frame).
+var weather: Weather
+## How much of the sky metal and gloss mirror (sky_reflect_g, the sky's radiance pass), as
+## the weather leaves it: thick mist or rain hides the sky they would show. Set by Weather.
+var reflect_mul := 1.0
+var _reflect_sent := -1.0
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -173,6 +179,10 @@ func _ready() -> void:
 	_gust_noise.fractal_type = FastNoiseLite.FRACTAL_NONE
 	Settings.changed.connect(apply_settings)
 	apply_settings()
+	weather = Weather.new()
+	weather.name = "Weather"
+	weather.atmosphere = self
+	add_child(weather)
 
 func apply_settings() -> void:
 	var gi := int(Settings.get_value("gi"))
@@ -181,6 +191,7 @@ func apply_settings() -> void:
 	env.ssao_enabled = bool(Settings.get_value("ssao"))
 	env.ssr_enabled = bool(Settings.get_value("ssr"))
 	env.glow_enabled = bool(Settings.get_value("glow"))
+	env.adjustment_color_correction = Grade.lut() if bool(Settings.get_value("film_grade")) else null
 	var vf := int(Settings.get_value("volumetric_fog"))
 	env.volumetric_fog_enabled = vf > 0
 	_shafts.visible = bool(Settings.get_value("sun_shafts"))
@@ -285,6 +296,8 @@ func _update_wind(delta: float) -> void:
 	# Weather drifts over in-game hours; gusts swell and die away over several seconds.
 	var gt := Game.day * Game.DAY_SECONDS
 	var base := 0.32 + _wind_noise.get_noise_1d(gt * 0.0006) * 0.75
+	if weather != null:
+		base = weather.wind # fronts, storms and gales
 	var want := smoothstep(0.0, 0.6, _gust_noise.get_noise_1d(gt * 0.045 + 500.0)) * 0.35 * (0.4 + base)
 	# Rise slower than the noise can, and fall slower still.
 	_gust = lerpf(_gust, want, clampf(delta * (0.6 if want > _gust else 0.3), 0.0, 1.0))
@@ -295,10 +308,12 @@ func _update_wind(delta: float) -> void:
 	_cloud_drift += wind_dir * delta * (6.0 + wind_strength * 22.0)
 	RenderingServer.global_shader_parameter_set("cloud_drift", _cloud_drift)
 	var ang := _wind_noise.get_noise_1d(gt * 0.0002 + 900.0) * TAU * 1.5
-	wind_dir = Vector2(cos(ang), sin(ang))
+	wind_dir = Vector2(cos(ang), sin(ang)) if weather == null else weather.wind_dir
 	RenderingServer.global_shader_parameter_set("wind_strength", wind_strength)
 	# Cloud cover follows the weather: windy spells are cloudier.
 	var cover := clampf(0.35 + _wind_noise.get_noise_1d(gt * 0.0004 + 300.0) * 0.6 + wind_strength * 0.25, 0.05, 0.95)
+	if weather != null:
+		cover = weather.cover
 	sky_mat.set_shader_parameter("cloud_cover", cover)
 	RenderingServer.global_shader_parameter_set("cloud_cover_g", cover)
 	sun.shadow_opacity = lerpf(1.0, 0.75, cover)
@@ -433,6 +448,12 @@ func _update_time_of_day() -> void:
 	# With GI on, the shade's fill comes from the GI rather than the ambient above, and
 	# by day it fell short of the sky and sunlit ground a wall in shade looks out on.
 	env.sdfgi_energy = 1.0 + 0.25 * daylight * (1.0 - golden) * (1.0 - underground)
+	# Metal mirrors no sky deep in a cave, and little in thick mist: a pick held in the
+	# murk at dusk shone with the bright sky above the fog, as if it glowed.
+	var refl := (1.0 - underground) * reflect_mul
+	if absf(refl - _reflect_sent) > 0.004:
+		_reflect_sent = refl
+		RenderingServer.global_shader_parameter_set("sky_reflect_g", refl)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

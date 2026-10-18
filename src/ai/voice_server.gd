@@ -1,7 +1,8 @@
 class_name VoiceServer
 extends Node
 ## The game's built-in natural voices: a small voice program shipped beside the game in
-## voices/ (tools/voice_server) that speaks with the Kokoro neural voice model, offline.
+## voices/ (tools/voice_server) that speaks with the Kokoro neural voice model, offline,
+## and (when the pack has data/stt) turns the player's voice into text.
 ## It is started in the background when the game starts, on a random local port with a
 ## random token, and answers like any OpenAI-compatible voice server, so AI.speech and
 ## VoiceOut use it the same way. It runs below the game's priority and quits with it.
@@ -36,9 +37,17 @@ static func _binary() -> String:
 static func present() -> bool:
 	return FileAccess.file_exists(_binary()) and FileAccess.file_exists(dir().path_join("data/model.onnx"))
 
+## Whether this install has the built-in speech to text (installer: "Talk with your voice").
+static func has_stt() -> bool:
+	return FileAccess.file_exists(_binary()) and FileAccess.file_exists(dir().path_join("data/stt/encoder.int8.onnx"))
+
 ## Whether the built-in voices can be used now or soon (present, not given up on).
 func usable() -> bool:
 	return state != "failed" and present()
+
+## Whether the built-in speech to text can be used now or soon.
+func stt_usable() -> bool:
+	return state != "failed" and has_stt()
 
 ## {url, key, model} for AI.speech; starts the server if it isn't running yet.
 func target() -> Dictionary:
@@ -47,6 +56,14 @@ func target() -> Dictionary:
 	if state == "":
 		start()
 	return {"url": "http://127.0.0.1:%d/v1/audio/speech" % _port, "key": _token, "model": "builtin"}
+
+## {url, key, model} for AI.transcribe; starts the server if it isn't running yet.
+func stt_target() -> Dictionary:
+	if not stt_usable():
+		return {}
+	if state == "":
+		start()
+	return {"url": "http://127.0.0.1:%d/v1/audio/transcriptions" % _port, "key": _token, "model": "builtin"}
 
 ## Waits until the server answers (true) or has failed (false).
 func wait_ready() -> bool:
@@ -57,7 +74,7 @@ func wait_ready() -> bool:
 	return state == "ready"
 
 func start() -> void:
-	if state == "starting" or state == "ready" or not present():
+	if state == "starting" or state == "ready" or not (present() or has_stt()):
 		return
 	_tries += 1
 	_port = 20000 + randi() % 40000

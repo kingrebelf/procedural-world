@@ -10,7 +10,8 @@ class_name Firearms
 ## an optic's eyepiece).
 ##
 ## Nothing made by people glows: lenses are dark glass, energy cells are metal. Only the
-## alien (Fantasy era) weapons keep a faint light in their glands and crystals.
+## alien weapons (Fantasy era, and those found only on alien worlds) keep a faint light
+## in their glands, crystals and star stones.
 
 ## The builder for each item, and whether it is alien work.
 const BUILD := {
@@ -101,22 +102,32 @@ const SPECIES := {
 
 static var _mats: Dictionary = {}
 
+## Metals beyond GunLook.METALS, on the shared metal look. Sci-fi work gets light alloy
+## (unbrushed: the brushing runs along a mesh's tangents, which these small built parts
+## don't lay out along their length); the period guns' steel stays satin.
+const METALS := {
+	"gun_worn": ["steel", 0.42, Color(0.62, 0.62, 0.63)],
+	"gun_bright": ["steel", 0.24, null],
+	"gun_nickel": ["silver", 0.24, Color(0.85, 0.83, 0.78)],
+	"gun_parker": ["dark_steel", 0.62, Color(0.38, 0.39, 0.38)],
+	"gun_alloy": ["alloy", 0.34, Color(0.6, 0.61, 0.64), {"brushed": 0.0}],
+	"gun_copper": ["copper", -1.0, null],
+	"gun_gold": ["gold", -1.0, null],
+	"gun_gilt": ["gold", 0.3, Color(0.9, 0.72, 0.42)],
+	"gun_precursor": ["bronze", 0.38, Color(0.72, 0.54, 0.36)],
+}
+
 ## Gun materials beyond GunLook's: finishes of steel, rubber, glass, ceramics, paints and
 ## the alien chitin and crystal.
 static func mat(name: String) -> Material:
 	if _mats.has(name):
 		return _mats[name]
+	if METALS.has(name):
+		return GunLook.metal(name, METALS[name], _mats)
 	var m: StandardMaterial3D
 	match name:
 		"gun_bore": m = GunLook._base(Color(0.012, 0.012, 0.013), 0.6, 0.6)
-		"gun_bright": m = GunLook._base(Color(0.62, 0.62, 0.64), 0.22, 1.0)
-		"gun_nickel": m = GunLook.finish(Color(0.62, 0.6, 0.56), 0.22, 1.0, Color(0.4, 0.38, 0.34), 0.12, 0.12)
-		"gun_worn": m = GunLook.finish(Color(0.34, 0.34, 0.35), 0.4, 0.9, Color(0.6, 0.6, 0.6), 0.15, 0.2)
-		"gun_parker": m = GunLook.finish(Color(0.12, 0.13, 0.12), 0.62, 0.6, Color(0.4, 0.4, 0.41), 0.05, 0.5)
-		"gun_alloy": m = GunLook.finish(Color(0.11, 0.11, 0.12), 0.42, 0.7, Color(0.62, 0.62, 0.64), 0.06, 0.15)
 		"gun_rubber": m = GunLook._base(Color(0.035, 0.035, 0.037), 0.88, 0.0)
-		"gun_copper": m = GunLook._base(Color(0.85, 0.5, 0.33), 0.32, 1.0)
-		"gun_gold": m = GunLook._base(Color(1.0, 0.77, 0.36), 0.2, 1.0)
 		"gun_ceramic": m = GunLook.finish(Color(0.3, 0.31, 0.3), 0.5, 0.0, Color(0.22, 0.22, 0.21), 0.12, 0.25)
 		"gun_od":
 			m = GunLook._base(Color(0.24, 0.26, 0.18), 0.62, 0.15)
@@ -172,11 +183,72 @@ static func mat(name: String) -> Material:
 			m = GunLook._base(Color(0.36, 0.2, 0.24), 0.45, 0.0)
 			m.subsurf_scatter_enabled = true
 			m.subsurf_scatter_strength = 0.5
-		"gun_precursor":
-			# Dark stone-like ceramic of a vanished people, polished by handling.
-			m = GunLook._base(Color(0.11, 0.115, 0.12), 0.28, 0.0)
+		"gun_carapace":
+			m = _carapace(Color(0.64, 0.57, 0.45), Color(0.2, 0.06, 0.045), Color(0.36, 0.4, 0.22), 0.4)
+		"gun_carapace_dk":
+			m = _carapace(Color(0.44, 0.41, 0.3), Color(0.1, 0.05, 0.035), Color(0.26, 0.3, 0.14), 0.44)
+		"gun_carapace_gr":
+			m = _carapace(Color(0.32, 0.4, 0.18), Color(0.08, 0.1, 0.04), Color(0.55, 0.5, 0.3), 0.38)
+		"gun_vein":
+			# Dark red-brown sinew in the creases, wet-looking.
+			m = GunLook._base(Color(0.2, 0.045, 0.035), 0.32, 0.0)
 			m.clearcoat_enabled = true
-			m.clearcoat = 0.5
+			m.clearcoat = 0.7
+		"gun_claw":
+			# Horn and claw: near black at the root, glossy.
+			m = GunLook._base(Color(0.06, 0.045, 0.035), 0.3, 0.0)
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.6
+		"gun_enamel":
+			# Pale silver-blue enamel over metal, like a fine pistol's frame.
+			m = GunLook.finish(Color(0.6, 0.64, 0.7), 0.2, 0.85, Color(0.82, 0.85, 0.9), 0.08, 0.1)
+		"gun_lapis":
+			m = GunLook._base(Color(0.04, 0.07, 0.2), 0.18, 0.0)
+			m.clearcoat_enabled = true
+			m.clearcoat = 1.0
+		"gun_lacquer":
+			# Black-violet lacquered shell: a deep gloss, highlights running along it.
+			m = GunLook._base(Color(0.035, 0.028, 0.05), 0.2, 0.3)
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.9
+			m.clearcoat_roughness = 0.15
+		"alien_crystal", "alien_amethyst":
+			# Alien crystal: clear, deeply coloured, a faint light inside.
+			var c := Color(0.45, 0.65, 1.0) if name == "alien_crystal" else Color(0.6, 0.35, 1.0)
+			m = StandardMaterial3D.new()
+			m.albedo_color = Color(c.r * 0.75, c.g * 0.8, c.b, 0.75)
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+			m.roughness = 0.06
+			m.metallic_specular = 0.9
+			m.clearcoat_enabled = true
+			m.clearcoat = 1.0
+			m.rim_enabled = true
+			m.rim = 0.5
+			m.rim_tint = 0.8
+			m.emission_enabled = true
+			m.emission = c
+			m.emission_energy_multiplier = 0.35
+		"alien_vortex":
+			# A black mirror with a slow violet whirl of light deep in it.
+			m = GunLook._base(Color(0.008, 0.006, 0.015), 0.04, 0.6)
+			var n := FastNoiseLite.new()
+			n.frequency = 0.01
+			n.fractal_octaves = 2
+			n.domain_warp_enabled = true
+			n.domain_warp_amplitude = 90.0
+			var g := Gradient.new()
+			g.offsets = PackedFloat32Array([0.0, 0.6, 0.65, 0.68, 0.73, 1.0])
+			g.colors = PackedColorArray([Color.BLACK, Color.BLACK, Color(0.45, 0.25, 1.0), Color(0.85, 0.7, 1.0), Color(0.2, 0.08, 0.5), Color.BLACK])
+			var t := NoiseTexture2D.new()
+			t.seamless = true
+			t.noise = n
+			t.color_ramp = g
+			m.emission_enabled = true
+			m.emission = Color.WHITE
+			m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+			m.emission_texture = t
+			m.emission_energy_multiplier = 0.9
+			m.uv1_scale = Vector3.ONE * 6.0
 		"gun_void":
 			m = GunLook._base(Color(0.005, 0.005, 0.008), 0.02, 0.9)
 		"gun_crystal":
@@ -195,7 +267,12 @@ static func mat(name: String) -> Material:
 			# the wrist of a stock); "<material>_stip": stippled (a moulded grip).
 			for sfx in ["_chk", "_stip"]:
 				if name.ends_with(sfx):
-					m = (mat(name.trim_suffix(sfx)) as StandardMaterial3D).duplicate()
+					var base := mat(name.trim_suffix(sfx))
+					if not base is StandardMaterial3D:
+						# The metal shader carries its own wear; knurled steel reads by its shape.
+						_mats[name] = base
+						return base
+					m = (base as StandardMaterial3D).duplicate()
 					_texture_detail(m, sfx == "_chk")
 					if sfx == "_chk":
 						# The grooves hold oil and grime and scatter the light: the
@@ -281,9 +358,47 @@ static func _case_hardened() -> StandardMaterial3D:
 	m.uv1_scale = Vector3.ONE * 7.0
 	return m
 
+## Alien light colours beyond GunLook.GLOW.
+const ALIEN_GLOW := {"green": Color(0.5, 1.0, 0.2), "amber": Color(1.0, 0.55, 0.12), "ice": Color(0.45, 0.7, 1.0),
+	"blue": Color(0.25, 0.45, 1.0), "spore": Color(0.45, 0.85, 0.15)}
+
+## Grown shell for the alien weapons: pale plates split by dark creases and veined like
+## carved horn, a little moss-green in the hollows. Mapped across the shape (triplanar),
+## so the creases wrap over every surface; the relief follows the same pattern.
+static func _carapace(base: Color, crease: Color, tint: Color, rough: float) -> StandardMaterial3D:
+	var m := GunLook._base(Color.WHITE, rough, 0.0)
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	n.frequency = 0.022
+	n.domain_warp_enabled = true
+	n.domain_warp_amplitude = 18.0
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.1, 0.2, 0.32, 0.6, 1.0])
+	g.colors = PackedColorArray([crease, crease, crease.lerp(tint, 0.6), tint.lerp(base, 0.55), base, base * 1.1])
+	var t := NoiseTexture2D.new()
+	t.seamless = true
+	t.noise = n
+	t.color_ramp = g
+	m.albedo_texture = t
+	var nm := NoiseTexture2D.new()
+	nm.seamless = true
+	nm.noise = n
+	nm.as_normal_map = true
+	nm.bump_strength = 10.0
+	m.normal_texture = nm
+	m.normal_scale = 0.8
+	m.roughness_texture = null
+	m.clearcoat_enabled = true
+	m.clearcoat = 0.35
+	m.clearcoat_roughness = 0.35
+	# Plates one to three centimetres across.
+	m.uv1_scale = Vector3.ONE * 4.0
+	return m
+
 ## A faint inner light for alien matter: glands, crystals, eye-like lenses.
 static func _alien_glow(name: String) -> Material:
-	var c: Color = GunLook.GLOW.get("glow_" + name, Color(0.4, 1.0, 0.8))
+	var c: Color = ALIEN_GLOW.get(name, GunLook.GLOW.get("glow_" + name, Color(0.4, 1.0, 0.8)))
 	var m := GunLook._base(c * 0.45, 0.25, 0.0)
 	m.emission_enabled = true
 	m.emission = c
@@ -709,11 +824,11 @@ static func _blunderbuss(k: MeshKit) -> Vector3:
 
 # --- Western guns --------------------------------------------------------------------
 
-## A single-action army revolver: case-hardened frame, blued 7.5-inch barrel with its
-## ejector housing, fluted cylinder, loading gate, hammer with a checkered spur, brass
-## guard and a one-piece walnut grip.
+## A single-action army revolver gone grey with use: worn steel frame and 7.5-inch
+## barrel with its ejector housing, fluted cylinder, loading gate, hammer with a checkered
+## spur, brass guard and a one-piece walnut grip.
 static func _six_shooter(k: MeshKit) -> Vector3:
-	return _revolver_build(k, 0.19, "gun_case", "gun_blued", "gun_burl_y", "gun_brass", true)
+	return _revolver_build(k, 0.19, "gun_worn", "gun_worn", "gun_walnut_y", "gun_brass", true)
 
 static func _revolver_build(k: MeshKit, barrel: float, frame: String, steel: String, grip: String, guard: String, ejector: bool) -> Vector3:
 	var y := 0.032 # the bore: the barrel lines up with the top chamber
@@ -748,7 +863,7 @@ static func _revolver_build(k: MeshKit, barrel: float, frame: String, steel: Str
 	var hz := 0.018
 	_strap(k, steel, [Vector3(0, yc - 0.004, hz), Vector3(0, y + 0.008, hz - 0.001), Vector3(0, y + 0.017, hz + 0.004), Vector3(0, y + 0.022, hz + 0.013),
 		Vector3(0, y + 0.0215, hz + 0.021)], 0.0075, 0.0068)
-	GunLook._loft(k, steel + "_chk" if steel == "gun_blued" else steel, [Vector3(0, y + 0.0235, hz + 0.01), Vector3(0, y + 0.024, hz + 0.016), Vector3(0, y + 0.0222, hz + 0.022)],
+	GunLook._loft(k, steel + "_chk", [Vector3(0, y + 0.0235, hz + 0.01), Vector3(0, y + 0.024, hz + 0.016), Vector3(0, y + 0.0222, hz + 0.022)],
 		[0.0046, 0.0052, 0.0046], [0.0012, 0.0012, 0.0012], Vector3.RIGHT, 10)
 	# Grip frame in brass: the trigger guard and the backstrap, which runs down the back of
 	# the grip from the hammer to the butt.
@@ -1484,121 +1599,6 @@ static func _needle_gun(k: MeshKit) -> Vector3:
 	_fore = Vector3(0, y - 0.05, -0.08)
 	return g
 
-## A star pistol: a gentleman's piece of black lacquer and chased gold, the star shard it
-## fires seated in a claw cradle over the breech (clear crystal, unlit), a long fluted
-## barrel with gold collars.
-static func _star_pistol(k: MeshKit) -> Vector3:
-	var y := 0.03
-	_block(k, "gun_polymer", Vector3(0, y - 0.004, -0.02), Vector3(0.024, 0.036, 0.09))
-	_block(k, "gun_gold", Vector3(0, y - 0.004, -0.02), Vector3(0.0245, 0.012, 0.092))
-	_barrel(k, "gun_blued", Vector3(0, y + 0.002, -0.065), 0.15, 0.0095, 0.0075, 0.0045, 16)
-	for z in [-0.065, -0.13, -0.2]:
-		_tube(k, "gun_gold", Vector3(0, y + 0.002, z), 0.008, 0.011, 0.011, 18)
-	for n in 4:
-		var a := TAU * n / 4.0 + PI * 0.25
-		_strap(k, "gun_gold", [Vector3(cos(a) * 0.01, y + 0.016, -0.04), Vector3(cos(a) * 0.016, y + 0.03 + sin(a) * 0.004, -0.02 + sin(a) * 0.01),
-			Vector3(cos(a) * 0.008, y + 0.045, -0.02 + sin(a) * 0.006)], 0.004, 0.0025)
-	k.crystal("gun_crystal", Transform3D(Basis(), Vector3(0, y + 0.018, -0.02)), 0.01, 0.04, 6, 0.4)
-	k.crystal("gun_crystal", Transform3D(Basis(Vector3.RIGHT, PI), Vector3(0, y + 0.034, -0.02)), 0.01, 0.014, 6, 0.6)
-	_hammer(k, "gun_gold", Vector3(0, y + 0.012, 0.02), 0.02)
-	_guard(k, "gun_gold", y - 0.022, -0.05, 0.0, 0.022, 0.008)
-	_trigger(k, "gun_gold", Vector3(0, y - 0.022, -0.026), 0.016)
-	var g := _grip(k, "gun_ebony_y_chk", Vector3(0, y - 0.016, 0.012), 0.6, 0.095, 0.0135, 0.017, "gun_gold", -0.35)
-	return g
-
-## A singularity projector: a sphere of black glass in a gimbal of two steel rings, on a
-## fork over a pistol grip. A light-swallowing mirror, not a glowing ball.
-static func _singularity_orb(k: MeshKit) -> Vector3:
-	var y := 0.09
-	var c := Vector3(0, y, -0.06)
-	k.sphere("gun_void", Transform3D(Basis(), c), 0.05, 14, 24)
-	for n in 2:
-		var ring: Array = []
-		for i in 41:
-			var a := TAU * i / 40.0
-			ring.append(c + (Vector3(0, cos(a), sin(a)) if n == 0 else Vector3(cos(a), sin(a), 0)) * (0.064 - n * 0.008))
-		GunLook._rod(k, "gun_metal", ring, 0.005, 8)
-	for s in [-1.0, 1.0]:
-		_pin(k, "gun_gold", c + Vector3(s * 0.071 - 0.004, 0, 0), 0.006, 0.008)
-		_strap(k, "gun_metal", [c + Vector3(s * 0.072, 0, 0), c + Vector3(s * 0.074, -0.05, 0.02), c + Vector3(s * 0.02, -0.075, 0.05)], 0.012, 0.006)
-	_block(k, "gun_metal", Vector3(0, y - 0.075, 0.02), Vector3(0.05, 0.016, 0.1))
-	_guard(k, "gun_metal", y - 0.083, -0.02, 0.03, 0.024, 0.01)
-	_trigger(k, "gun_metal", Vector3(0, y - 0.083, 0.004), 0.017)
-	return _grip(k, "gun_rosewood_y_chk", Vector3(0, y - 0.083, 0.04), 0.2, 0.095, 0.015, 0.019, "gun_brass", 0.2)
-
-## A precursor rifle: one flowing body of polished dark ceramic, swelling over the breech
-## and parting into two long splayed prongs at the muzzle, a fin crest along its spine,
-## a free-standing ring round the barrel, deep gold lines inlaid along it and a faceted
-## dark lens for a sight. Old work of a vanished people: nothing glows.
-static func _precursor_rifle(k: MeshKit) -> Vector3:
-	var y := 0.04
-	var zs := [0.36, 0.3, 0.18, 0.06, -0.06, -0.2, -0.32, -0.4]
-	var ys := [y - 0.035, y - 0.025, y - 0.01, y + 0.004, y + 0.008, y + 0.004, y + 0.004, y + 0.004]
-	var ws := [0.016, 0.02, 0.022, 0.03, 0.03, 0.022, 0.017, 0.015]
-	var hs := [0.06, 0.05, 0.034, 0.04, 0.038, 0.024, 0.018, 0.015]
-	var pts: Array = []
-	for i in zs.size():
-		pts.append(Vector3(0, ys[i], zs[i]))
-	GunLook._loft(k, "gun_precursor", pts, ws, hs, Vector3.UP, 24)
-	# Fin crest along the spine, tallest over the breech.
-	for n in 9:
-		var z := 0.16 - n * 0.055
-		var h := 0.022 * (1.0 - absf(n - 3) / 6.0)
-		GunLook._loft(k, "gun_precursor", [Vector3(0, y + 0.03, z + 0.02), Vector3(0, y + 0.03 + h, z - 0.01), Vector3(0, y + 0.03 + h * 0.6, z - 0.03)],
-			[0.0025, 0.0018, 0.001], [0.004, 0.003, 0.002], Vector3.RIGHT, 8)
-	# Prongs: two long splayed blades past the body, a dark gap between.
-	for sd in [-1.0, 1.0]:
-		GunLook._loft(k, "gun_precursor", [Vector3(sd * 0.007, y + 0.004, -0.38), Vector3(sd * 0.018, y + 0.006, -0.5), Vector3(sd * 0.022, y + 0.004, -0.62), Vector3(sd * 0.012, y + 0.002, -0.72)],
-			[0.007, 0.007, 0.005, 0.0015], [0.016, 0.015, 0.011, 0.003], Vector3.UP, 14)
-		GunLook._loft(k, "gun_gold", [Vector3(sd * 0.0072, y + 0.018, -0.41), Vector3(sd * 0.025, y + 0.017, -0.52), Vector3(sd * 0.027, y + 0.012, -0.62)],
-			[0.0015, 0.0015, 0.001], [0.0016, 0.0016, 0.0012], Vector3.UP, 6)
-		# Gold lines inlaid along both flanks, following the body.
-		var line: Array = []
-		for i in range(1, zs.size() - 1):
-			line.append(Vector3(sd * (ws[i] + 0.0003), ys[i] + hs[i] * 0.25, zs[i]))
-		GunLook._rod(k, "gun_gold", line, 0.0018, 6)
-		var low: Array = []
-		for i in range(2, zs.size() - 2):
-			low.append(Vector3(sd * (ws[i] * 0.95 + 0.0003), ys[i] - hs[i] * 0.45, zs[i]))
-		GunLook._rod(k, "gun_gold", low, 0.0012, 6)
-	_bore(k, Vector3(0, y + 0.004, -0.4), 0.008)
-	# A free-standing ring round the fore-body, on two struts.
-	var ring: Array = []
-	for i in 33:
-		var a := TAU * i / 32.0
-		ring.append(Vector3(cos(a) * 0.04, y + 0.004 + sin(a) * 0.04, -0.26))
-	GunLook._rod(k, "gun_precursor", ring, 0.006, 10)
-	GunLook._rod(k, "gun_gold", ring.map(func(p): return p + Vector3(0, 0, -0.007)), 0.0025, 6)
-	for sd in [-1.0, 1.0]:
-		_box(k, "gun_precursor", Vector3(sd * 0.026, y + 0.004, -0.26), Vector3(0.022, 0.008, 0.01))
-	# Sight: a faceted dark lens in a cowl.
-	_block(k, "gun_precursor", Vector3(0, y + 0.048, 0.02), Vector3(0.022, 0.02, 0.07))
-	k.crystal("gun_glass", Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, y + 0.048, -0.014)), 0.0085, 0.012, 6, 0.6)
-	_guard(k, "gun_precursor", y - 0.032, 0.02, 0.08, 0.028, 0.012)
-	_trigger(k, "gun_gold", Vector3(0, y - 0.032, 0.046), 0.017)
-	var g := _grip(k, "gun_precursor", Vector3(0, y - 0.032, 0.09), 0.34, 0.09, 0.015, 0.021)
-	_fore = Vector3(0, y - 0.025, -0.2)
-	return g
-
-## A nova staff, carried pointing ahead: a long shaft of dark iron bound in gold, a
-## leather grip, and a claw of four prongs holding a clear star shard at the head.
-static func _nova_staff(k: MeshKit) -> Vector3:
-	var y := 0.0
-	_tube(k, "gun_iron", Vector3(0, y, 0.55), 1.4, 0.013, 0.014, 14)
-	k.sphere("gun_gold", Transform3D(Basis(), Vector3(0, y, 0.555)), 0.018, 6, 12)
-	_tube(k, "gun_leather", Vector3(0, y, 0.09), 0.2, 0.0155, 0.0155, 14)
-	for z in [0.11, -0.12, -0.4, -0.7]:
-		_tube(k, "gun_gold", Vector3(0, y, z), 0.016, 0.0175, 0.0175, 16)
-	_tube(k, "gun_gold", Vector3(0, y, -0.84), 0.03, 0.016, 0.024, 18)
-	var head := Vector3(0, y, -0.93)
-	for n in 4:
-		var a := TAU * n / 4.0
-		var d := Vector3(cos(a), sin(a), 0)
-		_strap(k, "gun_gold", [Vector3(0, y, -0.86) + d * 0.02, head + d * 0.04 + Vector3(0, 0, 0.03), head + d * 0.03 + Vector3(0, 0, -0.02), head + d * 0.012 + Vector3(0, 0, -0.04)], 0.007, 0.004)
-	k.crystal("gun_crystal", Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), head + Vector3(0, 0, 0.02)), 0.022, 0.07, 7, 0.4)
-	k.crystal("gun_crystal", Transform3D(Basis(Vector3.RIGHT, PI * 0.5), head + Vector3(0, 0, 0.02)), 0.022, 0.03, 7, 0.6)
-	return Vector3(0, y, 0.0)
-
 # --- Bows and slings -------------------------------------------------------------------
 
 ## Bow limbs from the ends of the riser (at ±riser) out to the tips at ±half, bending back
@@ -1718,21 +1718,6 @@ static func _composite_bow(k: MeshKit) -> Vector3:
 	_arrow(k, _bow_string(k, ears), 0.72, "gun_worn")
 	return Vector3.ZERO
 
-## The royal longbow: dark yew with gilt bands, a red velvet grip and gilded horn nocks,
-## a fine bodkin arrow.
-static func _royal_bow(k: MeshKit) -> Vector3:
-	_riser(k, "gun_yew_y", 0.075, 0.032, 0.036, "gun_red")
-	var tips := _limbs(k, "gun_yew_y", 0.92, 0.075, 0.17, 0.044, 0.019, 0.052, 0.024, 0.0, "gun_maple_y")
-	for s in [1.0, -1.0]:
-		for y in [0.08, 0.24, 0.5]:
-			var f: float = (y - 0.075) / (0.92 - 0.075)
-			var z: float = 0.17 * f * f
-			GunLook._loft(k, "gun_gold", [Vector3(0, s * y - 0.004, z), Vector3(0, s * y + 0.004, z)],
-				[lerpf(0.052, 0.024, f) * 0.56, lerpf(0.052, 0.024, f) * 0.56], [lerpf(0.044, 0.019, f) * 0.56, lerpf(0.044, 0.019, f) * 0.56], Vector3.RIGHT, 12)
-	_nocks(k, tips, "gun_gold")
-	_arrow(k, _bow_string(k, tips), 0.8, "gun_bright", "gun_red")
-	return Vector3.ZERO
-
 ## A heavy crossbow: a steel prod spanned by a windlass, a thick walnut tiller with an iron
 ## stirrup, a quarrel in the groove. The windlass and its cranks sit at the butt.
 static func _heavy_crossbow(k: MeshKit) -> Vector3:
@@ -1814,130 +1799,482 @@ static func _sling(k: MeshKit) -> Vector3:
 
 # --- Alien weapons (faint inner light allowed) ---------------------------------------
 
-## A bio rifle: a living weapon of overlapping chitin plates over pale flesh, a row of
-## spines along the back, glowing glands in the flanks, a mandible muzzle.
+# --- Alien weapons ----------------------------------------------------------------------
+# Grown and carved, not machined: shells of veined carapace with claws and jaws, gilt
+# filigree, crystal and void. Each follows its icon. Only these keep a faint inner light.
+
+## A horn, claw, spike or tooth: tapering from `base` along `dir`, `len` long and `r`
+## thick at the root, curling toward `bend` by its tip.
+static func _horn(k: MeshKit, m: String, base: Vector3, dir: Vector3, bend: Vector3, len: float, r: float) -> void:
+	var d := dir.normalized()
+	var up := Vector3.RIGHT if absf(d.x) < 0.7 else Vector3.UP
+	var pts: Array = []
+	var ws: Array = []
+	for i in 5:
+		var f := i / 4.0
+		pts.append(base + d * len * f + bend * len * f * f)
+		ws.append(r * lerpf(1.0, 0.07, pow(f, 0.8)))
+	GunLook._loft(k, m, pts, ws, ws, up, 8)
+
+## A point on the flank of a shell lofted (up = UP) through `p` with half-width w and
+## half-height h: at height fraction `v` (-1 bottom, 1 top) on side `s`, standing `out` proud.
+static func _on_shell(p: Vector3, w: float, h: float, s: float, v: float, out := 0.0) -> Vector3:
+	return p + Vector3(s * (w * pow(maxf(1.0 - pow(absf(v), 4.0), 0.0), 0.25) + out), v * h, 0)
+
+## A grown gun body: the shell lofted through the stations, raised veins winding along
+## both flanks, carved ribs wrapping it at `ribs` (station indices), and a ridge of small
+## spines down its back from station `spine.x` to `spine.y`.
+static func _shell(k: MeshKit, m: String, zs: Array, ys: Array, ws: Array, hs: Array, ribs: Array, spine: Vector2i) -> void:
+	var pts: Array = []
+	for i in zs.size():
+		pts.append(Vector3(0, ys[i], zs[i]))
+	GunLook._loft(k, m, pts, ws, hs, Vector3.UP, 22)
+	for s in [-1.0, 1.0]:
+		for lane in 2:
+			var line: Array = []
+			for j in range(4, (zs.size() - 1) * 4 - 3):
+				var i := j / 4
+				var f := (j % 4) / 4.0
+				var v := 0.4 * sin(j * 0.55 + lane * 2.4 + s) + (0.3 if lane == 0 else -0.35)
+				var p: Vector3 = (pts[i] as Vector3).lerp(pts[i + 1], f)
+				line.append(_on_shell(p, lerpf(ws[i], ws[i + 1], f), lerpf(hs[i], hs[i + 1], f), s, v, -0.0006))
+			GunLook._rod(k, "gun_vein", line, 0.0021, 6)
+	for i in ribs:
+		var arc: Array = []
+		for j in 15:
+			var a := lerpf(-PI * 0.42, PI * 1.42, j / 14.0)
+			arc.append(_on_shell(pts[i] + Vector3(0, 0, 0.004 * sin(j * 0.6)), ws[i], hs[i], signf(cos(a)) if absf(cos(a)) > 0.01 else 1.0, sin(a), 0.0015))
+		GunLook._rod(k, m, arc, 0.0032, 6)
+	for i in range(spine.x, spine.y):
+		var p: Vector3 = (pts[i] + pts[i + 1]) * 0.5
+		var top := p.y + (float(hs[i]) + float(hs[i + 1])) * 0.5
+		_horn(k, "gun_claw", Vector3(0, top - 0.002, p.z), Vector3(0, 1, 0.5), Vector3(0, 0, 0.6), 0.016, 0.004)
+
+## A gaping mouth at the muzzle: a hooked upper lip and a shorter lower jaw parting from
+## `at`, a ring of teeth and a dark throat. `w` and `h` are the mouth's half size.
+static func _jaw(k: MeshKit, m: String, at: Vector3, w: float, h: float, len: float) -> void:
+	GunLook._loft(k, m, [at + Vector3(0, h * 0.4, 0.02), at + Vector3(0, h * 0.75, -len * 0.5), at + Vector3(0, h * 0.7, -len * 0.9), at + Vector3(0, h * 0.1, -len * 1.1)],
+		[w, w * 0.85, w * 0.6, w * 0.2], [h * 0.55, h * 0.4, h * 0.3, h * 0.12], Vector3.UP, 16)
+	GunLook._loft(k, m, [at + Vector3(0, -h * 0.4, 0.02), at + Vector3(0, -h * 0.85, -len * 0.45), at + Vector3(0, -h * 0.7, -len * 0.75)],
+		[w * 0.9, w * 0.75, w * 0.35], [h * 0.45, h * 0.32, h * 0.14], Vector3.UP, 16)
+	k.cylinder("gun_bore", GunLook._z(at + Vector3(0, 0, 0.004)), w * 0.85, w * 0.85, 0.002, 16)
+	for i in 5:
+		var x := (i - 2) * w * 0.36
+		_horn(k, "gun_bone", at + Vector3(x, h * 0.4, -len * 0.45), Vector3(0, -1, -0.3), Vector3.ZERO, h * 0.5, 0.0028)
+		if i % 2 == 0:
+			_horn(k, "gun_bone", at + Vector3(x, -h * 0.5, -len * 0.35), Vector3(0, 1, -0.3), Vector3.ZERO, h * 0.4, 0.0026)
+
+## A claw for a hand: a curved grip of shell with a claw-guard round the trigger and a
+## horn hooking forward from its foot. Returns where the fist closes.
+static func _claw_grip(k: MeshKit, m: String, top: Vector3) -> Vector3:
+	_strap(k, "gun_claw", [top + Vector3(0, 0.002, -0.07), top + Vector3(0, -0.026, -0.064), top + Vector3(0, -0.032, -0.03), top + Vector3(0, -0.012, -0.002)], 0.008, 0.005)
+	_horn(k, "gun_claw", top + Vector3(0, -0.006, -0.03), Vector3(0, -1, -0.15), Vector3(0, 0, 0.5), 0.02, 0.003)
+	var g := _grip(k, m, top, 0.42, 0.1, 0.0145, 0.02, "", -0.25)
+	_horn(k, "gun_claw", top + Vector3(0, -0.095, 0.05), Vector3(0, -0.4, -1), Vector3(0, 0.8, 0), 0.03, 0.006)
+	return g
+
+## A bio rifle: a long carved shell of bone and red sinew, claws hanging under its fore
+## end like a rib cage, a green eye glowing faintly in each flank, and a swollen green
+## sheath round the muzzle.
 static func _bio_rifle(k: MeshKit) -> Vector3:
 	var y := 0.04
-	for n in 9:
-		var z := 0.28 - n * 0.085
-		var f := n / 8.0
-		var r := 0.032 - 0.012 * f + 0.008 * sin(f * PI)
-		GunLook._loft(k, "gun_chitin", [Vector3(0, y + 0.004 * sin(f * 3.0), z + 0.05), Vector3(0, y + 0.002, z), Vector3(0, y, z - 0.03)],
-			[r * 0.82, r * 0.9, r * 0.8], [r * 1.0, r * 1.06, r * 0.94], Vector3.UP, 14)
-		k.cylinder("gun_bone", Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(0, y + r * 1.0, z)), 0.005, 0.0, 0.03 - f * 0.012, 6)
-	_tube(k, "gun_flesh", Vector3(0, y, 0.33), 0.79, 0.022, 0.014, 14)
-	for s in [-1.0, 1.0]:
-		k.sphere("alien_teal", Transform3D(Basis.from_scale(Vector3(0.6, 0.8, 1.4)), Vector3(s * 0.024, y - 0.004, 0.05)), 0.016, 7, 12)
-		k.sphere("alien_teal", Transform3D(Basis.from_scale(Vector3(0.6, 0.8, 1.2)), Vector3(s * 0.02, y - 0.002, -0.14)), 0.012, 7, 12)
-		_strap(k, "gun_chitin", [Vector3(s * 0.012, y - 0.004, -0.46), Vector3(s * 0.022, y + 0.004, -0.53), Vector3(s * 0.008, y + 0.0, -0.6)], 0.012, 0.006)
-	_bore(k, Vector3(0, y, -0.47), 0.008)
-	_strap(k, "gun_chitin", [Vector3(0, y - 0.028, -0.02), Vector3(0, y - 0.05, 0.0), Vector3(0, y - 0.05, 0.04), Vector3(0, y - 0.03, 0.06)], 0.01, 0.005)
-	_strap(k, "gun_bone", [Vector3(0, y - 0.028, 0.012), Vector3(0, y - 0.042, 0.016), Vector3(0, y - 0.046, 0.022)], 0.005, 0.003)
-	var g := _grip(k, "gun_chitin", Vector3(0, y - 0.028, 0.07), 0.4, 0.1, 0.0145, 0.02)
-	_fore = Vector3(0, y - 0.02, -0.2)
-	return g
-
-## A hive cannon: a heavy chitin tube ending in a comb of hexagonal cells, brood sacs
-## glowing faintly along its belly, a ribbed grip of bone.
-static func _hive_cannon(k: MeshKit) -> Vector3:
-	var y := 0.06
-	GunLook._loft(k, "gun_chitin", [Vector3(0, y - 0.01, 0.28), Vector3(0, y, 0.12), Vector3(0, y + 0.004, -0.1), Vector3(0, y, -0.3), Vector3(0, y, -0.42)],
-		[0.03, 0.046, 0.05, 0.054, 0.058], [0.04, 0.05, 0.054, 0.058, 0.06], Vector3.UP, 20)
+	var zs := [0.3, 0.24, 0.14, 0.06, -0.02, -0.12, -0.22, -0.32, -0.36]
+	var ys := [y - 0.03, y - 0.02, y - 0.006, y + 0.004, y + 0.006, y + 0.005, y + 0.003, y + 0.001, y]
+	var ws := [0.011, 0.015, 0.019, 0.025, 0.027, 0.024, 0.02, 0.017, 0.016]
+	var hs := [0.042, 0.034, 0.028, 0.038, 0.044, 0.038, 0.03, 0.021, 0.018]
+	_shell(k, "gun_carapace", zs, ys, ws, hs, [3, 5, 6, 7], Vector2i(2, 7))
+	# Butt: a hooked heel claw.
+	_horn(k, "gun_claw", Vector3(0, ys[0] - hs[0] * 0.8, zs[0] - 0.01), Vector3(0, -0.4, 1), Vector3(0, -0.6, 0), 0.04, 0.008)
+	# Muzzle sheath: green, swollen, ringed.
+	GunLook._loft(k, "gun_carapace_gr", [Vector3(0, y, -0.33), Vector3(0, y + 0.002, -0.39), Vector3(0, y + 0.002, -0.46), Vector3(0, y, -0.5)],
+		[0.019, 0.025, 0.021, 0.012], [0.021, 0.027, 0.023, 0.013], Vector3.UP, 18)
+	for z in [-0.37, -0.42]:
+		_tube(k, "gun_vein", Vector3(0, y + 0.002, z), 0.004, 0.026, 0.026, 18)
+	_bore(k, Vector3(0, y, -0.5), 0.007)
+	# The rib cage: claws hanging under the fore end, raking back.
 	for n in 5:
-		_tube(k, "gun_bone", Vector3(0, y, 0.1 - n * 0.11), 0.014, 0.055 + n * 0.0015, 0.056 + n * 0.0015, 20)
-	# The comb: hexagonal cells packed in the mouth, dark inside.
-	for c in 7:
-		var off := Vector3.ZERO if c == 0 else Vector3(cos(TAU * c / 6.0), sin(TAU * c / 6.0), 0) * 0.033
-		k.crystal("gun_sinew", Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, y, -0.4) + off), 0.019, 0.03, 6, 0.0)
-		_bore(k, Vector3(0, y, -0.43) + off, 0.012)
-	for n in 3:
-		k.sphere("alien_teal", Transform3D(Basis.from_scale(Vector3(1, 0.7, 1.3)), Vector3(0, y - 0.05, -0.05 - n * 0.09)), 0.02, 7, 12, 0.15)
-	_strap(k, "gun_bone", [Vector3(0, y - 0.045, 0.05), Vector3(0, y - 0.07, 0.07), Vector3(0, y - 0.07, 0.11), Vector3(0, y - 0.045, 0.13)], 0.01, 0.005)
-	_strap(k, "gun_bone", [Vector3(0, y - 0.045, 0.085), Vector3(0, y - 0.058, 0.09), Vector3(0, y - 0.062, 0.096)], 0.005, 0.003)
-	var g := _grip(k, "gun_bone", Vector3(0, y - 0.045, 0.14), 0.35, 0.1, 0.015, 0.021)
-	GunLook._loft(k, "gun_chitin", [Vector3(0, y - 0.05, -0.2), Vector3(0, y - 0.15, -0.19)], [0.015, 0.016], [0.018, 0.019], Vector3.FORWARD, 14)
-	_fore = Vector3(0, y - 0.1, -0.195)
-	return g
-
-## A spore launcher: a fungal stalk of a weapon, bulbous spore pods clustered along it,
-## a frilled cap round the muzzle, a gill-lined throat with a faint glow.
-static func _spore_launcher(k: MeshKit) -> Vector3:
-	var y := 0.05
-	GunLook._loft(k, "gun_flesh", [Vector3(0, y - 0.01, 0.25), Vector3(0, y, 0.05), Vector3(0, y + 0.004, -0.2), Vector3(0, y, -0.36)],
-		[0.026, 0.034, 0.03, 0.028], [0.03, 0.038, 0.034, 0.03], Vector3.UP, 18)
-	var pods := [Vector3(0.03, 0.03, 0.02), Vector3(-0.032, 0.026, -0.04), Vector3(0.026, 0.036, -0.12), Vector3(-0.02, 0.04, -0.2), Vector3(0.01, 0.045, 0.1)]
-	for i in pods.size():
-		var p: Vector3 = pods[i]
-		k.sphere("gun_chitin", Transform3D(Basis(), Vector3(p.x, y + p.y, p.z)), 0.024 - i * 0.002, 8, 12, 0.18)
-		k.sphere("alien_teal", Transform3D(Basis(), Vector3(p.x * 1.2, y + p.y * 1.25, p.z)), 0.007, 5, 8)
-	for n in 12:
-		var a := TAU * n / 12.0
-		var d := Vector3(cos(a), sin(a), 0)
-		_strap(k, "gun_chitin", [Vector3(0, y, -0.34) + d * 0.026, Vector3(0, y, -0.38) + d * 0.05, Vector3(0, y, -0.4) + d * 0.058], 0.016, 0.003)
-	k.cylinder("alien_teal", GunLook._z(Vector3(0, y, -0.355)), 0.02, 0.02, 0.002, 18)
-	_strap(k, "gun_bone", [Vector3(0, y - 0.03, 0.04), Vector3(0, y - 0.056, 0.06), Vector3(0, y - 0.056, 0.1), Vector3(0, y - 0.032, 0.12)], 0.01, 0.005)
-	_strap(k, "gun_bone", [Vector3(0, y - 0.03, 0.075), Vector3(0, y - 0.044, 0.08), Vector3(0, y - 0.048, 0.086)], 0.005, 0.003)
-	var g := _grip(k, "gun_chitin", Vector3(0, y - 0.03, 0.13), 0.35, 0.1, 0.015, 0.021)
+		var z := -0.04 - n * 0.055
+		var i := 4 + int(n * 0.8)
+		_horn(k, "gun_carapace", Vector3(0, float(ys[i]) - float(hs[i]) * 0.75, z), Vector3(0, -1, 0.35), Vector3(0, 0.1, 0.5), 0.05 - n * 0.006, 0.006)
+	# Eyes: a green gland in a sinew lid on each flank.
+	for s in [-1.0, 1.0]:
+		var c := _on_shell(Vector3(0, ys[4], zs[4]), ws[4], hs[4], s, 0.1)
+		k.sphere("alien_green", Transform3D(Basis.from_scale(Vector3(0.5, 1, 1.2)), c), 0.011, 8, 12)
+		var lid: Array = []
+		for j in 17:
+			var a := TAU * j / 16.0
+			lid.append(c + Vector3(s * 0.001, sin(a) * 0.012, cos(a) * 0.0145))
+		GunLook._rod(k, "gun_vein", lid, 0.0024, 6)
+	var g := _claw_grip(k, "gun_carapace", Vector3(0, y - 0.026, 0.08))
 	_fore = Vector3(0, y - 0.03, -0.18)
 	return g
 
-## A shard gauntlet: a chitin-plated bracer over the forearm and a fist plate over the
-## knuckles, crystal shards standing along the back of the hand with a faint light.
+## A hive cannon: a heavy beast-shell of olive carapace, a crest of claws swept back
+## along its back, a cluster of amber brood glands glowing on top, a toothed jaw for a
+## muzzle and claws beneath for the hands.
+static func _hive_cannon(k: MeshKit) -> Vector3:
+	var y := 0.06
+	var zs := [0.24, 0.18, 0.08, -0.04, -0.16, -0.27, -0.34]
+	var ys := [y - 0.012, y - 0.002, y + 0.006, y + 0.01, y + 0.008, y + 0.004, y + 0.002]
+	var ws := [0.026, 0.04, 0.05, 0.052, 0.05, 0.046, 0.042]
+	var hs := [0.03, 0.045, 0.055, 0.058, 0.054, 0.048, 0.042]
+	_shell(k, "gun_carapace_dk", zs, ys, ws, hs, [1, 2, 4], Vector2i(0, 0))
+	_jaw(k, "gun_carapace_dk", Vector3(0, y + 0.002, -0.34), 0.038, 0.04, 0.12)
+	# The crest: claws swept back along the spine, tallest over the middle, and a row
+	# lower down each flank.
+	for n in 8:
+		var z := 0.14 - n * 0.055
+		var t := 1.0 - absf(n - 3.0) / 5.0
+		_horn(k, "gun_claw", Vector3(0, y + 0.05 + 0.006 * t, z), Vector3(0, 1, 0.9), Vector3(0, -0.2, 0.6), 0.045 + 0.04 * t, 0.007)
+	for s in [-1.0, 1.0]:
+		for n in 4:
+			var z := 0.1 - n * 0.09
+			_horn(k, "gun_claw", Vector3(s * 0.044, y + 0.032, z), Vector3(s * 0.9, 0.5, 0.8), Vector3(0, -0.1, 0.4), 0.035, 0.005)
+	# Brood glands on top, ahead of the crest's peak.
+	var glands := [Vector3(0.022, 0.05, -0.08), Vector3(-0.02, 0.052, -0.11), Vector3(0.016, 0.05, -0.15), Vector3(-0.012, 0.048, -0.19), Vector3(0.028, 0.044, -0.2)]
+	for i in glands.size():
+		var p: Vector3 = glands[i]
+		k.sphere("alien_amber", Transform3D(Basis(), Vector3(p.x, y + p.y, p.z)), 0.012 - i * 0.0008, 8, 12, 0.1)
+		var rim: Array = []
+		for j in 13:
+			var a := TAU * j / 12.0
+			rim.append(Vector3(p.x + cos(a) * 0.013, y + p.y - 0.004, p.z + sin(a) * 0.013))
+		GunLook._rod(k, "gun_vein", rim, 0.0025, 6)
+	var g := _claw_grip(k, "gun_carapace_dk", Vector3(0, y - 0.05, 0.12))
+	# A claw under the fore end for the other hand.
+	GunLook._loft(k, "gun_carapace_dk", [Vector3(0, y - 0.045, -0.2), Vector3(0, y - 0.1, -0.19), Vector3(0, y - 0.14, -0.17)], [0.014, 0.015, 0.012], [0.018, 0.019, 0.015], Vector3.FORWARD, 14)
+	_horn(k, "gun_claw", Vector3(0, y - 0.14, -0.17), Vector3(0, -0.3, -1), Vector3(0, 0.6, 0), 0.04, 0.008)
+	_fore = Vector3(0, y - 0.1, -0.19)
+	return g
+
+## A spore launcher: a bone-pale shell veined in red, three swollen green spore pods
+## bulging from its back with a faint light, a hooked beak for a muzzle, and a claw grip
+## with a ring for the finger.
+static func _spore_launcher(k: MeshKit) -> Vector3:
+	var y := 0.05
+	var zs := [0.22, 0.16, 0.06, -0.06, -0.18, -0.27, -0.32]
+	var ys := [y - 0.01, y - 0.002, y + 0.004, y + 0.006, y + 0.004, y + 0.002, y]
+	var ws := [0.022, 0.034, 0.042, 0.044, 0.04, 0.036, 0.03]
+	var hs := [0.026, 0.038, 0.046, 0.046, 0.042, 0.036, 0.03]
+	_shell(k, "gun_carapace", zs, ys, ws, hs, [1, 4, 5], Vector2i(0, 0))
+	_jaw(k, "gun_carapace", Vector3(0, y + 0.001, -0.32), 0.03, 0.032, 0.1)
+	var pods := [Vector3(0.02, 0.046, -0.01), Vector3(-0.022, 0.044, -0.06), Vector3(0.006, 0.042, -0.13)]
+	for i in pods.size():
+		var p: Vector3 = pods[i]
+		var r := 0.027 - i * 0.002
+		k.sphere("alien_spore", Transform3D(Basis(), Vector3(p.x, y + p.y, p.z)), r, 10, 16, 0.04)
+		var cup: Array = []
+		for j in 17:
+			var a := TAU * j / 16.0
+			cup.append(Vector3(p.x + cos(a) * r * 0.95, y + p.y - r * 0.35, p.z + sin(a) * r * 0.95))
+		GunLook._rod(k, "gun_carapace", cup, 0.004, 6)
+	# Frills: short curled claws behind the pods.
+	for n in 5:
+		var a := (n - 2) * 0.45
+		_horn(k, "gun_carapace", Vector3(sin(a) * 0.03, y + 0.036, 0.08 + absf(n - 2) * 0.01), Vector3(sin(a), 1, 0.8), Vector3(0, 0, 0.5), 0.03, 0.006)
+	var g := _claw_grip(k, "gun_carapace", Vector3(0, y - 0.03, 0.12))
+	var loop: Array = []
+	var foot := Vector3(0, y - 0.13, 0.16)
+	for j in 17:
+		var a := TAU * j / 16.0
+		loop.append(foot + Vector3(0, cos(a) * 0.012, sin(a) * 0.012))
+	GunLook._rod(k, "gun_carapace", loop, 0.0035, 8)
+	_fore = Vector3(0, y - 0.03, -0.18)
+	return g
+
+## A shard gauntlet: a black lacquered glove and bracer trimmed in gilt, a violet gem set
+## on the back of the hand, and long violet crystal claws reaching from the knuckles.
 static func _shard_gauntlet(k: MeshKit) -> Vector3:
 	# The fist closes inside round a grip bar at the origin; the bracer runs back up the arm.
-	k.cylinder("gun_bone", Transform3D(Basis(), Vector3(0, -0.04, 0)), 0.011, 0.011, 0.08, 10)
+	k.cylinder("gun_lacquer", Transform3D(Basis(), Vector3(0, -0.04, 0)), 0.011, 0.011, 0.08, 10)
 	_grip_r = 0.011
-	# One shell from the knuckles back up the forearm: the fist's glove swelling into the
-	# bracer, so the two read as a single piece.
-	GunLook._loft(k, "gun_chitin", [Vector3(0, 0.0, -0.058), Vector3(0, -0.004, -0.03), Vector3(0, -0.006, 0.02), Vector3(0, -0.004, 0.07),
-		Vector3(0, 0.0, 0.14), Vector3(0, 0.0, 0.24)], [0.032, 0.042, 0.046, 0.045, 0.048, 0.044], [0.04, 0.048, 0.05, 0.047, 0.05, 0.046], Vector3.UP, 20)
-	for n in 3:
-		_tube(k, "gun_bone", Vector3(0, 0.0, 0.08 + n * 0.07), 0.01, 0.05, 0.05, 20)
-	# Plates over the back of the hand and knuckles.
-	for n in 3:
-		_block(k, "gun_chitin", Vector3(0.028 - n * 0.002, 0.0, 0.03 - n * 0.032), Vector3(0.022, 0.07 - n * 0.006, 0.034))
-	_block(k, "gun_chitin", Vector3(0, 0.0, -0.06), Vector3(0.05, 0.08, 0.016))
+	# Bracer: flared at the elbow, gilt at both rims, a raised ridge down its outside.
+	var bz := [0.05, 0.1, 0.15, 0.2]
+	var bw := [0.042, 0.044, 0.047, 0.052]
+	var bh := [0.046, 0.048, 0.05, 0.055]
+	var bp: Array = []
+	for z in bz:
+		bp.append(Vector3(0, -0.002, z))
+	GunLook._loft(k, "gun_lacquer", bp, bw, bh, Vector3.UP, 22)
+	for i in [0, 3]:
+		GunLook._loft(k, "gun_gilt", [bp[i] + Vector3(0, 0, 0.005), bp[i] - Vector3(0, 0, 0.005)], [bw[i] + 0.002, bw[i] + 0.002], [bh[i] + 0.002, bh[i] + 0.002], Vector3.UP, 22)
+	# The opening for the arm, dark inside.
+	GunLook._loft(k, "gun_bore", [bp[3] + Vector3(0, 0, 0.0052), bp[3] + Vector3(0, 0, 0.0056)], [bw[3] - 0.003, bw[3] - 0.003], [bh[3] - 0.003, bh[3] - 0.003], Vector3.UP, 22)
+	GunLook._loft(k, "gun_lacquer", [Vector3(0.044, 0.0, 0.06), Vector3(0.05, 0.0, 0.13), Vector3(0.054, 0.0, 0.19)], [0.006, 0.008, 0.008], [0.012, 0.016, 0.018], Vector3.UP, 12)
+	GunLook._rod(k, "gun_gilt", [Vector3(0.05, 0.013, 0.06), Vector3(0.056, 0.017, 0.13), Vector3(0.06, 0.019, 0.19)], 0.0018, 6)
+	GunLook._rod(k, "gun_gilt", [Vector3(0.05, -0.013, 0.06), Vector3(0.056, -0.017, 0.13), Vector3(0.06, -0.019, 0.19)], 0.0018, 6)
+	# The glove over the fist.
+	GunLook._loft(k, "gun_lacquer", [Vector3(0, -0.003, 0.055), Vector3(0, -0.005, 0.0), Vector3(0, -0.003, -0.04), Vector3(0, 0, -0.056)],
+		[0.04, 0.042, 0.04, 0.033], [0.046, 0.05, 0.048, 0.04], Vector3.UP, 20)
+	# Back of the hand: an overlapping plate, a gilt-set gem.
+	GunLook._loft(k, "gun_lacquer", [Vector3(0.036, 0.0, 0.03), Vector3(0.043, 0.0, -0.005), Vector3(0.04, 0.0, -0.045)], [0.006, 0.007, 0.005], [0.03, 0.034, 0.028], Vector3.UP, 14)
+	var gem := Vector3(0.051, 0.002, -0.008)
+	k.sphere("alien_amethyst", Transform3D(Basis.from_scale(Vector3(0.55, 1, 1)), gem), 0.012, 8, 12)
+	var set_: Array = []
+	for j in 17:
+		var a := TAU * j / 16.0
+		set_.append(gem + Vector3(-0.002, sin(a) * 0.0135, cos(a) * 0.0135))
+	GunLook._rod(k, "gun_gilt", set_, 0.0022, 6)
 	for n in 4:
-		_block(k, "gun_bone", Vector3(-0.004, 0.03 - n * 0.02, -0.07), Vector3(0.03, 0.016, 0.012))
-	# Shards: a crown of crystals along the back of the hand, pointing ahead.
-	for n in 5:
-		var yy := 0.03 - n * 0.015
-		var b := Basis(Vector3.FORWARD, 0.0) * Basis(Vector3(0, 0, 1), -PI * 0.5 + (n - 2) * 0.12) * Basis(Vector3.RIGHT, -0.5)
-		k.crystal("alien_violet", Transform3D(b, Vector3(0.04, yy, 0.0 - absf(n - 2) * 0.01)), 0.008, 0.06 - absf(n - 2) * 0.012, 5, 0.35)
+		var a := TAU * n / 4.0 + PI * 0.25
+		_horn(k, "gun_gilt", gem + Vector3(-0.002, sin(a) * 0.014, cos(a) * 0.014), Vector3(0, sin(a), cos(a)), Vector3(-0.3, 0, 0), 0.012, 0.0025)
+	# Fingers: four plated knuckles round the front of the fist, each with its claw.
+	for n in 4:
+		var yy := 0.027 - n * 0.018
+		var kn := Vector3(0.012, yy, -0.058)
+		GunLook._loft(k, "gun_lacquer", [kn + Vector3(0.012, 0, 0.012), kn, kn + Vector3(-0.022, -0.002, 0.004)], [0.007, 0.0075, 0.007], [0.0075, 0.008, 0.0075], Vector3.UP, 10)
+		k.sphere("gun_gilt", Transform3D(Basis(), kn + Vector3(0.004, 0, -0.004)), 0.004, 5, 8)
+		var dir := Vector3(0.12, (yy - 0.004) * 2.2, -1.0)
+		k.crystal("alien_amethyst", Transform3D(GunLook._along(dir), kn + Vector3(0.004, 0, -0.006)), 0.0062, 0.11 - absf(n - 1.2) * 0.014, 5, 0.5)
+	# Thumb plate and its shorter claw.
+	var th := Vector3(-0.026, 0.034, -0.035)
+	GunLook._loft(k, "gun_lacquer", [th + Vector3(0.01, -0.004, 0.025), th, th + Vector3(-0.004, 0.002, -0.014)], [0.008, 0.008, 0.007], [0.008, 0.008, 0.007], Vector3.UP, 10)
+	k.crystal("alien_amethyst", Transform3D(GunLook._along(Vector3(-0.25, 0.35, -1)), th + Vector3(-0.004, 0.002, -0.014)), 0.0055, 0.07, 5, 0.5)
 	return Vector3(0, 0.0, 0.0)
 
-## A crystal bow: pale alloy limbs grown through with crystal, shards along the limbs with
-## a faint violet light, a crystal arrow.
+## A star pistol: a frame of pale silver-blue enamel edged in gilt filigree, a blue star
+## stone set in each side of the breech, and for a barrel a long blue crystal held in a
+## gilt collar by three claws. The grip is enamel with lapis panels and a gilt cap.
+static func _star_pistol(k: MeshKit) -> Vector3:
+	var y := 0.03
+	var bz := [0.03, 0.005, -0.03, -0.058]
+	var by := [y - 0.004, y, y + 0.002, y + 0.002]
+	var bw := [0.011, 0.0135, 0.0135, 0.012]
+	var bh := [0.021, 0.022, 0.02, 0.016]
+	var pts: Array = []
+	for i in bz.size():
+		pts.append(Vector3(0, by[i], bz[i]))
+	GunLook._loft(k, "gun_enamel", pts, bw, bh, Vector3.UP, 20)
+	# Gilt edging along the top and bottom of both flanks, a curl of filigree between.
+	for s in [-1.0, 1.0]:
+		for v in [0.82, -0.82]:
+			var edge: Array = []
+			for i in pts.size():
+				edge.append(_on_shell(pts[i], bw[i], bh[i], s, v, 0.0003))
+			GunLook._rod(k, "gun_gilt", edge, 0.0016, 6)
+		var curl: Array = []
+		for j in 12:
+			var f := j / 11.0
+			var a := f * TAU * 1.2
+			var r := 0.009 * (1.0 - f * 0.6)
+			curl.append(Vector3(s * 0.0142, y - 0.004 + sin(a) * r * 0.7, 0.012 + cos(a) * r - f * 0.01))
+		GunLook._rod(k, "gun_gilt", curl, 0.0011, 5)
+		# Star stone in a gilt bezel over the breech.
+		var c := Vector3(s * 0.0128, y + 0.003, -0.014)
+		k.sphere("alien_ice", Transform3D(Basis.from_scale(Vector3(0.55, 1, 1)), c), 0.0105, 8, 12)
+		var bez: Array = []
+		for j in 17:
+			var a := TAU * j / 16.0
+			bez.append(c + Vector3(s * 0.001, sin(a) * 0.0115, cos(a) * 0.0115))
+		GunLook._rod(k, "gun_gilt", bez, 0.0018, 6)
+	# Crystal barrel: a gilt collar, the crystal, three claws holding it.
+	var mz := -0.058
+	_tube(k, "gun_gilt", Vector3(0, y + 0.002, mz + 0.002), 0.012, 0.0145, 0.016, 20)
+	k.crystal("alien_crystal", Transform3D(GunLook._along(Vector3.FORWARD), Vector3(0, y + 0.002, mz - 0.006)), 0.0135, 0.12, 7, 0.3)
+	for n in 3:
+		var a := TAU * n / 3.0 + PI * 0.5
+		var d := Vector3(cos(a), sin(a), 0)
+		GunLook._rod(k, "gun_gilt", [Vector3(0, y + 0.002, mz - 0.008) + d * 0.016, Vector3(0, y + 0.002, mz - 0.03) + d * 0.0155, Vector3(0, y + 0.002, mz - 0.05) + d * 0.0125], 0.0019, 6)
+	_hammer(k, "gun_gilt", Vector3(0, y + 0.012, 0.024), 0.02)
+	_guard(k, "gun_gilt", y - 0.021, -0.045, 0.004, 0.022, 0.008)
+	_trigger(k, "gun_gilt", Vector3(0, y - 0.021, -0.022), 0.016)
+	var top := Vector3(0, y - 0.016, 0.016)
+	var g := _grip(k, "gun_enamel", top, 0.62, 0.092, 0.0125, 0.017, "gun_gilt")
+	_grip_panels(k, "gun_lapis", top, 0.62, 0.092, 0.0125, 0.017)
+	return g
+
+## A singularity orb: a black mirror-sphere with a violet whirl of light deep inside,
+## caged in interlaced bands of old carved bronze, studded where they cross; held by a
+## short bronze haft under it.
+static func _singularity_orb(k: MeshKit) -> Vector3:
+	var c := Vector3(0, 0.1, -0.03)
+	var big := 0.066
+	k.sphere("alien_vortex", Transform3D(Basis(), c), 0.056, 18, 28)
+	var axes := [Vector3.RIGHT, Vector3.UP, Vector3.BACK, Vector3(1, 1, 0).normalized(), Vector3(0, 1, 1).normalized(), Vector3(1, 0, -1).normalized()]
+	for n in axes.size():
+		var ax: Vector3 = axes[n]
+		var u := ax.cross(Vector3(0.3, 0.5, 0.8).normalized()).normalized()
+		var v := ax.cross(u)
+		var r := big - (n % 3) * 0.002
+		var ring: Array = []
+		var ws: Array = []
+		var hs: Array = []
+		for i in 49:
+			var a := TAU * i / 48.0
+			ring.append(c + (u * cos(a) + v * sin(a)) * r)
+			ws.append(0.0028)
+			hs.append(0.0075)
+		GunLook._loft(k, "gun_precursor", ring, ws, hs, ax, 8)
+		# A gilt bead along each band's middle.
+		GunLook._rod(k, "gun_gilt", ring.map(func(p): return c + (p - c).normalized() * (r + 0.0028)), 0.0012, 5)
+	for d in [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.FORWARD, Vector3.BACK]:
+		k.sphere("gun_gilt", Transform3D(Basis(), c + d * (big + 0.002)), 0.0065, 6, 10)
+	# Haft: a gilt collar under the cage, the bronze grip, a pommel; a trigger lever ahead.
+	var base := c + Vector3(0, -big - 0.002, 0)
+	k.cylinder("gun_gilt", Transform3D(Basis(), base - Vector3(0, 0.012, 0)), 0.014, 0.02, 0.014, 18)
+	_trigger(k, "gun_gilt", base + Vector3(0, -0.012, -0.018), 0.018)
+	var g := _grip(k, "gun_precursor", base - Vector3(0, 0.012, 0), 0.12, 0.095, 0.0135, 0.016, "gun_gilt", 0.1)
+	return g
+
+## A precursor rifle: one flowing body of old bronze, swelling over the breech and parting
+## into two long splayed prongs at the muzzle, a fin crest along its spine, a free-standing
+## ring round the barrel, deep lapis panels inlaid along it and blue star stones in the
+## ring, the stock and the sight.
+static func _precursor_rifle(k: MeshKit) -> Vector3:
+	var y := 0.04
+	var zs := [0.36, 0.3, 0.18, 0.06, -0.06, -0.2, -0.32, -0.4]
+	var ys := [y - 0.035, y - 0.025, y - 0.01, y + 0.004, y + 0.008, y + 0.004, y + 0.004, y + 0.004]
+	var ws := [0.016, 0.02, 0.022, 0.03, 0.03, 0.022, 0.017, 0.015]
+	var hs := [0.06, 0.05, 0.034, 0.04, 0.038, 0.024, 0.018, 0.015]
+	var pts: Array = []
+	for i in zs.size():
+		pts.append(Vector3(0, ys[i], zs[i]))
+	GunLook._loft(k, "gun_precursor", pts, ws, hs, Vector3.UP, 24)
+	# Fin crest along the spine, tallest over the breech.
+	for n in 9:
+		var z := 0.16 - n * 0.055
+		var h := 0.022 * (1.0 - absf(n - 3) / 6.0)
+		GunLook._loft(k, "gun_precursor", [Vector3(0, y + 0.03, z + 0.02), Vector3(0, y + 0.03 + h, z - 0.01), Vector3(0, y + 0.03 + h * 0.6, z - 0.03)],
+			[0.0025, 0.0018, 0.001], [0.004, 0.003, 0.002], Vector3.RIGHT, 8)
+	# Prongs: two long splayed blades past the body, a dark gap between.
+	for sd in [-1.0, 1.0]:
+		GunLook._loft(k, "gun_precursor", [Vector3(sd * 0.007, y + 0.004, -0.38), Vector3(sd * 0.018, y + 0.006, -0.5), Vector3(sd * 0.022, y + 0.004, -0.62), Vector3(sd * 0.012, y + 0.002, -0.72)],
+			[0.007, 0.007, 0.005, 0.0015], [0.016, 0.015, 0.011, 0.003], Vector3.UP, 14)
+		GunLook._loft(k, "gun_lapis", [Vector3(sd * 0.0125, y + 0.008, -0.41), Vector3(sd * 0.024, y + 0.009, -0.52), Vector3(sd * 0.0265, y + 0.007, -0.62)],
+			[0.0015, 0.0015, 0.001], [0.006, 0.0055, 0.004], Vector3.UP, 6)
+		# Lapis panels inlaid along both flanks, a gilt line under them.
+		var line: Array = []
+		var lw: Array = []
+		var lh: Array = []
+		for i in range(1, zs.size() - 1):
+			line.append(Vector3(sd * (ws[i] - 0.0005), ys[i] + hs[i] * 0.2, zs[i]))
+			lw.append(0.0016)
+			lh.append(hs[i] * 0.32)
+		GunLook._loft(k, "gun_lapis", line, lw, lh, Vector3.UP, 8)
+		var low: Array = []
+		for i in range(2, zs.size() - 2):
+			low.append(Vector3(sd * (ws[i] * 0.95 + 0.0003), ys[i] - hs[i] * 0.45, zs[i]))
+		GunLook._rod(k, "gun_gilt", low, 0.0012, 6)
+		# A star stone on each side of the stock.
+		k.sphere("alien_blue", Transform3D(Basis.from_scale(Vector3(0.5, 1, 1)), Vector3(sd * (ws[1] + 0.001), ys[1] + 0.006, zs[1] - 0.02)), 0.008, 8, 12)
+	_bore(k, Vector3(0, y + 0.004, -0.4), 0.008)
+	# A free-standing ring round the fore-body, on two struts, a stone at each side.
+	var ring: Array = []
+	for i in 33:
+		var a := TAU * i / 32.0
+		ring.append(Vector3(cos(a) * 0.04, y + 0.004 + sin(a) * 0.04, -0.26))
+	GunLook._rod(k, "gun_precursor", ring, 0.006, 10)
+	GunLook._rod(k, "gun_gilt", ring.map(func(p): return p + Vector3(0, 0, -0.007)), 0.0025, 6)
+	for sd in [-1.0, 1.0]:
+		_box(k, "gun_precursor", Vector3(sd * 0.026, y + 0.004, -0.26), Vector3(0.022, 0.008, 0.01))
+		k.sphere("alien_blue", Transform3D(Basis.from_scale(Vector3(0.6, 1, 1)), Vector3(sd * 0.046, y + 0.004, -0.26)), 0.0075, 8, 12)
+	# Sight: a faceted blue lens in a cowl.
+	_block(k, "gun_precursor", Vector3(0, y + 0.048, 0.02), Vector3(0.022, 0.02, 0.07))
+	k.crystal("alien_blue", Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0, y + 0.048, -0.014)), 0.0085, 0.012, 6, 0.6)
+	_guard(k, "gun_precursor", y - 0.032, 0.02, 0.08, 0.028, 0.012)
+	_trigger(k, "gun_gilt", Vector3(0, y - 0.032, 0.046), 0.017)
+	var g := _grip(k, "gun_precursor", Vector3(0, y - 0.032, 0.09), 0.34, 0.09, 0.015, 0.021)
+	_fore = Vector3(0, y - 0.025, -0.2)
+	return g
+
+## A nova staff, carried pointing ahead: a black lacquered shaft bound in gilt bands and
+## knots, a leather grip, and a gilt crescent cradle at the head holding an amber star
+## that glows faintly, a gilt spike beyond it.
+static func _nova_staff(k: MeshKit) -> Vector3:
+	var y := 0.0
+	_tube(k, "gun_lacquer", Vector3(0, y, 0.55), 1.4, 0.012, 0.0135, 14)
+	_horn(k, "gun_gilt", Vector3(0, y, 0.54), Vector3.BACK, Vector3.ZERO, 0.05, 0.013)
+	_tube(k, "gun_leather", Vector3(0, y, 0.09), 0.2, 0.015, 0.015, 14)
+	for z in [0.11, -0.12, -0.4, -0.62]:
+		_tube(k, "gun_gilt", Vector3(0, y, z), 0.016, 0.0168, 0.0168, 16)
+	for z in [-0.26, -0.52, -0.72]:
+		k.sphere("gun_gilt", Transform3D(Basis(), Vector3(0, y, z)), 0.021, 8, 14, 0.0, 0.7)
+		_tube(k, "gun_gilt", Vector3(0, y, z + 0.022), 0.01, 0.0135, 0.0165, 14)
+		_tube(k, "gun_gilt", Vector3(0, y, z - 0.012), 0.01, 0.0165, 0.0135, 14)
+	_tube(k, "gun_gilt", Vector3(0, y, -0.8), 0.06, 0.015, 0.026, 18)
+	var head := Vector3(0, y, -0.92)
+	# The cradle: four crescent arms rising from the cup and curling in over the star.
+	for n in 4:
+		var a := TAU * n / 4.0 + PI * 0.25
+		var d := Vector3(cos(a), sin(a), 0)
+		var arm := [Vector3(0, y, -0.86) + d * 0.024, head + d * 0.046 + Vector3(0, 0, 0.034), head + d * 0.05, head + d * 0.036 + Vector3(0, 0, -0.034), head + d * 0.012 + Vector3(0, 0, -0.05)]
+		var ws: Array = []
+		for i in arm.size():
+			ws.append(lerpf(0.006, 0.0025, i / 4.0))
+		GunLook._loft(k, "gun_gilt", arm, ws, ws.map(func(w): return w * 1.6), Vector3.BACK.cross(d).normalized(), 8)
+	k.sphere("alien_amber", Transform3D(Basis(), head), 0.032, 12, 18)
+	_horn(k, "gun_gilt", head + Vector3(0, 0, -0.04), Vector3.FORWARD, Vector3.ZERO, 0.06, 0.007)
+	return Vector3(0, y, 0.0)
+
+## A crystal bow: limbs of clear blue crystal with a faint light, set in a gilt riser
+## with a blue star stone at its heart and gilt wings where the crystal meets it.
 static func _crystal_bow(k: MeshKit) -> Vector3:
-	_riser(k, "gun_bright", 0.07, 0.032, 0.034, "gun_chitin")
-	var tips := _limbs(k, "gun_bright", 0.62, 0.07, 0.12, 0.042, 0.018, 0.038, 0.02, 0.06)
+	_riser(k, "gun_gilt", 0.075, 0.03, 0.034, "gun_enamel")
+	var tips := _limbs(k, "alien_crystal", 0.62, 0.075, 0.12, 0.05, 0.018, 0.04, 0.016, 0.06)
 	for s in [1.0, -1.0]:
+		# Shards grown out along the back of each limb.
 		for n in 4:
-			var f := 0.15 + n * 0.22
-			var yy: float = s * (0.07 + (0.62 - 0.07) * f)
-			var z := 0.12 * f * f
-			k.crystal("alien_violet", Transform3D(Basis(Vector3.RIGHT, -0.4 - s * 0.6), Vector3(0, yy, z - 0.008)), 0.006, 0.04 - n * 0.006, 5, 0.4)
-	_nocks(k, tips, "alien_violet")
-	var z := _bow_string(k, tips)
-	_arrow(k, z, 0.7, "alien_violet", "gun_chitin")
+			var f := 0.15 + n * 0.2
+			var yy: float = s * (0.075 + (0.62 - 0.075) * f)
+			k.crystal("alien_crystal", Transform3D(GunLook._along(Vector3(0, s * 0.8, -1)), Vector3(0, yy, 0.12 * f * f - 0.01)), 0.008, 0.05 - n * 0.008, 5, 0.45)
+		# A gilt wing clasping the root of each limb.
+		_horn(k, "gun_gilt", Vector3(0, s * 0.07, -0.012), Vector3(0, s * 0.5, -1), Vector3(0, s * 0.6, 0.4), 0.05, 0.007)
+		_horn(k, "gun_gilt", Vector3(0, s * 0.07, 0.01), Vector3(0, s * 1, 0.15), Vector3.ZERO, 0.06, 0.006)
+	var gem := Vector3(0, 0.0, -0.022)
+	k.sphere("alien_ice", Transform3D(Basis.from_scale(Vector3(1, 1, 0.6)), gem), 0.011, 8, 12)
+	var bez: Array = []
+	for j in 17:
+		var a := TAU * j / 16.0
+		bez.append(gem + Vector3(cos(a) * 0.012, sin(a) * 0.012, 0.002))
+	GunLook._rod(k, "gun_gilt", bez, 0.0018, 6)
+	_nocks(k, tips, "gun_gilt")
+	_arrow(k, _bow_string(k, tips), 0.7, "alien_crystal", "gun_enamel")
 	return Vector3.ZERO
 
-## The eclipse bow: a black recurve with a ring of dark metal round the grip, the ring's
-## rim lit faintly like the corona round an eclipsed sun.
+## The eclipse bow: angular limbs of black-violet lacquer barbed with spines along their
+## backs, and at the grip a small black sphere ringed with a faint violet corona.
 static func _eclipse_bow(k: MeshKit) -> Vector3:
-	_riser(k, "gun_ebony_y", 0.08, 0.034, 0.036, "gun_leather")
-	var tips := _limbs(k, "gun_ebony_y", 0.66, 0.08, 0.13, 0.046, 0.018, 0.04, 0.02, 0.07, "gun_gold")
-	var c := Vector3(0, 0.0, -0.03)
-	var ring: Array = []
-	for n in 33:
-		var a := TAU * n / 32.0
-		ring.append(c + Vector3(sin(a) * 0.09, cos(a) * 0.09, 0))
-	GunLook._rod(k, "gun_void", ring, 0.008, 8)
+	_riser(k, "gun_lacquer", 0.08, 0.034, 0.036, "gun_leather")
+	var tips := _limbs(k, "gun_lacquer", 0.66, 0.08, 0.13, 0.05, 0.016, 0.034, 0.016, 0.08)
+	for s in [1.0, -1.0]:
+		for n in 3:
+			var f := 0.18 + n * 0.27
+			var yy: float = s * (0.08 + (0.66 - 0.08) * f)
+			var z := 0.13 * f * f
+			_horn(k, "gun_lacquer", Vector3(0, yy, z - 0.006), Vector3(0, s * 0.6, -1), Vector3(0, s * 0.5, 0), 0.075 - n * 0.012, 0.009)
+		var t: Vector3 = tips[0 if s > 0 else 1]
+		_horn(k, "gun_lacquer", t, Vector3(0, s * 1, -0.6), Vector3.ZERO, 0.05, 0.006)
+		# Angular brackets above and below the eye.
+		_horn(k, "gun_lacquer", Vector3(0, s * 0.02, -0.03), Vector3(0, s * 1, -0.5), Vector3(0, 0, -0.3), 0.045, 0.006)
+	var c := Vector3(0, 0.0, -0.032)
+	k.sphere("gun_void", Transform3D(Basis(), c), 0.019, 10, 16)
 	var rim: Array = []
-	for n in 33:
-		var a := TAU * n / 32.0
-		rim.append(c + Vector3(sin(a) * 0.0985, cos(a) * 0.0985, 0))
-	GunLook._rod(k, "alien_warm", rim, 0.0022, 6)
-	_nocks(k, tips, "gun_gold")
+	for n in 25:
+		var a := TAU * n / 24.0
+		rim.append(c + Vector3(sin(a) * 0.024, cos(a) * 0.024, 0))
+	GunLook._rod(k, "alien_violet", rim, 0.0022, 6)
+	_nocks(k, tips, "gun_lacquer")
 	_arrow(k, _bow_string(k, tips), 0.74, "gun_void", "gun_red")
+	return Vector3.ZERO
+
+## The royal bow: a recurve of black lacquered horn wound with gilt filigree bands, a
+## gilt-wrapped grip and gilt tips, and a fine bodkin arrow.
+static func _royal_bow(k: MeshKit) -> Vector3:
+	_riser(k, "gun_ebony_y", 0.075, 0.032, 0.036, "gun_gilt")
+	var half := 0.92
+	var tips := _limbs(k, "gun_ebony_y", half, 0.075, 0.17, 0.044, 0.019, 0.052, 0.024, 0.06)
+	for s in [1.0, -1.0]:
+		var i := 0
+		for y in [0.09, 0.12, 0.2, 0.3, 0.42, 0.55, 0.68, 0.8]:
+			var f: float = (y - 0.075) / (half - 0.075)
+			var z: float = 0.17 * f * f
+			if f > 0.7:
+				z -= 0.06 * pow((f - 0.7) / 0.3, 2.0)
+			var wide := 0.012 if i % 2 == 0 else 0.004
+			var t := lerpf(0.052, 0.024, f) * 0.54
+			var w := lerpf(0.044, 0.019, f) * 0.54
+			GunLook._loft(k, "gun_gilt", [Vector3(0, s * y - wide * 0.5, z), Vector3(0, s * y + wide * 0.5, z)], [t, t], [w, w], Vector3.RIGHT, 12)
+			i += 1
+	_nocks(k, tips, "gun_gilt")
+	_arrow(k, _bow_string(k, tips), 0.8, "gun_bright", "gun_red")
 	return Vector3.ZERO

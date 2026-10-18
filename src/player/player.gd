@@ -46,8 +46,13 @@ var noclip := false
 var speed_mult := 1.0
 var snap_down := false ## Put the player on the ground once it loads (after a teleport).
 var selected := 0
+## Hands empty: what's in the selected slot is put away (the holster key, or pressing that
+## slot's key again) until a slot is picked.
+var holstered := false
 var frozen := true ## Until the ground under us is loaded.
 var ui_open := false
+## Moved by a script for a while (climbing over a town wall, GateWatch): no walking, falling or input.
+var script_move := false
 var keep_crouch := false ## stay crouched behind an open UI (picking a lock)
 
 var _yaw := 0.0
@@ -74,6 +79,10 @@ var swim := Swim.new()
 const LOOK := {"female": false, "hair": Color(0.22, 0.14, 0.08), "hair_style": 1, "skin": Color(0.86, 0.66, 0.52),
 	"cloth": Color(0.36, 0.42, 0.3), "cloth2": Color(0.28, 0.23, 0.18), "height": 1.0, "build": 0.5}
 const BOOM := 3.2
+## The render layer your own body and pack are on in first person. Only the sun and moon
+## draw their shadows: a lamp or torch just behind you would throw your head's shadow,
+## blown up to fill the view, onto the wall in front (_shade_self).
+const SELF_LAYER := 1 << 19
 var third_person := false
 var body: HumanModel
 var _arm: SpringArm3D
@@ -132,10 +141,15 @@ func _ready() -> void:
 		body.set_ground(Callable(), [get_rid()])
 		# The armour you wear shows on your body (third person, and your shadow).
 		body.wear(Game.equipment)
-		Game.equipment_changed.connect(func(): body.wear(Game.equipment))
+		Game.equipment_changed.connect(func():
+			body.wear(Game.equipment)
+			_tag_self())
 	jetpack = Jetpack.new()
 	add_child(jetpack)
 	_apply_view()
+	get_tree().node_added.connect(_shade_self)
+	for l in get_tree().root.find_children("*", "Light3D", true, false):
+		_shade_self(l)
 	builder = Builder.new()
 	builder.player = self
 	add_child(builder)
@@ -190,7 +204,8 @@ func yaw() -> float:
 	return _yaw
 
 func select(i: int) -> void:
-	var was := selected
+	var was := selected if not holstered else -1
+	holstered = false
 	selected = clampi(i, 0, Inventory.HOTBAR - 1)
 	_refresh_held()
 	var it = held_item()
@@ -199,7 +214,13 @@ func select(i: int) -> void:
 	selected_changed.emit(selected)
 
 func held_item():
-	return Game.inventory.get_slot(selected)
+	return null if holstered else Game.inventory.get_slot(selected)
+
+## Puts away what's in hand, or takes it out again.
+func holster(on = null) -> void:
+	holstered = (not holstered) if on == null else bool(on)
+	_refresh_held()
+	selected_changed.emit(selected)
 
 func _refresh_held() -> void:
 	var it = held_item()
@@ -210,6 +231,7 @@ func _refresh_held() -> void:
 	if body:
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
+		_tag_self()
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -233,6 +255,23 @@ func _apply_view() -> void:
 		body.set_shadow_only(not third_person)
 	if jetpack:
 		jetpack.set_shadow_only(not third_person)
+	_tag_self()
+
+## Puts your body, what it holds and wears, and your pack on SELF_LAYER in first person
+## (layer 1 in third person, where every light shadows you).
+func _tag_self() -> void:
+	var layer := 1 if third_person else SELF_LAYER
+	for n in [body, jetpack]:
+		if n == null:
+			continue
+		for gi in (n as Node).find_children("*", "GeometryInstance3D", true, false):
+			(gi as GeometryInstance3D).layers = layer
+
+## Lamps, torches and fires never shadow your first-person body (SELF_LAYER); the sun and
+## moon still do.
+func _shade_self(n: Node) -> void:
+	if n is OmniLight3D or n is SpotLight3D:
+		(n as Light3D).shadow_caster_mask &= ~SELF_LAYER
 
 ## Body animation from what the controller is doing; swings come from use_held.
 func _animate_body(hspeed: float) -> void:
@@ -326,7 +365,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		select((selected + 1) % Inventory.HOTBAR)
 	for i in Inventory.HOTBAR:
 		if event.is_action_pressed("slot_%d" % (i + 1)):
-			select(i)
+			if i == selected and not holstered:
+				holster(true)
+			else:
+				select(i)
+	if event.is_action_pressed("holster"):
+		holster()
 	if event.is_action_pressed("interact"):
 		if vehicle != null:
 			dismount()
@@ -354,6 +398,8 @@ func _apply_look() -> void:
 		head.rotation = Vector3(_pitch + bob.tilt.x, 0, bob.tilt.z)
 
 func _physics_process(delta: float) -> void:
+	if script_move:
+		return
 	if frozen:
 		if streamer != null and streamer.is_ready_at(global_position):
 			frozen = false
@@ -631,6 +677,13 @@ func _find_focus() -> Dictionary:
 		for u in dungeons.usables(global_position):
 			var sc := _focus_score(eye, fwd, u["at"])
 			if sc < best_s and _can_see(eye, u["at"]):
+				best_s = sc
+				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
+	if npcs and npcs.gates:
+		# A town wall to climb over with a rope (GateWatch).
+		for u in npcs.gates.usables(global_position):
+			var sc := _focus_score(eye, fwd, u["at"])
+			if sc < best_s:
 				best_s = sc
 				best = {"kind": "dungeon", "node": u["node"], "n": u["n"], "pos": u["at"] + Vector3(0, 0.3, 0), "verb": u["verb"]}
 	# Ferns, bushes, flowers and the like can be picked by hand, without a tool.
@@ -992,6 +1045,13 @@ func _update_look_target() -> void:
 				lines = PowerGrid.current.describe(h["chunk"], o, held_m != null and held_m["type"] == Power.METER) + lines
 			if Wonders.has(t):
 				lines.push_front(Wonders.describe(o, Game.day))
+			if o["st"].has("fire"):
+				# Burning: how badly, and how to fight it.
+				var fh := FireSim.heat(o["st"])
+				text = "[%s] beat at the flames" % _key("use")
+				lines.push_front("On fire (%s): beat it out while it is small, or throw water" % ("smouldering" if fh < 0.3 else ("burning" if fh < 0.7 else "ablaze")))
+			elif float(o["st"].get("char", 0.0)) > 0.0:
+				lines.append("Scorched by fire")
 			if k == "cache" and not o["st"].get("opened", false):
 				lines.append("Contains: %d item stacks" % o["st"].get("loot", []).size())
 				if WonderSite.sealed((h["chunk"] as ChunkNode).data, o):
@@ -1420,6 +1480,10 @@ func use_held() -> void:
 		return
 	var d: Dictionary = ItemDB.stats(it) if it != null else Durability.FIST
 	var q: float = it.get("quality", 1.0) if it != null else 1.0
+	# At a fire: a torch lights it, a bucket fills or is thrown, oil is poured on, a
+	# swing at something burning beats at the flames (FireSystem).
+	if FireSystem.current != null and FireSystem.current.player_use(self, it, d, _hit_object()):
+		return
 	if d.get("ranged", false):
 		_fire(it, d)
 		return
@@ -1726,8 +1790,19 @@ func beam_hit(it, d: Dictionary, hit: Dictionary, tick: float) -> String:
 func ranged_hit(it, d: Dictionary, hit: Dictionary, at: Vector3) -> String:
 	var col = hit.get("collider")
 	var q: float = it.get("quality", 1.0) if it is Dictionary else 1.0
+	var fires := FireSystem.current
+	var inc := float(d.get("incendiary", 0.0))
+	if fires != null and inc > 0.0:
+		# A fire bottle, a fire pot, a flamethrower's tongue, a burning arrow: what it hits
+		# goes up first, then what is round it.
+		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
+			fires.ignite(col.get_meta("chunk"), int(col.get_meta("obj")), inc, true, false, float(d.get("oil", 0.0)))
+		fires.ignite_at(at, float(d.get("splash", 0.7)), inc, true, float(d.get("oil", 0.0)))
 	if d.has("splash"):
-		_blast(at, float(d["splash"]), float(d.get("damage", 10)), not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm")
+		var powder: bool = not String(d.get("tracer", "")).begins_with("glow") or d.get("tracer", "") == "glow_warm"
+		if fires != null and powder and inc <= 0.0 and not d.get("smoke", false):
+			fires.blast(at, float(d["splash"]))
+		_blast(at, float(d["splash"]), float(d.get("damage", 10)), powder)
 		if col is Object and is_instance_valid(col) and col.has_meta("obj"):
 			var bc: ChunkNode = col.get_meta("chunk")
 			damage_object(bc, bc.get_object(col.get_meta("obj")), float(d.get("damage", 10)) * 0.5, 0.8)
@@ -1941,14 +2016,14 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 		if spilled > 0 and npcs and not Game.may_use_house_at(chunk.position + o["p"]):
 			npcs.report_crime(chunk.position + o["p"], "theft", spilled, ObjectLibrary.label(o["t"]).to_lower())
 		var k := ObjectLibrary.kind(o["t"])
-		if k == "structure" or k == "trader":
+		if (k == "structure" or k == "trader") and o["t"] != FireSim.RUIN:
 			Game.toast.emit("Destroyed %s" % ObjectLibrary.label_of(o))
 			if npcs:
 				npcs.player_vandalised(chunk.position + o["p"], ObjectLibrary.label_of(o))
 		chunk.remove_object(o["i"])
 	else:
 		Game.mark_chunk_dirty(chunk.data)
-		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and randf() < 0.15:
+		if npcs and ObjectLibrary.kind(o["t"]) in ["structure", "trader"] and o["t"] != FireSim.RUIN and randf() < 0.15:
 			npcs.player_vandalised(chunk.position + o["p"], "")
 
 ## A doorway brought down takes the door hanging in it along (back to your pack if it was yours).
