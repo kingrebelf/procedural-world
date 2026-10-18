@@ -124,7 +124,9 @@ func _render_callback(_type: int, render_data: RenderData) -> void:
 	for col in [reproject.x, reproject.y, reproject.z, reproject.w]:
 		push.append_array([col.x, col.y, col.z, col.w])
 	push.append_array([inv.x.z, inv.y.z, inv.z.z, inv.w.z, inv.x.w, inv.y.w, inv.z.w, inv.w.w])
-	push.append_array([size.x, size.y, k, MAX_LEN, NEAR, float(debug), 0.0, 0.0])
+	var target := rsb.get_target_size()
+	var out_scale := clampf(float(target.x) / float(size.x), 0.25, 4.0) if target.x > 0 else 1.0
+	push.append_array([size.x, size.y, k, MAX_LEN, NEAR, float(debug), out_scale, 0.0])
 	var push_bytes := push.to_byte_array()
 	var copy_push := PackedFloat32Array([size.x, size.y, 0.0, 0.0]).to_byte_array()
 	var groups := Vector2i((size.x - 1) / 8 + 1, (size.y - 1) / 8 + 1)

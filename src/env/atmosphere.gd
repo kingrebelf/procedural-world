@@ -86,6 +86,10 @@ func _ready() -> void:
 	env.sdfgi_cascades = 4
 	env.sdfgi_min_cell_size = 0.4
 	env.sdfgi_bounce_feedback = 0.4
+	# The GI probes nearest a wall's foot sit in the ground, and at the default bias they
+	# black out the bottom metre of every wall, house and rock in shade (a dark skirt
+	# along the foot of the castle walls). A little more bias reads past the ground.
+	env.sdfgi_probe_bias = 2.0
 	env.ssr_max_steps = 48
 	var we := WorldEnvironment.new()
 	we.environment = env
@@ -267,6 +271,10 @@ func _depth_factor(p: Vector3) -> float:
 	if streamer == null:
 		return 0.0
 	var k := Vector2i(int(floor(p.x / ChunkGenerator.SIZE)), int(floor(p.z / ChunkGenerator.SIZE)))
+	var dg := Dungeon.around(p)
+	if not dg.is_empty():
+		# Down a dungeon's stairs: dark as a cave from the first landing on.
+		return smoothstep(2.0, 6.0, float(dg["pl"]["y0"]) - p.y)
 	var node = streamer.call("get_chunk", k)
 	if node == null or not (node.data as Dictionary).has("cave"):
 		return 0.0
@@ -409,7 +417,9 @@ func _update_time_of_day() -> void:
 		env.volumetric_fog_albedo = Color(0.3, 0.6, 0.65).lerp(Color(0.32, 0.5, 0.38), silt)
 	else:
 		env.fog_sun_scatter = 0.12
-	# Less sky fill in the golden hour, so the side away from the sun falls into shade.
+	# By day the open sky fills the shade well: a pale wall turned from the sun is a soft
+	# blue-grey, not near black. Less sky fill in the golden hour, so the side away from
+	# the sun falls into shade.
 	# At night the sky's light is starlight and airglow (and the moonlit sky's), weak but
 	# enough to see the shapes of the land on the side away from the moon.
 	# (Only in full night: dusk keeps its shaded side.) The night sky is too dark to light
@@ -418,8 +428,11 @@ func _update_time_of_day() -> void:
 	var dark := 1.0 - smoothstep(0.0, 0.2, daylight)
 	env.ambient_light_sky_contribution = 1.0 - 0.6 * dark
 	env.ambient_light_color = Color(0.14, 0.17, 0.25)
-	env.ambient_light_energy = (lerpf(0.2, 0.6, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
+	env.ambient_light_energy = (lerpf(0.2, 0.8, daylight) + (0.55 + 0.35 * moonlit) * dark) * lerpf(1.0, 0.55, golden * smoothstep(0.0, 0.3, daylight)) \
 		* lerpf(1.0, 0.05, underground)
+	# With GI on, the shade's fill comes from the GI rather than the ambient above, and
+	# by day it fell short of the sky and sunlit ground a wall in shade looks out on.
+	env.sdfgi_energy = 1.0 + 0.25 * daylight * (1.0 - golden) * (1.0 - underground)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

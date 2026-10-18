@@ -97,6 +97,15 @@ const DUTIES := {
 		"lines": ["Nutrient mix is off again.", "Lettuce is coming along.", "Don't touch the beans. They're sensitive.", "pH is all over the place today."]},
 	"deliver": {"where": "homes_gates", "anims": ["interact"], "upper": "carry", "hop": 30.0, "label": "running deliveries",
 		"lines": ["Package for... not you.", "Coming through!", "Late, late, late!", "Sign here. Oh, wait, wrong person."]},
+	# Visitors' day out (MarketCrowd).
+	"browse": {"where": "browse", "anims": ["interact", "idle", "talk", "fold_arms"], "hop": 40.0, "gesture": "think", "label": "in town for market day, looking over the stalls",
+		"lines": ["How much for that?", "Robbery, at that price.", "I'll take two... no, one.", "Fresher last week.", "Just looking, thanks."]},
+	"loiter": {"where": "knot", "anims": ["talk", "fold_arms", "idle", "talk", "lean"], "hop": 110.0, "gesture": "nod", "label": "in town for the day, passing the time in the square with friends",
+		"lines": ["Busy today.", "Never seen the square so full.", "Have you heard the news?", "Nice day for it."]},
+	"tavern_night": {"where": "tavern", "anims": ["talk", "idle", "lean"], "hop": 120.0, "gesture": "clap", "label": "in town for an evening at the tavern",
+		"lines": ["One more and I'm off.", "Long walk home after this.", "Your round, I think."]},
+	"head_home": {"where": "home", "anims": ["idle"], "hop": 300.0, "label": "heading home for the night",
+		"lines": ["Long walk ahead.", "Home before dark, if I'm lucky."]},
 }
 
 ## Each trade's day: [from hour, to hour, duty]. Hours outside these blocks are the
@@ -160,9 +169,13 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 	var inner := float(site.get("inner", 30.0))
 	var out := {"center": c, "inner": inner, "outer": outer, "gates": [], "market": [], "towers": [], "wells": [],
 		"holy": [], "homes": [], "tavern": [], "stall": [], "lamps": [], "roads": gen.road_angles(site)}
+	# Things nobody should stand in (stalls, carts, wells, chests...): [[p, reach], ...].
+	var obst: Array = []
 	for it in gen.settlement_layout(site):
 		var t: String = it["t"]
 		var p: Vector2 = it["p"]
+		if TownLife.ROUND.has(t):
+			obst.append([p, float(TownLife.ROUND[t])])
 		match t:
 			"signpost":
 				out["gates"].append(p)
@@ -180,6 +193,17 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 				out["lamps"].append(p)
 			"trader":
 				out["stall"].append(p + Vector2(sin(float(it["yaw"])), cos(float(it["yaw"]))) * 1.6)
+	# The village's own fields (medieval villages and towns), for the farmers.
+	out["fields"] = TownLife.plan(gen, site)["fields"] if TownLife.applies(gen, site) else []
+	# Benches by the doors, for anyone sitting down: [spot, yaw it faces out along].
+	out["benches"] = []
+	if TownLife.applies(gen, site):
+		for pc in TownLife.plan(gen, site)["pieces"]:
+			if pc["k"] == "bench":
+				out["benches"].append([pc["p"], float(pc["yaw"])])
+			if pc.has("p") and pc["k"] in ["bench", "barrels", "cart", "haystack", "chopping", "woodpile"]:
+				obst.append([pc["p"], 1.4 if pc["k"] in ["cart", "haystack"] else 0.7])
+	out["obstacles"] = obst
 	# Beside each shop's door, a yard where its keeper works at their trade.
 	out["shop_yards"] = {}
 	for h in TownShops.shops_of(gen, site):
@@ -213,6 +237,21 @@ static func places(gen: ChunkGenerator, site: Dictionary, data: Dictionary) -> D
 	(out["lamps"] as Array).sort_custom(func(a, b): return (a - c).angle() < (b - c).angle())
 	return out
 
+## `p` moved out of anything standing there (places' obstacles), with `gap` to spare.
+static func clear_spot(places: Dictionary, p: Vector2, gap := 0.45) -> Vector2:
+	for _pass in 3:
+		var moved := false
+		for o in places.get("obstacles", []):
+			var q: Vector2 = o[0]
+			var need := float(o[1]) + gap
+			var d := p.distance_to(q)
+			if d < need:
+				p = q + ((p - q) / d if d > 0.01 else Vector2(1, 0)) * need
+				moved = true
+		if not moved:
+			break
+	return p
+
 ## A direction out of town clear of the roads, for a person's own field or hunting
 ## ground (stable per person and kind).
 static func _clear_angle(places: Dictionary, id: String, salt: int) -> float:
@@ -238,11 +277,29 @@ static func post(rec: Dictionary, places: Dictionary) -> Array:
 	return [at, atan2(to_c.x, to_c.y)]
 
 static func _field(rec: Dictionary, places: Dictionary, stop: int) -> Vector2:
+	var f := _own_field(rec, places)
+	if not f.is_empty():
+		# Down a row of the village's own field (TownLife), a few steps further each stop.
+		var h := absi(hash(String(rec["id"])))
+		var rows_x := int(f["rows"]) == 0
+		var a_len := float(f["hx"] if rows_x else f["hz"]) - 1.2
+		var b_len := float(f["hz"] if rows_x else f["hx"]) - 1.2
+		var row := lerpf(-b_len, b_len, float(h % 101) / 100.0)
+		var along := -a_len + fposmod(float(stop) * 2.6 + float(h % 17), 2.0 * a_len)
+		return TownLife.frame_to_world(f["p"], float(f["yaw"]), Vector2(along, row) if rows_x else Vector2(row, along))
 	var a := _clear_angle(places, String(rec["id"]), 11)
 	var c: Vector2 = places["center"]
 	var base: Vector2 = c + Vector2.from_angle(a) * (float(places["outer"]) + 8.0 + float(absi(hash(String(rec["id"]))) % 8))
 	# Working along the rows.
 	return base + Vector2.from_angle(a + PI / 2) * float((stop % 4) - 1.5) * 2.2
+
+## The village field this person works ({} where the town has none): one per person,
+## stable, spread over the fields.
+static func _own_field(rec: Dictionary, places: Dictionary) -> Dictionary:
+	var fs: Array = places.get("fields", [])
+	if fs.is_empty():
+		return {}
+	return fs[absi(hash(String(rec["id"]) + "field")) % fs.size()]
 
 static func _wilds(rec: Dictionary, places: Dictionary, stop: int) -> Vector2:
 	var a := _clear_angle(places, String(rec["id"]), 23) + sin(float(stop) * 1.7) * 0.5
@@ -259,6 +316,8 @@ static func block(rec: Dictionary, hour: float) -> Array:
 	var job: String = rec["job"]
 	if job == "trader" or rec.get("child", false): # children have no duties
 		return []
+	if rec.has("visit"):
+		return MarketCrowd.block(rec, hour)
 	var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(job, [])
 	if NPCGen.GUARD_JOBS.has(job) and night_watch(rec):
 		plan = NIGHT_WATCH
@@ -306,7 +365,13 @@ static func duty_at(rec: Dictionary, places: Dictionary, hour: float, t: float) 
 				face = y[1]
 		"field":
 			target = _field(rec, places, stop)
-			face = atan2(c.x - target.x, c.y - target.y) + PI * 0.5 * float(stop % 2)
+			var of := _own_field(rec, places)
+			if of.is_empty():
+				face = atan2(c.x - target.x, c.y - target.y) + PI * 0.5 * float(stop % 2)
+			else:
+				# Facing down the row.
+				var fy := float(of["yaw"])
+				face = atan2(cos(fy), -sin(fy)) if int(of["rows"]) == 0 else fy
 		"field_stall":
 			target = _field(rec, places, stop) if stop % 2 == 0 else _pick(places["stall"], rec, 0)
 		"yard":
@@ -328,6 +393,24 @@ static func duty_at(rec: Dictionary, places: Dictionary, hour: float, t: float) 
 			target = l[stop % l.size()] if not l.is_empty() else c
 		"homes":
 			target = _pick(places["homes"], rec, stop)
+		"home":
+			target = rec["home"]
+		"browse":
+			var spots := MarketCrowd.browse_spots(places)
+			var at = _pick(spots, rec, stop)
+			if at != Vector2.INF:
+				# Stood before it (on the side toward the square), looking it over.
+				var fwd := ((c - at) as Vector2).normalized() if (c - at).length() > 0.5 else Vector2(1, 0)
+				var side := float(absi(hash(String(rec["id"]) + str(stop))) % 100) / 100.0 - 0.5
+				target = clear_spot(places, (at as Vector2) + fwd * 1.0 + fwd.orthogonal() * side * 1.6)
+				face = atan2(at.x - target.x, at.y - target.y)
+		"knot":
+			var ks := MarketCrowd.knots(places)
+			var k: Vector2 = ks[absi(hash(String(rec["id"]) + str(stop / 2))) % ks.size()]
+			# Round the knot, facing in.
+			var a3 := float(absi(hash(String(rec["id"]) + "k")) % 628) / 100.0
+			target = clear_spot(places, k + Vector2.from_angle(a3) * 1.0)
+			face = atan2(k.x - target.x, k.y - target.y)
 		"homes_gates":
 			target = _pick(places["homes"] if stop % 2 == 0 else places["gates"], rec, stop)
 		"square":
@@ -369,8 +452,8 @@ static func props(places: Dictionary, data: Dictionary) -> Array:
 			var d: Dictionary = DUTIES.get(String(b[2]), {})
 			if d.has("prop"):
 				kinds[d["prop"]] = d["where"]
-			elif String(d.get("where", "")) == "field" and int(rec["era"]) != Eras.SCIFI:
-				kinds["field"] = "field"
+			elif String(d.get("where", "")) == "field" and int(rec["era"]) != Eras.SCIFI and (places.get("fields", []) as Array).is_empty():
+				kinds["field"] = "field" # a crate of the crop, where the village has no fields of its own
 		for k in kinds:
 			if kinds[k] == "shopyard":
 				var y = (places.get("shop_yards", {}) as Dictionary).get(int(rec.get("shop_i", -1)))
@@ -413,6 +496,9 @@ static func chatter(a: Dictionary, b: Dictionary, town: Dictionary, h: int) -> A
 static func day_words(rec: Dictionary) -> String:
 	if rec["job"] == "trader":
 		return ""
+	if rec.has("visit"):
+		var v: Array = rec["visit"]
+		return "you don't live here; you came in from the countryside for the day, arriving about %s and setting off home about %s" % [_clock(v[0]), _clock(float(v[1]) - MarketCrowd.LEAVE)]
 	var plan: Array = SHOP_ROUTINES.get(String(rec["shop_kind"]), []) if rec.has("shop_kind") else ROUTINES.get(String(rec["job"]), [])
 	if NPCGen.GUARD_JOBS.has(rec["job"]) and night_watch(rec):
 		plan = NIGHT_WATCH

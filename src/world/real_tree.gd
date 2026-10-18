@@ -19,9 +19,10 @@ static var _mats: Dictionary = {}
 static var _far: Dictionary = {}
 static var _lock := Mutex.new()
 
-## Whether this type (and species) is drawn here: broadleaf trees and conifers.
+## Whether this type (and species) is drawn here: broadleaf trees, conifers, palms and the
+## broadleaf trees of the warm lands.
 static func handles(t: String) -> bool:
-	return t == "oak" or t == "pine"
+	return t == "oak" or t == "pine" or t == "palm" or t == "tropic"
 
 # --- Geometry buffers ----------------------------------------------------------------
 
@@ -31,6 +32,9 @@ class Buf:
 	var uv := PackedVector2Array()
 	var c := PackedColorArray()
 	var ix := PackedInt32Array()
+	## Leaf cards per LOD group: the leaf LODs keep every second, then every fourth group,
+	## so a palm (a group per frond) drops whole fronds rather than holing every one.
+	var group := 1
 	## Index counts at the end of each detail stage (trunk, limbs, twigs / card halves),
 	## used to make LOD index lists that drop the finest parts first.
 	var marks: Array = []
@@ -298,6 +302,13 @@ static func _make(t: String, p: Dictionary, r: RandomNumberGenerator, bark: Buf,
 		else:
 			_conifer(r, p, tint, bark, leaves, far)
 		return ["needle", "bark_pine"]
+	if t == "palm":
+		var pl := _leaf_look(p)
+		if form == "banana":
+			_banana(r, p, pl[1], bark, leaves, far)
+			return ["banana", "bark_banana"]
+		_palm(r, p, pl[1], bark, leaves, far)
+		return ["frond", "bark_palm"]
 	var look := _leaf_look(p)
 	var bark_tex := "bark_birch" if form == "column" else "bark_oak"
 	match form:
@@ -355,8 +366,18 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		"spreading": trunk_frac = 0.32; rx = crown * 1.35; elev = Vector2(0.2, 0.6); bend = Vector3(0, 0.05, 0)
 		"weeping": trunk_frac = 0.4; rx = crown * 1.1; elev = Vector2(0.35, 0.8); bend = Vector3(0, -0.22, 0)
 		"column": trunk_frac = 0.3; rx = crown * 0.7; elev = Vector2(0.9, 1.25); bend = Vector3(0, 0.1, 0)
+		# Acacia: a short trunk forking into a flat, wide, thin top.
+		"umbrella": trunk_frac = 0.45; rx = crown * 1.55; elev = Vector2(0.55, 0.95); bend = Vector3(0, -0.02, 0)
+		# Fig: a broad dense dome low on a thick trunk.
+		"fig": trunk_frac = 0.26; rx = crown * 1.25
+		# Kapok: a tall bare trunk, its crown spread wide above the canopy.
+		"emergent": trunk_frac = 0.62; rx = crown * 1.5; elev = Vector2(0.3, 0.7); bend = Vector3(0, 0.03, 0)
 	var ht := h * trunk_frac
 	var ry := (h - ht) * 0.55
+	if form == "umbrella":
+		ry = (h - ht) * 0.26
+	elif form == "emergent":
+		ry = (h - ht) * 0.4
 	var centre := Vector3(0, ht + ry, 0)
 	var lean := Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized() * float(p.get("lean", 0.0)) * h * 0.4
 	centre += lean
@@ -372,7 +393,7 @@ static func _broadleaf(r: RandomNumberGenerator, p: Dictionary, tint: Color, bar
 		var y := 0.0 if i == 0 else lerpf(0.45, top, float(i - 1) / (segs - 1))
 		tpts.append(Vector3(0, y, 0) + lean * (y / top) + _bow_at(bow, y / h))
 	bark.mark()
-	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * 0.25), 4 if far else 9, bark_col, 0.0 if far else 0.4, 0.0 if far else 0.08)
+	_tube(bark, tpts, _taper(tpts.size(), g * 0.85, g * 0.25), 4 if far else 9, bark_col, 0.0 if far else (1.1 if form == "emergent" else 0.4), 0.0 if far else 0.08)
 	bark.mark()
 	# Limbs from the upper trunk out toward the crown's shell; twigs from the limbs.
 	var tips: Array = [] # [point, outward direction]
@@ -581,6 +602,221 @@ static func _bush(r: RandomNumberGenerator, height: float, tint: Color, bark: Bu
 		var shade := lerpf(0.7, 1.0, depth) * lerpf(0.88, 1.06, clampf(at.y / height, 0.0, 1.0)) * 1.1
 		_card(leaves, at, axis, side, len, len, _jit(tint, r, 0.1) * shade, centre, radii, false)
 
+# --- Palms ---------------------------------------------------------------------------
+
+## A leaf on an arching spine (a palm frond, a banana leaf): two halves of a ribbon either
+## side of `spine`, each folded down from the midrib by `fold` (a frond's leaflets hang in
+## a V; a banana leaf cups), the card's stem at the spine's first point. Every segment is
+## its own four-vertex card (as _card makes), all sharing one random in alpha, so a whole
+## leaf is dry or missing together. `widths` per spine point; the leaf's normals lean out
+## of the crown (`centre`, `radii`) as a broadleaf's sprays do.
+static func _strip(b: Buf, spine: PackedVector3Array, widths: PackedFloat32Array, fold: float, col: Color,
+		centre: Vector3, radii: Vector3, rnd: float) -> void:
+	var n := spine.size()
+	col.a = rnd
+	var lefts := PackedVector3Array()
+	var rights := PackedVector3Array()
+	var faces := PackedVector3Array()
+	for i in n:
+		var d := (spine[mini(i + 1, n - 1)] - spine[maxi(i - 1, 0)]).normalized()
+		var across := d.cross(Vector3.UP)
+		if across.length() < 0.05:
+			across = d.cross(Vector3.RIGHT)
+		across = across.normalized()
+		var up := across.cross(d).normalized()
+		if up.y < 0.0:
+			up = -up
+		var hw := widths[i] * 0.5
+		lefts.append(spine[i] + (across * cos(fold) - up * sin(fold)) * hw)
+		rights.append(spine[i] + (-across * cos(fold) - up * sin(fold)) * hw)
+		faces.append(up)
+	for half in 2:
+		var edge := lefts if half == 0 else rights
+		var u_edge := 0.0 if half == 0 else 1.0
+		for i in n - 1:
+			var base := b.v.size()
+			var v0 := 1.0 - float(i) / (n - 1)
+			var v1 := 1.0 - float(i + 1) / (n - 1)
+			var quad := [[spine[i], Vector2(0.5, v0), faces[i]], [edge[i], Vector2(u_edge, v0), faces[i]],
+				[edge[i + 1], Vector2(u_edge, v1), faces[i + 1]], [spine[i + 1], Vector2(0.5, v1), faces[i + 1]]]
+			for q in quad:
+				var p: Vector3 = q[0]
+				var dd := (p - centre) / radii
+				var cn := dd.normalized() if dd.length() > 0.001 else Vector3.UP
+				b.v.append(p)
+				b.n.append((cn * 0.6 + (q[2] as Vector3) * 0.4).normalized())
+				b.uv.append(q[1])
+				b.c.append(col)
+			b.ix.append_array([base, base + 1, base + 2, base, base + 2, base + 3])
+
+## A palm's frond spine from `from`: out along azimuth `az` at elevation `elev`, arching
+## over and down by `droop` (more toward the tip, as the leaflets' weight pulls it).
+static func _frond_spine(from: Vector3, az: float, elev: float, length: float, droop: float, segs: int) -> PackedVector3Array:
+	var pts := PackedVector3Array([from])
+	var p := from
+	var step := length / segs
+	for i in segs:
+		var f := (float(i) + 0.5) / segs
+		var e := elev - droop * f * f * 1.6
+		p += Vector3(cos(az) * cos(e), sin(e), sin(az) * cos(e)) * step
+		pts.append(p)
+	return pts
+
+## A palm: a ringed trunk (a coconut's leaning and curving up toward the light, a royal
+## palm's straight and smooth to a green crownshaft, a date palm's stout and rough with
+## old leaf bases, a palmetto's few short stems), topped by a crown of fronds: young ones
+## standing up in the middle, old ones arching out and hanging, now and then a dead brown
+## one drooping against the trunk.
+static func _palm(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark: Buf, leaves: Buf, far: bool) -> void:
+	var form := String(p["form"])
+	var h: float = float(p["height"]) * r.randf_range(0.92, 1.08)
+	var g: float = p["girth"]
+	var bark_col := Color(1, 1, 1).lerp((p["bark"] as Color) * 2.0, 0.45)
+	var crowns: Array = [] # [top, up]
+	bark.mark()
+	for s in int(p.get("stems", 1)):
+		var sh := h if s == 0 else h * r.randf_range(0.45, 0.85)
+		var a := r.randf() * TAU
+		var foot := Vector3.ZERO if s == 0 else Vector3(cos(a), 0, sin(a)) * r.randf_range(0.15, 0.5)
+		var la := r.randf() * TAU if s == 0 else a
+		var lean_dir := Vector3(cos(la), 0, sin(la))
+		var lean: float = float(p.get("lean", 0.0)) + (r.randf_range(0.15, 0.4) if form == "palmetto" and s > 0 else 0.0)
+		var segs := 4 if far else clampi(int(sh / 0.22), 10, 64)
+		var pts := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		var wob := r.randf() * TAU
+		for i in segs + 1:
+			var f := float(i) / segs
+			# A coconut leans out from its foot and curves back up toward the top.
+			var off := lean_dir * sh * lean * (f * 1.5 - f * f * 0.6) if form == "coconut" else lean_dir * sh * lean * f
+			off += Vector3(sin(f * 5.0 + wob), 0, cos(f * 4.0 + wob)) * sh * 0.008
+			pts.append(foot + Vector3(0, sh * f, 0) + off)
+			var rr := g
+			match form:
+				"coconut": rr = g * (1.0 + 0.35 * (1.0 - smoothstep(0.0, 0.12, f)) - 0.18 * f)
+				"royal": rr = g * (1.0 + 0.12 * sin(f * PI * 1.1) + 0.25 * (1.0 - smoothstep(0.0, 0.1, f)))
+				"date": rr = g * (1.0 + 0.2 * (1.0 - smoothstep(0.0, 0.1, f)))
+				_: rr = g
+			if not far:
+				# Leaf scars: a low ridge each ring.
+				rr *= 1.0 + (0.05 if i % 2 == 0 else -0.03) * (1.4 if form == "date" else 1.0)
+			radii.append(rr)
+		var first := bark.v.size()
+		var sides := 4 if far else 10
+		_tube(bark, pts, radii, sides, bark_col, 0.0 if far else 0.25, 0.0 if far else (0.1 if form == "date" else 0.03))
+		if not far:
+			# Rings banded darker and lighter; a date palm's trunk is dark with old leaf bases.
+			for i in segs + 1:
+				var k := (0.86 if i % 2 == 1 else 1.04) * (0.8 if form == "date" else 1.0)
+				for j in sides + 1:
+					var vi := first + i * (sides + 1) + j
+					bark.c[vi] = bark.c[vi] * k
+		var top := pts[pts.size() - 1]
+		var up := (pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()
+		if form == "royal" and not far:
+			# The smooth green crownshaft of leaf sheaths under the fronds.
+			var cs := PackedVector3Array([top, top + up * sh * 0.08, top + up * sh * 0.15])
+			_tube(bark, cs, PackedFloat32Array([g * 1.05, g * 1.12, g * 0.7]), 10, Color(0.62, 0.85, 0.42))
+			top += up * sh * 0.15
+		crowns.append([top, up, sh])
+	bark.mark()
+	if not far and form == "coconut":
+		# A cluster of coconuts under the crown.
+		var c: Vector3 = crowns[0][0]
+		for i in r.randi_range(3, 7):
+			var a := r.randf() * TAU
+			var at := c + Vector3(cos(a) * g * 1.3, -r.randf_range(0.15, 0.55), sin(a) * g * 1.3)
+			_tube(bark, PackedVector3Array([at + Vector3(0, -0.13, 0), at, at + Vector3(0, 0.13, 0)]),
+				PackedFloat32Array([0.04, 0.14, 0.04]), 6, Color(0.95, 0.85, 0.55) if r.randf() < 0.4 else Color(0.75, 0.95, 0.5))
+	bark.mark()
+	bark.mark()
+	# The fronds, a LOD group each.
+	var per := 0
+	for cw in crowns:
+		var top: Vector3 = cw[0]
+		var sh: float = cw[2]
+		var size := clampf(sh / maxf(h, 0.1), 0.6, 1.0)
+		var count := int(p["fronds"]) if cw == crowns[0] else maxi(int(p["fronds"]) / 2, 5)
+		if far:
+			count = maxi(count / 3, 5)
+		var flen: float = float(p["frond_len"]) * size
+		var centre := top + Vector3(0, flen * 0.15, 0)
+		var radii := Vector3(flen, flen * 0.55, flen)
+		var rot := r.randf() * TAU
+		for k in count:
+			var age := r.randf()
+			var az := rot + k * 2.39996 + r.randf_range(-0.2, 0.2)
+			# A crown is a ball of fronds: a few young ones standing up in the middle, most
+			# reaching out level and the old ones arching down below.
+			var elev := lerpf(1.1, -0.45, pow(age, 0.8)) if form != "date" else lerpf(1.15, 0.05, age)
+			if form == "palmetto":
+				elev = lerpf(1.3, 0.35, age)
+			var droop: float = float(p["droop"]) * lerpf(0.5, 1.4, age)
+			var len := flen * lerpf(0.7, 1.05, sqrt(age)) * r.randf_range(0.9, 1.1)
+			var col := _jit(tint, r, 0.08) * lerpf(1.08, 0.88, age)
+			var dead := age > 0.88 and r.randf() < 0.3
+			if dead:
+				# An old frond gone brown, hanging down against the trunk.
+				col = Color(0.95, 0.72, 0.45) * r.randf_range(0.75, 1.0)
+				elev = r.randf_range(-1.35, -1.1)
+				droop = 0.05
+				len *= 0.7
+			var segs := 2 if far else 6
+			var spine := _frond_spine(top + Vector3(cos(az), 0, sin(az)) * g * 0.6, az, elev, len, droop, segs)
+			var widths := PackedFloat32Array()
+			for i in segs + 1:
+				var f := float(i) / segs
+				# The card's own leaflets taper the frond; the strip stays near full width.
+				widths.append(len * (0.5 if form != "palmetto" else 0.75) * (0.55 + 0.45 * sin(PI * clampf(f * 0.85 + 0.15, 0.0, 1.0))) * (1.6 if far else 1.0))
+			var fold := r.randf_range(0.35, 0.6) if form != "palmetto" else r.randf_range(0.1, 0.25)
+			_strip(leaves, spine, widths, fold, col, centre, radii, WHash.to_unit(WHash.h32(leaves.v.size() * 7919 + k)))
+			per = segs * 2
+	leaves.group = maxi(per, 1)
+
+## A banana: a soft trunk of rolled leaf bases, green-brown and streaked, and a spray of
+## great paddle leaves on long stalks, the old ones bent down and torn.
+static func _banana(r: RandomNumberGenerator, p: Dictionary, tint: Color, bark: Buf, leaves: Buf, far: bool) -> void:
+	var h: float = float(p["height"]) * r.randf_range(0.92, 1.08)
+	var g: float = p["girth"]
+	var col := Color(1, 1, 1).lerp((p["bark"] as Color) * 2.0, 0.5)
+	var trunk_h := h * 0.55
+	var pts := PackedVector3Array()
+	var segs := 3 if far else 8
+	var lean := Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)) * 0.04 * trunk_h
+	for i in segs + 1:
+		var f := float(i) / segs
+		pts.append(Vector3(0, trunk_h * f, 0) + lean * f)
+	bark.mark()
+	_tube(bark, pts, _taper(pts.size(), g * 1.25, g * 0.75), 4 if far else 9, col, 0.0 if far else 0.2, 0.0 if far else 0.06)
+	bark.mark()
+	bark.mark()
+	bark.mark()
+	var top := pts[pts.size() - 1]
+	var count := int(p["fronds"]) if not far else maxi(int(p["fronds"]) / 2, 4)
+	var flen: float = p["frond_len"]
+	var centre := top + Vector3(0, flen * 0.3, 0)
+	var radii := Vector3(flen, flen * 0.7, flen)
+	var rot := r.randf() * TAU
+	var per := 0
+	for k in count:
+		var age := r.randf()
+		var az := rot + k * 2.39996 + r.randf_range(-0.25, 0.25)
+		# A stalk a third of the leaf's length up out of the top, then the blade.
+		var elev := lerpf(1.35, 0.25, age)
+		var len := flen * r.randf_range(0.85, 1.15) * lerpf(0.8, 1.05, age)
+		var c := _jit(tint, r, 0.08) * lerpf(1.1, 0.9, age)
+		if age > 0.85 and r.randf() < 0.4:
+			c = Color(0.95, 0.78, 0.5) * r.randf_range(0.7, 0.95)
+			elev = -0.8
+		var ss := 2 if far else 6
+		var spine := _frond_spine(top + Vector3(cos(az), 0, sin(az)) * g * 0.5, az, elev, len * 1.3, lerpf(0.25, 0.9, age), ss)
+		var widths := PackedFloat32Array()
+		for i in ss + 1:
+			widths.append(len * 0.62 * (1.4 if far else 1.0))
+		_strip(leaves, spine, widths, r.randf_range(0.15, 0.3), c, centre, radii, WHash.to_unit(WHash.h32(leaves.v.size() * 7919 + k)))
+		per = ss * 2
+	leaves.group = maxi(per, 1)
+
 # --- Mesh assembly ---------------------------------------------------------------------
 
 ## Builds the ArrayMesh: bark (with LODs that drop twigs, then limbs) and leaves (with LODs
@@ -603,11 +839,12 @@ static func _commit(bark: Buf, leaves: Buf, look: Array, lods: bool) -> ArrayMes
 			# Every second, then every fourth spray: thinner everywhere, never a bald top.
 			var half := PackedInt32Array()
 			var quarter := PackedInt32Array()
-			for q in leaves.ix.size() / 6:
+			var gi := 6 * leaves.group
+			for q in leaves.ix.size() / gi:
 				if q % 2 == 0:
-					half.append_array(leaves.ix.slice(q * 6, q * 6 + 6))
+					half.append_array(leaves.ix.slice(q * gi, q * gi + gi))
 				if q % 4 == 0:
-					quarter.append_array(leaves.ix.slice(q * 6, q * 6 + 6))
+					quarter.append_array(leaves.ix.slice(q * gi, q * gi + gi))
 			if quarter.size() >= 12:
 				ll[0.12] = half
 				ll[0.3] = quarter
@@ -615,7 +852,8 @@ static func _commit(bark: Buf, leaves: Buf, look: Array, lods: bool) -> ArrayMes
 		m.surface_set_material(m.get_surface_count() - 1, leaf_material(look[0]))
 	return m
 
-const LEAF_TEX := {"oak": "oak_twig_card", "autumn": "autumn_twig_card", "needle": "needles_card"}
+const LEAF_TEX := {"oak": "oak_twig_card", "autumn": "autumn_twig_card", "needle": "needles_card",
+	"frond": "palm_frond_card", "banana": "banana_leaf_card"}
 
 static func _material(key: String) -> Material:
 	_lock.lock()
@@ -643,7 +881,9 @@ static func _material(key: String) -> Material:
 	else:
 		var bm := ShaderMaterial.new()
 		bm.shader = load("res://src/world/bark.gdshader")
-		var tex := "bark_birch" if kind == "bark_birch" else "bark_oak"
+		# Palms have no bark photo of their own: oak's, ringed and pale (RealTree._palm);
+		# a banana's soft trunk takes the birch's smooth streaked skin, tinted green.
+		var tex := "bark_birch" if kind == "bark_birch" or kind == "bark_banana" else "bark_oak"
 		var alb := Materials.photo(tex, "albedo")
 		bm.set_shader_parameter("albedo_tex", alb if alb != null else Materials.photo(tex, "detail"))
 		var nrm := Materials.photo(tex, "normal")
@@ -652,11 +892,15 @@ static func _material(key: String) -> Material:
 			bm.set_shader_parameter("normal_tex", nrm)
 		if kind == "bark_pine":
 			bm.set_shader_parameter("albedo", Color(0.8, 0.68, 0.6))
+		elif kind == "bark_banana":
+			bm.set_shader_parameter("albedo", Color(0.62, 0.72, 0.42))
 		bm.set_shader_parameter("individual", near)
 		# The bark photos are dark: trunks read flat black in shade at their own value.
-		if kind != "bark_pine" and kind != "bark_birch":
+		if kind == "bark_palm":
+			bm.set_shader_parameter("albedo", Color(1.45, 1.38, 1.28))
+		elif kind != "bark_pine" and kind != "bark_birch" and kind != "bark_banana":
 			bm.set_shader_parameter("albedo", Color(1.3, 1.25, 1.2))
-		bm.set_shader_parameter("moss_scale", 0.4 if kind == "bark_birch" else 1.0)
+		bm.set_shader_parameter("moss_scale", 0.4 if kind == "bark_birch" else (0.3 if kind == "bark_palm" or kind == "bark_banana" else 1.0))
 		m = bm
 	_lock.lock()
 	if _mats.has(key):

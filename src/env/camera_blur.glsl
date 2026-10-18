@@ -24,7 +24,8 @@ layout(push_constant, std430) uniform Params {
 	float max_len; // longest smear, as a fraction of the width
 	float near_dist;
 	float debug; // 1: paint the motion instead (red/green = x/y)
-	vec2 reserved;
+	float out_scale; // screen pixels per rendered pixel
+	float reserved;
 } p;
 
 vec4 clip_of(vec2 uv, float d) {
@@ -86,19 +87,32 @@ void main() {
 		b *= max_px / len_px;
 		len_px = max_px;
 	}
-	if (len_px < 1.0 || dist_of(clip_of(uv, d)) < p.near_dist) {
+	// out_scale: screen pixels per rendered pixel (0.5 when supersampling at 2x), so the
+	// work follows what reaches the screen, not the render scale.
+	float out_px = len_px * p.out_scale;
+	if (out_px < 1.0 || dist_of(clip_of(uv, d)) < p.near_dist) {
 		return;
 	}
-	// Centred on the pixel: half the shutter before this moment, half after.
-	int n = clamp(int(len_px * 0.5) + 2, 3, 12);
+	// Centred on the pixel: half the shutter before this moment, half after. The jitter
+	// and the upscaler's history fill the gaps between taps.
+	int n = clamp(int(out_px * 0.35) + 2, 3, 8);
 	float j = noise(vec2(px)) - 0.5;
+	// The held item is a solid shape: if neither end nor the middle of the smear lands on
+	// it, no tap does, and the per-tap depth reads are skipped.
+	bool guard = false;
+	for (int e = -1; e <= 1; e++) {
+		ivec2 ep = clamp(ivec2((uv + b * (0.5 * float(e))) * p.size), ivec2(0), isize - 1);
+		guard = guard || dist_of(clip_of((vec2(ep) + 0.5) / p.size, texelFetch(depth_tex, ep, 0).r)) < p.near_dist;
+	}
 	vec3 sum = c.rgb;
 	float w = 1.0;
 	for (int i = 0; i < n; i++) {
 		vec2 s = uv + b * ((float(i) + 0.5 + j) / float(n) - 0.5);
-		ivec2 sp = clamp(ivec2(s * p.size), ivec2(0), isize - 1);
-		if (dist_of(clip_of(s, texelFetch(depth_tex, sp, 0).r)) < p.near_dist) {
-			continue;
+		if (guard) {
+			ivec2 sp = clamp(ivec2(s * p.size), ivec2(0), isize - 1);
+			if (dist_of(clip_of(s, texelFetch(depth_tex, sp, 0).r)) < p.near_dist) {
+				continue;
+			}
 		}
 		sum += textureLod(color_tex, s, 0.0).rgb;
 		w += 1.0;

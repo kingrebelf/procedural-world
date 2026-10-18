@@ -100,18 +100,18 @@ void fragment() {
 	float tip = rest.w;
 	// 1 while single strands are big enough to see, 0 once they are finer than a pixel.
 	float near = smoothstep(0.35, 0.65, lo);
+	// 1 only while the finest strands span a few pixels. Strands cut out of a surface
+	// any smaller than that stair-step and sparkle (and flicker under TAA), so cut-outs
+	// (shells, thinning) are kept for close looks; further off, strands are colour only.
+	float close = smoothstep(0.55, 0.85, hi);
 	float fs = fwidth(s);
 	float ff = fwidth(fine);
 	float cov = 1.0;
 	if (shell > 0.0) {
-		// Fewer, finer strands further out, and fewer near the roots; as the strands near
-		// pixel size the shells fade into the smooth base layer.
+		// Fewer, finer strands further out, and fewer near the roots; only for close looks
+		// (`close`), further off the smooth base layer alone.
 		float sc = s * (0.85 + 0.3 * clump);
-		cov = cut(0.42 + shell * 0.38 - tip * 0.12, sc, fwidth(sc)) * smoothstep(0.55, 0.8, lo);
-	} else if (sparse > 0.0) {
-		// Gaps between the hairs only where they can be seen; further off the brow is a
-		// soft tint over the skin instead of a ragged stripe.
-		cov = cut((sparse + 0.15 * tip) * near, s, fs);
+		cov = cut(0.42 + shell * 0.38 - tip * 0.12, sc, fwidth(sc)) * close;
 	}
 	if (beard > 0.5 && beard < 1.5) {
 		// Stubble: sparse fine dots close up; further off, a shadow on the skin.
@@ -122,7 +122,7 @@ void fragment() {
 	// strands are big enough to see; further off the scalp tints the hair.
 	float bare = thin * (1.0 - tip) * 0.85;
 	if (shell <= 0.0 && sparse <= 0.0 && bare > 0.0) {
-		cov = cut(bare * near, fine, ff);
+		cov = cut(bare * close, fine, ff);
 	}
 	vec3 t = texture(tex, UV).rgb;
 	float lum = clamp(dot(t, vec3(0.299, 0.587, 0.114)) / 0.56, 0.4, 1.6);
@@ -156,11 +156,15 @@ void fragment() {
 		float ao = mix(0.55, 1.0, clamp(shell * 0.8 + tip * 0.35 + 0.2, 0.0, 1.0));
 		vec3 col = hair_col.rgb * (0.5 + 0.8 * s) * (0.9 + 0.2 * wave) * mix(1.0, lum, 0.2) * ao;
 		if (scalp_col.a > 0.0) {
-			float skin = bare * 0.6 * (1.0 - near);
+			float skin = bare * 0.6 * (1.0 - close);
 			if (beard > 0.5 && beard < 1.5) {
 				skin = 0.4 + 0.35 * (1.0 - smoothstep(0.35, 0.65, hi));
 			} else if (sparse > 0.0) {
-				skin = (sparse + 0.15 * tip) * (1.0 - near);
+				// Brows: never cut (cut-out hairs that small read as a stipple of dots);
+				// the hairs are dark streaks over the skin, fewer toward the tail, and
+				// further off they blend to an even soft tint.
+				float hair = mix(0.55, smoothstep(0.3, 0.75, s), near) * (1.0 - 0.55 * smoothstep(0.6, 1.0, tip));
+				skin = 1.0 - hair * (1.0 - sparse * 0.6);
 			}
 			col = mix(col, scalp_col.rgb, skin);
 		}

@@ -9,6 +9,8 @@ class_name Durability
 const TABLE := {
 	"oak": ["wood", 6.0, [["wood", -1]]],
 	"pine": ["wood", 7.0, [["wood", -1]]],
+	"palm": ["wood", 6.0, [["wood", -1]]],
+	"tropic": ["wood", 8.0, [["wood", -1]]],
 	"glowcap": ["fungus", 5.0, [["glowberry", -1], ["glowroot", 1]]],
 	"crystal_tree": ["crystal", 8.0, [["glowroot", -1], ["aether_crystal", 1]]],
 	"solar_mast": ["fungus", 12.0, [["circuitry", -1], ["alloy_scrap", 2]]],

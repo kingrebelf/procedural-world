@@ -59,6 +59,28 @@ func test_memory_store_never_touches_disk() -> void:
 		s.save_chunk({"cx": 1000 + i, "cz": 0})
 	check(not s.has_chunk(4, -2) and s.has_chunk(1000 + WorldStore.MEM_LIMIT + 4, 0), "memory store drops the oldest chunks")
 
+## Crags set into cliffs never hang in mid-air: most of every one's base is on rock, and
+## a good part of it is inside the hill.
+func test_crags_seated() -> void:
+	var g := ChunkGenerator.new(4242, true)
+	var total := 0
+	var hanging := 0
+	for cz in range(5, 8):
+		for cx in range(-6, -2):
+			var c := g.generate(cx, cz)
+			var out := ChunkNode.build_crag_buffers(c)
+			for k in out:
+				if not String(k).begins_with("stone:"):
+					continue
+				var buf: PackedFloat32Array = out[k]
+				for n in range(0, buf.size(), 16):
+					var b := Basis(Vector3(buf[n], buf[n + 4], buf[n + 8]), Vector3(buf[n + 1], buf[n + 5], buf[n + 9]), Vector3(buf[n + 2], buf[n + 6], buf[n + 10]))
+					total += 1
+					if ChunkNode._crag_loose(c, String(k).substr(6), b, Vector3(buf[n + 3], buf[n + 7], buf[n + 11]), b.x.length()):
+						hanging += 1
+	check(total > 20, "cliffs carry crags (%d)" % total)
+	check(hanging == 0, "no crag hangs in mid-air (%d of %d)" % [hanging, total])
+
 func test_rivers() -> void:
 	var g := ChunkGenerator.new(4242, true)
 	# Find a chunk a river runs through, with its water above the sea.
@@ -616,7 +638,7 @@ func test_biome_coherence() -> void:
 			for o in ch["objects"]:
 				var k := ObjectLibrary.kind(o["t"])
 				var at: Vector3 = o["p"]
-				if (k == "tree" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
+				if (k == "tree" and o["t"] != "palm" or k == "rock") and ChunkGenerator.sand_at(ch, at.x, at.z) > 0.45:
 					on_sand.append(o["t"])
 			var fauna: Array = Biome.params(g.field.region_hash_at(p.x, p.y), Eras.MEDIEVAL)["fauna"]
 			for lx in [10.0, 32.0, 54.0]:
@@ -626,7 +648,7 @@ func test_biome_coherence() -> void:
 					var sp := Creature.fits_habitat(fauna, pick, Eras.MEDIEVAL, ch, lx, 32.0)
 					animals_ok = animals_ok and (sp == 0 or Creature.species(sp, Eras.MEDIEVAL)["name"] in Creature.DUNE_ANIMALS)
 	check(dunes > 0, "dunes to look at")
-	check(on_sand.is_empty(), "no trees or boulders on dune sand (%s)" % [on_sand])
+	check(on_sand.is_empty(), "no trees (but palms) or boulders on dune sand (%s)" % [on_sand])
 	check(animals_ok, "only dune animals on the dunes")
 
 func test_landmarks() -> void:
@@ -1036,7 +1058,8 @@ func test_npc_roles() -> void:
 	f["traits"]["diligent"] = 0.5
 	var d := NPCRoles.duty_at(f, pl, 9.0, 100.0)
 	check(d.get("duty", "") == "till", "a farmer is in the fields mid-morning (%s)" % d.get("duty", ""))
-	check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
+	if (pl["fields"] as Array).is_empty():
+		check((d["target"] as Vector2).distance_to(site["center"]) > float(site["outer"]), "the fields are past the houses")
 	check(NPCRoles.duty_at(f, pl, 9.0, 100.0)["target"] == d["target"], "the same stop at the same moment")
 	check(NPCRoles.duty_at(f, pl, 23.0, 100.0).is_empty(), "evenings are their own")
 	var per := {"hour": 9.0, "pos": Vector2.ZERO, "center": s["center"], "player_dist": 100.0, "noise": 0.5, "now": 0.0, "duty": d}
@@ -1062,6 +1085,65 @@ func test_npc_roles() -> void:
 	per["duty"] = NPCRoles.duty_at(g, pl, 11.0, 0.0)
 	check(DecisionEngine.decide(g, per)["action"] == "sleep", "and sleeps by day")
 	check(NPCRoles.day_words(f).contains("fields"), "the model hears their day")
+	# A village with fields of its own (TownLife): its farmers work them.
+	var vsite := {}
+	for ring in 16:
+		for st in gen.settlements_near(-ring * 256.0, -ring * 256.0, ring * 256.0, ring * 256.0):
+			if TownLife.applies(gen, st) and not (TownLife.plan(gen, st)["fields"] as Array).is_empty():
+				vsite = st
+		if not vsite.is_empty():
+			break
+	check(not vsite.is_empty(), "a village with fields found")
+	if not vsite.is_empty():
+		var vs := NPCGen.generate(777, gen, vsite, gen.settlement_layout(vsite))
+		var vpl := NPCRoles.places(gen, vsite, vs)
+		var vf: Dictionary = f.duplicate(true)
+		vf["era"] = Eras.MEDIEVAL
+		var vd2 := NPCRoles.duty_at(vf, vpl, 9.0, 100.0)
+		var inf := false
+		for fl in vpl["fields"]:
+			var l := TownLife.world_to_frame(fl["p"], float(fl["yaw"]), vd2["target"])
+			inf = inf or absf(l.x) < float(fl["hx"]) and absf(l.y) < float(fl["hz"])
+		check(vd2.get("duty", "") == "till" and inf, "a farmer works a row of the village's own field")
+		var vd3 := NPCRoles.duty_at(vf, vpl, 9.0, 100.0 + float(NPCRoles.DUTIES["till"]["hop"]) * 1.3)
+		check(vd3["target"] != vd2["target"] and (vd3["target"] as Vector2).distance_to(vd2["target"]) < 20.0, "moving on down the row")
+		var crates := 0
+		for pr in NPCRoles.props(vpl, vs):
+			crates += int(pr[0] == NPCRoles.PROPS["field"])
+		check(crates == 0, "no stand-in crop crates beside real fields")
+		check(not (vpl["benches"] as Array).is_empty(), "the village's door benches are seats for sitters")
+	# Market crowd: folk in from the country by day, gone by night.
+	var crowd := MarketCrowd.roster(site, 0, 12, pl["gates"])
+	check(crowd.size() >= MarketCrowd.BASE[int(site.get("size", 0))] - 1, "a town gets its day visitors (%d)" % crowd.size())
+	check(str(MarketCrowd.roster(site, 0, 12, pl["gates"])) == str(crowd), "the same crowd on the same day, for everyone")
+	check(str(MarketCrowd.roster(site, 0, 13, pl["gates"])) != str(crowd), "and a different one tomorrow")
+	var noon := 0
+	var dusk := 0
+	var night := 0
+	for v in crowd:
+		check(not v.get("child", false) and (v["home"] as Vector2) in pl["gates"], "a visitor is an adult who came by a road")
+		noon += int(MarketCrowd.here(v, 12.5))
+		dusk += int(MarketCrowd.here(v, 20.0))
+		night += int(MarketCrowd.here(v, 1.0)) + int(MarketCrowd.here(v, 23.5))
+	check(noon >= crowd.size() / 3 and noon > dusk and night == 0, "busiest at midday, thinner at dusk, gone by night (%d/%d/%d)" % [noon, dusk, night])
+	var v0: Dictionary = crowd[0]
+	var vd := NPCRoles.duty_at(v0, pl, float(v0["visit"][0]) + 0.1, 0.0)
+	check(vd.get("duty", "") == String(v0["visit"][2]) and vd["target"] != Vector2.INF, "a visitor's day out is a duty (%s)" % vd.get("duty", ""))
+	check((vd["target"] as Vector2).distance_to(site["center"]) < float(site["outer"]), "spent in town")
+	check(NPCRoles.duty_at(v0, pl, float(v0["visit"][1]) - 0.1, 0.0).get("duty", "") == "head_home", "and at the end they head for the road")
+	check(NPCRoles.duty_at(v0, pl, 3.0, 0.0).is_empty() and not NPCRoles.day_words(v0).is_empty(), "nothing at night; the model knows they're visiting")
+	var ks := MarketCrowd.knots(pl)
+	check(ks.size() == 5 and (ks[0] as Vector2).distance_to(site["center"]) < float(site["inner"]), "idlers gather in knots in the square")
+	var clear := true
+	for v in crowd:
+		for h in [9.0, 11.0, 13.0, 15.0, 19.0]:
+			var dd := NPCRoles.duty_at(v, pl, h, 0.0)
+			if dd.is_empty() or dd["duty"] == "head_home":
+				continue
+			for o in pl["obstacles"]:
+				if (dd["target"] as Vector2).distance_to(o[0]) < float(o[1]):
+					clear = false
+	check(clear and not (pl["obstacles"] as Array).is_empty(), "nobody stands inside a stall, cart, chest or well")
 	# A weaponsmith keeps a forge outside the shop door for part of the day.
 	var shop := {}
 	for h in TownShops.shops_of(gen, site):
@@ -1563,6 +1645,18 @@ func test_wardrobes() -> void:
 			check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "%s's clothes don't pass for bare skin" % job)
 	check(looks.size() >= 36, "nobody dresses like anyone else (%d looks in 40)" % looks.size())
 	check(men_in_gowns == 0, "men wear tunics and trousers, not gowns")
+	# Children dress as children in every era: nothing low-cut, nothing of a trade.
+	for i in 60:
+		var p := NPCGen.person(r, Eras.MEDIEVAL, i, 0, 0)
+		p["body"]["female"] = i % 2 == 0
+		for era in [Eras.MEDIEVAL, Eras.FANTASY, Eras.SCIFI]:
+			var w := Outfit.wardrobe(p["body"], era, "child")
+			var sp: Dictionary = w["spec"]
+			check(w["child"], "a child's wardrobe says it was cut for a child")
+			check(sp["vest"] == 0 and sp["apron"] == 0.0 and not sp["bib"] and sp["cape"] == 0.0 and not sp.has("pouch") and not sp.get("open", false),
+				"a child wears no bodice, apron, cape, pouch or coat (%s)" % str(sp))
+			for part in [Outfit.PART_SHIRT, Outfit.PART_PANTS]:
+				check(not Outfit._near(w["cols"][part], p["body"]["skin"]), "a child's clothes don't pass for bare skin")
 	if not HumanModel.available():
 		return
 	var h := HumanModel.new()
@@ -2534,6 +2628,119 @@ func test_world_themes() -> void:
 	Planets.apply(Planets.get_planet(0, 0))
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
+func test_climates() -> void:
+	# Worlds made before climates keep their biomes exactly: no climate bits, no palms.
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = WorldField.CLIMATE_V - 1
+	var old := ChunkGenerator.new(4242)
+	check(WorldField.region_climate(old.field.region_hash_at(3000.0, 1200.0)) == Vector2i(-1, -1), "old worlds have no climates")
+	var palms_old := 0
+	for i in 400:
+		for f in Biome.params(WHash.h32(i * 13 + 5), Eras.MEDIEVAL)["flora"]:
+			palms_old += 1 if f["t"] == "palm" or f["t"] == "tropic" else 0
+	check(palms_old == 0, "no palms in old worlds")
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var kinds := {}
+	var hot_wet := 0
+	var hot_trees := 0
+	var cold := 0
+	var cold_palms := 0
+	var near_palms := 0
+	for iz in range(-14, 15):
+		for ix in range(-14, 15):
+			var p := Vector2(ix * 400.0, iz * 400.0)
+			var h := g.field.region_hash_at(p.x, p.y)
+			var c := WorldField.region_climate(h)
+			kinds[c] = true
+			var bp := Biome.params(h, Eras.MEDIEVAL)
+			var tropical := 0
+			for f in bp["flora"]:
+				if f["t"] == "palm" or f["t"] == "tropic":
+					tropical += 1
+			if c.x == 3 and c.y >= 2:
+				hot_wet += 1
+				hot_trees += 1 if tropical > 0 else 0
+			if c.x == 0:
+				cold += 1
+				cold_palms += tropical
+			if p.length() < 900.0:
+				near_palms += tropical
+	check(kinds.size() >= 12, "a world has many climates (%d)" % kinds.size())
+	check(hot_wet > 3 and hot_trees == hot_wet, "the wet tropics grow palms and jungle (%d of %d)" % [hot_trees, hot_wet])
+	check(cold > 3 and cold_palms == 0, "no palms in the cold")
+	check(near_palms == 0, "the land round the spawn is temperate")
+	# A climate is the same wherever it is asked for in a region, and region_climate reads
+	# it back from the hash.
+	var q := g.field.region_site_at(2500.0, -1800.0)
+	var sp := g.field.site_pos(q.x, q.y)
+	check(g.field.region_hash_at(sp.x, sp.y) == g.field.region_hash_at(2500.0, -1800.0), "one hash per region")
+	# Every palm form builds, near and far, with whole-frond LOD groups.
+	var forms := {}
+	for s in range(1, 400):
+		var pp := Flora.species("palm", s)
+		if forms.has(pp["form"]):
+			continue
+		forms[pp["form"]] = true
+		var m := RealTree.build("palm", s, 0)
+		check(m != null and m.get_surface_count() == 2, "a %s builds bark and leaves" % pp["form"])
+		var far := RealTree.far_parts("palm", s, 1)
+		var lv: PackedVector3Array = far["leaf"][Mesh.ARRAY_VERTEX]
+		var li: PackedInt32Array = far["leaf"][Mesh.ARRAY_INDEX]
+		check(lv.size() > 0 and lv.size() % 4 == 0 and li.size() == lv.size() / 4 * 6, "a far %s is whole leaf cards" % pp["form"])
+	check(forms.size() == 5, "five kinds of palm (%s)" % [forms.keys()])
+	for s in range(1, 60):
+		var tp := Flora.species("tropic", s)
+		check(RealTree.build("tropic", s, 0) != null, "a %s builds" % tp["form"])
+		break
+	check(ObjectLibrary.kind("palm") == "tree" and ObjectLibrary.kind("tropic") == "tree" and Durability.TABLE.has("palm"), "palms can be felled")
+	check(FarLand.FORMS["palm"] == FarLand.FORM_PALM, "distant palms stand as palms")
+	# Regions meet in a band of mixed plants, not on a line: walking from one site to the
+	# next, the neighbour's share rises from none to half at the line.
+	var s0 := g.field.site_pos(3, 2)
+	var s1 := g.field.site_pos(4, 2)
+	var shares := []
+	for k in 81:
+		var p := s0.lerp(s1, k / 80.0)
+		var bl := g.field.region_blend(p.x, p.y)
+		shares.append(float(bl[2]))
+	var steady := true
+	for k in range(1, 81):
+		steady = steady and absf(float(shares[k]) - float(shares[k - 1])) < 0.2
+	check(float(shares[0]) == 0.0 and shares.max() > 0.4 and steady, "regions blend gradually (%s)" % [shares])
+	var ca := g.generate(20, 7)
+	var cb := g.generate(21, 7)
+	var agree := ca.has("biome_mix") and cb.has("biome_mix")
+	for j in ChunkGenerator.MIX_N:
+		agree = agree and ChunkGenerator.biome_pick(ca, 64.0, j * 8.0, 0.3) == ChunkGenerator.biome_pick(cb, 0.0, j * 8.0, 0.3)
+	check(agree, "neighbouring chunks agree on how their regions blend")
+	# Mixing species at a border moves nothing: same objects, same places, same order.
+	var changed := 0
+	var same := true
+	var edge_pts := 0
+	for k in 41:
+		var p := s0.lerp(s1, k / 40.0)
+		if float(g.field.region_blend(p.x, p.y)[2]) < 0.3:
+			continue
+		edge_pts += 1
+		var bx := int(floor(p.x / 64.0))
+		var bz := int(floor(p.y / 64.0))
+		g.mix_species = false
+		var plain := g.generate(bx, bz)
+		g.mix_species = true
+		var mixed := g.generate(bx, bz)
+		same = same and plain["objects"].size() == mixed["objects"].size()
+		for i in mini(plain["objects"].size(), mixed["objects"].size()):
+			var o1: Dictionary = plain["objects"][i]
+			var o2: Dictionary = mixed["objects"][i]
+			same = same and o1["p"] == o2["p"] and o1["i"] == o2["i"] and o1["s"] == o2["s"]
+			changed += 1 if o1.get("sp", 0) != o2.get("sp", 0) else 0
+	check(edge_pts > 0 and same, "mixing species at a border keeps every object in its place")
+	check(changed > 0, "the neighbour's species mix in near the border (%d)" % changed)
+	var grid := ChunkGenerator.biome_mix_grid(ca, Eras.MEDIEVAL, ["grass_tint", "lush", "grass_density"])
+	check(grid.size() == ChunkGenerator.MIX_N * ChunkGenerator.MIX_N and grid[0].size() == 5, "grass blends tint, lushness and thickness")
+	WorldField.terrain_v = was
+
 func test_kit_flora() -> void:
 	# Autumn by the stand: a region's broadleaves have all turned or none have; reds, golds
 	# and browns; never up by the snow.
@@ -3015,7 +3222,7 @@ func test_strongholds() -> void:
 		kinds[it["t"]] = int(kinds.get(it["t"], 0)) + 1
 	var pc: Array = Stronghold.PIECES[found["era"]]
 	check(kinds.get(pc[1], 0) == 4 and kinds.get(pc[2], 0) == 1 and kinds.get(pc[3], 0) == 1 and kinds.get(pc[0], 0) == 11, "four towers, a gate, a keep and eleven walls (%s)" % [kinds])
-	check(Stronghold.guards(found).size() == 1 + int(found["tier"]) * 2, "guards scale with the tier")
+	check(Stronghold.guards(found).size() == Stronghold.sentries(found), "sentries keep the gate")
 	# The chunk at the centre holds pieces and is flat across the courtyard.
 	var c: Vector2 = found["center"]
 	var ch := g.generate(int(floor(c.x / ChunkGenerator.SIZE)), int(floor(c.y / ChunkGenerator.SIZE)))
@@ -3029,6 +3236,86 @@ func test_strongholds() -> void:
 	check(absf(ChunkGenerator.height_at(ch, lx, lz) - float(found["target_h"])) < 0.6, "the courtyard is levelled")
 	var sp := Creature.guard_species(found["era"], 3)
 	check(sp["temper"] == "aggressive" and float(sp["hp"]) > 120.0, "dread guards are tough (%s hp)" % sp["hp"])
+
+func test_dungeons() -> void:
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var forts: Array = []
+	for cz in range(-8, 8):
+		for cx in range(-8, 8):
+			var f := Stronghold.at_cell(g, cx, cz)
+			if not f.is_empty():
+				forts.append(f)
+	check(forts.size() >= 3, "a few strongholds to dig under (%d)" % forts.size())
+	var big := 0
+	for f in forts.slice(0, 6):
+		var pl := Dungeon.plan(g, f)
+		Dungeon._cache.clear()
+		var again := Dungeon.plan(g, f)
+		check(again["rooms"].size() == pl["rooms"].size() and again["locks"].size() == pl["locks"].size()
+			and again["parts"].size() == pl["parts"].size(), "a dungeon's plan is the same every time")
+		if pl["levels"].is_empty():
+			continue
+		var rooms := Dungeon.room_count(pl)
+		if pl["levels"].size() >= 2:
+			big += 1
+		check(rooms >= 4, "a dungeon has rooms to explore (%d)" % rooms)
+		# Every seal can be opened in turn: its parts and its door are reachable with the
+		# seals before it open, and nothing is left behind once all are.
+		for li in pl["locks"].size():
+			var seen := Dungeon._reach(pl, func(x: int) -> bool: return x < li)
+			var lk: Dictionary = pl["locks"][li]
+			var fr: Array = Dungeon.front_of(pl, li)
+			check(seen.has(Dungeon._key(lk["lv"], fr[0])), "seal %d of %s can be reached" % [li, pl["id"]])
+			for pi in lk["parts"]:
+				var p: Dictionary = pl["parts"][pi]
+				var c := Dungeon.cell_at(pl, Vector2(p["p"].x, p["p"].z))
+				check(seen.has(Dungeon._key(p["lv"], c)), "the %s for seal %d of %s is on the near side" % [p["kind"], li, pl["id"]])
+			check(String(lk.get("hint", "")) != "" and String(lk.get("sealed", "")) != "", "seal %d says how it opens" % li)
+		var all := Dungeon._reach(pl, func(_x: int) -> bool: return true)
+		for ri in pl["rooms"].size():
+			var rm: Dictionary = pl["rooms"][ri]
+			if rm["kind"] == "gone":
+				continue
+			var any := false
+			for q in Dungeon._cells(rm):
+				any = any or all.has(Dungeon._key(rm["lv"], q))
+			check(any, "room %d of %s can be reached" % [ri, pl["id"]])
+		# Everything walkable lies under the courtyard's ground, with earth over it.
+		for lv in pl["levels"].size():
+			check(Dungeon.floor_y(pl, lv) + Dungeon.HALL_H < float(pl["y0"]) - 1.0, "level %d is underground" % lv)
+	check(big > 0, "some dungeons go more than one level down")
+	# Stocking: the centre chunk gets the dungeon's state, its chests and guards, and the
+	# mouth is opened in the ground, once.
+	var f: Dictionary = forts[0]
+	var pl := Dungeon.plan(g, f)
+	var k: Vector2i = pl["chunk"]
+	var ch := g.generate(k.x, k.y)
+	ch.erase("dg_v")
+	var before: int = ch["objects"].size()
+	check(Dungeon.stock(g, ch), "a fort's chunk is stocked")
+	check(ch.has("dgn"), "the centre chunk keeps the dungeon's state")
+	var m := Dungeon.mouth(pl)
+	var mw := Dungeon.to_world(pl, Vector3(m.x, 0, m.y - 2.0))
+	var mk := ChunkStreamer.chunk_of(mw)
+	var mc := ch if mk == k else g.generate(mk.x, mk.y)
+	if mk != k:
+		Dungeon.stock(g, mc)
+	var mh: PackedByteArray = mc.get("hole", PackedByteArray())
+	var hi := clampi(roundi(mw.x - mk.x * ChunkGenerator.SIZE), 0, ChunkGenerator.RES - 1)
+	var hj := clampi(roundi(mw.z - mk.y * ChunkGenerator.SIZE), 0, ChunkGenerator.RES - 1)
+	check(not mh.is_empty() and mh[hj * ChunkGenerator.RES + hi] != 0, "the stair's mouth is open in the ground")
+	var n: int = ch["objects"].size()
+	check(not Dungeon.stock(g, ch) and ch["objects"].size() == n, "stocked only once")
+	var dg := 0
+	for o in ch["objects"].slice(before):
+		if String(o["st"].get("dg", "")) == String(pl["id"]):
+			dg += 1
+	var guards := 0
+	for gd in ch.get("guards", []):
+		if gd.has("dg"):
+			guards += 1
+	check(dg + guards > 0 or pl["loot"].is_empty(), "the dungeon's chests and guards land in their chunks")
 
 func test_wonder_sites() -> void:
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
@@ -4025,6 +4312,17 @@ func test_town_life() -> void:
 	check(pl["paths"].size() >= pl["houses"].size(), "paths lead from the doors (%d)" % pl["paths"].size())
 	check(pl["fields"].size() >= 3, "fields outside town (%d)" % pl["fields"].size())
 	check(pl["smoke"].size() > 0 and pl["lamps"].size() > 0, "smoking chimneys and torches")
+	# The town's chest isn't left out on the square: it stands by a house's front door.
+	var lay := gen.settlement_layout(s)
+	for it in lay:
+		if Eras.CACHE_TYPES.has(it["t"]):
+			var by_door := false
+			for h in lay:
+				if KitHouse.has(h["t"]):
+					var l := TownLife.world_to_frame(h["p"], h["yaw"], it["p"])
+					var hd := KitHouse.size_of(h["t"])
+					by_door = by_door or (absf(l.x) < hd.x * 0.5 and l.y > hd.z * 0.5 and l.y < hd.z * 0.5 + 1.0)
+			check(by_door, "the town's chest stands against a house front, not mid-square")
 	# Each chimney's smoke reaches the builder with its household, which seeds its fire.
 	var tl := TownLife.new()
 	tl.setup(gen, null, s)
@@ -4117,6 +4415,13 @@ func test_town_life() -> void:
 			if absf(q.x) < float(f["hx"]) and absf(q.y) < float(f["hz"]):
 				standing += 1
 	check(standing == 0, "the field is cleared of trees (%d standing)" % standing)
+	# The market square: paved, a well or cross near the middle, stalls round it.
+	check(not (pl["square"] as Dictionary).is_empty(), "the town has a market square")
+	var sq_kinds := {}
+	for e in pl["pieces"]:
+		sq_kinds[e["k"]] = int(sq_kinds.get(e["k"], 0)) + 1
+	check(sq_kinds.has("well") or sq_kinds.has("cross"), "a well or market cross on the square")
+	check(int(sq_kinds.get("stall", 0)) >= 2, "stalls round the square (%d)" % int(sq_kinds.get("stall", 0)))
 	# Castle wall and tower builds: a type alone has a footprint, placed ones a build of
 	# their own, and every build shares the plain wall's ground plan.
 	var fw := ObjectLibrary.footprint({"t": "castle_wall"})
@@ -4152,9 +4457,21 @@ func test_boats_on_the_water() -> void:
 		var d: Dictionary = Boats.KINDS[s["boat"]]
 		check(float(s["clear"]) >= float(d["len"]) * 0.5 + 10.0, "%s fits its lake (clear %d m)" % [s["boat"], s["clear"]])
 		# Its loop stays on deep water.
-		for i in 12:
-			var p: Vector2 = Boats.pose_at(s, float(i) * 97.0)[0]
+		for i in 48:
+			var p: Vector2 = Boats.pose_at(s, float(i) * 37.0)[0]
 			check(gen.field.height(p.x, p.y) < 0.0, "%s sails on water at %s" % [s["boat"], p])
+		# Under way she keeps to her pace (no jumps), and she stops at anchor now and then.
+		var v := float(d["moves"])
+		if v > 0.0 and float(s["loop"]) > 0.0:
+			var still := 0
+			var prev: Vector2 = Boats.pose_at(s, 0.0)[0]
+			for i in range(1, 1200):
+				var q: Vector2 = Boats.pose_at(s, float(i))[0]
+				check(q.distance_to(prev) < v * 1.6 + 0.01, "%s never jumps along her loop (%.2f m in 1 s)" % [s["boat"], q.distance_to(prev)])
+				if q.distance_to(prev) < 0.001:
+					still += 1
+				prev = q
+			check((still > 30) == (float(d.get("rest", 0.0)) > 0.0), "%s lies at anchor between passages (%d s still)" % [s["boat"], still])
 		var era := int(d["era"])
 		var tech := WorldField.dominant(gen.field.era_weights(c.x, c.y)) == Eras.SCIFI
 		check((era == Eras.SCIFI) == tech, "%s matches the land's era" % s["boat"])
@@ -4174,6 +4491,26 @@ func test_boats_on_the_water() -> void:
 	Eras.theme = old_theme
 	WorldField.allowed_eras = old_eras
 	WorldField.terrain_v = old_v
+
+func test_boat_wake_waves() -> void:
+	# A cog at 2.6 m/s heading -z with her bow at the origin: her wake stands up behind her
+	# (both up and down), stays out of her hull and out of the water ahead of her.
+	var bm := BoatManager.new()
+	bm._wakes = [[Vector4(0, 0, 0, -1), Vector4(2.6, 20.0, 3.2, 1.0)]]
+	var hi := -1.0
+	var lo := 1.0
+	for z in range(0, 80):
+		for x in [-12.0, -6.0, 0.0, 6.0, 12.0]:
+			var h := bm.wake_at(x, float(z))
+			hi = maxf(hi, h)
+			lo = minf(lo, h)
+	check(hi > 0.08 and lo < -0.05, "a boat under way raises crests and troughs behind her (%.2f .. %.2f m)" % [hi, lo])
+	check(absf(bm.wake_at(0.0, 10.0)) < 0.02, "no wake inside her hull")
+	check(absf(bm.wake_at(0.0, -40.0)) < 0.001, "no wake ahead of her")
+	check(hi <= Water.WAKE_MAX and lo >= -Water.WAKE_MAX, "wakes stay within WAKE_MAX")
+	bm._wakes = []
+	check(bm.wake_at(0.0, 20.0) == 0.0, "no boats, no wake")
+	bm.free()
 
 func test_boat_models() -> void:
 	for k in Boats.KINDS:
@@ -4541,6 +4878,107 @@ func test_camera_feel() -> void:
 	check(CameraBlur.shutter_scale(a, a.rotated(Vector3.UP, 0.05), 1.0 / 60.0) == 0.0, "motion blur off")
 	CameraBlur.strength = old
 
+# --- Power ------------------------------------------------------------------------
+
+func _pw(id: String, i: int, st := {}) -> Dictionary:
+	var s := {"owner": "solo"}
+	Power.init_state(id, s)
+	s.merge(st, true)
+	return {"i": i, "t": BuildCatalog.PREFIX + id, "p": Vector3.ZERO, "r": 0.0, "s": 1.0, "e": -1, "st": s}
+
+func test_power_networks_and_switches() -> void:
+	var gen := _pw("windmill", 0)
+	var sw := _pw("knife_switch", 1)
+	var lamp := _pw("lamp_ceiling", 2)
+	var far_lamp := _pw("lamp_wall", 3)
+	check(Power.link(gen, "0,0,0", sw, "0,0,1"), "cable windmill to switch")
+	check(Power.link(sw, "0,0,1", lamp, "0,0,2"), "cable switch to lamp")
+	check(not Power.link(sw, "0,0,1", lamp, "0,0,2"), "no second cable between the same two")
+	check(lamp["st"]["pw"].has("0,0,1") and gen["st"]["pw"].has("0,0,1"), "both ends know the cable")
+	var pieces := {"0,0,0": gen, "0,0,1": sw, "0,0,2": lamp, "0,0,3": far_lamp}
+	var nets := Power.networks(pieces)
+	check(nets.size() == 2, "closed switch joins windmill and lamp, the lone lamp is its own (%d)" % nets.size())
+	sw["st"]["on"] = false
+	nets = Power.networks(pieces)
+	check(nets.size() == 4, "an open switch cuts the line (%d networks)" % nets.size())
+	check(Power.wire_for(4.0) == 1 and Power.wire_for(11.0) == 3, "a Copper Wire per 5 m of cable")
+	var pole := _pw("power_pole", 4)
+	for n in 8:
+		Power.link(pole, "0,0,4", _pw("lamp_wall", 10 + n), "0,0,%d" % (10 + n))
+	check(not Power.link(pole, "0,0,4", _pw("lamp_wall", 30), "0,0,30"), "a pole takes 8 cables, no more")
+	check(Power.parse_id("-3,7,12") == [Vector2i(-3, 7), 12], "piece ids parse back")
+
+func test_power_sharing() -> void:
+	var gen := _pw("windmill", 0)
+	var bank := _pw("battery_bank", 1)
+	var lamp := _pw("lamp_ceiling", 2)
+	var es := [{"id": "a", "o": gen, "f": 1.0}, {"id": "b", "o": bank}, {"id": "c", "o": lamp}]
+	# A fresh breeze: the windmill lights the lamp and charges the bank with the rest.
+	var r := Power.solve(es, {"wind": 0.8, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(r["pieces"]["c"]["powered"], "lamp lit by the wind")
+	check(is_equal_approx(float(bank["st"]["charge"]), 400.0 - 60.0), "bank took the spare 340 W for an hour (%.1f Wh)" % float(bank["st"]["charge"]))
+	# Calm: the bank carries the lamp.
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(r["pieces"]["c"]["powered"] and is_equal_approx(float(bank["st"]["charge"]), 280.0), "bank carries the lamp in a calm (%.1f Wh)" % float(bank["st"]["charge"]))
+	lamp["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 60.0)
+	check(not r["pieces"]["c"]["powered"] and is_equal_approx(float(bank["st"]["charge"]), 280.0), "a lamp switched off draws nothing")
+	# Flat batteries, no wind: dark.
+	lamp["st"]["on"] = true
+	bank["st"]["charge"] = 0.0
+	r = Power.solve(es, {"wind": 0.0, "sun": Vector3.DOWN, "cloud": 0.0}, 1.0)
+	check(not r["pieces"]["c"]["powered"] and float(r["short"]) > 59.0, "no power, no light")
+
+func test_power_engines_and_brownout() -> void:
+	var gen := _pw("gen_woodgas", 0, {"fuel": 100.0})
+	var lamps: Array = []
+	var es := [{"id": "g", "o": gen}]
+	for n in 5:
+		var l := _pw("floodlight", 1 + n)
+		lamps.append(l)
+		es.append({"id": "l%d" % n, "o": l})
+	# 1500 W engine, 5 x 300 W floodlights: exactly full load.
+	var r := Power.solve(es, {"wind": 0.0}, 10.0)
+	check(r["pieces"]["l4"]["powered"] and is_equal_approx(float(gen["st"]["fuel"]), 90.0), "full load burns a second of fuel a second (%.2f)" % float(gen["st"]["fuel"]))
+	for n in 4:
+		lamps[n]["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0}, 10.0)
+	check(is_equal_approx(float(gen["st"]["fuel"]), 88.0), "a fifth of the load burns a fifth as fast (%.2f)" % float(gen["st"]["fuel"]))
+	gen["st"]["on"] = false
+	r = Power.solve(es, {"wind": 0.0}, 10.0)
+	check(is_equal_approx(float(gen["st"]["fuel"]), 88.0) and not r["pieces"]["l4"]["powered"], "a stopped engine burns nothing and powers nothing")
+	# Short of power, defences outlast lights: a 400 W windmill on 3 x 300 W floods.
+	var wind := _pw("windmill", 9)
+	var es2 := [{"id": "w", "o": wind, "f": 1.0}]
+	for n in 3:
+		es2.append({"id": "f%d" % n, "o": _pw("floodlight", 10 + n)})
+	r = Power.solve(es2, {"wind": 1.0}, 1.0)
+	var lit := 0
+	for n in 3:
+		lit += 1 if r["pieces"]["f%d" % n]["powered"] else 0
+	check(lit == 1, "400 W lights one 300 W floodlight of three, not all dimly (%d)" % lit)
+
+func test_power_sun_and_wind() -> void:
+	var noon := Power.sun_dir_at(10.5)
+	var midnight := Power.sun_dir_at(10.0)
+	check(noon.y > 0.9 and midnight.y < -0.9, "sun high at noon, under at midnight")
+	check(Power.solar_factor(0.0, noon) > 0.8, "a panel tipped toward the sun's side takes most of it (%.2f)" % Power.solar_factor(0.0, noon))
+	check(Power.solar_factor(0.0, midnight) == 0.0, "no sun at night")
+	check(Power.solar_factor(0.0, noon) > Power.solar_factor(PI, noon), "facing the sun beats facing away")
+	check(Power.wind_curve(0.02) == 0.0 and Power.wind_curve(0.9) == 1.0, "calm makes nothing, a fresh wind full power")
+	for id in BuildCatalog.PIECES:
+		var s := Power.spec_of(id)
+		if s.is_empty():
+			continue
+		check(ItemDB.UNLOCK.has(id), "%s has an unlock level" % id)
+		check(ItemDB.UNLOCK.get(id, 0) >= Eras.UNLOCK_LEVEL, "%s is past the medieval age" % id)
+		var made := false
+		for rc in Recipes.LIST:
+			if rc["out"] == id:
+				made = true
+		check(made, "%s can be made" % id)
+		check(BuildCatalog.mesh(id).get_surface_count() > 0, "%s has a mesh" % id)
+
 func test_fov_is_horizontal() -> void:
 	var gs = load("res://src/settings/graphics_settings.gd")
 	check(absf(gs.vertical_fov(90.0) - 58.72) < 0.05, "90 degrees across a 16:9 screen is about 58.7 degrees tall")
@@ -4664,3 +5102,70 @@ func test_fire_items() -> void:
 	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
 	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
 	check(Crime.FINES.has("arson"), "arson is a crime")
+
+func test_water_life() -> void:
+	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds
+	# whole instances and its mesh builds. (On today's terrain, as a new world has it.)
+	var tv := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242)
+	var f := AquaFlora.Field.new(4242)
+	var lakes: Array = []
+	var seas: Array = []
+	for j in range(-60, 60, 2):
+		for i in range(-60, 60, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			var h := g.field.height(x, z)
+			if h > -0.5 or h < -9.0:
+				continue
+			if f.sea_t(x, z) < 0.05 and h > -2.5 and lakes.size() < 8:
+				lakes.append(Vector2i(i, j))
+			elif f.sea_t(x, z) > 0.95 and h < -2.0 and seas.size() < 12:
+				seas.append(Vector2i(i, j))
+	check(lakes.size() > 0 and seas.size() > 0, "found lakes (%d) and sea (%d)" % [lakes.size(), seas.size()])
+	var lake := {}
+	for k in lakes:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, lake)
+	var sea := {}
+	for k in seas:
+		AquaFlora.build(g.generate(k.x, k.y), 1.0, sea)
+	check(lake.has("aq_reed@0") and (lake.has("aq_pad_0@0") or lake.has("aq_pad_1@0") or lake.has("aq_pad_2@0")), "lakes have reeds and lily pads: %s" % [lake.keys()])
+	check(not lake.has("aq_coral_brain@0"), "no reef in a lake")
+	check(sea.has("aq_coral_branch@0") and sea.has("aq_kelp@0"), "the sea has reefs and kelp: %s" % [sea.keys()])
+	# Reefs stand on rock: some sea chunk has bommies, laid as stones.
+	var rocks := {}
+	var solid := PackedFloat32Array()
+	for k in seas:
+		AquaFlora.reef_rocks(g.generate(k.x, k.y), rocks, solid)
+	check(rocks.has("stone:rock_a") or rocks.has("stone:rock_b"), "reefs have rock bommies")
+	check(solid.size() % 13 == 0 and solid.size() > 0, "bommie rocks are solid")
+	# No coral in water under snowy mountains, however wide.
+	var cold := {}
+	var n_cold := 0
+	for j in range(-20, 20, 2):
+		for i in range(-20, 20, 2):
+			var x := i * 64.0 + 32.0
+			var z := j * 64.0 + 32.0
+			if n_cold < 6 and g.field.height(x, z) < -2.0 and f.warm(x, z) < 0.02:
+				n_cold += 1
+				AquaFlora.build(g.generate(i, j), 1.0, cold)
+	check(n_cold > 0 and not cold.has("aq_coral_branch@0") and not cold.has("aq_coral_brain@0"), "no coral in cold mountain water (%d chunks)" % n_cold)
+	var one := {}
+	var again := {}
+	var sea_chunk := g.generate(seas[0].x, seas[0].y)
+	AquaFlora.build(sea_chunk, 1.0, one)
+	AquaFlora.build(sea_chunk, 1.0, again)
+	check(one.hash() == again.hash(), "water plants are the same every time")
+	for k in lake.keys() + sea.keys():
+		var buf: PackedFloat32Array = lake.get(k, sea.get(k))
+		check(buf.size() % 16 == 0 and buf.size() > 0, "%s holds whole instances" % k)
+		check(AquaKit.SPECIES.has(k.get_slice("@", 0)), "%s is a known species" % k)
+	var dry := {}
+	AquaFlora.build(g.generate(0, 0), 1.0, dry)
+	check(dry.is_empty() or g.field.height(32.0, 32.0) < 1.0, "dry land grows no water plants")
+	for sp in AquaKit.SPECIES:
+		check(AquaKit.mesh(sp).get_surface_count() == 1, "%s mesh builds" % sp)
+	for k in FishKit.KINDS:
+		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
+	WorldField.terrain_v = tv
