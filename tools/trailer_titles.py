@@ -53,10 +53,16 @@ def card(lines):
         w = tracked_width(t, f, tr)
         asc, desc = f.getmetrics()
         draw_tracked(d, ((W - w) / 2, H * yf - (asc + desc) / 2), t, f, tr, 255)
-    # A wide soft shadow under the letters keeps them readable over bright sky.
-    shadow = text.filter(ImageFilter.GaussianBlur(22)).point(lambda v: min(255, int(v * 1.6)))
+    # A broad dark haze round the line and a tighter shadow under the letters keep them
+    # readable over bright sky and busy ground alike.
+    haze = text.filter(ImageFilter.GaussianBlur(80)).point(lambda v: min(255, int(v * 5.0)))
+    haze = haze.filter(ImageFilter.GaussianBlur(60))
+    shadow = text.filter(ImageFilter.GaussianBlur(18)).point(lambda v: min(255, int(v * 2.0)))
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    img.paste((0, 0, 0, 255), (0, 0), shadow.point(lambda v: int(v * 0.55)))
+    img.paste((0, 0, 0, 255), (0, 0), haze.point(lambda v: int(v * 0.42)))
+    dark = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    dark.putalpha(shadow.point(lambda v: int(v * 0.75)))
+    img = Image.alpha_composite(img, dark)
     img.paste((246, 238, 224, 255), (0, 0), text)
     return img
 
