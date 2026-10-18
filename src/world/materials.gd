@@ -287,6 +287,13 @@ static func set_window_light(f: float) -> void:
 	var m := get_mat("window_warm") as BaseMaterial3D
 	m.emission_energy_multiplier = 2.5 * f
 
+## Ticks the screens' clock to the world's and sets their brightness for its theme.
+static func set_screen_clock(day: float) -> void:
+	var m := get_mat("screen_ui") as ShaderMaterial
+	ScreenLook.hours = fposmod(day, 1.0) * 24.0
+	m.set_shader_parameter("game_hours", ScreenLook.hours)
+	m.set_shader_parameter("energy", ScreenLook.ENERGY["alien" if Eras.theme == "alien" else "human"])
+
 static func get_mat(name: String) -> Material:
 	_lock.lock()
 	var out := _get_mat(name)
@@ -354,6 +361,10 @@ static func _get_mat(name: String) -> Material:
 		_cache[name] = m
 		return m
 	match name:
+		"screen_ui":
+			# Displays drawn in code (ScreenLook, screen_ui.gdshader).
+			_cache[name] = ScreenLook.material()
+			return _cache[name]
 		"leaf_w":
 			m = _pbr(Color(1, 1, 1), 0.85, 0.0, "leaf", 0.08, 0.6, 1.0)
 			m.backlight_enabled = true
