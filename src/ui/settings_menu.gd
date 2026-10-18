@@ -132,6 +132,8 @@ func _graphics_tab() -> Control:
 	_slider(g, "motion_blur_strength", "Motion blur amount", 0.1, 1.0, 0.05, "%.2f", "How long the shutter stays open, in 60ths of a second. 0.3 is subtle; 1.0 is film-like.")
 	_option(g, "clouds", "Cloud quality", ["Flat (fastest)", "Volumetric", "Volumetric high"], "Ray-marched 3D clouds cost a lot at 4K; Flat paints a cloud deck on the sky.")
 	_option(g, "effects", "Effects quality", ["Low", "Medium", "High"], "Sample counts for ambient occlusion, screen-space and SDFGI light. Low and Medium run GI at half resolution.")
+	_check(g, "weather", "Dynamic weather", "Rain, snow, storms, mist and dust storms that come and go. Off keeps fair skies.")
+	_option(g, "weather_fx", "Weather effects", ["Low", "Normal", "High"], "How many raindrops and snowflakes fall round you; Normal and High add splashes where rain lands, High lets lightning cast shadows.")
 	_slider(g, "view_distance", "View distance", 3, 8, 1, "%d chunks", "Each chunk is 64 m. 5 chunks is about 320 m of detailed terrain.")
 	_slider(g, "detail_distance", "Detail distance", 0.4, 1.5, 0.1, "%.1fx", "How far grass, ground clutter and small props are drawn. Trees and buildings are not affected.")
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")

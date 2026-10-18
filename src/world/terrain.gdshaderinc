@@ -232,6 +232,8 @@ float layer(float amount, float lum, float mean, float noise) {
 }
 
 
+#include "res://src/env/weather_ground.gdshaderinc"
+
 void fragment() {
 #ifdef FAR_LAND
 	if (near_drawn(wpos.xz)) {
@@ -904,5 +906,13 @@ void fragment() {
 	n = normalize(mix(n, normalize(wnorm + crown_n), canopy));
 	n = normalize(mix(n, vec3(0.0, 1.0, 0.0), river));
 #endif
+	// Rain, puddles and fresh snow (Weather, weather_ground.gdshaderinc).
+	vec3 wg_col = ALBEDO;
+	float wg_rough = ROUGHNESS;
+	float wg_spec = SPECULAR;
+	weather_ground(wpos, wnorm, p, gp, macro, meso, micro, slope, dist, far, rock_mask, wg_col, wg_rough, wg_spec, n);
+	ALBEDO = wg_col;
+	ROUGHNESS = wg_rough;
+	SPECULAR = wg_spec;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 }

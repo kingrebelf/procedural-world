@@ -1464,6 +1464,7 @@ func set_grass(bufs: Dictionary) -> void:
 		# chunk: 46 m); the shader thins it out before.
 		_set_range(mmi, AquaKit.range_of(sp).y + 46.0 if aqua else GrassKit.range_of(sp).y + 24.0)
 		mmi.name = "Grass_" + key.replace("@", "_")
+		mmi.layers = Weather.LOW_LAYER # rain falls through it (Weather's rain catch skips it)
 		add_child(mmi)
 		_grass.append(mmi)
 
@@ -1495,6 +1496,7 @@ func set_clutter(buffers: Dictionary) -> void:
 		_set_range(mmi, 110.0 if t.begins_with("under") else 70.0)
 		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		mmi.visibility_range_end_margin = 10.0
+		mmi.layers = Weather.LOW_LAYER
 		add_child(mmi)
 		_clutter.append(mmi)
 

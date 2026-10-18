@@ -19,6 +19,7 @@ const LANDMARKS := {
 	"star_wreck": {"verb": "Salvage the wreck", "daily": true, "h": 2.0, "spent": "Nothing more to strip from it today"},
 	"titan_bones": {"verb": "Study the titan's bones", "daily": false, "h": 1.6, "spent": "You have learned what the bones can tell"},
 	"dolmen": {"verb": "Rest beneath the dolmen", "daily": true, "h": 1.4, "spent": "You have rested here today"},
+	"star_iron": {"verb": "Pry at the fallen star", "daily": false, "h": 1.0, "spent": "Nothing more comes loose"},
 }
 
 static func has(t: String) -> bool:

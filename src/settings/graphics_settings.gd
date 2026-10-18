@@ -16,20 +16,21 @@ const PRESET_NAMES := ["Low", "Medium", "High", "Ultra", "Custom"]
 ## Quality keys a preset sets. "effects" (0-2) scales SSAO/SSIL/SDFGI sample counts and
 ## half-resolution GI; "clouds" 0 is a flat painted deck, 1-2 ray-marched volumetric clouds;
 ## "detail_distance" scales how far grass, clutter and small props are drawn;
-## "mesh_detail" 0-3 is the LOD bias (Low switches to simpler meshes sooner).
+## "mesh_detail" 0-3 is the LOD bias (Low switches to simpler meshes sooner); "weather_fx" 0-2
+## is how many raindrops and snowflakes fall (and whether rain splashes) (Weather).
 const PRESETS := {
 	"Low": {"render_scale": 0.67, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 0, "shadow_distance": 120.0,
 		"gi": GI.OFF, "ssao": false, "ssr": false, "volumetric_fog": 0, "glow": true, "view_distance": 3, "grass_density": 0.3,
-		"effects": 0, "clouds": 0, "detail_distance": 0.6, "mesh_detail": 0, "sun_shafts": false},
+		"effects": 0, "clouds": 0, "detail_distance": 0.6, "mesh_detail": 0, "sun_shafts": false, "weather_fx": 0},
 	"Medium": {"render_scale": 0.77, "upscaler": Upscaler.FSR2, "aa": AA.TAA, "shadows": 1, "shadow_distance": 200.0,
 		"gi": GI.SSIL, "ssao": true, "ssr": false, "volumetric_fog": 1, "glow": true, "view_distance": 4, "grass_density": 0.6,
-		"effects": 1, "clouds": 1, "detail_distance": 0.8, "mesh_detail": 1, "sun_shafts": true},
+		"effects": 1, "clouds": 1, "detail_distance": 0.8, "mesh_detail": 1, "sun_shafts": true, "weather_fx": 1},
 	"High": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0,
 		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 1, "glow": true, "view_distance": 5, "grass_density": 1.0,
-		"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "sun_shafts": true},
+		"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "sun_shafts": true, "weather_fx": 1},
 	"Ultra": {"render_scale": 1.0, "upscaler": Upscaler.BILINEAR, "aa": AA.TAA, "shadows": 3, "shadow_distance": 450.0,
 		"gi": GI.SDFGI, "ssao": true, "ssr": true, "volumetric_fog": 2, "glow": true, "view_distance": 7, "grass_density": 1.4,
-		"effects": 2, "clouds": 2, "detail_distance": 1.4, "mesh_detail": 3, "sun_shafts": true},
+		"effects": 2, "clouds": 2, "detail_distance": 1.4, "mesh_detail": 3, "sun_shafts": true, "weather_fx": 2},
 }
 
 ## FSR 2 quality modes (AMD's names) and the render scale each uses.
@@ -44,6 +45,7 @@ const DEFAULTS := {
 	"aa": AA.TAA, "shadows": 2, "shadow_distance": 300.0, "gi": GI.SDFGI, "ssao": true, "ssr": true,
 	"volumetric_fog": 1, "sun_shafts": true, "glow": true, "auto_exposure": true, "view_distance": 5, "grass_density": 1.0,
 	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
+	"weather": true, "weather_fx": 1,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "head_bob_strength": 1.0, "stick_sensitivity": 3.0,
 	"motion_blur": true, "motion_blur_strength": 0.3, "film_grade": true,
 	"master_volume": 0.8, "music_volume": 0.5, "sfx_volume": 0.8, "ambience_volume": 0.7,

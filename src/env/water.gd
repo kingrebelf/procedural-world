@@ -102,13 +102,10 @@ func _process(delta: float) -> void:
 
 var _rain_timer := 0.0
 
-## How hard it is raining (0..1): the weather's shared weather_rain_g, when the project
-## has one (the weather system sets it), else dry.
+## How hard it is raining (0..1), as the weather set weather_rain_g (Weather.rain_g:
+## reading the shader global back would stall on the renderer every call).
 static func rain_now() -> float:
-	if not ProjectSettings.has_setting("shader_globals/weather_rain_g"):
-		return 0.0
-	var v = RenderingServer.global_shader_parameter_get("weather_rain_g")
-	return clampf(float(v), 0.0, 1.0) if v != null else 0.0
+	return clampf(Weather.rain_g, 0.0, 1.0)
 
 ## The water sheet: 1.5 m squares round the middle, so the swell's shorter waves and the
 ## boats' wakes are drawn in the surface itself (not just shaded on it), easing out to
