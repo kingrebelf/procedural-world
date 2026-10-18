@@ -107,7 +107,8 @@ static func wick_material() -> ShaderMaterial:
 
 ## A flame `size` metres tall, its base at the returned node's origin (or, with `hang`,
 ## hanging from it, as a jet from a nozzle). A big one is two flipbook cards out of step,
-## a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
+## filled out in the round by rising tongues (tongues()) and now and then a popping log
+## (Pops); a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
 ## 1 in the open, about 0.15 indoors or behind a lantern's glass; below 0 picks by size.
 ## Its seed (meta "fire_seed") is what a FlickerLight beside it follows.
 static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false, wind := -1.0, glass := Vector3.ZERO) -> Node3D:
@@ -187,7 +188,147 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		bed.visibility_range_end = 90.0
 		bed.set_instance_shader_parameter("seed", seed)
 		n.add_child(bed)
+	if sheet == "fire" and not hang:
+		n.add_child(tongues(size, seed, wind, big))
+		n.add_child(Pops.new(size))
 	return n
+
+## By the fire_fx setting (Low, Normal, High): the share of each flame's tongues that burn.
+const TONGUE_RATIO := [0.4, 0.7, 1.0]
+static var _tongue_draw: QuadMesh
+
+## The share of a flame's tongues the fire_fx setting lets burn.
+static func tongue_ratio() -> float:
+	# Looked up, not named: tools run without the autoloads compiled in.
+	var tree := Engine.get_main_loop() as SceneTree
+	var st: Node = tree.root.get_node_or_null("Settings") if tree != null else null
+	var v = st.get_value("fire_fx") if st != null else null
+	return TONGUE_RATIO[clampi(1 if v == null else int(v), 0, TONGUE_RATIO.size() - 1)]
+
+## Tells every burning flame's tongues of a change to the fire_fx setting (FireClock).
+static func apply_quality(tree: SceneTree) -> void:
+	var r := tongue_ratio()
+	for t in tree.get_nodes_in_group("fire_tongues"):
+		(t as GPUParticles3D).amount_ratio = r
+
+## A flame's body in the round (flame_tongues.gdshader): tongues of burning gas rising
+## off its bed, for depth the flat cards can't give from the side or above. Scaled by the
+## flame's height, so the shaders work in flame heights.
+static func tongues(size: float, seed: float, wind: float, big := false) -> GPUParticles3D:
+	if _tongue_draw == null:
+		_tongue_draw = QuadMesh.new()
+		var dm := ShaderMaterial.new()
+		dm.shader = load("res://src/world/flame_tongue.gdshader")
+		_tongue_draw.material = dm
+	var p := GPUParticles3D.new()
+	p.name = "Tongues"
+	p.add_to_group("fire_tongues")
+	var m := ShaderMaterial.new()
+	m.shader = load("res://src/world/flame_tongues.gdshader")
+	m.set_shader_parameter("seed", seed)
+	m.set_shader_parameter("exposed", wind)
+	m.set_shader_parameter("bed", 0.2 if big else 0.1)
+	p.process_material = m
+	p.draw_pass_1 = _tongue_draw
+	p.amount = clampi(roundi(size * 40.0), 12, 64)
+	p.amount_ratio = tongue_ratio()
+	# Hot gas rises at about the root of its height (a bonfire's tongues live longer).
+	p.lifetime = 0.75 * sqrt(maxf(size, 0.05))
+	p.preprocess = p.lifetime
+	p.local_coords = false
+	p.scale = Vector3.ONE * size
+	p.visibility_aabb = AABB(Vector3(-1.2, -0.2, -1.2), Vector3(2.4, 2.8, 2.4))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_range_end = 90.0
+	return p
+
+static var _pop_sounds: Array = []
+
+## Now and then a log pops: a little crack and a few sparks thrown out in arcs that fall
+## back, the bigger the fire the more often. Only near you, and only while it is shown.
+class Pops extends Node3D:
+	var size := 1.0
+	var _wait := 0.0
+	var _burst: CPUParticles3D
+	var _snd: AudioStreamPlayer3D
+
+	func _init(s: float) -> void:
+		name = "Pops"
+		size = s
+		_wait = randf_range(0.5, _rest())
+
+	## Seconds until the next pop: a bonfire every few seconds, a torch now and then.
+	func _rest() -> float:
+		var k := clampf((size - 0.3) / 0.7, 0.0, 1.0)
+		return randf_range(lerpf(9.0, 2.5, k), lerpf(26.0, 11.0, k))
+
+	func _process(delta: float) -> void:
+		_wait -= delta
+		if _wait > 0.0:
+			return
+		_wait = _rest()
+		if not is_visible_in_tree():
+			return
+		var vp := get_viewport()
+		var cam := vp.get_camera_3d() if vp != null else null
+		if cam == null or cam.global_position.distance_to(global_position) > 40.0:
+			return
+		pop()
+
+	func pop() -> void:
+		if _burst == null:
+			_build()
+		var s := size * scale_of()
+		var a := randf() * TAU
+		_burst.position = Vector3(cos(a), 0.0, sin(a)) * size * 0.12 + Vector3(0, size * 0.12, 0)
+		_burst.initial_velocity_min = s * 2.2
+		_burst.initial_velocity_max = s * 5.0
+		_burst.restart()
+		if _snd != null:
+			if not FireFx._pop_sounds.is_empty():
+				_snd.stream = FireFx._pop_sounds.pick_random()
+			_snd.pitch_scale = randf_range(0.8, 1.25)
+			_snd.volume_db = randf_range(-14.0, -5.0) + clampf(size - 0.6, -0.4, 0.6) * 8.0
+			_snd.play()
+
+	func scale_of() -> float:
+		var p := get_parent() as Node3D
+		return p.global_basis.get_scale().y if p != null and p.is_inside_tree() else 1.0
+
+	func _build() -> void:
+		var em := FireFx.embers(size, false)
+		_burst = em.get_node("Sparks") as CPUParticles3D
+		em.remove_child(_burst)
+		em.free()
+		_burst.name = "Burst"
+		_burst.one_shot = true
+		_burst.emitting = false
+		_burst.explosiveness = 0.92
+		_burst.amount = 9
+		_burst.lifetime = 1.4
+		_burst.randomness = 0.7
+		_burst.emission_sphere_radius = size * 0.04
+		_burst.direction = Vector3.UP
+		_burst.spread = 50.0
+		# Thrown out, they arc and fall back as they cool, not drift up like the rest.
+		_burst.gravity = Vector3(0, -5.5, 0)
+		_burst.damping_min = 0.4
+		_burst.damping_max = 1.2
+		_burst.tangential_accel_min = 0.0
+		_burst.tangential_accel_max = 0.0
+		_burst.visibility_range_end = 45.0
+		add_child(_burst)
+		if FireFx._pop_sounds.is_empty():
+			for i in 4:
+				var path := "res://assets/audio/sfx/fire/pop_%d.ogg" % i
+				if ResourceLoader.exists(path):
+					FireFx._pop_sounds.append(load(path))
+		if not FireFx._pop_sounds.is_empty():
+			_snd = AudioStreamPlayer3D.new()
+			_snd.bus = "Effects"
+			_snd.unit_size = 2.5
+			_snd.max_distance = 35.0
+			add_child(_snd)
 
 static var _glass: ShaderMaterial
 
@@ -214,7 +355,10 @@ static func carried(size: float, seed: float) -> Node3D:
 	var n := flame(size)
 	n.set_meta("fire_seed", seed)
 	for c in n.get_children():
-		(c as MeshInstance3D).set_instance_shader_parameter("seed", seed)
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).set_instance_shader_parameter("seed", seed)
+		elif c is GPUParticles3D:
+			((c as GPUParticles3D).process_material as ShaderMaterial).set_shader_parameter("seed", seed)
 	n.add_child(Drag.new())
 	return n
 

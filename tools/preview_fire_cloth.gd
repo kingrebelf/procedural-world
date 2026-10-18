@@ -1,7 +1,7 @@
 extends SceneTree
 ## Frame strips of flames and cloth moving, for judging their motion (FireFx, ClothFx):
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_fire_cloth.gd -- \
-##     --out=/abs/strip.png [--scene=fire|cloth|flag] [--wind=0.6] [--frames=6] [--dt=0.12]
+##     --out=/abs/strip.png [--scene=fire|cloth|flag] [--wind=0.6] [--frames=6] [--dt=0.12] [--pops]
 ## fire: a campfire, a wall torch, a hanging lantern and a candle at night, with their light.
 ## cloth: two market stalls and a hanging banner by day. flag: a watchtower's flag up close.
 ## Each frame is dt seconds of the fires' and the wind's clocks after the one before; the
@@ -144,6 +144,10 @@ func _run() -> void:
 		FireFx.tick(1.0 / 30.0)
 		RenderingServer.global_shader_parameter_set("wind_time", i / 30.0)
 		await process_frame
+	# Every fire pops a log as the strip starts, to see the sparks thrown.
+	if OS.get_cmdline_user_args().has("--pops"):
+		for p in vp.find_children("Pops", "", true, false):
+			p.pop()
 	var shots: Array = []
 	var wt := 1.0
 	for f in frames:
