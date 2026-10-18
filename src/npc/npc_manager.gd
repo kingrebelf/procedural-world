@@ -35,6 +35,7 @@ var _ground := Callable(self, "ground")
 var walk := WalkGrid.new(Callable(self, "_chunk_data"))
 var _stealth_t := 0.0
 var _mob_t := 0.0
+var _tags := TagLayout.new()
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
@@ -46,6 +47,7 @@ func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
 	Game.saving.connect(save_all)
 	add_to_group("npc_manager")
+	add_child(_tags)
 	Net.mob_hit.connect(_on_mob_hit)
 	Net.mob_said.connect(_on_mob_said)
 	Net.town_pushed.connect(_on_town_pushed)
@@ -389,6 +391,7 @@ func _process(delta: float) -> void:
 		_mob_t = 1.0 / Net.MOB_HZ
 	var out: Array = []
 	var cam := get_viewport().get_camera_3d()
+	var tagged: Array = []
 	for e in settlements.values():
 		var held := runs(e)
 		if e.has("boat") and is_instance_valid(e["boat"]):
@@ -400,6 +403,8 @@ func _process(delta: float) -> void:
 			# Shown inside 7 m, hidden only past 8: someone at the edge doesn't blink their tag.
 			var tag_d := pp.distance_to(n.global_position)
 			n.show_name(tag_d < (8.0 if n.name_shown() else 7.0) and not n.is_hidden())
+			if n.label_wanted():
+				tagged.append(n)
 			if n.boat != null:
 				# Aboard: everyone draws the crew at their stations; the game that runs
 				# them decides what they do.
@@ -436,6 +441,7 @@ func _process(delta: float) -> void:
 				_strike(n, tg, tp)
 	if not out.is_empty():
 		Net.send_mobs("n", out)
+	_tags.update(tagged, cam, get_world_3d().direct_space_state)
 	_pirate_tick(delta)
 	_stealth_t -= delta
 	if _stealth_t <= 0.0:
@@ -624,9 +630,28 @@ func _find_company(n: NPC, e: Dictionary, pp: Vector3) -> void:
 			best.act(["nod", "shake_head", "shrug", "clap"][randi() % 4]))
 
 ## A line said out loud: shown above their head, and spoken if passers-by have voices.
+## Barks go out a beat apart, so a crowd that all shouts at once (a fire) is heard one by
+## one; a passer-by's line that would wait too long goes unsaid, one meant for you never.
 func _bark(n: NPC, line: String, dist: float) -> void:
 	if line == "":
 		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var wait := maxf(0.0, _bark_free_at - t)
+	if wait > BARK_QUEUE and not n.target_player:
+		return
+	_bark_free_at = t + wait + BARK_GAP
+	if wait <= 0.0:
+		_say_bark(n, line, dist)
+	else:
+		get_tree().create_timer(wait, false).timeout.connect(func():
+			if is_instance_valid(n):
+				_say_bark(n, line, dist))
+
+const BARK_GAP := 0.6
+const BARK_QUEUE := 3.0
+var _bark_free_at := 0.0
+
+func _say_bark(n: NPC, line: String, dist: float) -> void:
 	n.say(line)
 	if AI.get_value("voice_barks"):
 		Voice.speak(n.rec, line, dist, false, n)

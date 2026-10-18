@@ -36,6 +36,11 @@ var _weight: Label
 var _xp_flash: Label ## "+N XP" that pops up under the crosshair
 var _flash_tw: Tween
 var _pulse := 0.0
+## What the HUD last drew or styled, so it only redraws or restyles on a change: a theme
+## colour set every frame restyles and lays out its label again every frame.
+var _compass_key := Vector4i(-1, 0, 0, 0)
+var _over_shown := -1
+var _pick_shown := -1
 var _marks: MarkerLayer
 var _minimap: Minimap
 var _banner: Label
@@ -894,7 +899,11 @@ func _process(_d: float) -> void:
 	_info.text = "Day %d  %02d:%02d\n%s  %d°\n%d, %d" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), dirs[int(round(heading / 45.0)) % 8], heading, int(p.x), int(p.z)]
 	_compass.player = player
 	_compass.heading = float(heading)
-	_compass.queue_redraw()
+	# The strip slides by whole degrees, and your markers on it move as you walk.
+	var ck := Vector4i(heading, int(p.x), int(p.z), Game.markers.on_planet(Game.planet).size())
+	if ck != _compass_key:
+		_compass_key = ck
+		_compass.queue_redraw()
 	_update_mouse_hint()
 	_update_cross()
 	if _marker_t > 0.0:
@@ -921,14 +930,19 @@ func _process(_d: float) -> void:
 	var kg := Game.inventory.weight()
 	var cap := Game.stats.carry_capacity()
 	_weight.text = "Pack %.0f / %d kg%s" % [kg, int(cap), ("  OVERLOADED, %d%% slower" % int(round(100.0 * (1.0 - Player.load_mult_for(kg, cap))))) if kg > cap else ""]
-	_weight.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if kg > cap else UITheme.DIM)
+	if int(kg > cap) != _over_shown:
+		_over_shown = int(kg > cap)
+		_weight.add_theme_color_override("font_color", Color(1.0, 0.45, 0.35) if kg > cap else UITheme.DIM)
 	_breath.visible = player.breath < Game.stats.max_breath() - 0.01
 	_breath.value = player.breath
 	# On a controller, holding the pick button shows which face button picks each slot.
 	var pick := Game.using_pad and Input.is_action_pressed("hotbar_pick")
-	for i in _slots.size():
-		_slots[i]["key"].text = (PICK_GLYPHS[i] if i < PICK_GLYPHS.size() else "") if pick else ("" if Game.using_pad else str((i + 1) % 10))
-		_slots[i]["key"].add_theme_color_override("font_color", UITheme.ACCENT if pick else UITheme.DIM)
+	var pk := int(pick) + 2 * int(Game.using_pad)
+	if pk != _pick_shown:
+		_pick_shown = pk
+		for i in _slots.size():
+			_slots[i]["key"].text = (PICK_GLYPHS[i] if i < PICK_GLYPHS.size() else "") if pick else ("" if Game.using_pad else str((i + 1) % 10))
+			_slots[i]["key"].add_theme_color_override("font_color", UITheme.ACCENT if pick else UITheme.DIM)
 	_stamina.max_value = Game.max_stamina()
 	_stamina.value = Game.stamina
 	_stamina_val.text = "WINDED" if player.winded else "%d / %d" % [int(Game.stamina), int(Game.max_stamina())]

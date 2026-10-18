@@ -362,6 +362,7 @@ func _update_time_of_day() -> void:
 		get_tree().set_group(WindowLight.GROUP, "light_energy", fill)
 	# Lamps are lit in the windows as the sun goes down, and put out after sunrise.
 	Materials.set_window_light(1.0 - smoothstep(-0.02, 0.16, elev))
+	Materials.set_screen_clock(Game.day)
 	var golden := 1.0 - smoothstep(0.0, 0.35, absf(elev))
 	var sun_tint: Color = _blend(Eras.SUN_TINT)
 	sun.light_color = sun_tint.lerp(Color(1.0, 0.62, 0.35), golden * 0.7)

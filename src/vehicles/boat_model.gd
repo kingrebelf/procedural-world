@@ -757,7 +757,7 @@ static func _bridge_walls(k: MeshKit, shapes: Array, c: Vector3, size: Vector3) 
 		for i in 3:
 			var g := Vector3(s * (hx - 0.05), f + 0.68, pz - 0.35 + i * 0.35)
 			k.cylinder("metal", Transform3D(Basis(Vector3.BACK, PI * 0.5), g), 0.07, 0.07, 0.025, 14, true, 0.0, 1, Color(0.85, 0.86, 0.84))
-		k.box("screen", Transform3D(Basis.IDENTITY, Vector3(s * (hx - 0.045), f + 0.47, pz)), Vector3(0.01, 0.16, 0.3))
+		ScreenLook.face(k, Transform3D(Basis(Vector3.UP, -s * PI / 2), Vector3(s * (hx - 0.041), f + 0.47, pz)), 0.3, 0.16, "nav", "boat")
 	k.box("hull_paint", Transform3D(Basis.IDENTITY, Vector3(0, f + 0.95, z0)), Vector3(size.x - 0.2, 0.05, 0.04), grey)
 	# Chart table (port, aft) with a chart and dividers; radio rack (starboard, aft).
 	_solid(k, shapes, "hull_paint", Vector3(-hx + 0.45, f + 0.45, z1 - 0.7), Vector3(0.8, 0.9, 0.9), Color(0.7, 0.72, 0.75))
@@ -765,8 +765,15 @@ static func _bridge_walls(k: MeshKit, shapes: Array, c: Vector3, size: Vector3) 
 	_solid(k, shapes, "metal_dark", Vector3(hx - 0.3, f + 0.75, z1 - 0.9), Vector3(0.5, 1.5, 0.5))
 	for i in 3:
 		k.box("metal", Transform3D(Basis.IDENTITY, Vector3(hx - 0.56, f + 0.45 + i * 0.4, z1 - 0.9)), Vector3(0.02, 0.3, 0.44))
-	k.box("screen", Transform3D(Basis.IDENTITY, Vector3(hx - 0.575, f + 1.25, z1 - 0.9)), Vector3(0.005, 0.1, 0.25))
+	ScreenLook.face(k, Transform3D(Basis(Vector3.UP, -PI / 2), Vector3(hx - 0.552, f + 1.25, z1 - 0.9)), 0.25, 0.1, "monitor", "boat")
 	k.cylinder("painted", Transform3D(Basis.IDENTITY, Vector3(-0.7, f + 0.3, z1 - 0.02)), 0.08, 0.08, 0.55, 10, true, 0.0, 1, Color(0.75, 0.08, 0.06))
+
+## A helm screen leaning back towards whoever stands at it (aft, +z) by `tilt` from
+## flat: a dark housing w x d with the instruments on it (ScreenLook).
+static func _nav_screen(k: MeshKit, at: Vector3, tilt: float, w: float, d: float) -> void:
+	var b := Basis(Vector3.RIGHT, tilt)
+	k.box("metal_dark", Transform3D(b, at), Vector3(w + 0.04, 0.03, d + 0.04))
+	ScreenLook.face(k, Transform3D(b * Basis(Vector3.RIGHT, -PI / 2), at + b.y * 0.016), w, d, "nav", "boat")
 
 ## A bridge chair facing the bow: pedestal on a foot plate, padded seat and back with
 ## piping, and armrests.
@@ -1212,7 +1219,7 @@ static func _launch(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void
 	_rails(k, shapes, h, dy, 0.7, false, 0.55, 0.92)
 	# Console with a curved windscreen, a T-top roof on struts.
 	_solid(k, shapes, "hull_paint", Vector3(0.45, dy + 0.5, -0.1), Vector3(1.0, 1.0, 0.8), Color(0.9, 0.91, 0.93))
-	k.box("screen", Transform3D(Basis(Vector3.RIGHT, -0.6), Vector3(0.45, dy + 1.04, 0.15)), Vector3(0.7, 0.03, 0.32))
+	_nav_screen(k, Vector3(0.45, dy + 1.04, 0.15), 0.6, 0.7, 0.32)
 	k.box("window", Transform3D(Basis(Vector3.RIGHT, 0.35), Vector3(0.45, dy + 1.3, -0.45)), Vector3(1.1, 0.55, 0.02))
 	k.cylinder("metal_dark", Transform3D(Basis(Vector3.RIGHT, -1.0), Vector3(0.45, dy + 1.05, 0.25)), 0.16, 0.16, 0.04, 14)
 	for e in [Vector3(-0.35, 0, -0.5), Vector3(1.25, 0, -0.5), Vector3(-0.35, 0, 1.0), Vector3(1.25, 0, 1.0)]:
@@ -1268,7 +1275,7 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	var bf := bdeck
 	_solid(k, shapes, "hull_paint", Vector3(0, bf + 0.5, -2.0), Vector3(4.2, 1.0, 0.6), Color(0.25, 0.28, 0.32))
 	for x in [-1.4, 0.0, 1.4]:
-		k.box("screen", Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(x, bf + 1.05, -1.85)), Vector3(1.0, 0.03, 0.4))
+		_nav_screen(k, Vector3(x, bf + 1.05, -1.85), 0.5, 1.0, 0.4)
 	_helm_wheel(k, Vector3(0.0, bf + 1.12, -1.6))
 	# Twin throttles on the console's starboard side, a radio handset to port.
 	for x in [0.62, 0.78]:
@@ -1284,7 +1291,9 @@ static func _research_vessel(k: MeshKit, shapes: Array, r: RandomNumberGenerator
 	# Lab below: benches with sample tanks, a terminal, bunks along the side, a locker.
 	var lf := dy
 	_solid(k, shapes, "hull_paint", Vector3(2.0, lf + 0.45, 0.0), Vector3(0.9, 0.9, 4.0), Color(0.75, 0.77, 0.8))
-	k.box("screen", Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3(2.3, lf + 1.35, -1.0)), Vector3(0.03, 0.5, 0.8))
+	k.box("metal_dark", Transform3D(Basis(Vector3.FORWARD, 0.25), Vector3(2.3, lf + 1.35, -1.0)), Vector3(0.03, 0.5, 0.8))
+	var lab_b := Basis(Vector3.FORWARD, 0.25)
+	ScreenLook.face(k, Transform3D(lab_b * Basis(Vector3.UP, -PI / 2), Vector3(2.3, lf + 1.35, -1.0) + lab_b * Vector3(-0.017, 0, 0)), 0.76, 0.46, "monitor", "boat")
 	for z in [-0.8, 0.6]:
 		k.box("glass", Transform3D(Basis.IDENTITY, Vector3(2.0, lf + 1.15, z)), Vector3(0.6, 0.5, 0.9))
 		k.box("metal", Transform3D(Basis.IDENTITY, Vector3(2.0, lf + 0.93, z)), Vector3(0.62, 0.04, 0.92))
