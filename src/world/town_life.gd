@@ -1306,13 +1306,17 @@ static func _barrels(models: Array, xf: Transform3D, r: RandomNumberGenerator, b
 func _lantern(models: Array, root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	var p2: Vector2 = e["p"]
 	var at := Vector3(p2.x - o2.x, float(e["y"]), p2.y - o2.y)
-	models.append(["props/Lantern_Wall", rad_to_deg(float(e["yaw"])), at, 1.0])
-	var b := Basis(Vector3.UP, float(e["yaw"]))
-	_flame(root, at + b * Vector3(0, 0.26, 0.75), 0.13, 1.1, 6.5)
+	var m := ["props/Lantern_Wall", rad_to_deg(float(e["yaw"])), at, 1.0]
+	models.append(m)
+	# The wick burning behind the lantern's glass, which glows with it from any side.
+	var f: Array = FireFx.prop_flames([m])[0]
+	_flame(root, f[0], float(f[1]), 1.1, 6.5, FireFx.prop_flame(f))
 
-## A real flame with its firelight, both only lit after dark.
-func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float) -> void:
-	var fl := FireFx.flame(size)
+## A real flame with its firelight, both only lit after dark (`fl`, a prop's own flame
+## from FireFx.prop_flame, or an open one `size` tall).
+func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float, fl: Node3D = null) -> void:
+	if fl == null:
+		fl = FireFx.flame(size)
 	fl.position = at
 	root.add_child(fl)
 	var l := FlickerLight.new()
@@ -1714,8 +1718,10 @@ func _torch_post(k: MeshKit, models: Array, root: Node3D, xf: Transform3D, body:
 	k.cylinder("timber", xf, 0.08, 0.065, 2.35, 8, true, 0.01)
 	k.box("iron", xf * I.translated(Vector3(0, 2.0, 0.07)), Vector3(0.1, 0.04, 0.12))
 	var torch := xf * I.translated(Vector3(0, 1.85, 0.02))
-	models.append(["props/Torch_Metal", rad_to_deg(xf.basis.get_euler().y), torch.origin, 1.0])
-	_flame(root, torch * Vector3(0, 0.34, 0.27), 0.42, 1.8, 10.0)
+	var m := ["props/Torch_Metal", rad_to_deg(xf.basis.get_euler().y), torch.origin, 1.0]
+	models.append(m)
+	var f: Array = FireFx.prop_flames([m])[0]
+	_flame(root, f[0], float(f[1]), 1.8, 10.0, FireFx.prop_flame(f))
 	var fl: Node3D = _flames[_flames.size() - 2]
 	fl.add_child(FireFx.embers(0.42, false))
 	_box_shape(body, xf * I.translated(Vector3(0, 1.1, 0)), Vector3(0.18, 2.2, 0.18))
