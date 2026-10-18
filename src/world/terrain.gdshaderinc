@@ -394,6 +394,11 @@ void fragment() {
 	float near_g = 1.0 - smoothstep(60.0, 160.0, dist);
 	float tuss = mix(0.5, vnoise(p * 0.7 + 5.0) * 0.6 + vnoise(p * 2.3 + 13.0) * 0.4, near_g);
 	ground *= mix(1.0, 0.84 + 0.32 * tuss, w.r * (1.0 - bare));
+	// Among the blades (drawn out to some tens of metres) what shows between them is the
+	// sward's own shaded underside, darker and greener than the open turf that stands in
+	// for the whole sward further off; it hands over as the blades thin out.
+	float sward = (1.0 - smoothstep(25.0, 90.0, dist)) * w.r * (1.0 - bare) * (1.0 - c_dry * 0.7);
+	ground = mix(ground, ground * vec3(0.66, 0.78, 0.52), sward * 0.75);
 	// Terracettes: on steep pasture, grazing beasts tread level paths along the contours,
 	// lines of short pale turf with little bare-earth risers below them, here and there
 	// across a bank rather than over every hillside.
