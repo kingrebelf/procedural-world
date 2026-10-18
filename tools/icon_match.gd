@@ -37,6 +37,8 @@ static func source(t: String) -> Array:
 			from = "HandLight"
 		elif Viewmodel._forged(t) != null:
 			from = "Viewmodel._forged"
+		elif GearModels.has(t) and not ToolModels.has(t):
+			from = "GearModels"
 		return [m, from]
 	if ItemModels.has(t):
 		return [ItemModels.model(t), "ItemModels"]

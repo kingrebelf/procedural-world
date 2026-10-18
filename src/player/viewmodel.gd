@@ -328,6 +328,9 @@ static func model(t: String) -> ArrayMesh:
 	elif Provisions.has(t):
 		# A bottle thrown as a weapon (the fire bottle) is still the bottle.
 		out = Provisions.model(t)
+	elif GearModels.has(t):
+		# A tool modelled with the parts and gear (the multimeter).
+		out = GearModels.model(t)
 	else:
 		var def := ItemDB.def(t)
 		if def.is_empty():
