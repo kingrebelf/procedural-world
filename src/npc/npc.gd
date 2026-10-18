@@ -60,7 +60,9 @@ var _torso: Node3D
 var _head: Node3D
 var _legs: Array = [] ## [hip pivot, knee pivot]
 var _arms: Array = [] ## [shoulder pivot, elbow pivot]
-var _label: Label3D
+## The tag over their head (name, or what they're saying), drawn by NPCManager's TagLayout.
+var tag_text := ""
+var tag_color := Color(1, 1, 1)
 var _label_on := false ## the name tag or a speech line wants to be up
 ## Set by NPCManager's TagLayout: the tag is in view, not behind a wall and not crowded out.
 var tag_clear := false
@@ -126,23 +128,6 @@ func _ready() -> void:
 	cs.position.y = 0.9 * _scale
 	_body.add_child(cs)
 	add_child(_body)
-	_label = Label3D.new()
-	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_label.fixed_size = true
-	# A quarter smaller on screen than it was, drawn from a bigger font so it stays crisp.
-	_label.pixel_size = 0.00072
-	_label.font_size = 30
-	_label.outline_size = 9
-	_label.outline_modulate = Color(0, 0, 0, 0.8)
-	_label.no_depth_test = false
-	_label.render_priority = Creature.TAG_PRIORITY
-	_label.outline_render_priority = Creature.TAG_PRIORITY - 1
-	Creature.crisp_tag(_label)
-	_label.width = 600
-	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_label.position.y = 2.05 * _scale
-	_label.visible = false
-	add_child(_label)
 	global_position = rec["pos"]
 	rotation.y = float(rec.get("yaw", 0.0))
 	decide_in = randf() * 1.5
@@ -284,8 +269,8 @@ func _make_stool() -> Node3D:
 func say(text: String, seconds: float = 5.0) -> void:
 	if text.strip_edges() == "":
 		return
-	_label.text = "%s\n%s" % [rec["name"].split(" ")[0], text]
-	_label.modulate = Color(1, 1, 1)
+	tag_text = "%s\n%s" % [rec["name"].split(" ")[0], text]
+	tag_color = Color(1, 1, 1)
 	_set_label(true)
 	_speech_t = seconds
 	_speaking = true
@@ -297,12 +282,10 @@ func show_name(on: bool) -> void:
 		return
 	_set_label(on)
 	if on:
-		_label.text = "Lv %d  %s\n%s" % [NPCSocial.level(rec), rec["name"], rec["job"].capitalize()]
+		tag_text = "Lv %d  %s\n%s" % [NPCSocial.level(rec), rec["name"], rec["job"].capitalize()]
 		# Like an animal's tag: guards and anyone out to hurt you show their danger.
 		var danger := action == "attack" or int(rec.get("rel", 0)) <= -40
-		# Opaque: the tag is cut out solid (Creature.crisp_tag), and a see-through one is
-		# dithered there, which temporal anti-aliasing scrambled into a ghosted double.
-		_label.modulate = Color(1.0, 0.55, 0.45) if danger else (Color(1.0, 0.85, 0.55) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1))
+		tag_color = Color(1.0, 0.55, 0.45) if danger else (Color(1.0, 0.85, 0.55) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1))
 
 func is_hidden() -> bool:
 	return not _model.visible
@@ -318,20 +301,18 @@ func label_wanted() -> bool:
 func speaking() -> bool:
 	return _speaking
 
-func label_node() -> Label3D:
-	return _label
+## Where the tag hangs: just over their head.
+func tag_point() -> Vector3:
+	return global_position + Vector3(0, 2.05 * _scale, 0)
+
+## Whether the tag is on screen now: wanted, and cleared by TagLayout.
+func tag_visible() -> bool:
+	return _label_on and tag_clear
 
 func _set_label(on: bool) -> void:
 	if on and not _label_on:
 		tag_clear = false # not drawn until TagLayout has looked whether it can be seen
 	_label_on = on
-	_label.visible = on and tag_clear
-
-## TagLayout's verdict: clear to draw, `lift` screen pixels above where it would sit.
-func set_tag_clear(ok: bool, lift: float) -> void:
-	tag_clear = ok
-	_label.offset.y = lift
-	_label.visible = _label_on and ok
 
 func flash_hit() -> void:
 	_hit_flash = 0.25

@@ -1740,8 +1740,8 @@ func _crowd(game, world, player) -> void:
 		tagged.target = Vector2(spot.x, spot.z)
 		tagged.say("Fire! Fetch the buckets!", 30.0)
 		await _frames(10)
-		var in_open: bool = tagged._label.visible
-		var head: Vector3 = tagged._label.global_position
+		var in_open: bool = tagged.tag_visible()
+		var head: Vector3 = tagged.tag_point()
 		var wall := StaticBody3D.new()
 		var cs := CollisionShape3D.new()
 		var box := BoxShape3D.new()
@@ -1754,12 +1754,14 @@ func _crowd(game, world, player) -> void:
 		# Line of sight is re-asked every TagLayout.RECHECK seconds, in physics.
 		await create_timer(0.6).timeout
 		await _frames(5)
-		var walled: bool = tagged._label.visible
+		var walled: bool = tagged.tag_visible()
 		wall.queue_free()
 		await create_timer(0.6).timeout
 		await _frames(5)
-		check(in_open and not walled and tagged._label.visible, "a speech line shows in the open and hides behind a wall (%s %s %s)" % [in_open, walled, tagged._label.visible])
-		check(tagged._label.pixel_size * tagged._label.font_size < 0.025, "villager tags are drawn smaller than before")
+		check(in_open and not walled and tagged.tag_visible(), "a speech line shows in the open and hides behind a wall (%s %s %s)" % [in_open, walled, tagged.tag_visible()])
+		var lay: TagLayout = world.npcs._tags
+		var vh: float = world.get_viewport().get_visible_rect().size.y
+		check(lay.layer < 1 and not lay._pool.is_empty() and lay._font_px == maxi(14, int(round(vh * TagLayout.FONT_FRAC))), "villager tags are flat text over the view, under the HUD, sized to the screen (%d px)" % lay._font_px)
 		tagged._speech_t = 0.0
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")

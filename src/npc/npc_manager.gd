@@ -47,6 +47,7 @@ func _ready() -> void:
 	gen = ChunkGenerator.new(Game.seed)
 	Game.saving.connect(save_all)
 	add_to_group("npc_manager")
+	add_child(_tags)
 	Net.mob_hit.connect(_on_mob_hit)
 	Net.mob_said.connect(_on_mob_said)
 	Net.town_pushed.connect(_on_town_pushed)
@@ -629,9 +630,28 @@ func _find_company(n: NPC, e: Dictionary, pp: Vector3) -> void:
 			best.act(["nod", "shake_head", "shrug", "clap"][randi() % 4]))
 
 ## A line said out loud: shown above their head, and spoken if passers-by have voices.
+## Barks go out a beat apart, so a crowd that all shouts at once (a fire) is heard one by
+## one; a passer-by's line that would wait too long goes unsaid, one meant for you never.
 func _bark(n: NPC, line: String, dist: float) -> void:
 	if line == "":
 		return
+	var t := Time.get_ticks_msec() / 1000.0
+	var wait := maxf(0.0, _bark_free_at - t)
+	if wait > BARK_QUEUE and not n.target_player:
+		return
+	_bark_free_at = t + wait + BARK_GAP
+	if wait <= 0.0:
+		_say_bark(n, line, dist)
+	else:
+		get_tree().create_timer(wait, false).timeout.connect(func():
+			if is_instance_valid(n):
+				_say_bark(n, line, dist))
+
+const BARK_GAP := 0.6
+const BARK_QUEUE := 3.0
+var _bark_free_at := 0.0
+
+func _say_bark(n: NPC, line: String, dist: float) -> void:
 	n.say(line)
 	if AI.get_value("voice_barks"):
 		Voice.speak(n.rec, line, dist, false, n)
