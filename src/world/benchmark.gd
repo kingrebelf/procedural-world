@@ -53,16 +53,16 @@ func _tests() -> Array:
 	# The weather's own parts, each timed alone (Weather.bench_off), so a run in rain or
 	# snow shows what the falling drops, the roofs that stop them, the wet ground and the
 	# thicker air each cost.
-	var w = atm.get_node_or_null("Weather")
-	if w:
+	var wx = atm.get_node_or_null("Weather")
+	if wx:
 		for k in [["precip", "Weather: falling rain, snow and hail"], ["catch", "Weather: rain stopped at roofs"],
 				["ground", "Weather: wet ground and puddles"], ["air", "Weather: fog and haze"]]:
 			var part: String = k[0]
 			t.append([k[1], func(off: bool):
 				if off:
-					w.bench_off[part] = true
+					wx.bench_off[part] = true
 				else:
-					w.bench_off.erase(part)])
+					wx.bench_off.erase(part)])
 	var lamps: Array = []
 	var stack: Array = [world]
 	while not stack.is_empty():
