@@ -7,8 +7,8 @@ extends RefCounted
 ## there; a route is only searched when the straight way is too steep, on a small grid
 ## round the trip, with a few searches a frame at most.
 ##
-## It also knows the solid things standing about (market stalls, carts, wagons, wells,
-## barrels, woodpiles): the straight way is not clear through one, people step round its
+## It also knows the solid things standing about (buildings, market stalls, carts, wagons,
+## wells, barrels, woodpiles): the straight way is not clear through one, people step round its
 ## corners (detour) and nobody is ever let inside one (push_out).
 
 const CELL := 2.0
@@ -38,7 +38,16 @@ const ROUND_BY := 0.3 ## the room a person leaves going round a solid's corner
 const BUCKET := 8.0 ## solids are looked up in squares this wide
 ## Chunk objects people and animals go round (as their colliders stand).
 const SOLID_TYPES := {"market_stall": true, "fruit_cart": true, "wagon": true, "barrels": true,
-	"well": true, "trader": true, "chest": true, "rune_coffer": true, "supply_pod": true}
+	"well": true, "trader": true, "chest": true, "rune_coffer": true, "supply_pod": true,
+	# Buildings: nobody walks through their walls (a shopkeeper goes in by the door, see
+	# push_out's `within`). Castle walls and gates stay out: a gateway must stay open.
+	"cottage": true, "townhouse": true, "longhouse": true, "mushroom_house": true, "watchtower": true,
+	"shrine": true, "spire": true, "comms_spire": true, "hab_block": true, "lab_block": true,
+	"ops_tower": true, "depot": true, "solar_farm": true}
+## Walls are found up to this high in a building's collider (eaves and roofs reach out
+## further above it).
+const WALL_TOP := 2.0
+static var _walls: Dictionary = {} ## building type -> its walls' footprint in its own space (Rect2, x by z)
 
 ## Vector2i chunk -> [chunk data (Dictionary), cells (PackedByteArray), built at (msec)]
 var _chunks: Dictionary = {}
@@ -227,18 +236,20 @@ func _fill(r: Rect2i, lq: int) -> bool:
 						if v & ROAD:
 							w *= ROAD_COST
 						_astar.set_point_weight_scale(id, w)
-	# Solids: a cell it reaches well into is shut (grown by half a cell, so even a thin
-	# one shuts an unbroken band and no route slips between two cells' middles).
-	const STAMP := CELL * 0.5 + 0.05
+	# Solids: a cell whose middle is inside one, grown by a body, is shut. A thin one is
+	# grown more, to a band no diagonal step slips through (a cell's diagonal across);
+	# a building's walls aren't, so the alleys between houses stay open.
+	const BAND := CELL * 1.42 * 0.5
 	for fps: Array in _solids.values():
 		for f: PackedFloat32Array in fps:
-			var e := _reach(f) + STAMP
+			var g := maxf(BODY, BAND - (f[4] if f[5] < 0.0 else minf(f[4], f[5])))
+			var e := _reach(f) + g
 			var c0 := cell_of(Vector2(f[0] - e, f[1] - e))
 			var c1 := cell_of(Vector2(f[0] + e, f[1] + e))
 			for cz in range(maxi(c0.y, r.position.y), mini(c1.y, r.end.y - 1) + 1):
 				for cx in range(maxi(c0.x, r.position.x), mini(c1.x, r.end.x - 1) + 1):
 					var id := Vector2i(cx, cz)
-					if _inside(f, centre(id), STAMP):
+					if _inside(f, centre(id), g):
 						_astar.set_point_solid(id, true)
 	return true
 
@@ -351,10 +362,29 @@ static func object_solids(data: Dictionary) -> Array:
 		var s := float(o.get("s", 1.0))
 		var xf := Transform3D(Basis(Vector3.UP, float(o.get("r", 0.0))).scaled(Vector3(s, s, s)), base + (o["p"] as Vector3))
 		xf *= Transform3D(sh[2] if sh.size() > 2 else Basis.IDENTITY, sh[1])
-		var f := footprint(sh[0], xf)
+		var f := footprint(sh[0], xf) if not sh[0] is ConcavePolygonShape3D else _walls_of(o["t"], sh, xf)
 		if not f.is_empty():
 			out.append(f)
 	return out
+
+## A building's footprint: round its walls, from its collider's faces up to WALL_TOP.
+static func _walls_of(t: String, sh: Array, xf: Transform3D) -> PackedFloat32Array:
+	if not _walls.has(t):
+		var lo := Vector2(INF, INF)
+		var hi := Vector2(-INF, -INF)
+		for v: Vector3 in (sh[0] as ConcavePolygonShape3D).get_faces():
+			var q := v + (sh[1] as Vector3)
+			if q.y < WALL_TOP:
+				lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.z))
+				hi = Vector2(maxf(hi.x, q.x), maxf(hi.y, q.z))
+		_walls[t] = Rect2(lo, hi - lo) if lo.x < hi.x else Rect2()
+	var r: Rect2 = _walls[t]
+	if r.size == Vector2.ZERO:
+		return PackedFloat32Array()
+	var box := BoxShape3D.new()
+	box.size = Vector3(r.size.x, 1.0, r.size.y)
+	var mid := r.get_center()
+	return footprint(box, Transform3D(xf.basis, xf * Vector3(mid.x, 0.0, mid.y)))
 
 ## The footprint of a box or an upright cylinder at `xf` (world), or empty for any other shape.
 static func footprint(shape: Shape3D, xf: Transform3D) -> PackedFloat32Array:
@@ -379,9 +409,12 @@ func solid_at(p: Vector2, r := BODY) -> bool:
 	return false
 
 ## The nearest place to p that someone `r` broad (up to BODY_MAX) can stand, out of any
-## solid: p itself unless it is inside one, else just outside the nearest side.
-func push_out(p: Vector2, r := BODY) -> Vector2:
+## solid: p itself unless it is inside one, else just outside the nearest side. A solid
+## with `within` inside it doesn't count (a shopkeeper's own shop, which they go into).
+func push_out(p: Vector2, r := BODY, within := Vector2.INF) -> Vector2:
 	for f: PackedFloat32Array in _near(p):
+		if within != Vector2.INF and _inside(f, within, 0.0):
+			continue
 		p = _out_of(f, p, r)
 	return p
 

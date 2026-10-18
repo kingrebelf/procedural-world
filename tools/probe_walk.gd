@@ -75,7 +75,8 @@ func _initialize() -> void:
 			spots.append_array(pl[key])
 		for y in pl["shop_yards"].values():
 			spots.append(y[0])
-		for q in spots:
+		for q0: Vector2 in spots:
+			var q := walk.push_out(q0) # as NPC.step does: by a wall or a stall, not in it
 			places += 1
 			if walk.clear(c, q, WalkGrid.PERSON):
 				continue
@@ -87,7 +88,7 @@ func _initialize() -> void:
 			var r := walk.route(c, q, WalkGrid.PERSON)
 			if not r["reached"] and not walk.route(c, q, WalkGrid.SCRAMBLE)["reached"]:
 				lost += 1
-				print("   can't get to a work place at %s (grade there %.2f)" % [q, walk.grade(q.x, q.y)])
+				print("   can't get to a work place at %s (grade there %.2f, %s)" % [q, walk.grade(q.x, q.y), "in a solid" if walk.solid_at(q0) else "open"])
 	print("straight %d, round %d, scramble %d, no way %d; search avg %d us, worst %d us" % [straight, round, scramble, none, total_us / maxi(searched, 1), worst_us])
 	print("work places: %d of %d can't be got to from their square" % [lost, places])
 	print("a solid across the way %d times, gone round by its corners %d (the rest searched)" % [by_solid, detoured])
