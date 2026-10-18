@@ -32,6 +32,7 @@ var look_weight := 0.0
 ## x: bank (roll toward the inside of a turn), y: tip forward. Radians.
 var lean := Vector2.ZERO
 var breathe := true
+var near := true ## by distance (HumanAnimator's LOD): breathing only shows close up
 ## 0 rested .. 1 winded (HumanAnimator raises it while running, it ebbs after).
 var exertion := 0.0
 
@@ -130,7 +131,7 @@ func _lean_and_breathe(sk: Skeleton3D, up: Vector3, dt: float) -> void:
 		var g := sk.get_bone_global_pose(_spine1)
 		g.basis = Basis(Quaternion(fwd, lean.x) * Quaternion(right, lean.y)) * g.basis
 		sk.set_bone_global_pose(_spine1, g)
-	if not breathe:
+	if not breathe or not near:
 		return
 	# About 15 breaths a minute at rest, nearer 40 and much deeper when winded.
 	var period := lerpf(3.9, 1.5, exertion) / _breath_rate
@@ -306,9 +307,10 @@ func _look(sk: Skeleton3D, gx: Transform3D, up: Vector3, dt: float) -> void:
 		_bp = AnimMath.spring(_bp.x, _bp.y, pitch, CHEST_RATE, dt)
 	if _look_bones.is_empty() or not look_on:
 		return
-	# A head is never held dead still: a slow drift of a degree or so over the look.
-	var dy := AnimMath.drift(_t * 0.55, _seed) * 0.022
-	var dp := AnimMath.drift(_t * 0.47, _seed + 1.7) * 0.014
+	# A head is never held dead still: a slow drift of a degree or so over the look (seen
+	# only close up).
+	var dy := AnimMath.drift(_t * 0.55, _seed) * 0.022 if near else 0.0
+	var dp := AnimMath.drift(_t * 0.47, _seed + 1.7) * 0.014 if near else 0.0
 	var w := _w.x
 	var fwd := Vector3(0, 0, 1)
 	var right := up.cross(fwd).normalized()
