@@ -17,12 +17,13 @@ const HELP := """Commands:
   weather [kind] show the weather, or force one: clear, fair, cloudy, overcast, mist, drizzle,
                  rain, storm, snow, blizzard, dust, starfall; auto follows the climate again; strike = lightning;
                  fall = a star comes down in front of you
+  fire           set what you look at alight (fire rain <0-1|auto>, fire out, fire count)
   items          list item ids
   bench          performance test: what each graphics feature costs on this PC
   server <cmd>   on a server: run a server command (admins)
   clear          clear this log"""
 
-const SERVER_CHEATS := ["fly", "noclip", "god", "speed", "heal", "give", "xp", "level", "money", "time", "tp"]
+const SERVER_CHEATS := ["fly", "noclip", "god", "speed", "heal", "give", "xp", "level", "money", "time", "tp", "fire"]
 
 var player: Player
 var _log: RichTextLabel
@@ -119,6 +120,8 @@ func run(text: String) -> String:
 		"clear":
 			_log.clear()
 			return ""
+		"fire":
+			return _fire_cmd(a)
 		"fly":
 			player.fly = not player.fly
 			if not player.fly:
@@ -217,3 +220,30 @@ func run(text: String) -> String:
 
 static func _on(b: bool) -> String:
 	return "on" if b else "off"
+
+## `fire`: sets what you look at alight; `fire rain <0-1|auto>` burns in that rain;
+## `fire out` douses every fire; `fire count` says how many are burning.
+func _fire_cmd(a: PackedStringArray) -> String:
+	var fs := FireSystem.current
+	if fs == null:
+		return "No fires in this world"
+	var sub := a[1].to_lower() if a.size() > 1 else ""
+	match sub:
+		"rain":
+			if a.size() < 3 or (a[2] != "auto" and not a[2].is_valid_float()):
+				return "Usage: fire rain <0-1|auto>"
+			fs.rain_override = -1.0 if a[2] == "auto" else clampf(a[2].to_float(), 0.0, 1.0)
+			return "Fires burn in %s" % ("the sky's rain" if fs.rain_override < 0.0 else "rain %.2f" % fs.rain_override)
+		"out":
+			var n := fs.burning_count()
+			fs.douse_all()
+			return "Put out %d fires" % n
+		"count":
+			return "%d burning" % fs.burning_count()
+	var h: Dictionary = player._hit_object()
+	if not h.has("obj"):
+		return "Look at something to set alight"
+	var node: ChunkNode = h["chunk"]
+	if fs.ignite(node, int(h["obj"]), 1.0, false, true, 20.0):
+		return "Set the %s alight" % ObjectLibrary.label_of(node.get_object(h["obj"])).to_lower()
+	return "The %s will not burn" % ObjectLibrary.label_of(node.get_object(h["obj"])).to_lower()

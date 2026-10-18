@@ -42,7 +42,7 @@ const KINDS := {
 		"goods": [["sword_iron", "battle_axe", "war_hammer", "mace", "spear", "dagger", "longbow", "crossbow", "arrow", "bolt",
 				"bronze_sword", "bronze_axe", "falchion", "morning_star", "warpick", "glaive", "shortbow", "composite_bow",
 				"broadhead_arrows", "javelin", "throwing_knives", "hand_axe", "hunting_spear", "arrow_barbed", "arrow_steel",
-				"arrow_fire", "bolt_steel", "quiver"],
+				"arrow_fire", "fire_pot", "bolt_steel", "quiver"],
 			["sword_runic", "crossbow_runic", "longbow", "spear", "dagger", "arrow", "bolt"],
 			["pulse_pistol", "pulse_smg", "pulse_rifle", "rail_rifle", "arc_launcher", "scrap_pistol", "rounds",
 				"flintlock_pistol", "musket", "blunderbuss", "revolver_six", "lever_rifle", "double_shotgun", "bolt_rifle",
@@ -51,7 +51,7 @@ const KINDS := {
 				"shotgun_shells", "rifle_cartridges", "ammo_belt", "gun_oil", "laser_pistol", "smart_pistol", "needle_gun",
 				"carbine_combat", "auto_shotgun", "plasma_rifle", "gauss_rifle", "grenade_launcher", "vibro_knife", "stun_baton",
 				"combat_machete", "chain_axe", "smart_rounds", "energy_cell", "shells_12g", "plasma_canister", "gauss_slugs",
-				"frag_grenade_mk2", "smoke_grenade"], "rounds_hollow", "rounds_ap", "slug_shells", "speed_loader", "rifle_clip", "rounds_box", "bolt_explosive"],
+				"frag_grenade_mk2", "smoke_grenade", "incendiary_grenade"], "rounds_hollow", "rounds_ap", "slug_shells", "speed_loader", "rifle_clip", "rounds_box", "bolt_explosive"],
 		"icon": ["sword_iron", "sword_runic", "pulse_rifle"],
 	},
 	"apothecary": {

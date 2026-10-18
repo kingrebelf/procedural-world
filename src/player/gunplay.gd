@@ -55,6 +55,7 @@ const HANDLING := {
 	"frag_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"powder_keg": {"mag": 1, "reload": 0.0, "recoil": 1.0, "spread": 1.5, "speed": 12.0, "drop": 1.0, "zoom": 1.0},
 	"fire_bottle": {"mag": 1, "reload": 0.0, "recoil": 0.4, "spread": 1.2, "speed": 22.0, "drop": 1.0, "zoom": 1.1},
+	"fire_pot": {"mag": 1, "reload": 0.0, "recoil": 0.4, "spread": 1.4, "speed": 19.0, "drop": 1.0, "zoom": 1.1},
 	# The human sci-fi age (pack C): cased smart rounds and shells bark like powder guns,
 	# energy and gauss guns zap; rockets and grenades fly slow and arc.
 	"laser_pistol": {"mag": 15, "reload": 1.2, "recoil": 1.2, "spread": 0.9, "speed": 900.0, "drop": 0.0, "zoom": 1.3},
@@ -71,6 +72,7 @@ const HANDLING := {
 	"carbine_combat": {"mag": 30, "reload": 2.0, "recoil": 1.8, "spread": 1.2, "speed": 500.0, "drop": 0.6, "zoom": 1.8, "powder": true, "ads_spread": 0.15},
 	"frag_grenade_mk2": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"emp_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
+	"incendiary_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"smoke_grenade": {"mag": 1, "reload": 0.0, "recoil": 0.5, "spread": 1.2, "speed": 24.0, "drop": 1.0, "zoom": 1.1},
 	"breach_charge": {"mag": 1, "reload": 0.0, "recoil": 0.6, "spread": 1.0, "speed": 14.0, "drop": 1.0, "zoom": 1.0},
 	"flare_chem": {"mag": 1, "reload": 0.0, "recoil": 0.3, "spread": 1.2, "speed": 20.0, "drop": 1.0, "zoom": 1.1},
@@ -217,6 +219,8 @@ func fire(it: Dictionary, d: Dictionary) -> void:
 			d["pellets"] = int(mods["pellets"])
 		if mods.has("splash"):
 			d["splash"] = float(mods["splash"])
+		if mods.has("incendiary"):
+			d["incendiary"] = float(mods["incendiary"])
 	player._cooldown = float(d.get("cooldown", 0.22))
 	var cam := player.camera
 	var fwd := -cam.global_transform.basis.z

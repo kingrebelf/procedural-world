@@ -769,6 +769,8 @@ func _run() -> void:
 	check(player.deconstruct(pc, fence) and fence["st"].get("gone", false) and game.inventory.count("fence") == 1, "deconstructing your own piece returns it")
 	await _door_checks(game, streamer, player, pc, placed["p"] + Vector3(0, 0, -6), here_key)
 	await _power_checks(game, world, player, pc, placed["p"] + Vector3(6, 0, 6))
+	# Upwind of the power pieces (the fire checks blow the wind along +x).
+	var burnt := await _fire_checks(game, world, pc, placed["p"] + Vector3(-8, 0, 12))
 	var bwall := {"key": placed["key"], "i": wall["i"]}
 	var bwb := {"key": placed["key"], "i": wb["i"]}
 
@@ -1001,6 +1003,12 @@ func _run() -> void:
 	check(c4["objects"][placed["i"]]["t"] == "b:foundation" and c4["objects"][placed["i"]]["p"].distance_to(placed["p"]) < 0.001, "built foundation saved in place")
 	check(c4["objects"][bwb["i"]]["t"] == "b:workbench", "workbench saved")
 	check(c4["objects"][bwall["i"]]["st"].get("gone", false), "taken-down wall stays gone")
+	if not burnt.is_empty():
+		var c5 = store.load_chunk(burnt["key"].x, burnt["key"].y)
+		check(c5["objects"][burnt["i"]]["st"].get("gone", false), "a wall that burnt down stays gone")
+		check(burnt["ruin"] >= 0 and c5["objects"][burnt["ruin"]]["t"] == FireSim.RUIN and int(c5["objects"][burnt["ruin"]].get("sp", 0)) == burnt["sp"], "and its ash and charred beams are still there")
+		check(float(c5["objects"][burnt["stone"]]["st"].get("char", 0.0)) > 0.0, "the stone wall it stood by stays scorched")
+		check(c5["objects"][burnt["doused"]]["st"].has("fl") and not c5["objects"][burnt["doused"]]["st"].has("fire"), "the wall put out with a bucket stays out, half burnt")
 
 	# Regenerating the same chunk with today's generator would NOT reproduce the edits,
 	# which proves the game reads the snapshot rather than regenerating.
@@ -2397,3 +2405,85 @@ func _menu_checks(world, game, con) -> void:
 	check(Cursor.free and not Cursor.locked(), "a freed pointer stays free after a menu closes")
 	Cursor.free = false
 	Cursor.restore()
+
+## Fire: a timber wall set alight takes hold, throws flame onto the wall touching it,
+## scorches the stone wall beside it, burns down to ash and charred beams; a bucket of
+## water puts out another, a few blows beat out a small one, rain holds fires down.
+## Returns what to check after the reload.
+func _fire_checks(game, world, pc: ChunkNode, at: Vector3) -> Dictionary:
+	var fs: FireSystem = FireSystem.current
+	check(fs != null and fs.get_parent() == world, "the world runs its fires")
+	if fs == null:
+		return {}
+	# Stand well upwind of the test fires, and don't burn: they run for minutes of game time
+	# here and can spread into the trees round about, and dying in one would spoil the
+	# death checks further on.
+	var stood: Vector3 = world.player.global_position
+	world.player.global_position = pc.position + at + Vector3(-14, 0, -3)
+	var god: bool = game.cheats["god"]
+	game.cheats["god"] = true
+	var wood := pc.add_built("wall_plaster", at, 0.0, {"by": "you", "day": 0.0})
+	var next := pc.add_built("wall_plaster", at + Vector3(2, 0, 0), 0.0, {"by": "you", "day": 0.0})
+	var stone := pc.add_built("wall_stone", at + Vector3(-2, 0, 0), 0.0, {"by": "you", "day": 0.0})
+	check(not fs.ignite(pc, stone["i"], 1.0, false, true), "a stone wall will not burn")
+	check(fs.ignite(pc, wood["i"], 1.0, false, true), "a timber wall catches")
+	check(fs.is_burning(pc.key, wood["i"]) and fs.burning_count() >= 1, "and is burning")
+	# Wind along the row, to carry it.
+	world.atmosphere.wind_dir = Vector2(1, 0)
+	fs.rain_override = 0.0
+	var secs := 0.0
+	while secs < 900.0 and not wood["st"].get("gone", false):
+		fs._process(1.0)
+		secs += 1.0
+		# The stone wall beside it is in the flames.
+		if wood["st"].has("fire") and FireSim.heat(wood["st"]) > 0.5 and not stone["st"].has("char"):
+			fs.ignite(pc, stone["i"], 1.0, false, false, 5.0)
+	check(wood["st"].get("gone", false), "it burns down (%.0f s)" % secs)
+	check(next["st"].has("fire") or next["st"].get("gone", false) or next["st"].has("lit_by") or float(next["st"].get("char", 0.0)) > 0.0, "flames caught the wall touching it")
+	check(float(stone["st"].get("char", 0.0)) > 0.0, "and scorched the stone one")
+	var ruin := -1
+	for o in pc.data["objects"]:
+		if o["t"] == FireSim.RUIN and not o["st"].get("gone", false) and (o["p"] as Vector3).distance_to(at) < 2.0:
+			ruin = o["i"]
+	check(ruin >= 0, "it leaves a heap of ash and charred beams")
+	var bufs := ChunkNode.build_object_buffers(pc.data, false)
+	var sooty := false
+	for k in bufs:
+		if String(k).ends_with(ChunkNode.SOOT) and String(k).begins_with("b:wall_stone"):
+			sooty = true
+	check(sooty, "the scorched stone wall is drawn sooted")
+	fs.douse_all()
+	# A bucket of water on the next one.
+	var third := pc.add_built("wall_plaster", at + Vector3(0, 0, 4), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, third["i"], 1.0, false, true)
+	for i in 40:
+		fs._process(1.0)
+	var buckets := 0
+	while third["st"].has("fire") and buckets < 8:
+		fs.douse(pc.position + (third["p"] as Vector3) + Vector3(0, 1, 0), 2.2, 0.55)
+		buckets += 1
+	check(not third["st"].has("fire") and buckets <= 5, "a few buckets put it out (%d)" % buckets)
+	check(not fs.is_burning(pc.key, third["i"]), "and the fire is gone")
+	# Beaten out with your fists while it is small.
+	var fence := pc.add_built("fence", at + Vector3(0, 0, 8), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, fence["i"], 0.4, false, true)
+	var blows := 0
+	while fence["st"].has("fire") and blows < 10:
+		fs.player_use(world.player, null, Durability.FIST, {"obj": fence["i"], "chunk": pc, "point": pc.position + (fence["p"] as Vector3)})
+		blows += 1
+	check(not fence["st"].has("fire") and blows <= 6, "a small fire is beaten out (%d blows)" % blows)
+	check(not fence["st"].get("gone", false), "without breaking what was burning")
+	# Rain beats a fire down.
+	var fourth := pc.add_built("wall_plaster", at + Vector3(0, 0, 12), 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(pc, fourth["i"], 1.0, false, true)
+	fs.rain_override = 1.0
+	for i in 120:
+		fs._process(1.0)
+	check(not fourth["st"].has("fire") or FireSim.heat(fourth["st"]) < 0.6, "a downpour holds it down (%.2f)" % FireSim.heat(fourth["st"]))
+	print("  (fires still burning after the checks: %d)" % fs.burning_count())
+	fs.douse_all()
+	fs.rain_override = -1.0
+	game.cheats["god"] = god
+	world.player.global_position = stood
+	game.flush_chunks()
+	return {"key": pc.key, "i": wood["i"], "ruin": ruin, "sp": int(pc.get_object(ruin).get("sp", 0)) if ruin >= 0 else -1, "stone": stone["i"], "doused": third["i"]}

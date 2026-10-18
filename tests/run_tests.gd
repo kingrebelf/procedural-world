@@ -5703,6 +5703,123 @@ func test_power_automation() -> void:
 	r = Power.solve([{"id": "w", "o": _pw("water_wheel", 5), "f": 0.0}], {}, 1.0)
 	check(float(r["supply"]) == 0.0, "and nothing on dry ground")
 
+# --- Fire ------------------------------------------------------------------------------
+
+func test_fire_burns_by_material() -> void:
+	check(FireSim.burns("longhouse") and FireSim.burns("market_stall") and FireSim.burns("pine"), "timber buildings, stalls and trees burn")
+	check(not FireSim.burns("castle_wall") and not FireSim.burns("rock") and not FireSim.burns("hab_block"), "stone, rock and metal do not")
+	check(FireSim.burns("b:wall_plaster") and not FireSim.burns("b:wall_stone"), "a built timber wall burns, a stone one does not")
+	check(FireSim.profile("cottage")["leaves"] == "masonry" and FireSim.profile("longhouse")["leaves"] == "timber", "brick houses leave walls, timber ones fall in")
+	var st := {}
+	check(not FireSim.ignite("castle_wall", st, 1.0, 0.0) and not st.has("fire"), "stone will not catch")
+	FireSim.scorch(st, 0.3)
+	check(is_equal_approx(float(st["char"]), 0.3), "but it scorches")
+
+func test_fire_grows_and_burns_out() -> void:
+	var e := FireSim.calm()
+	var st := {}
+	check(FireSim.ignite("market_stall", st, 0.6, 0.0, true), "a stall catches")
+	var h0 := FireSim.heat(st)
+	for i in 30:
+		FireSim.step("market_stall", st, 1.0, e, i)
+	check(FireSim.heat(st) > h0 + 0.4, "it takes hold within half a minute (%.2f -> %.2f)" % [h0, FireSim.heat(st)])
+	check(float(st.get("char", 0.0)) > 0.05, "and scorches as it burns")
+	var r := ""
+	var secs := 0
+	while r == "" and secs < 2000:
+		r = FireSim.step("market_stall", st, 1.0, e, secs)
+		secs += 1
+	check(r == "burnt" and not st.has("fire"), "with nothing left to burn it burns out (%s after %d s)" % [r, secs])
+	check(int(st.get("lit_by", 0)) == 1, "and remembers who lit it")
+	check(FireSim.catch_chance("market_stall", st, 1.0, e, 0.0) == 0.0 or not st.has("fl"), "what burnt out does not light again")
+
+func test_fire_rain_beats_it_down() -> void:
+	var dry := FireSim.calm()
+	var wet := FireSim.calm()
+	wet["rain"] = 1.0
+	wet["wet"] = 1.0
+	var a := {}
+	var b := {}
+	FireSim.ignite("longhouse", a, 1.0, 0.0)
+	FireSim.ignite("longhouse", b, 1.0, 0.0)
+	for i in 120:
+		FireSim.step("longhouse", a, 1.0, dry, i)
+		FireSim.step("longhouse", b, 1.0, wet, i)
+	check(FireSim.heat(a) > 0.85, "a house goes up in dry weather (%.2f)" % FireSim.heat(a))
+	check(not b.has("fire") or FireSim.heat(b) < FireSim.heat(a) - 0.3, "a downpour holds it down (%.2f)" % FireSim.heat(b))
+	check(FireSim.catch_chance("longhouse", {}, 1.0, wet, 0.0) < FireSim.catch_chance("longhouse", {}, 1.0, dry, 0.0) * 0.6, "and wet things are hard to light")
+
+func test_fire_put_out_and_fed() -> void:
+	var e := FireSim.calm()
+	var st := {}
+	FireSim.ignite("fruit_cart", st, 0.5, 0.0)
+	for i in 8:
+		FireSim.step("fruit_cart", st, 1.0, e, i)
+	var blows := 0
+	while st.has("fire") and blows < 10:
+		FireSim.beat(st, 0.8, 8.0)
+		blows += 1
+	check(not st.has("fire") and blows <= 6, "a small fire is beaten out in a few blows (%d)" % blows)
+	check(float(st.get("fl", 0.0)) > 1.0, "with fuel left in it")
+	var big := {}
+	FireSim.ignite("longhouse", big, 1.0, 0.0)
+	for i in 90:
+		FireSim.step("longhouse", big, 1.0, e, i)
+	var h := FireSim.heat(big)
+	FireSim.beat(big, 0.8, 90.0)
+	check(big.has("fire") and FireSim.heat(big) > h - 0.05, "but a house well alight barely notices a beating")
+	var buckets := 0
+	while big.has("fire") and buckets < 12:
+		FireSim.quench(big, 0.55, 90.0 + buckets)
+		buckets += 1
+	check(not big.has("fire") and buckets >= 2 and buckets <= 6, "a few buckets put out a house (%d)" % buckets)
+	check(FireSim.soak(big, 100.0) > 0.5 and FireSim.catch_chance("longhouse", big, 1.0, e, 100.0) < 0.2, "soaked, it is hard to light again")
+	check(FireSim.soak(big, 100.0 + 600.0) == 0.0, "until it dries out")
+	var oiled := {}
+	FireSim.feed(oiled, 60.0)
+	check(FireSim.catch_chance("chest", oiled, 0.3, e, 0.0) >= 0.9, "oil on it, it catches from a spark")
+	FireSim.ignite("chest", oiled, 0.3, 0.0)
+	var h1 := FireSim.heat(oiled)
+	FireSim.feed(oiled, 60.0)
+	check(FireSim.heat(oiled) > h1 + 0.2, "more oil on a fire flares it up")
+
+func test_fire_spreads_downwind() -> void:
+	var e := FireSim.calm()
+	e["wind"] = 0.8
+	e["wind_dir"] = Vector2(1, 0)
+	var down := FireSim.spread_rate(0.9, 2.5, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0)
+	var up := FireSim.spread_rate(0.9, 2.5, Vector2(-1, 0), 6.0, "longhouse", {}, e, 0.0)
+	check(down > up * 2.0 and down > 0.0, "flames lick much further downwind (%.3f vs %.3f)" % [down, up])
+	check(FireSim.spread_rate(0.9, 0.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) > down, "touching buildings catch fastest")
+	check(FireSim.spread_rate(0.9, 40.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) == 0.0, "but not across a field")
+	check(FireSim.spread_rate(0.9, 0.0, Vector2(1, 0), 6.0, "castle_wall", {}, e, 0.0) == 0.0, "and never to stone")
+	check(FireSim.spread_rate(0.2, 0.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) == 0.0, "a fire just catching throws no flame yet")
+	check(FireSim.spread_rate(0.9, 1.0, Vector2(1, 0), 6.0, "oak", {}, e, 0.0) < FireSim.spread_rate(0.9, 1.0, Vector2(1, 0), 6.0, "longhouse", {}, e, 0.0) * 0.3, "live trees catch much less readily than timber")
+
+func test_fire_catches_up_while_away() -> void:
+	var st := {}
+	FireSim.ignite("barrels", st, 1.0, 0.0)
+	check(FireSim.catch_up("barrels", st, 3600.0, FireSim.calm(), 3600.0) == "burnt", "a fire left an hour has burnt out")
+
+func test_fire_ruins() -> void:
+	var sp := FireRuins.encode(7.5, 9.0, 300)
+	var d := FireRuins.decode(sp)
+	check(is_equal_approx(d[0], 7.5) and is_equal_approx(d[1], 9.0) and d[2] == 300 & 255, "a ruin's size survives its species number (%s)" % [d])
+	for v in [FireRuins.TIMBER, FireRuins.MASONRY, FireRuins.HEAP]:
+		var m := FireRuins.build(sp, v)
+		var a := m.get_aabb()
+		check(m.get_surface_count() >= 2 and a.size.x > 6.0 and a.size.x < 12.0, "ruin %d is built to its footprint (%s)" % [v, a.size])
+	check(FireRuins.build(sp, FireRuins.MASONRY).get_aabb().size.y > FireRuins.build(sp, FireRuins.TIMBER).get_aabb().size.y * 0.8, "brick walls stand above the ash")
+	check(ObjectLibrary.label(FireSim.RUIN) == "Burnt Ruin" and ObjectLibrary.kind(FireSim.RUIN) == "structure", "a ruin is a structure you can pick through")
+	check(Durability.TABLE.has(FireSim.RUIN), "for charcoal, nails and stone")
+
+func test_fire_items() -> void:
+	for t in ["fire_pot", "fire_bottle", "incendiary_grenade", "flamethrower"]:
+		check(float(ItemDB.def(t).get("incendiary", 0.0)) > 0.0, "%s sets things alight" % t)
+	check(ItemDB.def("fire_pot")["era"] == Eras.MEDIEVAL and int(ItemDB.UNLOCK.get("fire_pot", 99)) < int(ItemDB.UNLOCK.get("fire_bottle", 0)), "the fire pot comes before the fire bottle")
+	check(ItemDB.def("incendiary_grenade")["era"] == Eras.SCIFI and int(ItemDB.UNLOCK.get("incendiary_grenade", 0)) > int(ItemDB.UNLOCK.get("fire_bottle", 99)), "the incendiary grenade is a later-era fire")
+	check(float(ItemDB.ammo_mods("arrow", "arrow_fire").get("incendiary", 0.0)) > 0.0, "fire arrows set things alight")
+	check(Crime.FINES.has("arson"), "arson is a crime")
 
 func test_water_life() -> void:
 	# Lakes grow lily pads and reeds, the open sea reefs and kelp; every key's buffer holds

@@ -11,7 +11,7 @@ extends RefCounted
 const STARS := [1, 60, 200, 500, 1200]
 const MAX_STARS := 5
 ## Bounty for each kind of crime on top of what was taken.
-const FINES := {"theft": 15, "pickpocket": 25, "lockpick": 10, "trespass": 30, "bribery": 40, "assault": 40, "vandalism": 20, "murder": 600}
+const FINES := {"theft": 15, "pickpocket": 25, "lockpick": 10, "trespass": 30, "bribery": 40, "assault": 40, "vandalism": 20, "arson": 150, "murder": 600}
 ## A day after your last crime there, the bounty halves every in-game day.
 const COOL_AFTER := 1.0
 

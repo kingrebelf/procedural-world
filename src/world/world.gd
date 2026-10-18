@@ -115,6 +115,12 @@ func _ready() -> void:
 	vehicles.player = player
 	add_child(vehicles)
 	player.vehicles = vehicles
+	var fires := FireSystem.new()
+	fires.name = "Fires"
+	fires.streamer = streamer
+	fires.atmosphere = atmosphere
+	fires.player = player
+	add_child(fires)
 	Game.died.connect(_on_died)
 
 	var ui := CanvasLayer.new()
