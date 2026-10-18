@@ -621,7 +621,7 @@ func test_house_interiors() -> void:
 		var hx := dm.x / 2 - KitHouse.WALL_IN + 0.05
 		var hz := dm.z / 2 - KitHouse.WALL_IN + 0.05
 		var lane := AABB(Vector3(-0.6, KitHouse.FLOOR + 0.05, dm.z / 2 - 1.8), Vector3(1.2, 1.8, 1.8))
-		for e in KitHouse.FURNISH[t]:
+		for e in Furnish.settled(t):
 			var bx := KitHouse._model_box(e[0], Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2]))
 			var fits: bool = bx.size.length() > 0.01 and bx.position.x > -hx and bx.end.x < hx and bx.position.z > -hz and bx.end.z < hz and bx.end.y < dm.y
 			check(fits, "%s: %s stands inside the walls (%s)" % [t, e[0], bx])
@@ -735,7 +735,7 @@ func test_room_interiors() -> void:
 			var xf := Transform3D(Basis(Vector3.UP, deg_to_rad(float(spot[1]))), q)
 			var cb := xf * AABB(Vector3(-0.6, 0.05, -0.4), Vector3(1.2, 0.8, 0.8))
 			var clear := true
-			for e in Interiors.FURNISH[t]:
+			for e in Furnish.settled(t):
 				if e[3]:
 					var ex := Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2])
 					var bx: AABB
@@ -5981,7 +5981,7 @@ func test_props_settle_on_ground() -> void:
 	check(PropSettle.transform(g.generate(0, 0), inside) == null, "a room's chest keeps its place")
 	WorldField.terrain_v = keep_tv
 	# Furniture stands on its floor.
-	check(ProbeProps.floors()["bad"] == 0, "furniture sunk into or floating over its floor")
+	check(ProbeProps.floors()["bad"] == 0, "room furniture stands on its floor, inside its walls and clear of its neighbours")
 
 func test_caches_rest_v21() -> void:
 	# A v20 world places every cache where it always did (object id and x, z pinned from
