@@ -216,7 +216,7 @@ const PIECES := {
 	# Automation (Automation): belts, hoppers, arms and machines. Their out side is
 	# their local +z (away from you as you place them).
 	"conveyor_belt": {"name": "Conveyor Belt", "models": [], "proc": "pw_belt", "snap": "belt", "mat": "metal", "hp": 12.0, "era": -1,
-		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6}}},
+		"power": {"role": "use", "watts": 20.0, "prio": 1, "links": 3, "term": Vector3(0.36, 0.12, 0.0), "auto": {"kind": "belt", "speed": 1.6, "spin": {"part": "belt_drum", "pos": Vector3(0, 0.19, 0.46), "axis": Vector3(1, 0, 0), "rate": 14.0}}}},
 	"hopper": {"name": "Hopper", "models": [], "proc": "pw_hopper", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "storage": 8, "foot": 0.5,
 		"power": {"role": "box", "links": 0, "sterm": Vector3(0.0, 0.3, -0.42), "auto": {"kind": "hopper"}}},
 	"robot_arm": {"name": "Robot Arm", "models": [], "proc": "pw_robot_arm", "snap": "free", "mat": "metal", "hp": 20.0, "era": -1, "foot": 0.3,
@@ -226,7 +226,7 @@ const PIECES := {
 			"auto": {"kind": "miner", "every": 8.0, "reach": 3.5, "spin": {"part": "drill_bit", "pos": Vector3(0, 0.95, -0.72), "axis": Vector3(0, 0, 1)}}}},
 	"quarry_drill": {"name": "Quarry Drill", "models": [], "proc": "pw_quarry", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1, "storage": 16, "foot": 1.0,
 		"power": {"role": "use", "watts": 900.0, "prio": 1, "term": Vector3(0.7, 1.2, 0.0),
-			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.25, 0), "axis": Vector3.UP}}}},
+			"auto": {"kind": "quarry", "every": 5.0, "spin": {"part": "quarry_bit", "pos": Vector3(0, 0.3, 0), "axis": Vector3.UP, "rate": 4.0}}}},
 	"electric_furnace": {"name": "Electric Furnace", "models": [], "proc": "pw_furnace", "snap": "free", "mat": "metal", "hp": 60.0, "era": -1, "storage": 12, "foot": 0.7,
 		"power": {"role": "use", "watts": 1500.0, "prio": 1, "term": Vector3(0.0, 1.5, 0.3), "auto": {"kind": "smelter", "every": 6.0}}},
 	"power_sawmill": {"name": "Powered Sawmill", "models": [], "proc": "pw_sawmill", "snap": "free", "mat": "metal", "hp": 50.0, "era": -1, "storage": 12, "foot": 0.9,
@@ -238,8 +238,9 @@ const PIECES := {
 		"power": {"role": "gen", "source": "water", "watts": 600.0, "links": 4, "term": Vector3(0.9, 1.9, 0.0),
 			"spin": {"part": "wheel_rim", "pos": Vector3(0, 1.4, 0), "axis": Vector3(1, 0, 0), "rate": 1.2}}},
 	"steam_engine": {"name": "Steam Engine", "models": [], "proc": "pw_steam", "snap": "free", "mat": "metal", "hp": 80.0, "era": -1,
-		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(-0.35, 2.6, 0.3),
-			"spin": {"part": "flywheel", "pos": Vector3(0.62, 0.75, -0.2), "axis": Vector3(1, 0, 0), "rate": 5.0},
+		"power": {"role": "gen", "source": "fuel", "watts": 2500.0, "links": 4, "term": Vector3(0.0, 0.9, 0.85), "smoke": Vector3(0.0, 2.5, -0.9),
+			"spin": {"part": "flywheel", "pos": Vector3(0.56, 0.95, 0.32), "axis": Vector3(1, 0, 0), "rate": 5.0,
+				"piston": {"part": "crosshead", "pos": Vector3(0.56, 0.95, -0.14), "axis": Vector3(0, 0, 1), "stroke": 0.12}},
 			"fuel": {"coal": 300.0, "charcoal": 300.0, "coal_briquettes": 320.0, "peat": 150.0, "wood": 60.0, "firewood": 50.0}}},
 	# Powered defences (Defences): turrets, an electric fence, traps, an alarm bell and a
 	# searchlight. All prio 2: the last to brown out.
