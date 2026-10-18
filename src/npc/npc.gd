@@ -297,7 +297,9 @@ func show_name(on: bool) -> void:
 		_label.text = "Lv %d  %s\n%s" % [NPCSocial.level(rec), rec["name"], rec["job"].capitalize()]
 		# Like an animal's tag: guards and anyone out to hurt you show their danger.
 		var danger := action == "attack" or int(rec.get("rel", 0)) <= -40
-		_label.modulate = Color(1.0, 0.55, 0.45, 0.95) if danger else (Color(1.0, 0.85, 0.55, 0.9) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1, 0.85))
+		# Opaque: the tag is cut out solid (Creature.crisp_tag), and a see-through one is
+		# dithered there, which temporal anti-aliasing scrambled into a ghosted double.
+		_label.modulate = Color(1.0, 0.55, 0.45) if danger else (Color(1.0, 0.85, 0.55) if NPCGen.GUARD_JOBS.has(rec["job"]) else Color(1, 1, 1))
 
 func is_hidden() -> bool:
 	return not _model.visible

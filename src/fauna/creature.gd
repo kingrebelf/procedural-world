@@ -392,10 +392,11 @@ const TAG_PRIORITY := 3
 ## animal's name into a ghosted double. Solid, it moves with its owner, and a lake behind
 ## it still can't cover it (the water is depth-tested against it).
 static func crisp_tag(l: Label3D) -> void:
+	# A hard cut, no alpha to coverage: without MSAA that dithers the glyph edges, and on
+	# a small two-line tag the edges are most of the text, so it came out stippled.
 	l.alpha_cut = Label3D.ALPHA_CUT_DISCARD
 	l.alpha_scissor_threshold = 0.4
-	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
-	l.alpha_antialiasing_edge = 0.25
+	l.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_OFF
 
 func _build_tag() -> void:
 	_tag = Node3D.new()
