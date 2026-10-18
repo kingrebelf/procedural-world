@@ -319,6 +319,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		_clear_line(streamer, Vector3(at.x, y, at.y), Vector3(look_at.x, tgt_h, look_at.y), sight)
 	var d := Vector3(look_at.x - at.x, tgt_h - y, look_at.y - at.y)
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
+	# set_state's slot takes the held item out again.
+	if hold == "none":
+		p.holster(true)
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	_spinning = spin != 0.0
@@ -339,6 +342,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		Weather.current.starfall.land_now = true
 		# Caught mid-fall, the fireball still high over the land.
 		await _wait_ms(2200)
+	if hold == "none" and not p.holstered:
+		p.holster(true)
+		await _wait(12)
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
@@ -2025,6 +2031,8 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 9})
 	if torch:
 		p.hand_light.from_data({"kind": "torch", "torch_left": 300.0})
+	elif hold == "none":
+		p.holster(true)
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.z))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _settle(p)
