@@ -316,7 +316,8 @@ func _lod_every() -> int:
 		return 1
 	var p := body.global_position
 	var d := cam.global_position.distance_to(p)
-	var every := 1 if d < 22.0 else (2 if d < 45.0 else (4 if d < 90.0 else 8))
+	# Past 14 m a step every other frame (still 40 a second at 80 FPS) reads the same.
+	var every := 1 if d < 14.0 else (2 if d < 40.0 else (4 if d < 80.0 else 8))
 	if calm:
 		# A slow idle or a chat reads the same at half the rate from a few steps off.
 		every = 1 if d < 8.0 else (2 if d < 30.0 else (4 if d < 60.0 else 8))
