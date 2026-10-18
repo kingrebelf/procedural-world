@@ -3,6 +3,8 @@ extends SceneTree
 ## physics and prints how she went, with a picture from astern at the end:
 ##   xvfb-run -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 \
 ##     --resolution 1280x720 --script res://tools/preview_ride.gd [-- --kind=sail_raft]
+## With --aboard, stands someone on each big boat where you step off the helm and where you
+## wake by her bunk, and prints whether they stand on her deck.
 ## Shots go to user://screenshots/ride_*.png.
 
 ## [kind, drive (steer, W/S), wind toward (world x, z), seconds, sail up].
@@ -59,6 +61,10 @@ func _run() -> void:
 	var veh = load("res://src/vehicles/vehicle.gd")
 	var water = load("res://src/env/water.gd")
 	var sailing = load("res://src/vehicles/sailing.gd")
+	if "--aboard" in OS.get_cmdline_user_args():
+		await _aboard(veh, cam, only)
+		quit()
+		return
 	var n := 0
 	for r in RUNS:
 		n += 1
@@ -97,3 +103,63 @@ func _run() -> void:
 		v.queue_free()
 		await process_frame
 	quit()
+
+## A stand-in for the player (a 1.8 m capsule, feet at its origin) dropped at each place
+## you come aboard a big boat; prints where they settle.
+func _aboard(veh, cam: Camera3D, only: String) -> void:
+	var n := 100
+	for k in veh.KINDS:
+		if not veh.KINDS[k].get("moored", false) or (only != "" and k != only):
+			continue
+		n += 1
+		var v = veh.new().setup({"id": n, "kind": k, "pos": Vector3.ZERO, "yaw": 0.4})
+		v.ground = func(_x: float, _z: float) -> float: return -6.0
+		root.add_child(v)
+		for i in 30:
+			await physics_frame
+		var places := [["helm", v.exit_point()]]
+		for sp in v.spots():
+			places.append([sp["name"], sp["wake_pos"] + Vector3(0, 0.9, 0)])
+		var men := []
+		for pl in places:
+			var man := CharacterBody3D.new()
+			man.collision_layer = 4
+			man.collision_mask = 1 | 2
+			var cs := CollisionShape3D.new()
+			var cap := CapsuleShape3D.new()
+			cap.radius = 0.35
+			cap.height = 1.8
+			cs.shape = cap
+			cs.position.y = 0.9
+			man.add_child(cs)
+			var mi := MeshInstance3D.new()
+			var cm := CapsuleMesh.new()
+			cm.radius = 0.35
+			cm.height = 1.8
+			mi.mesh = cm
+			mi.position.y = 0.9
+			man.add_child(mi)
+			root.add_child(man)
+			man.global_position = pl[1]
+			men.append([man, pl])
+		for i in 120:
+			await physics_frame
+			for m in men:
+				var c: CharacterBody3D = m[0]
+				c.velocity.y -= 9.8 / 60.0
+				c.move_and_slide()
+		for m in men:
+			var c: CharacterBody3D = m[0]
+			print("%s %s: from %s to %s, on floor %s" % [k, m[1][0], m[1][1], c.global_position, c.is_on_floor()])
+		var L := float(v.p["length"])
+		cam.global_position = Vector3(L * 0.9, L * 0.7, L * 0.6)
+		cam.look_at(Vector3(0, 1.0, 0))
+		for i in 4:
+			await process_frame
+		await RenderingServer.frame_post_draw
+		DirAccess.make_dir_recursive_absolute("user://screenshots")
+		root.get_texture().get_image().save_png("user://screenshots/aboard_%s.png" % k)
+		for m in men:
+			m[0].queue_free()
+		v.queue_free()
+		await process_frame
