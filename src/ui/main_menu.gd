@@ -8,6 +8,9 @@ var _backdrop: MenuBackdrop
 ## 1 = the painted gradient covers everything; fades to 0 once the live world is ready.
 var _cover := 1.0
 var _reveal := false
+## Shots from the trailer (tools/trailer.gd), cut into a seamless loop that plays behind
+## the menu; without it, the live flight over a generated world (MenuBackdrop).
+const LOOP := "res://assets/video/menu_loop.ogv"
 
 func _ready() -> void:
 	if Net.wants_server():
@@ -17,12 +20,36 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = false
 	if bool(Settings.get_value("menu_flyover")) and not Game.is_playing():
-		_backdrop = MenuBackdrop.new()
-		_backdrop.ready_to_show.connect(func(): _reveal = true)
-		add_child(_backdrop)
+		if ResourceLoader.exists(LOOP):
+			_play_loop()
+		else:
+			_backdrop = MenuBackdrop.new()
+			_backdrop.ready_to_show.connect(func(): _reveal = true)
+			add_child(_backdrop)
 	_home()
 	if OS.get_cmdline_user_args().has("--capture-menu") and ResourceLoader.exists("res://tools/capture_menu.gd"):
 		add_child(load("res://tools/capture_menu.gd").new())
+
+## The trailer loop, filling the screen behind the menu (cropped, never letterboxed).
+func _play_loop() -> void:
+	var v := VideoStreamPlayer.new()
+	v.name = "MenuLoop"
+	v.stream = load(LOOP)
+	v.expand = true
+	v.loop = true
+	v.volume_db = -80.0
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.show_behind_parent = true
+	add_child(v)
+	var fit := func() -> void:
+		var src := Vector2(1920, 1080)
+		var k := maxf(size.x / src.x, size.y / src.y)
+		v.size = src * k
+		v.position = (size - v.size) * 0.5
+	resized.connect(fit)
+	fit.call()
+	v.play()
+	_reveal = true
 
 func _draw() -> void:
 	var s := size

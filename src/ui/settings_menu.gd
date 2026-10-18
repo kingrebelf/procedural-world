@@ -140,7 +140,7 @@ func _graphics_tab() -> Control:
 	_slider(g, "grass_density", "Grass density", 0.0, 1.5, 0.1, "%.1fx")
 	_option(g, "mesh_detail", "Mesh detail", ["Low", "Medium", "High", "Ultra"], "How soon distant models switch to simpler versions.")
 	_option(g, "anisotropic", "Texture filtering", ["Bilinear", "2x anisotropic", "4x anisotropic", "8x anisotropic", "16x anisotropic"])
-	_check(g, "menu_flyover", "Live title-screen world", "A flight over a generated world behind the main menu.")
+	_check(g, "menu_flyover", "Animated title screen", "Shots of the world playing behind the main menu.")
 	var note := UITheme.label("Turn on Display > Show FPS counter to see whether the GPU or the CPU limits your frame rate. Hardware ray tracing and DLSS are not available in Godot 4.5; SDFGI and SSR provide bounced light and reflections, and FSR 2 does the upscaling.", 13, UITheme.DIM)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(300, 0)
