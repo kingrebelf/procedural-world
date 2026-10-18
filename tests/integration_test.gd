@@ -855,6 +855,7 @@ func _run() -> void:
 	await _pirates(game, world, player)
 	await _crowd(game, world, player)
 	await _town_gate(game, world, player)
+	await _fire_crew(game, world, player)
 
 	# Vehicles: set one down from the pack, ride it forward, get off, pack it up.
 	_make_room(game)
@@ -1592,6 +1593,67 @@ func _crowd(game, world, player) -> void:
 	world.npcs._crowd(e, at)
 	check(visitors.call().is_empty(), "and by night they have gone home")
 	game.day = day0
+	player.global_position = was
+
+## A fire in a town: the able-bodied run a bucket line between the well and the flames,
+## the rest get clear; animals bolt from it; when it is out they go back to their day.
+func _fire_crew(game, world, player) -> void:
+	var fs: FireSystem = FireSystem.current
+	var e: Dictionary = {}
+	for x in world.npcs.settlements.values():
+		if x.has("places") and not x["data"].has("band") and not x.has("boat") and not (x["nodes"] as Array).is_empty():
+			e = x
+	check(not e.is_empty(), "a town is loaded for the fire")
+	if e.is_empty() or fs == null:
+		return
+	var n: NPC = null
+	for o in e["nodes"]:
+		if is_instance_valid(o) and not o.rec.has("visit") and not o.rec.get("child", false):
+			n = o
+	check(n != null, "a townsman to fight the fire")
+	if n == null:
+		return
+	n.rec["traits"]["brave"] = 0.9
+	var was: Vector3 = player.global_position
+	player.global_position = n.global_position + Vector3(0, 1, 30)
+	var wp: Vector3 = n.global_position + Vector3(7, 0, 0)
+	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
+	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+	fs.ignite(node, wall["i"], 1.0, false, true)
+	wall["st"]["fire"]["h"] = 0.7
+	var held_was = n.rec.get("held", null)
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.action == "fight_fire" and String((n.rec.get("held", {}) as Dictionary).get("type", "")) == "bucket", "a townsman grabs a bucket to fight the fire (%s)" % n.action)
+	var well: Vector2 = n.target
+	n.global_position = Vector3(well.x, n.global_position.y, well.y)
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.rec.get("_fire_leg", "") == "carry", "fills it at the well")
+	n.stop_perform()
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	var edge: Vector2 = n.target
+	n.global_position = Vector3(edge.x, n.global_position.y, edge.y)
+	var h0 := FireSim.heat(wall["st"])
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.rec.get("_fire_leg", "") == "fetch" and FireSim.heat(wall["st"]) < h0, "and throws it on the flames (%.2f -> %.2f)" % [h0, FireSim.heat(wall["st"])])
+	# Animals near it run.
+	var ksp := 0
+	while Creature.species(ksp, Eras.MEDIEVAL)["kit"] == "":
+		ksp += 1
+	var cr := Creature.new()
+	cr.setup("test_fire_animal", ksp, Eras.MEDIEVAL, wp + Vector3(6, 0, 4), world.fauna)
+	world.fauna.add_child(cr)
+	world.fauna._herds[Vector2i(99998, 99998)] = [cr]
+	await _frames(2)
+	fs._scare_animals()
+	check(cr.scared_t > 0.0 and cr.scared_of.distance_to(wp) < 3.0, "an animal by the fire bolts from it")
+	world.fauna._herds.erase(Vector2i(99998, 99998))
+	cr.queue_free()
+	# Out: back to their day, bucket put away.
+	fs.douse_all()
+	n.stop_perform()
+	world.npcs._decide(n, e, player.global_position, world.npcs.now())
+	check(n.action != "fight_fire" and not n.rec.has("_fire") and str(n.rec.get("held", null)) == str(held_was), "with the fire out they put the bucket down")
+	wall["st"]["gone"] = true
 	player.global_position = was
 
 func _pirates(game, world, player) -> void:
