@@ -14,6 +14,7 @@ var _status: Label
 var _shake := 0.0
 var _flash := 0.0 ## red flash when a pick snaps
 var _done := false
+var _on_open := Callable() ## a lock that isn't a chunk object's (open_custom)
 
 const PICK_ITEM := "lockpick"
 const KEY_SPEED := 1.6 ## radians a second with A/D or the stick
@@ -58,11 +59,31 @@ func open_lock(chunk: ChunkNode, o: Dictionary, at: Vector3) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	_update_text()
 
+## Starts picking some other lock (a town's postern): `on_open` runs once it gives.
+func open_custom(tier: int, seed_: int, at: Vector3, on_open: Callable) -> void:
+	if visible or player == null:
+		return
+	if Game.inventory.count(PICK_ITEM) <= 0:
+		Game.toast.emit("Locked. You need a lockpick (craft them from iron, or buy them from a smith)")
+		return
+	_chunk = null
+	_obj = {}
+	_at = at
+	_on_open = on_open
+	_game = LockGame.new(tier, int(Game.stats.skills["lock"]) + int(Game.stats._b("lock") * 100.0), seed_)
+	_done = false
+	visible = true
+	player.ui_open = true
+	player.keep_crouch = true
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_update_text()
+
 func close_lock() -> void:
 	if not visible:
 		return
 	visible = false
 	_game = null
+	_on_open = Callable()
 	if player:
 		player.ui_open = false
 		player.keep_crouch = false
@@ -90,7 +111,7 @@ func _process(delta: float) -> void:
 	if not visible or _game == null:
 		return
 	# The chest gone, or you walked off: stop.
-	if not is_instance_valid(_chunk) or player.global_position.distance_to(_at) > 4.0:
+	if (not _on_open.is_valid() and not is_instance_valid(_chunk)) or player.global_position.distance_to(_at) > 4.0:
 		close_lock()
 		return
 	var dir := 0.0
@@ -115,6 +136,14 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _opened() -> void:
+	if _on_open.is_valid():
+		var cb := _on_open
+		Game.practice("lock", 4.0 + 4.0 * _game.tier)
+		Game.add_xp(3.0 * _game.tier, "Lockpicking")
+		Game.toast.emit("The lock clicks open")
+		close_lock()
+		cb.call()
+		return
 	var door := Doors.is_door(_obj["t"])
 	if not door:
 		_obj["st"]["lock"] = 0

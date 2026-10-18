@@ -1464,7 +1464,7 @@ func _town_gate(game, world, player) -> void:
 	var data := {"sx": 9997, "sz": 9996, "era": Eras.MEDIEVAL, "center": c, "name": "Gatehold", "npcs": [guard, friend], "rumors": [], "sim_day": -1.0}
 	var sid := "%d:9997_9996" % game.planet
 	var e := {"data": data, "nodes": [], "dirty": false, "site": site, "outer": 40.0, "sid": sid, "transient": true,
-		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate]}}
+		"gate": {"inside": false, "halted_t": -999.0, "welcomed": false, "warned": false, "warn_until": 0.0, "folk_t": -999.0, "gates": [gate], "postern": {}}}
 	npcs.settlements["9997_9996"] = e
 	var gn: NPC = npcs._add_node(e, guard)
 	var fn: NPC = npcs._add_node(e, friend)
@@ -1473,6 +1473,7 @@ func _town_gate(game, world, player) -> void:
 	var wait := func(): await create_timer(0.4).timeout
 	# Walk up to the gate: the guard stops you.
 	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
 	await wait.call()
 	check(game.standing.towns.has(sid) and game.standing.towns[sid]["name"] == "Gatehold", "a town you come near is noted")
 	var o: Dictionary = npcs.gates.options(gn)
@@ -1487,6 +1488,7 @@ func _town_gate(game, world, player) -> void:
 	game.standing.revoke(sid)
 	gn.rec["dead"] = true
 	player.global_position = Vector3(c.x - 10.0, at.y, c.y)
+	player.velocity = Vector3.ZERO
 	await wait.call()
 	check(e["gate"]["inside"] and game.crime.owed(sid, game.day) == 0, "with nobody watching you slip in")
 	# A guard who doesn't know you, up close and facing you, asks for your pass, then fines you.
@@ -1526,6 +1528,7 @@ func _town_gate(game, world, player) -> void:
 	e["gate"]["folk_t"] = 1e12
 	npcs.gates._ports[sid] = [npcs.gates._make_port(Transform3D(Basis(), Vector3(gate.x, at.y, gate.y)))]
 	player.global_position = Vector3(gate.x - 8.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
 	for i in 10:
 		await wait.call()
 	var pt: Dictionary = npcs.gates._ports[sid][0]
@@ -1539,6 +1542,7 @@ func _town_gate(game, world, player) -> void:
 	# Over the wall with a rope, away from the gate.
 	gn.rec["dead"] = true
 	player.global_position = Vector3(c.x, at.y, c.y + 24.5)
+	player.velocity = Vector3.ZERO
 	await _frames(2)
 	var us: Array = npcs.gates.usables(player.global_position)
 	check(us.size() == 1 and String(us[0]["verb"]).begins_with("Climb over the wall"), "a stretch of wall away from the gate can be climbed (%s)" % str(us))
@@ -1551,6 +1555,80 @@ func _town_gate(game, world, player) -> void:
 	var pin := Vector2(player.global_position.x, player.global_position.z)
 	check(pin.distance_to(c) < 20.0 and not player.script_move, "you climb up, over and down inside (%.1f m from the middle)" % pin.distance_to(c))
 	check(game.inventory.count("rope") == ropes - GateWatch.CLIMB_ROPE, "the rope is left on the wall")
+	# The postern: pick its lock from outside and step through into town.
+	var pst := {"p": c + Vector2(0, -22.5), "yaw": PI, "tier": 1}
+	e["gate"]["postern"] = pst
+	var po: Vector2 = GateWatch.postern_side(pst, true)
+	player.global_position = Vector3(po.x, at.y, po.y)
+	player.velocity = Vector3.ZERO
+	e["gate"]["inside"] = false
+	await _frames(2)
+	if game.inventory.count("lockpick") <= 0:
+		game.inventory.add(ItemDB.make("lockpick", 3, 1.0, {}))
+	var pu: Array = npcs.gates.usables(player.global_position)
+	check(pu.size() == 1 and String(pu[0]["n"]) == "postern:" + sid and String(pu[0]["verb"]).begins_with("Pick the postern"), "a town's postern door can be picked from outside (%s)" % str(pu))
+	npcs.gates.use("postern:" + sid, player)
+	var lui: LockpickUI = player.get_tree().get_first_node_in_group("lockpick_ui")
+	check(lui != null and lui.is_open(), "picking the postern opens the lockpicking minigame")
+	if lui and lui.is_open():
+		lui._opened()
+		for i in 6:
+			await wait.call()
+	var pin2 := Vector2(player.global_position.x, player.global_position.z)
+	check(pin2.distance_to(c) < 21.5 and not player.script_move, "through the postern and into town (%.1f m from the middle)" % pin2.distance_to(c))
+	check(npcs.gates._posterns.get(sid, {}).get("open", false), "a picked postern stays open")
+	# The watch's keys open the postern without picking it.
+	npcs.gates._posterns[sid]["open"] = false
+	game.inventory.add(ItemDB.make("watch_keys", 1, 1.0, {"how": "stolen", "sid": sid}))
+	player.global_position = Vector3(po.x, at.y, po.y)
+	player.velocity = Vector3.ZERO
+	e["gate"]["inside"] = false
+	await _frames(2)
+	var ku: Array = npcs.gates.usables(player.global_position)
+	check(ku.size() == 1 and String(ku[0]["verb"]).contains("watch's keys"), "the watch's keys fit the postern (%s)" % str(ku))
+	npcs.gates.use("postern:" + sid, player)
+	for i in 6:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) < 21.5 and not (lui != null and lui.is_open()), "and you're through without picking it")
+	# A grappling hook gets you back over the wall without leaving rope behind.
+	game.inventory.add(ItemDB.make("grappling_hook", 1, 1.0, {}))
+	var r0: int = game.inventory.count("rope")
+	player.global_position = Vector3(c.x, at.y, c.y + 21.0)
+	player.velocity = Vector3.ZERO
+	await _frames(2)
+	var hu: Array = npcs.gates.usables(player.global_position)
+	check(hu.size() == 1 and String(hu[0]["verb"]).contains("grappling hook"), "a grappling hook climbs the wall (%s)" % str(hu))
+	npcs.gates.use(sid, player)
+	for i in 12:
+		await wait.call()
+	check(Vector2(player.global_position.x, player.global_position.z).distance_to(c) > 23.5 and game.inventory.count("rope") == r0 and not player.script_move,
+		"over and out, and the rope is still yours")
+	# A writ of passage from a town whose word reaches here is as good as a pass.
+	check(not npcs.gates.verdict(e)["ok"], "a stranger without leave still isn't let in")
+	game.inventory.add(ItemDB.make("writ", 1, 1.0, {"sid": "%d:1_1" % game.planet, "x": c.x + 300.0, "z": c.y, "until": game.day + 2.0}))
+	check(npcs.gates.verdict(e)["why"] == "pass", "a writ from a town nearby lets you in")
+	game.inventory.remove_type("writ", 1)
+	# In the watch's tabard, guards who don't know you take you for one of their own...
+	game.equipment["back"] = ItemDB.make("watch_tabard", 1, 1.0, {})
+	check(npcs.gates.verdict(e)["why"] == "disguise", "in the watch's tabard you pass for one of them")
+	# ...but one who knows your face sees through it.
+	gn.rec["dead"] = false
+	gn.rec["rel"] = 60
+	gn.action = "idle"
+	gn.global_position = Vector3(gate.x + 2.0, at.y, gate.y)
+	e["gate"]["welcomed"] = false
+	e["gate"]["inside"] = false
+	player.global_position = Vector3(gate.x - 6.0, at.y, gate.y)
+	player.velocity = Vector3.ZERO
+	game.crime = Crime.new()
+	for i in 6:
+		await wait.call()
+		if game.crime.owed(sid, game.day) > 0:
+			break
+	check(game.crime.owed(sid, game.day) >= Crime.FINES["impersonation"] and npcs.gates.verdict(e)["why"] != "disguise",
+		"a guard who knows you sees through it: posing as the watch (%d)" % game.crime.owed(sid, game.day))
+	game.equipment.erase("back")
+	game.crime = Crime.new()
 	gn.rec["dead"] = false
 	# Saved with you.
 	game.save_player()
@@ -1559,8 +1637,23 @@ func _town_gate(game, world, player) -> void:
 	npcs._unload("9997_9996")
 	game.crime = Crime.new()
 	game.standing.towns.erase(sid)
-	player.global_position = at
-	await _frames(2)
+	# Over the wall and back is a long way: let the ground round where you stood come
+	# back in at full detail before the next checks drive about on it, held still (not
+	# falling) meanwhile, then set down on it.
+	for i in 300:
+		player.global_position = at + Vector3(0, 1.0, 0)
+		player.velocity = Vector3.ZERO
+		await physics_frame
+		if world.streamer.ready_round(at):
+			break
+	var gy: float = npcs.ground(at.x, at.z)
+	player.global_position = Vector3(at.x, (at.y if is_nan(gy) else gy) + 0.1, at.z)
+	player.velocity = Vector3.ZERO
+	for i in 30:
+		await physics_frame
+		if player.is_on_floor():
+			break
+	player.velocity = Vector3.ZERO
 
 ## Pirates: a pirate boat put out near you comes crewed with armed pirates who demand a
 ## toll; paid, they sail off; hurt one and they all fight.

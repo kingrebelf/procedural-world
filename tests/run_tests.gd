@@ -2975,6 +2975,18 @@ func test_standing_and_town_gates() -> void:
 	check(is_equal_approx(float(shop["charge_mult"]), 1.1 * 0.86) and float(shop["pay_mult"]) > 0.9, "the Honoured pay less and are paid more")
 	check(float(GatePolicy.priced({}, "Distrusted")["charge_mult"]) > 1.2, "the Distrusted pay more")
 	check(GatePolicy.port_mesh_ok(), "the portcullis has bars, cross-bars and teeth")
+	check(GateWatch.postern_tier({"strict": 0.2}) == 1 and GateWatch.postern_tier({"strict": 0.5}) == 2 and GateWatch.postern_tier({"strict": 0.8}) == 3,
+		"a stricter town keeps a harder lock on its postern")
+	var pt := {"p": Vector2(10, 0), "yaw": PI / 2.0}
+	check(GateWatch.postern_side(pt, true).x > 10.0 and GateWatch.postern_side(pt, false).x < 10.0, "the postern's outer side is away from town")
+	check(GateWatch.see_through_odds({"strict": 0.5}, 60, false) == 1.0, "a guard who knows your face sees through a tabard")
+	check(GateWatch.see_through_odds({"strict": 0.8}, 0, false) > GateWatch.see_through_odds({"strict": 0.2}, 0, false)
+		and GateWatch.see_through_odds({"strict": 0.5}, 0, true) < GateWatch.see_through_odds({"strict": 0.5}, 0, false), "a strict watch is sharper, and night hides you")
+	for t in ["grappling_hook", "watch_keys", "writ", "watch_tabard"]:
+		check(ItemDB.has(t), "%s is an item" % t)
+	check(Recipes.LIST.any(func(r): return r["out"] == "grappling_hook"), "a grappling hook can be made")
+	var pm := GateWatch.postern_mesh()
+	check(pm.get_aabb().size.y > 2.5 and pm.get_aabb().position.z < -0.7 and pm.get_aabb().end.z > 0.7, "the postern door shows on both faces of the wall")
 
 func test_bounty_and_wanted() -> void:
 	var c := Crime.new()
