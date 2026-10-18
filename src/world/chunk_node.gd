@@ -1781,7 +1781,7 @@ func _add_obj_body(o: Dictionary) -> void:
 		hl.omni_range = l[3]
 		hl.omni_attenuation = 1.4
 		# A hearth's fire bed is broad, a lamp's flame small.
-		_cast_shadows(hl, 0.3 if KitHouse.has(o["t"]) else 0.1)
+		_cast_shadows(hl, 0.3 if KitHouse.has(o["t"]) else 0.1, false)
 		hl.distance_fade_enabled = true
 		hl.distance_fade_begin = 40.0
 		hl.distance_fade_length = 15.0
@@ -1833,7 +1833,7 @@ func _add_obj_body(o: Dictionary) -> void:
 			var spread := 0.0
 			for f in flames:
 				spread = maxf(spread, ((f[0] as Vector3) - l.position).length())
-			_cast_shadows(l, clampf(spread * 1.5 + 0.03, 0.04, 0.45))
+			_cast_shadows(l, clampf(spread * 1.5 + 0.03, 0.04, 0.45), false)
 			l.distance_fade_enabled = true
 			l.distance_fade_begin = 40.0
 			l.distance_fade_length = 15.0
@@ -1867,15 +1867,18 @@ func _add_obj_body(o: Dictionary) -> void:
 ## the light stays inside its walls instead of shining out through them.
 ## `size` is the flame's (or fire's) breadth in metres: shadows soften with distance from
 ## what casts them, as under a real flame.
-static func _cast_shadows(l: OmniLight3D, size := 0.1) -> void:
+## `movers`: whether people and animals further off (Movers) are lit by it too. Indoors
+## they are walled off anyway, and leaving them out spares re-rendering its shadows
+## every time someone walks by.
+static func _cast_shadows(l: OmniLight3D, size := 0.12, movers := true) -> void:
 	l.shadow_enabled = true
+	if not movers:
+		# Your own first-person body (Player.SELF_LAYER) neither: its idling is a move.
+		l.light_cull_mask = 0xFFFFF & ~(Movers.LAYER | Player.SELF_LAYER)
 	l.light_size = size
 	l.shadow_bias = 0.04
 	l.shadow_normal_bias = 1.2
 	l.shadow_blur = 1.5
-	# A flame or a lamp is not a point: its shadows soften with distance from what casts
-	# them, instead of hard black shapes.
-	l.light_size = 0.12
 	l.distance_fade_shadow = 24.0
 
 ## Adds something the player built. It becomes an ordinary object of this chunk, saved

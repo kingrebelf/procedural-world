@@ -6402,3 +6402,19 @@ func test_bog_mist() -> void:
 		bog += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.9))["mist"])
 		dry += float(c.at(h, 0.0, 0.0, 3.0, WorldField.LF_NONE, 50.0, Vector2(0.5, 0.5))["mist"])
 	check(bog > dry * 1.5, "bogs lie under mist far oftener (%.0f vs %.0f)" % [bog, dry])
+
+func test_movers_layer() -> void:
+	# Far off, a body leaves the shadowed lamps' light; back near, it rejoins it, with a
+	# margin so one at the edge doesn't flip each frame.
+	check(not Movers.is_far(Movers.FAR - 0.5, false) and Movers.is_far(Movers.FAR + 0.5, false), "movers: far past FAR")
+	check(Movers.is_far(Movers.FAR - 1.0, true) and not Movers.is_far(Movers.FAR - 2.5, true), "movers: near again only well inside")
+	var root := Node3D.new()
+	var a := MeshInstance3D.new()
+	var b := Label3D.new()
+	root.add_child(a)
+	a.add_child(b)
+	Movers.set_far(root, true)
+	check(a.layers == Movers.LAYER and b.layers == Movers.LAYER, "movers: every mesh on the layer")
+	Movers.set_far(root, false)
+	check(a.layers == 1 and b.layers == 1, "movers: back on layer 1")
+	root.free()
