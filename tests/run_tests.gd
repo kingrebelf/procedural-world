@@ -5447,3 +5447,57 @@ func test_water_life() -> void:
 	for k in FishKit.KINDS:
 		check(FishKit.mesh(k).get_surface_count() == 1, "%s mesh builds" % k)
 	WorldField.terrain_v = tv
+
+func test_props_settle_on_ground() -> void:
+	# A chest on a 15 degree slope lies with it, every corner bedded in by SINK.
+	var box := AABB(Vector3(-0.6, 0, -0.4), Vector3(1.2, 0.7, 0.8))
+	var slope := tan(deg_to_rad(15.0))
+	var ground := func(x: float, z: float) -> float: return 10.0 + x * slope
+	var xf := PropSettle.fit(ground, Vector3(5, 10, 5), 0.7, 1.0, box)
+	var up := Vector3(-slope, 1, 0).normalized()
+	check(xf.basis.y.normalized().angle_to(up) < 0.01, "prop tips to the slope, off by %.3f" % xf.basis.y.normalized().angle_to(up))
+	for c in [Vector3(-0.6, 0, -0.4), Vector3(0.6, 0, -0.4), Vector3(-0.6, 0, 0.4), Vector3(0.6, 0, 0.4)]:
+		var w: Vector3 = xf * c
+		var d: float = ground.call(w.x, w.z) - w.y
+		check(absf(d - PropSettle.SINK) < 0.01, "corner bedded in by SINK, got %.3f" % d)
+	# Flat ground: level, its base just under the ground.
+	var flat := func(_x: float, _z: float) -> float: return 3.0
+	var fx := PropSettle.fit(flat, Vector3(0, 3, 0), 1.2, 1.0, box)
+	check(fx.basis.y.normalized().angle_to(Vector3.UP) < 0.001 and absf(fx.origin.y - (3.0 - PropSettle.SINK)) < 0.001, "level on the flat")
+	# A cliff: the lean stops at MAX_TILT and nothing floats.
+	var cliff := func(x: float, _z: float) -> float: return x * 2.0
+	var cx := PropSettle.fit(cliff, Vector3.ZERO, 0.0, 1.0, box)
+	check(absf(cx.basis.y.normalized().angle_to(Vector3.UP) - PropSettle.MAX_TILT) < 0.01, "lean capped on a cliff")
+	for c in [Vector3(-0.6, 0, -0.4), Vector3(0.6, 0, 0.4)]:
+		var w: Vector3 = cx * c
+		check(cliff.call(w.x, w.z) - w.y >= PropSettle.SINK - 0.001, "nothing floats on a cliff")
+	# Generated props: a town's wagons, stalls and barrels (on its flattened ground) sit
+	# flush; out in the wilds chests lie far less buried than they stood level, and none
+	# hangs in the air.
+	var keep_tv := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242, true)
+	var n := 0
+	var bury_old := 0.0
+	var bury_new := 0.0
+	for kz in range(-2, 3):
+		for kx in range(-2, 3):
+			var chunk := g.generate(kx, kz)
+			for o in chunk["objects"]:
+				var m := ProbeProps.measure(chunk, o) if PropSettle.settles(o["t"]) else {}
+				if m.is_empty():
+					continue
+				n += 1
+				bury_new += m["bury"]
+				bury_old += ProbeProps.measure(chunk, o, true)["bury"]
+				check(m["float"] < 0.2, "%s floats %.3f m" % [o["t"], m["float"]])
+				if not Eras.CACHE_TYPES.has(o["t"]):
+					check(m["bury"] < 0.05 and m["float"] < 0.01, "%s sits flush: bury %.3f, float %.3f" % [o["t"], m["bury"], m["float"]])
+	check(bury_new < bury_old * 0.7, "props less buried than standing level: %.2f m against %.2f m" % [bury_new, bury_old])
+	check(n > 5, "found settled props to check (%d)" % n)
+	# Rooms keep theirs: a chest stocked in a cottage is not set on the ground.
+	var inside := {"t": "chest", "p": Vector3(5, 99, 5), "r": 0.0, "s": 1.0, "st": {"inside": "cottage"}}
+	check(PropSettle.transform(g.generate(0, 0), inside) == null, "a room's chest keeps its place")
+	WorldField.terrain_v = keep_tv
+	# Furniture stands on its floor.
+	check(ProbeProps.floors()["bad"] == 0, "furniture sunk into or floating over its floor")

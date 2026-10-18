@@ -322,6 +322,11 @@ static func build_object_buffers(chunk: Dictionary, far := true) -> Dictionary:
 		# Sink slightly so bases never float on slopes.
 		if not built and not EasterEggs.floats(o["t"]):
 			p.y -= 0.15 * s
+		# Chests, wagons, stalls and barrels lie with the ground under them (PropSettle).
+		var settled = PropSettle.transform(chunk, o)
+		if settled != null:
+			b = (settled as Transform3D).basis
+			p = (settled as Transform3D).origin
 		var tint := Color(1, 1, 1)
 		if organic:
 			var v := lerpf(0.86, 1.1, u2)
@@ -1701,10 +1706,14 @@ func _add_obj_body(o: Dictionary) -> void:
 			fill.distance_fade_length = 10.0
 			fill.position = l.position
 			b.add_child(fill)
-	b.position = o["p"]
-	b.rotation.y = o["r"]
-	var s: float = o["s"]
-	b.scale = Vector3(s, s, s)
+	var settled = PropSettle.transform(data, o)
+	if settled != null:
+		b.transform = settled # collides where it is drawn, lying with the ground
+	else:
+		b.position = o["p"]
+		b.rotation.y = o["r"]
+		var s: float = o["s"]
+		b.scale = Vector3(s, s, s)
 	add_child(b)
 	_obj_bodies[o["i"]] = b
 
