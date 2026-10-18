@@ -750,6 +750,24 @@ func test_room_interiors() -> void:
 			check(clear, "%s: the loot spot is clear" % t)
 			check(_ray_hit(faces, xf * Vector3(0, 0.6, 1.0), xf * Vector3(0, 0.4, 0)) == INF, "%s: the loot can be reached from in front" % t)
 
+## Sci-fi rooms are painted, not plated: the bunker's walls, floors and ceilings and
+## the outpost blocks' fit-out use painted panels, sheet vinyl and ceiling tiles (real
+## textures, no metal in them), and tread plate is left to the stairs and stores.
+func test_painted_scifi_interiors() -> void:
+	for n in ["paint_wall", "vinyl_floor", "ceiling_tile"]:
+		var m := Materials.get_mat(n) as StandardMaterial3D
+		check(m.albedo_texture != null and m.normal_texture != null and m.metallic == 0.0, "%s is a textured, unmetallic surface" % n)
+	var bunker: Dictionary = DungeonNode.MATS[Eras.SCIFI]
+	for key in ["wall", "floor", "ceil", "beam"]:
+		check(not String(bunker[key]) in ["scifi_panels", "scifi_floor", "metal", "metal_dark", "panel"], "a bunker's %s is painted (%s)" % [key, bunker[key]])
+	for t in ["hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower"]:
+		var room := ObjectLibrary.get_mesh(t + "~in")
+		var mats := {}
+		for i in room.get_surface_count():
+			mats[room.surface_get_material(i)] = true
+		check(mats.has(Materials.get_mat("vinyl_floor")) and mats.has(Materials.get_mat("ceiling_tile")), "%s has a vinyl floor and a tiled ceiling" % t)
+		check(not mats.has(Materials.get_mat("metal_dark")), "%s has no dark plate in its fit-out" % t)
+
 ## Finishing trim: chamfered boxes and swept mouldings face out on every triangle (Godot
 ## culls the back faces, so a wrong winding is a hole), and a skirting leaves the
 ## doorway it is told about open.

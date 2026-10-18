@@ -117,6 +117,21 @@ static func _pbr(albedo: Color, rough: float, metal: float, tex: String, freq: f
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	return m
 
+## A painted interior surface (tools/make_paint_textures.py, 2.4 m to a tile): its
+## greyscale detail under `tone` and the vertex colour, its relief from the normal map.
+static func _painted(ph: String, tone: Color, rough: float, normal_scale: float) -> StandardMaterial3D:
+	var m := _pbr(tone, rough, 0.0, "", 0, 1)
+	if photo(ph, "detail") != null and photo(ph, "normal") != null:
+		m.albedo_color = Color(tone.r / 0.72, tone.g / 0.72, tone.b / 0.72) # the detail averages 0.72
+		m.albedo_texture = photo(ph, "detail")
+		m.normal_enabled = true
+		m.normal_texture = photo(ph, "normal")
+		m.normal_scale = normal_scale
+		m.uv1_triplanar = true
+		m.uv1_scale = Vector3.ONE / 2.4
+		m.uv1_triplanar_sharpness = 4.0
+	return m
+
 ## Hewn and planed timber: old oak boards whose grain runs along each beam, post and
 ## rail (MeshKit lays its UVs that way), rather than the bark on the trees.
 static func _timber() -> StandardMaterial3D:
@@ -366,6 +381,15 @@ static func _get_mat(name: String) -> Material:
 		"machine_paint": m = _pbr(Color(1, 1, 1), 0.42, 0.15, "", 0, 1)
 		"painted": m = _pbr(Color(1, 1, 1), 0.55, 0.5, "metal", 0.03, 0.8, 0.5)
 		"panel": m = _pbr(Color(0.86, 0.88, 0.9), 0.25, 0.3, "metal", 0.02, 0.4, 0.2)
+		# Painted sci-fi interiors, a space station or a hospital rather than a ship's
+		# engine room (tools/make_paint_textures.py): sprayed wall panels, sheet vinyl
+		# and acoustic ceiling tiles, coloured by vertex colour so each room takes its
+		# own paint, and satin enamel for trims, coves, rails and furniture.
+		"paint_wall": m = _painted("paint_panels", Color(1, 1, 1), 0.6, 0.6)
+		"vinyl_floor": m = _painted("vinyl", Color(1, 1, 1), 0.48, 0.5)
+		"ceiling_tile": m = _painted("ceiling_tiles", Color(0.9, 0.9, 0.88), 0.92, 0.7)
+		"enamel": m = _pbr(Color(1, 1, 1), 0.38, 0.0, "", 0, 1)
+		"enamel_grey": m = _pbr(Color(0.3, 0.32, 0.35), 0.42, 0.0, "", 0, 1)
 		"glass":
 			m = _pbr(Color(0.15, 0.25, 0.3), 0.05, 0.8, "", 0, 1)
 		"clear_glass":

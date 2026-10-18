@@ -442,14 +442,7 @@ static func interior(t: String) -> ArrayMesh:
 				k.box("glow_violet", I.translated(Vector3(-3.67, 2.15, z)), Vector3(0.02, 0.07, 1.7))
 			k.box("glow_violet", I.translated(Vector3(1.2, 2.6, -3.67)), Vector3(1.4, 0.07, 0.02))
 		"hab_block", "lab_block", "ops_tower", "bunker_keep", "bunker_tower":
-			var b: Array = BOX[t]
-			var ih: Vector2 = b[0]
-			var ce: float = b[2]
-			var n := 3 if ih.x > 4.0 else 2
-			for i in n:
-				var x := -ih.x + ih.x * 2.0 * (i + 0.5) / n
-				k.box("metal_dark", I.translated(Vector3(x, ce - 0.03, 0)), Vector3(1.5, 0.06, 0.5))
-				k.box("glow_white", I.translated(Vector3(x, ce - 0.065, 0)), Vector3(1.4, 0.02, 0.4))
+			_painted_room(k, t)
 		"mushroom_house":
 			# A lamp hung from the vault and glowcaps sprouting from the walls.
 			k.cylinder("iron", I.translated(Vector3(0, 2.75, 0)), 0.01, 0.01, 0.6, 4)
@@ -482,6 +475,105 @@ static func interior(t: String) -> ArrayMesh:
 	if any:
 		wads.commit(ToolModels.mat, mesh)
 	return mesh
+
+## Sci-fi rooms are fitted out as a station or a ward is, over the kit's shell: sheet
+## vinyl on the floor, a coved skirting, a suspended ceiling of acoustic tiles just over
+## the door head with recessed light panels in it (lit by the room's lamp, LIGHTS), each
+## type in its own paint: [floor, skirting and stripe accent].
+const PAINT := {"hab_block": [Color(0.62, 0.68, 0.62), Color(0.38, 0.56, 0.36)],
+	"lab_block": [Color(0.76, 0.78, 0.8), Color(0.12, 0.52, 0.52)],
+	"ops_tower": [Color(0.56, 0.62, 0.7), Color(0.2, 0.4, 0.68)],
+	"bunker_keep": [Color(0.6, 0.6, 0.58), Color(0.7, 0.24, 0.2)],
+	"bunker_tower": [Color(0.6, 0.6, 0.58), Color(0.7, 0.24, 0.2)]}
+const DROP_CEILING := 4.04
+
+static func _painted_room(k: MeshKit, t: String) -> void:
+	var b: Array = BOX[t]
+	var ih: Vector2 = b[0]
+	var oh: Vector2 = b[3]
+	var pc: Array = PAINT[t]
+	var I := Transform3D.IDENTITY
+	# Floor and ceiling reach into the walls: the kit's window modules stand further
+	# out than its plain ones.
+	k.box("vinyl_floor", I.translated(Vector3(0, _F_KIT + 0.005, 0)), Vector3(oh.x * 2.0 - 1.2, 0.01, oh.y * 2.0 - 1.2), pc[0])
+	k.box("ceiling_tile", I.translated(Vector3(0, DROP_CEILING + 0.02, 0)), Vector3(oh.x * 2.0 - 1.2, 0.04, oh.y * 2.0 - 1.2))
+	# A coved vinyl skirting along each wall module's own inner face, open across the
+	# doorway, and a painted angle where the ceiling grid meets the walls.
+	var cove := PackedVector2Array(Trim.cove(0.12, 0.035))
+	var angle := PackedVector2Array([Vector2(0, 0.03), Vector2(0.025, 0.03), Vector2(0.025, 0)])
+	for run in _wall_runs(_kit_of(t)):
+		var a: Vector3 = run[0]
+		var e: Vector3 = run[1]
+		var into: Vector3 = run[2]
+		var sides := PackedVector3Array([into, into])
+		k.sweep("vinyl_floor", I.translated(Vector3(0, _F_KIT, 0)), PackedVector3Array([a, e]), sides, Vector3.UP, cove, false, true, (pc[0] as Color).darkened(0.4))
+		k.sweep("enamel", I.translated(Vector3(0, DROP_CEILING, 0)), PackedVector3Array([a, e]), sides, Vector3.DOWN, angle, false, true, Color(0.9, 0.9, 0.88))
+	# Recessed light panels in the ceiling grid.
+	var n := 3 if ih.x > 4.0 else 2
+	for i in n:
+		var x := -ih.x + ih.x * 2.0 * (i + 0.5) / n
+		for z in [-1.2, 1.2]:
+			k.box("enamel", I.translated(Vector3(x, DROP_CEILING - 0.005, z)), Vector3(1.24, 0.012, 0.64), Color(0.92, 0.92, 0.9))
+			k.box("glow_white", I.translated(Vector3(x, DROP_CEILING - 0.012, z)), Vector3(1.16, 0.004, 0.56))
+
+## The ground floor's walls as runs along their inner faces: [start, end, inward], at
+## floor level 0. Each kit wall module's face stands at its own depth (a plain module is
+## thicker than a window module), and the runs at a corner stop at the other wall's face.
+## The doorway's module is left out.
+static func _wall_runs(kit: String) -> Array:
+	var p: Array = KitBase.PLANS[kit]
+	var nx: int = p[0]
+	var nz: int = p[1]
+	var hw := nx * 2.0
+	var hd := nz * 2.0
+	var models: Array = []
+	KitBase._building(kit, MeshKit.new(1), models, [])
+	# Inner depth in from the wall's line per side and module (-1: the doorway).
+	var depth := {"-x": [], "+x": [], "-z": [], "+z": []}
+	for side in depth:
+		var cnt := nz if side.ends_with("x") else nx
+		for i in cnt:
+			depth[side].append(-1.0)
+	var walls: Array = KitBase.WALL.values().reduce(func(acc, v): return acc + v, [])
+	for m in models:
+		if not walls.has(m[0]) or (m[2] as Vector3).y > 0.5:
+			continue
+		var c: Vector3 = m[2]
+		var d: float = KitHouse._model_box(m[0], Transform3D.IDENTITY).end.x + 2.0
+		match int(m[1]):
+			0: depth["-x"][int((c.z + hd) / 4.0)] = d
+			180: depth["+x"][int((c.z + hd) / 4.0)] = d
+			-90: depth["-z"][int((c.x + hw) / 4.0)] = d
+			90: depth["+z"][int((c.x + hw) / 4.0)] = d
+	var at := func(side: String, i: int) -> float: return maxf(depth[side][i], 0.0)
+	var runs: Array = []
+	for side in depth:
+		var along_x: bool = side.ends_with("z")
+		var cnt: int = depth[side].size()
+		var sgn := -1.0 if side.begins_with("-") else 1.0
+		var into := Vector3(0, 0, -sgn) if along_x else Vector3(-sgn, 0, 0)
+		var half := hw if along_x else hd
+		for i in cnt:
+			var d: float = depth[side][i]
+			if d < 0.0:
+				continue
+			var lo := -half + i * 4.0
+			var hi := lo + 4.0
+			# At a corner, stop at the other wall's face.
+			if i == 0:
+				lo += at.call(("-x" if along_x else "-z"), (0 if side in ["-z", "-x"] else (nz - 1 if along_x else nx - 1)))
+			if i == cnt - 1:
+				hi -= at.call(("+x" if along_x else "+z"), (0 if side in ["-z", "-x"] else (nz - 1 if along_x else nx - 1)))
+			var line := sgn * ((hd if along_x else hw) - d)
+			var a := Vector3(lo, 0, line) if along_x else Vector3(line, 0, lo)
+			var e := Vector3(hi, 0, line) if along_x else Vector3(line, 0, hi)
+			# Run each wall the way Trim.room does (clockwise from above), so it faces in.
+			if (e - a).dot(Vector3.UP.cross(into)) < 0.0:
+				var tmp := a
+				a = e
+				e = tmp
+			runs.append([a, e, into])
+	return runs
 
 ## Where a keep's or stone tower's kit walls stand, out from the middle (Stronghold).
 const HALL := 4.0
@@ -981,6 +1073,12 @@ static func _shrine(k: MeshKit) -> void:
 
 # --- Furniture pieces ----------------------------------------------------------------
 
+## Sci-fi furniture is powder-coated, as in a station or a ward: pale grey frames and
+## tops, blue-grey lockers and drawers, graphite trims, bright steel only for legs,
+## rails and handles.
+const PAINT_PALE := Color(0.86, 0.87, 0.87)
+const PAINT_LOCKER := Color(0.6, 0.67, 0.74)
+
 static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> void:
 	var I := Transform3D.IDENTITY
 	var at := func(p: Vector3) -> Transform3D: return xf * I.translated(p)
@@ -990,49 +1088,53 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 				for z in [-0.44, 0.44]:
 					k.bevel_box("metal", at.call(Vector3(x, 0.95, z)), Vector3(0.06, 1.9, 0.06))
 			for y in [0.35, 1.35]:
-				k.bevel_box("metal_dark", at.call(Vector3(0, y, 0)), Vector3(2.0, 0.08, 0.92))
+				k.bevel_box("enamel", at.call(Vector3(0, y, 0)), Vector3(2.0, 0.08, 0.92), 0.02, PAINT_PALE)
 				k.bevel_box("cloth_blue", at.call(Vector3(0, y + 0.11, 0)), Vector3(1.9, 0.14, 0.85))
 				k.bevel_box("cloth", at.call(Vector3(-0.72, y + 0.23, 0)), Vector3(0.38, 0.1, 0.6))
 			k.bevel_box("metal", at.call(Vector3(0, 1.62, 0.44)), Vector3(1.94, 0.05, 0.04))
 		"@cot":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.15, 0)), Vector3(2.0, 0.3, 0.9))
+			k.bevel_box("enamel", at.call(Vector3(0, 0.15, 0)), Vector3(2.0, 0.3, 0.9), 0.02, PAINT_PALE)
 			k.bevel_box("cloth_blue", at.call(Vector3(0, 0.38, 0)), Vector3(1.9, 0.16, 0.82))
 			k.bevel_box("cloth", at.call(Vector3(-0.72, 0.5, 0)), Vector3(0.38, 0.1, 0.6))
 		"@locker":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 1.05, 0)), Vector3(0.58, 2.1, 0.52))
-			k.bevel_box("metal", at.call(Vector3(0, 1.05, 0.265)), Vector3(0.5, 2.0, 0.01))
-			k.bevel_box("glow_cyan", at.call(Vector3(0.18, 1.3, 0.275)), Vector3(0.04, 0.4, 0.01))
+			k.bevel_box("enamel", at.call(Vector3(0, 1.05, 0)), Vector3(0.58, 2.1, 0.52), 0.02, PAINT_LOCKER)
+			k.bevel_box("enamel", at.call(Vector3(0, 1.05, 0.265)), Vector3(0.5, 2.0, 0.01), 0.02, PAINT_LOCKER.lightened(0.06))
+			k.bevel_box("metal", at.call(Vector3(0.18, 1.3, 0.28)), Vector3(0.03, 0.3, 0.02))
 			for y in [1.75, 1.82, 1.89]:
-				k.bevel_box("metal_dark", at.call(Vector3(0, y, 0.275)), Vector3(0.36, 0.025, 0.01))
+				k.bevel_box("enamel_grey", at.call(Vector3(0, y, 0.275)), Vector3(0.36, 0.025, 0.01))
 		"@console":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.375, -0.05)), Vector3(1.6, 0.75, 0.7))
-			k.bevel_box("panel", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(0, 0.8, 0.12)), Vector3(1.5, 0.05, 0.5))
+			k.bevel_box("enamel", at.call(Vector3(0, 0.375, -0.05)), Vector3(1.6, 0.75, 0.7), 0.02, PAINT_PALE)
+			k.bevel_box("enamel_grey", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(0, 0.8, 0.12)), Vector3(1.5, 0.05, 0.5))
 			for x in [-0.38, 0.38]:
 				k.bevel_box("glow_cyan", Transform3D(xf.basis * Basis(Vector3.RIGHT, 0.45), xf * Vector3(x, 0.83, 0.12)), Vector3(0.6, 0.01, 0.32))
-			k.bevel_box("metal_dark", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
+			k.bevel_box("enamel_grey", at.call(Vector3(0, 1.0, -0.3)), Vector3(1.5, 0.48, 0.06))
 			k.bevel_box("screen", at.call(Vector3(0, 1.0, -0.265)), Vector3(1.4, 0.4, 0.01))
 		"@desk":
-			k.bevel_box("metal", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8))
+			k.bevel_box("enamel", at.call(Vector3(0, 0.755, 0)), Vector3(1.8, 0.05, 0.8), 0.02, PAINT_PALE)
 			for x in [-0.85, 0.85]:
-				k.bevel_box("metal_dark", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
-			k.bevel_box("metal_dark", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72))
-			k.bevel_box("metal_dark", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
+				k.bevel_box("metal", at.call(Vector3(x, 0.365, 0)), Vector3(0.05, 0.73, 0.75))
+			k.bevel_box("enamel", at.call(Vector3(0.55, 0.42, 0)), Vector3(0.5, 0.6, 0.72), 0.02, PAINT_LOCKER)
+			k.bevel_box("enamel_grey", at.call(Vector3(-0.3, 0.98, -0.3)), Vector3(0.7, 0.42, 0.04))
 			k.bevel_box("screen", at.call(Vector3(-0.3, 0.98, -0.275)), Vector3(0.64, 0.36, 0.01))
 		"@chair":
-			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.25, 0.25, 0.03, 8)
+			k.cylinder("enamel_grey", at.call(Vector3(0, 0, 0)), 0.25, 0.25, 0.03, 8)
 			k.cylinder("metal", at.call(Vector3(0, 0.03, 0)), 0.04, 0.04, 0.43, 6)
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.46, 0)), Vector3(0.46, 0.06, 0.46))
+			k.bevel_box("enamel_grey", at.call(Vector3(0, 0.46, 0)), Vector3(0.46, 0.06, 0.46))
 			k.bevel_box("cloth_blue", at.call(Vector3(0, 0.515, 0)), Vector3(0.42, 0.05, 0.42))
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.78, -0.21)), Vector3(0.44, 0.5, 0.05))
+			k.bevel_box("enamel_grey", at.call(Vector3(0, 0.78, -0.21)), Vector3(0.44, 0.5, 0.05))
 		"@tank":
-			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.47, 0.47, 0.25, 12)
-			k.cylinder("glow_teal", at.call(Vector3(0, 0.25, 0)), 0.36, 0.36, 1.8, 12)
+			k.cylinder("enamel", at.call(Vector3(0, 0, 0)), 0.47, 0.47, 0.25, 12, true, 0.0, 1, PAINT_PALE)
 			for a in [0.0, 2.1, 4.2]:
 				k.bevel_box("metal", at.call(Vector3(cos(a) * 0.4, 1.15, sin(a) * 0.4)), Vector3(0.05, 1.8, 0.05))
-			k.cylinder("metal_dark", at.call(Vector3(0, 2.05, 0)), 0.47, 0.42, 0.25, 12)
-			k.crystal("crystal", at.call(Vector3(0, 0.8, 0)), 0.14, 0.7)
+			k.cylinder("enamel", at.call(Vector3(0, 2.05, 0)), 0.47, 0.42, 0.25, 12, true, 0.0, 1, PAINT_PALE)
+			if Eras.theme == "human":
+				# Human worlds: a glass culture tank of pale green fluid, lit by the room.
+				k.cylinder("bottle_glass", at.call(Vector3(0, 0.25, 0)), 0.36, 0.36, 1.8, 12)
+			else:
+				k.cylinder("glow_teal", at.call(Vector3(0, 0.25, 0)), 0.36, 0.36, 1.8, 12)
+				k.crystal("crystal", at.call(Vector3(0, 0.8, 0)), 0.14, 0.7)
 		"@holo":
-			k.cylinder("metal_dark", at.call(Vector3(0, 0, 0)), 0.75, 0.6, 0.9, 16)
+			k.cylinder("enamel", at.call(Vector3(0, 0, 0)), 0.75, 0.6, 0.9, 16, true, 0.0, 1, PAINT_PALE)
 			k.cylinder("metal", at.call(Vector3(0, 0.9, 0)), 0.8, 0.8, 0.05, 16)
 			if Eras.theme == "human":
 				# Human worlds: a map table, its top a lit display; nothing floats or glows.
@@ -1042,7 +1144,7 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 				k.sphere("glow_cyan", at.call(Vector3(0, 1.4, 0)), 0.22, 6, 10)
 				k.cylinder("glow_cyan", at.call(Vector3(0, 1.38, 0)), 0.45, 0.45, 0.01, 16, false)
 		"@rack":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 1.0, -0.14)), Vector3(2.0, 2.0, 0.06))
+			k.bevel_box("enamel_grey", at.call(Vector3(0, 1.0, -0.14)), Vector3(2.0, 2.0, 0.06))
 			for y in [0.55, 1.05, 1.55]:
 				k.bevel_box("metal", at.call(Vector3(0, y, 0.0)), Vector3(1.9, 0.04, 0.3))
 			for g in [["scifi/AR_1", Vector3(0, 1.75, 0)], ["scifi/SMG_1", Vector3(-0.45, 1.44, 0)], ["scifi/Pistol_1", Vector3(0.45, 1.23, 0)],
@@ -1057,11 +1159,11 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 			for x in [-0.5, 0.5]:
 				k.bevel_box("glow_violet", at.call(Vector3(x, 0.45, 0)), Vector3(0.01, 0.05, 1.8))
 		"@screen":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
+			k.bevel_box("enamel_grey", at.call(Vector3(0, 0.7, 0)), Vector3(2.6, 1.4, 0.06))
 			# A lit display, not a white slab of light.
 			k.bevel_box("screen", at.call(Vector3(0, 0.7, 0.035)), Vector3(2.45, 1.25, 0.01))
 		"@planter":
-			k.bevel_box("metal_dark", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6))
+			k.bevel_box("enamel", at.call(Vector3(0, 0.3, 0)), Vector3(1.2, 0.6, 0.6), 0.02, PAINT_PALE)
 			k.bevel_box("moss", at.call(Vector3(0, 0.62, 0)), Vector3(1.1, 0.05, 0.5))
 			for x in [-0.4, -0.13, 0.13, 0.4]:
 				k.sphere("moss", at.call(Vector3(x, 0.75, 0.05 * signf(x))), 0.17, 5, 7, 0.35)
@@ -1074,7 +1176,7 @@ static func _piece(name: String, k: MeshKit, models: Array, xf: Transform3D) -> 
 			for n in 10:
 				k.bevel_box("timber", at.call(Vector3(0, 0.3 + n * 0.29, 0)), Vector3(0.44, 0.04, 0.05))
 		"@table":
-			k.bevel_box("metal", at.call(Vector3(0, 0.735, 0)), Vector3(1.4, 0.05, 0.9))
+			k.bevel_box("enamel", at.call(Vector3(0, 0.735, 0)), Vector3(1.4, 0.05, 0.9), 0.02, PAINT_PALE)
 			for x in [-0.64, 0.64]:
 				for z in [-0.39, 0.39]:
-					k.bevel_box("metal_dark", at.call(Vector3(x, 0.355, z)), Vector3(0.05, 0.71, 0.05))
+					k.bevel_box("metal", at.call(Vector3(x, 0.355, z)), Vector3(0.05, 0.71, 0.05))
