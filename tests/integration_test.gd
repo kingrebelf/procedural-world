@@ -1729,6 +1729,38 @@ func _crowd(game, world, player) -> void:
 	var down: bool = await tag_at.call(8.6)
 	var stays_down: bool = await tag_at.call(7.5)
 	check(up and held and not down and not stays_down, "a name tag doesn't blink at the edge of its range (%s %s %s %s)" % [up, held, down, stays_down])
+	# A speech line is drawn in the open, and not through a wall between you and the speaker.
+	var cam: Camera3D = world.get_viewport().get_camera_3d()
+	if cam:
+		var ahead := -cam.global_transform.basis.z
+		ahead.y = 0.0
+		ahead = ahead.normalized()
+		var spot := cam.global_position + ahead * 12.0
+		tagged.global_position = Vector3(spot.x, tagged.global_position.y, spot.z)
+		tagged.target = Vector2(spot.x, spot.z)
+		tagged.say("Fire! Fetch the buckets!", 30.0)
+		await _frames(10)
+		var in_open: bool = tagged._label.visible
+		var head: Vector3 = tagged._label.global_position
+		var wall := StaticBody3D.new()
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(8, 8, 0.5)
+		cs.shape = box
+		wall.add_child(cs)
+		world.add_child(wall)
+		wall.global_position = (cam.global_position + head) * 0.5
+		wall.look_at(head, Vector3.UP)
+		# Line of sight is re-asked every TagLayout.RECHECK seconds, in physics.
+		await create_timer(0.6).timeout
+		await _frames(5)
+		var walled: bool = tagged._label.visible
+		wall.queue_free()
+		await create_timer(0.6).timeout
+		await _frames(5)
+		check(in_open and not walled and tagged._label.visible, "a speech line shows in the open and hides behind a wall (%s %s %s)" % [in_open, walled, tagged._label.visible])
+		check(tagged._label.pixel_size * tagged._label.font_size < 0.025, "villager tags are drawn smaller than before")
+		tagged._speech_t = 0.0
 	world.npcs._crowd(e, at + Vector3(400, 0, 0))
 	check(visitors.call().is_empty(), "nobody near: they cost nothing")
 	game.day = floor(day0) + 1.0 + 3.0 / 24.0

@@ -35,6 +35,7 @@ var _ground := Callable(self, "ground")
 var walk := WalkGrid.new(Callable(self, "_chunk_data"))
 var _stealth_t := 0.0
 var _mob_t := 0.0
+var _tags := TagLayout.new()
 ## How close the nearest watcher is to noticing you, 0..1 (the sneak eye on the HUD), and
 ## whether anyone is near enough to watch at all.
 var detection := 0.0
@@ -389,6 +390,7 @@ func _process(delta: float) -> void:
 		_mob_t = 1.0 / Net.MOB_HZ
 	var out: Array = []
 	var cam := get_viewport().get_camera_3d()
+	var tagged: Array = []
 	for e in settlements.values():
 		var held := runs(e)
 		if e.has("boat") and is_instance_valid(e["boat"]):
@@ -400,6 +402,8 @@ func _process(delta: float) -> void:
 			# Shown inside 7 m, hidden only past 8: someone at the edge doesn't blink their tag.
 			var tag_d := pp.distance_to(n.global_position)
 			n.show_name(tag_d < (8.0 if n.name_shown() else 7.0) and not n.is_hidden())
+			if n.label_wanted():
+				tagged.append(n)
 			if n.boat != null:
 				# Aboard: everyone draws the crew at their stations; the game that runs
 				# them decides what they do.
@@ -436,6 +440,7 @@ func _process(delta: float) -> void:
 				_strike(n, tg, tp)
 	if not out.is_empty():
 		Net.send_mobs("n", out)
+	_tags.update(tagged, cam, get_world_3d().direct_space_state)
 	_pirate_tick(delta)
 	_stealth_t -= delta
 	if _stealth_t <= 0.0:

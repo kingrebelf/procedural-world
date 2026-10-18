@@ -61,6 +61,9 @@ var _head: Node3D
 var _legs: Array = [] ## [hip pivot, knee pivot]
 var _arms: Array = [] ## [shoulder pivot, elbow pivot]
 var _label: Label3D
+var _label_on := false ## the name tag or a speech line wants to be up
+## Set by NPCManager's TagLayout: the tag is in view, not behind a wall and not crowded out.
+var tag_clear := false
 var _speech_t := 0.0
 var _phase := 0.0
 var _speed := 0.0
@@ -126,15 +129,16 @@ func _ready() -> void:
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.fixed_size = true
-	_label.pixel_size = 0.0011
-	_label.font_size = 26
-	_label.outline_size = 8
+	# A quarter smaller on screen than it was, drawn from a bigger font so it stays crisp.
+	_label.pixel_size = 0.00072
+	_label.font_size = 30
+	_label.outline_size = 9
 	_label.outline_modulate = Color(0, 0, 0, 0.8)
 	_label.no_depth_test = false
 	_label.render_priority = Creature.TAG_PRIORITY
 	_label.outline_render_priority = Creature.TAG_PRIORITY - 1
 	Creature.crisp_tag(_label)
-	_label.width = 420
+	_label.width = 600
 	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_label.position.y = 2.05 * _scale
 	_label.visible = false
@@ -282,7 +286,7 @@ func say(text: String, seconds: float = 5.0) -> void:
 		return
 	_label.text = "%s\n%s" % [rec["name"].split(" ")[0], text]
 	_label.modulate = Color(1, 1, 1)
-	_label.visible = true
+	_set_label(true)
 	_speech_t = seconds
 	_speaking = true
 	if manager and manager.has_method("said"):
@@ -291,7 +295,7 @@ func say(text: String, seconds: float = 5.0) -> void:
 func show_name(on: bool) -> void:
 	if _speaking:
 		return
-	_label.visible = on
+	_set_label(on)
 	if on:
 		_label.text = "Lv %d  %s\n%s" % [NPCSocial.level(rec), rec["name"], rec["job"].capitalize()]
 		# Like an animal's tag: guards and anyone out to hurt you show their danger.
@@ -305,7 +309,29 @@ func is_hidden() -> bool:
 
 ## Whether the name tag is up (shown, not speech).
 func name_shown() -> bool:
-	return _label.visible and not _speaking
+	return _label_on and not _speaking
+
+## Whether the tag wants to be up and whether it is a speech line (read by TagLayout).
+func label_wanted() -> bool:
+	return _label_on
+
+func speaking() -> bool:
+	return _speaking
+
+func label_node() -> Label3D:
+	return _label
+
+func _set_label(on: bool) -> void:
+	if on and not _label_on:
+		tag_clear = false # not drawn until TagLayout has looked whether it can be seen
+	_label_on = on
+	_label.visible = on and tag_clear
+
+## TagLayout's verdict: clear to draw, `lift` screen pixels above where it would sit.
+func set_tag_clear(ok: bool, lift: float) -> void:
+	tag_clear = ok
+	_label.offset.y = lift
+	_label.visible = _label_on and ok
 
 func flash_hit() -> void:
 	_hit_flash = 0.25
@@ -319,7 +345,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	_speech_t -= delta
 	if _speaking and _speech_t <= 0.0:
 		_speaking = false
-		_label.visible = false
+		_set_label(false)
 	attack_cd = maxf(0.0, attack_cd - delta)
 	var pos := global_position
 	var p2 := Vector2(pos.x, pos.z)
@@ -466,7 +492,7 @@ func deck_step(delta: float, player_pos: Vector3) -> void:
 	_speech_t -= delta
 	if _speaking and _speech_t <= 0.0:
 		_speaking = false
-		_label.visible = false
+		_set_label(false)
 	attack_cd = maxf(0.0, attack_cd - delta)
 	var i := int(rec.get("station", 0))
 	var xf := boat.deck_xf(i)
@@ -528,7 +554,7 @@ func follow(delta: float, st: Array, player_pos: Vector3) -> void:
 	_speech_t -= delta
 	if _speaking and _speech_t <= 0.0:
 		_speaking = false
-		_label.visible = false
+		_set_label(false)
 	if st.size() < 12:
 		_animate(delta, false, false, player_pos)
 		return
