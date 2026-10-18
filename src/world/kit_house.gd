@@ -214,7 +214,7 @@ static func fire_at(t: String) -> Vector3:
 static func interior(t: String) -> ArrayMesh:
 	var dm := _dims(t)
 	var models: Array = []
-	for f in FURNISH[t]:
+	for f in Furnish.settled(t):
 		models.append([f[0], f[1], f[2], 1.0])
 	var mesh := BuildCatalog.merge_models(models)
 	var k := MeshKit.new(WHash.str_hash(t + "~in") & 0xFFFF)
@@ -331,7 +331,7 @@ static func shape(t: String) -> Array:
 	f.append_array([a, a2, c2, a, c2, c, b, c, c2, b, c2, b2])
 	f.append_array([a, b, b2, a, b2, a2])
 	# Furniture you bump into.
-	for e in FURNISH[t]:
+	for e in Furnish.settled(t):
 		if e[3]:
 			var bx := _model_box(String(e[0]), Transform3D(Basis(Vector3.UP, deg_to_rad(float(e[1]))), e[2]))
 			_box_faces(f, bx.get_center(), bx.size)

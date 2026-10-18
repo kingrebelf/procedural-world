@@ -40,6 +40,10 @@ var underground := 0.0
 var _under_target := 0.0
 ## Rain, snow, storms and the rest (a child, so it runs after this each frame).
 var weather: Weather
+## How much of the sky metal and gloss mirror (sky_reflect_g, the sky's radiance pass), as
+## the weather leaves it: thick mist or rain hides the sky they would show. Set by Weather.
+var reflect_mul := 1.0
+var _reflect_sent := -1.0
 
 func _ready() -> void:
 	sky_mat = ShaderMaterial.new()
@@ -444,6 +448,12 @@ func _update_time_of_day() -> void:
 	# With GI on, the shade's fill comes from the GI rather than the ambient above, and
 	# by day it fell short of the sky and sunlit ground a wall in shade looks out on.
 	env.sdfgi_energy = 1.0 + 0.25 * daylight * (1.0 - golden) * (1.0 - underground)
+	# Metal mirrors no sky deep in a cave, and little in thick mist: a pick held in the
+	# murk at dusk shone with the bright sky above the fog, as if it glowed.
+	var refl := (1.0 - underground) * reflect_mul
+	if absf(refl - _reflect_sent) > 0.004:
+		_reflect_sent = refl
+		RenderingServer.global_shader_parameter_set("sky_reflect_g", refl)
 	if underground > 0.0:
 		var lit := 1.0 - underground
 		sun.light_energy *= lit

@@ -251,6 +251,13 @@ so the whole game is generated and reproducible. For AAA-level fidelity the road
 high-detail, LOD'd structure and prop kits per era (geometry nodes), exported as glTF and
 assembled procedurally at runtime. Those meshes are still procedurally placed and snapshotted.
 
+**Items look like their icons.** An item's painted icon is the standard for its 3D model:
+the model is the icon made solid, with the same shape, colour, material and proportions,
+at the real size HeldScale gives it. `tools/icon_match.gd` draws every icon beside its
+model (Vulkan; lavapipe under xvfb is fine) and scores the colour difference; check a new
+item's sheet there before its PR. `test_icon_models` fails when an item with an icon has
+no model, unless it is on `GearModels.OWED`, which only shrinks.
+
 ## 10. Graphics and game settings
 
 Settings live in `user://settings.cfg` and apply live.

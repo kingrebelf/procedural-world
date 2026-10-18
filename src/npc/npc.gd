@@ -159,8 +159,7 @@ func refresh_gear() -> void:
 	gear_shown = key
 	_human.wear(rec.get("gear", {}))
 	var held = rec.get("held", null)
-	if held is Dictionary:
-		_human.hold(Viewmodel.prop_for(held["type"], held))
+	_human.hold(Viewmodel.prop_for(held["type"], held) if held is Dictionary else null)
 
 ## Does something: a full-body action from NPCMind.PERFORM or a gesture from BodyLanguage.
 ## Returns false if this person doesn't know how.
@@ -341,7 +340,7 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: Array) ->
 	# Doing something on the spot holds them there, unless they must run.
 	if perform != "" and action in ["flee", "attack"]:
 		_end_perform()
-	var run := action == "flee" or action == "attack" or (action == "follow" and p2.distance_to(goal) > 8.0)
+	var run := action == "flee" or action == "attack" or action == "fight_fire" or (action == "follow" and p2.distance_to(goal) > 8.0)
 	var stay := perform != "" and perform != "zombie"
 	_route_wait -= delta
 	var go := not talking and not stay and goal != Vector2.INF and p2.distance_to(goal) > stop_at

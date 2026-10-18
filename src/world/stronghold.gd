@@ -230,6 +230,11 @@ static func build(t: String) -> ArrayMesh:
 			_patches(arrays, noise)
 	var mesh := BuildCatalog.merge_models(models, on_kit)
 	k.commit(Materials.get_mat, mesh, on_boxes)
+	if part == "tower" and era == 0:
+		# The banner flies from the crown's pole, streaming downwind.
+		var pole: Array = _flag_pole(v)
+		var foot: Vector3 = pole[0]
+		ClothFx.add_flag(mesh, Transform3D(Basis.IDENTITY, Vector3(foot.x + 0.06, float(pole[1]) - 0.15, foot.z)), 1.4, 0.9, Color(0.62, 0.2, 0.16))
 	return mesh
 
 ## The castle's stone in its vertex colours: broad patches a few metres across where the
@@ -351,7 +356,6 @@ static func _tower_top(k: MeshKit, v: int, mat: String, r: RandomNumberGenerator
 	var mw: float = [0.8, 0.95, 0.7, 0.85][v]
 	var step: float = [1.4, 1.6, 1.25, 1.5][v]
 	var mh: float = [0.9, 1.05, 0.8, 0.95][v]
-	var flag := Vector3(0, 12.3, 0)
 	if v == 1:
 		for side in 4:
 			var b := Basis(Vector3.UP, side * PI / 2.0)
@@ -362,7 +366,6 @@ static func _tower_top(k: MeshKit, v: int, mat: String, r: RandomNumberGenerator
 				k.box(mat, Transform3D(b, b * Vector3(x, 11.3, 4.22)), Vector3(0.28, 0.3, 0.34))
 				x += 0.82
 			_merlons(k, mat, -4.6, 4.6, 12.3, 4.45, side * PI / 2.0, false, r, mw, step, mh)
-		flag = Vector3(-3.4, 12.3, 3.4)
 	else:
 		for side in 4:
 			_merlons(k, mat, -4.2, 4.2, 12.3, 4.05, side * PI / 2.0, false, r, mw, step, mh)
@@ -384,10 +387,17 @@ static func _tower_top(k: MeshKit, v: int, mat: String, r: RandomNumberGenerator
 		for hgt: float in [10.0, 13.2]:
 			var a := r.randf() * TAU
 			k.box("stone_dark", Transform3D(Basis(Vector3.UP, -a + PI * 0.5), c + Vector3(cos(a), 0, sin(a)) * 1.58 + Vector3(0, hgt, 0)), Vector3(0.14, 0.7, 0.06))
-		flag = c + Vector3(0, 18.9, 0)
-	k.cylinder("timber", I.translated(flag), 0.06, 0.05, 4.5 if v != 3 else 2.4, 6)
-	var top := flag.y + (4.5 if v != 3 else 2.4)
-	k.box("cloth", I.translated(flag + Vector3(0.75, top - flag.y - 0.6, 0)), Vector3(1.4, 0.9, 0.03))
+	var pole: Array = _flag_pole(v)
+	var foot: Vector3 = pole[0]
+	k.cylinder("timber", I.translated(foot), 0.06, 0.05, float(pole[1]) - foot.y, 6)
+
+## Where a tower crown's flagpole stands, and how high its top is: [foot, top y]. The
+## flag itself is cloth (ClothFx), flying from just under the top.
+static func _flag_pole(v: int) -> Array:
+	match v:
+		1: return [Vector3(-3.4, 12.3, 3.4), 16.8]
+		3: return [Vector3(-4.5, 18.9, -4.5), 21.3]
+	return [Vector3(0, 12.3, 0), 16.8]
 
 ## Brick walls on one face of a run of 2 m modules: `n` modules centred on the origin
 ## along local x, facing `yaw`, `rows` storeys high.
