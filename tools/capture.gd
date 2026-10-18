@@ -1710,6 +1710,12 @@ func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
 
 func _snap(name: String) -> void:
 	if only.is_empty() or only.has(name.substr(0, 2)):
+		# Shots call set_state with a slot, which takes the held item out again: put it
+		# away here, and let TAA forget it.
+		var pl = world.get("player") if is_instance_valid(world) else null
+		if hold == "none" and pl is Player and not pl.holstered:
+			pl.holster(true)
+			await _wait(12)
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join(name + ".png"))
 		print("captured ", name)
 
