@@ -1,6 +1,7 @@
 class_name FireFx
 extends RefCounted
-## Living flames: Ben's fire flipbook (assets/textures/fx/fire_flipbook.png) on upright
+## Living flames: Ben's fire flipbooks (assets/textures/fx/*_flipbook.png: a torch's,
+## a campfire's, a blaze's, burning timbers', each torn sideways by the wind too) on upright
 ## cards that turn to face you about the vertical only and cross-fade through the sheet's
 ## 16 frames, with turbulence licking up through them (flame.gdshader); candle and lamp
 ## flames drawn (wick_flame.gdshader). Each flickers with its own life (life(), shared with
@@ -10,7 +11,18 @@ extends RefCounted
 const SHEET := "res://assets/textures/fx/fire_flipbook.png"
 ## Each frame's flame stands this share of the frame above its bottom edge (a jet hangs
 ## this share below its top edge), per sheet.
-const FOOT := {"fire": 0.12, "jet": 0.02}
+const FOOT := {"fire": 0.12, "jet": 0.02, "torch_0": 0.06, "torch_1": 0.06, "campfire_0": 0.12, "campfire_1": 0.1,
+	"blaze_0": 0.1, "blaze_1": 0.09, "timber_0": 0.17, "timber_1": 0.15, "wind_0": 0.17, "wind_1": 0.14}
+## A wood fire's sheets by how big it burns: [up to this height in metres, its sheets, whether
+## the wind tears it sideways]. A fire picks its family by size (give or take, so fires near
+## a boundary differ) and each of its cards a different sheet of it, so no two look alike.
+const FAMILIES := [
+	[0.62, ["torch_0", "torch_1"], false],
+	[1.35, ["campfire_0", "campfire_1", "fire"], true],
+	[2.2, ["blaze_0", "blaze_1", "campfire_0"], true],
+	[INF, ["timber_0", "timber_1", "blaze_1"], true],
+]
+const WIND_SHEETS := ["wind_0", "wind_1"]
 const FPS := 8.0
 
 ## Where kit props burn, in the prop's own space: model -> [[foot of the flame, height]].
@@ -81,10 +93,20 @@ static func prop_flame(f: Array) -> Node3D:
 	n.position = f[0]
 	return n
 
-## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
-static func material(sheet := "fire") -> ShaderMaterial:
-	if _mats.has(sheet):
-		return _mats[sheet]
+## The sheets a wood fire `size` metres tall burns with (FAMILIES), for its seed.
+static func family(size: float, seed: float) -> Array:
+	var s := size * (0.88 + 0.24 * fposmod(seed * 7.31, 1.0))
+	for f in FAMILIES:
+		if s < float(f[0]):
+			return f
+	return FAMILIES[-1]
+
+## The flipbook material for a sheet in assets/textures/fx ("fire", "jet", "campfire_0" ...),
+## and the wind-torn sheet it gives way to in a gale ("" for none).
+static func material(sheet := "fire", wind_sheet := "") -> ShaderMaterial:
+	var key := sheet + ":" + wind_sheet
+	if _mats.has(key):
+		return _mats[key]
 	var m := ShaderMaterial.new()
 	m.shader = load("res://src/world/flame.gdshader")
 	m.set_shader_parameter("fps", FPS * (2.0 if sheet == "jet" else 1.0))
@@ -93,7 +115,12 @@ static func material(sheet := "fire") -> ShaderMaterial:
 	var path := SHEET.replace("fire_", sheet + "_")
 	if ResourceLoader.exists(path):
 		m.set_shader_parameter("tex", load(path))
-	_mats[sheet] = m
+	var wpath := SHEET.replace("fire_", wind_sheet + "_")
+	if wind_sheet != "" and ResourceLoader.exists(wpath):
+		m.set_shader_parameter("wind_tex", load(wpath))
+		m.set_shader_parameter("has_wind", true)
+		m.set_shader_parameter("wind_foot", FOOT.get(wind_sheet, 0.0))
+	_mats[key] = m
 	return m
 
 static var _wick: ShaderMaterial
@@ -153,14 +180,23 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 	# over glowing coals.
 	var big := size >= 0.6 and not hang and sheet == "fire"
 	var cards := 4 if big else 2
+	# A wood fire's cards each burn a different sheet of its family, torn sideways in a gale.
+	var fam: Array = family(size, seed) if sheet == "fire" and not hang else []
+	var pick := int(seed * 1009.0)
 	for i in cards:
 		var s := size * (1.0 if i == 0 else (0.7 if not big else 0.5 + 0.08 * i))
+		var card_sheet := sheet
+		var wind_sheet := ""
+		if not fam.is_empty():
+			card_sheet = fam[1][(pick + i) % (fam[1] as Array).size()]
+			if fam[2]:
+				wind_sheet = WIND_SHEETS[(pick + i) % WIND_SHEETS.size()]
 		var q := QuadMesh.new()
 		q.size = Vector2(s, s)
-		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
+		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(card_sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
 		var mi := MeshInstance3D.new()
 		mi.mesh = q
-		mi.material_override = material(sheet)
+		mi.material_override = material(card_sheet, wind_sheet)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# The cards turn and lean in the shader, so their box must hold them at any angle.
 		mi.extra_cull_margin = s * 1.5

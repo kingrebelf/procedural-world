@@ -2334,10 +2334,20 @@ func test_fires() -> void:
 	fll.free()
 	var fl := FireFx.flame(0.42)
 	var cards := fl.find_children("*", "MeshInstance3D", true, false)
-	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a torch's flame is two cards sharing the fire material")
+	var fsh := func(c): return ((c as MeshInstance3D).material_override as ShaderMaterial).shader == load("res://src/world/flame.gdshader")
+	check(cards.size() == 2 and cards.all(fsh), "a torch's flame is two flipbook cards")
+	check(cards.all(func(c): return ((c as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter("tex").resource_path.contains("torch_")),
+		"a torch burns with Ben's torch flames")
+	check(cards[0].material_override != cards[1].material_override, "a flame's two cards burn different frames of fire")
+	for sheet in FireFx.FOOT:
+		check(sheet == "jet" or ResourceLoader.exists(FireFx.SHEET.replace("fire_", sheet + "_")), "the %s flipbook is in the game" % sheet)
+	check(FireFx.family(0.42, 0.5)[1][0].begins_with("torch") and FireFx.family(1.0, 0.5)[1].has("campfire_0")
+		and FireFx.family(1.8, 0.5)[1][0].begins_with("blaze") and FireFx.family(3.0, 0.5)[1][0].begins_with("timber"),
+		"a fire burns like a torch, a campfire, a blaze or burning timbers by its size")
 	fl.free()
 	var bon := FireFx.flame(1.0)
-	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return (c as MeshInstance3D).material_override == FireFx.material())
+	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return c.name != "Coals" and fsh.call(c))
+	check(bcards.all(func(c): return bool((c.material_override as ShaderMaterial).get_shader_parameter("has_wind"))), "a campfire is torn sideways in a gale")
 	check(bcards.size() >= 3 and bon.find_child("Coals", true, false) != null, "a big fire burns across its bed, over glowing coals")
 	var spread := 0.0
 	for c in bcards:

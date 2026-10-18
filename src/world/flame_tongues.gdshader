@@ -64,7 +64,7 @@ void process() {
 		fx_noise2(vec2(q.x * 2.6 + 7.0, q.y * 2.6 - tt + h * 5.0))) - 0.5;
 	VELOCITY.xz += turb * acc * 6.0 * (0.25 + k) * DELTA;
 	// ...and laid over downwind, the more the higher they rise.
-	VELOCITY.xz += wind_dir * wind_strength * exposed * acc * 2.4 * (0.3 + k) * DELTA;
+	VELOCITY.xz += wind_dir * wind_strength * exposed * acc * 5.0 * (0.3 + k) * DELTA;
 	VELOCITY.xz *= 1.0 - clamp(2.2 * DELTA, 0.0, 1.0);
 	// Wide and soft at the root, narrowing and stretching out along the way they go.
 	float w = sz * (0.12 + 0.08 * h) * (1.0 - 0.6 * k) * (0.4 + 0.6 * smoothstep(0.0, 0.15, k));
@@ -75,8 +75,8 @@ void process() {
 	TRANSFORM[1] = vec4(up * len, 0.0);
 	TRANSFORM[2] = vec4(0.0, 0.0, w, 0.0);
 	// White-gold low in the fire, orange, then a dull red as it cools and thins away.
-	vec3 c = mix(vec3(1.0, 0.62, 0.25) * 1.25, vec3(1.0, 0.36, 0.06) * 0.95, smoothstep(0.04, 0.35, k));
+	vec3 c = mix(vec3(1.0, 0.55, 0.18) * 1.1, vec3(1.0, 0.34, 0.05) * 0.9, smoothstep(0.04, 0.35, k));
 	c = mix(c, vec3(0.7, 0.12, 0.02) * 0.45, smoothstep(0.35, 0.8, k));
-	float al = 0.85 * smoothstep(0.0, 0.08, k) * (1.0 - smoothstep(0.3, 0.85, k));
+	float al = 0.62 * smoothstep(0.0, 0.08, k) * (1.0 - smoothstep(0.3, 0.85, k));
 	COLOR = vec4(c * (0.72 + 0.56 * life), al);
 }
