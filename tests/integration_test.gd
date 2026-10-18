@@ -80,10 +80,16 @@ func _water_checks(streamer: ChunkStreamer, player) -> void:
 		for i in 3:
 			await physics_frame
 		check(player.swimming and player.underwater, "deep in the water you swim, eyes under")
-		for i in 360:
+		# Until they ride at the surface (up to 15 s): a fixed wait caught a fast runner's
+		# swimmer mid-bob now and then.
+		var off := INF
+		for i in 900:
 			await physics_frame
-		var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
-		var off: float = player.global_position.y - (s - Swim.FLOAT_CHEST)
+			if i >= 120:
+				var s := Water.surface_height(player.global_position.x, player.global_position.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0))
+				off = player.global_position.y - (s - Swim.FLOAT_CHEST)
+				if player.swimming and absf(off) < 0.6:
+					break
 		check(player.swimming and absf(off) < 0.6, "you float up and bob at the surface (%.2f m off)" % off)
 	if river == Vector3.INF:
 		print("  skip no river near spawn")
