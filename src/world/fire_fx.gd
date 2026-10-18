@@ -241,7 +241,14 @@ class Drag extends Node3D:
 			v = Vector3.ZERO
 		var want := -v * 0.22
 		want.y = 0.0
+		var was := _lean
 		_lean = _lean.lerp(want, clampf(delta * 9.0, 0.0, 1.0))
+		if _lean.length_squared() < 1e-6:
+			_lean = Vector3.ZERO
+		# A flame that stays put (a town's torches and hearths, most of them) has nothing
+		# to send once it has settled.
+		if _lean == was:
+			return
 		for c in get_parent().get_children():
 			if c is MeshInstance3D and c.name != "Coals" and c.name != "Glass":
 				(c as MeshInstance3D).set_instance_shader_parameter("drag", _lean)
