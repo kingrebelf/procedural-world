@@ -895,6 +895,13 @@ func river_t(x: float, z: float) -> float:
 	var wz := z + _rwarp.get_noise_2d(x + 917.0, z - 433.0) * 60.0
 	return absf(_rivers.get_noise_2d(wx, wz)) / RIVER_W
 
+## The river's noise before it is folded into river_t, in half-widths: its zero line is
+## the river's centre, so its slope gives the way the river runs (Waterfalls traces it).
+func river_n(x: float, z: float) -> float:
+	var wx := x + _rwarp.get_noise_2d(x, z) * 60.0
+	var wz := z + _rwarp.get_noise_2d(x + 917.0, z - 433.0) * 60.0
+	return _rivers.get_noise_2d(wx, wz) / RIVER_W
+
 ## Water level at a river grid node: just below the lowest ground within ~40 m, so the
 ## river always sits in the bottom of its valley (never up on an embankment).
 func _river_node(ix: int, iz: int) -> float:

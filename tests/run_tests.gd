@@ -123,6 +123,107 @@ func test_rivers() -> void:
 	var old := ChunkGenerator.new(4242).generate(found["cx"], found["cz"])
 	check(not old.has("river"), "worlds made before rivers get none")
 
+func test_waterfalls() -> void:
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242, true)
+	# The nearest falls to the spawn on seed 4242 (tools/probe_falls.gd lists them).
+	var f := {}
+	for r in 6:
+		for iz in range(-r, r + 1):
+			for ix in range(-r, r + 1):
+				if f.is_empty() and maxi(absi(ix), absi(iz)) == r:
+					f = Waterfalls.in_cell(g, ix, iz)
+	check(not f.is_empty(), "a waterfall within 3 km of the spawn")
+	if f.is_empty():
+		WorldField.terrain_v = was
+		return
+	var lip: Vector2 = f["lip"]
+	var d: Vector2 = f["dir"]
+	var drop: float = f["drop"]
+	var levels: PackedFloat32Array = f["levels"]
+	print("    falls at %s: %.1f m in %d" % [lip, drop, levels.size()])
+	check(drop >= Waterfalls.MIN_DROP and drop <= Waterfalls.MAX_DROP, "a natural height (%.1f m)" % drop)
+	check(var_to_str(Waterfalls.in_cell(ChunkGenerator.new(4242, true), f["cell"].x, f["cell"].y)) == var_to_str(f), "falls are planned the same by any generator")
+	var at := func(q: Vector2) -> Dictionary:
+		return g.generate(int(floor(q.x / 64.0)), int(floor(q.y / 64.0)))
+	var water := func(q: Vector2) -> float:
+		var c: Dictionary = at.call(q)
+		return ChunkGenerator.river_surface(c, q.x - c["cx"] * 64.0, q.y - c["cz"] * 64.0)
+	var ground := func(q: Vector2) -> float:
+		var c: Dictionary = at.call(q)
+		return ChunkGenerator.height_at(c, q.x - c["cx"] * 64.0, q.y - c["cz"] * 64.0)
+	var above: float = water.call(lip - d * 4.0)
+	var below: float = water.call(lip + d * (Waterfalls.RAMP + 3.0))
+	check(not is_nan(above) and above > float(f["top"]) - 1.0, "the river runs on to the lip (%.1f, top %.1f)" % [above, f["top"]])
+	var tier := Waterfalls.tier_drop(f, 0)
+	check(not is_nan(below) and absf(below - levels[0]) < 0.3, "it lands in its pool at the tier's level (%.1f, wanted %.1f)" % [below, levels[0]])
+	check(above - below > tier * 0.8, "the water drops sheer at the lip (%.1f m of %.1f)" % [above - below, tier])
+	var foot := lip + d * (Waterfalls.pool_centre(tier) + Waterfalls.RAMP * 0.5)
+	check(float(water.call(foot)) - float(ground.call(foot)) > WorldField.RIVER_DEPTH + 0.8, "a plunge pool is cut deeper than the river's bed")
+	# Beside the water, the bank steps down as well: the fall is a cliff across the valley.
+	var side := Vector2(-d.y, d.x)
+	var off := 2.0
+	while off < 60.0 and g.field.river_t(lip.x + side.x * off, lip.y + side.y * off) < 1.6:
+		off += 1.0
+	var bank_hi: float = ground.call(lip - d * 1.0 + side * off)
+	var bank_lo: float = ground.call(lip + d * (Waterfalls.RAMP + 2.0) + side * off)
+	check(bank_hi - bank_lo > tier * 0.4, "a cliff steps down across the valley beside the fall (%.1f m at %.0f m out)" % [bank_hi - bank_lo, off])
+	# The chunk the lip lies in keeps the drop for its water, mist and sound.
+	var lc: Dictionary = at.call(lip)
+	check(lc.has("falls") and not (lc["falls"] as Array).is_empty(), "the lip's chunk keeps its falls")
+	if lc.has("falls"):
+		var fx := WaterfallFx.new()
+		fx.build(lc["falls"][0], lc)
+		var sheet := fx.get_node("Sheet") as MeshInstance3D
+		var vs: PackedVector3Array = sheet.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var finite := true
+		var lowest := INF
+		for v in vs:
+			finite = finite and v.is_finite()
+			lowest = minf(lowest, v.y)
+		check(finite and vs.size() > 40, "the falling sheet is built (%d vertices)" % vs.size())
+		check(lowest < levels[0], "the sheet reaches down into the pool")
+		check(fx.has_node("Mist") and fx.has_node("Foam") and fx.has_node("Roar"), "with foam, mist and its roar")
+		check(fx.has_node("Boulders") and fx.get_node("Boulders").get_child_count() >= 6, "and boulders round its pool")
+		check((fx.get_node("Mist") as GPUParticles3D).amount <= 64, "mist stays cheap")
+		fx.free()
+	# Chunks round the falls meet seamlessly.
+	var k := Vector2i(int(floor(lip.x / 64.0)), int(floor(lip.y / 64.0)))
+	var R := ChunkGenerator.RES
+	var maxd := 0.0
+	var a: Dictionary = g.generate(k.x, k.y)
+	var b: Dictionary = g.generate(k.x + 1, k.y)
+	var c2: Dictionary = g.generate(k.x, k.y + 1)
+	for i in R:
+		maxd = maxf(maxd, absf(a["heights"][i * R + R - 1] - b["heights"][i * R]))
+		maxd = maxf(maxd, absf(a["heights"][(R - 1) * R + i] - c2["heights"][i]))
+	check(maxd < 0.0001, "chunks round a falls meet at their edges (max diff %f)" % maxd)
+	# Worlds made before falls keep their rivers exactly; so do chunks far from any falls.
+	WorldField.terrain_v = Waterfalls.V - 1
+	var og := ChunkGenerator.new(4242, true)
+	check(Waterfalls.near(og, lip.x, lip.y, lip.x, lip.y).is_empty(), "older worlds have no falls")
+	var old: Dictionary = og.generate(k.x, k.y)
+	check(not old.has("falls") and old["heights"] != a["heights"], "older worlds keep their river where a falls would be")
+	WorldField.terrain_v = Waterfalls.V
+	var now := ChunkGenerator.new(4242, true)
+	# A river chunk no falls reaches.
+	var away := Vector2i.MAX
+	for r in range(4, 40):
+		for cx in range(-r, r + 1):
+			if away == Vector2i.MAX and now.field.river_t(cx * 64.0 + 32.0, r * 64.0 + 32.0) < 0.5 and Waterfalls.near(now, cx * 64.0, r * 64.0, cx * 64.0 + 64.0, r * 64.0 + 64.0).is_empty():
+				away = Vector2i(cx, r)
+	var after := now.generate(away.x, away.y)
+	WorldField.terrain_v = Waterfalls.V - 1
+	var before := ChunkGenerator.new(4242, true).generate(away.x, away.y)
+	check(before.has("river"), "the chunk compared has a river")
+	before.erase("created")
+	after.erase("created")
+	before.erase("gen_version")
+	after.erase("gen_version")
+	check(var_to_bytes(before) == var_to_bytes(after), "chunks away from falls are exactly as before (terrain, river and every object)")
+	WorldField.terrain_v = was
+
 func test_same_seed_same_chunk() -> void:
 	var g1 := ChunkGenerator.new(777)
 	var g2 := ChunkGenerator.new(777)
@@ -383,6 +484,20 @@ func test_landforms() -> void:
 ## thin sheer fin between its neighbours, none standing alone on open ground, and no
 ## higher than about fifteen storeys over the valley; older worlds keep theirs and the
 ## other landforms are untouched.
+func test_film_grade_is_gentle() -> void:
+	# Neutral greys keep their brightness (only a slight cool or warm lean), saturated
+	# yellow-greens lose a little saturation, and other hues keep theirs.
+	for v in [0.1, 0.5, 0.9]:
+		var c := Grade.grade(Color(v, v, v))
+		check(absf((c.r + c.g + c.b) / 3.0 - v) < 0.02, "grey %.1f stays %.1f, got %s" % [v, v, c])
+	var leaf := Color(0.3, 0.6, 0.12)
+	var g := Grade.grade(leaf)
+	check(g.s < leaf.s - 0.03 and g.s > leaf.s * 0.7, "a leaf green softens a little: %.2f -> %.2f" % [leaf.s, g.s])
+	var red := Color(0.7, 0.15, 0.1)
+	check(absf(Grade.grade(red).s - red.s) < 0.05, "a red keeps its saturation")
+	var lut := Grade.lut()
+	check(lut != null and lut.get_width() == Grade.SIZE and lut.get_depth() == Grade.SIZE, "the grade table is %d cubed" % Grade.SIZE)
+
 func test_believable_towers() -> void:
 	WorldField.terrain_v = WorldField.TOWERS_V
 	var f := WorldField.new(2024)

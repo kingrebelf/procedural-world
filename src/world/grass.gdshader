@@ -62,6 +62,15 @@ void vertex() {
 void fragment() {
 	bool own = COLOR.a < 0.5;
 	vec3 base = own ? pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2)) * shade : tint * COLOR.rgb / SHADE_SCALE;
+	if (!own) {
+		// GrassKit's dry blades and yellowing tips are warmer than they are blue: a shade
+		// can only scale the green tint, which kept even a dead blade green, so they turn
+		// toward straw here, as bright as the blade.
+		float dry = smoothstep(0.1, 0.4, (COLOR.r - COLOR.b) / SHADE_SCALE);
+		vec3 straw = vec3(0.42, 0.33, 0.13);
+		straw *= dot(base, vec3(0.2126, 0.7152, 0.0722)) / dot(straw, vec3(0.2126, 0.7152, 0.0722)) * 1.5;
+		base = mix(base, straw, dry);
+	}
 	ALBEDO = own ? base : mix(base * 0.35, base * 1.05, UV.y);
 	ROUGHNESS = 0.85;
 	SPECULAR = 0.3;

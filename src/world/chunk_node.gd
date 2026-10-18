@@ -1209,6 +1209,8 @@ func clear_under(best: Dictionary) -> void:
 var _river: MeshInstance3D
 
 func set_river(arrays: Array) -> void:
+	if data.has("falls"):
+		WaterfallFx.add_all(self, data)
 	if arrays.is_empty():
 		return
 	var m := ArrayMesh.new()
