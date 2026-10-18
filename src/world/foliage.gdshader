@@ -67,10 +67,13 @@ void vertex() {
 	crown_n = (MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	vec3 vw = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec4 lv = wear_levels(vw);
-	winter = vec3(smoothstep(0.55, 1.0, lv.y), wear_frost(lv), vnoise(vw.xz * 0.9 + vw.y * 0.7));
+	winter = vec3(wear_snow(vw), wear_frost(lv), vnoise(vw.xz * 0.9 + vw.y * 0.7));
 }
 
 void fragment() {
+	// The card's own facing, before it is bent toward the sky for lighting below (snow
+	// goes by this: with the bent one nearly every card faced up).
+	vec3 face_n = crown_normals ? normalize(crown_n) : NORMAL;
 	vec2 uv = UV * uv_scale;
 	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, uv);
 	// Thin needles and leaf tips average away in distant mip levels; raising alpha with the
@@ -100,11 +103,14 @@ void fragment() {
 	SPECULAR = crown_normals ? 0.25 : 0.35;
 	BACKLIGHT = back * inst_col * 1.4;
 	if (winter.x + winter.y > 0.01) {
-		// Snow lies on what faces the sky, in clumps, leaving the undersides dark; rime
-		// catches every edge.
-		float up = dot(NORMAL, up_v);
-		float sn = winter.x * smoothstep(0.25, 0.75, up + (winter.z - 0.5) * 0.6) * 0.8;
-		float fr = clamp(winter.y * (0.2 + 0.35 * up), 0.0, 0.45) * (1.0 - sn);
+		// A dusting: snow caught in clumps on what faces straight up, the green showing
+		// through between and all down the sides and undersides (the crown normals lean
+		// up, so a crown of flat boughs would otherwise go white all over); rime on the
+		// tips of a cold morning.
+		float up = dot(face_n, up_v);
+		float clump = smoothstep(0.45, 0.8, winter.z + fract(UV.x * 3.7 + UV.y * 5.3) * 0.25);
+		float sn = winter.x * smoothstep(0.5, 0.9, up) * clump * 0.6;
+		float fr = clamp(winter.y * 0.25 * smoothstep(0.5, 1.0, up), 0.0, 0.25) * (1.0 - sn);
 		ALBEDO = mix(mix(ALBEDO, WEAR_FROST, fr), WEAR_SNOW, sn);
 		ROUGHNESS = mix(0.8, 0.6, sn);
 		BACKLIGHT *= 1.0 - 0.8 * sn;

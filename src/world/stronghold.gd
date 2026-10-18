@@ -200,12 +200,12 @@ static func build(t: String) -> ArrayMesh:
 		# and corner quoins become the castle's own stone (pale trim stone read as paint,
 		# and the kit's tan rubble met the parapets' grey coursing on every wall top), and
 		# a tower is bare dressed stone inside, not plaster.
-		var swap := {"MI_WoodTrim": Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")}
+		var swap := {"MI_WoodTrim": _mat(era, face_stone_of(era))}
 		swap["MI_UnevenBrick"] = swap["MI_WoodTrim"]
 		if part == "tower":
 			# Inside, dressed stone: the kit's rubble brick, lit close by the torches, read
 			# as big cartoon stones.
-			swap["MI_Plaster"] = Materials.get_mat("crypt_stone" if era == 1 else "castle_stone")
+			swap["MI_Plaster"] = _mat(era, face_stone_of(era))
 		var quoins := {"MI_RockTrim": swap["MI_WoodTrim"]}
 		for e in models:
 			if String(e[0]).begins_with("village/Wall_UnevenBrick") and not swap.values().has(null):
@@ -221,7 +221,7 @@ static func build(t: String) -> ArrayMesh:
 	noise.seed = WHash.str_hash(t) + v
 	noise.frequency = 0.25
 	noise.fractal_octaves = 3
-	var stone_mat := Materials.get_mat(stone)
+	var stone_mat := _mat(era, stone)
 	var on_kit := func(mat: Material, arrays: Array) -> void:
 		if mat == stone_mat:
 			_patches(arrays, noise)
@@ -229,7 +229,7 @@ static func build(t: String) -> ArrayMesh:
 		if name == stone:
 			_patches(arrays, noise)
 	var mesh := BuildCatalog.merge_models(models, on_kit)
-	k.commit(Materials.get_mat, mesh, on_boxes)
+	k.commit(func(n: String) -> Material: return _mat(era, n), mesh, on_boxes)
 	if part == "tower" and era == 0:
 		# The banner flies from the crown's pole, streaming downwind.
 		var pole: Array = _flag_pole(v)
@@ -251,6 +251,11 @@ static func _patches(arrays: Array, noise: FastNoiseLite) -> void:
 		var tone := lerpf(0.84, 1.0, clampf(0.5 + noise.get_noise_3dv(v[i]) * 0.9, 0.0, 1.0))
 		col[i] = Color(c.r * tone, c.g * tone, c.b * tone, c.a)
 	arrays[Mesh.ARRAY_COLOR] = col
+
+## A castle's materials weather with its place out of doors (Materials.worn: moss, snow,
+## frost, dust, as on the houses); a crypt's, underground, stay as they are.
+static func _mat(era: int, name: String) -> Material:
+	return Materials.worn(name) if era == 0 else Materials.get_mat(name)
 
 static func face_stone_of(era: int) -> String:
 	return "crypt_stone" if era == 1 else "castle_stone"

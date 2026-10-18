@@ -152,7 +152,7 @@ static func build(t: String) -> ArrayMesh:
 			k.box("stone", Transform3D(Basis(Vector3.FORWARD, -0.05), Vector3(1.0, 0.72, 0)), Vector3(0.45, 1.45, 1.2))
 			k.sphere("stone", Transform3D(Basis(Vector3.FORWARD, 0.06), Vector3(0, 1.62, 0)), 1.0, 5, 8, 0.15, 0.32)
 			k.sphere("moss", I.translated(Vector3(0.3, 1.88, 0.2)), 0.45, 4, 7, 0.2, 0.2)
-	return k.commit(Materials.get_mat)
+	return k.commit(Materials.worn)
 
 ## Kit models with full transforms (tilts and all) merged into one mesh, a surface per
 ## material, from the arrays BuildCatalog cached on the main thread.

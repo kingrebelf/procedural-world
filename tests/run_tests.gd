@@ -6266,6 +6266,22 @@ func test_kit_surfaces_worn() -> void:
 	glow.emission_enabled = true
 	glow.cull_mode = BaseMaterial3D.CULL_DISABLED
 	check(BuildCatalog.worn(glow, "village/X") == glow, "nothing glowing is touched")
+	# Castles, town walls and towers weather with the houses round them; crypts don't.
+	var cw := Materials.worn("castle_stone")
+	check(cw is ShaderMaterial and (cw as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"), "castle stone weathers")
+	check(Materials.worn("castle_stone") == cw, "worn castle stone is shared")
+	check(Materials.worn("crypt_stone") == Materials.get_mat("crypt_stone"), "crypt stone doesn't weather")
+	check(Materials.worn("glass") == Materials.get_mat("glass"), "glass doesn't weather")
+	var shader_of := func(mesh: ArrayMesh) -> int:
+		var n := 0
+		for i in mesh.get_surface_count():
+			var sm := mesh.surface_get_material(i)
+			if sm is ShaderMaterial and (sm as ShaderMaterial).shader.resource_path.ends_with("wear_triplanar.gdshader"):
+				n += 1
+		return n
+	check(shader_of.call(Stronghold.build("castle_wall")) > 0, "a town wall's stone weathers")
+	check(shader_of.call(Stronghold.build("castle_tower")) > 0, "a tower's stone weathers")
+	check(shader_of.call(Stronghold.build("crypt_wall")) == 0, "a crypt's walls don't")
 
 func test_climate_belts() -> void:
 	var c := Climate.new(4242)
