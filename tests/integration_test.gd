@@ -2644,8 +2644,12 @@ func _layer_checks(world, game) -> void:
 	check(not Eras.themed() or (rs.size() >= 4 and is_equal_approx(rs[0][0], (10 - Eras.base_level) * Eras.LEVEL_STEP)), "level rings sit where the levels change (%s)" % [rs])
 	check(MapLayers.category(MapLayers.ERA, Eras.SCIFI)[1] != "", "eras have names")
 	game.map.set_layer(MapLayers.OFF)
-	await process_frame
-	check(mm._canvas.layer_mask == 0, "the overlay can be turned off")
+	# The minimap redraws on its own clock (ten times a second when still), so wait for it.
+	var off_n := 0
+	while mm._canvas.layer_mask != 0 and off_n < 60:
+		await process_frame
+		off_n += 1
+	check(mm._canvas.layer_mask == 0, "the overlay can be turned off (%d frames)" % off_n)
 
 ## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
 func _menu_checks(world, game, con) -> void:
