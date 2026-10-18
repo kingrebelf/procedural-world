@@ -1941,7 +1941,11 @@ func _guns(game, world, player, kc: Creature, slot: int) -> void:
 	player.use_held()
 	check(int(gun.get("charge", 0)) == 1, "firing spends a round from the magazine")
 	check(player.gunplay._shots.size() == 1, "the shot is in flight, not an instant hit")
-	await _frames(30)
+	# Until it lands (the shot flies in physics steps, which a fast runner's frames outpace).
+	for i in 120:
+		await process_frame
+		if kc.hp < hp0 or player.gunplay._shots.is_empty() and i > 10:
+			break
 	check(kc.hp < hp0, "a gunshot hits an animal away from its spawn point (%.0f -> %.0f hp)" % [hp0, kc.hp])
 	kc.held_for = 0.0
 	# Headshots: the upper front of the body box counts as the head and takes double.
