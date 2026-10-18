@@ -29,6 +29,11 @@ const KINDS := {
 	"rowboat": {"name": "Rowboat", "boat": "rowboat", "length": 4.4, "speed": 2.8, "seat_at": Vector3(0, 0.36, 0.25)},
 	# Built on a slipway and launched; too big to pack up again ("moored").
 	"sloop": {"name": "Sloop", "boat": "sloop", "length": 9.0, "speed": 3.5, "seat_at": Vector3(0.75, 1.12, 3.0), "moored": true},
+	"fishing_boat": {"name": "Fishing Boat", "boat": "fishing_boat", "length": 8.0, "speed": 3.0, "seat_at": Vector3(0.5, 1.05, 3.1), "moored": true},
+	"cog": {"name": "Cog", "boat": "cog", "length": 20.0, "speed": 3.0, "seat_at": Vector3(0.5, 4.5, 7.6), "moored": true},
+	"motor_launch": {"name": "Motor Launch", "boat": "launch", "length": 7.5, "speed": 9.5, "seat_at": Vector3(0.45, 1.0, 0.75), "moored": true},
+	"research_vessel": {"name": "Research Vessel", "boat": "research_vessel", "length": 26.0, "speed": 5.0, "seat_at": Vector3(0.9, 5.17, -0.9), "moored": true},
+	"life_raft": {"name": "Life Raft", "boat": "life_raft", "length": 3.0, "speed": 1.0, "seat_at": Vector3(-0.55, 0.3, 0.3)},
 }
 const CEILING := 180.0 ## metres above the ground a ship flies at most; climbing on leaves for orbit
 const LEAVE_TIME := 2.0
@@ -282,6 +287,12 @@ func _float(delta: float, g: float) -> void:
 			sheet = drive.y
 		else:
 			paddle = drive.y
+		if d.get("engine", false):
+			# The engine burns fuel with the throttle; a dry tank only drifts.
+			var fuel := float(rec.get("fuel", 1.0))
+			if fuel <= 0.0:
+				paddle = 0.0
+			rec["fuel"] = maxf(0.0, fuel - absf(paddle) * delta / float(d["burn"]))
 		Sailing.step(kind, sail, delta, wind, Water.current(pos.x, pos.y), drive.x, paddle, sheet, auto, surface - g)
 		_row(delta, paddle)
 	else:
@@ -340,6 +351,8 @@ func _float_pose(delta: float, t: float, L: float) -> void:
 	var hq := Water.surface_height(x + sd.x * beam, z + sd.z * beam, t)
 	# Pitch: + lifts the bow. Roll: + lifts the port side (heel to starboard is +).
 	var pitch := atan2(hb - hs, half * 2.0)
+	if has_engine():
+		pitch += 0.06 * clampf(spd / float(p["speed"]), 0.0, 1.0) # bow up under power
 	var roll := atan2(hp - hq, beam * 2.0) * 0.7 + float(sail["heel"])
 	roll += -drive.x * clampf(absf(spd) / 3.0, 0.0, 1.0) * 0.03 if rider != null else 0.0
 	var want := Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, -roll)
@@ -382,6 +395,9 @@ func toggle_sail() -> bool:
 		return false
 	sail["raised"] = not bool(sail["raised"])
 	return sail["raised"]
+
+func has_engine() -> bool:
+	return boat() and bool(Sailing.BOATS[kind].get("engine", false))
 
 func has_sail() -> bool:
 	return boat() and float(Sailing.BOATS[kind]["sail"]) > 0.0

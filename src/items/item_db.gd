@@ -124,6 +124,11 @@ const ITEMS := {
 	"kayak": {"name": "Kayak", "era": Eras.MEDIEVAL, "value": 90, "stack": false, "kind": "vehicle", "color": Color(0.72, 0.09, 0.07)},
 	"rowboat": {"name": "Rowboat", "era": Eras.MEDIEVAL, "value": 80, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.55, 0.4)},
 	"sloop": {"name": "Sloop", "era": Eras.MEDIEVAL, "value": 600, "stack": false, "kind": "vehicle", "color": Color(0.9, 0.88, 0.83)},
+	"fishing_boat": {"name": "Fishing Boat", "era": Eras.MEDIEVAL, "value": 700, "stack": false, "kind": "vehicle", "color": Color(0.62, 0.52, 0.44)},
+	"cog": {"name": "Cog", "era": Eras.MEDIEVAL, "value": 2400, "stack": false, "kind": "vehicle", "color": Color(0.5, 0.42, 0.36)},
+	"motor_launch": {"name": "Motor Launch", "era": Eras.SCIFI, "value": 1800, "stack": false, "kind": "vehicle", "color": Color(0.93, 0.94, 0.95)},
+	"research_vessel": {"name": "Research Vessel", "era": Eras.SCIFI, "value": 9000, "stack": false, "kind": "vehicle", "color": Color(0.94, 0.94, 0.95)},
+	"life_raft": {"name": "Life Raft", "era": Eras.SCIFI, "value": 150, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.45, 0.1)},
 	"paddle_canoe": {"name": "Canoe Paddle", "era": Eras.MEDIEVAL, "value": 8, "stack": false, "kind": "tool", "damage": 5, "range": 2.6, "color": Color(0.7, 0.5, 0.3)},
 	"paddle_kayak": {"name": "Kayak Paddle", "era": Eras.MEDIEVAL, "value": 12, "stack": false, "kind": "tool", "damage": 5, "range": 2.8, "color": Color(0.72, 0.1, 0.08)},
 
@@ -799,7 +804,8 @@ const UNLOCK := {
 	"forge": 3, "anvil": 5, "stable": 6, "storage_chest": 2, "bed": 2, "lantern": 2,
 	"wall_door_stone": 3, "wall_window_stone": 3, "corner_stone": 3, "door_wood": 2, "door_iron": 6, "door_bulkhead": 14,
 	"metal_crate": 3, "cage": 4, "weapon_stand": 4, "market_stall": 5, "cart": 5, "horse": 7,
-	"sail_raft": 1, "paddle_canoe": 3, "canoe": 3, "rowboat": 4, "paddle_kayak": 5, "kayak": 5, "slipway": 10, "sloop": 10,
+	"sail_raft": 1, "paddle_canoe": 3, "canoe": 3, "rowboat": 4, "paddle_kayak": 5, "kayak": 5, "slipway": 10, "sloop": 10, "fishing_boat": 12, "cog": 20,
+	"life_raft": 25, "motor_launch": 25, "research_vessel": 35,
 	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
 	# Gunpowder is the first step out of the medieval age.
 	"scrap_pistol": 10, "rounds": 10,

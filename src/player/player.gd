@@ -2111,7 +2111,7 @@ func mount(v: Vehicle) -> void:
 			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("use"), _key("interact")])
 		return
 	if v.boat():
-		var oars := "row" if v.kind == "rowboat" else "paddle"
+		var oars := "row" if v.kind == "rowboat" else ("throttle" if v.has_engine() else "paddle")
 		if v.has_sail():
 			Game.toast.emit("%s: [%s] raise or lower the sail, [%s/%s] %s, [%s/%s] steer, [%s] get off" % [Vehicle.label(v.kind),
 				_key("jump"), _key("move_forward"), _key("move_back"),
@@ -2168,6 +2168,14 @@ func _ride(delta: float) -> void:
 	v.drive = input
 	v.boosting = not ui_open and Input.is_action_pressed("sprint") and input.y > 0.1
 	v.auto_trim = bool(Settings.get_value("sail_auto_trim"))
+	if v.has_engine() and float(v.rec.get("fuel", 1.0)) <= 0.0 and input.y != 0.0 and not ui_open:
+		# Tank dry: pour in a jerrycan of diesel from your pack, if you carry one.
+		if Game.inventory.remove_type("diesel_jerrycan", 1) > 0:
+			v.rec["fuel"] = 1.0
+			Game.toast.emit("Filled her tank from a diesel jerrycan")
+		elif _fuel_warned < Time.get_ticks_msec():
+			_fuel_warned = Time.get_ticks_msec() + 5000
+			Game.toast.emit("Out of fuel: she needs a Diesel Jerrycan")
 	if v.boat() and not ui_open and Input.is_action_just_pressed("jump") and v.has_sail():
 		Game.toast.emit("Sail raised" if v.toggle_sail() else "Sail lowered")
 	if v.flies():
@@ -2233,9 +2241,13 @@ func _ride(delta: float) -> void:
 		_last_look = text
 		look_target_changed.emit(text)
 
+var _fuel_warned := 0
+
 ## Afloat: her speed, and for a sailing boat the point of sail and how the sail draws.
 func _boat_hud(v: Vehicle) -> String:
 	var text := "%.1f knots" % (absf(v.spd) * 1.944)
+	if v.has_engine():
+		text += "   fuel %d%%" % roundi(float(v.rec.get("fuel", 1.0)) * 100.0)
 	if v.has_sail():
 		if bool(v.sail["raised"]):
 			var wind := Water._dir.normalized() * Sailing.wind_speed(Water._wind)

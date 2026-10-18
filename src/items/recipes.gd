@@ -48,6 +48,11 @@ const LIST := [
 	# Bigger boats are built on a slipway by the water (and can't be packed up again).
 	{"out": "slipway", "qty": 1, "in": {"wood": 12, "planks": 10, "rope": 4, "iron_nails": 20}, "at": "workbench"},
 	{"out": "sloop", "qty": 1, "in": {"planks": 60, "wood": 10, "iron_nails": 80, "resin": 8, "rope": 12, "cloth": 14, "iron_ingot": 6}, "at": "slipway"},
+	{"out": "fishing_boat", "qty": 1, "in": {"planks": 70, "wood": 12, "iron_nails": 90, "resin": 10, "rope": 16, "cloth": 16, "iron_ingot": 8}, "at": "slipway"},
+	{"out": "cog", "qty": 1, "in": {"planks": 220, "wood": 40, "iron_nails": 300, "resin": 30, "rope": 60, "cloth": 50, "iron_ingot": 30}, "at": "slipway"},
+	{"out": "life_raft", "qty": 1, "in": {"rubber": 6, "cloth": 4, "power_cell": 1}, "at": "fabricator"},
+	{"out": "motor_launch", "qty": 1, "in": {"alloy_plate": 14, "steel_sheet": 6, "circuitry": 6, "piston": 4, "rubber": 4, "glass_pane": 2}, "at": "vehicle_bay"},
+	{"out": "research_vessel", "qty": 1, "in": {"alloy_plate": 120, "steel_sheet": 60, "circuitry": 40, "piston": 16, "glass_pane": 20, "copper_wire": 30, "power_cell": 10}, "at": "slipway"},
 	{"out": "rowboat", "qty": 1, "in": {"planks": 12, "iron_nails": 10, "resin": 2}, "at": "workbench"},
 	{"out": "apple_crate", "qty": 1, "in": {"planks": 2, "wild_berries": 4}, "at": "workbench"},
 	{"out": "apple_barrel", "qty": 1, "in": {"planks": 3, "wild_berries": 6}, "at": "workbench"},

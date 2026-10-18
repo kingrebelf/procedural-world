@@ -3154,9 +3154,10 @@ func test_vehicles() -> void:
 		check(made, "%s is made at a station" % k)
 		var m := Vehicle.make_model(k)
 		var box := Vehicle._bounds(m)
-		# A boat's hull and keel go down below her waterline (y = 0), and a sloop's mast is tall.
+		# A boat's hull, keel and anchor cable go down below her waterline (y = 0), and a
+		# cog's mast stands twenty metres.
 		var boat := Vehicle.is_boat(k)
-		check(box.size.y > 0.5 and box.size.y < (14.0 if boat else 4.0) and box.position.y > (-2.0 if boat else -0.2), "%s model is a sensible size (%s)" % [k, box])
+		check(box.size.y > 0.5 and box.size.y < (25.0 if boat else 4.0) and box.position.y > (-4.0 if boat else -0.2), "%s model is a sensible size (%s)" % [k, box])
 		m.free()
 	for st in ["vehicle_bay", "stable"]:
 		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)
