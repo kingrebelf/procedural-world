@@ -18,6 +18,7 @@ const BUILD := {
 	"cards_deck": "_cards", "harmonica": "_harmonica", "banjo": "_banjo",
 	"cigar_box": "_cigar_box", "photo_frame": "_tintype", "family_photo": "_holo_photo",
 	"toy_robot": "_toy_robot", "music_player": "_music_player", "chess_set": "_chess_set",
+	"writ": "_scroll", "watch_keys": "_key_ring", "grappling_hook": "_grapnel", "watch_tabard": "_tabard",
 }
 
 const GOLD := Color(0.9, 0.6, 0.2)
@@ -327,6 +328,120 @@ static func _key(k: MeshKit, length: float, rad: float, col: Color, bow: String,
 				ItemModels._torus(k, m, _at(s * R * 0.72, cy, 0, FRONT), R * 0.8, rad * 1.1, 24, 8, col)
 			k.cylinder(m, _at(0, top - rad, 0), rad * 1.5, rad * 1.3, cy - R * 0.6 - top + rad, 12, true, 0.0, 1, col)
 	return Vector3(0, cy, 0)
+
+## The watch's keys: four blackened iron keys of different lengths and bows on a heavy
+## iron ring, fanned out below it. Held by the ring.
+static func _key_ring(k: MeshKit, _r: RandomNumberGenerator, _t: String):
+	var iron := Color(0.4, 0.35, 0.31)
+	var m := "im:metal@0.6"
+	var c := Vector3(0, 0.2, 0)
+	var R := 0.042
+	ItemModels._torus(k, m, Transform3D(FRONT, c), R, 0.0065, 36, 8, Color(0.3, 0.27, 0.25))
+	# [angle off straight down, length, bow radius, bow turned about the shaft]
+	for kd: Array in [[-0.62, 0.13, 0.016, 1.2], [-0.2, 0.155, 0.019, -1.1], [0.22, 0.14, 0.015, 1.0], [0.6, 0.12, 0.017, -1.3]]:
+		var a := float(kd[0])
+		var L := float(kd[1])
+		var br := float(kd[2])
+		var col := iron.lightened(0.06 * absf(a))
+		# Hanging from the ring's lower arc, the bow threaded through it, the shaft pointing
+		# away from the ring's centre.
+		var xf := Transform3D(Basis(Vector3.BACK, a), c + Vector3(sin(a), -cos(a), 0) * R)
+		ItemModels._torus(k, m, xf * Transform3D(Basis(Vector3.UP, float(kd[3])) * FRONT, Vector3(0, -br * 0.55, 0)), br, 0.0038, 20, 6, col)
+		var top := -br * 1.5
+		k.cylinder(m, xf * _at(0, top - L * 0.85, 0), 0.0045, 0.0045, L * 0.85, 10, true, 0.0, 1, col)
+		ItemModels._torus(k, m, xf * _at(0, top - 0.008, 0), 0.0056, 0.0022, 12, 5, col)
+		# The bit: a plate off one side, its wards cut in steps.
+		var tip := top - L * 0.85
+		for b: Array in [[0.018, 0.006, 0.014], [0.011, 0.016, 0.007], [0.019, 0.025, 0.006]]:
+			k.box(m, xf * _at(0.0045 + float(b[0]) * 0.5, tip + float(b[1]), 0), Vector3(float(b[0]), float(b[2]), 0.0045), col.darkened(0.08))
+	return c + Vector3(0, R, 0)
+
+## A grappling hook: a forged iron shank with an eye at the top, three barbed prongs
+## curling up from its foot, and a coil of hemp rope tied through the eye and looped
+## round the shank. Held by the shank.
+static func _grapnel(k: MeshKit, _r: RandomNumberGenerator, _t: String):
+	var iron := Color(0.27, 0.25, 0.24)
+	var m := "im:metal@0.55"
+	var L := 0.26
+	k.cylinder(m, _at(0, 0.02, 0), 0.015, 0.012, L - 0.02, 12, true, 0.0, 1, iron)
+	k.sphere(m, _at(0, 0.025, 0), 0.022, 6, 10, 0.0, 0.8, iron.darkened(0.1))
+	ItemModels._torus(k, m, Transform3D(FRONT, Vector3(0, L + 0.024, 0)), 0.024, 0.0075, 24, 7, iron)
+	for i in 3:
+		var a := TAU * i / 3.0 + 0.5
+		var d := Vector3(cos(a), 0, sin(a))
+		var path := PackedVector3Array()
+		var radii := PackedFloat32Array()
+		# Out from the foot, down round a broad curve and back up to a point, like an anchor's arm.
+		for s in 17:
+			var t := s / 16.0
+			var ang := deg_to_rad(lerpf(200.0, 405.0, t))
+			var q := Vector2(0.068, 0.07) + Vector2(cos(ang), sin(ang)) * 0.062
+			path.append(d * q.x + Vector3(0, q.y, 0))
+			radii.append(lerpf(0.012, 0.003, t * t))
+		ItemModels._tube(k, m, Transform3D.IDENTITY, path, radii, 8, iron.lightened(0.04))
+		# The barb, a short spur back off the point.
+		var tip := path[path.size() - 1]
+		ItemModels._tube(k, m, Transform3D.IDENTITY, PackedVector3Array([tip - Vector3(0, 0.02, 0) + d * 0.008, tip - Vector3(0, 0.036, 0) - d * 0.01]), PackedFloat32Array([0.005, 0.0015]), 6, iron)
+	# The rope: knotted through the eye and down to a coil of loops hung beside the shank.
+	var rope := Color(0.36, 0.25, 0.15)
+	var rad := 0.0095
+	var cb := Basis(Vector3.UP, -0.5) * Basis(Vector3.RIGHT, 0.25)
+	var cc := Vector3(0.09, L - 0.04, 0.02)
+	var rp := PackedVector3Array([Vector3(0, L + 0.046, 0), Vector3(0.022, L + 0.035, 0.012), Vector3(0.045, L + 0.012, 0.02)])
+	var rr := PackedFloat32Array([rad, rad, rad])
+	for s in 100:
+		var t := s / 99.0
+		var ang := PI * 0.6 - t * TAU * 5.0
+		# Loose loops, each hanging a little differently, not wound tight like a spool.
+		var R := 0.068 + 0.01 * sin(t * 23.0)
+		var sag := Vector3(0.012 * sin(t * 17.0), -0.014 * pow(sin(t * PI * 5.0), 2.0), 0)
+		rp.append(cc + cb * (Vector3(cos(ang) * R, sin(ang) * R, (t - 0.5) * 0.06) + sag))
+		rr.append(rad)
+	ItemModels._tube(k, "im:rope", Transform3D.IDENTITY, rp, rr, 7, rope)
+	ItemModels._torus(k, "im:rope", Transform3D(FRONT, Vector3(0, L + 0.04, 0.0)), 0.011, 0.0075, 12, 5, rope.darkened(0.1))
+	return Vector3(0, L * 0.45, 0)
+
+## A town watch tabard laid flat: a sleeveless coat of wool quartered red and yellow, a
+## yellow tower on the red and a red tower on the yellow, its neck dipped, its hem ragged
+## from wear. Held by a shoulder.
+static func _tabard(k: MeshKit, _r: RandomNumberGenerator, _t: String):
+	var red := Color(0.42, 0.07, 0.05)
+	var gold := Color(0.62, 0.41, 0.1)
+	var H := 0.72
+	var shape := func(u: float, v: float) -> Vector3:
+		var x := u - 0.5
+		# Shoulders narrower than the body, cut in under the arms, then a slight flare.
+		var arm := smoothstep(0.62, 0.8, v)
+		var half := lerpf(0.24, 0.215, v) - 0.06 * arm + 0.012 * smoothstep(0.92, 1.0, v)
+		var top := H - 0.075 * maxf(0.0, 1.0 - absf(x) / 0.17)
+		# The ragged hem: notches cut into it, uneven like worn wool.
+		var bottom := 0.035 * absf(sin(u * PI * 7.0)) + 0.02 * Provisions._nz(Vector3(u * 6.0, 0.3, 0.7), 2.0)
+		return Vector3(x * 2.0 * half, lerpf(bottom, top, v), 0.008 * sin(u * 9.0 + v * 4.0) + 0.01 * sin(u * PI))
+	var quarter := func(p: Vector3, _u: float, _v: float) -> Color:
+		var col := red if (p.x < 0.0) == (p.y > H * 0.5) else gold
+		return col.darkened(0.14 * (Provisions._nz(p, 80.0) + 0.4))
+	Provisions.sheet(k, "im:linen", _at(0, 0, 0.004), 48, 48, shape, quarter, Vector3.BACK)
+	Provisions.sheet(k, "im:linen", _at(0, 0, -0.004), 12, 12, shape, func(p: Vector3, _u: float, _v: float) -> Color: return red.darkened(0.35) if p.x < 0.0 else gold.darkened(0.35), Vector3.FORWARD)
+	# A dark bound edge round the neck.
+	var neck := PackedVector3Array()
+	var nr := PackedFloat32Array()
+	for s in 13:
+		var x := lerpf(-0.17, 0.17, s / 12.0)
+		neck.append(Vector3(x, H - 0.075 * maxf(0.0, 1.0 - absf(x) / 0.17), 0.012 + 0.01 * sin((x / 0.48 + 0.5) * PI)))
+		nr.append(0.006)
+	ItemModels._tube(k, "im:linen", Transform3D.IDENTITY, neck, nr, 5, Color(0.25, 0.16, 0.1))
+	# The badge: a shield in the middle, halved gold and red, a gold tower on it.
+	var sh := func(u: float, v: float) -> Vector3:
+		var w := 0.085 * (1.0 - pow(1.0 - v, 2.2))
+		return Vector3((u - 0.5) * 2.0 * w, lerpf(-0.12, 0.08, v), 0.0)
+	var cy := H * 0.55
+	Provisions.sheet(k, "im:linen", _at(0, cy, 0.034), 10, 10, sh, func(p: Vector3, _u: float, _v: float) -> Color: return red.darkened(0.1) if p.x > 0.0 else gold.darkened(0.05), Vector3.BACK)
+	var tc := gold.lightened(0.05)
+	k.box("im:linen", _at(0, cy - 0.015, 0.037), Vector3(0.05, 0.09, 0.003), tc)
+	for mx: float in [-0.019, 0.0, 0.019]:
+		k.box("im:linen", _at(mx, cy + 0.037, 0.037), Vector3(0.011, 0.016, 0.003), tc)
+	k.box("im:linen", _at(0, cy - 0.043, 0.0388), Vector3(0.016, 0.032, 0.001), red.darkened(0.5))
+	return Vector3(-0.17, H - 0.02, 0)
 
 ## The ornate dungeon key: old gilded bronze, a filigree bow of a ring and three scrolled
 ## lobes round a curl, collared shaft and a bit cut with cross-shaped wards.
@@ -752,7 +867,7 @@ static func _scroll(k: MeshKit, r: RandomNumberGenerator, t: String):
 	var L := 0.24
 	var R := 0.035
 	var paper := PARCH
-	var deed := t == "deed_scroll"
+	var deed := t == "deed_scroll" or t == "writ"
 	# Tipped so the open lower end, with its spiral, turns toward the viewer.
 	var W := Transform3D.IDENTITY
 	var fl := 1.22 if deed else 1.14
@@ -771,7 +886,11 @@ static func _scroll(k: MeshKit, r: RandomNumberGenerator, t: String):
 			ItemModels._torus(k, "own:satin", W * Transform3D(Basis(Vector3.BACK, s * 0.6) * Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3(1.0, 0.4, 1.0)), Vector3(s * 0.017, 0.018, R + 0.008)), 0.016, 0.005, 16, 5, red.lightened(0.05))
 			ItemModels._tube(k, "own:satin", W, PackedVector3Array([Vector3(0, 0.012, R + 0.007), Vector3(s * 0.006 + 0.004, -0.006, R + 0.016), Vector3(s * 0.012 + 0.024, -0.03, R + 0.012), Vector3(s * 0.01 + 0.046, -0.05, R + 0.004)]),
 				PackedFloat32Array([0.0045, 0.005, 0.005, 0.0045]), 6, red)
-		k.sphere("own:satin", W * _at(0, 0.013, R + 0.008), 0.0075, 6, 8, 0.1, 1.0, red.darkened(0.1))
+		if t == "writ":
+			# A writ of passage is sealed over the knot with the town's red wax.
+			_seal(k, W * Transform3D(FRONT, Vector3(0, 0.012, R + 0.012)), 0.028, Color(0.62, 0.05, 0.05), "lion")
+		else:
+			k.sphere("own:satin", W * _at(0, 0.013, R + 0.008), 0.0075, 6, 8, 0.1, 1.0, red.darkened(0.1))
 		return Vector3.ZERO
 	# The cord: two turns round the middle, the loose ends hanging.
 	var cord := Color(0.42, 0.28, 0.16)
