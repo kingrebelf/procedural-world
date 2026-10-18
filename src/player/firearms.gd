@@ -102,22 +102,32 @@ const SPECIES := {
 
 static var _mats: Dictionary = {}
 
+## Metals beyond GunLook.METALS, on the shared metal look. Sci-fi work gets light alloy
+## (unbrushed: the brushing runs along a mesh's tangents, which these small built parts
+## don't lay out along their length); the period guns' steel stays satin.
+const METALS := {
+	"gun_worn": ["steel", 0.42, Color(0.62, 0.62, 0.63)],
+	"gun_bright": ["steel", 0.24, null],
+	"gun_nickel": ["silver", 0.24, Color(0.85, 0.83, 0.78)],
+	"gun_parker": ["dark_steel", 0.62, Color(0.38, 0.39, 0.38)],
+	"gun_alloy": ["alloy", 0.34, Color(0.6, 0.61, 0.64), {"brushed": 0.0}],
+	"gun_copper": ["copper", -1.0, null],
+	"gun_gold": ["gold", -1.0, null],
+	"gun_gilt": ["gold", 0.3, Color(0.9, 0.72, 0.42)],
+	"gun_precursor": ["bronze", 0.38, Color(0.72, 0.54, 0.36)],
+}
+
 ## Gun materials beyond GunLook's: finishes of steel, rubber, glass, ceramics, paints and
 ## the alien chitin and crystal.
 static func mat(name: String) -> Material:
 	if _mats.has(name):
 		return _mats[name]
+	if METALS.has(name):
+		return GunLook.metal(name, METALS[name], _mats)
 	var m: StandardMaterial3D
 	match name:
 		"gun_bore": m = GunLook._base(Color(0.012, 0.012, 0.013), 0.6, 0.6)
-		"gun_bright": m = GunLook._base(Color(0.62, 0.62, 0.64), 0.22, 1.0)
-		"gun_nickel": m = GunLook.finish(Color(0.62, 0.6, 0.56), 0.22, 1.0, Color(0.4, 0.38, 0.34), 0.12, 0.12)
-		"gun_worn": m = GunLook.finish(Color(0.34, 0.34, 0.35), 0.4, 0.9, Color(0.6, 0.6, 0.6), 0.15, 0.2)
-		"gun_parker": m = GunLook.finish(Color(0.12, 0.13, 0.12), 0.62, 0.6, Color(0.4, 0.4, 0.41), 0.05, 0.5)
-		"gun_alloy": m = GunLook.finish(Color(0.11, 0.11, 0.12), 0.42, 0.7, Color(0.62, 0.62, 0.64), 0.06, 0.15)
 		"gun_rubber": m = GunLook._base(Color(0.035, 0.035, 0.037), 0.88, 0.0)
-		"gun_copper": m = GunLook._base(Color(0.85, 0.5, 0.33), 0.32, 1.0)
-		"gun_gold": m = GunLook._base(Color(1.0, 0.77, 0.36), 0.2, 1.0)
 		"gun_ceramic": m = GunLook.finish(Color(0.3, 0.31, 0.3), 0.5, 0.0, Color(0.22, 0.22, 0.21), 0.12, 0.25)
 		"gun_od":
 			m = GunLook._base(Color(0.24, 0.26, 0.18), 0.62, 0.15)
@@ -173,9 +183,6 @@ static func mat(name: String) -> Material:
 			m = GunLook._base(Color(0.36, 0.2, 0.24), 0.45, 0.0)
 			m.subsurf_scatter_enabled = true
 			m.subsurf_scatter_strength = 0.5
-		"gun_precursor":
-			# Old bronze of a vanished people, dark in the hollows, polished bright by handling.
-			m = GunLook.finish(Color(0.42, 0.31, 0.18), 0.4, 1.0, Color(0.76, 0.6, 0.36), 0.14, 0.25)
 		"gun_carapace":
 			m = _carapace(Color(0.64, 0.57, 0.45), Color(0.2, 0.06, 0.045), Color(0.36, 0.4, 0.22), 0.4)
 		"gun_carapace_dk":
@@ -192,9 +199,6 @@ static func mat(name: String) -> Material:
 			m = GunLook._base(Color(0.06, 0.045, 0.035), 0.3, 0.0)
 			m.clearcoat_enabled = true
 			m.clearcoat = 0.6
-		"gun_gilt":
-			# Gilding over carved metal: warm gold, darker where it has dulled.
-			m = GunLook.finish(Color(0.7, 0.5, 0.22), 0.3, 1.0, Color(0.95, 0.78, 0.45), 0.12, 0.2)
 		"gun_enamel":
 			# Pale silver-blue enamel over metal, like a fine pistol's frame.
 			m = GunLook.finish(Color(0.6, 0.64, 0.7), 0.2, 0.85, Color(0.82, 0.85, 0.9), 0.08, 0.1)
@@ -263,7 +267,12 @@ static func mat(name: String) -> Material:
 			# the wrist of a stock); "<material>_stip": stippled (a moulded grip).
 			for sfx in ["_chk", "_stip"]:
 				if name.ends_with(sfx):
-					m = (mat(name.trim_suffix(sfx)) as StandardMaterial3D).duplicate()
+					var base := mat(name.trim_suffix(sfx))
+					if not base is StandardMaterial3D:
+						# The metal shader carries its own wear; knurled steel reads by its shape.
+						_mats[name] = base
+						return base
+					m = (base as StandardMaterial3D).duplicate()
 					_texture_detail(m, sfx == "_chk")
 					if sfx == "_chk":
 						# The grooves hold oil and grime and scatter the light: the
