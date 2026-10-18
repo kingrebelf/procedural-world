@@ -2313,7 +2313,11 @@ func test_tool_grip() -> void:
 	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_ON), "a held tool casts its shadow")
 	h.set_shadow_only(true)
 	check(casts.call().all(func(c): return c == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF), "your first-person shadow body's tool doesn't shadow the one in your view")
+	var shown := func() -> bool:
+		return (prop.find_children("*", "MeshInstance3D", true, false) + ([prop] if prop is MeshInstance3D else [])).any(func(mi): return (mi as MeshInstance3D).visible)
+	check(not shown.call(), "your shadow body's own copy of the tool is never drawn beside the one in your hand")
 	h.set_shadow_only(false)
+	check(shown.call(), "the tool shows again once the body is drawn")
 	h.hold(null)
 	check(h.gestures.grip_r.is_empty(), "an empty hand opens")
 	h.free()
