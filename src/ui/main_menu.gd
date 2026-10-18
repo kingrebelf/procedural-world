@@ -128,6 +128,12 @@ func _home() -> void:
 		m.closed.connect(_home)
 		_swap(m)))
 	v.add_child(UITheme.big_button("Quit", func(): get_tree().quit()))
+	if CrashLog.crashed_last_time:
+		var crash := UITheme.label("The game closed unexpectedly last time. Its log is saved as last_crash.log.", 15, Color(0.95, 0.7, 0.5))
+		crash.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		crash.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(crash)
+		v.add_child(UITheme.button("Open log folder", CrashLog.open_folder))
 	if Net.last_reason != "":
 		var why := UITheme.label("Left the server: %s" % Net.last_reason, 15, Color(0.95, 0.7, 0.5))
 		why.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
