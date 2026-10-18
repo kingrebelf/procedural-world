@@ -292,6 +292,7 @@ func _process(delta: float) -> void:
 	if _rank_t <= 0.0:
 		_rank_t = 1.0
 		_rank(eye, e)
+		_scare_animals()
 	# One chunk a tick redraws its scorched look.
 	for k in _rebuild.keys():
 		_rebuild.erase(k)
@@ -625,6 +626,46 @@ func _update_grounds(delta: float) -> void:
 				Game.hurt(9.0 * delta, "fire")
 
 # --- People in it -------------------------------------------------------------------------
+
+## The burning thing nearest `at` within `reach` (ground distance to its box), hot enough to
+## see: {"k", "i", "box", "heat"}, or empty. Townsfolk ask this to run from it or fight it.
+func fire_near(at: Vector3, reach: float) -> Dictionary:
+	var best := {}
+	var bd := reach
+	for key in _burning:
+		var b: Dictionary = _burning[key]
+		var box: AABB = b["box"]
+		var c := box.get_center()
+		var d := maxf(0.0, Vector2(at.x - c.x, at.z - c.z).length() - maxf(box.size.x, box.size.z) * 0.5)
+		if d >= bd:
+			continue
+		var node := streamer.get_chunk(b["k"]) if streamer != null else null
+		if node == null:
+			continue
+		var h := FireSim.heat(node.get_object(b["i"])["st"])
+		if h < 0.15:
+			continue
+		bd = d
+		best = {"k": b["k"], "i": b["i"], "box": box, "heat": h}
+	return best
+
+## Animals near a fire bolt away from it (once a second, for the fires that are going well).
+func _scare_animals() -> void:
+	var fauna: FaunaManager = player.fauna if player != null and is_instance_valid(player) else null
+	if fauna == null:
+		return
+	for key in _burning:
+		var b: Dictionary = _burning[key]
+		var node := streamer.get_chunk(b["k"])
+		if node == null:
+			continue
+		var h := FireSim.heat(node.get_object(b["i"])["st"])
+		if h < 0.3:
+			continue
+		var box: AABB = b["box"]
+		var c := box.get_center()
+		for cr in fauna.creatures_near(c, 14.0 + 22.0 * h + maxf(box.size.x, box.size.z) * 0.5):
+			cr.scare(c, 4.0 + 4.0 * h)
 
 func _hurt_player(dt: float) -> void:
 	if player == null or not is_instance_valid(player):

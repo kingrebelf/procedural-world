@@ -497,6 +497,9 @@ func _decide(n: NPC, e: Dictionary, pp: Vector3, t: float, peer := 0) -> void:
 		_decide_bandit(n, e, pp, t)
 		return
 	var rec := n.rec
+	if FireCrew.decide(self, n, e):
+		rec["_action"] = n.action
+		return
 	var per := perception(n, e, pp, t, peer)
 	if per["player_dist"] > 30.0:
 		rec["greeted"] = false
