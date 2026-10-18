@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 19 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins).
+const GEN_VERSION := 20 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins). 20: natural waterfalls where a river falls steeply (Waterfalls).
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -35,6 +35,8 @@ var landforms := false
 var deep_caves := false
 ## v11: hidden finds (EasterEggs).
 var eggs := false
+## v19: rivers gather some steep reaches into waterfalls (Waterfalls).
+var falls_on := false
 var _site_cache := {}
 var _fort_cache := {}
 var _road_cache := {}
@@ -65,6 +67,7 @@ func _init(world_seed: int, with_rivers := false) -> void:
 	landforms = WorldField.terrain_v >= 7
 	deep_caves = WorldField.terrain_v >= 10
 	eggs = WorldField.terrain_v >= 11
+	falls_on = rivers and WorldField.terrain_v >= Waterfalls.V
 	if outposts:
 		road_reach = 26.0
 
@@ -729,6 +732,7 @@ func generate(cx: int, cz: int) -> Dictionary:
 	var river := PackedFloat32Array()
 	if has_river:
 		river.resize(RIVER_N * RIVER_N * 3)
+	var falls: Array = Waterfalls.near(self, x0, z0, x0 + SIZE, z0 + SIZE) if has_river and falls_on else []
 	for j in RES:
 		for i in RES:
 			var x := x0 + i
@@ -801,7 +805,16 @@ func generate(cx: int, cz: int) -> Dictionary:
 				var m := WorldField.river_strength(h - rough, lv)
 				for st in sites:
 					m *= smoothstep(st["outer"], st["outer"] + 30.0, Vector2(x, z).distance_to(st["center"]))
+				var pool := Vector2(0.0, INF)
+				if not falls.is_empty():
+					# v19: below a falls the water drops to its tier's level, in a plunge
+					# pool that widens the channel at the cliff's foot.
+					lv = Waterfalls.level(falls, x, z, lv)
+					pool = Waterfalls.pool(falls, x, z)
+					t = minf(t, pool.y)
 				h = WorldField.carve_river(h, t, lv, m)
+				if pool.x > 0.0:
+					h = minf(h, lv - WorldField.RIVER_DEPTH * (1.0 - pool.y * pool.y) - pool.x)
 				if i % 2 == 0 and j % 2 == 0:
 					var rk := ((j / 2) * RIVER_N + i / 2) * 3
 					river[rk] = lv
@@ -848,6 +861,10 @@ func generate(cx: int, cz: int) -> Dictionary:
 		_biome_mix(chunk, x0, z0)
 	if has_river:
 		chunk["river"] = river
+		if not falls.is_empty():
+			var drops := Waterfalls.chunk_drops(self, falls, cx, cz)
+			if not drops.is_empty():
+				chunk["falls"] = drops
 	if not look.is_empty():
 		chunk["look"] = look
 	if not grassed.is_empty():

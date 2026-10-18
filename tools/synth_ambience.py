@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Synthesises the game's own ambience loops and a few one-shots (wind, water,
-birds, crickets, fantasy chimes, sci-fi hum, swing whoosh, splashes) with numpy and
+birds, crickets, fantasy chimes, sci-fi hum, waterfalls, swing whoosh, splashes) with numpy and
 encodes them to Ogg Vorbis with ffmpeg. Everything here is generated from noise and
 sine waves, so it is ours to license (CC0, like the rest of the audio).
 
@@ -9,6 +9,7 @@ of one whole loop (circular), modulations use whole cycles per loop, and scatter
 events wrap around the end.
 
     python3 tools/synth_ambience.py assets/audio
+    python3 tools/synth_ambience.py assets/audio waterfall   # just the named ones
 """
 import os
 import subprocess
@@ -254,6 +255,44 @@ def splash(var):
     return norm(x + bub[:, 0], 0.6)
 
 
+def waterfall(sec):
+    """A waterfall's roar (WaterfallFx): a deep, broad rush of falling water with a low
+    thunder under it, slow surges as the flow pulses, and the hiss and crackle of spray.
+    Mono, for a 3D source. Its own rng, so the other sounds stay as they were."""
+    r = np.random.default_rng(4410)
+    n = int(sec * SR)
+    f = np.fft.rfftfreq(n, 1 / SR)
+
+    def band(lo, hi, tilt):
+        spec = np.fft.rfft(r.standard_normal(n))
+        g = ((f >= lo) & (f <= hi)).astype(float)
+        g = np.convolve(g, np.hanning(256) / np.hanning(256).sum(), mode="same")
+        g *= np.where(f > 0, (np.maximum(f, 1) / 1000.0) ** tilt, 0)
+        x = np.fft.irfft(spec * g, n)
+        return x / (np.abs(x).max() + 1e-9)
+
+    def surge(k, depth):
+        t = np.arange(n) / n
+        m = np.zeros(n)
+        for _ in range(k):
+            m += np.sin(2 * np.pi * (int(r.integers(2, 11)) * t + r.random())) * r.random()
+        return 1.0 + depth * m / (np.abs(m).max() + 1e-9)
+
+    rush = band(80, 7000, -0.55) * surge(6, 0.18)
+    thunder = band(25, 220, -1.2) * surge(5, 0.35)
+    hiss = band(2500, 11000, 0.1) * surge(7, 0.3)
+    # Spray: a dense crackle of tiny splashes.
+    crack = np.zeros(n)
+    for _ in range(int(sec * 140)):
+        d = r.uniform(0.002, 0.012)
+        tt = np.arange(int(d * SR)) / SR
+        ev = r.standard_normal(len(tt)) * np.exp(-tt / (d * 0.3))
+        idx = (int(r.integers(n)) + np.arange(len(ev))) % n
+        np.add.at(crack, idx, ev * r.uniform(0.02, 0.1))
+    x = rush * 0.6 + thunder * 0.5 + hiss * 0.12 + crack * 0.5
+    return norm(x, 0.7)
+
+
 def write_ogg(path, data, q):
     data = np.asarray(data, dtype=np.float64)
     if data.ndim == 1:
@@ -275,6 +314,14 @@ def write_ogg(path, data, q):
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "assets/audio"
     amb = os.path.join(out, "ambience")
+    # Sounds with their own rng, made on their own when named (python3 ... out waterfall).
+    own = {"waterfall": lambda: write_ogg(os.path.join(amb, "waterfall.ogg"), waterfall(20), 2)}
+    if len(sys.argv) > 2:
+        for name in sys.argv[2:]:
+            own[name]()
+        return
+    for make in own.values():
+        make()
     write_ogg(os.path.join(amb, "wind.ogg"), wind(24), 1)
     write_ogg(os.path.join(amb, "wind_strong.ogg"), wind(24, True), 1)
     write_ogg(os.path.join(amb, "water.ogg"), water(16), 2)

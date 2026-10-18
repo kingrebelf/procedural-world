@@ -58,6 +58,8 @@ First-pass visuals from the automated screenshot tour (software-rendered in CI, 
   and a xeno world), each with its own land, people and map, saved separately. Warp between them
   from orbit and land wherever you like.
 - Rivers wind through the lowlands of new worlds, in valleys of their own. Swim in them.
+  Here and there a river that falls steeply drops over a rock lip as a waterfall instead,
+  roaring into a plunge pool in a drift of mist, then runs on below.
 - Health, stamina and experience. Sprinting, jumping and swinging tire you; gathering,
   crafting, building, hunting and discovering new regions earn XP. Each level gives three
   points for Strength, Endurance, Agility and Intellect.
