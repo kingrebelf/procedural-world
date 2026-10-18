@@ -230,6 +230,15 @@ func _refresh_held() -> void:
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
 		_tag_self()
+	_torch_flame.call_deferred() # after the viewmodel's deferred hold has made the prop
+
+## A torch or lamp held but not burning (put out in the water) shows no flame.
+func _torch_flame() -> void:
+	var on := hand_light == null or hand_light.held != ""
+	for root in [viewmodel, body]:
+		if root != null:
+			for f in (root as Node).find_children("Flame", "", true, false): # a held torch's (HandLight.torch_fire)
+				(f as Node3D).visible = on
 
 func toggle_view() -> void:
 	third_person = not third_person
@@ -405,9 +414,10 @@ func _physics_process(delta: float) -> void:
 	_cooldown = maxf(0.0, _cooldown - delta)
 	if Game.health < Game.max_health() and Game.health > 0.0 and Game.wearing_affix("mending"):
 		Game.set_health(Game.health + delta * 0.8)
-	var lmsg := hand_light.tick(delta, Game.inventory)
+	var lmsg := hand_light.tick(delta, Game.inventory, underwater)
 	if lmsg != "":
 		Game.toast.emit(lmsg)
+		_torch_flame()
 	_tick_fishing(delta)
 	_update_nightsight()
 	if not ui_open:

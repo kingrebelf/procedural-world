@@ -2732,6 +2732,24 @@ func test_doors() -> void:
 	var bd: Dictionary = back["objects"][back["objects"].size() - 1]
 	check(Doors.is_door(bd["t"]) and Doors.is_locked(bd) and Doors.is_open(bd) and float(bd["st"]["side"]) == -1.0 and Doors.has_access(bd, "friend") and Doors.is_mine(bd), "a door keeps its lock, owner, keys and swing through a save")
 
+func test_flames_under_water() -> void:
+	var inv := Inventory.new()
+	inv.add(ItemDB.make("torch", 2, 1.0, {}))
+	var hl := HandLight.new()
+	hl.toggle(inv)
+	check(hl.tick(0.1, inv, true).contains("goes out") and not hl.is_on(), "a torch goes out under water")
+	check(hl.toggle(inv).contains("under water") and not hl.is_on(), "and won't light there")
+	hl.set_held("torch", inv)
+	check(hl.held == "", "nor will a torch taken in hand")
+	hl.tick(0.1, inv, false)
+	hl.set_held("torch", inv)
+	check(hl.held == "torch", "out of the water it lights again")
+	check(hl.tick(0.1, inv, true) != "" and hl.held == "", "a held torch goes out too")
+	inv.add(ItemDB.make("flashlight", 1, 1.0, {}))
+	check(hl.toggle(inv).begins_with("Flashlight") and hl.is_on(), "a flashlight still works under water")
+	check(BuildCatalog.def("campfire").has("fire") and Builder.under_water(Vector3(0, -500, 0)), "a campfire can't be built under water")
+	hl.free()
+
 func test_hand_light() -> void:
 	var inv := Inventory.new()
 	var hl := HandLight.new()
