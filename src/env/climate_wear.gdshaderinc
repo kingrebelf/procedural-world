@@ -61,7 +61,9 @@ vec2 wear_shelter(vec3 p, vec3 n) {
 	// A sloping face spans heights within one texel, so allow for its slope.
 	float tol = 0.3 + 0.2 * min(length(n.xz) / max(abs(n.y), 0.2), 3.0);
 	float above = wear_top(p.xz) - p.y - tol;
-	float open = 1.0 - smoothstep(0.0, 0.4, above) * (1.0 - 0.6 * smoothstep(8.0, 14.0, above));
+	// A soft ramp, so ground a hand's breadth under the map's height (the terrain just
+	// proud of paving, a kerb) doesn't flip from open to roofed texel by texel.
+	float open = 1.0 - smoothstep(0.2, 0.9, above) * (1.0 - 0.6 * smoothstep(8.0, 14.0, above));
 	vec2 out_dir = n.xz / max(length(n.xz), 1e-4);
 	vec2 q = p.xz + out_dir * (1.0 - abs(n.y)) * 1.0;
 	float over = wear_top(q) - p.y;

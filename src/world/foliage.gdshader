@@ -71,6 +71,9 @@ void vertex() {
 }
 
 void fragment() {
+	// The card's own facing, before it is bent toward the sky for lighting below (snow
+	// goes by this: with the bent one nearly every card faced up).
+	vec3 face_n = crown_normals ? normalize(crown_n) : NORMAL;
 	vec2 uv = UV * uv_scale;
 	vec4 tex = is_core ? vec4(0.55, 0.62, 0.5, 1.0) : texture(albedo_tex, uv);
 	// Thin needles and leaf tips average away in distant mip levels; raising alpha with the
@@ -104,9 +107,9 @@ void fragment() {
 		// through between and all down the sides and undersides (the crown normals lean
 		// up, so a crown of flat boughs would otherwise go white all over); rime on the
 		// tips of a cold morning.
-		float up = dot(NORMAL, up_v);
+		float up = dot(face_n, up_v);
 		float clump = smoothstep(0.45, 0.8, winter.z + fract(UV.x * 3.7 + UV.y * 5.3) * 0.25);
-		float sn = winter.x * smoothstep(0.82, 0.97, up) * clump * 0.6;
+		float sn = winter.x * smoothstep(0.5, 0.9, up) * clump * 0.6;
 		float fr = clamp(winter.y * 0.25 * smoothstep(0.5, 1.0, up), 0.0, 0.25) * (1.0 - sn);
 		ALBEDO = mix(mix(ALBEDO, WEAR_FROST, fr), WEAR_SNOW, sn);
 		ROUGHNESS = mix(0.8, 0.6, sn);
