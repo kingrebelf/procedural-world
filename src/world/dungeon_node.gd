@@ -277,6 +277,9 @@ func _build_block(lv: int, bx: int, bz: int) -> void:
 	if not any:
 		return
 	_furnish_block(lv, Rect2i(bx * BLOCK, bz * BLOCK, BLOCK, BLOCK), k, models, boxes)
+	for m in models:
+		if HOARD.has(m[0]) and m.size() == 4:
+			m.append(_hoard_swap(m[0]))
 	var mi := _mesh_node(k, models)
 	mi.name = "Block_%d_%d_%d" % [lv, bx, bz]
 	mi.visible = false
@@ -504,7 +507,7 @@ func _rubble(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
 		if _era == Eras.SCIFI:
 			k.box(mat, Transform3D(b, at + off + Vector3(0, rad * 0.3, 0)), Vector3(rad * 2.0, 0.02, rad * 1.4))
 		else:
-			k.sphere(mat if big else "stone_dark", Transform3D(b, at + off + Vector3(0, rad * 0.45, 0)), rad, 4, 6, 0.3, 0.6)
+			k.sphere(mat if big else "stone", Transform3D(b, at + off + Vector3(0, rad * 0.45, 0)), rad, 4, 6, 0.3, 0.6)
 
 ## A skull and a few long bones, long dead.
 func _bones(at: Vector3, r: RandomNumberGenerator, k: MeshKit) -> void:
@@ -562,6 +565,28 @@ func _banner(top: Vector3, dv: Vector2, r: RandomNumberGenerator, k: MeshKit) ->
 		var b := Basis(into, r.randf_range(-0.05, 0.05)) * Basis(across, 0.0)
 		var face := Basis(across, Vector3.UP, into)
 		k.box("linen", Transform3D(b * face, top - into * 0.08 + across * x + Vector3(0, -len * 0.5, 0)), Vector3(w / strips + 0.004, len, 0.01), col)
+
+## The kit's trim metal is a dark grey (and the coins' vertex tint darker still), black
+## by candlelight with nothing for a full metal to reflect down here. The hoard gets
+## its own gold: warm albedo over the trim's detail, mostly lit colour, a little metal.
+const HOARD := ["props/Coin_Pile", "props/Chalice"]
+static var _swaps := {}
+
+static func _hoard_swap(model: String) -> Dictionary:
+	if _swaps.has(model):
+		return _swaps[model]
+	var out := {}
+	for part in BuildCatalog.model_parts(model):
+		var m = part[0]
+		if m is BaseMaterial3D and not out.has(m.resource_name):
+			var d: BaseMaterial3D = m.duplicate()
+			d.vertex_color_use_as_albedo = false
+			d.albedo_color = Color(1.0, 0.8, 0.4) if model == "props/Coin_Pile" else Color(1.0, 0.86, 0.52)
+			d.metallic = 0.3
+			d.roughness = minf(d.roughness, 0.38)
+			out[m.resource_name] = d
+	_swaps[model] = out
+	return out
 
 ## A treasury's hoard: coins spilling round its chests and heaped in the middle, a
 ## chalice or two, and candles burning on the heap.
@@ -932,10 +957,23 @@ func _build_parts() -> void:
 			var f: Array = FireFx.prop_flames([["props/Torch_Metal", rad_to_deg(yaw), p + Vector3(0, 1.9, 0), 1.0]])
 			_add_lamp(l["lv"], f[0][0] if not f.is_empty() else p + Vector3(0, 2.2, 0), 1.6, true)
 	# Candlelight on every treasury's hoard: the payoff is seen from its door.
-	for rm in pl["rooms"]:
-		if rm["kind"] == "vault" and _era != Eras.SCIFI:
+	# A hanging light over the middle of the room, and a low glow by each chest so
+	# the far wall doesn't sit in the dark.
+	for ri in pl["rooms"].size():
+		var rm: Dictionary = pl["rooms"][ri]
+		if rm["kind"] != "vault":
+			continue
+		var fy := Dungeon.floor_y(pl, rm["lv"])
+		var mid := (Dungeon.centre(pl, Vector2i(rm["x"], rm["z"])) + Dungeon.centre(pl, Vector2i(rm["x"] + rm["w"] - 1, rm["z"] + rm["d"] - 1))) * 0.5
+		_add_lamp(rm["lv"], Vector3(mid.x, fy + 2.3, mid.y), 1.5, false)
+		if _era != Eras.SCIFI:
 			var cc := Dungeon.centre(pl, Vector2i(rm["x"], rm["z"]))
-			_add_lamp(rm["lv"], Vector3(cc.x + 0.05, Dungeon.floor_y(pl, rm["lv"]) + 0.75, cc.y - 0.55), 1.1, false)
+			_add_lamp(rm["lv"], Vector3(cc.x + 0.05, fy + 0.75, cc.y - 0.55), 1.1, false)
+		for lt in pl["loot"]:
+			if int(lt["room"]) == ri:
+				var lp: Vector3 = lt["p"]
+				var to := Vector2(mid.x - lp.x, mid.y - lp.z).limit_length(0.9)
+				_add_lamp(rm["lv"], Vector3(lp.x + to.x, fy + 1.1, lp.z + to.y), 0.8, false)
 	for li in pl["locks"].size():
 		_seals.append(_make_seal(li))
 	for pi in pl["parts"].size():
