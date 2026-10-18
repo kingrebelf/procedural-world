@@ -2334,19 +2334,50 @@ func test_fires() -> void:
 	fll.free()
 	var fl := FireFx.flame(0.42)
 	var cards := fl.find_children("*", "MeshInstance3D", true, false)
-	check(cards.size() == 2 and (cards[0] as MeshInstance3D).material_override == FireFx.material(), "a torch's flame is two cards sharing the fire material")
+	var fsh := func(c): return ((c as MeshInstance3D).material_override as ShaderMaterial).shader == load("res://src/world/flame.gdshader")
+	check(cards.size() == 2 and cards.all(fsh), "a torch's flame is two flipbook cards")
+	check(cards.all(func(c): return ((c as MeshInstance3D).material_override as ShaderMaterial).get_shader_parameter("tex").resource_path.contains("torch_")),
+		"a torch burns with Ben's torch flames")
+	check(cards[0].material_override != cards[1].material_override, "a flame's two cards burn different frames of fire")
+	for sheet in FireFx.FOOT:
+		check(sheet == "jet" or ResourceLoader.exists(FireFx.SHEET.replace("fire_", sheet + "_")), "the %s flipbook is in the game" % sheet)
+	check(FireFx.family(0.42, 0.5)[1][0].begins_with("torch") and FireFx.family(1.0, 0.5)[1].has("campfire_0")
+		and FireFx.family(1.8, 0.5)[1][0].begins_with("blaze") and FireFx.family(3.0, 0.5)[1][0].begins_with("timber"),
+		"a fire burns like a torch, a campfire, a blaze or burning timbers by its size")
 	fl.free()
 	var bon := FireFx.flame(1.0)
-	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return (c as MeshInstance3D).material_override == FireFx.material())
+	var bcards := bon.find_children("*", "MeshInstance3D", true, false).filter(func(c): return c.name != "Coals" and fsh.call(c))
+	check(bcards.all(func(c): return bool((c.material_override as ShaderMaterial).get_shader_parameter("has_wind"))), "a campfire is torn sideways in a gale")
 	check(bcards.size() >= 3 and bon.find_child("Coals", true, false) != null, "a big fire burns across its bed, over glowing coals")
 	var spread := 0.0
 	for c in bcards:
 		spread = maxf(spread, Vector2((c as Node3D).position.x, (c as Node3D).position.z).length())
 	check(spread > 0.1, "a big fire's tongues stand apart (%.2f m)" % spread)
+	var tg := bon.find_child("Tongues", true, false) as GPUParticles3D
+	check(tg != null and tg.process_material is ShaderMaterial and not tg.local_coords and tg.amount >= 30,
+		"a big fire burns in the round, its tongues rising through the world (%s)" % (tg.amount if tg != null else -1))
+	if tg != null:
+		check(is_equal_approx(float((tg.process_material as ShaderMaterial).get_shader_parameter("seed")), float(bon.get_meta("fire_seed"))),
+			"its tongues leap with the same life as its cards and light")
+		check(tg.amount_ratio > 0.0 and tg.amount_ratio <= 1.0 and FireFx.TONGUE_RATIO[0] < FireFx.TONGUE_RATIO[2], "the fire setting sets how many tongues burn")
+	var pops := bon.find_child("Pops", true, false)
+	check(pops is FireFx.Pops, "now and then a log pops in a fire")
+	if pops is FireFx.Pops:
+		var waits := []
+		for i in 20:
+			waits.append(pops._rest())
+		check(waits.min() >= 2.0 and waits.max() <= 26.0 and waits.max() - waits.min() > 1.0, "a fire pops at random, every few seconds")
+		pops.pop()
+		var burst := pops.find_child("Burst", true, false) as CPUParticles3D
+		check(burst != null and burst.one_shot and burst.gravity.y < 0.0, "a pop throws sparks that arc and fall back")
 	bon.free()
+	var jet := FireFx.flame(1.0, Color(1, 1, 1, 1), "jet", true)
+	check(jet.find_child("Tongues", true, false) == null and jet.find_child("Pops", true, false) == null, "a jet is no wood fire: no tongues, no pops")
+	jet.free()
 	var wick := FireFx.flame(0.07)
 	var wc := wick.find_children("*", "MeshInstance3D", true, false)
 	check(wc.size() == 1 and (wc[0] as MeshInstance3D).material_override == FireFx.wick_material(), "a candle's flame is drawn, not a flipbook blob")
+	check(wick.find_child("Tongues", true, false) == null, "a candle burns without tongues")
 	var lit := Node3D.new()
 	var lfl := FireFx.flame(0.42)
 	lit.add_child(lfl)
@@ -2381,6 +2412,9 @@ func test_fires() -> void:
 	var torch := Viewmodel.prop_for("torch")
 	check(torch.find_child("Flame", true, false) != null, "a torch in hand burns")
 	check(torch.find_child("Drag", true, false) != null, "a carried torch's flame trails as it moves")
+	var ttg := torch.find_child("Tongues", true, false) as GPUParticles3D
+	check(ttg != null and is_equal_approx(float((ttg.process_material as ShaderMaterial).get_shader_parameter("seed")), HandLight.TORCH_SEED),
+		"a carried torch's tongues burn with the seed its light follows")
 	check(torch.find_child("Sparks", true, false) is CPUParticles3D and torch.find_child("Smoke", true, false) is CPUParticles3D, "a torch throws sparks and smoke")
 	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
 	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")

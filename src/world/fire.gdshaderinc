@@ -38,3 +38,13 @@ float fx_noise2(vec2 p) {
 	vec2 u = f * f * (3.0 - 2.0 * f);
 	return mix(mix(fx_cell(i), fx_cell(i + vec2(1.0, 0.0)), u.x), mix(fx_cell(i + vec2(0.0, 1.0)), fx_cell(i + vec2(1.0)), u.x), u.y);
 }
+
+// Keeps a flame's colour on the warm line from red through orange to yellow: green never
+// above red, blue well under green. A bright flame then tonemaps to a yellow core and an
+// orange body under any exposure, instead of clipping to pink-white, as the sheet's pale
+// highlights and a night's high exposure otherwise make it.
+vec3 fire_hue(vec3 c) {
+	c.g = min(c.g, c.r * 0.8);
+	c.b = min(c.b, c.g * 0.42);
+	return c;
+}

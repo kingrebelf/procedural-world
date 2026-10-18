@@ -1,8 +1,9 @@
 extends SceneTree
 ## Frame strips of flames and cloth moving, for judging their motion (FireFx, ClothFx):
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_fire_cloth.gd -- \
-##     --out=/abs/strip.png [--scene=fire|cloth|flag] [--wind=0.6] [--frames=6] [--dt=0.12]
+##     --out=/abs/strip.png [--scene=fire|sizes|cloth|flag] [--wind=0.6] [--frames=6] [--dt=0.12] [--pops]
 ## fire: a campfire, a wall torch, a hanging lantern and a candle at night, with their light.
+## sizes: a torch's flame, a campfire, a blaze and burning timbers side by side at night.
 ## cloth: two market stalls and a hanging banner by day. flag: a watchtower's flag up close.
 ## Each frame is dt seconds of the fires' and the wind's clocks after the one before; the
 ## strip reads left to right, top to bottom.
@@ -41,7 +42,7 @@ func _run() -> void:
 	vp.msaa_3d = Viewport.MSAA_4X
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	root.add_child(vp)
-	var night := scene == "fire"
+	var night := scene == "fire" or scene == "sizes"
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
@@ -110,6 +111,16 @@ func _run() -> void:
 				_light(vp, (f[0] as Vector3) + Vector3(0, 0.1, 0), 1.2 if f[1] > 0.2 else 0.5, 6.0 if f[1] > 0.2 else 3.0)
 			cam.position = Vector3(0.0, 1.5, 4.2)
 			cam.look_at(Vector3(0.0, 0.8, 0.0))
+		"sizes":
+			var x := -3.6
+			for sz in [0.42, 0.95, 1.8, 3.0]:
+				var fl := FireFx.flame(sz)
+				fl.position = Vector3(x + sz * 0.5, 0, 0)
+				vp.add_child(fl)
+				_light(vp, fl.position + Vector3(0, sz, 0), 1.0 + sz, 4.0 + sz * 3.0)
+				x += sz + 0.9
+			cam.position = Vector3(0.0, 1.6, 9.0)
+			cam.look_at(Vector3(0.0, 1.2, 0.0))
 		"cloth":
 			var stalls := MeshInstance3D.new()
 			stalls.mesh = ObjectLibrary.get_mesh("market_stall")
@@ -144,6 +155,10 @@ func _run() -> void:
 		FireFx.tick(1.0 / 30.0)
 		RenderingServer.global_shader_parameter_set("wind_time", i / 30.0)
 		await process_frame
+	# Every fire pops a log as the strip starts, to see the sparks thrown.
+	if OS.get_cmdline_user_args().has("--pops"):
+		for p in vp.find_children("Pops", "", true, false):
+			p.pop()
 	var shots: Array = []
 	var wt := 1.0
 	for f in frames:

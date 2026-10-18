@@ -81,6 +81,8 @@ void fragment() {
 	col += vec3(1.0, 0.55, 0.22) * exp(-r2 * 16.0) * 0.16;
 	// A leaping flame burns brighter, a sinking one dimmer and redder.
 	col *= tint.rgb * tint.a * (0.82 + 0.36 * life);
+	// The blue root stays blue; the rest keeps to warm hues so the heart reads gold.
+	col = mix(fire_hue(col), col, clamp(blue * 1.5, 0.0, 1.0));
 	ALBEDO = col;
 	ALPHA = clamp(max(col.r, max(col.g, col.b)) * 0.9, 0.0, 1.0);
 }

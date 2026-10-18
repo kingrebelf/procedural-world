@@ -1,6 +1,7 @@
 class_name FireFx
 extends RefCounted
-## Living flames: Ben's fire flipbook (assets/textures/fx/fire_flipbook.png) on upright
+## Living flames: Ben's fire flipbooks (assets/textures/fx/*_flipbook.png: a torch's,
+## a campfire's, a blaze's, burning timbers', each torn sideways by the wind too) on upright
 ## cards that turn to face you about the vertical only and cross-fade through the sheet's
 ## 16 frames, with turbulence licking up through them (flame.gdshader); candle and lamp
 ## flames drawn (wick_flame.gdshader). Each flickers with its own life (life(), shared with
@@ -10,7 +11,18 @@ extends RefCounted
 const SHEET := "res://assets/textures/fx/fire_flipbook.png"
 ## Each frame's flame stands this share of the frame above its bottom edge (a jet hangs
 ## this share below its top edge), per sheet.
-const FOOT := {"fire": 0.12, "jet": 0.02}
+const FOOT := {"fire": 0.12, "jet": 0.02, "torch_0": 0.06, "torch_1": 0.06, "campfire_0": 0.12, "campfire_1": 0.1,
+	"blaze_0": 0.1, "blaze_1": 0.09, "timber_0": 0.17, "timber_1": 0.15, "wind_0": 0.17, "wind_1": 0.14}
+## A wood fire's sheets by how big it burns: [up to this height in metres, its sheets, whether
+## the wind tears it sideways]. A fire picks its family by size (give or take, so fires near
+## a boundary differ) and each of its cards a different sheet of it, so no two look alike.
+const FAMILIES := [
+	[0.62, ["torch_0", "torch_1"], false],
+	[1.35, ["campfire_0", "campfire_1", "fire"], true],
+	[2.2, ["blaze_0", "blaze_1", "campfire_0"], true],
+	[INF, ["timber_0", "timber_1", "blaze_1"], true],
+]
+const WIND_SHEETS := ["wind_0", "wind_1"]
 const FPS := 8.0
 
 ## Where kit props burn, in the prop's own space: model -> [[foot of the flame, height]].
@@ -81,10 +93,20 @@ static func prop_flame(f: Array) -> Node3D:
 	n.position = f[0]
 	return n
 
-## The flipbook material for a sheet in assets/textures/fx ("fire", "jet").
-static func material(sheet := "fire") -> ShaderMaterial:
-	if _mats.has(sheet):
-		return _mats[sheet]
+## The sheets a wood fire `size` metres tall burns with (FAMILIES), for its seed.
+static func family(size: float, seed: float) -> Array:
+	var s := size * (0.88 + 0.24 * fposmod(seed * 7.31, 1.0))
+	for f in FAMILIES:
+		if s < float(f[0]):
+			return f
+	return FAMILIES[-1]
+
+## The flipbook material for a sheet in assets/textures/fx ("fire", "jet", "campfire_0" ...),
+## and the wind-torn sheet it gives way to in a gale ("" for none).
+static func material(sheet := "fire", wind_sheet := "") -> ShaderMaterial:
+	var key := sheet + ":" + wind_sheet
+	if _mats.has(key):
+		return _mats[key]
 	var m := ShaderMaterial.new()
 	m.shader = load("res://src/world/flame.gdshader")
 	m.set_shader_parameter("fps", FPS * (2.0 if sheet == "jet" else 1.0))
@@ -93,7 +115,12 @@ static func material(sheet := "fire") -> ShaderMaterial:
 	var path := SHEET.replace("fire_", sheet + "_")
 	if ResourceLoader.exists(path):
 		m.set_shader_parameter("tex", load(path))
-	_mats[sheet] = m
+	var wpath := SHEET.replace("fire_", wind_sheet + "_")
+	if wind_sheet != "" and ResourceLoader.exists(wpath):
+		m.set_shader_parameter("wind_tex", load(wpath))
+		m.set_shader_parameter("has_wind", true)
+		m.set_shader_parameter("wind_foot", FOOT.get(wind_sheet, 0.0))
+	_mats[key] = m
 	return m
 
 static var _wick: ShaderMaterial
@@ -107,7 +134,8 @@ static func wick_material() -> ShaderMaterial:
 
 ## A flame `size` metres tall, its base at the returned node's origin (or, with `hang`,
 ## hanging from it, as a jet from a nozzle). A big one is two flipbook cards out of step,
-## a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
+## filled out in the round by rising tongues (tongues()) and now and then a popping log
+## (Pops); a small one (under SMALL) a drawn candle flame. `wind` is how much a breeze reaches it:
 ## 1 in the open, about 0.15 indoors or behind a lantern's glass; below 0 picks by size.
 ## Its seed (meta "fire_seed") is what a FlickerLight beside it follows.
 static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang := false, wind := -1.0, glass := Vector3.ZERO) -> Node3D:
@@ -152,14 +180,23 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 	# over glowing coals.
 	var big := size >= 0.6 and not hang and sheet == "fire"
 	var cards := 4 if big else 2
+	# A wood fire's cards each burn a different sheet of its family, torn sideways in a gale.
+	var fam: Array = family(size, seed) if sheet == "fire" and not hang else []
+	var pick := int(seed * 1009.0)
 	for i in cards:
 		var s := size * (1.0 if i == 0 else (0.7 if not big else 0.5 + 0.08 * i))
+		var card_sheet := sheet
+		var wind_sheet := ""
+		if not fam.is_empty():
+			card_sheet = fam[1][(pick + i) % (fam[1] as Array).size()]
+			if fam[2]:
+				wind_sheet = WIND_SHEETS[(pick + i) % WIND_SHEETS.size()]
 		var q := QuadMesh.new()
 		q.size = Vector2(s, s)
-		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
+		q.center_offset = Vector3(0, s * (0.5 - float(FOOT.get(card_sheet, 0.0))) * (-1.0 if hang else 1.0), 0)
 		var mi := MeshInstance3D.new()
 		mi.mesh = q
-		mi.material_override = material(sheet)
+		mi.material_override = material(card_sheet, wind_sheet)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# The cards turn and lean in the shader, so their box must hold them at any angle.
 		mi.extra_cull_margin = s * 1.5
@@ -187,7 +224,147 @@ static func flame(size: float, tint := Color(1, 1, 1, 1), sheet := "fire", hang 
 		bed.visibility_range_end = 90.0
 		bed.set_instance_shader_parameter("seed", seed)
 		n.add_child(bed)
+	if sheet == "fire" and not hang:
+		n.add_child(tongues(size, seed, wind, big))
+		n.add_child(Pops.new(size))
 	return n
+
+## By the fire_fx setting (Low, Normal, High): the share of each flame's tongues that burn.
+const TONGUE_RATIO := [0.4, 0.7, 1.0]
+static var _tongue_draw: QuadMesh
+
+## The share of a flame's tongues the fire_fx setting lets burn.
+static func tongue_ratio() -> float:
+	# Looked up, not named: tools run without the autoloads compiled in.
+	var tree := Engine.get_main_loop() as SceneTree
+	var st: Node = tree.root.get_node_or_null("Settings") if tree != null else null
+	var v = st.get_value("fire_fx") if st != null else null
+	return TONGUE_RATIO[clampi(1 if v == null else int(v), 0, TONGUE_RATIO.size() - 1)]
+
+## Tells every burning flame's tongues of a change to the fire_fx setting (FireClock).
+static func apply_quality(tree: SceneTree) -> void:
+	var r := tongue_ratio()
+	for t in tree.get_nodes_in_group("fire_tongues"):
+		(t as GPUParticles3D).amount_ratio = r
+
+## A flame's body in the round (flame_tongues.gdshader): tongues of burning gas rising
+## off its bed, for depth the flat cards can't give from the side or above. Scaled by the
+## flame's height, so the shaders work in flame heights.
+static func tongues(size: float, seed: float, wind: float, big := false) -> GPUParticles3D:
+	if _tongue_draw == null:
+		_tongue_draw = QuadMesh.new()
+		var dm := ShaderMaterial.new()
+		dm.shader = load("res://src/world/flame_tongue.gdshader")
+		_tongue_draw.material = dm
+	var p := GPUParticles3D.new()
+	p.name = "Tongues"
+	p.add_to_group("fire_tongues")
+	var m := ShaderMaterial.new()
+	m.shader = load("res://src/world/flame_tongues.gdshader")
+	m.set_shader_parameter("seed", seed)
+	m.set_shader_parameter("exposed", wind)
+	m.set_shader_parameter("bed", 0.2 if big else 0.1)
+	p.process_material = m
+	p.draw_pass_1 = _tongue_draw
+	p.amount = clampi(roundi(size * 40.0), 12, 64)
+	p.amount_ratio = tongue_ratio()
+	# Hot gas rises at about the root of its height (a bonfire's tongues live longer).
+	p.lifetime = 0.75 * sqrt(maxf(size, 0.05))
+	p.preprocess = p.lifetime
+	p.local_coords = false
+	p.scale = Vector3.ONE * size
+	p.visibility_aabb = AABB(Vector3(-1.2, -0.2, -1.2), Vector3(2.4, 2.8, 2.4))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.visibility_range_end = 90.0
+	return p
+
+static var _pop_sounds: Array = []
+
+## Now and then a log pops: a little crack and a few sparks thrown out in arcs that fall
+## back, the bigger the fire the more often. Only near you, and only while it is shown.
+class Pops extends Node3D:
+	var size := 1.0
+	var _wait := 0.0
+	var _burst: CPUParticles3D
+	var _snd: AudioStreamPlayer3D
+
+	func _init(s: float) -> void:
+		name = "Pops"
+		size = s
+		_wait = randf_range(0.5, _rest())
+
+	## Seconds until the next pop: a bonfire every few seconds, a torch now and then.
+	func _rest() -> float:
+		var k := clampf((size - 0.3) / 0.7, 0.0, 1.0)
+		return randf_range(lerpf(9.0, 2.5, k), lerpf(26.0, 11.0, k))
+
+	func _process(delta: float) -> void:
+		_wait -= delta
+		if _wait > 0.0:
+			return
+		_wait = _rest()
+		if not is_visible_in_tree():
+			return
+		var vp := get_viewport()
+		var cam := vp.get_camera_3d() if vp != null else null
+		if cam == null or cam.global_position.distance_to(global_position) > 40.0:
+			return
+		pop()
+
+	func pop() -> void:
+		if _burst == null:
+			_build()
+		var s := size * scale_of()
+		var a := randf() * TAU
+		_burst.position = Vector3(cos(a), 0.0, sin(a)) * size * 0.12 + Vector3(0, size * 0.12, 0)
+		_burst.initial_velocity_min = s * 2.2
+		_burst.initial_velocity_max = s * 5.0
+		_burst.restart()
+		if _snd != null:
+			if not FireFx._pop_sounds.is_empty():
+				_snd.stream = FireFx._pop_sounds.pick_random()
+			_snd.pitch_scale = randf_range(0.8, 1.25)
+			_snd.volume_db = randf_range(-14.0, -5.0) + clampf(size - 0.6, -0.4, 0.6) * 8.0
+			_snd.play()
+
+	func scale_of() -> float:
+		var p := get_parent() as Node3D
+		return p.global_basis.get_scale().y if p != null and p.is_inside_tree() else 1.0
+
+	func _build() -> void:
+		var em := FireFx.embers(size, false)
+		_burst = em.get_node("Sparks") as CPUParticles3D
+		em.remove_child(_burst)
+		em.free()
+		_burst.name = "Burst"
+		_burst.one_shot = true
+		_burst.emitting = false
+		_burst.explosiveness = 0.92
+		_burst.amount = 9
+		_burst.lifetime = 1.4
+		_burst.randomness = 0.7
+		_burst.emission_sphere_radius = size * 0.04
+		_burst.direction = Vector3.UP
+		_burst.spread = 50.0
+		# Thrown out, they arc and fall back as they cool, not drift up like the rest.
+		_burst.gravity = Vector3(0, -5.5, 0)
+		_burst.damping_min = 0.4
+		_burst.damping_max = 1.2
+		_burst.tangential_accel_min = 0.0
+		_burst.tangential_accel_max = 0.0
+		_burst.visibility_range_end = 45.0
+		add_child(_burst)
+		if FireFx._pop_sounds.is_empty():
+			for i in 4:
+				var path := "res://assets/audio/sfx/fire/pop_%d.ogg" % i
+				if ResourceLoader.exists(path):
+					FireFx._pop_sounds.append(load(path))
+		if not FireFx._pop_sounds.is_empty():
+			_snd = AudioStreamPlayer3D.new()
+			_snd.bus = "Effects"
+			_snd.unit_size = 2.5
+			_snd.max_distance = 35.0
+			add_child(_snd)
 
 static var _glass: ShaderMaterial
 
@@ -214,7 +391,10 @@ static func carried(size: float, seed: float) -> Node3D:
 	var n := flame(size)
 	n.set_meta("fire_seed", seed)
 	for c in n.get_children():
-		(c as MeshInstance3D).set_instance_shader_parameter("seed", seed)
+		if c is MeshInstance3D:
+			(c as MeshInstance3D).set_instance_shader_parameter("seed", seed)
+		elif c is GPUParticles3D:
+			((c as GPUParticles3D).process_material as ShaderMaterial).set_shader_parameter("seed", seed)
 	n.add_child(Drag.new())
 	return n
 

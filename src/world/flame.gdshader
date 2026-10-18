@@ -15,6 +15,11 @@ uniform float fps = 8.0;
 uniform float foot = 0.12;
 // A jet hangs down from its nozzle instead of standing up.
 uniform bool hang = false;
+// The same fire torn sideways by a strong wind (leaning toward the sheet's right), shown in
+// place of the calm one as gusts blow across your view of it.
+uniform sampler2D wind_tex : source_color, filter_linear_mipmap, repeat_disable;
+uniform bool has_wind = false;
+uniform float wind_foot = 0.12;
 instance uniform vec4 tint : source_color = vec4(1.0);
 instance uniform float seed = 0.0; // 0..1, shared with its light
 instance uniform float card = 0.0; // which of the flame's cards: each runs its own frames
@@ -26,6 +31,9 @@ varying vec2 uv_b;
 varying float mixf;
 varying float life;
 varying float mirror;
+varying vec2 uv_wa;
+varying vec2 uv_wb;
+varying float windy;
 
 void vertex() {
 	// Upright: turn about the vertical through the node to face the camera.
@@ -48,7 +56,12 @@ void vertex() {
 	// push it over and let it stand again.
 	float h = clamp(abs(lv.y * sy) / max(size * sy, 1e-3), 0.0, 1.0);
 	float gust = 0.55 + 0.45 * fx_noise(fire_time * 1.3 + seed * 41.0);
-	vec3 lean = vec3(wind_dir.x, 0.0, wind_dir.y) * wind_strength * exposed * gust * 0.9 + drag;
+	vec3 blow = vec3(wind_dir.x, 0.0, wind_dir.y) * wind_strength * exposed * gust;
+	// Torn sideways in a strong wind, the more the more squarely it blows across your view;
+	// the drawn lean then takes over less of the bending.
+	float across = dot(blow, r);
+	windy = has_wind && !hang ? smoothstep(0.3, 0.65, abs(across)) : 0.0;
+	vec3 lean = blow * 0.9 * (1.0 - 0.55 * windy) + drag;
 	float ll = length(lean);
 	lean *= ll > 1.1 ? 1.1 / ll : 1.0;
 	// Leaning over shortens it as it bends, so it keeps its length.
@@ -64,6 +77,11 @@ void vertex() {
 	vec2 uv = vec2(mix(UV.x, 1.0 - UV.x, mirror), UV.y);
 	uv_a = uv + vec2(mod(f0, 4.0), floor(f0 / 4.0));
 	uv_b = uv + vec2(mod(f1, 4.0), floor(f1 / 4.0));
+	// The torn sheet leans to its right, so it is turned to lean downwind, its root set
+	// where the calm one's is.
+	vec2 uw = vec2(across < 0.0 ? 1.0 - UV.x : UV.x, UV.y + foot - wind_foot);
+	uv_wa = uw + vec2(mod(f0, 4.0), floor(f0 / 4.0));
+	uv_wb = uw + vec2(mod(f1, 4.0), floor(f1 / 4.0));
 }
 
 vec3 frame(vec2 cell_uv) {
@@ -71,6 +89,14 @@ vec3 frame(vec2 cell_uv) {
 	vec2 cell = floor(cell_uv);
 	vec2 q = clamp(cell_uv - cell, vec2(0.004), vec2(0.996));
 	return texture(tex, (cell + q) / 4.0).rgb;
+}
+
+vec3 wind_frame(vec2 cell_uv) {
+	// Its tongues run out to the frame's edges, so it fades out just inside them.
+	vec2 cell = floor(cell_uv);
+	vec2 q = clamp(cell_uv - cell, vec2(0.004), vec2(0.996));
+	vec2 e = smoothstep(vec2(0.0), vec2(0.04), q) * smoothstep(vec2(0.0), vec2(0.04), 1.0 - q);
+	return texture(wind_tex, (cell + q) / 4.0).rgb * e.x * e.y;
 }
 
 void fragment() {
@@ -82,9 +108,17 @@ void fragment() {
 	vec2 warp = vec2(fx_noise2(np) - 0.5, fx_noise2(np * 1.9 + 7.0) - 0.5);
 	vec2 w = warp * vec2(0.09, 0.05) * above * (0.6 + 0.6 * life);
 	vec3 col = mix(frame(uv_a + w), frame(uv_b + w), mixf);
+	if (windy > 0.01) {
+		col = mix(col, mix(wind_frame(uv_wa + w), wind_frame(uv_wb + w), mixf), windy);
+	}
 	// Brighter as it leaps; the tips burn cooler and redder than the heart.
-	col *= tint.rgb * tint.a * (0.78 + 0.5 * life);
+	col *= tint.rgb * tint.a * (0.66 + 0.42 * life);
 	col *= mix(vec3(1.0), vec3(1.0, 0.72, 0.5), smoothstep(0.45, 1.0, above) * 0.55);
+	// A wood fire's colours: yellow at the heart, orange body, red tips (tinted jets keep
+	// their own).
+	if (!hang) {
+		col = fire_hue(col);
+	}
 	// Premultiplied: bright flame hides what is behind it in proportion, so it keeps its
 	// colour against a bright sky instead of washing out as plain adding would.
 	ALBEDO = col;
