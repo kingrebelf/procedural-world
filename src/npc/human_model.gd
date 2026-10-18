@@ -366,8 +366,9 @@ func _dress(b: Dictionary, era: int, job: String) -> void:
 	var cols: Dictionary = _wardrobe["cols"]
 	var accent := Color(0, 0, 0, 0)
 	if era == Eras.SCIFI:
-		# Glowing seams are alien fashion; human outposts wear plain work clothes.
-		accent = Color(0.3, 0.9, 1.0, 0.0 if Eras.theme == "human" else 1.0)
+		# Glowing seams are alien fashion, worn only on alien worlds. Human outposts wear
+		# plain work clothes, on human worlds and on older worlds without a theme alike.
+		accent = Color(0.3, 0.9, 1.0, 1.0 if Eras.theme == "alien" else 0.0)
 	# The body under the garments is painted in the same colours, and drawn a little
 	# inside them (human.gdshader), so nothing shows through where they bend.
 	var shirt: Color = cols[Outfit.PART_SHIRT]

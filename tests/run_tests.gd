@@ -2121,6 +2121,17 @@ func test_wardrobes() -> void:
 			on_legs += 1
 	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
 	h.free()
+	# Nothing a human wears glows: sci-fi seams light up only on alien worlds.
+	var was: String = Eras.theme
+	for theme in ["", "human", "alien"]:
+		Eras.theme = theme
+		var g := HumanModel.new()
+		root.add_child(g)
+		g.build({"height": 1.0, "build": 1.0, "female": false, "skin": Color(0.6, 0.45, 0.35), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.SCIFI, "engineer")
+		var acc: Color = g._body.get_instance_shader_parameter("accent_col")
+		check((acc.a > 0.0) == (theme == "alien"), "sci-fi work clothes glow only on alien worlds (theme '%s')" % theme)
+		g.free()
+	Eras.theme = was
 
 ## A hand holding a tool closes round it: the handle goes through the curled fingers,
 ## on the palm side of the knuckles, and picks and hammers strike with their head ahead.
