@@ -167,6 +167,7 @@ func _controls_tab() -> Control:
 	_check(g, "invert_y", "Invert vertical look")
 	_check(g, "head_bob", "Head bob and sway", "Your view rises and falls with each step, sways side to side, dips when you land and leans a little as you strafe.")
 	_slider(g, "head_bob_strength", "Head bob amount", 0.2, 1.5, 0.05, "%.2f")
+	_check(g, "sail_auto_trim", "Auto-trim sails", "Your boat's sail is trimmed to the wind for you, and W/S paddle instead. Off, W/S haul in and ease out the sheet yourself.")
 	var pads := Input.get_connected_joypads()
 	_label(g, "Controller")
 	g.add_child(UITheme.label(Input.get_joy_name(pads[0]) if not pads.is_empty() else "None connected (Xbox, PlayStation and generic pads are supported)", 15, UITheme.DIM))

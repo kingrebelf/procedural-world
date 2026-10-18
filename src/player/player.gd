@@ -2077,7 +2077,7 @@ func deploy_vehicle() -> bool:
 	var at := global_position + Vector3(fwd.x, 0, fwd.z).normalized() * (2.0 + float(Vehicle.KINDS[it["type"]]["length"]) * 0.6)
 	var v := vehicles.deploy(it, at, _yaw)
 	if v == null:
-		Game.toast.emit("There's no room for it here")
+		Game.toast.emit("Face the water to put it in: it needs water deep enough to float" if Vehicle.is_boat(it["type"]) else "There's no room for it here")
 		return false
 	Game.inventory.remove_at(selected, 1)
 	Game.toast.emit("%s ready: [%s] to ride, hold to pack it up" % [Vehicle.label(v.kind), _key("interact")])
@@ -2108,9 +2108,20 @@ func mount(v: Vehicle) -> void:
 		Game.toast.emit("%s: [%s/%s] push and pull it, [%s/%s] swing it round, look up and down to lay it, [%s] load and fire, [%s] step away" % [Vehicle.label(v.kind),
 			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("use"), _key("interact")])
 		return
-	Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
-		_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
-		"gallop" if v.kind == "horse" else "boost", _key("interact")])
+	if v.boat():
+		var oars := "row" if v.kind == "rowboat" else "paddle"
+		if v.has_sail():
+			Game.toast.emit("%s: [%s] raise or lower the sail, [%s/%s] %s, [%s/%s] steer, [%s] get off" % [Vehicle.label(v.kind),
+				_key("jump"), _key("move_forward"), _key("move_back"),
+				"pole along (or trim the sheet with the sail up)" if not Settings.get_value("sail_auto_trim") else "pole along",
+				_key("move_left"), _key("move_right"), _key("interact")])
+		else:
+			Game.toast.emit("%s: [%s/%s] %s, [%s/%s] steer, [%s] get off" % [Vehicle.label(v.kind),
+				_key("move_forward"), _key("move_back"), oars, _key("move_left"), _key("move_right"), _key("interact")])
+	else:
+		Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
+			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
+			"gallop" if v.kind == "horse" else "boost", _key("interact")])
 	if v.flies():
 		Game.toast.emit("Look where you want to fly. [%s/%s] climb and descend." % [_key("jump"), _key("crouch")])
 
@@ -2154,6 +2165,9 @@ func _ride(delta: float) -> void:
 		input = Input.get_vector("move_left", "move_right", "move_back", "move_forward")
 	v.drive = input
 	v.boosting = not ui_open and Input.is_action_pressed("sprint") and input.y > 0.1
+	v.auto_trim = bool(Settings.get_value("sail_auto_trim"))
+	if v.boat() and not ui_open and Input.is_action_just_pressed("jump") and v.has_sail():
+		Game.toast.emit("Sail raised" if v.toggle_sail() else "Sail lowered")
 	if v.flies():
 		# A ship flies where you look; Jump climbs and Crouch descends.
 		v.aim = -camera.global_transform.basis.z
@@ -2202,6 +2216,8 @@ func _ride(delta: float) -> void:
 	var text := "%d km/h   [%s] get off" % [roundi(absf(v.spd) * 3.6), _key("interact")]
 	if v.p.get("gun", false):
 		text = "%s   [%s] get off" % [Cannon.status(v), _key("interact")]
+	if v.boat():
+		text = _boat_hud(v)
 	if v.flies() and v.leaving >= Vehicle.LEAVE_TIME:
 		go_to_orbit()
 		return
@@ -2214,6 +2230,18 @@ func _ride(delta: float) -> void:
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
+
+## Afloat: her speed, and for a sailing boat the point of sail and how the sail draws.
+func _boat_hud(v: Vehicle) -> String:
+	var text := "%.1f knots" % (absf(v.spd) * 1.944)
+	if v.has_sail():
+		if bool(v.sail["raised"]):
+			var wind := Water._dir.normalized() * Sailing.wind_speed(Water._wind)
+			text += "   %s, %s   sheet %d%%   [%s] lower sail" % [Sailing.point_of_sail(wind, v.rotation.y), Sailing.sail_state(v.sail).to_lower(),
+				roundi(float(v.sail["sheet"]) * 100.0), _key("jump")]
+		else:
+			text += "   [%s] raise sail" % _key("jump")
+	return text + "   [%s] get off" % _key("interact")
 
 var _ride_yaw := 0.0
 const SIT_HIPS := 0.5 ## hip height above the feet in the sitting pose

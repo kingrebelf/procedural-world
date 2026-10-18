@@ -2181,8 +2181,8 @@ func test_icon_models() -> void:
 	var items := GearModels.icon_items()
 	check(items.size() > 600, "the icon sheets list the items (%d)" % items.size())
 	for t: String in items:
-		if not ItemDB.ITEMS.has(t):
-			continue
+		if not ItemDB.ITEMS.has(t) or Vehicle.is_boat(t):
+			continue # a boat is carried, not held: her model is the boat you put in the water
 		var prop := Viewmodel.prop_for(t)
 		var card := HeldScale.unmodelled(prop)
 		prop.free()
@@ -3077,6 +3077,73 @@ func test_pockets() -> void:
 	var purse := int(rec["purse"])
 	check(NPCSocial.lift_marks(rec, purse + 50) == purse and int(rec["purse"]) == 0, "lifting a purse takes no more than it holds")
 
+## Sailing: a boat goes where the wind and her paddles push her, as a real one would.
+func test_sailing() -> void:
+	var run := func(kind: String, wind: Vector2, secs: float, paddle := 0.0, rudder := 0.0, depth := 5.0) -> Dictionary:
+		var st := Sailing.new_state(0.0) # heading -z
+		for i in int(secs * 30.0):
+			Sailing.step(kind, st, 1.0 / 30.0, wind, Vector2.ZERO, rudder, paddle, 0.0, true, depth)
+		return st
+	var ahead := func(st: Dictionary) -> float:
+		return (st["vel"] as Vector2).dot(Sailing.fwd(float(st["yaw"])))
+	# Wind 6 m/s: astern (blowing toward -z), on the beam (toward +x), and from dead ahead.
+	var astern := Vector2(0, -6)
+	var beam := Vector2(6, 0)
+	var head := Vector2(0, 6)
+	var raft_run: float = ahead.call(run.call("sail_raft", astern, 40.0))
+	check(raft_run > 0.8 and raft_run < 3.0, "a sail raft runs before the wind (%.2f m/s)" % raft_run)
+	check(absf(ahead.call(run.call("sail_raft", head, 30.0))) < 0.15, "a sail raft can't sail into the wind")
+	var sloop_beam: float = ahead.call(run.call("sloop", beam, 60.0))
+	var sloop_irons: float = ahead.call(run.call("sloop", head, 30.0))
+	check(sloop_beam > 1.5, "a sloop sails fast on a beam reach (%.2f m/s)" % sloop_beam)
+	check(sloop_irons < 0.2, "a sloop head to wind is in irons (%.2f m/s)" % sloop_irons)
+	# Close-hauled, 45 degrees off the wind: the sloop still makes way; the raft doesn't.
+	var close := Vector2(sin(PI * 0.25), cos(PI * 0.25)) * 6.0
+	check(float(ahead.call(run.call("sloop", close, 60.0))) > 0.5, "a sloop can beat to windward")
+	check(float(ahead.call(run.call("sail_raft", close, 40.0))) < 0.3, "a square-rigged raft can't")
+	# Leeway: a raft slides with the wind far more than the keeled sloop.
+	var raft_side := absf((run.call("sail_raft", beam, 40.0)["vel"] as Vector2).x)
+	var sloop_side := absf((run.call("sloop", beam, 40.0)["vel"] as Vector2).x)
+	check(raft_side > sloop_side, "a raft makes more leeway than a sloop (%.2f vs %.2f)" % [raft_side, sloop_side])
+	# Paddling on a calm day: the kayak is the quickest, the canoe next.
+	var calm := Vector2.ZERO
+	var canoe: float = ahead.call(run.call("canoe", calm, 30.0, 1.0))
+	var kayak: float = ahead.call(run.call("kayak", calm, 30.0, 1.0))
+	var row: float = ahead.call(run.call("rowboat", calm, 30.0, 1.0))
+	check(canoe > 1.8 and canoe < 3.5, "paddling a canoe (%.2f m/s)" % canoe)
+	check(kayak > canoe, "a kayak is quicker than a canoe (%.2f vs %.2f)" % [kayak, canoe])
+	check(row > 1.8 and row < 3.5, "rowing a rowboat (%.2f m/s)" % row)
+	# The rudder turns her under way (A/D: + to starboard, so her yaw goes down).
+	var turned: Dictionary = run.call("canoe", calm, 3.0, 1.0, 1.0)
+	check(float(turned["yaw"]) < -1.0, "the rudder turns her to starboard (yaw %.2f)" % float(turned["yaw"]))
+	# Aground in the shallows she stops.
+	check(absf(ahead.call(run.call("canoe", calm, 10.0, 1.0, 0.0, 0.05))) < 0.3, "a boat aground hardly moves")
+	# The trim the sails show: a square yard braced, a boom eased.
+	var st := Sailing.new_state(0.0)
+	st["sheet"] = 0.0
+	check(is_equal_approx(absf(Sailing.sail_turn("sail_raft", st)), 0.7), "hauled in, the raft's yard is braced round")
+	st["sheet"] = 1.0
+	check(absf(Sailing.sail_turn("sail_raft", st)) < 0.01, "eased out, the raft's yard is square")
+	check(absf(Sailing.sail_turn("sloop", st)) > 1.3, "eased out, a boom swings right out")
+	check(Sailing.point_of_sail(head, 0.0) == "In irons" and Sailing.point_of_sail(beam, 0.0) == "Beam reach"
+		and Sailing.point_of_sail(astern, 0.0) == "Running", "points of sail")
+	# Every boat you can ride has her handling and goes in the water, not on land.
+	for k in Vehicle.KINDS:
+		if Vehicle.is_boat(k):
+			check(Sailing.BOATS.has(k) and Boats.KINDS.has(Vehicle.KINDS[k]["boat"]), "%s handles like a boat" % k)
+
+## A player's boat: the sail raft's sail goes up and down, a canoe has none, and each
+## rider sits on a seat in the hull, not at the masthead. (Floating and sailing need a
+## physics space, so the integration test rides one.)
+func test_boat_ride() -> void:
+	var r := Vehicle.new().setup({"id": 2, "kind": "sail_raft", "pos": Vector3.ZERO, "yaw": 0.0})
+	check(r.boat() and r.has_sail() and r.toggle_sail() and not r.toggle_sail(), "the raft's sail raises and lowers")
+	check(r.seat.y < 1.0 and r.motion_mode == CharacterBody3D.MOTION_MODE_FLOATING, "the raft's rider sits on her deck")
+	r.free()
+	var c := Vehicle.new().setup({"id": 3, "kind": "canoe", "pos": Vector3.ZERO, "yaw": 0.0})
+	check(not c.has_sail() and not c.toggle_sail(), "a canoe has no sail")
+	c.free()
+
 func test_vehicles() -> void:
 	for k in Vehicle.KINDS:
 		check(ItemDB.def(k).get("kind", "") == "vehicle" and not ItemDB.is_stackable(k), "%s is a vehicle item" % k)
@@ -3087,7 +3154,9 @@ func test_vehicles() -> void:
 		check(made, "%s is made at a station" % k)
 		var m := Vehicle.make_model(k)
 		var box := Vehicle._bounds(m)
-		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > -0.2, "%s model is a sensible size (%s)" % [k, box])
+		# A boat's hull goes down below her waterline (y = 0).
+		var below := -1.0 if Vehicle.is_boat(k) else -0.2
+		check(box.size.y > 0.5 and box.size.y < 4.0 and box.position.y > below, "%s model is a sensible size (%s)" % [k, box])
 		m.free()
 	for st in ["vehicle_bay", "stable"]:
 		check(BuildCatalog.def(st).get("station", "") == st and Recipes.STATION_NAMES.has(st), "%s is a crafting station" % st)

@@ -67,12 +67,18 @@ func deploy(item: Dictionary, at: Vector3, yaw: float) -> Vehicle:
 	if is_nan(h):
 		return null
 	var surface := Water.surface_height(at.x, at.z, 0.0)
-	if surface - h > 1.0 and not Vehicle.KINDS[k].has("hover"):
+	var afloat := Vehicle.is_boat(k)
+	if afloat:
+		# Boats go in the water, deep enough to float her.
+		if surface - h < float(Sailing.BOATS[k]["draft"]) + 0.1:
+			return null
+	elif surface - h > 1.0 and not Vehicle.KINDS[k].has("hover"):
 		return null
 	var id := 1
 	for r in Game.vehicles:
 		id = maxi(id, int(r["id"]) + 1)
-	var r := {"id": id, "kind": k, "pos": Vector3(at.x, maxf(h, surface if Vehicle.KINDS[k].has("hover") else h) + 0.4, at.z),
+	var y := surface if afloat else maxf(h, surface if Vehicle.KINDS[k].has("hover") else h) + 0.4
+	var r := {"id": id, "kind": k, "pos": Vector3(at.x, y, at.z),
 		"yaw": yaw, "q": float(item.get("quality", 1.0)), "origin": item.get("origin", {}), "planet": Game.planet}
 	Game.vehicles.append(r)
 	Game.mark_player_dirty()

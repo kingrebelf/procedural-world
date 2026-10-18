@@ -7,7 +7,9 @@ extends SceneTree
 
 ## [kind, [camera, look at] per shot (boat-local)].
 const SHOTS := {
-	"raft": [[Vector3(5, 2.5, 4), Vector3(0, 0.4, 0)]],
+	"raft": [[Vector3(5, 2.5, 4), Vector3(0, 0.4, 0)], [Vector3(-4.5, 2.0, -3.5), Vector3(0, 0.8, 0)]],
+	"canoe": [[Vector3(4.5, 2.6, 3.5), Vector3(0, 0.1, 0)], [Vector3(0.0, 1.6, 3.2), Vector3(0, 0.0, -0.5)]],
+	"kayak": [[Vector3(4.0, 2.2, 3.0), Vector3(0, 0.1, 0)]],
 	"rowboat": [[Vector3(5, 2.6, 4), Vector3(0, 0.3, 0)], [Vector3(-1.6, 2.2, 3.6), Vector3(0, 0.2, -0.5)], [Vector3(4.5, 1.4, -1.5), Vector3(0, 0.5, 0.4)]],
 	"fishing_boat": [[Vector3(9, 4, 8), Vector3(0, 2.0, 0)], [Vector3(-1.2, 2.3, 4.2), Vector3(0, 1.0, -2)]],
 	"cog": [[Vector3(22, 9, 18), Vector3(0, 4, 0)], [Vector3(-14, 5, -16), Vector3(0, 3, 0)], [Vector3(1.8, 3.4, -4.5), Vector3(0, 3.0, 6)],

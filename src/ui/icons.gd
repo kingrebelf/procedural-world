@@ -202,6 +202,15 @@ const MORE_SHEETS := [
 		"hopper", "robot_arm", "auto_miner", "quarry_drill", "electric_furnace", "power_sawmill",
 		"assembler", "auto_turret", "heavy_turret", "fence_post", "spike_trap", "",
 	]],
+	# Boats (Sailing), painted for the sailing patch; the bigger boats' cells wait for
+	# their items.
+	["res://assets/icons/boats.png", [
+		"sail_raft", "canoe", "kayak", "rowboat", "paddle_canoe", "paddle_kayak",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+		"", "", "", "", "", "",
+	]],
 ]
 ## type -> [sheet path, its order], built on first use.
 static var _sheet_of: Dictionary = {}
