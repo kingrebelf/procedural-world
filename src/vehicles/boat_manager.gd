@@ -221,6 +221,14 @@ var _wake_tex: ImageTexture
 var _wakes: Array = [] ## [Vector4 bow x, z, heading x, z; Vector4 speed, length, half-beam, strength]
 var _wakes_live := false
 
+func _wake_of(info: Array, cp: Vector2, found: Array) -> void:
+	if info.is_empty():
+		return
+	var a: Vector4 = info[0]
+	var dist := Vector2(a.x, a.y).distance_to(cp)
+	if dist < 500.0:
+		found.append([dist, info])
+
 func _feed_wakes() -> void:
 	var cam := get_viewport().get_camera_3d()
 	var found: Array = [] # [distance, info]
@@ -229,13 +237,10 @@ func _feed_wakes() -> void:
 		for b in boats.values():
 			if not is_instance_valid(b):
 				continue
-			var info: Array = (b as BoatNode).wake_info()
-			if info.is_empty():
-				continue
-			var a: Vector4 = info[0]
-			var dist := Vector2(a.x, a.y).distance_to(cp)
-			if dist < 500.0:
-				found.append([dist, info])
+			_wake_of((b as BoatNode).wake_info(), cp, found)
+		# Players' own boats (Vehicle) raise waves too.
+		for v in get_tree().get_nodes_in_group("wake_boats"):
+			_wake_of(v.wake_info(), cp, found)
 	found.sort_custom(func(p, q): return p[0] < q[0])
 	if found.is_empty() and not _wakes_live:
 		return

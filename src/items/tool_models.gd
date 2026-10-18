@@ -693,7 +693,7 @@ const BUILD := {
 	"morning_star": "_morning_star", "kings_mace": "_kings_mace", "flail": "_flail",
 	"warpick": "_warpick", "executioner_axe": "_executioner_axe", "dragonbone_dagger": "_dragonbone_dagger",
 	"throwing_knives": "_throwing_knives", 	"shovel": "_shovel", "hoe": "_hoe", "sickle": "_sickle",
-	"fishing_rod": "_fishing_rod", "saw": "_saw", "tongs": "_tongs", "bucket": "_bucket",
+	"fishing_rod": "_fishing_rod", "paddle_canoe": "_paddle_canoe", "paddle_kayak": "_paddle_kayak", "saw": "_saw", "tongs": "_tongs", "bucket": "_bucket",
 	"hand_lantern": "_hand_lantern", "candle": "_candle", "tinderbox": "_tinderbox",
 	"quill_ink": "_quill_ink", "mortar_pestle": "_mortar_pestle", "cauldron_small": "_cauldron_small",
 	"sabre": "_sabre", "machete": "_machete", "tomahawk": "_tomahawk", "bowie_knife": "_bowie_knife",
@@ -1122,6 +1122,38 @@ static func _sickle(k: MeshKit):
 		var c := Vector3(-0.12, 0.17, 0)
 		var rr: float = r - w * v
 		return c + Vector3(cos(a) * rr, sin(a) * rr, 0), 0.003)
+
+## A single-blade canoe paddle in oiled ash: a T-grip, a round shaft and a broad blade
+## with a rounded tip, thick down its spine and thin at the edges.
+static func _paddle_canoe(k: MeshKit):
+	pole(k, -0.32, 0.56, 0.016, 0.015, ASH)
+	k.box("it_wood", Transform3D(Basis.IDENTITY, Vector3(0, 0.575, 0)), Vector3(0.11, 0.035, 0.03), ASH)
+	var blade := func(u, v):
+		var w: float = 2.0 * u - 1.0
+		var hw: float = 0.1 * pow(sin(clampf(v * 1.7, 0.0, 1.0) * PI * 0.5), 0.75) * sqrt(maxf(0.0, 1.0 - pow(maxf(v - 0.62, 0.0) / 0.38, 2.0)))
+		return Vector3(w * maxf(hw, 0.012), -0.27 - v * 0.6, 0.0)
+	var spine := func(u, v):
+		var w: float = 2.0 * u - 1.0
+		return lerpf(1.0, 0.3, w * w) * lerpf(1.0, 0.5, v)
+	plate(k, "it_wood", 8, 16, blade, 0.016, ASH, spine)
+	return Vector3(0, 0.1, 0)
+
+## A double-bladed kayak paddle: a black shaft with a ferrule at each end and two red
+## teardrop blades, the far one turned 60 degrees to the near (feathered).
+static func _paddle_kayak(k: MeshKit):
+	var red := Color(0.72, 0.1, 0.08)
+	pole(k, -0.78, 0.78, 0.015, 0.015, Color(1, 1, 1), "it_polymer")
+	for sy in [-1.0, 1.0]:
+		lathe(k, "it_polymer", Transform3D.IDENTITY, [Vector2(0.015, sy * 0.74), Vector2(0.021, sy * 0.75), Vector2(0.021, sy * 0.78), Vector2(0.015, sy * 0.79)], 10)
+		var xf := Transform3D(Basis(Vector3.UP, 0.0 if sy > 0.0 else 1.05), Vector3.ZERO)
+		var blade := func(u, v):
+			var w: float = 2.0 * u - 1.0
+			# A teardrop, fuller on one side like the icon's.
+			var hw: float = 0.09 * pow(sin(clampf(v * 1.4, 0.0, 1.0) * PI * 0.5), 0.8) * sqrt(maxf(0.0, 1.0 - pow(maxf(v - 0.55, 0.0) / 0.45, 2.0)))
+			var x: float = w * maxf(hw, 0.014) * (1.0 + 0.25 * w * v)
+			return xf * Vector3(x, sy * (0.77 + v * 0.42), -0.012 * (1.0 - w * w) * v)
+		plate(k, "it_wood", 8, 14, blade, 0.008, red)
+	return Vector3.ZERO
 
 static func _fishing_rod(k: MeshKit):
 	pole(k, -0.05, 1.7, 0.013, 0.004, BIRCH)

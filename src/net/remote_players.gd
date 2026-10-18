@@ -85,12 +85,9 @@ class Puppet extends Node3D:
 			_ride_model = Vehicle.make_model(kind)
 			add_child(_ride_model)
 			var box := Vehicle._bounds(_ride_model)
-			var d: Dictionary = Vehicle.KINDS[kind]
-			if d.has("animal"):
+			if Vehicle.KINDS[kind].has("animal"):
 				_animal = _ride_model.get_child(0)
-				seat = Vector3(0, box.size.y * 0.66, 0.15)
-			else:
-				seat = Vector3(0, box.size.y * float(d.get("seat", 0.55)), float(d.get("seat_z", 0.25)))
+			seat = Vehicle.seat_for(kind, box)
 		if body:
 			body.position = seat
 		hitbox.position = seat

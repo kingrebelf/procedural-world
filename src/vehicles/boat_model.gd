@@ -23,6 +23,9 @@ const STATIONS := {
 		{"p": Vector3(0.4, 2.04 - SEAT, 6.5), "yaw": 0.0, "pose": "sit_bench"},
 		{"p": Vector3(-1.9, 1.6, -1.0), "yaw": -PI * 0.5, "pose": "fish"},
 		{"p": Vector3(0, 2.6, -7.6), "yaw": PI, "pose": "lookout"}],
+	"canoe": [{"p": Vector3(0, 0.09 - SEAT, 1.45), "yaw": PI, "pose": "sit"},
+		{"p": Vector3(0, 0.09 - SEAT, -1.35), "yaw": PI, "pose": "sit"}],
+	"kayak": [{"p": Vector3(0, -0.06 - SEAT, 0.3), "yaw": PI, "pose": "sit"}],
 	"life_raft": [{"p": Vector3(-0.55, 0.3 - SEAT, 0.3), "yaw": PI * 0.75, "pose": "sit"},
 		{"p": Vector3(0.55, 0.3 - SEAT, -0.2), "yaw": -PI * 0.25, "pose": "sit"}],
 	"launch": [{"p": Vector3(0.45, 0.52, 0.65), "yaw": PI, "pose": "steer"},
@@ -41,8 +44,10 @@ const SEATED := ["sit", "row", "sit_bench"]
 ## at the ends), transom (stern width, 0 = pointed), deck (deck height or NAN for an open
 ## boat), paint (sci-fi hulls are painted, not planked), rake (how far the stern leans aft
 ## toward the top, a share of L), round (how far the transom bulges aft at its middle, a
-## share of its half-width).
+## share of its half-width), double (pointed at both ends, like a canoe).
 const HULLS := {
+	"canoe": {"L": 4.8, "B": 0.86, "D": 0.2, "F": 0.16, "rise": 0.3, "transom": 0.0, "deck": NAN, "double": true},
+	"kayak": {"L": 4.0, "B": 0.6, "D": 0.15, "F": 0.13, "rise": 0.07, "transom": 0.0, "deck": NAN, "double": true},
 	"rowboat": {"L": 4.4, "B": 1.45, "D": 0.32, "F": 0.42, "rise": 0.18, "transom": 0.55, "deck": NAN},
 	"fishing_boat": {"L": 8.0, "B": 2.5, "D": 0.7, "F": 0.75, "rise": 0.35, "transom": 0.0, "deck": 0.6, "tumble": 0.04},
 	"cog": {"L": 20.0, "B": 6.6, "D": 1.9, "F": 1.75, "rise": 0.9, "transom": 0.34, "deck": 1.6, "tumble": 0.09, "rake": 0.03, "round": 0.35},
@@ -177,6 +182,12 @@ static func build(kind: String, seed: int, body: CollisionObject3D) -> Node3D:
 		"rowboat":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.78, 0.64, 0.5), Color(0.78, 0.64, 0.5).darkened(0.38))
 			_rowboat(k, shapes, r)
+		"canoe":
+			_hull(k, shapes, HULLS[kind], "planks", Color(0.78, 0.5, 0.3))
+			_canoe(k, shapes)
+		"kayak":
+			_hull(k, shapes, HULLS[kind], "hull_paint", Color(0.72, 0.09, 0.07))
+			_kayak(k, shapes)
 		"fishing_boat":
 			_hull(k, shapes, HULLS[kind], "planks", Color(0.62, 0.52, 0.44), Color(0.62, 0.52, 0.44).darkened(0.38))
 			_fishing_boat(k, shapes, r, root)
@@ -214,6 +225,12 @@ static func _section(h: Dictionary, u: float) -> Vector3:
 	var B: float = h["B"]
 	var hw: float
 	var dep: float = h["D"]
+	if h.get("double", false):
+		# Double-ended: the same fine entry fore and aft, the ends sweeping up.
+		var x := absf(2.0 * u - 1.0)
+		hw = B * 0.5 * (1.0 - pow(x, 2.1))
+		dep *= 1.0 - 0.35 * x * x
+		return Vector3(maxf(hw, 0.0), dep, float(h["F"]) + float(h["rise"]) * pow(x, 3.0))
 	if u < 0.42:
 		var x := u / 0.42
 		hw = B * 0.5 * lerpf(float(h["transom"]), 1.0, 1.0 - pow(1.0 - x, 2.2))
@@ -235,7 +252,7 @@ static func _hull_pt(h: Dictionary, u: float, v: float) -> Vector3:
 	if u > 0.85:
 		z -= (u - 0.85) / 0.15 * v * float(h["L"]) * 0.05
 	elif u < 0.15:
-		z += (0.15 - u) / 0.15 * v * float(h["L"]) * float(h.get("rake", 0.0))
+		z += (0.15 - u) / 0.15 * v * float(h["L"]) * (0.05 if h.get("double", false) else float(h.get("rake", 0.0)))
 	# Tumblehome: big wooden hulls draw in a little toward the rail.
 	var tumble := 1.0 - float(h.get("tumble", 0.0)) * smoothstep(0.7, 1.0, v)
 	return Vector3(s.x * pow(sin(a), 0.5) * tumble, -s.y + (s.y + s.z) * (1.0 - cos(a)), z)
@@ -803,8 +820,87 @@ static func _raft(k: MeshKit, shapes: Array, r: RandomNumberGenerator, root: Nod
 	var rig := _rig(root)
 	rig.add_square(mast, 2.45, 0.75, 0.85, 0.1, 0.35, Color(0.8, 0.74, 0.64),
 		[["clew_l", Vector3(-1.05, 0.28, 0.2)], ["clew_r", Vector3(1.05, 0.28, 0.2)]], 0.8)
-	k.sphere("leather", Transform3D(Basis.IDENTITY, Vector3(0.6, 0.38, 0.9)), 0.22, 6, 8, 0.2, 0.7)
+	# A crate lashed down aft, and the long steering oar over the stern in its crutch.
+	_crate(k, shapes, Vector3(-0.45, 0.25, 0.95), 0.5, 0.1)
+	_beam(k, "timber", Vector3(-0.3, 0.27, 1.45), Vector3(-0.3, 0.75, 1.45), 0.04)
+	_beam(k, "timber", Vector3(-0.15, 1.05, 0.75), Vector3(-0.55, -0.15, 2.9), 0.04)
+	k.box("planks", Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3(-0.53, -0.08, 2.85)), Vector3(0.05, 0.22, 0.6), Color(0.7, 0.56, 0.4))
+	k.sphere("leather", Transform3D(Basis.IDENTITY, Vector3(-0.6, 0.38, -1.2)), 0.22, 6, 8, 0.2, 0.7)
 	k.sphere("cloth", Transform3D(Basis.IDENTITY, Vector3(-0.6, 0.36, 0.95)), 0.26, 6, 8, 0.25, 0.6)
+
+## An open cedar canoe: ribs inside, two cane seats on rails, a thwart amidships, the
+## gunwales capped.
+static func _canoe(k: MeshKit, shapes: Array) -> void:
+	var h: Dictionary = HULLS["canoe"]
+	var L: float = h["L"]
+	var wood := Color(0.82, 0.55, 0.32)
+	# Ribs: thin bent frames following the inside of the hull, every 30 cm.
+	var n := 13
+	for i in n:
+		var u := lerpf(0.14, 0.86, float(i) / (n - 1))
+		var prev := Vector3.ZERO
+		for j in 7:
+			var q := _hull_pt(h, u, float(j) / 6.0)
+			var p := Vector3(q.x - 0.03, q.y + 0.02, q.z)
+			if j > 0:
+				_beam(k, "timber", prev, p, 0.012, 4)
+				_beam(k, "timber", Vector3(-prev.x, prev.y, prev.z), Vector3(-p.x, p.y, p.z), 0.012, 4)
+			prev = p
+	# Floor planks (and the floor you'd stand on).
+	_deck(k, shapes, h, -0.1, "planks", 0.22, 0.78, wood.darkened(0.1))
+	# Two cane seats and the carrying thwart.
+	for z in [1.45, -1.35]:
+		var u: float = 0.5 - z / L
+		var w := _width_at(h, u, 0.08) - 0.02
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, 0.07, z - 0.16)), Vector3(w * 2.0, 0.03, 0.03), wood)
+		k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, 0.07, z + 0.16)), Vector3(w * 2.0, 0.03, 0.03), wood)
+		k.box("pitch_cloth", Transform3D(Basis.IDENTITY, Vector3(0, 0.08, z)), Vector3(w * 1.6, 0.012, 0.3), Color(0.86, 0.74, 0.5))
+	var tw := _width_at(h, 0.5, 0.12)
+	k.box("timber", Transform3D(Basis.IDENTITY, Vector3(0, 0.12, 0.0)), Vector3(tw * 2.0, 0.025, 0.07), wood)
+	# Deck caps at both ends.
+	for sgn in [-1.0, 1.0]:
+		var z0: float = sgn * L * 0.5 * 0.86
+		var u0: float = 0.5 - z0 / L
+		var w0 := _width_at(h, u0, 0.2)
+		var tip: Vector3 = _hull_pt(h, 0.0 if sgn > 0.0 else 1.0, 1.0)
+		k.tri("timber", Transform3D.IDENTITY, Vector3(-w0, 0.22, z0), Vector3(w0, 0.22, z0), Vector3(0, tip.y, tip.z),
+			Vector3.UP, Vector3.UP, Vector3.UP, wood.darkened(0.2))
+
+## A sea kayak: a closed deck over the hull, one cockpit with a black coaming, a pale
+## stripe down the deck and bungee cords across the foredeck.
+static func _kayak(k: MeshKit, shapes: Array) -> void:
+	var h: Dictionary = HULLS["kayak"]
+	var L: float = h["L"]
+	var red := Color(0.72, 0.09, 0.07)
+	# The deck: a low ridge from end to end over the hull's sheer.
+	var n := 16
+	for i in n:
+		var u0 := float(i) / n
+		var u1 := float(i + 1) / n
+		var a := _hull_pt(h, u0, 1.0)
+		var b := _hull_pt(h, u1, 1.0)
+		var ra := a.y + 0.09 * (1.0 - pow(absf(2.0 * u0 - 1.0), 2.0))
+		var rb := b.y + 0.09 * (1.0 - pow(absf(2.0 * u1 - 1.0), 2.0))
+		for sgn in [-1.0, 1.0]:
+			_quad_out(k, "hull_paint", Vector3(sgn * a.x, a.y, a.z), Vector3(sgn * b.x, b.y, b.z), Vector3(0, rb, b.z), Vector3(0, ra, a.z), Vector3.UP, red)
+		# A pale wood-look stripe along the ridge.
+		k.quad("hull_paint", Transform3D.IDENTITY, Vector3(-0.045, ra + 0.004, a.z), Vector3(0.045, ra + 0.004, a.z),
+			Vector3(0.045, rb + 0.004, b.z), Vector3(-0.045, rb + 0.004, b.z), Color(0.86, 0.72, 0.5))
+	var dk := BoxShape3D.new()
+	dk.size = Vector3(0.5, 0.2, L * 0.8)
+	shapes.append([dk, Transform3D(Basis.IDENTITY, Vector3(0, 0.05, 0))])
+	# Cockpit: a black coaming ring round a dark well.
+	var c := Vector3(0, 0.25, 0.25)
+	for i in 20:
+		var a0 := TAU * i / 20.0
+		var a1 := TAU * (i + 1) / 20.0
+		_beam(k, "rubber", c + Vector3(cos(a0) * 0.24, 0, sin(a0) * 0.42), c + Vector3(cos(a1) * 0.24, 0, sin(a1) * 0.42), 0.022, 5)
+	k.cylinder("rubber", Transform3D(Basis(Vector3.RIGHT, 0.0).scaled(Vector3(1.0, 1.0, 1.75)), c - Vector3(0, 0.12, 0)), 0.23, 0.23, 0.02, 16, true, 0.0, 1, Color(0.06, 0.06, 0.07))
+	# Bungee cords criss-crossing the foredeck.
+	for z in [-0.75, -1.2]:
+		var y := 0.19
+		_line(k, Vector3(-0.2, y, z - 0.2), Vector3(0.2, y, z + 0.2), 0.008)
+		_line(k, Vector3(0.2, y, z - 0.2), Vector3(-0.2, y, z + 0.2), 0.008)
 
 static func _rowboat(k: MeshKit, shapes: Array, r: RandomNumberGenerator) -> void:
 	var h: Dictionary = HULLS["rowboat"]

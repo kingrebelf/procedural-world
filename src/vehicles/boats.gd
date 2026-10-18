@@ -20,6 +20,9 @@ const SPAWNED_BASE := 1 << 26 ## boats put in the water at runtime (Boats.spawn)
 ## jobs: the crew's jobs, first is the skipper. walk_in: has decks and a cabin to go into.
 const KINDS := {
 	"raft": {"name": "Raft", "era": Eras.MEDIEVAL, "len": 3.4, "open": 40.0, "moves": 0.25, "crew": [1, 1], "jobs": ["castaway"]},
+	# Small boats people build and paddle themselves (Sailing): not rolled for the lakes.
+	"canoe": {"name": "Canoe", "era": Eras.MEDIEVAL, "len": 4.8, "open": 30.0, "moves": 0.0, "crew": [1, 2], "jobs": ["fisher", "fisher"]},
+	"kayak": {"name": "Kayak", "era": Eras.MEDIEVAL, "len": 4.0, "open": 30.0, "moves": 0.0, "crew": [1, 1], "jobs": ["fisher"]},
 	"rowboat": {"name": "Rowboat", "era": Eras.MEDIEVAL, "len": 4.4, "open": 40.0, "moves": 1.3, "rest": 0.35, "crew": [1, 2], "jobs": ["fisher", "fisher"]},
 	"fishing_boat": {"name": "Fishing Boat", "era": Eras.MEDIEVAL, "len": 8.0, "open": 80.0, "moves": 2.6, "rest": 0.4, "crew": [2, 3], "jobs": ["fisher", "fisher", "deckhand"]},
 	"cog": {"name": "Cog", "era": Eras.MEDIEVAL, "len": 20.0, "open": 130.0, "moves": 2.6, "rest": 0.3, "crew": [4, 6], "walk_in": true,
