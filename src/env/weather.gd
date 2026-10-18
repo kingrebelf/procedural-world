@@ -319,9 +319,12 @@ func _light() -> void:
 	sky.set_shader_parameter("dust", dust)
 	var sun := atmosphere.sun
 	sun.light_energy *= lerpf(1.0, 0.22, oc) * (1.0 - storm * 0.5) * (1.0 - dust * 0.6)
-	# Thin cloud scatters the sun's disc into a wide soft source: shadows lose their edge.
-	sun.light_angular_distance = lerpf(0.5, 4.0, oc)
-	sun.shadow_blur = lerpf(1.2, 3.0, oc)
+	# Cloud scatters the sun's disc into a wide soft source: shadows lose their edge and
+	# fade. (Fading them, not widening the sun: a wide sun makes the soft-shadow search
+	# PCSS does far costlier, several ms a frame in a forest under overcast.)
+	sun.light_angular_distance = lerpf(0.5, 1.0, oc)
+	sun.shadow_blur = lerpf(1.2, 2.0, oc)
+	sun.shadow_opacity *= lerpf(1.0, 0.45, oc)
 	atmosphere.moon.light_energy *= lerpf(1.0, 0.2, oc)
 	if atmosphere.target.get("underwater"):
 		return
