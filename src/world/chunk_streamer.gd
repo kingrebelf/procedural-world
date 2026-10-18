@@ -13,6 +13,10 @@ var max_jobs := 4
 var uploads_per_frame := 2
 
 var chunks: Dictionary = {} ## Vector2i -> ChunkNode
+## Chunks let go, still fading out (ChunkNode.fade_out frees them): Vector2i -> ChunkNode.
+var _leaving: Dictionary = {}
+## Chunks added round the view when you are high up (see _height_extra).
+var _extra := 0
 var _jobs: Dictionary = {} ## Vector2i -> task id
 var _results: Array = []
 var _mutex := Mutex.new()
@@ -55,9 +59,14 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	if _target == null or (store if store else Game.store) == null:
 		return
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and not preview:
+		RenderingServer.global_shader_parameter_set("eye_pos_g", cam.global_position)
 	var c := chunk_of(_target.global_position)
-	if c != _center:
+	var extra := _height_extra(cam.global_position if cam != null else _target.global_position)
+	if c != _center or extra != _extra:
 		_center = c
+		_extra = extra
 		_retarget()
 	_launch_jobs()
 	_collect()
@@ -82,11 +91,66 @@ func get_chunk(k: Vector2i) -> ChunkNode:
 func _dist(k: Vector2i) -> int:
 	return maxi(absi(k.x - _center.x), absi(k.y - _center.y))
 
+## Chunks drawn round you: the view distance, and up to two rings more (never past 8) once
+## you are well above the ground, where you see much further. They come in at the lowest
+## detail.
+func reach() -> int:
+	return view_radius + _extra
+
+## Metres from p down to the ground under it (0 where that chunk isn't in).
+func height_above(p: Vector3) -> float:
+	var node: ChunkNode = chunks.get(chunk_of(p))
+	if node == null:
+		return 0.0
+	return p.y - ChunkGenerator.height_at(node.data, p.x - node.position.x, p.z - node.position.z)
+
+func _height_extra(eye: Vector3) -> int:
+	if preview or not chunks.has(chunk_of(eye)):
+		return _extra
+	var h := height_above(eye)
+	var cap := clampi(8 - view_radius, 0, 2)
+	var want := clampi(int((h - 50.0) / 90.0), 0, cap)
+	# Only drop back once clearly below the step (no flicker hovering at its edge).
+	if want < _extra and h > 50.0 + 90.0 * _extra - 15.0:
+		return _extra
+	return want
+
+## Whether any chunk is still fading in (the capture tool waits for them).
+func fading() -> bool:
+	for k in chunks:
+		if chunks[k].appear < 1.0:
+			return true
+	return false
+
+## How much of each chunk is drawn, for FarLand's mask: those in, those fading in or out.
+func drawn_shares() -> Dictionary:
+	var out := {}
+	for k in _leaving:
+		var n = _leaving[k]
+		if is_instance_valid(n) and not n.is_queued_for_deletion():
+			out[k] = ChunkNode.share(n.appear)
+	for k in chunks:
+		out[k] = ChunkNode.share(chunks[k].appear)
+	return out
+
 func _retarget() -> void:
-	# Unload far chunks (their data is already on disk or queued in Game's dirty set).
+	# Chunks fading out that you turned back to come back as they are.
+	for k in _leaving.keys():
+		var n = _leaving[k]
+		if not is_instance_valid(n) or n.is_queued_for_deletion():
+			_leaving.erase(k)
+		elif _dist(k) <= reach() + 1 and not chunks.has(k):
+			chunks[k] = n
+			n.come_back()
+			_leaving.erase(k)
+	# Let far chunks go (their data is already on disk or queued in Game's dirty set):
+	# they fade out over the distant land, then free themselves.
 	for k in chunks.keys():
-		if _dist(k) > view_radius + 1:
-			chunks[k].queue_free()
+		if _dist(k) > reach() + 1:
+			if _leaving.has(k) and is_instance_valid(_leaving[k]):
+				_leaving[k].queue_free()
+			_leaving[k] = chunks[k]
+			chunks[k].fade_out()
 			chunks.erase(k)
 	for k in chunks:
 		var node: ChunkNode = chunks[k]
@@ -112,7 +176,7 @@ func _check_grass(k: Vector2i, node: ChunkNode, d: int) -> void:
 
 func _wanted() -> Array:
 	var out: Array = []
-	for r in view_radius + 1:
+	for r in reach() + 1:
 		for dz in range(-r, r + 1):
 			for dx in range(-r, r + 1):
 				if maxi(absi(dx), absi(dz)) != r:
@@ -214,8 +278,12 @@ func _collect() -> void:
 				chunks[k].queue_free()
 				chunks.erase(k)
 		if res["mode"] == "load":
-			if d > view_radius + 1 or chunks.has(k):
+			if d > reach() + 1 or chunks.has(k):
 				continue
+			if _leaving.has(k):
+				if is_instance_valid(_leaving[k]):
+					_leaving[k].queue_free()
+				_leaving.erase(k)
 			var node := ChunkNode.new()
 			node.setup(res["data"], res["terrain"], res["lod"], res["objects"])
 			node.set_river(res["river"])
@@ -224,6 +292,9 @@ func _collect() -> void:
 			add_child(node)
 			node.set_crags(res.get("crags", {}))
 			chunks[k] = node
+			# Out where you can see it come in, it fades up over the distant land.
+			if d >= 2:
+				node.fade_in()
 			node.set_near(d <= near_radius)
 			if res.has("grass") and d <= grass_radius:
 				node.set_grass(res["grass"])
@@ -236,7 +307,7 @@ func _collect() -> void:
 			var node: ChunkNode = chunks[k]
 			node.cover = res["cover"]
 			if res.has("terrain"):
-				node.set_terrain(res["terrain"], res["lod"])
+				node.set_terrain(res["terrain"], res["lod"], res["mode"] == "lod")
 			if res.has("cave"):
 				node.set_cave(res["cave"])
 			if res.has("grass") and d <= grass_radius:

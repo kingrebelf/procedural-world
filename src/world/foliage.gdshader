@@ -9,6 +9,7 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 #include "res://src/world/plant_look.gdshaderinc"
 #include "res://src/world/noise2d.gdshaderinc"
 #include "res://src/env/climate_wear.gdshaderinc"
+#include "res://src/world/lod_fade.gdshaderinc"
 
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
@@ -40,6 +41,7 @@ varying vec3 crown_n;
 varying vec4 look;
 varying vec3 plant_p;
 varying vec3 winter; // snow lying, hoar frost, a patch value
+varying vec3 lod_wp;
 
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
@@ -66,11 +68,16 @@ void vertex() {
 	inst_col = pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2));
 	crown_n = (MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz;
 	vec3 vw = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	lod_wp = vw;
 	vec4 lv = wear_levels(vw);
 	winter = vec3(wear_snow(vw), wear_frost(lv), vnoise(vw.xz * 0.9 + vw.y * 0.7));
 }
 
 void fragment() {
+	// Near and far trees dissolve into each other, and a chunk coming in fades up.
+	if (lod_hidden(lod_wp, FRAGCOORD.xy, IN_SHADOW_PASS)) {
+		discard;
+	}
 	// A bough brushing the eye dissolves rather than filling the view with smeared, half
 	// shaded cards (seen edge on and from inside a crown, up close they read as black
 	// streaks): dithered away within a metre and a half, which TAA smooths into a fade.

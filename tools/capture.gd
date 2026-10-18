@@ -138,7 +138,7 @@ func _wait_loaded(p: Player, streamer: ChunkStreamer) -> void:
 			for dx in range(-streamer.view_radius, streamer.view_radius + 1):
 				if not streamer.chunks.has(c + Vector2i(dx, dz)):
 					ok = false
-		if ok:
+		if ok and not streamer.fading():
 			break
 	# The distant land rebuilds round a new spot some seconds after the chunks are in:
 	# wait for it too, or a shot shows the far land (and its trees) built for elsewhere.

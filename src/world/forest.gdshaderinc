@@ -4,8 +4,8 @@
 // grid holds at most one tree, and a cell holds one where its hash falls under the local
 // density. Needs noise2d.gdshaderinc.
 
-// Where real chunks of terrain are drawn (one texel per 64 m chunk) over the distant
-// land's span: origin x/z and 1 / span. Neither draws there.
+// Where real chunks of terrain are drawn (one texel per 64 m chunk, how much of it while
+// it fades) over the distant land's span: origin x/z and 1 / span. Neither draws there.
 uniform sampler2D near_mask : filter_nearest, repeat_disable;
 uniform vec4 near_rect = vec4(0.0, 0.0, 1.0, 1.0);
 // Over the square round where the distant land was built, one texel per 16 m grid point:
@@ -33,11 +33,18 @@ int tree_form(float g) {
 const float TREE_CELL = 4.5;
 // Trees stand as billboards out to here; beyond, they are painted on the ground. Between
 // the two each tree is one or the other (by its own hash), so the change is gradual.
-const float TREE_BB_FROM = 750.0;
-const float TREE_BB_TO = 900.0;
+// FarLand pushes it out the higher you are (FarLand.TREE_BB at ground level).
+uniform vec2 tree_bb = vec2(750.0, 900.0);
+#define TREE_BB_FROM tree_bb.x
+#define TREE_BB_TO tree_bb.y
+
+// How much of the chunk at p is drawn: 1 in, 0 none, between while it fades in or out.
+float near_share(vec2 p) {
+	return textureLod(near_mask, (p - near_rect.xy) * near_rect.zw, 0.0).r;
+}
 
 bool near_drawn(vec2 p) {
-	return textureLod(near_mask, (p - near_rect.xy) * near_rect.zw, 0.0).r > 0.5;
+	return near_share(p) > 0.5;
 }
 
 vec2 forest_uv(vec2 p) {

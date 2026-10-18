@@ -16,6 +16,8 @@ var lod := 1
 var near := false
 
 var _terrain: MeshInstance3D
+var _old_terrain: MeshInstance3D ## the mesh of the detail it is leaving, while it dissolves
+var _swap_t := 1.0
 var _body: StaticBody3D
 var _height_shape: CollisionShape3D
 var _mm: Dictionary = {} ## type -> MultiMeshInstance3D (or a node of rooms, _add_rooms)
@@ -293,9 +295,16 @@ static func _add_skirts(n: int, verts: PackedVector3Array, norms: PackedVector3A
 ## Per-mesh MultiMesh buffers (transform + tint) for all objects still present. Each
 ## instance gets its own slight tint and proportions, so even two of the same variant
 ## never look identical.
-## Trees drawn by RealTree switch to the merged far mesh beyond this distance (from the
-## middle of the chunk).
+## Trees drawn by RealTree have all become the merged far mesh by this distance.
 const TREE_NEAR := 320.0
+## Where near trees dissolve into the far mesh (metres from the eye, ending at TREE_NEAR),
+## and how far from a multimesh's middle its trees can stand, which their draw ranges
+## add (a chunk's corner is 45 m from its middle).
+const TREE_FADE := Vector2(TREE_NEAR - 40.0, TREE_NEAR)
+const FADE_REACH := 50.0
+## Trees and buildings are drawn as far as their chunk is in (more rings come in when you
+## are high up, ChunkStreamer.reach).
+const FAR_RANGE := 1400.0
 ## Suffix of the multimesh group for scorched objects (drawn with soot_material()).
 const SOOT := "~soot"
 
@@ -1273,8 +1282,20 @@ func setup(chunk: Dictionary, terrain_arrays: Array, step: int, obj_buffers: Dic
 	set_terrain(terrain_arrays, step)
 	set_objects(obj_buffers)
 
-func set_terrain(arrays: Array, step: int) -> void:
+## `fade` dissolves the old mesh into the new one (a change of detail as you move) rather
+## than swapping it in one frame.
+func set_terrain(arrays: Array, step: int, fade := false) -> void:
 	lod = step
+	if fade and appear >= 1.0 and not going and _terrain.mesh != null:
+		if _old_terrain != null:
+			_old_terrain.queue_free()
+		_old_terrain = _terrain
+		_terrain = MeshInstance3D.new()
+		_terrain.name = "Terrain"
+		_terrain.set_instance_shader_parameter("appear", 0.0)
+		add_child(_terrain)
+		_swap_t = 0.0
+		set_process(true)
 	var mesh := ArrayMesh.new()
 	var fmt := LOOK_FORMAT if arrays[Mesh.ARRAY_CUSTOM0] != null else 0
 	if arrays[Mesh.ARRAY_CUSTOM3] != null:
@@ -1352,11 +1373,14 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 			mmi.material_overlay = soot_material()
 		var k := ObjectLibrary.kind(mt.get_slice("#", 0))
 		if k == "tree" and RealTree.handles(mt.get_slice("#", 0)) and buffers.has("~far"):
-			# Up close only; the merged far mesh takes over beyond.
-			mmi.visibility_range_end = TREE_NEAR
-			mmi.visibility_range_end_margin = 12.0
+			# Up close only; the merged far mesh takes over beyond, tree by tree through
+			# TREE_FADE (lod_fade.gdshaderinc). The range only has to cover the band from
+			# the multimesh's middle, somewhere in the chunk.
+			mmi.set_instance_shader_parameter("lod_band", Vector3(TREE_FADE.x, TREE_FADE.y, 1.0))
+			mmi.visibility_range_end = TREE_FADE.y + FADE_REACH
+			mmi.set_meta("dither", true)
 		elif k == "structure" or k == "tree" or k == "built":
-			mmi.visibility_range_end = 900.0
+			mmi.visibility_range_end = FAR_RANGE
 			# A small lamp or candle stand casts no shadow of its own (its own light sits
 			# inside it, and would throw its arms across the room).
 			var bd := BuildCatalog.def(BuildCatalog.id_of(mt.get_slice("#", 0))) if k == "built" else {}
@@ -1364,6 +1388,10 @@ func set_objects(buffers: Dictionary, keep_far := false) -> void:
 				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		else:
 			_set_range(mmi, 260.0)
+			mmi.visibility_range_end_margin = 20.0
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+		if k == "tree" and RealTree.handles(mt.get_slice("#", 0)):
+			mmi.set_meta("dither", true)
 		add_child(mmi)
 		_mm[t] = mmi
 	_sync_doors()
@@ -1432,11 +1460,13 @@ func _add_far_mesh(surfs: Dictionary) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = m
 	mi.name = "TreesFar"
-	mi.visibility_range_begin = TREE_NEAR
-	mi.visibility_range_begin_margin = 12.0
-	mi.visibility_range_end = 900.0
+	mi.set_instance_shader_parameter("lod_band", Vector3(TREE_FADE.x, TREE_FADE.y, -1.0))
+	mi.visibility_range_begin = maxf(TREE_FADE.x - FADE_REACH, 0.0)
+	mi.visibility_range_end = FAR_RANGE
+	mi.set_meta("dither", true)
 	add_child(mi)
 	_mm["~far"] = mi
+	_apply_appear()
 
 ## Furniture inside rooms (drawn only when you could see in) and their lamplit windows
 ## (only from further off), one node per room: a visibility range measures from the
@@ -1611,6 +1641,71 @@ func has_grass() -> bool:
 
 ## The streamer has grown this chunk's grass (which may be none at all, on rock or water).
 var grass_built := false
+
+# --- Fading in and out --------------------------------------------------------------
+
+## How much of the chunk is drawn: it fades up from 0 when it loads out where you can see
+## it, and back down when it is let go (`going`), then frees itself. The distant land
+## draws the rest (FarLand's mask carries the same share), so the two cross-fade.
+var appear := 1.0
+var going := false
+const FADE_TIME := 0.8
+
+func fade_in() -> void:
+	going = false
+	if appear >= 1.0:
+		appear = 0.0
+	_apply_appear()
+	set_process(true)
+
+func fade_out() -> void:
+	going = true
+	set_process(true)
+
+## Back from going (you turned round before it was gone).
+func come_back() -> void:
+	going = false
+	set_process(true)
+
+func _ready() -> void:
+	set_process(appear < 1.0 or going or _old_terrain != null)
+
+func _process(delta: float) -> void:
+	if going:
+		appear = maxf(appear - delta / FADE_TIME, 0.0)
+		if appear <= 0.0:
+			queue_free()
+			return
+	elif appear < 1.0:
+		appear = minf(appear + delta / FADE_TIME, 1.0)
+	if _old_terrain != null:
+		_swap_t = minf(_swap_t + delta / FADE_TIME, 1.0)
+		var a := share(_swap_t)
+		_terrain.set_instance_shader_parameter("appear", a)
+		_old_terrain.set_instance_shader_parameter("appear", -1.0 - a)
+		if _swap_t >= 1.0:
+			_old_terrain.queue_free()
+			_old_terrain = null
+	_apply_appear()
+	if appear >= 1.0 and not going and _old_terrain == null:
+		set_process(false)
+
+## A share as the shaders and FarLand's 8-bit mask both see it, so they meet exactly.
+static func share(a: float) -> float:
+	return roundf(clampf(a, 0.0, 1.0) * 255.0) / 255.0
+
+## Terrain and trees dissolve (lod_fade.gdshaderinc); the rest, whatever its material,
+## fades through its transparency.
+func _apply_appear() -> void:
+	var a := share(appear)
+	for c in get_children():
+		if not c is GeometryInstance3D or c == _old_terrain:
+			continue
+		if c == _terrain or c.has_meta("dither"):
+			if c != _terrain or _old_terrain == null:
+				c.set_instance_shader_parameter("appear", a)
+		else:
+			c.transparency = 1.0 - a
 
 ## Collision and interactive bodies only exist near the player.
 func set_near(on: bool) -> void:

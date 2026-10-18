@@ -50,6 +50,10 @@ textures/default_filters/anisotropic_filtering_level=4
 
 [shader_globals]
 
+eye_pos_g={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
 water_map={
 "type": "sampler2D",
 "value": ""
