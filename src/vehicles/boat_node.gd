@@ -185,7 +185,7 @@ func _steer(delta: float, d: Dictionary) -> void:
 func _place(delta: float) -> void:
 	var d: Dictionary = Boats.KINDS[kind]
 	var L: float = d["len"]
-	var t := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t := fmod(GameClock.sec(), 3600.0)
 	var fwd := Vector2(-sin(_yaw), -cos(_yaw))
 	var side := Vector2(fwd.y, -fwd.x) # port (-x when she faces -z)
 	var c := _pos2
@@ -247,7 +247,7 @@ func _fx_near(at: Vector3, within: float) -> bool:
 	return cam != null and cam.global_position.distance_to(at) < within
 
 static func _water_t() -> float:
-	return fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	return fmod(GameClock.sec(), 3600.0)
 
 ## The bow pitching down into the swell (or a wave under it) shoves water aside: when it
 ## drops fast enough, spray flies up round the stem and a ring spreads from it. Harder the
@@ -281,11 +281,11 @@ func _wake(delta: float, d: Dictionary) -> void:
 			_line = BoatModel.waterline(kind)
 		var q := _line[randi() % _line.size()]
 		var at := global_transform * Vector3(q.x * 1.05, 0.0, q.y * 1.02)
-		Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)), at.z), 0.5 + float(d["len"]) * 0.03)
+		Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(GameClock.sec(), 3600.0)), at.z), 0.5 + float(d["len"]) * 0.03)
 		return
 	_wake_t = clampf(1.4 / speed, 0.12, 0.6)
 	var at := global_position + global_transform.basis.z * float(d["len"]) * 0.45
-	Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(Time.get_ticks_msec() / 1000.0, 3600.0)), at.z), 0.8 + speed * 0.25)
+	Splashes.ring(Vector3(at.x, Water.surface_height(at.x, at.z, fmod(GameClock.sec(), 3600.0)), at.z), 0.8 + speed * 0.25)
 	if speed > 3.0:
 		var bow := global_position - global_transform.basis.z * float(d["len"]) * 0.45
 		Splashes.splash(bow, clampf(speed / 25.0, 0.05, 0.3))

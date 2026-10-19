@@ -905,7 +905,7 @@ func _steam(at: Vector3) -> void:
 
 func _water_at(pl: Player, h: Dictionary) -> bool:
 	var feet := pl.global_position
-	var t := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t := fmod(GameClock.sec(), 3600.0)
 	if Water.surface_height(feet.x, feet.z, t) > feet.y + 0.05:
 		return true
 	if h.has("point"):

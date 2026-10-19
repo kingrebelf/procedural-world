@@ -60,7 +60,7 @@ func _exit_tree() -> void:
 	save_all()
 
 func now() -> float:
-	return Time.get_ticks_msec() / 1000.0
+	return GameClock.sec()
 
 func ground(x: float, z: float) -> float:
 	if streamer == null:
@@ -168,6 +168,7 @@ func _load(site: Dictionary, id: String) -> void:
 	e["decor"] = decor
 	var life := TownLife.new()
 	life.setup(gen, streamer, site)
+	life.walk = walk
 	add_child(life)
 	e["life"] = life
 	# Where the town's work is done, and the anvils and crates people work at.

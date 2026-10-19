@@ -343,6 +343,12 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 	elif rec.has("room"):
 		# Shopkeepers go in and out by the door.
 		goal = TownShops.route(rec["room"], p2, goal)
+	var walk: WalkGrid = manager.get("walk") if manager else null
+	# A shopkeeper's own shop is no wall to them: they go in by its door (TownShops.route).
+	var within: Vector2 = rec["room"]["c"] if rec.has("room") else Vector2.INF
+	if walk and goal != Vector2.INF and not target_player:
+		# Somewhere they can stand: by a stall, a cart or a house, not in it.
+		goal = walk.push_out(goal, WalkGrid.BODY, within)
 	var moving := false
 	_update_perform(delta)
 	# Doing something on the spot holds them there, unless they must run.
@@ -366,6 +372,9 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 		var want := (RUN if run else WALK) * (0.9 + float(rec["traits"]["diligent"]) * 0.2) * _pace
 		_speed = move_toward(_speed, want, delta * 4.0)
 		p2 += dir * _speed * delta
+		if walk:
+			# Along a wall's, a stall's or a cart's side, never through it.
+			p2 = walk.push_out(p2, WalkGrid.BODY, within)
 		var yaw := atan2(dir.x, dir.y)
 		rotation.y = lerp_angle(rotation.y, yaw, clampf(delta * 6.0, 0.0, 1.0))
 		moving = true
@@ -409,13 +418,16 @@ func step(delta: float, ground: Callable, player_pos: Vector3, others: PackedVec
 		_human.show_tool(action == "work" and FIELD_DUTIES.has(String(duty.get("duty", ""))))
 	# Asleep indoors: invisible and intangible until morning.
 	var home: Vector2 = rec["home"]
+	if walk:
+		home = walk.push_out(home, WalkGrid.BODY, within) # where they stop by its wall
 	var indoors: bool = action == "sleep" and p2.distance_to(home) < 1.2
 	_model.visible = not indoors
 	_body.process_mode = Node.PROCESS_MODE_DISABLED if indoors else Node.PROCESS_MODE_INHERIT
 	_animate(delta, moving, run, player_pos)
 
 ## Where to head for next on the way to `goal`: straight there when nothing on the way is
-## too steep, else along a route round it (planned again when the goal moves on or the
+## too steep or stands across it, round the corners of a stall or a cart in the way, else
+## along a route round it (planned again when the goal moves on or the
 ## route runs out). Where they are now when they must wait (for a route, or at the end of
 ## one that can't get any nearer).
 func _aim(p2: Vector2, goal: Vector2) -> Vector2:
@@ -426,8 +438,14 @@ func _aim(p2: Vector2, goal: Vector2) -> Vector2:
 	var done := _route_i >= _route.size()
 	if (moved or done) and _route_wait <= 0.0:
 		_route_wait = 0.4
+		var way := PackedVector2Array()
 		if walk.clear(p2, goal, WalkGrid.PERSON):
-			_set_route(PackedVector2Array([goal]), goal, true)
+			way.append(goal)
+		elif walk.clear_ground(p2, goal, WalkGrid.PERSON):
+			# Only a stall or a cart in the way: round its corners.
+			way = walk.detour(p2, goal, WalkGrid.PERSON)
+		if not way.is_empty():
+			_set_route(way, goal, true)
 		else:
 			var r := walk.route(p2, goal, WalkGrid.PERSON)
 			if not r.is_empty() and not r["reached"]:
@@ -586,7 +604,7 @@ func _animate(delta: float, moving: bool, run: bool, player_pos: Vector3) -> voi
 		(arm[0] as Node3D).rotation.z = (0.08 if i == 0 else -0.08)
 		(arm[1] as Node3D).rotation.x = -0.25 - (0.5 if run else 0.0) * amt
 	# Idle breathing, talk gestures and the walk bob.
-	var t := Time.get_ticks_msec() / 1000.0 + float(rec["traits"]["curious"]) * 10.0
+	var t := GameClock.sec() + float(rec["traits"]["curious"]) * 10.0
 	_torso.scale = Vector3(1.0, 1.0 + sin(t * 1.6) * 0.012, 1.0)
 	_hips.position.y = 0.95 + absf(cos(_phase)) * 0.035 * amt
 	if (_speech_t > 0.0 or talking) and not moving:
@@ -651,7 +669,7 @@ func _animate_human(delta: float, moving: bool, run: bool, player_pos: Vector3) 
 		_human.play(work_anim)
 	elif action == "socialize" and face_to != Vector2.INF and Vector2(global_position.x, global_position.z).distance_to(face_to) < 2.5:
 		# Chatting with a neighbour: they take turns to talk.
-		_human.play("talk" if (int(Time.get_ticks_msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
+		_human.play("talk" if (int(GameClock.msec() / 3500) + absi(hash(String(rec["id"])))) % 2 == 0 else "idle")
 	elif action in ["confront", "attack"]:
 		if rec.has("band"):
 			_human.play("pistol_idle" if keep_off > 0.0 else "sword_idle")

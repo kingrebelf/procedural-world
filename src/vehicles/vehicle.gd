@@ -27,6 +27,20 @@ const KINDS := {
 	"canoe": {"name": "Canoe", "boat": "canoe", "length": 4.8, "speed": 2.6, "seat_at": Vector3(0, 0.1, 1.45)},
 	"kayak": {"name": "Kayak", "boat": "kayak", "length": 4.0, "speed": 3.2, "seat_at": Vector3(0, -0.05, 0.3)},
 	"rowboat": {"name": "Rowboat", "boat": "rowboat", "length": 4.4, "speed": 2.8, "seat_at": Vector3(0, 0.36, 0.25)},
+	# Built on a slipway and launched; too big to pack up again ("moored"). You walk about on
+	# their decks, and their "spots" are places aboard to use: a "hold" (with this many
+	# slots) to keep things in, a "bunk" to sleep in and wake up by ("wake") after a fall.
+	"sloop": {"name": "Sloop", "boat": "sloop", "length": 9.0, "speed": 3.5, "seat_at": Vector3(0.75, 1.12, 3.0), "moored": true, "hold": 12,
+		"spots": [{"use": "hold", "at": Vector3(-0.9, 1.1, 2.4), "name": "cockpit locker"}, {"use": "bunk", "at": Vector3(0, 1.0, 0.6), "wake": Vector3(0, 0.75, 1.3), "name": "cuddy bunk"}]},
+	"fishing_boat": {"name": "Fishing Boat", "boat": "fishing_boat", "length": 8.0, "speed": 3.0, "seat_at": Vector3(0.5, 1.05, 3.1), "moored": true, "hold": 10,
+		"spots": [{"use": "hold", "at": Vector3(-0.7, 0.9, -0.2), "name": "fish crate"}]},
+	"cog": {"name": "Cog", "boat": "cog", "length": 20.0, "speed": 3.0, "seat_at": Vector3(0.5, 4.5, 7.6), "moored": true, "hold": 30,
+		"spots": [{"use": "hold", "at": Vector3(-2.0, 2.3, 8.3), "name": "captain's chest"}, {"use": "bunk", "at": Vector3(2.0, 2.6, 7.8), "wake": Vector3(1.3, 1.65, 6.2), "name": "captain's bunk"}]},
+	"motor_launch": {"name": "Motor Launch", "boat": "launch", "length": 7.5, "speed": 9.5, "seat_at": Vector3(0.45, 1.0, 0.75), "moored": true, "hold": 6,
+		"spots": [{"use": "hold", "at": Vector3(-0.6, 0.97, 1.7), "name": "cool box"}]},
+	"research_vessel": {"name": "Research Vessel", "boat": "research_vessel", "length": 26.0, "speed": 5.0, "seat_at": Vector3(0.9, 5.17, -0.9), "moored": true, "hold": 24,
+		"spots": [{"use": "hold", "at": Vector3(-1.85, 2.95, -2.7), "name": "locker"}, {"use": "bunk", "at": Vector3(-2.05, 2.4, 0.6), "wake": Vector3(-1.0, 2.0, 0.6), "name": "bunk"}]},
+	"life_raft": {"name": "Life Raft", "boat": "life_raft", "length": 3.0, "speed": 1.0, "seat_at": Vector3(-0.55, 0.3, 0.3)},
 }
 const CEILING := 180.0 ## metres above the ground a ship flies at most; climbing on leaves for orbit
 const LEAVE_TIME := 2.0
@@ -68,6 +82,7 @@ var _trail: BoatWake
 var _oars: Array = []
 var _stroke := 0.0
 var _wake_v := 0.0
+var deck: AnimatableBody3D ## a moored boat's decks and cabins, to walk about on
 
 static func is_vehicle_item(type: String) -> bool:
 	return KINDS.has(type)
@@ -90,16 +105,18 @@ static func seat_for(k: String, box: AABB) -> Vector3:
 	return Vector3(0, box.size.y * float(d.get("seat", 0.55)), float(d.get("seat_z", 0.25)))
 
 ## The model on its own, scaled to the vehicle's length and facing -z (also for icons).
-static func make_model(k: String) -> Node3D:
+## A boat's collision (decks, cabins, rails) goes into `body` when one is given.
+static func make_model(k: String, body: CollisionObject3D = null) -> Node3D:
 	var d: Dictionary = KINDS[k]
 	if d.get("proc", "") == "cannon":
 		return Cannon.model()
 	var holder := Node3D.new()
 	if d.has("boat"):
-		# Built from code like the boats on the lakes; their collision isn't wanted here.
-		var scrap := StaticBody3D.new()
-		holder.add_child(BoatModel.build(d["boat"], 7, scrap))
-		scrap.free()
+		# Built from code like the boats on the lakes; their collision only for walking aboard.
+		var scrap := StaticBody3D.new() if body == null else null
+		holder.add_child(BoatModel.build(d["boat"], 7, body if body else scrap))
+		if scrap:
+			scrap.free()
 		return holder
 	if d.has("animal"):
 		var a := AnimalModel.new().build(d["animal"])
@@ -144,8 +161,20 @@ func setup(r: Dictionary) -> Vehicle:
 	floor_max_angle = deg_to_rad(48)
 	floor_snap_length = 0.8
 	set_meta("vehicle", self)
-	_model = make_model(kind)
+	if p.get("moored", false):
+		deck = AnimatableBody3D.new()
+		deck.name = "Deck"
+		deck.sync_to_physics = false
+		deck.collision_layer = 1
+		deck.collision_mask = 0
+		deck.set_meta("vehicle", self)
+		deck.add_collision_exception_with(self)
+		add_collision_exception_with(deck)
+	_model = make_model(kind, deck)
 	add_child(_model)
+	if deck:
+		# Inside the model, so the decks pitch and roll with her.
+		_model.get_child(0).add_child(deck)
 	if p.has("animal"):
 		_animal = _model.get_child(0)
 	barrel = _model.find_child("Barrel", false, false)
@@ -215,7 +244,7 @@ func _physics_process(delta: float) -> void:
 		# The ground here isn't loaded (yet): hold still rather than fall through the world.
 		velocity = Vector3.ZERO
 		return
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	var depth := surface - global_position.y
 	var top: float = p["speed"] * (p["boost"] if boosting else 1.0)
@@ -280,6 +309,12 @@ func _float(delta: float, g: float) -> void:
 			sheet = drive.y
 		else:
 			paddle = drive.y
+		if d.get("engine", false):
+			# The engine burns fuel with the throttle; a dry tank only drifts.
+			var fuel := float(rec.get("fuel", 1.0))
+			if fuel <= 0.0:
+				paddle = 0.0
+			rec["fuel"] = maxf(0.0, fuel - absf(paddle) * delta / float(d["burn"]))
 		Sailing.step(kind, sail, delta, wind, Water.current(pos.x, pos.y), drive.x, paddle, sheet, auto, surface - g)
 		_row(delta, paddle)
 	else:
@@ -338,6 +373,8 @@ func _float_pose(delta: float, t: float, L: float) -> void:
 	var hq := Water.surface_height(x + sd.x * beam, z + sd.z * beam, t)
 	# Pitch: + lifts the bow. Roll: + lifts the port side (heel to starboard is +).
 	var pitch := atan2(hb - hs, half * 2.0)
+	if has_engine():
+		pitch += 0.06 * clampf(spd / float(p["speed"]), 0.0, 1.0) # bow up under power
 	var roll := atan2(hp - hq, beam * 2.0) * 0.7 + float(sail["heel"])
 	roll += -drive.x * clampf(absf(spd) / 3.0, 0.0, 1.0) * 0.03 if rider != null else 0.0
 	var want := Basis(Vector3.RIGHT, pitch) * Basis(Vector3.BACK, -roll)
@@ -380,6 +417,9 @@ func toggle_sail() -> bool:
 		return false
 	sail["raised"] = not bool(sail["raised"])
 	return sail["raised"]
+
+func has_engine() -> bool:
+	return boat() and bool(Sailing.BOATS[kind].get("engine", false))
 
 func has_sail() -> bool:
 	return boat() and float(Sailing.BOATS[kind]["sail"]) > 0.0
@@ -474,13 +514,37 @@ func _pose(delta: float, g: float) -> void:
 		else:
 			_animal.play("Gallop", clampf(s / 9.0, 0.7, 1.5))
 
+## Places aboard to use (KINDS "spots"), each with its world position.
+func spots() -> Array:
+	var out := []
+	var xf := global_transform * Transform3D(_model.basis, Vector3.ZERO)
+	for sp in p.get("spots", []):
+		var d: Dictionary = sp.duplicate()
+		d["pos"] = xf * (sp["at"] as Vector3)
+		d["wake_pos"] = xf * (sp.get("wake", sp["at"]) as Vector3)
+		out.append(d)
+	return out
+
+## The hold's contents as a live Inventory; write back with save_hold().
+func open_hold() -> Inventory:
+	var inv := Inventory.new(maxi(1, int(p.get("hold", 0))))
+	var d = rec.get("hold")
+	if d is Dictionary:
+		inv.from_data(d)
+	return inv
+
+func save_hold(inv: Inventory) -> void:
+	rec["hold"] = inv.to_data()
+
 ## The rider's world transform: on the seat, facing forward with the vehicle's lean.
 func seat_transform() -> Transform3D:
 	return global_transform * Transform3D(_model.basis, Vector3.ZERO) * Transform3D(Basis.IDENTITY, seat)
 
 ## A clear spot beside the vehicle to step off onto. Off a boat out on the water, that's
-## into the water beside her.
+## into the water beside her; off a big one, onto her deck by the helm.
 func exit_point() -> Vector3:
+	if deck:
+		return seat_transform().origin + Vector3(0, 0.45, 0)
 	var side := global_transform.basis.x
 	var t := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
 	for s in [1.0, -1.0]:

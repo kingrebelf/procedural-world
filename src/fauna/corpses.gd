@@ -470,7 +470,7 @@ func took_from(key: String, worth: int) -> void:
 		var at := world_pos(key)
 		var whose := ("from %s" % DeathBag.title(c, Game.my_id())) if DeathBag.is_bag(c) else "from %s's body" % String(c["name"]).split(" ")[0]
 		if worth > 0 and npcs and at != Vector3.INF and not npcs.town_at(at).is_empty():
-			var t := Time.get_ticks_msec() / 1000.0
+			var t := GameClock.sec()
 			if t - _crime_t > 4.0:
 				_crime_t = t
 				if not npcs.report_crime(at, "theft", worth, whose):

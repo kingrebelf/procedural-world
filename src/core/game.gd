@@ -21,6 +21,7 @@ const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
 var day_seconds := DAY_SECONDS ## a server may set its own day length
 var time_lock := -1.0 ## a server's always-day (0.5) or always-night (0.0); -1 = the clock runs
 const AUTOSAVE_INTERVAL := 10.0
+const XP_RATE := 4.0 ## Every experience award is multiplied by this (Ben 10-18: 4x).
 const DIRTY_FLUSH_DELAY := 0.75
 
 var store: WorldStore
@@ -693,7 +694,7 @@ func set_stamina(v: float) -> void:
 ## Experience for doing things in the world: gathering, crafting, building, hunting and
 ## discovering. Levels grant attribute points (spent on the Character screen).
 func add_xp(amount: float, why: String = "") -> void:
-	amount *= float(server_option("xp_mult", 1.0)) # a server's experience rate
+	amount *= XP_RATE * float(server_option("xp_mult", 1.0)) # a server's experience rate
 	var before := stats.xp
 	var lv := stats.level
 	var gained := stats.add_xp(amount)

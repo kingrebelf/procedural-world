@@ -1,7 +1,8 @@
 extends SceneTree
 ## How well people can get about the towns near spawn on the slope-aware grid: from
 ## each town's middle to points round it out to its outer edge (and a bit beyond), the
-## share with a straight clear way, a route round, or no way at all, and search times.
+## share with a straight clear way, a route round, or no way at all, and search times;
+## and how often a stall or a cart stands across the way, and is gone round by its corners.
 ##   godot --headless --path . --script res://tools/probe_walk.gd   (SEED, R env)
 
 func _initialize() -> void:
@@ -24,6 +25,8 @@ func _initialize() -> void:
 	var worst_us := 0
 	var total_us := 0
 	var searched := 0
+	var by_solid := 0
+	var detoured := 0
 	var towns := gen.settlements_near(-reach, -reach, reach, reach)
 	for s in towns.slice(0, 12):
 		var c: Vector2 = s["center"]
@@ -39,6 +42,11 @@ func _initialize() -> void:
 			if walk.clear(c, p, WalkGrid.PERSON):
 				straight += 1
 				continue
+			if walk.clear_ground(c, p, WalkGrid.PERSON):
+				by_solid += 1
+				if not walk.detour(c, p, WalkGrid.PERSON).is_empty():
+					detoured += 1
+					continue
 			var t0 := Time.get_ticks_usec()
 			var r := walk.route(c, p, WalkGrid.PERSON)
 			var us := Time.get_ticks_usec() - t0
@@ -59,7 +67,7 @@ func _initialize() -> void:
 				var pts: PackedVector2Array = r["pts"]
 				var e := pts[pts.size() - 1]
 				print("   no way to %s (grade there %.2f, height %.1f vs %.1f; got to %.1f m off)" % [p, g, gen.field.height(p.x, p.y), gen.field.height(c.x, c.y), e.distance_to(p)])
-		print("town at %s outer %.0f: %d of 24 points round it can't be got to" % [c, outer, t_none])
+		print("town at %s outer %.0f: %d of 24 points round it can't be got to; %d solids in it" % [c, outer, t_none, _solids_near(walk, c, outer)])
 		# The places its people work at: every one should still be got to from the square.
 		var pl := NPCRoles.places(gen, s, {})
 		var spots: Array = []
@@ -67,14 +75,29 @@ func _initialize() -> void:
 			spots.append_array(pl[key])
 		for y in pl["shop_yards"].values():
 			spots.append(y[0])
-		for q in spots:
+		for q0: Vector2 in spots:
+			var q := walk.push_out(q0) # as NPC.step does: by a wall or a stall, not in it
 			places += 1
 			if walk.clear(c, q, WalkGrid.PERSON):
 				continue
+			if walk.clear_ground(c, q, WalkGrid.PERSON):
+				by_solid += 1
+				if not walk.detour(c, q, WalkGrid.PERSON).is_empty():
+					detoured += 1
+					continue
 			var r := walk.route(c, q, WalkGrid.PERSON)
 			if not r["reached"] and not walk.route(c, q, WalkGrid.SCRAMBLE)["reached"]:
 				lost += 1
-				print("   can't get to a work place at %s (grade there %.2f)" % [q, walk.grade(q.x, q.y)])
+				print("   can't get to a work place at %s (grade there %.2f, %s)" % [q, walk.grade(q.x, q.y), "in a solid" if walk.solid_at(q0) else "open"])
 	print("straight %d, round %d, scramble %d, no way %d; search avg %d us, worst %d us" % [straight, round, scramble, none, total_us / maxi(searched, 1), worst_us])
 	print("work places: %d of %d can't be got to from their square" % [lost, places])
+	print("a solid across the way %d times, gone round by its corners %d (the rest searched)" % [by_solid, detoured])
 	quit()
+
+func _solids_near(walk: WalkGrid, c: Vector2, r: float) -> int:
+	var n := 0
+	for fps: Array in walk._solids.values():
+		for f: PackedFloat32Array in fps:
+			if Vector2(f[0], f[1]).distance_to(c) < r:
+				n += 1
+	return n

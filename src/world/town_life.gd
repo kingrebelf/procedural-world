@@ -835,6 +835,7 @@ var _t := 0.0
 var _hour_t := 0.0
 var _shops: Dictionary = {} ## layout index of a shop's house -> true
 var _built: Array = [] ## groups standing: {pieces, house, root, box}
+var walk: WalkGrid ## where people and animals walk: told of the stalls and carts that stand
 var _seen := 0 ## the last of _changes this town has stood aside for
 
 ## Where the player built or dismantled something lately, as [rev, Vector2]: the town's
@@ -852,6 +853,12 @@ static func note_built(at: Vector2) -> void:
 
 static var _smoke_mat: StandardMaterial3D
 static var _smoke_pm: ParticleProcessMaterial
+
+func _exit_tree() -> void:
+	if walk:
+		for g in _built:
+			if g["root"] != null and is_instance_valid(g["root"]):
+				walk.set_solids((g["root"] as Node).get_instance_id(), [])
 
 func setup(g: ChunkGenerator, s: Node, st: Dictionary) -> void:
 	gen = g
@@ -1015,6 +1022,8 @@ func _restand() -> void:
 			if not (g["box"] as Rect2).grow(REACH_MAX).has_point(at):
 				continue
 			if g["root"] != null and is_instance_valid(g["root"]):
+				if walk:
+					walk.set_solids((g["root"] as Node).get_instance_id(), [])
 				(g["root"] as Node).queue_free()
 			_built.erase(g)
 			_pending.append({"pieces": g["pieces"], "house": g["house"]})
@@ -1122,7 +1131,9 @@ func _build(pieces: Array, base: float) -> Node3D:
 	var k := MeshKit.new(WHash.str_hash(str(o2)) & 0xFFFF)
 	var models: Array = []
 	var body := StaticBody3D.new()
+	var solids: Array = []
 	for e in pieces:
+		var had := body.get_child_count()
 		var r := RandomNumberGenerator.new()
 		r.seed = int(e.get("seed", WHash.str_hash(str(e.get("p", e.get("a", Vector2.ZERO))))))
 		var p2: Vector2 = e["p"] if e.has("p") else e["a"]
@@ -1156,6 +1167,10 @@ func _build(pieces: Array, base: float) -> Node3D:
 			"tree": _tree(root, e, at)
 			"torch_post": _torch_post(k, models, root, xf, body)
 			"smoke": _smoke(root, e, o2, oy)
+		if SOLID.has(e["k"]):
+			_solids_of(body, had, root.position, at.y, solids)
+	if walk and not solids.is_empty():
+		walk.set_solids(root.get_instance_id(), solids)
 	var mesh := BuildCatalog.merge_models(models) if not models.is_empty() else ArrayMesh.new()
 	k.commit(Materials.get_mat, mesh)
 	if mesh.get_surface_count() > 0:
@@ -1170,6 +1185,31 @@ func _build(pieces: Array, base: float) -> Node3D:
 	else:
 		body.free()
 	return root
+
+## Pieces people and animals go round (fences, gardens and the plinths they walk on
+## aren't among them).
+const SOLID := {"stall": true, "goods": true, "cart": true, "well": true, "cross": true,
+	"haystack": true, "woodpile": true, "chopping": true, "barrels": true}
+
+## The footprints (WalkGrid) of a piece's colliders, body's children from `from` on, that
+## stand in a walker's way: not wholly overhead, nor flat underfoot. `origin` is the
+## group's root, `gy` the piece's ground height from it.
+static func _solids_of(body: StaticBody3D, from: int, origin: Vector3, gy: float, out: Array) -> void:
+	for i in range(from, body.get_child_count()):
+		var cs := body.get_child(i) as CollisionShape3D
+		if cs == null:
+			continue
+		var half := 0.0
+		if cs.shape is BoxShape3D:
+			half = (cs.shape as BoxShape3D).size.y * 0.5
+		elif cs.shape is CylinderShape3D:
+			half = (cs.shape as CylinderShape3D).height * 0.5
+		var y := cs.transform.origin.y - gy
+		if y - half > 1.4 or y + half < 0.25:
+			continue
+		var f := WalkGrid.footprint(cs.shape, Transform3D(cs.transform.basis, origin + cs.transform.origin))
+		if not f.is_empty():
+			out.append(f)
 
 static func _box_shape(body: StaticBody3D, xf: Transform3D, size: Vector3) -> void:
 	var cs := CollisionShape3D.new()
@@ -1723,7 +1763,8 @@ func _torch_post(k: MeshKit, models: Array, root: Node3D, xf: Transform3D, body:
 	var m := ["props/Torch_Metal", rad_to_deg(xf.basis.get_euler().y), torch.origin, 1.0]
 	models.append(m)
 	var f: Array = FireFx.prop_flames([m])[0]
-	_flame(root, f[0], float(f[1]), 1.8, 10.0, FireFx.prop_flame(f))
+	# An open torch throws its light much further than a lantern behind glass.
+	_flame(root, f[0], float(f[1]), 3.0, 15.0, FireFx.prop_flame(f))
 	var fl: Node3D = _flames[_flames.size() - 2]
 	fl.add_child(FireFx.embers(0.42, false))
 	_box_shape(body, xf * I.translated(Vector3(0, 1.1, 0)), Vector3(0.18, 2.2, 0.18))

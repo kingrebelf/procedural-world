@@ -39,7 +39,8 @@ var fall := false
 ## shot shows motion blur and its fps includes the blur's cost (CameraBlur).
 var spin := 0.0
 ## --hold=pickaxe_iron puts that item in the selected hotbar slot for every shot, to see
-## it held in first person in the world.
+## it held in first person in the world. --hold=none puts away what's in hand (no hands
+## show), for clean beauty shots.
 var hold := ""
 ## --burn=N sets the N burnable things nearest each shot's target well alight before the
 ## shot settles (FireSystem), to see a town burn and measure what its fires cost.
@@ -116,6 +117,20 @@ func _apply_hud_mode() -> void:
 		if (c == hud._under) == (hud_mode == "nounder"):
 			c.reparent(hold, false)
 	print("hud mode ", hud_mode)
+
+## --hud=none: the name tags over people go on a layer the camera leaves out (animal tags
+## are already off, and shop signs are Label3Ds too, so only a person's own tag moves).
+const TAG_HIDE := 1 << 17
+func _hide_tags() -> void:
+	if hud_mode != "none":
+		return
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		cam.cull_mask &= ~TAG_HIDE
+	for l in get_tree().root.find_children("*", "Label3D", true, false):
+		if l.get_parent() is NPC:
+			(l as Label3D).layers = TAG_HIDE
+	await _wait(6)
 
 func _wait(n: int) -> void:
 	for i in n:
@@ -294,7 +309,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	var y := g.field.height(at.x, at.y) + height
 	p.set_physics_process(false)
 	p.global_position = Vector3(at.x, y, at.y)
-	if hold != "" and not ItemDB.def(hold).is_empty():
+	if hold == "none":
+		p.holster(true)
+	elif hold != "" and not ItemDB.def(hold).is_empty():
 		Game.inventory.set_slot(p.selected, ItemDB.make(hold, 1, 1.0, {}))
 		p.select(p.selected)
 	var arrived := Time.get_ticks_msec()
@@ -323,6 +340,9 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 	if not is_nan(aim):
 		d.y -= p.head.position.y
 	p.set_state({"pos": p.global_position, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.65), "slot": 0})
+	# set_state's slot takes the held item out again.
+	if hold == "none":
+		p.holster(true)
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.y))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	_spinning = spin != 0.0
@@ -343,6 +363,10 @@ func _shot(name: String, at: Vector2, look_at: Vector2, day: float, height := 1.
 		Weather.current.starfall.land_now = true
 		# Caught mid-fall, the fireball still high over the land.
 		await _wait_ms(2200)
+	if hold == "none" and not p.holstered:
+		p.holster(true)
+		await _wait(12)
+	await _hide_tags()
 	var img := get_viewport().get_texture().get_image()
 	_spinning = false
 	img.save_png(out_dir.path_join(name + ".png"))
@@ -1729,6 +1753,13 @@ func _clear_around(streamer: ChunkStreamer, at: Vector3, r: float) -> void:
 
 func _snap(name: String) -> void:
 	if only.is_empty() or only.has(name.substr(0, 2)):
+		# Shots call set_state with a slot, which takes the held item out again: put it
+		# away here, and let TAA forget it.
+		var pl = world.get("player") if is_instance_valid(world) else null
+		if hold == "none" and pl is Player and not pl.holstered:
+			pl.holster(true)
+			await _wait(12)
+		await _hide_tags()
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join(name + ".png"))
 		print("captured ", name)
 
@@ -1754,6 +1785,10 @@ func _space() -> void:
 		if tree.current_scene is OrbitView:
 			break
 	var orbit: OrbitView = tree.current_scene
+	if hud_mode == "none":
+		# The info panel only; the warp streaks share its layer.
+		for c in orbit.find_children("*", "PanelContainer", true, false):
+			(c as Control).visible = false
 	await _wait(settle_frames)
 	await _snap("13_orbit")
 	var fey := 1
@@ -1782,6 +1817,7 @@ func _space() -> void:
 			break
 	world = tree.current_scene
 	p = world.player
+	_apply_hud_mode()
 	for i in 3000:
 		await tree.process_frame
 		if p.vehicle != null:
@@ -2033,11 +2069,14 @@ func _abs_shot(name: String, at: Vector3, look: Vector3, day: float, torch: bool
 	p.set_state({"pos": at, "yaw": atan2(-d.x, -d.z), "pitch": clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.5, 0.5), "slot": 9})
 	if torch:
 		p.hand_light.from_data({"kind": "torch", "torch_left": 300.0})
+	elif hold == "none":
+		p.holster(true)
 	world.atmosphere._target_w = Eras.look(world.atmosphere.field.era_weights(at.x, at.z))
 	world.atmosphere._w = world.atmosphere._target_w.duplicate()
 	await _settle(p)
 	world.atmosphere.underground = world.atmosphere._under_target
 	await _wait(20)
+	await _hide_tags()
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(name + ".png"))
 	print("captured ", name, " at ", at, " underground ", world.atmosphere.underground)

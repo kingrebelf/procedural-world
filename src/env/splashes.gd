@@ -273,4 +273,4 @@ func _age_waves(delta: float) -> void:
 		ChunkNode.river_material.set_shader_parameter("rings", _waves)
 
 static func _water_t() -> float:
-	return fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	return fmod(GameClock.sec(), 3600.0)

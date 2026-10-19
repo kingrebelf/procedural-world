@@ -955,7 +955,11 @@ func _run() -> void:
 	check(con.run("give planks 25").begins_with("Gave 25"), "give command")
 	await _frames(60)
 
-	# Levelling: experience from the console, a point spent, all saved below.
+	# Levelling: experience from the console, a point spent, all saved below. At 4x
+	# experience the harvesting above may already have levelled us, so start from 1.
+	game.stats.level = 1
+	game.stats.xp = 0
+	game.stats.points = 0
 	con.run("level 3")
 	check(game.stats.level == 3 and game.stats.points == 6, "levelled to 3 with points (%d, %d)" % [game.stats.level, game.stats.points])
 	check(game.spend_point("end") and game.max_health() == 110.0, "endurance point raises max health")
@@ -1440,6 +1444,30 @@ func _round_the_cliff(world, streamer: ChunkStreamer, player) -> void:
 	check(end.distance_to(to) < 1.0, "they get there (%.1f m off)" % end.distance_to(to))
 	check(top < h0 + 0.5 and worst <= WalkGrid.PERSON, "without climbing it (highest %.1f m up, steepest %.2f)" % [top - h0, worst])
 	check(round_end, "going round its end")
+	# A market stall across the way past the cliff's end: round it, never through it.
+	var stall := o + Vector2(32.0, 54.0)
+	npcs.walk.set_solids("test_stall", [PackedFloat32Array([stall.x, stall.y, cos(0.3), sin(0.3), 1.3, 0.6])])
+	var from2 := o + Vector2(20.0, 54.0)
+	var to2 := o + Vector2(44.0, 54.5)
+	n.global_position = Vector3(from2.x, h0, from2.y)
+	n.target = to2
+	n._route = PackedVector2Array()
+	n._route_goal = Vector2.INF
+	n._route_wait = 0.0
+	check(not npcs.walk.clear(from2, to2, WalkGrid.PERSON), "the straight way is through a stall")
+	var into := 0.0
+	for f in 200:
+		for s in 4:
+			n.step(0.05, npcs._ground, far, [])
+		var at2 := Vector2(n.global_position.x, n.global_position.z)
+		if npcs.walk.solid_at(at2, WalkGrid.BODY - 0.05):
+			into = maxf(into, 0.05)
+		if at2.distance_to(to2) < 1.0:
+			break
+		await process_frame
+	var end2 := Vector2(n.global_position.x, n.global_position.z)
+	check(end2.distance_to(to2) < 1.0 and into == 0.0, "they walk round the stall (%.1f m off, %s)" % [end2.distance_to(to2), "never in it" if into == 0.0 else "went into it"])
+	npcs.walk.set_solids("test_stall", [])
 	npcs._by_id.erase(n.rec["id"])
 	n.queue_free()
 	npcs._unload("b9_9_1")
@@ -1804,22 +1832,35 @@ func _cannon_check(game, world, player) -> void:
 	var gy: float = world.vehicles.ground(wp.x, wp.z)
 	wp.y = gy if not is_nan(gy) else cv.global_position.y
 	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
-	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
-	await _frames(3)
 	# Fires left from the checks before can't fill the burning list (MAX_BURNING).
 	fs.douse_all()
-	var mz := Cannon.muzzle(cv)
-	var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
-	player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
-	await _frames(4)
-	Cannon.use(player, cv)
-	check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+	var wall: Dictionary
 	var lit := false
-	# The ball flies on physics time: wait for it to strike (capped).
-	for i in 240:
-		await physics_frame
-		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
-			lit = true
+	for shot in 3:
+		if shot > 0:
+			# A wall that was struck but did not catch: reload and fire at a fresh wall.
+			node.remove_object(wall["i"])
+			game.inventory.add(ItemDB.make("hot_shot", 1, 1.0, {}))
+			game.inventory.add(ItemDB.make("black_powder", 2, 1.0, {}))
+			Cannon.use(player, cv)
+			await create_timer(Cannon.LOAD_TIME + 0.3).timeout
+		wall = node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+		await _frames(3)
+		var mz := Cannon.muzzle(cv)
+		var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
+		player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
+		await _frames(4)
+		Cannon.use(player, cv)
+		if shot == 0:
+			check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+		lit = false
+		# The ball flies on physics time: wait for it to strike (capped).
+		for i in 240:
+			await physics_frame
+			if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
+				lit = true
+				break
+		if not lit or (wall["st"] as Dictionary).has("fire"):
 			break
 	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s, burning: %s)" % [wall["st"].keys(), fs._burning.values().map(func(b): return b["t"])])
 	player.dismount()

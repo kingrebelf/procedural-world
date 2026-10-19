@@ -5,12 +5,13 @@ config_version=5
 
 config/name="Procedural World"
 config/description="An infinite, persistent, first-person world that blends eras as you walk."
-config/version="0.3.51"
+config/version="0.3.54"
 run/main_scene="res://src/ui/main_menu.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="ProceduralWorld"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.png"
+run/flush_stdout_on_print=true
 
 [audio]
 
@@ -19,12 +20,18 @@ general/text_to_speech=true
 
 [autoload]
 
+CrashLog="*res://src/core/crash_log.gd"
 Settings="*res://src/settings/graphics_settings.gd"
 AI="*res://src/ai/ai_service.gd"
 Game="*res://src/core/game.gd"
 Audio="*res://src/audio/audio.gd"
 Net="*res://src/net/net.gd"
 FireClock="*res://src/world/fire_clock.gd"
+
+[debug]
+
+file_logging/enable_file_logging=true
+file_logging/max_log_files=10
 
 [display]
 

@@ -17,6 +17,7 @@ var _hit := {} ## the world "point" and "normal" this swing lands on
 var _off_full := Vector3.ZERO ## the drift that brings the edge onto the target
 var _tip_pts := PackedVector3Array()
 var _tip_of: Mesh ## the mesh _tip_pts were taken from
+var _close := 0.0 ## 0..1: how near the eye this swing's target is (1 at point-blank)
 ## Set by the player each frame: the surface the crosshair is on, when it is close
 ## ("point", "normal"), so the held item rests against it instead of sinking in.
 var near := {}
@@ -127,9 +128,34 @@ const REACH_UP := 0.22
 const REACH_DOWN := 0.25
 const REACH_OUT := 0.3
 const REACH_IN := 0.25
+## A target nearer the eye than CLOSE_FAR is struck with a short, choked-up hack: the
+## arc tips less far forward and the hands draw in and down, up to CLOSE_IN and
+## CLOSE_DOWN further at CLOSE_NEAR, so the head still comes down onto it instead of
+## the rig being shoved back out of the view.
+const CLOSE_FAR := 1.15
+const CLOSE_NEAR := 0.45
+const CLOSE_IN := 0.45
+const CLOSE_DOWN := 0.15
+const CLOSE_TIP := 0.7
 const TIP_POINTS := 320
 
+## The first-person rig draws on its own layer, which the world's sun skips: your body (seen
+## only by its shadow) sits where the camera is, so with the sun behind you its head's
+## shadow fell across whatever you held. A shadowless copy of the sun lights the rig
+## instead, dimmed when the sun is blocked between you and it.
+const VIEW_LAYER := 1 << 18
+var _view_sun: DirectionalLight3D
+var _sun: DirectionalLight3D
+var _sun_lit := 1.0
+var _tag_t := 0.0
+
 func _ready() -> void:
+	_view_sun = DirectionalLight3D.new()
+	_view_sun.light_cull_mask = VIEW_LAYER
+	_view_sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	_view_sun.light_volumetric_fog_energy = 0.0
+	_view_sun.visible = false
+	add_child(_view_sun)
 	_mesh = MeshInstance3D.new()
 	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_mesh)
@@ -633,6 +659,11 @@ func swing(duration := 0.42, hit := {}) -> float:
 	_landed = false
 	_hit = hit if hit.has("point") and hit.has("normal") else {}
 	_off_full = Vector3.ZERO
+	_close = 0.0
+	var parent := get_parent() as Node3D
+	if not _hit.is_empty() and parent != null and parent.is_inside_tree():
+		var d := parent.global_position.distance_to(_hit["point"])
+		_close = clampf((CLOSE_FAR - d) / (CLOSE_FAR - CLOSE_NEAR), 0.0, 1.0)
 	_tip_pts = PackedVector3Array()
 	_refresh_points()
 	var u := sqrt((CONTACT - BACK) / (1.0 - BACK))
@@ -652,10 +683,11 @@ func _swing_amount(t: float) -> float:
 ## The rig's swing pose at swing amount s, in the camera's frame (before sway, aiming
 ## and the drift towards a target).
 func _swing_pose(s: float) -> Array:
+	var tip := 1.0 - CLOSE_TIP * _close
 	if arms:
 		# The whole rig swings down and across from just in front of the eyes.
-		return [Vector3(-0.05 * s, -0.06 * s, -0.12 * s), Vector3(-0.9 * s, 0.25 * s, 0.35 * s)]
-	return [Vector3(-0.12 * s, 0.05 * s, -0.1 * s), Vector3(-1.1 * s, 0.3 * s, 0.3 * s)]
+		return [Vector3(-0.05 * s, -0.06 * s, -0.12 * s * tip), Vector3(-0.9 * s * tip, 0.25 * s, 0.35 * s)]
+	return [Vector3(-0.12 * s, 0.05 * s, -0.1 * s * tip), Vector3(-1.1 * s * tip, 0.3 * s, 0.3 * s)]
 
 ## The held item's vertices (a sample of them) in the rig's own frame. The grip holds
 ## the item fixed to the rig through a swing, so these stay put while the rig moves.
@@ -695,7 +727,7 @@ func _reach_offset(cam_from_world: Transform3D) -> Vector3:
 			best = into
 			lead = v
 	var off := p - lead
-	return Vector3(clampf(off.x, -REACH_SIDE, REACH_SIDE), clampf(off.y, -REACH_DOWN, REACH_UP), clampf(off.z, -REACH_OUT, REACH_IN))
+	return Vector3(clampf(off.x, -REACH_SIDE, REACH_SIDE), clampf(off.y, -REACH_DOWN - CLOSE_DOWN * _close, REACH_UP * (1.0 - _close)), clampf(off.z, -REACH_OUT, REACH_IN + CLOSE_IN * _close))
 
 ## Keeps the held item out of a surface: pushes the rig back off it, and when the
 ## strike meets the one it was aimed at, stops the swing there.
@@ -773,6 +805,7 @@ func _sight_local() -> Vector3:
 
 func sway(delta: float, speed: float) -> void:
 	_lens()
+	_light_view(delta)
 	var steady := (1.0 - 0.85 * ads) * (1.0 - raise)
 	_sway_t += delta * (1.0 + speed * 6.0)
 	if _hold > 0.0:
@@ -849,3 +882,50 @@ func tracer(world_end: Vector3, mat := "glow_cyan") -> void:
 	var tw := beam.create_tween()
 	tw.tween_property(beam, "scale", Vector3(0.1, 1, 0.1), 0.12)
 	tw.tween_callback(beam.queue_free)
+
+## Follows the world's sun with the rig's own light (see VIEW_LAYER): same direction, colour
+## and strength, fading out while something solid stands between the held item and the sun.
+func _light_view(delta: float) -> void:
+	_tag_t -= delta
+	if _tag_t <= 0.0:
+		_tag_t = 0.25
+		_tag_view()
+		if _sun == null or not is_instance_valid(_sun):
+			_adopt_sun(get_tree().root.find_child("Sun", true, false) as DirectionalLight3D)
+	if _sun == null or not is_instance_valid(_sun):
+		_view_sun.visible = false
+		return
+	var toward := _sun.global_basis.z
+	var lit := 1.0
+	if _sun.visible and _sun.shadow_enabled and toward.y > 0.0:
+		var q := PhysicsRayQueryParameters3D.create(global_position, global_position + toward * 300.0)
+		var body := _owner_body()
+		if body != null:
+			q.exclude = [body.get_rid()]
+		if not get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+			lit = 1.0 - _sun.shadow_opacity
+	_sun_lit = move_toward(_sun_lit, lit, delta * 3.0)
+	_follow_sun()
+
+func _tag_view() -> void:
+	for gi in find_children("*", "GeometryInstance3D", true, false):
+		(gi as GeometryInstance3D).layers = VIEW_LAYER
+
+func _adopt_sun(sun: DirectionalLight3D) -> void:
+	_sun = sun
+	if sun != null:
+		sun.light_cull_mask &= ~VIEW_LAYER
+
+func _follow_sun() -> void:
+	_view_sun.visible = _sun.visible
+	_view_sun.global_basis = _sun.global_basis
+	_view_sun.light_color = _sun.light_color
+	_view_sun.light_energy = _sun.light_energy * _sun_lit
+	_view_sun.light_specular = _sun.light_specular
+	_view_sun.light_angular_distance = _sun.light_angular_distance
+
+func _owner_body() -> CollisionObject3D:
+	var n := get_parent()
+	while n != null and not n is CollisionObject3D:
+		n = n.get_parent()
+	return n

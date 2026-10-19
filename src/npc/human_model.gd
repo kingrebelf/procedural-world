@@ -630,12 +630,14 @@ func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO)
 
 ## What the hand holds casts no shadow on the first-person arms, nor from a shadow-only
 ## body: that body's copy sits almost where the first-person one is drawn, and with the sun
-## behind you its shadow blacked out the tool in your hand.
+## behind you its shadow blacked out the tool in your hand. Casting nothing, that copy is
+## hidden outright; left visible it swung into view beside yours on every attack.
 func _shade_held() -> void:
 	if _held == null:
 		return
-	for mi in _held.find_children("*", "MeshInstance3D", true, false):
+	for mi in _held.find_children("*", "MeshInstance3D", true, false) + ([_held] if _held is MeshInstance3D else []):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if _arms or _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		(mi as MeshInstance3D).visible = not _shadow_only
 
 ## The scale a prop is held at so it stays its real size however tall this person is
 ## drawn (NPC sets the whole body's scale to their stature): a short woman's pickaxe is
@@ -980,7 +982,7 @@ var _last_idle_ms := 0
 ## Standing about, people don't loop one idle: now and then they fold their arms, put
 ## their hands on their hips, or glance at something nearby.
 func _idle_variety() -> void:
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
 	_last_idle_ms = now
 	if _idle_t <= 0.0:
@@ -1015,7 +1017,7 @@ func _idle_variety() -> void:
 ## On the move, eyes don't stay locked straight ahead: every few seconds a look aside at
 ## something passed, or down at the path a few steps on.
 func _walk_glances() -> void:
-	var now := Time.get_ticks_msec()
+	var now := GameClock.msec()
 	var dt := clampf(float(now - _last_idle_ms) / 1000.0, 0.0, 0.5)
 	_last_idle_ms = now
 	if _glance != Vector3.INF:

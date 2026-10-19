@@ -11,6 +11,8 @@ var _trader: Dictionary
 var _trader_chunk: ChunkNode
 var _store_obj: Dictionary ## the storage chest that is open
 var _store_chunk: ChunkNode
+var _hold: Vehicle ## the boat whose hold is open (instead of a chest)
+var _hold_name := ""
 var _store: Inventory
 var _corpses: Corpses ## the body that is open (mode "corpse")
 var _corpse_key := ""
@@ -123,9 +125,18 @@ func open_trader(st: Dictionary, chunk: ChunkNode) -> void:
 	open("trade")
 
 func open_storage(o: Dictionary, chunk: ChunkNode) -> void:
+	_hold = null
 	_store_obj = o
 	_store_chunk = chunk
 	_store = Storage.open(o)
+	open("storage")
+
+## A big boat's hold (or locker, or chest): kept in her record, saved with your vehicles.
+func open_hold(v: Vehicle, name: String) -> void:
+	_hold = v
+	_hold_name = name
+	_store_chunk = null
+	_store = v.open_hold()
 	open("storage")
 
 ## A carcass or a person's body: take what is on it.
@@ -160,6 +171,12 @@ func open_travel(o: Dictionary, chunk: ChunkNode) -> void:
 func _store_changed() -> void:
 	if _mode == "corpse":
 		_corpse_changed()
+		return
+	if _hold != null:
+		if is_instance_valid(_hold):
+			_hold.save_hold(_store)
+			Game.mark_player_dirty()
+		_refresh()
 		return
 	Storage.save(_store_obj, _store)
 	if _store_chunk and is_instance_valid(_store_chunk):
@@ -902,7 +919,7 @@ func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 # --- Storage -------------------------------------------------------------------------
 
 func _storage_panel() -> Control:
-	var cname := String(BuildCatalog.def(BuildCatalog.id_of(_store_obj["t"])).get("name", "Chest"))
+	var cname := _hold_name.capitalize() if _hold != null else String(BuildCatalog.def(BuildCatalog.id_of(_store_obj["t"])).get("name", "Chest"))
 	var kg := Game.inventory.weight()
 	var s := _shell(cname, "Click an item to move it across. Your pack: %.0f / %d kg." % [kg, int(Game.stats.carry_capacity())])
 	var v: VBoxContainer = s[1]

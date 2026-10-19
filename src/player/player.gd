@@ -457,7 +457,7 @@ func _physics_process(delta: float) -> void:
 	var landed_vy := 0.0
 
 	# Water: swim (Swim) once it is chest-deep; wade below that.
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	var surface := Water.surface_height(global_position.x, global_position.z, t_water)
 	swimming = surface - global_position.y > 1.15
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
@@ -640,6 +640,33 @@ func _find_focus() -> Dictionary:
 					"verb": ("Pick %s's pocket" % first) if sneaking() and not n.talking else "Talk to %s" % first}
 	if vehicles:
 		for v in vehicles.all_nodes():
+			if v.deck:
+				# A big boat: take her helm, or use what's aboard (her hold, a bunk).
+				var helm: Vector3 = v.seat_transform().origin
+				var sh := _focus_score(eye, fwd, helm)
+				if sh < best_s:
+					best_s = sh
+					best = {"kind": "vehicle", "vehicle": v, "pos": helm + Vector3(0, 0.6, 0),
+						"verb": "Take the helm of the %s" % Vehicle.label(v.kind).to_lower()}
+				if not _on_deck(v):
+					# In the water or on the jetty beside her: up her side and aboard.
+					var lp: Vector3 = v.to_local(global_position)
+					var L := float(v.p["length"])
+					var side: Vector3 = v.to_global(Vector3(signf(lp.x) * v.half_width, 0.9, clampf(lp.z, -L * 0.35, L * 0.35)))
+					var sb := _focus_score(eye, fwd, side)
+					if sb < best_s:
+						best_s = sb
+						best = {"kind": "aboard", "vehicle": v, "spot": -1, "pos": side + Vector3(0, 0.5, 0),
+							"verb": "Climb aboard the %s" % Vehicle.label(v.kind).to_lower()}
+				var spots: Array = v.spots()
+				for i in spots.size():
+					var at: Vector3 = spots[i]["pos"]
+					var ss := _focus_score(eye, fwd, at)
+					if ss < best_s and _can_see(eye, at):
+						best_s = ss
+						best = {"kind": "aboard", "vehicle": v, "spot": i, "pos": at + Vector3(0, 0.3, 0),
+							"verb": ("Open the %s" if spots[i]["use"] == "hold" else "Sleep in the %s (you wake here after a fall)") % spots[i]["name"]}
+				continue
 			var sc := _focus_score(eye, fwd, v.global_position + Vector3(0, v.height * 0.5, 0))
 			if sc < best_s:
 				best_s = sc
@@ -721,6 +748,13 @@ func _find_focus() -> Dictionary:
 	return best
 
 ## True when nothing stands between the eye and `at` (a prop seen through a wall isn't).
+## Standing (or walking) on that boat's deck just now.
+func _on_deck(v: Vehicle) -> bool:
+	for i in get_slide_collision_count():
+		if get_slide_collision(i).get_collider() == v.deck:
+			return true
+	return false
+
 func _can_see(eye: Vector3, at: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(eye, at, 1, [get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
@@ -781,7 +815,9 @@ func _update_decon(delta: float) -> void:
 			if focus["kind"] == "vehicle":
 				var v: Vehicle = focus["vehicle"]
 				if is_instance_valid(v):
-					if vehicles.pack_up(v):
+					if Vehicle.KINDS[v.kind].get("moored", false):
+						Game.toast.emit("She's too big to carry: she stays where you moor her")
+					elif vehicles.pack_up(v):
 						Game.toast.emit("Packed up the %s" % Vehicle.label(v.kind).to_lower())
 					else:
 						Game.toast.emit("No room in your pack")
@@ -1140,6 +1176,10 @@ func interact() -> void:
 				get_tree().call_group("trade_ui", "open_corpse", corpses, focus["body"])
 				_focus_t = 0.0
 				return
+			"aboard":
+				_use_aboard(focus["vehicle"], int(focus["spot"]))
+				_focus_t = 0.0
+				return
 			"lore":
 				if is_instance_valid(focus["chunk"]):
 					get_tree().call_group("lore_ui", "open_spot", focus["chunk"], focus["i"], focus["spot"])
@@ -1419,6 +1459,31 @@ func _read(idx: int, fd: Dictionary, name: String) -> void:
 			return
 	Game.inventory.remove_at(idx, 1)
 
+## A place aboard a big boat: open her hold, or turn in for the night in her bunk, which
+## is then where you wake after a fall.
+func _use_aboard(v: Vehicle, i: int) -> void:
+	if not is_instance_valid(v):
+		return
+	if i < 0:
+		global_position = v.exit_point()
+		velocity = Vector3.ZERO
+		swimming = false
+		return
+	var sp: Dictionary = v.p["spots"][i]
+	used_tool.emit("interact")
+	if sp["use"] == "hold":
+		get_tree().call_group("trade_ui", "open_hold", v, String(sp["name"]))
+		return
+	for r in Game.vehicles:
+		r.erase("berth")
+	v.rec["berth"] = true
+	Game.mark_player_dirty()
+	var t := fposmod(Game.day, 1.0)
+	if t > 0.24 and t < 0.78:
+		Game.toast.emit("You'll wake in the %s after a fall. Sleep in it at night." % String(sp["name"]))
+		return
+	_sleep({}, String(sp["name"]))
+
 ## Sleeps until morning on a bedroll or in a tent: whole again, and well rested.
 func _sleep(fd: Dictionary, name: String) -> void:
 	var t := fposmod(Game.day, 1.0)
@@ -1633,7 +1698,7 @@ func _cast_line() -> void:
 	var q := PhysicsRayQueryParameters3D.create(from, from + fwd * CAST_RANGE, 1 | 2, [get_rid()])
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	var far: float = from.distance_to(hit["position"]) if hit.has("position") else CAST_RANGE
-	var tw := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var tw := fmod(GameClock.sec(), 3600.0)
 	var wet := false
 	var d := 2.0
 	while d <= far:
@@ -1907,7 +1972,7 @@ func _pvp_hit(it, peer: int, dmg: float, head := false, _point := Vector3.INF, m
 	Net.hurt_player(peer, dmg, "", true)
 	if marker:
 		hit_marker.emit("head" if head else "hit")
-		Audio.play("hit/marker", -3.0 if head else -13.0, 0.05, 1.8 if head else 1.3)
+		Audio.play("hit/marker_head" if head else "hit/marker", -4.0 if head else -9.0, 0.03)
 
 var _pvp_note := -99999
 
@@ -1919,8 +1984,8 @@ func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> vo
 	Ragdoll.mark_hit(target, point, dir, clampf(10.0 + dmg * 0.8, 10.0, 70.0), "Head" if head else "")
 
 ## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
-## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
-## for a kill.
+## and a sound confirms it: a dry tick for a hit, a ringing ping for a headshot, a deep
+## thunk for a kill.
 signal hit_marker(kind: String)
 
 func _mark(creature, npc, head: bool) -> void:
@@ -1933,11 +1998,11 @@ func _mark(creature, npc, head: bool) -> void:
 	hit_marker.emit(kind)
 	match kind:
 		"kill":
-			Audio.play("hit/marker", -4.0, 0.03, 0.8)
+			Audio.play("hit/marker_kill", -5.0, 0.03)
 		"head":
-			Audio.play("hit/marker", -3.0, 0.03, 1.8)
+			Audio.play("hit/marker_head", -4.0, 0.03)
 		_:
-			Audio.play("hit/marker", -13.0, 0.05, 1.3)
+			Audio.play("hit/marker", -9.0, 0.04)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:
@@ -2063,7 +2128,7 @@ func _doorway_gone(chunk: ChunkNode, o: Dictionary) -> void:
 ## A stable name for what the player is focused on, to tell when the focus changes.
 static func _focus_key(f: Dictionary) -> String:
 	if f.has("vehicle") and is_instance_valid(f["vehicle"]):
-		return "v%d" % int((f["vehicle"] as Vehicle).rec["id"])
+		return "v%d%s" % [int((f["vehicle"] as Vehicle).rec["id"]), (":%d" % int(f["spot"])) if f.has("spot") else ""]
 	if f.has("body"):
 		return "b" + String(f["body"])
 	if f.has("chunk") and is_instance_valid(f["chunk"]):
@@ -2111,7 +2176,7 @@ func mount(v: Vehicle) -> void:
 			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("use"), _key("interact")])
 		return
 	if v.boat():
-		var oars := "row" if v.kind == "rowboat" else "paddle"
+		var oars := "row" if v.kind == "rowboat" else ("throttle" if v.has_engine() else "paddle")
 		if v.has_sail():
 			Game.toast.emit("%s: [%s] raise or lower the sail, [%s/%s] %s, [%s/%s] steer, [%s] get off" % [Vehicle.label(v.kind),
 				_key("jump"), _key("move_forward"), _key("move_back"),
@@ -2168,6 +2233,14 @@ func _ride(delta: float) -> void:
 	v.drive = input
 	v.boosting = not ui_open and Input.is_action_pressed("sprint") and input.y > 0.1
 	v.auto_trim = bool(Settings.get_value("sail_auto_trim"))
+	if v.has_engine() and float(v.rec.get("fuel", 1.0)) <= 0.0 and input.y != 0.0 and not ui_open:
+		# Tank dry: pour in a jerrycan of diesel from your pack, if you carry one.
+		if Game.inventory.remove_type("diesel_jerrycan", 1) > 0:
+			v.rec["fuel"] = 1.0
+			Game.toast.emit("Filled her tank from a diesel jerrycan")
+		elif _fuel_warned < Time.get_ticks_msec():
+			_fuel_warned = Time.get_ticks_msec() + 5000
+			Game.toast.emit("Out of fuel: she needs a Diesel Jerrycan")
 	if v.boat() and not ui_open and Input.is_action_just_pressed("jump") and v.has_sail():
 		Game.toast.emit("Sail raised" if v.toggle_sail() else "Sail lowered")
 	if v.flies():
@@ -2201,7 +2274,7 @@ func _ride(delta: float) -> void:
 		if not ui_open and Input.is_action_just_pressed("use"):
 			Cannon.use(self, v)
 	steps.ride(v, delta)
-	var t_water := fmod(Time.get_ticks_msec() / 1000.0, 3600.0)
+	var t_water := fmod(GameClock.sec(), 3600.0)
 	underwater = camera.global_position.y < Water.surface_height(camera.global_position.x, camera.global_position.z, t_water) - 0.05
 	if underwater:
 		breath = maxf(0.0, breath - delta)
@@ -2233,9 +2306,13 @@ func _ride(delta: float) -> void:
 		_last_look = text
 		look_target_changed.emit(text)
 
+var _fuel_warned := 0
+
 ## Afloat: her speed, and for a sailing boat the point of sail and how the sail draws.
 func _boat_hud(v: Vehicle) -> String:
 	var text := "%.1f knots" % (absf(v.spd) * 1.944)
+	if v.has_engine():
+		text += "   fuel %d%%" % roundi(float(v.rec.get("fuel", 1.0)) * 100.0)
 	if v.has_sail():
 		if bool(v.sail["raised"]):
 			var wind := Water._dir.normalized() * Sailing.wind_speed(Water._wind)
