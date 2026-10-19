@@ -9,12 +9,16 @@ Everything here is CC0 (public domain) or made for this game.
 - **OpenGameArt CC0 music and ambience**:
   - "Exploration Theme" by Cleyton Kauffman, https://opengameart.org/content/exploration-theme
   - "Safe Space", https://opengameart.org/content/safe-space-0
-  - "Music Loops" (Battle, Action A, Horror), https://opengameart.org/content/music-loops-0
+  - "Music Loops" (Horror), https://opengameart.org/content/music-loops-0
   - "Loopable Dungeon Ambience", https://opengameart.org/content/loopable-dungeon-ambience
   - "Final Captain's Log" from Ambience Pack 1 -- Sci-Fi Horror,
     https://opengameart.org/content/ambience-pack-1-sci-fi-horror
 - **Synthesised for this game** (CC0) by `tools/synth_ambience.py`: wind, strong wind,
   river, sea surf, birds, crickets, fantasy shimmer, sci-fi hum, swing whooshes, splashes,
   rain, rain on the roof, hail, thunder (`tools/synth_ambience.py assets/audio weather`).
+
+- **Composed for this game** (CC0) by `tools/compose_battle.py`: the battle march
+  (`music/war_march.ogg`), played on the VS Chamber Orchestra 2 Community Edition samples
+  (CC0, https://github.com/sgossner/VSCO-2-CE).
 
 `tools/prepare_audio.py` lists exactly which source file each sound came from.
