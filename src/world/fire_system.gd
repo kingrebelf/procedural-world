@@ -31,9 +31,9 @@ const MAX_BURNING := 48
 ## By the fire_fx setting (Low, Normal, High): fires drawn with flames (nearest first),
 ## lit, and lit with shadows, and the smoke particles over each.
 const QUALITY := [
-	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 70},
-	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 130},
-	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 190},
+	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 90},
+	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 170},
+	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 240},
 ]
 static var quality := 1
 const SOUNDS := 4
@@ -1007,13 +1007,14 @@ class FireVis extends Node3D:
 			_smoke_draw.billboard_keep_scale = true
 			_smoke_draw.particles_anim_h_frames = 4
 			_smoke_draw.particles_anim_v_frames = 4
-			_smoke_draw.particles_anim_loop = false
+			_smoke_draw.particles_anim_loop = true
 			_smoke_draw.vertex_color_use_as_albedo = true
 			_smoke_draw.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 			_smoke_draw.roughness = 1.0
 			_smoke_draw.proximity_fade_enabled = true
 			_smoke_draw.proximity_fade_distance = 1.2
-			var sheet := "res://assets/textures/fx/smoke_flipbook.png"
+			# Ben's thick smoke: 16 frames of one billow churning over on itself, a loop.
+			var sheet := "res://assets/textures/fx/smoke_heavy_flipbook.png"
 			if ResourceLoader.exists(sheet):
 				_smoke_draw.albedo_texture = load(sheet)
 		_smoke = GPUParticles3D.new()
@@ -1045,6 +1046,9 @@ class FireVis extends Node3D:
 		_smoke_mat.angular_velocity_min = -12.0
 		_smoke_mat.angular_velocity_max = 12.0
 		_smoke_mat.anim_offset_max = 1.0
+		# Each puff rolls through the loop a few times as it climbs.
+		_smoke_mat.anim_speed_min = 3.0
+		_smoke_mat.anim_speed_max = 4.0
 		_smoke_mat.scale_min = 0.9
 		_smoke_mat.scale_max = 1.2
 		var sc := Curve.new()
@@ -1060,9 +1064,9 @@ class FireVis extends Node3D:
 		g.set_color(1, Color(1, 1, 1, 0.0))
 		# Each puff is thin and they overlap: the plume is dense where many are, not
 		# where one is, so it has no edges of its own.
-		g.add_point(0.04, Color(0.8, 0.8, 0.8, 0.9))
-		g.add_point(0.45, Color(1, 1, 1, 0.65))
-		g.add_point(0.8, Color(1, 1, 1, 0.28))
+		g.add_point(0.04, Color(0.8, 0.8, 0.8, 1.0))
+		g.add_point(0.45, Color(1, 1, 1, 0.85))
+		g.add_point(0.8, Color(1, 1, 1, 0.4))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
 		_smoke_mat.color_ramp = gt

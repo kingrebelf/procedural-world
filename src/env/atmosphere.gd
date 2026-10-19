@@ -14,6 +14,9 @@ static var moon_phase := 0.5
 static var moon_phase_override := -1.0
 ## How bright the daylight in through house windows is now (WindowLight): out at night.
 static var window_fill := 0.0
+## The wind now (as the shaders' wind_dir * wind_strength), for scripts: reading the
+## shader globals back stalls on the renderer.
+static var wind_now := Vector2(0.24, 0.18)
 ## Game days from one full moon to the next. The first night of a new world is full.
 const LUNAR_DAYS := 8.0
 var sun: DirectionalLight3D
@@ -325,6 +328,7 @@ func _update_wind(delta: float) -> void:
 	RenderingServer.global_shader_parameter_set("cloud_cover_g", cover)
 	sun.shadow_opacity = lerpf(1.0, 0.75, cover)
 	RenderingServer.global_shader_parameter_set("wind_dir", wind_dir)
+	wind_now = wind_dir * wind_strength
 
 func _blend(arr: Array) -> Variant:
 	var c = arr[0] * _w[0]
