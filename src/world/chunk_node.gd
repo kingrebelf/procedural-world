@@ -1705,12 +1705,6 @@ func _add_obj_body(o: Dictionary) -> void:
 			# Sparks fly from a hearth or a wall torch; the smoke goes up the chimney.
 			fl.add_child(FireFx.embers(f[1], false))
 		b.add_child(fl)
-	if o["t"] == WorldPortal.TYPE:
-		# The door of light, just proud of the glowing disc on both faces.
-		for z in [-0.05, 0.05]:
-			var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
-			sw.position = Vector3(0, WorldPortal.DOOR_Y, z)
-			b.add_child(sw)
 	if built:
 		var bd := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
 		if bd.has("fire"):
@@ -1728,8 +1722,11 @@ func _add_obj_body(o: Dictionary) -> void:
 			# Firelight wavers with its flame and shines from it.
 			var l: OmniLight3D = FlickerLight.new() if bd.has("fire") or not flames.is_empty() else OmniLight3D.new()
 			l.light_color = lc
-			l.light_energy = 1.6
-			l.omni_range = 7.0
+			# An open fire throws its light well out across the ground around it (Ben
+			# 2026-10-19: campfires lit too little); a lamp or candle stand lights a room.
+			var open_fire := bd.has("fire")
+			l.light_energy = 3.4 if open_fire else 1.6
+			l.omni_range = 15.0 if open_fire else 7.0
 			# The light is where the flames are: from lower down the stand's own arms threw
 			# black blots over the ceiling.
 			l.position = wicks / flames.size() if not flames.is_empty() else Vector3(0, 1.0, 0)
@@ -1740,8 +1737,8 @@ func _add_obj_body(o: Dictionary) -> void:
 				spread = maxf(spread, ((f[0] as Vector3) - l.position).length())
 			_cast_shadows(l, clampf(spread * 1.5 + 0.03, 0.04, 0.45), false)
 			l.distance_fade_enabled = true
-			l.distance_fade_begin = 40.0
-			l.distance_fade_length = 15.0
+			l.distance_fade_begin = 60.0 if open_fire else 40.0
+			l.distance_fade_length = 20.0 if open_fire else 15.0
 			b.add_child(l)
 			# Light thrown back off the walls and ceiling, so the side of a room away from
 			# the lamp is dim rather than black.

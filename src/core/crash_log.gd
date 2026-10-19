@@ -80,16 +80,22 @@ func _running_jobs(now: int) -> String:
 ## Watchdog thread: reports a main thread that has stopped ticking, and stuck jobs.
 func _watch() -> void:
 	var stalled := false
+	var next_mem := 0
 	var flagged: Dictionary = {}
 	while not _stop:
-		OS.delay_msec(1000)
+		OS.delay_msec(250)
 		var now := Time.get_ticks_msec()
 		var idle := now - _tick
-		if idle > 5000 and not stalled:
+		if idle > 1000 and not stalled:
 			stalled = true
-			note("WATCHDOG main thread not responding for %.1f s; last %s; chunk jobs running: %s" % [
-				idle / 1000.0, _where, _running_jobs(now)])
-		elif idle < 1000 and stalled:
+			next_mem = now + 1000
+			note("WATCHDOG main thread not responding for %.1f s; last %s; %s; chunk jobs running: %s" % [
+				idle / 1000.0, _where, _ram(), _running_jobs(now)])
+		elif stalled and idle > 1000 and now >= next_mem:
+			# Memory running away during a freeze points at a runaway loop.
+			next_mem = now + 1000
+			note("WATCHDOG still frozen %.1f s; %s" % [idle / 1000.0, _ram()])
+		elif idle < 500 and stalled:
 			stalled = false
 			note("WATCHDOG main thread responding again")
 		_lock.lock()
@@ -153,11 +159,16 @@ func _process(delta: float) -> void:
 	var entered := k != _last_chunk
 	_last_chunk = k
 	_where = "pos (%.0f, %.0f, %.0f) chunk %s heading %s" % [pos.x, pos.y, pos.z, k, _heading(p)]
-	note("%s pos (%.0f, %.0f, %.0f) chunk %s heading %s speed %.1f | fps %d, mem %.0f MB, vram %.0f MB, planet %d seed %d" % [
+	note("%s pos (%.0f, %.0f, %.0f) chunk %s heading %s speed %.1f | fps %d, %s, vram %.0f MB, planet %d seed %d" % [
 		"enter" if entered else "at", pos.x, pos.y, pos.z, k, _heading(p), _speed(p),
-		Engine.get_frames_per_second(), OS.get_static_memory_usage() / 1048576.0,
+		Engine.get_frames_per_second(), _ram(),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED) / 1048576.0,
 		Game.planet, Game.seed])
+
+## The machine's free memory (the game's own isn't counted in release builds).
+func _ram() -> String:
+	var m := OS.get_memory_info()
+	return "RAM free %.1f of %.1f GB" % [float(m.get("available", -1)) / 1073741824.0, float(m.get("physical", -1)) / 1073741824.0]
 
 func _heading(p: Node3D) -> String:
 	var fwd := -p.global_transform.basis.z

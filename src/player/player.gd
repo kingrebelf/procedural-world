@@ -187,7 +187,7 @@ func set_state(d: Dictionary) -> void:
 		traps.from_data(d.get("traps", []))
 	_apply_look()
 	if d.get("drop", false):
-		# Just through a portal: drop onto the ground once it has streamed in.
+		# Brought home from another world (an old save): drop onto the ground once it has streamed in.
 		teleport_to(global_position.x, global_position.z)
 
 ## Sends you to a spot on this world: you drop in from above once the ground there has
@@ -870,8 +870,6 @@ func deconstruct(chunk: ChunkNode, o: Dictionary) -> bool:
 ## How an object can be used with Interact, or {} if it can't.
 static func _use_of(o: Dictionary) -> Dictionary:
 	var t: String = o["t"]
-	if t == WorldPortal.TYPE:
-		return {"kind": "portal", "verb": "Step into the portal", "h": 3.4}
 	if Wonders.has(t):
 		var w := Wonders.use_of(o, Game.day)
 		return {} if w.is_empty() else {"kind": "wonder", "verb": w["verb"], "h": w["h"]}
@@ -1062,11 +1060,7 @@ func _update_look_target() -> void:
 		var t: String = o["t"]
 		var k := ObjectLibrary.kind(t)
 		var mat := Durability.material(t)
-		if t == WorldPortal.TYPE:
-			text = "[%s] Step into the portal" % _key("interact")
-			info = {"title": "Ancient Portal", "sub": "Zone level %d" % Eras.zone_level(global_position.x, global_position.z),
-				"lines": ["A door to the other worlds bound to this one", "Can't be broken"]}
-		elif Wonders.unbreakable(t):
+		if Wonders.unbreakable(t):
 			# A relic: what it does instead of what it yields.
 			var w := Wonders.use_of(o, Game.day)
 			text = ("[%s] %s" % [_key("interact"), w["verb"]]) if not w.is_empty() else Wonders.describe(o, Game.day)
@@ -1154,11 +1148,6 @@ func interact() -> void:
 			"power":
 				_use_power()
 				return
-			"portal":
-				if is_instance_valid(focus["chunk"]):
-					get_tree().call_group("trade_ui", "open_portal", focus["chunk"].get_object(focus["i"]), focus["chunk"])
-				_focus_t = 0.0
-				return
 			"wonder":
 				if is_instance_valid(focus["chunk"]):
 					_use_wonder(focus["chunk"], focus["chunk"].get_object(focus["i"]))
@@ -1202,9 +1191,6 @@ func interact() -> void:
 	_use_object(h["chunk"], (h["chunk"] as ChunkNode).get_object(h["obj"]))
 
 func _use_object(chunk: ChunkNode, o: Dictionary) -> void:
-	if o["t"] == WorldPortal.TYPE:
-		get_tree().call_group("trade_ui", "open_portal", o, chunk)
-		return
 	if Wonders.has(o["t"]):
 		_use_wonder(chunk, o)
 		return
@@ -1995,7 +1981,7 @@ func _pvp_hit(it, peer: int, dmg: float, head := false, _point := Vector3.INF, m
 	Net.hurt_player(peer, dmg, "", true)
 	if marker:
 		hit_marker.emit("head" if head else "hit")
-		Audio.play("hit/marker", -3.0 if head else -13.0, 0.05, 1.8 if head else 1.3)
+		Audio.play("hit/marker_head" if head else "hit/marker", -4.0 if head else -9.0, 0.03)
 
 var _pvp_note := -99999
 
@@ -2007,8 +1993,8 @@ func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> vo
 	Ragdoll.mark_hit(target, point, dir, clampf(10.0 + dmg * 0.8, 10.0, 70.0), "Head" if head else "")
 
 ## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
-## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
-## for a kill.
+## and a sound confirms it: a dry tick for a hit, a ringing ping for a headshot, a deep
+## thunk for a kill.
 signal hit_marker(kind: String)
 
 func _mark(creature, npc, head: bool) -> void:
@@ -2021,11 +2007,11 @@ func _mark(creature, npc, head: bool) -> void:
 	hit_marker.emit(kind)
 	match kind:
 		"kill":
-			Audio.play("hit/marker", -4.0, 0.03, 0.8)
+			Audio.play("hit/marker_kill", -5.0, 0.03)
 		"head":
-			Audio.play("hit/marker", -3.0, 0.03, 1.8)
+			Audio.play("hit/marker_head", -4.0, 0.03)
 		_:
-			Audio.play("hit/marker", -13.0, 0.05, 1.3)
+			Audio.play("hit/marker", -9.0, 0.04)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:
@@ -2212,18 +2198,11 @@ func mount(v: Vehicle) -> void:
 		Game.toast.emit("%s: [%s/%s] drive, [%s/%s] steer, [%s] %s, [%s] get off" % [Vehicle.label(v.kind),
 			_key("move_forward"), _key("move_back"), _key("move_left"), _key("move_right"), _key("sprint"),
 			"gallop" if v.kind == "horse" else "boost", _key("interact")])
-	if v.flies():
-		Game.toast.emit("Look where you want to fly. [%s/%s] climb and descend." % [_key("jump"), _key("crouch")])
 
 func dismount(force := false) -> void:
 	var v := vehicle
 	if v == null:
 		return
-	if not force and is_instance_valid(v) and v.flies() and not v.is_on_floor():
-		var g := vehicles.ground(v.global_position.x, v.global_position.z) if vehicles else NAN
-		if is_nan(g) or v.global_position.y - g > 3.0:
-			Game.toast.emit("Land first: hold %s to descend" % _key("crouch"))
-			return
 	vehicle = null
 	if is_instance_valid(v):
 		v.rider = null
@@ -2266,17 +2245,12 @@ func _ride(delta: float) -> void:
 			Game.toast.emit("Out of fuel: she needs a Diesel Jerrycan")
 	if v.boat() and not ui_open and Input.is_action_just_pressed("jump") and v.has_sail():
 		Game.toast.emit("Sail raised" if v.toggle_sail() else "Sail lowered")
-	if v.flies():
-		# A ship flies where you look; Jump climbs and Crouch descends.
-		v.aim = -camera.global_transform.basis.z
-		v.lift = 0.0 if ui_open else (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
-	else:
-		# The view turns with the vehicle, so steering doesn't leave you looking sideways.
-		var turned := wrapf(v.rotation.y - _ride_yaw, -PI, PI)
-		_ride_yaw = v.rotation.y
-		if absf(turned) < 1.0:
-			_yaw += turned
-			_apply_look()
+	# The view turns with the vehicle, so steering doesn't leave you looking sideways.
+	var turned := wrapf(v.rotation.y - _ride_yaw, -PI, PI)
+	_ride_yaw = v.rotation.y
+	if absf(turned) < 1.0:
+		_yaw += turned
+		_apply_look()
 	var seat := v.seat_transform()
 	if v.p.get("stand", false):
 		# A gun: you stand behind the trail, pushing it, and the barrel follows your look.
@@ -2316,15 +2290,6 @@ func _ride(delta: float) -> void:
 		text = "%s   [%s] get off" % [Cannon.status(v), _key("interact")]
 	if v.boat():
 		text = _boat_hud(v)
-	if v.flies() and v.leaving >= Vehicle.LEAVE_TIME:
-		go_to_orbit()
-		return
-	if v.flies():
-		var g := vehicles.ground(v.global_position.x, v.global_position.z) if vehicles else NAN
-		text = "%d km/h   %s   [%s/%s] climb/descend   [%s] get off" % [roundi(v.velocity.length() * 3.6),
-			"altitude %d m" % roundi(v.global_position.y - g) if not is_nan(g) else "", _key("jump"), _key("crouch"), _key("interact")]
-		if v.at_ceiling:
-			text = "%d km/h   Top of the sky: keep holding [%s] to leave for orbit   [%s] descend" % [roundi(v.velocity.length() * 3.6), _key("jump"), _key("crouch")]
 	if text != _last_look:
 		_last_look = text
 		look_target_changed.emit(text)
@@ -2348,21 +2313,3 @@ func _boat_hud(v: Vehicle) -> String:
 var _ride_yaw := 0.0
 const SIT_HIPS := 0.5 ## hip height above the feet in the sitting pose
 
-## Up and out: the ship leaves the atmosphere for orbit. You'll land back above this spot
-## (or wherever you warp to); that landing is also what's saved while you're in orbit.
-func go_to_orbit() -> void:
-	var v := vehicle
-	if v == null or not is_instance_valid(v):
-		return
-	Game.landings[Game.planet] = Vector2(v.global_position.x, v.global_position.z)
-	var spot := OrbitView.landing_spot()
-	v.set_physics_process(false)
-	v.rec["pos"] = spot
-	var st := get_state()
-	st["pos"] = spot
-	st["riding"] = int(v.rec["id"])
-	Game.pending_player_state = st
-	set_physics_process(false)
-	Game.player = null
-	Game.toast.emit("Leaving the atmosphere")
-	get_tree().change_scene_to_file.call_deferred("res://src/space/orbit.tscn")

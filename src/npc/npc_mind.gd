@@ -81,9 +81,7 @@ static func change_rel(npc: Dictionary, d: int) -> void:
 static func world_line() -> String:
 	match Eras.theme:
 		"human":
-			return "The world: a human world of medieval kingdoms, farms and forests near the old heartlands, and far out at its edges the frontier outposts of a starfaring human age. Nothing here glows or grows strangely; tales speak of rare ancient portals far beyond the frontier that open onto other worlds, some of them not human at all."
-		"alien":
-			return "The world: an alien world, far from any human home. Glowing fey wilds of the Sylvari give way to the crystal and alloy cities of the Vex. Humans who come here arrive through the ancient portals, and they look strange to you."
+			return "The world: a human world of medieval kingdoms, farms and forests near the old heartlands, and far out at its edges the frontier outposts of a starfaring human age. Nothing here glows or grows strangely. There are no other worlds anyone can reach; the stars are only lights in the sky."
 	return "The world: medieval kingdoms, glowing fantasy wildwoods and a sci-fi frontier of alloy and starships blend into one another across the land. People know the other lands exist and find them strange."
 
 static func system_prompt(npc: Dictionary, settlement: Dictionary, ctx: Dictionary) -> String:

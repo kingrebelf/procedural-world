@@ -12,7 +12,6 @@ static func building_types() -> Array:
 	out.append_array(Interiors.BOX.keys())
 	out.append_array(Interiors.ROUND.keys())
 	out.append_array(["hab_dome", "shrine"])
-	out.append_array(ShipPad.SHIPS.keys())
 	out.append_array(Landmark.SIZE.keys())
 	for p in Stronghold.PIECES:
 		out.append_array(p)

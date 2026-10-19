@@ -17,6 +17,7 @@ var _hit := {} ## the world "point" and "normal" this swing lands on
 var _off_full := Vector3.ZERO ## the drift that brings the edge onto the target
 var _tip_pts := PackedVector3Array()
 var _tip_of: Mesh ## the mesh _tip_pts were taken from
+var _close := 0.0 ## 0..1: how near the eye this swing's target is (1 at point-blank)
 ## Set by the player each frame: the surface the crosshair is on, when it is close
 ## ("point", "normal"), so the held item rests against it instead of sinking in.
 var near := {}
@@ -127,6 +128,15 @@ const REACH_UP := 0.22
 const REACH_DOWN := 0.25
 const REACH_OUT := 0.3
 const REACH_IN := 0.25
+## A target nearer the eye than CLOSE_FAR is struck with a short, choked-up hack: the
+## arc tips less far forward and the hands draw in and down, up to CLOSE_IN and
+## CLOSE_DOWN further at CLOSE_NEAR, so the head still comes down onto it instead of
+## the rig being shoved back out of the view.
+const CLOSE_FAR := 1.15
+const CLOSE_NEAR := 0.45
+const CLOSE_IN := 0.45
+const CLOSE_DOWN := 0.15
+const CLOSE_TIP := 0.7
 const TIP_POINTS := 320
 
 ## The first-person rig draws on its own layer, which the world's sun skips: your body (seen
@@ -649,6 +659,11 @@ func swing(duration := 0.42, hit := {}) -> float:
 	_landed = false
 	_hit = hit if hit.has("point") and hit.has("normal") else {}
 	_off_full = Vector3.ZERO
+	_close = 0.0
+	var parent := get_parent() as Node3D
+	if not _hit.is_empty() and parent != null and parent.is_inside_tree():
+		var d := parent.global_position.distance_to(_hit["point"])
+		_close = clampf((CLOSE_FAR - d) / (CLOSE_FAR - CLOSE_NEAR), 0.0, 1.0)
 	_tip_pts = PackedVector3Array()
 	_refresh_points()
 	var u := sqrt((CONTACT - BACK) / (1.0 - BACK))
@@ -668,10 +683,11 @@ func _swing_amount(t: float) -> float:
 ## The rig's swing pose at swing amount s, in the camera's frame (before sway, aiming
 ## and the drift towards a target).
 func _swing_pose(s: float) -> Array:
+	var tip := 1.0 - CLOSE_TIP * _close
 	if arms:
 		# The whole rig swings down and across from just in front of the eyes.
-		return [Vector3(-0.05 * s, -0.06 * s, -0.12 * s), Vector3(-0.9 * s, 0.25 * s, 0.35 * s)]
-	return [Vector3(-0.12 * s, 0.05 * s, -0.1 * s), Vector3(-1.1 * s, 0.3 * s, 0.3 * s)]
+		return [Vector3(-0.05 * s, -0.06 * s, -0.12 * s * tip), Vector3(-0.9 * s * tip, 0.25 * s, 0.35 * s)]
+	return [Vector3(-0.12 * s, 0.05 * s, -0.1 * s * tip), Vector3(-1.1 * s * tip, 0.3 * s, 0.3 * s)]
 
 ## The held item's vertices (a sample of them) in the rig's own frame. The grip holds
 ## the item fixed to the rig through a swing, so these stay put while the rig moves.
@@ -711,7 +727,7 @@ func _reach_offset(cam_from_world: Transform3D) -> Vector3:
 			best = into
 			lead = v
 	var off := p - lead
-	return Vector3(clampf(off.x, -REACH_SIDE, REACH_SIDE), clampf(off.y, -REACH_DOWN, REACH_UP), clampf(off.z, -REACH_OUT, REACH_IN))
+	return Vector3(clampf(off.x, -REACH_SIDE, REACH_SIDE), clampf(off.y, -REACH_DOWN - CLOSE_DOWN * _close, REACH_UP * (1.0 - _close)), clampf(off.z, -REACH_OUT, REACH_IN + CLOSE_IN * _close))
 
 ## Keeps the held item out of a surface: pushes the rig back off it, and when the
 ## strike meets the one it was aimed at, stops the swing there.

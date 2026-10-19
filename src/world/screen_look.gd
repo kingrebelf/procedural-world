@@ -25,7 +25,7 @@ const DEFAULT := Color(0.45, 0.95, 0.75)
 const CHARS := " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.:-/><_=+#%[]()*!?,|{}'$@"
 
 ## Emission strength by world: a lit display on human worlds, brighter on alien ones.
-const ENERGY := {"human": 0.85, "alien": 1.6}
+const ENERGY := {"human": 0.85}
 
 ## The world's hour (0-24), as the screens' clocks show it (Materials.set_screen_clock).
 static var hours := 12.0
@@ -38,8 +38,6 @@ static func accent(room: String, kind: String = "terminal") -> Color:
 		"bulletin": c = c.lerp(Color.WHITE, 0.22)
 		"map": c = c.lerp(Color(0.5, 0.9, 1.0), 0.3)
 		"notice": c = c.lerp(Color(1.0, 0.7, 0.4), 0.4)
-	if Eras.theme == "alien":
-		c = Color.from_hsv(fposmod(c.h + 0.32, 1.0) if c.h < 0.6 else c.h, minf(1.0, c.s * 1.2), c.v)
 	return c
 
 ## The shader's material (one for every screen; per-room text comes in instance uniforms).

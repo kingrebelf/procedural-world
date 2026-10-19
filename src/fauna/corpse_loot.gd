@@ -96,26 +96,6 @@ static func animal_yields(p: Dictionary, blade: float, age: float, rng: RandomNu
 			if name == "Red Deer" and rng.randf() < 0.5:
 				a = 0
 			add.call("antler", a)
-	# Alien beasts (alien worlds) give up xeno hide, fangs and stranger parts besides.
-	if Eras.theme == "alien":
-		if machine:
-			if rng.randf() < 0.3:
-				add.call("alien_circuit", 1)
-			if rng.randf() < 0.15:
-				add.call("bio_battery", 1)
-		else:
-			add.call("hide_xeno", 0 if blade <= 0.0 else 1 + int(size * 0.5))
-			add.call("meat_xeno", 0 if rotten else 1 + int(size))
-			if rng.randf() < 0.4:
-				add.call("fang_xeno", 1 + int(size * 0.5))
-			if rng.randf() < 0.2 + 0.1 * blade:
-				add.call("eye_xeno", 1)
-			if rng.randf() < 0.2:
-				add.call("venom_gland", 1)
-			if rng.randf() < 0.25:
-				add.call("spore_sac", 1)
-			if size >= 2.0 and rng.randf() < 0.12:
-				add.call("scale_dragon", 1)
 	var list: Array = []
 	for t in order:
 		if out[t] > 0:

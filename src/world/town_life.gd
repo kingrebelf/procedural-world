@@ -1763,7 +1763,8 @@ func _torch_post(k: MeshKit, models: Array, root: Node3D, xf: Transform3D, body:
 	var m := ["props/Torch_Metal", rad_to_deg(xf.basis.get_euler().y), torch.origin, 1.0]
 	models.append(m)
 	var f: Array = FireFx.prop_flames([m])[0]
-	_flame(root, f[0], float(f[1]), 1.8, 10.0, FireFx.prop_flame(f))
+	# An open torch throws its light much further than a lantern behind glass.
+	_flame(root, f[0], float(f[1]), 3.0, 15.0, FireFx.prop_flame(f))
 	var fl: Node3D = _flames[_flames.size() - 2]
 	fl.add_child(FireFx.embers(0.42, false))
 	_box_shape(body, xf * I.translated(Vector3(0, 1.1, 0)), Vector3(0.18, 2.2, 0.18))

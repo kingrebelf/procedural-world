@@ -29,7 +29,6 @@ const KIND := {
 	"pad_bob": "structure", "pad_challenger": "structure", "pad_dispatcher": "structure", "pad_executioner": "structure",
 	"pad_imperial": "structure", "pad_insurgent": "structure", "pad_omen": "structure", "pad_pancake": "structure",
 	"pad_spitfire": "structure", "pad_zenith": "structure",
-	"world_portal": "structure",
 	"fire_ruin": "structure",
 }
 
@@ -60,7 +59,6 @@ const LABEL := {
 	"townhouse": "Town House", "longhouse": "Longhouse", "signpost": "Signpost", "bridge": "Stone Bridge", "cave": "Cave",
 	"market_stall": "Market Stall", "fruit_cart": "Fruit Cart", "wagon": "Wagon", "barrels": "Barrels",
 	"cave_glow": "Glowing Crystals", "cave_crystal": "Crystals", "chest": "Chest", "rune_coffer": "Rune Coffer", "supply_pod": "Supply Pod", "trader": "Trader", "alien_ruin": "Alien Ruin",
-	"world_portal": "Ancient Portal",
 }
 
 static func kind(t: String) -> String:
@@ -81,8 +79,6 @@ static func label(t: String) -> String:
 		return EasterEggs.label(t)
 	if WonderSite.has(t):
 		return WonderSite.label(t)
-	if ShipPad.has(t):
-		return ShipPad.label(t)
 	if ZoneBorder.has(t):
 		return ZoneBorder.LABELS[t]
 	if t == WonderSite.DEBRIS:
@@ -163,10 +159,6 @@ static func _build_mesh(key: String) -> ArrayMesh:
 		return ZoneBorder.build(key)
 	if WonderSite.owns_key(key):
 		return WonderSite.build_key(key)
-	if ShipPad.has(key):
-		return ShipPad.build(key)
-	if key == WorldPortal.TYPE:
-		return WorldPortal.build()
 	if ForestFloor.has(key):
 		return ForestFloor.build(key)
 	if TOWN_PROPS.has(key):
@@ -313,16 +305,6 @@ static func shape_of(o: Dictionary) -> Array:
 			_shapes[sk] = fs
 			_lock.unlock()
 		return fs
-	if t == WorldPortal.TYPE:
-		_lock.lock()
-		var ps = _shapes.get(t)
-		_lock.unlock()
-		if ps == null:
-			ps = [get_mesh(t).create_trimesh_shape(), Vector3.ZERO]
-			_lock.lock()
-			_shapes[t] = ps
-			_lock.unlock()
-		return ps
 	if (t == "alien_ruin" or t == WonderSite.DEBRIS or t == WonderSite.TRUNK or t == FireSim.RUIN) and sp != 0:
 		# Collide with the relic itself: walk between a xenolith circle's blades, up to its
 		# core, instead of into a box around the whole thing.
@@ -414,9 +396,6 @@ static func get_shape(t: String) -> Array:
 		return _shapes[t]
 	if Interiors.has(t):
 		_shapes[t] = Interiors.shape(t)
-		return _shapes[t]
-	if ShipPad.has(t):
-		_shapes[t] = ShipPad.shape(t)
 		return _shapes[t]
 	var s: Shape3D
 	var off := Vector3.ZERO
