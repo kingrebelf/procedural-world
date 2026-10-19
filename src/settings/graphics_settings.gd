@@ -48,7 +48,7 @@ const DEFAULTS := {
 	"effects": 1, "clouds": 2, "detail_distance": 1.0, "mesh_detail": 2, "anisotropic": 2,
 	"weather": true, "weather_fx": 1, "fire_fx": 1,
 	"mouse_sensitivity": 0.12, "invert_y": false, "head_bob": true, "head_bob_strength": 1.0, "stick_sensitivity": 3.0, "sail_auto_trim": false,
-	"motion_blur": true, "motion_blur_strength": 0.3, "film_grade": true,
+	"motion_blur": true, "motion_blur_strength": 0.3, "film_grade": true, "brightness": 1.0, "gamma": 1.0,
 	"master_volume": 0.8, "music_volume": 0.5, "sfx_volume": 0.8, "ambience_volume": 0.7,
 	"show_fps": false, "menu_flyover": true,
 }

@@ -97,7 +97,8 @@ func _turning() -> bool:
 func _input(event: InputEvent) -> void:
 	if not visible:
 		return
-	if event.is_action_pressed("pause") or (event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE):
+	if event.is_action_pressed("pause") or (event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE) \
+			or (event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_B):
 		close_lock()
 		get_viewport().set_input_as_handled()
 		return
@@ -174,7 +175,8 @@ func _broke() -> void:
 	_update_text()
 
 func _update_text() -> void:
-	var keys := "Move the mouse or A/D to set the pick, hold W, Space or the left button to turn the lock. Esc to stop."
+	var keys := "Left stick sets the pick, hold A or RT to turn the lock. B to stop." if Game.using_pad \
+		else "Move the mouse or A/D to set the pick, hold W, Space or the left button to turn the lock. Esc to stop."
 	_status.text = "%s lock   ·   Lockpicks: %d   ·   Lockpicking %d\n%s" % [LockGame.TIERS[_game.tier], Game.inventory.count(PICK_ITEM), int(Game.stats.skills["lock"]), keys]
 
 func _draw() -> void:

@@ -94,7 +94,17 @@ static func spec(action: String, slot: String):
 		return custom[action][slot]
 	return ACTIONS[action][1 if slot == "kb" else 2]
 
+## Menus on a controller: A confirms and B goes back. Godot's own ui_* actions only map
+## the D-pad and left stick, so without these no menu button could be pressed on a pad.
+const MENU_PAD := {"ui_accept": JOY_BUTTON_A, "ui_cancel": JOY_BUTTON_B}
+
 static func apply() -> void:
+	for a in MENU_PAD:
+		var mb := InputEventJoypadButton.new()
+		mb.button_index = MENU_PAD[a]
+		mb.device = -1
+		if not InputMap.action_has_event(a, mb):
+			InputMap.action_add_event(a, mb)
 	for a in ACTIONS:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a, DEADZONE)

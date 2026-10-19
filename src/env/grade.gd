@@ -3,25 +3,40 @@ class_name Grade
 ## applies after tonemapping, in sRGB (Environment.adjustment_color_correction). Shadows
 ## lean a little cool and highlights a little warm, and the loudest yellow-greens are eased
 ## toward grey, as a graded film does to foliage. Brightness and the other hues are left
-## alone. Settings "film_grade" turns it off.
+## alone. Settings "film_grade" turns it off. The player's gamma ("gamma") is baked into
+## the same table: above 1 lifts the mid-tones and shadows, below 1 deepens them.
 
 const SIZE := 33
 
 static var _lut: ImageTexture3D
+static var _lut_key := ""
 
-static func lut() -> ImageTexture3D:
-	if _lut != null:
+## The table for this grade and gamma, or null when it would change nothing.
+static func lut(film := true, gamma := 1.0) -> ImageTexture3D:
+	gamma = clampf(snappedf(gamma, 0.01), 0.5, 2.0)
+	if not film and is_equal_approx(gamma, 1.0):
+		return null
+	var key := "%s:%.2f" % [film, gamma]
+	if _lut != null and _lut_key == key:
 		return _lut
+	_lut_key = key
 	var images: Array[Image] = []
 	for b in SIZE:
 		var img := Image.create(SIZE, SIZE, false, Image.FORMAT_RGB8)
 		for g in SIZE:
 			for r in SIZE:
-				img.set_pixel(r, g, grade(Color(r / (SIZE - 1.0), g / (SIZE - 1.0), b / (SIZE - 1.0))))
+				var c := Color(r / (SIZE - 1.0), g / (SIZE - 1.0), b / (SIZE - 1.0))
+				img.set_pixel(r, g, apply_gamma(grade(c) if film else c, gamma))
 		images.append(img)
 	_lut = ImageTexture3D.new()
 	_lut.create(Image.FORMAT_RGB8, SIZE, SIZE, SIZE, false, images)
 	return _lut
+
+static func apply_gamma(c: Color, gamma: float) -> Color:
+	if is_equal_approx(gamma, 1.0):
+		return c
+	var e := 1.0 / gamma
+	return Color(pow(c.r, e), pow(c.g, e), pow(c.b, e))
 
 ## One sRGB colour through the grade.
 static func grade(c: Color) -> Color:

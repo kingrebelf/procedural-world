@@ -489,12 +489,120 @@ static func _origin_line(o: Dictionary) -> String:
 	var when := " on day %d" % (int(o["day"]) + 1) if o.has("day") else ""
 	return "%s%s%s" % [how.capitalize(), where, when]
 
-## Gives keyboard/controller focus to the first enabled button inside a panel.
+## Gives keyboard/controller focus to the first enabled button inside a panel (or the
+## control marked with the "pad_first" meta, when a panel wants another start), else the
+## first control that takes focus at all (a slider, a text box).
 static func focus_first(root: Node) -> void:
 	if not is_instance_valid(root):
 		return
-	for c in root.find_children("*", "BaseButton", true, false):
-		var b := c as BaseButton
-		if b.is_visible_in_tree() and not b.disabled and b.focus_mode != Control.FOCUS_NONE:
-			b.grab_focus()
+	var all := root.find_children("*", "Control", true, false)
+	var ok := func(c: Control) -> bool:
+		return c.is_visible_in_tree() and c.focus_mode != Control.FOCUS_NONE and not (c is BaseButton and (c as BaseButton).disabled)
+	for c in all:
+		if c.has_meta("pad_first") and ok.call(c):
+			c.grab_focus()
 			return
+	for c in all:
+		if c is BaseButton and ok.call(c):
+			c.grab_focus()
+			return
+	for c in all:
+		if ok.call(c):
+			c.grab_focus()
+			return
+
+## True when focus sits on a control inside `root`.
+static func has_focus_in(root: Control) -> bool:
+	if not is_instance_valid(root) or not root.is_inside_tree():
+		return false
+	var f := root.get_viewport().gui_get_focus_owner()
+	return f != null and (f == root or root.is_ancestor_of(f))
+
+# --- Controller prompts ---------------------------------------------------------------
+
+## True when the first controller is a PlayStation pad (its face buttons are shapes).
+static func pad_is_sony() -> bool:
+	var pads := Input.get_connected_joypads()
+	if pads.is_empty():
+		return false
+	var n := Input.get_joy_name(pads[0]).to_lower()
+	return n.contains("ps3") or n.contains("ps4") or n.contains("ps5") or n.contains("dualshock") or n.contains("dualsense") \
+		or n.contains("sony") or n.contains("playstation")
+
+const PAD_FACE := {JOY_BUTTON_A: ["A", Color(0.42, 0.8, 0.3)], JOY_BUTTON_B: ["B", Color(0.92, 0.32, 0.27)],
+	JOY_BUTTON_X: ["X", Color(0.3, 0.55, 0.95)], JOY_BUTTON_Y: ["Y", Color(0.96, 0.78, 0.25)]}
+const SONY_FACE := {JOY_BUTTON_A: Color(0.5, 0.65, 0.95), JOY_BUTTON_B: Color(0.95, 0.4, 0.42),
+	JOY_BUTTON_X: Color(0.9, 0.55, 0.8), JOY_BUTTON_Y: Color(0.35, 0.8, 0.65)}
+## Prompt names for the other buttons: [Xbox, PlayStation]. "lt"/"rt" are the triggers,
+## "rs" the right stick, "ls" the left stick, "dpad" the D-pad.
+const PAD_NAMES := {JOY_BUTTON_LEFT_SHOULDER: ["LB", "L1"], JOY_BUTTON_RIGHT_SHOULDER: ["RB", "R1"],
+	JOY_BUTTON_START: ["Menu", "Options"], JOY_BUTTON_BACK: ["View", "Share"], "lt": ["LT", "L2"], "rt": ["RT", "R2"],
+	"rs": ["RS", "R"], "ls": ["LS", "L"], "dpad": ["D-pad", "D-pad"]}
+
+## One controller button drawn as on the pad: a coloured letter in a dark disc for the
+## face buttons (shapes on a PlayStation pad), a small cap with its name for the rest.
+static func pad_glyph(btn, size := 24) -> Control:
+	if btn is int and PAD_FACE.has(btn):
+		var c := Control.new()
+		c.custom_minimum_size = Vector2(size, size)
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sony := pad_is_sony()
+		c.draw.connect(func():
+			var r := size * 0.5
+			var mid := Vector2(r, r)
+			c.draw_circle(mid, r, Color(0.07, 0.075, 0.085, 0.95))
+			c.draw_arc(mid, r - 1.0, 0.0, TAU, 32, Color(1, 1, 1, 0.22), 1.5, true)
+			if not sony:
+				var f := font("bold") if font("bold") else ThemeDB.fallback_font
+				var fs := int(size * 0.62)
+				var t: String = PAD_FACE[btn][0]
+				var w := f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+				c.draw_string(f, Vector2(r - w.x * 0.5, r + fs * 0.36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, PAD_FACE[btn][1])
+				return
+			var col: Color = SONY_FACE[btn]
+			var k := r * 0.42
+			if btn == JOY_BUTTON_A:
+				c.draw_line(mid + Vector2(-k, -k), mid + Vector2(k, k), col, 2.0, true)
+				c.draw_line(mid + Vector2(k, -k), mid + Vector2(-k, k), col, 2.0, true)
+			elif btn == JOY_BUTTON_B:
+				c.draw_arc(mid, k * 1.1, 0.0, TAU, 24, col, 2.0, true)
+			elif btn == JOY_BUTTON_X:
+				c.draw_rect(Rect2(mid - Vector2(k, k), Vector2(k, k) * 2.0), col, false, 2.0)
+			else:
+				c.draw_polyline(PackedVector2Array([mid + Vector2(0, -k * 1.15), mid + Vector2(k * 1.1, k * 0.8),
+					mid + Vector2(-k * 1.1, k * 0.8), mid + Vector2(0, -k * 1.15)]), col, 2.0, true))
+		return c
+	var names: Array = PAD_NAMES.get(btn, [str(btn), str(btn)])
+	return keycap(names[1] if pad_is_sony() else names[0], int(size * 0.5))
+
+## A row of controller prompts, [[button or [buttons], "what it does"], ...], shown only
+## while the controller is in use (it hides itself for the mouse and keyboard).
+static func pad_hints(pairs: Array, size := 24) -> PadHints:
+	var row := PadHints.new()
+	row.set_hints(pairs, size)
+	return row
+
+class PadHints extends HBoxContainer:
+	func _init() -> void:
+		add_theme_constant_override("separation", 18)
+		alignment = BoxContainer.ALIGNMENT_END
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		visible = Game.using_pad
+
+	func set_hints(pairs: Array, size := 24) -> void:
+		for ch in get_children():
+			ch.queue_free()
+		for pr in pairs:
+			var h := HBoxContainer.new()
+			h.add_theme_constant_override("separation", 4)
+			for b in (pr[0] if pr[0] is Array else [pr[0]]):
+				var g := UITheme.pad_glyph(b, size)
+				g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				h.add_child(g)
+			var l := UITheme.label(pr[1], 15, UITheme.TEXT)
+			l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(l)
+			add_child(h)
+
+	func _process(_d: float) -> void:
+		visible = Game.using_pad

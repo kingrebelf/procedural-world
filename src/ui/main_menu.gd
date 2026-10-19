@@ -27,6 +27,12 @@ func _ready() -> void:
 			_backdrop.ready_to_show.connect(func(): _reveal = true)
 			add_child(_backdrop)
 	_home()
+	var hints := UITheme.pad_hints([[JOY_BUTTON_A, "Select"], [JOY_BUTTON_B, "Back"]])
+	hints.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 28)
+	hints.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_child(hints)
+	Game.pad_changed.connect(_on_pad)
 	if OS.get_cmdline_user_args().has("--capture-menu") and ResourceLoader.exists("res://tools/capture_menu.gd"):
 		add_child(load("res://tools/capture_menu.gd").new())
 
@@ -93,10 +99,26 @@ func _process(d: float) -> void:
 		_cover = maxf(0.0, _cover - d * 0.6)
 	queue_redraw()
 
+var _at_home := false
+
+## B on a controller: back to the title (the settings and server screens close themselves).
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton and event.is_action_pressed("ui_cancel") and not _at_home and is_instance_valid(_content):
+		if _content.has_signal("closed"):
+			_content.emit_signal("closed")
+		else:
+			_home()
+		get_viewport().set_input_as_handled()
+
+func _on_pad() -> void:
+	if Game.using_pad and not UITheme.has_focus_in(_content):
+		UITheme.focus_first(_content)
+
 func _swap(c: Control) -> void:
 	if _content:
 		_content.queue_free()
 	_content = c
+	_at_home = false
 	add_child(c)
 	c.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 	UITheme.focus_first.call_deferred(c)
@@ -144,6 +166,7 @@ func _home() -> void:
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(ver)
 	_swap(v)
+	_at_home = true
 
 func _new_world() -> void:
 	var p := PanelContainer.new()

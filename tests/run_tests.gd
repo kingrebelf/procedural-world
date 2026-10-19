@@ -498,6 +498,26 @@ func test_film_grade_is_gentle() -> void:
 	var lut := Grade.lut()
 	check(lut != null and lut.get_width() == Grade.SIZE and lut.get_depth() == Grade.SIZE, "the grade table is %d cubed" % Grade.SIZE)
 
+## Settings > Display > Gamma: above 1 lifts the mid-tones, black and white stay put, and
+## with the film grade off and gamma 1 there is no table at all.
+func test_gamma_setting() -> void:
+	var mid := Grade.apply_gamma(Color(0.4, 0.4, 0.4), 1.3)
+	check(mid.r > 0.45, "gamma 1.3 lifts a mid grey: %.2f" % mid.r)
+	check(Grade.apply_gamma(Color(0.4, 0.4, 0.4), 0.8).r < 0.35, "gamma 0.8 deepens it")
+	check(Grade.apply_gamma(Color.BLACK, 1.4) == Color.BLACK and Grade.apply_gamma(Color.WHITE, 0.7).is_equal_approx(Color.WHITE), "black and white stay")
+	check(Grade.lut(false, 1.0) == null, "no table when nothing changes")
+	check(Grade.lut(false, 1.2) != null and Grade.lut(true, 1.0) != null, "a table for gamma alone and for the grade")
+	check(Settings.DEFAULTS["brightness"] == 1.0 and Settings.DEFAULTS["gamma"] == 1.0, "brightness and gamma default to neutral")
+
+## On a controller A presses the focused menu button and B goes back: Godot's own menu
+## actions map only the D-pad and the left stick.
+func test_menus_answer_the_pad() -> void:
+	Bindings.apply()
+	Bindings.apply() # applying again adds nothing twice
+	for pr in [["ui_accept", JOY_BUTTON_A], ["ui_cancel", JOY_BUTTON_B]]:
+		var n := InputMap.action_get_events(pr[0]).filter(func(e): return e is InputEventJoypadButton and e.button_index == pr[1]).size()
+		check(n == 1, "%s has the pad button once (%d)" % [pr[0], n])
+
 func test_believable_towers() -> void:
 	WorldField.terrain_v = WorldField.TOWERS_V
 	var f := WorldField.new(2024)

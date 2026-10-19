@@ -7,6 +7,7 @@ signal closed
 
 var _rows: Dictionary = {}
 var _building := false
+var _tabs: TabContainer
 
 ## Settings > AI > Voice engine choices, in menu order.
 const ENGINES := ["auto", "builtin", "ai", "system"]
@@ -27,18 +28,58 @@ func _ready() -> void:
 	var tabs := TabContainer.new()
 	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(tabs)
+	_tabs = tabs
 	tabs.add_child(_graphics_tab())
 	tabs.add_child(_display_tab())
 	tabs.add_child(_controls_tab())
 	tabs.add_child(_audio_tab())
 	tabs.add_child(_ai_tab())
+	v.add_child(UITheme.pad_hints([[JOY_BUTTON_A, "Select"], ["dpad", "Move / adjust"], ["rs", "Scroll"],
+		[[JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER], "Switch tab"], [JOY_BUTTON_B, "Back"]]))
+	tabs.tab_changed.connect(func(_i): if Game.using_pad: _focus_page.call_deferred())
+	Game.pad_changed.connect(_on_pad)
 	Settings.changed.connect(_sync)
 	_sync()
+	if Game.using_pad:
+		_focus_page.call_deferred()
+
+# --- Controller -------------------------------------------------------------------------
+
+func _on_pad() -> void:
+	if Game.using_pad and not UITheme.has_focus_in(self):
+		_focus_page()
+
+## Focus on the first setting of the open tab.
+func _focus_page() -> void:
+	if is_instance_valid(_tabs) and _tabs.get_current_tab_control():
+		UITheme.focus_first(_tabs.get_current_tab_control())
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventJoypadButton) or not event.pressed or not is_visible_in_tree():
+		return
+	if event.is_action_pressed("ui_cancel"):
+		closed.emit()
+	elif event.button_index == JOY_BUTTON_LEFT_SHOULDER or event.button_index == JOY_BUTTON_RIGHT_SHOULDER:
+		var n := _tabs.get_tab_count()
+		_tabs.current_tab = posmod(_tabs.current_tab + (1 if event.button_index == JOY_BUTTON_RIGHT_SHOULDER else -1), n)
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+func _process(delta: float) -> void:
+	# The right stick scrolls the open tab.
+	if not Game.using_pad or not is_instance_valid(_tabs):
+		return
+	var ry := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	var page := _tabs.get_current_tab_control() as ScrollContainer
+	if absf(ry) > 0.2 and page:
+		page.scroll_vertical += int(ry * absf(ry) * 1400.0 * delta)
 
 func _page(title: String) -> ScrollContainer:
 	var s := ScrollContainer.new()
 	s.name = title
 	s.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	s.follow_focus = true # moving down the list on a controller keeps the setting in view
 	var g := GridContainer.new()
 	g.columns = 2
 	g.add_theme_constant_override("h_separation", 24)
@@ -156,6 +197,12 @@ func _display_tab() -> Control:
 	_option(g, "vsync", "V-Sync", ["Off", "On", "Adaptive", "Mailbox"])
 	_option(g, "fps_cap", "Frame rate limit", ["Unlimited", "30", "60", "90", "120", "144", "165", "240"], "", [0, 30, 60, 90, 120, 144, 165, 240])
 	_slider(g, "fov", "Field of view", 70, 120, 1, "%d°", "The horizontal angle you see on a 16:9 screen, as most shooters measure it. 90 is usual; wider screens see more at the sides.")
+	_slider(g, "brightness", "Brightness", 0.5, 1.6, 0.05, "%.2f", "How much light the picture lets in, as a camera's exposure. 1.00 is how the world is meant to look; raise it if nights and interiors are too dark on your screen.")
+	_slider(g, "gamma", "Gamma", 0.7, 1.5, 0.05, "%.2f", "Lifts (above 1) or deepens (below 1) the shadows and mid-tones without touching the brightest whites. Adjust until dark corners show detail but still read as dark.")
+	_label(g, "")
+	g.add_child(UITheme.button("Reset brightness and gamma", func():
+		Settings.set_value("brightness", 1.0, false)
+		Settings.set_value("gamma", 1.0)))
 	_check(g, "show_fps", "Show FPS counter")
 	return p
 
@@ -171,7 +218,7 @@ func _controls_tab() -> Control:
 	var pads := Input.get_connected_joypads()
 	_label(g, "Controller")
 	g.add_child(UITheme.label(Input.get_joy_name(pads[0]) if not pads.is_empty() else "None connected (Xbox, PlayStation and generic pads are supported)", 15, UITheme.DIM))
-	_label(g, "Click a binding, then press the new key or button.", "")
+	_label(g, "Click a binding (or press A on it), then press the new key or button. Esc, or B for a key, cancels.", "")
 	g.add_child(UITheme.button("Reset all to defaults", func():
 		Bindings.reset()
 		_refresh_binds()))
@@ -205,13 +252,16 @@ func _begin_capture(action: String, slot: String, b: Button) -> void:
 func _input(event: InputEvent) -> void:
 	if _capture.is_empty():
 		return
-	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+	if (event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE) \
+			or (_capture["slot"] == "kb" and event is InputEventJoypadButton and event.pressed and event.button_index == JOY_BUTTON_B):
 		_capture = {}
 		_refresh_binds()
 		get_viewport().set_input_as_handled()
 		return
 	var s = Bindings.spec_from_event(event, _capture["slot"])
 	if s == null:
+		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			get_viewport().set_input_as_handled() # the pad doesn't wander off while you choose
 		return
 	Bindings.rebind(_capture["action"], _capture["slot"], s)
 	_capture = {}
