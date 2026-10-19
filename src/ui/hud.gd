@@ -634,10 +634,8 @@ func show_respawn(choices: Array, pick: int, fell: Vector3) -> void:
 	_fit_wake_map.call_deferred()
 	(_wake_buttons[clampi(pick, 0, _wake_buttons.size() - 1)] as Button).grab_focus.call_deferred()
 
-## "Bed 2   340 m away", "Bed 3   on Frostmere".
+## "Bed 2   340 m away".
 func _wake_text(c: Dictionary) -> String:
-	if int(c["planet"]) != Game.planet:
-		return "%s   on %s" % [c["name"], Planets.get_planet(Game.home_seed, int(c["planet"]), Game.world_theme())["name"]]
 	var d := Vector2(c["pos"].x, c["pos"].z).distance_to(Vector2(_wake_fell.x, _wake_fell.z))
 	return "%s   %s away" % [c["name"], ("%.1f km" % (d / 1000.0)) if d >= 1000.0 else "%d m" % int(d)]
 
@@ -647,8 +645,7 @@ func _fit_wake_map() -> void:
 		return
 	var r := Rect2(Vector2(_wake_fell.x, _wake_fell.z), Vector2.ZERO)
 	for c in _wake:
-		if int(c["planet"]) == Game.planet:
-			r = r.expand(Vector2(c["pos"].x, c["pos"].z))
+		r = r.expand(Vector2(c["pos"].x, c["pos"].z))
 	var span := maxf(maxf(r.size.x, r.size.y), 300.0)
 	_wake_map.center = r.get_center()
 	_wake_map.scale_ppm = _wake_map.size.x * 0.8 / span
@@ -681,7 +678,7 @@ func _draw_wake() -> void:
 	MapCanvas.draw_icon(_wake_over, "death", at.call(_wake_fell.x, _wake_fell.z), 30.0)
 	for i in _wake.size():
 		var c: Dictionary = _wake[i]
-		if int(c["planet"]) != Game.planet or i == _wake_sel:
+		if i == _wake_sel:
 			continue
 		var p: Vector2 = at.call(c["pos"].x, c["pos"].z)
 		_wake_over.draw_circle(p, 11.0, Color(0, 0, 0, 0.6))
@@ -689,12 +686,6 @@ func _draw_wake() -> void:
 		MapCanvas.draw_icon(_wake_over, WAKE_ICON[c["kind"]], p, 18.0)
 	# The one picked, larger, ringed and named.
 	var c: Dictionary = _wake[clampi(_wake_sel, 0, _wake.size() - 1)]
-	if int(c["planet"]) != Game.planet:
-		var msg := "On another world"
-		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-		_wake_over.draw_string_outline(font, Vector2((sz.x - w) * 0.5, sz.y - 14.0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 5, Color(0, 0, 0, 0.8))
-		_wake_over.draw_string(font, Vector2((sz.x - w) * 0.5, sz.y - 14.0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
-		return
 	var p: Vector2 = at.call(c["pos"].x, c["pos"].z)
 	_wake_over.draw_arc(p, 19.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.45), 3.0, true)
 	_wake_over.draw_circle(p, 15.0, Color(0, 0, 0, 0.65))

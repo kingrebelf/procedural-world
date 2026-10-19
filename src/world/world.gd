@@ -189,8 +189,8 @@ func _apply_settings() -> void:
 		float(Settings.get_value("detail_distance")))
 
 ## Death: everything you carry drops in a bag where you fell (marked on your map), a few
-## seconds of "You died", then you wake where you choose: one of your beds (on any world),
-## your boat's bunk, your house, or the world's spawn point. Empty handed and short some
+## seconds of "You died", then you wake where you choose: one of your beds, your boat's
+## bunk, your house, or the world's spawn point. Empty handed and short some
 ## of the progress toward your next level.
 func _on_died(cause: String) -> void:
 	player.dismount(true)
@@ -229,9 +229,7 @@ func _on_died(cause: String) -> void:
 	player.velocity = Vector3.ZERO
 	player.frozen = true
 	player.snap_down = ch["kind"] in ["house", "spawn"]
-	var away := int(ch.get("planet", Game.planet)) != Game.planet
-	if not away:
-		player.global_position = ch["pos"]
+	player.global_position = ch["pos"]
 	player.breath = Game.stats.max_breath()
 	Game.revive()
 	Game.stats_changed.emit()
@@ -241,37 +239,25 @@ func _on_died(cause: String) -> void:
 	var where: String = {"bed": "You wake in %s." % String(ch["name"]), "bunk": "You wake in your bunk aboard.",
 		"house": "You wake at your house.", "spawn": "You wake where you first arrived."}[ch["kind"]]
 	Game.toast.emit(where + (" Your things are in a bag where you fell, marked on your map." if dropped else ""))
-	if away:
-		# A bed on another world: that world streams in around you.
-		Game.wake_on(player, int(ch["planet"]), ch["pos"])
 
 ## Where you can wake after falling at `fell`, as {kind ("bed", "bunk", "house" or
 ## "spawn"), name, planet, pos (where you stand up), slept (the day you last slept there,
-## or -1)}: your beds on this world nearest first, your boat's bunk, your nearest house,
-## your beds on other worlds, and last where you first arrived. A bed seen to be gone
+## or -1)}: your beds nearest first, your boat's bunk, your nearest house, and last where
+## you first arrived. A bed seen to be gone
 ## (burnt, taken down) is forgotten.
 func respawn_choices(fell: Vector3) -> Array:
 	var here: Array = []
-	var away: Array = []
-	for mk in Game.markers.list.duplicate():
-		if mk["kind"] != "bed":
-			continue
-		var on := int(mk["planet"])
-		if on == Game.planet and not bed_stands(mk):
+	for mk in Game.markers.on_planet(Game.planet, "bed"):
+		if not bed_stands(mk):
 			Game.markers.remove(int(mk["id"]))
 			Game.touch_player()
 			continue
 		var at := Vector3(float(mk["x"]), float(mk.get("y", NAN)), float(mk["z"]))
 		if is_nan(at.y):
-			at.y = npcs.gen.field.height(at.x, at.z) if on == Game.planet else 60.0
+			at.y = npcs.gen.field.height(at.x, at.z)
 		# On top of the bed: its mattress holds you once its chunk has loaded.
-		var c := {"kind": "bed", "name": String(mk["name"]), "planet": on, "pos": at + Vector3(0, 1.2, 0),
-			"slept": float(mk.get("slept", -1.0)), "id": int(mk["id"])}
-		if on == Game.planet:
-			c["d"] = Vector2(at.x, at.z).distance_to(Vector2(fell.x, fell.z))
-			here.append(c)
-		else:
-			away.append(c)
+		here.append({"kind": "bed", "name": String(mk["name"]), "planet": Game.planet, "pos": at + Vector3(0, 1.2, 0),
+			"slept": float(mk.get("slept", -1.0)), "id": int(mk["id"]), "d": Vector2(at.x, at.z).distance_to(Vector2(fell.x, fell.z))})
 	here.sort_custom(func(a, b): return a["d"] < b["d"])
 	var out: Array = here
 	var bunk := vehicles.berth_point()
@@ -289,7 +275,6 @@ func respawn_choices(fell: Vector3) -> Array:
 		if is_nan(h):
 			h = npcs.gen.field.height(home.x, home.y)
 		out.append({"kind": "house", "name": "Your house", "planet": Game.planet, "pos": Vector3(home.x, h + 1.5, home.y), "slept": -1.0})
-	out.append_array(away)
 	out.append({"kind": "spawn", "name": "Where you first arrived", "planet": Game.planet, "pos": find_spawn() + Vector3(0, 2, 0), "slept": -1.0})
 	return out
 
