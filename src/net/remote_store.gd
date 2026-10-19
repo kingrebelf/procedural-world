@@ -12,6 +12,8 @@ const GIVE_UP_MS := 90000
 var net: Object
 var player_data = null ## your save, from the handshake
 var closed := false
+## The planet every message to the server names: always 0, there is one world.
+var planet := 0
 
 var _chunks: Dictionary = {} ## Vector3i(planet, cx, cz) -> chunk
 var _order: Array = []
@@ -29,9 +31,6 @@ func _init(cache_dir: String, world_meta: Dictionary) -> void:
 	root = cache_dir
 	meta = world_meta.duplicate(true)
 	DirAccess.make_dir_recursive_absolute(root)
-
-func set_planet(n: int) -> void:
-	planet = n
 	DirAccess.make_dir_recursive_absolute(map_dir())
 
 func save_meta() -> void:

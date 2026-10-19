@@ -55,7 +55,6 @@ All shots are taken in game with the screenshot tour (seed 4242, High preset, re
 | | |
 |---|---|
 | ![A human sci-fi outpost](docs/screenshots/outpost.jpg) | ![Inside an outpost](docs/screenshots/outpost_room.jpg) |
-| ![The planet from orbit](docs/screenshots/orbit.jpg) | ![Landed on an alien moon](docs/screenshots/fey_moon.jpg) |
 
 ## Features
 
@@ -89,15 +88,8 @@ All shots are taken in game with the screenshot tour (seed 4242, High preset, re
   loot gets better and technology moves on, from medieval near spawn to human sci-fi
   outposts a few kilometres out. A map overlay (J) shows creature levels, danger, era,
   zones and landforms.
-- Sci-fi gear, guns, power and building pieces unlock from level 10, a launch pad at 30
-  and starships at 35.
-- **Ancient portals.** Rare rune rings stand only in level 40+ zones. Step through one to
-  another world linked to yours, human or alien, and come back out of the same portal.
-- Alien worlds are the endgame (zone level 50 and up), with glowing fey wilds, xeno cities,
-  alien creatures and alien people.
-- **Planets and warp.** Keep climbing at the top of the sky to reach orbit. Every world has
-  five linked planets, each with its own land, people and map, saved separately. Warp
-  between them from orbit and land wherever you like.
+- Sci-fi gear, guns, power and building pieces unlock from level 10.
+- One planet, endless in every direction: there are no other worlds to travel to.
 
 ### Towns and people
 
@@ -174,8 +166,6 @@ All shots are taken in game with the screenshot tour (seed 4242, High preset, re
   sawmills and assemblers run whole workshops.
 - **Vehicles.** Build a vehicle bay for a hover speeder or a survey rover, or a stable for
   a riding horse. Set one down from your pack, ride it and pack it up again.
-- **Starships.** Build a launch pad (level 30) and a starship on it (level 35). It flies
-  where you look and sets down anywhere flat.
 
 ### Multiplayer
 
@@ -233,8 +223,6 @@ Controllers use ARK: Survival Ascended's layout.
 | Ride a vehicle / get off | E | Y |
 | Pack a vehicle up (returns it) | Hold E | Hold Y |
 | Drive / steer / boost (while riding) | W S / A D / Shift | Left stick / L3 |
-| Fly a starship: thrust / climb / descend | W / Space / Ctrl, steer by looking | Left stick up / A / right stick click |
-| Leave for orbit | Hold Space at the top of the sky | Hold A |
 | First / third person | V | |
 | Pause and settings | Esc | Menu |
 | Cheat console (fly, noclip, god, speed, give, tp, xp, level, weather; type help) | ` | |
@@ -275,7 +263,7 @@ src/ai/          AI dialogue providers, voices, speech-to-text
 src/net/         multiplayer and dedicated server
 src/player/      first-person controller, held items, builder
 src/vehicles/    vehicles, boats, and the manager that keeps them in the world
-src/space/       the star system, orbit view and warp
+src/space/       the world's generation settings (Planets)
 src/audio/       sound, ambience and music
 src/ui/          HUD, menus, settings, maps
 tests/           headless test suite
@@ -286,6 +274,6 @@ tools/           build script, screenshot tour, preview and asset tools
 ## License
 
 MIT. See [LICENSE](LICENSE). Models in `assets/models` are by Quaternius and Kenney, released
-under CC0 (the starship is from Quaternius' Ultimate Spaceships Pack) (see
+under CC0 (the starship wrecks are from Quaternius' Ultimate Spaceships Pack) (see
 [assets/models/LICENSE-CC0.txt](assets/models/LICENSE-CC0.txt)). The built-in voices and
 speech model have their own licences, listed in `tools/voice_server/LICENSES.txt`.

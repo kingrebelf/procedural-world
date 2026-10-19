@@ -1668,8 +1668,6 @@ func test_bandits() -> void:
 	check(Bandits.toll(100, 1) >= 13 and Bandits.toll(5, 1) == 5, "the toll is a share of your purse")
 	var r := NPCMind.builtin_reply(m, {"name": "Bandit band", "npcs": b["members"], "rumors": []}, "Fine, I'll pay")
 	check(r["action"] == "pay_toll", "you can pay them off")
-	Eras.theme = "alien"
-	check(Bandits.near(gen, Vector2.ZERO, 3000.0, 0.0).is_empty(), "no bandits on alien worlds")
 	Eras.theme = was
 
 func test_npc_memory_and_replies() -> void:
@@ -1825,10 +1823,6 @@ func test_builtin_dialogue_fits_the_world() -> void:
 			check(NPCTalk.culture(p) == ("old" if era == Eras.MEDIEVAL else "frontier"), "human folk speak as humans")
 	check(bad.is_empty(), "nothing glows and nobody talks magic on a human world: %s" % str(bad.slice(0, 3)))
 	check(NPCMind.system_prompt(_talk_town(0, 2)["npcs"][1], _talk_town(0, 2), {}).contains("no magic"), "the model is told the world's rules")
-	Eras.theme = "alien"
-	var v: Dictionary = _talk_town(Eras.SCIFI, 2)["npcs"][1]
-	check(NPCTalk.culture(v) == "vex" and not NPCMind.system_prompt(v, _talk_town(Eras.SCIFI, 2), {}).contains("no magic"), "the Vex talk like the Vex")
-	Eras.theme = was
 
 func test_builtin_dialogue_never_dead_ends() -> void:
 	var was := Eras.theme
@@ -2198,15 +2192,15 @@ func test_wardrobes() -> void:
 			on_legs += 1
 	check(hem_verts > 0 and on_legs == hem_verts, "a robe's hem is carried by the legs (%d of %d)" % [on_legs, hem_verts])
 	h.free()
-	# Nothing a human wears glows: sci-fi seams light up only on alien worlds.
+	# Nothing a human wears glows, sci-fi work clothes included.
 	var was: String = Eras.theme
-	for theme in ["", "human", "alien"]:
+	for theme in ["", "human"]:
 		Eras.theme = theme
 		var g := HumanModel.new()
 		root.add_child(g)
 		g.build({"height": 1.0, "build": 1.0, "female": false, "skin": Color(0.6, 0.45, 0.35), "hair": Color(0.2, 0.1, 0.05), "hair_style": 1, "cloth": Color(0.5, 0.3, 0.2), "cloth2": Color(0.3, 0.3, 0.4)}, Eras.SCIFI, "engineer")
 		var acc: Color = g._body.get_instance_shader_parameter("accent_col")
-		check((acc.a > 0.0) == (theme == "alien"), "sci-fi work clothes glow only on alien worlds (theme '%s')" % theme)
+		check(acc.a == 0.0, "sci-fi work clothes don't glow (theme '%s')" % theme)
 		g.free()
 	Eras.theme = was
 
@@ -2481,9 +2475,6 @@ func test_fires() -> void:
 	check(not (torch.find_child("Sparks", true, false) as CPUParticles3D).local_coords, "a swung torch leaves its sparks behind")
 	check((torch.get_child(0) as MeshInstance3D).cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "a held torch doesn't shadow its own stick from its flame")
 	torch.free()
-	var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
-	check(ResourceLoader.exists("res://assets/textures/fx/portal_swirl.png") and (sw.material_override as ShaderMaterial).get_shader_parameter("tex") != null, "a portal's door turns Ben's magic swirl")
-	sw.free()
 	var em := FireFx.embers(1.0, false)
 	check(em.find_child("Smoke", true, false) == null, "a hearth's smoke goes up the chimney")
 	em.free()
@@ -3293,40 +3284,30 @@ func test_ore_names() -> void:
 		check(Flora.species_name("iron_vein", sp) == ObjectLibrary.label("iron_vein"), "an iron vein is named as iron, not a random colour")
 		check(Flora.species_name("rock", sp) == ObjectLibrary.label("rock"), "rocks keep their plain name")
 
+## One world: no other planets, and saves from when there were come home safely.
 func test_planets() -> void:
-	var a := Planets.system(4242)
-	check(a.size() == Planets.COUNT and a[0]["kind"] == "home" and a[0]["seed"] == 4242, "home planet first, with the world seed")
-	check(var_to_str(a) == var_to_str(Planets.system(4242)), "star system is deterministic")
-	var kinds := {}
-	var names := {}
-	for p in a:
-		kinds[p["kind"]] = true
-		names[p["name"]] = true
-	check(kinds.size() == Planets.COUNT and names.size() == Planets.COUNT, "every planet differs in kind and name")
-	var store := _tmp_store("planets")
-	var home_path := store.chunk_path(1, 2)
-	store.set_planet(3)
-	check(store.chunk_path(1, 2) != home_path and store.has_rivers(), "another planet's land is stored apart")
-	Planets.apply({"kind": "fey", "seed": 1})
-	var f := WorldField.new(99)
-	var ok := true
-	for i in 40:
-		ok = ok and f.era_weights(i * 517.0, i * -311.0)[Eras.FANTASY] > 0.999
-	check(ok, "a fey moon is all fantasy")
-	Planets.apply({"kind": "home", "seed": 1})
+	var h := Planets.home(4242)
+	check(h["kind"] == "home" and h["seed"] == 4242 and h["theme"] == "", "an old world's home keeps its mixed eras")
+	Planets.apply(h)
 	check(WorldField.allowed_eras.is_empty(), "home allows every era")
+	var store := _tmp_store("one_world")
+	check(store.map_dir().begins_with(store.root) and not store.chunk_path(1, 2).contains("planets"), "the world's land is stored at its root")
+	var c := {"objects": [{"i": 0, "t": "world_portal", "st": {}}, {"i": 1, "t": "oak", "st": {}}, {"i": 2, "t": "pad_omen", "st": {}},
+		{"i": 3, "t": "b:launch_pad", "st": {}}, {"i": 4, "t": "b:wall_stone", "st": {}}]}
+	check(WorldStore.retire(c) and c["objects"][0]["st"].get("gone", false) and c["objects"][2]["st"].get("gone", false)
+		and c["objects"][3]["st"].get("gone", false), "portals, landed ships and launch pads in old saves are gone")
+	check(not c["objects"][1]["st"].get("gone", false) and not c["objects"][4]["st"].get("gone", false) and c["objects"].size() == 5,
+		"everything else in the chunk stays, at the same index")
+	check(not WorldStore.retire(c), "a chunk is only scrubbed once")
+	check(not Vehicle.KINDS.has("ship") and not ItemDB.ITEMS.has("ship") and BuildCatalog.def("launch_pad").is_empty(), "no starships or launch pads")
+	for r in Recipes.LIST:
+		check(r["out"] != "ship" and r["out"] != "launch_pad" and r.get("at", "") != "launch_pad", "no recipe makes or needs a starship or launch pad")
 
-## Themed worlds: human home and two human worlds, two alien ones; eras, levels, gear
-## and portals all follow the distance from the heart of the land.
+## Themed worlds: a human homeland whose eras, levels and gear all follow the distance
+## from the heart of the land.
 func test_world_themes() -> void:
-	var sys := Planets.system(4242, "human")
-	check(sys[0]["kind"] == "homeland" and sys[0]["theme"] == "human" and int(sys[0]["base"]) == 1, "a new world's home is a human world")
-	var alien := 0
-	for p in sys:
-		if p["theme"] == "alien":
-			alien += 1
-			check(int(p["base"]) >= 50, "alien worlds are level 50+ (%s)" % p["kind"])
-	check(alien == 2, "two alien worlds are linked to a human home")
+	var home := Planets.home(4242, "human")
+	check(home["kind"] == "homeland" and home["theme"] == "human" and int(home["base"]) == 1, "a new world is a human world")
 	# Oaks grow on human worlds, so no oak species has violet or magenta leaves.
 	var odd := 0
 	for sp in range(1, 3001):
@@ -3334,8 +3315,7 @@ func test_world_themes() -> void:
 		if h > 0.45 and h < 0.97:
 			odd += 1
 	check(odd == 0, "no purple oaks (%d of 3000)" % odd)
-	check(var_to_str(Planets.system(4242)) != var_to_str(sys), "old worlds keep their old system")
-	Planets.apply(sys[0])
+	Planets.apply(home)
 	check(Eras.theme == "human" and WorldField.allowed_eras == [Eras.MEDIEVAL, Eras.SCIFI], "applying the home world sets its theme")
 	var f := WorldField.new(77)
 	var near_ok := true
@@ -3364,7 +3344,7 @@ func test_world_themes() -> void:
 	check(Eras.nature(Eras.SCIFI) == Eras.MEDIEVAL and Eras.look(PackedFloat32Array([0.2, 0, 0.8]))[Eras.MEDIEVAL] > 0.99, "human sci-fi land looks natural")
 	check(Biome.params(12345, Eras.SCIFI)["lumen"] == 0.0 and Biome.params(54321, Eras.SCIFI)["flora"][0]["t"] in ["oak", "pine"], "no glow and natural trees on a human world")
 	check(Recipes.unlock_level("sword_iron") == 1 and Recipes.unlock_level("pulse_pistol") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("scrap_pistol") == 10, "advanced weapons unlock at level 10")
-	check(Recipes.unlock_level("wall_scifi") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("wall_plaster") == 1 and Recipes.unlock_level("ship") == Recipes.SHIP_LEVEL, "building unlocks by level; a starship at 35")
+	check(Recipes.unlock_level("wall_scifi") >= Eras.UNLOCK_LEVEL and Recipes.unlock_level("wall_plaster") == 1, "building unlocks by level")
 	var r := RandomNumberGenerator.new()
 	r.seed = 5
 	var gun := false
@@ -3372,32 +3352,9 @@ func test_world_themes() -> void:
 		for it in ItemDB.roll_loot(Eras.MEDIEVAL, r, {"chunk": Vector2i(1, 1), "how": "found"}, 0.0):
 			gun = gun or it["type"] == "scrap_pistol"
 	check(not gun, "no guns in the caches round the start")
-	var g := ChunkGenerator.new(77, true)
-	var found := 0
-	var low := 0
-	for wz in range(-6, 7):
-		for wx in range(-6, 7):
-			var p := WorldPortal.spot(g, wx, wz)
-			if p != Vector2.INF:
-				found += 1
-				if Eras.zone_level(p.x, p.y) < WorldPortal.MIN_LEVEL:
-					low += 1
-	check(found > 3 and low == 0, "portals only stand in level 40+ zones (%d found)" % found)
-	var np := WorldPortal.nearest(g, Vector2(6500, 0))
-	check(np != Vector2.INF and np.distance_to(Vector2(6500, 0)) < 4000.0, "the nearest portal can be found from afar")
-	if np != Vector2.INF:
-		var cx := int(floor(np.x / 64.0))
-		var cz := int(floor(np.y / 64.0))
-		var ch := g.generate(cx, cz)
-		var has := false
-		for o in ch["objects"]:
-			has = has or o["t"] == WorldPortal.TYPE
-		check(has, "the portal is built into its chunk")
-	Planets.apply(sys[3])
-	check(Eras.theme == "alien" and Eras.zone_level(0, 0) >= 50, "alien worlds start at level 50")
 	var npc := NPCGen._person(r, Eras.SCIFI, 0, 0, 0)
-	check(npc["race"] == "Vex" and not NPCGen.SKIN.has(npc["body"]["skin"]), "alien worlds' people are not human")
-	Planets.apply(Planets.get_planet(0, 0))
+	check(npc["race"] == "Human" and NPCGen.SKIN.has(npc["body"]["skin"]), "the frontier's people are human")
+	Planets.apply(Planets.home(0))
 	check(Eras.theme == "" and Eras.zone_level(9000, 0) == 1, "old worlds have no zones")
 
 func test_climates() -> void:
@@ -3882,15 +3839,6 @@ func test_scenery_meshes() -> void:
 ## Landing pads: each ship stands on its struts within its pad, collides as a box you
 ## walk round, and can be salvaged; outposts beyond hamlets get one.
 func test_ship_pads() -> void:
-	for t in ShipPad.SHIPS:
-		var m := ObjectLibrary.get_mesh(t)
-		check(m != null and m.get_surface_count() >= 2, "%s builds" % t)
-		var box := m.get_aabb()
-		check(box.size.x <= ShipPad.PAD + 0.6 and box.size.z <= ShipPad.PAD + 0.6, "%s fits its pad (%s)" % [t, box.size])
-		check(box.end.y > ShipPad.STRUTS + 1.5, "%s stands up off the pad (%.1f m)" % [t, box.end.y])
-		check(ObjectLibrary.shape_of({"t": t, "st": {}})[0] is BoxShape3D, "%s collides" % t)
-		check(Durability.total_items({"t": t, "s": 1.0, "e": Eras.SCIFI, "st": {}}) > 0, "%s can be salvaged" % t)
-		check(ObjectLibrary.kind(t) == "structure" and ObjectLibrary.label(t).begins_with("Landed "), "%s is a structure (%s)" % [t, ObjectLibrary.label(t)])
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(4242)
 	var pads := 0
@@ -3902,9 +3850,9 @@ func test_ship_pads() -> void:
 				continue
 			outposts += 1
 			for it in g.settlement_layout(st):
-				if ShipPad.has(it["t"]):
+				if WorldStore.RETIRED.has(it["t"]):
 					pads += 1
-	check(outposts > 0 and pads == outposts, "each outpost beyond a hamlet has a landing pad (%d of %d)" % [pads, outposts])
+	check(outposts > 0 and pads == 0, "outposts have no landed spaceships (%d outposts)" % outposts)
 
 ## Livestock: a village's houses have cows, horses and dogs about them, real kit animals
 ## that keep near and don't run from you; open country has none.
@@ -4693,7 +4641,6 @@ func test_remote_store() -> void:
 	var net := FakeNet.new()
 	var s := RemoteStore.new("user://test_remote_%d" % Time.get_ticks_usec(), {"seed": 5, "gen_version": ChunkGenerator.GEN_VERSION})
 	s.net = net
-	s.set_planet(0)
 	check(not s.has_chunk(3, 4) and s.load_chunk(3, 4) == null, "nothing cached yet")
 	var c := ChunkGenerator.new(5).generate(3, 4)
 	s.deliver_chunk(0, c)
@@ -4892,28 +4839,7 @@ func test_pack_d_items() -> void:
 			if ItemDB.def(it["type"]).get("alien", false):
 				human_ok = false
 	check(human_ok, "human worlds hold no alien loot, however far out")
-	Eras.theme = "alien"
-	var base := Eras.base_level
-	Eras.base_level = 60
-	var alien := 0
-	var human_gear := 0
-	for i in 200:
-		rng.seed = 4900 + i
-		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(4, 0)}, 0.6):
-			if ItemDB.def(it["type"]).get("alien", false):
-				alien += 1
-			elif Rarity.is_gear(it["type"]) and ItemDB.UNLOCK.get(it["type"], 1) >= 25:
-				human_gear += 1
-	Eras.base_level = base
 	Eras.theme = was
-	check(alien > 30, "xeno caches hold alien work (%d)" % alien)
-	check(human_gear == 0, "and no human sci-fi gear (%d)" % human_gear)
-	# Alien beasts give up alien parts.
-	Eras.theme = "alien"
-	rng.seed = 5
-	var parts := CorpseLoot.animal_yields({"name": "Test Beast", "size": 1.5, "drops": [["raw_meat", 1], ["hide", 1]]}, 1.0, 0.0, rng).map(func(e): return e[0])
-	Eras.theme = was
-	check(parts.has("hide_xeno") and parts.has("meat_xeno"), "an alien beast gives xeno hide and meat (%s)" % str(parts))
 
 func test_pack_e_items() -> void:
 	# Better loads go in first, and each changes the shot.
@@ -5386,7 +5312,7 @@ func test_firearm_models() -> void:
 func _human_world() -> Array:
 	var was := [Eras.theme, Eras.base_level, WorldField.allowed_eras, WorldField.terrain_v]
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
-	Planets.apply(Planets.get_planet(4242, 0, "human"))
+	Planets.apply(Planets.home(4242, "human"))
 	return was
 
 func _restore_world(was: Array) -> void:

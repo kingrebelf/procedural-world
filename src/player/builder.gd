@@ -293,6 +293,10 @@ func place() -> bool:
 		Game.markers.add(nm, pos.x, pos.z, Game.planet, "teleporter", {"key": str(chunk.key), "i": o["i"]})
 		Game.touch_player()
 		Game.toast.emit("%s linked. Mark it on the Atlas, travel from any other one." % nm)
+	if BuildCatalog.def(_id).get("bed", false):
+		var bm := Game.markers.add_bed(pos, Game.planet, chunk.key, o["i"])
+		Game.touch_player()
+		Game.toast.emit("%s made. You can wake here after a fall; it's on your map." % bm["name"])
 	# (ChunkNode.add_object clears the grass and flowers under the new piece.)
 	return true
 

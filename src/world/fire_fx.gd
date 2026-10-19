@@ -253,66 +253,6 @@ class Drag extends Node3D:
 			if c is MeshInstance3D and c.name != "Coals" and c.name != "Glass":
 				(c as MeshInstance3D).set_instance_shader_parameter("drag", _lean)
 
-static var _swirl: ShaderMaterial
-
-## The door of light in a portal, flat in its node's XY plane and seen from both sides:
-## the fullest frames of Ben's magic flipbook (assets/textures/fx/portal_swirl.png) turning
-## one way, a larger copy turning slowly the other, over a deep violet that hides most of
-## what is behind. `size` is the disc's diameter.
-static func swirl(size: float, tint := Color(1, 1, 1, 1)) -> MeshInstance3D:
-	if _swirl == null:
-		var sh := Shader.new()
-		sh.code = """shader_type spatial;
-render_mode unshaded, blend_premul_alpha, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
-uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_disable;
-uniform float fps = 2.5;
-uniform float turn = 0.55;
-instance uniform vec4 tint : source_color = vec4(1.0);
-mat2 rot(float a) {
-	return mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a)));
-}
-// The strip's four frames cross-faded in turn, at p (centred, frame half-width 0.5).
-vec3 frames(vec2 p, float t) {
-	vec2 q = clamp(p + 0.5, vec2(0.002), vec2(0.998));
-	float f0 = mod(floor(t), 4.0);
-	float f1 = mod(f0 + 1.0, 4.0);
-	vec3 a = texture(tex, vec2((q.x + f0) / 4.0, q.y)).rgb;
-	vec3 b = texture(tex, vec2((q.x + f1) / 4.0, q.y)).rgb;
-	return mix(a, b, smoothstep(0.0, 1.0, fract(t)));
-}
-void fragment() {
-	vec2 p = UV - 0.5;
-	float r = length(p);
-	if (r > 0.5) {
-		discard;
-	}
-	float t = TIME * fps;
-	// The frames' swirl fills about nine tenths of each frame; scale it to the rim.
-	vec3 c = frames(rot(TIME * turn) * p * 0.95, t);
-	c += 0.45 * frames(rot(1.3 - TIME * turn * 0.45) * p * 1.4, t + 2.0);
-	c *= tint.rgb * tint.a;
-	float rim = smoothstep(0.5, 0.42, r);
-	vec3 deep = vec3(0.07, 0.025, 0.15) * rim;
-	ALBEDO = c + deep;
-	ALPHA = clamp(max(c.r, max(c.g, c.b)) * 1.3 + 0.82 * rim, 0.0, 1.0);
-}
-"""
-		_swirl = ShaderMaterial.new()
-		_swirl.shader = sh
-		var path := "res://assets/textures/fx/portal_swirl.png"
-		if ResourceLoader.exists(path):
-			_swirl.set_shader_parameter("tex", load(path))
-	var q := QuadMesh.new()
-	q.size = Vector2(size, size)
-	var mi := MeshInstance3D.new()
-	mi.name = "Swirl"
-	mi.mesh = q
-	mi.material_override = _swirl
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = 160.0
-	mi.set_instance_shader_parameter("tint", tint)
-	return mi
-
 static var _spark_mat: StandardMaterial3D
 static var _smoke_mat: StandardMaterial3D
 

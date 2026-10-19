@@ -90,7 +90,7 @@ const PIECES := {
 	"fabricator": {"name": "Fabricator", "models": [["scifi/Prop_Computer", 0, Vector3.ZERO, 1.0], ["scifi/Prop_Crate3", 0, Vector3(0.95, 0.5, 0.0), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "station": "fabricator"},
 	# Furniture and decor (Quaternius Fantasy Props, CC0). Purely for looks; some give light.
-	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
+	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true, "bed": true},
 	"bench": {"name": "Bench", "models": [["props/Bench", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0],
 		# A bookcase in use: books, a stack, scrolls and a bottle or two on its shelves.
@@ -137,12 +137,6 @@ const PIECES := {
 		["scifi/Prop_Computer", 90, Vector3(-1.5, 0.05, 0.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, 1.6), 1.0],
 		["scifi/Prop_Light_Floor", 0, Vector3(1.6, 0.05, -1.6), 1.0], ["scifi/Prop_Crate3", 0, Vector3(-1.4, 0.05, -1.3), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 40.0, "era": 2, "station": "vehicle_bay", "light": Color(0.4, 0.85, 1.0)},
-	"launch_pad": {"name": "Launch Pad", "models": [["scifi/Platform_Metal", 0, Vector3(-2, 0, -2), 1.0], ["scifi/Platform_Metal", 0, Vector3(2, 0, -2), 1.0],
-		["scifi/Platform_Metal", 0, Vector3(-2, 0, 2), 1.0], ["scifi/Platform_Metal", 0, Vector3(2, 0, 2), 1.0],
-		["scifi/Prop_Light_Floor", 0, Vector3(3.6, 0.05, 3.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(-3.6, 0.05, 3.6), 1.0],
-		["scifi/Prop_Light_Floor", 0, Vector3(3.6, 0.05, -3.6), 1.0], ["scifi/Prop_Light_Floor", 0, Vector3(-3.6, 0.05, -3.6), 1.0],
-		["scifi/Prop_Computer", 0, Vector3(-3.4, 0.05, 0), 1.0]],
-		"snap": "free", "mat": "metal", "hp": 60.0, "era": 2, "station": "launch_pad", "light": Color(1.0, 0.6, 0.3)},
 	# A slipway by the water: greased ways down which a boat built on them is launched.
 	"slipway": {"name": "Slipway", "models": [], "proc": "slipway",
 		"snap": "free", "mat": "wood", "hp": 30.0, "era": 0, "station": "slipway"},
@@ -324,16 +318,15 @@ static func warm_kits() -> void:
 					_kept.append(r)
 				if f.ends_with(".gltf") and sub != "nature":
 					model_parts(sub + "/" + f.get_basename())
-	# The wrecked starship landmark (Landmark) and the ships on outpost landing pads
-	# (ShipPad) are built from the ship kit in chunk jobs.
+	# The wrecked starship landmarks (Landmark, WonderSite) are built from the ship kit
+	# in chunk jobs.
 	model_parts("ships/Striker")
 	# The gnome ring's toadstools (EasterEggs).
 	model_parts("nature/Mushroom_Common")
 	# Food on house tables (KitHouse, Provisions.kit).
 	for f in ["props/Food_Bread", "props/Food_Cheese", "props/Food_Apples"]:
 		model_parts(f)
-	for t in ShipPad.SHIPS:
-		model_parts("ships/" + ShipPad.SHIPS[t])
+	model_parts("ships/Imperial")
 	# Photo textures and shaders that materials built on worker threads use.
 	for f in ResourceLoader.list_directory("res://assets/textures"):
 		if f.ends_with(".jpg") or f.ends_with(".png"):

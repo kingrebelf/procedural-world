@@ -901,33 +901,6 @@ func _run() -> void:
 		player.dismount()
 		check(player.vehicle == null and sp.rider == null, "getting off")
 		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
-	# A starship climbs where you look, won't let you step out in mid-air, and lands.
-	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
-	# (Until it touches down: on a fast runner 30 frames weren't always enough.)
-	for i in 240:
-		await physics_frame
-		if ship == null or (i >= 30 and ship.is_on_floor()):
-			break
-	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
-	player.mount(ship)
-	var y0s: float = ship.global_position.y
-	Input.action_press("jump")
-	for i in 120:
-		await physics_frame
-	Input.action_release("jump")
-	check(ship.global_position.y > y0s + 10.0, "the starship climbs (%.1f m)" % (ship.global_position.y - y0s))
-	player.dismount()
-	check(player.vehicle == ship, "can't step out in mid-air")
-	Input.action_press("crouch")
-	for i in 400:
-		await physics_frame
-		if ship.is_on_floor():
-			break
-	Input.action_release("crouch")
-	check(ship.is_on_floor(), "the starship lands")
-	player.dismount()
-	check(player.vehicle == null, "stepping out after landing")
-	world.vehicles.pack_up(ship)
 	var hr: Vehicle = world.vehicles.deploy(ItemDB.make("horse", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
 	await _frames(3)
 	check(hr != null and hr._animal != null, "a riding horse stands ready")
@@ -979,6 +952,7 @@ func _run() -> void:
 	# Dying: health hits zero, everything you carry drops in a bag where you fell, a
 	# pause, then you wake at the spawn with an empty pack and the bag on your map.
 	await _death_bag(game, world, player)
+	await _beds(game, world, player)
 
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
@@ -1037,77 +1011,29 @@ func _run() -> void:
 	var fresh := ChunkGenerator.new(game.seed, store.has_rivers()).generate(here_key.x, here_key.y)
 	check(absf(ChunkGenerator.height_at(fresh, lx, lz) - after) > 0.5, "snapshot, not regeneration, is the source of truth")
 
-	# Spaceflight: climb out of the sky to orbit, warp to another planet and land there.
-	change_scene_to_file("res://src/world/world.tscn")
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 600:
-		await process_frame
-		if not player.frozen:
-			break
-	var home_seed: int = game.seed
-	# The ship sets down on dry, loaded ground near you: try round about rather than only
-	# straight ahead (a null there hung the run on sh.leaving).
-	var sh: Vehicle = null
-	for off: Vector3 in [Vector3(0, 0, -9), Vector3(9, 0, 0), Vector3(0, 0, 9), Vector3(-9, 0, 0), Vector3(0, 0, -16), Vector3(16, 0, 0)]:
-		if sh == null:
-			sh = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + off, 0.0)
-	check(sh != null, "a ship can be set down near the player (at %s)" % player.global_position)
-	if sh == null:
-		game.close_world()
-		WorldStore.delete_world(world_id)
-		print("integration: %d FAILED" % _fail)
-		quit(1)
-		return
-	for i in 10:
-		await physics_frame
-	player.mount(sh)
-	sh.leaving = Vehicle.LEAVE_TIME
-	sh.at_ceiling = true
-	for i in 20:
-		await process_frame
-	check(current_scene is OrbitView, "climbing out of the sky reaches orbit")
-	var target := -1
-	for pl in game.worlds():
-		if pl["kind"] == "fey":
-			target = pl["n"]
-	OrbitView._arrive(target)
-	check(game.planet == target and game.seed != home_seed and WorldField.allowed_eras == [Eras.FANTASY, Eras.SCIFI] and Eras.theme == "alien", "warping makes the fey world current")
-	current_scene._land()
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 900:
-		await process_frame
-		if player.vehicle != null:
-			break
-	check(player.vehicle != null and player.vehicle.kind == "ship", "you land flying your ship")
-	var pw: PackedFloat32Array = world.atmosphere.field.era_weights(player.global_position.x, player.global_position.z)
-	check(pw[Eras.FANTASY] > 0.99, "the fey world's heart is all fey land")
-	check(DirAccess.dir_exists_absolute(game.store.root.path_join("planets/%d/chunks" % target)), "the planet's land is saved apart from home")
-	# Through a portal from the fey world to the verdant one, then the fey world remembers
-	# the portal you left by.
-	var gone_from := Vector2(player.global_position.x, player.global_position.z)
-	player.dismount(true)
-	var verdant := 1
-	for pl in game.worlds():
-		if pl["kind"] == "verdant":
-			verdant = pl["n"]
-	game.travel_portal(player, verdant, gone_from)
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 900:
-		await process_frame
-		if not player.frozen:
-			break
-	check(game.planet == verdant and Eras.theme == "human" and not player.frozen and player.is_inside_tree(), "a portal takes you to another world, on your feet")
-	check(game.landings.get(target) == gone_from, "the world you left remembers the portal you used")
-	target = verdant
+	# A save from when there were other planets and starships: you come home, your ship
+	# turns back into its parts, what was left on another world comes back to your pack.
 	game.close_world()
-	check(WorldField.allowed_eras.is_empty(), "closing the world resets planet rules")
-	check(game.load_world(world_id) and game.planet == target, "the save remembers which planet you're on")
+	var old := WorldStore.open_world(world_id)
+	var sv: Dictionary = old.load_player()
+	sv["planet"] = 3
+	sv["pos"] = Vector3(9000, 40, 9000)
+	sv["landings"] = {0: Vector2(1, 2)}
+	sv["vehicles"] = [{"id": 1, "kind": "ship", "pos": Vector3(9000, 40, 9000), "yaw": 0.0, "q": 1.0, "planet": 3},
+		{"id": 2, "kind": "rover", "pos": Vector3(500, 4, 500), "yaw": 0.0, "q": 1.0, "planet": 2},
+		{"id": 3, "kind": "horse", "pos": Vector3(20, 4, 20), "yaw": 0.0, "q": 1.0, "planet": 0}]
+	sv["riding"] = 1
+	var mk := Markers.from_data(sv.get("markers"))
+	mk.add("Fey camp", 100, 100, 3)
+	sv["markers"] = mk.to_data()
+	old.save_player(sv)
+	var plates0: int = game.inventory.count("alloy_plate")
+	check(game.load_world(world_id) and game.planet == 0, "a save on another planet loads on the home world")
+	var ps: Dictionary = game.pending_player_state
+	check(ps.get("drop", false) and int(ps.get("riding", -1)) == -1 and (ps["pos"] as Vector3).distance_to(Vector3(9000, 40, 9000)) > 100.0, "and you wake on the ground at home")
+	check(game.vehicles.size() == 1 and game.vehicles[0]["kind"] == "horse", "only the vehicles on this world stay parked")
+	check(game.inventory.count("rover") == 1 and game.inventory.count("alloy_plate") >= plates0 + 20, "the rover comes back to your pack and the starship turns into its parts")
+	check(game.markers.on_planet(3).is_empty(), "markers on other worlds are gone")
 
 	game.close_world()
 	WorldStore.delete_world(world_id)
@@ -1225,6 +1151,51 @@ func _death_bag(game, world, player) -> void:
 	await _frames(3)
 	check(world.corpses.record(bag["key"]).is_empty() and game.markers.on_planet(game.planet, "death").is_empty(), "the emptied bag and its marker are gone")
 	await _frames(60)
+
+## Beds: a bed you make goes on your map as a place to wake; sleeping in it makes it the
+## one picked first; after a fall you choose where to wake from a list and get up on it;
+## taking it down forgets it.
+func _beds(game, world, player) -> void:
+	var start: Vector3 = player.global_position
+	var pc: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(start))
+	var lp := start + Vector3(3.0, 0, 0) - pc.position
+	lp.x = clampf(lp.x, 1.0, ChunkGenerator.SIZE - 1.0)
+	lp.y = ChunkGenerator.height_at(pc.data, lp.x, lp.z)
+	var o: Dictionary = pc.add_built("bed", lp, 0.0, {"by": "you", "day": 0.0, "owner": Doors.my_id(), "owner_name": Doors.my_name()})
+	var mk: Dictionary = game.markers.add_bed(pc.position + o["p"], game.planet, pc.key, o["i"])
+	check(game.markers.on_planet(game.planet, "bed").size() == 1 and mk["name"] == "Bed 1", "a bed you make is marked on your map")
+	check(String(Player._use_of(o).get("verb", "")).begins_with("Sleep in the bed"), "a bed offers to sleep in it")
+	player._use_bed(pc, o)
+	check(float(mk.get("slept", -1.0)) >= 0.0 and game.markers.on_planet(game.planet, "bed").size() == 1, "using it again doesn't mark it twice")
+	var choices: Array = world.respawn_choices(start + Vector3(200, 0, 0))
+	var bi := -1
+	for i in choices.size():
+		if choices[i]["kind"] == "bed":
+			bi = i
+	check(bi >= 0 and choices[-1]["kind"] == "spawn" and world.default_respawn(choices) == bi, "the bed you slept in is the first choice to wake at")
+	# Die (keeping your things, so nothing else is disturbed) and wake on the bed.
+	var net = root.get_node_or_null("/root/Net")
+	if net:
+		net.options["death_penalty"] = "keep"
+	game.set_health(-5.0, "test")
+	await create_timer(4.6).timeout
+	await _frames(3)
+	check(world.hud._wake.size() >= 2 and world.hud._wake_map != null, "after a fall you choose where to wake, with a map")
+	world.hud._choose_wake(bi)
+	var t0 := Time.get_ticks_msec()
+	while (game.dead or player.frozen) and Time.get_ticks_msec() - t0 < 20000:
+		await _frames(5)
+	await _frames(30)
+	var bed_at: Vector3 = pc.position + o["p"]
+	check(not game.dead and Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(bed_at.x, bed_at.z)) < 2.5,
+		"you wake on your bed (%.1f m off)" % Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(bed_at.x, bed_at.z)))
+	if net:
+		net.options.erase("death_penalty")
+	player.deconstruct(pc, o)
+	check(game.markers.on_planet(game.planet, "bed").is_empty(), "a bed taken down is no longer a place to wake")
+	player.global_position = start + Vector3(0, 1.0, 0)
+	player.velocity = Vector3.ZERO
+	await _frames(10)
 
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
 ## butchered for meat, hide and bone; a dead person's body holds their gear and purse.

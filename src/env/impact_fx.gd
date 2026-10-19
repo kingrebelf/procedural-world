@@ -324,11 +324,6 @@ func _chip_mat(rough: float, metal: float, glass: bool) -> StandardMaterial3D:
 	if glass:
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.metallic_specular = 0.9
-		if Eras.theme == "alien":
-			# Alien crystal keeps its inner light; on human worlds it is plain glass.
-			m.emission_enabled = true
-			m.emission = Color(0.35, 0.45, 0.9)
-			m.emission_energy_multiplier = 0.6
 	return m
 
 func _ramp(cols: Array) -> GradientTexture1D:
