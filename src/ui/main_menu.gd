@@ -160,10 +160,17 @@ func _new_world() -> void:
 	var seed_e := LineEdit.new()
 	seed_e.placeholder_text = "random"
 	v.add_child(seed_e)
+	v.add_child(UITheme.label("Planet size (walk east far enough and you come back from the west)", 15, UITheme.DIM))
+	var size_o := OptionButton.new()
+	for k in Globe.SIZE_NAMES:
+		var t: Vector2i = Globe.SIZES[k]
+		size_o.add_item("%s  ·  %d x %d tiles, %.0f km round" % [String(k).capitalize(), t.x, t.y, t.x * ChunkGenerator.SIZE / 1000.0])
+	size_o.select(Globe.SIZE_NAMES.find(Globe.DEFAULT))
+	v.add_child(size_o)
 	var h := HBoxContainer.new()
 	h.add_child(UITheme.button("Back", _home))
 	var go := UITheme.button("Create and enter", func():
-		Game.new_world(name_e.text, seed_e.text)
+		Game.new_world(name_e.text, seed_e.text, Globe.SIZE_NAMES[size_o.selected])
 		get_tree().change_scene_to_file("res://src/world/world.tscn"))
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(go)

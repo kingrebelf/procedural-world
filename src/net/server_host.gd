@@ -80,7 +80,7 @@ func _open_world() -> bool:
 		var s := cfg.seed_text.strip_edges()
 		var sd: int = randi() if s == "" else (s.to_int() if s.is_valid_int() else WHash.str_hash(s))
 		meta = {"store_format": WorldStore.STORE_FORMAT, "name": cfg.world, "seed": sd & WHash.MASK,
-			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human",
+			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human", "globe": cfg.globe,
 			"created": Time.get_unix_time_from_system(), "last_played": Time.get_unix_time_from_system(),
 			"play_time": 0.0, "day": 0.3}
 		if not WorldStore.write_var(root.path_join("world.dat"), meta):
@@ -178,7 +178,7 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 ## What clients need of the world's meta to generate and draw it like the server.
 func _client_meta() -> Dictionary:
 	var m := {}
-	for k in ["name", "seed", "gen_version", "theme", "store_format", "created", "uid"]:
+	for k in ["name", "seed", "gen_version", "theme", "globe", "store_format", "created", "uid"]:
 		if meta.has(k):
 			m[k] = meta[k]
 	return m
@@ -380,7 +380,7 @@ func _launch() -> void:
 func _use_planet(p: int) -> void:
 	_active_planet = p
 	WorldField.terrain_v = int(meta.get("gen_version", 1))
-	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", ""))))
+	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", "")), String(meta.get("globe", ""))))
 
 ## Worker thread.
 func _run(job: Dictionary) -> void:

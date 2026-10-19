@@ -80,7 +80,8 @@ func is_playing() -> bool:
 
 # --- World lifecycle -----------------------------------------------------------
 
-func new_world(name: String, seed_text: String) -> void:
+## globe: the planet's size (Globe.SIZES).
+func new_world(name: String, seed_text: String, globe := Globe.DEFAULT) -> void:
 	var s := seed_text.strip_edges()
 	var sd: int
 	if s == "":
@@ -89,7 +90,7 @@ func new_world(name: String, seed_text: String) -> void:
 		sd = s.to_int()
 	else:
 		sd = WHash.str_hash(s)
-	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human")
+	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human", globe)
 	_begin(true)
 
 func load_world(id: String) -> bool:
@@ -327,11 +328,15 @@ func _enter_planet(n: int) -> void:
 	_current_region = ""
 
 func planet_info() -> Dictionary:
-	return Planets.get_planet(home_seed, planet, world_theme())
+	return Planets.get_planet(home_seed, planet, world_theme(), world_globe())
 
 ## Every world linked to this one (Planets.system), home first.
 func worlds() -> Array:
-	return Planets.system(home_seed, world_theme())
+	return Planets.system(home_seed, world_theme(), world_globe())
+
+## The world's globe size (Globe.SIZES); "" for an endless world (made before v22).
+func world_globe() -> String:
+	return String(store.meta.get("globe", "")) if store != null else ""
 
 ## "human" for worlds made since world themes exist; "" for older, mixed worlds.
 func world_theme() -> String:
