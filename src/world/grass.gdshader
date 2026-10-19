@@ -56,8 +56,8 @@ void vertex() {
 	VERTEX.y -= abs(bend) * 0.3;
 	glow = max(INSTANCE_CUSTOM.a, 0.0);
 	// Tints are authored as sRGB colours; shading happens in linear space.
-	tint = pow(max(INSTANCE_CUSTOM.rgb, vec3(0.0)), vec3(2.2)) * (1.0 - 0.42 * cloud_shadow(wp));
-	shade = 1.0 - 0.42 * cloud_shadow(wp);
+	tint = pow(max(INSTANCE_CUSTOM.rgb, vec3(0.0)), vec3(2.2)) * cloud_shade(wp);
+	shade = cloud_shade(wp);
 	winter = vec3(0.0);
 	if (INSTANCE_CUSTOM.a > -0.5) {
 		vec4 lv = wear_levels(wp);

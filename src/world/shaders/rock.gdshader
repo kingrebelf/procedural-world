@@ -143,7 +143,7 @@ void fragment() {
 		col = mix(col, WEAR_FROST, clamp(fm, 0.0, 0.55));
 	}
 	col *= mix(0.55, 1.0, max(max(smoothstep(-0.05, 0.3, above), smoothstep(0.35, 0.8, wn.y)), snow * 0.6));
-	ALBEDO = col * (1.0 - 0.42 * cloud_shadow(wp));
+	ALBEDO = col * cloud_shade(wp);
 	ROUGHNESS = mix(mix(mix(0.82, 0.95, max(max(moss, earth), dm)), 0.62, snow), 0.85, fm);
 	SPECULAR = 0.35;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);

@@ -155,7 +155,7 @@ void fragment() {
 		// Leaves let the light through: a crown against the sun glows its own colour.
 		back = look.rgb / max(max(look.r, look.g), 0.001) * 0.55 * leafy;
 	}
-	ALBEDO = alb * (1.0 - 0.42 * cloud_shadow(wp));
+	ALBEDO = alb * cloud_shade(wp);
 	BACKLIGHT = back;
 	ROUGHNESS = rough;
 	SPECULAR = 0.25;
