@@ -617,9 +617,13 @@ func s_ally(cmd: String, arg: String) -> void:
 
 @rpc("authority", "call_remote", "reliable")
 func c_alliance(mine: Dictionary, invites: Array) -> void:
+	var joined: bool = (mine.get("members", {}) as Dictionary).size() > (alliance.get("members", {}) as Dictionary).size()
 	alliance = mine
 	ally_invites = invites
 	alliance_changed.emit()
+	var g := get_node_or_null("/root/Game")
+	if joined and g != null and g.store != null:
+		request_ally_map(g.planet)
 
 @rpc("authority", "call_remote", "unreliable_ordered", CH_STATE)
 func c_allies_at(list: Array) -> void:
@@ -627,6 +631,32 @@ func c_allies_at(list: Array) -> void:
 	for e in list:
 		if e is Array and e.size() == 3 and e[2] is Vector3:
 			allies_at[String(e[0])] = [int(e[1]), e[2], now]
+
+## Explored tiles (the map's fog): yours go to the server as you find them, and your
+## allies' come back for your map (Game.share_explored).
+func send_explored(p: int, k: Vector2i) -> void:
+	if mode == Mode.CLIENT:
+		s_explored.rpc_id(1, p, [k])
+
+func request_ally_map(p: int) -> void:
+	if mode == Mode.CLIENT:
+		s_ally_map_req.rpc_id(1, p)
+
+@rpc("any_peer", "call_remote", "reliable", CH_DATA)
+func s_explored(p: int, keys: Array) -> void:
+	if host:
+		host.explored(_sender(), p, keys)
+
+@rpc("any_peer", "call_remote", "reliable", CH_DATA)
+func s_ally_map_req(p: int) -> void:
+	if host:
+		host.ally_map_request(_sender(), p)
+
+@rpc("authority", "call_remote", "reliable", CH_DATA)
+func c_ally_map(p: int, keys: Array) -> void:
+	var g := get_node_or_null("/root/Game")
+	if g != null:
+		g.share_explored(p, keys)
 
 @rpc("any_peer", "call_remote", "reliable")
 func s_admin(cmd: String) -> void:

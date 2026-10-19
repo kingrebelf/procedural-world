@@ -642,6 +642,19 @@ func ally(peer: int, cmd: String, arg: String) -> void:
 	if online.has(peer) and not online[peer].has("pending"):
 		alliances.command(online[peer]["pid"], online[peer]["name"], cmd.substr(0, 16), arg.substr(0, 240))
 
+func explored(peer: int, p: int, keys: Array) -> void:
+	if online.has(peer) and not online[peer].has("pending"):
+		alliances.explore(online[peer]["pid"], p, keys)
+
+func ally_map_request(peer: int, p: int) -> void:
+	if online.has(peer) and not online[peer].has("pending"):
+		Net.c_ally_map.rpc_id(peer, p, alliances.ally_map(online[peer]["pid"], p))
+
+func tell_explored(pid: String, p: int, keys: Array) -> void:
+	var q := peer_of(pid)
+	if q != 0:
+		Net.c_ally_map.rpc_id(q, p, keys)
+
 func option(k: String):
 	return cfg.options.get(k, ServerConfig.OPTIONS.get(k))
 
@@ -726,6 +739,7 @@ func save() -> void:
 	meta["last_played"] = Time.get_unix_time_from_system()
 	WorldStore.write_var(root.path_join("world.dat"), meta)
 	_save_index()
+	alliances.save_explored()
 
 func stop() -> void:
 	for q in online.keys():

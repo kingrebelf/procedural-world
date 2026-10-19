@@ -79,6 +79,10 @@ var _dir := ""
 var _store: WorldStore
 var _queue: Array = [] ## chunk dicts waiting to be painted
 var _migrate: Array = [] ## visited chunk keys from before the map existed
+var _shared: Array = [] ## tiles your allies explored (online), waiting to be generated and painted
+var _shared_gen: ChunkGenerator ## its own generator: it runs on a worker beside the streamer's
+var _shared_task := []
+var _shared_seed := -1
 var _last := Vector2(INF, INF)
 var _reveal_t := 0.0
 var _save_t := 0.0
@@ -147,6 +151,11 @@ func close() -> void:
 	layer = 0
 	_queue.clear()
 	_migrate.clear()
+	_shared.clear()
+	if not _shared_task.is_empty():
+		WorkerThreadPool.wait_for_task_completion(_shared_task[0])
+	_shared_task = []
+	_shared_gen = null
 	_last = Vector2(INF, INF)
 	_dir = ""
 	_store = null
@@ -369,6 +378,7 @@ func process(delta: float, player: Node3D) -> void:
 			var out: Array = []
 			var task := WorkerThreadPool.add_task(func(): out.append(paint_tile(ch)), false, "map paint")
 			_paint_tasks.append([task, ch, out])
+	_paint_shared()
 	if budget > 0 and not _migrate.is_empty() and _store != null:
 		var k: Vector2i = _migrate.pop_back()
 		if not _is_painted(k) and _store.has_chunk(k.x, k.y):
@@ -435,6 +445,43 @@ func _find_wonders(pos: Vector2) -> void:
 			_index_dirty = true
 			Game.add_xp(250.0, "Found " + WonderSite.label(w["t"]))
 			Game.discovered.emit(WonderSite.label(w["t"]), "Wonder discovered", WonderSite.COLORS[w["t"]])
+
+## Shows tiles an ally explored (Game.share_explored): each is generated from the seed
+## (what your ally saw, minus what has been changed since) and painted, one at a time on
+## a worker, and the fog over it lifted.
+func reveal_tiles(keys: Array) -> void:
+	for k in keys:
+		if k is Vector2i and not _is_painted(k) and not _shared.has(k):
+			_shared.append(k)
+
+func _paint_shared() -> void:
+	if not _shared_task.is_empty():
+		if not WorkerThreadPool.is_task_completed(_shared_task[0]):
+			return
+		WorkerThreadPool.wait_for_task_completion(_shared_task[0])
+		var ch: Dictionary = _shared_task[1]
+		var out: Array = _shared_task[2]
+		_shared_task = []
+		var k := Vector2i(int(ch.get("cx", 0)), int(ch.get("cz", 0)))
+		if not out.is_empty() and not _is_painted(k):
+			_blit(ch, out[0])
+			_note_places(ch)
+			reveal((Vector2(k) + Vector2(0.5, 0.5)) * ChunkGenerator.SIZE, SIGHT)
+	if _shared.is_empty() or Game.store == null:
+		return
+	var k: Vector2i = _shared.pop_front()
+	if _is_painted(k):
+		return
+	if _shared_gen == null or _shared_seed != Game.seed:
+		_shared_gen = ChunkGenerator.new(Game.seed, Game.store.has_rivers())
+		_shared_seed = Game.seed
+	var gen := _shared_gen
+	var ch := {}
+	var out: Array = []
+	var task := WorkerThreadPool.add_task(func():
+		ch.merge(gen.generate(k.x, k.y))
+		out.append(paint_tile(ch)), false, "map ally tile")
+	_shared_task = [task, ch, out]
 
 ## Lifts the fog in a soft-edged circle.
 func reveal(at: Vector2, radius: float) -> void:

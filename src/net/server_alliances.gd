@@ -13,6 +13,11 @@ var _of: Dictionary = {} ## pid -> id
 var invites: Dictionary = {} ## pid -> {id: inviter's name}
 var homes: Dictionary = {} ## pid -> [[planet, x, z], ...]: houses they bought, shared with allies
 var _next := 1
+## pid -> {planet: {Vector2i: true}}: the tiles each player has stood in, kept whether or
+## not they are in an alliance (joining one later shares what they found before).
+var explored: Dictionary = {}
+var _explored_dirty := false
+const EXPLORED_BATCH := 256 ## most tiles one message may add
 
 func _init(h: Object, file := "") -> void:
 	host = h
@@ -26,6 +31,10 @@ func _init(h: Object, file := "") -> void:
 	for id in list:
 		for pid in list[id]["members"]:
 			_of[pid] = id
+	if path != "":
+		var e = WorldStore.read_var(_explored_path(), true)
+		if e is Dictionary:
+			explored = e
 
 func save() -> void:
 	if path != "":
@@ -230,3 +239,49 @@ func _say_to(id: String, text: String) -> void:
 	if list.has(id):
 		for q in list[id]["members"]:
 			host.ally_note(q, text)
+
+# --- Explored tiles ------------------------------------------------------------------
+
+func _explored_path() -> String:
+	return path.get_basename() + "_explored.dat"
+
+## Saves the explored tiles if they changed (the host's autosave calls this).
+func save_explored() -> void:
+	if _explored_dirty and path != "":
+		WorldStore.write_var(_explored_path(), explored, true)
+	_explored_dirty = false
+
+## A player stood in new tiles on `planet`: kept, and passed on to their allies online.
+func explore(pid: String, planet: int, keys: Array) -> void:
+	if planet < 0 or planet >= Planets.COUNT:
+		return
+	var mine: Dictionary = explored.get(pid, {})
+	var tiles: Dictionary = mine.get(planet, {})
+	var fresh: Array = []
+	for k in keys.slice(0, EXPLORED_BATCH):
+		if k is Vector2i and not tiles.has(k):
+			tiles[k] = true
+			fresh.append(k)
+	if fresh.is_empty():
+		return
+	mine[planet] = tiles
+	explored[pid] = mine
+	_explored_dirty = true
+	var id := of(pid)
+	if id == "" or not bool(host.option("alliances")):
+		return
+	for q in list[id]["members"]:
+		if q != pid:
+			host.tell_explored(q, planet, fresh)
+
+## Every tile `pid`'s allies have explored on `planet` (none outside an alliance).
+func ally_map(pid: String, planet: int) -> Array:
+	var id := of(pid)
+	if id == "" or not bool(host.option("alliances")):
+		return []
+	var seen := {}
+	for q in list[id]["members"]:
+		if q != pid:
+			for k in (explored.get(q, {}) as Dictionary).get(planet, {}):
+				seen[k] = true
+	return seen.keys()

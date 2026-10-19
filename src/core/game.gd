@@ -326,6 +326,9 @@ func _enter_planet(n: int) -> void:
 	discovery = store.load_discovery()
 	map.open(store, discovery["visited"])
 	_current_region = ""
+	var net := get_node_or_null("/root/Net")
+	if net != null and net.is_client():
+		net.request_ally_map(planet)
 
 func planet_info() -> Dictionary:
 	return Planets.get_planet(home_seed, planet, world_theme(), world_globe())
@@ -406,11 +409,38 @@ func flush_chunks() -> void:
 		store.save_chunk(_dirty_chunks[k])
 	_dirty_chunks.clear()
 
+## Tiles an ally explored on planet `p` (online: Net.c_ally_map): they show on your map
+## as if you had seen them, but don't count as places you discovered.
+func share_explored(p: int, keys: Array) -> void:
+	if store == null or p != planet:
+		return
+	var shared: Dictionary = discovery.get("shared", {})
+	var fresh: Array = []
+	for k in keys:
+		if not (k is Vector2i):
+			continue
+		var key := "%d,%d" % [k.x, k.y]
+		if not discovery["visited"].has(key) and not shared.has(key):
+			shared[key] = true
+			fresh.append(k)
+	discovery["shared"] = shared
+	if not fresh.is_empty():
+		store.save_discovery(discovery)
+	# Re-sent in full on each join: anything not yet on the map is painted, new or not.
+	var all: Array = []
+	for key in shared:
+		var q: PackedStringArray = String(key).split(",")
+		all.append(Vector2i(q[0].to_int(), q[1].to_int()))
+	map.reveal_tiles(all)
+
 func visit_chunk(chunk: Dictionary) -> void:
 	var key := "%d,%d" % [chunk["cx"], chunk["cz"]]
 	if not discovery["visited"].has(key):
 		discovery["visited"][key] = {"day": day, "era": chunk["era"], "region": chunk["region"]}
 		store.save_discovery(discovery)
+		var net := get_node_or_null("/root/Net")
+		if net != null and net.is_client():
+			net.send_explored(planet, Vector2i(int(chunk["cx"]), int(chunk["cz"])))
 	var region: String = chunk["region"]
 	if region != _current_region:
 		_current_region = region
