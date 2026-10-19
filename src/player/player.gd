@@ -742,7 +742,7 @@ func _find_focus() -> Dictionary:
 				best = {"kind": "power", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0), "verb": _power_verb(o), "own": is_own_piece(o)}
 			elif is_own_piece(o):
 				var d := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
-				var station := d.has("station") or d.has("storage") or d.has("teleporter")
+				var station := d.has("station") or d.has("storage") or d.has("teleporter") or d.has("bed")
 				best = {"kind": "station" if station else "built", "chunk": c, "i": o["i"], "pos": h["point"] + Vector3(0, 0.35, 0),
 					"verb": ("%s   (hold: take down)" % _station_verb(d)) if station else "Hold to take down %s" % d["name"]}
 	return best
@@ -894,6 +894,8 @@ static func _use_of(o: Dictionary) -> Dictionary:
 				return {"kind": "power", "verb": pv, "h": clampf(box.get_center().y * 2.0, -1.6, 2.2)}
 			if d.has("station") or d.has("storage") or d.has("teleporter"):
 				return {"kind": "station", "verb": _station_verb(d), "h": 1.2}
+			if d.has("bed") and Doors.may_access(String(o["st"].get("owner", Doors.my_id()))):
+				return {"kind": "station", "verb": _station_verb(d), "h": 0.7}
 	return {}
 
 static func _station_verb(d: Dictionary) -> String:
@@ -901,6 +903,8 @@ static func _station_verb(d: Dictionary) -> String:
 		return "Open the %s" % String(d["name"]).to_lower()
 	if d.has("teleporter"):
 		return "Travel from the %s" % String(d["name"]).to_lower()
+	if d.has("bed"):
+		return "Sleep in the %s (you can wake here after a fall)" % String(d["name"]).to_lower()
 	return "Craft at the %s" % String(d["name"]).to_lower()
 
 ## Tap on a station: craft there, or open a storage chest.
@@ -914,6 +918,9 @@ func _use_station() -> void:
 			return
 		if d.has("teleporter"):
 			get_tree().call_group("trade_ui", "open_travel", o, c)
+			return
+		if d.has("bed"):
+			_use_bed(c, o)
 			return
 	get_tree().call_group("trade_ui", "open", "craft")
 
@@ -1477,12 +1484,30 @@ func _use_aboard(v: Vehicle, i: int) -> void:
 	for r in Game.vehicles:
 		r.erase("berth")
 	v.rec["berth"] = true
+	v.rec["berth_day"] = Game.day
 	Game.mark_player_dirty()
 	var t := fposmod(Game.day, 1.0)
 	if t > 0.24 and t < 0.78:
 		Game.toast.emit("You'll wake in the %s after a fall. Sleep in it at night." % String(sp["name"]))
 		return
 	_sleep({}, String(sp["name"]))
+
+## A bed you built (or an ally's): it becomes a place you can wake after a fall, the one
+## picked first, and at night you sleep in it until morning.
+func _use_bed(c: ChunkNode, o: Dictionary) -> void:
+	if o["st"].get("gone", false):
+		return
+	_focus_t = 0.0
+	used_tool.emit("interact")
+	var known := not Game.markers.of_object(c.key, o["i"]).is_empty()
+	var mk := Game.markers.add_bed(c.position + o["p"], Game.planet, c.key, o["i"])
+	mk["slept"] = Game.day
+	Game.touch_player()
+	var t := fposmod(Game.day, 1.0)
+	if t > 0.24 and t < 0.78:
+		Game.toast.emit("%s: you'll wake here after a fall%s. Sleep in it at night." % [mk["name"], "" if known else " (it's on your map)"])
+		return
+	_sleep({"sleep": 1.5}, "bed")
 
 ## Sleeps until morning on a bedroll or in a tent: whole again, and well rested.
 func _sleep(fd: Dictionary, name: String) -> void:
@@ -2072,7 +2097,7 @@ func damage_object(chunk: ChunkNode, o: Dictionary, amount: float, quality: floa
 			Game.toast.emit("Found %s" % ItemDB.def(y[0])["name"].to_lower())
 	if r["destroyed"]:
 		ImpactFx.clear_near(chunk.position + o["p"], 3.0 * float(o.get("s", 1.0)))
-		if k0 == "built" and BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter"):
+		if k0 == "built" and (BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("teleporter") or BuildCatalog.def(BuildCatalog.id_of(o["t"])).has("bed")):
 			Game.markers.remove_object(chunk.key, o["i"])
 			Game.touch_player()
 		for it in Storage.spill(o):

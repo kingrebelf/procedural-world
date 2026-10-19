@@ -259,6 +259,22 @@ func travel_portal(who: Node3D, n: int, from: Vector2) -> void:
 	toast.emit("You step out on %s, %s" % [info["name"], Planets.theme_label(info).to_lower()])
 	get_tree().change_scene_to_file.call_deferred("res://src/world/world.tscn")
 
+## After a fall, wakes you at `at` on world `n` (a bed you keep there): that world
+## streams in with you on your bed.
+func wake_on(who: Node3D, n: int, at: Vector3) -> void:
+	if store == null:
+		return
+	var st: Dictionary = who.get_state() if who != null and who.has_method("get_state") else {}
+	if who != null:
+		who.set_physics_process(false)
+	player = null
+	set_planet(n)
+	st["pos"] = at
+	st["riding"] = -1
+	pending_player_state = st
+	save_player()
+	get_tree().change_scene_to_file.call_deferred("res://src/world/world.tscn")
+
 # --- Treasure maps ---------------------------------------------------------------
 
 func _on_inventory_changed() -> void:

@@ -552,7 +552,7 @@ func _burn_down(node: ChunkNode, o: Dictionary, seen: bool) -> void:
 	# What was inside burnt with it.
 	o["st"]["loot"] = []
 	o["st"].erase("items")
-	if kind == "built" and BuildCatalog.def(BuildCatalog.id_of(t)).has("teleporter"):
+	if kind == "built" and (BuildCatalog.def(BuildCatalog.id_of(t)).has("teleporter") or BuildCatalog.def(BuildCatalog.id_of(t)).has("bed")):
 		Game.markers.remove_object(node.key, o["i"])
 	if kind == "built" and not Doors.fits(BuildCatalog.id_of(t)).is_empty():
 		var hit := Doors.door_at(streamer, wp)

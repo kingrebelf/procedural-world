@@ -189,10 +189,12 @@ func _apply_settings() -> void:
 		float(Settings.get_value("detail_distance")))
 
 ## Death: everything you carry drops in a bag where you fell (marked on your map), a few
-## seconds of "You died", then you wake at your house or the world's spawn point, empty
-## handed and short some of the progress toward your next level.
+## seconds of "You died", then you wake where you choose: one of your beds (on any world),
+## your boat's bunk, your house, or the world's spawn point. Empty handed and short some
+## of the progress toward your next level.
 func _on_died(cause: String) -> void:
 	player.dismount(true)
+	var fell := player.global_position
 	# A server can let players keep their things ("keep"); otherwise they drop in a bag.
 	var dropped: bool = Game.server_option("death_penalty", "bag") != "keep"
 	var bag := Game.pack_death_bag() if dropped else {}
@@ -215,29 +217,109 @@ func _on_died(cause: String) -> void:
 	await get_tree().create_timer(4.0).timeout
 	if not is_inside_tree():
 		return
+	var choices := respawn_choices(fell)
+	var pick := 0
+	if choices.size() > 1:
+		hud.show_respawn(choices, default_respawn(choices), fell)
+		pick = await hud.respawn_chosen
+		if not is_inside_tree():
+			return
+	var ch: Dictionary = choices[clampi(pick, 0, choices.size() - 1)]
 	Game.stats.xp = int(Game.stats.xp * 0.75)
-	var home = Game.home_near(player.global_position)
-	var bunk := vehicles.berth_point()
-	if bunk != Vector3.INF:
-		# The bunk aboard your boat you last slept in.
-		player.global_position = bunk
-	elif home is Vector2:
-		var h := npcs.ground(home.x, home.y)
-		if is_nan(h):
-			h = npcs.gen.field.height(home.x, home.y)
-		player.global_position = Vector3(home.x, h + 1.5, home.y)
-	else:
-		player.global_position = find_spawn() + Vector3(0, 2, 0)
 	player.velocity = Vector3.ZERO
 	player.frozen = true
-	player.snap_down = bunk == Vector3.INF
+	player.snap_down = ch["kind"] in ["house", "spawn"]
+	var away := int(ch.get("planet", Game.planet)) != Game.planet
+	if not away:
+		player.global_position = ch["pos"]
 	player.breath = Game.stats.max_breath()
 	Game.revive()
 	Game.stats_changed.emit()
 	hud.hide_death()
 	player.ui_open = false
 	Cursor.restore()
-	Game.toast.emit(("You wake at your house." if home is Vector2 else "You wake where you first arrived.") + (" Your things are in a bag where you fell, marked on your map." if dropped else ""))
+	var where: String = {"bed": "You wake in %s." % String(ch["name"]), "bunk": "You wake in your bunk aboard.",
+		"house": "You wake at your house.", "spawn": "You wake where you first arrived."}[ch["kind"]]
+	Game.toast.emit(where + (" Your things are in a bag where you fell, marked on your map." if dropped else ""))
+	if away:
+		# A bed on another world: that world streams in around you.
+		Game.wake_on(player, int(ch["planet"]), ch["pos"])
+
+## Where you can wake after falling at `fell`, as {kind ("bed", "bunk", "house" or
+## "spawn"), name, planet, pos (where you stand up), slept (the day you last slept there,
+## or -1)}: your beds on this world nearest first, your boat's bunk, your nearest house,
+## your beds on other worlds, and last where you first arrived. A bed seen to be gone
+## (burnt, taken down) is forgotten.
+func respawn_choices(fell: Vector3) -> Array:
+	var here: Array = []
+	var away: Array = []
+	for mk in Game.markers.list.duplicate():
+		if mk["kind"] != "bed":
+			continue
+		var on := int(mk["planet"])
+		if on == Game.planet and not bed_stands(mk):
+			Game.markers.remove(int(mk["id"]))
+			Game.touch_player()
+			continue
+		var at := Vector3(float(mk["x"]), float(mk.get("y", NAN)), float(mk["z"]))
+		if is_nan(at.y):
+			at.y = npcs.gen.field.height(at.x, at.z) if on == Game.planet else 60.0
+		# On top of the bed: its mattress holds you once its chunk has loaded.
+		var c := {"kind": "bed", "name": String(mk["name"]), "planet": on, "pos": at + Vector3(0, 1.2, 0),
+			"slept": float(mk.get("slept", -1.0)), "id": int(mk["id"])}
+		if on == Game.planet:
+			c["d"] = Vector2(at.x, at.z).distance_to(Vector2(fell.x, fell.z))
+			here.append(c)
+		else:
+			away.append(c)
+	here.sort_custom(func(a, b): return a["d"] < b["d"])
+	var out: Array = here
+	var bunk := vehicles.berth_point()
+	if bunk != Vector3.INF:
+		var slept := -1.0
+		var nm := "Your boat"
+		for r in Game.vehicles:
+			if r.get("berth", false):
+				slept = float(r.get("berth_day", -1.0))
+				nm = "Your %s" % Vehicle.label(r["kind"]).to_lower()
+		out.append({"kind": "bunk", "name": "%s's bunk" % nm, "planet": Game.planet, "pos": bunk, "slept": slept})
+	var home = Game.home_near(fell)
+	if home is Vector2:
+		var h := npcs.ground(home.x, home.y)
+		if is_nan(h):
+			h = npcs.gen.field.height(home.x, home.y)
+		out.append({"kind": "house", "name": "Your house", "planet": Game.planet, "pos": Vector3(home.x, h + 1.5, home.y), "slept": -1.0})
+	out.append_array(away)
+	out.append({"kind": "spawn", "name": "Where you first arrived", "planet": Game.planet, "pos": find_spawn() + Vector3(0, 2, 0), "slept": -1.0})
+	return out
+
+## The choice picked first: where you last slept (a bed or your bunk), else your house,
+## else the first in the list.
+static func default_respawn(choices: Array) -> int:
+	var best := -1
+	var best_t := -INF
+	for i in choices.size():
+		var t := float(choices[i].get("slept", -1.0))
+		if t >= 0.0 and t > best_t:
+			best_t = t
+			best = i
+	if best >= 0:
+		return best
+	for i in choices.size():
+		if choices[i]["kind"] == "house":
+			return i
+	return 0
+
+## False when the bed of marker `mk` is in a loaded chunk and no longer there.
+func bed_stands(mk: Dictionary) -> bool:
+	var c := streamer.get_chunk(ChunkStreamer.chunk_of(Vector3(float(mk["x"]), 0.0, float(mk["z"]))))
+	if c == null or str(c.key) != String(mk.get("key", "")):
+		return true
+	var i := int(mk.get("i", -1))
+	if i < 0 or i >= (c.data["objects"] as Array).size():
+		return false
+	var o: Dictionary = c.get_object(i)
+	return not o["st"].get("gone", false) and BuildCatalog.def(BuildCatalog.id_of(o["t"])).get("bed", false)
 
 ## A pleasant spawn: near the origin, on gentle ground. Deterministic per seed.
 func find_spawn() -> Vector3:

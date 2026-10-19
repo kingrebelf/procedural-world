@@ -90,7 +90,7 @@ const PIECES := {
 	"fabricator": {"name": "Fabricator", "models": [["scifi/Prop_Computer", 0, Vector3.ZERO, 1.0], ["scifi/Prop_Crate3", 0, Vector3(0.95, 0.5, 0.0), 1.0]],
 		"snap": "free", "mat": "metal", "hp": 30.0, "era": 2, "station": "fabricator"},
 	# Furniture and decor (Quaternius Fantasy Props, CC0). Purely for looks; some give light.
-	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true},
+	"bed": {"name": "Bed", "models": [["props/Bed_Twin1", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 8.0, "era": -1, "decor": true, "bed": true},
 	"bench": {"name": "Bench", "models": [["props/Bench", 0, Vector3.ZERO, 1.0]], "snap": "free", "mat": "wood", "hp": 6.0, "era": -1, "decor": true},
 	"bookcase": {"name": "Bookcase", "models": [["props/Bookcase_2", 0, Vector3.ZERO, 1.0],
 		# A bookcase in use: books, a stack, scrolls and a bottle or two on its shelves.

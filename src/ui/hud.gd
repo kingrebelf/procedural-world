@@ -567,6 +567,145 @@ func show_death(cause: String) -> void:
 	tw.tween_property(_death, "modulate:a", 1.0, 0.8)
 	tw.parallel().tween_property(_death, "color:a", 0.75, 1.5)
 
+## The wake-up picker under "You died": a list of where you can wake (respawn_choices in
+## World) beside a map of this world showing where each lies and where you fell.
+signal respawn_chosen(index: int)
+const WAKE_ICON := {"bed": "inn", "bunk": "ship", "house": "village", "spawn": "landmark"}
+var _wake: Array = []
+var _wake_sel := 0
+var _wake_fell := Vector3.ZERO
+var _wake_map: MapCanvas
+var _wake_over: Control
+var _wake_buttons: Array = []
+
+func show_respawn(choices: Array, pick: int, fell: Vector3) -> void:
+	if _death == null:
+		show_death("")
+	_wake = choices
+	_wake_fell = fell
+	_wake_sel = pick
+	var box := PanelContainer.new()
+	box.add_theme_stylebox_override("panel", UITheme.tex_sb("panel", 16))
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.modulate.a = 0.0
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	box.add_child(row)
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 6)
+	row.add_child(left)
+	left.add_child(UITheme.heading("WHERE DO YOU WAKE?", 16))
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(380, 300)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 4)
+	scroll.add_child(list)
+	_wake_buttons = []
+	for i in choices.size():
+		var c: Dictionary = choices[i]
+		var b := UITheme.button(_wake_text(c), func(): _choose_wake(i))
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.icon = MapCanvas.icon_texture(WAKE_ICON[c["kind"]])
+		b.expand_icon = false
+		b.add_theme_constant_override("icon_max_width", 28)
+		b.custom_minimum_size = Vector2(0, 40)
+		b.focus_entered.connect(_select_wake.bind(i))
+		b.mouse_entered.connect(_select_wake.bind(i))
+		list.add_child(b)
+		_wake_buttons.append(b)
+	left.add_child(UITheme.label("Make a bed and sleep in it to wake there.", 13, UITheme.DIM))
+	var frame := Control.new()
+	frame.custom_minimum_size = Vector2(340, 340)
+	frame.clip_contents = true
+	row.add_child(frame)
+	_wake_map = MapCanvas.new()
+	_wake_map.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	frame.add_child(_wake_map)
+	_wake_over = Control.new()
+	_wake_over.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_wake_over.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wake_over.draw.connect(_draw_wake)
+	frame.add_child(_wake_over)
+	(_death.get_child(0) as Control).add_child(box)
+	box.create_tween().tween_property(box, "modulate:a", 1.0, 0.4)
+	_fit_wake_map.call_deferred()
+	(_wake_buttons[clampi(pick, 0, _wake_buttons.size() - 1)] as Button).grab_focus.call_deferred()
+
+## "Bed 2   340 m away", "Bed 3   on Frostmere".
+func _wake_text(c: Dictionary) -> String:
+	if int(c["planet"]) != Game.planet:
+		return "%s   on %s" % [c["name"], Planets.get_planet(Game.home_seed, int(c["planet"]), Game.world_theme())["name"]]
+	var d := Vector2(c["pos"].x, c["pos"].z).distance_to(Vector2(_wake_fell.x, _wake_fell.z))
+	return "%s   %s away" % [c["name"], ("%.1f km" % (d / 1000.0)) if d >= 1000.0 else "%d m" % int(d)]
+
+## Frames where you fell and every place on this world you could wake.
+func _fit_wake_map() -> void:
+	if _wake_map == null or not is_instance_valid(_wake_map):
+		return
+	var r := Rect2(Vector2(_wake_fell.x, _wake_fell.z), Vector2.ZERO)
+	for c in _wake:
+		if int(c["planet"]) == Game.planet:
+			r = r.expand(Vector2(c["pos"].x, c["pos"].z))
+	var span := maxf(maxf(r.size.x, r.size.y), 300.0)
+	_wake_map.center = r.get_center()
+	_wake_map.scale_ppm = _wake_map.size.x * 0.8 / span
+	_wake_map.refresh()
+	_wake_over.queue_redraw()
+
+func _select_wake(i: int) -> void:
+	_wake_sel = i
+	if _wake_over and is_instance_valid(_wake_over):
+		_wake_over.queue_redraw()
+
+func _choose_wake(i: int) -> void:
+	if _wake.is_empty():
+		return
+	_wake = []
+	_wake_map = null
+	_wake_over = null
+	for b in _wake_buttons:
+		(b as Button).disabled = true
+	respawn_chosen.emit(i)
+
+func _draw_wake() -> void:
+	if _wake_map == null:
+		return
+	var sz := _wake_over.size
+	var font := get_theme_default_font()
+	var at := func(x: float, z: float) -> Vector2:
+		var p := _wake_map.to_local_px(x, z)
+		return Vector2(clampf(p.x, 14.0, sz.x - 14.0), clampf(p.y, 14.0, sz.y - 14.0))
+	MapCanvas.draw_icon(_wake_over, "death", at.call(_wake_fell.x, _wake_fell.z), 30.0)
+	for i in _wake.size():
+		var c: Dictionary = _wake[i]
+		if int(c["planet"]) != Game.planet or i == _wake_sel:
+			continue
+		var p: Vector2 = at.call(c["pos"].x, c["pos"].z)
+		_wake_over.draw_circle(p, 11.0, Color(0, 0, 0, 0.6))
+		_wake_over.draw_circle(p, 10.0, Color(0.55, 0.45, 0.32))
+		MapCanvas.draw_icon(_wake_over, WAKE_ICON[c["kind"]], p, 18.0)
+	# The one picked, larger, ringed and named.
+	var c: Dictionary = _wake[clampi(_wake_sel, 0, _wake.size() - 1)]
+	if int(c["planet"]) != Game.planet:
+		var msg := "On another world"
+		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		_wake_over.draw_string_outline(font, Vector2((sz.x - w) * 0.5, sz.y - 14.0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 5, Color(0, 0, 0, 0.8))
+		_wake_over.draw_string(font, Vector2((sz.x - w) * 0.5, sz.y - 14.0), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color.WHITE)
+		return
+	var p: Vector2 = at.call(c["pos"].x, c["pos"].z)
+	_wake_over.draw_arc(p, 19.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.45), 3.0, true)
+	_wake_over.draw_circle(p, 15.0, Color(0, 0, 0, 0.65))
+	_wake_over.draw_circle(p, 14.0, Color(0.95, 0.78, 0.42))
+	MapCanvas.draw_icon(_wake_over, WAKE_ICON[c["kind"]], p, 26.0)
+	var nm := String(c["name"])
+	var tw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var tp := Vector2(clampf(p.x - tw * 0.5, 4.0, sz.x - tw - 4.0), p.y - 26.0 if p.y > 40.0 else p.y + 38.0)
+	_wake_over.draw_string_outline(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 5, Color(0, 0, 0, 0.8))
+	_wake_over.draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
+
 func hide_death() -> void:
 	if _death:
 		var d := _death

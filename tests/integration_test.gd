@@ -979,6 +979,7 @@ func _run() -> void:
 	# Dying: health hits zero, everything you carry drops in a bag where you fell, a
 	# pause, then you wake at the spawn with an empty pack and the bag on your map.
 	await _death_bag(game, world, player)
+	await _beds(game, world, player)
 
 	var inv_before := var_to_bytes(game.inventory.to_data())
 	var money_before: int = game.money
@@ -1225,6 +1226,50 @@ func _death_bag(game, world, player) -> void:
 	await _frames(3)
 	check(world.corpses.record(bag["key"]).is_empty() and game.markers.on_planet(game.planet, "death").is_empty(), "the emptied bag and its marker are gone")
 	await _frames(60)
+
+## Beds: a bed you make goes on your map as a place to wake; sleeping in it makes it the
+## one picked first; after a fall you choose where to wake from a list and get up on it;
+## taking it down forgets it.
+func _beds(game, world, player) -> void:
+	var start: Vector3 = player.global_position
+	var pc: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(start))
+	var lp := start + Vector3(3.0, 0, 0) - pc.position
+	lp.x = clampf(lp.x, 1.0, ChunkGenerator.SIZE - 1.0)
+	lp.y = ChunkGenerator.height_at(pc.data, lp.x, lp.z)
+	var o: Dictionary = pc.add_built("bed", lp, 0.0, {"by": "you", "day": 0.0, "owner": Doors.my_id(), "owner_name": Doors.my_name()})
+	var mk: Dictionary = game.markers.add_bed(pc.position + o["p"], game.planet, pc.key, o["i"])
+	check(game.markers.on_planet(game.planet, "bed").size() == 1 and mk["name"] == "Bed 1", "a bed you make is marked on your map")
+	check(String(Player._use_of(o).get("verb", "")).begins_with("Sleep in the bed"), "a bed offers to sleep in it")
+	player._use_bed(pc, o)
+	check(float(mk.get("slept", -1.0)) >= 0.0 and game.markers.on_planet(game.planet, "bed").size() == 1, "using it again doesn't mark it twice")
+	var choices: Array = world.respawn_choices(start + Vector3(200, 0, 0))
+	var bi := -1
+	for i in choices.size():
+		if choices[i]["kind"] == "bed":
+			bi = i
+	check(bi >= 0 and choices[-1]["kind"] == "spawn" and world.default_respawn(choices) == bi, "the bed you slept in is the first choice to wake at")
+	# Die (keeping your things, so nothing else is disturbed) and wake on the bed.
+	var net = root.get_node_or_null("/root/Net")
+	if net:
+		net.options["death_penalty"] = "keep"
+	game.set_health(-5.0, "test")
+	await create_timer(4.6).timeout
+	await _frames(3)
+	check(world.hud._wake.size() >= 2 and world.hud._wake_map != null, "after a fall you choose where to wake, with a map")
+	world.hud._choose_wake(bi)
+	var t0 := Time.get_ticks_msec()
+	while (game.dead or player.frozen) and Time.get_ticks_msec() - t0 < 20000:
+		await _frames(5)
+	await _frames(30)
+	var bed_at: Vector3 = pc.position + o["p"]
+	check(not game.dead and Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(bed_at.x, bed_at.z)) < 2.5,
+		"you wake on your bed (%.1f m off)" % Vector2(player.global_position.x, player.global_position.z).distance_to(Vector2(bed_at.x, bed_at.z)))
+	if net:
+		net.options.erase("death_penalty")
+	player.deconstruct(pc, o)
+	check(game.markers.on_planet(game.planet, "bed").is_empty(), "a bed taken down is no longer a place to wake")
+	player.global_position = start + Vector3(0, 1.0, 0)
+	await _frames(10)
 
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
 ## butchered for meat, hide and bone; a dead person's body holds their gear and purse.

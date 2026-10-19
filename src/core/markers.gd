@@ -1,7 +1,8 @@
 class_name Markers
 extends RefCounted
-## Places you have marked on the map, per planet: pins you drop, and the teleporters you
-## build (which register themselves so any teleporter can send you to another).
+## Places you have marked on the map, per planet: pins you drop, the teleporters you
+## build (which register themselves so any teleporter can send you to another), and the
+## beds you have made or slept in (where you can choose to wake after a fall).
 
 const COLORS := [Color(0.95, 0.78, 0.42), Color(0.45, 0.85, 0.95), Color(0.95, 0.4, 0.35), Color(0.55, 0.9, 0.45), Color(0.8, 0.55, 0.95),
 	Color(1.0, 0.55, 0.2), Color(1.0, 0.5, 0.75), Color(0.95, 0.95, 0.95), Color(0.35, 0.5, 1.0), Color(0.6, 0.45, 0.3)]
@@ -9,7 +10,8 @@ const COLORS := [Color(0.95, 0.78, 0.42), Color(0.45, 0.85, 0.95), Color(0.95, 0
 const ICONS := ["pin", "quest", "chest", "danger", "death", "campfire", "mine", "cave", "dungeon",
 	"well", "inn", "smithy", "trader", "horse", "vehicle", "ship", "beacon", "teleporter"]
 
-var list: Array = [] ## {"id", "name", "x", "z", "planet", "kind": "pin"|"teleporter", "color", "icon", "key", "i"}
+var list: Array = [] ## {"id", "name", "x", "z", "planet", "kind": "pin"|"teleporter"|"bed", "color", "icon", "key", "i"}
+## (Beds also keep "y", the height they stand at, and "slept", the day you last used them.)
 var next_id := 1
 
 func add(name: String, x: float, z: float, planet: int, kind := "pin", extra := {}) -> Dictionary:
@@ -46,11 +48,30 @@ func remove(id: int) -> void:
 			list.remove_at(i)
 			return
 
-## Forgets the teleporter built at chunk `key`, object `i` (it was taken down).
+## Forgets the teleporter or bed built at chunk `key`, object `i` (it was taken down).
 func remove_object(key: Vector2i, i: int) -> void:
 	for m in list.duplicate():
-		if m["kind"] == "teleporter" and str(m.get("key", "")) == str(key) and int(m.get("i", -1)) == i:
+		if m["kind"] in ["teleporter", "bed"] and str(m.get("key", "")) == str(key) and int(m.get("i", -1)) == i:
 			list.erase(m)
+
+## The marker of the teleporter or bed built at chunk `key`, object `i`, or {}.
+func of_object(key: Vector2i, i: int) -> Dictionary:
+	for m in list:
+		if m["kind"] in ["teleporter", "bed"] and str(m.get("key", "")) == str(key) and int(m.get("i", -1)) == i:
+			return m
+	return {}
+
+## Registers the bed at world position `at` (chunk `key`, object `i`) as a place to wake
+## after a fall. Returns its marker (the one it already had, if any).
+func add_bed(at: Vector3, planet: int, key: Vector2i, i: int) -> Dictionary:
+	var m := of_object(key, i)
+	if not m.is_empty():
+		return m
+	var n := 1
+	var names := list.map(func(b): return b["name"])
+	while names.has("Bed %d" % n):
+		n += 1
+	return add("Bed %d" % n, at.x, at.z, planet, "bed", {"icon": "inn", "color": 0, "y": snappedf(at.y, 0.01), "key": str(key), "i": i})
 
 func on_planet(planet: int, kind := "") -> Array:
 	return list.filter(func(m): return int(m["planet"]) == planet and (kind == "" or m["kind"] == kind))
