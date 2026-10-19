@@ -175,7 +175,9 @@ func _draw_icons() -> void:
 	elif _hover.x >= 0.0 and Rect2(Vector2.ZERO, size).has_point(_hover):
 		var wp := _canvas.to_world(_hover)
 		var seen := Game.map.revealed(wp.x, wp.y) >= 0.3
-		if layer != MapLayers.OFF and (seen or MapLayers.over_fog(layer)):
+		if layer == MapLayers.CLAIMS:
+			_tooltip(font, _hover + Vector2(14, -14), MapLayers.describe_tile(wp.x, wp.y))
+		elif layer != MapLayers.OFF and (seen or MapLayers.over_fog(layer)):
 			_tooltip(font, _hover + Vector2(14, -14), MapLayers.describe(layer, wp.x, wp.y) + ("" if seen else "  ·  unexplored"))
 		elif not seen:
 			_tooltip(font, _hover + Vector2(14, -14), "Unexplored")

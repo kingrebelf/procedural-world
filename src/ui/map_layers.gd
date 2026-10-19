@@ -3,7 +3,9 @@ extends RefCounted
 ## Overlays the minimap and atlas can paint over the land, picked with the map overlay
 ## key or in the atlas: the level of the creatures and people that live there, how
 ## dangerous that is for you, the technology era of what is built, the named zones, the
-## landforms, and your standing in the towns you know. One is shown at a time (WorldMap.layer, kept with the map).
+## landforms, your standing in the towns you know, and the land's tiles (the 64 m chunks
+## it is generated in) with the ones claimed (LandClaims). One is shown at a time
+## (WorldMap.layer, kept with the map).
 ##
 ## Each layer sorts the land into a few categories (a colour and a name each). The map is
 ## sampled into small tiles, a few per frame and cached, at a spacing that suits the zoom;
@@ -11,11 +13,15 @@ extends RefCounted
 ## Level layers follow distance from spawn (Eras.zone_level) and are no secret, so they
 ## show over the fog of war; eras and landforms only show where you have uncovered.
 
-enum { OFF, LEVELS, DANGER, ERA, ZONES, LAND, STANDING }
-const COUNT := 7
-const NAMES := ["Off", "Creature levels", "Danger to you", "Technology era", "Zones", "Landforms", "Your standing"]
+enum { OFF, LEVELS, DANGER, ERA, ZONES, LAND, STANDING, CLAIMS }
+const COUNT := 8
+const NAMES := ["Off", "Creature levels", "Danger to you", "Technology era", "Zones", "Landforms", "Your standing", "Tiles and claims"]
 ## Short names for the toast and the minimap legend.
-const SHORT := ["Off", "Levels", "Danger", "Era", "Zones", "Land", "Standing"]
+const SHORT := ["Off", "Levels", "Danger", "Era", "Zones", "Land", "Standing", "Tiles"]
+## The claims layer's categories: [colour, name]. The last is the tile you stand on.
+const CLAIM_CATS := [[Color(0.35, 0.9, 0.45), "Your land"], [Color(0.4, 0.75, 1.0), "An ally's land"],
+	[Color(0.95, 0.35, 0.3), "Claimed by others"], [Color(1.0, 0.86, 0.4), "The tile you're on"]]
+const HERE := 3
 ## How far round a town (metres) its standing is painted.
 const STANDING_R := 95.0
 
@@ -51,7 +57,7 @@ static func current() -> int:
 
 ## Whether the layer can show over the fog of war (it gives nothing away).
 static func over_fog(layer: int) -> bool:
-	return layer == LEVELS or layer == DANGER or layer == STANDING or (layer == ZONES and Eras.theme == "human")
+	return layer == LEVELS or layer == DANGER or layer == STANDING or layer == CLAIMS or (layer == ZONES and Eras.theme == "human")
 
 # --- Categories -----------------------------------------------------------------------
 
@@ -76,6 +82,8 @@ static func category(layer: int, i: int) -> Array:
 		STANDING:
 			var t: String = Standing.TIERS[i][1] if i < Standing.TIERS.size() else Standing.CITIZEN
 			return [Standing.tier_color(t), t]
+		CLAIMS:
+			return CLAIM_CATS[clampi(i, 0, CLAIM_CATS.size() - 1)]
 	return [Color.TRANSPARENT, ""]
 
 ## What is built in land of `era` on this kind of world.
@@ -130,7 +138,18 @@ static func sample(layer: int, x: float, z: float) -> int:
 			for i in Standing.TIERS.size():
 				if Standing.TIERS[i][1] == t:
 					return i
+		CLAIMS:
+			return _claim_cat(LandClaims.tile_of(x, z))
 	return -1
+
+## Whose a tile is, as a CLAIM_CATS index (-1: nobody's).
+static func _claim_cat(t: Vector2i) -> int:
+	var o := Game.claims.owner_of(Game.planet, t, Game.my_id())
+	if o.is_empty():
+		return -1
+	if String(o[0]) == Game.my_id():
+		return 0
+	return 1 if Net.allied(String(o[0])) else 2
 
 ## The town you know of (on this planet) whose ground (x, z) is on, or "".
 static func _town_near(x: float, z: float) -> String:
@@ -179,6 +198,18 @@ static func describe(layer: int, x: float, z: float) -> String:
 				"  ·  gate pass" if not ps.is_empty() else ""]
 	return category(layer, i)[1]
 
+## The claims layer's hover: which tile, and whose.
+static func describe_tile(x: float, z: float) -> String:
+	var t := LandClaims.tile_of(x, z)
+	var s := "Tile %d, %d" % [t.x, t.y]
+	var rec := Game.claims.mine(Game.planet, t)
+	if not rec.is_empty():
+		var d := LandClaims.standing_days(rec, Game.day)
+		return "%s  ·  your land, %d Marks a day to %s  ·  %s" % [s, int(rec["rate"]), rec["seat_name"],
+			"paid %d day%s ahead" % [d, "" if d == 1 else "s"] if d > 0 else ("paid for today" if d == 0 else "%d day%s behind" % [-d, "" if d == -1 else "s"])]
+	var o := Game.claims.owner_of(Game.planet, t, Game.my_id())
+	return "%s  ·  claimed by %s" % [s, o[1]] if not o.is_empty() else "%s  ·  unclaimed" % s
+
 ## A line under the legend: what the layer means for you.
 static func note(layer: int) -> String:
 	match layer:
@@ -192,6 +223,8 @@ static func note(layer: int) -> String:
 			return "Portals stand in level %d+ land" % WorldPortal.MIN_LEVEL if Eras.theme == "human" else ""
 		STANDING:
 			return "How the towns you know think of you"
+		CLAIMS:
+			return "Land is made in %d m tiles; claim one in the atlas" % ChunkGenerator.SIZE
 	return ""
 
 ## Circles of equal level round spawn worth drawing on this layer, as [radius m, label].
@@ -226,6 +259,8 @@ static func rings(layer: int) -> Array:
 ## Draws the layer's tiles over `canvas` into `ci` and returns the categories in view (a
 ## bitmask). Tiles not made yet are queued and fill in over the next frames.
 static func draw_tiles(ci: CanvasItem, canvas: MapCanvas, layer: int) -> int:
+	if layer == CLAIMS:
+		return _draw_claims(ci, canvas)
 	_check_world()
 	var spacing: float = SPACINGS[SPACINGS.size() - 1]
 	for s in SPACINGS:
@@ -359,6 +394,50 @@ static func _check_world() -> void:
 		_tiles.clear()
 		_queue.clear()
 		_queued.clear()
+
+## The claims layer: claimed tiles filled in their owner's colour, the tile grid (once
+## tiles are big enough on screen to tell apart) and the tile you stand on outlined.
+static func _draw_claims(ci: CanvasItem, canvas: MapCanvas) -> int:
+	var s := float(ChunkGenerator.SIZE)
+	var a := canvas.to_world(Vector2.ZERO)
+	var b := canvas.to_world(canvas.size)
+	var view := Rect2(a, b - a)
+	var px := s * canvas.scale_ppm
+	var mask := 0
+	var keys := Game.claims.list.keys()
+	keys.append_array(Game.claims.others.keys())
+	var pre := "%d:" % Game.planet
+	for k in keys:
+		if not String(k).begins_with(pre):
+			continue
+		var parts := String(k).split(":")
+		var t := Vector2i(int(parts[1]), int(parts[2]))
+		if not view.intersects(LandClaims.tile_rect(t)):
+			continue
+		var c := _claim_cat(t)
+		if c < 0:
+			continue
+		mask |= 1 << c
+		var col: Color = CLAIM_CATS[c][0]
+		var r := Rect2(canvas.to_local_px(t.x * s, t.y * s), Vector2(px, px))
+		ci.draw_rect(r, Color(col.r, col.g, col.b, 0.32))
+		ci.draw_rect(r, Color(col.r, col.g, col.b, 0.9), false, 1.5)
+	var fade := clampf((px - 5.0) / 14.0, 0.0, 1.0)
+	if fade > 0.0:
+		var line := Color(0.06, 0.05, 0.04, 0.5 * fade)
+		for tx in range(ceili(a.x / s), floori(b.x / s) + 1):
+			var x := canvas.to_local_px(tx * s, 0.0).x
+			ci.draw_line(Vector2(x, 0.0), Vector2(x, canvas.size.y), line, 1.0)
+		for tz in range(ceili(a.y / s), floori(b.y / s) + 1):
+			var y := canvas.to_local_px(0.0, tz * s).y
+			ci.draw_line(Vector2(0.0, y), Vector2(canvas.size.x, y), line, 1.0)
+	if Game.player != null and is_instance_valid(Game.player):
+		var here := LandClaims.tile_of(Game.player.global_position.x, Game.player.global_position.z)
+		var r := Rect2(canvas.to_local_px(here.x * s, here.y * s), Vector2(px, px))
+		ci.draw_rect(r, Color(0, 0, 0, 0.55), false, 3.0)
+		ci.draw_rect(r, CLAIM_CATS[HERE][0], false, 1.5)
+		mask |= 1 << HERE
+	return mask
 
 # --- Drawing helpers shared by the minimap and atlas ------------------------------------
 

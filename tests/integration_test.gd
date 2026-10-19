@@ -564,6 +564,7 @@ func _run() -> void:
 	check(far["level_lo"] >= zone["level_lo"], "zones further out are no lower level")
 	await _map_unit_checks()
 	await _layer_checks(world, game)
+	_claim_checks(game)
 
 	# Jetpack: worn on the back, it loads a canister of Jet Fuel and lifts you in the air.
 	game.give(ItemDB.make("jetpack", 1, 1.0, {}))
@@ -2671,6 +2672,46 @@ func _layer_checks(world, game) -> void:
 	game.map.set_layer(MapLayers.OFF)
 	await process_frame
 	check(mm._canvas.layer_mask == 0, "the overlay can be turned off")
+
+## Land claims offline: a tile near you is claimed and paid for, its upkeep comes out of
+## the purse at the turn of the day, it is saved, and it lapses when the purse runs dry.
+func _claim_checks(game) -> void:
+	var here: Vector3 = game.player.global_position
+	var t0 := LandClaims.tile_of(here.x, here.z)
+	var tile := Vector2i(999999, 0)
+	var offer := {}
+	for r in range(0, 12):
+		for k in 8 * maxi(r, 1):
+			var a := k * TAU / (8 * maxi(r, 1))
+			var t := t0 + Vector2i(roundi(cos(a) * r), roundi(sin(a) * r))
+			offer = {}
+			if tile.x == 999999 and game.claim_check(t, offer) == "":
+				tile = t
+	check(tile.x != 999999, "a tile near spawn can be claimed")
+	if tile.x == 999999:
+		return
+	offer = {}
+	game.claim_check(tile, offer)
+	var cost := LandClaims.cost_of(int(offer["rate"]))
+	var money0: int = game.money
+	game.add_money(cost + int(offer["rate"]) * 2 - game.money)
+	check(game.claim_tile(tile) == "" and not game.claims.mine(game.planet, tile).is_empty(), "claiming it (%s)" % offer["seat_name"])
+	check(game.money == int(offer["rate"]) * 2, "the deed and today's upkeep are paid (%d left)" % game.money)
+	check(game.may_build_at(Vector3(LandClaims.tile_center(tile).x, 0, LandClaims.tile_center(tile).y)), "you may build on your own land")
+	check(MapLayers.sample(MapLayers.CLAIMS, LandClaims.tile_center(tile).x, LandClaims.tile_center(tile).y) == 0, "the claims overlay shows it as yours")
+	var day0: float = game.day
+	game.day = floorf(day0) + 1.2
+	game.settle_claims()
+	check(game.money == int(offer["rate"]) and int(game.claims.mine(game.planet, tile)["paid"]) == int(floorf(day0)) + 1, "a day's upkeep comes out of the purse")
+	game.save_player()
+	var saved = game.store.load_player().get("claims")
+	check(saved is Array and (saved as Array).size() == 1 and LandClaims.from_data(saved).mine(game.planet, tile).size() > 0, "claims are saved with you")
+	game.add_money(-game.money)
+	game.day = floorf(day0) + 2.0 + LandClaims.GRACE + 0.5
+	game.settle_claims()
+	check(game.claims.mine(game.planet, tile).is_empty(), "unpaid past the grace, the land lapses")
+	game.day = day0
+	game.add_money(money0 - game.money)
 
 ## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
 func _menu_checks(world, game, con) -> void:

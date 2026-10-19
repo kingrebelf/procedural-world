@@ -1255,6 +1255,8 @@ func _map_panel() -> Control:
 	if not sel.is_empty() and sel["kind"] == "pin" and int(sel["planet"]) == Game.planet:
 		_marker_editor(side, sel)
 		side.add_child(HSeparator.new())
+	_land_claims(side, me)
+	side.add_child(HSeparator.new())
 	_map_filters(side)
 	side.add_child(HSeparator.new())
 	_map_finder(side, me)
@@ -1314,6 +1316,80 @@ func _mini_button(text: String, cb: Callable) -> Button:
 	_small_button(b)
 	b.pressed.connect(cb)
 	return b
+
+## Land claims (LandClaims): the tile you stand on, whether you can claim it and what it
+## costs, then the land you hold, each with its upkeep, a way to pay ahead and to give it up.
+func _land_claims(side: VBoxContainer, me: Vector2) -> void:
+	var head := HBoxContainer.new()
+	var t := UITheme.label("Land", 18, UITheme.ACCENT)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	if Game.map.layer != MapLayers.CLAIMS:
+		head.add_child(_mini_button("Show tiles", func():
+			Game.map.set_layer(MapLayers.CLAIMS)
+			_refresh()))
+	side.add_child(head)
+	var here := LandClaims.tile_of(me.x, me.y)
+	var offer := {}
+	var why := Game.claim_check(here, offer)
+	var line := "You stand on tile %d, %d. " % [here.x, here.y]
+	if why != "":
+		line += why + "."
+	else:
+		line += "Upkeep %d Marks a day to %s (%s, %s). Claiming costs %d Marks: the deed and today's upkeep." % [int(offer["rate"]),
+			offer["seat_name"], "a town" if offer["seat_kind"] == "town" else "a stronghold", _dist(Vector2(offer["sx"], offer["sz"]).distance_to(LandClaims.tile_center(here))),
+			LandClaims.cost_of(int(offer["rate"]))]
+	var l := UITheme.label(line, 13, UITheme.TEXT if why == "" else UITheme.DIM)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	side.add_child(l)
+	if why == "":
+		var b := UITheme.button("Claim this tile (%d Marks)" % LandClaims.cost_of(int(offer["rate"])), func():
+			var w := Game.claim_tile(here)
+			if w != "":
+				Game.toast.emit(w)
+			_refresh())
+		b.disabled = Game.money < LandClaims.cost_of(int(offer["rate"]))
+		side.add_child(b)
+	var mine := Game.claims.on_planet(Game.planet)
+	if mine.is_empty():
+		var n := UITheme.label("A claim is one tile, yours to build on%s. Its upkeep comes out of your purse each day; more than %d days behind and it is no longer yours." % [
+			" (only you and your allies can)" if Net.online() else "", LandClaims.GRACE], 12, UITheme.DIM)
+		n.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		side.add_child(n)
+		return
+	side.add_child(UITheme.label("Your land  ·  %d of %d tiles" % [Game.claims.count(), Game.claim_limit()], 14, UITheme.ACCENT))
+	for rec in mine:
+		var key := LandClaims.tile_key(int(rec["planet"]), Vector2i(int(rec["cx"]), int(rec["cz"])))
+		var d := LandClaims.standing_days(rec, Game.day)
+		var state := "paid %d day%s ahead" % [d, "" if d == 1 else "s"] if d > 0 else ("paid for today" if d == 0 else "%d day%s behind" % [-d, "" if d == -1 else "s"])
+		var c := LandClaims.tile_center(Vector2i(int(rec["cx"]), int(rec["cz"])))
+		var row := HBoxContainer.new()
+		var info := UITheme.label("Near %s  ·  %s  ·  %d a day  ·  %s" % [rec["seat_name"], _dist(c.distance_to(me)), int(rec["rate"]), state], 13,
+			UITheme.TEXT if d >= 0 else Color(1.0, 0.55, 0.35))
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.clip_text = true
+		info.tooltip_text = "Tile %d, %d  ·  upkeep to %s  ·  %d Marks paid so far" % [int(rec["cx"]), int(rec["cz"]), rec["seat_name"], int(rec.get("total", 0))]
+		info.mouse_filter = Control.MOUSE_FILTER_PASS
+		row.add_child(info)
+		row.add_child(_mini_button("Show", func(): AtlasView.focus(c.x, c.y, me)))
+		var pay := _mini_button("Pay 5 days", func():
+			var cost := Game.prepay_claim(key, 5)
+			Game.toast.emit("Paid %d Marks to %s" % [cost, rec["seat_name"]] if cost > 0 else "You can't pay ahead just now")
+			_refresh())
+		pay.tooltip_text = "%d Marks" % (int(rec["rate"]) * 5)
+		pay.disabled = Game.money < int(rec["rate"]) or d >= LandClaims.PREPAY_MAX
+		row.add_child(pay)
+		var give := {}
+		give["b"] = _mini_button("Give up", func():
+			var b: Button = give["b"]
+			if b.text != "Sure?":
+				b.text = "Sure?" # a second press gives it up
+				return
+			Game.drop_claim(key)
+			Game.toast.emit("You gave up your land near %s" % rec["seat_name"])
+			_refresh())
+		row.add_child(give["b"])
+		side.add_child(row)
 
 ## Rename a marker, pick its colour and icon, or delete it. Changes save as you make them.
 func _marker_editor(side: VBoxContainer, mk: Dictionary) -> void:
