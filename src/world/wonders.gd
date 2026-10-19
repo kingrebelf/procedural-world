@@ -26,7 +26,7 @@ static func has(t: String) -> bool:
 	return TYPES.has(t) or LANDMARKS.has(t) or EasterEggs.has(t)
 
 static func unbreakable(t: String) -> bool:
-	return UNBREAKABLE.has(t) or LANDMARKS.has(t) or EasterEggs.has(t) or WonderSite.has(t) or t == WorldPortal.TYPE
+	return UNBREAKABLE.has(t) or LANDMARKS.has(t) or EasterEggs.has(t) or WonderSite.has(t)
 
 ## What using it does right now, for the floating prompt: {"verb", "h"} (h: how high the
 ## prompt floats), or {} when it has nothing more to give today.

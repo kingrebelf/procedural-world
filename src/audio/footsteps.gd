@@ -82,7 +82,7 @@ func ride(v: Vehicle, delta: float) -> void:
 		return # boats are quiet: the water and the wind do the talking
 	var top := float(v.p.get("speed", 20.0)) * float(v.p.get("boost", 1.0))
 	var k := clampf(maxf(spd, v.velocity.length()) / top, 0.0, 1.0)
-	Audio.hold_loop("engine_big" if v.flies() else "engine", 0.35 + 0.5 * k, 0.75 + 0.6 * k)
+	Audio.hold_loop("engine", 0.35 + 0.5 * k, 0.75 + 0.6 * k)
 
 ## What the player is standing on, as a step/ sound name (or "sand", "wade").
 static func surface(pl: Player) -> String:

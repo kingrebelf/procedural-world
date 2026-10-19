@@ -115,7 +115,6 @@ const ITEMS := {
 	# Vehicles: use one to set it down in the world, then ride it (see Vehicle).
 	"speeder": {"name": "Hover Speeder", "era": Eras.SCIFI, "value": 420, "stack": false, "kind": "vehicle", "color": Color(1.0, 0.65, 0.15)},
 	"rover": {"name": "Survey Rover", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "vehicle", "color": Color(0.85, 0.85, 0.9)},
-	"ship": {"name": "Starship", "era": Eras.SCIFI, "value": 1600, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.7, 0.25)},
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
 	"cannon": {"name": "Field Cannon", "era": Eras.SCIFI, "value": 520, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.5, 0.25)},
 	# Small boats (Sailing): carried, put in the water like a vehicle, packed up again.
@@ -149,10 +148,10 @@ const ITEMS := {
 	"lamp_oil": {"name": "Lamp Oil", "era": Eras.MEDIEVAL, "value": 6, "stack": true, "kind": "resource", "cat": "Fuel", "fuel": 1800.0, "color": Color(0.85, 0.7, 0.3)},
 	"copper_ore": {"name": "Copper Ore", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "resource", "color": Color(0.6, 0.4, 0.3)},
 	"tin_ore": {"name": "Tin Ore", "era": Eras.MEDIEVAL, "value": 5, "stack": true, "kind": "resource", "color": Color(0.55, 0.55, 0.52)},
-	"coal": {"name": "Coal", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "resource", "fuel": 900.0, "color": Color(0.1, 0.1, 0.11)},
+	"coal": {"name": "Coal", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "resource", "fuel": 900.0, "color": Color(0.1, 0.1, 0.11)},
 	"silver_ore": {"name": "Silver Ore", "era": Eras.MEDIEVAL, "value": 12, "stack": true, "kind": "resource", "color": Color(0.7, 0.72, 0.74)},
 	"gold_ore": {"name": "Gold Ore", "era": Eras.MEDIEVAL, "value": 22, "stack": true, "kind": "resource", "color": Color(0.8, 0.65, 0.3)},
-	"salt_crystal": {"name": "Rock Salt", "era": Eras.MEDIEVAL, "value": 3, "stack": true, "kind": "resource", "color": Color(0.9, 0.82, 0.8)},
+	"salt_crystal": {"name": "Rock Salt", "era": Eras.MEDIEVAL, "value": 4, "stack": true, "kind": "resource", "color": Color(0.9, 0.82, 0.8)},
 	"copper_ingot": {"name": "Copper Ingot", "era": Eras.MEDIEVAL, "value": 10, "stack": true, "kind": "resource", "color": Color(0.78, 0.45, 0.28)},
 	"bronze_ingot": {"name": "Bronze Ingot", "era": Eras.MEDIEVAL, "value": 16, "stack": true, "kind": "resource", "color": Color(0.75, 0.55, 0.3)},
 	"steel_ingot": {"name": "Steel Ingot", "era": Eras.MEDIEVAL, "value": 26, "stack": true, "kind": "resource", "color": Color(0.7, 0.72, 0.76)},
@@ -546,13 +545,13 @@ const ITEMS := {
 	"flare_chem": {"name": "Chem Lights", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "weapon", "cat": "Lights", "damage": 1, "range": 30.0, "ranged": true, "thrown": true, "ammo": "flare_chem", "shots_per_ammo": 1, "cooldown": 0.5, "tracer": "bolt", "flare": 180.0, "color": Color(0.4, 0.8, 0.4)},
 	"rope_synth": {"name": "Synthetic Rope", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "resource", "color": Color(0.85, 0.5, 0.15)},
 	"survival_knife": {"name": "Survival Knife", "era": Eras.SCIFI, "value": 200, "stack": false, "kind": "tool", "damage": 32, "range": 2.4, "swing": 0.55, "skin": 2.0, "chop": 0.5, "color": Color(0.3, 0.3, 0.3)},
-	"titanium_ore": {"name": "Titanium Ore", "era": Eras.SCIFI, "value": 12, "stack": true, "kind": "resource", "color": Color(0.55, 0.57, 0.62)},
-	"uranium_ore": {"name": "Uranium Ore", "era": Eras.SCIFI, "value": 30, "stack": true, "kind": "resource", "color": Color(0.45, 0.55, 0.3)},
-	"lithium_ore": {"name": "Lithium Ore", "era": Eras.SCIFI, "value": 14, "stack": true, "kind": "resource", "color": Color(0.75, 0.72, 0.78)},
-	"cobalt_ore": {"name": "Cobalt Ore", "era": Eras.SCIFI, "value": 16, "stack": true, "kind": "resource", "color": Color(0.25, 0.35, 0.6)},
-	"silicon_crystal": {"name": "Silicon Crystal", "era": Eras.SCIFI, "value": 10, "stack": true, "kind": "resource", "color": Color(0.5, 0.52, 0.58)},
-	"rare_earth": {"name": "Rare Earth Ore", "era": Eras.SCIFI, "value": 24, "stack": true, "kind": "resource", "color": Color(0.5, 0.42, 0.4)},
-	"titanium_ingot": {"name": "Titanium Ingot", "era": Eras.SCIFI, "value": 35, "stack": true, "kind": "resource", "color": Color(0.7, 0.72, 0.76)},
+	"titanium_ore": {"name": "Titanium Ore", "era": Eras.SCIFI, "value": 26, "stack": true, "kind": "resource", "color": Color(0.55, 0.57, 0.62)},
+	"uranium_ore": {"name": "Uranium Ore", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "resource", "color": Color(0.45, 0.55, 0.3)},
+	"lithium_ore": {"name": "Lithium Ore", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "resource", "color": Color(0.75, 0.72, 0.78)},
+	"cobalt_ore": {"name": "Cobalt Ore", "era": Eras.SCIFI, "value": 28, "stack": true, "kind": "resource", "color": Color(0.25, 0.35, 0.6)},
+	"silicon_crystal": {"name": "Silicon Crystal", "era": Eras.SCIFI, "value": 24, "stack": true, "kind": "resource", "color": Color(0.5, 0.52, 0.58)},
+	"rare_earth": {"name": "Rare Earth Ore", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "resource", "color": Color(0.5, 0.42, 0.4)},
+	"titanium_ingot": {"name": "Titanium Ingot", "era": Eras.SCIFI, "value": 60, "stack": true, "kind": "resource", "color": Color(0.7, 0.72, 0.76)},
 	"carbon_fiber": {"name": "Carbon Fibre", "era": Eras.SCIFI, "value": 28, "stack": true, "kind": "resource", "color": Color(0.15, 0.15, 0.16)},
 	"polymer": {"name": "Polymer Pellets", "era": Eras.SCIFI, "value": 6, "stack": true, "kind": "resource", "color": Color(0.85, 0.85, 0.8)},
 	"graphene": {"name": "Graphene Sheet", "era": Eras.SCIFI, "value": 45, "stack": true, "kind": "resource", "color": Color(0.2, 0.2, 0.22)},
@@ -705,14 +704,14 @@ const ITEMS := {
 	"map_galaxy": {"name": "Star Chart", "era": Eras.SCIFI, "value": 800, "stack": true, "kind": "scroll", "read": "book", "alien": true, "color": Color(0.2, 0.25, 0.4)},
 	"codex_alien": {"name": "Xeno Codex", "era": Eras.SCIFI, "value": 900, "stack": true, "kind": "scroll", "read": "book", "alien": true, "color": Color(0.4, 0.35, 0.3)},
 	"beacon_ancient": {"name": "Ancient Beacon", "era": Eras.SCIFI, "value": 700, "stack": true, "kind": "kit", "cat": "Tools", "beacon": true, "alien": true, "color": Color(0.6, 0.55, 0.4)},
-	"voidstone_ore": {"name": "Voidstone Ore", "era": Eras.SCIFI, "value": 40, "stack": true, "kind": "resource", "alien": true, "color": Color(0.12, 0.1, 0.16)},
-	"starsteel_ore": {"name": "Starsteel Ore", "era": Eras.SCIFI, "value": 50, "stack": true, "kind": "resource", "alien": true, "color": Color(0.75, 0.7, 0.55)},
+	"voidstone_ore": {"name": "Voidstone Ore", "era": Eras.SCIFI, "value": 100, "stack": true, "kind": "resource", "alien": true, "color": Color(0.12, 0.1, 0.16)},
+	"starsteel_ore": {"name": "Starsteel Ore", "era": Eras.SCIFI, "value": 120, "stack": true, "kind": "resource", "alien": true, "color": Color(0.75, 0.7, 0.55)},
 	"chitin_plate": {"name": "Chitin Plate", "era": Eras.FANTASY, "value": 30, "stack": true, "kind": "resource", "alien": true, "color": Color(0.35, 0.3, 0.2)},
 	"bio_gel_alien": {"name": "Xeno Gel", "era": Eras.FANTASY, "value": 25, "stack": true, "kind": "resource", "alien": true, "color": Color(0.4, 0.75, 0.55)},
 	"psi_crystal_large": {"name": "Psi Crystal Cluster", "era": Eras.FANTASY, "value": 60, "stack": true, "kind": "resource", "alien": true, "color": Color(0.45, 0.55, 0.9)},
 	"neutronium": {"name": "Neutronium", "era": Eras.SCIFI, "value": 1200, "stack": true, "kind": "resource", "rarity_min": 4, "alien": true, "color": Color(0.25, 0.25, 0.3)},
-	"voidsteel_ingot": {"name": "Voidsteel Ingot", "era": Eras.SCIFI, "value": 120, "stack": true, "kind": "resource", "alien": true, "color": Color(0.15, 0.12, 0.2)},
-	"starsteel_ingot": {"name": "Starsteel Ingot", "era": Eras.SCIFI, "value": 150, "stack": true, "kind": "resource", "alien": true, "color": Color(0.85, 0.8, 0.6)},
+	"voidsteel_ingot": {"name": "Voidsteel Ingot", "era": Eras.SCIFI, "value": 330, "stack": true, "kind": "resource", "alien": true, "color": Color(0.15, 0.12, 0.2)},
+	"starsteel_ingot": {"name": "Starsteel Ingot", "era": Eras.SCIFI, "value": 400, "stack": true, "kind": "resource", "alien": true, "color": Color(0.85, 0.8, 0.6)},
 	"crystal_thread": {"name": "Crystal Thread", "era": Eras.FANTASY, "value": 45, "stack": true, "kind": "resource", "alien": true, "color": Color(0.75, 0.85, 0.95)},
 	"living_metal": {"name": "Living Metal", "era": Eras.SCIFI, "value": 200, "stack": true, "kind": "resource", "alien": true, "color": Color(0.55, 0.6, 0.6)},
 	"dark_matter": {"name": "Dark Matter", "era": Eras.SCIFI, "value": 2500, "stack": true, "kind": "resource", "rarity_min": 3, "alien": true, "color": Color(0.05, 0.03, 0.08)},
@@ -795,9 +794,8 @@ const ITEMS := {
 
 ## Player level that unlocks making (and placing) a thing, on themed worlds: the starting
 ## era's basics from level 1, its sturdier work over the first levels, and anything of
-## the advanced era from Eras.UNLOCK_LEVEL, its best pieces later still (a starship at
-## 35). Older worlds lock nothing.
-const SHIP_LEVEL := 35
+## the advanced era from Eras.UNLOCK_LEVEL, its best pieces later still. Older worlds
+## lock nothing.
 const UNLOCK := {
 	# Medieval building and stations.
 	"wall_stone": 3, "roof_small": 2, "roof_large": 4, "stairs_wood": 2, "foundation": 2,
@@ -809,12 +807,12 @@ const UNLOCK := {
 	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
 	# Gunpowder is the first step out of the medieval age.
 	"scrap_pistol": 10, "rounds": 10,
-	# Advanced gear: tech, vehicles, teleporters and starships.
+	# Advanced gear: tech, vehicles and teleporters.
 	"fabricator": 10, "flashlight": 10, "pulse_pistol": 10, "pulse_smg": 12, "pulse_rifle": 14,
 	"rail_rifle": 18, "arc_launcher": 22, "pickaxe_plasma": 12, "crossbow_runic": 12,
 	"helm_visor": 11, "exo_chest": 13, "exo_legs": 12, "mag_boots": 11, "gauntlets_power": 11,
 	"shield_emitter": 14, "vehicle_bay": 14, "speeder": 15, "rover": 15, "teleporter": 18,
-	"storage_crate": 11, "launch_pad": 30, "ship": SHIP_LEVEL,
+	"storage_crate": 11,
 	# Power (Power, PowerGrid): early-industrial first, past the medieval heartland.
 	"gen_woodgas": 10, "windmill": 10, "battery_bank": 10, "power_pole": 10, "junction_box": 10, "knife_switch": 10,
 	"lamp_ceiling": 10, "lamp_wall": 10, "multimeter": 10, "light_bulb": 10, "electric_motor": 10, "insulator": 10,
@@ -1069,7 +1067,7 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"door_wood": 20, "door_iron": 70, "door_bulkhead": 220,
 	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
-	"vehicle_bay": 260, "stable": 90, "launch_pad": 420, "slipway": 140,
+	"vehicle_bay": 260, "stable": 90, "slipway": 140,
 	"gen_woodgas": 240, "gen_diesel": 420, "windmill": 200, "solar_array": 260, "battery_bank": 150, "power_pole": 20, "junction_box": 18,
 	"knife_switch": 14, "lamp_ceiling": 20, "lamp_wall": 18, "floodlight": 60, "street_lamp": 55,
 	"lever": 10, "push_button": 8, "pressure_plate": 22, "motion_sensor": 40, "daylight_sensor": 24, "logic_timer": 26,
@@ -1329,6 +1327,16 @@ static func stats(item) -> Dictionary:
 
 ## Deterministic loot for a cache. Called once at generation; the result is snapshotted.
 ## `luck` (0 to 1) is how dangerous the place was: more and better gear.
+## Out past FINDS_ZONE on a human world, caches hold what once came only from the alien
+## worlds: their raw materials and beast parts (FINDS), fey and alien gear, relics. With
+## no other worlds to travel to, this is where the alien recipes get what they need.
+## (Tier 5 ores come from deposits, Deposits.)
+const FINDS_ZONE := 40
+const FINDS := [["aether_crystal", 1, 4], ["glowroot", 1, 4], ["glowberry", 1, 3], ["psi_crystal_large", 1, 1],
+	["bio_gel_alien", 1, 3], ["spore_sac", 1, 2], ["fruit_alien", 1, 3], ["fungus_alien", 1, 3], ["seed_glow", 1, 2],
+	["egg_alien", 1, 1], ["hide_xeno", 1, 2], ["meat_xeno", 1, 3], ["fang_xeno", 1, 2], ["eye_xeno", 1, 1],
+	["venom_gland", 1, 1], ["scale_dragon", 1, 1], ["core_titan", 1, 1], ["moonpearl", 1, 1]]
+
 static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, luck := 0.0) -> Array:
 	var loot: Array = []
 	var pools := [
@@ -1357,7 +1365,8 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 	# On themed worlds nothing turns up far above the zone: the sci-fi age's parts and
 	# rations wait out past level 25.
 	var cap := zl * 160.0 + 3.0 + luck * 4.0
-	var reach := func(x): return not Eras.themed() or UNLOCK.get(x, 1) <= cap and (Eras.theme == "alien" or not def(x).get("alien", false))
+	var finds := Eras.themed() and zl * 160.0 + 1.0 >= FINDS_ZONE - 0.5
+	var reach := func(x): return not Eras.themed() or (finds and def(x).get("alien", false)) or UNLOCK.get(x, 1) <= cap and not def(x).get("alien", false)
 	var n := rng.randi_range(2, 4)
 	var pool: Array = pools[era].filter(func(e): return reach.call(e[0]))
 	for i in n:
@@ -1366,8 +1375,14 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			idx = 0
 		var e: Array = pool[idx]
 		loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
+	if finds and rng.randf() < 0.5 + luck * 0.5:
+		for i in rng.randi_range(1, 2):
+			var e: Array = FINDS[rng.randi() % FINDS.size()]
+			loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
+	# Far out, a third of the gear is fey or alien work.
+	var gear_era := Eras.FANTASY if finds and rng.randf() < 0.33 else era
 	if rng.randf() < 0.12 + (luck + zl) * 0.7:
-		var t: Array = rare_tools[era] + GEAR_LOOT[era]
+		var t: Array = rare_tools[gear_era] + GEAR_LOOT[gear_era]
 		if Eras.themed():
 			# Gear near the zone's level: what a traveller of about that level could make (a
 			# few levels' grace in a dungeon), nothing far below it once there is better. The
@@ -1375,21 +1390,19 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			var zone := zl * 160.0 + 1.0
 			var lv := zone + 2.0 + luck * 4.0
 			var early := zone < Eras.UNLOCK_LEVEL
-			var fits := func(x): return unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and (Eras.theme == "alien" or not def(x).get("alien", false))
+			var fits := func(x): return (finds and (gear_era == Eras.FANTASY or def(x).get("alien", false))) or unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and not def(x).get("alien", false)
 			var near: Array = t.filter(func(x): return fits.call(x) and unlock_level(x) >= lv - 15.0)
 			if near.is_empty():
 				near = t.filter(fits)
-			# Alien worlds keep to alien work once there is any to give.
-			var own: Array = near.filter(func(x): return def(x).get("alien", false))
-			if Eras.theme == "alien" and not own.is_empty():
-				near = own
 			t = near if not near.is_empty() else t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
 		# Some eras have nothing that low (the filter can empty the list).
 		if not t.is_empty():
 			loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
 	if luck > 0.0:
-		var extra: Array = DUNGEON_LOOT[era].filter(reach)
-		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
+		var extra: Array = DUNGEON_LOOT[gear_era].filter(reach)
+		if extra.is_empty():
+			extra = DUNGEON_LOOT[era].filter(reach)
+		for i in rng.randi_range(1, 1 + int(luck * 3.0)) if not extra.is_empty() else 0:
 			var t: String = extra[rng.randi() % extra.size()]
 			var many: bool = def(t).get("kind", "") == "ammo" or def(t).get("thrown", false) and not def(t).has("splash")
 			loot.append(make(t, rng.randi_range(8, 20) if many else rng.randi_range(1, 3), rng.randf_range(0.9, 1.2), origin))

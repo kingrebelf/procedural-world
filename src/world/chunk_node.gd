@@ -1708,12 +1708,6 @@ func _add_obj_body(o: Dictionary) -> void:
 			# Sparks fly from a hearth or a wall torch; the smoke goes up the chimney.
 			fl.add_child(FireFx.embers(f[1], false))
 		b.add_child(fl)
-	if o["t"] == WorldPortal.TYPE:
-		# The door of light, just proud of the glowing disc on both faces.
-		for z in [-0.05, 0.05]:
-			var sw := FireFx.swirl(WorldPortal.DOOR * 2.0)
-			sw.position = Vector3(0, WorldPortal.DOOR_Y, z)
-			b.add_child(sw)
 	if built:
 		var bd := BuildCatalog.def(BuildCatalog.id_of(o["t"]))
 		if bd.has("fire"):

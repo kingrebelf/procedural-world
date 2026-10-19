@@ -30,7 +30,6 @@ const MOODS := {
 	"night": ["safe_space"],
 	"scifi": ["safe_space", "captains_log"],
 	"dungeon": ["horror"],
-	"space": ["safe_space", "captains_log"],
 	"combat": ["battle", "action"],
 }
 const MUSIC_GAP := Vector2(70.0, 200.0) ## seconds of silence between tracks
@@ -366,11 +365,8 @@ func _process(delta: float) -> void:
 ## Where the player is, as far as sound cares.
 func _sample_env() -> Dictionary:
 	var e := {"where": "menu"}
-	var scene := get_tree().current_scene
 	if world == null or not is_instance_valid(world):
 		world = null
-		if scene != null and scene.get_script() != null and String(scene.get_script().resource_path).contains("orbit"):
-			e["where"] = "space"
 		return e
 	var pl: Node3D = world.get("player")
 	var atm = world.get("atmosphere")
@@ -453,9 +449,6 @@ func _set_targets(e: Dictionary) -> void:
 	for id in _layer_target:
 		_layer_target[id] = 0.0
 	match e["where"]:
-		"space":
-			_layer_target["scifi"] = 0.5
-			return
 		"menu":
 			return
 	var day: float = e["daylight"]
@@ -497,8 +490,6 @@ func _want_mood() -> String:
 	var where: String = env.get("where", "menu")
 	if where == "menu":
 		return "menu"
-	if where == "space":
-		return "space"
 	if in_combat():
 		return "combat"
 	if env.get("dungeon", false):

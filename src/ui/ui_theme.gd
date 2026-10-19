@@ -465,6 +465,9 @@ static func describe_item(it: Dictionary) -> String:
 		lines.append_array(Rarity.describe(it))
 	else:
 		lines.append("%s %s" % [Eras.NAMES[era] if era >= 0 else "Common", d.get("kind", "item")])
+	var tier := Deposits.tier_of(it["type"])
+	if tier > 0:
+		lines.append("Tier %d mineral (%s)" % [tier, Deposits.TIER_NAMES[tier]])
 	lines.append_array(Effects.describe(d))
 	lines.append("Quality %d%%   Value %d" % [int(it.get("quality", 1.0) * 100), int(d.get("value", 0) * (1.0 + 0.6 * Rarity.of(it) * Rarity.of(it)))])
 	var srcs: Array = Inventory.sources_of(it) if Inventory.stacks(it) else [[it.get("origin", {}), it.get("qty", 1)]]

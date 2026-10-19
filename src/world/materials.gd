@@ -309,7 +309,7 @@ static func set_screen_clock(day: float) -> void:
 	var m := get_mat("screen_ui") as ShaderMaterial
 	ScreenLook.hours = fposmod(day, 1.0) * 24.0
 	m.set_shader_parameter("game_hours", ScreenLook.hours)
-	m.set_shader_parameter("energy", ScreenLook.ENERGY["alien" if Eras.theme == "alien" else "human"])
+	m.set_shader_parameter("energy", ScreenLook.ENERGY["human"])
 
 static func get_mat(name: String) -> Material:
 	_lock.lock()
