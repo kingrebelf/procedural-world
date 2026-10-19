@@ -1971,7 +1971,7 @@ func _pvp_hit(it, peer: int, dmg: float, head := false, _point := Vector3.INF, m
 	Net.hurt_player(peer, dmg, "", true)
 	if marker:
 		hit_marker.emit("head" if head else "hit")
-		Audio.play("hit/marker", -3.0 if head else -13.0, 0.05, 1.8 if head else 1.3)
+		Audio.play("hit/marker_head" if head else "hit/marker", -4.0 if head else -9.0, 0.03)
 
 var _pvp_note := -99999
 
@@ -1983,8 +1983,8 @@ func _mark_blow(target: Node3D, point: Vector3, dmg: float, head := false) -> vo
 	Ragdoll.mark_hit(target, point, dir, clampf(10.0 + dmg * 0.8, 10.0, 70.0), "Head" if head else "")
 
 ## Hit markers: the HUD flashes a cross around the crosshair ("hit", "head" or "kill")
-## and a metallic tick confirms it, sharper and higher for a headshot, lower and fuller
-## for a kill.
+## and a sound confirms it: a dry tick for a hit, a ringing ping for a headshot, a deep
+## thunk for a kill.
 signal hit_marker(kind: String)
 
 func _mark(creature, npc, head: bool) -> void:
@@ -1997,11 +1997,11 @@ func _mark(creature, npc, head: bool) -> void:
 	hit_marker.emit(kind)
 	match kind:
 		"kill":
-			Audio.play("hit/marker", -4.0, 0.03, 0.8)
+			Audio.play("hit/marker_kill", -5.0, 0.03)
 		"head":
-			Audio.play("hit/marker", -3.0, 0.03, 1.8)
+			Audio.play("hit/marker_head", -4.0, 0.03)
 		_:
-			Audio.play("hit/marker", -13.0, 0.05, 1.3)
+			Audio.play("hit/marker", -9.0, 0.04)
 
 ## A blast: every animal within `radius` takes damage, less towards the edge.
 func _blast(at: Vector3, radius: float, dmg: float, powder := false) -> void:

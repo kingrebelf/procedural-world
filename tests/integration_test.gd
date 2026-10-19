@@ -1831,19 +1831,33 @@ func _cannon_check(game, world, player) -> void:
 	var gy: float = world.vehicles.ground(wp.x, wp.z)
 	wp.y = gy if not is_nan(gy) else cv.global_position.y
 	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
-	var wall := node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
-	await _frames(3)
-	var mz := Cannon.muzzle(cv)
-	var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
-	player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
-	await _frames(4)
-	Cannon.use(player, cv)
-	check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+	var wall: Dictionary
 	var lit := false
-	for i in 90:
-		await physics_frame
-		if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
-			lit = true
+	for shot in 3:
+		if shot > 0:
+			# Timber catches from hot shot about four times in five, so a wall that was
+			# struck but did not catch is the dice: reload and fire at a fresh wall.
+			node.remove_object(wall["i"])
+			game.inventory.add(ItemDB.make("hot_shot", 1, 1.0, {}))
+			game.inventory.add(ItemDB.make("black_powder", 2, 1.0, {}))
+			Cannon.use(player, cv)
+			await create_timer(Cannon.LOAD_TIME + 0.3).timeout
+		wall = node.add_built("wall_plaster", wp - node.position, 0.0, {"by": "you", "day": 0.0})
+		await _frames(3)
+		var mz := Cannon.muzzle(cv)
+		var aim: Vector3 = wp + Vector3(0, 1.4, 0) - mz.origin
+		player._pitch = atan2(aim.y, Vector2(aim.x, aim.z).length()) - 0.08
+		await _frames(4)
+		Cannon.use(player, cv)
+		if shot == 0:
+			check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
+		lit = false
+		for i in 90:
+			await physics_frame
+			if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
+				lit = true
+				break
+		if not lit or (wall["st"] as Dictionary).has("fire"):
 			break
 	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s)" % [wall["st"].keys()])
 	player.dismount()

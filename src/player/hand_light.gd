@@ -61,6 +61,10 @@ func _ready() -> void:
 const TORCH_FLAME := [Vector3(0, 0.4, 0), 0.32]
 ## The seed of a carried torch's flame, which the light in your hand follows.
 const TORCH_SEED := 0.37
+## A held torch's firelight: bright enough to light the ground and trees well around you
+## at night (Ben 2026-10-19: torches lit too little at 2.3 over 16 m).
+const TORCH_ENERGY := 3.8
+const TORCH_RANGE := 22.0
 
 ## A torch's living fire, to sit on its model: the flame, with sparks and smoke.
 static func torch_fire() -> Node3D:
@@ -299,7 +303,7 @@ func _process(delta: float) -> void:
 		# It leaps and sinks with the torch's flame (FireFx.life); a wick behind glass or a
 		# lone candle burns steadier.
 		var l := FireFx.life(FireFx.time, TORCH_SEED)
-		var base: float = {"lantern": 3.0 if kerosene else 2.6, "candle": 1.1}.get(k, 2.3)
+		var base: float = {"lantern": 3.0 if kerosene else 2.6, "candle": 1.1}.get(k, TORCH_ENERGY)
 		_omni.light_energy = base * (1.0 + (0.42 if k == "torch" else 0.16) * (l - 0.5) * 2.0)
 		# The light sways with the flame, so the shadows it casts move a little.
 		var sw := 0.012 if k == "torch" else 0.004
@@ -311,7 +315,7 @@ func _apply() -> void:
 	var k := lit()
 	_omni.visible = k == "torch" or k == "lantern" or k == "candle"
 	# A lantern's glass keeps its flame steady and bright; a candle lights only nearby.
-	_omni.omni_range = {"lantern": 24.0 if kerosene else 18.0, "candle": 7.0}.get(k, 16.0)
+	_omni.omni_range = {"lantern": 24.0 if kerosene else 18.0, "candle": 7.0}.get(k, TORCH_RANGE)
 	_omni.light_energy = {"lantern": 3.0 if kerosene else 2.6, "candle": 1.1}.get(k, _omni.light_energy)
 	_spot.visible = k == "flashlight"
 	# The off-hand torch shows only when nothing lit is held in the main hand.
