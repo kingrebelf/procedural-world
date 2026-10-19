@@ -1267,10 +1267,6 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	var wonder := WonderSite.place(self, chunk, sites)
 	if not wonder.is_empty():
 		sites = sites + [wonder]
-	# A portal to other worlds, rarer still and only far out in the high zones.
-	var portal := WorldPortal.place(self, chunk)
-	if not portal.is_empty():
-		sites = sites + [portal]
 
 	if deep_caves:
 		if chunk.has("cave"):
@@ -1641,7 +1637,8 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 	if size >= 1:
 		outer.append("solar_farm")
 		outer.append("depot")
-		outer.append(ShipPad.pick(r))
+		r.randi() # once a landing pad's ship: the draw keeps old worlds' outposts laid out as before
+		outer.append("depot")
 	if size >= 2:
 		outer.append("solar_farm")
 	for n in lots.size():

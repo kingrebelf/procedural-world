@@ -154,14 +154,6 @@ func open_corpse(corpses: Corpses, key: String) -> void:
 		_store.from_data(c["items"])
 	open("corpse")
 
-## An ancient portal: pick a world to step through to.
-func open_portal(o: Dictionary, chunk: ChunkNode) -> void:
-	_store_obj = o
-	_portal_at = Vector2(chunk.position.x + o["p"].x, chunk.position.z + o["p"].z)
-	open("portal")
-
-var _portal_at := Vector2.ZERO
-
 ## Writes the open chest back into its chunk, to be saved.
 func open_travel(o: Dictionary, chunk: ChunkNode) -> void:
 	_store_obj = o
@@ -197,7 +189,6 @@ func _refresh() -> void:
 		"storage": _panel = _storage_panel()
 		"corpse": _panel = _corpse_panel()
 		"travel": _panel = _travel_panel()
-		"portal": _panel = _portal_panel()
 		"map": _panel = _map_panel()
 		"character": _panel = _character_panel()
 		"players": _panel = _players_panel()
@@ -1073,27 +1064,6 @@ func _travel_panel() -> Control:
 		v.add_child(row)
 	if not any:
 		v.add_child(UITheme.label("No other teleporters yet. Build another one somewhere else to link them.", 16, UITheme.DIM))
-	return s[0]
-
-func _portal_panel() -> Control:
-	var s := _shell("Ancient Portal", "The ring hums. Through it lie the other worlds bound to this one; the alien ones are deadly.")
-	var v: VBoxContainer = s[1]
-	for p in Game.worlds():
-		var n: int = p["n"]
-		if n == Game.planet:
-			continue
-		var row := HBoxContainer.new()
-		var been := Game.landings.has(n) or n == 0
-		var l := UITheme.label("%s   ·   %s   ·   zone level %d+%s" % [p["name"], Planets.theme_label(p), int(p["base"]), "" if been else "   ·   unexplored"], 17,
-			Color(0.85, 0.6, 1.0) if p.get("theme", "") == "alien" else UITheme.TEXT)
-		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.custom_minimum_size = Vector2(520, 0)
-		row.add_child(l)
-		var from := _portal_at
-		row.add_child(UITheme.button("Step through", func():
-			close()
-			Game.travel_portal(player, n, from)))
-		v.add_child(row)
 	return s[0]
 
 static func _dist(d: float) -> String:

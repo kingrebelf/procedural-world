@@ -23,12 +23,6 @@ static var tiles := 0
 static func on() -> bool:
 	return tiles > 0
 
-## Tiles of a planet `scale` times the size of the home world (Planets' "size").
-static func tiles_for(home_tiles: int, scale := 1.0) -> int:
-	if home_tiles <= 0:
-		return 0
-	return maxi(16, int(round(home_tiles * scale / 8.0)) * 8)
-
 ## Metres from the centre to the barrier along x or z.
 static func half() -> float:
 	return tiles * ChunkGenerator.SIZE * 0.5

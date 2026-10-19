@@ -115,7 +115,6 @@ const ITEMS := {
 	# Vehicles: use one to set it down in the world, then ride it (see Vehicle).
 	"speeder": {"name": "Hover Speeder", "era": Eras.SCIFI, "value": 420, "stack": false, "kind": "vehicle", "color": Color(1.0, 0.65, 0.15)},
 	"rover": {"name": "Survey Rover", "era": Eras.SCIFI, "value": 380, "stack": false, "kind": "vehicle", "color": Color(0.85, 0.85, 0.9)},
-	"ship": {"name": "Starship", "era": Eras.SCIFI, "value": 1600, "stack": false, "kind": "vehicle", "color": Color(0.95, 0.7, 0.25)},
 	"horse": {"name": "Riding Horse", "era": Eras.MEDIEVAL, "value": 180, "stack": false, "kind": "vehicle", "color": Color(0.55, 0.38, 0.25)},
 	"cannon": {"name": "Field Cannon", "era": Eras.SCIFI, "value": 520, "stack": false, "kind": "vehicle", "color": Color(0.7, 0.5, 0.25)},
 	# Small boats (Sailing): carried, put in the water like a vehicle, packed up again.
@@ -795,9 +794,8 @@ const ITEMS := {
 
 ## Player level that unlocks making (and placing) a thing, on themed worlds: the starting
 ## era's basics from level 1, its sturdier work over the first levels, and anything of
-## the advanced era from Eras.UNLOCK_LEVEL, its best pieces later still (a starship at
-## 35). Older worlds lock nothing.
-const SHIP_LEVEL := 35
+## the advanced era from Eras.UNLOCK_LEVEL, its best pieces later still. Older worlds
+## lock nothing.
 const UNLOCK := {
 	# Medieval building and stations.
 	"wall_stone": 3, "roof_small": 2, "roof_large": 4, "stairs_wood": 2, "foundation": 2,
@@ -809,12 +807,12 @@ const UNLOCK := {
 	"binoculars": 3, "waystone": 8, "cauldron": 10, "jetpack": 12, "jet_fuel": 12,
 	# Gunpowder is the first step out of the medieval age.
 	"scrap_pistol": 10, "rounds": 10,
-	# Advanced gear: tech, vehicles, teleporters and starships.
+	# Advanced gear: tech, vehicles and teleporters.
 	"fabricator": 10, "flashlight": 10, "pulse_pistol": 10, "pulse_smg": 12, "pulse_rifle": 14,
 	"rail_rifle": 18, "arc_launcher": 22, "pickaxe_plasma": 12, "crossbow_runic": 12,
 	"helm_visor": 11, "exo_chest": 13, "exo_legs": 12, "mag_boots": 11, "gauntlets_power": 11,
 	"shield_emitter": 14, "vehicle_bay": 14, "speeder": 15, "rover": 15, "teleporter": 18,
-	"storage_crate": 11, "launch_pad": 30, "ship": SHIP_LEVEL,
+	"storage_crate": 11,
 	# Power (Power, PowerGrid): early-industrial first, past the medieval heartland.
 	"gen_woodgas": 10, "windmill": 10, "battery_bank": 10, "power_pole": 10, "junction_box": 10, "knife_switch": 10,
 	"lamp_ceiling": 10, "lamp_wall": 10, "multimeter": 10, "light_bulb": 10, "electric_motor": 10, "insulator": 10,
@@ -1069,7 +1067,7 @@ const PIECE_VALUE := {"foundation": 8, "floor_wood": 6, "wall_plaster": 9, "wall
 	"door_wood": 20, "door_iron": 70, "door_bulkhead": 220,
 	"stairs_wood": 16, "roof_small": 20, "roof_large": 40, "fence": 4, "platform": 50, "wall_scifi": 75, "wall_scifi_window": 75,
 	"door_scifi": 90, "stairs_scifi": 110, "workbench": 25, "waystone": 300, "teleporter": 450, "storage_chest": 30, "storage_crate": 120, "campfire": 8, "forge": 40, "anvil": 80, "cauldron": 95, "fabricator": 160,
-	"vehicle_bay": 260, "stable": 90, "launch_pad": 420, "slipway": 140,
+	"vehicle_bay": 260, "stable": 90, "slipway": 140,
 	"gen_woodgas": 240, "gen_diesel": 420, "windmill": 200, "solar_array": 260, "battery_bank": 150, "power_pole": 20, "junction_box": 18,
 	"knife_switch": 14, "lamp_ceiling": 20, "lamp_wall": 18, "floodlight": 60, "street_lamp": 55,
 	"lever": 10, "push_button": 8, "pressure_plate": 22, "motion_sensor": 40, "daylight_sensor": 24, "logic_timer": 26,
@@ -1357,7 +1355,7 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 	# On themed worlds nothing turns up far above the zone: the sci-fi age's parts and
 	# rations wait out past level 25.
 	var cap := zl * 160.0 + 3.0 + luck * 4.0
-	var reach := func(x): return not Eras.themed() or UNLOCK.get(x, 1) <= cap and (Eras.theme == "alien" or not def(x).get("alien", false))
+	var reach := func(x): return not Eras.themed() or UNLOCK.get(x, 1) <= cap and not def(x).get("alien", false)
 	var n := rng.randi_range(2, 4)
 	var pool: Array = pools[era].filter(func(e): return reach.call(e[0]))
 	for i in n:
@@ -1375,14 +1373,10 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			var zone := zl * 160.0 + 1.0
 			var lv := zone + 2.0 + luck * 4.0
 			var early := zone < Eras.UNLOCK_LEVEL
-			var fits := func(x): return unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and (Eras.theme == "alien" or not def(x).get("alien", false))
+			var fits := func(x): return unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and not def(x).get("alien", false)
 			var near: Array = t.filter(func(x): return fits.call(x) and unlock_level(x) >= lv - 15.0)
 			if near.is_empty():
 				near = t.filter(fits)
-			# Alien worlds keep to alien work once there is any to give.
-			var own: Array = near.filter(func(x): return def(x).get("alien", false))
-			if Eras.theme == "alien" and not own.is_empty():
-				near = own
 			t = near if not near.is_empty() else t.filter(func(x): return unlock_level(x) < Eras.UNLOCK_LEVEL)
 		# Some eras have nothing that low (the filter can empty the list).
 		if not t.is_empty():

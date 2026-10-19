@@ -70,7 +70,6 @@ SFX = {
 LOOPS = {
     "loop/jetpack": SCI("thrusterFire_000"),
     "loop/engine": SCI("spaceEngineLow_000"),
-    "loop/engine_big": SCI("spaceEngineLarge_000"),
 }
 MUSIC = {
     "music/exploration": M + "Exploration Theme/exploration_theme/Exploration Theme/Exploration Theme.ogg",

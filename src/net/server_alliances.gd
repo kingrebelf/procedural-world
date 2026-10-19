@@ -253,7 +253,7 @@ func save_explored() -> void:
 
 ## A player stood in new tiles on `planet`: kept, and passed on to their allies online.
 func explore(pid: String, planet: int, keys: Array) -> void:
-	if planet < 0 or planet >= Planets.COUNT:
+	if planet != 0: # one world (the planet field stays in saves, always 0)
 		return
 	var mine: Dictionary = explored.get(pid, {})
 	var tiles: Dictionary = mine.get(planet, {})

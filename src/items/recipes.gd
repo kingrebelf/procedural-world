@@ -13,7 +13,6 @@ const LIST := [
 	{"out": "cauldron", "qty": 1, "in": {"iron_ingot": 3, "aether_crystal": 2}, "at": "workbench"},
 	{"out": "fabricator", "qty": 1, "in": {"alloy_scrap": 6, "circuitry": 4, "iron_ingot": 2}, "at": "workbench"},
 	{"out": "vehicle_bay", "qty": 1, "in": {"alloy_plate": 8, "circuitry": 6, "power_cell": 2}, "at": "fabricator"},
-	{"out": "launch_pad", "qty": 1, "in": {"alloy_plate": 14, "circuitry": 8, "power_cell": 3}, "at": "vehicle_bay"},
 	{"out": "stable", "qty": 1, "in": {"planks": 16, "wood": 6, "iron_ingot": 2}, "at": "workbench"},
 	{"out": "storage_chest", "qty": 1, "in": {"planks": 8, "iron_ingot": 1}, "at": "workbench"},
 	{"out": "storage_crate", "qty": 1, "in": {"alloy_plate": 4, "iron_ingot": 2}, "at": "fabricator"},
@@ -141,7 +140,6 @@ const LIST := [
 	# Vehicles.
 	{"out": "speeder", "qty": 1, "in": {"alloy_plate": 6, "power_cell": 2, "circuitry": 4}, "at": "vehicle_bay"},
 	{"out": "rover", "qty": 1, "in": {"alloy_plate": 8, "power_cell": 2, "iron_ingot": 4, "circuitry": 2}, "at": "vehicle_bay"},
-	{"out": "ship", "qty": 1, "in": {"alloy_plate": 20, "power_cell": 6, "circuitry": 10, "data_core": 1}, "at": "launch_pad"},
 	{"out": "horse", "qty": 1, "in": {"hide": 6, "planks": 4, "iron_ingot": 1, "bread": 4}, "at": "stable"},
 	# Building pieces.
 	{"out": "foundation", "qty": 1, "in": {"stone": 6}, "at": "workbench"},
@@ -761,11 +759,9 @@ const LIST := [
 ]
 
 const STATION_NAMES := {"workbench": "Workbench", "campfire": "Campfire", "forge": "Forge", "anvil": "Anvil",
-	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable", "launch_pad": "Launch Pad", "slipway": "Slipway"}
+	"cauldron": "Arcane Cauldron", "fabricator": "Fabricator", "vehicle_bay": "Vehicle Bay", "stable": "Stable", "slipway": "Slipway"}
 
 ## Player level that unlocks making (and placing) a thing (ItemDB.unlock_level).
-const SHIP_LEVEL := ItemDB.SHIP_LEVEL
-
 static func unlock_level(out: String) -> int:
 	return ItemDB.unlock_level(out)
 
