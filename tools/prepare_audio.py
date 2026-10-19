@@ -79,8 +79,6 @@ LOOPS = {
 MUSIC = {
     "music/exploration": M + "Exploration Theme/exploration_theme/Exploration Theme/Exploration Theme.ogg",
     "music/safe_space": M + "Safe Space/safe_space_loop.flac",
-    "music/battle": M + "Music Loops/battle/Battle.wav",
-    "music/action": M + "Music Loops/action/Action_A.wav",
     "music/horror": M + "Music Loops/horror/Horror.wav",
     "music/captains_log": M + "Sci-Fi Horror Ambience/Final Captain's Log.mp3",
     "ambience/dungeon": M + "Dungeon Ambience/dungeon_ambient_1.ogg",

@@ -31,7 +31,7 @@ const MOODS := {
 	"scifi": ["safe_space", "captains_log"],
 	"dungeon": ["horror"],
 	"space": ["safe_space", "captains_log"],
-	"combat": ["battle", "action"],
+	"combat": ["war_march"], ## our own orchestral march (tools/compose_battle.py)
 }
 const MUSIC_GAP := Vector2(70.0, 200.0) ## seconds of silence between tracks
 const COMBAT_HOLD := 9.0 ## seconds after the last blow before battle music lets go
