@@ -6553,3 +6553,30 @@ func test_movers_layer() -> void:
 	Movers.set_far(root, false)
 	check(a.layers == 1 and b.layers == 1, "movers: back on layer 1")
 	root.free()
+
+func test_day_clock() -> void:
+	# Ben 10-19: four times the daylight, the same night. 24 game hours a day still.
+	var ds := 1440.0
+	var cyc := DayClock.world_seconds(1.0, ds) - DayClock.world_seconds(0.0, ds)
+	check(absf(cyc - 3600.0) < 0.01, "a whole day takes an hour at the default pace (%.1f s)" % cyc)
+	var night := DayClock.world_seconds(1.25, ds) - DayClock.world_seconds(0.75, ds)
+	var light := DayClock.world_seconds(0.75, ds) - DayClock.world_seconds(0.25, ds)
+	check(absf(night - 720.0) < 0.01, "night stays 12 real minutes (%.1f s)" % night)
+	check(absf(light - 2880.0) < 0.01, "daylight lasts four times as long (%.1f s)" % light)
+	check(absf(DayClock.rate(0.0, ds) - 1.0 / ds) < 1e-9 and DayClock.rate(0.5, ds) < 0.25 / ds, "night at the old pace, noon slower")
+	# Steady: the pace eases through dawn with no jump.
+	var prev := DayClock.world_seconds(0.15, ds)
+	var smooth := true
+	for i in range(1, 200):
+		var d := 0.15 + i * 0.001
+		var w := DayClock.world_seconds(d, ds)
+		smooth = smooth and w > prev and absf(DayClock.rate(d, ds) - DayClock.rate(d - 0.001, ds)) < 0.03 / ds
+		prev = w
+	check(smooth, "dawn eases in")
+	for d in [0.0, 0.2, 0.26, 0.5, 0.74, 3.9, 17.3]:
+		check(absf(DayClock.day_at(DayClock.world_seconds(d, ds), ds) - d) < 1e-6, "day_at undoes world_seconds at %s" % d)
+	# Stepping frame by frame lands where the steady clock says.
+	var day := 0.1
+	for i in 3600 * 30:
+		day = DayClock.advance(day, 1.0 / 30.0, ds)
+	check(absf(day - 1.1) < 0.002, "an hour of frames is one game day (%.4f)" % day)

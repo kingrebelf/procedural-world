@@ -240,7 +240,7 @@ static func pose_at(site: Dictionary, t: float) -> Array:
 
 ## World seconds the boats run on: the in-game clock, so everyone online agrees.
 static func world_time(day: float, day_seconds: float) -> float:
-	return fmod(day, 64.0) * day_seconds
+	return DayClock.world_seconds(fmod(day, 64.0), day_seconds)
 
 ## The boat's crew as a settlement record (NPCManager loads it like a town's people).
 static func crew(world_seed: int, site: Dictionary) -> Dictionary:

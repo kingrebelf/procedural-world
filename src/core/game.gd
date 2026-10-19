@@ -17,7 +17,7 @@ signal item_gained(type: String, qty: int)
 signal saving ## Emitted before everything is written, so other systems can save too.
 signal discovered(title: String, sub: String, color: Color) ## a wonder found or conquered
 
-const DAY_SECONDS := 1440.0 ## One in-game day = 24 real minutes.
+const DAY_SECONDS := 1440.0 ## One in-game day at night pace = 24 real minutes (daylight runs slower: DayClock).
 var day_seconds := DAY_SECONDS ## a server may set its own day length
 var time_lock := -1.0 ## a server's always-day (0.5) or always-night (0.0); -1 = the clock runs
 const AUTOSAVE_INTERVAL := 10.0
@@ -369,7 +369,7 @@ func _process(delta: float) -> void:
 		if time_lock >= 0.0:
 			day = floorf(day) + time_lock
 		else:
-			day += delta / day_seconds
+			day = DayClock.advance(day, delta, day_seconds)
 		_tick_effects(delta)
 		map.process(delta, player)
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
