@@ -1269,6 +1269,7 @@ func _beds(game, world, player) -> void:
 	player.deconstruct(pc, o)
 	check(game.markers.on_planet(game.planet, "bed").is_empty(), "a bed taken down is no longer a place to wake")
 	player.global_position = start + Vector3(0, 1.0, 0)
+	player.velocity = Vector3.ZERO
 	await _frames(10)
 
 ## Bodies: a killed animal leaves a carcass where it fell, saved with its chunk, that is
