@@ -449,7 +449,7 @@ func _automate(id: String, o: Dictionary, runs: bool, dt: float) -> void:
 				mem["w"] = float(mem.get("w", 0.0)) + dt
 				if float(mem["w"]) >= float(s.get("every", 5.0)):
 					mem["w"] = 0.0
-					if Automation.work(o, _vein_of(id, o, c, mem), _zone(c, o), Game.origin_here("machined", -1, c.key), _rng):
+					if Automation.work(o, _vein_of(id, o, c, mem), _zone(c, o), Game.origin_here("machined", -1, c.key), _rng, c.data):
 						_touched[c.key] = c
 			mem["p"] = float(mem.get("p", 0.0)) + dt
 			if float(mem["p"]) >= Automation.PUSH_EVERY:
@@ -549,7 +549,7 @@ func _machine_catch_up(id: String, o: Dictionary) -> void:
 	var vein := _vein_of(id, o, c, mem)
 	var made := 0
 	for n in cycles:
-		if not Automation.work(o, vein, _zone(c, o), Game.origin_here("machined", -1, c.key), _rng):
+		if not Automation.work(o, vein, _zone(c, o), Game.origin_here("machined", -1, c.key), _rng, c.data):
 			break
 		made += 1
 	if made > 0:
@@ -1038,6 +1038,9 @@ static func _auto_verb(o: Dictionary, sneaking: bool, nm: String) -> String:
 		"assembler":
 			if sneaking:
 				return "Pick what it makes"
+		"miner":
+			if sneaking:
+				return "Pick which ore it drills"
 		"belt":
 			return "Switch %s the %s" % ["off" if Power.is_on(o) else "on", nm]
 	if Storage.capacity(o) > 0 and not sneaking:
@@ -1057,6 +1060,14 @@ func _use_auto(chunk: ChunkNode, o: Dictionary, sneaking: bool, nm: String) -> b
 			Game.toast.emit("The %s now moves %s" % [nm, "everything" if it == null else String(ItemDB.def(it["type"]).get("name", it["type"]))])
 			Game.mark_chunk_dirty(chunk.data)
 			return true
+		"miner":
+			if sneaking:
+				var cur := Deposits.target(chunk.data, String(o["st"].get("ore", "")))
+				var ore := Deposits.next_target(chunk.data, cur)
+				o["st"]["ore"] = ore
+				Game.toast.emit("The %s now drills %s" % [nm, String(ItemDB.def(ore).get("name", ore))] if ore != "" else "There is no ore left under this tile")
+				Game.mark_chunk_dirty(chunk.data)
+				return true
 		"assembler":
 			if sneaking:
 				var what := Automation.next_recipe(o)
@@ -1122,6 +1133,8 @@ func describe(chunk: ChunkNode, o: Dictionary, meter: bool) -> Array:
 	var lines := signal_lines(id, o)
 	if Automation.is_auto(o):
 		lines.append_array(Automation.lines(o))
+		if Automation.kind(o) == "miner":
+			lines.append_array(Deposits.lines(chunk.data, String(o["st"].get("ore", ""))))
 	if Power.role(o) == "logic" or Power.role(o) == "box":
 		return lines
 	match String(s.get("role", "")):

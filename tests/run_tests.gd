@@ -5993,6 +5993,20 @@ func test_power_automation() -> void:
 		Automation.work(miner, "iron_vein", 10, {}, rng)
 	check(Storage.open(miner).count("iron_ore") == 3, "three cycles, three iron ore")
 	check(not Automation.put(miner, ItemDB.make("stone", 1, 1.0, {})), "nothing goes into a miner")
+	# On a tile with deposits it drills those, slower for deeper tiers, until they run dry.
+	var tile := {"cx": 3, "cz": -2, "dep": {}}
+	var deps := Deposits.of_chunk(tile)
+	check(not deps.is_empty() and deps.any(func(d): return int(d["tier"]) == 1), "every tile has a common deposit")
+	var miner2 := _pw("auto_miner", 7)
+	miner2["st"]["ore"] = "nothing"
+	var ore := Deposits.target(tile, "")
+	var t := Deposits.tier_of(ore)
+	for n in t * 2:
+		check(Automation.work(miner2, "", 10, {}, rng, tile), "it drills the tile (%s)" % ore)
+	check(Storage.open(miner2).count(ore) == 2 and int(tile["dep"][ore]) == 2, "two units of a tier-%d ore take %d cycles" % [t, t * 2])
+	tile["dep"][ore] = 1 << 30
+	var next := Deposits.target(tile, ore)
+	check(next != ore and Deposits.left(tile, ore) == 0, "a dry deposit is passed over (%s next)" % next)
 	check(Automation.main_yield("rock") == "stone", "a quarry digs stone")
 	# An assembler picks a recipe it has the makings for.
 	var asm := _pw("assembler", 4)
@@ -6007,6 +6021,38 @@ func test_power_automation() -> void:
 	check(is_equal_approx(float(r["supply"]), 600.0), "a water wheel in a river makes its full 600 W")
 	r = Power.solve([{"id": "w", "o": _pw("water_wheel", 5), "f": 0.0}], {}, 1.0)
 	check(float(r["supply"]) == 0.0, "and nothing on dry ground")
+
+func test_deposits() -> void:
+	# The same tile always rolls the same deposits; tiers follow zone levels and worlds.
+	var a := Deposits.roll(4242, 10, -7, 1)
+	check(a == Deposits.roll(4242, 10, -7, 1), "deposits are a pure function of seed and tile")
+	var tiers := {}
+	var ores := {}
+	for cx in 60:
+		for d in Deposits.roll(4242, cx, 5, 1):
+			tiers[int(d["tier"])] = true
+			ores[d["ore"]] = true
+	check(tiers.keys() == [1] and ores.size() >= 4, "near spawn only common ore, of several kinds (%s)" % [ores.keys()])
+	var deep := {}
+	for cx in 300:
+		for d in Deposits.roll(4242, cx, 9, 99, "xeno", true):
+			deep[int(d["tier"])] = true
+			check(int(d["total"]) >= int(Deposits.TIERS[int(d["tier"])][1]), "a deposit is at least its tier's least size")
+	check(deep.has(5) and deep.has(4) and deep.has(3), "out on an alien world all five tiers turn up (%s)" % [deep.keys()])
+	var human5 := false
+	for cx in 300:
+		for d in Deposits.roll(4242, cx, 9, 99, "", false):
+			human5 = human5 or int(d["tier"]) == 5
+	check(not human5, "alien ore stays on alien worlds")
+	# Rarer tiers are worth more at market.
+	var top := [0, 0, 0, 0, 0, 0]
+	var low := [0, 9999, 9999, 9999, 9999, 9999]
+	for e in Deposits.ORES:
+		var v := int(ItemDB.def(e[0])["value"])
+		top[e[1]] = maxi(top[e[1]], v)
+		low[e[1]] = mini(low[e[1]], v)
+	for t in range(2, 6):
+		check(low[t] > top[t - 1], "every tier %d ore is worth more than any tier %d ore" % [t, t - 1])
 
 # --- Fire ------------------------------------------------------------------------------
 

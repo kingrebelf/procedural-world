@@ -172,9 +172,25 @@ static func next_recipe(o: Dictionary) -> String:
 
 ## One work cycle of a machine: what it makes goes in its store. Returns false when it
 ## couldn't (nothing to work, no room, no vein).
-static func work(o: Dictionary, vein: String, zone: int, origin: Dictionary, rng: RandomNumberGenerator) -> bool:
+## `tile`: the data of the chunk it stands on; a miner drills that tile's deposits
+## (Deposits) first, and only its vein once they are dry.
+static func work(o: Dictionary, vein: String, zone: int, origin: Dictionary, rng: RandomNumberGenerator, tile := {}) -> bool:
 	var inv := Storage.open(o)
 	var done := false
+	if kind(o) == "miner" and not tile.is_empty():
+		var ore := Deposits.target(tile, String(o["st"].get("ore", "")))
+		if ore != "":
+			# Deeper tiers come out slower: a tier-n ore takes n cycles a unit.
+			var dp := int(o["st"].get("dp", 0)) + 1
+			if dp < Deposits.tier_of(ore):
+				o["st"]["dp"] = dp
+				return true
+			if inv.add(ItemDB.make(ore, 1, randf_range(0.85, 1.0), origin)) > 0:
+				return false
+			Deposits.take(tile, ore)
+			o["st"]["dp"] = 0
+			Storage.save(o, inv)
+			return true
 	match kind(o):
 		"miner", "quarry":
 			var src := vein if kind(o) == "miner" else "rock"
@@ -244,7 +260,7 @@ static func lines(o: Dictionary) -> Array:
 			var f := String(o["st"].get("flt", ""))
 			out.append("Moves %s from behind it to in front" % ("everything" if f == "" else String(ItemDB.def(f).get("name", f))))
 		"miner":
-			out.append("Drills the vein beside it, slowly, for ever")
+			out.append("Drills the ore under its tile, then the vein beside it")
 		"quarry":
 			out.append("Digs stone out of the ground under it")
 		"smelter":
