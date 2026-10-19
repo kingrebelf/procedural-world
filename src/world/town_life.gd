@@ -1356,7 +1356,8 @@ func _lantern(models: Array, root: Node3D, e: Dictionary, o2: Vector2, oy: float
 
 ## A real flame with its firelight, both only lit after dark (`fl`, a prop's own flame
 ## from FireFx.prop_flame, or an open one `size` tall).
-func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float, fl: Node3D = null) -> void:
+## `falloff` is the light's omni_attenuation: lower carries it further out.
+func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float, fl: Node3D = null, falloff := 1.3) -> void:
 	if fl == null:
 		fl = FireFx.flame(size)
 	fl.position = at
@@ -1365,7 +1366,7 @@ func _flame(root: Node3D, at: Vector3, size: float, energy: float, reach: float,
 	l.light_color = Color(1.0, 0.66, 0.34)
 	l.light_energy = energy
 	l.omni_range = reach
-	l.omni_attenuation = 1.3
+	l.omni_attenuation = falloff
 	l.position = at + Vector3(0, size * 0.5, 0)
 	l.distance_fade_enabled = true
 	l.distance_fade_begin = 55.0
@@ -1764,7 +1765,7 @@ func _torch_post(k: MeshKit, models: Array, root: Node3D, xf: Transform3D, body:
 	models.append(m)
 	var f: Array = FireFx.prop_flames([m])[0]
 	# An open torch throws its light much further than a lantern behind glass.
-	_flame(root, f[0], float(f[1]), 3.0, 15.0, FireFx.prop_flame(f))
+	_flame(root, f[0], float(f[1]), 3.4, 20.0, FireFx.prop_flame(f), 0.8)
 	var fl: Node3D = _flames[_flames.size() - 2]
 	fl.add_child(FireFx.embers(0.42, false))
 	_box_shape(body, xf * I.translated(Vector3(0, 1.1, 0)), Vector3(0.18, 2.2, 0.18))

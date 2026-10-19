@@ -29,11 +29,12 @@ func _process(_delta: float) -> void:
 	var l := FlickerLight.new()
 	l.light_color = Color(1.0, 0.55, 0.25)
 	# As bright as a campfire you build (ChunkNode): the camp shows from far off at night.
-	l.light_energy = 3.4
-	l.omni_range = 15.0
+	l.light_energy = 4.5
+	l.omni_range = 26.0
+	l.omni_attenuation = ChunkNode.CAMPFIRE_FALLOFF
 	l.position = Vector3(0, 1.0, 0)
 	l.distance_fade_enabled = true
-	l.distance_fade_begin = 60.0
+	l.distance_fade_begin = 80.0
 	l.distance_fade_length = 15.0
 	add_child(l)
 	if _gear == null:
