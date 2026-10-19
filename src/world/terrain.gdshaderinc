@@ -878,7 +878,7 @@ void fragment() {
 	}
 
 	// Cloud shadows drifting over the land.
-	ALBEDO = col * (0.92 + 0.16 * micro) * (1.0 - 0.42 * cloud_shadow(wpos));
+	ALBEDO = col * (0.92 + 0.16 * micro) * cloud_shade(wpos);
 	ROUGHNESS = mix(mix(mix(mix(0.92, 0.3, shore * 0.6), 0.5, plates) - 0.1 * rock_mask * w.b, 0.62, snow), 0.4, glass);
 	METALLIC = plates * 0.6;
 	SPECULAR = mix(0.4, 0.5, glass);

@@ -126,7 +126,7 @@ void fragment() {
 	float back = pow(clamp(dot(-vdir, normalize(sun_dir_g)), 0.0, 1.0), 3.0);
 	float tip = smoothstep(0.15, 0.9, crest) * clamp(amp * 3.0, 0.0, 1.0);
 	col += vec3(0.04, 0.16, 0.13) * tip * (0.35 + 1.2 * back) * smoothstep(-0.05, 0.2, sun_dir_g.y);
-	col *= 1.0 - 0.3 * cloud_shadow(wpos);
+	col *= 1.0 - 0.15 * cloud_shadow(wpos);
 	// Foam: lace where the wash thins out at the water's edge, and lines of broken water
 	// rolling in through the shallows toward the beach (they ride the depth, so they
 	// follow the shore's shape); whitecaps on wave crests in a strong wind.

@@ -45,7 +45,7 @@ void vertex() {
 	VERTEX.xz += normalize(dir + vec2(0.0001)) * bend;
 	VERTEX.y -= abs(bend) * 0.25;
 	tint = pow(INSTANCE_CUSTOM.rgb, vec3(2.2));
-	shade = 1.0 - 0.42 * cloud_shadow(wp);
+	shade = cloud_shade(wp);
 	// Thin out with distance, each clump at its own cut-off, as the grass does.
 	float far = smoothstep(UV2.x * detail, UV2.y * detail, length(wp - CAMERA_POSITION_WORLD));
 	vec3 p3 = fract(vec3(wp.xzx) * 0.1031);

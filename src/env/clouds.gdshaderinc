@@ -43,3 +43,10 @@ float cloud_shadow(vec3 wp) {
 	float lumps = c_noise(vec3(q.x, 2200.0 * 0.8, q.y) * 0.00045);
 	return smoothstep(0.15, 0.6, cov * (0.55 + lumps * 0.7));
 }
+
+// How much a cloud's shadow darkens the ground under it: a gentle dip as a cloud passes
+// over, not a blackout (at 0.42 the whole view went dim under every passing cloud).
+const float CLOUD_SHADE = 0.2;
+float cloud_shade(vec3 wp) {
+	return 1.0 - CLOUD_SHADE * cloud_shadow(wp);
+}

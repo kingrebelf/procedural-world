@@ -388,8 +388,10 @@ func _update_time_of_day() -> void:
 	# The eye may only brighten a dark scene so far: a night outdoors reads as night (cool
 	# moonlight, warm windows) instead of dusk, but the land stays readable. Under a bright
 	# moon it is held back more (a full moon read as dusk), on a moonless night it adapts
-	# further. Underground it adapts fully to the torch.
-	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(65.0, 135.0, moonlit), 60.0, maxf(daylight, underground))
+	# further. Underground it adapts fully to the torch. By day it opens up further still, so
+	# stepping into a hill's shadow or under a cloud dims the view a little, not a lot.
+	var night_floor := lerpf(65.0, 135.0, moonlit)
+	_cam_attr.auto_exposure_min_sensitivity = lerpf(lerpf(night_floor, 60.0, underground), 40.0, daylight * (1.0 - underground))
 	# The eye loses colour in the dark (rod vision): FrameMend greys and blues the dim
 	# moonlit parts of the frame, leaving lamplight warm.
 	FrameMend.night = (1.0 - daylight) * (1.0 - underground)
