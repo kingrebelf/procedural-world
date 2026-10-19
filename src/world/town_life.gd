@@ -962,6 +962,7 @@ func _process(delta: float) -> void:
 	_hour_t -= delta
 	if _hour_t <= 0.0:
 		_hour_t = 2.0
+		_wind_smoke()
 		var hr := NPCMind.hour_now()
 		var share := _fire_share(hr)
 		for ps in _smokes:
@@ -1769,7 +1770,15 @@ func _torch_post(k: MeshKit, models: Array, root: Node3D, xf: Transform3D, body:
 	fl.add_child(FireFx.embers(0.42, false))
 	_box_shape(body, xf * I.translated(Vector3(0, 1.1, 0)), Vector3(0.18, 2.2, 0.18))
 
-## Chimney smoke: soft puffs that rise, spread and drift off on the wind.
+## The world's wind bends every chimney's smoke over the same way (the material is shared).
+static func _wind_smoke() -> void:
+	if _smoke_pm == null:
+		return
+	var w := Atmosphere.wind_now
+	_smoke_pm.gravity = Vector3(w.x * 0.6, 0.12, w.y * 0.6)
+
+## Chimney smoke: pale puffs that rise straight up off the stack as one thin column, then
+## spread and drift off on the wind (Atmosphere's, see _wind_smoke).
 func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	var p2: Vector2 = e["p"]
 	var l: Vector3 = e["l"]
@@ -1781,9 +1790,10 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 		_smoke_mat.particles_anim_h_frames = 4
 		_smoke_mat.particles_anim_v_frames = 4
-		_smoke_mat.particles_anim_loop = false
+		_smoke_mat.particles_anim_loop = true
 		_smoke_mat.vertex_color_use_as_albedo = true
-		_smoke_mat.albedo_texture = load("res://assets/textures/fx/smoke_flipbook.png")
+		# Ben's light smoke: 16 frames of a thin wisp rolling over, a loop.
+		_smoke_mat.albedo_texture = load("res://assets/textures/fx/smoke_light_flipbook.png")
 		_smoke_mat.roughness = 1.0
 		# Smoke scatters light through itself, so the side away from the sun stays pale
 		# rather than going sooty.
@@ -1792,20 +1802,21 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		_smoke_mat.disable_receive_shadows = true
 		_smoke_pm = ParticleProcessMaterial.new()
 		_smoke_pm.direction = Vector3(0, 1, 0)
-		_smoke_pm.spread = 8.0
-		_smoke_pm.initial_velocity_min = 0.5
-		_smoke_pm.initial_velocity_max = 0.9
-		# Up and away downwind, slowing as it cools.
-		_smoke_pm.gravity = Vector3(0.55, 0.1, 0.24)
-		# Eddies tear the column into drifting puffs instead of a straight pillar.
+		# Warm air off the hearth: all at one speed straight up, so the puffs climb as one
+		# column clear of the roof before they slow and the wind takes them.
+		_smoke_pm.spread = 3.0
+		_smoke_pm.initial_velocity_min = 1.5
+		_smoke_pm.initial_velocity_max = 1.7
+		_smoke_pm.damping_min = 0.04
+		_smoke_pm.damping_max = 0.06
+		_smoke_pm.gravity = Vector3(0.14, 0.12, 0.11) # set from the wind (_wind_smoke)
+		# Slow, broad eddies: the column sways as a whole rather than breaking up.
 		_smoke_pm.turbulence_enabled = true
-		_smoke_pm.turbulence_noise_strength = 1.4
-		_smoke_pm.turbulence_noise_scale = 3.5
-		_smoke_pm.turbulence_noise_speed_random = 0.3
-		_smoke_pm.turbulence_influence_min = 0.06
-		_smoke_pm.turbulence_influence_max = 0.16
-		_smoke_pm.damping_min = 0.05
-		_smoke_pm.damping_max = 0.12
+		_smoke_pm.turbulence_noise_strength = 1.0
+		_smoke_pm.turbulence_noise_scale = 10.0
+		_smoke_pm.turbulence_noise_speed_random = 0.1
+		_smoke_pm.turbulence_influence_min = 0.004
+		_smoke_pm.turbulence_influence_max = 0.012
 		_smoke_pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 		_smoke_pm.emission_sphere_radius = 0.12
 		_smoke_pm.angle_min = -180.0
@@ -1824,18 +1835,18 @@ func _smoke(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 		var g := Gradient.new()
 		# Wood smoke: pale grey-blue from the chimney, thinning to near white.
 		g.set_color(0, Color(0.6, 0.62, 0.66, 0.0))
-		g.add_point(0.1, Color(0.6, 0.62, 0.66, 0.72))
-		g.add_point(0.55, Color(0.76, 0.77, 0.8, 0.42))
+		g.add_point(0.08, Color(0.6, 0.62, 0.66, 0.8))
+		g.add_point(0.55, Color(0.76, 0.77, 0.8, 0.5))
 		g.set_color(g.get_point_count() - 1, Color(0.9, 0.9, 0.92, 0.0))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
 		_smoke_pm.color_ramp = gt
-		_smoke_pm.anim_speed_min = 0.0
-		_smoke_pm.anim_speed_max = 0.0
-		_smoke_pm.anim_offset_min = 0.2
-		_smoke_pm.anim_offset_max = 0.45
+		_smoke_pm.anim_speed_min = 2.0
+		_smoke_pm.anim_speed_max = 3.0
+		_smoke_pm.anim_offset_min = 0.0
+		_smoke_pm.anim_offset_max = 1.0
 	var ps := GPUParticles3D.new()
-	ps.amount = 26
+	ps.amount = 34
 	ps.lifetime = 12.0
 	ps.preprocess = 12.0
 	ps.randomness = 0.4

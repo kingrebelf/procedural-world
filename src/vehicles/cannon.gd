@@ -16,7 +16,7 @@ const AMMO := ["cannon_ball", "hot_shot"]
 const SHOT := {
 	# Solid shot: no burst, it smashes what it strikes (and hot shot sets it alight).
 	"cannon_ball": {"damage": 260.0, "range": 420.0, "tracer": "cannon"},
-	"hot_shot": {"damage": 220.0, "range": 420.0, "tracer": "cannon", "incendiary": 0.95},
+	"hot_shot": {"damage": 220.0, "range": 420.0, "tracer": "cannon", "incendiary": 0.95, "lodges": true},
 }
 
 # --- Model ------------------------------------------------------------------------------

@@ -1827,16 +1827,18 @@ func _cannon_check(game, world, player) -> void:
 	await create_timer(Cannon.LOAD_TIME + 0.3).timeout
 	check(cv.rec.get("load", "") == "hot_shot", "loaded with hot shot")
 	# A timber wall down range, the barrel laid on its middle.
-	var wp: Vector3 = cv.global_position + Vector3(0, 0, -22)
+	# Close enough that nothing (a tree, a passer-by) stands in the ball's way.
+	var wp: Vector3 = cv.global_position + Vector3(0, 0, -11)
 	var gy: float = world.vehicles.ground(wp.x, wp.z)
 	wp.y = gy if not is_nan(gy) else cv.global_position.y
 	var node: ChunkNode = world.streamer.get_chunk(ChunkStreamer.chunk_of(wp))
+	# Fires left from the checks before can't fill the burning list (MAX_BURNING).
+	fs.douse_all()
 	var wall: Dictionary
 	var lit := false
 	for shot in 3:
 		if shot > 0:
-			# Timber catches from hot shot about four times in five, so a wall that was
-			# struck but did not catch is the dice: reload and fire at a fresh wall.
+			# A wall that was struck but did not catch: reload and fire at a fresh wall.
 			node.remove_object(wall["i"])
 			game.inventory.add(ItemDB.make("hot_shot", 1, 1.0, {}))
 			game.inventory.add(ItemDB.make("black_powder", 2, 1.0, {}))
@@ -1852,14 +1854,15 @@ func _cannon_check(game, world, player) -> void:
 		if shot == 0:
 			check(not cv.rec.has("load") and cv.kick > 0.5, "the cannon fires and kicks back")
 		lit = false
-		for i in 90:
+		# The ball flies on physics time: wait for it to strike (capped).
+		for i in 240:
 			await physics_frame
 			if (wall["st"] as Dictionary).has("fire") or float(wall["st"].get("dmg", 0.0)) > 0.0:
 				lit = true
 				break
 		if not lit or (wall["st"] as Dictionary).has("fire"):
 			break
-	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s)" % [wall["st"].keys()])
+	check(lit and (wall["st"] as Dictionary).has("fire"), "hot shot strikes the wall and sets it alight (%s, burning: %s)" % [wall["st"].keys(), fs._burning.values().map(func(b): return b["t"])])
 	player.dismount()
 	fs.douse_all()
 	node.remove_object(wall["i"])
@@ -2683,8 +2686,12 @@ func _layer_checks(world, game) -> void:
 	check(not Eras.themed() or (rs.size() >= 4 and is_equal_approx(rs[0][0], (10 - Eras.base_level) * Eras.LEVEL_STEP)), "level rings sit where the levels change (%s)" % [rs])
 	check(MapLayers.category(MapLayers.ERA, Eras.SCIFI)[1] != "", "eras have names")
 	game.map.set_layer(MapLayers.OFF)
-	await process_frame
-	check(mm._canvas.layer_mask == 0, "the overlay can be turned off")
+	# The minimap redraws on its own clock (ten times a second when still), so wait for it.
+	var off_n := 0
+	while mm._canvas.layer_mask != 0 and off_n < 60:
+		await process_frame
+		off_n += 1
+	check(mm._canvas.layer_mask == 0, "the overlay can be turned off (%d frames)" % off_n)
 
 ## Menus and the armour paper-doll (kept out of _run so its locals stay separate).
 func _menu_checks(world, game, con) -> void:

@@ -31,13 +31,14 @@ const MAX_BURNING := 48
 ## By the fire_fx setting (Low, Normal, High): fires drawn with flames (nearest first),
 ## lit, and lit with shadows, and the smoke particles over each.
 const QUALITY := [
-	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 36},
-	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 72},
-	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 110},
+	{"flames": 6, "lights": 2, "shadows": 0, "smoke": 90},
+	{"flames": 14, "lights": 4, "shadows": 1, "smoke": 170},
+	{"flames": 22, "lights": 6, "shadows": 2, "smoke": 240},
 ]
 static var quality := 1
 const SOUNDS := 4
-const FLAME_RANGE := 260.0
+const FLAME_RANGE := 650.0 ## a house well alight shows its flames from across the valley
+const LIGHT_RANGE := 170.0 ## firelight (without shadows) on what is round a fire
 const SMOKE_RANGE := 1100.0
 const RUIN_SMOKE := 240.0 ## seconds a burnt-out ruin smokes
 const MAX_BEAMS := 24
@@ -449,7 +450,7 @@ func _rank(eye: Vector3, e: Dictionary) -> void:
 			v = nv
 		var fv := v as FireVis
 		var q: Dictionary = QUALITY[quality]
-		fv.set_lod(n < int(q["flames"]) and d < FLAME_RANGE, n < int(q["lights"]) and d < 90.0, n < int(q["shadows"]) and d < 40.0, n < SOUNDS and d < 70.0, d)
+		fv.set_lod(n < int(q["flames"]) and d < FLAME_RANGE, n < int(q["lights"]) and d < LIGHT_RANGE, n < int(q["shadows"]) and d < 40.0, n < SOUNDS and d < 70.0, d)
 		n += 1
 
 # --- Where the flames stand ---------------------------------------------------------------
@@ -988,7 +989,7 @@ class FireVis extends Node3D:
 				f.visible = false
 				for c in f.get_children():
 					if c is GeometryInstance3D:
-						(c as GeometryInstance3D).visibility_range_end = 300.0
+						(c as GeometryInstance3D).visibility_range_end = FireSystem.FLAME_RANGE + 50.0
 				add_child(f)
 				_flames.append(f)
 			_embers = FireFx.embers(_base, false)
@@ -1006,20 +1007,21 @@ class FireVis extends Node3D:
 			_smoke_draw.billboard_keep_scale = true
 			_smoke_draw.particles_anim_h_frames = 4
 			_smoke_draw.particles_anim_v_frames = 4
-			_smoke_draw.particles_anim_loop = false
+			_smoke_draw.particles_anim_loop = true
 			_smoke_draw.vertex_color_use_as_albedo = true
 			_smoke_draw.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
 			_smoke_draw.roughness = 1.0
 			_smoke_draw.proximity_fade_enabled = true
 			_smoke_draw.proximity_fade_distance = 1.2
-			var sheet := "res://assets/textures/fx/smoke_flipbook.png"
+			# Ben's thick smoke: 16 frames of one billow churning over on itself, a loop.
+			var sheet := "res://assets/textures/fx/smoke_heavy_flipbook.png"
 			if ResourceLoader.exists(sheet):
 				_smoke_draw.albedo_texture = load(sheet)
 		_smoke = GPUParticles3D.new()
 		_smoke.name = "Smoke"
 		var big := maxf(box.size.x, box.size.z)
 		_smoke.amount = int(FireSystem.QUALITY[FireSystem.quality]["smoke"]) if not _ground else 24
-		_smoke.lifetime = 13.0 if not _ground else 5.0
+		_smoke.lifetime = 16.0 if not _ground else 5.0
 		_smoke.local_coords = false
 		_smoke.preprocess = 0.0
 		_smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1028,44 +1030,56 @@ class FireVis extends Node3D:
 		_smoke.position = Vector3(0, box.size.y * (0.85 if not _tree else 0.8), 0)
 		_smoke_mat = ParticleProcessMaterial.new()
 		_smoke_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-		_smoke_mat.emission_box_extents = Vector3(box.size.x * 0.3, 0.3, box.size.z * 0.3)
+		# One plume off each fire: puffs born close together out of the top of it, rising
+		# at much the same speed and bent over by the same wind, so they run into one
+		# another as a column (not puffs scattered over the sky), widening as it goes.
+		_smoke_mat.emission_box_extents = Vector3(box.size.x * 0.22, 0.3, box.size.z * 0.22)
 		_smoke_mat.direction = Vector3.UP
-		_smoke_mat.spread = 14.0
-		_smoke_mat.initial_velocity_min = 1.4
-		_smoke_mat.initial_velocity_max = 3.2
-		_smoke_mat.gravity = Vector3(0, 0.3, 0)
-		_smoke_mat.damping_min = 0.15
-		_smoke_mat.damping_max = 0.4
+		_smoke_mat.spread = 4.0
+		_smoke_mat.initial_velocity_min = 4.0
+		_smoke_mat.initial_velocity_max = 4.6
+		_smoke_mat.gravity = Vector3(0, 0.15, 0)
+		_smoke_mat.damping_min = 0.3
+		_smoke_mat.damping_max = 0.36
 		_smoke_mat.angle_min = -180.0
 		_smoke_mat.angle_max = 180.0
 		_smoke_mat.angular_velocity_min = -12.0
 		_smoke_mat.angular_velocity_max = 12.0
 		_smoke_mat.anim_offset_max = 1.0
-		_smoke_mat.scale_min = 0.8
-		_smoke_mat.scale_max = 1.4
+		# Each puff rolls through the loop a few times as it climbs.
+		_smoke_mat.anim_speed_min = 3.0
+		_smoke_mat.anim_speed_max = 4.0
+		_smoke_mat.scale_min = 0.9
+		_smoke_mat.scale_max = 1.2
 		var sc := Curve.new()
-		sc.add_point(Vector2(0.0, 0.35))
-		sc.add_point(Vector2(0.25, 1.0))
-		sc.add_point(Vector2(1.0, 3.2))
+		sc.max_value = 4.0
+		sc.add_point(Vector2(0.0, 0.6))
+		sc.add_point(Vector2(0.25, 1.3))
+		sc.add_point(Vector2(1.0, 3.8))
 		var sct := CurveTexture.new()
 		sct.curve = sc
 		_smoke_mat.scale_curve = sct
 		var g := Gradient.new()
 		g.set_color(0, Color(1, 1, 1, 0.0))
 		g.set_color(1, Color(1, 1, 1, 0.0))
-		g.add_point(0.06, Color(0.8, 0.8, 0.8, 0.85))
-		g.add_point(0.5, Color(1, 1, 1, 0.5))
+		# Each puff is thin and they overlap: the plume is dense where many are, not
+		# where one is, so it has no edges of its own.
+		g.add_point(0.04, Color(0.8, 0.8, 0.8, 1.0))
+		g.add_point(0.45, Color(1, 1, 1, 0.85))
+		g.add_point(0.8, Color(1, 1, 1, 0.4))
 		var gt := GradientTexture1D.new()
 		gt.gradient = g
 		_smoke_mat.color_ramp = gt
 		_smoke_mat.turbulence_enabled = true
-		_smoke_mat.turbulence_noise_strength = 1.2
-		_smoke_mat.turbulence_noise_scale = 6.0
-		_smoke_mat.turbulence_influence_min = 0.05
-		_smoke_mat.turbulence_influence_max = 0.15
+		# Slow, broad eddies: the column meanders as a whole rather than breaking up.
+		_smoke_mat.turbulence_noise_strength = 1.0
+		_smoke_mat.turbulence_noise_scale = 14.0
+		_smoke_mat.turbulence_noise_speed_random = 0.1
+		_smoke_mat.turbulence_influence_min = 0.01
+		_smoke_mat.turbulence_influence_max = 0.03
 		_smoke.process_material = _smoke_mat
 		var q := QuadMesh.new()
-		q.size = Vector2.ONE * clampf(big * 0.35, 1.2, 4.0) * (0.6 if _ground else 1.0)
+		q.size = Vector2.ONE * clampf(big * 0.45, 1.6, 5.0) * (0.6 if _ground else 1.0)
 		q.material = _smoke_draw
 		_smoke.draw_pass_1 = q
 		_smoke.emitting = true
@@ -1095,13 +1109,15 @@ class FireVis extends Node3D:
 			_shadow = shadow
 			if lit and _light == null:
 				_light = FlickerLight.new()
-				_light.light_color = Color(1.0, 0.56, 0.26)
+				_light.light_color = Color(1.0, 0.64, 0.34) # amber, as the town torches
 				_light.light_energy = 2.0
-				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 1.8 + 8.0, 10.0, 32.0)
-				_light.omni_attenuation = 1.2
+				_light.omni_range = clampf(maxf(box.size.x, box.size.z) * 0.9 + 4.0, 6.0, 14.0)
+				# Falls off as light does: warm on the wall and ground by the flames, not a
+				# wash of orange over the whole house and the roofs next door.
+				_light.omni_attenuation = 2.0
 				_light.distance_fade_enabled = true
-				_light.distance_fade_begin = 70.0
-				_light.distance_fade_length = 20.0
+				_light.distance_fade_begin = FireSystem.LIGHT_RANGE - 30.0
+				_light.distance_fade_length = 30.0
 				# Out where the flames are, not inside the walls: a light in the middle of a
 				# house lights only its insides, never the walls, yard and smoke round it.
 				_light.position = _light_spot()
@@ -1123,7 +1139,7 @@ class FireVis extends Node3D:
 				if p != null:
 					(p as AudioStreamPlayer3D).stream_paused = not loud
 		# Far off, fewer puffs.
-		_far = 1.0 if dist < 250.0 else 0.5
+		_far = 1.0 if dist < 400.0 else 0.7
 		_apply()
 
 	func _loop(path: String, db: float) -> AudioStreamPlayer3D:
@@ -1152,17 +1168,23 @@ class FireVis extends Node3D:
 		var ws: float = env.get("wind", 0.3)
 		var wd: Vector2 = env.get("wind_dir", Vector2(0.8, 0.6))
 		var rain: float = env.get("rain", 0.0)
-		_smoke_mat.gravity = Vector3(wd.x * ws * 2.6, 0.25 + h * 0.45, wd.y * ws * 2.6)
+		# Billows straight up off the fire, hot and fast (all at one speed, so it climbs as
+		# one column), slows as it cools, and the wind (Atmosphere's) bends it over and
+		# carries it off the higher it gets.
+		_smoke_mat.direction = Vector3.UP
+		_smoke_mat.gravity = Vector3(wd.x * ws * 2.8, 0.1 + h * 0.3, wd.y * ws * 2.8)
+		var rise := 2.4 + h * 2.6
+		_smoke_mat.initial_velocity_min = rise
+		_smoke_mat.initial_velocity_max = rise + 0.5
 		# Thick dark smoke off a fire well alight; pale off a smoulder; whiter in rain
 		# (steam).
-		var tone := lerpf(0.55, 0.13, smoothstep(0.2, 0.8, h)) if not _ruin else 0.5
+		var tone := lerpf(0.5, 0.07, smoothstep(0.15, 0.7, h)) if not _ruin else 0.5
 		tone = lerpf(tone, 0.75, rain * 0.6)
 		_smoke_mat.color = Color(tone, tone * 0.97, tone * 0.94, clampf(0.25 + h * 0.75 + smoulder, 0.0, 1.0))
-		_smoke_mat.initial_velocity_max = 1.6 + h * 3.0
 		_apply()
 
 	func _apply() -> void:
-		_smoke.amount_ratio = clampf(maxf(_heat * 1.2, _smoulder) + 0.1, 0.1, 1.0) * _far
+		_smoke.amount_ratio = clampf(maxf(_heat * 1.3, _smoulder) + 0.2, 0.2, 1.0) * _far
 		var shown := ceili(_flames.size() * clampf(_heat * 1.15, 0.0, 1.0)) if _near else 0
 		for i in _flames.size():
 			var f: Node3D = _flames[i]
@@ -1172,7 +1194,7 @@ class FireVis extends Node3D:
 		if _embers != null:
 			_embers.visible = _near and _heat > 0.3
 		if _light != null:
-			_light.base = 0.8 + 6.0 * _heat # bright enough to show by day
+			_light.base = 0.6 + 3.2 * _heat
 			_light.visible = _lit and _heat > 0.05
 		if _sound != null:
 			_sound.volume_db = linear_to_db(clampf(_heat * 1.4, 0.02, 1.0)) - 4.0

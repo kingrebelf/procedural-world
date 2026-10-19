@@ -28,6 +28,7 @@ const BUILD := {
 	"capacitor_bank": "_capacitor_bank", "charger_dock": "_charger_dock", "lamp_oil": "_lamp_oil",
 	"hydrogen_cell": "_hydrogen_cell", "fusion_pellets": "_fusion_pellets", "rocket_fuel": "_rocket_fuel",
 	"plasma_fuel": "_plasma_fuel", "void_fuel": "_void_fuel", "star_fuel": "_star_fuel",
+	"cannon_ball": "_cannon_ball", "hot_shot": "_hot_shot",
 }
 
 const BRASS := Color(0.72, 0.53, 0.24)
@@ -92,6 +93,14 @@ static func _make(name: String) -> Material:
 			var m := ItemModels._base(0.42, 0.0, "", 0, 1)
 			m.clearcoat_enabled = true
 			m.clearcoat = 0.3
+			return m
+		"hot_iron":
+			# Iron heated red in the forge: scaled and rough, a dull red heat of its own
+			# deep in it (real heat, as a coal glows; nothing brighter).
+			var m := ItemModels._base(0.8, 0.55, "ammo_pitted", 0.1, 4.0, 0.3)
+			m.emission_enabled = true
+			m.emission = Color(0.85, 0.22, 0.04)
+			m.emission_energy_multiplier = 0.08
 			return m
 		"glow_violet", "glow_sun":
 			# Alien charge: a faint light of its own inside the glass.
@@ -483,6 +492,38 @@ static func _musket_balls(k: MeshKit, r: RandomNumberGenerator, _t: String):
 	for p: Vector3 in spots:
 		k.sphere(FORGED, Transform3D(Basis.IDENTITY, p + Vector3(0, rr, 0)), rr, 10, 14, 0.015, 1.0, Color(0.3, 0.3, 0.32).darkened(r.randf() * 0.15))
 	return _fin(k)
+
+## Round shot: cast iron balls for the field cannon, three on the ground and one on top
+## as the icon stacks them; a 6-pounder's ball, 9 cm across, dark and pitted.
+static func _cannon_ball(k: MeshKit, r: RandomNumberGenerator, _t: String):
+	var rr := 0.045
+	var base := [Vector3(-0.047, 0, 0.027), Vector3(0.047, 0, 0.027), Vector3(0, 0, -0.054)]
+	for p: Vector3 in base:
+		k.sphere(FORGED, Transform3D(Basis.IDENTITY, p + Vector3(0, rr, 0)), rr, 12, 16, 0.006, 1.0, Color(0.27, 0.26, 0.26).darkened(r.randf() * 0.2))
+	k.sphere(FORGED, Transform3D(Basis.IDENTITY, Vector3(0, rr + 0.074, 0)), rr, 12, 16, 0.006, 1.0, Color(0.28, 0.27, 0.27))
+	return _fin(k)
+
+## Hot shot: one ball heated red in the forge, gripped in a smith's tongs: broad curved
+## jaws wrapped round it, a rivet behind, the two handles spreading back to be held.
+static func _hot_shot(k: MeshKit, r: RandomNumberGenerator, _t: String):
+	var rr := 0.045
+	var ball := Vector3(0, rr, 0)
+	k.sphere("own:hot_iron", Transform3D(Basis.IDENTITY, ball), rr, 12, 16, 0.008, 1.0, Color(0.3, 0.1, 0.06).lerp(RUST, 0.2 + r.randf() * 0.15))
+	var pivot := ball + Vector3(0, 0, -rr - 0.03)
+	var tong := IRON.darkened(0.25)
+	for s: float in [-1.0, 1.0]:
+		# A jaw: a flat band bent round the ball's side, from behind it to the front.
+		for n in 10:
+			var a := lerpf(-0.35, 1.9, n / 9.0) # 0 = straight out to the side
+			var at := ball + Vector3(s * cos(a) * (rr + 0.004), 0, -sin(a - 0.5) * (rr + 0.004))
+			var face := Basis(Vector3.UP, s * (a - PI * 0.5))
+			k.box(FORGED, Transform3D(face, at), Vector3(0.007, 0.036, 0.02), tong)
+		# Its handle, from the rivet back and out.
+		var dir := Vector3(s * 0.45, 0.0, -1.0).normalized()
+		var mid := pivot + dir * 0.085
+		k.box(FORGED, Transform3D(Basis.looking_at(dir, Vector3.UP), mid), Vector3(0.012, 0.009, 0.17), tong)
+	k.cylinder(FORGED, Transform3D(Basis.IDENTITY, pivot + Vector3(0, -0.008, 0)), 0.009, 0.009, 0.016, 8, true, 0.0, 1, IRON.darkened(0.4))
+	return _fin(k, pivot + Vector3(0, 0, -0.14))
 
 ## Box of rounds: an open brown cardboard box, flaps folded out, copper noses packed in rows.
 static func _rounds_box(k: MeshKit, _r: RandomNumberGenerator, _t: String):

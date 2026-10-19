@@ -10,7 +10,7 @@ class_name GearModels
 ## its model to check the match.
 
 ## Items with an icon and no model yet (the hand holds the icon on a card).
-const OWED := {}
+const OWED := {"cannon": true}
 
 ## Every item that has an icon on a sheet.
 static func icon_items() -> Array:
