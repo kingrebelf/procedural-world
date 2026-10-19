@@ -6035,15 +6035,18 @@ func test_deposits() -> void:
 	check(tiers.keys() == [1] and ores.size() >= 4, "near spawn only common ore, of several kinds (%s)" % [ores.keys()])
 	var deep := {}
 	for cx in 300:
-		for d in Deposits.roll(4242, cx, 9, 99, "xeno", true):
+		for d in Deposits.roll(4242, cx, 9, 99, "xeno"):
 			deep[int(d["tier"])] = true
 			check(int(d["total"]) >= int(Deposits.TIERS[int(d["tier"])][1]), "a deposit is at least its tier's least size")
-	check(deep.has(5) and deep.has(4) and deep.has(3), "out on an alien world all five tiers turn up (%s)" % [deep.keys()])
-	var human5 := false
+	check(deep.has(5) and deep.has(4) and deep.has(3), "far out all five tiers turn up (%s)" % [deep.keys()])
+	var mid5 := false
+	var far5 := false
 	for cx in 300:
-		for d in Deposits.roll(4242, cx, 9, 99, "", false):
-			human5 = human5 or int(d["tier"]) == 5
-	check(not human5, "alien ore stays on alien worlds")
+		for d in Deposits.roll(4242, cx, 9, 40, ""):
+			mid5 = mid5 or int(d["tier"]) == 5
+		for d in Deposits.roll(4242, cx, 9, 99, ""):
+			far5 = far5 or int(d["tier"]) == 5
+	check(not mid5 and far5, "tier 5 ore lies only in the far outer zones, on the home world too")
 	# Rarer tiers are worth more at market.
 	var top := [0, 0, 0, 0, 0, 0]
 	var low := [0, 9999, 9999, 9999, 9999, 9999]

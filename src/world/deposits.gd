@@ -29,10 +29,10 @@ const LEAN := {
 }
 
 ## The deposits of tile (cx, cz) on a planet: [{ore, tier, total}], richest tier first.
-## `zone`: the tile's zone level; `kind`: the planet kind; `alien`: an alien world.
-static func roll(seed: int, cx: int, cz: int, zone: int, kind := "", alien := false) -> Array:
+## `zone`: the tile's zone level (tier 5 lies only far out); `kind`: the planet kind.
+static func roll(seed: int, cx: int, cz: int, zone: int, kind := "") -> Array:
 	var lean: Dictionary = LEAN.get(kind, {})
-	var lode := mother_lode(seed, alien)
+	var lode := mother_lode(seed)
 	var out: Array = []
 	var salt := 0
 	for tier in [5, 4, 3, 2, 1]:
@@ -42,7 +42,7 @@ static func roll(seed: int, cx: int, cz: int, zone: int, kind := "", alien := fa
 			picks = 2 if WHash.unit2(seed, cx, cz, 9100) < SECOND_T1 else 1
 		for p in picks:
 			salt += 1
-			var ores := ores_for(tier, zone, alien)
+			var ores := ores_for(tier, zone)
 			if ores.is_empty():
 				break
 			# Odds (and which ore) weighed by the planet's leanings.
@@ -72,21 +72,19 @@ static func roll(seed: int, cx: int, cz: int, zone: int, kind := "", alien := fa
 	return out
 
 ## The ores of a tier that can lie in a tile of zone level `zone`.
-static func ores_for(tier: int, zone: int, alien: bool) -> Array:
+static func ores_for(tier: int, zone: int) -> Array:
 	var out: Array = []
 	for e in ORES:
 		if int(e[1]) != tier or zone < maxi(int(e[2]), ItemDB.unlock_level(e[0])):
-			continue
-		if tier == 5 and not alien:
 			continue
 		out.append(e[0])
 	return out
 
 ## The one ore a planet is unusually rich in, from what its land can hold.
-static func mother_lode(seed: int, alien: bool) -> String:
+static func mother_lode(seed: int) -> String:
 	var all: Array = []
 	for tier in range(1, 6):
-		all.append_array(ores_for(tier, 99, alien))
+		all.append_array(ores_for(tier, 99))
 	return all[WHash.hash2(seed, 0, 0, 9199) % all.size()] if not all.is_empty() else ""
 
 static func tier_of(ore: String) -> int:
@@ -114,7 +112,7 @@ static func of_chunk(data: Dictionary) -> Array:
 		var p: Dictionary = game.planet_info() if game != null and game.store != null else {}
 		var c := Vector2((cx + 0.5) * ChunkGenerator.SIZE, (cz + 0.5) * ChunkGenerator.SIZE)
 		var zone := Eras.zone_level(c.x, c.y) if Eras.themed() else 99
-		_cache[key] = roll(seed, cx, cz, zone, String(p.get("kind", "")), String(p.get("theme", "")) == "alien")
+		_cache[key] = roll(seed, cx, cz, zone, String(p.get("kind", "")))
 	var mined: Dictionary = data.get("dep", {})
 	var out: Array = []
 	for d in _cache[key]:
