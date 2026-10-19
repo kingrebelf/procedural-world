@@ -25,7 +25,12 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	add_to_group("trade_ui")
-	Game.inventory.changed.connect(_refresh)
+	Game.inventory.changed.connect(func():
+		# Crafting changes only the counts; update the open list instead of rebuilding it.
+		if _mode == "craft" and not _craft_cards.is_empty():
+			_update_craft_cards()
+		else:
+			_refresh())
 	Game.money_changed.connect(func(_m): _refresh())
 	Game.stats_changed.connect(func(): if _mode == "character": _refresh())
 	Game.equipment_changed.connect(func(): if _mode == "inventory" or _mode == "character": _refresh())
@@ -737,6 +742,7 @@ var _craft_scroll := 0
 var _craft_tab := "All"
 var _craft_find := ""
 var _craft_ready_only := false
+var _craft_cards: Array = [] ## the open list's card updaters (see _update_craft_cards)
 
 ## True when the recipe is in the open tab and passes the search and "Can craft now".
 func _craft_shows(r: Dictionary, stations: Dictionary) -> bool:
@@ -846,75 +852,129 @@ func _craft_panel() -> Control:
 func _fill_craft_list(list: VBoxContainer, stations: Dictionary) -> void:
 	for c in list.get_children():
 		c.queue_free()
+	_craft_cards.clear()
 	# Recipes you can make first, then the rest in their usual order.
 	var order: Array = Recipes.LIST.filter(func(r): return _craft_shows(r, stations))
 	var lv := Game.stats.level
-	var ready := func(r): return _craft_ready(r, stations)
-	# Locked recipes go last, soonest unlocked first.
-	order.sort_custom(func(x, y):
-		if ready.call(x) != ready.call(y):
-			return ready.call(x)
-		return Recipes.unlock_level(x["out"]) < Recipes.unlock_level(y["out"]) and not Recipes.level_ok(x, lv))
+	# Locked recipes go last, soonest unlocked first. Readiness is worked out once per
+	# recipe, not twice per comparison.
+	var keyed := order.map(func(r): return [_craft_ready(r, stations), r])
+	keyed.sort_custom(func(a, b):
+		if a[0] != b[0]:
+			return a[0]
+		var x: Dictionary = a[1]
+		return Recipes.unlock_level(x["out"]) < Recipes.unlock_level(b[1]["out"]) and not Recipes.level_ok(x, lv))
+	order = keyed.map(func(k): return k[1])
 	if order.is_empty():
 		var msg := "Nothing you can craft here right now." if _craft_ready_only else "No recipes match."
 		list.add_child(UITheme.label(msg, 16, UITheme.DIM))
 	for r in order:
-		var at_ok := Recipes.station_ok(r, stations)
+		_craft_cards.append(_craft_card(list, r, stations))
+	_update_craft_cards()
+
+## Brings every recipe card up to date with the pack in place, so crafting does not
+## rebuild the whole list (hundreds of cards, a visible freeze) after each item.
+func _update_craft_cards() -> void:
+	# One count per item type, not a pass over the pack for every chip of every card.
+	var have := {}
+	for it in Game.inventory.slots:
+		if it != null:
+			have[it["type"]] = have.get(it["type"], 0) + int(it["qty"])
+	var lv := Game.stats.level
+	for c in _craft_cards:
+		(c as Callable).call(have, lv)
+
+## Builds one recipe's card into `list`; returns the Callable(have, level) that refreshes it.
+func _craft_card(list: VBoxContainer, r: Dictionary, stations: Dictionary) -> Callable:
+	var at_ok := Recipes.station_ok(r, stations)
+	var card := PanelContainer.new()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	card.add_child(row)
+	row.add_child(_icon_rect(r["out"], 52))
+	var name_box := VBoxContainer.new()
+	name_box.custom_minimum_size = Vector2(210, 0)
+	var title := UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17)
+	name_box.add_child(title)
+	var status := UITheme.label("", 13)
+	name_box.add_child(status)
+	row.add_child(name_box)
+	var ins := HBoxContainer.new()
+	ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ins.add_theme_constant_override("separation", 12)
+	var counts := {}
+	for t in r["in"]:
+		var chip := HBoxContainer.new()
+		chip.add_theme_constant_override("separation", 4)
+		chip.add_child(_icon_rect(t, 30))
+		var n := UITheme.label("", 15)
+		counts[t] = n
+		chip.add_child(n)
+		chip.tooltip_text = ItemDB.def(t)["name"]
+		ins.add_child(chip)
+	# Tools the recipe needs but does not use up.
+	var tool_tags := {}
+	for t in r.get("tools", []):
+		var chip := HBoxContainer.new()
+		chip.add_theme_constant_override("separation", 4)
+		chip.add_child(_icon_rect(t, 30))
+		var tag := UITheme.label("tool", 13)
+		tool_tags[t] = tag
+		chip.add_child(tag)
+		chip.tooltip_text = "%s (not used up)" % ItemDB.def(t)["name"]
+		ins.add_child(chip)
+	row.add_child(ins)
+	var amounts := {}
+	for n in CRAFT_AMOUNTS:
+		var amount: int = n
+		var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount, stations))
+		_small_button(b)
+		b.custom_minimum_size = Vector2(54, 0)
+		amounts[amount] = b
+		row.add_child(b)
+	var all := UITheme.button("All", func(): _do_craft(r, -1, stations))
+	_small_button(all)
+	all.custom_minimum_size = Vector2(60, 0)
+	row.add_child(all)
+	list.add_child(card)
+	var shown := [null] # the card's look last set, so an unchanged card is left alone
+	return func(have: Dictionary, lv: int) -> void:
 		var unlocked := Recipes.level_ok(r, lv)
-		var most := Recipes.max_crafts(Game.inventory, r) if at_ok and unlocked else 0
-		var card := PanelContainer.new()
-		card.add_theme_stylebox_override("panel", UITheme.tex_sb("tab" if most > 0 else "disabled", 10, 6))
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		card.add_child(row)
-		row.add_child(_icon_rect(r["out"], 52))
-		var name_box := VBoxContainer.new()
-		name_box.custom_minimum_size = Vector2(210, 0)
-		name_box.add_child(UITheme.label("%s%s" % [ItemDB.def(r["out"])["name"], (" x%d" % r["qty"]) if r["qty"] > 1 else ""], 17, UITheme.TEXT if most > 0 else UITheme.DIM))
-		var status := ("Can make %d" % most) if most > 0 else "Missing materials"
-		if not unlocked:
-			status = "Unlocks at level %d" % Recipes.unlock_level(r["out"])
-		elif not at_ok:
-			status = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
-		var no_tools := Recipes.missing_tools(Game.inventory, r)
-		if unlocked and at_ok and not no_tools.is_empty():
-			status = "Needs %s in your pack" % ", ".join(no_tools.map(func(t): return ItemDB.def(t)["name"]))
-		name_box.add_child(UITheme.label(status, 13, UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked or not no_tools.is_empty() else UITheme.DIM)))
-		row.add_child(name_box)
-		var ins := HBoxContainer.new()
-		ins.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		ins.add_theme_constant_override("separation", 12)
+		var enough := true
 		for t in r["in"]:
-			var have: int = Game.inventory.count(t)
+			enough = enough and int(have.get(t, 0)) >= int(r["in"][t])
+		# The full check (tools, pack room) only for cards with the materials to hand.
+		var most := Recipes.max_crafts(Game.inventory, r) if at_ok and unlocked and enough else 0
+		var no_tools: Array = r.get("tools", []).filter(func(t): return int(have.get(t, 0)) <= 0)
+		var look := [most, unlocked, no_tools.size()]
+		for t in r["in"]:
+			look.append(have.get(t, 0))
+		for t in tool_tags:
+			look.append(have.get(t, 0) > 0)
+		if look == shown[0]:
+			return
+		shown[0] = look
+		card.add_theme_stylebox_override("panel", UITheme.tex_sb("tab" if most > 0 else "disabled", 10, 6))
+		title.add_theme_color_override("font_color", UITheme.TEXT if most > 0 else UITheme.DIM)
+		var text := ("Can make %d" % most) if most > 0 else "Missing materials"
+		if not unlocked:
+			text = "Unlocks at level %d" % Recipes.unlock_level(r["out"])
+		elif not at_ok:
+			text = "Needs a %s nearby" % Recipes.STATION_NAMES.get(r["at"], r["at"])
+		if unlocked and at_ok and not no_tools.is_empty():
+			text = "Needs %s in your pack" % ", ".join(no_tools.map(func(t): return ItemDB.def(t)["name"]))
+		status.text = text
+		status.add_theme_color_override("font_color", UITheme.ACCENT if most > 0 else (Color(0.9, 0.55, 0.4) if not at_ok or not unlocked or not no_tools.is_empty() else UITheme.DIM))
+		for t in counts:
+			var got: int = have.get(t, 0)
 			var need: int = r["in"][t]
-			var chip := HBoxContainer.new()
-			chip.add_theme_constant_override("separation", 4)
-			chip.add_child(_icon_rect(t, 30))
-			chip.add_child(UITheme.label("%d/%d" % [have, need], 15, UITheme.TEXT if have >= need else Color(0.9, 0.45, 0.4)))
-			chip.tooltip_text = ItemDB.def(t)["name"]
-			ins.add_child(chip)
-		# Tools the recipe needs but does not use up.
-		for t in r.get("tools", []):
-			var chip := HBoxContainer.new()
-			chip.add_theme_constant_override("separation", 4)
-			chip.add_child(_icon_rect(t, 30))
-			chip.add_child(UITheme.label("tool", 13, UITheme.DIM if Game.inventory.count(t) > 0 else Color(0.9, 0.45, 0.4)))
-			chip.tooltip_text = "%s (not used up)" % ItemDB.def(t)["name"]
-			ins.add_child(chip)
-		row.add_child(ins)
-		for n in CRAFT_AMOUNTS:
-			var amount: int = n
-			var b := UITheme.button("x%d" % amount, func(): _do_craft(r, amount, stations))
-			_small_button(b)
-			b.custom_minimum_size = Vector2(54, 0)
-			b.disabled = most < amount
-			row.add_child(b)
-		var all := UITheme.button("All", func(): _do_craft(r, -1, stations))
-		_small_button(all)
-		all.custom_minimum_size = Vector2(60, 0)
+			counts[t].text = "%d/%d" % [got, need]
+			counts[t].add_theme_color_override("font_color", UITheme.TEXT if got >= need else Color(0.9, 0.45, 0.4))
+		for t in tool_tags:
+			tool_tags[t].add_theme_color_override("font_color", UITheme.DIM if have.get(t, 0) > 0 else Color(0.9, 0.45, 0.4))
+		for amount in amounts:
+			amounts[amount].disabled = most < amount
 		all.disabled = most <= 0
-		row.add_child(all)
-		list.add_child(card)
 
 # --- Storage -------------------------------------------------------------------------
 

@@ -824,6 +824,10 @@ static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, t
 	for t in recipe["in"]:
 		q_sum += inv.average_quality(t) * recipe["in"][t]
 		q_n += recipe["in"][t]
+	# One `changed` for the whole craft: every listener (the open crafting screen, the
+	# hotbar, the held item) rebuilds on it, and a remove per input plus an add per item
+	# made rebuilt them all several times in one frame, a visible hitch.
+	inv.set_block_signals(true)
 	for t in recipe["in"]:
 		inv.remove_type(t, recipe["in"][t] * n)
 	var o := origin.duplicate()
@@ -837,4 +841,6 @@ static func craft_many(inv: Inventory, recipe: Dictionary, origin: Dictionary, t
 		rng.randomize()
 		for k in n * int(recipe["qty"]):
 			inv.add(ItemDB.make(recipe["out"], 1, q, o, rng, clampf((skill - 1.0) * 1.5, 0.0, 0.3)))
+	inv.set_block_signals(false)
+	inv.changed.emit()
 	return n
