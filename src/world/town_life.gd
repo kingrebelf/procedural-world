@@ -1481,6 +1481,15 @@ func _paving(root: Node3D, e: Dictionary, o2: Vector2, oy: float) -> void:
 	var rad: float = e["rad"]
 	var streets: float = e["streets"]
 	var seed := int(e["seed"])
+	# Where snow lies deep round the town the setts are buried under it: lay none, so their
+	# frayed edge never shows as squares against the ground's own snow.
+	# (As GroundCover lays it and the shaders' wear_snow has it: up past the snow line, or
+	# deep in the cold belt, ClimateWear.levels' cold.)
+	var gy := _ground(c.x, c.y)
+	if not is_nan(gy):
+		var cold := 1.0 - smoothstep(0.08, 0.32, gen.field.climate_at(c.x, c.y).x)
+		if maxf(smoothstep(0.7, 1.0, cold), smoothstep(WorldField.snow_line - 6.0, WorldField.snow_line + 8.0, gy)) > 0.6:
+			return
 	var pl := plan(gen, site)
 	var roads: Array = []
 	for rd in gen.roads_near(c.x - streets, c.y - streets, c.x + streets, c.y + streets):

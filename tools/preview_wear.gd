@@ -113,12 +113,14 @@ func _initialize() -> void:
 		var spruce := MultiMeshInstance3D.new()
 		spruce.multimesh = _one(RealTree.build("pine", 7, 0), Transform3D(Basis(), Vector3(x - 4.0, 0, -9.0)), Color(1, 1, 1, 1))
 		vp.add_child(spruce)
+		_setts(vp, Vector2(x + 15.0, 16.0), 4.5)
 		print("%s at x %.0f" % [CLIMATES[i][0], x])
 	var mid := (n - 1) * GAP * 0.5
 	var shots := [["row", Vector3(mid, 10.0, 78.0), Vector3(mid, 3.0, 0.0)]]
 	for i in n:
 		shots.append([CLIMATES[i][0], Vector3(i * GAP + 7.0, 3.0, 15.0), Vector3(i * GAP, 2.2, 0.0)])
 	shots.append(["cold_tower", Vector3(2 * GAP + 2.0, 20.0, 18.0), Vector3(2 * GAP + 12.0, 7.0, -6.0)])
+	shots.append(["cold_setts", Vector3(2 * GAP + 15.0, 4.5, 25.0), Vector3(2 * GAP + 15.0, 0.0, 15.0)])
 	shots.append(["wet_inside", Vector3(GAP + 0.5, 1.7, 0.8), Vector3(GAP - 2.5, 0.8, -2.5)])
 	await process_frame
 	for shot in shots:
@@ -130,6 +132,65 @@ func _initialize() -> void:
 		vp.get_texture().get_image().save_png(path)
 		print("saved ", path)
 	quit()
+
+## A paved patch on the terrain strip, laid as TownLife._paving lays a square: metre setts,
+## quarter cells at the ragged rim with some missing, the grime over them (red how near the
+## rim), and a stretch of wall standing on it for snow to drift against.
+func _setts(vp: Node, c: Vector2, rad: float) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var grime := SurfaceTool.new()
+	grime.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var margin := func(q: Vector2) -> float:
+		var a := (q - c).angle()
+		return rad + 0.8 * sin(a * 3.0) + 0.4 * sin(a * 7.0) - q.distance_to(c)
+	var quad := func(q0: Vector2, sz: float) -> void:
+		var v: Array[Vector3] = []
+		for cq: Vector2 in [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]:
+			var q := q0 + cq * sz
+			v.append(Vector3(q.x, 0.055, q.y))
+		for idx in [0, 1, 2, 0, 2, 3]:
+			st.set_color(Color(0.8, 0.78, 0.75))
+			st.set_normal(Vector3.UP)
+			st.set_uv(Vector2(v[idx].x, v[idx].z))
+			st.add_vertex(v[idx])
+			var m: float = margin.call(Vector2(v[idx].x, v[idx].z))
+			grime.set_normal(Vector3.UP)
+			grime.set_color(Color(1.0 - clampf(m / 2.5, 0.0, 1.0), 0.0, 0.0, 1.0))
+			grime.add_vertex(v[idx] + Vector3(0, 0.012, 0))
+	var n := int(ceil(rad + 1.5))
+	for j in range(-n, n):
+		for i in range(-n, n):
+			var q0 := c + Vector2(i, j)
+			var low := INF
+			for cq: Vector2 in [Vector2(0.25, 0.25), Vector2(0.75, 0.25), Vector2(0.25, 0.75), Vector2(0.75, 0.75)]:
+				low = minf(low, margin.call(q0 + cq))
+			if low > 1.2:
+				quad.call(q0, 1.0)
+			elif low > -1.0:
+				for sj in 4:
+					for si in 4:
+						var qc := q0 + Vector2(si * 0.25 + 0.125, sj * 0.25 + 0.125)
+						var m: float = margin.call(qc)
+						var hsh := fposmod(sin(qc.x * 91.7 + qc.y * 47.3) * 43758.5453, 1.0)
+						if m <= 0.0 or (m < 1.2 and hsh < 0.55 * (1.0 - m / 1.2)):
+							continue
+						quad.call(q0 + Vector2(si, sj) * 0.25, 0.25)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	mi.material_override = Materials.get_mat("cobble")
+	vp.add_child(mi)
+	var gi := MeshInstance3D.new()
+	gi.mesh = grime.commit()
+	gi.material_override = Materials.get_mat("sett_grime")
+	vp.add_child(gi)
+	var wall := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(4.0, 3.0, 0.6)
+	wall.mesh = bm
+	wall.material_override = Materials.worn("castle_stone")
+	wall.position = Vector3(c.x - 0.5, 1.5, c.y - 2.0)
+	vp.add_child(wall)
 
 ## Clumps of a grass species scattered over a disc, tinted meadow green (as ChunkNode lays
 ## them: INSTANCE_CUSTOM the tint, alpha 0).
