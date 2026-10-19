@@ -373,6 +373,8 @@ static func worn(name: String) -> Material:
 ## species can have its own palette while sharing one material and one draw state.
 ## "crystal@N" and "glow@N" are hue buckets (N of 12) for emissive parts.
 static func _get_mat(name: String) -> Material:
+	if name.begins_with("rug:") or name == "rug_fringe":
+		return Rugs.material(name)
 	var m: BaseMaterial3D
 	if name.contains("@"):
 		var parts := name.split("@")

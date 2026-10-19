@@ -663,6 +663,32 @@ func test_house_interiors() -> void:
 		var floor_at := inside.y - _ray_hit(faces, inside, Vector3(0, -2.0, inside.z))
 		check(absf(floor_at - KitHouse.FLOOR) < 0.01, "%s: the floor collides where it is drawn (%.2f)" % [t, floor_at])
 
+## Rugs are woven, not painted planes: every room's rug is drawn by the rug shader at its
+## own size (border, pattern, wear; nothing in it glows), and a knotted rug has a fringe.
+func test_woven_rugs() -> void:
+	var rooms: Dictionary = {}
+	for t in KitHouse.RUGS:
+		rooms[t] = [KitHouse.RUGS[t], ObjectLibrary.get_mesh(t + "~in")]
+	for t in Interiors.RUGS:
+		rooms[t] = [Interiors.RUGS[t], ObjectLibrary.get_mesh(t + "~in")]
+	for t in rooms:
+		var kind: String = rooms[t][0][0]
+		var mesh: Mesh = rooms[t][1]
+		var rug: ShaderMaterial = null
+		var fringe := false
+		for i in mesh.get_surface_count():
+			var m := mesh.surface_get_material(i)
+			if m is ShaderMaterial and m.resource_name.begins_with("rug:"):
+				rug = m
+			fringe = fringe or m == Materials.get_mat("rug_fringe")
+		check(rug != null and Rugs.KINDS.has(kind), "%s has a woven %s rug" % [t, kind])
+		if rug == null:
+			continue
+		var sz: Vector2 = rug.get_shader_parameter("size_m")
+		check(sz.is_equal_approx(rooms[t][0][2]), "%s: the rug's pattern is laid out at its size (%s)" % [t, sz])
+		check(not rug.shader.code.contains("EMISSION"), "%s: nothing in the rug glows" % t)
+		check(fringe == (Rugs.KINDS[kind][5] == 0), "%s: a knotted rug is fringed, a flatweave bound" % t)
+
 ## Sunbeams come in where a tower's arrow slits are: a ray along each window's normal
 ## passes the walls there into the room, and the beams' boxes are built.
 func test_sun_windows() -> void:

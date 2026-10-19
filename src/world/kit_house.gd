@@ -105,11 +105,11 @@ const FURNISH := {
 	],
 }
 
-## Rug under each room's middle: [material, centre, size].
+## Rug under each room's middle: [Rugs kind, centre, size].
 const RUGS := {
-	"cottage": ["cloth", Vector3(-0.1, 0, 0.45), Vector2(1.2, 1.9)],
-	"townhouse": ["cloth_blue", Vector3(-0.2, 0, -0.2), Vector2(3.4, 2.4)],
-	"longhouse": ["cloth", Vector3(0, 0, -0.2), Vector2(3.2, 4.2)],
+	"cottage": ["red", Vector3(-0.1, 0, 0.45), Vector2(1.2, 1.9)],
+	"townhouse": ["blue", Vector3(-0.2, 0, -0.2), Vector2(3.4, 2.4)],
+	"longhouse": ["red", Vector3(0, 0, -0.2), Vector2(3.2, 4.2)],
 }
 
 static func has(t: String) -> bool:
@@ -252,7 +252,7 @@ static func interior(t: String) -> ArrayMesh:
 	var rug: Array = RUGS[t]
 	var rc: Vector3 = rug[1]
 	var rs: Vector2 = rug[2]
-	k.box(rug[0], I.translated(Vector3(rc.x, FLOOR + 0.006, rc.z)), Vector3(rs.x, 0.012, rs.y))
+	Rugs.add(k, rug[0], Vector3(rc.x, FLOOR, rc.z), rs, WHash.str_hash(t + "~rug"))
 	_trim(k, t)
 	k.commit(Materials.get_mat, mesh)
 	return mesh
