@@ -415,7 +415,7 @@ func _physics_process(delta: float) -> void:
 			_snap_to_ground()
 		else:
 			return
-	_keep_on_globe()
+	_keep_in_bounds()
 	_cooldown = maxf(0.0, _cooldown - delta)
 	if Game.health < Game.max_health() and Game.health > 0.0 and Game.wearing_affix("mending"):
 		Game.set_health(Game.health + delta * 0.8)
@@ -2220,28 +2220,31 @@ func dismount(force := false) -> void:
 	_focus_t = 0.0
 
 ## Riding: the vehicle takes the move keys; you sit on it and look around freely.
-var _ice_warned := 0
+var _edge_warned := 0
 
-## On a globe (Globe), going past the seam brings you (and what you ride) round to the
-## other side of the world, and the pack ice at the poles turns you back.
-func _keep_on_globe() -> void:
-	if not Globe.on():
+## In a finite world (WorldBounds) the barrier at its edge holds you (and what you ride)
+## in; EdgeField shows it as you reach it.
+func _keep_in_bounds() -> void:
+	if not WorldBounds.on():
 		return
 	var riding := vehicle != null and is_instance_valid(vehicle)
-	var who: Node3D = vehicle if riding else self
-	var c := Globe.confine(who.global_position)
-	var step: Vector3 = c[0] - who.global_position
-	if step == Vector3.ZERO:
+	var who: CharacterBody3D = vehicle if riding else self
+	var c := WorldBounds.confine(who.global_position)
+	if not c[1]:
 		return
+	var step: Vector3 = c[0] - who.global_position
 	global_position += step
 	if riding:
 		vehicle.global_position += step
-	if c[1]:
-		var body3: CharacterBody3D = vehicle if riding else self
-		body3.velocity.z = 0.0
-		if _ice_warned < Time.get_ticks_msec():
-			_ice_warned = Time.get_ticks_msec() + 4000
-			Game.toast.emit("Pack ice: the way %s is closed" % ("north" if who.global_position.z < 0.0 else "south"))
+	# Stop only the part of the motion that pushes outward.
+	var out := Vector3(signf(-step.x), 0.0, signf(-step.z))
+	if out.x != 0.0 and signf(who.velocity.x) == out.x:
+		who.velocity.x = 0.0
+	if out.z != 0.0 and signf(who.velocity.z) == out.z:
+		who.velocity.z = 0.0
+	if _edge_warned < Time.get_ticks_msec():
+		_edge_warned = Time.get_ticks_msec() + 6000
+		Game.toast.emit("The edge of the world: you can go no further")
 
 func _ride(delta: float) -> void:
 	var v := vehicle

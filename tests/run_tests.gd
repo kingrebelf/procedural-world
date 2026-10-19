@@ -6547,40 +6547,50 @@ func test_movers_layer() -> void:
 	check(a.layers == 1 and b.layers == 1, "movers: back on layer 1")
 	root.free()
 
-# --- v22: finite globe worlds ---------------------------------------------------
+# --- v22: finite worlds -------------------------------------------------------
 
-func test_globe() -> void:
+func test_world_bounds() -> void:
 	var was := _human_world()
-	check(not Globe.on(), "a world without globe meta is endless")
-	var sys := Planets.system(4242, "human", "medium")
-	check(sys[0]["tiles"] == Vector2i(256, 128), "medium home world is 256 x 128 tiles")
-	for p in sys:
-		var t: Vector2i = p["tiles"]
-		check(t.x == t.y * 2 and t.y % 8 == 0 and t.y >= 8, "planet %d tiles %s are a 2:1 map" % [p["n"], t])
-	check(var_to_str(Planets.system(4242, "human")) != var_to_str(sys), "globe size changes only globe worlds")
+	check(not WorldBounds.on(), "a world without tiles meta is endless")
+	var sys := Planets.system(4242, "human", WorldBounds.TILES)
+	check(sys[0]["tiles"] == 1200, "a new world is 1200 x 1200 tiles")
+	check(var_to_str(Planets.system(4242, "human")) != var_to_str(sys), "the size only touches finite worlds")
 	Planets.apply(sys[0])
-	check(Globe.on() and Globe.span() == Vector2(16384, 8192), "medium globe spans 16.4 x 8.2 km")
-	var w := Globe.span().x
-	check(is_equal_approx(Globe.wrap_x(w * 0.5 + 10.0), -w * 0.5 + 10.0), "past the east seam is the far west")
-	check(is_equal_approx(Globe.wrap_x(123.0), 123.0), "inside the world x stays put")
-	check(Globe.wrap_tile(Vector2i(128, 3)) == Vector2i(-128, 3) and Globe.wrap_tile(Vector2i(-129, 0)) == Vector2i(127, 0), "tile keys wrap")
-	check(is_equal_approx(Globe.offset(Vector2(w * 0.5 - 5.0, 0), Vector2(-w * 0.5 + 5.0, 0)).x, 10.0), "shortest way round crosses the seam")
-	check(absf(Globe.latitude(0.0) - Globe.HOME_LAT) < 0.01 and is_equal_approx(Globe.latitude(Globe.north()), 90.0) and is_equal_approx(Globe.latitude(Globe.south()), -90.0), "latitudes")
-	check(Globe.contains(Vector2i(0, 0)) and not Globe.contains(Vector2i(0, int(Globe.south() / 64.0) + 1)), "tiles beyond the south rim are not the world's")
-	var c: Array = Globe.confine(Vector3(0, 5, Globe.north() - 50.0))
-	check(c[1] and (c[0] as Vector3).z > Globe.north(), "pack ice turns you back at the north rim")
-	var f := WorldField.new(4242)
-	check(Globe.sea(0, 0) == 0.0, "the land round spawn is untouched")
-	for z in [-1000.0, 0.0, 1500.0]:
-		for x in [w * 0.5, -w * 0.5, w * 0.5 - 400.0, -w * 0.5 + 400.0]:
-			check(f.height(x, z) < Water.LEVEL - 4.0, "open sea at the seam (%d, %d): %.1f" % [x, z, f.height(x, z)])
-	check(f.height(0, Globe.north() + 50.0) < Water.LEVEL - 4.0 and f.height(0, Globe.south() - 50.0) < Water.LEVEL - 4.0, "polar seas at the rims")
-	var g := ChunkGenerator.new(4242, true)
-	check(g.settlements_near(w * 0.5 - 900.0, -2000.0, w * 0.5 + 900.0, 2000.0).is_empty(), "no town in the seam's ocean")
-	var hot := f.climate_at(0, (Globe.north() + Globe.south()) * 0.5).x
-	var cold := f.climate_at(0, Globe.north() + 900.0).x
-	check(hot > 0.6 and cold < 0.3, "warm toward the equator (%.2f), cold toward the pole (%.2f)" % [hot, cold])
-	check(absf(f.climate_at(0, 0).x - 0.5) < 0.15, "spawn stays temperate")
+	check(WorldBounds.on() and is_equal_approx(WorldBounds.half(), 38400.0), "76.8 km across, centred on the start")
+	check(WorldBounds.inside(Vector2i(0, 0)) and WorldBounds.inside(Vector2i(-600, 599)) and not WorldBounds.inside(Vector2i(600, 0)), "tiles inside the barrier")
+	check(WorldBounds.buildable(Vector2i(604, -605)) and not WorldBounds.buildable(Vector2i(605, 0)), "five tiles are built past the barrier, no more")
+	var c: Array = WorldBounds.confine(Vector3(39000, 5, 100))
+	check(c[1] and (c[0] as Vector3).x < 38400.0 and (c[0] as Vector3).z == 100.0, "the barrier holds you in")
+	check(not WorldBounds.confine(Vector3(100, 5, 100))[1], "inside, nothing stops you")
+	check(Eras.zone_level(0, 0) == 1 and Eras.zone_level(1500, 0) == 11, "levels near the start rise as before")
+	check(Eras.zone_level(38390, 0) >= 990 and Eras.zone_level(39000, 39000) == 1000, "level 1000 at the edge")
+	var last := 0
+	var rising := true
+	for d in range(0, 38400, 400):
+		var lv := Eras.zone_level(float(d), 0)
+		rising = rising and lv >= last
+		last = lv
+	check(rising, "levels only rise outward")
+	for lv in [10, 55, 100, 500, 1000]:
+		var r := Eras.level_radius(lv)
+		check(Eras.zone_level(r + 1.0, 0) == lv or Eras.zone_level(r + 1.0, 0) == lv + 1, "level %d begins %.0f m out" % [lv, r])
+	# The builder makes the land round a point, nearest first, skipping what's on disk.
+	var s := _tmp_store("bounds")
+	s.meta["gen_version"] = ChunkGenerator.GEN_VERSION
+	var b := WorldBuilder.new(s, 4242, true)
+	b.watch("t", Vector3(10, 0, 10), 1, -1)
+	check(b.remaining() == 9, "a 1-tile buffer is 9 tiles (%d)" % b.remaining())
+	b.build_now()
+	check(b.remaining() == 0 and s.has_chunk(1, 1) and s.has_chunk(-1, -1), "the buffer is built and saved")
+	b.watch("t", Vector3(10, 0, 10), 1, -1)
+	check(b.remaining() == 0, "nothing is built twice")
+	b.watch("t", Vector3(80, 0, 10), 1, -1)
+	check(b.remaining() == 3, "moving a tile east builds one new column (%d)" % b.remaining())
+	b.stop()
+	var edge := WorldBuilder.new(s, 4242, true)
+	edge.watch("e", Vector3(38390, 0, 0), 8, 7)
+	check(edge.remaining() > 0 and not edge._queued.keys().any(func(k): return not WorldBounds.buildable(k)), "nothing past the margin is queued")
+	edge.stop()
 	Planets.apply(Planets.get_planet(4242, 0, "human"))
-	check(not Globe.on(), "an endless world turns the globe off")
+	check(not WorldBounds.on() and Eras.max_level() == Eras.HUMAN_MAX_LEVEL, "an endless world is as before")
 	_restore_world(was)

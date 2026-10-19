@@ -100,6 +100,8 @@ const ALIEN_MAX_LEVEL := 80
 
 ## The highest zone level on the current world.
 static func max_level() -> int:
+	if WorldBounds.on():
+		return WorldBounds.MAX_LEVEL
 	return ALIEN_MAX_LEVEL if theme == "alien" else HUMAN_MAX_LEVEL
 
 ## How dangerous and rewarding the land at (x, z) is: base_level at the origin, one level
@@ -107,7 +109,16 @@ static func max_level() -> int:
 static func zone_level(x: float, z: float) -> int:
 	if theme == "":
 		return 1
+	if WorldBounds.on():
+		# A finite world gets harder all the way out to its edge (WorldBounds.zone_level).
+		return WorldBounds.zone_level(Vector2(x, z).length(), base_level, LEVEL_STEP)
 	return mini(base_level + int(Vector2(x, z).length() / LEVEL_STEP), maxi(max_level(), base_level))
+
+## How far from the origin zone level lv begins.
+static func level_radius(lv: int) -> float:
+	if WorldBounds.on():
+		return WorldBounds.level_radius(lv, base_level, LEVEL_STEP)
+	return (lv - base_level) * LEVEL_STEP
 
 ## Extra loot luck for caches out in higher zones (0 near the start).
 static func zone_luck(x: float, z: float) -> float:

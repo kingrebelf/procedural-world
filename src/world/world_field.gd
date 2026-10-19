@@ -266,12 +266,6 @@ func climate_at(x: float, z: float) -> Vector2:
 	if terrain_v < CLIMATE_V:
 		return Vector2(0.5, 0.5)
 	var warm := 0.5 + _warmth.get_noise_2d(x, z) * 1.1 + clampf((snow_line - 50.0) / 80.0, -0.6, 0.2)
-	if Globe.on():
-		# On a globe (v22) warmth follows the latitude: hot at the equator, temperate
-		# where you arrive (Globe.HOME_LAT), cold past about 60 and frozen at the poles,
-		# with the old noise at half strength for warm and cold spells.
-		var lat := absf(Globe.latitude(z))
-		warm += 0.9 - lat * (0.4 / Globe.HOME_LAT) - 0.5 - _warmth.get_noise_2d(x, z) * 0.55
 	var wet := 0.5 + _wetness.get_noise_2d(x, z) * 0.9
 	var home := 1.0 - smoothstep(1100.0, 2600.0, Vector2(x, z).length())
 	warm = lerpf(warm, clampf(warm, 0.4, 0.62), home)
@@ -369,8 +363,6 @@ func shape(x: float, z: float, w: PackedFloat32Array = PackedFloat32Array(), lw:
 		keep -= a
 		out += _landform(lf, x, z, c, h) * a
 	out.x += h * maxf(keep, 0.0)
-	if Globe.on():
-		out = Globe.sink(out, x, z)
 	return out
 
 func _medieval(x: float, z: float) -> float:

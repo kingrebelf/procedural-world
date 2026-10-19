@@ -69,8 +69,8 @@ static func list_worlds() -> Array:
 	return out
 
 ## theme: "human" for new worlds (Planets, Eras.theme); "" makes an old-style mixed world.
-## globe: the planet's size (Globe.SIZES); "" makes an endless world.
-static func create_world(name: String, seed: int, theme := "", globe := "") -> WorldStore:
+## tiles: the world's size along a side (WorldBounds); 0 makes an endless world.
+static func create_world(name: String, seed: int, theme := "", tiles := 0) -> WorldStore:
 	var id := "%s_%d" % [name.to_lower().replace(" ", "_").validate_filename(), Time.get_unix_time_from_system()]
 	var s := WorldStore.new(worlds_dir().path_join(id))
 	s.meta = {
@@ -81,8 +81,8 @@ static func create_world(name: String, seed: int, theme := "", globe := "") -> W
 	}
 	if theme != "":
 		s.meta["theme"] = theme
-	if globe != "":
-		s.meta["globe"] = globe
+	if tiles > 0:
+		s.meta["tiles"] = tiles
 	s.save_meta()
 	return s
 

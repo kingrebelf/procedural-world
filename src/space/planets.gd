@@ -47,9 +47,9 @@ static func seed_of(home_seed: int, n: int) -> int:
 
 ## Every planet of the system, home first: {n, name, kind, seed, size, orbit, theme,
 ## base, eras, tiles}. `theme` is the home world's theme ("" for worlds from before themes);
-## `globe` its size (Globe.SIZES; "" for an endless world), which sets each planet's
-## tiles (Globe), the others' scaled by their own size.
-static func system(home_seed: int, theme := "", globe := "") -> Array:
+## `tiles` its size along a side (WorldBounds; 0 for an endless world), the other
+## planets' scaled by their own size.
+static func system(home_seed: int, theme := "", tiles := 0) -> Array:
 	var out: Array = []
 	var kinds: Array = THEMED_OTHERS.duplicate() if theme != "" else OTHERS.duplicate()
 	if theme == "":
@@ -65,7 +65,7 @@ static func system(home_seed: int, theme := "", globe := "") -> Array:
 			"size": 1.0 if n == 0 else 0.6 + 0.8 * WHash.unit2(home_seed, n, 0, 82),
 			"orbit": n * 1.0 + WHash.unit2(home_seed, n, 0, 83) * 0.5,
 			"theme": "", "base": 1, "eras": KINDS[kind]["eras"]}
-		p["tiles"] = Globe.tiles_for(globe, p["size"]) if globe != "" else Vector2i.ZERO
+		p["tiles"] = WorldBounds.tiles_for(tiles, p["size"])
 		if theme != "":
 			var k: Dictionary = KINDS[kind]
 			var tk: Array = THEMED.get(kind, [k.get("theme", "human"), k.get("base", 1), k["eras"]])
@@ -83,8 +83,8 @@ static func _name(home_seed: int, n: int) -> String:
 		s += " " + ["Prime", "Minor", "IV", "VII", "Major"][WHash.hash2(home_seed, n, 4, 84) % 5]
 	return s
 
-static func get_planet(home_seed: int, n: int, theme := "", globe := "") -> Dictionary:
-	return system(home_seed, theme, globe)[clampi(n, 0, COUNT - 1)]
+static func get_planet(home_seed: int, n: int, theme := "", tiles := 0) -> Dictionary:
+	return system(home_seed, theme, tiles)[clampi(n, 0, COUNT - 1)]
 
 ## "Human world" or "Alien world" (or the kind's own label in an old system).
 static func theme_label(p: Dictionary) -> String:
@@ -106,7 +106,7 @@ static func apply(p: Dictionary) -> void:
 	WorldField.snow_line = snow_line
 	Eras.theme = String(p.get("theme", ""))
 	Eras.base_level = int(p.get("base", 1))
-	Globe.tiles = p.get("tiles", Vector2i.ZERO)
+	WorldBounds.tiles = int(p.get("tiles", 0))
 
 ## A pleasant place to arrive: gentle, dry ground near `around` (searching outward if it
 ## is all sea). Deterministic per planet seed.

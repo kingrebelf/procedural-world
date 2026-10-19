@@ -202,7 +202,10 @@ static func rings(layer: int) -> Array:
 	var levels: Array = []
 	match layer:
 		LEVELS:
-			for lv in range(10, Eras.max_level() + 1, 10):
+			# Every ten levels, then (out in a finite world's far reaches) every hundred.
+			for lv in range(10, mini(Eras.max_level(), 100) + 1, 10):
+				levels.append([lv, "Lv %d" % lv])
+			for lv in range(200, Eras.max_level() + 1, 100):
 				levels.append([lv, "Lv %d" % lv])
 			if Eras.max_level() % 10 != 0:
 				levels.append([Eras.max_level(), "Lv %d max" % Eras.max_level()])
@@ -218,7 +221,7 @@ static func rings(layer: int) -> Array:
 	for e in levels:
 		var lv: int = e[0]
 		if lv > Eras.base_level and lv <= Eras.max_level():
-			out.append([(lv - Eras.base_level) * Eras.LEVEL_STEP, e[1]])
+			out.append([Eras.level_radius(lv), e[1]])
 	return out
 
 # --- Tiles ----------------------------------------------------------------------------

@@ -41,6 +41,10 @@ var _clock_t := 0.0
 var mp: SceneMultiplayer
 var sync: ServerSync
 var alliances: ServerAlliances
+## Builds the home world's land ahead of every player in a finite world (WorldBounds);
+## null in an endless one.
+var builder: WorldBuilder
+var _start_left := -1 ## tiles of a new world's start area still to build (-1: done)
 
 func start(c: ServerConfig) -> Error:
 	cfg = c
@@ -50,6 +54,14 @@ func start(c: ServerConfig) -> Error:
 	_load_index()
 	sync = ServerSync.new(self)
 	alliances = ServerAlliances.new(self, root.path_join("alliances.dat"))
+	if int(meta.get("tiles", 0)) > 0:
+		var s0 := store_for(0)
+		builder = WorldBuilder.new(s0, int(meta["seed"]), s0.has_rivers())
+		builder.max_tasks = maxi(1, OS.get_processor_count() / 2)
+		builder.watch("start", Vector3.ZERO, WorldBuilder.START, -1)
+		_start_left = builder.remaining()
+		if _start_left > 0:
+			say_log("Building the land round the centre of the world: %d tiles" % _start_left)
 	use_ai()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(cfg.port, cfg.max_players + 4, 3)
@@ -80,7 +92,7 @@ func _open_world() -> bool:
 		var s := cfg.seed_text.strip_edges()
 		var sd: int = randi() if s == "" else (s.to_int() if s.is_valid_int() else WHash.str_hash(s))
 		meta = {"store_format": WorldStore.STORE_FORMAT, "name": cfg.world, "seed": sd & WHash.MASK,
-			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human", "globe": cfg.globe,
+			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human", "tiles": cfg.tiles,
 			"created": Time.get_unix_time_from_system(), "last_played": Time.get_unix_time_from_system(),
 			"play_time": 0.0, "day": 0.3}
 		if not WorldStore.write_var(root.path_join("world.dat"), meta):
@@ -178,7 +190,7 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 ## What clients need of the world's meta to generate and draw it like the server.
 func _client_meta() -> Dictionary:
 	var m := {}
-	for k in ["name", "seed", "gen_version", "theme", "globe", "store_format", "created", "uid"]:
+	for k in ["name", "seed", "gen_version", "theme", "tiles", "store_format", "created", "uid"]:
 		if meta.has(k):
 			m[k] = meta[k]
 	return m
@@ -361,7 +373,8 @@ func _launch() -> void:
 	for id in _jobs:
 		if _jobs[id].has("task"):
 			running += 1
-	if running == 0 and not _queue.is_empty() and int(_queue[0]["key"].x) != _active_planet:
+	# The builder's tiles count too: they are made under the home world's globals.
+	if running == 0 and (builder == null or builder.busy() == 0) and not _queue.is_empty() and int(_queue[0]["key"].x) != _active_planet:
 		_use_planet(int(_queue[0]["key"].x))
 	var i := 0
 	while running < MAX_JOBS and i < _queue.size():
@@ -380,7 +393,7 @@ func _launch() -> void:
 func _use_planet(p: int) -> void:
 	_active_planet = p
 	WorldField.terrain_v = int(meta.get("gen_version", 1))
-	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", "")), String(meta.get("globe", ""))))
+	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", "")), int(meta.get("tiles", 0))))
 
 ## Worker thread.
 func _run(job: Dictionary) -> void:
@@ -714,6 +727,7 @@ func _process(delta: float) -> void:
 	if _lan != null:
 		_answer_lan()
 	_collect()
+	_tick_builder()
 	_ally_t -= delta
 	if _ally_t <= 0.0:
 		_ally_t = ALLY_EVERY
@@ -734,6 +748,31 @@ func _process(delta: float) -> void:
 		_save_t = 0.0
 		save()
 
+## Keeps the land within WorldBuilder.BUFFER tiles of every player on the home world
+## built. Generation reads per-planet globals, so it only runs while the home world's are
+## in force and no other planet's jobs are waiting (see _launch).
+func _tick_builder() -> void:
+	if builder == null:
+		return
+	for q in online:
+		var o: Dictionary = online[q]
+		if not o.has("pending") and int(o.get("planet", 0)) == 0 and o.get("pos") is Vector3:
+			builder.watch(o["pid"], o["pos"])
+	for job in _queue:
+		if int(job["key"].x) != 0:
+			return
+	if _active_planet != 0:
+		for id in _jobs:
+			if _jobs[id].has("task"):
+				return
+		_use_planet(0)
+	builder.tick()
+	if _start_left >= 0 and builder.remaining() == 0:
+		say_log("The land round the centre is built (%d tiles)" % _start_left)
+		builder.forget("start")
+		builder.max_tasks = maxi(1, OS.get_processor_count() / 4)
+		_start_left = -1
+
 func save() -> void:
 	meta["day"] = day
 	meta["last_played"] = Time.get_unix_time_from_system()
@@ -744,6 +783,8 @@ func save() -> void:
 func stop() -> void:
 	for q in online.keys():
 		Net.c_kicked.rpc_id(q, "The server is shutting down.")
+	if builder != null:
+		builder.stop()
 	for id in _jobs:
 		if _jobs[id].has("task"):
 			WorkerThreadPool.wait_for_task_completion(_jobs[id]["task"])

@@ -58,6 +58,9 @@ var markers := Markers.new() ## map pins and teleporters
 var guilds: Dictionary = {} ## guild (TownShops.GUILDS key) -> {day, town}
 var estates: Array = [] ## houses you bought: TownShops.estate records
 var map := WorldMap.new() ## the painted atlas under its fog of war
+## Builds the land ahead of you in a finite world (WorldBounds); null in an endless one,
+## and online, where the server builds.
+var builder: WorldBuilder
 ## Treasure hunts from maps you picked up: Treasure.new_hunt records, kept found or not.
 var treasure: Array = []
 signal treasure_started(hunt: Dictionary)
@@ -80,8 +83,8 @@ func is_playing() -> bool:
 
 # --- World lifecycle -----------------------------------------------------------
 
-## globe: the planet's size (Globe.SIZES).
-func new_world(name: String, seed_text: String, globe := Globe.DEFAULT) -> void:
+## tiles: the world's size along a side (WorldBounds; 0 for an endless world).
+func new_world(name: String, seed_text: String, tiles := WorldBounds.TILES) -> void:
 	var s := seed_text.strip_edges()
 	var sd: int
 	if s == "":
@@ -90,7 +93,7 @@ func new_world(name: String, seed_text: String, globe := Globe.DEFAULT) -> void:
 		sd = s.to_int()
 	else:
 		sd = WHash.str_hash(s)
-	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human", globe)
+	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human", tiles)
 	_begin(true)
 
 func load_world(id: String) -> bool:
@@ -180,6 +183,9 @@ func close_world() -> void:
 		return
 	save_all()
 	map.close()
+	if builder != null:
+		builder.stop()
+		builder = null
 	store = null
 	player = null
 	day_seconds = DAY_SECONDS
@@ -323,6 +329,10 @@ func _enter_planet(n: int) -> void:
 	seed = Planets.seed_of(home_seed, planet)
 	WorldField.terrain_v = store.terrain_version()
 	Planets.apply(planet_info())
+	if builder != null:
+		builder.stop()
+	var net0 := get_node_or_null("/root/Net")
+	builder = WorldBuilder.new(store, seed, store.has_rivers()) if WorldBounds.on() and not (net0 != null and net0.is_client()) else null
 	discovery = store.load_discovery()
 	map.open(store, discovery["visited"])
 	_current_region = ""
@@ -331,15 +341,16 @@ func _enter_planet(n: int) -> void:
 		net.request_ally_map(planet)
 
 func planet_info() -> Dictionary:
-	return Planets.get_planet(home_seed, planet, world_theme(), world_globe())
+	return Planets.get_planet(home_seed, planet, world_theme(), world_tiles())
 
 ## Every world linked to this one (Planets.system), home first.
 func worlds() -> Array:
-	return Planets.system(home_seed, world_theme(), world_globe())
+	return Planets.system(home_seed, world_theme(), world_tiles())
 
-## The world's globe size (Globe.SIZES); "" for an endless world (made before v22).
-func world_globe() -> String:
-	return String(store.meta.get("globe", "")) if store != null else ""
+## The world's size along a side in tiles (WorldBounds); 0 for an endless world (made
+## before v22).
+func world_tiles() -> int:
+	return int(store.meta.get("tiles", 0)) if store != null else 0
 
 ## "human" for worlds made since world themes exist; "" for older, mixed worlds.
 func world_theme() -> String:
@@ -380,6 +391,10 @@ func _process(delta: float) -> void:
 			day += delta / day_seconds
 		_tick_effects(delta)
 		map.process(delta, player)
+		if builder != null:
+			if player != null and is_instance_valid(player):
+				builder.watch("me", player.global_position)
+			builder.tick()
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
 	if not _dirty_chunks.is_empty():
 		_dirty_timer -= delta

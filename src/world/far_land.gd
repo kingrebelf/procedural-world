@@ -273,8 +273,7 @@ static func build_rows(job: Dictionary, j0: int, j1: int, gen: ChunkGenerator = 
 	var regions := {}
 	for j in range(j0, j1):
 		for i in n:
-			# Past a globe's seam the horizon is the land round the other side.
-			var x := Globe.wrap_x(center.x + ax[i])
+			var x := center.x + ax[i]
 			var z := center.y + ax[j]
 			var v := (j - j0) * n + i
 			var w := field.era_weights(x, z)

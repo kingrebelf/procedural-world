@@ -117,7 +117,10 @@ func _wanted() -> Array:
 			for dx in range(-r, r + 1):
 				if maxi(absi(dx), absi(dz)) != r:
 					continue
-				out.append(_center + Vector2i(dx, dz))
+				var k := _center + Vector2i(dx, dz)
+				# Past a finite world's edge only its out-of-reach margin is built.
+				if WorldBounds.buildable(k):
+					out.append(k)
 	return out
 
 func _launch_jobs() -> void:
