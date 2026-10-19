@@ -6533,3 +6533,92 @@ func test_movers_layer() -> void:
 	Movers.set_far(root, false)
 	check(a.layers == 1 and b.layers == 1, "movers: back on layer 1")
 	root.free()
+
+func test_land_claims() -> void:
+	check(LandClaims.tile_of(-0.5, 63.9) == Vector2i(-1, 0) and LandClaims.tile_of(64.0, -64.0) == Vector2i(1, -1), "tiles are the 64 m chunks")
+	check(LandClaims.tile_key(2, Vector2i(-3, 4)) == "2:-3:4", "a tile's key is planet and chunk coords")
+	# Upkeep: paid each day from the purse; more than GRACE days behind and it lapses.
+	var c := LandClaims.new()
+	c.add({"planet": 0, "cx": 1, "cz": 1, "seat": "0:0_0", "seat_name": "Ashford", "seat_kind": "town", "sx": 0.0, "sz": 0.0, "rate": 10, "paid": 5, "since": 5.2, "total": 40})
+	c.add({"planet": 0, "cx": 2, "cz": 1, "seat": "fort:0_0", "seat_name": "Castle of Ashford", "seat_kind": "fort", "sx": 0.0, "sz": 0.0, "rate": 7, "paid": 5, "since": 5.2, "total": 28})
+	var r := c.settle(5.9, 0)
+	check(int(r["spent"]) == 0 and (r["behind"] as Array).is_empty(), "nothing is due on the day it is paid for")
+	r = c.settle(7.1, 100)
+	check(int(r["spent"]) == 34 and int(c.list["0:1:1"]["paid"]) == 7 and int(c.list["0:2:1"]["paid"]) == 7, "each day missed is paid on coming back (%d)" % int(r["spent"]))
+	check(int(c.list["0:1:1"]["total"]) == 60, "what was paid is counted")
+	r = c.settle(9.5, 15)
+	check(int(r["spent"]) == 10 or int(r["spent"]) == 14, "a short purse pays what it can (%d)" % int(r["spent"]))
+	check((r["behind"] as Array).size() >= 1 and (r["lapsed"] as Array).is_empty(), "two days behind is still yours")
+	r = c.settle(11.0, 0)
+	check((r["lapsed"] as Array).size() == 2 and c.count() == 0, "more than %d days behind and the land lapses" % LandClaims.GRACE)
+	# Paying ahead, capped at PREPAY_MAX days and by the purse.
+	var rec := {"planet": 0, "cx": 0, "cz": 0, "rate": 10, "paid": 3}
+	check(LandClaims.prepay(rec, 5, 1000, 3.4) == 50 and int(rec["paid"]) == 8 and LandClaims.standing_days(rec, 3.4) == 5, "paying 5 days ahead")
+	check(LandClaims.prepay(rec, 5, 25, 3.4) == 20 and int(rec["paid"]) == 10, "the purse caps how far ahead")
+	check(LandClaims.prepay(rec, 99, 9999, 3.4) == (3 + LandClaims.PREPAY_MAX - 10) * 10, "and no further than %d days" % LandClaims.PREPAY_MAX)
+	# Saved and loaded.
+	var c2 := LandClaims.new()
+	c2.add({"planet": 1, "cx": -4, "cz": 9, "seat": "1:0_0", "seat_name": "X", "seat_kind": "town", "sx": 0.0, "sz": 0.0, "rate": 6, "paid": 2, "since": 2.0, "total": 24})
+	var back := LandClaims.from_data(c2.to_data())
+	check(back.count() == 1 and not back.mine(1, Vector2i(-4, 9)).is_empty() and back.mine(0, Vector2i(-4, 9)).is_empty(), "claims survive a save, per planet")
+	check(LandClaims.from_data(null).count() == 0 and LandClaims.from_data([{"x": 1}]).count() == 0, "a bad save holds none")
+	# Owners: yours, someone else's (online), nobody's.
+	back.others = {"1:0:0": ["p7", "Ann"], "1:-4:9": ["p1", "Me"]}
+	check(back.owner_of(1, Vector2i(-4, 9), "p1") == ["p1", "you"], "your own tile")
+	check(back.owner_of(1, Vector2i(0, 0), "p1") == ["p7", "Ann"] and back.owner_of(1, Vector2i(5, 5), "p1").is_empty(), "another's, and nobody's")
+	# Claiming on real land: a town's own ground can't be, wild land near one can.
+	var was := WorldField.terrain_v
+	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
+	var g := ChunkGenerator.new(4242, true)
+	var town := {}
+	for s in g.settlements_near(-1500, -1500, 1500, 1500):
+		if g.field.height(s["center"].x, s["center"].y, g.field.era_weights(s["center"].x, s["center"].y)) > 2.0:
+			town = s
+			break
+	check(not town.is_empty(), "a town to test by")
+	if not town.is_empty():
+		var lc := LandClaims.new()
+		var at: Vector2 = town["center"]
+		var why := lc.check(g, 0, LandClaims.tile_of(at.x, at.y), 3.2)
+		check(why.contains("own ground"), "a town's ground is the town's (%s)" % why)
+		var ok_tile := Vector2i(999999, 0)
+		var offer := {}
+		for k in 24:
+			var p: Vector2 = at + Vector2.from_angle(k * TAU / 24.0) * (float(town["outer"]) + 120.0)
+			var t := LandClaims.tile_of(p.x, p.y)
+			offer = {}
+			if lc.check(g, 0, t, 3.2, LandClaims.MAX, 1.0, "solo", offer) == "":
+				ok_tile = t
+				break
+		check(ok_tile.x != 999999, "wild land by a town can be claimed")
+		if ok_tile.x != 999999:
+			check(int(offer["rate"]) >= 1 and int(offer["paid"]) == 3 and String(offer["seat_kind"]) in ["town", "fort"], "the offer: a rate, paid for today, a seat (%s)" % offer)
+			check(LandClaims.cost_of(int(offer["rate"])) == int(offer["rate"]) * (LandClaims.DEED_DAYS + 1), "the deed and the first day")
+			lc.add(offer)
+			check(lc.check(g, 0, ok_tile, 3.2).contains("already yours"), "a tile is claimed once")
+			check(lc.check(g, 0, ok_tile + Vector2i(1, 0), 3.2, 1) .contains("as much land"), "the claim limit holds")
+			lc.others = {LandClaims.tile_key(0, ok_tile + Vector2i(0, 1)): ["p9", "Bo"]}
+			check(lc.check(g, 0, ok_tile + Vector2i(0, 1), 3.2, 9, 1.0, "p1").contains("Bo"), "someone else's tile can't be claimed")
+	WorldField.terrain_v = was
+
+func test_server_claims() -> void:
+	var path := "user://test_worlds/claims_%d.dat" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var sc := ServerClaims.new(path)
+	var a := {"planet": 0, "cx": 3, "cz": -2, "paid": 10}
+	check(sc.ask("p1", "Ann", a, 2) == "", "a free tile is given")
+	check(sc.ask("p2", "Bo", a, 2).contains("Ann"), "nobody else may claim it")
+	check(sc.ask("p1", "Ann", {"planet": 0, "cx": 4, "cz": -2, "paid": 10}, 2) == "", "a second tile")
+	check(sc.ask("p1", "Ann", {"planet": 0, "cx": 5, "cz": -2, "paid": 10}, 2).contains("as much land"), "up to the limit")
+	check(not sc.drop("p2", a) and sc.drop("p1", a), "only the owner gives a tile up")
+	check(sc.ask("p2", "Bo", a, 2) == "", "then it is free")
+	# Saves keep the days paid; a claim the server lost is taken back if still free.
+	check(sc.sync_player("p1", "Ann", [{"planet": 0, "cx": 4, "cz": -2, "paid": 14}, {"planet": 0, "cx": 9, "cz": 9, "paid": 14}]), "a lost claim comes back")
+	check(int(sc.list["0:4:-2"]["paid"]) == 14 and sc.count_of("p1") == 2, "and the days paid are kept")
+	check(not sc.sync_player("p1", "Ann", [{"planet": 0, "cx": 3, "cz": -2, "paid": 14}]) and sc.list["0:3:-2"]["pid"] == "p2", "but not one someone else holds now")
+	var back := ServerClaims.new(path)
+	check(back.list.size() == 3 and back.view().size() == 3, "claims are kept with the world")
+	# Unpaid past the grace and a day more: freed.
+	check(not back.sweep(10.0 + LandClaims.GRACE + 1.5) and back.sweep(10.0 + LandClaims.GRACE + 2.0), "unpaid claims are freed after the grace and a day")
+	check(not back.list.has("0:3:-2") and back.count_of("p1") == 2, "only those (%s)" % back.list)
+	check(back.sweep(14.0 + LandClaims.GRACE + 2.0) and back.list.is_empty(), "then the rest")

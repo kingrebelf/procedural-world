@@ -18,6 +18,9 @@ const OPTIONS := {
 	"building": true,
 	"alliances": true,
 	"max_alliance": 8,
+	"claims": true, ## players may claim tiles of land and pay upkeep on them (LandClaims)
+	"claim_limit": 4, ## tiles each player may hold
+	"claim_tax": 1.0, ## times the usual daily upkeep
 }
 const CHOICES := {"time": ["normal", "day", "night"], "death_penalty": ["bag", "keep"]}
 
@@ -124,6 +127,10 @@ func write_file(p: String = "") -> bool:
 		"building=%s" % str(options["building"]).to_lower(),
 		"alliances=%s" % str(options["alliances"]).to_lower(),
 		"max_alliance=%d" % int(options["max_alliance"]),
+		"; Land claims: tiles a player may hold, and the daily upkeep (1.0 = the usual).",
+		"claims=%s" % str(options["claims"]).to_lower(),
+		"claim_limit=%d" % int(options["claim_limit"]),
+		"claim_tax=%s" % str(options["claim_tax"]),
 		"",
 		"[ai]",
 		"",

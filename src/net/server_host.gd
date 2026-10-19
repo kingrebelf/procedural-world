@@ -41,6 +41,8 @@ var _clock_t := 0.0
 var mp: SceneMultiplayer
 var sync: ServerSync
 var alliances: ServerAlliances
+var claims: ServerClaims
+var _claim_day := -1
 
 func start(c: ServerConfig) -> Error:
 	cfg = c
@@ -50,6 +52,7 @@ func start(c: ServerConfig) -> Error:
 	_load_index()
 	sync = ServerSync.new(self)
 	alliances = ServerAlliances.new(self, root.path_join("alliances.dat"))
+	claims = ServerClaims.new(root.path_join("claims.dat"))
 	use_ai()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(cfg.port, cfg.max_players + 4, 3)
@@ -220,6 +223,7 @@ func _on_peer_connected(peer: int) -> void:
 			Net.c_joined.rpc_id(p, _card(peer))
 	alliances.rename(o["pid"], o["name"])
 	tell_alliance(o["pid"], alliances.view(o["pid"]))
+	Net.c_claims.rpc_id(peer, claims.view())
 
 func _card(peer: int) -> Dictionary:
 	var o: Dictionary = online[peer]
@@ -266,6 +270,8 @@ func player_save(peer: int, data: PackedByteArray) -> void:
 		if e is Dictionary and e.has("x") and e.has("z"):
 			hs.append([int(e.get("planet", 0)), float(e["x"]), float(e["z"])])
 	alliances.set_homes(o["pid"], hs.slice(0, 32))
+	if bool(option("claims")) and claims.sync_player(o["pid"], o["name"], d.get("claims")):
+		_tell_claims()
 	if d.get("pos") is Vector3:
 		o["pos"] = d["pos"]
 
@@ -642,6 +648,29 @@ func ally(peer: int, cmd: String, arg: String) -> void:
 	if online.has(peer) and not online[peer].has("pending"):
 		alliances.command(online[peer]["pid"], online[peer]["name"], cmd.substr(0, 16), arg.substr(0, 240))
 
+## A player asks for a tile of land, or gives one up (LandClaims, ServerClaims).
+func claim(peer: int, cmd: String, rec: Dictionary) -> void:
+	if not online.has(peer) or online[peer].has("pending"):
+		return
+	var o: Dictionary = online[peer]
+	var key := ServerClaims.key_of(rec)
+	match cmd:
+		"claim":
+			var why := "Land claims are turned off on this server" if not bool(option("claims")) \
+				else claims.ask(o["pid"], o["name"], rec, int(option("claim_limit")))
+			Net.c_claim_answer.rpc_id(peer, key, why == "", why)
+			if why == "":
+				_tell_claims()
+		"drop":
+			if claims.drop(o["pid"], rec):
+				_tell_claims()
+
+func _tell_claims() -> void:
+	var v := claims.view()
+	for q in online:
+		if not online[q].has("pending"):
+			Net.c_claims.rpc_id(q, v)
+
 func option(k: String):
 	return cfg.options.get(k, ServerConfig.OPTIONS.get(k))
 
@@ -710,6 +739,10 @@ func _process(delta: float) -> void:
 		"night": day = floorf(day) + NIGHT
 		_: day += delta / (float(cfg.options["day_minutes"]) * 60.0)
 	meta["play_time"] = float(meta.get("play_time", 0.0)) + delta
+	if LandClaims.today(day) != _claim_day:
+		_claim_day = LandClaims.today(day)
+		if claims.sweep(day):
+			_tell_claims()
 	_clock_t -= delta
 	if _clock_t <= 0.0:
 		_clock_t = CLOCK_EVERY

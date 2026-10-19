@@ -22,7 +22,7 @@ const WORD_SHARE := 0.35
 const FADE_BAD := 12.0
 const FADE_GOOD := 30.0
 ## Deeds for things you do (on top of crimes, which count from their fine).
-const DEEDS := {"paid_bounty": 6, "guild": 8, "house": 25, "outlaw": 6, "trade": 1, "toll": 1, "bribe_refused": -10, "betrayal": -20, "trespass": -6}
+const DEEDS := {"paid_bounty": 6, "guild": 8, "house": 25, "outlaw": 6, "trade": 1, "toll": 1, "bribe_refused": -10, "betrayal": -20, "trespass": -6, "tax": 1, "tax_default": -8}
 
 var towns: Dictionary = {} ## sid -> {d: deeds, day: of the last deed, name, x, z, folk, pass: day it runs out, how, by}
 

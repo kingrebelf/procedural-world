@@ -57,6 +57,9 @@ var landings: Dictionary = {}
 var markers := Markers.new() ## map pins and teleporters
 var guilds: Dictionary = {} ## guild (TownShops.GUILDS key) -> {day, town}
 var estates: Array = [] ## houses you bought: TownShops.estate records
+var claims := LandClaims.new() ## tiles of land you hold and pay upkeep on
+signal claims_changed
+var _claims_day := -1 ## the day claims' upkeep was last settled
 var map := WorldMap.new() ## the painted atlas under its fog of war
 ## Treasure hunts from maps you picked up: Treasure.new_hunt records, kept found or not.
 var treasure: Array = []
@@ -122,6 +125,10 @@ func _begin(fresh: bool) -> void:
 	standing = Standing.new()
 	guilds = {}
 	estates = []
+	claims = LandClaims.new()
+	_claims_day = -1
+	var nt := get_node_or_null("/root/Net")
+	var on_server: bool = nt != null and nt.has_method("online") and nt.online()
 	treasure = []
 	buffs = {}
 	regen_left = 0.0
@@ -145,6 +152,7 @@ func _begin(fresh: bool) -> void:
 		standing = Standing.from_data(p.get("standing"))
 		guilds = (p.get("guilds", {}) as Dictionary).duplicate(true)
 		estates = (p.get("estates", []) as Array).duplicate(true)
+		claims = LandClaims.from_data(p.get("claims"))
 		treasure = (p.get("treasure", []) as Array).duplicate(true)
 		var bf = p.get("buffs", {})
 		if bf is Dictionary:
@@ -169,6 +177,8 @@ func _begin(fresh: bool) -> void:
 		inventory.add(ItemDB.make("bolt", 24, 1.0, o))
 		inventory.add(ItemDB.make("torch", 2, 1.0, o))
 		inventory.add(ItemDB.make("lockpick", 5, 1.0, o))
+	if on_server:
+		claims.others = nt.claim_list # everyone's claims, as the server sent them
 	store.meta["last_played"] = Time.get_unix_time_from_system()
 	store.save_meta()
 	save_player()
@@ -352,7 +362,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "standing": standing.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "claims": claims.to_data(), "crime": crime.to_data(), "standing": standing.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -371,6 +381,8 @@ func _process(delta: float) -> void:
 		else:
 			day += delta / day_seconds
 		_tick_effects(delta)
+		if LandClaims.today(day) != _claims_day:
+			settle_claims()
 		map.process(delta, player)
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
 	if not _dirty_chunks.is_empty():
@@ -811,6 +823,147 @@ func is_citizen(sid: String) -> bool:
 		if "%d:%s" % [int(e.get("planet", 0)), String(e.get("sid", ""))] == sid:
 			return true
 	return false
+
+# --- Land claims --------------------------------------------------------------------
+
+## The world's generator for questions about land (the NPC manager's, else one of its own).
+var _land_gen: ChunkGenerator
+func land_gen() -> ChunkGenerator:
+	var npcs := get_tree().get_first_node_in_group("npc_manager") if is_inside_tree() else null
+	if npcs and npcs.get("gen") is ChunkGenerator:
+		return npcs.gen
+	if _land_gen == null or _land_gen.seed != (seed & WHash.MASK):
+		_land_gen = ChunkGenerator.new(seed, store.has_rivers() if store else false)
+	return _land_gen
+
+func claim_limit() -> int:
+	return int(server_option("claim_limit", LandClaims.MAX))
+
+## Why the tile you stand on (or `t`) can't be claimed, "" when it can; `out` gets the offer.
+func claim_check(t: Vector2i, out := {}) -> String:
+	if not bool(server_option("claims", true)):
+		return "Land claims are turned off on this server"
+	return claims.check(land_gen(), planet, t, day, claim_limit(), float(server_option("claim_tax", 1.0)), my_id(), out)
+
+## Claims tile `t`: pays the deed and the first day's upkeep (online, once the server
+## agrees: Net answers with claim_answered). Returns "" or why not.
+func claim_tile(t: Vector2i) -> String:
+	var rec := {}
+	var why := claim_check(t, rec)
+	if why != "":
+		return why
+	var cost := LandClaims.cost_of(int(rec["rate"]))
+	if money < cost:
+		return "Claiming this land costs %d Marks" % cost
+	var net := get_node_or_null("/root/Net")
+	if net and net.has_method("online") and net.online():
+		claims.pending[LandClaims.tile_key(planet, t)] = rec
+		net.claim("claim", rec)
+		return ""
+	_take_claim(rec)
+	return ""
+
+## The server's answer to a claim you asked for.
+func claim_answered(key: String, ok: bool, why: String) -> void:
+	var rec: Dictionary = claims.pending.get(key, {})
+	claims.pending.erase(key)
+	if rec.is_empty():
+		return
+	var cost := LandClaims.cost_of(int(rec["rate"]))
+	if not ok or money < cost:
+		var net := get_node_or_null("/root/Net")
+		if ok and net:
+			net.claim("drop", rec) # it went to you, but the purse can't pay now
+		toast.emit(why if why != "" else "You can't afford the claim any more")
+		claims_changed.emit()
+		return
+	_take_claim(rec)
+
+func _take_claim(rec: Dictionary) -> void:
+	add_money(-LandClaims.cost_of(int(rec["rate"])))
+	rec["paid"] = LandClaims.today(day)
+	claims.add(rec)
+	_claims_day = LandClaims.today(day)
+	_player_dirty = true
+	if rec["seat_kind"] == "town":
+		standing_deed(String(rec["seat"]), Standing.DEEDS["tax"])
+	toast.emit("This land is yours: %d Marks a day to %s" % [int(rec["rate"]), rec["seat_name"]])
+	claims_changed.emit()
+
+## The server's list of everyone's claims came (online): a tile of yours it gave to
+## someone else (it lapsed while you were away) is no longer yours.
+func claims_synced(all: Dictionary) -> void:
+	claims.others = all
+	for k in claims.list.keys():
+		var o = all.get(k)
+		if o is Array and String(o[0]) != my_id():
+			toast.emit("Your land near %s is %s's now: it lapsed while you were away" % [claims.list[k]["seat_name"], o[1]])
+			claims.remove(k)
+			_player_dirty = true
+	claims_changed.emit()
+
+## Gives a claim up (nothing is paid back).
+func drop_claim(key: String) -> void:
+	var rec: Dictionary = claims.list.get(key, {})
+	if rec.is_empty():
+		return
+	claims.remove(key)
+	var net := get_node_or_null("/root/Net")
+	if net and net.has_method("online") and net.online():
+		net.claim("drop", rec)
+	_player_dirty = true
+	claims_changed.emit()
+
+## Pays `days` of a claim's upkeep ahead; returns what it cost.
+func prepay_claim(key: String, days: int) -> int:
+	var rec: Dictionary = claims.list.get(key, {})
+	if rec.is_empty():
+		return 0
+	var cost := LandClaims.prepay(rec, days, money, day)
+	if cost > 0:
+		add_money(-cost)
+		if rec["seat_kind"] == "town":
+			standing_deed(String(rec["seat"]), Standing.DEEDS["tax"] * cost / maxi(1, int(rec["rate"])))
+		_player_dirty = true
+		claims_changed.emit()
+	return cost
+
+## The turn of the day: each claim's upkeep comes out of your purse; claims more than
+## LandClaims.GRACE days behind lapse.
+func settle_claims() -> void:
+	_claims_day = LandClaims.today(day)
+	if claims.list.is_empty():
+		return
+	var r := claims.settle(day, money)
+	if int(r["spent"]) > 0:
+		add_money(-int(r["spent"]))
+	for e in r["paid"]:
+		var rec: Dictionary = claims.list.get(e[0], {})
+		if not rec.is_empty() and rec["seat_kind"] == "town":
+			standing_deed(String(rec["seat"]), Standing.DEEDS["tax"] * int(e[1]))
+	for e in r["behind"]:
+		var rec: Dictionary = claims.list[e[0]]
+		var left := LandClaims.GRACE + 1 - int(e[1])
+		toast.emit("Upkeep due on your land near %s: %d Marks. It lapses in %d day%s" % [rec["seat_name"], int(rec["rate"]) * int(e[1]),
+			left, "" if left == 1 else "s"])
+	var net := get_node_or_null("/root/Net")
+	for rec in r["lapsed"]:
+		toast.emit("Your land near %s has lapsed: the upkeep went unpaid" % rec["seat_name"])
+		if rec["seat_kind"] == "town":
+			standing_deed(String(rec["seat"]), Standing.DEEDS["tax_default"])
+		if net and net.has_method("online") and net.online():
+			net.claim("drop", rec)
+	if int(r["spent"]) > 0 or not (r["lapsed"] as Array).is_empty():
+		_player_dirty = true
+		claims_changed.emit()
+
+## Whether you may build at `at`: not on land someone outside your alliance holds.
+func may_build_at(at: Vector3) -> bool:
+	var o := claims.owner_of(planet, LandClaims.tile_of(at.x, at.z), my_id())
+	if o.is_empty() or String(o[0]) == my_id():
+		return true
+	var net := get_node_or_null("/root/Net")
+	return net != null and net.has_method("allied") and bool(net.allied(String(o[0])))
 
 func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 	return {"how": how, "era": era, "chunk": chunk, "day": snappedf(day, 0.01)}

@@ -17,6 +17,7 @@ signal mob_said(id: String, text: String, secs: float)
 signal mob_talk(id: String, on: bool) ## someone else is talking with a person you run
 signal town_pushed(sx: int, sz: int) ## someone else's save of a loaded town was merged into it
 signal alliance_changed
+signal claims_changed ## the server's list of everyone's land claims came
 
 const DEFAULT_PORT := 24600
 const STATE_HZ := 15.0
@@ -53,6 +54,8 @@ var _watch_out: Dictionary = {} ## kind:planet -> [adds, removes] waiting to be 
 var alliance: Dictionary = {} ## {id, name, leader: pid, members: {pid: name}} or {}
 var ally_invites: Array = [] ## [{id, name, from}]
 var allies_at: Dictionary = {} ## pid -> [planet, pos, msec]: allies anywhere, for the map
+## Everyone's land claims as the server has them: tile key -> [pid, name] (LandClaims.others).
+var claim_list: Dictionary = {}
 
 # --- Server ---
 var host: Object ## ServerHost while this process is a dedicated server
@@ -113,6 +116,12 @@ func allied(pid: String) -> bool:
 func ally(cmd: String, arg := "") -> void:
 	if mode == Mode.CLIENT:
 		s_ally.rpc_id(1, cmd, arg)
+
+## Asks the server for a tile of land ("claim") or gives one up ("drop"); rec is the
+## LandClaims record. The answer to a claim comes back as c_claim_answer.
+func claim(cmd: String, rec: Dictionary) -> void:
+	if mode == Mode.CLIENT:
+		s_claim.rpc_id(1, cmd, int(rec.get("planet", 0)), int(rec.get("cx", 0)), int(rec.get("cz", 0)), int(rec.get("paid", 0)))
 
 ## Whether `at` (on `planet`) is in a house one of your allies owns: what is inside is
 ## theirs to share with you, so taking it isn't stealing.
@@ -348,6 +357,7 @@ func _on_connected() -> void:
 	alliance = {}
 	ally_invites = []
 	allies_at.clear()
+	claim_list = {}
 	mobs = {"f": {}, "n": {}}
 	var meta: Dictionary = w["meta"]
 	store = RemoteStore.new("user://servers".path_join(str(w.get("uid", "server")).validate_filename()), meta)
@@ -614,6 +624,25 @@ func s_chat(text: String) -> void:
 func s_ally(cmd: String, arg: String) -> void:
 	if host:
 		host.ally(_sender(), cmd, arg)
+
+@rpc("any_peer", "call_remote", "reliable")
+func s_claim(cmd: String, p: int, cx: int, cz: int, paid: int) -> void:
+	if host:
+		host.claim(_sender(), cmd, {"planet": p, "cx": cx, "cz": cz, "paid": paid})
+
+@rpc("authority", "call_remote", "reliable")
+func c_claim_answer(key: String, ok: bool, why: String) -> void:
+	Game.claim_answered(key, ok, why)
+
+@rpc("authority", "call_remote", "reliable")
+func c_claims(list: Array) -> void:
+	var d := {}
+	for e in list:
+		if e is Array and e.size() == 3:
+			d[String(e[0])] = [String(e[1]), String(e[2])]
+	claim_list = d
+	Game.claims_synced(d)
+	claims_changed.emit()
 
 @rpc("authority", "call_remote", "reliable")
 func c_alliance(mine: Dictionary, invites: Array) -> void:

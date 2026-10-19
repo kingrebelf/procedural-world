@@ -798,7 +798,7 @@ static func prompt_line(rec: Dictionary) -> String:
 	var title: String = rec.get("shop_title", "")
 	var label: String = rec.get("shop_label", "")
 	if kind == "land":
-		return "You are the %s at %s and sell houses in town to settlers. If the traveller wants a house, land or a home, use action \"buy_house\" to show them what is for sale." % [rec["job"], label]
+		return "You are the %s at %s and sell houses in town to settlers. If the traveller wants a house, land or a home, use action \"buy_house\" to show them what is for sale. You also keep the roll of land claimed out in the wilds near town: anyone may claim one plot (a tile) out there from their atlas and pays its upkeep every day to the nearest town or stronghold (often this one), or the claim lapses." % [rec["job"], label]
 	var names: PackedStringArray = []
 	for t in goods_of(kind, era):
 		if not ItemDB.def(t).is_empty():

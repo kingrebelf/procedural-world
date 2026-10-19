@@ -192,6 +192,8 @@ func _find_target() -> Dictionary:
 		why = "water"
 	if why == "" and Game.stats.level < Recipes.unlock_level(_id):
 		why = "level"
+	if why == "" and not Game.may_build_at(pos):
+		why = "claimed"
 	return {"pos": pos, "yaw": s["yaw"], "ok": why == "", "why": why}
 
 ## Below the water's surface: no fire can be lit there.
@@ -352,6 +354,10 @@ func why_text(why: String) -> String:
 		"tree": return "A tree is in the way: fell it first"
 		"water": return "A fire can't be lit under water"
 		"level": return "You can build a %s from level %d" % [nm, Recipes.unlock_level(_id)]
+		"claimed":
+			var at: Vector3 = _target.get("pos", Vector3.ZERO)
+			var o := Game.claims.owner_of(Game.planet, LandClaims.tile_of(at.x, at.z), Game.my_id())
+			return "This land is claimed by %s" % (o[1] if not o.is_empty() else "someone")
 	return "Can't build there"
 
 ## What a powered piece does, for the look-at panel while you hold it.

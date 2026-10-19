@@ -125,9 +125,10 @@ func _process(delta: float) -> void:
 	else:
 		MapLayers.pump()
 	var t := fposmod(Game.day, 1.0) * 24.0
-	# The weather and the air's temperature (Weather).
-	var wx := "\n%s  ·  %d°C" % [Weather.current.describe(), roundi(Weather.current.temp)] if Weather.current != null else ""
-	_info.text = "Day %d  %02d:%02d   ·   %d, %d%s" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), int(p.x), int(p.z), wx]
+	# The tile you are on (the 64 m chunk the land is made in), the weather and the air's temperature (Weather).
+	var tile := LandClaims.tile_of(p.x, p.z)
+	var wx := "  ·  %s  ·  %d°C" % [Weather.current.describe(), roundi(Weather.current.temp)] if Weather.current != null else ""
+	_info.text = "Day %d  %02d:%02d   ·   %d, %d\nTile %d, %d%s" % [int(Game.day) + 1, int(t), int(fmod(t, 1.0) * 60), int(p.x), int(p.z), tile.x, tile.y, wx]
 	_zone_t -= delta
 	if _zone_t <= 0.0:
 		_zone_t = 0.5
