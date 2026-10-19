@@ -265,17 +265,23 @@ func wear(worn: Dictionary) -> void:
 		_armour.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _arms:
 			_arms_cut(_armour)
-	var helmet: bool = worn.get("head") is Dictionary
-	for h in _hair:
-		(h as Node3D).visible = not helmet and not _arms
+	_helmet = worn.get("head") is Dictionary
+	_show_hair()
 	if _headgear_node:
-		_headgear_node.visible = not helmet and not _arms
+		_headgear_node.visible = not _helmet and not _arms
 	if worn.get("shield") is Dictionary:
 		_shield = _shield_mesh(worn["shield"])
 		for mi in _shield.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _shadow_only else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			mi.visible = not _arms
 	_keep_layer()
+
+## Hair shows unless a helmet hides it. Its strand shells cast no shadow, so a
+## shadow-only body (first person) hides them too, or after a death or a change of armour
+## you looked out through the inside of your own hair.
+func _show_hair() -> void:
+	for h in _hair:
+		(h as Node3D).visible = not _helmet and not _arms and not (_shadow_only and _no_shadow(h))
 
 ## What was just put on or taken up joins the rest of the body on the Movers layer.
 func _keep_layer() -> void:
@@ -606,6 +612,7 @@ static func _rel(root: Node3D, n: Node3D) -> Transform3D:
 var _held: Node3D
 var _arms := false
 var _shadow_only := false
+var _helmet := false
 
 ## Puts a prop (any Node3D with meshes, handle along +Y) in the right hand, or empties it.
 func hold(prop: Node3D, aim := Vector3.ZERO, tilt := 0.0, point := Vector3.ZERO) -> void:
@@ -819,6 +826,7 @@ func set_shadow_only(on: bool) -> void:
 		if _no_shadow(mi):
 			# They cast no shadow, so a body seen only by its shadow hides them outright.
 			(mi as MeshInstance3D).visible = not on
+	_show_hair()
 	_shade_held()
 
 ## Eyes and eyebrows sit inside the head's own shadow: drawing them into every shadow map
