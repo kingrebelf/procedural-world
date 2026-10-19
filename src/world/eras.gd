@@ -58,13 +58,12 @@ static func region_name(era: int, h: int) -> String:
 	return "%s %s" % [p[h % p.size()], s[(h >> 8) % s.size()]]
 
 # --- World themes and zone levels -------------------------------------------------
-## Worlds made since themes exist are "human" (medieval kingdoms near where you arrive,
-## human sci-fi outposts far out, natural plants and animals everywhere) or "alien"
-## (fey glowcap wilds, then xeno tech land; strange plants, alien creatures and people).
-## Older worlds have no theme and keep their mix of all three eras. Set by Planets.apply
-## before any field, generator or chunk of a planet is made; read on worker threads.
+## Worlds made since themes exist are "human": medieval kingdoms near where you arrive,
+## human sci-fi outposts far out, natural plants and animals everywhere. Older worlds
+## have no theme ("") and keep their mix of all three eras. Set by Planets.apply before
+## any field, generator or chunk is made; read on worker threads.
 static var theme := ""
-## Zone level where a planet's land starts (at its origin). Levels rise with distance.
+## Zone level where the land starts (at its origin). Levels rise with distance.
 static var base_level := 1
 
 const LEVEL_STEP := 150.0 ## metres outward per zone level
@@ -92,15 +91,12 @@ static func look(w: PackedFloat32Array) -> PackedFloat32Array:
 	o[SCIFI] = 0.0
 	return o
 
-## Highest zone level on a human world: the far frontier tops out a little past the
-## portal zones (WorldPortal.MIN_LEVEL), below the alien endgame worlds.
+## Highest zone level on a human world: where the far frontier tops out.
 const HUMAN_MAX_LEVEL := 55
-## Highest zone level on an alien world (they start at 50-60).
-const ALIEN_MAX_LEVEL := 80
 
 ## The highest zone level on the current world.
 static func max_level() -> int:
-	return ALIEN_MAX_LEVEL if theme == "alien" else HUMAN_MAX_LEVEL
+	return HUMAN_MAX_LEVEL
 
 ## How dangerous and rewarding the land at (x, z) is: base_level at the origin, one level
 ## more every LEVEL_STEP metres, up to max_level(). Older worlds are level 1 everywhere.
@@ -121,6 +117,4 @@ static func tier(era: int) -> int:
 	match theme:
 		"human":
 			return 0 if era == MEDIEVAL or era < 0 else 1
-		"alien":
-			return 1 if era == SCIFI else 0
 	return 0

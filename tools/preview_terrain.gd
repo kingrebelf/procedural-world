@@ -43,7 +43,7 @@ func _ready() -> void:
 		elif a.begins_with("--seed="):
 			world_seed = int(a.substr(7))
 	Eras.theme = "human"
-	Planets.apply(Planets.get_planet(world_seed, 0, "human"))
+	Planets.apply(Planets.home(world_seed, "human"))
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(world_seed, true)
 	var e := Environment.new()

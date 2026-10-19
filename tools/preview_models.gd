@@ -3,8 +3,7 @@ extends SceneTree
 ##   xvfb-run godot --path . --rendering-driver vulkan --script res://tools/preview_models.gd -- \
 ##     --out=/abs/path.png nature/CommonTree_1 nature/Pine_1 mesh:oak#1234#0 ...
 ## fire:SIZE is a flame with sparks and smoke; fires:TYPE the flames of a room (with --at0
-## and "mesh:TYPE~in"); swirl:SIZE:Y:Z a portal's swirl at height Y, Z ahead;
-## stone:KIND a loose ground stone (StoneKit); build:ID is a piece you build, with its fire if it has one;
+## and "mesh:TYPE~in"); stone:KIND a loose ground stone (StoneKit); build:ID is a piece you build, with its fire if it has one;
 ## --frames=N waits N frames before saving (let sparks and smoke build up).
 
 func _initialize() -> void:
@@ -105,12 +104,6 @@ func _run() -> void:
 				if f[1] >= 0.3:
 					fl.add_child(FireFx.embers(f[1], false))
 				node.add_child(fl)
-		elif String(n).begins_with("swirl:"):
-			node = Node3D.new()
-			var sw := FireFx.swirl(float(String(n).get_slice(":", 1)))
-			sw.position.y = float(String(n).get_slice(":", 2))
-			sw.position.z = float(String(n).get_slice(":", 3)) if String(n).get_slice_count(":") > 3 else 0.0
-			node.add_child(sw)
 		elif String(n).begins_with("bird:"):
 			# A procedural flier by species name, wings spread, e.g. bird:Kestrel.
 			var bn := String(n).substr(5)

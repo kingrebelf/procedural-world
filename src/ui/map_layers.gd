@@ -69,8 +69,7 @@ static func category(layer: int, i: int) -> Array:
 		ZONES:
 			if Eras.theme == "human":
 				return [ZONE_COLORS[i], ZoneInfo.HUMAN[i][1]]
-			var kind: String = ZoneInfo.ALIEN.get(i, ZoneInfo.ALIEN[1])[0] if Eras.theme == "alien" else ZoneInfo.MIXED[i][0]
-			return [UITheme.ERA_COLORS[i], kind]
+			return [UITheme.ERA_COLORS[i], ZoneInfo.MIXED[i][0]]
 		LAND:
 			return [LAND_COLORS[i], LAND_NAMES[i]]
 		STANDING:
@@ -188,8 +187,6 @@ static func note(layer: int) -> String:
 			return "Against your level %d" % _player_level()
 		ERA:
 			return "Advanced gear unlocks at level %d" % Eras.UNLOCK_LEVEL if Eras.themed() else ""
-		ZONES:
-			return "Portals stand in level %d+ land" % WorldPortal.MIN_LEVEL if Eras.theme == "human" else ""
 		STANDING:
 			return "How the towns you know think of you"
 	return ""

@@ -88,7 +88,6 @@ static func build(chunk: Dictionary, density: float, out: Dictionary) -> void:
 	var f := Field.new(seed)
 	var x0 := float(chunk["cx"]) * SIZE
 	var z0 := float(chunk["cz"]) * SIZE
-	var alien := Eras.theme == "alien"
 	var plans := ChunkGenerator.keep_out(chunk)
 	var has_cave := chunk.has("hole")
 	var sea_mid := f.sea_t(x0 + SIZE * 0.5, z0 + SIZE * 0.5)
@@ -151,7 +150,7 @@ static func build(chunk: Dictionary, density: float, out: Dictionary) -> void:
 			_put(out, "aq_reed", Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.85, 1.15), sc)), lx, y, lz, tint, AquaKit.SWAY_WIND)
 	# --- The sea: coral reefs in its shallows, kelp forests deeper, life on the bed ---
 	if sea_mid > 0.25:
-		_sea(chunk, r, density, out, spot, x0, z0, f, alien)
+		_sea(chunk, r, density, out, spot, x0, z0, f)
 
 const REEF := [["aq_coral_branch", 3.0, 0.6, 1.6], ["aq_coral_brain", 2.0, 0.35, 1.1], ["aq_coral_table", 1.4, 0.6, 1.8],
 	["aq_coral_fan", 1.3, 0.5, 1.3], ["aq_sponge", 1.2, 0.6, 1.4], ["aq_anemone", 1.0, 0.6, 1.3]]
@@ -169,7 +168,7 @@ const REEF_TINTS := {
 }
 
 static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, out: Dictionary, spot: Callable,
-		x0: float, z0: float, f: Field, alien: bool) -> void:
+		x0: float, z0: float, f: Field) -> void:
 	var total := 0.0
 	for e in REEF:
 		total += float(e[1])
@@ -211,7 +210,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		if sp == "aq_coral_brain" and r.randf() < 0.08:
 			sc *= 1.35 # now and then a great old dome
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc * r.randf_range(0.85, 1.15), sc))
-		_put(out, sp, b, lx, y - (0.12 if on >= 0 else 0.03) * sc, lz, _reef_tint(sp, r, alien), AquaKit.sway_of(sp), _glow(sp, alien))
+		_put(out, sp, b, lx, y - (0.12 if on >= 0 else 0.03) * sc, lz, _reef_tint(sp, r), AquaKit.sway_of(sp))
 	# Kelp where there is no reef and the water is deep enough to stand in.
 	for n in int(560 * density):
 		var lx := r.randf() * SIZE
@@ -235,9 +234,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		var sc := lerpf(0.8, 1.4, size)
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, depth * r.randf_range(0.7, 0.95), sc))
 		var tint := Color(0.36, 0.29, 0.12).lerp(Color(0.3, 0.27, 0.11), r.randf())
-		if alien:
-			tint = Color(0.3, 0.16, 0.42).lerp(Color(0.12, 0.4, 0.38), r.randf())
-		_put(out, "aq_kelp", b, lx, y - 0.05, lz, tint, AquaKit.SWAY_CURRENT, 0.4 if alien else 0.0)
+		_put(out, "aq_kelp", b, lx, y - 0.05, lz, tint, AquaKit.SWAY_CURRENT)
 	# Starfish and urchins dotted over the bed, reef or sand.
 	for n in int(140 * density):
 		var lx := r.randf() * SIZE
@@ -254,7 +251,7 @@ static func _sea(chunk: Dictionary, r: RandomNumberGenerator, density: float, ou
 		# (The meshes are a metre across: a starfish is a hand or two wide.)
 		var sc := lerpf(0.14, 0.28, size) if sp == "aq_star" else lerpf(0.25, 0.45, size)
 		var b := Basis(Vector3.UP, yaw).scaled(Vector3(sc, sc, sc))
-		_put(out, sp, b, lx, y - 0.01, lz, _reef_tint(sp, r, alien), AquaKit.STILL, _glow(sp, alien))
+		_put(out, sp, b, lx, y - 0.01, lz, _reef_tint(sp, r), AquaKit.STILL)
 
 ## How much a reef grows at a place on the bed `y` deep: warm open water, in its
 ## patches, from just under the surface down to where the light fades.
@@ -337,21 +334,12 @@ static func reef_rocks(chunk: Dictionary, out: Dictionary, solid: PackedFloat32A
 			out["stone:" + kind] = buf
 			solid.append_array([StoneKit.KINDS.find(kind), b.x.x, b.y.x, b.z.x, p.x, b.x.y, b.y.y, b.z.y, p.y, b.x.z, b.y.z, b.z.z, p.z])
 
-static func _reef_tint(sp: String, r: RandomNumberGenerator, alien: bool) -> Color:
+static func _reef_tint(sp: String, r: RandomNumberGenerator) -> Color:
 	var opts: Array = REEF_TINTS[sp]
 	var c: Color = opts[r.randi() % opts.size()]
 	# Each one a little different from its neighbours.
 	c = Color(c.r * r.randf_range(0.88, 1.1), c.g * r.randf_range(0.88, 1.1), c.b * r.randf_range(0.88, 1.1))
-	if alien:
-		# Stranger seas: the same forms in colours no earthly reef has.
-		c = Color.from_hsv(fposmod(c.h + 0.45 + r.randf_range(-0.1, 0.1), 1.0), minf(c.s * 1.5 + 0.2, 1.0), c.v)
 	return c
-
-## Only alien reefs glow (fans, anemones and sponges most).
-static func _glow(sp: String, alien: bool) -> float:
-	if not alien:
-		return 0.0
-	return 0.6 if sp in ["aq_coral_fan", "aq_anemone", "aq_sponge"] else 0.15
 
 static func _put(out: Dictionary, sp: String, b: Basis, lx: float, y: float, lz: float, tint: Color, sway: int, glow := 0.0) -> void:
 	var key := sp + "@0"

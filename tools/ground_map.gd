@@ -12,7 +12,7 @@ static func run() -> void:
 	var seed := int(args.get("seed", "4242"))
 	var out := String(args.get("out", "user://ground"))
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out))
-	Planets.apply(Planets.get_planet(seed, 0, "human"))
+	Planets.apply(Planets.home(seed, "human"))
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(seed, true)
 	var spots := {}

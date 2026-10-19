@@ -112,7 +112,6 @@ func _spawn(k: Vector2i, d: Dictionary) -> Array:
 	var r := WHash.rng(Game.seed, k.x, k.y, 951)
 	var x0 := float(k.x) * ChunkGenerator.SIZE
 	var z0 := float(k.y) * ChunkGenerator.SIZE
-	var alien := Eras.theme == "alien"
 	for attempt in 6:
 		var lx := r.randf() * ChunkGenerator.SIZE
 		var lz := r.randf() * ChunkGenerator.SIZE
@@ -133,7 +132,7 @@ func _spawn(k: Vector2i, d: Dictionary) -> Array:
 		var sp := _pick(water, top - y, r)
 		if sp == "":
 			continue
-		out.append(School.new(self, sp, Vector3(wx, lerpf(y, top, 0.5), wz), top, r, alien))
+		out.append(School.new(self, sp, Vector3(wx, lerpf(y, top, 0.5), wz), top, r))
 	# Crabs over the sea bed and in the shallows, crayfish under lake stones.
 	for attempt in 2:
 		var lx := r.randf() * ChunkGenerator.SIZE
@@ -254,7 +253,7 @@ func _try_leap(eye: Vector3) -> void:
 		var p1 := p0 + dir * _rng.randf_range(0.6, 1.4) * (size / 0.3)
 		var mmi := _batch(FishKit.mesh(f[0]), _fish_mat, 1, p0)
 		mmi.multimesh.custom_aabb = AABB(Vector3(-3, -1, -3), Vector3(6, 4, 6))
-		var pat := float(11 if Eras.theme == "alien" else int(f[1])) + _rng.randf() * 0.99
+		var pat := float(int(f[1])) + _rng.randf() * 0.99
 		_leaps.append({"node": mmi, "p0": p0, "p1": p1, "h": _rng.randf_range(0.35, 0.8), "t": 0.0, "dur": _rng.randf_range(0.55, 0.8), "size": size, "pat": pat})
 		Splashes.splash(p0, 0.25)
 		return
@@ -282,7 +281,7 @@ class School:
 	var rng := RandomNumberGenerator.new()
 	var hold: bool
 
-	func _init(life: AquaticLife, sp: String, at: Vector3, water_top: float, r: RandomNumberGenerator, alien: bool) -> void:
+	func _init(life: AquaticLife, sp: String, at: Vector3, water_top: float, r: RandomNumberGenerator) -> void:
 		f = FISH[sp]
 		home = at
 		center = at
@@ -294,7 +293,7 @@ class School:
 		var base := rng.randf_range(f[2].x, f[2].y)
 		var spread: float = f[5]
 		mmi = life._batch(FishKit.mesh(f[0]), AquaticLife._fish_mat, n, at)
-		var pattern := 11 if alien else int(f[1])
+		var pattern := int(f[1])
 		var heading := Vector3.FORWARD.rotated(Vector3.UP, rng.randf() * TAU)
 		for i in n:
 			# A school is a loose ellipsoid, longer than it is wide, flatter than either.

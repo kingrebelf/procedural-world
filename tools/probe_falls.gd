@@ -10,7 +10,7 @@ func _init() -> void:
 		args[kv[0]] = kv[1] if kv.size() > 1 else ""
 	var seed := int(args.get("seed", "4242"))
 	var r := float(args.get("r", "6000"))
-	Planets.apply(Planets.get_planet(seed, 0, "human"))
+	Planets.apply(Planets.home(seed, "human"))
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 	var g := ChunkGenerator.new(seed, true)
 	var n := 0

@@ -57,8 +57,6 @@ static func cell_of(x: float, z: float) -> Vector2i:
 ## era, area, clear, loop (radius m), phase, name, faction, seed}. Safe on worker threads
 ## (it samples the terrain a lot: BoatManager runs it off the main thread and caches it).
 static func plan(field: WorldField, cx: int, cz: int) -> Dictionary:
-	if Eras.theme == "alien":
-		return {} # no human boats out on the alien worlds' seas (yet)
 	var seed := field.seed
 	var r := WHash.rng(seed, cx, cz, 733)
 	# The first deep spot on a coarse lattice over the cell, from a hashed corner.

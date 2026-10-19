@@ -48,8 +48,6 @@ static func period(day: float) -> int:
 ## Bands whose camps are within `radius` of `p` on day `day`.
 static func near(gen: ChunkGenerator, p: Vector2, radius: float, day: float) -> Array:
 	var out: Array = []
-	if Eras.theme == "alien":
-		return out # the endgame worlds have their own dangers
 	var per := period(day)
 	for cz in range(int(floor((p.y - radius) / CELL)), int(floor((p.y + radius) / CELL)) + 1):
 		for cx in range(int(floor((p.x - radius) / CELL)), int(floor((p.x + radius) / CELL)) + 1):
