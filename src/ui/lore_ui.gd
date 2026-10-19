@@ -100,6 +100,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			or (event.is_action_pressed("ui_cancel") and event is InputEventJoypadButton):
 		close()
 		get_viewport().set_input_as_handled()
+	elif event is InputEventJoypadButton and event.pressed and event.button_index in [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER]:
+		# LB / RB turn the page.
+		var n := (_entry["pages"] as Array).size()
+		if n > 1:
+			var to := posmod(_page_now() + (1 if event.button_index == JOY_BUTTON_RIGHT_SHOULDER else -1), n)
+			if _screen:
+				(_panel as TerminalUI)._show_page(to)
+			else:
+				_show_page(to)
+		get_viewport().set_input_as_handled()
+
+func _page_now() -> int:
+	return (_panel as TerminalUI)._page if _screen else _page
 
 func _process(_d: float) -> void:
 	if not is_open():

@@ -40,6 +40,14 @@ func _me() -> Vector2:
 func recentre() -> void:
 	_pan = Vector2.ZERO
 
+## Drops a marker in the middle of the map (a controller's click).
+func mark_centre() -> void:
+	var w := _me() + _pan
+	var mk := Game.markers.add("Marker %d" % (Game.markers.count_kind("pin") + 1), w.x, w.y, Game.planet)
+	selected = int(mk["id"])
+	Game.touch_player()
+	changed.emit()
+
 ## Pans so world point (x, z) is in the middle.
 static func focus(x: float, z: float, me: Vector2) -> void:
 	_pan = Vector2(x, z) - me
@@ -56,6 +64,15 @@ func zoom_by(f: float, at := Vector2(-1, -1)) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if Game.using_pad and is_visible_in_tree():
+		# Right stick pans, the triggers zoom (RT in, LT out).
+		var st := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+		if st.length() > 0.2:
+			_pan += st * st.length() * 700.0 * delta / _ppm
+		var z := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT) - Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT)
+		if absf(z) > 0.15:
+			zoom_by(pow(2.0, z * delta * 1.6))
+		_hover = size * 0.5 # the readout follows the crosshair
 	_canvas.center = _me() + _pan
 	_canvas.scale_ppm = _ppm
 	_canvas.refresh()
@@ -129,6 +146,12 @@ func _things() -> Array:
 
 func _draw_icons() -> void:
 	var font := get_theme_default_font()
+	if Game.using_pad:
+		# The crosshair X drops a marker on.
+		var c := (size * 0.5).round()
+		for d in [Vector2(1, 0), Vector2(0, 1)]:
+			_icons.draw_line(c - d * 12.0, c - d * 4.0, Color(1, 1, 1, 0.8), 1.5, true)
+			_icons.draw_line(c + d * 4.0, c + d * 12.0, Color(1, 1, 1, 0.8), 1.5, true)
 	var layer := MapLayers.current()
 	if layer != MapLayers.OFF:
 		_draw_rings(font, layer)

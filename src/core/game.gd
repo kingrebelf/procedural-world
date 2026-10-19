@@ -820,11 +820,17 @@ func origin_here(how: String, era: int, chunk: Vector2i) -> Dictionary:
 func _setup_input() -> void:
 	Bindings.load_and_apply()
 
-## True after the last input came from a controller (menus then show focus highlights).
+## True after the last input came from a controller (menus then show focus highlights
+## and controller prompts). `pad_changed` fires when it flips.
 var using_pad := false
+signal pad_changed
 
 func _input(event: InputEvent) -> void:
+	var pad := using_pad
 	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.4):
-		using_pad = true
+		pad = true
 	elif event is InputEventKey or event is InputEventMouseButton:
-		using_pad = false
+		pad = false
+	if pad != using_pad:
+		using_pad = pad
+		pad_changed.emit()

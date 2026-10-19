@@ -120,11 +120,12 @@ func close_talk() -> void:
 	Cursor.restore()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _pick_npc != null and event.is_action_pressed("pause"):
+	var back := event.is_action_pressed("pause") or (event is InputEventJoypadButton and event.is_action_pressed("ui_cancel"))
+	if _pick_npc != null and back:
 		close_pickpocket()
 		get_viewport().set_input_as_handled()
 		return
-	if npc != null and not _ambient and event.is_action_pressed("pause"):
+	if npc != null and not _ambient and back:
 		close_talk()
 		get_viewport().set_input_as_handled()
 		return
@@ -162,6 +163,8 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 func _process(_d: float) -> void:
+	if Game.using_pad and visible and not _ambient and (npc != null or _pick_npc != null) and get_viewport().gui_get_focus_owner() == null:
+		_pad_focus()
 	if _pick_npc != null and (not is_instance_valid(_pick_npc) or _pick_npc.global_position.distance_to(player.global_position) > 2.8 or _pick_npc.action in ["flee", "attack", "confront"]):
 		close_pickpocket()
 	if _mic.recording and _mic_btn:
@@ -259,9 +262,10 @@ func _build() -> void:
 	v.add_child(_status)
 
 func _mode_text() -> String:
+	var leave := "B to leave." if Game.using_pad else "Esc to leave."
 	if AI.dialogue_enabled():
-		return "Voiced by %s (%s). Esc to leave." % [AI.provider_label(), AI.get_value("model")]
-	return "Built-in dialogue. Connect a local or cloud AI in Settings > AI for free conversation. Esc to leave."
+		return "Voiced by %s (%s). %s" % [AI.provider_label(), AI.get_value("model"), leave]
+	return "Built-in dialogue. Connect a local or cloud AI in Settings > AI for free conversation. %s" % leave
 
 func _relation_text() -> String:
 	var r := int(npc.rec.get("rel", 0))
@@ -279,6 +283,21 @@ func _set_options(opts: Array) -> void:
 		var b := UITheme.button(o, func(): _send(o))
 		b.add_theme_font_size_override("font_size", 14)
 		_opts.add_child(b)
+	if Game.using_pad:
+		_pad_focus.call_deferred()
+
+## On a controller, focus lands on the first thing to say (or the first button) whenever
+## the old focus went away with the options it was on.
+func _pad_focus() -> void:
+	var root: Control = _pick_panel if is_instance_valid(_pick_panel) else _panel
+	if not is_instance_valid(root) or UITheme.has_focus_in(root):
+		return
+	if root == _panel and is_instance_valid(_opts):
+		for c in _opts.get_children():
+			if c is Button and not c.is_queued_for_deletion():
+				c.grab_focus()
+				return
+	UITheme.focus_first(root)
 
 ## `note`: what the person knows about how it was said (only the model sees it).
 func _send(text: String, note := "") -> void:
@@ -501,6 +520,8 @@ func _build_pick() -> void:
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(UITheme.button("Leave", close_pickpocket))
+	if Game.using_pad:
+		_pad_focus.call_deferred()
 	v.add_child(head)
 	v.add_child(UITheme.label("Pickpocketing %d  ·  stay behind them; dearer things are harder to lift" % Game.stats.skills["pick"], 14, UITheme.DIM))
 	var purse := int(rec["purse"])

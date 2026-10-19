@@ -31,6 +31,9 @@ func _ready() -> void:
 	Game.equipment_changed.connect(func(): if _mode == "inventory" or _mode == "character": _refresh())
 	Net.alliance_changed.connect(func(): if _mode == "players": _refresh())
 	Net.players_changed.connect(func(): if _mode == "players": _refresh())
+	# Picking up the controller (or the mouse) rebuilds the open menu with focus
+	# highlights and controller prompts (or without them).
+	Game.pad_changed.connect(func(): if _mode != "" and _mode != "settings": _refresh())
 	_backdrop = TextureRect.new()
 	var g := Gradient.new()
 	g.colors = PackedColorArray([Color(0, 0, 0, 0.25), Color(0, 0, 0, 0.72)])
@@ -53,14 +56,16 @@ func is_open() -> bool:
 	return _mode != ""
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _mode != "" and (event is InputEventJoypadButton or event is InputEventJoypadMotion):
+		# A menu is open: the pad drives the menu (focus moves on the D-pad and left stick
+		# before this), and none of its buttons reach the game behind it.
+		_pad_input(event)
+		get_viewport().set_input_as_handled()
+		return
+	if _mode == "" and player and player.ui_open and event is InputEventJoypadButton:
+		return # someone's talking to you or a book is open: B and the D-pad are theirs
 	if event.is_action_pressed("pause"):
 		if _mode == "":
-			open("pause")
-		else:
-			close()
-		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("ui_cancel") and _mode != "" and event is InputEventJoypadButton:
-		if _mode == "settings":
 			open("pause")
 		else:
 			close()
@@ -109,6 +114,8 @@ func close() -> void:
 	if _mode != "":
 		Audio.ui("ui/close")
 	_mode = ""
+	_atlas = null
+	get_viewport().gui_release_focus() # or A (jump) would press a button in the closed menu
 	_scroll_at.clear()
 	if _panel:
 		_panel.queue_free()
@@ -186,6 +193,8 @@ func _store_changed() -> void:
 func _refresh() -> void:
 	if _mode == "":
 		return
+	var keep := _focus_path() if _mode == _built else []
+	_built = _mode
 	if _panel:
 		_panel.queue_free()
 	match _mode:
@@ -202,6 +211,8 @@ func _refresh() -> void:
 		"character": _panel = _character_panel()
 		"players": _panel = _players_panel()
 	_backdrop.visible = true
+	if Game.using_pad and _mode != "settings" and _panel.get_child_count() > 0 and _panel.get_child(0) is VBoxContainer:
+		_panel.get_child(0).add_child(_pad_footer())
 	add_child(_panel)
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
 	_panel.reset_size()
@@ -214,8 +225,199 @@ func _refresh() -> void:
 		var tw := _panel.create_tween().set_parallel(true).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		tw.tween_property(_panel, "modulate:a", 1.0, 0.14)
 		tw.tween_property(_panel, "scale", Vector2.ONE, 0.18)
-	if Game.using_pad:
-		UITheme.focus_first.call_deferred(_panel)
+	if Game.using_pad and _mode != "settings": # the settings screen picks its own first setting
+		_restore_focus.call_deferred(_panel, keep)
+
+# --- Controller -------------------------------------------------------------------------
+
+var _atlas: AtlasView ## the open atlas, panned and zoomed with the sticks and triggers
+var _pad_info: Label ## what the focused slot holds (a controller has no hover tooltips)
+var _trig := [false, false] ## LT, RT held past half way
+var _built := "" ## the mode the open panel was built for
+
+## Where focus sits in the open panel, as child indices from the panel down, so the same
+## spot gets focus back after the panel rebuilds (it rebuilds after every move).
+func _focus_path() -> Array:
+	var f := get_viewport().gui_get_focus_owner()
+	if f == null or _panel == null or not is_instance_valid(_panel) or not _panel.is_ancestor_of(f):
+		return []
+	var path: Array = []
+	var n: Node = f
+	while n != _panel:
+		path.push_front(n.get_index())
+		n = n.get_parent()
+	return path
+
+func _restore_focus(panel: Control, path: Array) -> void:
+	if not is_instance_valid(panel) or panel != _panel:
+		return
+	var n: Node = panel
+	for i in path:
+		if n == null or i >= n.get_child_count():
+			n = null
+			break
+		n = n.get_child(i)
+	var c := n as Control
+	if c != null and c != panel and c.is_visible_in_tree() and c.focus_mode != Control.FOCUS_NONE:
+		c.grab_focus()
+	else:
+		UITheme.focus_first(panel)
+
+## A menu is open and the controller pressed something the focused control didn't use.
+func _pad_input(event: InputEvent) -> void:
+	if event is InputEventJoypadMotion:
+		var side := [JOY_AXIS_TRIGGER_LEFT, JOY_AXIS_TRIGGER_RIGHT].find(event.axis)
+		if side >= 0:
+			var down: bool = event.axis_value > 0.6
+			if down and not _trig[side]:
+				_pad_trigger(-1 if side == 0 else 1)
+			if down or event.axis_value < 0.3:
+				_trig[side] = down
+		return
+	if not event.pressed:
+		return
+	if event.is_action_pressed("pause"):
+		close()
+	elif event.is_action_pressed("ui_cancel"):
+		if _swap_from >= 0:
+			_swap_from = -1
+			_refresh()
+		elif _mode == "settings":
+			open("pause")
+		else:
+			close()
+	elif event.is_action_pressed("map") and _mode != "pause":
+		_toggle("map")
+	else:
+		match event.button_index:
+			JOY_BUTTON_LEFT_SHOULDER: _pad_tab(-1)
+			JOY_BUTTON_RIGHT_SHOULDER: _pad_tab(1)
+			JOY_BUTTON_X: _pad_x()
+			JOY_BUTTON_Y: _pad_y()
+
+## LB / RB: the next main screen along the tab strip.
+func _pad_tab(dir: int) -> void:
+	var ids: Array = TABS.map(func(t): return t[0])
+	var i := ids.find(_mode)
+	if i >= 0:
+		open(ids[posmod(i + dir, ids.size())])
+
+## LT / RT: the crafting categories.
+func _pad_trigger(dir: int) -> void:
+	if _mode != "craft":
+		return
+	var tabs: Array = ["All"]
+	for t in ItemDB.CRAFT_TABS:
+		var tab: String = t
+		if Recipes.LIST.any(func(r): return ItemDB.craft_tabs(r["out"]).has(tab)):
+			tabs.append(tab)
+	_craft_tab = tabs[posmod(tabs.find(_craft_tab) + dir, tabs.size())]
+	_craft_scroll = 0
+	_refresh()
+
+func _focused() -> Control:
+	return get_viewport().gui_get_focus_owner()
+
+## X: use or wear the focused item (as a right-click); in crafting, show only what you
+## can make now; on the atlas, drop a marker in the middle of the map.
+func _pad_x() -> void:
+	var f := _focused()
+	match _mode:
+		"inventory":
+			if f is EquipSlot:
+				Game.unequip((f as EquipSlot).where)
+			elif f != null and f.has_meta("inv_slot"):
+				_use_slot(int(f.get_meta("inv_slot")))
+		"craft":
+			_craft_ready_only = not _craft_ready_only
+			_craft_scroll = 0
+			_refresh()
+		"map":
+			if _atlas:
+				_atlas.mark_centre()
+
+## Y: drop the focused stack on the ground; on the atlas, centre on yourself.
+func _pad_y() -> void:
+	var f := _focused()
+	match _mode:
+		"inventory":
+			if f != null and f.has_meta("inv_slot"):
+				_swap_from = -1
+				_drop_slot(int(f.get_meta("inv_slot")))
+		"map":
+			if _atlas:
+				_atlas.recentre()
+
+## Wears armour, or eats, reads, plays or pitches what is in slot `i` (right-click).
+func _use_slot(i: int) -> void:
+	var there = Game.inventory.get_slot(i)
+	if Game.armor_slot_of(there) != "":
+		_swap_from = -1
+		Game.equip(i)
+	elif there != null and player and ItemDB.def(there["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
+		_swap_from = -1
+		player.consume(i)
+		_refresh()
+
+## The controller prompts along the bottom of the open panel, with a line for what the
+## focused slot holds.
+func _pad_footer() -> Control:
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	v.add_child(UITheme.divider())
+	var tabs := TABS.any(func(t): return t[0] == _mode)
+	if _mode in ["inventory", "storage", "corpse", "trade", "craft"]:
+		_pad_info = UITheme.label("", 14, UITheme.DIM)
+		_pad_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_pad_info.custom_minimum_size = Vector2(0, 40)
+		_pad_info.max_lines_visible = 3
+		v.add_child(_pad_info)
+	var hints: Array = [[JOY_BUTTON_A, "Select"]]
+	match _mode:
+		"inventory":
+			hints = [[JOY_BUTTON_A, "Pick up / put down" if _swap_from < 0 else "Put here"], [JOY_BUTTON_X, "Use / wear"], [JOY_BUTTON_Y, "Drop"]]
+		"craft":
+			hints = [[JOY_BUTTON_A, "Craft"], [["lt", "rt"], "Category"], [JOY_BUTTON_X, "Only what I can make" if not _craft_ready_only else "Show all"], ["rs", "Scroll"]]
+		"storage", "corpse":
+			hints = [[JOY_BUTTON_A, "Move across"]]
+		"trade":
+			hints = [[JOY_BUTTON_A, "Buy / sell"], ["rs", "Scroll"]]
+		"map":
+			hints = [[JOY_BUTTON_A, "Select"], ["rs", "Pan"], [["lt", "rt"], "Zoom"], [JOY_BUTTON_X, "Mark the centre"], [JOY_BUTTON_Y, "Centre on me"]]
+	if tabs:
+		hints.append([[JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER], "Switch screen"])
+	hints.append([JOY_BUTTON_B, "Cancel" if _swap_from >= 0 else ("Resume" if _mode == "pause" else ("Back" if _mode == "settings" else "Close"))])
+	v.add_child(UITheme.pad_hints(hints))
+	return v
+
+func _process(delta: float) -> void:
+	if _mode == "" or _mode == "settings" or not Game.using_pad or not is_instance_valid(_panel):
+		return
+	var f := _focused()
+	if is_instance_valid(_pad_info):
+		var t := ""
+		if f != null and _panel.is_ancestor_of(f):
+			t = f.tooltip_text
+		_pad_info.text = t.replace("\n", "  ·  ")
+	# The right stick scrolls the list you are in (the atlas pans with it instead).
+	if _mode == "map":
+		return
+	var ry := Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y)
+	if absf(ry) < 0.2:
+		return
+	var sc: ScrollContainer = null
+	var n: Node = f
+	while n != null and n != _panel:
+		if n is ScrollContainer:
+			sc = n
+			break
+		n = n.get_parent()
+	if sc == null:
+		var all := _panel.find_children("*", "ScrollContainer", true, false)
+		if all.is_empty():
+			return
+		sc = all[0]
+	sc.scroll_vertical += int(ry * absf(ry) * 1400.0 * delta)
 
 ## The main screens share one tab strip so you can hop between them.
 const TABS := [["inventory", "Inventory"], ["craft", "Crafting"], ["character", "Character"], ["map", "Atlas"]]
@@ -252,7 +454,7 @@ func _tab_strip() -> Control:
 	for t in TABS:
 		var m: String = t[0]
 		var b := Button.new()
-		b.focus_mode = Control.FOCUS_NONE if not Game.using_pad else Control.FOCUS_ALL
+		b.focus_mode = Control.FOCUS_NONE # LB / RB switch screens on a controller
 		var inner := HBoxContainer.new()
 		inner.add_theme_constant_override("separation", 8)
 		inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -288,6 +490,7 @@ func _close_button() -> Button:
 	b.custom_minimum_size = Vector2(40, 40)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.tooltip_text = "Close  [%s]" % Bindings.key_name("pause", Game.using_pad)
+	b.focus_mode = Control.FOCUS_NONE # B closes on a controller
 	_small_button(b)
 	b.pressed.connect(close)
 	b.draw.connect(func():
@@ -545,6 +748,9 @@ func _slot_button(i: int) -> Button:
 	var it = Game.inventory.get_slot(i)
 	var b := Button.new()
 	_style_slot(b, it, SLOT_PX)
+	b.set_meta("inv_slot", i)
+	if i == Inventory.HOTBAR:
+		b.set_meta("pad_first", true) # a controller starts on the pack, not the body
 	if it != null and Game.armor_slot_of(it) != "":
 		b.tooltip_text += "\nRight-click or drag onto your body to wear it"
 	if i == _swap_from:
@@ -555,19 +761,13 @@ func _slot_button(i: int) -> Button:
 				_swap_from = i
 				_refresh()
 		else:
-			Game.inventory.swap(_swap_from, i)
-			_swap_from = -1)
+			var from := _swap_from
+			_swap_from = -1 # before the swap, whose rebuild shows the hints for no pick
+			Game.inventory.swap(from, i))
 	# Right-click armour to put it on, and food, potions, scrolls and the like to use them.
 	b.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_RIGHT:
-			var there = Game.inventory.get_slot(i)
-			if Game.armor_slot_of(there) != "":
-				_swap_from = -1
-				Game.equip(i)
-			elif there != null and player and ItemDB.def(there["type"]).get("kind", "") in ["food", "scroll", "instrument", "camp"]:
-				_swap_from = -1
-				player.consume(i)
-				_refresh())
+			_use_slot(i))
 	# Drag and drop: drag any item onto another slot (or onto the hotbar row) to move,
 	# swap or merge it, or armour onto your body to wear it.
 	b.set_drag_forwarding(func(_at):
@@ -661,7 +861,8 @@ func _inventory_panel() -> Control:
 		hb.add_child(_slot_button(i))
 	right.add_child(hb)
 	cols.add_child(right)
-	v.add_child(_hint_row([["Drag", "move or wear"], ["Right-click", "wear / take off"], ["Click, click", "swap two slots"]]))
+	if not Game.using_pad:
+		v.add_child(_hint_row([["Drag", "move or wear"], ["Right-click", "wear / take off"], ["Click, click", "swap two slots"]]))
 	return s[0]
 
 ## A strip under the pack: drag a stack onto it (or pick one, then click it) to put the
@@ -706,6 +907,7 @@ var _scroll_at := {}
 func _scroll_rows(grid: GridContainer, key: String, rows: int, px: int) -> Control:
 	var sc := ScrollContainer.new()
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.follow_focus = true
 	var n := ceili(float(grid.get_child_count()) / maxi(1, grid.columns))
 	sc.custom_minimum_size = Vector2(grid.columns * (px + 6) + 14, mini(n, rows) * (px + 6))
 	sc.add_child(grid)
@@ -829,6 +1031,7 @@ func _craft_panel() -> Control:
 	v.add_child(bar)
 	sc.custom_minimum_size = Vector2(980, 520)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.follow_focus = true
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 6)
 	sc.add_child(list)
@@ -1146,6 +1349,7 @@ func _trade_panel() -> Control:
 	# Sell column.
 	var sell_sc := ScrollContainer.new()
 	sell_sc.custom_minimum_size = Vector2(460, 480)
+	sell_sc.follow_focus = true
 	var sell := VBoxContainer.new()
 	sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sell_sc.add_child(sell)
@@ -1234,6 +1438,7 @@ func _map_panel() -> Control:
 	var left := VBoxContainer.new()
 	h.add_child(left)
 	var m := AtlasView.new()
+	_atlas = m
 	m.player = player
 	m.custom_minimum_size = Vector2(760, 560)
 	m.changed.connect(_refresh)
@@ -1246,6 +1451,7 @@ func _map_panel() -> Control:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(340, 610)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	var side := VBoxContainer.new()
 	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	side.add_theme_constant_override("separation", 6)
