@@ -983,8 +983,9 @@ func _add_lamp(lv: int, p: Vector3, energy: float, flame: bool) -> void:
 		l = OmniLight3D.new()
 		l.light_color = LAMP
 	# Strip lamps on dark steel: brighter and further than a torch on pale stone.
-	l.light_energy = energy * (1.7 if _era == Eras.SCIFI else 1.0)
-	l.omni_range = 11.0 if _era == Eras.SCIFI else 9.0
+	# An open torch's flame lights well down a passage, brighter than a covered lamp.
+	l.light_energy = energy * (1.7 if _era == Eras.SCIFI else 1.8 if flame else 1.0)
+	l.omni_range = 11.0 if _era == Eras.SCIFI else 13.0 if flame else 9.0
 	l.omni_attenuation = 1.3
 	ChunkNode._cast_shadows(l)
 	l.distance_fade_enabled = true
