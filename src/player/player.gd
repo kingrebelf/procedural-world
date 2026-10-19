@@ -222,13 +222,20 @@ func holster(on = null) -> void:
 	_refresh_held()
 	selected_changed.emit(selected)
 
+var _body_type := "" ## what the third-person body holds (see _refresh_held)
+var _body_item = null
+
 func _refresh_held() -> void:
 	var it = held_item()
 	var t: String = it["type"] if it != null else ""
 	viewmodel.show_item(t, it)
 	if hand_light:
 		hand_light.set_held(t, Game.inventory)
-	if body:
+	# Rebuilding the body's prop (new meshes, grip fit, a layer pass over the whole body)
+	# on every inventory change hitched crafting; only redo it when the hand changes.
+	if body and (t != _body_type or not is_same(it, _body_item)):
+		_body_type = t
+		_body_item = it
 		body.hold(Viewmodel.prop_for(t, it) if t != "" else null)
 		body.set_shadow_only(not third_person)
 		_tag_self()
@@ -2165,6 +2172,8 @@ func mount(v: Vehicle) -> void:
 	viewmodel.visible = false
 	if body:
 		body.hold(null)
+		_body_type = ""
+		_body_item = null
 	look_target_changed.emit("")
 	_last_info = ""
 	look_info_changed.emit({})
