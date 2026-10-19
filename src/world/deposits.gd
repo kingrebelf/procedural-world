@@ -6,13 +6,13 @@ class_name Deposits
 ## Plan: plans/tile-minerals-factories.md.
 
 ## The ores by tier: [ore, tier, least zone level]. An ore also never shows below its own
-## unlock level (ItemDB.unlock_level).
+## unlock level (ItemDB.unlock_level), capped at the top zone level (Eras.HUMAN_MAX_LEVEL).
 const ORES := [
 	["iron_ore", 1, 1], ["copper_ore", 1, 1], ["coal", 1, 1], ["tin_ore", 1, 1], ["salt_crystal", 1, 1],
 	["silver_ore", 2, 3], ["gold_ore", 2, 5],
 	["titanium_ore", 3, 25], ["silicon_crystal", 3, 25], ["cobalt_ore", 3, 28],
 	["lithium_ore", 4, 30], ["rare_earth", 4, 30], ["uranium_ore", 4, 36],
-	["voidstone_ore", 5, 55], ["starsteel_ore", 5, 58], ["neutronium", 5, 66],
+	["voidstone_ore", 5, 45], ["starsteel_ore", 5, 50], ["neutronium", 5, 55],
 ]
 const TIER_NAMES := ["", "Common", "Uncommon", "Rare", "Exotic", "Alien"]
 ## Per tier: [chance a tile has one, least units, most units]. Tier 1 always has one.
@@ -50,7 +50,9 @@ static func roll(seed: int, cx: int, cz: int, zone: int) -> Array:
 static func ores_for(tier: int, zone: int) -> Array:
 	var out: Array = []
 	for e in ORES:
-		if int(e[1]) != tier or zone < maxi(int(e[2]), ItemDB.unlock_level(e[0])):
+		# Unlock levels past the world's top zone would hide an ore for ever: cap them there.
+		var least := maxi(int(e[2]), mini(ItemDB.unlock_level(e[0]), Eras.HUMAN_MAX_LEVEL))
+		if int(e[1]) != tier or zone < least:
 			continue
 		out.append(e[0])
 	return out

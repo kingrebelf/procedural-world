@@ -6044,9 +6044,11 @@ func test_deposits() -> void:
 	for cx in 300:
 		for d in Deposits.roll(4242, cx, 9, 40):
 			mid5 = mid5 or int(d["tier"]) == 5
-		for d in Deposits.roll(4242, cx, 9, 99):
+		for d in Deposits.roll(4242, cx, 9, Eras.HUMAN_MAX_LEVEL):
 			far5 = far5 or int(d["tier"]) == 5
 	check(not mid5 and far5, "tier 5 ore lies only in the far outer zones")
+	for o in ["voidstone_ore", "starsteel_ore", "neutronium"]:
+		check(o in Deposits.ores_for(5, Eras.HUMAN_MAX_LEVEL), "%s can turn up by the top zone level" % o)
 	# Rarer tiers are worth more at market.
 	var top := [0, 0, 0, 0, 0, 0]
 	var low := [0, 9999, 9999, 9999, 9999, 9999]
