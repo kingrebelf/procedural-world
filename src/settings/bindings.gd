@@ -9,9 +9,9 @@ const DEADZONE := 0.2
 ## action -> [label, keyboard/mouse default, controller default]
 ## The controller layout follows ARK: A jump, B inventory, Y use, left/right stick clicks
 ## sprint and crouch, RT use the held item, D-pad left/right cycle the hotbar, and holding
-## LB turns A/B/X/Y and the D-pad into direct hotbar picks. LT aims a gun, RB reloads. While a building piece is
-## held, D-pad up/down raise and lower it and X toggles the grid (instead of crafting,
-## character and eating).
+## LB turns A/B/X/Y and the D-pad into direct hotbar picks. LT aims a gun, X reloads, RB eats. While a building piece
+## is held, D-pad up/down raise and lower it, RB turns it and X toggles the grid (instead of
+## crafting, character, eating and reloading).
 ## Keyboard default: KEY_* int, or "mouse:<button>". Controller default: "btn:<JoyButton>"
 ## or "axis:<JoyAxis>:<+1|-1>".
 const ACTIONS := {
@@ -28,9 +28,9 @@ const ACTIONS := {
 	"crouch": ["Crouch / dive", KEY_CTRL, "btn:8"],
 	"use": ["Use tool / weapon", "mouse:1", "axis:5:1"],
 	"aim": ["Aim down the sights", "mouse:2", "axis:4:1"],
-	"reload": ["Reload (with a gun or bow in hand)", KEY_R, "btn:10"],
+	"reload": ["Reload (with a gun or bow in hand)", KEY_R, "btn:2"],
 	"interact": ["Interact / talk / trade", KEY_E, "btn:3"],
-	"eat": ["Eat", KEY_F, "btn:2"],
+	"eat": ["Eat", KEY_F, "btn:10"],
 	"light": ["Torch / flashlight on or off", KEY_T, "btn:15"],
 	"inventory": ["Inventory", KEY_TAB, "btn:1"],
 	"craft": ["Crafting (R reloads instead while a gun needs it)", KEY_R, "btn:11"],
