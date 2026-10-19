@@ -16,5 +16,8 @@ Everything here is CC0 (public domain) or made for this game.
 - **Synthesised for this game** (CC0) by `tools/synth_ambience.py`: wind, strong wind,
   river, sea surf, birds, crickets, fantasy shimmer, sci-fi hum, swing whooshes, splashes,
   rain, rain on the roof, hail, thunder (`tools/synth_ambience.py assets/audio weather`).
+- **Layered for this game** (CC0) by `tools/synth_impacts.py`: tool blows on wood, rock and
+  metal, blows landing on a body (Kenney impacts with synthesised bite, ring, thump and grit),
+  and the hit, headshot and kill markers (synthesised).
 
 `tools/prepare_audio.py` lists exactly which source file each sound came from.
