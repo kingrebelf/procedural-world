@@ -189,10 +189,10 @@ static func gate(g: String, ins: Array) -> bool:
 		"XNOR": return n % 2 == 0
 	return false
 
-## A push button pressed on Game.day `day`: on for its pulse length (real seconds, with
-## `day_seconds` to a day). Kept in its st, so the press reaches other players.
+## A push button pressed on Game.day `day`: on for its pulse length (real seconds, by
+## DayClock). Kept in its st, so the press reaches other players.
 static func press(o: Dictionary, day: float, day_seconds: float) -> void:
-	o["st"]["pu"] = day + float(PULSE[setting(o) % PULSE.size()]) / maxf(day_seconds, 1.0)
+	o["st"]["pu"] = DayClock.day_at(DayClock.world_seconds(day, day_seconds) + float(PULSE[setting(o) % PULSE.size()]), day_seconds)
 
 # --- Settings ----------------------------------------------------------------------
 

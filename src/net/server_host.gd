@@ -708,7 +708,7 @@ func _process(delta: float) -> void:
 	match String(cfg.options["time"]):
 		"day": day = floorf(day) + NOON
 		"night": day = floorf(day) + NIGHT
-		_: day += delta / (float(cfg.options["day_minutes"]) * 60.0)
+		_: day = DayClock.advance(day, delta, float(cfg.options["day_minutes"]) * 60.0)
 	meta["play_time"] = float(meta.get("play_time", 0.0)) + delta
 	_clock_t -= delta
 	if _clock_t <= 0.0:

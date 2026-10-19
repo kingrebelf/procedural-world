@@ -263,7 +263,7 @@ func _tick(dt: float) -> void:
 ## and generators run, door motors move).
 func _logic(env: Dictionary) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
-	var clock := Game.day * Game.day_seconds
+	var clock := DayClock.world_seconds(Game.day, Game.day_seconds)
 	var ctx := {"now": now, "day": Game.day, "clock": clock, "hour": fposmod(Game.day, 1.0) * 24.0, "night": (env["sun"] as Vector3).y < 0.05}
 	var next := {}
 	for k in _index:
@@ -542,7 +542,7 @@ func _machine_catch_up(id: String, o: Dictionary) -> void:
 	var c := chunk_of_id(id)
 	if last < 0.0 or c == null or not _authority(c.key) or not Power.is_on(o):
 		return
-	var secs := minf(Game.day - last, CATCH_UP_MAX) * Game.day_seconds
+	var secs := DayClock.world_seconds(Game.day, Game.day_seconds) - DayClock.world_seconds(maxf(last, Game.day - CATCH_UP_MAX), Game.day_seconds)
 	var cycles := mini(int(secs / float(Automation.spec(o).get("every", 5.0))), Automation.CATCH_UP_MAX)
 	var mem: Dictionary = _mem.get(id, {})
 	_mem[id] = mem
@@ -763,14 +763,14 @@ func _catch_up(net: Array) -> void:
 		last = maxf(last, float(e["o"]["st"].get("pt", -1.0)))
 	if last < 0.0:
 		return
-	var away := minf(Game.day - last, CATCH_UP_MAX)
-	var secs := away * Game.day_seconds
+	var s0 := DayClock.world_seconds(maxf(last, Game.day - CATCH_UP_MAX), Game.day_seconds)
+	var secs := DayClock.world_seconds(Game.day, Game.day_seconds) - s0
 	if secs < CATCH_UP_STEP * 0.5:
 		return
 	var steps := ceili(secs / CATCH_UP_STEP)
 	var dt := secs / steps
 	for s in steps:
-		var day := last + (s + 0.5) * away / steps
+		var day := DayClock.day_at(s0 + (s + 0.5) * dt, Game.day_seconds)
 		var sun := Power.sun_dir_at(day)
 		Power.solve(_entries(net, sun), {"wind": 0.35, "sun": sun, "cloud": 0.4}, dt)
 	for e in es:

@@ -547,7 +547,7 @@ var strike_now := false
 const CELL := 2500.0
 
 func _lightning(delta: float, p: Vector3) -> void:
-	var secs := Game.day * Game.day_seconds
+	var secs := DayClock.world_seconds(Game.day, Game.day_seconds)
 	var slot := int(floor(secs))
 	if slot != _strike_slot:
 		_strike_slot = slot

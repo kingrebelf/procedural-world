@@ -38,7 +38,7 @@ lan_discovery=true
 
 [options]
 time="normal"         ; normal, day (always day), night (always night)
-day_minutes=24.0      ; real minutes per game day
+day_minutes=24.0      ; real minutes per game day at night pace (daylight runs 4x slower: a 60-minute cycle)
 pvp=true
 xp_mult=1.0
 loot_mult=1.0
