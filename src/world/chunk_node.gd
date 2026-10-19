@@ -1775,14 +1775,17 @@ func _add_obj_body(o: Dictionary) -> void:
 ## the light stays inside its walls instead of shining out through them.
 ## `size` is the flame's (or fire's) breadth in metres: shadows soften with distance from
 ## what casts them, as under a real flame.
-## `movers`: whether people and animals further off (Movers) are lit by it too. Indoors
-## they are walled off anyway, and leaving them out spares re-rendering its shadows
-## every time someone walks by.
+## `movers`: whether people and animals further off (Movers) cast its shadows too. Indoors
+## they are walled off anyway.
+## Never narrow `light_cull_mask` here: Movers and the player switch layers while lit, and
+## under Forward+ the engine doesn't unpair them first, so a lamp that skips a layer stays
+## linked to whoever left it and crashes the game once its chunk frees it (v0.3.53/54
+## crash on entering new tiles). The shadow caster mask isn't used for that link.
 static func _cast_shadows(l: OmniLight3D, size := 0.12, movers := true) -> void:
 	l.shadow_enabled = true
 	if not movers:
 		# Your own first-person body (Player.SELF_LAYER) neither: its idling is a move.
-		l.light_cull_mask = 0xFFFFF & ~(Movers.LAYER | Player.SELF_LAYER)
+		l.shadow_caster_mask = 0xFFFFF & ~(Movers.LAYER | Player.SELF_LAYER)
 	l.light_size = size
 	l.shadow_bias = 0.04
 	l.shadow_normal_bias = 1.2
