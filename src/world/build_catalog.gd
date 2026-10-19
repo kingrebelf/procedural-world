@@ -606,15 +606,20 @@ static func _aged(m: Material, model := "") -> Material:
 		# the drips purple).
 		_lock.lock()
 		var wax = _aged_mats.get("wax")
+		_lock.unlock()
 		if wax == null:
+			# Made outside the lock, as Materials are (Materials._share).
 			var w := StandardMaterial3D.new()
 			w.albedo_color = Color(0.93, 0.88, 0.76)
 			w.roughness = 0.5
 			w.subsurf_scatter_enabled = true
 			w.subsurf_scatter_strength = 0.5
-			_aged_mats["wax"] = w
-			wax = w
-		_lock.unlock()
+			_lock.lock()
+			wax = _aged_mats.get("wax")
+			if wax == null:
+				_aged_mats["wax"] = w
+				wax = w
+			_lock.unlock()
 		return wax
 	var metal: bool = m.resource_name.begins_with("MI_Trim_Metal")
 	var wood: bool = m.resource_name == "MI_Trim_Furniture"

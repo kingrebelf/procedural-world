@@ -21,6 +21,8 @@ static var _lock := Mutex.new()
 static func mesh(kind: String) -> ArrayMesh:
 	_lock.lock()
 	var m: ArrayMesh = _meshes.get(kind)
+	_lock.unlock()
+	# Built outside the lock: committing a mesh is a RenderingServer call.
 	if m == null:
 		var st := SurfaceTool.new()
 		st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -32,8 +34,12 @@ static func mesh(kind: String) -> ArrayMesh:
 			_fish(st, kind)
 		st.index()
 		m = st.commit()
-		_meshes[kind] = m
-	_lock.unlock()
+		_lock.lock()
+		if _meshes.has(kind):
+			m = _meshes[kind]
+		else:
+			_meshes[kind] = m
+		_lock.unlock()
 	return m
 
 static func _v(st: SurfaceTool, p: Vector3, n: Vector3, uv: Vector2, col: Color) -> void:

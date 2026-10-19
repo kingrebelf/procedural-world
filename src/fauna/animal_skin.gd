@@ -158,12 +158,19 @@ static func material(kind: String, mat_name: String, col: Color, glow, box: AABB
 	var role := role_of(kit, mat_name)
 	var key := "%s|%s|%s|%s|%s|%s" % [kind, mat_name, col.to_html(), glow, snappedf(unit, 0.001), other]
 	_mat_lock.lock()
-	if _shader == null:
-		_shader = load(SHADER)
+	var shader := _shader
 	var m: ShaderMaterial = _mats.get(key)
+	_mat_lock.unlock()
+	# Made outside the lock: a load can wait on the main thread.
+	if shader == null:
+		shader = load(SHADER)
+		_mat_lock.lock()
+		if _shader == null:
+			_shader = shader
+		_mat_lock.unlock()
 	if m == null:
 		m = ShaderMaterial.new()
-		m.shader = _shader
+		m.shader = shader
 		m.set_shader_parameter("role", role)
 		m.set_shader_parameter("base", col)
 		m.set_shader_parameter("lo", box.position)
@@ -179,6 +186,15 @@ static func material(kind: String, mat_name: String, col: Color, glow, box: AABB
 		if glow != null:
 			m.set_shader_parameter("emit", glow)
 			m.set_shader_parameter("emit_e", 1.6)
+		m = _keep(key, m)
+	return m
+
+## Caches `m` under `key`, or returns what another thread cached there first.
+static func _keep(key: String, m: ShaderMaterial) -> ShaderMaterial:
+	_mat_lock.lock()
+	if _mats.has(key):
+		m = _mats[key]
+	else:
 		_mats[key] = m
 	_mat_lock.unlock()
 	return m
@@ -188,6 +204,7 @@ static func lock_material(kind: String, col: Color) -> ShaderMaterial:
 	var key := "locks|%s|%s" % [kind, col.to_html()]
 	_mat_lock.lock()
 	var m: ShaderMaterial = _mats.get(key)
+	_mat_lock.unlock()
 	if m == null:
 		m = ShaderMaterial.new()
 		m.shader = load(LOCK_SHADER)
@@ -196,8 +213,7 @@ static func lock_material(kind: String, col: Color) -> ShaderMaterial:
 		for k in ["vary", "phases"]:
 			if look.has(k):
 				m.set_shader_parameter(k, look[k])
-		_mats[key] = m
-	_mat_lock.unlock()
+		m = _keep(key, m)
 	return m
 
 # --- Mesh refinement -------------------------------------------------------------

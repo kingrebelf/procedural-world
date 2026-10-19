@@ -430,6 +430,8 @@ static func _material(kind: String, base: String) -> Material:
 	var key := kind + ":" + base
 	_lock.lock()
 	var m = _mats.get(key)
+	_lock.unlock()
+	# Made outside the lock: loads can wait on the main thread (Materials._share).
 	if m == null:
 		if kind == "leaf":
 			var sm := ShaderMaterial.new()
@@ -449,6 +451,15 @@ static func _material(kind: String, base: String) -> Material:
 			bm.roughness = 0.9
 			bm.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 			m = bm
+		m = _keep(key, m)
+	return m
+
+## Caches `m` under `key`, or returns what another thread cached there first.
+static func _keep(key: String, m: Material) -> Material:
+	_lock.lock()
+	if _mats.has(key):
+		m = _mats[key]
+	else:
 		_mats[key] = m
 	_lock.unlock()
 	return m
@@ -516,6 +527,7 @@ static func _ore_material(kind: String) -> Material:
 	var key := "ore:" + kind
 	_lock.lock()
 	var m = _mats.get(key)
+	_lock.unlock()
 	if m == null:
 		var o: Array = ORES[kind]
 		var sm := ShaderMaterial.new()
@@ -536,7 +548,5 @@ static func _ore_material(kind: String) -> Material:
 		sm.set_shader_parameter("ore_col2", o[1])
 		sm.set_shader_parameter("vein_width", o[2])
 		sm.set_shader_parameter("vein_freq", o[3])
-		m = sm
-		_mats[key] = m
-	_lock.unlock()
+		m = _keep(key, sm)
 	return m
