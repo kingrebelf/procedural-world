@@ -1327,6 +1327,16 @@ static func stats(item) -> Dictionary:
 
 ## Deterministic loot for a cache. Called once at generation; the result is snapshotted.
 ## `luck` (0 to 1) is how dangerous the place was: more and better gear.
+## Out past FINDS_ZONE on a human world, caches hold what once came only from the alien
+## worlds: their raw materials and beast parts (FINDS), fey and alien gear, relics. With
+## no other worlds to travel to, this is where the alien recipes get what they need.
+## (Tier 5 ores come from deposits, Deposits.)
+const FINDS_ZONE := 40
+const FINDS := [["aether_crystal", 1, 4], ["glowroot", 1, 4], ["glowberry", 1, 3], ["psi_crystal_large", 1, 1],
+	["bio_gel_alien", 1, 3], ["spore_sac", 1, 2], ["fruit_alien", 1, 3], ["fungus_alien", 1, 3], ["seed_glow", 1, 2],
+	["egg_alien", 1, 1], ["hide_xeno", 1, 2], ["meat_xeno", 1, 3], ["fang_xeno", 1, 2], ["eye_xeno", 1, 1],
+	["venom_gland", 1, 1], ["scale_dragon", 1, 1], ["core_titan", 1, 1], ["moonpearl", 1, 1]]
+
 static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, luck := 0.0) -> Array:
 	var loot: Array = []
 	var pools := [
@@ -1355,7 +1365,8 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 	# On themed worlds nothing turns up far above the zone: the sci-fi age's parts and
 	# rations wait out past level 25.
 	var cap := zl * 160.0 + 3.0 + luck * 4.0
-	var reach := func(x): return not Eras.themed() or UNLOCK.get(x, 1) <= cap and not def(x).get("alien", false)
+	var finds := Eras.themed() and zl * 160.0 + 1.0 >= FINDS_ZONE - 0.5
+	var reach := func(x): return not Eras.themed() or (finds and def(x).get("alien", false)) or UNLOCK.get(x, 1) <= cap and not def(x).get("alien", false)
 	var n := rng.randi_range(2, 4)
 	var pool: Array = pools[era].filter(func(e): return reach.call(e[0]))
 	for i in n:
@@ -1364,8 +1375,14 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			idx = 0
 		var e: Array = pool[idx]
 		loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
+	if finds and rng.randf() < 0.5 + luck * 0.5:
+		for i in rng.randi_range(1, 2):
+			var e: Array = FINDS[rng.randi() % FINDS.size()]
+			loot.append(make(e[0], rng.randi_range(e[1], e[2]), rng.randf_range(0.8, 1.2), origin))
+	# Far out, a third of the gear is fey or alien work.
+	var gear_era := Eras.FANTASY if finds and rng.randf() < 0.33 else era
 	if rng.randf() < 0.12 + (luck + zl) * 0.7:
-		var t: Array = rare_tools[era] + GEAR_LOOT[era]
+		var t: Array = rare_tools[gear_era] + GEAR_LOOT[gear_era]
 		if Eras.themed():
 			# Gear near the zone's level: what a traveller of about that level could make (a
 			# few levels' grace in a dungeon), nothing far below it once there is better. The
@@ -1373,7 +1390,7 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 			var zone := zl * 160.0 + 1.0
 			var lv := zone + 2.0 + luck * 4.0
 			var early := zone < Eras.UNLOCK_LEVEL
-			var fits := func(x): return unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and not def(x).get("alien", false)
+			var fits := func(x): return (finds and (gear_era == Eras.FANTASY or def(x).get("alien", false))) or unlock_level(x) <= lv and (not early or unlock_level(x) < Eras.UNLOCK_LEVEL) and not def(x).get("alien", false)
 			var near: Array = t.filter(func(x): return fits.call(x) and unlock_level(x) >= lv - 15.0)
 			if near.is_empty():
 				near = t.filter(fits)
@@ -1382,8 +1399,10 @@ static func roll_loot(era: int, rng: RandomNumberGenerator, origin: Dictionary, 
 		if not t.is_empty():
 			loot.append(make(t[rng.randi() % t.size()], 1, rng.randf_range(0.9, 1.45), origin, rng, minf(luck + zl, 1.0)))
 	if luck > 0.0:
-		var extra: Array = DUNGEON_LOOT[era].filter(reach)
-		for i in rng.randi_range(1, 1 + int(luck * 3.0)):
+		var extra: Array = DUNGEON_LOOT[gear_era].filter(reach)
+		if extra.is_empty():
+			extra = DUNGEON_LOOT[era].filter(reach)
+		for i in rng.randi_range(1, 1 + int(luck * 3.0)) if not extra.is_empty() else 0:
 			var t: String = extra[rng.randi() % extra.size()]
 			var many: bool = def(t).get("kind", "") == "ammo" or def(t).get("thrown", false) and not def(t).has("splash")
 			loot.append(make(t, rng.randi_range(8, 20) if many else rng.randi_range(1, 3), rng.randf_range(0.9, 1.2), origin))

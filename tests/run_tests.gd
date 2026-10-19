@@ -4835,10 +4835,20 @@ func test_pack_d_items() -> void:
 	var human_ok := true
 	for i in 200:
 		rng.seed = 3900 + i
-		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(100, 0)}, 0.8):
+		for it in ItemDB.roll_loot(Eras.SCIFI, rng, {"chunk": Vector2i(40, 0)}, 0.8):
 			if ItemDB.def(it["type"]).get("alien", false):
 				human_ok = false
-	check(human_ok, "human worlds hold no alien loot, however far out")
+	check(human_ok, "no alien loot short of the far frontier")
+	# Past FINDS_ZONE the caches hold what the alien worlds once did, so their recipes
+	# can still be made.
+	var finds := {}
+	for i in 600:
+		rng.seed = 3900 + i
+		for it in ItemDB.roll_loot(Eras.SCIFI if i % 2 else Eras.MEDIEVAL, rng, {"chunk": Vector2i(110, 0)}, 0.5 * (i % 3)):
+			finds[it["type"]] = true
+	var lacking: Array = ItemDB.FINDS.map(func(e): return e[0]).filter(func(t): return not finds.has(t))
+	check(lacking.is_empty(), "far frontier caches hold every alien raw material (%s missing)" % [lacking])
+	check(finds.has("alien_circuit") and finds.keys().any(func(t): return ItemDB.def(t).get("alien", false) and Rarity.is_gear(t)), "and alien gear")
 	Eras.theme = was
 
 func test_pack_e_items() -> void:
