@@ -20,8 +20,8 @@ var cfg: ServerConfig
 var root := ""
 var meta: Dictionary = {}
 var day := 0.3
-var _stores: Dictionary = {} ## planet -> WorldStore
-var _gens: Dictionary = {} ## planet -> ChunkGenerator
+var _store: WorldStore
+var _gen: ChunkGenerator
 
 ## Connected players: peer -> {pid, name, planet, pos, chunk, admin, ip, equip, held}
 var online: Dictionary = {}
@@ -41,6 +41,10 @@ var _clock_t := 0.0
 var mp: SceneMultiplayer
 var sync: ServerSync
 var alliances: ServerAlliances
+## Builds the home world's land ahead of every player in a finite world (WorldBounds);
+## null in an endless one.
+var builder: WorldBuilder
+var _start_left := -1 ## tiles of a new world's start area still to build (-1: done)
 
 func start(c: ServerConfig) -> Error:
 	cfg = c
@@ -50,6 +54,14 @@ func start(c: ServerConfig) -> Error:
 	_load_index()
 	sync = ServerSync.new(self)
 	alliances = ServerAlliances.new(self, root.path_join("alliances.dat"))
+	if int(meta.get("tiles", 0)) > 0:
+		var s0 := store_for(0)
+		builder = WorldBuilder.new(s0, int(meta["seed"]), s0.has_rivers())
+		builder.max_tasks = maxi(1, OS.get_processor_count() / 2)
+		builder.watch("start", Vector3.ZERO, WorldBuilder.START, -1)
+		_start_left = builder.remaining()
+		if _start_left > 0:
+			say_log("Building the land round the centre of the world: %d tiles" % _start_left)
 	use_ai()
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(cfg.port, cfg.max_players + 4, 3)
@@ -80,7 +92,7 @@ func _open_world() -> bool:
 		var s := cfg.seed_text.strip_edges()
 		var sd: int = randi() if s == "" else (s.to_int() if s.is_valid_int() else WHash.str_hash(s))
 		meta = {"store_format": WorldStore.STORE_FORMAT, "name": cfg.world, "seed": sd & WHash.MASK,
-			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human",
+			"gen_version": ChunkGenerator.GEN_VERSION, "theme": "human", "tiles": cfg.tiles,
 			"created": Time.get_unix_time_from_system(), "last_played": Time.get_unix_time_from_system(),
 			"play_time": 0.0, "day": 0.3}
 		if not WorldStore.write_var(root.path_join("world.dat"), meta):
@@ -92,19 +104,18 @@ func _open_world() -> bool:
 	DirAccess.make_dir_recursive_absolute(root.path_join("players"))
 	return true
 
-func store_for(p: int) -> WorldStore:
-	if not _stores.has(p):
-		var s := WorldStore.new(root)
-		s.meta = meta
-		s.set_planet(p)
-		_stores[p] = s
-	return _stores[p]
+## The world's store and generator. `p`, the planet every message still names, is always
+## 0 (there is one world); messages naming another are refused before they get here.
+func store_for(_p := 0) -> WorldStore:
+	if _store == null:
+		_store = WorldStore.new(root)
+		_store.meta = meta
+	return _store
 
-func gen_for(p: int) -> ChunkGenerator:
-	if not _gens.has(p):
-		var s := store_for(p)
-		_gens[p] = ChunkGenerator.new(Planets.seed_of(int(meta["seed"]), p), s.has_rivers())
-	return _gens[p]
+func gen_for(_p := 0) -> ChunkGenerator:
+	if _gen == null:
+		_gen = ChunkGenerator.new(int(meta["seed"]), store_for().has_rivers())
+	return _gen
 
 func say_log(t: String) -> void:
 	var line := "[%s] %s" % [Time.get_time_string_from_system(), t]
@@ -166,7 +177,7 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 		rec["name"] = nm
 	_save_index()
 	var save = WorldStore.read_var(_player_path(rec["pid"]), true)
-	online[peer] = {"pid": rec["pid"], "name": nm, "planet": int(save.get("planet", 0)) if save is Dictionary else 0,
+	online[peer] = {"pid": rec["pid"], "name": nm, "planet": 0,
 		"pos": save.get("pos", Vector3.ZERO) if save is Dictionary else Vector3.ZERO, "admin": false, "ip": ip,
 		"equip": save.get("equipment", {}) if save is Dictionary else {}, "held": {}, "pending": true}
 	online[peer]["chunk"] = ChunkStreamer.chunk_of(online[peer]["pos"])
@@ -178,7 +189,7 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 ## What clients need of the world's meta to generate and draw it like the server.
 func _client_meta() -> Dictionary:
 	var m := {}
-	for k in ["name", "seed", "gen_version", "theme", "store_format", "created", "uid"]:
+	for k in ["name", "seed", "gen_version", "theme", "tiles", "store_format", "created", "uid"]:
 		if meta.has(k):
 			m[k] = meta[k]
 	return m
@@ -318,7 +329,7 @@ func player_look(peer: int, look: Dictionary) -> void:
 # --- Chunks ------------------------------------------------------------------------------------
 
 func chunk_request(peer: int, p: int, cx: int, cz: int) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var k := Vector3i(p, cx, cz)
 	_lock.lock()
@@ -330,7 +341,7 @@ func chunk_request(peer: int, p: int, cx: int, cz: int) -> void:
 	_want("c:%d:%d:%d" % [p, cx, cz], peer, {"kind": "chunk", "key": k})
 
 func town_request(peer: int, p: int, site: Dictionary) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT or not (site.get("sx") is int and site.get("sz") is int):
+	if not online.has(peer) or p != 0 or not (site.get("sx") is int and site.get("sz") is int):
 		return
 	var k := Vector3i(p, site["sx"], site["sz"])
 	_lock.lock()
@@ -361,7 +372,8 @@ func _launch() -> void:
 	for id in _jobs:
 		if _jobs[id].has("task"):
 			running += 1
-	if running == 0 and not _queue.is_empty() and int(_queue[0]["key"].x) != _active_planet:
+	# The builder's tiles count too: they are made under the home world's globals.
+	if running == 0 and (builder == null or builder.busy() == 0) and not _queue.is_empty() and int(_queue[0]["key"].x) != _active_planet:
 		_use_planet(int(_queue[0]["key"].x))
 	var i := 0
 	while running < MAX_JOBS and i < _queue.size():
@@ -380,7 +392,7 @@ func _launch() -> void:
 func _use_planet(p: int) -> void:
 	_active_planet = p
 	WorldField.terrain_v = int(meta.get("gen_version", 1))
-	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", ""))))
+	Planets.apply(Planets.home(int(meta["seed"]), String(meta.get("theme", "")), int(meta.get("tiles", 0))))
 
 ## Worker thread.
 func _run(job: Dictionary) -> void:
@@ -445,7 +457,7 @@ func _remember(k: Vector3i, bytes: PackedByteArray) -> void:
 ## saved at once and shown to everyone near it (the saver too, when it was merged, so
 ## everyone has the same).
 func chunk_save(peer: int, p: int, data: PackedByteArray) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var c = NetPack.unpack(data)
 	if not _valid_chunk(c):
@@ -499,7 +511,7 @@ static func _valid_chunk(c) -> bool:
 ## A town's people saved by a player: merged like chunks, and sent to everyone else who
 ## has the town loaded (the holder runs them; the others' talks, trades and blows count).
 func town_save(peer: int, p: int, data: PackedByteArray) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var s = NetPack.unpack(data)
 	if not _valid_town(s):
@@ -538,7 +550,7 @@ const MOB_RANGE := 500.0 ## metres: puppets are drawn for players this close to 
 const HIT_RANGE := 120.0 ## metres: furthest a player can hurt another from (guns)
 
 func watch(peer: int, kind: String, p: int, adds: Array, removes: Array) -> void:
-	if online.has(peer) and kind in ["t", "f", "b"] and p >= 0 and p < Planets.COUNT:
+	if online.has(peer) and kind in ["t", "f", "b"] and p == 0:
 		sync.watch(peer, kind, p, adds, removes)
 
 ## Tells a player who runs a town or chunk they have loaded, and how many have it.
@@ -642,6 +654,19 @@ func ally(peer: int, cmd: String, arg: String) -> void:
 	if online.has(peer) and not online[peer].has("pending"):
 		alliances.command(online[peer]["pid"], online[peer]["name"], cmd.substr(0, 16), arg.substr(0, 240))
 
+func explored(peer: int, p: int, keys: Array) -> void:
+	if online.has(peer) and not online[peer].has("pending"):
+		alliances.explore(online[peer]["pid"], p, keys)
+
+func ally_map_request(peer: int, p: int) -> void:
+	if online.has(peer) and not online[peer].has("pending"):
+		Net.c_ally_map.rpc_id(peer, p, alliances.ally_map(online[peer]["pid"], p))
+
+func tell_explored(pid: String, p: int, keys: Array) -> void:
+	var q := peer_of(pid)
+	if q != 0:
+		Net.c_ally_map.rpc_id(q, p, keys)
+
 func option(k: String):
 	return cfg.options.get(k, ServerConfig.OPTIONS.get(k))
 
@@ -701,6 +726,7 @@ func _process(delta: float) -> void:
 	if _lan != null:
 		_answer_lan()
 	_collect()
+	_tick_builder()
 	_ally_t -= delta
 	if _ally_t <= 0.0:
 		_ally_t = ALLY_EVERY
@@ -721,15 +747,43 @@ func _process(delta: float) -> void:
 		_save_t = 0.0
 		save()
 
+## Keeps the land within WorldBuilder.BUFFER tiles of every player on the home world
+## built. Generation reads per-planet globals, so it only runs while the home world's are
+## in force and no other planet's jobs are waiting (see _launch).
+func _tick_builder() -> void:
+	if builder == null:
+		return
+	for q in online:
+		var o: Dictionary = online[q]
+		if not o.has("pending") and int(o.get("planet", 0)) == 0 and o.get("pos") is Vector3:
+			builder.watch(o["pid"], o["pos"])
+	for job in _queue:
+		if int(job["key"].x) != 0:
+			return
+	if _active_planet != 0:
+		for id in _jobs:
+			if _jobs[id].has("task"):
+				return
+		_use_planet(0)
+	builder.tick()
+	if _start_left >= 0 and builder.remaining() == 0:
+		say_log("The land round the centre is built (%d tiles)" % _start_left)
+		builder.forget("start")
+		builder.max_tasks = maxi(1, OS.get_processor_count() / 4)
+		_start_left = -1
+
 func save() -> void:
 	meta["day"] = day
 	meta["last_played"] = Time.get_unix_time_from_system()
 	WorldStore.write_var(root.path_join("world.dat"), meta)
 	_save_index()
+	alliances.save_explored()
 
 func stop() -> void:
 	for q in online.keys():
 		Net.c_kicked.rpc_id(q, "The server is shutting down.")
+	if builder != null:
+		builder.stop()
 	for id in _jobs:
 		if _jobs[id].has("task"):
 			WorkerThreadPool.wait_for_task_completion(_jobs[id]["task"])

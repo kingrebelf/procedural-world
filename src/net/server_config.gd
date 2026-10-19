@@ -29,6 +29,7 @@ var password := ""
 var admin_password := ""
 var world := "world" ## folder under data_dir/worlds
 var seed_text := "" ## for a new world; empty = random
+var tiles := WorldBounds.TILES ## a new world's size along a side, in tiles (0: endless)
 var data_dir := "" ## where worlds live; empty = next to the executable
 var lan_discovery := true
 var options: Dictionary = OPTIONS.duplicate()
@@ -73,6 +74,7 @@ func read_file(p: String) -> void:
 	admin_password = str(cf.get_value("server", "admin_password", admin_password))
 	world = str(cf.get_value("server", "world", world))
 	seed_text = str(cf.get_value("server", "seed", seed_text))
+	tiles = maxi(0, int(cf.get_value("server", "tiles", tiles)))
 	data_dir = str(cf.get_value("server", "data_dir", data_dir))
 	lan_discovery = bool(cf.get_value("server", "lan_discovery", lan_discovery))
 	for k in OPTIONS:
@@ -91,7 +93,7 @@ func write_file(p: String = "") -> bool:
 	var lines := PackedStringArray([
 		"; Procedural World dedicated server settings.",
 		"; Command-line flags override these: --name= --description= --port= --max-players=",
-		"; --password= --admin-password= --world= --seed= --data= --set key=value",
+		"; --password= --admin-password= --world= --seed= --tiles= --data= --set key=value",
 		"",
 		"[server]",
 		"",
@@ -107,6 +109,8 @@ func write_file(p: String = "") -> bool:
 		"world=%s" % _q(world),
 		"; Seed for a new world (number or text); empty = random.",
 		"seed=%s" % _q(seed_text),
+		"; Size of a new world along each side, in 64 m tiles (0 = endless).",
+		"tiles=%d" % tiles,
 		"; Where worlds are kept; empty = next to the server.",
 		"data_dir=%s" % _q(data_dir),
 		"lan_discovery=%s" % str(lan_discovery).to_lower(),
@@ -170,6 +174,7 @@ func apply_args(args: PackedStringArray) -> void:
 			"admin-password", "admin_password": admin_password = v
 			"world": world = v
 			"seed": seed_text = v
+			"tiles": tiles = maxi(0, v.to_int())
 			"data": data_dir = v
 			"lan": lan_discovery = v.to_lower() in ["1", "true", "yes", "on"]
 			"set":
@@ -224,3 +229,4 @@ func ai_settings() -> Dictionary:
 		"model": String(ai["model"]) if String(ai["model"]) != "" else String(pr["model"]),
 		"api_key": ai["api_key"], "max_rpm": int(ai["max_rpm"])}
 	return out
+

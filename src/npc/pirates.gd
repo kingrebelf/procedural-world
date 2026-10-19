@@ -85,7 +85,7 @@ static func crew(era: int, zone: int, stations: int, at: Vector2) -> Array:
 
 ## Whether pirates may come for someone at `p` at all (the world, the place).
 static func allowed(p: Vector2) -> bool:
-	return Eras.theme != "alien" and p.length() >= SAFE_R
+	return p.length() >= SAFE_R
 
 ## What it costs to make them go away: a share of your Marks.
 static func toll(money: int, zone: int) -> int:

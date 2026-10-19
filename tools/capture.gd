@@ -702,11 +702,6 @@ func _run() -> void:
 		await _player_house()
 	if only.is_empty() or only.has("09") or only.has("10"):
 		await _vehicles()
-	if only.is_empty() or only.has("11") or only.has("12"):
-		await _starship()
-	if only.is_empty() or only.has("13") or only.has("14") or only.has("15"):
-		await _space()
-		return
 	Game.close_world()
 	get_tree().quit()
 
@@ -1458,56 +1453,6 @@ func _clear_line(streamer: ChunkStreamer, eye: Vector3, target: Vector3, r: floa
 			if f < 0.8 and Vector2(w.x, w.z).distance_to(a + ab * f) < r:
 				c.remove_object(o["i"])
 
-## A starship on its launch pad, then in flight over the land.
-func _starship() -> void:
-	var p: Player = world.player
-	var streamer: ChunkStreamer = world.streamer
-	var vm: VehicleManager = world.vehicles
-	if p.vehicle:
-		p.dismount(true)
-	var g0 := ChunkGenerator.new(Game.seed)
-	var s2 := _find_era(g0, Eras.SCIFI, 0.9)
-	var at := _flat_spot(vm, Vector3(s2.x, 0, s2.y))
-	print("starship: pad at ", at)
-	p.fly = true
-	p.global_position = at + Vector3(0, 3, 0)
-	await _wait_loaded(p, streamer)
-	var pad := Vector3(at.x, vm.ground(at.x, at.z), at.z)
-	_clear_around(streamer, pad, 26.0)
-	var c: ChunkNode = streamer.get_chunk(ChunkStreamer.chunk_of(at))
-	c.add_built("launch_pad", pad - c.position, 0.0, {"by": "you", "day": 0.0})
-	var ship := vm.deploy(ItemDB.make("ship", 1, 1.0, {}), pad, 0.6)
-	ship.global_position.y = pad.y + 0.6
-	Game.day = 0.62
-	var eye := pad + Vector3(12, 8, 14)
-	var d := pad + Vector3(0, 1.5, 0) - eye
-	p.set_state({"pos": eye, "yaw": atan2(-d.x, -d.z), "pitch": atan2(d.y, Vector2(d.x, d.z).length()), "slot": 0})
-	await _wait(settle_frames)
-	if only.is_empty() or only.has("11"):
-		get_viewport().get_texture().get_image().save_png(out_dir.path_join("11_starship.png"))
-		print("captured 11_starship")
-	p.fly = false
-	p.mount(ship)
-	if not p.third_person:
-		p.toggle_view()
-	p.set_state({"pos": p.global_position, "yaw": ship.rotation.y, "pitch": 0.25, "slot": 0, "view": 3})
-	Input.action_press("jump")
-	await _wait(60)
-	Input.action_press("move_forward")
-	await _wait(60)
-	Input.action_release("jump")
-	await _wait(40)
-	Input.action_release("move_forward")
-	# Hover while the land below streams in, then look down over the nose.
-	await _wait_loaded(p, streamer)
-	p.set_state({"pos": p.global_position, "yaw": ship.rotation.y, "pitch": -0.35, "slot": 0, "view": 3})
-	Input.action_press("move_forward")
-	await _wait(30)
-	if only.is_empty() or only.has("12"):
-		get_viewport().get_texture().get_image().save_png(out_dir.path_join("12_flight.png"))
-		print("captured 12_flight")
-	Input.action_release("move_forward")
-
 ## Under the lake looking back up the shelf to the shore and up at the surface, and a
 ## splash just off the beach.
 func _water_shots(g: ChunkGenerator, shore: Vector2) -> void:
@@ -1751,86 +1696,6 @@ func _snap(name: String) -> void:
 		await _hide_tags()
 		get_viewport().get_texture().get_image().save_png(out_dir.path_join(name + ".png"))
 		print("captured ", name)
-
-## Up to orbit, warp to the fey moon, and land there.
-func _space() -> void:
-	var p: Player = world.player
-	var vm: VehicleManager = world.vehicles
-	if p.vehicle:
-		p.dismount(true)
-	p.set_physics_process(true)
-	p.fly = false
-	var ship := vm.deploy(ItemDB.make("ship", 1, 1.0, {}), p.global_position + Vector3(0, 0, -10), p.yaw())
-	await _wait(10)
-	p.mount(ship)
-	ship.leaving = Vehicle.LEAVE_TIME
-	ship.at_ceiling = true
-	# The world (and this node's parent) goes away; keep the tour running from the root.
-	var tree := get_tree()
-	get_parent().remove_child(self)
-	tree.root.add_child(self)
-	for i in 600:
-		await tree.process_frame
-		if tree.current_scene is OrbitView:
-			break
-	var orbit: OrbitView = tree.current_scene
-	if hud_mode == "none":
-		# The info panel only; the warp streaks share its layer.
-		for c in orbit.find_children("*", "PanelContainer", true, false):
-			(c as Control).visible = false
-	await _wait(settle_frames)
-	await _snap("13_orbit")
-	var fey := 1
-	for pl in Game.worlds():
-		if pl["kind"] == "fey":
-			fey = pl["n"]
-	# Slow time so the streaks are mid-flight when the (slow) software renderer shoots.
-	Engine.time_scale = 0.05
-	orbit._warp(fey)
-	# Wait on the effect itself, not a frame count: a fast GPU ran 400 frames before the
-	# streaks had begun and the shot came out the same as the orbit.
-	var t0 := Time.get_ticks_msec()
-	# "amount" reads null until the warp first sets it.
-	while float(orbit._warp_mat.get_shader_parameter("amount") if orbit._warp_mat.get_shader_parameter("amount") != null else 0.0) <= 0.75 \
-			and Time.get_ticks_msec() - t0 < 180000:
-		await tree.process_frame
-	await _snap("14_warp")
-	Engine.time_scale = 1.0
-	while orbit._busy:
-		await tree.process_frame
-	await _wait(30)
-	orbit._land()
-	for i in 600:
-		await tree.process_frame
-		if tree.current_scene != orbit and tree.current_scene != null and tree.current_scene.get("player") != null:
-			break
-	world = tree.current_scene
-	p = world.player
-	_apply_hud_mode()
-	for i in 3000:
-		await tree.process_frame
-		if p.vehicle != null:
-			break
-	if not p.third_person:
-		p.toggle_view()
-	Input.action_press("crouch")
-	await _wait(150)
-	Input.action_release("crouch")
-	p.dismount(true)
-	var at := p.global_position
-	var yaw := p.yaw()
-	# Off the dark of space the eye takes seconds to adapt (auto exposure), and a fast GPU
-	# runs the settle frames in under one: wait it out by the clock, in the day.
-	Game.day = 0.42
-	await _wait_ms(6000)
-	# Look away from the parked ship, over the alien landscape.
-	p.set_state({"pos": at + Vector3(0, 0, 6), "yaw": yaw + 2.4, "pitch": -0.15, "slot": 0, "view": 3, "riding": -1})
-	await _wait_loaded(p, world.streamer)
-	Game.day = 0.42
-	await _wait(settle_frames)
-	await _snap("15_fey_moon")
-	Game.close_world()
-	get_tree().quit()
 
 ## The flattest dry 24 m square near `from` (for setting things out to photograph).
 func _flat_spot(vm: VehicleManager, from: Vector3) -> Vector3:

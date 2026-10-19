@@ -70,6 +70,10 @@ func _ready() -> void:
 	far.target = player
 	far.streamer = streamer
 	add_child(far)
+	var edge := EdgeField.new()
+	edge.name = "EdgeField"
+	edge.target = player
+	add_child(edge)
 
 	npcs = NPCManager.new()
 	npcs.name = "People"

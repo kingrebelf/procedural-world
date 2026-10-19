@@ -4,7 +4,7 @@ extends RefCounted
 ## globals, no clock (except the `created` stamp). Safe to run on worker threads as long
 ## as each thread uses its own generator instance.
 
-const GEN_VERSION := 21 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins). 20: natural waterfalls where a river falls steeply (Waterfalls). 21: wild caches set down on ground they can rest on (PropSettle), not on a cliff or a terrace lip.
+const GEN_VERSION := 22 ## 2: per-region biomes and parametric species. 3: rivers (new worlds). 4: highlands and mesas. 5: sci-fi outpost grids. 6: walled towns. 7: landforms. 8: roads meet towns at their flattened level. 9: human and alien world themes (Eras.theme), eras by distance, world portals. 10: cave networks under the hills (Caves). 11: hidden finds (EasterEggs). 12: uneven, grooved rock needles. 13: terraces with wider banks. 14: ledged rock needles with lesser spires round them. 15: fluted, ledged limestone towers. 16: era sites (PR #69). 17: terraces of varying height and width with earth lips. 18: climates (WorldField.climate_at): palms, jungle and savanna in the hot belts, spruce in the cold. 19: believable rock towers (karst and needles no taller than their width allows, in clusters with talus aprons and saddles, never thin sheer fins). 20: natural waterfalls where a river falls steeply (Waterfalls). 21: wild caches set down on ground they can rest on (PropSettle), not on a cliff or a terrace lip. 22: finite worlds (WorldBounds): 1200 x 1200 tiles round a centre start, a barrier at the edge, zone levels rising to 1000 there.
 const FORMAT := 1
 const SIZE := 64
 const RES := SIZE + 1
@@ -1267,10 +1267,6 @@ func _place_objects(chunk: Dictionary, sites: Array) -> void:
 	var wonder := WonderSite.place(self, chunk, sites)
 	if not wonder.is_empty():
 		sites = sites + [wonder]
-	# A portal to other worlds, rarer still and only far out in the high zones.
-	var portal := WorldPortal.place(self, chunk)
-	if not portal.is_empty():
-		sites = sites + [portal]
 
 	if deep_caves:
 		if chunk.has("cave"):
@@ -1641,7 +1637,8 @@ func _outpost_grid(s: Dictionary, r: RandomNumberGenerator, items: Array) -> voi
 	if size >= 1:
 		outer.append("solar_farm")
 		outer.append("depot")
-		outer.append(ShipPad.pick(r))
+		r.randi() # once a landing pad's ship: the draw keeps old worlds' outposts laid out as before
+		outer.append("depot")
 	if size >= 2:
 		outer.append("solar_farm")
 	for n in lots.size():

@@ -436,8 +436,8 @@ static func _furnish(gen: ChunkGenerator, chunk: Dictionary, ps: PackedFloat32Ar
 	for n in r.randi_range(1, 3) + (3 if ch["big"] else 0):
 		var p: Vector3 = spots.call(0.3, 0.7)
 		if not is_nan(p.y):
-			# Only alien worlds glow; on human worlds the crystals just catch your torchlight.
-			_put(chunk, "cave_glow" if Eras.theme == "alien" else "cave_crystal", era, p, r.randf() * TAU, r.randf_range(0.7, 1.3), {}, r.randi_range(1, 12), era)
+			# Nothing glows; the crystals just catch your torchlight.
+			_put(chunk, "cave_crystal", era, p, r.randf() * TAU, r.randf_range(0.7, 1.3), {}, r.randi_range(1, 12), era)
 	# Something lives down here: more of them, and tougher, in the great caverns.
 	var dwellers := r.randi_range(0, 2) + (2 if ch["big"] else 0)
 	var tier := 1 + (1 if ch["big"] else 0) + (1 if r.randf() < 0.2 else 0)

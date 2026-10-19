@@ -25,9 +25,10 @@ const XP_RATE := 4.0 ## Every experience award is multiplied by this (Ben 10-18:
 const DIRTY_FLUSH_DELAY := 0.75
 
 var store: WorldStore
-var seed: int = 0 ## the current planet's terrain seed
-var home_seed: int = 0 ## the world's own seed; every planet of its system derives from it
-var planet := 0 ## which planet of the system you are on (0 = home)
+var seed: int = 0 ## the world's terrain seed
+## Always 0: there is one world. Saved records (markers, houses, vehicles, hunts) and
+## online messages still carry it, as they did when other planets existed.
+var planet := 0
 var inventory := Inventory.new(Inventory.SIZE, true)
 var money := 0
 var health := 100.0
@@ -52,12 +53,13 @@ signal buffs_changed
 
 ## Your vehicles out in the world (VehicleManager); saved with the player.
 var vehicles: Array = []
-## Where you last left each planet for orbit (planet -> Vector2), to land there again.
-var landings: Dictionary = {}
 var markers := Markers.new() ## map pins and teleporters
 var guilds: Dictionary = {} ## guild (TownShops.GUILDS key) -> {day, town}
 var estates: Array = [] ## houses you bought: TownShops.estate records
 var map := WorldMap.new() ## the painted atlas under its fog of war
+## Builds the land ahead of you in a finite world (WorldBounds); null in an endless one,
+## and online, where the server builds.
+var builder: WorldBuilder
 ## Treasure hunts from maps you picked up: Treasure.new_hunt records, kept found or not.
 var treasure: Array = []
 signal treasure_started(hunt: Dictionary)
@@ -80,7 +82,8 @@ func is_playing() -> bool:
 
 # --- World lifecycle -----------------------------------------------------------
 
-func new_world(name: String, seed_text: String) -> void:
+## tiles: the world's size along a side (WorldBounds; 0 for an endless world).
+func new_world(name: String, seed_text: String, tiles := WorldBounds.TILES) -> void:
 	var s := seed_text.strip_edges()
 	var sd: int
 	if s == "":
@@ -89,7 +92,7 @@ func new_world(name: String, seed_text: String) -> void:
 		sd = s.to_int()
 	else:
 		sd = WHash.str_hash(s)
-	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human")
+	store = WorldStore.create_world(name if name.strip_edges() != "" else "New World", sd, "human", tiles)
 	_begin(true)
 
 func load_world(id: String) -> bool:
@@ -106,8 +109,7 @@ func join_remote(s: WorldStore) -> void:
 	_begin(false)
 
 func _begin(fresh: bool) -> void:
-	home_seed = store.meta["seed"]
-	seed = home_seed
+	seed = store.meta["seed"]
 	day = store.meta.get("day", 0.3)
 	inventory = Inventory.new(Inventory.SIZE, true)
 	inventory.changed.connect(_on_inventory_changed)
@@ -116,7 +118,6 @@ func _begin(fresh: bool) -> void:
 	pending_player_state = null
 	vehicles = []
 	equipment = {}
-	landings = {}
 	markers = Markers.new()
 	crime = Crime.new()
 	standing = Standing.new()
@@ -126,7 +127,7 @@ func _begin(fresh: bool) -> void:
 	buffs = {}
 	regen_left = 0.0
 	var p = store.load_player()
-	_enter_planet(int(p.get("planet", 0)) if p is Dictionary else 0)
+	_enter_world()
 	if p is Dictionary:
 		inventory.from_data(p.get("inventory", {}))
 		money = p.get("money", 0)
@@ -139,7 +140,6 @@ func _begin(fresh: bool) -> void:
 		stamina = stats.max_stamina()
 		vehicles = p.get("vehicles", []).duplicate(true)
 		equipment = p.get("equipment", {}).duplicate(true)
-		landings = p.get("landings", {}).duplicate()
 		markers = Markers.from_data(p.get("markers"))
 		crime = Crime.from_data(p.get("crime"))
 		standing = Standing.from_data(p.get("standing"))
@@ -152,6 +152,7 @@ func _begin(fresh: bool) -> void:
 				if Effects.BUFFS.has(id):
 					buffs[id] = float(bf[id])
 		regen_left = float(p.get("regen", 0.0))
+		_retire_space(p)
 		refresh_bonus()
 		pending_player_state = p
 	else:
@@ -179,22 +180,88 @@ func close_world() -> void:
 		return
 	save_all()
 	map.close()
+	if builder != null:
+		builder.stop()
+		builder = null
 	store = null
 	player = null
 	day_seconds = DAY_SECONDS
 	time_lock = -1.0
-	Planets.apply(Planets.get_planet(0, 0)) # back to an ordinary world for the title screen
+	Planets.apply(Planets.home(0)) # back to an ordinary world for the title screen
 	WorldField.terrain_v = ChunkGenerator.GEN_VERSION
 
-## Travel: saves this planet's land and map, then makes `n` the planet that streams in.
-func set_planet(n: int) -> void:
-	if store == null or n == planet:
-		return
-	flush_chunks()
-	store.save_discovery(discovery)
-	map.save()
-	_enter_planet(n)
-	_player_dirty = true
+## What a ship or launch pad cost to make: what you get back for one in a save from
+## when starships existed.
+const RETIRED_REFUND := {
+	"ship": {"alloy_plate": 20, "power_cell": 6, "circuitry": 10, "data_core": 1},
+	"launch_pad": {"alloy_plate": 14, "circuitry": 8, "power_cell": 3},
+}
+
+## Brings a save from when other planets, starships and portals existed home: you wake
+## on this world (at your house if you have one here), vehicles left on other worlds
+## come back to your pack, a starship or launch pad turns back into what it was made
+## of, and treasure maps of other worlds are read afresh here. Call after the save's
+## pack, vehicles, markers and hunts are loaded; `p` is the saved player.
+func _retire_space(p: Dictionary) -> void:
+	var notes: Array = []
+	if int(p.get("planet", 0)) != 0:
+		var door = home_near(p["pos"] if p.get("pos") is Vector3 else Vector3.ZERO)
+		p["pos"] = Vector3(door.x, 0.0, door.y) if door is Vector2 else Planets.spawn_point(seed, store.has_rivers())
+		p["drop"] = true
+		p["riding"] = -1
+		notes.append("you wake on the home world")
+	var keep: Array = []
+	var back := 0
+	var salvaged := 0
+	for r in vehicles:
+		var kind := String(r.get("kind", ""))
+		if not RETIRED_REFUND.has(kind) and int(r.get("planet", 0)) == 0:
+			keep.append(r)
+			continue
+		if RETIRED_REFUND.has(kind):
+			_refund(kind, 1)
+			salvaged += 1
+		elif Vehicle.KINDS.has(kind):
+			inventory.add(ItemDB.make(kind, 1, float(r.get("q", 1.0)), r.get("origin", {})))
+			back += 1
+		if int(p.get("riding", -1)) == int(r.get("id", -2)):
+			p["riding"] = -1
+			p["drop"] = true # flying it, or up in orbit: down onto the ground
+	vehicles = keep
+	if back > 0:
+		notes.append("%d vehicle%s back in your pack" % [back, "" if back == 1 else "s"])
+	for i in inventory.slots.size():
+		var it = inventory.get_slot(i)
+		if it != null and RETIRED_REFUND.has(String(it["type"])):
+			var n := int(it.get("qty", 1))
+			inventory.remove_at(i, n)
+			_refund(String(it["type"]), n)
+			salvaged += n
+	if salvaged > 0:
+		notes.append("starship parts salvaged")
+	var off: Array = []
+	for h in treasure:
+		if int(h.get("planet", 0)) != 0:
+			off.append(int(h["id"]))
+	if not off.is_empty():
+		treasure = treasure.filter(func(h): return not off.has(int(h["id"])))
+		for i in inventory.slots.size():
+			var it = inventory.get_slot(i)
+			if it != null and off.has(int(it.get("hunt", -1))):
+				it.erase("hunt") # read again here: a new hunt on this world
+	for m in markers.list.duplicate():
+		if int(m.get("planet", 0)) != 0:
+			markers.remove(int(m["id"]))
+	p.erase("landings")
+	p["planet"] = 0
+	if not notes.is_empty():
+		_player_dirty = true
+		toast.emit("The stars are out of reach now: %s" % ", ".join(notes))
+
+## Puts what `n` of `type` (RETIRED_REFUND) were made of into your pack.
+func _refund(type: String, n: int) -> void:
+	for m in RETIRED_REFUND[type]:
+		inventory.add(ItemDB.make(m, int(RETIRED_REFUND[type][m]) * n, 1.0, {"how": "salvage", "era": -1, "chunk": Vector2i.ZERO}))
 
 ## Joins a guild (TownShops.GUILDS key); membership counts in every hall of it.
 func join_guild(kind: String, town: String) -> void:
@@ -204,10 +271,10 @@ func join_guild(kind: String, town: String) -> void:
 ## Takes the deed to a house (TownShops.estate) and marks it on the map.
 func buy_house(e: Dictionary) -> void:
 	estates.append(e)
-	markers.add("Your house, %s" % e.get("town", ""), float(e["x"]), float(e["z"]), int(e.get("planet", planet)))
+	markers.add("Your house, %s" % e.get("town", ""), float(e["x"]), float(e["z"]), planet)
 	_player_dirty = true
 
-## Where you wake after falling: the door of your nearest house on this planet, if any.
+## Where you wake after falling: the door of your nearest house, if any.
 func home_near(at: Vector3) -> Variant:
 	var best = null
 	var bd := INF
@@ -235,29 +302,6 @@ func may_use_house_at(at: Vector3) -> bool:
 		return true
 	var net := get_node_or_null("/root/Net")
 	return net != null and net.has_method("ally_home_at") and bool(net.ally_home_at(at, planet))
-
-## Steps through the world portal at `from` (on this world) to world `n`: you come out
-## beside a portal there (WorldPortal.arrival), and the portal you used is where you
-## come back out on this world.
-func travel_portal(who: Node3D, n: int, from: Vector2) -> void:
-	if n == planet or store == null:
-		return
-	landings[planet] = from
-	var st: Dictionary = who.get_state() if who != null and who.has_method("get_state") else {}
-	if who != null:
-		who.set_physics_process(false)
-	player = null
-	set_planet(n)
-	var g := ChunkGenerator.new(seed, store.has_rivers())
-	var at := WorldPortal.arrival(g, landings.get(n))
-	st["pos"] = at if at != Vector3.INF else Planets.spawn_point(seed, store.has_rivers())
-	st["drop"] = true
-	st["riding"] = -1
-	pending_player_state = st
-	save_player()
-	var info := planet_info()
-	toast.emit("You step out on %s, %s" % [info["name"], Planets.theme_label(info).to_lower()])
-	get_tree().change_scene_to_file.call_deferred("res://src/world/world.tscn")
 
 # --- Treasure maps ---------------------------------------------------------------
 
@@ -316,22 +360,25 @@ func finish_treasure(id: int) -> void:
 func touch_player() -> void:
 	_player_dirty = true
 
-func _enter_planet(n: int) -> void:
-	planet = clampi(n, 0, Planets.COUNT - 1)
-	store.set_planet(planet)
-	seed = Planets.seed_of(home_seed, planet)
+func _enter_world() -> void:
+	planet = 0
 	WorldField.terrain_v = store.terrain_version()
-	Planets.apply(planet_info())
+	Planets.apply(Planets.home(seed, world_theme(), world_tiles()))
+	if builder != null:
+		builder.stop()
+	var net0 := get_node_or_null("/root/Net")
+	builder = WorldBuilder.new(store, seed, store.has_rivers()) if WorldBounds.on() and not (net0 != null and net0.is_client()) else null
 	discovery = store.load_discovery()
 	map.open(store, discovery["visited"])
 	_current_region = ""
+	var net := get_node_or_null("/root/Net")
+	if net != null and net.is_client():
+		net.request_ally_map(planet)
 
-func planet_info() -> Dictionary:
-	return Planets.get_planet(home_seed, planet, world_theme())
-
-## Every world linked to this one (Planets.system), home first.
-func worlds() -> Array:
-	return Planets.system(home_seed, world_theme())
+## The world's size along a side in tiles (WorldBounds); 0 for an endless world (made
+## before v22).
+func world_tiles() -> int:
+	return int(store.meta.get("tiles", 0)) if store != null else 0
 
 ## "human" for worlds made since world themes exist; "" for older, mixed worlds.
 func world_theme() -> String:
@@ -352,7 +399,7 @@ func save_all() -> void:
 func save_player() -> void:
 	if store == null:
 		return
-	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "landings": landings, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "standing": standing.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
+	var d := {"inventory": inventory.to_data(), "money": money, "health": health, "stats": stats.to_data(), "vehicles": vehicles, "equipment": equipment, "planet": planet, "markers": markers.to_data(), "guilds": guilds, "estates": estates, "crime": crime.to_data(), "standing": standing.to_data(), "treasure": treasure, "buffs": buffs, "regen": regen_left}
 	if player != null and player.has_method("get_state"):
 		d.merge(player.get_state(), true)
 	elif pending_player_state is Dictionary:
@@ -372,6 +419,10 @@ func _process(delta: float) -> void:
 			day += delta / day_seconds
 		_tick_effects(delta)
 		map.process(delta, player)
+		if builder != null:
+			if player != null and is_instance_valid(player):
+				builder.watch("me", player.global_position)
+			builder.tick()
 		store.meta["play_time"] = store.meta.get("play_time", 0.0) + delta
 	if not _dirty_chunks.is_empty():
 		_dirty_timer -= delta
@@ -401,11 +452,38 @@ func flush_chunks() -> void:
 		store.save_chunk(_dirty_chunks[k])
 	_dirty_chunks.clear()
 
+## Tiles an ally explored on planet `p` (online: Net.c_ally_map): they show on your map
+## as if you had seen them, but don't count as places you discovered.
+func share_explored(p: int, keys: Array) -> void:
+	if store == null or p != planet:
+		return
+	var shared: Dictionary = discovery.get("shared", {})
+	var fresh: Array = []
+	for k in keys:
+		if not (k is Vector2i):
+			continue
+		var key := "%d,%d" % [k.x, k.y]
+		if not discovery["visited"].has(key) and not shared.has(key):
+			shared[key] = true
+			fresh.append(k)
+	discovery["shared"] = shared
+	if not fresh.is_empty():
+		store.save_discovery(discovery)
+	# Re-sent in full on each join: anything not yet on the map is painted, new or not.
+	var all: Array = []
+	for key in shared:
+		var q: PackedStringArray = String(key).split(",")
+		all.append(Vector2i(q[0].to_int(), q[1].to_int()))
+	map.reveal_tiles(all)
+
 func visit_chunk(chunk: Dictionary) -> void:
 	var key := "%d,%d" % [chunk["cx"], chunk["cz"]]
 	if not discovery["visited"].has(key):
 		discovery["visited"][key] = {"day": day, "era": chunk["era"], "region": chunk["region"]}
 		store.save_discovery(discovery)
+		var net := get_node_or_null("/root/Net")
+		if net != null and net.is_client():
+			net.send_explored(planet, Vector2i(int(chunk["cx"]), int(chunk["cz"])))
 	var region: String = chunk["region"]
 	if region != _current_region:
 		_current_region = region

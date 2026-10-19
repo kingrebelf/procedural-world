@@ -8,9 +8,6 @@ const STORE_FORMAT := 1
 
 var root: String
 var meta: Dictionary = {}
-## Which planet's land and people are read and written (0 = the home world, kept at the
-## root so worlds from before spaceflight are unchanged; others live in planets/<n>/).
-var planet := 0
 ## In-memory store (the title screen's fly-over): chunks live only in RAM, nothing
 ## touches disk, and the oldest are dropped past MEM_LIMIT.
 var _mem = null
@@ -33,24 +30,15 @@ static func memory() -> WorldStore:
 
 ## Worlds created since rivers existed have them; older worlds keep their old terrain.
 func has_rivers() -> bool:
-	return planet != 0 or int(meta.get("gen_version", 1)) >= 3
+	return int(meta.get("gen_version", 1)) >= 3
 
 ## Terrain shapes this world was created with (WorldField.terrain_v).
 func terrain_version() -> int:
 	return int(meta.get("gen_version", 1))
 
-func set_planet(n: int) -> void:
-	planet = n
-	if _mem == null:
-		DirAccess.make_dir_recursive_absolute(_land().path_join("chunks"))
-		DirAccess.make_dir_recursive_absolute(_land().path_join("people"))
-
 ## Where the atlas keeps its painted pages and places ("" for a world in memory).
 func map_dir() -> String:
-	return "" if _mem != null else _land().path_join("map")
-
-func _land() -> String:
-	return root if planet == 0 else root.path_join("planets").path_join(str(planet))
+	return "" if _mem != null else root.path_join("map")
 
 static func worlds_dir() -> String:
 	return "user://worlds"
@@ -69,7 +57,8 @@ static func list_worlds() -> Array:
 	return out
 
 ## theme: "human" for new worlds (Planets, Eras.theme); "" makes an old-style mixed world.
-static func create_world(name: String, seed: int, theme := "") -> WorldStore:
+## tiles: the world's size along a side (WorldBounds); 0 makes an endless world.
+static func create_world(name: String, seed: int, theme := "", tiles := 0) -> WorldStore:
 	var id := "%s_%d" % [name.to_lower().replace(" ", "_").validate_filename(), Time.get_unix_time_from_system()]
 	var s := WorldStore.new(worlds_dir().path_join(id))
 	s.meta = {
@@ -80,6 +69,8 @@ static func create_world(name: String, seed: int, theme := "") -> WorldStore:
 	}
 	if theme != "":
 		s.meta["theme"] = theme
+	if tiles > 0:
+		s.meta["tiles"] = tiles
 	s.save_meta()
 	return s
 
@@ -152,14 +143,14 @@ func load_player():
 	return read_var(root.path_join("player.dat"), true)
 
 func save_discovery(data: Dictionary) -> void:
-	write_var(_land().path_join("discovery.dat"), data, true)
+	write_var(root.path_join("discovery.dat"), data, true)
 
 func load_discovery() -> Dictionary:
-	var d = read_var(_land().path_join("discovery.dat"), true)
+	var d = read_var(root.path_join("discovery.dat"), true)
 	return d if d is Dictionary else {"visited": {}, "regions": {}}
 
 func chunk_path(cx: int, cz: int) -> String:
-	return _land().path_join("chunks").path_join("%d_%d.chunk" % [cx, cz])
+	return root.path_join("chunks").path_join("%d_%d.chunk" % [cx, cz])
 
 func has_chunk(cx: int, cz: int) -> bool:
 	if _mem != null:
@@ -198,6 +189,7 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 	var c = load_chunk(cx, cz)
 	if c is Dictionary:
 		var stocked := Interiors.stock(c)
+		stocked = retire(c) or stocked
 		if gen.fill_keep_out(c) or stocked:
 			save_chunk(c)
 		# Strongholds' dungeons, dug under old saves' forts too (after their keep-out).
@@ -212,10 +204,25 @@ func get_or_create_chunk(gen: ChunkGenerator, cx: int, cz: int) -> Dictionary:
 	save_chunk(c)
 	return c
 
+## Things old saves hold that this game no longer has: the ancient portals to other
+## worlds, the ships parked on outpost landing pads, and launch pads players built.
+const RETIRED := ["world_portal", "b:launch_pad", "pad_bob", "pad_challenger", "pad_dispatcher", "pad_executioner",
+	"pad_imperial", "pad_insurgent", "pad_omen", "pad_pancake", "pad_spitfire", "pad_zenith"]
+
+## Takes the RETIRED things out of a saved chunk (marked gone, so every other object
+## keeps its index). True if any were there.
+static func retire(c: Dictionary) -> bool:
+	var any := false
+	for o in c.get("objects", []):
+		if RETIRED.has(String(o.get("t", ""))) and not o["st"].get("gone", false):
+			o["st"]["gone"] = true
+			any = true
+	return any
+
 # --- Settlements and their people ---------------------------------------------------
 
 func settlement_path(sx: int, sz: int) -> String:
-	return _land().path_join("people").path_join("%d_%d.dat" % [sx, sz])
+	return root.path_join("people").path_join("%d_%d.dat" % [sx, sz])
 
 func has_settlement(sx: int, sz: int) -> bool:
 	return FileAccess.file_exists(settlement_path(sx, sz))

@@ -164,11 +164,43 @@ func _new_world() -> void:
 	h.add_child(UITheme.button("Back", _home))
 	var go := UITheme.button("Create and enter", func():
 		Game.new_world(name_e.text, seed_e.text)
-		get_tree().change_scene_to_file("res://src/world/world.tscn"))
+		_build_start())
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(go)
 	v.add_child(h)
 	_swap(p)
+
+## A new finite world builds the land round its centre (WorldBuilder.START tiles every
+## way) before you step in, on every spare core, showing how far it has got.
+func _build_start() -> void:
+	var b: WorldBuilder = Game.builder
+	if b == null:
+		get_tree().change_scene_to_file("res://src/world/world.tscn")
+		return
+	var p := PanelContainer.new()
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 10)
+	v.custom_minimum_size = Vector2(480, 0)
+	p.add_child(v)
+	v.add_child(UITheme.title("Building your world"))
+	var l := UITheme.label("", 16)
+	v.add_child(l)
+	var bar := ProgressBar.new()
+	bar.show_percentage = false
+	v.add_child(bar)
+	_swap(p)
+	b.max_tasks = maxi(1, OS.get_processor_count() - 1)
+	b.watch("start", Vector3.ZERO, WorldBuilder.START, -1)
+	var total := maxi(1, b.remaining())
+	bar.max_value = total
+	while b.remaining() > 0:
+		b.tick()
+		bar.value = total - b.remaining()
+		l.text = "The land round where you start: %d of %d tiles" % [total - b.remaining(), total]
+		await get_tree().process_frame
+	b.forget("start")
+	b.max_tasks = 1
+	get_tree().change_scene_to_file("res://src/world/world.tscn")
 
 func _load_world() -> void:
 	var p := PanelContainer.new()

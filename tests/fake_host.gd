@@ -14,6 +14,7 @@ var pids: Array = []
 var views: Dictionary = {} ## pid -> the last view told
 var notes: Array = [] ## [pid, text]
 var chats: Array = [] ## [pid, from, text]
+var explored_told: Array = [] ## [pid, planet, keys]
 
 func option(k: String):
 	return opts.get(k)
@@ -29,3 +30,6 @@ func ally_note(pid: String, text: String) -> void:
 
 func ally_chat(pid: String, from: String, text: String) -> void:
 	chats.append([pid, from, text])
+
+func tell_explored(pid: String, p: int, keys: Array) -> void:
+	explored_told.append([pid, p, keys])
