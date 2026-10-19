@@ -13,9 +13,17 @@ static var _lock := Mutex.new()
 
 static func _shaders() -> void:
 	_lock.lock()
+	var have := _organic != null
+	_lock.unlock()
+	if have:
+		return
+	# Loaded outside the lock: a load can wait on the main thread.
+	var o: Shader = load("res://src/world/shaders/organic.gdshader")
+	var c: Shader = load("res://src/world/shaders/crystal.gdshader")
+	_lock.lock()
 	if _organic == null:
-		_organic = load("res://src/world/shaders/organic.gdshader")
-		_crystal = load("res://src/world/shaders/crystal.gdshader")
+		_organic = o
+		_crystal = c
 	_lock.unlock()
 
 ## Builds the mesh, or returns null for types this class does not draw.
