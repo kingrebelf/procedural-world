@@ -890,10 +890,14 @@ func _run() -> void:
 		player.mount(sp)
 		var v0: Vector3 = sp.global_position
 		Input.action_press("move_forward")
-		for i in 120:
+		var moved := 0.0
+		# Wait for the distance, not a frame count: slow runners accelerate it later.
+		for i in 360:
 			await physics_frame
+			moved = Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
+			if i >= 120 and moved > 4.0:
+				break
 		Input.action_release("move_forward")
-		var moved := Vector2(sp.global_position.x - v0.x, sp.global_position.z - v0.z).length()
 		check(moved > 4.0, "riding forward moves the speeder (%.1f m)" % moved)
 		check(player.global_position.distance_to(sp.seat_transform().origin) < 1.0, "the rider stays in the seat")
 		check(sp.global_position.y > world.vehicles.ground(sp.global_position.x, sp.global_position.z) + 0.3, "the speeder hovers off the ground")
