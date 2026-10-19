@@ -32,7 +32,7 @@ void vertex() {
 	vec3 base = vec3(at.x, hc.x - 0.4, at.y);
 	float dist = length(base - CAMERA_POSITION_WORLD);
 	bool stands = in_forest_rect(fuv) && hash12(c) < tree_density(fd.a, at) && dist < TREE_BB_TO
-		&& billboarded(c, dist) && !near_drawn(at);
+		&& billboarded(c, dist) && hash12(c + 2.7) >= near_share(at);
 	vec4 sp = tree_species(at, c);
 	int form = tree_form(sp.a);
 	float h = 6.5 + 7.0 * hash12(c + 9.7);

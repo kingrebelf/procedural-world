@@ -11,6 +11,7 @@ render_mode diffuse_burley, specular_schlick_ggx;
 #include "res://src/world/plant_look.gdshaderinc"
 #include "res://src/world/noise2d.gdshaderinc"
 #include "res://src/env/climate_wear.gdshaderinc"
+#include "res://src/world/lod_fade.gdshaderinc"
 
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -48,6 +49,9 @@ void vertex() {
 }
 
 void fragment() {
+	if (lod_hidden(wp, FRAGCOORD.xy, IN_SHADOW_PASS)) {
+		discard;
+	}
 	ALBEDO = texture(albedo_tex, UV).rgb * albedo * col * tone;
 	if (has_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;

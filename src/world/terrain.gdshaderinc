@@ -45,6 +45,7 @@ TEX(gravel_tex); NRM(gravel_nrm);
 TEX(litter_tex); NRM(litter_nrm);
 TEX(cliff_tex); NRM(cliff_nrm);
 uniform bool use_textures = false;
+#include "res://src/world/lod_fade.gdshaderinc"
 #ifdef FAR_LAND
 #include "res://src/world/forest.gdshaderinc"
 #endif
@@ -236,7 +237,14 @@ float layer(float amount, float lum, float mean, float noise) {
 
 void fragment() {
 #ifdef FAR_LAND
-	if (near_drawn(wpos.xz)) {
+	// Under a chunk: the share of pixels it draws while it fades in or out (ChunkNode
+	// appear), the rest left here; a hair of overlap, never a hole.
+	float under = near_share(wpos.xz);
+	if (under > 0.0 && lod_noise(FRAGCOORD.xy) < under - 0.003) {
+		discard;
+	}
+#else
+	if (lod_hidden(wpos, FRAGCOORD.xy, IN_SHADOW_PASS)) {
 		discard;
 	}
 #endif

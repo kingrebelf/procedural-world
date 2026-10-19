@@ -7,9 +7,9 @@ extends MeshInstance3D
 ## hands it the forest data and the mask of the chunks drawn near you.
 
 const CELL := 4.5
-## Cells out to this far from you (past TREE_BB_TO), none nearer than INNER (always
-## streamed in, so never a distant tree).
-const REACH := 905.0
+## Cells out to this far from you (past the furthest TREE_BB_TO, high up), none nearer
+## than INNER (always streamed in, so never a distant tree).
+const REACH := 1355.0
 const INNER := 150.0
 
 static var _mesh: ArrayMesh

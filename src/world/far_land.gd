@@ -44,6 +44,9 @@ var _mask_tex: ImageTexture
 var _mask_sum := -1
 var _sync_t := 0.0
 var _trees: FarTrees
+var _tree_bb := TREE_BB
+## Billboard trees from x to y metres off at ground level (forest.gdshaderinc).
+const TREE_BB := Vector2(750.0, 900.0)
 
 func _ready() -> void:
 	ChunkNode.ensure_shared()
@@ -95,6 +98,7 @@ func _process(delta: float) -> void:
 	if _task < 0:
 		_step()
 	_update_mask()
+	_sync_tree_reach()
 	_sync_t -= delta
 	if _sync_t <= 0.0:
 		_sync_t = 0.5
@@ -149,24 +153,44 @@ func _sync_material() -> void:
 		if v != null:
 			_mat.set_shader_parameter(n, v)
 
-## Which chunks are drawn near you, as the mask the shader leaves out.
+## Which chunks are drawn near you, and how much of each while it fades in or out, as the
+## mask the shader leaves out (the distant land draws the rest).
 func _update_mask() -> void:
+	var shares := streamer.drawn_shares()
 	var sum := 0
-	for k in streamer.chunks:
-		sum = (sum + (k.x * 73856093) ^ (k.y * 19349663)) & 0x3FFFFFFF
-	sum = (sum + streamer.chunks.size()) & 0x3FFFFFFF
+	for k in shares:
+		sum = (sum + ((k.x * 73856093) ^ (k.y * 19349663)) * (1 + int(shares[k] * 255.0))) & 0x3FFFFFFF
+	sum = (sum + shares.size()) & 0x3FFFFFFF
 	if sum == _mask_sum:
 		return
 	_mask_sum = sum
 	_mask_img.fill(Color(0, 0, 0))
 	var m := _mask_img.get_width()
 	var c0 := Vector2i(int(floor(_built_at.x / ChunkGenerator.SIZE)), int(floor(_built_at.y / ChunkGenerator.SIZE)))
-	for k in streamer.chunks:
+	for k in shares:
 		var i: int = k.x - c0.x
 		var j: int = k.y - c0.y
 		if i >= 0 and j >= 0 and i < m and j < m:
-			_mask_img.set_pixel(i, j, Color(1, 0, 0))
+			_mask_img.set_pixel(i, j, Color(shares[k], 0, 0))
 	_mask_tex.update(_mask_img)
+
+## How far the distant trees stand as billboards (forest.gdshaderinc tree_bb): further the
+## higher you are, but never past the forest data built round _center.
+func _sync_tree_reach() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or mesh == null:
+		return
+	var p := cam.global_position
+	var h := streamer.height_above(p)
+	var want := lerpf(TREE_BB.y, FarTrees.REACH - 5.0, clampf((h - 60.0) / 400.0, 0.0, 1.0))
+	var built := _built_at + Vector2.ONE * SPAN * 0.5
+	var room := FINE_REACH - 40.0 - Vector2(p.x, p.z).distance_to(built)
+	var to := snappedf(maxf(TREE_BB.y, minf(want, room)), 5.0)
+	var bb := Vector2(to - (TREE_BB.y - TREE_BB.x), to)
+	if bb != _tree_bb:
+		_tree_bb = bb
+		_mat.set_shader_parameter("tree_bb", bb)
+		_trees.mat.set_shader_parameter("tree_bb", bb)
 
 ## What the workers need, read on the main thread: the world's seed and settings, from
 ## the streamer's own world when it has one (the title screen's fly-over).
