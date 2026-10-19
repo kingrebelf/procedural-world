@@ -213,9 +213,9 @@ Controllers use ARK: Survival Ascended's layout.
 | Sprint / crouch / jump | Shift / Ctrl / Space | Left stick click / right stick click / A |
 | Swim: dive / rise | Look down and move, or Ctrl / Space | Look down and move, or right stick click / A |
 | Use tool or weapon | Left mouse | RT |
-| Reload (with a gun or bow in hand) | R | |
+| Reload (with a gun or bow in hand) | R | X |
 | Interact, open, talk, trade (prompt floats over it) | E | Y |
-| Eat | F | X |
+| Eat | F | RB |
 | Torch or flashlight on / off | T | |
 | Put away what you hold | H | |
 | Inventory (drag items onto the hotbar) | Tab | B |
