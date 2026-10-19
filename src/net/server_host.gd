@@ -20,8 +20,8 @@ var cfg: ServerConfig
 var root := ""
 var meta: Dictionary = {}
 var day := 0.3
-var _stores: Dictionary = {} ## planet -> WorldStore
-var _gens: Dictionary = {} ## planet -> ChunkGenerator
+var _store: WorldStore
+var _gen: ChunkGenerator
 
 ## Connected players: peer -> {pid, name, planet, pos, chunk, admin, ip, equip, held}
 var online: Dictionary = {}
@@ -92,19 +92,18 @@ func _open_world() -> bool:
 	DirAccess.make_dir_recursive_absolute(root.path_join("players"))
 	return true
 
-func store_for(p: int) -> WorldStore:
-	if not _stores.has(p):
-		var s := WorldStore.new(root)
-		s.meta = meta
-		s.set_planet(p)
-		_stores[p] = s
-	return _stores[p]
+## The world's store and generator. `p`, the planet every message still names, is always
+## 0 (there is one world); messages naming another are refused before they get here.
+func store_for(_p := 0) -> WorldStore:
+	if _store == null:
+		_store = WorldStore.new(root)
+		_store.meta = meta
+	return _store
 
-func gen_for(p: int) -> ChunkGenerator:
-	if not _gens.has(p):
-		var s := store_for(p)
-		_gens[p] = ChunkGenerator.new(Planets.seed_of(int(meta["seed"]), p), s.has_rivers())
-	return _gens[p]
+func gen_for(_p := 0) -> ChunkGenerator:
+	if _gen == null:
+		_gen = ChunkGenerator.new(int(meta["seed"]), store_for().has_rivers())
+	return _gen
 
 func say_log(t: String) -> void:
 	var line := "[%s] %s" % [Time.get_time_string_from_system(), t]
@@ -166,7 +165,7 @@ func _auth(peer: int, data: PackedByteArray) -> void:
 		rec["name"] = nm
 	_save_index()
 	var save = WorldStore.read_var(_player_path(rec["pid"]), true)
-	online[peer] = {"pid": rec["pid"], "name": nm, "planet": int(save.get("planet", 0)) if save is Dictionary else 0,
+	online[peer] = {"pid": rec["pid"], "name": nm, "planet": 0,
 		"pos": save.get("pos", Vector3.ZERO) if save is Dictionary else Vector3.ZERO, "admin": false, "ip": ip,
 		"equip": save.get("equipment", {}) if save is Dictionary else {}, "held": {}, "pending": true}
 	online[peer]["chunk"] = ChunkStreamer.chunk_of(online[peer]["pos"])
@@ -318,7 +317,7 @@ func player_look(peer: int, look: Dictionary) -> void:
 # --- Chunks ------------------------------------------------------------------------------------
 
 func chunk_request(peer: int, p: int, cx: int, cz: int) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var k := Vector3i(p, cx, cz)
 	_lock.lock()
@@ -330,7 +329,7 @@ func chunk_request(peer: int, p: int, cx: int, cz: int) -> void:
 	_want("c:%d:%d:%d" % [p, cx, cz], peer, {"kind": "chunk", "key": k})
 
 func town_request(peer: int, p: int, site: Dictionary) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT or not (site.get("sx") is int and site.get("sz") is int):
+	if not online.has(peer) or p != 0 or not (site.get("sx") is int and site.get("sz") is int):
 		return
 	var k := Vector3i(p, site["sx"], site["sz"])
 	_lock.lock()
@@ -380,7 +379,7 @@ func _launch() -> void:
 func _use_planet(p: int) -> void:
 	_active_planet = p
 	WorldField.terrain_v = int(meta.get("gen_version", 1))
-	Planets.apply(Planets.get_planet(int(meta["seed"]), p, String(meta.get("theme", ""))))
+	Planets.apply(Planets.home(int(meta["seed"]), String(meta.get("theme", ""))))
 
 ## Worker thread.
 func _run(job: Dictionary) -> void:
@@ -445,7 +444,7 @@ func _remember(k: Vector3i, bytes: PackedByteArray) -> void:
 ## saved at once and shown to everyone near it (the saver too, when it was merged, so
 ## everyone has the same).
 func chunk_save(peer: int, p: int, data: PackedByteArray) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var c = NetPack.unpack(data)
 	if not _valid_chunk(c):
@@ -499,7 +498,7 @@ static func _valid_chunk(c) -> bool:
 ## A town's people saved by a player: merged like chunks, and sent to everyone else who
 ## has the town loaded (the holder runs them; the others' talks, trades and blows count).
 func town_save(peer: int, p: int, data: PackedByteArray) -> void:
-	if not online.has(peer) or p < 0 or p >= Planets.COUNT:
+	if not online.has(peer) or p != 0:
 		return
 	var s = NetPack.unpack(data)
 	if not _valid_town(s):
@@ -538,7 +537,7 @@ const MOB_RANGE := 500.0 ## metres: puppets are drawn for players this close to 
 const HIT_RANGE := 120.0 ## metres: furthest a player can hurt another from (guns)
 
 func watch(peer: int, kind: String, p: int, adds: Array, removes: Array) -> void:
-	if online.has(peer) and kind in ["t", "f", "b"] and p >= 0 and p < Planets.COUNT:
+	if online.has(peer) and kind in ["t", "f", "b"] and p == 0:
 		sync.watch(peer, kind, p, adds, removes)
 
 ## Tells a player who runs a town or chunk they have loaded, and how many have it.

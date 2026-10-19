@@ -74,10 +74,11 @@ machine has to be measured by a human with the game running.
 
 ## v0.3: Beyond the planet (done, v0.3.0 to v0.3.50)
 
-- Vehicles from a vehicle bay, riding horses, and a starship built on a launch pad.
-- Orbit, five linked planets per world, each saved on its own, and warp between them.
-- Human worlds (medieval near spawn, sci-fi further out, nothing glowing) and alien worlds
-  as the endgame, with zone levels by distance, level-gated gear and rare portals.
+- Vehicles from a vehicle bay, and riding horses.
+- Human worlds (medieval near spawn, sci-fi further out, nothing glowing), with zone
+  levels by distance and level-gated gear.
+- Then spaceships, orbit, other planets and portals were removed: the game is one endless
+  planet (the sci-fi side moves to a separate game).
 - Landforms (karst, needles, gorges, crags, badlands, dunes and more), regional climates
   and tropical biomes, rivers, waterfalls, lakes with reefs and fish, real caves.
 - Walled towns, market squares, shops, guilds, roads, bridges and viaducts; standing with

@@ -134,7 +134,7 @@ const FIRST_GREET := {
 	"frontier": ["New arrival{a}? Welcome to the frontier.", "Hey. Keep your weapon holstered and we'll get along.",
 		"You're new{a}. Didn't see a shuttle come in.", "Hey there{a}. Signal's good today.", "Another drifter. Welcome to the edge of nowhere.",
 		"Hey{a}. First time out this far?"],
-	"vex": ["A human. We see few of your kind{a}.", "You came through the portal{a}? Curious.", "Greetings{a}. Do not touch the conduits.",
+	"vex": ["A human. We see few of your kind{a}.", "You came from the far roads{a}? Curious.", "Greetings{a}. Do not touch the conduits.",
 		"Your face is soft{a}. Most human faces are, I find.", "Outworlder. You are permitted to speak.", "Welcome to the spires{a}. Mind the lattice-lines."],
 	"child": ["Hi! Who are you?", "Are you an adventurer? You look like one.", "Mum says not to talk to strangers. You're not strange though, are you?",
 		"Hello! Have you got a sword? Can I see it?", "Ooh, you're new! Where'd you come from?", "I've never seen you before. Are you lost?"],
@@ -357,7 +357,7 @@ const TOPICS := {
 		"old": ["The king's road's safe by day. By night, less so.", "Went to the city once. Too loud, too dear, too many people."],
 		"fey": ["Every path in the wood leads somewhere. Not always where you meant.", "The far-walkers bring the world's news on their boots."],
 		"frontier": ["Next outpost's a long haul. Fuel up first.", "Out past the array, the maps stop being right."],
-		"vex": ["You walk between worlds as if it were nothing. Your kind is reckless.", "The portals hum when travellers pass. We feel it."],
+		"vex": ["You walk the land as if it were nothing. Your kind is reckless.", "The lattice-lines hum when travellers pass. We feel it."],
 		"child": ["Take me with you! Please? I'm good at walking.", "Have you been everywhere? What's it like?"],
 	},
 	"work": {
@@ -386,12 +386,12 @@ const TOPICS := {
 	"worry": {
 		"all": ["Since you ask, {worry}.", "{worry}. Keeps me up nights.", "Truth? {worry}. Nobody else seems bothered.", "What worries me is {worry}. And my knees."],
 	},
-	"portal": {
-		"old": ["Doors to other worlds? There's tales, far out past the frontier. I'll stay here, thanks.", "My granddad swore he saw a stone ring hum once. He drank, mind."],
-		"frontier": ["Portals? Out past the last outposts, they say. Old ones. Nobody built them that we know of.", "I knew a scout who went through a portal. Came back quiet. Never said what she saw."],
-		"fey": ["The old doors open onto many worlds. Some of them are cold and grey and full of iron.", "You came through a door, didn't you? You have that look."],
-		"vex": ["The portals were old before the Vex were young.", "Humans come through the portals and stare at everything. As you are doing."],
-		"child": ["Did you come through one of the old doors? Can I go through it too?", "My friend says there are doors to other worlds. Is it true?"],
+	"stars": {
+		"old": ["Other worlds? Up there? My granddad swore the stars were other suns. He drank, mind.", "The stars are for sailors and fortune-tellers. My feet stay on this world."],
+		"frontier": ["The old company records say our people came down from the stars. Nobody's going back up.", "You can see a long way out here at night. Further than anyone will ever travel."],
+		"fey": ["The stars are the wood's lanterns, hung too high to reach.", "Every star is a tale. None of them are roads."],
+		"vex": ["We watch the stars. We do not go to them.", "The sky is a ceiling. The Vex accept it."],
+		"child": ["Do you think there are people on the stars? I'm going to count them all.", "My friend says the stars are far away. How far is far?"],
 	},
 	"animals": {
 		"all": ["Good dog's worth more than a bad neighbour.", "The cats here eat better than I do.", "Never trust a goat. They're plotting."],
@@ -428,7 +428,7 @@ const TOPICS := {
 		"fey": ["Why did the oak blush? It saw the mere bathing. We find that very funny.", "A hedgehog asked the moon for a kiss. That is the whole joke. Children love it."],
 		"frontier": ["How many engineers does it take to fix a hab light? None. That's a hardware problem.",
 			"Why did the courier cross the dead zone? Somebody forgot to pay for express.", "I'd tell you a joke about the airlock, but you'd be blown away."],
-		"vex": ["A human, a Sylvari and a Vex enter a portal. Only the Vex arrives on time. That is our joke.", "We have one joke. It is about entropy. You would not laugh."],
+		"vex": ["A human, a Sylvari and a Vex set out for the spires. Only the Vex arrives on time. That is our joke.", "We have one joke. It is about entropy. You would not laugh."],
 		"child": ["Knock knock! You're supposed to say who's there.", "Why did the chicken cross the road? To get away from my brother!"],
 	},
 	"help": {
@@ -457,7 +457,7 @@ const TOPIC_WORDS := [
 	["joke", ["joke", "funny", "make me laugh", "riddle", "jest"]],
 	["romance", ["sweetheart", "romance", "kiss", "marry", "married", "lover", "girlfriend", "boyfriend", "single", "in love"]],
 	["family", ["family", "wife", "husband", "children", "kids", "son", "daughter", "mother", "father", "mum", "mom", "dad", "brother", "sister", "parents"]],
-	["portal", ["portal", "portals", "other world", "other worlds", "space", "alien", "aliens", "planet", "planets", "stars"]],
+	["stars", ["portal", "portals", "other world", "other worlds", "space", "planet", "planets", "stars", "star", "moon"]],
 	["magic", ["magic", "spell", "spells", "wizard", "witch", "sorcery", "enchant", "enchanted", "fairy", "fairies", "elf", "elves", "glow", "glowing"]],
 	["gods", ["god", "gods", "pray", "prayer", "faith", "temple", "church", "heaven", "divine", "religion", "holy", "saints"]],
 	["war", ["war", "wars", "battle", "army", "soldier", "soldiers", "enemy", "invasion", "siege"]],
@@ -479,7 +479,7 @@ const TOPIC_WORDS := [
 ## The words to name a topic in memory ("Talked with the traveller about the weather.").
 const TOPIC_NAMES := {"weather": "the weather", "food": "food", "drink": "drink", "family": "family", "romance": "love",
 	"war": "war", "monsters": "the dangers out there", "gods": "the gods", "magic": "magic", "money": "money", "ruler": "who rules here",
-	"sea": "the sea", "travel": "the roads", "joke": "jokes", "portal": "the portals", "animals": "animals", "health": "health",
+	"sea": "the sea", "travel": "the roads", "joke": "jokes", "stars": "the stars", "animals": "animals", "health": "health",
 	"history": "the old days", "home": "home", "worry": "my worries", "likes": "what I like"}
 
 const INSULT_WORDS := ["stupid", "idiot", "ugly", "shut up", "hate you", "fool", "moron", "dumb", "loser", "you smell", "you stink", "stinks",

@@ -901,33 +901,6 @@ func _run() -> void:
 		player.dismount()
 		check(player.vehicle == null and sp.rider == null, "getting off")
 		check(world.vehicles.pack_up(sp) and game.vehicles.is_empty() and game.inventory.count("speeder") == 1, "packing the speeder up returns it")
-	# A starship climbs where you look, won't let you step out in mid-air, and lands.
-	var ship: Vehicle = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + Vector3(0, 0, -9), 0.0)
-	# (Until it touches down: on a fast runner 30 frames weren't always enough.)
-	for i in 240:
-		await physics_frame
-		if ship == null or (i >= 30 and ship.is_on_floor()):
-			break
-	check(ship != null and ship.is_on_floor(), "a starship sets down on the ground")
-	player.mount(ship)
-	var y0s: float = ship.global_position.y
-	Input.action_press("jump")
-	for i in 120:
-		await physics_frame
-	Input.action_release("jump")
-	check(ship.global_position.y > y0s + 10.0, "the starship climbs (%.1f m)" % (ship.global_position.y - y0s))
-	player.dismount()
-	check(player.vehicle == ship, "can't step out in mid-air")
-	Input.action_press("crouch")
-	for i in 400:
-		await physics_frame
-		if ship.is_on_floor():
-			break
-	Input.action_release("crouch")
-	check(ship.is_on_floor(), "the starship lands")
-	player.dismount()
-	check(player.vehicle == null, "stepping out after landing")
-	world.vehicles.pack_up(ship)
 	var hr: Vehicle = world.vehicles.deploy(ItemDB.make("horse", 1, 1.0, {}), player.global_position + Vector3(4, 0, 0), 0.0)
 	await _frames(3)
 	check(hr != null and hr._animal != null, "a riding horse stands ready")
@@ -1037,77 +1010,29 @@ func _run() -> void:
 	var fresh := ChunkGenerator.new(game.seed, store.has_rivers()).generate(here_key.x, here_key.y)
 	check(absf(ChunkGenerator.height_at(fresh, lx, lz) - after) > 0.5, "snapshot, not regeneration, is the source of truth")
 
-	# Spaceflight: climb out of the sky to orbit, warp to another planet and land there.
-	change_scene_to_file("res://src/world/world.tscn")
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 600:
-		await process_frame
-		if not player.frozen:
-			break
-	var home_seed: int = game.seed
-	# The ship sets down on dry, loaded ground near you: try round about rather than only
-	# straight ahead (a null there hung the run on sh.leaving).
-	var sh: Vehicle = null
-	for off: Vector3 in [Vector3(0, 0, -9), Vector3(9, 0, 0), Vector3(0, 0, 9), Vector3(-9, 0, 0), Vector3(0, 0, -16), Vector3(16, 0, 0)]:
-		if sh == null:
-			sh = world.vehicles.deploy(ItemDB.make("ship", 1, 1.0, {}), player.global_position + off, 0.0)
-	check(sh != null, "a ship can be set down near the player (at %s)" % player.global_position)
-	if sh == null:
-		game.close_world()
-		WorldStore.delete_world(world_id)
-		print("integration: %d FAILED" % _fail)
-		quit(1)
-		return
-	for i in 10:
-		await physics_frame
-	player.mount(sh)
-	sh.leaving = Vehicle.LEAVE_TIME
-	sh.at_ceiling = true
-	for i in 20:
-		await process_frame
-	check(current_scene is OrbitView, "climbing out of the sky reaches orbit")
-	var target := -1
-	for pl in game.worlds():
-		if pl["kind"] == "fey":
-			target = pl["n"]
-	OrbitView._arrive(target)
-	check(game.planet == target and game.seed != home_seed and WorldField.allowed_eras == [Eras.FANTASY, Eras.SCIFI] and Eras.theme == "alien", "warping makes the fey world current")
-	current_scene._land()
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 900:
-		await process_frame
-		if player.vehicle != null:
-			break
-	check(player.vehicle != null and player.vehicle.kind == "ship", "you land flying your ship")
-	var pw: PackedFloat32Array = world.atmosphere.field.era_weights(player.global_position.x, player.global_position.z)
-	check(pw[Eras.FANTASY] > 0.99, "the fey world's heart is all fey land")
-	check(DirAccess.dir_exists_absolute(game.store.root.path_join("planets/%d/chunks" % target)), "the planet's land is saved apart from home")
-	# Through a portal from the fey world to the verdant one, then the fey world remembers
-	# the portal you left by.
-	var gone_from := Vector2(player.global_position.x, player.global_position.z)
-	player.dismount(true)
-	var verdant := 1
-	for pl in game.worlds():
-		if pl["kind"] == "verdant":
-			verdant = pl["n"]
-	game.travel_portal(player, verdant, gone_from)
-	await _frames(5)
-	world = current_scene
-	player = world.player
-	for i in 900:
-		await process_frame
-		if not player.frozen:
-			break
-	check(game.planet == verdant and Eras.theme == "human" and not player.frozen and player.is_inside_tree(), "a portal takes you to another world, on your feet")
-	check(game.landings.get(target) == gone_from, "the world you left remembers the portal you used")
-	target = verdant
+	# A save from when there were other planets and starships: you come home, your ship
+	# turns back into its parts, what was left on another world comes back to your pack.
 	game.close_world()
-	check(WorldField.allowed_eras.is_empty(), "closing the world resets planet rules")
-	check(game.load_world(world_id) and game.planet == target, "the save remembers which planet you're on")
+	var old := WorldStore.open_world(world_id)
+	var sv: Dictionary = old.load_player()
+	sv["planet"] = 3
+	sv["pos"] = Vector3(9000, 40, 9000)
+	sv["landings"] = {0: Vector2(1, 2)}
+	sv["vehicles"] = [{"id": 1, "kind": "ship", "pos": Vector3(9000, 40, 9000), "yaw": 0.0, "q": 1.0, "planet": 3},
+		{"id": 2, "kind": "rover", "pos": Vector3(500, 4, 500), "yaw": 0.0, "q": 1.0, "planet": 2},
+		{"id": 3, "kind": "horse", "pos": Vector3(20, 4, 20), "yaw": 0.0, "q": 1.0, "planet": 0}]
+	sv["riding"] = 1
+	var mk := Markers.from_data(sv.get("markers"))
+	mk.add("Fey camp", 100, 100, 3)
+	sv["markers"] = mk.to_data()
+	old.save_player(sv)
+	var plates0: int = game.inventory.count("alloy_plate")
+	check(game.load_world(world_id) and game.planet == 0, "a save on another planet loads on the home world")
+	var ps: Dictionary = game.pending_player_state
+	check(ps.get("drop", false) and int(ps.get("riding", -1)) == -1 and (ps["pos"] as Vector3).distance_to(Vector3(9000, 40, 9000)) > 100.0, "and you wake on the ground at home")
+	check(game.vehicles.size() == 1 and game.vehicles[0]["kind"] == "horse", "only the vehicles on this world stay parked")
+	check(game.inventory.count("rover") == 1 and game.inventory.count("alloy_plate") >= plates0 + 20, "the rover comes back to your pack and the starship turns into its parts")
+	check(game.markers.on_planet(3).is_empty(), "markers on other worlds are gone")
 
 	game.close_world()
 	WorldStore.delete_world(world_id)
