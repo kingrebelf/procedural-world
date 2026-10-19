@@ -6023,7 +6023,7 @@ func test_power_automation() -> void:
 	check(float(r["supply"]) == 0.0, "and nothing on dry ground")
 
 func test_deposits() -> void:
-	# The same tile always rolls the same deposits; tiers follow zone levels and worlds.
+	# The same tile always rolls the same deposits; tiers follow zone levels.
 	var a := Deposits.roll(4242, 10, -7, 1)
 	check(a == Deposits.roll(4242, 10, -7, 1), "deposits are a pure function of seed and tile")
 	var tiers := {}
@@ -6035,18 +6035,18 @@ func test_deposits() -> void:
 	check(tiers.keys() == [1] and ores.size() >= 4, "near spawn only common ore, of several kinds (%s)" % [ores.keys()])
 	var deep := {}
 	for cx in 300:
-		for d in Deposits.roll(4242, cx, 9, 99, "xeno"):
+		for d in Deposits.roll(4242, cx, 9, 99):
 			deep[int(d["tier"])] = true
 			check(int(d["total"]) >= int(Deposits.TIERS[int(d["tier"])][1]), "a deposit is at least its tier's least size")
 	check(deep.has(5) and deep.has(4) and deep.has(3), "far out all five tiers turn up (%s)" % [deep.keys()])
 	var mid5 := false
 	var far5 := false
 	for cx in 300:
-		for d in Deposits.roll(4242, cx, 9, 40, ""):
+		for d in Deposits.roll(4242, cx, 9, 40):
 			mid5 = mid5 or int(d["tier"]) == 5
-		for d in Deposits.roll(4242, cx, 9, 99, ""):
+		for d in Deposits.roll(4242, cx, 9, 99):
 			far5 = far5 or int(d["tier"]) == 5
-	check(not mid5 and far5, "tier 5 ore lies only in the far outer zones, on the home world too")
+	check(not mid5 and far5, "tier 5 ore lies only in the far outer zones")
 	# Rarer tiers are worth more at market.
 	var top := [0, 0, 0, 0, 0, 0]
 	var low := [0, 9999, 9999, 9999, 9999, 9999]

@@ -1,7 +1,7 @@
 class_name Deposits
 ## Ore under the ground, per tile (one 64 m chunk), Dual Universe style: every tile holds a
 ## few hidden deposits an auto-miner standing on it pulls out, until they run dry. They are
-## a pure function of the planet seed, its kind and the tile, so every game sees the same
+## a pure function of the world seed and the tile, so every game sees the same
 ## ones; only what has been mined is saved, in the chunk's data as dep: {ore: units mined}.
 ## Plan: plans/tile-minerals-factories.md.
 
@@ -18,20 +18,10 @@ const TIER_NAMES := ["", "Common", "Uncommon", "Rare", "Exotic", "Alien"]
 ## Per tier: [chance a tile has one, least units, most units]. Tier 1 always has one.
 const TIERS := {1: [1.0, 3000, 9000], 2: [0.4, 1500, 4000], 3: [0.25, 800, 2400], 4: [0.12, 400, 1200], 5: [0.08, 150, 600]}
 const SECOND_T1 := 0.5 ## the odds of a second common deposit
-const LODE := 1.5 ## how much bigger a planet's own mother-lode ore runs
-## Planet kinds' leanings: ore -> how much likelier and bigger it is there.
-const LEAN := {
-	"verdant": {"copper_ore": 2.0, "tin_ore": 2.0, "gold_ore": 2.0, "uranium_ore": 0.5},
-	"frozen": {"silver_ore": 2.0, "lithium_ore": 2.0, "salt_crystal": 2.0, "coal": 0.5},
-	"rust": {"iron_ore": 2.0, "titanium_ore": 2.0, "cobalt_ore": 2.0},
-	"fey": {"voidstone_ore": 2.0},
-	"xeno": {"starsteel_ore": 2.0, "neutronium": 2.0},
-}
-
-## The deposits of tile (cx, cz) on a planet: [{ore, tier, total}], richest tier first.
-## `zone`: the tile's zone level (tier 5 lies only far out); `kind`: the planet kind.
-static func roll(seed: int, cx: int, cz: int, zone: int, kind := "") -> Array:
-	var lean: Dictionary = LEAN.get(kind, {})
+const LODE := 1.5 ## how much bigger a world's own mother-lode ore runs
+## The deposits of tile (cx, cz): [{ore, tier, total}], richest tier first. `zone`: the
+## tile's zone level (tier 5 lies only far out).
+static func roll(seed: int, cx: int, cz: int, zone: int) -> Array:
 	var lode := mother_lode(seed)
 	var out: Array = []
 	var salt := 0
@@ -45,27 +35,12 @@ static func roll(seed: int, cx: int, cz: int, zone: int, kind := "") -> Array:
 			var ores := ores_for(tier, zone)
 			if ores.is_empty():
 				break
-			# Odds (and which ore) weighed by the planet's leanings.
-			var w: Array = []
-			var sum := 0.0
-			for o in ores:
-				var f := float(lean.get(o, 1.0))
-				w.append(f)
-				sum += f
-			var odds := float(t[0]) * (sum / ores.size() if tier > 1 else 1.0)
-			if WHash.unit2(seed, cx, cz, 9110 + salt) >= odds:
+			if WHash.unit2(seed, cx, cz, 9110 + salt) >= float(t[0]):
 				continue
-			var r := WHash.unit2(seed, cx, cz, 9130 + salt) * sum
-			var ore: String = ores[-1]
-			for i in ores.size():
-				r -= float(w[i])
-				if r < 0.0:
-					ore = ores[i]
-					break
+			var ore: String = ores[WHash.hash2(seed, cx, cz, 9130 + salt) % ores.size()]
 			if out.any(func(d): return d["ore"] == ore):
 				continue
 			var size := lerpf(float(t[1]), float(t[2]), WHash.unit2(seed, cx, cz, 9150 + salt))
-			size *= sqrt(float(lean.get(ore, 1.0)))
 			if ore == lode:
 				size *= LODE
 			out.append({"ore": ore, "tier": tier, "total": int(size)})
@@ -80,7 +55,7 @@ static func ores_for(tier: int, zone: int) -> Array:
 		out.append(e[0])
 	return out
 
-## The one ore a planet is unusually rich in, from what its land can hold.
+## The one ore a world is unusually rich in, from what its land can hold.
 static func mother_lode(seed: int) -> String:
 	var all: Array = []
 	for tier in range(1, 6):
@@ -95,8 +70,8 @@ static func tier_of(ore: String) -> int:
 
 # --- In the running game ------------------------------------------------------------
 
-## The deposits under a chunk of the current planet, with what is left of each:
-## [{ore, tier, total, left}]. Cached per planet seed and tile.
+## The deposits under a chunk of the current world, with what is left of each:
+## [{ore, tier, total, left}]. Cached per world seed and tile.
 static var _cache := {}
 
 static func of_chunk(data: Dictionary) -> Array:
@@ -109,10 +84,9 @@ static func of_chunk(data: Dictionary) -> Array:
 	if not _cache.has(key):
 		if _cache.size() > 4096:
 			_cache.clear()
-		var p: Dictionary = game.planet_info() if game != null and game.store != null else {}
 		var c := Vector2((cx + 0.5) * ChunkGenerator.SIZE, (cz + 0.5) * ChunkGenerator.SIZE)
 		var zone := Eras.zone_level(c.x, c.y) if Eras.themed() else 99
-		_cache[key] = roll(seed, cx, cz, zone, String(p.get("kind", "")))
+		_cache[key] = roll(seed, cx, cz, zone)
 	var mined: Dictionary = data.get("dep", {})
 	var out: Array = []
 	for d in _cache[key]:
